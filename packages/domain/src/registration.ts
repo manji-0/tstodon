@@ -1,4 +1,4 @@
-import { Sensitive } from "@tstodon/core";
+import { Sensitive, type SensitiveValue } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { AccessEmail } from "./access-email";
@@ -148,13 +148,18 @@ export const LocalAccountSchema = z.object({
   kind: z.literal("LocalAccount"),
   id: AccountId.schema,
   username: Username.schema,
-  accessEmail: AccessEmail.schema.transform(Sensitive.of),
+  accessEmail: AccessEmail.schema.transform(
+    (email): SensitiveValue<typeof email> => Sensitive.of(email),
+  ),
   displayName: z.string(),
   locked: z.boolean(),
   defaultPostVisibility: Visibility.schema,
   defaultQuotePolicy: QuoteApprovalPolicy.schema,
   publicKeyPem: z.string().min(1),
-  privateKeyJwk: z.string().min(1).transform(Sensitive.of),
+  privateKeyJwk: z
+    .string()
+    .min(1)
+    .transform((jwk): SensitiveValue<string> => Sensitive.of(jwk)),
   createdAt: IsoInstant.schema,
 });
 

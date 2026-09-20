@@ -1,6 +1,7 @@
 import { err, type Result } from "neverthrow";
 import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
+import { AccessEmail, type AccessEmail as AccessEmailValue } from "./access-email";
 
 export const UsernameBrand = Symbol("Username");
 
@@ -25,5 +26,23 @@ export const Username = {
     }
     const parsed = schemaResult(schema)(raw);
     return parsed.mapErr((): UsernameError => ({ kind: "InvalidCharacters" }));
+  },
+  deriveFromEmail: (
+    email: AccessEmailValue,
+    baseUsernameTaken: boolean,
+  ): Result<Username, UsernameError> => {
+    const local = AccessEmail.localPart(email)
+      .split("")
+      .map((ch) => {
+        const lower = ch.toLowerCase();
+        return lower === "-" ? "_" : lower;
+      })
+      .filter((ch) => /[a-z0-9_]/.test(ch))
+      .join("");
+    const sanitized = local.length === 0 ? "user" : local;
+    const candidate = baseUsernameTaken
+      ? `${sanitized}_${AccessEmail.shortSuffix(email)}`
+      : sanitized;
+    return Username.parse(candidate);
   },
 } as const;

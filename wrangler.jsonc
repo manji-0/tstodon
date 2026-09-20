@@ -43,7 +43,8 @@
     "AUTH0_CLIENT_ID": "replace-with-auth0-application-client-id",
     "AUTH0_AUDIENCE": "https://example.com/api",
     "AUTH0_EMAIL_CLAIM": "email",
-    "AUTH0_ADMIN_ROLES": "fedi-admin"
+    "AUTH0_ADMIN_ROLES": "fedi-admin",
+    "DEV_BEARER_SECRET": "dev-secret"
   },
   "d1_databases": [
     {

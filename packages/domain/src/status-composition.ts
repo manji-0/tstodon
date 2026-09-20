@@ -1,5 +1,7 @@
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
+import { AccountId } from "./account-id";
+import { IsoInstant } from "./iso-instant";
 import { MediaId } from "./media-id";
 import { StatusDraftError } from "./status-draft-error";
 import {
@@ -121,7 +123,9 @@ export const StatusComposition = {
 export const LocalNoteSchema = z.object({
   kind: z.literal("LocalNote"),
   id: StatusId.schema,
+  accountId: AccountId.schema,
   text: ValidatedStatusDraftSchema.shape.text,
+  contentHtml: z.string(),
   visibility: Visibility.schema,
   spoilerText: ValidatedStatusDraftSchema.shape.spoilerText,
   sensitive: ValidatedStatusDraftSchema.shape.sensitive,
@@ -129,12 +133,15 @@ export const LocalNoteSchema = z.object({
   quote: StatusQuoteTargetSchema,
   mediaIds: z.array(MediaId.schema),
   poll: StatusPollPresenceSchema,
+  createdAt: IsoInstant.schema,
 });
 
 export const LocalReblogSchema = z.object({
   kind: z.literal("LocalReblog"),
   id: StatusId.schema,
+  accountId: AccountId.schema,
   reblogOfId: StatusId.schema,
+  createdAt: IsoInstant.schema,
 });
 
 export const LocalStatusSchema = z.discriminatedUnion("kind", [
@@ -148,10 +155,18 @@ export type LocalStatus = z.infer<typeof LocalStatusSchema>;
 
 export const LocalStatus = {
   schema: LocalStatusSchema,
-  publish: (id: StatusId, draft: ValidatedStatusDraft): LocalNote => ({
+  publish: (
+    id: StatusId,
+    accountId: AccountId,
+    draft: ValidatedStatusDraft,
+    createdAt: z.infer<typeof IsoInstant.schema>,
+    contentHtml: string,
+  ): LocalNote => ({
     kind: "LocalNote",
     id,
+    accountId,
     text: draft.text,
+    contentHtml,
     visibility: draft.visibility,
     spoilerText: draft.spoilerText,
     sensitive: draft.sensitive,
@@ -159,10 +174,18 @@ export const LocalStatus = {
     quote: draft.quote,
     mediaIds: draft.mediaIds,
     poll: draft.poll,
+    createdAt,
   }),
-  reblog: (id: StatusId, reblogOfId: StatusId): LocalReblog => ({
+  reblog: (
+    id: StatusId,
+    accountId: AccountId,
+    reblogOfId: StatusId,
+    createdAt: z.infer<typeof IsoInstant.schema>,
+  ): LocalReblog => ({
     kind: "LocalReblog",
     id,
+    accountId,
     reblogOfId,
+    createdAt,
   }),
 } as const;

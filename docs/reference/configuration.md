@@ -24,3 +24,7 @@ Placeholder resource IDs in `wrangler.jsonc` are local-only. Create real D1 / KV
 ## Auth0 authentication vars
 
 `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_AUDIENCE`, `AUTH0_EMAIL_CLAIM`, and `AUTH0_ADMIN_ROLES` are configuration, not secrets. Keep client secrets and private keys out of git. Use `.dev.vars` locally and `wrangler secret put` in production.
+
+## Local development bearer
+
+`DEV_BEARER_SECRET` is a local-only shared secret. Clients authenticate as `Authorization: Bearer ${DEV_BEARER_SECRET}:${email}`. The Worker creates a local account from the e-mail local-part on first request. Override the wrangler default with `.dev.vars` or `wrangler secret put DEV_BEARER_SECRET`. Production should use Auth0 instead of this bearer.

@@ -1,0 +1,385 @@
+import { InstanceIdentity, LocalStatus, StatusComposition, StatusId, Visibility } from "@tstodon/domain";
+import { Hono } from "hono";
+import { findAccountByUsername } from "../account-store";
+import { authenticate } from "../auth";
+import { noteDocument } from "../activitypub";
+import { nowInstant } from "../clock";
+import { enqueueLocalActivity } from "../delivery";
+import { mentionUsernames, textToHtml } from "../html";
+import {
+  asBoolean,
+  asStringArray,
+  jsonAuthError,
+  jsonRepositoryError,
+  queryLimit,
+  readObjectBody,
+  requireUser,
+} from "../http";
+import { newEntityId } from "../ids";
+import { mastodonStatus, mastodonStatuses } from "../mastodon";
+import { insertPoll } from "../poll-store";
+import { parseInstanceIdentity } from "../runtime-config";
+import {
+  bookmarkStatus,
+  favouriteStatus,
+  insertNotification,
+  unbookmarkStatus,
+  unfavouriteStatus,
+} from "../social-store";
+import {
+  deleteReblogOf,
+  deleteStatus,
+  findStatusById,
+  insertLocalNote,
+  insertLocalReblog,
+  listBookmarkedStatuses,
+  listFavouritedStatuses,
+} from "../status-store";
+import { canViewStatus } from "../visibility-guard";
+
+export const statusRoutes = new Hono<{ Bindings: Env }>();
+
+statusRoutes.post("/api/v1/statuses", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const body = await readObjectBody(c);
+  const visibilityRaw =
+    typeof body.visibility === "string" && body.visibility.length > 0
+      ? body.visibility
+      : Visibility.toMastodon(user.value.defaultPostVisibility);
+  const visibility = Visibility.fromMastodon(visibilityRaw);
+  if (visibility.isErr()) {
+    return c.json({ error: "Invalid visibility", kind: "Unknown" }, 400);
+  }
+  const pollRaw =
+    body.poll && typeof body.poll === "object" && !Array.isArray(body.poll)
+      ? (body.poll as Record<string, unknown>)
+      : undefined;
+  const pollOptions = pollRaw ? asStringArray(pollRaw.options) : [];
+  const composing = StatusComposition.composing({
+    text: typeof body.status === "string" ? body.status : "",
+    visibility: visibility.value,
+    spoilerText: typeof body.spoiler_text === "string" ? body.spoiler_text : "",
+    sensitive: asBoolean(body.sensitive),
+    language:
+      typeof body.language === "string" && body.language.length > 0
+        ? { kind: "Present", value: body.language }
+        : { kind: "None" },
+    mediaIds: asStringArray(body.media_ids),
+    poll: pollOptions.length >= 2 ? { kind: "Present" } : { kind: "None" },
+  });
+  const draft = StatusComposition.validate(composing);
+  if (draft.isErr()) {
+    return c.json({ error: draft.error.kind, kind: draft.error.kind }, 422);
+  }
+  const id = StatusId.parse(newEntityId());
+  if (id.isErr()) {
+    return jsonRepositoryError(c, "invalid status id");
+  }
+  const note = LocalStatus.publish(
+    id.value,
+    user.value.id,
+    draft.value,
+    nowInstant(),
+    textToHtml(draft.value.text),
+  );
+  const inserted = await insertLocalNote(c.env.DB, note);
+  if (inserted.isErr()) {
+    return jsonRepositoryError(c, inserted.error.message);
+  }
+  if (pollOptions.length >= 2) {
+    const expiresIn = Number(pollRaw?.expires_in ?? 86400);
+    const expiresAt = new Date(
+      Date.now() + (Number.isFinite(expiresIn) ? expiresIn : 86400) * 1000,
+    ).toISOString();
+    const poll = await insertPoll(c.env.DB, {
+      statusId: note.id,
+      multiple: asBoolean(pollRaw?.multiple),
+      expiresAt,
+      options: pollOptions,
+    });
+    if (poll.isErr()) {
+      return jsonRepositoryError(c, poll.error.message);
+    }
+  }
+  for (const username of mentionUsernames(note.text)) {
+    if (username === user.value.username) {
+      continue;
+    }
+    const mentioned = await findAccountByUsername(c.env.DB, username);
+    if (mentioned.isOk() && mentioned.value) {
+      await insertNotification(c.env.DB, {
+        accountId: mentioned.value.id,
+        fromAccountId: user.value.id,
+        kind: "mention",
+        statusId: note.id,
+      });
+    }
+  }
+  const actor = InstanceIdentity.actorUrl(identity.value, user.value.username);
+  await enqueueLocalActivity(c.env, user.value.id, "Create", {
+    "@context": "https://www.w3.org/ns/activitystreams",
+    id: `${actor}/statuses/${note.id}/activity`,
+    type: "Create",
+    actor,
+    object: noteDocument(identity.value, user.value, note),
+  });
+  const document = await mastodonStatus(c.env, identity.value, note, user.value.id);
+  return c.json(document, 200);
+});
+
+statusRoutes.get("/api/v1/statuses/:id", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const auth = await authenticate(c.req.raw, c.env);
+  if (auth.isErr()) {
+    return jsonAuthError(c, auth.error);
+  }
+  const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
+  const status = await findStatusById(c.env.DB, c.req.param("id"));
+  if (status.isErr()) {
+    return jsonRepositoryError(c, status.error.message);
+  }
+  if (!status.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const visible = await canViewStatus(c.env.DB, status.value, viewerId);
+  if (!visible) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const document = await mastodonStatus(c.env, identity.value, status.value, viewerId);
+  if (!document) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(document);
+});
+
+statusRoutes.delete("/api/v1/statuses/:id", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const existing = await findStatusById(c.env.DB, c.req.param("id"));
+  if (existing.isErr()) {
+    return jsonRepositoryError(c, existing.error.message);
+  }
+  if (!existing.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const document = await mastodonStatus(c.env, identity.value, existing.value, user.value.id);
+  const deleted = await deleteStatus(c.env.DB, c.req.param("id"), user.value.id);
+  if (deleted.isErr()) {
+    return jsonRepositoryError(c, deleted.error.message);
+  }
+  if (!deleted.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(document ?? {});
+});
+
+statusRoutes.get("/api/v1/statuses/:id/context", (c) =>
+  c.json({ ancestors: [], descendants: [] }),
+);
+
+statusRoutes.post("/api/v1/statuses/:id/favourite", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const status = await findStatusById(c.env.DB, c.req.param("id"));
+  if (status.isErr()) {
+    return jsonRepositoryError(c, status.error.message);
+  }
+  if (!status.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const created = await favouriteStatus(c.env.DB, user.value.id, status.value.id);
+  if (created.isOk() && created.value && status.value.accountId !== user.value.id) {
+    await insertNotification(c.env.DB, {
+      accountId: status.value.accountId,
+      fromAccountId: user.value.id,
+      kind: "favourite",
+      statusId: status.value.id,
+    });
+  }
+  const latest = await findStatusById(c.env.DB, status.value.id);
+  if (latest.isErr() || !latest.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
+});
+
+statusRoutes.post("/api/v1/statuses/:id/unfavourite", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  await unfavouriteStatus(c.env.DB, user.value.id, c.req.param("id"));
+  const latest = await findStatusById(c.env.DB, c.req.param("id"));
+  if (latest.isErr() || !latest.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
+});
+
+statusRoutes.post("/api/v1/statuses/:id/reblog", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const status = await findStatusById(c.env.DB, c.req.param("id"));
+  if (status.isErr()) {
+    return jsonRepositoryError(c, status.error.message);
+  }
+  if (!status.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const reblogId = StatusId.parse(newEntityId());
+  if (reblogId.isErr()) {
+    return jsonRepositoryError(c, "invalid status id");
+  }
+  const reblog = LocalStatus.reblog(
+    reblogId.value,
+    user.value.id,
+    status.value.id,
+    nowInstant(),
+  );
+  const inserted = await insertLocalReblog(c.env.DB, reblog);
+  if (inserted.isErr()) {
+    return jsonRepositoryError(c, inserted.error.message);
+  }
+  if (status.value.accountId !== user.value.id) {
+    await insertNotification(c.env.DB, {
+      accountId: status.value.accountId,
+      fromAccountId: user.value.id,
+      kind: "reblog",
+      statusId: status.value.id,
+    });
+  }
+  const actor = InstanceIdentity.actorUrl(identity.value, user.value.username);
+  await enqueueLocalActivity(c.env, user.value.id, "Announce", {
+    type: "Announce",
+    actor,
+    object: `${actor}/statuses/${status.value.id}`,
+  });
+  const latest = await findStatusById(c.env.DB, status.value.id);
+  if (latest.isErr() || !latest.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
+});
+
+statusRoutes.post("/api/v1/statuses/:id/unreblog", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  await deleteReblogOf(c.env.DB, user.value.id, c.req.param("id"));
+  const latest = await findStatusById(c.env.DB, c.req.param("id"));
+  if (latest.isErr() || !latest.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
+});
+
+statusRoutes.post("/api/v1/statuses/:id/bookmark", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  await bookmarkStatus(c.env.DB, user.value.id, c.req.param("id"));
+  const latest = await findStatusById(c.env.DB, c.req.param("id"));
+  if (latest.isErr() || !latest.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
+});
+
+statusRoutes.post("/api/v1/statuses/:id/unbookmark", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  await unbookmarkStatus(c.env.DB, user.value.id, c.req.param("id"));
+  const latest = await findStatusById(c.env.DB, c.req.param("id"));
+  if (latest.isErr() || !latest.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
+});
+
+statusRoutes.get("/api/v1/favourites", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const statuses = await listFavouritedStatuses(
+    c.env.DB,
+    user.value.id,
+    queryLimit(c.req.query("limit")),
+  );
+  if (statuses.isErr()) {
+    return jsonRepositoryError(c, statuses.error.message);
+  }
+  return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, user.value.id));
+});
+
+statusRoutes.get("/api/v1/bookmarks", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const statuses = await listBookmarkedStatuses(
+    c.env.DB,
+    user.value.id,
+    queryLimit(c.req.query("limit")),
+  );
+  if (statuses.isErr()) {
+    return jsonRepositoryError(c, statuses.error.message);
+  }
+  return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, user.value.id));
+});

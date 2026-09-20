@@ -64,7 +64,19 @@ Variants are objects with `kind` and `z.literal` discriminators. Nested unions r
 ## Authentication Model
 <!-- derived-from ../reference/configuration.md#auth0-authentication-vars -->
 
-Protected user-facing API routes will validate Auth0-issued RS256 JWTs, then map the configured e-mail claim to a local account. Public and federation routes stay unauthenticated at the application layer; ActivityPub inbox routes authenticate with HTTP signatures.
+Protected user-facing API routes currently authenticate with a local `DEV_BEARER_SECRET` token of the form `Bearer ${secret}:${email}`. The Worker provisions a local account from that e-mail on first use. Auth0 RS256 JWT verification is the planned production path; the Auth0 vars are already in `wrangler.jsonc`. Public and federation routes stay unauthenticated at the application layer; ActivityPub inbox routes verify HTTP signatures when a `Signature` header is present.
+
+## Implemented Surface
+
+Phase 1 through 4 of the cfwdon capability map are present as a working local core, not a full Mastodon port:
+
+- D1-backed local accounts, statuses, follows, favourites, bookmarks, notifications, polls, reports, and filters
+- R2 media upload plus a Worker `/media/:id` fallback
+- WebFinger, NodeInfo, ActivityPub actor/note/outbox/followers/following, personal and shared inbox
+- Home, public, and tag timelines, plus signed outbound queue expansion
+- Notifications, polls, reports, filters, search, apps, and placeholder meta routes (`custom_emojis`, `trends`, `lists`, …)
+
+Queue, cron, Workflow, and Durable Object traffic stay on the Worker entrypoint. Hono only matches HTTP.
 
 ## Open Questions
 

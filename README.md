@@ -4,14 +4,15 @@
 
 The TypeScript domain is modeled with [Zod 4.6](https://zod.dev) `z.discriminatedUnion` values. States, errors, ActivityPub activities, and queue jobs are all `kind`-discriminated unions rather than optional-field bags.
 
-The project is early software. The current focus is locking the Cloudflare mapping, the Zod discriminant conventions, and a thin HTTP surface so later Mastodon / ActivityPub work does not have to reverse-engineer the Worker.
+The project is early software. Phases 1–4 of the cfwdon capability map are implemented as a working local core: D1 accounts and statuses, R2 media, WebFinger and ActivityPub actor/inbox/outbox, follows and timelines, plus notifications, polls, reports, filters, and search. Behavioral Mastodon parity is still incomplete.
 
 ## Status
 
 - TypeScript workspace with `@tstodon/core`, `@tstodon/domain`, and `@tstodon/worker`
-- Hono for HTTP routing only (`/healthz`, `/api/v1/instance`, WebFinger, NodeInfo, static assets)
+- Hono for HTTP routing (Mastodon API, WebFinger, NodeInfo, ActivityPub, static assets)
 - Cloudflare bindings for D1, R2, KV, Queues, Durable Objects, Workflows, Images, Analytics Engine, cron, and observability
-- Zod 4.6 discriminant domain models for status composition, follow requests, outbox delivery, inbox activities, and registration
+- Zod 4.6 discriminant domain models for status composition, follow requests, outbox delivery, inbox activities, notifications, and registration
+- Local `DEV_BEARER_SECRET` authentication that provisions D1 accounts
 
 ## Requirements
 

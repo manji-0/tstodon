@@ -43,11 +43,18 @@ export {
 export {
   LocalStatus,
   StatusComposition,
+  type LocalNote,
+  type LocalReblog,
   type LocalStatus as LocalStatusValue,
   type ValidatedStatusDraft,
 } from "./status-composition";
 export { StatusDraftError } from "./status-draft-error";
 export { StatusId } from "./status-id";
+export {
+  StatusQuoteTarget,
+  type StatusQuoteTarget as StatusQuoteTargetValue,
+} from "./status-quote-target";
 export { StreamEvent, type StreamEvent as StreamEventValue } from "./stream-event";
 export { Username } from "./username";
 export { Visibility, type Visibility as VisibilityValue } from "./visibility";
+export { Notification, type Notification as NotificationValue } from "./notification";
