@@ -1,3 +1,4 @@
+import { FediRole } from "@tstodon/domain";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import {
@@ -13,6 +14,7 @@ import {
   jsonValidationError,
   queryLimit,
   readBody,
+  requireSession,
   requireUser,
 } from "../http";
 import { mastodonAccountDocument, mastodonRelationship, mastodonStatuses } from "../mastodon";
@@ -35,15 +37,23 @@ accountRoutes.get("/api/v1/accounts/verify_credentials", async (c) => {
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const user = await requireUser(c);
-  if (user.isErr()) {
-    return jsonAuthError(c, user.error);
+  const session = await requireSession(c);
+  if (session.isErr()) {
+    return jsonAuthError(c, session.error);
   }
-  const document = await mastodonAccountDocument(c.env, identity.value, user.value);
+  const document = await mastodonAccountDocument(
+    c.env,
+    identity.value,
+    session.value.account,
+  );
   return c.json({
     ...document,
+    role: FediRole.toMastodon(session.value.role),
     source: {
-      privacy: user.value.defaultPostVisibility.kind === "FollowersOnly" ? "private" : "public",
+      privacy:
+        session.value.account.defaultPostVisibility.kind === "FollowersOnly"
+          ? "private"
+          : "public",
       sensitive: false,
       language: "",
       note: "",

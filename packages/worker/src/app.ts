@@ -4,6 +4,7 @@ import { activityPubRoutes } from "./routes/activitypub";
 import { appRoutes } from "./routes/apps";
 import { discoveryRoutes } from "./routes/discovery";
 import { healthRoutes } from "./routes/health";
+import { loginRoutes } from "./routes/login";
 import { instanceRoutes } from "./routes/instance";
 import { mediaRoutes } from "./routes/media";
 import { metaRoutes } from "./routes/meta";
@@ -18,6 +19,7 @@ import { jsonAuthError, requireUser } from "./http";
 export const app = new Hono<{ Bindings: Env }>();
 
 app.route("/", healthRoutes);
+app.route("/", loginRoutes);
 app.route("/", instanceRoutes);
 app.route("/", metaRoutes);
 app.route("/", discoveryRoutes);

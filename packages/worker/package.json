@@ -10,6 +10,7 @@
     "@tstodon/core": "workspace:*",
     "@tstodon/domain": "workspace:*",
     "hono": "^4.13.8",
+    "jose": "^6.2.12",
     "neverthrow": "^8.2.0",
     "zod": "^4.6.5"
   }

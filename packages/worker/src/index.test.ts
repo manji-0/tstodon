@@ -3,6 +3,7 @@ import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
 import { findAccountByUsername } from "./account-store";
+import { requireAdmin } from "./auth";
 import { generateAccountKeys } from "./keys";
 import {
   signInboxRequest,
@@ -56,6 +57,58 @@ describe("worker http", () => {
       kind: "Ok",
       service: "tstodon",
     });
+  });
+
+  it("maps WorkOS fedi/role onto admin checks", async () => {
+    const member = await json("/api/v1/accounts/verify_credentials", {
+      headers: auth("role-user@example.com"),
+    });
+    expect(member.status).toBe(200);
+    expect(read(MastodonAccountPreviewSchema, member.body).role).toMatchObject({
+      id: "user",
+      highlighted: false,
+    });
+
+    const admin = await json("/api/v1/accounts/verify_credentials", {
+      headers: { Authorization: "Bearer dev-secret:role-admin@example.com:admin" },
+    });
+    expect(admin.status).toBe(200);
+    expect(read(MastodonAccountPreviewSchema, admin.body).role).toMatchObject({
+      id: "admin",
+      highlighted: true,
+    });
+
+    const malformed = await json("/api/v1/accounts/verify_credentials", {
+      headers: { Authorization: "Bearer dev-secret:role-user@example.com:god" },
+    });
+    expect(malformed.status).toBe(401);
+
+    const forbidden = await requireAdmin(
+      new Request("https://example.com/api/v1/accounts/verify_credentials", {
+        headers: auth("role-user@example.com"),
+      }),
+      env,
+    );
+    expect(forbidden.isErr()).toBe(true);
+    if (forbidden.isErr()) {
+      expect(forbidden.error.kind).toBe("Forbidden");
+    }
+
+    const allowed = await requireAdmin(
+      new Request("https://example.com/api/v1/accounts/verify_credentials", {
+        headers: { Authorization: "Bearer dev-secret:role-admin@example.com:admin" },
+      }),
+      env,
+    );
+    expect(allowed.isOk()).toBe(true);
+  });
+
+  it("redirects login to WorkOS AuthKit when a client id is configured", async () => {
+    const response = await SELF.fetch("https://example.com/login", { redirect: "manual" });
+    expect(response.status).toBe(302);
+    const location = response.headers.get("location") ?? "";
+    expect(location).toContain("https://api.workos.com/user_management/authorize");
+    expect(location).toContain("client_01M2ZN56GJ4CM8XZBYJ6VKK0CZ");
   });
 
   it("serves Mastodon instance metadata", async () => {

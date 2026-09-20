@@ -144,6 +144,13 @@ export const MastodonAccountPreviewSchema = z.object({
   id: z.string().min(1),
   username: z.string().min(1),
   acct: z.string().min(1),
+  role: z
+    .object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      highlighted: z.boolean(),
+    })
+    .optional(),
 });
 
 export const MastodonStatusPreviewSchema = z.object({
@@ -206,6 +213,35 @@ export const ActorPreviewSchema = z.object({
 export const NotePreviewSchema = z.object({
   type: z.literal("Note"),
 });
+
+export const JoseErrorCodeSchema = z.object({
+  code: z.string().min(1),
+});
+
+export const WorkOsAccessTokenSchema = z
+  .object({
+    sub: z.string().min(1),
+    sid: z.string().optional(),
+    org_id: z.string().optional(),
+    client_id: z.string().optional(),
+    email: z.string().min(1).optional(),
+    "fedi/role": z.string().optional(),
+    fedi: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
+
+export const WorkOsUserSchema = z.object({
+  id: z.string().min(1),
+  email: z.string().min(1),
+  metadata: z.record(z.string(), z.union([z.string(), z.null()])).optional(),
+});
+
+export const WorkOsAuthenticateResponseSchema = z
+  .object({
+    access_token: z.string().min(1),
+    user: WorkOsUserSchema,
+  })
+  .passthrough();
 
 export const toRepositoryError = (message: string): RepositoryError => ({
   kind: "RepositoryError",

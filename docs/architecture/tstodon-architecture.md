@@ -2,7 +2,7 @@
 
 ## Summary
 
-`tstodon` is a TypeScript implementation of a Mastodon-compatible server designed for Cloudflare Workers. It follows the same platform mapping as cfwdon: D1 for relational state, R2 for media bodies, Queues and Workflows for outbound delivery, Durable Objects for streaming hubs, KV for short-lived caches, and Auth0 for protected API authentication.
+`tstodon` is a TypeScript implementation of a Mastodon-compatible server designed for Cloudflare Workers. It follows the same platform mapping as cfwdon: D1 for relational state, R2 for media bodies, Queues and Workflows for outbound delivery, Durable Objects for streaming hubs, KV for short-lived caches, and WorkOS AuthKit for protected API authentication.
 
 Domain state is expressed as Zod 4.6 discriminated unions with a unified `kind` discriminant. HTTP routing is Hono. Those two layers stay separate.
 
@@ -18,7 +18,7 @@ Domain state is expressed as Zod 4.6 discriminated unions with a unified `kind` 
 - Port cfwdon's Rust code line-for-line.
 - Claim behavioral Mastodon compatibility from route stubs.
 - Put Queue, cron, Workflow, or Durable Object traffic through Hono.
-- Implement a first-party OAuth authorization server while Auth0 is the authentication boundary.
+- Implement a first-party OAuth authorization server while WorkOS is the authentication boundary.
 
 ## Workspace
 
@@ -53,7 +53,7 @@ Do not encode domain state machines as Hono middleware. A follow request's `Pend
 | Maintenance | Cron triggers |
 | Request metrics | Analytics Engine |
 | Static UI | Workers Assets |
-| Authn | Auth0 JWT vars |
+| Authn | WorkOS AuthKit JWT vars |
 
 Workers AI and Vectorize are the intended search/moderation path, but they are not bound yet because Workers AI is remote-billed even in local dev.
 
@@ -62,9 +62,9 @@ Workers AI and Vectorize are the intended search/moderation path, but they are n
 Variants are objects with `kind` and `z.literal` discriminators. Nested unions replace optional fields. `z.getDiscriminatedOption` extracts a single variant schema. See the follow-request, outbox-delivery, and ActivityPub models in `packages/domain`.
 
 ## Authentication Model
-<!-- derived-from ../reference/configuration.md#auth0-authentication-vars -->
+<!-- derived-from ../reference/configuration.md#workos-authentication-vars -->
 
-Protected user-facing API routes currently authenticate with a local `DEV_BEARER_SECRET` token of the form `Bearer ${secret}:${email}`. The Worker provisions a local account from that e-mail on first use. An empty secret rejects every bearer token. Auth0 RS256 JWT verification is the planned production path; the Auth0 vars are already in `wrangler.jsonc`. Public discovery routes stay unauthenticated. ActivityPub inbox routes require a valid HTTP Signature; unsigned or unverifiable requests are `InvalidSignature`.
+Protected user-facing API routes authenticate with a local `DEV_BEARER_SECRET` token of the form `Bearer ${secret}:${email}` in tests (`:admin` for `{ kind: "Admin" }`), or a WorkOS AuthKit access token as `Bearer ${accessToken}` in production. Role comes from WorkOS user metadata `fedi/role` (`admin` | `user`) via JWT claim `fedi`. The Worker provisions a local account from the verified e-mail on first use. An empty local secret skips the bearer shortcut and leaves WorkOS as the only JWT path. Public discovery routes stay unauthenticated. ActivityPub inbox routes require a valid HTTP Signature; unsigned or unverifiable requests are `InvalidSignature`.
 
 ## Implemented Surface
 <!-- derived-from ../planning/local-core.md#capability-status -->

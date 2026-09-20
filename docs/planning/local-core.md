@@ -26,6 +26,7 @@ Labels:
 | Method | Path |
 | --- | --- |
 | GET | `/healthz` |
+| GET | `/login` |
 | GET | `/api/v1/instance` |
 | GET | `/api/v2/instance` |
 | GET | `/.well-known/webfinger` |
@@ -108,7 +109,6 @@ Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#
 ### Out of scope
 <!-- derived-from #principles -->
 
-- Auth0 RS256 JWT verification as the production authn boundary
 - Remote actor / remote status persistence
 - Fetching remote keys for non-local inbox actors
 - Workers AI / Vectorize search
@@ -129,8 +129,10 @@ Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#
 
 ## Authentication
 <!-- derived-from ../reference/configuration.md#local-development-bearer -->
+<!-- constrained-by ../reference/configuration.md#workos-authentication-vars -->
+<!-- dagayn: implemented-by packages/worker/src/auth.ts::authenticate -->
 
-Protected API routes use `Authorization: Bearer ${DEV_BEARER_SECRET}:${email}`. An empty or missing secret rejects any bearer token. This secret is local-only; production must not ship the wrangler default. Auth0 remains planned, not implemented.
+Protected API routes accept `Authorization: Bearer ${DEV_BEARER_SECRET}:${email}` for local tests (`:admin` suffix elevates to `{ kind: "Admin" }`). Production bearers are WorkOS AuthKit access tokens, verified against the environment JWKS with issuer `https://api.workos.com` and audience `https://example.com/api`. The JWT template adds `email` from the WorkOS user and copies user metadata onto claim `fedi`. Role is `fedi["fedi/role"]` (`admin` | `user`). The Worker provisions a local account from the e-mail claim, and falls back to a user lookup when `email` is missing. An empty local secret skips the test bearer. `GET /login` starts the AuthKit authorization code flow when `WORKOS_CLIENT_ID` is set. `requireAdmin` maps non-admin sessions to `kind: Forbidden`.
 
 ## Federation
 <!-- constrained-by ../architecture/tstodon-architecture.md#http-routing -->
@@ -142,7 +144,6 @@ Outbound Create / Announce jobs expand local followers and sign POSTs to remote 
 ## Next
 <!-- derived-from #out-of-scope -->
 
-- Bind Auth0 JWT verification without removing the local bearer for tests.
 - Persist remote actors so inbound signatures can use cached keys.
 - Decide Queue versus Workflow ownership for delivery retries.
 - Bind Vectorize / Workers AI only when local search cost is acceptable.

@@ -38,12 +38,11 @@
     "INSTANCE_THUMBNAIL_URL": "https://media.example.com/site/thumbnail.png",
     "MEDIA_PUBLIC_BASE_URL": "https://media.example.com",
     "EMAIL_FROM": "tstodon <noreply@example.com>",
-    "AUTH0_JWT_HEADER": "Authorization",
-    "AUTH0_DOMAIN": "example.us.auth0.com",
-    "AUTH0_CLIENT_ID": "replace-with-auth0-application-client-id",
-    "AUTH0_AUDIENCE": "https://example.com/api",
-    "AUTH0_EMAIL_CLAIM": "email",
-    "AUTH0_ADMIN_ROLES": "fedi-admin",
+    "WORKOS_CLIENT_ID": "client_01M2ZN56GJ4CM8XZBYJ6VKK0CZ",
+    "WORKOS_AUDIENCE": "https://example.com/api",
+    "WORKOS_ISSUER": "https://api.workos.com",
+    "WORKOS_AUTHKIT_DOMAIN": "",
+    "WORKOS_API_KEY": "",
     "DEV_BEARER_SECRET": "dev-secret"
   },
   "d1_databases": [

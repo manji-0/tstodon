@@ -1,5 +1,6 @@
 # Local-only secrets. Copy to `.dev.vars` and never commit that file.
-# AUTH0_CLIENT_SECRET=
+# WORKOS_API_KEY=
+# WORKOS_CLIENT_ID=
+# WORKOS_AUTHKIT_DOMAIN=
 # RESEND_API_KEY=
 # DEV_BEARER_SECRET=dev-secret
-

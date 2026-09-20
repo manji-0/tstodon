@@ -1,6 +1,6 @@
 # tstodon
 
-`tstodon` is a TypeScript Mastodon-compatible server for Cloudflare Workers. It takes the same platform split as [`cfwdon`](https://github.com/manji-0/cfwdon): Workers for the request path, D1 for relational state, R2 for media, Queues and Workflows for delivery, Durable Objects for streaming, and Auth0 as the authentication boundary.
+`tstodon` is a TypeScript Mastodon-compatible server for Cloudflare Workers. It takes the same platform split as [`cfwdon`](https://github.com/manji-0/cfwdon): Workers for the request path, D1 for relational state, R2 for media, Queues and Workflows for delivery, Durable Objects for streaming, and WorkOS AuthKit as the authentication boundary.
 
 The TypeScript domain is modeled with [Zod 4.6](https://zod.dev) `z.discriminatedUnion` values. States, errors, ActivityPub activities, and queue jobs are all `kind`-discriminated unions rather than optional-field bags.
 
@@ -33,7 +33,7 @@ pnpm test
 pnpm dev
 ```
 
-Local routes that depend on D1, R2, or Auth0 need matching local or remote bindings. Start with [Clone And Run](docs/getting-started/clone-and-run.md).
+Local routes that depend on D1, R2, or WorkOS need matching local or remote bindings. Start with [Clone And Run](docs/getting-started/clone-and-run.md).
 
 ## Documentation
 <!-- derived-from ./docs/architecture/tstodon-architecture.md -->

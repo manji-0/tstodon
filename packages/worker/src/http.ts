@@ -1,6 +1,12 @@
 import type { Context } from "hono";
 import { schemaResult } from "@tstodon/core";
-import { requireAccount, type AuthError } from "./auth";
+import {
+  requireAccount,
+  requireAdmin as requireAdminSession,
+  requireSession as requireAuthSession,
+  type AuthError,
+  type AuthenticatedSession,
+} from "./auth";
 import type { LocalAccount } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import type { z } from "zod";
@@ -23,12 +29,29 @@ export const jsonAuthError = (
       401,
     );
   }
+  if (error.kind === "Forbidden") {
+    return c.json({ error: "This action is not allowed", kind: error.kind }, 403);
+  }
+  if (error.kind === "VerificationUnavailable") {
+    c.header("Retry-After", "5");
+    return c.json({ error: "verification_unavailable", kind: error.kind }, 503);
+  }
   return c.json({ error: error.message, kind: error.kind }, 500);
 };
 
 export const requireUser = async (
   c: Context<{ Bindings: Env }>,
 ): Promise<Result<LocalAccount, AuthError>> => requireAccount(c.req.raw, c.env);
+
+export const requireSession = async (
+  c: Context<{ Bindings: Env }>,
+): Promise<Result<AuthenticatedSession, AuthError>> =>
+  requireAuthSession(c.req.raw, c.env);
+
+export const requireAdmin = async (
+  c: Context<{ Bindings: Env }>,
+): Promise<Result<AuthenticatedSession, AuthError>> =>
+  requireAdminSession(c.req.raw, c.env);
 
 export const jsonRepositoryError = (
   c: Context<{ Bindings: Env }>,

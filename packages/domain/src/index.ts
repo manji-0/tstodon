@@ -22,6 +22,11 @@ export {
 } from "./inbox-activity";
 export { InstanceIdentity } from "./instance-identity";
 export { IsoInstant } from "./iso-instant";
+export {
+  FediRole,
+  type FediRole as FediRoleValue,
+  type FediRoleName,
+} from "./fedi-role";
 export { LocalFollow, type LocalFollow as LocalFollowValue } from "./local-follow";
 export {
   LocalAccount,
