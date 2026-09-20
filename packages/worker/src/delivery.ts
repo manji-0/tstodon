@@ -12,6 +12,7 @@ import {
   markOutboundExpanded,
 } from "./outbox-store";
 import { listAcceptedFollowerIds } from "./social-store";
+import { listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
 
 export const enqueueLocalActivity = async (
@@ -65,6 +66,13 @@ export const processOutboxJob = async (
           const inbox = `${InstanceIdentity.actorUrl(identity.value, follower.value.username)}/inbox`;
           remoteTargets.push(inbox);
         }
+      }
+      const remoteFollowers = await listAcceptedRemoteFollowerInboxes(
+        env.DB,
+        activity.value.account_id,
+      );
+      if (remoteFollowers.isOk()) {
+        remoteTargets.push(...remoteFollowers.value);
       }
       const sameHost = identity.isOk() ? identity.value.domain : "";
       const remoteInboxes = remoteTargets.filter((inbox) => {

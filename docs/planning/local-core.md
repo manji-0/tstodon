@@ -80,7 +80,7 @@ Labels:
 | POST | `/users/:username/inbox` |
 | POST | `/inbox` |
 
-Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#hashtag` in local public notes. Inbox accepts signed Follow / Undo / Like / Announce that target local actor or status URLs from a local actor key.
+Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#hashtag` in local public notes. Inbox accepts signed Follow / Undo / Like / Announce that target local actor or status URLs. Local actors verify against the stored account key. Remote actors verify against a cached `RemoteActor` public key, fetching and persisting the actor document from `keyId` on a cache miss. Like / Announce from remote actors are recorded in the inbox but do not yet create local favourite or reblog rows.
 
 ### Placeholder
 
@@ -109,8 +109,8 @@ Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#
 ### Out of scope
 <!-- derived-from #principles -->
 
-- Remote actor / remote status persistence
-- Fetching remote keys for non-local inbox actors
+- Remote status persistence
+- Applying remote Like / Announce onto local favourite and reblog rows
 - Workers AI / Vectorize search
 - Mastodon admin APIs
 - A generated upstream route inventory
@@ -137,13 +137,13 @@ Protected API routes accept `Authorization: Bearer ${DEV_BEARER_SECRET}:${email}
 ## Federation
 <!-- constrained-by ../architecture/tstodon-architecture.md#http-routing -->
 
-Public discovery and actor documents are unauthenticated. Inbox requests must carry a draft-cavage `Signature` (and matching `Digest`). Verification uses the local actor's stored public key. Missing, unverifiable, or non-local actor keys return `kind: InvalidSignature`.
+Public discovery and actor documents are unauthenticated. Inbox requests must carry a draft-cavage `Signature` (and matching `Digest`). Verification uses the local actor key when `actor` is on this instance, otherwise a cached remote actor key (fetched from `keyId` on miss). Missing, unverifiable, or blocked actor keys return `kind: InvalidSignature`. Unreachable key fetches return `kind: VerificationUnavailable`.
 
-Outbound Create / Announce jobs expand local followers and sign POSTs to remote inboxes. Same-host inboxes are skipped.
+Outbound Create / Announce jobs expand local and remote followers and sign POSTs to remote inboxes. Same-host inboxes are skipped.
 
 ## Next
 <!-- derived-from #out-of-scope -->
 
-- Persist remote actors so inbound signatures can use cached keys.
+- Persist remote statuses so inbound Create / Announce have a local object.
 - Decide Queue versus Workflow ownership for delivery retries.
 - Bind Vectorize / Workers AI only when local search cost is acceptable.

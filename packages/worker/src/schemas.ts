@@ -210,6 +210,39 @@ export const ActorPreviewSchema = z.object({
   preferredUsername: z.string(),
 });
 
+export const ActorPublicKeySchema = z.object({
+  id: z.string().min(1),
+  owner: z.string().min(1),
+  publicKeyPem: z.string().min(1),
+});
+
+export const ActorDocumentSchema = z
+  .object({
+    id: z.string().min(1),
+    preferredUsername: z.string().min(1),
+    inbox: z.string().min(1),
+    publicKey: ActorPublicKeySchema,
+    name: z.string().optional(),
+    endpoints: z
+      .object({
+        sharedInbox: z.string().min(1).optional(),
+      })
+      .optional(),
+  })
+  .passthrough();
+
+export const RemoteActorRowSchema = z.object({
+  actor_uri: z.string().min(1),
+  username: z.string().min(1),
+  domain: z.string().min(1),
+  inbox_uri: z.string().min(1),
+  shared_inbox_uri: z.string().nullable(),
+  public_key_id: z.string().min(1),
+  public_key_pem: z.string().min(1),
+  display_name: z.string(),
+  fetched_at: z.string().min(1),
+});
+
 export const NotePreviewSchema = z.object({
   type: z.literal("Note"),
 });

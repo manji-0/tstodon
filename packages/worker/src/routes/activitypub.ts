@@ -4,6 +4,8 @@ import {
   InstanceIdentity,
   LocalStatus,
   StatusId,
+  type LocalAccount,
+  type RemoteActor,
 } from "@tstodon/domain";
 import { Hono } from "hono";
 import type { Context } from "hono";
@@ -19,9 +21,15 @@ import {
   parseLocalStatusId,
 } from "../activitypub";
 import { jsonRepositoryError, queryLimit } from "../http";
-import { verifyInboxRequest } from "../http-signature";
+import { verifyInboxRequest, parseSignatureHeader } from "../http-signature";
 import { inboxActivityExists, insertInboxActivity } from "../inbox-store";
 import { listOutboundActivities } from "../outbox-store";
+import { resolveRemoteActor } from "../remote-actor-fetch";
+import {
+  deleteRemoteFollow,
+  listAcceptedRemoteFollowerUris,
+  upsertRemoteFollow,
+} from "../remote-actor-store";
 import { parseInstanceIdentity } from "../runtime-config";
 import { ActivityJsonSchema, JsonObjectSchema, parseJsonColumn, parseJsonText } from "../schemas";
 import { schemaResult } from "@tstodon/core";
@@ -155,6 +163,15 @@ activityPubRoutes.get("/users/:username/followers", async (c) => {
       items.push(InstanceIdentity.actorUrl(identity.value, follower.value.username));
     }
   }
+  const remote = await listAcceptedRemoteFollowerUris(
+    c.env.DB,
+    account.value.id,
+    queryLimit(c.req.query("limit")),
+  );
+  if (remote.isErr()) {
+    return jsonRepositoryError(c, remote.error.message);
+  }
+  items.push(...remote.value);
   const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
   return c.json(collection(`${actor}/followers`, items), 200, jsonLd);
 });
@@ -200,22 +217,47 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   if (activityJson.isErr()) {
     return c.json({ kind: "ValidationError" }, 400);
   }
-  if (!c.req.header("Signature")) {
+  const signature = parseSignatureHeader(c.req.header("Signature") ?? "");
+  if (!signature) {
     return c.json({ kind: "InvalidSignature" }, 401);
   }
   const payload = activityPayloadFromJson(activityJson.value);
-  const actorUsername = parseLocalActorUsername(identity.value, String(payload.actor));
-  const actorAccount = actorUsername
-    ? await findAccountByUsername(c.env.DB, actorUsername)
-    : undefined;
-  if (!actorAccount || actorAccount.isErr() || !actorAccount.value) {
-    return c.json({ kind: "InvalidSignature" }, 401);
+  const actorUri = String(payload.actor);
+  const actorUsername = parseLocalActorUsername(identity.value, actorUri);
+  let signer:
+    | { kind: "Local"; account: LocalAccount }
+    | { kind: "Remote"; actor: RemoteActor };
+  if (actorUsername) {
+    const actorAccount = await findAccountByUsername(c.env.DB, actorUsername);
+    if (actorAccount.isErr()) {
+      return jsonRepositoryError(c, actorAccount.error.message);
+    }
+    if (!actorAccount.value) {
+      return c.json({ kind: "InvalidSignature" }, 401);
+    }
+    signer = { kind: "Local", account: actorAccount.value };
+  } else {
+    const remote = await resolveRemoteActor(
+      c.env.DB,
+      identity.value,
+      signature.keyId,
+      actorUri,
+    );
+    if (remote.isErr()) {
+      if (remote.error.kind === "VerificationUnavailable") {
+        c.header("Retry-After", "5");
+        return c.json({ kind: "VerificationUnavailable" }, 503);
+      }
+      if (remote.error.kind === "RepositoryError") {
+        return jsonRepositoryError(c, remote.error.message);
+      }
+      return c.json({ kind: "InvalidSignature" }, 401);
+    }
+    signer = { kind: "Remote", actor: remote.value };
   }
-  const verified = await verifyInboxRequest(
-    c.req.raw,
-    actorAccount.value.publicKeyPem,
-    bodyText,
-  );
+  const publicKeyPem =
+    signer.kind === "Local" ? signer.account.publicKeyPem : signer.actor.publicKeyPem;
+  const verified = await verifyInboxRequest(c.req.raw, publicKeyPem, bodyText);
   if (!verified) {
     return c.json({ kind: "InvalidSignature" }, 401);
   }
@@ -251,7 +293,33 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     return c.body(null, 202);
   }
   const activity = received.activity;
-  const actor = actorAccount.value;
+  if (signer.kind === "Remote") {
+    if (activity.kind === "Follow") {
+      const targetUsername = parseLocalActorUsername(identity.value, activity.object);
+      const target = targetUsername
+        ? await findAccountByUsername(c.env.DB, targetUsername)
+        : undefined;
+      if (target?.isOk() && target.value) {
+        await upsertRemoteFollow(
+          c.env.DB,
+          signer.actor.actorUri,
+          target.value.id,
+          target.value.locked,
+        );
+      }
+    }
+    if (activity.kind === "Undo") {
+      const targetUsername = parseLocalActorUsername(identity.value, activity.object);
+      const target = targetUsername
+        ? await findAccountByUsername(c.env.DB, targetUsername)
+        : undefined;
+      if (target?.isOk() && target.value) {
+        await deleteRemoteFollow(c.env.DB, signer.actor.actorUri, target.value.id);
+      }
+    }
+    return c.body(null, 202);
+  }
+  const actor = signer.account;
   if (activity.kind === "Follow") {
     const targetUsername = parseLocalActorUsername(identity.value, activity.object);
     const target = targetUsername

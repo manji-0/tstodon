@@ -5,6 +5,11 @@ import type { z } from "zod";
 import { findAccountByUsername } from "./account-store";
 import { requireAdmin } from "./auth";
 import { generateAccountKeys } from "./keys";
+import { IsoInstant, RemoteActor } from "@tstodon/domain";
+import {
+  listAcceptedRemoteFollowerUris,
+  upsertRemoteActor,
+} from "./remote-actor-store";
 import {
   signInboxRequest,
   verifyInboxRequest,
@@ -380,6 +385,69 @@ describe("worker http", () => {
     expect(read(MastodonRelationshipListPreviewSchema, relationships.body)).toEqual(
       expect.arrayContaining([expect.objectContaining({ following: true })]),
     );
+  });
+
+  it("accepts a remote Follow signed with a cached actor key", async () => {
+    const alice = await json("/api/v1/accounts/verify_credentials", {
+      headers: auth("alice@example.com"),
+    });
+    expect(alice.status).toBe(200);
+    const local = await findAccountByUsername(env.DB, "alice");
+    expect(local.isOk() && local.value).toBeTruthy();
+    if (local.isErr() || !local.value) {
+      throw new Error("alice account missing");
+    }
+    const keys = await generateAccountKeys();
+    const fetchedAt = IsoInstant.parse("2026-09-20T15:00:00.000Z");
+    expect(fetchedAt.isOk()).toBe(true);
+    if (fetchedAt.isErr()) {
+      throw new Error("invalid fixture instant");
+    }
+    const remote = RemoteActor.fromFetched({
+      actorUri: "https://remote.example/users/bob",
+      username: "bob",
+      domain: "remote.example",
+      inboxUri: "https://remote.example/users/bob/inbox",
+      publicKeyId: "https://remote.example/users/bob#main-key",
+      publicKeyPem: keys.publicKeyPem,
+      displayName: "Bob",
+      fetchedAt: fetchedAt.value,
+    });
+    expect(remote.isOk()).toBe(true);
+    if (remote.isErr()) {
+      throw new Error("remote actor fixture rejected");
+    }
+    const stored = await upsertRemoteActor(env.DB, remote.value);
+    expect(stored.isOk()).toBe(true);
+    const body = JSON.stringify({
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: "https://remote.example/activities/follow-bob-alice",
+      type: "Follow",
+      actor: "https://remote.example/users/bob",
+      object: "https://example.com/users/alice",
+    });
+    const url = new URL("https://example.com/inbox");
+    const headers = await signInboxRequest(
+      url,
+      keys.privateKeyJwk,
+      "https://remote.example/users/bob#main-key",
+      body,
+    );
+    expect(headers.isOk()).toBe(true);
+    if (headers.isErr()) {
+      throw new Error(headers.error.message);
+    }
+    const inbox = await json("/inbox", {
+      method: "POST",
+      headers: headers.value,
+      body,
+    });
+    expect(inbox.status).toBe(202);
+    const followers = await listAcceptedRemoteFollowerUris(env.DB, local.value.id, 20);
+    expect(followers.isOk()).toBe(true);
+    if (followers.isOk()) {
+      expect(followers.value).toContain("https://remote.example/users/bob");
+    }
   });
 });
 

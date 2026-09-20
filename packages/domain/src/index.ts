@@ -41,6 +41,10 @@ export {
 export { OutboxJob, type OutboxJob as OutboxJobValue } from "./outbox-job";
 export { QuoteApprovalPolicy } from "./quote-approval-policy";
 export {
+  RemoteActor,
+  type RemoteActor as RemoteActorValue,
+} from "./remote-actor";
+export {
   Registration,
   type Registration as RegistrationValue,
   type RegistrationValidationErrors,

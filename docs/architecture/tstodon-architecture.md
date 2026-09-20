@@ -64,7 +64,7 @@ Variants are objects with `kind` and `z.literal` discriminators. Nested unions r
 ## Authentication Model
 <!-- derived-from ../reference/configuration.md#workos-authentication-vars -->
 
-Protected user-facing API routes authenticate with a local `DEV_BEARER_SECRET` token of the form `Bearer ${secret}:${email}` in tests (`:admin` for `{ kind: "Admin" }`), or a WorkOS AuthKit access token as `Bearer ${accessToken}` in production. Role comes from WorkOS user metadata `fedi/role` (`admin` | `user`) via JWT claim `fedi`. The Worker provisions a local account from the verified e-mail on first use. An empty local secret skips the bearer shortcut and leaves WorkOS as the only JWT path. Public discovery routes stay unauthenticated. ActivityPub inbox routes require a valid HTTP Signature; unsigned or unverifiable requests are `InvalidSignature`.
+Protected user-facing API routes authenticate with a local `DEV_BEARER_SECRET` token of the form `Bearer ${secret}:${email}` in tests (`:admin` for `{ kind: "Admin" }`), or a WorkOS AuthKit access token as `Bearer ${accessToken}` in production. Role comes from WorkOS user metadata `fedi/role` (`admin` | `user`) via JWT claim `fedi`. The Worker provisions a local account from the verified e-mail on first use. An empty local secret skips the bearer shortcut and leaves WorkOS as the only JWT path. Public discovery routes stay unauthenticated. ActivityPub inbox routes require a valid HTTP Signature; local actors use the stored account key and remote actors use a cached (or freshly fetched) `RemoteActor` key. Unsigned or unverifiable requests are `InvalidSignature`.
 
 ## Implemented Surface
 <!-- derived-from ../planning/local-core.md#capability-status -->
