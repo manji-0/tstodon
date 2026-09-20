@@ -1,0 +1,119 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tstodon",
+  "main": "packages/worker/src/index.ts",
+  "compatibility_date": "2026-09-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "placement": {
+    "region": "aws:ap-southeast-1"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    }
+  },
+  "assets": {
+    "directory": "./assets",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none",
+    "run_worker_first": true
+  },
+  "triggers": {
+    "crons": ["17 * * * *", "17 */6 * * *"]
+  },
+  "vars": {
+    "INSTANCE_DOMAIN": "example.com",
+    "INSTANCE_NAME": "tstodon",
+    "INSTANCE_DESCRIPTION": "Cloudflare Workers + D1 + R2 + Queues based Mastodon-compatible server",
+    "SOURCE_URL": "https://github.com/YOUR_ORG/tstodon",
+    "INSTANCE_LANGUAGES": "ja,en",
+    "CONTACT_EMAIL": "admin@example.com",
+    "INSTANCE_THUMBNAIL_URL": "https://media.example.com/site/thumbnail.png",
+    "MEDIA_PUBLIC_BASE_URL": "https://media.example.com",
+    "EMAIL_FROM": "tstodon <noreply@example.com>",
+    "AUTH0_JWT_HEADER": "Authorization",
+    "AUTH0_DOMAIN": "example.us.auth0.com",
+    "AUTH0_CLIENT_ID": "replace-with-auth0-application-client-id",
+    "AUTH0_AUDIENCE": "https://example.com/api",
+    "AUTH0_EMAIL_CLAIM": "email",
+    "AUTH0_ADMIN_ROLES": "fedi-admin"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tstodon",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "./migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "tstodon-media"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "REMOTE_DNS_CACHE",
+      "id": "00000000000000000000000000000001"
+    },
+    {
+      "binding": "APP_CACHE",
+      "id": "00000000000000000000000000000002"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "OUTBOX_PROCESS_QUEUE",
+        "queue": "tstodon-outbox-process"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "tstodon-outbox-process",
+        "max_batch_size": 10,
+        "max_batch_timeout": 0,
+        "max_retries": 3,
+        "max_concurrency": 1
+      }
+    ]
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "STREAM_HUB",
+        "class_name": "StreamHub"
+      }
+    ]
+  },
+  "workflows": [
+    {
+      "name": "tstodon-outbox-delivery",
+      "binding": "OUTBOX_DELIVERY_WORKFLOW",
+      "class_name": "OutboxDeliveryWorkflow"
+    }
+  ],
+  "analytics_engine_datasets": [
+    {
+      "binding": "METRICS",
+      "dataset": "tstodon_metrics"
+    }
+  ],
+  "images": {
+    "binding": "IMAGES"
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["StreamHub"]
+    }
+  ]
+}

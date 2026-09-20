@@ -1,0 +1,12 @@
+/node_modules
+/packages/*/node_modules
+/packages/*/dist
+/.wrangler
+/dist
+/.devbox
+/.direnv
+/.dev.vars
+/.code-review-graph
+.DS_Store
+*.tsbuildinfo
+worker-configuration.d.ts

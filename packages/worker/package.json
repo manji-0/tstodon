@@ -1,0 +1,16 @@
+{
+  "name": "@tstodon/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tstodon/core": "workspace:*",
+    "@tstodon/domain": "workspace:*",
+    "hono": "^4.13.8",
+    "neverthrow": "^8.2.0",
+    "zod": "^4.6.5"
+  }
+}

@@ -1,0 +1,3 @@
+# Local-only secrets. Copy to `.dev.vars` and never commit that file.
+# AUTH0_CLIENT_SECRET=
+# RESEND_API_KEY=

@@ -1,0 +1,15 @@
+---
+description: Use Hono for HTTP routing; keep Zod discriminant unions for domain state
+alwaysApply: true
+---
+
+# tstodon routing and types
+
+- HTTP routing lives in Hono (`packages/worker/src/app.ts` and `routes/`).
+- Queue, cron, Workflows, and Durable Objects are not Hono routes. Handle them on the Worker entrypoint.
+- Domain and boundary payloads use Zod 4 `z.discriminatedUnion` with `kind` (never `type` / `status` / `state`).
+- Discriminator fields use `z.literal(...)` per variant, not `z.enum(...)`.
+- Prefer nested discriminated unions over optional fields.
+- Extract a variant schema with `z.getDiscriminatedOption(schema, kind)`.
+- Parse at boundaries with `schemaResult` / companion `parse`. Do not `throw` Zod errors from domain code.
+- Map `Result` error `kind`s to HTTP in Hono handlers. Do not put domain transitions inside Hono middleware.

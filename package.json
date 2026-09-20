@@ -1,0 +1,27 @@
+{
+  "name": "tstodon",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.4.2",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "vitest run",
+    "typecheck": "tsc -b --pretty",
+    "lint": "eslint .",
+    "types:worker": "wrangler types --env-interface Env",
+    "ci": "pnpm typecheck && pnpm test && wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@eslint/js": "^9.36.0",
+    "@types/node": "^24.13.6",
+    "eslint": "^9.36.0",
+    "typescript": "~5.9.2",
+    "typescript-eslint": "^8.44.0",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.135.0"
+  }
+}

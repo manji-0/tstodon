@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.17.1/.schema/devbox.schema.json",
+  "packages": [
+    "nodejs@24",
+    "pnpm@latest",
+    "wrangler@latest"
+  ],
+  "shell": {
+    "scripts": {
+      "fmt": ["pnpm exec eslint --fix ."],
+      "check": ["pnpm typecheck"],
+      "test": ["pnpm test"],
+      "ci": ["pnpm ci"],
+      "worker:dev": ["pnpm dev"]
+    }
+  }
+}

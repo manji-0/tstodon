@@ -1,0 +1,14 @@
+{
+  "name": "@tstodon/domain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tstodon/core": "workspace:*",
+    "neverthrow": "^8.2.0",
+    "zod": "^4.6.5"
+  }
+}
