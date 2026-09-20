@@ -23,6 +23,8 @@ import { verifyInboxRequest } from "../http-signature";
 import { inboxActivityExists, insertInboxActivity } from "../inbox-store";
 import { listOutboundActivities } from "../outbox-store";
 import { parseInstanceIdentity } from "../runtime-config";
+import { ActivityJsonSchema, JsonObjectSchema, parseJsonColumn, parseJsonText } from "../schemas";
+import { schemaResult } from "@tstodon/core";
 import {
   favouriteStatus,
   followAccount,
@@ -110,7 +112,13 @@ activityPubRoutes.get("/users/:username/outbox", async (c) => {
     return jsonRepositoryError(c, rows.error.message);
   }
   const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
-  const items = rows.value.map((row) => JSON.parse(row.payload_json) as unknown);
+  const items: unknown[] = [];
+  for (const row of rows.value) {
+    const payload = parseJsonColumn(JsonObjectSchema, row.payload_json);
+    if (payload.isOk()) {
+      items.push(payload.value);
+    }
+  }
   return c.json(
     {
       "@context": "https://www.w3.org/ns/activitystreams",
@@ -183,13 +191,33 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const raw = await c.req.json();
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+  const bodyText = await c.req.text();
+  const json = parseJsonText(bodyText);
+  if (json.isErr()) {
     return c.json({ kind: "ValidationError" }, 400);
   }
-  const payload = activityPayloadFromJson(raw as Record<string, unknown>);
-  if (!payload) {
-    return c.json({ kind: "UnknownType" }, 400);
+  const activityJson = schemaResult(ActivityJsonSchema)(json.value);
+  if (activityJson.isErr()) {
+    return c.json({ kind: "ValidationError" }, 400);
+  }
+  if (!c.req.header("Signature")) {
+    return c.json({ kind: "InvalidSignature" }, 401);
+  }
+  const payload = activityPayloadFromJson(activityJson.value);
+  const actorUsername = parseLocalActorUsername(identity.value, String(payload.actor));
+  const actorAccount = actorUsername
+    ? await findAccountByUsername(c.env.DB, actorUsername)
+    : undefined;
+  if (!actorAccount || actorAccount.isErr() || !actorAccount.value) {
+    return c.json({ kind: "InvalidSignature" }, 401);
+  }
+  const verified = await verifyInboxRequest(
+    c.req.raw,
+    actorAccount.value.publicKeyPem,
+    bodyText,
+  );
+  if (!verified) {
+    return c.json({ kind: "InvalidSignature" }, 401);
   }
   const activityId = ActivityId.parse(payload.id);
   if (activityId.isErr()) {
@@ -198,19 +226,6 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   const known = await inboxActivityExists(c.env.DB, activityId.value);
   if (known.isErr()) {
     return jsonRepositoryError(c, known.error.message);
-  }
-  const bodyText = JSON.stringify(raw);
-  if (c.req.header("Signature")) {
-    const actorUsername = parseLocalActorUsername(identity.value, String(payload.actor));
-    const actor = actorUsername
-      ? await findAccountByUsername(c.env.DB, actorUsername)
-      : undefined;
-    if (actor && actor.isOk() && actor.value) {
-      const ok = await verifyInboxRequest(c.req.raw, actor.value.publicKeyPem, bodyText);
-      if (!ok) {
-        return c.json({ kind: "InvalidSignature" }, 401);
-      }
-    }
   }
   const received = InboxActivity.dispatch(
     { kind: "Received", activityId: activityId.value, payload },
@@ -223,39 +238,36 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     await insertInboxActivity(c.env.DB, {
       activityId: activityId.value,
       kind: received.error.kind,
-      payload: raw,
+      payload: activityJson.value,
     });
     return c.json(received.error, 400);
   }
   await insertInboxActivity(c.env.DB, {
     activityId: activityId.value,
     kind: received.kind === "Dispatched" ? received.activity.kind : "Received",
-    payload: raw,
+    payload: activityJson.value,
   });
   if (received.kind !== "Dispatched") {
     return c.body(null, 202);
   }
   const activity = received.activity;
-  const actorUsername = parseLocalActorUsername(identity.value, activity.actor);
-  const actorAccount = actorUsername
-    ? await findAccountByUsername(c.env.DB, actorUsername)
-    : undefined;
+  const actor = actorAccount.value;
   if (activity.kind === "Follow") {
     const targetUsername = parseLocalActorUsername(identity.value, activity.object);
     const target = targetUsername
       ? await findAccountByUsername(c.env.DB, targetUsername)
       : undefined;
-    if (target?.isOk() && target.value && actorAccount?.isOk() && actorAccount.value) {
+    if (target?.isOk() && target.value) {
       const followed = await followAccount(
         c.env.DB,
-        actorAccount.value.id,
+        actor.id,
         target.value.id,
         target.value.locked,
       );
       if (followed.isOk() && followed.value.kind === "LocalFollower" && followed.value.follow.kind !== "None") {
         await insertNotification(c.env.DB, {
           accountId: target.value.id,
-          fromAccountId: actorAccount.value.id,
+          fromAccountId: actor.id,
           kind: followed.value.follow.kind === "Pending" ? "follow_request" : "follow",
         });
       }
@@ -266,31 +278,27 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     const target = targetUsername
       ? await findAccountByUsername(c.env.DB, targetUsername)
       : undefined;
-    if (target?.isOk() && target.value && actorAccount?.isOk() && actorAccount.value) {
-      await unfollowAccount(c.env.DB, actorAccount.value.id, target.value.id);
+    if (target?.isOk() && target.value) {
+      await unfollowAccount(c.env.DB, actor.id, target.value.id);
     }
   }
   if (activity.kind === "Like") {
     const statusId = parseLocalStatusId(identity.value, activity.object);
-    if (statusId && actorAccount?.isOk() && actorAccount.value) {
-      await favouriteStatus(c.env.DB, actorAccount.value.id, statusId);
+    if (statusId) {
+      await favouriteStatus(c.env.DB, actor.id, statusId);
     }
   }
   if (activity.kind === "Announce") {
     const statusId = parseLocalStatusId(identity.value, activity.object);
     const parsedStatusId = statusId ? StatusId.parse(statusId) : undefined;
-    if (
-      parsedStatusId?.isOk() &&
-      actorAccount?.isOk() &&
-      actorAccount.value
-    ) {
+    if (parsedStatusId?.isOk()) {
       const reblogId = StatusId.parse(newEntityId());
       if (reblogId.isOk()) {
         await insertLocalReblog(
           c.env.DB,
           LocalStatus.reblog(
             reblogId.value,
-            actorAccount.value.id,
+            actor.id,
             parsedStatusId.value,
             nowInstant(),
           ),

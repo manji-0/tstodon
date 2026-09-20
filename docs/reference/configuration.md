@@ -27,4 +27,4 @@ Placeholder resource IDs in `wrangler.jsonc` are local-only. Create real D1 / KV
 
 ## Local development bearer
 
-`DEV_BEARER_SECRET` is a local-only shared secret. Clients authenticate as `Authorization: Bearer ${DEV_BEARER_SECRET}:${email}`. The Worker creates a local account from the e-mail local-part on first request. Override the wrangler default with `.dev.vars` or `wrangler secret put DEV_BEARER_SECRET`. Production should use Auth0 instead of this bearer.
+`DEV_BEARER_SECRET` is a local-only shared secret. Clients authenticate as `Authorization: Bearer ${DEV_BEARER_SECRET}:${email}`. The Worker creates a local account from the e-mail local-part on first request. An empty or unset secret rejects every bearer token. Override the wrangler default with `.dev.vars` or `wrangler secret put DEV_BEARER_SECRET`. Production should use Auth0 instead of this bearer.

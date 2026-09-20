@@ -7,26 +7,17 @@ import {
   Username,
   Visibility,
 } from "@tstodon/domain";
+import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
+import { z } from "zod";
 import { nowInstant, nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
 import { generateAccountKeys } from "./keys";
 import { newEntityId } from "./ids";
+import { AccountRowSchema, toRepositoryError } from "./schemas";
 import { quotePolicyFromSql, quotePolicySql, visibilitySql } from "./sql-enums";
 
-export type AccountRow = {
-  id: string;
-  username: string;
-  access_email: string;
-  display_name: string;
-  locked: number;
-  default_post_visibility: string;
-  default_quote_policy: string;
-  public_key_pem: string;
-  private_key_jwk: string;
-  created_at: string;
-  bio_text: string;
-};
+export type AccountRow = z.infer<typeof AccountRowSchema>;
 
 const accountSelect = `id, username, access_email, display_name, locked, default_post_visibility, default_quote_policy, public_key_pem, private_key_jwk, created_at, COALESCE(bio_text, '') AS bio_text`;
 
@@ -41,7 +32,7 @@ export const accountFromRow = (
   if (id.isErr() || username.isErr() || email.isErr() || createdAt.isErr() || visibility.isErr()) {
     return err({ kind: "RepositoryError", message: "invalid account row" });
   }
-  const parsed = LocalAccount.schema.safeParse({
+  const parsed = schemaResult(LocalAccount.schema)({
     kind: "LocalAccount",
     id: id.value,
     username: username.value,
@@ -54,67 +45,74 @@ export const accountFromRow = (
     privateKeyJwk: row.private_key_jwk,
     createdAt: createdAt.value,
   });
-  return parsed.success
-    ? ok(parsed.data)
-    : err({ kind: "RepositoryError", message: "account schema rejected row" });
+  return parsed.mapErr(() => toRepositoryError("account schema rejected row"));
 };
 
 export const findAccountById = async (
   db: D1Database,
   id: string,
-): Promise<Result<LocalAccount | undefined, RepositoryError>> =>
-  runD1(async () => {
-    const row = await db
-      .prepare(`SELECT ${accountSelect} FROM accounts WHERE id = ?`)
-      .bind(id)
-      .first<AccountRow>();
-    if (!row) {
-      return undefined;
-    }
-    const parsed = accountFromRow(row);
-    if (parsed.isErr()) {
-      throw new Error(parsed.error.message);
-    }
-    return parsed.value;
-  });
+): Promise<Result<LocalAccount | undefined, RepositoryError>> => {
+  const queried = await runD1(() =>
+    db.prepare(`SELECT ${accountSelect} FROM accounts WHERE id = ?`).bind(id).first(),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  if (!queried.value) {
+    return ok(undefined);
+  }
+  const row = schemaResult(AccountRowSchema)(queried.value);
+  if (row.isErr()) {
+    return err(toRepositoryError("invalid account row"));
+  }
+  return accountFromRow(row.value);
+};
 
 export const findAccountByUsername = async (
   db: D1Database,
   username: string,
-): Promise<Result<LocalAccount | undefined, RepositoryError>> =>
-  runD1(async () => {
-    const row = await db
+): Promise<Result<LocalAccount | undefined, RepositoryError>> => {
+  const queried = await runD1(() =>
+    db
       .prepare(`SELECT ${accountSelect} FROM accounts WHERE username = ?`)
       .bind(username.toLowerCase())
-      .first<AccountRow>();
-    if (!row) {
-      return undefined;
-    }
-    const parsed = accountFromRow(row);
-    if (parsed.isErr()) {
-      throw new Error(parsed.error.message);
-    }
-    return parsed.value;
-  });
+      .first(),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  if (!queried.value) {
+    return ok(undefined);
+  }
+  const row = schemaResult(AccountRowSchema)(queried.value);
+  if (row.isErr()) {
+    return err(toRepositoryError("invalid account row"));
+  }
+  return accountFromRow(row.value);
+};
 
 export const findAccountByEmail = async (
   db: D1Database,
   email: string,
-): Promise<Result<LocalAccount | undefined, RepositoryError>> =>
-  runD1(async () => {
-    const row = await db
+): Promise<Result<LocalAccount | undefined, RepositoryError>> => {
+  const queried = await runD1(() =>
+    db
       .prepare(`SELECT ${accountSelect} FROM accounts WHERE access_email = ?`)
       .bind(email.toLowerCase())
-      .first<AccountRow>();
-    if (!row) {
-      return undefined;
-    }
-    const parsed = accountFromRow(row);
-    if (parsed.isErr()) {
-      throw new Error(parsed.error.message);
-    }
-    return parsed.value;
-  });
+      .first(),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  if (!queried.value) {
+    return ok(undefined);
+  }
+  const row = schemaResult(AccountRowSchema)(queried.value);
+  if (row.isErr()) {
+    return err(toRepositoryError("invalid account row"));
+  }
+  return accountFromRow(row.value);
+};
 
 export const searchAccounts = async (
   db: D1Database,
@@ -127,9 +125,13 @@ export const searchAccounts = async (
         `SELECT ${accountSelect} FROM accounts WHERE username LIKE ? OR display_name LIKE ? ORDER BY username LIMIT ?`,
       )
       .bind(`%${query.toLowerCase()}%`, `%${query}%`, limit)
-      .all<AccountRow>();
-    return (results ?? []).flatMap((row) => {
-      const parsed = accountFromRow(row);
+      .all();
+    return (results ?? []).flatMap((raw) => {
+      const row = schemaResult(AccountRowSchema)(raw);
+      if (row.isErr()) {
+        return [];
+      }
+      const parsed = accountFromRow(row.value);
       return parsed.isOk() ? [parsed.value] : [];
     });
   });

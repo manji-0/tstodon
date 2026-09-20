@@ -1,4 +1,6 @@
 import { InstanceIdentity, type LocalAccount, type LocalNote } from "@tstodon/domain";
+import type { z } from "zod";
+import { ActivityJsonSchema } from "./schemas";
 
 export const actorDocument = (
   identity: InstanceIdentity,
@@ -53,28 +55,14 @@ export const parseLocalStatusId = (
 };
 
 export const activityPayloadFromJson = (
-  raw: Record<string, unknown>,
-): Record<string, unknown> | undefined => {
-  const type = raw.type;
-  const id = raw.id;
-  const actor = raw.actor;
-  if (typeof type !== "string" || typeof id !== "string" || typeof actor !== "string") {
-    return undefined;
-  }
+  raw: z.infer<typeof ActivityJsonSchema>,
+): Record<string, unknown> => {
   const object = raw.object;
-  const objectId =
-    typeof object === "string"
-      ? object
-      : object && typeof object === "object" && "id" in object && typeof object.id === "string"
-        ? object.id
-        : undefined;
-  if (!objectId) {
-    return undefined;
-  }
+  const objectId = typeof object === "string" ? object : object.id;
   return {
-    kind: type,
-    id,
-    actor,
+    kind: raw.type,
+    id: raw.id,
+    actor: raw.actor,
     object: objectId,
   };
 };

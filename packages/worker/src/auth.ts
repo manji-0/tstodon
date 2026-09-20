@@ -29,7 +29,10 @@ export const authenticate = async (
     return ok({ kind: "Anonymous" });
   }
   const secret = env.DEV_BEARER_SECRET;
-  if (secret && token.startsWith(`${secret}:`)) {
+  if (!secret) {
+    return token ? err({ kind: "InvalidToken" }) : ok({ kind: "Anonymous" });
+  }
+  if (token.startsWith(`${secret}:`)) {
     const email = token.slice(secret.length + 1);
     const account = await provisionAccountFromEmail(env.DB, email);
     if (account.isErr()) {

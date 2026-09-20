@@ -1,3 +1,6 @@
+import { err, ok, type Result } from "neverthrow";
+import { parseJsonColumn, RsaPrivateJwkSchema } from "./schemas";
+
 const encoder = new TextEncoder();
 
 export const sha256DigestHeader = async (body: string): Promise<string> => {
@@ -25,12 +28,17 @@ export const buildSigningString = (
     })
     .join("\n");
 
+export type SignatureError = Readonly<{
+  kind: "InvalidSignature";
+  message: string;
+}>;
+
 export const signInboxRequest = async (
   url: URL,
   privateKeyJwk: string,
   keyId: string,
   body: string,
-): Promise<Headers> => {
+): Promise<Result<Headers, SignatureError>> => {
   const digest = await sha256DigestHeader(body);
   const date = new Date().toUTCString();
   const headers = ["(request-target)", "host", "date", "digest"];
@@ -39,7 +47,30 @@ export const signInboxRequest = async (
     date,
     digest,
   });
-  const jwk = JSON.parse(privateKeyJwk) as JsonWebKey;
+  const parsed = parseJsonColumn(RsaPrivateJwkSchema, privateKeyJwk);
+  if (parsed.isErr()) {
+    return err({ kind: "InvalidSignature", message: parsed.error.message });
+  }
+  const jwk: JsonWebKey = {
+    kty: parsed.value.kty,
+    n: parsed.value.n,
+    e: parsed.value.e,
+    d: parsed.value.d,
+    p: parsed.value.p,
+    q: parsed.value.q,
+    dp: parsed.value.dp,
+    dq: parsed.value.dq,
+    qi: parsed.value.qi,
+  };
+  if (parsed.value.alg !== undefined) {
+    jwk.alg = parsed.value.alg;
+  }
+  if (parsed.value.ext !== undefined) {
+    jwk.ext = parsed.value.ext;
+  }
+  if (parsed.value.key_ops !== undefined) {
+    jwk.key_ops = [...parsed.value.key_ops];
+  }
   const key = await crypto.subtle.importKey(
     "jwk",
     jwk,
@@ -58,13 +89,15 @@ export const signInboxRequest = async (
     binary += String.fromCharCode(byte);
   }
   const signatureHeader = `keyId="${keyId}",algorithm="rsa-sha256",headers="${headers.join(" ")}",signature="${btoa(binary)}"`;
-  return new Headers({
-    Host: url.host,
-    Date: date,
-    Digest: digest,
-    Signature: signatureHeader,
-    "Content-Type": "application/activity+json",
-  });
+  return ok(
+    new Headers({
+      Host: url.host,
+      Date: date,
+      Digest: digest,
+      Signature: signatureHeader,
+      "Content-Type": "application/activity+json",
+    }),
+  );
 };
 
 export type ParsedSignature = Readonly<{

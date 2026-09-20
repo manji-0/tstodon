@@ -1,16 +1,12 @@
 import { ActivityId, OutboxDelivery } from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
+import { z } from "zod";
+import { nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
-import { nowIso } from "./clock";
-import type { Result } from "neverthrow";
+import { parseRow, OutboundActivityRowSchema, toRepositoryError } from "./schemas";
 
-export type OutboundActivityRow = {
-  id: string;
-  account_id: string;
-  kind: string;
-  payload_json: string;
-  created_at: string;
-};
+export type OutboundActivityRow = z.infer<typeof OutboundActivityRowSchema>;
 
 export const insertOutboundActivity = async (
   db: D1Database,
@@ -51,16 +47,27 @@ export const insertOutboundActivity = async (
 export const findOutboundActivity = async (
   db: D1Database,
   id: string,
-): Promise<Result<OutboundActivityRow | undefined, RepositoryError>> =>
-  runD1(async () => {
-    const row = await db
+): Promise<Result<OutboundActivityRow | undefined, RepositoryError>> => {
+  const queried = await runD1(() =>
+    db
       .prepare(
         `SELECT id, account_id, kind, payload_json, created_at FROM outbound_activities WHERE id = ?`,
       )
       .bind(id)
-      .first<OutboundActivityRow>();
-    return row ?? undefined;
-  });
+      .first(),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  if (!queried.value) {
+    return ok(undefined);
+  }
+  const row = parseRow(OutboundActivityRowSchema, queried.value);
+  if (row.isErr()) {
+    return err(toRepositoryError("invalid outbound activity row"));
+  }
+  return ok(row.value);
+};
 
 export const listOutboundActivities = async (
   db: D1Database,
@@ -74,20 +81,23 @@ export const listOutboundActivities = async (
          FROM outbound_activities WHERE account_id = ? ORDER BY id DESC LIMIT ?`,
       )
       .bind(accountId, limit)
-      .all<OutboundActivityRow>();
-    return results ?? [];
+      .all();
+    return (results ?? []).flatMap((raw) => {
+      const row = parseRow(OutboundActivityRowSchema, raw);
+      return row.isOk() ? [row.value] : [];
+    });
   });
 
 export const markOutboundExpanded = async (
   db: D1Database,
   activityId: string,
   followerTargetCount: number,
-): Promise<Result<void, RepositoryError>> =>
-  runD1(async () => {
-    const parsed = ActivityId.parse(activityId);
-    if (parsed.isErr()) {
-      throw new Error("invalid activity id");
-    }
+): Promise<Result<void, RepositoryError>> => {
+  const parsed = ActivityId.parse(activityId);
+  if (parsed.isErr()) {
+    return err(toRepositoryError("invalid activity id"));
+  }
+  return runD1(async () => {
     const next = OutboxDelivery.afterExpand(followerTargetCount);
     await db
       .prepare(
@@ -96,3 +106,4 @@ export const markOutboundExpanded = async (
       .bind(next.kind, nowIso(), activityId)
       .run();
   });
+};

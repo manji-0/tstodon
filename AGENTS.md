@@ -51,6 +51,7 @@ For a fresh clone, start with:
 - `README.md`
 - `docs/getting-started/clone-and-run.md`
 - `docs/getting-started/development.md`
+- `docs/planning/local-core.md`
 - `docs/reference/configuration.md`
 - `docs/operations/cloudflare-deploy.md`
 

@@ -9,6 +9,7 @@ import { findPollByStatusId, type PollRecord } from "./poll-store";
 import { findStatusById } from "./status-store";
 import { statusInteractionCounts, type NotificationRow } from "./social-store";
 import { findMediaById } from "./media-store";
+import { FilterContextSchema, parseJsonColumn } from "./schemas";
 import type { FilterRow } from "./moderation-store";
 
 const mediaUrl = (identity: InstanceIdentity, objectKey: string): string =>
@@ -227,8 +228,8 @@ export const mastodonNotification = async (
 };
 
 export const mastodonFilter = (row: FilterRow): Record<string, unknown> => {
-  const context = JSON.parse(row.context_json) as unknown;
-  const contexts = Array.isArray(context) ? context : ["home"];
+  const context = parseJsonColumn(FilterContextSchema, row.context_json);
+  const contexts = context.isOk() ? context.value : ["home"];
   return {
     id: row.id,
     phrase: row.phrase,

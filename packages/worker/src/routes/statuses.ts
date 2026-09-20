@@ -7,17 +7,17 @@ import { nowInstant } from "../clock";
 import { enqueueLocalActivity } from "../delivery";
 import { mentionUsernames, textToHtml } from "../html";
 import {
-  asBoolean,
-  asStringArray,
   jsonAuthError,
   jsonRepositoryError,
+  jsonValidationError,
   queryLimit,
-  readObjectBody,
+  readBody,
   requireUser,
 } from "../http";
 import { newEntityId } from "../ids";
 import { mastodonStatus, mastodonStatuses } from "../mastodon";
 import { insertPoll } from "../poll-store";
+import { CreateStatusBodySchema, isTruthy, stringList } from "../schemas";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
   bookmarkStatus,
@@ -48,30 +48,30 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const body = await readObjectBody(c);
+  const body = await readBody(c, CreateStatusBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
   const visibilityRaw =
-    typeof body.visibility === "string" && body.visibility.length > 0
-      ? body.visibility
+    body.value.visibility && body.value.visibility.length > 0
+      ? body.value.visibility
       : Visibility.toMastodon(user.value.defaultPostVisibility);
   const visibility = Visibility.fromMastodon(visibilityRaw);
   if (visibility.isErr()) {
     return c.json({ error: "Invalid visibility", kind: "Unknown" }, 400);
   }
-  const pollRaw =
-    body.poll && typeof body.poll === "object" && !Array.isArray(body.poll)
-      ? (body.poll as Record<string, unknown>)
-      : undefined;
-  const pollOptions = pollRaw ? asStringArray(pollRaw.options) : [];
+  const pollRaw = body.value.poll;
+  const pollOptions = pollRaw ? [...pollRaw.options] : [];
   const composing = StatusComposition.composing({
-    text: typeof body.status === "string" ? body.status : "",
+    text: body.value.status ?? "",
     visibility: visibility.value,
-    spoilerText: typeof body.spoiler_text === "string" ? body.spoiler_text : "",
-    sensitive: asBoolean(body.sensitive),
+    spoilerText: body.value.spoiler_text ?? "",
+    sensitive: isTruthy(body.value.sensitive),
     language:
-      typeof body.language === "string" && body.language.length > 0
-        ? { kind: "Present", value: body.language }
+      body.value.language && body.value.language.length > 0
+        ? { kind: "Present", value: body.value.language }
         : { kind: "None" },
-    mediaIds: asStringArray(body.media_ids),
+    mediaIds: stringList(body.value.media_ids),
     poll: pollOptions.length >= 2 ? { kind: "Present" } : { kind: "None" },
   });
   const draft = StatusComposition.validate(composing);
@@ -100,7 +100,7 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
     ).toISOString();
     const poll = await insertPoll(c.env.DB, {
       statusId: note.id,
-      multiple: asBoolean(pollRaw?.multiple),
+      multiple: isTruthy(pollRaw?.multiple),
       expiresAt,
       options: pollOptions,
     });

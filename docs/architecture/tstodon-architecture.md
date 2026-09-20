@@ -64,22 +64,17 @@ Variants are objects with `kind` and `z.literal` discriminators. Nested unions r
 ## Authentication Model
 <!-- derived-from ../reference/configuration.md#auth0-authentication-vars -->
 
-Protected user-facing API routes currently authenticate with a local `DEV_BEARER_SECRET` token of the form `Bearer ${secret}:${email}`. The Worker provisions a local account from that e-mail on first use. Auth0 RS256 JWT verification is the planned production path; the Auth0 vars are already in `wrangler.jsonc`. Public and federation routes stay unauthenticated at the application layer; ActivityPub inbox routes verify HTTP signatures when a `Signature` header is present.
+Protected user-facing API routes currently authenticate with a local `DEV_BEARER_SECRET` token of the form `Bearer ${secret}:${email}`. The Worker provisions a local account from that e-mail on first use. An empty secret rejects every bearer token. Auth0 RS256 JWT verification is the planned production path; the Auth0 vars are already in `wrangler.jsonc`. Public discovery routes stay unauthenticated. ActivityPub inbox routes require a valid HTTP Signature; unsigned or unverifiable requests are `InvalidSignature`.
 
 ## Implemented Surface
+<!-- derived-from ../planning/local-core.md#capability-status -->
 
-Phase 1 through 4 of the cfwdon capability map are present as a working local core, not a full Mastodon port:
-
-- D1-backed local accounts, statuses, follows, favourites, bookmarks, notifications, polls, reports, and filters
-- R2 media upload plus a Worker `/media/:id` fallback
-- WebFinger, NodeInfo, ActivityPub actor/note/outbox/followers/following, personal and shared inbox
-- Home, public, and tag timelines, plus signed outbound queue expansion
-- Notifications, polls, reports, filters, search, apps, and placeholder meta routes (`custom_emojis`, `trends`, `lists`, …)
+The HTTP surface is classified in [Local Core](../planning/local-core.md): implemented local behavior, intentional placeholders, and out-of-scope work. Do not infer Mastodon compatibility from placeholder routes.
 
 Queue, cron, Workflow, and Durable Object traffic stay on the Worker entrypoint. Hono only matches HTTP.
 
 ## Open Questions
+<!-- constrained-by ../planning/local-core.md#out-of-scope -->
 
-- Which Mastodon routes should move from stubs to real handlers first?
 - How much of outbound delivery should live in Queues versus Workflows?
 - When to bind Vectorize / Workers AI for search without paying for unused local inference?

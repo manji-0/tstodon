@@ -10,8 +10,9 @@ import { authenticate } from "../auth";
 import {
   jsonAuthError,
   jsonRepositoryError,
+  jsonValidationError,
   queryLimit,
-  readObjectBody,
+  readBody,
   requireUser,
 } from "../http";
 import { mastodonAccountDocument, mastodonRelationship, mastodonStatuses } from "../mastodon";
@@ -25,6 +26,7 @@ import {
   unfollowAccount,
 } from "../social-store";
 import { listAccountStatuses } from "../status-store";
+import { UpdateCredentialsBodySchema } from "../schemas";
 
 export const accountRoutes = new Hono<{ Bindings: Env }>();
 
@@ -59,10 +61,13 @@ accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const body = await readObjectBody(c);
+  const body = await readBody(c, UpdateCredentialsBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
   const displayName =
-    typeof body.display_name === "string" && body.display_name.trim().length > 0
-      ? body.display_name.trim()
+    body.value.display_name && body.value.display_name.trim().length > 0
+      ? body.value.display_name.trim()
       : user.value.displayName;
   const updated = await updateAccountProfile(c.env.DB, user.value.id, displayName);
   if (updated.isErr()) {

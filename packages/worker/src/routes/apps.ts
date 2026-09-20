@@ -1,18 +1,19 @@
 import { Hono } from "hono";
-import { readObjectBody } from "../http";
+import { jsonValidationError, readBody } from "../http";
+import { AppBodySchema, OAuthTokenBodySchema } from "../schemas";
 
 export const appRoutes = new Hono<{ Bindings: Env }>();
 
 appRoutes.post("/api/v1/apps", async (c) => {
-  const body = await readObjectBody(c);
-  const name = typeof body.client_name === "string" ? body.client_name : "tstodon";
-  const website = typeof body.website === "string" ? body.website : null;
-  const redirect =
-    typeof body.redirect_uris === "string"
-      ? body.redirect_uris
-      : Array.isArray(body.redirect_uris)
-        ? String(body.redirect_uris[0] ?? "urn:ietf:wg:oauth:2.0:oob")
-        : "urn:ietf:wg:oauth:2.0:oob";
+  const body = await readBody(c, AppBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  const name = body.value.client_name ?? "tstodon";
+  const website = body.value.website ?? null;
+  const redirect = Array.isArray(body.value.redirect_uris)
+    ? String(body.value.redirect_uris[0] ?? "urn:ietf:wg:oauth:2.0:oob")
+    : (body.value.redirect_uris ?? "urn:ietf:wg:oauth:2.0:oob");
   return c.json({
     id: "1",
     name,
@@ -33,8 +34,11 @@ appRoutes.get("/api/v1/apps/verify_credentials", (c) =>
 );
 
 appRoutes.post("/oauth/token", async (c) => {
-  const body = await readObjectBody(c);
-  const username = typeof body.username === "string" ? body.username : "";
+  const body = await readBody(c, OAuthTokenBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  const username = body.value.username;
   const secret = c.env.DEV_BEARER_SECRET;
   if (!secret || username.length === 0) {
     return c.json({ error: "invalid_grant", kind: "InvalidToken" }, 400);

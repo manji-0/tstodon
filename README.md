@@ -4,7 +4,7 @@
 
 The TypeScript domain is modeled with [Zod 4.6](https://zod.dev) `z.discriminatedUnion` values. States, errors, ActivityPub activities, and queue jobs are all `kind`-discriminated unions rather than optional-field bags.
 
-The project is early software. Phases 1–4 of the cfwdon capability map are implemented as a working local core: D1 accounts and statuses, R2 media, WebFinger and ActivityPub actor/inbox/outbox, follows and timelines, plus notifications, polls, reports, filters, and search. Behavioral Mastodon parity is still incomplete.
+The project is early software. The [local core](docs/planning/local-core.md) classifies implemented behavior, placeholders, and out-of-scope work. Behavioral Mastodon parity is still incomplete.
 
 ## Status
 
@@ -39,6 +39,7 @@ Local routes that depend on D1, R2, or Auth0 need matching local or remote bindi
 <!-- derived-from ./docs/architecture/tstodon-architecture.md -->
 
 - [Architecture](docs/architecture/tstodon-architecture.md)
+- [Local Core](docs/planning/local-core.md)
 - [Clone And Run](docs/getting-started/clone-and-run.md)
 - [Development Workflow](docs/getting-started/development.md)
 - [Configuration Reference](docs/reference/configuration.md)

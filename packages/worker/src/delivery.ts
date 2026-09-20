@@ -108,9 +108,12 @@ export const processOutboxJob = async (
         keyId,
         activity.value.payload_json,
       );
+      if (headers.isErr()) {
+        return;
+      }
       await fetch(inbox, {
         method: "POST",
-        headers,
+        headers: headers.value,
         body: activity.value.payload_json,
       });
     }

@@ -10,23 +10,12 @@ import {
   type LocalStatus as LocalStatusValue,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
+import { z } from "zod";
 import { runD1, type RepositoryError } from "./d1";
+import { parseRow, StatusRowSchema, toRepositoryError } from "./schemas";
 import { visibilitySql } from "./sql-enums";
 
-export type StatusRow = {
-  id: string;
-  account_id: string;
-  kind: string;
-  reblog_of_id: string | null;
-  content_text: string;
-  content_html: string;
-  visibility: string;
-  sensitive: number;
-  spoiler_text: string;
-  language: string | null;
-  created_at: string;
-  poll_id: string | null;
-};
+export type StatusRow = z.infer<typeof StatusRowSchema>;
 
 const statusSelect = `id, account_id, kind, reblog_of_id, content_text, COALESCE(content_html, '') AS content_html, visibility, sensitive, COALESCE(spoiler_text, '') AS spoiler_text, language, created_at, poll_id`;
 
@@ -95,22 +84,26 @@ const mediaIdsFor = async (db: D1Database, statusId: string): Promise<MediaId[]>
 export const findStatusById = async (
   db: D1Database,
   id: string,
-): Promise<Result<LocalStatusValue | undefined, RepositoryError>> =>
-  runD1(async () => {
-    const row = await db
-      .prepare(`SELECT ${statusSelect} FROM statuses WHERE id = ?`)
-      .bind(id)
-      .first<StatusRow>();
-    if (!row) {
-      return undefined;
-    }
-    const mediaIds = await mediaIdsFor(db, id);
-    const parsed = statusFromRow(row, mediaIds);
-    if (parsed.isErr()) {
-      throw new Error(parsed.error.message);
-    }
-    return parsed.value;
-  });
+): Promise<Result<LocalStatusValue | undefined, RepositoryError>> => {
+  const queried = await runD1(() =>
+    db.prepare(`SELECT ${statusSelect} FROM statuses WHERE id = ?`).bind(id).first(),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  if (!queried.value) {
+    return ok(undefined);
+  }
+  const row = parseRow(StatusRowSchema, queried.value);
+  if (row.isErr()) {
+    return err(toRepositoryError("invalid status row"));
+  }
+  const media = await runD1(() => mediaIdsFor(db, id));
+  if (media.isErr()) {
+    return err(media.error);
+  }
+  return statusFromRow(row.value, media.value);
+};
 
 export const insertLocalNote = async (
   db: D1Database,
@@ -172,16 +165,8 @@ export const listPublicStatuses = async (
     const stmt = maxId
       ? db.prepare(sql).bind(maxId, limit)
       : db.prepare(sql).bind(limit);
-    const { results } = await stmt.all<StatusRow>();
-    const statuses: LocalStatusValue[] = [];
-    for (const row of results ?? []) {
-      const mediaIds = await mediaIdsFor(db, row.id);
-      const parsed = statusFromRow(row, mediaIds);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
+    const { results } = await stmt.all();
+    return hydrateRows(db, results ?? []);
   });
 
 export const listHomeStatuses = async (
@@ -203,16 +188,8 @@ export const listHomeStatuses = async (
     const stmt = maxId
       ? db.prepare(sql).bind(accountId, accountId, maxId, limit)
       : db.prepare(sql).bind(accountId, accountId, limit);
-    const { results } = await stmt.all<StatusRow>();
-    const statuses: LocalStatusValue[] = [];
-    for (const row of results ?? []) {
-      const mediaIds = await mediaIdsFor(db, row.id);
-      const parsed = statusFromRow(row, mediaIds);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
+    const { results } = await stmt.all();
+    return hydrateRows(db, results ?? []);
   });
 
 export const listAccountStatuses = async (
@@ -226,16 +203,8 @@ export const listAccountStatuses = async (
         `SELECT ${statusSelect} FROM statuses WHERE account_id = ? ORDER BY id DESC LIMIT ?`,
       )
       .bind(accountId, limit)
-      .all<StatusRow>();
-    const statuses: LocalStatusValue[] = [];
-    for (const row of results ?? []) {
-      const mediaIds = await mediaIdsFor(db, row.id);
-      const parsed = statusFromRow(row, mediaIds);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
+      .all();
+    return hydrateRows(db, results ?? []);
   });
 
 export const searchStatuses = async (
@@ -249,15 +218,8 @@ export const searchStatuses = async (
         `SELECT ${statusSelect} FROM statuses WHERE kind = 'LocalNote' AND content_text LIKE ? ORDER BY id DESC LIMIT ?`,
       )
       .bind(`%${query}%`, limit)
-      .all<StatusRow>();
-    const statuses: LocalStatusValue[] = [];
-    for (const row of results ?? []) {
-      const parsed = statusFromRow(row, []);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
+      .all();
+    return hydrateRows(db, results ?? []);
   });
 
 export const deleteStatus = async (
@@ -299,12 +261,16 @@ export const countStatuses = async (
 
 const hydrateRows = async (
   db: D1Database,
-  rows: StatusRow[],
+  rows: unknown[],
 ): Promise<LocalStatusValue[]> => {
   const statuses: LocalStatusValue[] = [];
-  for (const row of rows) {
-    const mediaIds = await mediaIdsFor(db, row.id);
-    const parsed = statusFromRow(row, mediaIds);
+  for (const raw of rows) {
+    const row = parseRow(StatusRowSchema, raw);
+    if (row.isErr()) {
+      continue;
+    }
+    const mediaIds = await mediaIdsFor(db, row.value.id);
+    const parsed = statusFromRow(row.value, mediaIds);
     if (parsed.isOk()) {
       statuses.push(parsed.value);
     }
@@ -325,7 +291,7 @@ export const listFavouritedStatuses = async (
          ORDER BY id DESC LIMIT ?`,
       )
       .bind(accountId, limit)
-      .all<StatusRow>();
+      .all();
     return hydrateRows(db, results ?? []);
   });
 
@@ -342,7 +308,7 @@ export const listBookmarkedStatuses = async (
          ORDER BY id DESC LIMIT ?`,
       )
       .bind(accountId, limit)
-      .all<StatusRow>();
+      .all();
     return hydrateRows(db, results ?? []);
   });
 
@@ -360,6 +326,6 @@ export const listTagStatuses = async (
          ORDER BY id DESC LIMIT ?`,
       )
       .bind(`%#${tag}%`, `%#${tag.toLowerCase()}%`, limit)
-      .all<StatusRow>();
+      .all();
     return hydrateRows(db, results ?? []);
   });

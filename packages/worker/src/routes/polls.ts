@@ -1,15 +1,16 @@
 import { Hono } from "hono";
 import { findStatusById } from "../status-store";
 import {
-  asStringArray,
   jsonAuthError,
   jsonRepositoryError,
-  readObjectBody,
+  jsonValidationError,
+  readBody,
   requireUser,
 } from "../http";
 import { mastodonStatus, pollJson } from "../mastodon";
 import { findPollById, votePoll } from "../poll-store";
 import { parseInstanceIdentity } from "../runtime-config";
+import { numberList, PollVoteBodySchema } from "../schemas";
 
 export const pollRoutes = new Hono<{ Bindings: Env }>();
 
@@ -38,17 +39,11 @@ pollRoutes.post("/api/v1/polls/:id/votes", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const body = await readObjectBody(c);
-  const choices = asStringArray(body.choices).map((value) => Number.parseInt(value, 10));
-  const extra =
-    typeof body.choices === "number"
-      ? [body.choices]
-      : Array.isArray(body.choices)
-        ? body.choices.map((value) => Number(value))
-        : [];
-  const indexes = (choices.length > 0 ? choices : extra).filter((value) =>
-    Number.isInteger(value),
-  );
+  const body = await readBody(c, PollVoteBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  const indexes = numberList(body.value.choices);
   const voted = await votePoll(c.env.DB, c.req.param("id"), user.value.id, indexes);
   if (voted.isErr()) {
     return jsonRepositoryError(c, voted.error.message);

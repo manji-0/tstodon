@@ -1,7 +1,9 @@
 import type { Context } from "hono";
+import { schemaResult } from "@tstodon/core";
 import { requireAccount, type AuthError } from "./auth";
 import type { LocalAccount } from "@tstodon/domain";
 import type { Result } from "neverthrow";
+import type { z } from "zod";
 
 export const queryLimit = (raw: string | undefined, fallback = 20): number => {
   const parsed = Number.parseInt(raw ?? "", 10);
@@ -33,29 +35,23 @@ export const jsonRepositoryError = (
   message: string,
 ) => c.json({ error: message, kind: "RepositoryError" }, 500);
 
-export const asBoolean = (value: unknown): boolean =>
-  value === true || value === "true" || value === "1" || value === 1;
+export const jsonValidationError = (c: Context<{ Bindings: Env }>) =>
+  c.json({ error: "ValidationError", kind: "ValidationError" }, 400);
 
-export const asStringArray = (value: unknown): string[] => {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item));
-  }
-  if (typeof value === "string" && value.length > 0) {
-    return [value];
-  }
-  return [];
-};
-
-export const readObjectBody = async (
+export const readUnknownBody = async (
   c: Context<{ Bindings: Env }>,
-): Promise<Record<string, unknown>> => {
+): Promise<unknown> => {
   const contentType = c.req.header("content-type") ?? "";
   if (contentType.includes("application/json")) {
-    const raw = await c.req.json();
-    return raw && typeof raw === "object" && !Array.isArray(raw)
-      ? (raw as Record<string, unknown>)
-      : {};
+    return c.req.json();
   }
-  const parsed = await c.req.parseBody();
-  return { ...parsed };
+  return { ...(await c.req.parseBody()) };
+};
+
+export const readBody = async <T>(
+  c: Context<{ Bindings: Env }>,
+  schema: z.ZodType<T>,
+): Promise<Result<T, { kind: "ValidationError" }>> => {
+  const raw = await readUnknownBody(c);
+  return schemaResult(schema)(raw).mapErr(() => ({ kind: "ValidationError" as const }));
 };

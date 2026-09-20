@@ -1,0 +1,257 @@
+import { schemaResult } from "@tstodon/core";
+import { err, ok, type Result } from "neverthrow";
+import { z } from "zod";
+import type { RepositoryError } from "./d1";
+
+export const JsonObjectSchema = z.record(z.string(), z.unknown());
+
+export const ActivityJsonSchema = z
+  .object({
+    id: z.string().min(1),
+    type: z.string().min(1),
+    actor: z.string().min(1),
+    object: z.union([
+      z.string().min(1),
+      z.object({ id: z.string().min(1) }).passthrough(),
+    ]),
+  })
+  .passthrough();
+
+export const PollOptionSchema = z.object({
+  title: z.string(),
+  votesCount: z.number().int().nonnegative(),
+});
+
+export const PollOptionsSchema = z.array(PollOptionSchema);
+
+export const FilterContextSchema = z.array(z.string());
+
+export const RsaPrivateJwkSchema = z.object({
+  kty: z.literal("RSA"),
+  n: z.string().min(1),
+  e: z.string().min(1),
+  d: z.string().min(1),
+  p: z.string().min(1),
+  q: z.string().min(1),
+  dp: z.string().min(1),
+  dq: z.string().min(1),
+  qi: z.string().min(1),
+  alg: z.string().optional(),
+  ext: z.boolean().optional(),
+  key_ops: z.array(z.string()).optional(),
+});
+
+export const AccountRowSchema = z.object({
+  id: z.string().min(1),
+  username: z.string().min(1),
+  access_email: z.string().min(1),
+  display_name: z.string(),
+  locked: z.number(),
+  default_post_visibility: z.string(),
+  default_quote_policy: z.string(),
+  public_key_pem: z.string().min(1),
+  private_key_jwk: z.string().min(1),
+  created_at: z.string().min(1),
+  bio_text: z.string(),
+});
+
+export const StatusRowSchema = z.object({
+  id: z.string().min(1),
+  account_id: z.string().min(1),
+  kind: z.string().min(1),
+  reblog_of_id: z.string().nullable(),
+  content_text: z.string(),
+  content_html: z.string(),
+  visibility: z.string(),
+  sensitive: z.number(),
+  spoiler_text: z.string(),
+  language: z.string().nullable(),
+  created_at: z.string().min(1),
+  poll_id: z.string().nullable(),
+});
+
+export const PollRowSchema = z.object({
+  id: z.string().min(1),
+  status_id: z.string().min(1),
+  multiple: z.number(),
+  expires_at: z.string().min(1),
+  options_json: z.string().min(1),
+});
+
+export const OutboundActivityRowSchema = z.object({
+  id: z.string().min(1),
+  account_id: z.string().min(1),
+  kind: z.string().min(1),
+  payload_json: z.string().min(1),
+  created_at: z.string().min(1),
+});
+
+const booleanish = z.union([z.boolean(), z.string(), z.number()]).optional();
+
+export const CreateStatusBodySchema = z.object({
+  status: z.string().optional(),
+  spoiler_text: z.string().optional(),
+  sensitive: booleanish,
+  visibility: z.string().optional(),
+  language: z.string().optional(),
+  media_ids: z.union([z.array(z.string()), z.string()]).optional(),
+  poll: z
+    .object({
+      options: z.array(z.string()),
+      expires_in: z.union([z.number(), z.string()]).optional(),
+      multiple: booleanish,
+    })
+    .optional(),
+});
+
+export const PollVoteBodySchema = z.object({
+  choices: z.union([
+    z.array(z.union([z.number(), z.string()])),
+    z.number(),
+    z.string(),
+  ]),
+});
+
+export const FilterBodySchema = z.object({
+  phrase: z.string().trim().min(1),
+  context: z.union([z.array(z.string()), z.string()]).optional(),
+  whole_word: booleanish,
+  irreversible: booleanish,
+  expires_in: z.union([z.number(), z.string()]).optional(),
+});
+
+export const ReportBodySchema = z.object({
+  account_id: z.string().min(1),
+  status_ids: z.union([z.array(z.string()), z.string()]).optional(),
+  comment: z.string().optional(),
+});
+
+export const AppBodySchema = z.object({
+  client_name: z.string().optional(),
+  website: z.string().optional(),
+  redirect_uris: z.union([z.string(), z.array(z.string())]).optional(),
+});
+
+export const OAuthTokenBodySchema = z.object({
+  username: z.string().min(1),
+});
+
+export const UpdateCredentialsBodySchema = z.object({
+  display_name: z.string().optional(),
+});
+
+export const MastodonAccountPreviewSchema = z.object({
+  id: z.string().min(1),
+  username: z.string().min(1),
+  acct: z.string().min(1),
+});
+
+export const MastodonStatusPreviewSchema = z.object({
+  id: z.string().min(1),
+  content: z.string(),
+  favourited: z.boolean().optional(),
+  account: MastodonAccountPreviewSchema,
+  poll: z.object({ id: z.string().min(1) }).nullable().optional(),
+});
+
+export const MastodonAppPreviewSchema = z.object({
+  name: z.string(),
+  client_id: z.string(),
+});
+
+export const MastodonRelationshipPreviewSchema = z.object({
+  id: z.string().min(1),
+  following: z.boolean(),
+});
+
+export const MastodonNotificationPreviewSchema = z.object({
+  type: z.string().min(1),
+});
+
+export const MastodonSearchPreviewSchema = z.object({
+  accounts: z.array(MastodonAccountPreviewSchema),
+});
+
+export const MastodonFilterPreviewSchema = z.object({
+  phrase: z.string(),
+});
+
+export const MastodonReportPreviewSchema = z.object({
+  action_taken: z.boolean(),
+});
+
+export const MastodonStatusListPreviewSchema = z.array(MastodonStatusPreviewSchema);
+
+export const MastodonNotificationListPreviewSchema = z.array(
+  MastodonNotificationPreviewSchema,
+);
+
+export const MastodonRelationshipListPreviewSchema = z.array(
+  MastodonRelationshipPreviewSchema,
+);
+
+export const MastodonMediaPreviewSchema = z.object({
+  id: z.string().min(1),
+});
+
+export const WebfingerPreviewSchema = z.object({
+  subject: z.string(),
+});
+
+export const ActorPreviewSchema = z.object({
+  type: z.literal("Person"),
+  preferredUsername: z.string(),
+});
+
+export const NotePreviewSchema = z.object({
+  type: z.literal("Note"),
+});
+
+export const toRepositoryError = (message: string): RepositoryError => ({
+  kind: "RepositoryError",
+  message,
+});
+
+export const parseRow = <T>(
+  schema: z.ZodType<T>,
+  value: unknown,
+): Result<T, RepositoryError> =>
+  schemaResult(schema)(value).mapErr(() => toRepositoryError("invalid row"));
+
+export const parseJsonText = (raw: string): Result<unknown, RepositoryError> => {
+  try {
+    return ok(JSON.parse(raw));
+  } catch {
+    return err(toRepositoryError("invalid json"));
+  }
+};
+
+export const parseJsonColumn = <T>(
+  schema: z.ZodType<T>,
+  raw: string,
+): Result<T, RepositoryError> =>
+  parseJsonText(raw).andThen((value) =>
+    schemaResult(schema)(value).mapErr(() => toRepositoryError("invalid json column")),
+  );
+
+export const isTruthy = (value: boolean | string | number | undefined): boolean =>
+  value === true || value === "true" || value === "1" || value === 1;
+
+export const stringList = (value: ReadonlyArray<string> | string | undefined): string[] => {
+  if (Array.isArray(value)) {
+    return [...value];
+  }
+  if (typeof value === "string" && value.length > 0) {
+    return [value];
+  }
+  return [];
+};
+
+export const numberList = (
+  value: ReadonlyArray<number | string> | number | string,
+): number[] => {
+  const items = Array.isArray(value) ? value : [value];
+  return items
+    .map((item) => (typeof item === "number" ? item : Number.parseInt(item, 10)))
+    .filter((item) => Number.isInteger(item));
+};

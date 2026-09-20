@@ -1,10 +1,29 @@
-import { SELF } from "cloudflare:test";
+import { schemaResult } from "@tstodon/core";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import type { z } from "zod";
+import { findAccountByUsername } from "./account-store";
 import { generateAccountKeys } from "./keys";
 import {
   signInboxRequest,
   verifyInboxRequest,
 } from "./http-signature";
+import {
+  ActorPreviewSchema,
+  MastodonAccountPreviewSchema,
+  MastodonAppPreviewSchema,
+  MastodonFilterPreviewSchema,
+  MastodonMediaPreviewSchema,
+  MastodonNotificationListPreviewSchema,
+  MastodonRelationshipListPreviewSchema,
+  MastodonRelationshipPreviewSchema,
+  MastodonReportPreviewSchema,
+  MastodonSearchPreviewSchema,
+  MastodonStatusListPreviewSchema,
+  MastodonStatusPreviewSchema,
+  NotePreviewSchema,
+  WebfingerPreviewSchema,
+} from "./schemas";
 
 const auth = (email: string): HeadersInit => ({
   Authorization: `Bearer dev-secret:${email}`,
@@ -18,6 +37,15 @@ const json = async (
   const contentType = response.headers.get("content-type") ?? "";
   const body = contentType.includes("json") ? await response.json() : await response.text();
   return { status: response.status, body };
+};
+
+const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
+  const parsed = schemaResult(schema)(body);
+  expect(parsed.isOk()).toBe(true);
+  if (parsed.isErr()) {
+    throw new Error("response schema rejected");
+  }
+  return parsed.value;
 };
 
 describe("worker http", () => {
@@ -48,7 +76,10 @@ describe("worker http", () => {
       body: JSON.stringify({ client_name: "tstodon-test" }),
     });
     expect(status).toBe(200);
-    expect(body).toMatchObject({ name: "tstodon-test", client_id: "tstodon-local" });
+    expect(read(MastodonAppPreviewSchema, body)).toMatchObject({
+      name: "tstodon-test",
+      client_id: "tstodon-local",
+    });
   });
 
   it("provisions credentials, posts, and reads timelines", async () => {
@@ -58,7 +89,7 @@ describe("worker http", () => {
       body: JSON.stringify({ status: "hello from alice #intro" }),
     });
     expect(created.status).toBe(200);
-    const status = created.body as { id: string; content: string; account: { id: string; username: string } };
+    const status = read(MastodonStatusPreviewSchema, created.body);
     expect(status.content).toContain("hello from alice");
     expect(status.account.username).toBe("alice");
 
@@ -66,36 +97,39 @@ describe("worker http", () => {
       headers: auth("alice@example.com"),
     });
     expect(me.status).toBe(200);
-    expect(me.body).toMatchObject({ username: "alice", acct: "alice" });
+    expect(read(MastodonAccountPreviewSchema, me.body)).toMatchObject({
+      username: "alice",
+      acct: "alice",
+    });
 
     const publicTl = await json("/api/v1/timelines/public");
     expect(publicTl.status).toBe(200);
-    expect(publicTl.body as unknown[]).not.toHaveLength(0);
+    expect(read(MastodonStatusListPreviewSchema, publicTl.body)).not.toHaveLength(0);
 
     const home = await json("/api/v1/timelines/home", {
       headers: auth("alice@example.com"),
     });
     expect(home.status).toBe(200);
-    expect(home.body as unknown[]).not.toHaveLength(0);
+    expect(read(MastodonStatusListPreviewSchema, home.body)).not.toHaveLength(0);
 
     const webfinger = await json(
       "/.well-known/webfinger?resource=acct:alice@example.com",
     );
     expect(webfinger.status).toBe(200);
-    expect(webfinger.body).toMatchObject({
+    expect(read(WebfingerPreviewSchema, webfinger.body)).toMatchObject({
       subject: "acct:alice@example.com",
     });
 
     const actor = await json("/users/alice");
     expect(actor.status).toBe(200);
-    expect(actor.body).toMatchObject({
+    expect(read(ActorPreviewSchema, actor.body)).toMatchObject({
       type: "Person",
       preferredUsername: "alice",
     });
 
     const note = await json(`/users/alice/statuses/${status.id}`);
     expect(note.status).toBe(200);
-    expect(note.body).toMatchObject({ type: "Note" });
+    expect(read(NotePreviewSchema, note.body)).toMatchObject({ type: "Note" });
   });
 
   it("follows, favourites, notifies, and searches across local accounts", async () => {
@@ -108,58 +142,68 @@ describe("worker http", () => {
       body: JSON.stringify({ status: "bob says hi @alice" }),
     });
     expect(bobStatus.status).toBe(200);
-    const posted = bobStatus.body as { id: string; account: { id: string } };
+    const posted = read(MastodonStatusPreviewSchema, bobStatus.body);
 
     const alice = await json("/api/v1/accounts/verify_credentials", {
       headers: auth("alice@example.com"),
     });
-    expect((alice.body as { username: string }).username).toBe("alice");
+    expect(read(MastodonAccountPreviewSchema, alice.body).username).toBe("alice");
 
     const follow = await json(`/api/v1/accounts/${posted.account.id}/follow`, {
       method: "POST",
       headers: auth("alice@example.com"),
     });
     expect(follow.status).toBe(200);
-    expect(follow.body).toMatchObject({ following: true });
+    expect(read(MastodonRelationshipPreviewSchema, follow.body)).toMatchObject({
+      following: true,
+    });
 
     const home = await json("/api/v1/timelines/home", {
       headers: auth("alice@example.com"),
     });
-    expect((home.body as { id: string }[]).some((item) => item.id === posted.id)).toBe(true);
+    expect(
+      read(MastodonStatusListPreviewSchema, home.body).some((item) => item.id === posted.id),
+    ).toBe(true);
 
     const fav = await json(`/api/v1/statuses/${posted.id}/favourite`, {
       method: "POST",
       headers: auth("alice@example.com"),
     });
     expect(fav.status).toBe(200);
-    expect(fav.body).toMatchObject({ favourited: true });
+    expect(read(MastodonStatusPreviewSchema, fav.body)).toMatchObject({ favourited: true });
 
     const bobNotes = await json("/api/v1/notifications", {
       headers: auth("bob@example.com"),
     });
     expect(bobNotes.status).toBe(200);
-    const bobTypes = (bobNotes.body as { type: string }[]).map((item) => item.type);
+    const bobTypes = read(MastodonNotificationListPreviewSchema, bobNotes.body).map(
+      (item) => item.type,
+    );
     expect(bobTypes).toEqual(expect.arrayContaining(["follow", "favourite"]));
 
     const aliceNotes = await json("/api/v1/notifications", {
       headers: auth("alice@example.com"),
     });
     expect(aliceNotes.status).toBe(200);
-    const aliceTypes = (aliceNotes.body as { type: string }[]).map((item) => item.type);
+    const aliceTypes = read(MastodonNotificationListPreviewSchema, aliceNotes.body).map(
+      (item) => item.type,
+    );
     expect(aliceTypes).toEqual(expect.arrayContaining(["mention"]));
 
     const search = await json(`/api/v2/search?q=bob&type=accounts`, {
       headers: auth("alice@example.com"),
     });
     expect(search.status).toBe(200);
-    expect((search.body as { accounts: { username: string }[] }).accounts[0]?.username).toBe("bob");
+    expect(read(MastodonSearchPreviewSchema, search.body).accounts[0]?.username).toBe("bob");
 
     const relationships = await json(
       `/api/v1/accounts/relationships?id[]=${posted.account.id}`,
       { headers: auth("alice@example.com") },
     );
-    expect(relationships.body).toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: posted.account.id, following: true })]),
+    expect(read(MastodonRelationshipListPreviewSchema, relationships.body)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: posted.account.id, following: true }),
+      ]),
     );
   });
 
@@ -172,7 +216,7 @@ describe("worker http", () => {
       body: form,
     });
     expect(mediaResponse.status).toBe(200);
-    const media = (await mediaResponse.json()) as { id: string };
+    const media = read(MastodonMediaPreviewSchema, await mediaResponse.json());
     expect(media.id).toBeTruthy();
 
     const poll = await json("/api/v1/statuses", {
@@ -184,10 +228,10 @@ describe("worker http", () => {
       }),
     });
     expect(poll.status).toBe(200);
-    const pollStatus = poll.body as { id: string; poll: { id: string } };
-    expect(pollStatus.poll.id).toBeTruthy();
+    const pollStatus = read(MastodonStatusPreviewSchema, poll.body);
+    expect(pollStatus.poll?.id).toBeTruthy();
 
-    const vote = await json(`/api/v1/polls/${pollStatus.poll.id}/votes`, {
+    const vote = await json(`/api/v1/polls/${pollStatus.poll?.id}/votes`, {
       method: "POST",
       headers: { "content-type": "application/json", ...auth("bob@example.com") },
       body: JSON.stringify({ choices: [0] }),
@@ -200,7 +244,7 @@ describe("worker http", () => {
       body: JSON.stringify({ phrase: "spam", context: ["home"] }),
     });
     expect(filter.status).toBe(200);
-    expect(filter.body).toMatchObject({ phrase: "spam" });
+    expect(read(MastodonFilterPreviewSchema, filter.body)).toMatchObject({ phrase: "spam" });
 
     const bob = await json("/api/v1/accounts/verify_credentials", {
       headers: auth("bob@example.com"),
@@ -209,12 +253,33 @@ describe("worker http", () => {
       method: "POST",
       headers: { "content-type": "application/json", ...auth("alice@example.com") },
       body: JSON.stringify({
-        account_id: (bob.body as { id: string }).id,
+        account_id: read(MastodonAccountPreviewSchema, bob.body).id,
         comment: "test",
       }),
     });
     expect(report.status).toBe(200);
-    expect(report.body).toMatchObject({ action_taken: false });
+    expect(read(MastodonReportPreviewSchema, report.body)).toMatchObject({
+      action_taken: false,
+    });
+  });
+
+  it("rejects an unsigned inbox Follow", async () => {
+    await json("/api/v1/accounts/verify_credentials", {
+      headers: auth("alice@example.com"),
+    });
+    const inbox = await json("/inbox", {
+      method: "POST",
+      headers: { "content-type": "application/activity+json" },
+      body: JSON.stringify({
+        "@context": "https://www.w3.org/ns/activitystreams",
+        id: "https://example.com/activities/unsigned-follow",
+        type: "Follow",
+        actor: "https://example.com/users/carol",
+        object: "https://example.com/users/alice",
+      }),
+    });
+    expect(inbox.status).toBe(401);
+    expect(inbox.body).toMatchObject({ kind: "InvalidSignature" });
   });
 
   it("accepts a local ActivityPub Follow into the inbox", async () => {
@@ -226,23 +291,40 @@ describe("worker http", () => {
     });
     expect(alice.status).toBe(200);
     expect(carol.status).toBe(200);
+    const actor = await findAccountByUsername(env.DB, "carol");
+    expect(actor.isOk() && actor.value).toBeTruthy();
+    if (actor.isErr() || !actor.value) {
+      throw new Error("carol account missing");
+    }
+    const body = JSON.stringify({
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: "https://example.com/activities/follow-carol-alice",
+      type: "Follow",
+      actor: "https://example.com/users/carol",
+      object: "https://example.com/users/alice",
+    });
+    const url = new URL("https://example.com/inbox");
+    const headers = await signInboxRequest(
+      url,
+      actor.value.privateKeyJwk.unwrap(),
+      "https://example.com/users/carol#main-key",
+      body,
+    );
+    expect(headers.isOk()).toBe(true);
+    if (headers.isErr()) {
+      throw new Error(headers.error.message);
+    }
     const inbox = await json("/inbox", {
       method: "POST",
-      headers: { "content-type": "application/activity+json" },
-      body: JSON.stringify({
-        "@context": "https://www.w3.org/ns/activitystreams",
-        id: "https://example.com/activities/follow-carol-alice",
-        type: "Follow",
-        actor: "https://example.com/users/carol",
-        object: "https://example.com/users/alice",
-      }),
+      headers: headers.value,
+      body,
     });
     expect(inbox.status).toBe(202);
     const relationships = await json(
-      `/api/v1/accounts/relationships?id=${(alice.body as { id: string }).id}`,
+      `/api/v1/accounts/relationships?id=${read(MastodonAccountPreviewSchema, alice.body).id}`,
       { headers: auth("carol@example.com") },
     );
-    expect(relationships.body).toEqual(
+    expect(read(MastodonRelationshipListPreviewSchema, relationships.body)).toEqual(
       expect.arrayContaining([expect.objectContaining({ following: true })]),
     );
   });
@@ -259,7 +341,11 @@ describe("http signatures", () => {
       "https://example.com/users/alice#main-key",
       body,
     );
-    const request = new Request(url, { method: "POST", headers, body });
+    expect(headers.isOk()).toBe(true);
+    if (headers.isErr()) {
+      throw new Error(headers.error.message);
+    }
+    const request = new Request(url, { method: "POST", headers: headers.value, body });
     await expect(verifyInboxRequest(request, keys.publicKeyPem, body)).resolves.toBe(true);
   });
 });
