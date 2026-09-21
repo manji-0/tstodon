@@ -215,6 +215,18 @@ export const statusInteractionCounts = async (
       )
       .bind(statusId)
       .first<{ count: number }>();
+    const remoteFavs = await db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM remote_favourites WHERE status_id = ?`,
+      )
+      .bind(statusId)
+      .first<{ count: number }>();
+    const remoteReblogs = await db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM remote_announces WHERE status_id = ?`,
+      )
+      .bind(statusId)
+      .first<{ count: number }>();
     const favourited = viewerId
       ? await db
           .prepare(
@@ -240,8 +252,8 @@ export const statusInteractionCounts = async (
           .first()
       : null;
     return {
-      favourites: favs?.count ?? 0,
-      reblogs: reblogs?.count ?? 0,
+      favourites: (favs?.count ?? 0) + (remoteFavs?.count ?? 0),
+      reblogs: (reblogs?.count ?? 0) + (remoteReblogs?.count ?? 0),
       favourited: Boolean(favourited),
       reblogged: Boolean(reblogged),
       bookmarked: Boolean(bookmarked),

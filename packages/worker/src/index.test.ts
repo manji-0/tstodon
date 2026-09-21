@@ -530,6 +530,128 @@ describe("worker http", () => {
       content: "<p>hello from dana</p>",
     });
   });
+
+  it("counts remote Like and Announce against a local status", async () => {
+    const created = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...auth("alice@example.com") },
+      body: JSON.stringify({ status: "please boost me" }),
+    });
+    expect(created.status).toBe(200);
+    const status = read(MastodonStatusPreviewSchema, created.body);
+    const keys = await generateAccountKeys();
+    const fetchedAt = IsoInstant.parse("2026-09-20T15:00:00.000Z");
+    expect(fetchedAt.isOk()).toBe(true);
+    if (fetchedAt.isErr()) {
+      throw new Error("invalid fixture instant");
+    }
+    const remote = RemoteActor.fromFetched({
+      actorUri: "https://remote.example/users/erin",
+      username: "erin",
+      domain: "remote.example",
+      inboxUri: "https://remote.example/users/erin/inbox",
+      publicKeyId: "https://remote.example/users/erin#main-key",
+      publicKeyPem: keys.publicKeyPem,
+      displayName: "Erin",
+      fetchedAt: fetchedAt.value,
+    });
+    expect(remote.isOk()).toBe(true);
+    if (remote.isErr()) {
+      throw new Error("remote actor fixture rejected");
+    }
+    expect((await upsertRemoteActor(env.DB, remote.value)).isOk()).toBe(true);
+    const object = `https://example.com/users/alice/statuses/${status.id}`;
+    const likeBody = JSON.stringify({
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: "https://remote.example/activities/like-erin-alice",
+      type: "Like",
+      actor: "https://remote.example/users/erin",
+      object,
+    });
+    const announceBody = JSON.stringify({
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: "https://remote.example/activities/announce-erin-alice",
+      type: "Announce",
+      actor: "https://remote.example/users/erin",
+      object,
+    });
+    const inboxUrl = new URL("https://example.com/inbox");
+    const likeHeaders = await signInboxRequest(
+      inboxUrl,
+      keys.privateKeyJwk,
+      "https://remote.example/users/erin#main-key",
+      likeBody,
+    );
+    const announceHeaders = await signInboxRequest(
+      inboxUrl,
+      keys.privateKeyJwk,
+      "https://remote.example/users/erin#main-key",
+      announceBody,
+    );
+    expect(likeHeaders.isOk() && announceHeaders.isOk()).toBe(true);
+    if (likeHeaders.isErr() || announceHeaders.isErr()) {
+      throw new Error("failed to sign remote interactions");
+    }
+    expect(
+      (
+        await json("/inbox", {
+          method: "POST",
+          headers: likeHeaders.value,
+          body: likeBody,
+        })
+      ).status,
+    ).toBe(202);
+    expect(
+      (
+        await json("/inbox", {
+          method: "POST",
+          headers: announceHeaders.value,
+          body: announceBody,
+        })
+      ).status,
+    ).toBe(202);
+    const counted = await json(`/api/v1/statuses/${status.id}`);
+    expect(counted.status).toBe(200);
+    expect(read(MastodonStatusPreviewSchema, counted.body)).toMatchObject({
+      favourites_count: 1,
+      reblogs_count: 1,
+    });
+    const undoBody = JSON.stringify({
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: "https://remote.example/activities/undo-like-erin-alice",
+      type: "Undo",
+      actor: "https://remote.example/users/erin",
+      object: {
+        id: "https://remote.example/activities/like-erin-alice",
+        type: "Like",
+        object,
+      },
+    });
+    const undoHeaders = await signInboxRequest(
+      inboxUrl,
+      keys.privateKeyJwk,
+      "https://remote.example/users/erin#main-key",
+      undoBody,
+    );
+    expect(undoHeaders.isOk()).toBe(true);
+    if (undoHeaders.isErr()) {
+      throw new Error("failed to sign undo");
+    }
+    expect(
+      (
+        await json("/inbox", {
+          method: "POST",
+          headers: undoHeaders.value,
+          body: undoBody,
+        })
+      ).status,
+    ).toBe(202);
+    const afterUndo = await json(`/api/v1/statuses/${status.id}`);
+    expect(read(MastodonStatusPreviewSchema, afterUndo.body)).toMatchObject({
+      favourites_count: 0,
+      reblogs_count: 1,
+    });
+  });
 });
 
 describe("http signatures", () => {

@@ -80,7 +80,7 @@ Labels:
 | POST | `/users/:username/inbox` |
 | POST | `/inbox` |
 
-Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#hashtag` in local public notes. Inbox accepts signed Follow / Undo / Like / Announce / Create that target this instance. Local actors verify against the stored account key. Remote actors verify against a cached `RemoteActor` public key, fetching and persisting the actor document from `keyId` on a cache miss. Remote `Create` / `Announce` Notes are stored as `RemoteStatus` and appear on the public timeline. Remote Like / Announce do not yet write local favourite or reblog rows.
+Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#hashtag` in local public notes. Inbox accepts signed Follow / Undo / Like / Announce / Create that target this instance. Local actors verify against the stored account key. Remote actors verify against a cached `RemoteActor` public key, fetching and persisting the actor document from `keyId` on a cache miss. Remote `Create` / `Announce` Notes are stored as `RemoteStatus` and appear on the public timeline. Remote Like / Announce of a local status increment that status's favourite and reblog counts.
 
 ### Placeholder
 
@@ -109,7 +109,6 @@ Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#
 ### Out of scope
 <!-- derived-from #principles -->
 
-- Applying remote Like / Announce onto local favourite and reblog rows
 - Workers AI / Vectorize search
 - Mastodon admin APIs
 - A generated upstream route inventory
@@ -138,11 +137,10 @@ Protected API routes accept `Authorization: Bearer ${DEV_BEARER_SECRET}:${email}
 
 Public discovery and actor documents are unauthenticated. Inbox requests must carry a draft-cavage `Signature` (and matching `Digest`). Verification uses the local actor key when `actor` is on this instance, otherwise a cached remote actor key (fetched from `keyId` on miss). Missing, unverifiable, or blocked actor keys return `kind: InvalidSignature`. Unreachable key fetches return `kind: VerificationUnavailable`.
 
-Outbound Create / Announce jobs expand local and remote followers and sign POSTs to remote inboxes. Same-host inboxes are skipped. Inbound Create / Announce persist a `RemoteStatus` when the object is a Note attributed to the signing actor.
+Outbound Create / Announce jobs expand local and remote followers and sign POSTs to remote inboxes. Same-host inboxes are skipped. Inbound Create / Announce persist a `RemoteStatus` when the object is a Note attributed to the signing actor. Remote Like / Announce of a local status are stored separately from local account rows and counted on that status. Nested Undo of Like or Announce removes the remote row.
 
 ## Next
 <!-- derived-from #out-of-scope -->
 
-- Apply remote Like / Announce onto local favourite and reblog rows.
 - Decide Queue versus Workflow ownership for delivery retries.
 - Bind Vectorize / Workers AI only when local search cost is acceptable.

@@ -17,6 +17,16 @@ export const ActivityJsonSchema = z
   })
   .passthrough();
 
+export const NestedActivityObjectSchema = z
+  .object({
+    type: z.string().min(1),
+    object: z.union([
+      z.string().min(1),
+      z.object({ id: z.string().min(1) }).passthrough(),
+    ]),
+  })
+  .passthrough();
+
 export const PollOptionSchema = z.object({
   title: z.string(),
   votesCount: z.number().int().nonnegative(),
@@ -157,6 +167,8 @@ export const MastodonStatusPreviewSchema = z.object({
   id: z.string().min(1),
   content: z.string(),
   favourited: z.boolean().optional(),
+  favourites_count: z.number().optional(),
+  reblogs_count: z.number().optional(),
   account: MastodonAccountPreviewSchema,
   poll: z.object({ id: z.string().min(1) }).nullable().optional(),
 });

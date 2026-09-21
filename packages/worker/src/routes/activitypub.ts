@@ -31,8 +31,14 @@ import {
   upsertRemoteFollow,
 } from "../remote-actor-store";
 import { persistRemoteObject } from "../remote-status-persist";
+import {
+  deleteRemoteAnnounce,
+  deleteRemoteFavourite,
+  upsertRemoteAnnounce,
+  upsertRemoteFavourite,
+} from "../remote-interaction-store";
 import { parseInstanceIdentity } from "../runtime-config";
-import { ActivityJsonSchema, JsonObjectSchema, parseJsonColumn, parseJsonText } from "../schemas";
+import { ActivityJsonSchema, JsonObjectSchema, NestedActivityObjectSchema, parseJsonColumn, parseJsonText } from "../schemas";
 import { schemaResult } from "@tstodon/core";
 import {
   favouriteStatus,
@@ -204,6 +210,19 @@ activityPubRoutes.get("/users/:username/following", async (c) => {
   return c.json(collection(`${actor}/following`, items), 200, jsonLd);
 });
 
+const objectUriOf = (value: string | Readonly<{ id: string }>): string =>
+  typeof value === "string" ? value : value.id;
+
+const nestedActivityTarget = (
+  raw: unknown,
+): { type: string; objectUri: string } | undefined => {
+  const parsed = schemaResult(NestedActivityObjectSchema)(raw);
+  if (parsed.isErr()) {
+    return undefined;
+  }
+  return { type: parsed.value.type, objectUri: objectUriOf(parsed.value.object) };
+};
+
 const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -310,12 +329,35 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       }
     }
     if (activity.kind === "Undo") {
-      const targetUsername = parseLocalActorUsername(identity.value, activity.object);
+      const nested = nestedActivityTarget(activityJson.value.object);
+      const targetUsername = parseLocalActorUsername(
+        identity.value,
+        nested?.type === "Follow" ? nested.objectUri : activity.object,
+      );
       const target = targetUsername
         ? await findAccountByUsername(c.env.DB, targetUsername)
         : undefined;
       if (target?.isOk() && target.value) {
         await deleteRemoteFollow(c.env.DB, signer.actor.actorUri, target.value.id);
+      }
+      const statusUri =
+        nested && (nested.type === "Like" || nested.type === "Announce")
+          ? nested.objectUri
+          : undefined;
+      const statusId = statusUri
+        ? parseLocalStatusId(identity.value, statusUri)
+        : undefined;
+      if (statusId && nested?.type === "Like") {
+        await deleteRemoteFavourite(c.env.DB, signer.actor.actorUri, statusId);
+      }
+      if (statusId && nested?.type === "Announce") {
+        await deleteRemoteAnnounce(c.env.DB, signer.actor.actorUri, statusId);
+      }
+    }
+    if (activity.kind === "Like") {
+      const statusId = parseLocalStatusId(identity.value, activity.object);
+      if (statusId) {
+        await upsertRemoteFavourite(c.env.DB, signer.actor.actorUri, statusId);
       }
     }
     if (activity.kind === "Create" || activity.kind === "Announce") {
@@ -325,6 +367,17 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         signer.actor,
         activityJson.value.object,
       );
+      if (activity.kind === "Announce") {
+        const statusId = parseLocalStatusId(identity.value, activity.object);
+        if (statusId) {
+          await upsertRemoteAnnounce(
+            c.env.DB,
+            signer.actor.actorUri,
+            statusId,
+            activity.id,
+          );
+        }
+      }
     }
     return c.body(null, 202);
   }
