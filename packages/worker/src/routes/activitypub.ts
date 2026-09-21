@@ -30,6 +30,7 @@ import {
   listAcceptedRemoteFollowerUris,
   upsertRemoteFollow,
 } from "../remote-actor-store";
+import { persistRemoteObject } from "../remote-status-persist";
 import { parseInstanceIdentity } from "../runtime-config";
 import { ActivityJsonSchema, JsonObjectSchema, parseJsonColumn, parseJsonText } from "../schemas";
 import { schemaResult } from "@tstodon/core";
@@ -316,6 +317,14 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       if (target?.isOk() && target.value) {
         await deleteRemoteFollow(c.env.DB, signer.actor.actorUri, target.value.id);
       }
+    }
+    if (activity.kind === "Create" || activity.kind === "Announce") {
+      await persistRemoteObject(
+        c.env.DB,
+        identity.value,
+        signer.actor,
+        activityJson.value.object,
+      );
     }
     return c.body(null, 202);
   }

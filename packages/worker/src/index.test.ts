@@ -10,6 +10,7 @@ import {
   listAcceptedRemoteFollowerUris,
   upsertRemoteActor,
 } from "./remote-actor-store";
+import { findRemoteStatusByObjectUri } from "./remote-status-store";
 import {
   signInboxRequest,
   verifyInboxRequest,
@@ -448,6 +449,86 @@ describe("worker http", () => {
     if (followers.isOk()) {
       expect(followers.value).toContain("https://remote.example/users/bob");
     }
+  });
+
+  it("persists a remote Create Note onto the public timeline", async () => {
+    await json("/api/v1/accounts/verify_credentials", {
+      headers: auth("alice@example.com"),
+    });
+    const keys = await generateAccountKeys();
+    const fetchedAt = IsoInstant.parse("2026-09-20T15:00:00.000Z");
+    expect(fetchedAt.isOk()).toBe(true);
+    if (fetchedAt.isErr()) {
+      throw new Error("invalid fixture instant");
+    }
+    const remote = RemoteActor.fromFetched({
+      actorUri: "https://remote.example/users/dana",
+      username: "dana",
+      domain: "remote.example",
+      inboxUri: "https://remote.example/users/dana/inbox",
+      publicKeyId: "https://remote.example/users/dana#main-key",
+      publicKeyPem: keys.publicKeyPem,
+      displayName: "Dana",
+      fetchedAt: fetchedAt.value,
+    });
+    expect(remote.isOk()).toBe(true);
+    if (remote.isErr()) {
+      throw new Error("remote actor fixture rejected");
+    }
+    const stored = await upsertRemoteActor(env.DB, remote.value);
+    expect(stored.isOk()).toBe(true);
+    const objectUri = "https://remote.example/users/dana/statuses/1";
+    const body = JSON.stringify({
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: "https://remote.example/activities/create-dana-1",
+      type: "Create",
+      actor: "https://remote.example/users/dana",
+      object: {
+        id: objectUri,
+        type: "Note",
+        attributedTo: "https://remote.example/users/dana",
+        content: "<p>hello from dana</p>",
+        published: "2026-09-20T15:01:00.000Z",
+        to: ["https://www.w3.org/ns/activitystreams#Public"],
+      },
+    });
+    const url = new URL("https://example.com/inbox");
+    const headers = await signInboxRequest(
+      url,
+      keys.privateKeyJwk,
+      "https://remote.example/users/dana#main-key",
+      body,
+    );
+    expect(headers.isOk()).toBe(true);
+    if (headers.isErr()) {
+      throw new Error(headers.error.message);
+    }
+    const inbox = await json("/inbox", {
+      method: "POST",
+      headers: headers.value,
+      body,
+    });
+    expect(inbox.status).toBe(202);
+    const persisted = await findRemoteStatusByObjectUri(env.DB, objectUri);
+    expect(persisted.isOk() && persisted.value).toBeTruthy();
+    if (persisted.isErr() || !persisted.value) {
+      throw new Error("remote status missing");
+    }
+    const publicTl = await json("/api/v1/timelines/public");
+    expect(publicTl.status).toBe(200);
+    expect(read(MastodonStatusListPreviewSchema, publicTl.body)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: "<p>hello from dana</p>",
+          account: expect.objectContaining({ acct: "dana@remote.example" }),
+        }),
+      ]),
+    );
+    const fetched = await json(`/api/v1/statuses/${persisted.value.id}`);
+    expect(fetched.status).toBe(200);
+    expect(read(MastodonStatusPreviewSchema, fetched.body)).toMatchObject({
+      content: "<p>hello from dana</p>",
+    });
   });
 });
 

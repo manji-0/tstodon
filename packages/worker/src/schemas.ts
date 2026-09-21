@@ -243,6 +243,35 @@ export const RemoteActorRowSchema = z.object({
   fetched_at: z.string().min(1),
 });
 
+export const NoteDocumentSchema = z
+  .object({
+    id: z.string().min(1),
+    type: z.literal("Note"),
+    attributedTo: z.string().min(1),
+    content: z.string(),
+    published: z.string().min(1),
+    url: z.string().optional(),
+    to: z.union([z.string(), z.array(z.string())]).optional(),
+    cc: z.union([z.string(), z.array(z.string())]).optional(),
+    sensitive: booleanish,
+    summary: z.string().nullable().optional(),
+    inReplyTo: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+export const RemoteStatusRowSchema = z.object({
+  id: z.string().min(1),
+  actor_uri: z.string().min(1),
+  object_uri: z.string().min(1),
+  url: z.string().nullable(),
+  content_html: z.string(),
+  spoiler_text: z.string(),
+  visibility: z.string().min(1),
+  sensitive: z.number(),
+  language: z.string().nullable(),
+  published_at: z.string().min(1),
+});
+
 export const NotePreviewSchema = z.object({
   type: z.literal("Note"),
 });

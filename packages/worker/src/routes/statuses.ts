@@ -15,10 +15,12 @@ import {
   requireUser,
 } from "../http";
 import { newEntityId } from "../ids";
-import { mastodonStatus, mastodonStatuses } from "../mastodon";
+import { mastodonRemoteStatus, mastodonStatus, mastodonStatuses, remoteStatusVisible } from "../mastodon";
 import { insertPoll } from "../poll-store";
 import { CreateStatusBodySchema, isTruthy, stringList } from "../schemas";
 import { parseInstanceIdentity } from "../runtime-config";
+import { findRemoteActorByUri } from "../remote-actor-store";
+import { findRemoteStatusById } from "../remote-status-store";
 import {
   bookmarkStatus,
   favouriteStatus,
@@ -149,7 +151,21 @@ statusRoutes.get("/api/v1/statuses/:id", async (c) => {
     return jsonRepositoryError(c, status.error.message);
   }
   if (!status.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    const remote = await findRemoteStatusById(c.env.DB, c.req.param("id"));
+    if (remote.isErr()) {
+      return jsonRepositoryError(c, remote.error.message);
+    }
+    if (!remote.value || !remoteStatusVisible(remote.value)) {
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    }
+    const actor = await findRemoteActorByUri(c.env.DB, remote.value.actorUri);
+    if (actor.isErr()) {
+      return jsonRepositoryError(c, actor.error.message);
+    }
+    if (!actor.value) {
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    }
+    return c.json(mastodonRemoteStatus(identity.value, remote.value, actor.value));
   }
   const visible = await canViewStatus(c.env.DB, status.value, viewerId);
   if (!visible) {

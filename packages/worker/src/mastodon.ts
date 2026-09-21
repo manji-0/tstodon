@@ -3,6 +3,8 @@ import {
   Visibility,
   type LocalAccount,
   type LocalStatus,
+  type RemoteActor,
+  type RemoteStatus as RemoteStatusValue,
 } from "@tstodon/domain";
 import { accountCounts, findAccountById } from "./account-store";
 import { findPollByStatusId, type PollRecord } from "./poll-store";
@@ -59,6 +61,77 @@ export const mastodonAccountDocument = async (
     counts.isOk() ? counts.value : { followers: 0, following: 0, statuses: 0 },
   );
 };
+
+export const mastodonRemoteAccount = (
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+): Record<string, unknown> => {
+  const url = actor.actorUri;
+  return {
+    id: actor.actorUri,
+    username: actor.username,
+    acct: `${actor.username}@${actor.domain}`,
+    display_name: actor.displayName,
+    locked: false,
+    bot: false,
+    discoverable: true,
+    group: false,
+    created_at: actor.fetchedAt,
+    note: "",
+    url,
+    uri: url,
+    avatar: identity.thumbnailUrl,
+    avatar_static: identity.thumbnailUrl,
+    header: identity.thumbnailUrl,
+    header_static: identity.thumbnailUrl,
+    followers_count: 0,
+    following_count: 0,
+    statuses_count: 0,
+    last_status_at: null,
+    emojis: [],
+    fields: [],
+  };
+};
+
+export const mastodonRemoteStatus = (
+  identity: InstanceIdentity,
+  status: RemoteStatusValue,
+  actor: RemoteActor,
+): Record<string, unknown> => {
+  const url = status.url ?? status.objectUri;
+  return {
+    id: status.id,
+    created_at: status.publishedAt,
+    in_reply_to_id: null,
+    in_reply_to_account_id: null,
+    sensitive: status.sensitive,
+    spoiler_text: status.spoilerText,
+    visibility: Visibility.toMastodon(status.visibility),
+    language: status.language.kind === "Present" ? status.language.value : null,
+    uri: status.objectUri,
+    url,
+    replies_count: 0,
+    reblogs_count: 0,
+    favourites_count: 0,
+    edited_at: null,
+    favourited: false,
+    reblogged: false,
+    muted: false,
+    bookmarked: false,
+    content: status.contentHtml,
+    reblog: null,
+    account: mastodonRemoteAccount(identity, actor),
+    media_attachments: [],
+    mentions: [],
+    tags: [],
+    emojis: [],
+    card: null,
+    poll: null,
+  };
+};
+
+export const remoteStatusVisible = (status: RemoteStatusValue): boolean =>
+  status.visibility.kind === "Public" || status.visibility.kind === "Unlisted";
 
 export const pollJson = (poll: PollRecord): Record<string, unknown> => ({
   id: poll.id,

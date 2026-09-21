@@ -3,6 +3,7 @@ import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
+import { fetchActivityJson } from "./federated-fetch";
 import { ActorDocumentSchema } from "./schemas";
 import {
   findRemoteActorByPublicKeyId,
@@ -14,47 +15,6 @@ export type RemoteActorResolveError =
   | Readonly<{ kind: "InvalidSignature" }>
   | Readonly<{ kind: "VerificationUnavailable" }>
   | RepositoryError;
-
-const blockedHost = (hostname: string, instanceDomain: string): boolean => {
-  const host = hostname.toLowerCase();
-  if (host === instanceDomain) {
-    return true;
-  }
-  if (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "0.0.0.0" ||
-    host === "::1" ||
-    host === "[::1]" ||
-    host.endsWith(".localhost")
-  ) {
-    return true;
-  }
-  if (host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("169.254.")) {
-    return true;
-  }
-  const octets = host.split(".");
-  if (octets.length === 4 && octets[0] === "172") {
-    const second = Number.parseInt(octets[1] ?? "", 10);
-    if (second >= 16 && second <= 31) {
-      return true;
-    }
-  }
-  return false;
-};
-
-const documentUrlFromKeyId = (keyId: string): Result<URL, RemoteActorResolveError> => {
-  try {
-    const url = new URL(keyId);
-    url.hash = "";
-    if (url.protocol !== "https:" && url.protocol !== "http:") {
-      return err({ kind: "InvalidSignature" });
-    }
-    return ok(url);
-  } catch {
-    return err({ kind: "InvalidSignature" });
-  }
-};
 
 const remoteActorFromDocument = (
   raw: unknown,
@@ -104,41 +64,6 @@ const remoteActorFromDocument = (
   return ok(actor.value);
 };
 
-const fetchRemoteActorDocument = async (
-  identity: InstanceIdentity,
-  keyId: string,
-  actorUri: string,
-): Promise<Result<RemoteActor, RemoteActorResolveError>> => {
-  const url = documentUrlFromKeyId(keyId);
-  if (url.isErr()) {
-    return err(url.error);
-  }
-  if (blockedHost(url.value.hostname, identity.domain)) {
-    return err({ kind: "InvalidSignature" });
-  }
-  try {
-    const response = await fetch(url.value, {
-      method: "GET",
-      headers: {
-        Accept:
-          'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
-        "User-Agent": `tstodon (https://${identity.domain})`,
-      },
-      redirect: "error",
-      signal: AbortSignal.timeout(5000),
-    });
-    if (response.status >= 500) {
-      return err({ kind: "VerificationUnavailable" });
-    }
-    if (!response.ok) {
-      return err({ kind: "InvalidSignature" });
-    }
-    return remoteActorFromDocument(await response.json(), keyId, actorUri);
-  } catch {
-    return err({ kind: "VerificationUnavailable" });
-  }
-};
-
 export const resolveRemoteActor = async (
   db: D1Database,
   identity: InstanceIdentity,
@@ -159,11 +84,15 @@ export const resolveRemoteActor = async (
   if (byUri.value && byUri.value.publicKeyId === keyId) {
     return ok(byUri.value);
   }
-  const fetched = await fetchRemoteActorDocument(identity, keyId, actorUri);
+  const fetched = await fetchActivityJson(identity, keyId);
   if (fetched.isErr()) {
     return err(fetched.error);
   }
-  const stored = await upsertRemoteActor(db, fetched.value);
+  const actor = remoteActorFromDocument(fetched.value, keyId, actorUri);
+  if (actor.isErr()) {
+    return err(actor.error);
+  }
+  const stored = await upsertRemoteActor(db, actor.value);
   if (stored.isErr()) {
     return err(stored.error);
   }

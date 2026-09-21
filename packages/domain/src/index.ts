@@ -45,6 +45,10 @@ export {
   type RemoteActor as RemoteActorValue,
 } from "./remote-actor";
 export {
+  RemoteStatus,
+  type RemoteStatus as RemoteStatusValue,
+} from "./remote-status";
+export {
   Registration,
   type Registration as RegistrationValue,
   type RegistrationValidationErrors,

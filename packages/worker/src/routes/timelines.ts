@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { authenticate } from "../auth";
 import { jsonAuthError, jsonRepositoryError, queryLimit, requireUser } from "../http";
-import { mastodonStatuses } from "../mastodon";
+import { mastodonRemoteStatus, mastodonStatuses, remoteStatusVisible } from "../mastodon";
 import { parseInstanceIdentity } from "../runtime-config";
+import { findRemoteActorByUri } from "../remote-actor-store";
+import { listPublicRemoteStatuses } from "../remote-status-store";
 import { listHomeStatuses, listPublicStatuses, listTagStatuses } from "../status-store";
 
 export const timelineRoutes = new Hono<{ Bindings: Env }>();
@@ -25,7 +27,33 @@ timelineRoutes.get("/api/v1/timelines/public", async (c) => {
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
-  return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, viewerId));
+  const remote = await listPublicRemoteStatuses(
+    c.env.DB,
+    queryLimit(c.req.query("limit")),
+  );
+  if (remote.isErr()) {
+    return jsonRepositoryError(c, remote.error.message);
+  }
+  const localDocuments = await mastodonStatuses(
+    c.env,
+    identity.value,
+    statuses.value,
+    viewerId,
+  );
+  const remoteDocuments: Record<string, unknown>[] = [];
+  for (const status of remote.value) {
+    const actor = await findRemoteActorByUri(c.env.DB, status.actorUri);
+    if (actor.isErr() || !actor.value || !remoteStatusVisible(status)) {
+      continue;
+    }
+    remoteDocuments.push(mastodonRemoteStatus(identity.value, status, actor.value));
+  }
+  const merged = [...localDocuments, ...remoteDocuments].sort((left, right) => {
+    const leftAt = typeof left.created_at === "string" ? left.created_at : "";
+    const rightAt = typeof right.created_at === "string" ? right.created_at : "";
+    return rightAt.localeCompare(leftAt);
+  });
+  return c.json(merged.slice(0, queryLimit(c.req.query("limit"))));
 });
 
 timelineRoutes.get("/api/v1/timelines/home", async (c) => {
