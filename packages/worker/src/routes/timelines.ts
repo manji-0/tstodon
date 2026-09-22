@@ -5,7 +5,12 @@ import { mastodonRemoteStatus, mastodonStatuses, remoteStatusVisible } from "../
 import { parseInstanceIdentity } from "../runtime-config";
 import { findRemoteActorByUri } from "../remote-actor-store";
 import { listPublicRemoteStatuses } from "../remote-status-store";
-import { listHomeStatuses, listPublicStatuses, listTagStatuses } from "../status-store";
+import {
+  listDirectStatusesForAccount,
+  listHomeStatuses,
+  listPublicStatuses,
+  listTagStatuses,
+} from "../status-store";
 
 export const timelineRoutes = new Hono<{ Bindings: Env }>();
 
@@ -90,4 +95,23 @@ timelineRoutes.get("/api/v1/timelines/tag/:hashtag", async (c) => {
   return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, viewerId));
 });
 
-timelineRoutes.get("/api/v1/timelines/direct", (c) => c.json([]));
+timelineRoutes.get("/api/v1/timelines/direct", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const statuses = await listDirectStatusesForAccount(
+    c.env.DB,
+    user.value.id,
+    queryLimit(c.req.query("limit")),
+    c.req.query("max_id"),
+  );
+  if (statuses.isErr()) {
+    return jsonRepositoryError(c, statuses.error.message);
+  }
+  return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, user.value.id));
+});

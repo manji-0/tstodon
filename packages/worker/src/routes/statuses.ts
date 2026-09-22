@@ -13,6 +13,7 @@ import { noteDocument } from "../activitypub";
 import { nowInstant } from "../clock";
 import { enqueueLocalActivity } from "../delivery";
 import { mentionUsernames, textToHtml } from "../html";
+import { replaceStatusMentions } from "../mention-store";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -145,19 +146,24 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
       return jsonRepositoryError(c, poll.error.message);
     }
   }
+  const mentionedAccountIds: string[] = [];
   for (const username of mentionUsernames(note.text)) {
-    if (username === user.value.username) {
-      continue;
-    }
     const mentioned = await findAccountByUsername(c.env.DB, username);
     if (mentioned.isOk() && mentioned.value) {
-      await notifyAccount(c.env, {
-        accountId: mentioned.value.id,
-        fromAccountId: user.value.id,
-        kind: "mention",
-        statusId: note.id,
-      });
+      mentionedAccountIds.push(mentioned.value.id);
+      if (mentioned.value.id !== user.value.id) {
+        await notifyAccount(c.env, {
+          accountId: mentioned.value.id,
+          fromAccountId: user.value.id,
+          kind: "mention",
+          statusId: note.id,
+        });
+      }
     }
+  }
+  const mentionsSaved = await replaceStatusMentions(c.env.DB, note.id, mentionedAccountIds);
+  if (mentionsSaved.isErr()) {
+    return jsonRepositoryError(c, mentionsSaved.error.message);
   }
   const actor = InstanceIdentity.actorUrl(identity.value, user.value.username);
   await enqueueLocalActivity(c.env, user.value.id, "Create", {

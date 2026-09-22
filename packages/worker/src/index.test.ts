@@ -889,6 +889,111 @@ describe("worker http", () => {
     expect(replyContext.ancestors.map((status) => status.id)).toEqual([rootStatus.id]);
   });
 
+  it("supports direct messages, conversations, and markers", async () => {
+    await json("/api/v1/accounts/verify_credentials", {
+      headers: await auth("dm-bob@example.com"),
+    });
+    const bob = await json("/api/v1/accounts/verify_credentials", {
+      headers: await auth("dm-bob@example.com"),
+    });
+    expect(bob.status).toBe(200);
+    const bobAccount = read(MastodonAccountPreviewSchema, bob.body);
+
+    const dm = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth("dm-alice@example.com")) },
+      body: JSON.stringify({ status: "@dm_bob secret hello", visibility: "direct" }),
+    });
+    expect(dm.status).toBe(200);
+    const dmStatus = read(MastodonStatusPreviewSchema, dm.body);
+
+    const asBob = await json(`/api/v1/statuses/${dmStatus.id}`, {
+      headers: await auth("dm-bob@example.com"),
+    });
+    expect(asBob.status).toBe(200);
+
+    const asStranger = await json(`/api/v1/statuses/${dmStatus.id}`, {
+      headers: await auth("dm-stranger@example.com"),
+    });
+    expect(asStranger.status).toBe(404);
+
+    const reply = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth("dm-bob@example.com")) },
+      body: JSON.stringify({
+        status: "@dm_alice secret reply",
+        visibility: "direct",
+        in_reply_to_id: dmStatus.id,
+      }),
+    });
+    expect(reply.status).toBe(200);
+
+    const directTl = await json("/api/v1/timelines/direct", {
+      headers: await auth("dm-alice@example.com"),
+    });
+    expect(directTl.status).toBe(200);
+    const directStatuses = read(MastodonStatusListPreviewSchema, directTl.body);
+    expect(directStatuses.some((status) => status.id === dmStatus.id)).toBe(true);
+
+    const conversations = await json("/api/v1/conversations", {
+      headers: await auth("dm-alice@example.com"),
+    });
+    expect(conversations.status).toBe(200);
+    const conversationList = read(
+      z.array(
+        z.object({
+          id: z.string(),
+          unread: z.boolean(),
+          accounts: z.array(MastodonAccountPreviewSchema),
+        }),
+      ),
+      conversations.body,
+    );
+    expect(conversationList.length).toBeGreaterThan(0);
+    const conversation = conversationList[0];
+    expect(conversation?.id).toBe(dmStatus.id);
+    expect(conversation?.unread).toBe(true);
+    expect(conversation?.accounts.some((account) => account.id === bobAccount.id)).toBe(true);
+
+    const readConversation = await json(`/api/v1/conversations/${dmStatus.id}/read`, {
+      method: "POST",
+      headers: await auth("dm-alice@example.com"),
+    });
+    expect(readConversation.status).toBe(200);
+
+    const afterRead = await json("/api/v1/conversations", {
+      headers: await auth("dm-alice@example.com"),
+    });
+    const afterList = read(
+      z.array(z.object({ id: z.string(), unread: z.boolean() })),
+      afterRead.body,
+    );
+    expect(afterList.find((item) => item.id === dmStatus.id)?.unread).toBe(false);
+
+    const saveMarkers = await json("/api/v1/markers", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth("dm-alice@example.com")) },
+      body: JSON.stringify({
+        home: { last_read_id: dmStatus.id },
+        notifications: { last_read_id: "1" },
+      }),
+    });
+    expect(saveMarkers.status).toBe(200);
+    expect(saveMarkers.body).toMatchObject({
+      home: { last_read_id: dmStatus.id, version: 1 },
+      notifications: { last_read_id: "1", version: 1 },
+    });
+
+    const loadMarkers = await json("/api/v1/markers?timeline[]=home&timeline[]=notifications", {
+      headers: await auth("dm-alice@example.com"),
+    });
+    expect(loadMarkers.status).toBe(200);
+    expect(loadMarkers.body).toMatchObject({
+      home: { last_read_id: dmStatus.id },
+      notifications: { last_read_id: "1" },
+    });
+  });
+
   it("serves directory, peers, activity, and trends from local data", async () => {
     await json("/api/v1/accounts/verify_credentials", {
       headers: await auth("directory-user@example.com"),
