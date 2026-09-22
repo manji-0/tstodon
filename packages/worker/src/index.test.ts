@@ -14,6 +14,11 @@ import { listExpiredUnnotifiedPolls } from "./poll-store";
 import { publishToAccount } from "./stream-publish";
 import { signInboxRequest, verifyInboxRequest } from "./http-signature";
 import {
+  accessAuthHeaders,
+  signAccessJwt,
+  LOCAL_ACCESS_TEAM_DOMAIN,
+} from "../test/access-jwt-fixture";
+import {
   ActorPreviewSchema,
   MastodonAccountPreviewSchema,
   MastodonAppPreviewSchema,
@@ -30,9 +35,10 @@ import {
   WebfingerPreviewSchema,
 } from "./schemas";
 
-const auth = (email: string): Record<string, string> => ({
-  Authorization: `Bearer dev-secret:${email}`,
-});
+const auth = (
+  email: string,
+  options?: Readonly<{ admin?: boolean; via?: "bearer" | "assertion" }>,
+): Promise<Record<string, string>> => accessAuthHeaders(email, options);
 
 const json = async (
   path: string,
@@ -63,9 +69,9 @@ describe("worker http", () => {
     });
   });
 
-  it("maps WorkOS fedi/role onto admin checks", async () => {
+  it("maps Access groups onto admin checks", async () => {
     const member = await json("/api/v1/accounts/verify_credentials", {
-      headers: auth("role-user@example.com"),
+      headers: await auth("role-user@example.com"),
     });
     expect(member.status).toBe(200);
     expect(read(MastodonAccountPreviewSchema, member.body).role).toMatchObject({
@@ -74,7 +80,7 @@ describe("worker http", () => {
     });
 
     const admin = await json("/api/v1/accounts/verify_credentials", {
-      headers: { Authorization: "Bearer dev-secret:role-admin@example.com:admin" },
+      headers: await auth("role-admin@example.com", { admin: true }),
     });
     expect(admin.status).toBe(200);
     expect(read(MastodonAccountPreviewSchema, admin.body).role).toMatchObject({
@@ -82,14 +88,24 @@ describe("worker http", () => {
       highlighted: true,
     });
 
+    const assertion = await json("/api/v1/accounts/verify_credentials", {
+      headers: await auth("assertion-user@example.com", { via: "assertion" }),
+    });
+    expect(assertion.status).toBe(200);
+
+    const wrongAud = await signAccessJwt({
+      email: "role-user@example.com",
+      audience: "wrong-aud",
+      issuer: LOCAL_ACCESS_TEAM_DOMAIN,
+    });
     const malformed = await json("/api/v1/accounts/verify_credentials", {
-      headers: { Authorization: "Bearer dev-secret:role-user@example.com:god" },
+      headers: { Authorization: `Bearer ${wrongAud}` },
     });
     expect(malformed.status).toBe(401);
 
     const forbidden = await requireAdmin(
       new Request("https://example.com/api/v1/accounts/verify_credentials", {
-        headers: auth("role-user@example.com"),
+        headers: await auth("role-user@example.com"),
       }),
       env,
     );
@@ -100,19 +116,19 @@ describe("worker http", () => {
 
     const allowed = await requireAdmin(
       new Request("https://example.com/api/v1/accounts/verify_credentials", {
-        headers: { Authorization: "Bearer dev-secret:role-admin@example.com:admin" },
+        headers: await auth("role-admin@example.com", { admin: true }),
       }),
       env,
     );
     expect(allowed.isOk()).toBe(true);
   });
 
-  it("redirects login to WorkOS AuthKit when a client id is configured", async () => {
-    const response = await SELF.fetch("https://example.com/login", { redirect: "manual" });
-    expect(response.status).toBe(302);
-    const location = response.headers.get("location") ?? "";
-    expect(location).toContain("https://api.workos.com/user_management/authorize");
-    expect(location).toContain("client_01M2ZN56GJ4CM8XZBYJ6VKK0CZ");
+  it("explains that Cloudflare Access handles login", async () => {
+    const response = await SELF.fetch("https://example.com/login");
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("Cloudflare Access");
+    expect(body).toContain("WorkOS");
   });
 
   it("serves Mastodon instance metadata", async () => {
@@ -142,7 +158,7 @@ describe("worker http", () => {
   it("provisions credentials, posts, and reads timelines", async () => {
     const created = await json("/api/v1/statuses", {
       method: "POST",
-      headers: { "content-type": "application/json", ...auth("alice@example.com") },
+      headers: { "content-type": "application/json", ...(await auth("alice@example.com")) },
       body: JSON.stringify({ status: "hello from alice #intro" }),
     });
     expect(created.status).toBe(200);
@@ -151,7 +167,7 @@ describe("worker http", () => {
     expect(status.account.username).toBe("alice");
 
     const me = await json("/api/v1/accounts/verify_credentials", {
-      headers: auth("alice@example.com"),
+      headers: await auth("alice@example.com"),
     });
     expect(me.status).toBe(200);
     expect(read(MastodonAccountPreviewSchema, me.body)).toMatchObject({
@@ -164,7 +180,7 @@ describe("worker http", () => {
     expect(read(MastodonStatusListPreviewSchema, publicTl.body)).not.toHaveLength(0);
 
     const home = await json("/api/v1/timelines/home", {
-      headers: auth("alice@example.com"),
+      headers: await auth("alice@example.com"),
     });
     expect(home.status).toBe(200);
     expect(read(MastodonStatusListPreviewSchema, home.body)).not.toHaveLength(0);
@@ -189,24 +205,24 @@ describe("worker http", () => {
 
   it("follows, favourites, notifies, and searches across local accounts", async () => {
     await json("/api/v1/accounts/verify_credentials", {
-      headers: auth("alice@example.com"),
+      headers: await auth("alice@example.com"),
     });
     const bobStatus = await json("/api/v1/statuses", {
       method: "POST",
-      headers: { "content-type": "application/json", ...auth("bob@example.com") },
+      headers: { "content-type": "application/json", ...(await auth("bob@example.com")) },
       body: JSON.stringify({ status: "bob says hi @alice" }),
     });
     expect(bobStatus.status).toBe(200);
     const posted = read(MastodonStatusPreviewSchema, bobStatus.body);
 
     const alice = await json("/api/v1/accounts/verify_credentials", {
-      headers: auth("alice@example.com"),
+      headers: await auth("alice@example.com"),
     });
     expect(read(MastodonAccountPreviewSchema, alice.body).username).toBe("alice");
 
     const follow = await json(`/api/v1/accounts/${posted.account.id}/follow`, {
       method: "POST",
-      headers: auth("alice@example.com"),
+      headers: await auth("alice@example.com"),
     });
     expect(follow.status).toBe(200);
     expect(read(MastodonRelationshipPreviewSchema, follow.body)).toMatchObject({
@@ -214,7 +230,7 @@ describe("worker http", () => {
     });
 
     const home = await json("/api/v1/timelines/home", {
-      headers: auth("alice@example.com"),
+      headers: await auth("alice@example.com"),
     });
     expect(
       read(MastodonStatusListPreviewSchema, home.body).some((item) => item.id === posted.id),
@@ -222,13 +238,13 @@ describe("worker http", () => {
 
     const fav = await json(`/api/v1/statuses/${posted.id}/favourite`, {
       method: "POST",
-      headers: auth("alice@example.com"),
+      headers: await auth("alice@example.com"),
     });
     expect(fav.status).toBe(200);
     expect(read(MastodonStatusPreviewSchema, fav.body)).toMatchObject({ favourited: true });
 
     const bobNotes = await json("/api/v1/notifications", {
-      headers: auth("bob@example.com"),
+      headers: await auth("bob@example.com"),
     });
     expect(bobNotes.status).toBe(200);
     const bobTypes = read(MastodonNotificationListPreviewSchema, bobNotes.body).map(
@@ -237,7 +253,7 @@ describe("worker http", () => {
     expect(bobTypes).toEqual(expect.arrayContaining(["follow", "favourite"]));
 
     const aliceNotes = await json("/api/v1/notifications", {
-      headers: auth("alice@example.com"),
+      headers: await auth("alice@example.com"),
     });
     expect(aliceNotes.status).toBe(200);
     const aliceTypes = read(MastodonNotificationListPreviewSchema, aliceNotes.body).map(
@@ -246,13 +262,13 @@ describe("worker http", () => {
     expect(aliceTypes).toEqual(expect.arrayContaining(["mention"]));
 
     const search = await json(`/api/v2/search?q=bob&type=accounts`, {
-      headers: auth("alice@example.com"),
+      headers: await auth("alice@example.com"),
     });
     expect(search.status).toBe(200);
     expect(read(MastodonSearchPreviewSchema, search.body).accounts[0]?.username).toBe("bob");
 
     const relationships = await json(`/api/v1/accounts/relationships?id[]=${posted.account.id}`, {
-      headers: auth("alice@example.com"),
+      headers: await auth("alice@example.com"),
     });
     expect(read(MastodonRelationshipListPreviewSchema, relationships.body)).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: posted.account.id, following: true })]),
@@ -264,7 +280,7 @@ describe("worker http", () => {
     form.set("file", new File(["hello"], "hello.txt", { type: "text/plain" }));
     const mediaResponse = await SELF.fetch("https://example.com/api/v1/media", {
       method: "POST",
-      headers: auth("alice@example.com"),
+      headers: await auth("alice@example.com"),
       body: form,
     });
     expect(mediaResponse.status).toBe(200);
@@ -273,7 +289,7 @@ describe("worker http", () => {
 
     const poll = await json("/api/v1/statuses", {
       method: "POST",
-      headers: { "content-type": "application/json", ...auth("alice@example.com") },
+      headers: { "content-type": "application/json", ...(await auth("alice@example.com")) },
       body: JSON.stringify({
         status: "lunch?",
         poll: { options: ["ramen", "curry"], expires_in: 3600, multiple: false },
@@ -285,25 +301,25 @@ describe("worker http", () => {
 
     const vote = await json(`/api/v1/polls/${pollStatus.poll?.id}/votes`, {
       method: "POST",
-      headers: { "content-type": "application/json", ...auth("bob@example.com") },
+      headers: { "content-type": "application/json", ...(await auth("bob@example.com")) },
       body: JSON.stringify({ choices: [0] }),
     });
     expect(vote.status).toBe(200);
 
     const filter = await json("/api/v1/filters", {
       method: "POST",
-      headers: { "content-type": "application/json", ...auth("alice@example.com") },
+      headers: { "content-type": "application/json", ...(await auth("alice@example.com")) },
       body: JSON.stringify({ phrase: "spam", context: ["home"] }),
     });
     expect(filter.status).toBe(200);
     expect(read(MastodonFilterPreviewSchema, filter.body)).toMatchObject({ phrase: "spam" });
 
     const bob = await json("/api/v1/accounts/verify_credentials", {
-      headers: auth("bob@example.com"),
+      headers: await auth("bob@example.com"),
     });
     const report = await json("/api/v1/reports", {
       method: "POST",
-      headers: { "content-type": "application/json", ...auth("alice@example.com") },
+      headers: { "content-type": "application/json", ...(await auth("alice@example.com")) },
       body: JSON.stringify({
         account_id: read(MastodonAccountPreviewSchema, bob.body).id,
         comment: "test",
@@ -317,7 +333,7 @@ describe("worker http", () => {
 
   it("rejects an unsigned inbox Follow", async () => {
     await json("/api/v1/accounts/verify_credentials", {
-      headers: auth("alice@example.com"),
+      headers: await auth("alice@example.com"),
     });
     const inbox = await json("/inbox", {
       method: "POST",
@@ -336,10 +352,10 @@ describe("worker http", () => {
 
   it("accepts a local ActivityPub Follow into the inbox", async () => {
     const alice = await json("/api/v1/accounts/verify_credentials", {
-      headers: auth("alice@example.com"),
+      headers: await auth("alice@example.com"),
     });
     const carol = await json("/api/v1/accounts/verify_credentials", {
-      headers: auth("carol@example.com"),
+      headers: await auth("carol@example.com"),
     });
     expect(alice.status).toBe(200);
     expect(carol.status).toBe(200);
@@ -374,7 +390,7 @@ describe("worker http", () => {
     expect(inbox.status).toBe(202);
     const relationships = await json(
       `/api/v1/accounts/relationships?id=${read(MastodonAccountPreviewSchema, alice.body).id}`,
-      { headers: auth("carol@example.com") },
+      { headers: await auth("carol@example.com") },
     );
     expect(read(MastodonRelationshipListPreviewSchema, relationships.body)).toEqual(
       expect.arrayContaining([expect.objectContaining({ following: true })]),
@@ -383,7 +399,7 @@ describe("worker http", () => {
 
   it("accepts a remote Follow signed with a cached actor key", async () => {
     const alice = await json("/api/v1/accounts/verify_credentials", {
-      headers: auth("alice@example.com"),
+      headers: await auth("alice@example.com"),
     });
     expect(alice.status).toBe(200);
     const local = await findAccountByUsername(env.DB, "alice");
@@ -446,7 +462,7 @@ describe("worker http", () => {
 
   it("persists a remote Create Note onto the public timeline", async () => {
     await json("/api/v1/accounts/verify_credentials", {
-      headers: auth("alice@example.com"),
+      headers: await auth("alice@example.com"),
     });
     const keys = await generateAccountKeys();
     const fetchedAt = IsoInstant.parse("2026-09-20T15:00:00.000Z");
@@ -527,7 +543,7 @@ describe("worker http", () => {
   it("counts remote Like and Announce against a local status", async () => {
     const created = await json("/api/v1/statuses", {
       method: "POST",
-      headers: { "content-type": "application/json", ...auth("alice@example.com") },
+      headers: { "content-type": "application/json", ...(await auth("alice@example.com")) },
       body: JSON.stringify({ status: "please boost me" }),
     });
     expect(created.status).toBe(200);
@@ -648,7 +664,7 @@ describe("worker http", () => {
 
   it("fans out remote follower inboxes as per-target outbox rows", async () => {
     const alice = await json("/api/v1/accounts/verify_credentials", {
-      headers: auth("queue-alice@example.com"),
+      headers: await auth("queue-alice@example.com"),
     });
     expect(alice.status).toBe(200);
     const preview = read(MastodonAccountPreviewSchema, alice.body);
@@ -708,7 +724,7 @@ describe("worker http", () => {
     const created = await json("/api/v1/statuses", {
       method: "POST",
       headers: {
-        ...auth("queue-alice@example.com"),
+        ...(await auth("queue-alice@example.com")),
         "content-type": "application/json",
       },
       body: JSON.stringify({ status: "hello remote followers" }),
@@ -766,7 +782,7 @@ describe("worker http", () => {
   it("notifies authors when polls expire and rejects late votes", async () => {
     const created = await json("/api/v1/statuses", {
       method: "POST",
-      headers: { "content-type": "application/json", ...auth("poll-expire@example.com") },
+      headers: { "content-type": "application/json", ...(await auth("poll-expire@example.com")) },
       body: JSON.stringify({
         status: "expire me",
         poll: { options: ["yes", "no"], expires_in: 3600, multiple: false },
@@ -797,7 +813,7 @@ describe("worker http", () => {
     }
     const lateVote = await json(`/api/v1/polls/${pollId}/votes`, {
       method: "POST",
-      headers: { "content-type": "application/json", ...auth("poll-voter@example.com") },
+      headers: { "content-type": "application/json", ...(await auth("poll-voter@example.com")) },
       body: JSON.stringify({ choices: [0] }),
     });
     expect(lateVote.status).toBe(422);
@@ -805,13 +821,13 @@ describe("worker http", () => {
 
   it("publishes stream events onto a connected account hub", async () => {
     const account = await json("/api/v1/accounts/verify_credentials", {
-      headers: auth("stream-hub@example.com"),
+      headers: await auth("stream-hub@example.com"),
     });
     expect(account.status).toBe(200);
     const preview = read(MastodonAccountPreviewSchema, account.body);
     const upgrade = await SELF.fetch("https://example.com/api/v1/streaming", {
       headers: {
-        ...auth("stream-hub@example.com"),
+        ...(await auth("stream-hub@example.com")),
         Upgrade: "websocket",
       },
     });

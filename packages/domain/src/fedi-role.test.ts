@@ -11,7 +11,7 @@ describe("FediRole", () => {
     expect(FediRole.isAdmin(FediRole.User)).toBe(false);
   });
 
-  it("reads fedi/role from WorkOS user metadata", () => {
+  it("reads fedi/role from user metadata", () => {
     expect(FediRole.fromMetadata({ "fedi/role": "admin" })).toEqual(FediRole.Admin);
     expect(FediRole.fromMetadata({ "fedi/role": "user" })).toEqual(FediRole.User);
     expect(FediRole.fromMetadata({ role: "admin" })).toEqual(FediRole.User);

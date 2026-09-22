@@ -1,10 +1,10 @@
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
-import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
+import { createLocalJWKSet, createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { provisionAccountFromEmail } from "./account-store";
 import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
 import type { RepositoryError } from "./d1";
-import { JoseErrorCodeSchema, WorkOsAccessTokenSchema, WorkOsUserSchema } from "./schemas";
+import { AccessJwksSchema, AccessJwtSchema, JoseErrorCodeSchema } from "./schemas";
 
 export type AuthError =
   | Readonly<{ kind: "MissingToken" }>
@@ -30,18 +30,95 @@ const bearerToken = (request: Request): string | undefined => {
   return header.slice("bearer ".length).trim();
 };
 
-const jwksByClientId = new Map<string, JWTVerifyGetKey>();
-
-const workOsJwks = (clientId: string): JWTVerifyGetKey => {
-  const cached = jwksByClientId.get(clientId);
-  if (cached) {
-    return cached;
+const accessTokenFromRequest = (request: Request): string | undefined => {
+  const assertion = request.headers.get("Cf-Access-Jwt-Assertion")?.trim();
+  if (assertion && assertion.length > 0) {
+    return assertion;
   }
-  const jwks = createRemoteJWKSet(
-    new URL(`https://api.workos.com/sso/jwks/${encodeURIComponent(clientId)}`),
+  return bearerToken(request);
+};
+
+const jwksByKey = new Map<string, JWTVerifyGetKey>();
+
+const parseAdminGroups = (raw: string): ReadonlySet<string> =>
+  new Set(
+    raw
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => value.length > 0),
   );
-  jwksByClientId.set(clientId, jwks);
-  return jwks;
+
+const groupsFromClaims = (claims: {
+  groups?: ReadonlyArray<string> | undefined;
+  custom?: Readonly<Record<string, unknown>> | undefined;
+}): ReadonlyArray<string> => {
+  const fromTop = claims.groups ?? [];
+  const customGroups = claims.custom?.groups;
+  const fromCustom = Array.isArray(customGroups)
+    ? customGroups.filter((value): value is string => typeof value === "string")
+    : [];
+  return [...fromTop, ...fromCustom];
+};
+
+const roleFromAccessClaims = (
+  claims: {
+    groups?: ReadonlyArray<string> | undefined;
+    custom?: Readonly<Record<string, unknown>> | undefined;
+  },
+  adminGroups: ReadonlySet<string>,
+): FediRoleValue => {
+  if (adminGroups.size === 0) {
+    return FediRole.User;
+  }
+  for (const group of groupsFromClaims(claims)) {
+    if (adminGroups.has(group.trim().toLowerCase())) {
+      return FediRole.Admin;
+    }
+  }
+  return FediRole.User;
+};
+
+const accessJwks = (env: Env): Result<JWTVerifyGetKey, AuthError> => {
+  const inline = `${env.CF_ACCESS_JWKS_JSON ?? ""}`;
+  if (inline.length > 0) {
+    const cacheKey = `json:${inline}`;
+    const cached = jwksByKey.get(cacheKey);
+    if (cached) {
+      return ok(cached);
+    }
+    try {
+      const raw: unknown = JSON.parse(inline);
+      const parsed = schemaResult(AccessJwksSchema)(raw);
+      if (parsed.isErr()) {
+        return err({ kind: "VerificationUnavailable" });
+      }
+      // Re-parse so jose receives a JSONWebKeySet without exactOptionalPropertyTypes friction.
+      const jwks = createLocalJWKSet(JSON.parse(inline));
+      jwksByKey.set(cacheKey, jwks);
+      return ok(jwks);
+    } catch {
+      return err({ kind: "VerificationUnavailable" });
+    }
+  }
+
+  const override = `${env.CF_ACCESS_JWKS_URL ?? ""}`.trim();
+  const teamDomain = `${env.CF_ACCESS_TEAM_DOMAIN}`.replace(/\/$/, "");
+  const url =
+    override.length > 0
+      ? override
+      : teamDomain.length > 0
+        ? `${teamDomain}/cdn-cgi/access/certs`
+        : "";
+  if (url.length === 0) {
+    return err({ kind: "InvalidToken" });
+  }
+  const cached = jwksByKey.get(url);
+  if (cached) {
+    return ok(cached);
+  }
+  const jwks = createRemoteJWKSet(new URL(url));
+  jwksByKey.set(url, jwks);
+  return ok(jwks);
 };
 
 const authErrorFromJose = (cause: unknown): AuthError => {
@@ -52,117 +129,32 @@ const authErrorFromJose = (cause: unknown): AuthError => {
   return { kind: "InvalidToken" };
 };
 
-const parseDevBearer = (
-  rest: string,
-): Result<{ email: string; role: FediRoleValue }, AuthError> => {
-  if (rest.length === 0) {
-    return err({ kind: "InvalidToken" });
-  }
-  const separator = rest.lastIndexOf(":");
-  if (separator === -1) {
-    return ok({ email: rest, role: FediRole.User });
-  }
-  const email = rest.slice(0, separator);
-  const suffix = rest.slice(separator + 1);
-  if (email.length === 0) {
-    return err({ kind: "InvalidToken" });
-  }
-  const name = schemaResult(FediRole.nameSchema)(suffix);
-  if (name.isErr()) {
-    return err({ kind: "InvalidToken" });
-  }
-  return ok({ email, role: FediRole.fromName(name.value) });
-};
-
-const roleFromAccessToken = (claims: {
-  "fedi/role"?: string | undefined;
-  fedi?: Readonly<Record<string, unknown>> | undefined;
-}): FediRoleValue => {
-  const direct = claims["fedi/role"];
-  if (typeof direct === "string") {
-    return FediRole.fromName(direct);
-  }
-  return FediRole.fromMetadata(claims.fedi);
-};
-
-const hasRoleClaim = (claims: {
-  "fedi/role"?: string | undefined;
-  fedi?: Readonly<Record<string, unknown>> | undefined;
-}): boolean => typeof claims["fedi/role"] === "string" || claims.fedi !== undefined;
-
-const identityFromWorkOsUser = async (
-  userId: string,
-  apiKey: string,
-): Promise<Result<{ email: string; role: FediRoleValue }, AuthError>> => {
-  try {
-    const response = await fetch(
-      `https://api.workos.com/user_management/users/${encodeURIComponent(userId)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-      },
-    );
-    if (response.status >= 500) {
-      return err({ kind: "VerificationUnavailable" });
-    }
-    if (!response.ok) {
-      return err({ kind: "InvalidToken" });
-    }
-    const parsed = schemaResult(WorkOsUserSchema)(await response.json());
-    if (parsed.isErr()) {
-      return err({ kind: "InvalidToken" });
-    }
-    return ok({
-      email: parsed.value.email,
-      role: FediRole.fromMetadata(parsed.value.metadata),
-    });
-  } catch {
-    return err({ kind: "VerificationUnavailable" });
-  }
-};
-
-const identityFromWorkOsToken = async (
+const identityFromAccessToken = async (
   token: string,
   env: Env,
 ): Promise<Result<{ email: string; role: FediRoleValue }, AuthError>> => {
-  const clientId = `${env.WORKOS_CLIENT_ID}`;
-  if (clientId.length === 0) {
+  const teamDomain = `${env.CF_ACCESS_TEAM_DOMAIN}`.replace(/\/$/, "");
+  const audience = `${env.CF_ACCESS_AUD}`.trim();
+  if (teamDomain.length === 0 || audience.length === 0) {
     return err({ kind: "InvalidToken" });
   }
+  const jwks = accessJwks(env);
+  if (jwks.isErr()) {
+    return err(jwks.error);
+  }
   try {
-    const issuer = `${env.WORKOS_ISSUER}` || "https://api.workos.com";
-    const options: Parameters<typeof jwtVerify>[2] = {
-      issuer,
+    const verified = await jwtVerify(token, jwks.value, {
+      issuer: teamDomain,
+      audience,
       clockTolerance: 5,
-    };
-    const audience = `${env.WORKOS_AUDIENCE}`;
-    if (audience.length > 0) {
-      options.audience = audience;
-    }
-    const verified = await jwtVerify(token, workOsJwks(clientId), options);
-    const claims = schemaResult(WorkOsAccessTokenSchema)(verified.payload);
-    if (claims.isErr()) {
+    });
+    const claims = schemaResult(AccessJwtSchema)(verified.payload);
+    if (claims.isErr() || !claims.value.email) {
       return err({ kind: "InvalidToken" });
-    }
-    if (claims.value.client_id && claims.value.client_id !== clientId) {
-      return err({ kind: "InvalidToken" });
-    }
-    const role = roleFromAccessToken(claims.value);
-    if (claims.value.email) {
-      return ok({ email: claims.value.email, role });
-    }
-    const apiKey = `${env.WORKOS_API_KEY}`;
-    if (apiKey.length === 0) {
-      return err({ kind: "InvalidToken" });
-    }
-    const lookedUp = await identityFromWorkOsUser(claims.value.sub, apiKey);
-    if (lookedUp.isErr()) {
-      return err(lookedUp.error);
     }
     return ok({
-      email: lookedUp.value.email,
-      role: hasRoleClaim(claims.value) ? role : lookedUp.value.role,
+      email: claims.value.email,
+      role: roleFromAccessClaims(claims.value, parseAdminGroups(`${env.CF_ACCESS_ADMIN_GROUPS}`)),
     });
   } catch (cause) {
     return err(authErrorFromJose(cause));
@@ -173,42 +165,23 @@ export const authenticate = async (
   request: Request,
   env: Env,
 ): Promise<Result<AuthContext, AuthError>> => {
-  const token = bearerToken(request);
+  const token = accessTokenFromRequest(request);
   if (!token) {
     return ok({ kind: "Anonymous" });
   }
-  const secret = env.DEV_BEARER_SECRET;
-  if (secret && token.startsWith(`${secret}:`)) {
-    const parsed = parseDevBearer(token.slice(secret.length + 1));
-    if (parsed.isErr()) {
-      return err(parsed.error);
-    }
-    const account = await provisionAccountFromEmail(env.DB, parsed.value.email);
-    if (account.isErr()) {
-      return err(account.error);
-    }
-    return ok({
-      kind: "Account",
-      account: account.value,
-      role: parsed.value.role,
-    });
+  const identity = await identityFromAccessToken(token, env);
+  if (identity.isErr()) {
+    return err(identity.error);
   }
-  if (`${env.WORKOS_CLIENT_ID}`.length > 0) {
-    const identity = await identityFromWorkOsToken(token, env);
-    if (identity.isErr()) {
-      return err(identity.error);
-    }
-    const account = await provisionAccountFromEmail(env.DB, identity.value.email);
-    if (account.isErr()) {
-      return err(account.error);
-    }
-    return ok({
-      kind: "Account",
-      account: account.value,
-      role: identity.value.role,
-    });
+  const account = await provisionAccountFromEmail(env.DB, identity.value.email);
+  if (account.isErr()) {
+    return err(account.error);
   }
-  return err({ kind: "InvalidToken" });
+  return ok({
+    kind: "Account",
+    account: account.value,
+    role: identity.value.role,
+  });
 };
 
 export const requireSession = async (

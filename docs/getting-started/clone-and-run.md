@@ -29,4 +29,4 @@ Then:
 - [http://127.0.0.1:8787/healthz](http://127.0.0.1:8787/healthz)
 - [http://127.0.0.1:8787/api/v1/instance](http://127.0.0.1:8787/api/v1/instance)
 
-Local API authentication uses `Authorization: Bearer ${DEV_BEARER_SECRET}:${email}` (default secret `dev-secret`) in tests, with an optional `:admin` suffix. Copy `.dev.vars.example` to `.dev.vars` and set WorkOS keys before using AuthKit access tokens. Replace placeholder D1 / KV / R2 identifiers in `wrangler.jsonc` before a real deploy. See [Configuration](../reference/configuration.md) and [Local Core](../planning/local-core.md).
+Local API authentication in tests mints Cloudflare Access-shaped JWTs via `packages/worker/test/access-jwt-fixture.ts` and sends them as `Authorization: Bearer …` (or `Cf-Access-Jwt-Assertion`). Admin coverage uses the fixture admin group claim. Copy `.dev.vars.example` to `.dev.vars` only if you need local overrides. Replace placeholder D1 / KV / R2 identifiers in `wrangler.jsonc` before a real deploy. See [Configuration](../reference/configuration.md) and [Local Core](../planning/local-core.md).

@@ -131,11 +131,11 @@ Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#
 
 ## Authentication
 
-<!-- derived-from ../reference/configuration.md#local-development-bearer -->
-<!-- constrained-by ../reference/configuration.md#workos-authentication-vars -->
+<!-- derived-from ../reference/configuration.md#local-development-authentication -->
+<!-- constrained-by ../reference/configuration.md#cloudflare-access-authentication-vars -->
 <!-- dagayn: implemented-by packages/worker/src/auth.ts::authenticate -->
 
-Protected API routes accept `Authorization: Bearer ${DEV_BEARER_SECRET}:${email}` for local tests (`:admin` suffix elevates to `{ kind: "Admin" }`). Production bearers are WorkOS AuthKit access tokens, verified against the environment JWKS with issuer `https://api.workos.com` and audience `https://example.com/api`. The JWT template adds `email` from the WorkOS user and copies user metadata onto claim `fedi`. Role is `fedi["fedi/role"]` (`admin` | `user`). The Worker provisions a local account from the e-mail claim, and falls back to a user lookup when `email` is missing. An empty local secret skips the test bearer. `GET /login` starts the AuthKit authorization code flow when `WORKOS_CLIENT_ID` is set. `requireAdmin` maps non-admin sessions to `kind: Forbidden`.
+Protected API routes accept a Cloudflare Access JWT via `Cf-Access-Jwt-Assertion` or `Authorization: Bearer <Access JWT>`. Local tests mint Access-shaped JWTs with `packages/worker/test/access-jwt-fixture.ts` (admin via the configured Access group claim). Production verifies against the Access JWKS using `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`. Role is `{ kind: "Admin" }` when JWT groups intersect `CF_ACCESS_ADMIN_GROUPS`, otherwise `{ kind: "User" }`. The Worker provisions a local account from the `email` claim. WorkOS is the Access IdP in Zero Trust only. `GET /login` explains Access sign-in. `requireAdmin` maps non-admin sessions to `kind: Forbidden`.
 
 ## Federation
 

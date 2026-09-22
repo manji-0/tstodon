@@ -1,6 +1,9 @@
-# Local-only secrets. Copy to `.dev.vars` and never commit that file.
-# WORKOS_API_KEY=
-# WORKOS_CLIENT_ID=
-# WORKOS_AUTHKIT_DOMAIN=
+# Local-only secrets / overrides. Copy to `.dev.vars` and never commit that file.
+#
+# Production auth is Cloudflare Access (WorkOS as the Access IdP). Worker vars:
+#   CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD, CF_ACCESS_ADMIN_GROUPS
+# Local tests use the fixture JWKS/private JWK from wrangler.jsonc.
+# Optionally override:
+# CF_ACCESS_JWKS_JSON=
+# CF_ACCESS_LOCAL_PRIVATE_JWK=
 # RESEND_API_KEY=
-# DEV_BEARER_SECRET=dev-secret

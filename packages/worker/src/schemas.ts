@@ -295,30 +295,27 @@ export const JoseErrorCodeSchema = z.object({
   code: z.string().min(1),
 });
 
-export const WorkOsAccessTokenSchema = z
+export const AccessJwtSchema = z
   .object({
     sub: z.string().min(1),
-    sid: z.string().optional(),
-    org_id: z.string().optional(),
-    client_id: z.string().optional(),
     email: z.string().min(1).optional(),
-    "fedi/role": z.string().optional(),
-    fedi: z.record(z.string(), z.unknown()).optional(),
+    type: z.string().optional(),
+    groups: z.array(z.string()).optional(),
+    custom: z.record(z.string(), z.unknown()).optional(),
   })
   .passthrough();
 
-export const WorkOsUserSchema = z.object({
-  id: z.string().min(1),
-  email: z.string().min(1),
-  metadata: z.record(z.string(), z.union([z.string(), z.null()])).optional(),
-});
-
-export const WorkOsAuthenticateResponseSchema = z
+export const JsonWebKeySchema = z
   .object({
-    access_token: z.string().min(1),
-    user: WorkOsUserSchema,
+    kty: z.string().min(1),
+    kid: z.string().optional(),
+    alg: z.string().optional(),
   })
   .passthrough();
+
+export const AccessJwksSchema = z.object({
+  keys: z.array(JsonWebKeySchema).min(1),
+});
 
 export const toRepositoryError = (message: string): RepositoryError => ({
   kind: "RepositoryError",

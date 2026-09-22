@@ -22,26 +22,38 @@ Placeholder resource IDs in `wrangler.jsonc` are local-only. Create real D1 / KV
 
 `INSTANCE_DOMAIN`, `INSTANCE_NAME`, `INSTANCE_DESCRIPTION`, `SOURCE_URL`, `INSTANCE_LANGUAGES`, `CONTACT_EMAIL`, `INSTANCE_THUMBNAIL_URL`, and `MEDIA_PUBLIC_BASE_URL` are public configuration.
 
-## WorkOS authentication vars
+## Cloudflare Access authentication vars
 
 <!-- constrained-by ../planning/local-core.md#authentication -->
 
-`WORKOS_CLIENT_ID`, `WORKOS_AUDIENCE`, `WORKOS_ISSUER`, and `WORKOS_AUTHKIT_DOMAIN` are configuration, not secrets. `WORKOS_API_KEY` is a secret: keep it out of git. Use `.dev.vars` locally and `wrangler secret put WORKOS_API_KEY` in production.
+Production authentication is **Cloudflare Access**. WorkOS is the **Access identity provider** (OIDC/SAML in Zero Trust), not a direct Worker dependency.
 
-The Worker verifies AuthKit access tokens against `https://api.workos.com/sso/jwks/${WORKOS_CLIENT_ID}` using `jose`. Default issuer is `https://api.workos.com`. `WORKOS_AUDIENCE` must match the JWT template `aud` claim (`https://example.com/api` locally). The environment JWT template adds `email` from `{{ user.email }}` and copies user metadata onto claim `fedi`. The Worker reads `fedi["fedi/role"]` (`admin` or `user`; missing or unknown values are `{ kind: "User" }`) and treats `admin` as `{ kind: "Admin" }` for `requireAdmin`. WorkOS Liquid cannot index a slash key, so the template interpolates the whole metadata object instead of `user.metadata['fedi/role']`. `WORKOS_API_KEY` remains the fallback if `email` is absent, and then reads the same metadata key from the user object.
+| Var                           | Purpose                                                                              |
+| ----------------------------- | ------------------------------------------------------------------------------------ |
+| `CF_ACCESS_TEAM_DOMAIN`       | Team domain, e.g. `https://<team>.cloudflareaccess.com` (issuer)                     |
+| `CF_ACCESS_AUD`               | Access application audience (AUD) tag                                                |
+| `CF_ACCESS_ADMIN_GROUPS`      | Comma-separated Access/IdP group names that map to `{ kind: "Admin" }`               |
+| `CF_ACCESS_JWKS_URL`          | Optional JWKS URL override (empty ⇒ `${CF_ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs`) |
+| `CF_ACCESS_JWKS_JSON`         | Optional inline JWKS JSON for local/tests                                            |
+| `CF_ACCESS_LOCAL_PRIVATE_JWK` | Optional local-only private JWK so `/oauth/token` can mint Access-shaped JWTs        |
 
-Current template (WorkOS `PUT /user_management/jwt_template`):
+The Worker verifies Access JWTs with `jose` from either:
 
-```json
-{
-  "aud": "https://example.com/api",
-  "email": {{ user.email }},
-  "fedi": {{ user.metadata }}
-}
-```
+1. `Cf-Access-Jwt-Assertion`
+2. `Authorization: Bearer <Access JWT>` (interim Mastodon API client path)
 
-`GET /login` starts the AuthKit authorization code flow when `WORKOS_CLIENT_ID` is set. If `WORKOS_AUTHKIT_DOMAIN` is set, `/login` redirects there instead.
+Claims used: `email` (required for account provisioning), plus `groups` and/or `custom.groups` for admin mapping via `CF_ACCESS_ADMIN_GROUPS`. Missing email ⇒ `InvalidToken`.
 
-## Local development bearer
+Do not commit production AUD values, private JWKs, or Access secrets. Local `wrangler.jsonc` may contain the test fixture JWKS/private JWK under `packages/worker/test/access-jwt-fixture.ts`.
 
-`DEV_BEARER_SECRET` is a local-only shared secret. Clients authenticate as `Authorization: Bearer ${DEV_BEARER_SECRET}:${email}` (role `user`) or `Authorization: Bearer ${DEV_BEARER_SECRET}:${email}:admin`. The Worker creates a local account from the e-mail local-part on first request. An empty or unset secret skips this shortcut so WorkOS JWTs can be the only bearer path. Override the wrangler default with `.dev.vars` or `wrangler secret put DEV_BEARER_SECRET`. Production should use WorkOS instead of this bearer.
+## Local development authentication
+
+<!-- derived-from #cloudflare-access-authentication-vars -->
+
+Tests mint Access-shaped JWTs with the fixture RSA keypair (`packages/worker/test/access-jwt-fixture.ts`) and present them as Bearer tokens (or `Cf-Access-Jwt-Assertion`). Admin tests include the configured admin group claim. There is no `DEV_BEARER_SECRET` shortcut.
+
+`GET /login` explains that Access handles sign-in. `/oauth/token` mints a short-lived Access JWT only when `CF_ACCESS_LOCAL_PRIVATE_JWK` is set (local fixture).
+
+## Federation path policy (ops)
+
+Access application policies must **bypass** public federation and discovery paths so remote servers can reach the instance without an Access login. At minimum allow unauthenticated access to `/.well-known/*`, `/nodeinfo/*`, `/users/*`, and ActivityPub inbox/outbox surfaces. Require Access for `/api/*` (and any private UI).
