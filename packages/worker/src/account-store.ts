@@ -219,6 +219,37 @@ export const countAccounts = async (db: D1Database): Promise<Result<number, Repo
     return row?.count ?? 0;
   });
 
+export const listDirectoryAccounts = async (
+  db: D1Database,
+  input: Readonly<{ order: "new" | "active"; limit: number; offset: number }>,
+): Promise<Result<LocalAccount[], RepositoryError>> =>
+  runD1(async () => {
+    const orderSql =
+      input.order === "active"
+        ? `(SELECT COUNT(*) FROM statuses s WHERE s.account_id = accounts.id) DESC, accounts.created_at DESC`
+        : `accounts.created_at DESC`;
+    const { results } = await db
+      .prepare(
+        `SELECT ${accountSelect} FROM accounts
+         ORDER BY ${orderSql}
+         LIMIT ? OFFSET ?`,
+      )
+      .bind(input.limit, input.offset)
+      .all();
+    const accounts: LocalAccount[] = [];
+    for (const raw of results ?? []) {
+      const row = schemaResult(AccountRowSchema)(raw);
+      if (row.isErr()) {
+        continue;
+      }
+      const account = accountFromRow(row.value);
+      if (account.isOk()) {
+        accounts.push(account.value);
+      }
+    }
+    return accounts;
+  });
+
 export const accountCounts = async (
   db: D1Database,
   accountId: string,

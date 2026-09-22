@@ -4,6 +4,7 @@ import {
   StatusComposition,
   StatusId,
   Visibility,
+  type StatusIdValue,
 } from "@tstodon/domain";
 import { Hono } from "hono";
 import { findAccountByUsername } from "../account-store";
@@ -48,6 +49,8 @@ import {
   insertLocalReblog,
   listBookmarkedStatuses,
   listFavouritedStatuses,
+  listStatusAncestors,
+  listStatusDescendants,
 } from "../status-store";
 import { canViewStatus } from "../visibility-guard";
 
@@ -92,6 +95,25 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
   if (draft.isErr()) {
     return c.json({ error: draft.error.kind, kind: draft.error.kind }, 422);
   }
+  let inReplyToId: StatusIdValue | null = null;
+  const replyRaw = body.value.in_reply_to_id?.trim() ?? "";
+  if (replyRaw.length > 0) {
+    const replyId = StatusId.parse(replyRaw);
+    if (replyId.isErr()) {
+      return c.json({ error: "Invalid in_reply_to_id", kind: "ValidationError" }, 422);
+    }
+    const parent = await findStatusById(c.env.DB, replyId.value);
+    if (parent.isErr()) {
+      return jsonRepositoryError(c, parent.error.message);
+    }
+    if (!parent.value) {
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    }
+    if (!(await canViewStatus(c.env.DB, parent.value, user.value.id))) {
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    }
+    inReplyToId = replyId.value;
+  }
   const id = StatusId.parse(newEntityId());
   if (id.isErr()) {
     return jsonRepositoryError(c, "invalid status id");
@@ -102,6 +124,7 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
     draft.value,
     nowInstant(),
     textToHtml(draft.value.text),
+    inReplyToId,
   );
   const inserted = await insertLocalNote(c.env.DB, note);
   if (inserted.isErr()) {
@@ -221,7 +244,51 @@ statusRoutes.delete("/api/v1/statuses/:id", async (c) => {
   return c.json(document ?? {});
 });
 
-statusRoutes.get("/api/v1/statuses/:id/context", (c) => c.json({ ancestors: [], descendants: [] }));
+statusRoutes.get("/api/v1/statuses/:id/context", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const auth = await authenticate(c.req.raw, c.env);
+  if (auth.isErr()) {
+    return jsonAuthError(c, auth.error);
+  }
+  const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
+  const status = await findStatusById(c.env.DB, c.req.param("id"));
+  if (status.isErr()) {
+    return jsonRepositoryError(c, status.error.message);
+  }
+  if (!status.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  if (!(await canViewStatus(c.env.DB, status.value, viewerId))) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const ancestors = await listStatusAncestors(c.env.DB, status.value.id);
+  if (ancestors.isErr()) {
+    return jsonRepositoryError(c, ancestors.error.message);
+  }
+  const descendants = await listStatusDescendants(c.env.DB, status.value.id);
+  if (descendants.isErr()) {
+    return jsonRepositoryError(c, descendants.error.message);
+  }
+  const visibleAncestors = [];
+  for (const candidate of ancestors.value) {
+    if (await canViewStatus(c.env.DB, candidate, viewerId)) {
+      visibleAncestors.push(candidate);
+    }
+  }
+  const visibleDescendants = [];
+  for (const candidate of descendants.value) {
+    if (await canViewStatus(c.env.DB, candidate, viewerId)) {
+      visibleDescendants.push(candidate);
+    }
+  }
+  return c.json({
+    ancestors: await mastodonStatuses(c.env, identity.value, visibleAncestors, viewerId),
+    descendants: await mastodonStatuses(c.env, identity.value, visibleDescendants, viewerId),
+  });
+});
 
 statusRoutes.post("/api/v1/statuses/:id/favourite", async (c) => {
   const identity = parseInstanceIdentity(c.env);

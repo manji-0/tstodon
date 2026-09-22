@@ -128,6 +128,7 @@ export const LocalNoteSchema = z.object({
   quote: StatusQuoteTargetSchema,
   mediaIds: z.array(MediaId.schema),
   poll: StatusPollPresenceSchema,
+  inReplyToId: StatusId.schema.nullable(),
   createdAt: IsoInstant.schema,
 });
 
@@ -153,6 +154,7 @@ export const LocalStatus = {
     draft: ValidatedStatusDraft,
     createdAt: z.infer<typeof IsoInstant.schema>,
     contentHtml: string,
+    inReplyToId: StatusId | null = null,
   ): LocalNote => ({
     kind: "LocalNote",
     id,
@@ -166,6 +168,7 @@ export const LocalStatus = {
     quote: draft.quote,
     mediaIds: draft.mediaIds,
     poll: draft.poll,
+    inReplyToId,
     createdAt,
   }),
   reblog: (

@@ -1,7 +1,7 @@
 import { schemaResult } from "@tstodon/core";
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import type { z } from "zod";
+import { z } from "zod";
 import { findAccountByUsername } from "./account-store";
 import { requireAdmin } from "./auth";
 import { generateAccountKeys } from "./keys";
@@ -22,6 +22,7 @@ import {
   ActorPreviewSchema,
   MastodonAccountPreviewSchema,
   MastodonAppPreviewSchema,
+  MastodonContextPreviewSchema,
   MastodonFilterPreviewSchema,
   MastodonMediaPreviewSchema,
   MastodonNotificationListPreviewSchema,
@@ -855,6 +856,99 @@ describe("worker http", () => {
     const payload = JSON.parse(await received);
     expect(payload).toMatchObject({ kind: "notification" });
     socket.close();
+  });
+
+  it("threads replies through status context", async () => {
+    const root = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth("thread-root@example.com")) },
+      body: JSON.stringify({ status: "root of the thread" }),
+    });
+    expect(root.status).toBe(200);
+    const rootStatus = read(MastodonStatusPreviewSchema, root.body);
+
+    const reply = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth("thread-reply@example.com")) },
+      body: JSON.stringify({ status: "a reply", in_reply_to_id: rootStatus.id }),
+    });
+    expect(reply.status).toBe(200);
+    const replyStatus = read(MastodonStatusPreviewSchema, reply.body);
+    expect(replyStatus.in_reply_to_id).toBe(rootStatus.id);
+    expect(replyStatus.in_reply_to_account_id).toBe(rootStatus.account.id);
+
+    const fromRoot = await json(`/api/v1/statuses/${rootStatus.id}/context`);
+    expect(fromRoot.status).toBe(200);
+    const rootContext = read(MastodonContextPreviewSchema, fromRoot.body);
+    expect(rootContext.ancestors).toHaveLength(0);
+    expect(rootContext.descendants.map((status) => status.id)).toContain(replyStatus.id);
+
+    const fromReply = await json(`/api/v1/statuses/${replyStatus.id}/context`);
+    expect(fromReply.status).toBe(200);
+    const replyContext = read(MastodonContextPreviewSchema, fromReply.body);
+    expect(replyContext.ancestors.map((status) => status.id)).toEqual([rootStatus.id]);
+  });
+
+  it("serves directory, peers, activity, and trends from local data", async () => {
+    await json("/api/v1/accounts/verify_credentials", {
+      headers: await auth("directory-user@example.com"),
+    });
+    const tagged = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth("trend-user@example.com")) },
+      body: JSON.stringify({ status: "trending #wavea topic" }),
+    });
+    expect(tagged.status).toBe(200);
+    const taggedStatus = read(MastodonStatusPreviewSchema, tagged.body);
+    await json(`/api/v1/statuses/${taggedStatus.id}/favourite`, {
+      method: "POST",
+      headers: await auth("trend-fan@example.com"),
+    });
+
+    const fetchedAt = IsoInstant.parse("2026-09-22T15:00:00.000Z");
+    expect(fetchedAt.isOk()).toBe(true);
+    if (fetchedAt.isErr()) {
+      throw new Error("instant");
+    }
+    const keys = await generateAccountKeys();
+    const actor = RemoteActor.fromFetched({
+      actorUri: "https://peer.example/users/bob",
+      username: "bob",
+      domain: "peer.example",
+      inboxUri: "https://peer.example/users/bob/inbox",
+      publicKeyId: "https://peer.example/users/bob#main-key",
+      publicKeyPem: keys.publicKeyPem,
+      displayName: "Bob",
+      fetchedAt: fetchedAt.value,
+    });
+    expect(actor.isOk()).toBe(true);
+    if (actor.isErr()) {
+      throw new Error("actor");
+    }
+    await upsertRemoteActor(env.DB, actor.value);
+
+    const directory = await json("/api/v1/directory?order=new&limit=5");
+    expect(directory.status).toBe(200);
+    expect(read(z.array(MastodonAccountPreviewSchema), directory.body).length).toBeGreaterThan(0);
+
+    const peers = await json("/api/v1/instance/peers");
+    expect(peers.status).toBe(200);
+    expect(read(z.array(z.string()), peers.body)).toContain("peer.example");
+
+    const activity = await json("/api/v1/instance/activity");
+    expect(activity.status).toBe(200);
+    expect(
+      read(z.array(z.object({ week: z.string(), statuses: z.string() })), activity.body).length,
+    ).toBeGreaterThan(0);
+
+    const trends = await json("/api/v1/trends/tags");
+    expect(trends.status).toBe(200);
+    const tags = read(z.array(z.object({ name: z.string() })), trends.body);
+    expect(tags.some((tag) => tag.name === "wavea")).toBe(true);
+
+    const trendStatuses = await json("/api/v1/trends/statuses");
+    expect(trendStatuses.status).toBe(200);
+    expect(read(MastodonStatusListPreviewSchema, trendStatuses.body).length).toBeGreaterThan(0);
   });
 });
 

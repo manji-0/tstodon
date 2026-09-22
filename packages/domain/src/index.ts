@@ -45,7 +45,7 @@ export {
   type ValidatedStatusDraft,
 } from "./status-composition";
 export { StatusDraftError } from "./status-draft-error";
-export { StatusId } from "./status-id";
+export { StatusId, type StatusId as StatusIdValue } from "./status-id";
 export {
   StatusQuoteTarget,
   type StatusQuoteTarget as StatusQuoteTargetValue,

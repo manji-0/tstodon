@@ -17,7 +17,10 @@ import { visibilitySql } from "./sql-enums";
 
 export type StatusRow = z.infer<typeof StatusRowSchema>;
 
-const statusSelect = `id, account_id, kind, reblog_of_id, content_text, COALESCE(content_html, '') AS content_html, visibility, sensitive, COALESCE(spoiler_text, '') AS spoiler_text, language, created_at, poll_id`;
+const statusSelect = `id, account_id, kind, reblog_of_id, in_reply_to_id, content_text, COALESCE(content_html, '') AS content_html, visibility, sensitive, COALESCE(spoiler_text, '') AS spoiler_text, language, created_at, poll_id`;
+
+const CONTEXT_ANCESTOR_LIMIT = 40;
+const CONTEXT_DESCENDANT_LIMIT = 60;
 
 export const statusFromRow = (
   row: StatusRow,
@@ -53,6 +56,14 @@ export const statusFromRow = (
     row.language && row.language.length > 0
       ? { kind: "Present" as const, value: row.language }
       : { kind: "None" as const };
+  let inReplyToId: StatusId | null = null;
+  if (row.in_reply_to_id) {
+    const replyTo = StatusId.parse(row.in_reply_to_id);
+    if (replyTo.isErr()) {
+      return err({ kind: "RepositoryError", message: "invalid in_reply_to_id" });
+    }
+    inReplyToId = replyTo.value;
+  }
   return ok({
     kind: "LocalNote",
     id: id.value,
@@ -66,6 +77,7 @@ export const statusFromRow = (
     quote: StatusQuoteTarget.none,
     mediaIds: [...mediaIds],
     poll: row.poll_id ? { kind: "Present" } : { kind: "None" },
+    inReplyToId,
     createdAt: createdAt.value,
   });
 };
@@ -113,13 +125,14 @@ export const insertLocalNote = async (
     await db
       .prepare(
         `INSERT INTO statuses (
-          id, account_id, kind, content_text, content_html, visibility, sensitive,
+          id, account_id, kind, in_reply_to_id, content_text, content_html, visibility, sensitive,
           spoiler_text, language, created_at, updated_at
-        ) VALUES (?, ?, 'LocalNote', ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, 'LocalNote', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         note.id,
         note.accountId,
+        note.inReplyToId,
         note.text,
         note.contentHtml,
         visibilitySql(note.visibility),
@@ -319,4 +332,163 @@ export const listTagStatuses = async (
       .bind(`%#${tag}%`, `%#${tag.toLowerCase()}%`, limit)
       .all();
     return hydrateRows(db, results ?? []);
+  });
+
+export const listStatusAncestors = async (
+  db: D1Database,
+  statusId: string,
+): Promise<Result<LocalStatusValue[], RepositoryError>> => {
+  const chain: LocalStatusValue[] = [];
+  let currentId: string | undefined = statusId;
+  for (let depth = 0; depth < CONTEXT_ANCESTOR_LIMIT; depth += 1) {
+    const current = await findStatusById(db, currentId);
+    if (current.isErr()) {
+      return err(current.error);
+    }
+    if (!current.value || current.value.kind !== "LocalNote" || !current.value.inReplyToId) {
+      break;
+    }
+    const parent = await findStatusById(db, current.value.inReplyToId);
+    if (parent.isErr()) {
+      return err(parent.error);
+    }
+    if (!parent.value) {
+      break;
+    }
+    chain.push(parent.value);
+    currentId = parent.value.id;
+  }
+  return ok(chain.reverse());
+};
+
+export const listStatusDescendants = async (
+  db: D1Database,
+  statusId: string,
+): Promise<Result<LocalStatusValue[], RepositoryError>> =>
+  runD1(async () => {
+    const collected: LocalStatusValue[] = [];
+    const queue = [statusId];
+    const seen = new Set<string>([statusId]);
+    while (queue.length > 0 && collected.length < CONTEXT_DESCENDANT_LIMIT) {
+      const parentId = queue.shift();
+      if (!parentId) {
+        break;
+      }
+      const { results } = await db
+        .prepare(
+          `SELECT ${statusSelect} FROM statuses
+           WHERE in_reply_to_id = ? AND kind = 'LocalNote'
+           ORDER BY id ASC LIMIT ?`,
+        )
+        .bind(parentId, CONTEXT_DESCENDANT_LIMIT - collected.length)
+        .all();
+      const children = await hydrateRows(db, results ?? []);
+      for (const child of children) {
+        if (seen.has(child.id)) {
+          continue;
+        }
+        seen.add(child.id);
+        collected.push(child);
+        queue.push(child.id);
+        if (collected.length >= CONTEXT_DESCENDANT_LIMIT) {
+          break;
+        }
+      }
+    }
+    return collected;
+  });
+
+export const extractHashtags = (text: string): string[] => {
+  const tags = new Set<string>();
+  for (const match of text.matchAll(/#([A-Za-z0-9_]+)/g)) {
+    const tag = match[1];
+    if (tag) {
+      tags.add(tag.toLowerCase());
+    }
+  }
+  return [...tags];
+};
+
+export const listTrendingTags = async (
+  db: D1Database,
+  limit: number,
+): Promise<Result<ReadonlyArray<{ name: string; uses: number }>, RepositoryError>> =>
+  runD1(async () => {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { results } = await db
+      .prepare(
+        `SELECT content_text FROM statuses
+         WHERE kind = 'LocalNote' AND visibility = 'public' AND created_at >= ?
+         ORDER BY id DESC LIMIT 500`,
+      )
+      .bind(since)
+      .all<{ content_text: string }>();
+    const counts = new Map<string, number>();
+    for (const row of results ?? []) {
+      for (const tag of extractHashtags(row.content_text)) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .map(([name, uses]) => ({ name, uses }))
+      .toSorted((a, b) => b.uses - a.uses || a.name.localeCompare(b.name))
+      .slice(0, limit);
+  });
+
+export const listTrendingStatuses = async (
+  db: D1Database,
+  limit: number,
+): Promise<Result<LocalStatusValue[], RepositoryError>> =>
+  runD1(async () => {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { results } = await db
+      .prepare(
+        `SELECT ${statusSelect},
+            (SELECT COUNT(*) FROM favourites f WHERE f.status_id = statuses.id) AS favourite_count,
+            (SELECT COUNT(*) FROM statuses r WHERE r.reblog_of_id = statuses.id) AS reblog_count
+         FROM statuses
+         WHERE kind = 'LocalNote' AND visibility = 'public' AND created_at >= ?
+         ORDER BY (favourite_count + reblog_count) DESC, id DESC
+         LIMIT ?`,
+      )
+      .bind(since, limit)
+      .all();
+    return hydrateRows(db, results ?? []);
+  });
+
+export const listWeeklyStatusActivity = async (
+  db: D1Database,
+  weeks: number,
+): Promise<
+  Result<ReadonlyArray<{ week: string; statuses: number; registrations: number }>, RepositoryError>
+> =>
+  runD1(async () => {
+    const { results: statusRows } = await db
+      .prepare(
+        `SELECT strftime('%Y-%W', created_at) AS week, COUNT(*) AS statuses
+         FROM statuses
+         WHERE created_at >= datetime('now', ?)
+         GROUP BY week
+         ORDER BY week DESC
+         LIMIT ?`,
+      )
+      .bind(`-${weeks * 7} days`, weeks)
+      .all<{ week: string; statuses: number }>();
+    const { results: registrationRows } = await db
+      .prepare(
+        `SELECT strftime('%Y-%W', created_at) AS week, COUNT(*) AS registrations
+         FROM accounts
+         WHERE created_at >= datetime('now', ?)
+         GROUP BY week`,
+      )
+      .bind(`-${weeks * 7} days`)
+      .all<{ week: string; registrations: number }>();
+    const registrations = new Map(
+      (registrationRows ?? []).map((row) => [row.week, Number(row.registrations)]),
+    );
+    return (statusRows ?? []).map((row) => ({
+      week: row.week,
+      statuses: Number(row.statuses),
+      registrations: registrations.get(row.week) ?? 0,
+    }));
   });

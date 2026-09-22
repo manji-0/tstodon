@@ -64,6 +64,7 @@ export const StatusRowSchema = z.object({
   account_id: z.string().min(1),
   kind: z.string().min(1),
   reblog_of_id: z.string().nullable(),
+  in_reply_to_id: z.string().nullable(),
   content_text: z.string(),
   content_html: z.string(),
   visibility: z.string(),
@@ -112,6 +113,7 @@ export const CreateStatusBodySchema = z.object({
   sensitive: booleanish,
   visibility: z.string().optional(),
   language: z.string().optional(),
+  in_reply_to_id: z.string().optional(),
   media_ids: z.union([z.array(z.string()), z.string()]).optional(),
   poll: z
     .object({
@@ -173,11 +175,18 @@ export const MastodonStatusPreviewSchema = z.object({
   favourited: z.boolean().optional(),
   favourites_count: z.number().optional(),
   reblogs_count: z.number().optional(),
+  in_reply_to_id: z.string().nullable().optional(),
+  in_reply_to_account_id: z.string().nullable().optional(),
   account: MastodonAccountPreviewSchema,
   poll: z
     .object({ id: z.string().min(1) })
     .nullable()
     .optional(),
+});
+
+export const MastodonContextPreviewSchema = z.object({
+  ancestors: z.array(MastodonStatusPreviewSchema),
+  descendants: z.array(MastodonStatusPreviewSchema),
 });
 
 export const MastodonAppPreviewSchema = z.object({

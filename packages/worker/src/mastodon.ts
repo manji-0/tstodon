@@ -206,12 +206,21 @@ export const mastodonStatus = async (
       });
     }
   }
+  let inReplyToId: string | null = null;
+  let inReplyToAccountId: string | null = null;
+  if (status.inReplyToId) {
+    inReplyToId = status.inReplyToId;
+    const parent = await findStatusById(env.DB, status.inReplyToId);
+    if (parent.isOk() && parent.value) {
+      inReplyToAccountId = parent.value.accountId;
+    }
+  }
   const url = `${InstanceIdentity.actorUrl(identity, accountResult.value.username)}/statuses/${status.id}`;
   return {
     id: status.id,
     created_at: status.createdAt,
-    in_reply_to_id: null,
-    in_reply_to_account_id: null,
+    in_reply_to_id: inReplyToId,
+    in_reply_to_account_id: inReplyToAccountId,
     sensitive: status.sensitive,
     spoiler_text: status.spoilerText,
     visibility: Visibility.toMastodon(status.visibility),

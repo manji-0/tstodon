@@ -196,3 +196,15 @@ export const listAcceptedRemoteFollowerUris = async (
       .all<{ remote_actor_uri: string }>();
     return (results ?? []).map((row) => row.remote_actor_uri);
   });
+
+export const listPeerDomains = async (db: D1Database): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT DISTINCT domain FROM remote_actors
+         WHERE domain IS NOT NULL AND domain != ''
+         ORDER BY domain ASC`,
+      )
+      .all<{ domain: string }>();
+    return (results ?? []).map((row) => row.domain);
+  });
