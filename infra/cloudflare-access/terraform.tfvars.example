@@ -1,0 +1,23 @@
+account_id  = "00000000000000000000000000000000"
+zone_id     = "00000000000000000000000000000000" # optional; omit or null if unused
+hostname    = "social.example.com"
+team_domain = "https://myteam.cloudflareaccess.com"
+
+admin_groups          = ["tstodon-admins"]
+allowed_email_domains = ["example.com"] # empty => any authenticated WorkOS user
+session_duration      = "24h"
+
+create_workos_idp = true
+# existing_idp_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+workos_oidc = {
+  client_id     = "client_..."
+  client_secret = "sk_..." # or the OIDC client secret from WorkOS
+  # From WorkOS / AuthKit OIDC discovery (.well-known/openid-configuration):
+  auth_url  = "https://api.workos.com/user_management/authorize"
+  token_url = "https://api.workos.com/user_management/authenticate"
+  certs_url = "https://api.workos.com/sso/jwks/client_..."
+  scopes    = ["openid", "email", "profile"]
+  claims    = ["groups", "email"]
+  pkce_enabled = true
+}

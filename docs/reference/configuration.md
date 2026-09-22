@@ -56,4 +56,8 @@ Tests mint Access-shaped JWTs with the fixture RSA keypair (`packages/worker/tes
 
 ## Federation path policy (ops)
 
+<!-- constrained-by ../operations/cloudflare-deploy.md -->
+
 Access application policies must **bypass** public federation and discovery paths so remote servers can reach the instance without an Access login. At minimum allow unauthenticated access to `/.well-known/*`, `/nodeinfo/*`, `/users/*`, and ActivityPub inbox/outbox surfaces. Require Access for `/api/*` (and any private UI).
+
+Automate this with Terraform under [`infra/cloudflare-access`](../../infra/cloudflare-access/README.md): it creates the WorkOS OIDC IdP, an Allow app for `/api*`, and Bypass apps for federation/health paths, then outputs `CF_ACCESS_*` Worker vars.
