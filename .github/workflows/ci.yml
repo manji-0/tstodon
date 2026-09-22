@@ -45,9 +45,15 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm fmt:check
+
       - name: Test
         run: pnpm test
 
       - name: Wrangler dry-run
         if: github.event_name != 'pull_request'
-        run: wrangler deploy --dry-run
+        run: pnpm exec wrangler deploy --dry-run
