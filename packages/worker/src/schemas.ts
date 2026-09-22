@@ -88,6 +88,12 @@ export const PollRowSchema = z.object({
   options_json: z.string().min(1),
 });
 
+export const ExpiredPollTargetRowSchema = z.object({
+  id: z.string().min(1),
+  status_id: z.string().min(1),
+  account_id: z.string().min(1),
+});
+
 export const OutboundActivityRowSchema = z.object({
   id: z.string().min(1),
   account_id: z.string().min(1),

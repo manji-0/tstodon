@@ -5,7 +5,7 @@ import type { z } from "zod";
 import { findAccountByUsername } from "./account-store";
 import { requireAdmin } from "./auth";
 import { generateAccountKeys } from "./keys";
-import { IsoInstant, OutboxJob, RemoteActor } from "@tstodon/domain";
+import { IsoInstant, OutboxJob, RemoteActor, StreamEvent } from "@tstodon/domain";
 import {
   listAcceptedRemoteFollowerUris,
   upsertRemoteActor,
@@ -17,6 +17,8 @@ import {
   findOutboxTarget,
   listOutboundActivities,
 } from "./outbox-store";
+import { listExpiredUnnotifiedPolls } from "./poll-store";
+import { publishToAccount } from "./stream-publish";
 import {
   signInboxRequest,
   verifyInboxRequest,
@@ -774,6 +776,86 @@ describe("worker http", () => {
       kind: "PermanentFailure",
       httpStatus: 404,
     } as const satisfies typeof outcome);
+  });
+
+  it("notifies authors when polls expire and rejects late votes", async () => {
+    const created = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...auth("poll-expire@example.com") },
+      body: JSON.stringify({
+        status: "expire me",
+        poll: { options: ["yes", "no"], expires_in: 3600, multiple: false },
+      }),
+    });
+    expect(created.status).toBe(200);
+    const status = read(MastodonStatusPreviewSchema, created.body);
+    expect(status.poll?.id).toBeTruthy();
+    const pollId = status.poll?.id ?? "";
+    await env.DB.prepare(
+      `UPDATE polls SET expires_at = ?, expiry_notified_at = NULL WHERE id = ?`,
+    )
+      .bind("2020-01-01T00:00:00.000Z", pollId)
+      .run();
+    const pending = await listExpiredUnnotifiedPolls(env.DB, new Date().toISOString(), 20);
+    expect(pending.isOk()).toBe(true);
+    if (pending.isOk()) {
+      expect(pending.value.some((row) => row.id === pollId)).toBe(true);
+    }
+    const job = OutboxJob.parse({ kind: "ProcessExpiredPolls" });
+    expect(job.isOk()).toBe(true);
+    if (job.isErr()) {
+      throw new Error("expired polls job rejected");
+    }
+    await processOutboxJob(env, job.value);
+    const after = await listExpiredUnnotifiedPolls(env.DB, new Date().toISOString(), 20);
+    expect(after.isOk()).toBe(true);
+    if (after.isOk()) {
+      expect(after.value.some((row) => row.id === pollId)).toBe(false);
+    }
+    const lateVote = await json(`/api/v1/polls/${pollId}/votes`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...auth("poll-voter@example.com") },
+      body: JSON.stringify({ choices: [0] }),
+    });
+    expect(lateVote.status).toBe(422);
+  });
+
+  it("publishes stream events onto a connected account hub", async () => {
+    const account = await json("/api/v1/accounts/verify_credentials", {
+      headers: auth("stream-hub@example.com"),
+    });
+    expect(account.status).toBe(200);
+    const preview = read(MastodonAccountPreviewSchema, account.body);
+    const upgrade = await SELF.fetch("https://example.com/api/v1/streaming", {
+      headers: {
+        ...auth("stream-hub@example.com"),
+        Upgrade: "websocket",
+      },
+    });
+    expect(upgrade.status).toBe(101);
+    const socket = upgrade.webSocket;
+    expect(socket).toBeTruthy();
+    if (!socket) {
+      throw new Error("missing websocket");
+    }
+    socket.accept();
+    const event = StreamEvent.parse({
+      kind: "notification",
+      payload: { type: "follow", account_id: preview.id, status_id: null },
+    });
+    expect(event.isOk()).toBe(true);
+    if (event.isErr()) {
+      throw new Error("stream event rejected");
+    }
+    const received = new Promise<string>((resolve) => {
+      socket.addEventListener("message", (message) => {
+        resolve(typeof message.data === "string" ? message.data : String(message.data));
+      });
+    });
+    await publishToAccount(env, preview.id, event.value);
+    const payload = JSON.parse(await received);
+    expect(payload).toMatchObject({ kind: "notification" });
+    socket.close();
   });
 });
 

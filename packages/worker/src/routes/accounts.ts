@@ -21,12 +21,12 @@ import { mastodonAccountDocument, mastodonRelationship, mastodonStatuses } from 
 import { parseInstanceIdentity } from "../runtime-config";
 import {
   followAccount,
-  insertNotification,
   listFollowers,
   listFollowing,
   relationshipFlags,
   unfollowAccount,
 } from "../social-store";
+import { notifyAccount } from "../notify";
 import { listAccountStatuses } from "../status-store";
 import { UpdateCredentialsBodySchema } from "../schemas";
 
@@ -236,7 +236,7 @@ accountRoutes.post("/api/v1/accounts/:id/follow", async (c) => {
     followed.value.kind === "LocalFollower" &&
     followed.value.follow.kind !== "None"
   ) {
-    await insertNotification(c.env.DB, {
+    await notifyAccount(c.env, {
       accountId: target.value.id,
       fromAccountId: user.value.id,
       kind: followed.value.follow.kind === "Pending" ? "follow_request" : "follow",

@@ -43,11 +43,11 @@ import { schemaResult } from "@tstodon/core";
 import {
   favouriteStatus,
   followAccount,
-  insertNotification,
   listFollowers,
   listFollowing,
   unfollowAccount,
 } from "../social-store";
+import { notifyAccount } from "../notify";
 import { findStatusById, insertLocalReblog } from "../status-store";
 import { nowInstant } from "../clock";
 import { newEntityId } from "../ids";
@@ -395,7 +395,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         target.value.locked,
       );
       if (followed.isOk() && followed.value.kind === "LocalFollower" && followed.value.follow.kind !== "None") {
-        await insertNotification(c.env.DB, {
+        await notifyAccount(c.env, {
           accountId: target.value.id,
           fromAccountId: actor.id,
           kind: followed.value.follow.kind === "Pending" ? "follow_request" : "follow",

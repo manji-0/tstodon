@@ -24,10 +24,11 @@ import { findRemoteStatusById } from "../remote-status-store";
 import {
   bookmarkStatus,
   favouriteStatus,
-  insertNotification,
   unbookmarkStatus,
   unfavouriteStatus,
 } from "../social-store";
+import { notifyAccount } from "../notify";
+import { publishToAccount } from "../stream-publish";
 import {
   deleteReblogOf,
   deleteStatus,
@@ -116,7 +117,7 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
     }
     const mentioned = await findAccountByUsername(c.env.DB, username);
     if (mentioned.isOk() && mentioned.value) {
-      await insertNotification(c.env.DB, {
+      await notifyAccount(c.env, {
         accountId: mentioned.value.id,
         fromAccountId: user.value.id,
         kind: "mention",
@@ -133,6 +134,10 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
     object: noteDocument(identity.value, user.value, note),
   });
   const document = await mastodonStatus(c.env, identity.value, note, user.value.id);
+  await publishToAccount(c.env, user.value.id, {
+    kind: "update",
+    payload: document,
+  });
   return c.json(document, 200);
 });
 
@@ -227,7 +232,7 @@ statusRoutes.post("/api/v1/statuses/:id/favourite", async (c) => {
   }
   const created = await favouriteStatus(c.env.DB, user.value.id, status.value.id);
   if (created.isOk() && created.value && status.value.accountId !== user.value.id) {
-    await insertNotification(c.env.DB, {
+    await notifyAccount(c.env, {
       accountId: status.value.accountId,
       fromAccountId: user.value.id,
       kind: "favourite",
@@ -289,7 +294,7 @@ statusRoutes.post("/api/v1/statuses/:id/reblog", async (c) => {
     return jsonRepositoryError(c, inserted.error.message);
   }
   if (status.value.accountId !== user.value.id) {
-    await insertNotification(c.env.DB, {
+    await notifyAccount(c.env, {
       accountId: status.value.accountId,
       fromAccountId: user.value.id,
       kind: "reblog",

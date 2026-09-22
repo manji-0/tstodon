@@ -46,6 +46,9 @@ pollRoutes.post("/api/v1/polls/:id/votes", async (c) => {
   const indexes = numberList(body.value.choices);
   const voted = await votePoll(c.env.DB, c.req.param("id"), user.value.id, indexes);
   if (voted.isErr()) {
+    if (voted.error.message === "poll expired") {
+      return c.json({ error: "poll expired", kind: "PollExpired" }, 422);
+    }
     return jsonRepositoryError(c, voted.error.message);
   }
   const poll = await findPollById(c.env.DB, c.req.param("id"), user.value.id);

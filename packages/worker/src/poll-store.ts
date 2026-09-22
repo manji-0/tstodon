@@ -4,6 +4,7 @@ import { nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
 import {
+  ExpiredPollTargetRowSchema,
   parseJsonColumn,
   parseRow,
   PollOptionsSchema,
@@ -148,7 +149,10 @@ export const votePoll = async (
   choices: ReadonlyArray<number>,
 ): Promise<Result<void, RepositoryError>> => {
   const queried = await runD1(() =>
-    db.prepare(`SELECT options_json FROM polls WHERE id = ?`).bind(pollId).first(),
+    db
+      .prepare(`SELECT options_json, expires_at FROM polls WHERE id = ?`)
+      .bind(pollId)
+      .first(),
   );
   if (queried.isErr()) {
     return err(queried.error);
@@ -156,9 +160,18 @@ export const votePoll = async (
   if (!queried.value) {
     return err(toRepositoryError("poll not found"));
   }
-  const row = parseRow(z.object({ options_json: z.string().min(1) }), queried.value);
+  const row = parseRow(
+    z.object({
+      options_json: z.string().min(1),
+      expires_at: z.string().min(1),
+    }),
+    queried.value,
+  );
   if (row.isErr()) {
     return err(toRepositoryError("invalid poll row"));
+  }
+  if (Date.parse(row.value.expires_at) <= Date.now()) {
+    return err(toRepositoryError("poll expired"));
   }
   const options = parseJsonColumn(PollOptionsSchema, row.value.options_json);
   if (options.isErr()) {
@@ -186,3 +199,55 @@ export const votePoll = async (
       .run();
   });
 };
+
+export type ExpiredPollTarget = Readonly<{
+  id: string;
+  statusId: string;
+  accountId: string;
+}>;
+
+export const listExpiredUnnotifiedPolls = async (
+  db: D1Database,
+  now: string,
+  limit: number,
+): Promise<Result<ExpiredPollTarget[], RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT p.id, p.status_id, s.account_id
+         FROM polls p
+         JOIN statuses s ON s.id = p.status_id
+         WHERE p.expires_at <= ? AND p.expiry_notified_at IS NULL
+         ORDER BY p.expires_at ASC
+         LIMIT ?`,
+      )
+      .bind(now, limit)
+      .all();
+    return (results ?? []).flatMap((raw) => {
+      const row = parseRow(ExpiredPollTargetRowSchema, raw);
+      return row.isOk()
+        ? [
+            {
+              id: row.value.id,
+              statusId: row.value.status_id,
+              accountId: row.value.account_id,
+            },
+          ]
+        : [];
+    });
+  });
+
+export const markPollExpiryNotified = async (
+  db: D1Database,
+  pollId: string,
+  notifiedAt: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await db
+      .prepare(
+        `UPDATE polls SET expiry_notified_at = ?
+         WHERE id = ? AND expiry_notified_at IS NULL`,
+      )
+      .bind(notifiedAt, pollId)
+      .run();
+  });

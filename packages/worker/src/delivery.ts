@@ -7,16 +7,24 @@ import {
   type OutboxJob as OutboxJobValue,
 } from "@tstodon/domain";
 import { findAccountById } from "./account-store";
+import { nowIso } from "./clock";
 import { signInboxRequest } from "./http-signature";
+import { mastodonStatus } from "./mastodon";
 import {
   ensureOutboxTarget,
   findOutboundActivity,
   insertOutboundActivity,
   markOutboundExpanded,
 } from "./outbox-store";
+import {
+  listExpiredUnnotifiedPolls,
+  markPollExpiryNotified,
+} from "./poll-store";
 import { listAcceptedFollowerIds } from "./social-store";
 import { listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
+import { findStatusById } from "./status-store";
+import { publishToAccount } from "./stream-publish";
 
 type DeliverTargetJob = Extract<OutboxJobValue, { kind: "DeliverTarget" }>;
 
@@ -129,12 +137,41 @@ export const attemptInboxDelivery = async (
   }
 };
 
+const processExpiredPolls = async (env: Env): Promise<void> => {
+  const identity = parseInstanceIdentity(env);
+  if (identity.isErr()) {
+    return;
+  }
+  const notifiedAt = nowIso();
+  const expired = await listExpiredUnnotifiedPolls(env.DB, notifiedAt, 50);
+  if (expired.isErr()) {
+    return;
+  }
+  for (const poll of expired.value) {
+    const status = await findStatusById(env.DB, poll.statusId);
+    if (status.isOk() && status.value) {
+      const document = await mastodonStatus(
+        env,
+        identity.value,
+        status.value,
+        poll.accountId,
+      );
+      await publishToAccount(env, poll.accountId, {
+        kind: "status.update",
+        payload: document,
+      });
+    }
+    await markPollExpiryNotified(env.DB, poll.id, notifiedAt);
+  }
+};
+
 export const processOutboxJob = async (
   env: Env,
   job: OutboxJobValue,
 ): Promise<void> => {
   switch (job.kind) {
     case "ProcessExpiredPolls":
+      await processExpiredPolls(env);
       return;
     case "ExpandFollowers": {
       const activity = await findOutboundActivity(env.DB, job.activityId);

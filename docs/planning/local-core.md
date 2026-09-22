@@ -102,9 +102,9 @@ Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#
 | GET | `/api/v1/instance/rules` | `[]` |
 | GET | `/api/v1/instance/activity` | `[]` |
 | GET | `/api/v1/directory` | `[]` |
-| GET | `/api/v1/streaming` | Durable Object WebSocket hub without write-time fan-out |
+| GET | `/api/v1/streaming` | Durable Object WebSocket hub with write-time fan-out for updates and notifications |
 
-`StreamHub` and expired-poll cron remain entrypoint stubs around the HTTP core. `OutboxDeliveryWorkflow` retries signed inbox POSTs per remote target.
+`OutboxDeliveryWorkflow` retries signed inbox POSTs per remote target. Cron enqueues `ProcessExpiredPolls`, which marks expired polls and pushes `status.update` onto the author's `StreamHub`. Status creates and notifications also publish onto per-account hubs.
 
 ### Out of scope
 <!-- derived-from #principles -->
@@ -142,4 +142,4 @@ Outbound Create / Announce jobs enqueue `ExpandFollowers` on `OUTBOX_PROCESS_QUE
 ## Next
 <!-- derived-from #out-of-scope -->
 
-- Bind Vectorize / Workers AI only when local search cost is acceptable.
+- Defer Vectorize / Workers AI until local search cost is acceptable (still out of scope).
