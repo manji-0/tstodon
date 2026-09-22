@@ -1,5 +1,7 @@
 locals {
-  idp_id = var.create_workos_idp ? cloudflare_zero_trust_access_identity_provider.workos[0].id : var.existing_idp_id
+  idp_id = !var.enable_access ? null : (
+    var.create_workos_idp ? cloudflare_zero_trust_access_identity_provider.workos[0].id : var.existing_idp_id
+  )
 
   # Prefer email-domain Allow rules when configured; otherwise Allow any authenticated user.
   allow_include = length(var.allowed_email_domains) > 0 ? [
@@ -12,30 +14,44 @@ locals {
     }
   ]
 
-  federation_bypass = {
+  federation_bypass = var.enable_access ? {
     well_known = "${var.hostname}/.well-known*"
     nodeinfo   = "${var.hostname}/nodeinfo*"
     users      = "${var.hostname}/users*"
     healthz    = "${var.hostname}/healthz*"
+  } : {}
+}
+
+check "access_hostname" {
+  assert {
+    condition     = !var.enable_access || (var.hostname != null && var.hostname != "")
+    error_message = "hostname is required when enable_access is true."
+  }
+}
+
+check "access_team_domain" {
+  assert {
+    condition     = !var.enable_access || (var.team_domain != null && var.team_domain != "")
+    error_message = "team_domain is required when enable_access is true."
   }
 }
 
 check "idp_selection" {
   assert {
-    condition     = var.create_workos_idp || (var.existing_idp_id != null && var.existing_idp_id != "")
-    error_message = "Set create_workos_idp=true or provide existing_idp_id."
+    condition     = !var.enable_access || var.create_workos_idp || (var.existing_idp_id != null && var.existing_idp_id != "")
+    error_message = "When enable_access is true, set create_workos_idp=true or provide existing_idp_id."
   }
 }
 
 check "workos_oidc_required" {
   assert {
-    condition     = !var.create_workos_idp || var.workos_oidc != null
-    error_message = "workos_oidc is required when create_workos_idp is true."
+    condition     = !var.enable_access || !var.create_workos_idp || var.workos_oidc != null
+    error_message = "workos_oidc is required when enable_access and create_workos_idp are true."
   }
 }
 
 resource "cloudflare_zero_trust_access_identity_provider" "workos" {
-  count = var.create_workos_idp ? 1 : 0
+  count = var.enable_access && var.create_workos_idp ? 1 : 0
 
   account_id = var.account_id
   name       = "WorkOS (tstodon)"
@@ -54,16 +70,18 @@ resource "cloudflare_zero_trust_access_identity_provider" "workos" {
   }
 }
 
-# Reusable Allow: authenticated users (optionally restricted by email domain).
 resource "cloudflare_zero_trust_access_policy" "allow_authenticated" {
+  count = var.enable_access ? 1 : 0
+
   account_id = var.account_id
   name       = "tstodon-allow-authenticated"
   decision   = "allow"
   include    = local.allow_include
 }
 
-# Reusable Bypass: anyone (federation / health paths only).
 resource "cloudflare_zero_trust_access_policy" "bypass_public" {
+  count = var.enable_access ? 1 : 0
+
   account_id = var.account_id
   name       = "tstodon-bypass-public"
   decision   = "bypass"
@@ -72,8 +90,9 @@ resource "cloudflare_zero_trust_access_policy" "bypass_public" {
   }]
 }
 
-# Protect Mastodon / private HTTP API.
 resource "cloudflare_zero_trust_access_application" "api" {
+  count = var.enable_access ? 1 : 0
+
   account_id                = var.zone_id == null ? var.account_id : null
   zone_id                   = var.zone_id
   name                      = "tstodon-api"
@@ -88,12 +107,11 @@ resource "cloudflare_zero_trust_access_application" "api" {
   }]
 
   policies = [{
-    id         = cloudflare_zero_trust_access_policy.allow_authenticated.id
+    id         = cloudflare_zero_trust_access_policy.allow_authenticated[0].id
     precedence = 1
   }]
 }
 
-# Public federation + health paths: explicit Bypass apps so intent is visible in Zero Trust.
 resource "cloudflare_zero_trust_access_application" "federation_bypass" {
   for_each = local.federation_bypass
 
@@ -109,7 +127,7 @@ resource "cloudflare_zero_trust_access_application" "federation_bypass" {
   }]
 
   policies = [{
-    id         = cloudflare_zero_trust_access_policy.bypass_public.id
+    id         = cloudflare_zero_trust_access_policy.bypass_public[0].id
     precedence = 1
   }]
 }

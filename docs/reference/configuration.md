@@ -16,7 +16,7 @@ Configured in `wrangler.jsonc`:
 - `METRICS` — Analytics Engine
 - `ASSETS` — static assets
 
-Placeholder resource IDs in `wrangler.jsonc` are local-only. Create real D1 / KV / R2 resources before deploying.
+Placeholder resource IDs in `wrangler.jsonc` are local-only. Create real D1 / KV / R2 / Queue resources with [`infra/cloudflare`](../../infra/cloudflare/README.md) before deploying (`tofu output -json wrangler_bindings`).
 
 ## Instance vars
 
@@ -60,4 +60,4 @@ Tests mint Access-shaped JWTs with the fixture RSA keypair (`packages/worker/tes
 
 Access application policies must **bypass** public federation and discovery paths so remote servers can reach the instance without an Access login. At minimum allow unauthenticated access to `/.well-known/*`, `/nodeinfo/*`, `/users/*`, and ActivityPub inbox/outbox surfaces. Require Access for `/api/*` (and any private UI).
 
-Automate this with Terraform under [`infra/cloudflare-access`](../../infra/cloudflare-access/README.md): it creates the WorkOS OIDC IdP, an Allow app for `/api*`, and Bypass apps for federation/health paths, then outputs `CF_ACCESS_*` Worker vars.
+Automate this with Terraform under [`infra/cloudflare`](../../infra/cloudflare/README.md): it creates D1 / KV / R2 / Queue plus the WorkOS OIDC IdP, an Allow app for `/api*`, and Bypass apps for federation/health paths, then outputs `wrangler_bindings` and `CF_ACCESS_*` Worker vars.
