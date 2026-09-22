@@ -86,6 +86,16 @@ Labels:
 | GET    | `/api/v1/conversations`               |
 | POST   | `/api/v1/conversations/:id/read`      |
 | GET    | `/api/v1/timelines/direct`            |
+| GET    | `/api/v1/lists`                       |
+| POST   | `/api/v1/lists`                       |
+| GET    | `/api/v1/lists/:id`                   |
+| PUT    | `/api/v1/lists/:id`                   |
+| DELETE | `/api/v1/lists/:id`                   |
+| GET    | `/api/v1/lists/:id/accounts`          |
+| POST   | `/api/v1/lists/:id/accounts`          |
+| DELETE | `/api/v1/lists/:id/accounts`          |
+| GET    | `/api/v1/accounts/:id/lists`          |
+| GET    | `/api/v1/timelines/list/:id`          |
 | GET    | `/api/v1/streaming`                   |
 | GET    | `/users/:username`                    |
 | GET    | `/users/:username/statuses/:id`       |
@@ -95,7 +105,7 @@ Labels:
 | POST   | `/users/:username/inbox`              |
 | POST   | `/inbox`                              |
 
-Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#hashtag` in local public notes. Status create accepts `in_reply_to_id`; context walks ancestors/descendants with visibility filtering. Directory lists local accounts. Peers are distinct `remote_actors.domain` values. Activity aggregates weekly local status and registration counts. Trends tags/statuses are derived from recent public local notes. Direct visibility is limited to the author and locally mentioned accounts (`status_mentions`); conversations group Direct threads by root status id; markers persist home/notifications read positions. Inbox accepts signed Follow / Undo / Like / Announce / Create that target this instance. Local actors verify against the stored account key. Remote actors verify against a cached `RemoteActor` public key, fetching and persisting the actor document from `keyId` on a cache miss. Remote `Create` / `Announce` Notes are stored as `RemoteStatus` and appear on the public timeline. Remote Like / Announce of a local status increment that status's favourite and reblog counts. `GET /api/v1/streaming` is a Durable Object WebSocket hub with write-time fan-out for updates and notifications.
+Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#hashtag` in local public notes. Status create accepts `in_reply_to_id`; context walks ancestors/descendants with visibility filtering. Directory lists local accounts. Peers are distinct `remote_actors.domain` values. Activity aggregates weekly local status and registration counts. Trends tags/statuses are derived from recent public local notes. Direct visibility is limited to the author and locally mentioned accounts (`status_mentions`); conversations group Direct threads by root status id; markers persist home/notifications read positions. Lists are per-account named member sets with optional `replies_policy` and a dedicated list timeline. Inbox accepts signed Follow / Undo / Like / Announce / Create that target this instance. Local actors verify against the stored account key. Remote actors verify against a cached `RemoteActor` public key, fetching and persisting the actor document from `keyId` on a cache miss. Remote `Create` / `Announce` Notes are stored as `RemoteStatus` and appear on the public timeline. Remote Like / Announce of a local status increment that status's favourite and reblog counts. `GET /api/v1/streaming` is a Durable Object WebSocket hub with write-time fan-out for updates and notifications.
 
 ### Placeholder
 
@@ -103,7 +113,6 @@ Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#
 | ------ | ------------------------ | -------- |
 | GET    | `/api/v1/custom_emojis`  | `[]`     |
 | GET    | `/api/v1/announcements`  | `[]`     |
-| GET    | `/api/v1/lists`          | `[]`     |
 | GET    | `/api/v1/suggestions`    | `[]`     |
 | GET    | `/api/v1/trends/links`   | `[]`     |
 | GET    | `/api/v1/instance/rules` | `[]`     |

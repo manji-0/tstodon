@@ -31,7 +31,6 @@ export const metaRoutes = new Hono<{ Bindings: Env }>();
 
 metaRoutes.get("/api/v1/custom_emojis", (c) => c.json([]));
 metaRoutes.get("/api/v1/announcements", (c) => c.json([]));
-metaRoutes.get("/api/v1/lists", (c) => c.json([]));
 metaRoutes.get("/api/v1/suggestions", (c) => c.json([]));
 metaRoutes.get("/api/v1/trends/links", (c) => c.json([]));
 metaRoutes.get("/api/v1/instance/rules", (c) => c.json([]));

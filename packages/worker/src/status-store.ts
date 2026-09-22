@@ -17,7 +17,8 @@ import { visibilitySql } from "./sql-enums";
 
 export type StatusRow = z.infer<typeof StatusRowSchema>;
 
-const statusSelect = `id, account_id, kind, reblog_of_id, in_reply_to_id, content_text, COALESCE(content_html, '') AS content_html, visibility, sensitive, COALESCE(spoiler_text, '') AS spoiler_text, language, created_at, poll_id`;
+export const STATUS_SELECT = `id, account_id, kind, reblog_of_id, in_reply_to_id, content_text, COALESCE(content_html, '') AS content_html, visibility, sensitive, COALESCE(spoiler_text, '') AS spoiler_text, language, created_at, poll_id`;
+const statusSelect = STATUS_SELECT;
 
 const CONTEXT_ANCESTOR_LIMIT = 40;
 const CONTEXT_DESCENDANT_LIMIT = 60;
@@ -177,7 +178,7 @@ export const listPublicStatuses = async (
       : `SELECT ${statusSelect} FROM statuses WHERE visibility = 'public' ORDER BY id DESC LIMIT ?`;
     const stmt = maxId ? db.prepare(sql).bind(maxId, limit) : db.prepare(sql).bind(limit);
     const { results } = await stmt.all();
-    return hydrateRows(db, results ?? []);
+    return hydrateStatusRows(db, results ?? []);
   });
 
 export const listHomeStatuses = async (
@@ -200,7 +201,7 @@ export const listHomeStatuses = async (
       ? db.prepare(sql).bind(accountId, accountId, maxId, limit)
       : db.prepare(sql).bind(accountId, accountId, limit);
     const { results } = await stmt.all();
-    return hydrateRows(db, results ?? []);
+    return hydrateStatusRows(db, results ?? []);
   });
 
 export const listAccountStatuses = async (
@@ -213,7 +214,7 @@ export const listAccountStatuses = async (
       .prepare(`SELECT ${statusSelect} FROM statuses WHERE account_id = ? ORDER BY id DESC LIMIT ?`)
       .bind(accountId, limit)
       .all();
-    return hydrateRows(db, results ?? []);
+    return hydrateStatusRows(db, results ?? []);
   });
 
 export const searchStatuses = async (
@@ -228,7 +229,7 @@ export const searchStatuses = async (
       )
       .bind(`%${query}%`, limit)
       .all();
-    return hydrateRows(db, results ?? []);
+    return hydrateStatusRows(db, results ?? []);
   });
 
 export const deleteStatus = async (
@@ -266,7 +267,10 @@ export const countStatuses = async (db: D1Database): Promise<Result<number, Repo
     return row?.count ?? 0;
   });
 
-const hydrateRows = async (db: D1Database, rows: unknown[]): Promise<LocalStatusValue[]> => {
+export const hydrateStatusRows = async (
+  db: D1Database,
+  rows: unknown[],
+): Promise<LocalStatusValue[]> => {
   const statuses: LocalStatusValue[] = [];
   for (const raw of rows) {
     const row = parseRow(StatusRowSchema, raw);
@@ -296,7 +300,7 @@ export const listFavouritedStatuses = async (
       )
       .bind(accountId, limit)
       .all();
-    return hydrateRows(db, results ?? []);
+    return hydrateStatusRows(db, results ?? []);
   });
 
 export const listBookmarkedStatuses = async (
@@ -313,7 +317,7 @@ export const listBookmarkedStatuses = async (
       )
       .bind(accountId, limit)
       .all();
-    return hydrateRows(db, results ?? []);
+    return hydrateStatusRows(db, results ?? []);
   });
 
 export const listTagStatuses = async (
@@ -331,7 +335,7 @@ export const listTagStatuses = async (
       )
       .bind(`%#${tag}%`, `%#${tag.toLowerCase()}%`, limit)
       .all();
-    return hydrateRows(db, results ?? []);
+    return hydrateStatusRows(db, results ?? []);
   });
 
 export const listStatusAncestors = async (
@@ -382,7 +386,7 @@ export const listStatusDescendants = async (
         )
         .bind(parentId, CONTEXT_DESCENDANT_LIMIT - collected.length)
         .all();
-      const children = await hydrateRows(db, results ?? []);
+      const children = await hydrateStatusRows(db, results ?? []);
       for (const child of children) {
         if (seen.has(child.id)) {
           continue;
@@ -453,7 +457,7 @@ export const listTrendingStatuses = async (
       )
       .bind(since, limit)
       .all();
-    return hydrateRows(db, results ?? []);
+    return hydrateStatusRows(db, results ?? []);
   });
 
 export const listDirectStatusesForAccount = async (
@@ -477,7 +481,7 @@ export const listDirectStatusesForAccount = async (
       ? db.prepare(sql).bind(accountId, accountId, maxId, limit)
       : db.prepare(sql).bind(accountId, accountId, limit);
     const { results } = await stmt.all();
-    return hydrateRows(db, results ?? []);
+    return hydrateStatusRows(db, results ?? []);
   });
 
 export const resolveDirectConversationRoot = async (

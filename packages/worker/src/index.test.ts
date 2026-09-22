@@ -889,6 +889,94 @@ describe("worker http", () => {
     expect(replyContext.ancestors.map((status) => status.id)).toEqual([rootStatus.id]);
   });
 
+  it("manages lists, membership, and list timelines", async () => {
+    const owner = await json("/api/v1/accounts/verify_credentials", {
+      headers: await auth("list-owner@example.com"),
+    });
+    expect(owner.status).toBe(200);
+    const member = await json("/api/v1/accounts/verify_credentials", {
+      headers: await auth("list-member@example.com"),
+    });
+    expect(member.status).toBe(200);
+    const memberAccount = read(MastodonAccountPreviewSchema, member.body);
+
+    const createdList = await json("/api/v1/lists", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth("list-owner@example.com")) },
+      body: JSON.stringify({ title: "Friends", replies_policy: "list" }),
+    });
+    expect(createdList.status).toBe(200);
+    const list = read(
+      z.object({ id: z.string(), title: z.string(), replies_policy: z.string() }),
+      createdList.body,
+    );
+    expect(list.title).toBe("Friends");
+
+    const addMembers = await json(`/api/v1/lists/${list.id}/accounts`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth("list-owner@example.com")) },
+      body: JSON.stringify({ account_ids: [memberAccount.id] }),
+    });
+    expect(addMembers.status).toBe(200);
+
+    const members = await json(`/api/v1/lists/${list.id}/accounts`, {
+      headers: await auth("list-owner@example.com"),
+    });
+    expect(members.status).toBe(200);
+    expect(
+      read(z.array(MastodonAccountPreviewSchema), members.body).some(
+        (a) => a.id === memberAccount.id,
+      ),
+    ).toBe(true);
+
+    const posted = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth("list-member@example.com")) },
+      body: JSON.stringify({ status: "hello list timeline" }),
+    });
+    expect(posted.status).toBe(200);
+    const status = read(MastodonStatusPreviewSchema, posted.body);
+
+    const timeline = await json(`/api/v1/timelines/list/${list.id}`, {
+      headers: await auth("list-owner@example.com"),
+    });
+    expect(timeline.status).toBe(200);
+    expect(
+      read(MastodonStatusListPreviewSchema, timeline.body).some((item) => item.id === status.id),
+    ).toBe(true);
+
+    const containing = await json(`/api/v1/accounts/${memberAccount.id}/lists`, {
+      headers: await auth("list-owner@example.com"),
+    });
+    expect(containing.status).toBe(200);
+    expect(
+      read(z.array(z.object({ id: z.string() })), containing.body).some(
+        (item) => item.id === list.id,
+      ),
+    ).toBe(true);
+
+    const renamed = await json(`/api/v1/lists/${list.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth("list-owner@example.com")) },
+      body: JSON.stringify({ title: "Close friends" }),
+    });
+    expect(renamed.status).toBe(200);
+    expect(read(z.object({ title: z.string() }), renamed.body).title).toBe("Close friends");
+
+    const removed = await json(`/api/v1/lists/${list.id}/accounts`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json", ...(await auth("list-owner@example.com")) },
+      body: JSON.stringify({ account_ids: [memberAccount.id] }),
+    });
+    expect(removed.status).toBe(200);
+
+    const deleted = await json(`/api/v1/lists/${list.id}`, {
+      method: "DELETE",
+      headers: await auth("list-owner@example.com"),
+    });
+    expect(deleted.status).toBe(200);
+  });
+
   it("supports direct messages, conversations, and markers", async () => {
     await json("/api/v1/accounts/verify_credentials", {
       headers: await auth("dm-bob@example.com"),
