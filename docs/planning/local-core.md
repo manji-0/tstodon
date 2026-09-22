@@ -104,7 +104,7 @@ Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#
 | GET | `/api/v1/directory` | `[]` |
 | GET | `/api/v1/streaming` | Durable Object WebSocket hub without write-time fan-out |
 
-`StreamHub`, `OutboxDeliveryWorkflow`, and expired-poll cron remain entrypoint stubs around the HTTP core.
+`StreamHub` and expired-poll cron remain entrypoint stubs around the HTTP core. `OutboxDeliveryWorkflow` retries signed inbox POSTs per remote target.
 
 ### Out of scope
 <!-- derived-from #principles -->
@@ -137,10 +137,9 @@ Protected API routes accept `Authorization: Bearer ${DEV_BEARER_SECRET}:${email}
 
 Public discovery and actor documents are unauthenticated. Inbox requests must carry a draft-cavage `Signature` (and matching `Digest`). Verification uses the local actor key when `actor` is on this instance, otherwise a cached remote actor key (fetched from `keyId` on miss). Missing, unverifiable, or blocked actor keys return `kind: InvalidSignature`. Unreachable key fetches return `kind: VerificationUnavailable`.
 
-Outbound Create / Announce jobs expand local and remote followers and sign POSTs to remote inboxes. Same-host inboxes are skipped. Inbound Create / Announce persist a `RemoteStatus` when the object is a Note attributed to the signing actor. Remote Like / Announce of a local status are stored separately from local account rows and counted on that status. Nested Undo of Like or Announce removes the remote row.
+Outbound Create / Announce jobs enqueue `ExpandFollowers` on `OUTBOX_PROCESS_QUEUE`. The queue inserts a `Queued` `outbox_deliveries` row per remote inbox and starts `OutboxDeliveryWorkflow`. The workflow signs POSTs, maps HTTP status onto `DeliveryAttemptOutcome`, and applies `OutboxDelivery.afterAttempt` with `workflowSleep` between transient failures. Same-host inboxes are skipped. Inbound Create / Announce persist a `RemoteStatus` when the object is a Note attributed to the signing actor. Remote Like / Announce of a local status are stored separately from local account rows and counted on that status. Nested Undo of Like or Announce removes the remote row.
 
 ## Next
 <!-- derived-from #out-of-scope -->
 
-- Decide Queue versus Workflow ownership for delivery retries.
 - Bind Vectorize / Workers AI only when local search cost is acceptable.

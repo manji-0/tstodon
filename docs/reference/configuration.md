@@ -8,9 +8,9 @@ Configured in `wrangler.jsonc`:
 - `DB` — D1
 - `MEDIA` — R2
 - `REMOTE_DNS_CACHE`, `APP_CACHE` — KV
-- `OUTBOX_PROCESS_QUEUE` — Queue producer/consumer
+- `OUTBOX_PROCESS_QUEUE` — Queue producer/consumer (`ExpandFollowers` fan-out and `ProcessExpiredPolls`)
 - `STREAM_HUB` — Durable Object
-- `OUTBOX_DELIVERY_WORKFLOW` — Workflow
+- `OUTBOX_DELIVERY_WORKFLOW` — per-inbox delivery retries
 - `IMAGES` — Images
 - `METRICS` — Analytics Engine
 - `ASSETS` — static assets

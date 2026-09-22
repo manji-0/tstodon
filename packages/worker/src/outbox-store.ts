@@ -1,12 +1,98 @@
-import { ActivityId, OutboxDelivery } from "@tstodon/domain";
+import { assertNever } from "@tstodon/core";
+import { ActivityId, OutboxDelivery, type OutboxDelivery as OutboxDeliveryValue } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
-import { parseRow, OutboundActivityRowSchema, toRepositoryError } from "./schemas";
+import {
+  parseRow,
+  OutboundActivityRowSchema,
+  OutboxDeliveryRowSchema,
+  toRepositoryError,
+} from "./schemas";
 
 export type OutboundActivityRow = z.infer<typeof OutboundActivityRowSchema>;
+
+const persistColumns = (
+  delivery: OutboxDeliveryValue,
+): {
+  kind: string;
+  reasonKind: string | null;
+  attemptCount: number;
+  httpStatus: number | null;
+} => {
+  switch (delivery.kind) {
+    case "Queued":
+      return {
+        kind: delivery.kind,
+        reasonKind: null,
+        attemptCount: delivery.attemptCount,
+        httpStatus: null,
+      };
+    case "Expanded":
+    case "Delivered":
+      return {
+        kind: delivery.kind,
+        reasonKind: null,
+        attemptCount: 0,
+        httpStatus: null,
+      };
+    case "Failed":
+      switch (delivery.reasonKind) {
+        case "RetryExhausted":
+          return {
+            kind: delivery.kind,
+            reasonKind: delivery.reasonKind,
+            attemptCount: delivery.attemptCount,
+            httpStatus: null,
+          };
+        case "Permanent":
+          return {
+            kind: delivery.kind,
+            reasonKind: delivery.reasonKind,
+            attemptCount: 0,
+            httpStatus: delivery.httpStatus,
+          };
+        default:
+          return assertNever(delivery);
+      }
+    default:
+      return assertNever(delivery);
+  }
+};
+
+export const parseOutboxDelivery = (
+  raw: unknown,
+): Result<OutboxDeliveryValue, RepositoryError> => {
+  const row = parseRow(OutboxDeliveryRowSchema, raw);
+  if (row.isErr()) {
+    return err(row.error);
+  }
+  if (row.value.kind === "Failed" && row.value.reason_kind === "Permanent") {
+    return OutboxDelivery.parse({
+      kind: "Failed",
+      reasonKind: "Permanent",
+      httpStatus: row.value.http_status,
+    }).mapErr(() => toRepositoryError("invalid outbox delivery row"));
+  }
+  if (row.value.kind === "Failed") {
+    return OutboxDelivery.parse({
+      kind: "Failed",
+      reasonKind: "RetryExhausted",
+      attemptCount: row.value.attempt_count,
+    }).mapErr(() => toRepositoryError("invalid outbox delivery row"));
+  }
+  if (row.value.kind === "Queued") {
+    return OutboxDelivery.parse({
+      kind: "Queued",
+      attemptCount: row.value.attempt_count,
+    }).mapErr(() => toRepositoryError("invalid outbox delivery row"));
+  }
+  return OutboxDelivery.parse({ kind: row.value.kind }).mapErr(() =>
+    toRepositoryError("invalid outbox delivery row"),
+  );
+};
 
 export const insertOutboundActivity = async (
   db: D1Database,
@@ -99,11 +185,139 @@ export const markOutboundExpanded = async (
   }
   return runD1(async () => {
     const next = OutboxDelivery.afterExpand(followerTargetCount);
+    const columns = persistColumns(next);
     await db
       .prepare(
-        `UPDATE outbox_deliveries SET kind = ?, reason_kind = NULL, updated_at = ? WHERE activity_id = ?`,
+        `UPDATE outbox_deliveries
+         SET kind = ?, reason_kind = ?, attempt_count = ?, http_status = ?, updated_at = ?
+         WHERE activity_id = ? AND inbox_url IS NULL`,
       )
-      .bind(next.kind, nowIso(), activityId)
+      .bind(
+        columns.kind,
+        columns.reasonKind,
+        columns.attemptCount,
+        columns.httpStatus,
+        nowIso(),
+        activityId,
+      )
+      .run();
+  });
+};
+
+export const ensureOutboxTarget = async (
+  db: D1Database,
+  activityId: string,
+  inboxUrl: string,
+): Promise<Result<OutboxDeliveryValue, RepositoryError>> => {
+  const parsed = ActivityId.parse(activityId);
+  if (parsed.isErr()) {
+    return err(toRepositoryError("invalid activity id"));
+  }
+  const inserted = await runD1(async () => {
+    const queued = OutboxDelivery.queued();
+    const createdAt = nowIso();
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO outbox_deliveries
+         (id, activity_id, kind, attempt_count, inbox_url, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        newEntityId(),
+        activityId,
+        queued.kind,
+        queued.attemptCount,
+        inboxUrl,
+        createdAt,
+        createdAt,
+      )
+      .run();
+  });
+  if (inserted.isErr()) {
+    return err(inserted.error);
+  }
+  const loaded = await findOutboxTarget(db, activityId, inboxUrl);
+  if (loaded.isErr()) {
+    return err(loaded.error);
+  }
+  if (!loaded.value) {
+    return err(toRepositoryError("outbox target missing after insert"));
+  }
+  return ok(loaded.value);
+};
+
+export const findOutboxTarget = async (
+  db: D1Database,
+  activityId: string,
+  inboxUrl: string,
+): Promise<Result<OutboxDeliveryValue | undefined, RepositoryError>> => {
+  const queried = await runD1(() =>
+    db
+      .prepare(
+        `SELECT kind, reason_kind, attempt_count, http_status, inbox_url
+         FROM outbox_deliveries WHERE activity_id = ? AND inbox_url = ?`,
+      )
+      .bind(activityId, inboxUrl)
+      .first(),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  if (!queried.value) {
+    return ok(undefined);
+  }
+  return parseOutboxDelivery(queried.value);
+};
+
+export const findOutboxFanout = async (
+  db: D1Database,
+  activityId: string,
+): Promise<Result<OutboxDeliveryValue | undefined, RepositoryError>> => {
+  const queried = await runD1(() =>
+    db
+      .prepare(
+        `SELECT kind, reason_kind, attempt_count, http_status, inbox_url
+         FROM outbox_deliveries WHERE activity_id = ? AND inbox_url IS NULL`,
+      )
+      .bind(activityId)
+      .first(),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  if (!queried.value) {
+    return ok(undefined);
+  }
+  return parseOutboxDelivery(queried.value);
+};
+
+export const persistOutboxTarget = async (
+  db: D1Database,
+  activityId: string,
+  inboxUrl: string,
+  delivery: OutboxDeliveryValue,
+): Promise<Result<void, RepositoryError>> => {
+  const parsed = ActivityId.parse(activityId);
+  if (parsed.isErr()) {
+    return err(toRepositoryError("invalid activity id"));
+  }
+  return runD1(async () => {
+    const columns = persistColumns(delivery);
+    await db
+      .prepare(
+        `UPDATE outbox_deliveries
+         SET kind = ?, reason_kind = ?, attempt_count = ?, http_status = ?, updated_at = ?
+         WHERE activity_id = ? AND inbox_url = ?`,
+      )
+      .bind(
+        columns.kind,
+        columns.reasonKind,
+        columns.attemptCount,
+        columns.httpStatus,
+        nowIso(),
+        activityId,
+        inboxUrl,
+      )
       .run();
   });
 };

@@ -1,4 +1,4 @@
-import { schemaResult, unitKind } from "@tstodon/core";
+import { assertNever, schemaResult, unitKind } from "@tstodon/core";
 import { z } from "zod";
 import {
   DeliveryAttemptOutcome,
@@ -86,6 +86,23 @@ export const OutboxDelivery = {
         return "+15 minutes";
       default:
         return "+60 minutes";
+    }
+  },
+  workflowSleep: (
+    attempt: number,
+  ): "1 minute" | "5 minutes" | "15 minutes" | "60 minutes" => {
+    const delay = OutboxDelivery.retryDelay(attempt);
+    switch (delay) {
+      case "+1 minute":
+        return "1 minute";
+      case "+5 minutes":
+        return "5 minutes";
+      case "+15 minutes":
+        return "15 minutes";
+      case "+60 minutes":
+        return "60 minutes";
+      default:
+        return assertNever(delay);
     }
   },
 } as const;

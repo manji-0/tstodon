@@ -73,8 +73,9 @@ The HTTP surface is classified in [Local Core](../planning/local-core.md): imple
 
 Queue, cron, Workflow, and Durable Object traffic stay on the Worker entrypoint. Hono only matches HTTP.
 
+Queue `OUTBOX_PROCESS_QUEUE` owns `ExpandFollowers` fan-out and the expired-poll cron message. Workflow `OUTBOX_DELIVERY_WORKFLOW` owns per-inbox POST retries. `DeliverTarget` on the queue only starts that workflow (legacy or replay).
+
 ## Open Questions
 <!-- constrained-by ../planning/local-core.md#out-of-scope -->
 
-- How much of outbound delivery should live in Queues versus Workflows?
 - When to bind Vectorize / Workers AI for search without paying for unused local inference?

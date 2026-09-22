@@ -1,12 +1,15 @@
 import {
   ActivityId,
+  DeliveryAttemptOutcome,
   InstanceIdentity,
   OutboxJob,
+  type DeliveryAttemptOutcome as DeliveryAttemptOutcomeValue,
   type OutboxJob as OutboxJobValue,
 } from "@tstodon/domain";
 import { findAccountById } from "./account-store";
 import { signInboxRequest } from "./http-signature";
 import {
+  ensureOutboxTarget,
   findOutboundActivity,
   insertOutboundActivity,
   markOutboundExpanded,
@@ -14,6 +17,8 @@ import {
 import { listAcceptedFollowerIds } from "./social-store";
 import { listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
+
+type DeliverTargetJob = Extract<OutboxJobValue, { kind: "DeliverTarget" }>;
 
 export const enqueueLocalActivity = async (
   env: Env,
@@ -37,6 +42,91 @@ export const enqueueLocalActivity = async (
     kind: "ExpandFollowers",
     activityId: activityId.value,
   });
+};
+
+export const deliveryWorkflowId = async (
+  activityId: string,
+  inboxUrl: string,
+): Promise<string> => {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${activityId}\n${inboxUrl}`),
+  );
+  const bytes = new Uint8Array(digest).subarray(0, 16);
+  let hex = "";
+  for (const byte of bytes) {
+    hex += byte.toString(16).padStart(2, "0");
+  }
+  return `outbox-${hex}`;
+};
+
+export const startOutboxDeliveryWorkflow = async (
+  env: Env,
+  job: DeliverTargetJob,
+): Promise<void> => {
+  const id = await deliveryWorkflowId(job.activityId, job.inboxUrl);
+  try {
+    await env.OUTBOX_DELIVERY_WORKFLOW.create({
+      id,
+      params: {
+        kind: "DeliverTarget" as const,
+        activityId: job.activityId,
+        inboxUrl: job.inboxUrl,
+      },
+    });
+  } catch (cause) {
+    console.error(
+      JSON.stringify({
+        kind: "OutboxWorkflowCreateFailed",
+        activityId: job.activityId,
+        message: cause instanceof Error ? cause.message : String(cause),
+      }),
+    );
+  }
+};
+
+export const attemptInboxDelivery = async (
+  env: Env,
+  job: DeliverTargetJob,
+): Promise<DeliveryAttemptOutcomeValue> => {
+  const activity = await findOutboundActivity(env.DB, job.activityId);
+  if (activity.isErr() || !activity.value) {
+    return DeliveryAttemptOutcome.forHttpStatus(404);
+  }
+  const account = await findAccountById(env.DB, activity.value.account_id);
+  if (account.isErr() || !account.value) {
+    return DeliveryAttemptOutcome.forHttpStatus(404);
+  }
+  const identity = parseInstanceIdentity(env);
+  if (identity.isErr()) {
+    return DeliveryAttemptOutcome.TransientFailure;
+  }
+  let inbox: URL;
+  try {
+    inbox = new URL(job.inboxUrl);
+  } catch {
+    return DeliveryAttemptOutcome.forHttpStatus(400);
+  }
+  const keyId = `${InstanceIdentity.actorUrl(identity.value, account.value.username)}#main-key`;
+  const headers = await signInboxRequest(
+    inbox,
+    account.value.privateKeyJwk.unwrap(),
+    keyId,
+    activity.value.payload_json,
+  );
+  if (headers.isErr()) {
+    return DeliveryAttemptOutcome.forHttpStatus(400);
+  }
+  try {
+    const response = await fetch(inbox, {
+      method: "POST",
+      headers: headers.value,
+      body: activity.value.payload_json,
+    });
+    return DeliveryAttemptOutcome.forHttpStatus(response.status);
+  } catch {
+    return DeliveryAttemptOutcome.TransientFailure;
+  }
 };
 
 export const processOutboxJob = async (
@@ -89,41 +179,27 @@ export const processOutboxJob = async (
           activityId: job.activityId,
           inboxUrl,
         });
-        if (parsedInbox.isOk()) {
-          await env.OUTBOX_PROCESS_QUEUE.send(parsedInbox.value);
+        if (parsedInbox.isErr()) {
+          continue;
         }
+        const target = await ensureOutboxTarget(
+          env.DB,
+          job.activityId,
+          parsedInbox.value.inboxUrl,
+        );
+        if (target.isErr()) {
+          continue;
+        }
+        await startOutboxDeliveryWorkflow(env, parsedInbox.value);
       }
       return;
     }
     case "DeliverTarget": {
-      const activity = await findOutboundActivity(env.DB, job.activityId);
-      if (activity.isErr() || !activity.value) {
+      const target = await ensureOutboxTarget(env.DB, job.activityId, job.inboxUrl);
+      if (target.isErr()) {
         return;
       }
-      const account = await findAccountById(env.DB, activity.value.account_id);
-      if (account.isErr() || !account.value) {
-        return;
-      }
-      const identity = parseInstanceIdentity(env);
-      if (identity.isErr()) {
-        return;
-      }
-      const inbox = new URL(job.inboxUrl);
-      const keyId = `${InstanceIdentity.actorUrl(identity.value, account.value.username)}#main-key`;
-      const headers = await signInboxRequest(
-        inbox,
-        account.value.privateKeyJwk.unwrap(),
-        keyId,
-        activity.value.payload_json,
-      );
-      if (headers.isErr()) {
-        return;
-      }
-      await fetch(inbox, {
-        method: "POST",
-        headers: headers.value,
-        body: activity.value.payload_json,
-      });
+      await startOutboxDeliveryWorkflow(env, job);
     }
   }
 };

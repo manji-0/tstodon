@@ -5,12 +5,18 @@ import type { z } from "zod";
 import { findAccountByUsername } from "./account-store";
 import { requireAdmin } from "./auth";
 import { generateAccountKeys } from "./keys";
-import { IsoInstant, RemoteActor } from "@tstodon/domain";
+import { IsoInstant, OutboxJob, RemoteActor } from "@tstodon/domain";
 import {
   listAcceptedRemoteFollowerUris,
   upsertRemoteActor,
 } from "./remote-actor-store";
 import { findRemoteStatusByObjectUri } from "./remote-status-store";
+import { attemptInboxDelivery, processOutboxJob } from "./delivery";
+import {
+  findOutboxFanout,
+  findOutboxTarget,
+  listOutboundActivities,
+} from "./outbox-store";
 import {
   signInboxRequest,
   verifyInboxRequest,
@@ -651,6 +657,123 @@ describe("worker http", () => {
       favourites_count: 0,
       reblogs_count: 1,
     });
+  });
+
+  it("fans out remote follower inboxes as per-target outbox rows", async () => {
+    const alice = await json("/api/v1/accounts/verify_credentials", {
+      headers: auth("queue-alice@example.com"),
+    });
+    expect(alice.status).toBe(200);
+    const preview = read(MastodonAccountPreviewSchema, alice.body);
+    const local = await findAccountByUsername(env.DB, preview.username);
+    expect(local.isOk() && local.value).toBeTruthy();
+    if (local.isErr() || !local.value) {
+      throw new Error("queue_alice account missing");
+    }
+    const keys = await generateAccountKeys();
+    const fetchedAt = IsoInstant.parse("2026-09-20T15:00:00.000Z");
+    expect(fetchedAt.isOk()).toBe(true);
+    if (fetchedAt.isErr()) {
+      throw new Error("invalid fixture instant");
+    }
+    const remote = RemoteActor.fromFetched({
+      actorUri: "https://remote.example/users/queue-bob",
+      username: "queue-bob",
+      domain: "remote.example",
+      inboxUri: "https://remote.example/users/queue-bob/inbox",
+      publicKeyId: "https://remote.example/users/queue-bob#main-key",
+      publicKeyPem: keys.publicKeyPem,
+      displayName: "Queue Bob",
+      fetchedAt: fetchedAt.value,
+    });
+    expect(remote.isOk()).toBe(true);
+    if (remote.isErr()) {
+      throw new Error("remote actor fixture rejected");
+    }
+    expect((await upsertRemoteActor(env.DB, remote.value)).isOk()).toBe(true);
+    const followBody = JSON.stringify({
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: "https://remote.example/activities/follow-queue-bob",
+      type: "Follow",
+      actor: "https://remote.example/users/queue-bob",
+      object: `https://example.com/users/${preview.username}`,
+    });
+    const followUrl = new URL("https://example.com/inbox");
+    const followHeaders = await signInboxRequest(
+      followUrl,
+      keys.privateKeyJwk,
+      "https://remote.example/users/queue-bob#main-key",
+      followBody,
+    );
+    expect(followHeaders.isOk()).toBe(true);
+    if (followHeaders.isErr()) {
+      throw new Error(followHeaders.error.message);
+    }
+    expect(
+      (
+        await json("/inbox", {
+          method: "POST",
+          headers: followHeaders.value,
+          body: followBody,
+        })
+      ).status,
+    ).toBe(202);
+    const created = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: {
+        ...auth("queue-alice@example.com"),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ status: "hello remote followers" }),
+    });
+    expect(created.status).toBe(200);
+    const activities = await listOutboundActivities(env.DB, local.value.id, 20);
+    expect(activities.isOk() && activities.value[0]).toBeTruthy();
+    if (activities.isErr() || !activities.value[0]) {
+      throw new Error("outbound activity missing");
+    }
+    const job = OutboxJob.parse({
+      kind: "ExpandFollowers",
+      activityId: activities.value[0].id,
+    });
+    expect(job.isOk()).toBe(true);
+    if (job.isErr()) {
+      throw new Error("expand job rejected");
+    }
+    await processOutboxJob(env, job.value);
+    const target = await findOutboxTarget(
+      env.DB,
+      activities.value[0].id,
+      "https://remote.example/users/queue-bob/inbox",
+    );
+    expect(target.isOk() && target.value).toBeTruthy();
+    if (target.isErr() || !target.value) {
+      throw new Error("outbox target missing");
+    }
+    expect(target.value.kind).not.toBe("Expanded");
+    expect(["Queued", "Delivered", "Failed"]).toContain(target.value.kind);
+    const fanout = await findOutboxFanout(env.DB, activities.value[0].id);
+    expect(fanout.isOk() && fanout.value).toBeTruthy();
+    if (fanout.isOk() && fanout.value) {
+      expect(fanout.value.kind).toBe("Expanded");
+    }
+  });
+
+  it("maps a missing activity onto a permanent delivery failure", async () => {
+    const job = OutboxJob.parse({
+      kind: "DeliverTarget",
+      activityId: "missing-activity",
+      inboxUrl: "https://remote.example/users/nobody/inbox",
+    });
+    expect(job.isOk()).toBe(true);
+    if (job.isErr() || job.value.kind !== "DeliverTarget") {
+      throw new Error("deliver job rejected");
+    }
+    const outcome = await attemptInboxDelivery(env, job.value);
+    expect(outcome).toEqual({
+      kind: "PermanentFailure",
+      httpStatus: 404,
+    } as const satisfies typeof outcome);
   });
 });
 

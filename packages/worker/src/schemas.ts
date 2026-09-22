@@ -96,6 +96,14 @@ export const OutboundActivityRowSchema = z.object({
   created_at: z.string().min(1),
 });
 
+export const OutboxDeliveryRowSchema = z.object({
+  kind: z.string().min(1),
+  reason_kind: z.string().nullable(),
+  attempt_count: z.number(),
+  http_status: z.number().nullable(),
+  inbox_url: z.string().nullable(),
+});
+
 const booleanish = z.union([z.boolean(), z.string(), z.number()]).optional();
 
 export const CreateStatusBodySchema = z.object({

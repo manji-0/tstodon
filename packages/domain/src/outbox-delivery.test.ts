@@ -41,4 +41,10 @@ describe("OutboxDelivery", () => {
     expect(OutboxDelivery.afterExpand(0).kind).toBe("Delivered");
     expect(OutboxDelivery.afterExpand(2).kind).toBe("Expanded");
   });
+
+  it("maps retry delays onto Workflow sleep labels", () => {
+    expect(OutboxDelivery.workflowSleep(1)).toBe("1 minute");
+    expect(OutboxDelivery.workflowSleep(2)).toBe("5 minutes");
+    expect(OutboxDelivery.workflowSleep(4)).toBe("60 minutes");
+  });
 });
