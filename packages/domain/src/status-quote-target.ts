@@ -8,10 +8,7 @@ const QuotedSchema = z.object({
   statusId: StatusId.schema,
 });
 
-export const StatusQuoteTargetSchema = z.discriminatedUnion("kind", [
-  NoneSchema,
-  QuotedSchema,
-]);
+export const StatusQuoteTargetSchema = z.discriminatedUnion("kind", [NoneSchema, QuotedSchema]);
 
 export type StatusQuoteTarget = z.infer<typeof StatusQuoteTargetSchema>;
 

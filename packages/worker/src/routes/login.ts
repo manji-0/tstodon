@@ -12,9 +12,7 @@ loginRoutes.get("/login", (c) => {
   const domain = `${c.env.WORKOS_AUTHKIT_DOMAIN}`;
   if (domain.length > 0) {
     const origin =
-      domain.startsWith("https://") || domain.startsWith("http://")
-        ? domain
-        : `https://${domain}`;
+      domain.startsWith("https://") || domain.startsWith("http://") ? domain : `https://${domain}`;
     return c.redirect(`${origin.replace(/\/$/, "")}/`);
   }
   const clientId = clientIdOf(c.env);

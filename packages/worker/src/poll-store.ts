@@ -49,10 +49,7 @@ export const insertPoll = async (
         JSON.stringify(input.options.map((title) => ({ title, votesCount: 0 }))),
       )
       .run();
-    await db
-      .prepare(`UPDATE statuses SET poll_id = ? WHERE id = ?`)
-      .bind(id, input.statusId)
-      .run();
+    await db.prepare(`UPDATE statuses SET poll_id = ? WHERE id = ?`).bind(id, input.statusId).run();
     return id;
   });
 
@@ -68,9 +65,7 @@ const pollFromRow = async (
   const votes = viewerId
     ? await runD1(() =>
         db
-          .prepare(
-            `SELECT option_index FROM poll_votes WHERE poll_id = ? AND account_id = ?`,
-          )
+          .prepare(`SELECT option_index FROM poll_votes WHERE poll_id = ? AND account_id = ?`)
           .bind(row.id, viewerId)
           .all<{ option_index: number }>(),
       )
@@ -133,9 +128,7 @@ export const findPollById = async (
 ): Promise<Result<PollRecord | undefined, RepositoryError>> => {
   const queried = await runD1(() =>
     db
-      .prepare(
-        `SELECT id, status_id, multiple, expires_at, options_json FROM polls WHERE id = ?`,
-      )
+      .prepare(`SELECT id, status_id, multiple, expires_at, options_json FROM polls WHERE id = ?`)
       .bind(pollId)
       .first(),
   );
@@ -149,10 +142,7 @@ export const votePoll = async (
   choices: ReadonlyArray<number>,
 ): Promise<Result<void, RepositoryError>> => {
   const queried = await runD1(() =>
-    db
-      .prepare(`SELECT options_json, expires_at FROM polls WHERE id = ?`)
-      .bind(pollId)
-      .first(),
+    db.prepare(`SELECT options_json, expires_at FROM polls WHERE id = ?`).bind(pollId).first(),
   );
   if (queried.isErr()) {
     return err(queried.error);

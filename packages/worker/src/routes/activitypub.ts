@@ -9,10 +9,7 @@ import {
 } from "@tstodon/domain";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import {
-  findAccountById,
-  findAccountByUsername,
-} from "../account-store";
+import { findAccountById, findAccountByUsername } from "../account-store";
 import {
   activityPayloadFromJson,
   actorDocument,
@@ -38,7 +35,13 @@ import {
   upsertRemoteFavourite,
 } from "../remote-interaction-store";
 import { parseInstanceIdentity } from "../runtime-config";
-import { ActivityJsonSchema, JsonObjectSchema, NestedActivityObjectSchema, parseJsonColumn, parseJsonText } from "../schemas";
+import {
+  ActivityJsonSchema,
+  JsonObjectSchema,
+  NestedActivityObjectSchema,
+  parseJsonColumn,
+  parseJsonText,
+} from "../schemas";
 import { schemaResult } from "@tstodon/core";
 import {
   favouriteStatus,
@@ -89,16 +92,17 @@ activityPubRoutes.get("/users/:username/statuses/:id", async (c) => {
   if (status.isErr()) {
     return jsonRepositoryError(c, status.error.message);
   }
-  if (!status.value || status.value.kind !== "LocalNote" || status.value.accountId !== account.value.id) {
+  if (
+    !status.value ||
+    status.value.kind !== "LocalNote" ||
+    status.value.accountId !== account.value.id
+  ) {
     return c.json({ kind: "NotFound" }, 404);
   }
   return c.json(noteDocument(identity.value, account.value, status.value), 200, jsonLd);
 });
 
-const collection = (
-  id: string,
-  items: ReadonlyArray<string>,
-) => ({
+const collection = (id: string, items: ReadonlyArray<string>) => ({
   "@context": "https://www.w3.org/ns/activitystreams",
   id,
   type: "OrderedCollection",
@@ -213,9 +217,7 @@ activityPubRoutes.get("/users/:username/following", async (c) => {
 const objectUriOf = (value: string | Readonly<{ id: string }>): string =>
   typeof value === "string" ? value : value.id;
 
-const nestedActivityTarget = (
-  raw: unknown,
-): { type: string; objectUri: string } | undefined => {
+const nestedActivityTarget = (raw: unknown): { type: string; objectUri: string } | undefined => {
   const parsed = schemaResult(NestedActivityObjectSchema)(raw);
   if (parsed.isErr()) {
     return undefined;
@@ -244,9 +246,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   const payload = activityPayloadFromJson(activityJson.value);
   const actorUri = String(payload.actor);
   const actorUsername = parseLocalActorUsername(identity.value, actorUri);
-  let signer:
-    | { kind: "Local"; account: LocalAccount }
-    | { kind: "Remote"; actor: RemoteActor };
+  let signer: { kind: "Local"; account: LocalAccount } | { kind: "Remote"; actor: RemoteActor };
   if (actorUsername) {
     const actorAccount = await findAccountByUsername(c.env.DB, actorUsername);
     if (actorAccount.isErr()) {
@@ -257,12 +257,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     }
     signer = { kind: "Local", account: actorAccount.value };
   } else {
-    const remote = await resolveRemoteActor(
-      c.env.DB,
-      identity.value,
-      signature.keyId,
-      actorUri,
-    );
+    const remote = await resolveRemoteActor(c.env.DB, identity.value, signature.keyId, actorUri);
     if (remote.isErr()) {
       if (remote.error.kind === "VerificationUnavailable") {
         c.header("Retry-After", "5");
@@ -344,9 +339,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         nested && (nested.type === "Like" || nested.type === "Announce")
           ? nested.objectUri
           : undefined;
-      const statusId = statusUri
-        ? parseLocalStatusId(identity.value, statusUri)
-        : undefined;
+      const statusId = statusUri ? parseLocalStatusId(identity.value, statusUri) : undefined;
       if (statusId && nested?.type === "Like") {
         await deleteRemoteFavourite(c.env.DB, signer.actor.actorUri, statusId);
       }
@@ -361,21 +354,11 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       }
     }
     if (activity.kind === "Create" || activity.kind === "Announce") {
-      await persistRemoteObject(
-        c.env.DB,
-        identity.value,
-        signer.actor,
-        activityJson.value.object,
-      );
+      await persistRemoteObject(c.env.DB, identity.value, signer.actor, activityJson.value.object);
       if (activity.kind === "Announce") {
         const statusId = parseLocalStatusId(identity.value, activity.object);
         if (statusId) {
-          await upsertRemoteAnnounce(
-            c.env.DB,
-            signer.actor.actorUri,
-            statusId,
-            activity.id,
-          );
+          await upsertRemoteAnnounce(c.env.DB, signer.actor.actorUri, statusId, activity.id);
         }
       }
     }
@@ -394,7 +377,11 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         target.value.id,
         target.value.locked,
       );
-      if (followed.isOk() && followed.value.kind === "LocalFollower" && followed.value.follow.kind !== "None") {
+      if (
+        followed.isOk() &&
+        followed.value.kind === "LocalFollower" &&
+        followed.value.follow.kind !== "None"
+      ) {
         await notifyAccount(c.env, {
           accountId: target.value.id,
           fromAccountId: actor.id,
@@ -426,12 +413,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       if (reblogId.isOk()) {
         await insertLocalReblog(
           c.env.DB,
-          LocalStatus.reblog(
-            reblogId.value,
-            actor.id,
-            parsedStatusId.value,
-            nowInstant(),
-          ),
+          LocalStatus.reblog(reblogId.value, actor.id, parsedStatusId.value, nowInstant()),
         );
       }
     }

@@ -38,11 +38,13 @@ pnpm install
 pnpm types:worker
 pnpm typecheck
 pnpm test
+pnpm lint
+pnpm fmt:check
 pnpm dev
-pnpm ci
+pnpm run ci
 ```
 
-`pnpm ci` is the minimum validation gate before handing back implementation work.
+`pnpm run ci` is the minimum validation gate before handing back implementation work (`pnpm ci` is pnpm's frozen install).
 
 ## Setup And Deployment Docs
 

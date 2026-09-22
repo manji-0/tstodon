@@ -2,12 +2,7 @@ import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
 
 export const InstanceDomainBrand = Symbol("InstanceDomain");
-const domainSchema = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .min(1)
-  .brand<typeof InstanceDomainBrand>();
+const domainSchema = z.string().trim().toLowerCase().min(1).brand<typeof InstanceDomainBrand>();
 
 export type InstanceDomain = z.infer<typeof domainSchema>;
 
@@ -32,6 +27,5 @@ export const InstanceIdentity = {
     `https://${identity.domain}/users/${username}`,
   webfingerSubject: (identity: InstanceIdentity, username: string): string =>
     `acct:${username}@${identity.domain}`,
-  sharedInboxUrl: (identity: InstanceIdentity): string =>
-    `https://${identity.domain}/inbox`,
+  sharedInboxUrl: (identity: InstanceIdentity): string => `https://${identity.domain}/inbox`,
 } as const;

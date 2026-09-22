@@ -13,15 +13,8 @@ import type { RepositoryError } from "./d1";
 import { fetchActivityJson } from "./federated-fetch";
 import { newEntityId } from "./ids";
 import { parseLocalStatusId } from "./activitypub";
-import {
-  findRemoteStatusByObjectUri,
-  upsertRemoteStatus,
-} from "./remote-status-store";
-import {
-  isTruthy,
-  NoteDocumentSchema,
-  stringList,
-} from "./schemas";
+import { findRemoteStatusByObjectUri, upsertRemoteStatus } from "./remote-status-store";
+import { isTruthy, NoteDocumentSchema, stringList } from "./schemas";
 
 const noteFromUnknown = (
   raw: unknown,
@@ -78,10 +71,7 @@ export const persistRemoteObject = async (
   if (cached.value) {
     return ok(cached.value);
   }
-  const raw =
-    typeof object === "string"
-      ? await fetchActivityJson(identity, object)
-      : ok(object);
+  const raw = typeof object === "string" ? await fetchActivityJson(identity, object) : ok(object);
   if (raw.isErr()) {
     return ok(undefined);
   }

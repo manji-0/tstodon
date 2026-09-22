@@ -41,19 +41,13 @@ accountRoutes.get("/api/v1/accounts/verify_credentials", async (c) => {
   if (session.isErr()) {
     return jsonAuthError(c, session.error);
   }
-  const document = await mastodonAccountDocument(
-    c.env,
-    identity.value,
-    session.value.account,
-  );
+  const document = await mastodonAccountDocument(c.env, identity.value, session.value.account);
   return c.json({
     ...document,
     role: FediRole.toMastodon(session.value.role),
     source: {
       privacy:
-        session.value.account.defaultPostVisibility.kind === "FollowersOnly"
-          ? "private"
-          : "public",
+        session.value.account.defaultPostVisibility.kind === "FollowersOnly" ? "private" : "public",
       sensitive: false,
       language: "",
       note: "",
@@ -112,10 +106,9 @@ accountRoutes.get("/api/v1/accounts/relationships", async (c) => {
     return jsonAuthError(c, user.error);
   }
   const url = new URL(c.req.url);
-  const ids = [
-    ...url.searchParams.getAll("id[]"),
-    ...url.searchParams.getAll("id"),
-  ].filter((id) => id.length > 0);
+  const ids = [...url.searchParams.getAll("id[]"), ...url.searchParams.getAll("id")].filter(
+    (id) => id.length > 0,
+  );
   const relationships = [];
   for (const id of ids) {
     const flags = await relationshipFlags(c.env.DB, user.value.id, id);
@@ -169,10 +162,7 @@ accountRoutes.get("/api/v1/accounts/:id/statuses", async (c) => {
   return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, viewerId));
 });
 
-const accountList = async (
-  c: Context<{ Bindings: Env }>,
-  kind: "followers" | "following",
-) => {
+const accountList = async (c: Context<{ Bindings: Env }>, kind: "followers" | "following") => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -229,8 +219,7 @@ accountRoutes.post("/api/v1/accounts/:id/follow", async (c) => {
   if (followed.isErr()) {
     return jsonRepositoryError(c, followed.error.message);
   }
-  const alreadyRelated =
-    prior.isOk() && (prior.value.following || prior.value.requested);
+  const alreadyRelated = prior.isOk() && (prior.value.following || prior.value.requested);
   if (
     !alreadyRelated &&
     followed.value.kind === "LocalFollower" &&

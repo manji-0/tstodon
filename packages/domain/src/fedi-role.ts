@@ -4,10 +4,7 @@ import { z } from "zod";
 const AdminSchema = unitKind("Admin");
 const UserSchema = unitKind("User");
 
-export const FediRoleSchema = z.discriminatedUnion("kind", [
-  AdminSchema,
-  UserSchema,
-]);
+export const FediRoleSchema = z.discriminatedUnion("kind", [AdminSchema, UserSchema]);
 
 export type FediRole = z.infer<typeof FediRoleSchema>;
 export type AdminFediRole = z.infer<typeof AdminSchema>;
@@ -33,9 +30,7 @@ export const FediRole = {
     }
     return FediRole.User;
   },
-  fromMetadata: (
-    metadata: Readonly<Record<string, unknown>> | undefined,
-  ): FediRole => {
+  fromMetadata: (metadata: Readonly<Record<string, unknown>> | undefined): FediRole => {
     if (!metadata) {
       return FediRole.User;
     }

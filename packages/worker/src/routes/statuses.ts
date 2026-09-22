@@ -1,4 +1,10 @@
-import { InstanceIdentity, LocalStatus, StatusComposition, StatusId, Visibility } from "@tstodon/domain";
+import {
+  InstanceIdentity,
+  LocalStatus,
+  StatusComposition,
+  StatusId,
+  Visibility,
+} from "@tstodon/domain";
 import { Hono } from "hono";
 import { findAccountByUsername } from "../account-store";
 import { authenticate } from "../auth";
@@ -15,7 +21,12 @@ import {
   requireUser,
 } from "../http";
 import { newEntityId } from "../ids";
-import { mastodonRemoteStatus, mastodonStatus, mastodonStatuses, remoteStatusVisible } from "../mastodon";
+import {
+  mastodonRemoteStatus,
+  mastodonStatus,
+  mastodonStatuses,
+  remoteStatusVisible,
+} from "../mastodon";
 import { insertPoll } from "../poll-store";
 import { CreateStatusBodySchema, isTruthy, stringList } from "../schemas";
 import { parseInstanceIdentity } from "../runtime-config";
@@ -210,9 +221,7 @@ statusRoutes.delete("/api/v1/statuses/:id", async (c) => {
   return c.json(document ?? {});
 });
 
-statusRoutes.get("/api/v1/statuses/:id/context", (c) =>
-  c.json({ ancestors: [], descendants: [] }),
-);
+statusRoutes.get("/api/v1/statuses/:id/context", (c) => c.json({ ancestors: [], descendants: [] }));
 
 statusRoutes.post("/api/v1/statuses/:id/favourite", async (c) => {
   const identity = parseInstanceIdentity(c.env);
@@ -283,12 +292,7 @@ statusRoutes.post("/api/v1/statuses/:id/reblog", async (c) => {
   if (reblogId.isErr()) {
     return jsonRepositoryError(c, "invalid status id");
   }
-  const reblog = LocalStatus.reblog(
-    reblogId.value,
-    user.value.id,
-    status.value.id,
-    nowInstant(),
-  );
+  const reblog = LocalStatus.reblog(reblogId.value, user.value.id, status.value.id, nowInstant());
   const inserted = await insertLocalReblog(c.env.DB, reblog);
   if (inserted.isErr()) {
     return jsonRepositoryError(c, inserted.error.message);

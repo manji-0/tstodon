@@ -11,9 +11,7 @@ export const RemoteInboundFollowRequestSchema = z.discriminatedUnion("kind", [
   FulfilledSchema,
 ]);
 
-export type RemoteInboundFollowRequest = z.infer<
-  typeof RemoteInboundFollowRequestSchema
->;
+export type RemoteInboundFollowRequest = z.infer<typeof RemoteInboundFollowRequestSchema>;
 
 export const RemoteInboundFollowRequest = {
   schema: RemoteInboundFollowRequestSchema,
@@ -22,9 +20,7 @@ export const RemoteInboundFollowRequest = {
   Queued: { kind: "Queued" } as const satisfies RemoteInboundFollowRequest,
   Fulfilled: { kind: "Fulfilled" } as const satisfies RemoteInboundFollowRequest,
   afterInboxFollow: (targetLocked: boolean): RemoteInboundFollowRequest =>
-    targetLocked
-      ? RemoteInboundFollowRequest.Queued
-      : RemoteInboundFollowRequest.Fulfilled,
+    targetLocked ? RemoteInboundFollowRequest.Queued : RemoteInboundFollowRequest.Fulfilled,
   authorize: (current: RemoteInboundFollowRequest): RemoteInboundFollowRequest =>
     current.kind === "Queued" ? RemoteInboundFollowRequest.Fulfilled : current,
   reject: (current: RemoteInboundFollowRequest): RemoteInboundFollowRequest =>

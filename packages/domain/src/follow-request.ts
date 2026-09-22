@@ -43,10 +43,7 @@ const toPresence = (follow: LocalFollow): FollowPresence => follow;
 export const FollowRequest = {
   schema: FollowRequestSchema,
   parse: schemaResult(FollowRequestSchema),
-  initial: (
-    kind: "LocalFollower" | "RemoteFollower",
-    targetLocked: boolean,
-  ): FollowRequest => {
+  initial: (kind: "LocalFollower" | "RemoteFollower", targetLocked: boolean): FollowRequest => {
     if (kind === "LocalFollower") {
       return {
         kind: "LocalFollower",
@@ -54,36 +51,26 @@ export const FollowRequest = {
         follow: toPresence(LocalFollow.initial(targetLocked)),
       };
     }
-    const remoteRequest =
-      RemoteInboundFollowRequest.afterInboxFollow(targetLocked);
+    const remoteRequest = RemoteInboundFollowRequest.afterInboxFollow(targetLocked);
     return {
       kind: "RemoteFollower",
       targetLocked,
       remoteRequest,
-      follow:
-        remoteRequest.kind === "Fulfilled" ? LocalFollow.Accepted : noneFollow,
+      follow: remoteRequest.kind === "Fulfilled" ? LocalFollow.Accepted : noneFollow,
     };
   },
   authorize: (state: FollowRequest): FollowRequest => {
     if (state.kind === "LocalFollower") {
       return {
         ...state,
-        follow:
-          state.follow.kind === "None"
-            ? noneFollow
-            : LocalFollow.Accepted,
+        follow: state.follow.kind === "None" ? noneFollow : LocalFollow.Accepted,
       };
     }
-    const remoteRequest = RemoteInboundFollowRequest.authorize(
-      state.remoteRequest,
-    );
+    const remoteRequest = RemoteInboundFollowRequest.authorize(state.remoteRequest);
     return {
       ...state,
       remoteRequest,
-      follow:
-        remoteRequest.kind === "Fulfilled"
-          ? LocalFollow.Accepted
-          : state.follow,
+      follow: remoteRequest.kind === "Fulfilled" ? LocalFollow.Accepted : state.follow,
     };
   },
   reject: (state: FollowRequest): FollowRequest => {

@@ -4,10 +4,7 @@ import { z } from "zod";
 const PendingSchema = unitKind("Pending");
 const AcceptedSchema = unitKind("Accepted");
 
-export const LocalFollowSchema = z.discriminatedUnion("kind", [
-  PendingSchema,
-  AcceptedSchema,
-]);
+export const LocalFollowSchema = z.discriminatedUnion("kind", [PendingSchema, AcceptedSchema]);
 
 export type LocalFollow = z.infer<typeof LocalFollowSchema>;
 export type PendingLocalFollow = z.infer<typeof PendingSchema>;
@@ -22,8 +19,6 @@ export const LocalFollow = {
     targetLocked ? LocalFollow.Pending : LocalFollow.Accepted,
   authorize: (_current: LocalFollow): AcceptedLocalFollow => LocalFollow.Accepted,
   existsAfterReject: (current: LocalFollow): boolean => current.kind === "Accepted",
-  notificationKind: (
-    state: LocalFollow,
-  ): "follow_request" | "follow" =>
+  notificationKind: (state: LocalFollow): "follow_request" | "follow" =>
     state.kind === "Pending" ? "follow_request" : "follow",
 } as const;

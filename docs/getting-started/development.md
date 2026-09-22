@@ -7,13 +7,16 @@ pnpm types:worker
 pnpm typecheck
 pnpm test
 pnpm lint
+pnpm fmt
+pnpm fmt:check
 pnpm dev
-pnpm ci
+pnpm run ci
 ```
 
-`pnpm ci` is the merge gate.
+`pnpm run ci` is the merge gate (`pnpm ci` is pnpm's frozen install). Lint uses oxlint; formatting uses oxfmt.
 
 ## HTTP routing
+
 <!-- derived-from ../architecture/tstodon-architecture.md#http-routing -->
 
 Add HTTP endpoints as Hono routes under `packages/worker/src/routes/`. Register them from `packages/worker/src/app.ts`.

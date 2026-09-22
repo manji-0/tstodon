@@ -19,15 +19,9 @@ export const queryLimit = (raw: string | undefined, fallback = 20): number => {
   return Math.min(parsed, 40);
 };
 
-export const jsonAuthError = (
-  c: Context<{ Bindings: Env }>,
-  error: AuthError,
-) => {
+export const jsonAuthError = (c: Context<{ Bindings: Env }>, error: AuthError) => {
   if (error.kind === "MissingToken" || error.kind === "InvalidToken") {
-    return c.json(
-      { error: "This method requires an authenticated user", kind: error.kind },
-      401,
-    );
+    return c.json({ error: "This method requires an authenticated user", kind: error.kind }, 401);
   }
   if (error.kind === "Forbidden") {
     return c.json({ error: "This action is not allowed", kind: error.kind }, 403);
@@ -45,25 +39,19 @@ export const requireUser = async (
 
 export const requireSession = async (
   c: Context<{ Bindings: Env }>,
-): Promise<Result<AuthenticatedSession, AuthError>> =>
-  requireAuthSession(c.req.raw, c.env);
+): Promise<Result<AuthenticatedSession, AuthError>> => requireAuthSession(c.req.raw, c.env);
 
 export const requireAdmin = async (
   c: Context<{ Bindings: Env }>,
-): Promise<Result<AuthenticatedSession, AuthError>> =>
-  requireAdminSession(c.req.raw, c.env);
+): Promise<Result<AuthenticatedSession, AuthError>> => requireAdminSession(c.req.raw, c.env);
 
-export const jsonRepositoryError = (
-  c: Context<{ Bindings: Env }>,
-  message: string,
-) => c.json({ error: message, kind: "RepositoryError" }, 500);
+export const jsonRepositoryError = (c: Context<{ Bindings: Env }>, message: string) =>
+  c.json({ error: message, kind: "RepositoryError" }, 500);
 
 export const jsonValidationError = (c: Context<{ Bindings: Env }>) =>
   c.json({ error: "ValidationError", kind: "ValidationError" }, 400);
 
-export const readUnknownBody = async (
-  c: Context<{ Bindings: Env }>,
-): Promise<unknown> => {
+export const readUnknownBody = async (c: Context<{ Bindings: Env }>): Promise<unknown> => {
   const contentType = c.req.header("content-type") ?? "";
   if (contentType.includes("application/json")) {
     return c.req.json();

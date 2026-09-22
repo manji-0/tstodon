@@ -7,18 +7,8 @@ import {
   requireUser,
 } from "../http";
 import { mastodonFilter, mastodonFilterV2 } from "../mastodon";
-import {
-  deleteFilter,
-  insertFilter,
-  insertReport,
-  listFilters,
-} from "../moderation-store";
-import {
-  FilterBodySchema,
-  isTruthy,
-  ReportBodySchema,
-  stringList,
-} from "../schemas";
+import { deleteFilter, insertFilter, insertReport, listFilters } from "../moderation-store";
+import { FilterBodySchema, isTruthy, ReportBodySchema, stringList } from "../schemas";
 
 export const moderationRoutes = new Hono<{ Bindings: Env }>();
 

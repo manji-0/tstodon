@@ -2,9 +2,7 @@ import path from "node:path";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-pool-workers";
 import { defineConfig } from "vitest/config";
 
-const migrations = await readD1Migrations(
-  path.join(import.meta.dirname, "migrations"),
-);
+const migrations = await readD1Migrations(path.join(import.meta.dirname, "migrations"));
 
 export default defineConfig({
   test: {
@@ -12,10 +10,7 @@ export default defineConfig({
       {
         test: {
           name: "domain",
-          include: [
-            "packages/core/src/**/*.test.ts",
-            "packages/domain/src/**/*.test.ts",
-          ],
+          include: ["packages/core/src/**/*.test.ts", "packages/domain/src/**/*.test.ts"],
           environment: "node",
         },
       },

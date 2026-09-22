@@ -27,19 +27,11 @@ timelineRoutes.get("/api/v1/timelines/public", async (c) => {
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
-  const remote = await listPublicRemoteStatuses(
-    c.env.DB,
-    queryLimit(c.req.query("limit")),
-  );
+  const remote = await listPublicRemoteStatuses(c.env.DB, queryLimit(c.req.query("limit")));
   if (remote.isErr()) {
     return jsonRepositoryError(c, remote.error.message);
   }
-  const localDocuments = await mastodonStatuses(
-    c.env,
-    identity.value,
-    statuses.value,
-    viewerId,
-  );
+  const localDocuments = await mastodonStatuses(c.env, identity.value, statuses.value, viewerId);
   const remoteDocuments: Record<string, unknown>[] = [];
   for (const status of remote.value) {
     const actor = await findRemoteActorByUri(c.env.DB, status.actorUri);

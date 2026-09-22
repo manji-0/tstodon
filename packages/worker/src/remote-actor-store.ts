@@ -11,9 +11,7 @@ export type RemoteActorRow = z.infer<typeof RemoteActorRowSchema>;
 
 const remoteActorSelect = `actor_uri, username, domain, inbox_uri, shared_inbox_uri, public_key_id, public_key_pem, display_name, fetched_at`;
 
-const remoteActorFromRow = (
-  row: RemoteActorRow,
-): Result<RemoteActor, RepositoryError> => {
+const remoteActorFromRow = (row: RemoteActorRow): Result<RemoteActor, RepositoryError> => {
   const fetchedAt = IsoInstant.parse(row.fetched_at);
   if (fetchedAt.isErr()) {
     return err(toRepositoryError("invalid remote actor row"));
@@ -67,9 +65,7 @@ export const findRemoteActorByPublicKeyId = async (
   readRemoteActor(
     await runD1(() =>
       db
-        .prepare(
-          `SELECT ${remoteActorSelect} FROM remote_actors WHERE public_key_id = ?`,
-        )
+        .prepare(`SELECT ${remoteActorSelect} FROM remote_actors WHERE public_key_id = ?`)
         .bind(publicKeyId)
         .first(),
     ),
@@ -158,9 +154,7 @@ export const deleteRemoteFollow = async (
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await db
-      .prepare(
-        `DELETE FROM remote_follows WHERE remote_actor_uri = ? AND target_account_id = ?`,
-      )
+      .prepare(`DELETE FROM remote_follows WHERE remote_actor_uri = ? AND target_account_id = ?`)
       .bind(remoteActorUri, targetAccountId)
       .run();
   });

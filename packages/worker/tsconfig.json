@@ -9,8 +9,5 @@
   },
   "include": ["src", "../../worker-configuration.d.ts"],
   "exclude": ["src/**/*.test.ts"],
-  "references": [
-    { "path": "../core" },
-    { "path": "../domain" }
-  ]
+  "references": [{ "path": "../core" }, { "path": "../domain" }]
 }

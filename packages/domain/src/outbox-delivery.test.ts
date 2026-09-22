@@ -6,19 +6,13 @@ describe("OutboxDelivery", () => {
   it("retries transient failures until the attempt ceiling", () => {
     let slot = OutboxDelivery.queued();
     for (let i = 0; i < DELIVERY_MAX_ATTEMPTS - 1; i += 1) {
-      const next = OutboxDelivery.afterAttempt(
-        slot,
-        DeliveryAttemptOutcome.TransientFailure,
-      );
+      const next = OutboxDelivery.afterAttempt(slot, DeliveryAttemptOutcome.TransientFailure);
       expect(next.kind).toBe("Queued");
       if (next.kind === "Queued") {
         slot = next;
       }
     }
-    const failed = OutboxDelivery.afterAttempt(
-      slot,
-      DeliveryAttemptOutcome.TransientFailure,
-    );
+    const failed = OutboxDelivery.afterAttempt(slot, DeliveryAttemptOutcome.TransientFailure);
     expect(failed).toMatchObject({
       kind: "Failed",
       reasonKind: "RetryExhausted",

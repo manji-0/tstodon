@@ -12,9 +12,7 @@ export const followAccount = async (
 ): Promise<Result<FollowRequest, RepositoryError>> =>
   runD1(async () => {
     const existing = await db
-      .prepare(
-        `SELECT kind FROM follows WHERE follower_account_id = ? AND target_account_id = ?`,
-      )
+      .prepare(`SELECT kind FROM follows WHERE follower_account_id = ? AND target_account_id = ?`)
       .bind(followerId, targetId)
       .first<{ kind: string }>();
     if (existing) {
@@ -22,9 +20,7 @@ export const followAccount = async (
         kind: "LocalFollower",
         targetLocked,
         follow: existing.kind === "Accepted" ? LocalFollow.Accepted : LocalFollow.Pending,
-      }).unwrapOr(
-        FollowRequest.initial("LocalFollower", targetLocked),
-      );
+      }).unwrapOr(FollowRequest.initial("LocalFollower", targetLocked));
     }
     const state = FollowRequest.initial("LocalFollower", targetLocked);
     const followKind = state.kind === "LocalFollower" ? state.follow.kind : "Pending";
@@ -47,9 +43,7 @@ export const unfollowAccount = async (
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await db
-      .prepare(
-        `DELETE FROM follows WHERE follower_account_id = ? AND target_account_id = ?`,
-      )
+      .prepare(`DELETE FROM follows WHERE follower_account_id = ? AND target_account_id = ?`)
       .bind(followerId, targetId)
       .run();
   });
@@ -59,22 +53,15 @@ export const relationshipFlags = async (
   viewerId: string,
   targetId: string,
 ): Promise<
-  Result<
-    Readonly<{ following: boolean; followedBy: boolean; requested: boolean }>,
-    RepositoryError
-  >
+  Result<Readonly<{ following: boolean; followedBy: boolean; requested: boolean }>, RepositoryError>
 > =>
   runD1(async () => {
     const outgoing = await db
-      .prepare(
-        `SELECT kind FROM follows WHERE follower_account_id = ? AND target_account_id = ?`,
-      )
+      .prepare(`SELECT kind FROM follows WHERE follower_account_id = ? AND target_account_id = ?`)
       .bind(viewerId, targetId)
       .first<{ kind: string }>();
     const incoming = await db
-      .prepare(
-        `SELECT kind FROM follows WHERE follower_account_id = ? AND target_account_id = ?`,
-      )
+      .prepare(`SELECT kind FROM follows WHERE follower_account_id = ? AND target_account_id = ?`)
       .bind(targetId, viewerId)
       .first<{ kind: string }>();
     return {
@@ -216,22 +203,16 @@ export const statusInteractionCounts = async (
       .bind(statusId)
       .first<{ count: number }>();
     const remoteFavs = await db
-      .prepare(
-        `SELECT COUNT(*) AS count FROM remote_favourites WHERE status_id = ?`,
-      )
+      .prepare(`SELECT COUNT(*) AS count FROM remote_favourites WHERE status_id = ?`)
       .bind(statusId)
       .first<{ count: number }>();
     const remoteReblogs = await db
-      .prepare(
-        `SELECT COUNT(*) AS count FROM remote_announces WHERE status_id = ?`,
-      )
+      .prepare(`SELECT COUNT(*) AS count FROM remote_announces WHERE status_id = ?`)
       .bind(statusId)
       .first<{ count: number }>();
     const favourited = viewerId
       ? await db
-          .prepare(
-            `SELECT 1 AS ok FROM favourites WHERE status_id = ? AND account_id = ?`,
-          )
+          .prepare(`SELECT 1 AS ok FROM favourites WHERE status_id = ? AND account_id = ?`)
           .bind(statusId, viewerId)
           .first()
       : null;
@@ -245,9 +226,7 @@ export const statusInteractionCounts = async (
       : null;
     const bookmarked = viewerId
       ? await db
-          .prepare(
-            `SELECT 1 AS ok FROM bookmarks WHERE status_id = ? AND account_id = ?`,
-          )
+          .prepare(`SELECT 1 AS ok FROM bookmarks WHERE status_id = ? AND account_id = ?`)
           .bind(statusId, viewerId)
           .first()
       : null;

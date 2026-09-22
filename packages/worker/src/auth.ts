@@ -4,11 +4,7 @@ import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { provisionAccountFromEmail } from "./account-store";
 import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
 import type { RepositoryError } from "./d1";
-import {
-  JoseErrorCodeSchema,
-  WorkOsAccessTokenSchema,
-  WorkOsUserSchema,
-} from "./schemas";
+import { JoseErrorCodeSchema, WorkOsAccessTokenSchema, WorkOsUserSchema } from "./schemas";
 
 export type AuthError =
   | Readonly<{ kind: "MissingToken" }>
@@ -92,8 +88,7 @@ const roleFromAccessToken = (claims: {
 const hasRoleClaim = (claims: {
   "fedi/role"?: string | undefined;
   fedi?: Readonly<Record<string, unknown>> | undefined;
-}): boolean =>
-  typeof claims["fedi/role"] === "string" || claims.fedi !== undefined;
+}): boolean => typeof claims["fedi/role"] === "string" || claims.fedi !== undefined;
 
 const identityFromWorkOsUser = async (
   userId: string,

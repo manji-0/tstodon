@@ -15,11 +15,7 @@ notificationRoutes.get("/api/v1/notifications", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const rows = await listNotifications(
-    c.env.DB,
-    user.value.id,
-    queryLimit(c.req.query("limit")),
-  );
+  const rows = await listNotifications(c.env.DB, user.value.id, queryLimit(c.req.query("limit")));
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }

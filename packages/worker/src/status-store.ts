@@ -162,9 +162,7 @@ export const listPublicStatuses = async (
     const sql = maxId
       ? `SELECT ${statusSelect} FROM statuses WHERE visibility = 'public' AND id < ? ORDER BY id DESC LIMIT ?`
       : `SELECT ${statusSelect} FROM statuses WHERE visibility = 'public' ORDER BY id DESC LIMIT ?`;
-    const stmt = maxId
-      ? db.prepare(sql).bind(maxId, limit)
-      : db.prepare(sql).bind(limit);
+    const stmt = maxId ? db.prepare(sql).bind(maxId, limit) : db.prepare(sql).bind(limit);
     const { results } = await stmt.all();
     return hydrateRows(db, results ?? []);
   });
@@ -199,9 +197,7 @@ export const listAccountStatuses = async (
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
     const { results } = await db
-      .prepare(
-        `SELECT ${statusSelect} FROM statuses WHERE account_id = ? ORDER BY id DESC LIMIT ?`,
-      )
+      .prepare(`SELECT ${statusSelect} FROM statuses WHERE account_id = ? ORDER BY id DESC LIMIT ?`)
       .bind(accountId, limit)
       .all();
     return hydrateRows(db, results ?? []);
@@ -249,9 +245,7 @@ export const deleteReblogOf = async (
       .run();
   });
 
-export const countStatuses = async (
-  db: D1Database,
-): Promise<Result<number, RepositoryError>> =>
+export const countStatuses = async (db: D1Database): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
     const row = await db
       .prepare(`SELECT COUNT(*) AS count FROM statuses`)
@@ -259,10 +253,7 @@ export const countStatuses = async (
     return row?.count ?? 0;
   });
 
-const hydrateRows = async (
-  db: D1Database,
-  rows: unknown[],
-): Promise<LocalStatusValue[]> => {
+const hydrateRows = async (db: D1Database, rows: unknown[]): Promise<LocalStatusValue[]> => {
   const statuses: LocalStatusValue[] = [];
   for (const raw of rows) {
     const row = parseRow(StatusRowSchema, raw);

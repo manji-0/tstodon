@@ -21,9 +21,7 @@ describe("FollowRequest", () => {
   });
 
   it("authorizes a pending local follow to Accepted", () => {
-    const authorized = FollowRequest.authorize(
-      FollowRequest.initial("LocalFollower", true),
-    );
+    const authorized = FollowRequest.authorize(FollowRequest.initial("LocalFollower", true));
     expect(authorized.kind).toBe("LocalFollower");
     if (authorized.kind === "LocalFollower") {
       expect(authorized.follow.kind).toBe("Accepted");
@@ -31,9 +29,7 @@ describe("FollowRequest", () => {
   });
 
   it("reject deletes a pending local follow row", () => {
-    const rejected = FollowRequest.reject(
-      FollowRequest.initial("LocalFollower", true),
-    );
+    const rejected = FollowRequest.reject(FollowRequest.initial("LocalFollower", true));
     expect(rejected.kind).toBe("LocalFollower");
     if (rejected.kind === "LocalFollower") {
       expect(rejected.follow.kind).toBe("None");

@@ -24,6 +24,7 @@ The project is early software. The [local core](docs/planning/local-core.md) cla
 Optional: `devbox shell` installs Node, pnpm, and wrangler from [devbox.json](devbox.json).
 
 ## Quick Start
+
 <!-- derived-from ./docs/getting-started/clone-and-run.md -->
 
 ```sh
@@ -36,6 +37,7 @@ pnpm dev
 Local routes that depend on D1, R2, or WorkOS need matching local or remote bindings. Start with [Clone And Run](docs/getting-started/clone-and-run.md).
 
 ## Documentation
+
 <!-- derived-from ./docs/architecture/tstodon-architecture.md -->
 
 - [Architecture](docs/architecture/tstodon-architecture.md)
@@ -46,12 +48,13 @@ Local routes that depend on D1, R2, or WorkOS need matching local or remote bind
 - [Cloudflare Deploy Checklist](docs/operations/cloudflare-deploy.md)
 
 ## Contributing
+
 <!-- constrained-by ./docs/getting-started/development.md -->
 
 Before opening a change, run:
 
 ```sh
-pnpm ci
+pnpm run ci
 ```
 
 Use conventional commit messages.

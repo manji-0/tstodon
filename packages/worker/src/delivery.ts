@@ -16,10 +16,7 @@ import {
   insertOutboundActivity,
   markOutboundExpanded,
 } from "./outbox-store";
-import {
-  listExpiredUnnotifiedPolls,
-  markPollExpiryNotified,
-} from "./poll-store";
+import { listExpiredUnnotifiedPolls, markPollExpiryNotified } from "./poll-store";
 import { listAcceptedFollowerIds } from "./social-store";
 import { listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
@@ -52,10 +49,7 @@ export const enqueueLocalActivity = async (
   });
 };
 
-export const deliveryWorkflowId = async (
-  activityId: string,
-  inboxUrl: string,
-): Promise<string> => {
+export const deliveryWorkflowId = async (activityId: string, inboxUrl: string): Promise<string> => {
   const digest = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(`${activityId}\n${inboxUrl}`),
@@ -150,12 +144,7 @@ const processExpiredPolls = async (env: Env): Promise<void> => {
   for (const poll of expired.value) {
     const status = await findStatusById(env.DB, poll.statusId);
     if (status.isOk() && status.value) {
-      const document = await mastodonStatus(
-        env,
-        identity.value,
-        status.value,
-        poll.accountId,
-      );
+      const document = await mastodonStatus(env, identity.value, status.value, poll.accountId);
       await publishToAccount(env, poll.accountId, {
         kind: "status.update",
         payload: document,
@@ -165,10 +154,7 @@ const processExpiredPolls = async (env: Env): Promise<void> => {
   }
 };
 
-export const processOutboxJob = async (
-  env: Env,
-  job: OutboxJobValue,
-): Promise<void> => {
+export const processOutboxJob = async (env: Env, job: OutboxJobValue): Promise<void> => {
   switch (job.kind) {
     case "ProcessExpiredPolls":
       await processExpiredPolls(env);
@@ -178,10 +164,7 @@ export const processOutboxJob = async (
       if (activity.isErr() || !activity.value) {
         return;
       }
-      const followerIds = await listAcceptedFollowerIds(
-        env.DB,
-        activity.value.account_id,
-      );
+      const followerIds = await listAcceptedFollowerIds(env.DB, activity.value.account_id);
       const identity = parseInstanceIdentity(env);
       const remoteTargets: string[] = [];
       if (followerIds.isOk() && identity.isOk()) {
@@ -216,18 +199,15 @@ export const processOutboxJob = async (
           activityId: job.activityId,
           inboxUrl,
         });
-        if (parsedInbox.isErr()) {
+        if (parsedInbox.isErr() || parsedInbox.value.kind !== "DeliverTarget") {
           continue;
         }
-        const target = await ensureOutboxTarget(
-          env.DB,
-          job.activityId,
-          parsedInbox.value.inboxUrl,
-        );
+        const deliverTarget = parsedInbox.value;
+        const target = await ensureOutboxTarget(env.DB, job.activityId, deliverTarget.inboxUrl);
         if (target.isErr()) {
           continue;
         }
-        await startOutboxDeliveryWorkflow(env, parsedInbox.value);
+        await startOutboxDeliveryWorkflow(env, deliverTarget);
       }
       return;
     }

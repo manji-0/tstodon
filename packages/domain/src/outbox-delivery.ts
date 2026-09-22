@@ -44,13 +44,8 @@ export const OutboxDelivery = {
   parse: schemaResult(OutboxDeliverySchema),
   queued: (): QueuedOutboxDelivery => ({ kind: "Queued", attemptCount: 0 }),
   afterExpand: (followerTargetCount: number): OutboxDelivery =>
-    followerTargetCount === 0
-      ? { kind: "Delivered" }
-      : { kind: "Expanded" },
-  afterAttempt: (
-    current: OutboxDelivery,
-    outcome: DeliveryAttemptOutcomeType,
-  ): OutboxDelivery => {
+    followerTargetCount === 0 ? { kind: "Delivered" } : { kind: "Expanded" },
+  afterAttempt: (current: OutboxDelivery, outcome: DeliveryAttemptOutcomeType): OutboxDelivery => {
     if (current.kind !== "Queued") {
       return current;
     }
@@ -88,9 +83,7 @@ export const OutboxDelivery = {
         return "+60 minutes";
     }
   },
-  workflowSleep: (
-    attempt: number,
-  ): "1 minute" | "5 minutes" | "15 minutes" | "60 minutes" => {
+  workflowSleep: (attempt: number): "1 minute" | "5 minutes" | "15 minutes" | "60 minutes" => {
     const delay = OutboxDelivery.retryDelay(attempt);
     switch (delay) {
       case "+1 minute":

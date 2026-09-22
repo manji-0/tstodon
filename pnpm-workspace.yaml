@@ -4,3 +4,13 @@ packages:
 allowBuilds:
   esbuild: true
   workerd: true
+
+# Fresh Oxc / TypeScript releases are intentionally allowed through the age gate.
+minimumReleaseAgeExclude:
+  - oxlint
+  - oxfmt
+  - oxlint-tsgolint
+  - typescript
+  - "@oxlint/*"
+  - "@oxfmt/*"
+  - "@oxlint-tsgolint/*"

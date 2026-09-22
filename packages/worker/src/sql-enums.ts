@@ -1,8 +1,7 @@
 import { assertNever } from "@tstodon/core";
 import { QuoteApprovalPolicy, Visibility } from "@tstodon/domain";
 
-export const visibilitySql = (visibility: Visibility): string =>
-  Visibility.toMastodon(visibility);
+export const visibilitySql = (visibility: Visibility): string => Visibility.toMastodon(visibility);
 
 export const quotePolicySql = (policy: QuoteApprovalPolicy): string => {
   switch (policy.kind) {

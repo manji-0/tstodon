@@ -14,9 +14,7 @@ const schema = z
 
 export type Username = z.infer<typeof schema>;
 
-export type UsernameError =
-  | Readonly<{ kind: "Blank" }>
-  | Readonly<{ kind: "InvalidCharacters" }>;
+export type UsernameError = Readonly<{ kind: "Blank" }> | Readonly<{ kind: "InvalidCharacters" }>;
 
 export const Username = {
   schema,

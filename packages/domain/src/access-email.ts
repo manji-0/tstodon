@@ -27,9 +27,7 @@ const schema = z
 
 export type AccessEmail = z.infer<typeof schema>;
 
-export type AccessEmailError =
-  | Readonly<{ kind: "Blank" }>
-  | Readonly<{ kind: "Invalid" }>;
+export type AccessEmailError = Readonly<{ kind: "Blank" }> | Readonly<{ kind: "Invalid" }>;
 
 const fnvChecksum = (value: string): number => {
   let acc = 0;

@@ -10,20 +10,14 @@ export const ActivityJsonSchema = z
     id: z.string().min(1),
     type: z.string().min(1),
     actor: z.string().min(1),
-    object: z.union([
-      z.string().min(1),
-      z.object({ id: z.string().min(1) }).passthrough(),
-    ]),
+    object: z.union([z.string().min(1), z.object({ id: z.string().min(1) }).passthrough()]),
   })
   .passthrough();
 
 export const NestedActivityObjectSchema = z
   .object({
     type: z.string().min(1),
-    object: z.union([
-      z.string().min(1),
-      z.object({ id: z.string().min(1) }).passthrough(),
-    ]),
+    object: z.union([z.string().min(1), z.object({ id: z.string().min(1) }).passthrough()]),
   })
   .passthrough();
 
@@ -129,11 +123,7 @@ export const CreateStatusBodySchema = z.object({
 });
 
 export const PollVoteBodySchema = z.object({
-  choices: z.union([
-    z.array(z.union([z.number(), z.string()])),
-    z.number(),
-    z.string(),
-  ]),
+  choices: z.union([z.array(z.union([z.number(), z.string()])), z.number(), z.string()]),
 });
 
 export const FilterBodySchema = z.object({
@@ -184,7 +174,10 @@ export const MastodonStatusPreviewSchema = z.object({
   favourites_count: z.number().optional(),
   reblogs_count: z.number().optional(),
   account: MastodonAccountPreviewSchema,
-  poll: z.object({ id: z.string().min(1) }).nullable().optional(),
+  poll: z
+    .object({ id: z.string().min(1) })
+    .nullable()
+    .optional(),
 });
 
 export const MastodonAppPreviewSchema = z.object({
@@ -215,13 +208,9 @@ export const MastodonReportPreviewSchema = z.object({
 
 export const MastodonStatusListPreviewSchema = z.array(MastodonStatusPreviewSchema);
 
-export const MastodonNotificationListPreviewSchema = z.array(
-  MastodonNotificationPreviewSchema,
-);
+export const MastodonNotificationListPreviewSchema = z.array(MastodonNotificationPreviewSchema);
 
-export const MastodonRelationshipListPreviewSchema = z.array(
-  MastodonRelationshipPreviewSchema,
-);
+export const MastodonRelationshipListPreviewSchema = z.array(MastodonRelationshipPreviewSchema);
 
 export const MastodonMediaPreviewSchema = z.object({
   id: z.string().min(1),
@@ -336,10 +325,7 @@ export const toRepositoryError = (message: string): RepositoryError => ({
   message,
 });
 
-export const parseRow = <T>(
-  schema: z.ZodType<T>,
-  value: unknown,
-): Result<T, RepositoryError> =>
+export const parseRow = <T>(schema: z.ZodType<T>, value: unknown): Result<T, RepositoryError> =>
   schemaResult(schema)(value).mapErr(() => toRepositoryError("invalid row"));
 
 export const parseJsonText = (raw: string): Result<unknown, RepositoryError> => {
@@ -350,10 +336,7 @@ export const parseJsonText = (raw: string): Result<unknown, RepositoryError> => 
   }
 };
 
-export const parseJsonColumn = <T>(
-  schema: z.ZodType<T>,
-  raw: string,
-): Result<T, RepositoryError> =>
+export const parseJsonColumn = <T>(schema: z.ZodType<T>, raw: string): Result<T, RepositoryError> =>
   parseJsonText(raw).andThen((value) =>
     schemaResult(schema)(value).mapErr(() => toRepositoryError("invalid json column")),
   );
@@ -371,9 +354,7 @@ export const stringList = (value: ReadonlyArray<string> | string | undefined): s
   return [];
 };
 
-export const numberList = (
-  value: ReadonlyArray<number | string> | number | string,
-): number[] => {
+export const numberList = (value: ReadonlyArray<number | string> | number | string): number[] => {
   const items = Array.isArray(value) ? value : [value];
   return items
     .map((item) => (typeof item === "number" ? item : Number.parseInt(item, 10)))

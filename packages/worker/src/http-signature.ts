@@ -107,9 +107,7 @@ export type ParsedSignature = Readonly<{
   signature: string;
 }>;
 
-export const parseSignatureHeader = (
-  header: string,
-): ParsedSignature | undefined => {
+export const parseSignatureHeader = (header: string): ParsedSignature | undefined => {
   const fields = new Map<string, string>();
   for (const part of header.split(",")) {
     const match = part.trim().match(/^([a-zA-Z]+)=(?:"([^"]*)"|([^"]*))$/);

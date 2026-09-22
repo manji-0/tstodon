@@ -6,23 +6,13 @@ import { findAccountByUsername } from "./account-store";
 import { requireAdmin } from "./auth";
 import { generateAccountKeys } from "./keys";
 import { IsoInstant, OutboxJob, RemoteActor, StreamEvent } from "@tstodon/domain";
-import {
-  listAcceptedRemoteFollowerUris,
-  upsertRemoteActor,
-} from "./remote-actor-store";
+import { listAcceptedRemoteFollowerUris, upsertRemoteActor } from "./remote-actor-store";
 import { findRemoteStatusByObjectUri } from "./remote-status-store";
 import { attemptInboxDelivery, processOutboxJob } from "./delivery";
-import {
-  findOutboxFanout,
-  findOutboxTarget,
-  listOutboundActivities,
-} from "./outbox-store";
+import { findOutboxFanout, findOutboxTarget, listOutboundActivities } from "./outbox-store";
 import { listExpiredUnnotifiedPolls } from "./poll-store";
 import { publishToAccount } from "./stream-publish";
-import {
-  signInboxRequest,
-  verifyInboxRequest,
-} from "./http-signature";
+import { signInboxRequest, verifyInboxRequest } from "./http-signature";
 import {
   ActorPreviewSchema,
   MastodonAccountPreviewSchema,
@@ -179,9 +169,7 @@ describe("worker http", () => {
     expect(home.status).toBe(200);
     expect(read(MastodonStatusListPreviewSchema, home.body)).not.toHaveLength(0);
 
-    const webfinger = await json(
-      "/.well-known/webfinger?resource=acct:alice@example.com",
-    );
+    const webfinger = await json("/.well-known/webfinger?resource=acct:alice@example.com");
     expect(webfinger.status).toBe(200);
     expect(read(WebfingerPreviewSchema, webfinger.body)).toMatchObject({
       subject: "acct:alice@example.com",
@@ -263,14 +251,11 @@ describe("worker http", () => {
     expect(search.status).toBe(200);
     expect(read(MastodonSearchPreviewSchema, search.body).accounts[0]?.username).toBe("bob");
 
-    const relationships = await json(
-      `/api/v1/accounts/relationships?id[]=${posted.account.id}`,
-      { headers: auth("alice@example.com") },
-    );
+    const relationships = await json(`/api/v1/accounts/relationships?id[]=${posted.account.id}`, {
+      headers: auth("alice@example.com"),
+    });
     expect(read(MastodonRelationshipListPreviewSchema, relationships.body)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: posted.account.id, following: true }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ id: posted.account.id, following: true })]),
     );
   });
 
@@ -791,9 +776,7 @@ describe("worker http", () => {
     const status = read(MastodonStatusPreviewSchema, created.body);
     expect(status.poll?.id).toBeTruthy();
     const pollId = status.poll?.id ?? "";
-    await env.DB.prepare(
-      `UPDATE polls SET expires_at = ?, expiry_notified_at = NULL WHERE id = ?`,
-    )
+    await env.DB.prepare(`UPDATE polls SET expires_at = ?, expiry_notified_at = NULL WHERE id = ?`)
       .bind("2020-01-01T00:00:00.000Z", pollId)
       .run();
     const pending = await listExpiredUnnotifiedPolls(env.DB, new Date().toISOString(), 20);

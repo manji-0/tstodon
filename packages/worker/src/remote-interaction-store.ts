@@ -25,9 +25,7 @@ export const deleteRemoteFavourite = async (
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await db
-      .prepare(
-        `DELETE FROM remote_favourites WHERE remote_actor_uri = ? AND status_id = ?`,
-      )
+      .prepare(`DELETE FROM remote_favourites WHERE remote_actor_uri = ? AND status_id = ?`)
       .bind(remoteActorUri, statusId)
       .run();
   });
@@ -57,9 +55,7 @@ export const deleteRemoteAnnounce = async (
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await db
-      .prepare(
-        `DELETE FROM remote_announces WHERE remote_actor_uri = ? AND status_id = ?`,
-      )
+      .prepare(`DELETE FROM remote_announces WHERE remote_actor_uri = ? AND status_id = ?`)
       .bind(remoteActorUri, statusId)
       .run();
   });
@@ -70,9 +66,7 @@ export const countRemoteFavourites = async (
 ): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
     const row = await db
-      .prepare(
-        `SELECT COUNT(*) AS count FROM remote_favourites WHERE status_id = ?`,
-      )
+      .prepare(`SELECT COUNT(*) AS count FROM remote_favourites WHERE status_id = ?`)
       .bind(statusId)
       .first<{ count: number }>();
     return row?.count ?? 0;
@@ -84,9 +78,7 @@ export const countRemoteAnnounces = async (
 ): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
     const row = await db
-      .prepare(
-        `SELECT COUNT(*) AS count FROM remote_announces WHERE status_id = ?`,
-      )
+      .prepare(`SELECT COUNT(*) AS count FROM remote_announces WHERE status_id = ?`)
       .bind(statusId)
       .first<{ count: number }>();
     return row?.count ?? 0;

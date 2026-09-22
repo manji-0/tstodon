@@ -1,6 +1,7 @@
 # Configuration Reference
 
 ## Cloudflare bindings
+
 <!-- constrained-by ../architecture/tstodon-architecture.md#cloudflare-mapping -->
 
 Configured in `wrangler.jsonc`:
@@ -22,6 +23,7 @@ Placeholder resource IDs in `wrangler.jsonc` are local-only. Create real D1 / KV
 `INSTANCE_DOMAIN`, `INSTANCE_NAME`, `INSTANCE_DESCRIPTION`, `SOURCE_URL`, `INSTANCE_LANGUAGES`, `CONTACT_EMAIL`, `INSTANCE_THUMBNAIL_URL`, and `MEDIA_PUBLIC_BASE_URL` are public configuration.
 
 ## WorkOS authentication vars
+
 <!-- constrained-by ../planning/local-core.md#authentication -->
 
 `WORKOS_CLIENT_ID`, `WORKOS_AUDIENCE`, `WORKOS_ISSUER`, and `WORKOS_AUTHKIT_DOMAIN` are configuration, not secrets. `WORKOS_API_KEY` is a secret: keep it out of git. Use `.dev.vars` locally and `wrangler secret put WORKOS_API_KEY` in production.

@@ -38,9 +38,7 @@ export const RegistrationValidationErrorsSchema = z.object({
   agreement: RegistrationFieldStateSchema,
 });
 
-export type RegistrationValidationErrors = z.infer<
-  typeof RegistrationValidationErrorsSchema
->;
+export type RegistrationValidationErrors = z.infer<typeof RegistrationValidationErrorsSchema>;
 
 const noneIssue = { kind: "None" } as const satisfies RegistrationFieldState;
 
@@ -79,9 +77,10 @@ export type ComposingRegistration = z.infer<typeof ComposingSchema>;
 export type RegistrationIntent = z.infer<typeof IntentSchema>;
 export type RegisteringAccount = z.infer<typeof RegisteringSchema>;
 
-const issue = (
-  kind: RegistrationFieldIssue["kind"],
-): RegistrationFieldState => ({ kind: "Issue", issue: { kind } });
+const issue = (kind: RegistrationFieldIssue["kind"]): RegistrationFieldState => ({
+  kind: "Issue",
+  issue: { kind },
+});
 
 export const Registration = {
   schema: RegistrationSchema,
@@ -102,9 +101,7 @@ export const Registration = {
     const errors: RegistrationValidationErrors = {
       kind: "RegistrationValidationErrors",
       username: username.isErr()
-        ? issue(
-            username.error.kind === "Blank" ? "Blank" : "InvalidFormat",
-          )
+        ? issue(username.error.kind === "Blank" ? "Blank" : "InvalidFormat")
         : noneIssue,
       email: email.isErr()
         ? issue(email.error.kind === "Blank" ? "Blank" : "InvalidFormat")
@@ -148,8 +145,8 @@ export const LocalAccountSchema = z.object({
   kind: z.literal("LocalAccount"),
   id: AccountId.schema,
   username: Username.schema,
-  accessEmail: AccessEmail.schema.transform(
-    (email): SensitiveValue<typeof email> => Sensitive.of(email),
+  accessEmail: AccessEmail.schema.transform((email): SensitiveValue<typeof email> =>
+    Sensitive.of(email),
   ),
   displayName: z.string(),
   locked: z.boolean(),

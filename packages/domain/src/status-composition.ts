@@ -74,9 +74,7 @@ export const StatusComposition = {
     mediaIds: [...(input.mediaIds ?? [])],
     poll: input.poll ?? nonePoll,
   }),
-  validate: (
-    composing: ComposingStatus,
-  ): Result<ValidatedStatusDraft, StatusDraftError> => {
+  validate: (composing: ComposingStatus): Result<ValidatedStatusDraft, StatusDraftError> => {
     const mediaIds = composing.mediaIds
       .map((value) => value.trim())
       .filter((value) => value.length > 0);
@@ -99,10 +97,7 @@ export const StatusComposition = {
     if (hasPoll && parsedMedia.length > 0) {
       return err({ kind: "PollWithMedia" });
     }
-    if (
-      composing.quote.kind === "Quoted" &&
-      (hasPoll || parsedMedia.length > 0)
-    ) {
+    if (composing.quote.kind === "Quoted" && (hasPoll || parsedMedia.length > 0)) {
       return err({ kind: "QuoteWithMediaOrPoll" });
     }
 
@@ -144,10 +139,7 @@ export const LocalReblogSchema = z.object({
   createdAt: IsoInstant.schema,
 });
 
-export const LocalStatusSchema = z.discriminatedUnion("kind", [
-  LocalNoteSchema,
-  LocalReblogSchema,
-]);
+export const LocalStatusSchema = z.discriminatedUnion("kind", [LocalNoteSchema, LocalReblogSchema]);
 
 export type LocalNote = z.infer<typeof LocalNoteSchema>;
 export type LocalReblog = z.infer<typeof LocalReblogSchema>;

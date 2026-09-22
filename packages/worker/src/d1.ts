@@ -5,9 +5,7 @@ export type RepositoryError = Readonly<{
   message: string;
 }>;
 
-export const runD1 = async <T>(
-  work: () => Promise<T>,
-): Promise<Result<T, RepositoryError>> => {
+export const runD1 = async <T>(work: () => Promise<T>): Promise<Result<T, RepositoryError>> => {
   try {
     return ok(await work());
   } catch (cause) {

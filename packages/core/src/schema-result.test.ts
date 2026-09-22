@@ -25,8 +25,6 @@ describe("schemaResult", () => {
 
 describe("Sensitive", () => {
   it("redacts on JSON serialization", () => {
-    expect(JSON.stringify({ email: Sensitive.of("a@example.com") })).toBe(
-      '{"email":"[REDACTED]"}',
-    );
+    expect(JSON.stringify({ email: Sensitive.of("a@example.com") })).toBe('{"email":"[REDACTED]"}');
   });
 });

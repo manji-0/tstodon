@@ -8,10 +8,7 @@ export const actorDocument = (
 ): Record<string, unknown> => {
   const id = InstanceIdentity.actorUrl(identity, account.username);
   return {
-    "@context": [
-      "https://www.w3.org/ns/activitystreams",
-      "https://w3id.org/security/v1",
-    ],
+    "@context": ["https://www.w3.org/ns/activitystreams", "https://w3id.org/security/v1"],
     id,
     type: "Person",
     preferredUsername: account.username,

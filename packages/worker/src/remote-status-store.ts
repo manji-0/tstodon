@@ -11,9 +11,7 @@ export type RemoteStatusRow = z.infer<typeof RemoteStatusRowSchema>;
 
 const remoteStatusSelect = `id, actor_uri, object_uri, url, content_html, spoiler_text, visibility, sensitive, language, published_at`;
 
-const remoteStatusFromRow = (
-  row: RemoteStatusRow,
-): Result<RemoteStatus, RepositoryError> => {
+const remoteStatusFromRow = (row: RemoteStatusRow): Result<RemoteStatus, RepositoryError> => {
   const id = StatusId.parse(row.id);
   const publishedAt = IsoInstant.parse(row.published_at);
   const visibility = Visibility.fromMastodon(row.visibility);
@@ -59,10 +57,7 @@ export const findRemoteStatusById = async (
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> =>
   readRemoteStatus(
     await runD1(() =>
-      db
-        .prepare(`SELECT ${remoteStatusSelect} FROM remote_statuses WHERE id = ?`)
-        .bind(id)
-        .first(),
+      db.prepare(`SELECT ${remoteStatusSelect} FROM remote_statuses WHERE id = ?`).bind(id).first(),
     ),
   );
 
@@ -73,9 +68,7 @@ export const findRemoteStatusByObjectUri = async (
   readRemoteStatus(
     await runD1(() =>
       db
-        .prepare(
-          `SELECT ${remoteStatusSelect} FROM remote_statuses WHERE object_uri = ?`,
-        )
+        .prepare(`SELECT ${remoteStatusSelect} FROM remote_statuses WHERE object_uri = ?`)
         .bind(objectUri)
         .first(),
     ),

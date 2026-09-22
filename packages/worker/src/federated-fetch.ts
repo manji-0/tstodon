@@ -5,10 +5,7 @@ export type FederatedFetchError =
   | Readonly<{ kind: "InvalidSignature" }>
   | Readonly<{ kind: "VerificationUnavailable" }>;
 
-export const isBlockedFederatedHost = (
-  hostname: string,
-  instanceDomain: string,
-): boolean => {
+export const isBlockedFederatedHost = (hostname: string, instanceDomain: string): boolean => {
   const host = hostname.toLowerCase();
   if (host === instanceDomain) {
     return true;
@@ -36,9 +33,7 @@ export const isBlockedFederatedHost = (
   return false;
 };
 
-export const parseFederatedUrl = (
-  value: string,
-): Result<URL, FederatedFetchError> => {
+export const parseFederatedUrl = (value: string): Result<URL, FederatedFetchError> => {
   try {
     const url = new URL(value);
     url.hash = "";

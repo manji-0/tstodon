@@ -21,9 +21,7 @@ export type AccountRow = z.infer<typeof AccountRowSchema>;
 
 const accountSelect = `id, username, access_email, display_name, locked, default_post_visibility, default_quote_policy, public_key_pem, private_key_jwk, created_at, COALESCE(bio_text, '') AS bio_text`;
 
-export const accountFromRow = (
-  row: AccountRow,
-): Result<LocalAccount, RepositoryError> => {
+export const accountFromRow = (row: AccountRow): Result<LocalAccount, RepositoryError> => {
   const id = AccountId.parse(row.id);
   const username = Username.parse(row.username);
   const email = AccessEmail.parse(row.access_email);
@@ -213,9 +211,7 @@ export const provisionAccountFromEmail = async (
   return ok(account);
 };
 
-export const countAccounts = async (
-  db: D1Database,
-): Promise<Result<number, RepositoryError>> =>
+export const countAccounts = async (db: D1Database): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
     const row = await db
       .prepare(`SELECT COUNT(*) AS count FROM accounts`)
@@ -227,10 +223,7 @@ export const accountCounts = async (
   db: D1Database,
   accountId: string,
 ): Promise<
-  Result<
-    Readonly<{ followers: number; following: number; statuses: number }>,
-    RepositoryError
-  >
+  Result<Readonly<{ followers: number; following: number; statuses: number }>, RepositoryError>
 > =>
   runD1(async () => {
     const row = await db
@@ -270,9 +263,7 @@ export const updateAccountProfile = async (
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await db
-      .prepare(
-        `UPDATE accounts SET display_name = ?, updated_at = ? WHERE id = ?`,
-      )
+      .prepare(`UPDATE accounts SET display_name = ?, updated_at = ? WHERE id = ?`)
       .bind(displayName, nowIso(), accountId)
       .run();
   });

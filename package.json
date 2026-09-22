@@ -2,26 +2,28 @@
   "name": "tstodon",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@12.4.2",
-  "engines": {
-    "node": ">=24"
-  },
   "scripts": {
     "dev": "wrangler dev",
     "test": "vitest run",
     "typecheck": "tsc -b --pretty",
-    "lint": "eslint .",
+    "lint": "oxlint .",
+    "fmt": "oxfmt .",
+    "fmt:check": "oxfmt --check .",
     "types:worker": "wrangler types --env-interface Env",
-    "ci": "pnpm typecheck && pnpm test && wrangler deploy --dry-run"
+    "ci": "pnpm typecheck && pnpm lint && pnpm fmt:check && pnpm test && wrangler deploy --dry-run"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
-    "@eslint/js": "^9.36.0",
     "@types/node": "^24.13.6",
-    "eslint": "^9.36.0",
-    "typescript": "~5.9.2",
-    "typescript-eslint": "^8.44.0",
+    "oxfmt": "^0.70.0",
+    "oxlint": "^1.85.0",
+    "oxlint-tsgolint": "^7.0.2002",
+    "typescript": "~7.0.2",
     "vitest": "^4.1.11",
     "wrangler": "^4.135.0"
-  }
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@12.4.2"
 }

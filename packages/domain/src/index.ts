@@ -1,10 +1,6 @@
 export { AccountId, type AccountId as AccountIdValue } from "./account-id";
 export { AccessEmail, type AccessEmail as AccessEmailValue } from "./access-email";
-export {
-  Activity,
-  ActivitySchema,
-  type Activity as ActivityValue,
-} from "./activity";
+export { Activity, ActivitySchema, type Activity as ActivityValue } from "./activity";
 export { ActivityId } from "./activity-id";
 export {
   DeliveryAttemptOutcome,
@@ -22,16 +18,9 @@ export {
 } from "./inbox-activity";
 export { InstanceIdentity } from "./instance-identity";
 export { IsoInstant } from "./iso-instant";
-export {
-  FediRole,
-  type FediRole as FediRoleValue,
-  type FediRoleName,
-} from "./fedi-role";
+export { FediRole, type FediRole as FediRoleValue, type FediRoleName } from "./fedi-role";
 export { LocalFollow, type LocalFollow as LocalFollowValue } from "./local-follow";
-export {
-  LocalAccount,
-  type LocalAccount as LocalAccountValue,
-} from "./registration";
+export { LocalAccount, type LocalAccount as LocalAccountValue } from "./registration";
 export { MediaId } from "./media-id";
 export {
   OutboxDelivery,
@@ -40,14 +29,8 @@ export {
 } from "./outbox-delivery";
 export { OutboxJob, type OutboxJob as OutboxJobValue } from "./outbox-job";
 export { QuoteApprovalPolicy } from "./quote-approval-policy";
-export {
-  RemoteActor,
-  type RemoteActor as RemoteActorValue,
-} from "./remote-actor";
-export {
-  RemoteStatus,
-  type RemoteStatus as RemoteStatusValue,
-} from "./remote-status";
+export { RemoteActor, type RemoteActor as RemoteActorValue } from "./remote-actor";
+export { RemoteStatus, type RemoteStatus as RemoteStatusValue } from "./remote-status";
 export {
   Registration,
   type Registration as RegistrationValue,

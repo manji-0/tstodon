@@ -4,11 +4,7 @@ import {
   OutboxDelivery,
   OutboxJob,
 } from "@tstodon/domain";
-import {
-  WorkflowEntrypoint,
-  type WorkflowEvent,
-  type WorkflowStep,
-} from "cloudflare:workers";
+import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { attemptInboxDelivery } from "./delivery";
 import { ensureOutboxTarget, persistOutboxTarget } from "./outbox-store";
 import { parseJsonText } from "./schemas";
@@ -23,10 +19,7 @@ const noStepRetry = {
   retries: { limit: 0, delay: "1 second" as const },
 };
 
-export class OutboxDeliveryWorkflow extends WorkflowEntrypoint<
-  Env,
-  OutboxWorkflowParams
-> {
+export class OutboxDeliveryWorkflow extends WorkflowEntrypoint<Env, OutboxWorkflowParams> {
   override async run(event: WorkflowEvent<OutboxWorkflowParams>, step: WorkflowStep) {
     const parsed = OutboxJob.parse(event.payload);
     if (parsed.isErr() || parsed.value.kind !== "DeliverTarget") {
@@ -35,30 +28,18 @@ export class OutboxDeliveryWorkflow extends WorkflowEntrypoint<
     const job = parsed.value;
 
     for (let attempt = 0; attempt < DELIVERY_MAX_ATTEMPTS; attempt += 1) {
-      const slotRaw = await step.do(
-        `load-${attempt}`,
-        noStepRetry,
-        async () => {
-          const loaded = await ensureOutboxTarget(
-            this.env.DB,
-            job.activityId,
-            job.inboxUrl,
-          );
-          const delivery = loaded.isErr() ? OutboxDelivery.queued() : loaded.value;
-          return JSON.stringify(delivery);
-        },
-      );
+      const slotRaw = await step.do(`load-${attempt}`, noStepRetry, async () => {
+        const loaded = await ensureOutboxTarget(this.env.DB, job.activityId, job.inboxUrl);
+        const delivery = loaded.isErr() ? OutboxDelivery.queued() : loaded.value;
+        return JSON.stringify(delivery);
+      });
       const slotJson = parseJsonText(slotRaw);
-      const slot = slotJson.isErr()
-        ? undefined
-        : OutboxDelivery.parse(slotJson.value);
+      const slot = slotJson.isErr() ? undefined : OutboxDelivery.parse(slotJson.value);
       if (!slot || slot.isErr() || slot.value.kind !== "Queued") {
         return slot && slot.isOk() ? slot.value : { kind: "InvalidJob" as const };
       }
-      const outcomeRaw = await step.do(
-        `post-${attempt}`,
-        noStepRetry,
-        async () => JSON.stringify(await attemptInboxDelivery(this.env, job)),
+      const outcomeRaw = await step.do(`post-${attempt}`, noStepRetry, async () =>
+        JSON.stringify(await attemptInboxDelivery(this.env, job)),
       );
       const outcomeJson = parseJsonText(outcomeRaw);
       const outcome = outcomeJson.isErr()
@@ -68,14 +49,10 @@ export class OutboxDeliveryWorkflow extends WorkflowEntrypoint<
         return { kind: "InvalidJob" as const };
       }
       const next = OutboxDelivery.afterAttempt(slot.value, outcome.value);
-      await step.do(
-        `save-${attempt}`,
-        noStepRetry,
-        async () => {
-          await persistOutboxTarget(this.env.DB, job.activityId, job.inboxUrl, next);
-          return next.kind;
-        },
-      );
+      await step.do(`save-${attempt}`, noStepRetry, async () => {
+        await persistOutboxTarget(this.env.DB, job.activityId, job.inboxUrl, next);
+        return next.kind;
+      });
       if (next.kind !== "Queued") {
         return next;
       }

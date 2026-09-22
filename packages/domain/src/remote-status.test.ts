@@ -7,10 +7,7 @@ import { Visibility } from "./visibility";
 describe("RemoteStatus", () => {
   it("maps ActivityPub audience to visibility", () => {
     expect(
-      RemoteStatus.visibilityFromAudience(
-        ["https://www.w3.org/ns/activitystreams#Public"],
-        [],
-      ),
+      RemoteStatus.visibilityFromAudience(["https://www.w3.org/ns/activitystreams#Public"], []),
     ).toEqual(Visibility.Public);
     expect(
       RemoteStatus.visibilityFromAudience(
@@ -19,10 +16,7 @@ describe("RemoteStatus", () => {
       ),
     ).toEqual(Visibility.Unlisted);
     expect(
-      RemoteStatus.visibilityFromAudience(
-        ["https://remote.example/users/bob/followers"],
-        [],
-      ),
+      RemoteStatus.visibilityFromAudience(["https://remote.example/users/bob/followers"], []),
     ).toEqual(Visibility.FollowersOnly);
     expect(RemoteStatus.visibilityFromAudience([], [])).toEqual(Visibility.Direct);
   });

@@ -23,9 +23,7 @@ describe("RemoteActor", () => {
     expect(parsed.isOk()).toBe(true);
     if (parsed.isOk()) {
       expect(parsed.value.kind).toBe("RemoteActor");
-      expect(RemoteActor.deliveryInbox(parsed.value)).toBe(
-        "https://remote.example/inbox",
-      );
+      expect(RemoteActor.deliveryInbox(parsed.value)).toBe("https://remote.example/inbox");
     }
   });
 

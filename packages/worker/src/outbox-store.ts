@@ -1,5 +1,9 @@
 import { assertNever } from "@tstodon/core";
-import { ActivityId, OutboxDelivery, type OutboxDelivery as OutboxDeliveryValue } from "@tstodon/domain";
+import {
+  ActivityId,
+  OutboxDelivery,
+  type OutboxDelivery as OutboxDeliveryValue,
+} from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
@@ -62,9 +66,7 @@ const persistColumns = (
   }
 };
 
-export const parseOutboxDelivery = (
-  raw: unknown,
-): Result<OutboxDeliveryValue, RepositoryError> => {
+export const parseOutboxDelivery = (raw: unknown): Result<OutboxDeliveryValue, RepositoryError> => {
   const row = parseRow(OutboxDeliveryRowSchema, raw);
   if (row.isErr()) {
     return err(row.error);

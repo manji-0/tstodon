@@ -50,7 +50,12 @@ metaRoutes.get("/api/v2/instance", async (c) => {
       urls: { streaming: `wss://${instance.domain}` },
       statuses: { max_characters: 500, max_media_attachments: 4 },
       media_attachments: { supported_mime_types: ["image/jpeg", "image/png", "image/webp"] },
-      polls: { max_options: 4, max_characters_per_option: 50, min_expiration: 300, max_expiration: 2629746 },
+      polls: {
+        max_options: 4,
+        max_characters_per_option: 50,
+        min_expiration: 300,
+        max_expiration: 2629746,
+      },
     },
     registrations: { enabled: false, approval_required: true, message: null },
     contact: { email: instance.contactEmail, account: null },
