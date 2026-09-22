@@ -13,7 +13,7 @@ pnpm dev
 pnpm run ci
 ```
 
-`pnpm run ci` is the merge gate (`pnpm ci` is pnpm's frozen install). Lint uses oxlint; formatting uses oxfmt.
+`pnpm run ci` is the merge gate (`pnpm ci` is pnpm's frozen install). Lint uses oxlint with type-aware rules via oxlint-tsgolint; formatting uses oxfmt. TypeScript targets ES2025 with `erasableSyntaxOnly` and `verbatimModuleSyntax`.
 
 ## HTTP routing
 

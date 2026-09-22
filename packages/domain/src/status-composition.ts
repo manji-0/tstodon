@@ -3,7 +3,7 @@ import { z } from "zod";
 import { AccountId } from "./account-id";
 import { IsoInstant } from "./iso-instant";
 import { MediaId } from "./media-id";
-import { StatusDraftError } from "./status-draft-error";
+import type { StatusDraftError } from "./status-draft-error";
 import {
   StatusLanguageSchema,
   StatusPollPresenceSchema,

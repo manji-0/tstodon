@@ -30,7 +30,7 @@ import {
   WebfingerPreviewSchema,
 } from "./schemas";
 
-const auth = (email: string): HeadersInit => ({
+const auth = (email: string): Record<string, string> => ({
   Authorization: `Bearer dev-secret:${email}`,
 });
 

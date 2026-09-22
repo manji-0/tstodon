@@ -9,7 +9,7 @@ import {
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
-import { z } from "zod";
+import type { z } from "zod";
 import { nowInstant, nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
 import { generateAccountKeys } from "./keys";

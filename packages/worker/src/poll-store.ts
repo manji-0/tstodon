@@ -69,7 +69,7 @@ const pollFromRow = async (
           .bind(row.id, viewerId)
           .all<{ option_index: number }>(),
       )
-    : ok({ results: [] as { option_index: number }[] });
+    : ok<{ results: { option_index: number }[] }>({ results: [] });
   if (votes.isErr()) {
     return err(votes.error);
   }

@@ -1,5 +1,5 @@
 import { brandedNonEmptyString, schemaResult } from "@tstodon/core";
-import { z } from "zod";
+import type { z } from "zod";
 
 export const StatusIdBrand = Symbol("StatusId");
 const schema = brandedNonEmptyString<typeof StatusIdBrand>();

@@ -1,5 +1,5 @@
 import { schemaResult } from "@tstodon/core";
-import { type Result } from "neverthrow";
+import type { Result } from "neverthrow";
 import { z } from "zod";
 import { IsoInstant } from "./iso-instant";
 import { StatusId } from "./status-id";

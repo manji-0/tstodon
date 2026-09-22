@@ -10,7 +10,7 @@ import {
   type LocalStatus as LocalStatusValue,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { z } from "zod";
+import type { z } from "zod";
 import { runD1, type RepositoryError } from "./d1";
 import { parseRow, StatusRowSchema, toRepositoryError } from "./schemas";
 import { visibilitySql } from "./sql-enums";

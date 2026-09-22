@@ -206,7 +206,7 @@ export const mastodonStatus = async (
       });
     }
   }
-  const url = `https://${identity.domain}/users/${account.username}/statuses/${status.id}`;
+  const url = `${InstanceIdentity.actorUrl(identity, accountResult.value.username)}/statuses/${status.id}`;
   return {
     id: status.id,
     created_at: status.createdAt,

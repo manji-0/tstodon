@@ -5,7 +5,7 @@ import {
   type OutboxDelivery as OutboxDeliveryValue,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { z } from "zod";
+import type { z } from "zod";
 import { nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";

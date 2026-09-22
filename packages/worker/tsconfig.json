@@ -4,8 +4,7 @@
     "composite": true,
     "outDir": "dist",
     "rootDir": "src",
-    "types": [],
-    "lib": ["ES2024"]
+    "types": []
   },
   "include": ["src", "../../worker-configuration.d.ts"],
   "exclude": ["src/**/*.test.ts"],
