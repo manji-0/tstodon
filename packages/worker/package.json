@@ -7,11 +7,16 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@prisma/adapter-d1": "^7.10.0",
+    "@prisma/client": "^7.10.0",
     "@tstodon/core": "workspace:*",
     "@tstodon/domain": "workspace:*",
     "hono": "^4.13.8",
     "jose": "^6.2.12",
     "neverthrow": "^8.2.0",
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "prisma": "7.10.0"
   }
 }

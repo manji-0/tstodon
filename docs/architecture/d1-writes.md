@@ -21,6 +21,10 @@
 
 `mastodonStatuses` preloads a page of related rows (`findAccountsByIds`, `accountCountsByIds`, `statusInteractionCountsByIds`, `findPollsByStatusIds`, `findMediaByIds`, `findStatusesByIds`) instead of calling `mastodonStatus` once per item. Prefer `IN (...)` chunked with `D1_IN_CHUNK_SIZE` for homogeneous lookups; use `db.batch` when several aggregate shapes are needed for the same id set.
 
+## TypedSQL
+
+Single-statement SQL is moving to Prisma TypedSQL. See [prisma-typedsql.md](./prisma-typedsql.md).
+
 ## When a single statement is better
 
 - Existence check + insert → `INSERT OR IGNORE` / `ON CONFLICT` and inspect `meta.changes`.

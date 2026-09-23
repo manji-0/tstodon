@@ -1,0 +1,352 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../packages/worker/src/generated/prisma"
+  runtime         = "cloudflare"
+  previewFeatures = ["typedSql", "partialIndexes"]
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model account_list_members {
+  list_id           String
+  member_account_id String
+  created_at        String
+  accounts          accounts      @relation(fields: [member_account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  account_lists     account_lists @relation(fields: [list_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([list_id, member_account_id])
+  @@index([member_account_id, list_id], map: "idx_account_list_members_member")
+}
+
+model account_lists {
+  id                   String @id
+  account_id           String
+  title                String
+  replies_policy       String                 @default("list")
+  created_at           String
+  updated_at           String
+  account_list_members account_list_members[]
+  accounts             accounts               @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([account_id, created_at(sort: Desc)], map: "idx_account_lists_owner")
+}
+
+model accounts {
+  id                                                    String @id
+  username                                              String                 @unique(map: "sqlite_autoindex_accounts_2")
+  access_email                                          String                 @unique(map: "sqlite_autoindex_accounts_3")
+  display_name                                          String
+  locked                                                Int                    @default(0)
+  default_post_visibility                               String                 @default("public")
+  default_quote_policy                                  String                 @default("public")
+  public_key_pem                                        String
+  private_key_jwk                                       String
+  created_at                                            String                 @default("CURRENT_TIMESTAMP")
+  updated_at                                            String                 @default("CURRENT_TIMESTAMP")
+  bio_text                                              String                 @default("")
+  avatar_object_key                                     String?
+  header_object_key                                     String?
+  account_list_members                                  account_list_members[]
+  account_lists                                         account_lists[]       
+  bookmarks                                             bookmarks[]
+  conversation_reads                                    conversation_reads[]
+  favourites                                            favourites[]
+  filters                                               filters[]             
+  follows_follows_target_account_idToaccounts           follows[]              @relation("follows_target_account_idToaccounts")
+  follows_follows_follower_account_idToaccounts         follows[]              @relation("follows_follower_account_idToaccounts")
+  markers                                               markers[]
+  media_attachments                                     media_attachments[]
+  notifications_notifications_from_account_idToaccounts notifications[]        @relation("notifications_from_account_idToaccounts")
+  notifications_notifications_account_idToaccounts      notifications[]        @relation("notifications_account_idToaccounts")
+  outbound_activities                                   outbound_activities[] 
+  poll_votes                                            poll_votes[]
+  remote_follows                                        remote_follows[]
+  reports_reports_target_account_idToaccounts           reports[]              @relation("reports_target_account_idToaccounts")
+  reports_reports_account_idToaccounts                  reports[]              @relation("reports_account_idToaccounts")
+  status_mentions                                       status_mentions[]
+  statuses                                              statuses[]            
+}
+
+model bookmarks {
+  account_id String
+  status_id  String
+  created_at String   @default("CURRENT_TIMESTAMP")
+  statuses   statuses @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  accounts   accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([account_id, status_id])
+}
+
+model conversation_reads {
+  account_id          String
+  conversation_id     String
+  last_read_status_id String
+  updated_at          String
+  accounts            accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([account_id, conversation_id])
+}
+
+model favourites {
+  account_id String
+  status_id  String
+  created_at String   @default("CURRENT_TIMESTAMP")
+  statuses   statuses @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  accounts   accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([account_id, status_id])
+}
+
+model filters {
+  id           String @id
+  account_id   String
+  phrase       String
+  context_json String
+  whole_word   Int      @default(0)
+  irreversible Int      @default(0)
+  expires_at   String?
+  created_at   String   @default("CURRENT_TIMESTAMP")
+  accounts     accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model follows {
+  id                                             String @id
+  follower_account_id                            String
+  target_account_id                              String
+  kind                                           String
+  created_at                                     String   @default("CURRENT_TIMESTAMP")
+  accounts_follows_target_account_idToaccounts   accounts @relation("follows_target_account_idToaccounts", fields: [target_account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  accounts_follows_follower_account_idToaccounts accounts @relation("follows_follower_account_idToaccounts", fields: [follower_account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([follower_account_id, target_account_id], map: "sqlite_autoindex_follows_2")
+  @@index([target_account_id, kind], map: "idx_follows_target")
+}
+
+model inbox_activities {
+  activity_id  String @id
+  kind         String
+  payload_json String
+  created_at   String  @default("CURRENT_TIMESTAMP")
+}
+
+model instance_settings {
+  id          Int    @id @default(autoincrement())
+  domain      String
+  title       String
+  description String
+  updated_at  String @default("CURRENT_TIMESTAMP")
+}
+
+model markers {
+  account_id   String
+  timeline     String
+  last_read_id String
+  version      Int      @default(0)
+  updated_at   String
+  accounts     accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([account_id, timeline])
+}
+
+model media_attachments {
+  id           String @id
+  account_id   String
+  status_id    String?
+  object_key   String    @unique(map: "sqlite_autoindex_media_attachments_2")
+  content_type String
+  created_at   String    @default("CURRENT_TIMESTAMP")
+  statuses     statuses? @relation(fields: [status_id], references: [id], onUpdate: NoAction)
+  accounts     accounts  @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model notifications {
+  id                                               String @id
+  account_id                                       String
+  from_account_id                                  String
+  kind                                             String
+  status_id                                        String?
+  created_at                                       String   @default("CURRENT_TIMESTAMP")
+  accounts_notifications_from_account_idToaccounts accounts @relation("notifications_from_account_idToaccounts", fields: [from_account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  accounts_notifications_account_idToaccounts      accounts @relation("notifications_account_idToaccounts", fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([account_id, created_at(sort: Desc)], map: "idx_notifications_account_created_at")
+}
+
+model outbound_activities {
+  id           String @id
+  account_id   String
+  kind         String
+  payload_json String
+  created_at   String   @default("CURRENT_TIMESTAMP")
+  accounts     accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model outbox_deliveries {
+  id            String @id
+  activity_id   String
+  kind          String
+  reason_kind   String?
+  attempt_count Int     @default(0)
+  http_status   Int?
+  created_at    String  @default("CURRENT_TIMESTAMP")
+  updated_at    String  @default("CURRENT_TIMESTAMP")
+  inbox_url     String?
+
+  @@unique([activity_id, inbox_url], map: "idx_outbox_deliveries_target", where: raw("inbox_url IS NOT NULL"))
+}
+
+model poll_votes {
+  poll_id      String
+  account_id   String
+  option_index Int
+  created_at   String   @default("CURRENT_TIMESTAMP")
+  accounts     accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  polls        polls    @relation(fields: [poll_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([poll_id, account_id, option_index])
+}
+
+model polls {
+  id                 String @id
+  status_id          String       @unique(map: "sqlite_autoindex_polls_2")
+  multiple           Int          @default(0)
+  expires_at         String
+  options_json       String
+  expiry_notified_at String?
+  poll_votes         poll_votes[]
+  statuses           statuses     @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([expires_at], map: "idx_polls_expires_at", where: raw("expiry_notified_at IS NULL"))
+}
+
+model remote_actors {
+  actor_uri         String @id
+  username          String
+  domain            String
+  inbox_uri         String
+  shared_inbox_uri  String?
+  public_key_id     String              @unique(map: "sqlite_autoindex_remote_actors_2")
+  public_key_pem    String
+  display_name      String              @default("")
+  fetched_at        String
+  created_at        String              @default("CURRENT_TIMESTAMP")
+  updated_at        String              @default("CURRENT_TIMESTAMP")
+  remote_announces  remote_announces[]
+  remote_favourites remote_favourites[]
+  remote_follows    remote_follows[]
+  remote_statuses   remote_statuses[]
+
+  @@index([domain, username], map: "idx_remote_actors_domain_username")
+}
+
+model remote_announces {
+  remote_actor_uri String
+  status_id        String
+  activity_id      String
+  created_at       String        @default("CURRENT_TIMESTAMP")
+  statuses         statuses      @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  remote_actors    remote_actors @relation(fields: [remote_actor_uri], references: [actor_uri], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([remote_actor_uri, status_id])
+  @@index([status_id], map: "idx_remote_announces_status")
+}
+
+model remote_favourites {
+  remote_actor_uri String
+  status_id        String
+  created_at       String        @default("CURRENT_TIMESTAMP")
+  statuses         statuses      @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  remote_actors    remote_actors @relation(fields: [remote_actor_uri], references: [actor_uri], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([remote_actor_uri, status_id])
+  @@index([status_id], map: "idx_remote_favourites_status")
+}
+
+model remote_follows {
+  id                  String @id
+  remote_actor_uri    String
+  target_account_id   String
+  remote_request_kind String
+  follow_kind         String
+  created_at          String        @default("CURRENT_TIMESTAMP")
+  accounts            accounts      @relation(fields: [target_account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  remote_actors       remote_actors @relation(fields: [remote_actor_uri], references: [actor_uri], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([remote_actor_uri, target_account_id], map: "sqlite_autoindex_remote_follows_2")
+  @@index([target_account_id, follow_kind], map: "idx_remote_follows_target")
+}
+
+model remote_statuses {
+  id            String @id
+  actor_uri     String
+  object_uri    String        @unique(map: "sqlite_autoindex_remote_statuses_2")
+  url           String?
+  content_html  String
+  spoiler_text  String        @default("")
+  visibility    String
+  sensitive     Int           @default(0)
+  language      String?
+  published_at  String
+  created_at    String        @default("CURRENT_TIMESTAMP")
+  updated_at    String        @default("CURRENT_TIMESTAMP")
+  remote_actors remote_actors @relation(fields: [actor_uri], references: [actor_uri], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([actor_uri, published_at(sort: Desc)], map: "idx_remote_statuses_actor_published")
+  @@index([visibility, published_at(sort: Desc)], map: "idx_remote_statuses_visibility_published")
+}
+
+model reports {
+  id                                           String @id
+  account_id                                   String
+  target_account_id                            String
+  status_ids_json                              String   @default("[]")
+  comment                                      String   @default("")
+  created_at                                   String   @default("CURRENT_TIMESTAMP")
+  accounts_reports_target_account_idToaccounts accounts @relation("reports_target_account_idToaccounts", fields: [target_account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  accounts_reports_account_idToaccounts        accounts @relation("reports_account_idToaccounts", fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model status_mentions {
+  status_id  String
+  account_id String
+  accounts   accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  statuses   statuses @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([status_id, account_id])
+  @@index([account_id, status_id], map: "idx_status_mentions_account")
+}
+
+model statuses {
+  id                                               String @id
+  account_id                                       String
+  kind                                             String
+  ap_id                                            String?             @unique(map: "sqlite_autoindex_statuses_2")
+  reblog_of_id                                     String?
+  in_reply_to_id                                   String?
+  content_text                                     String              @default("")
+  visibility                                       String
+  sensitive                                        Int                 @default(0)
+  created_at                                       String              @default("CURRENT_TIMESTAMP")
+  updated_at                                       String              @default("CURRENT_TIMESTAMP")
+  spoiler_text                                     String              @default("")
+  language                                         String?
+  content_html                                     String              @default("")
+  poll_id                                          String?
+  bookmarks                                        bookmarks[]
+  favourites                                       favourites[]
+  media_attachments                                media_attachments[]
+  polls                                            polls?
+  remote_announces                                 remote_announces[]
+  remote_favourites                                remote_favourites[]
+  status_mentions                                  status_mentions[]
+  statuses_statuses_in_reply_to_idTostatuses       statuses?           @relation("statuses_in_reply_to_idTostatuses", fields: [in_reply_to_id], references: [id], onUpdate: NoAction)
+  other_statuses_statuses_in_reply_to_idTostatuses statuses[]          @relation("statuses_in_reply_to_idTostatuses")
+  statuses_statuses_reblog_of_idTostatuses         statuses?           @relation("statuses_reblog_of_idTostatuses", fields: [reblog_of_id], references: [id], onUpdate: NoAction)
+  other_statuses_statuses_reblog_of_idTostatuses   statuses[]          @relation("statuses_reblog_of_idTostatuses")
+  accounts                                         accounts            @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([visibility, created_at(sort: Desc)], map: "idx_statuses_visibility_created_at")
+  @@index([account_id, created_at(sort: Desc)], map: "idx_statuses_account_created_at")
+}

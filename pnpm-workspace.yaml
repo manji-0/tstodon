@@ -2,7 +2,10 @@ packages:
   - packages/*
 
 allowBuilds:
+  "@prisma/engines": true
   esbuild: true
+  msgpackr-extract: true
+  prisma: true
   workerd: true
 
 # Fresh Oxc / TypeScript releases are intentionally allowed through the age gate.

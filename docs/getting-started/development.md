@@ -30,3 +30,12 @@ Put new state in `packages/domain` as a `z.discriminatedUnion("kind", ...)` plus
 ## Generated types
 
 Re-run `pnpm types:worker` after changing bindings in `wrangler.jsonc`.
+
+After editing `prisma/sql/*.sql` or applying D1 migrations, regenerate TypedSQL:
+
+```sh
+pnpm exec wrangler d1 migrations apply tstodon --local
+pnpm prisma:generate
+```
+
+See [Prisma TypedSQL conventions](../architecture/prisma-typedsql.md).

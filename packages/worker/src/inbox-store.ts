@@ -1,17 +1,20 @@
 import { runD1, type RepositoryError } from "./d1";
 import { nowIso } from "./clock";
 import type { Result } from "neverthrow";
+import { createPrisma } from "./prisma";
+import {
+  inboxActivityExists as inboxActivityExistsSql,
+  insertInboxActivity as insertInboxActivitySql,
+} from "./generated/prisma/sql";
 
 export const inboxActivityExists = async (
   db: D1Database,
   activityId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const row = await db
-      .prepare(`SELECT activity_id FROM inbox_activities WHERE activity_id = ?`)
-      .bind(activityId)
-      .first();
-    return Boolean(row);
+    const prisma = createPrisma(db);
+    const rows = await prisma.$queryRawTyped(inboxActivityExistsSql(activityId));
+    return rows.length > 0;
   });
 
 export const insertInboxActivity = async (
@@ -23,11 +26,9 @@ export const insertInboxActivity = async (
   },
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(
-        `INSERT OR IGNORE INTO inbox_activities (activity_id, kind, payload_json, created_at)
-         VALUES (?, ?, ?, ?)`,
-      )
-      .bind(input.activityId, input.kind, JSON.stringify(input.payload), nowIso())
-      .run();
+    const prisma = createPrisma(db);
+    // Prisma 7 exposes TypedSQL writes through $queryRawTyped (no $executeRawTyped yet).
+    await prisma.$queryRawTyped(
+      insertInboxActivitySql(input.activityId, input.kind, JSON.stringify(input.payload), nowIso()),
+    );
   });

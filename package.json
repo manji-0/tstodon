@@ -10,6 +10,8 @@
     "fmt": "oxfmt .",
     "fmt:check": "oxfmt --check .",
     "types:worker": "wrangler types --env-interface Env",
+    "prisma:pull": "./packages/worker/node_modules/.bin/prisma db pull",
+    "prisma:generate": "./packages/worker/node_modules/.bin/prisma generate --sql",
     "ci": "pnpm typecheck && pnpm lint && pnpm fmt:check && pnpm test && wrangler deploy --dry-run"
   },
   "devDependencies": {
