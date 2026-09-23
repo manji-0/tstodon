@@ -3,6 +3,18 @@ import { err, ok, type Result } from "neverthrow";
 import { chunkArray, runD1, runD1Batch, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
+import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
+import {
+  deleteBookmark as deleteBookmarkSql,
+  deleteFavourite as deleteFavouriteSql,
+  deleteFollow as deleteFollowSql,
+  findFollowKind as findFollowKindSql,
+  insertBookmarkOrIgnore as insertBookmarkOrIgnoreSql,
+  insertFavouriteOrIgnore as insertFavouriteOrIgnoreSql,
+  insertFollowOrIgnore as insertFollowOrIgnoreSql,
+  insertNotification as insertNotificationSql,
+  listNotifications as listNotificationsSql,
+} from "./generated/prisma/sql";
 
 export const followAccount = async (
   db: D1Database,
@@ -16,25 +28,21 @@ export const followAccount = async (
     if (followKind === "None") {
       return state;
     }
-    // Happy path: one INSERT. Only SELECT when the unique pair already exists.
-    const inserted = await db
-      .prepare(
-        `INSERT OR IGNORE INTO follows (id, follower_account_id, target_account_id, kind, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .bind(newEntityId(), followerId, targetId, followKind, nowIso())
-      .run();
-    if ((inserted.meta.changes ?? 0) > 0) {
+    const inserted = await queryTyped<{ id: string }>(
+      db,
+      insertFollowOrIgnoreSql(newEntityId(), followerId, targetId, followKind, nowIso()),
+    );
+    if (inserted.length > 0) {
       return state;
     }
-    const existing = await db
-      .prepare(`SELECT kind FROM follows WHERE follower_account_id = ? AND target_account_id = ?`)
-      .bind(followerId, targetId)
-      .first<{ kind: string }>();
+    const existing = await queryTyped<{ kind: string }>(
+      db,
+      findFollowKindSql(followerId, targetId),
+    );
     return FollowRequest.parse({
       kind: "LocalFollower",
       targetLocked,
-      follow: existing?.kind === "Accepted" ? LocalFollow.Accepted : LocalFollow.Pending,
+      follow: existing[0]?.kind === "Accepted" ? LocalFollow.Accepted : LocalFollow.Pending,
     }).unwrapOr(state);
   });
 
@@ -44,10 +52,7 @@ export const unfollowAccount = async (
   targetId: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(`DELETE FROM follows WHERE follower_account_id = ? AND target_account_id = ?`)
-      .bind(followerId, targetId)
-      .run();
+    await runTyped(db, deleteFollowSql(followerId, targetId));
   });
 
 export const relationshipFlags = async (
@@ -57,12 +62,9 @@ export const relationshipFlags = async (
 ): Promise<
   Result<Readonly<{ following: boolean; followedBy: boolean; requested: boolean }>, RepositoryError>
 > => {
-  const followSelect = db.prepare(
-    `SELECT kind FROM follows WHERE follower_account_id = ? AND target_account_id = ?`,
-  );
   const batched = await runD1Batch(db, [
-    followSelect.bind(viewerId, targetId),
-    followSelect.bind(targetId, viewerId),
+    d1PrepareTyped(db, findFollowKindSql(viewerId, targetId)),
+    d1PrepareTyped(db, findFollowKindSql(targetId, viewerId)),
   ]);
   if (batched.isErr()) {
     return err(batched.error);
@@ -82,13 +84,8 @@ export const favouriteStatus = async (
   statusId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const result = await db
-      .prepare(
-        `INSERT OR IGNORE INTO favourites (account_id, status_id, created_at) VALUES (?, ?, ?)`,
-      )
-      .bind(accountId, statusId, nowIso())
-      .run();
-    return (result.meta.changes ?? 0) > 0;
+    const rows = await queryTyped(db, insertFavouriteOrIgnoreSql(accountId, statusId, nowIso()));
+    return rows.length > 0;
   });
 
 export const unfavouriteStatus = async (
@@ -97,10 +94,7 @@ export const unfavouriteStatus = async (
   statusId: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(`DELETE FROM favourites WHERE account_id = ? AND status_id = ?`)
-      .bind(accountId, statusId)
-      .run();
+    await runTyped(db, deleteFavouriteSql(accountId, statusId));
   });
 
 export const bookmarkStatus = async (
@@ -109,12 +103,7 @@ export const bookmarkStatus = async (
   statusId: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(
-        `INSERT OR IGNORE INTO bookmarks (account_id, status_id, created_at) VALUES (?, ?, ?)`,
-      )
-      .bind(accountId, statusId, nowIso())
-      .run();
+    await runTyped(db, insertBookmarkOrIgnoreSql(accountId, statusId, nowIso()));
   });
 
 export const unbookmarkStatus = async (
@@ -123,10 +112,7 @@ export const unbookmarkStatus = async (
   statusId: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(`DELETE FROM bookmarks WHERE account_id = ? AND status_id = ?`)
-      .bind(accountId, statusId)
-      .run();
+    await runTyped(db, deleteBookmarkSql(accountId, statusId));
   });
 
 export const insertNotification = async (
@@ -139,20 +125,17 @@ export const insertNotification = async (
   },
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(
-        `INSERT INTO notifications (id, account_id, from_account_id, kind, status_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
+    await runTyped(
+      db,
+      insertNotificationSql(
         newEntityId(),
         input.accountId,
         input.fromAccountId,
         input.kind,
         input.statusId ?? null,
         nowIso(),
-      )
-      .run();
+      ),
+    );
   });
 
 export type NotificationRow = {
@@ -170,14 +153,15 @@ export const listNotifications = async (
   limit: number,
 ): Promise<Result<NotificationRow[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT id, account_id, from_account_id, kind, status_id, created_at
-         FROM notifications WHERE account_id = ? ORDER BY id DESC LIMIT ?`,
-      )
-      .bind(accountId, limit)
-      .all<NotificationRow>();
-    return results ?? [];
+    const results = await queryTyped<NotificationRow>(db, listNotificationsSql(accountId, limit));
+    return results.map((row) => ({
+      id: row.id ?? "",
+      account_id: row.account_id,
+      from_account_id: row.from_account_id,
+      kind: row.kind,
+      status_id: row.status_id,
+      created_at: row.created_at,
+    }));
   });
 
 export type StatusInteractionCounts = Readonly<{

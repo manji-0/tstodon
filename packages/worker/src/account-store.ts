@@ -12,10 +12,17 @@ import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
 import { nowInstant, nowIso } from "./clock";
 import { chunkArray, runD1, type RepositoryError } from "./d1";
+import { queryTyped } from "./typed-sql";
 import { generateAccountKeys } from "./keys";
 import { newEntityId } from "./ids";
 import { AccountRowSchema, toRepositoryError } from "./schemas";
 import { quotePolicyFromSql, quotePolicySql, visibilitySql } from "./sql-enums";
+import {
+  accountCounts as accountCountsSql,
+  findAccountByEmail as findAccountByEmailSql,
+  findAccountById as findAccountByIdSql,
+  findAccountByUsername as findAccountByUsernameSql,
+} from "./generated/prisma/sql";
 
 export type AccountRow = z.infer<typeof AccountRowSchema>;
 
@@ -53,16 +60,17 @@ export const findAccountById = async (
   db: D1Database,
   id: string,
 ): Promise<Result<LocalAccount | undefined, RepositoryError>> => {
-  const queried = await runD1(() =>
-    db.prepare(`SELECT ${accountSelect} FROM accounts WHERE id = ?`).bind(id).first(),
-  );
+  const queried = await runD1(async () => {
+    return queryTyped(db, findAccountByIdSql(id));
+  });
   if (queried.isErr()) {
     return err(queried.error);
   }
-  if (!queried.value) {
+  const raw = queried.value[0];
+  if (!raw) {
     return ok(undefined);
   }
-  const row = parseAccountRow(queried.value);
+  const row = parseAccountRow(raw);
   if (row.isErr()) {
     return err(toRepositoryError("invalid account row"));
   }
@@ -107,19 +115,17 @@ export const findAccountByUsername = async (
   db: D1Database,
   username: string,
 ): Promise<Result<LocalAccount | undefined, RepositoryError>> => {
-  const queried = await runD1(() =>
-    db
-      .prepare(`SELECT ${accountSelect} FROM accounts WHERE username = ?`)
-      .bind(username.toLowerCase())
-      .first(),
-  );
+  const queried = await runD1(async () => {
+    return queryTyped(db, findAccountByUsernameSql(username.toLowerCase()));
+  });
   if (queried.isErr()) {
     return err(queried.error);
   }
-  if (!queried.value) {
+  const raw = queried.value[0];
+  if (!raw) {
     return ok(undefined);
   }
-  const row = parseAccountRow(queried.value);
+  const row = parseAccountRow(raw);
   if (row.isErr()) {
     return err(toRepositoryError("invalid account row"));
   }
@@ -173,19 +179,17 @@ export const findAccountByEmail = async (
   db: D1Database,
   email: string,
 ): Promise<Result<LocalAccount | undefined, RepositoryError>> => {
-  const queried = await runD1(() =>
-    db
-      .prepare(`SELECT ${accountSelect} FROM accounts WHERE access_email = ?`)
-      .bind(email.toLowerCase())
-      .first(),
-  );
+  const queried = await runD1(async () => {
+    return queryTyped(db, findAccountByEmailSql(email.toLowerCase()));
+  });
   if (queried.isErr()) {
     return err(queried.error);
   }
-  if (!queried.value) {
+  const raw = queried.value[0];
+  if (!raw) {
     return ok(undefined);
   }
-  const row = parseAccountRow(queried.value);
+  const row = parseAccountRow(raw);
   if (row.isErr()) {
     return err(toRepositoryError("invalid account row"));
   }
@@ -341,19 +345,12 @@ export const accountCounts = async (
   accountId: string,
 ): Promise<Result<AccountCounts, RepositoryError>> =>
   runD1(async () => {
-    const row = await db
-      .prepare(
-        `SELECT
-           (SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND kind = 'Accepted') AS followers,
-           (SELECT COUNT(*) FROM follows WHERE follower_account_id = ? AND kind = 'Accepted') AS following,
-           (SELECT COUNT(*) FROM statuses WHERE account_id = ?) AS statuses`,
-      )
-      .bind(accountId, accountId, accountId)
-      .first<{ followers: number; following: number; statuses: number }>();
+    const rows = await queryTyped(db, accountCountsSql(accountId));
+    const row = rows[0];
     return {
-      followers: row?.followers ?? 0,
-      following: row?.following ?? 0,
-      statuses: row?.statuses ?? 0,
+      followers: Number(row?.followers ?? 0),
+      following: Number(row?.following ?? 0),
+      statuses: Number(row?.statuses ?? 0),
     };
   });
 

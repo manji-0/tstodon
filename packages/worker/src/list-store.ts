@@ -7,6 +7,18 @@ import { runD1, runD1BatchChunked, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
 import { parseRow, toRepositoryError } from "./schemas";
 import { STATUS_SELECT, hydrateStatusRows } from "./status-store";
+import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
+import {
+  createList as createListSql,
+  deleteList as deleteListSql,
+  deleteListMember as deleteListMemberSql,
+  findListForAccount as findListForAccountSql,
+  insertListMember as insertListMemberSql,
+  listListMemberIds as listListMemberIdsSql,
+  listListsContainingAccount as listListsContainingAccountSql,
+  listListsForAccount as listListsForAccountSql,
+  updateList as updateListSql,
+} from "./generated/prisma/sql";
 
 export const ListRepliesPolicySchema = z.union([
   z.literal("followed"),
@@ -53,16 +65,8 @@ export const listListsForAccount = async (
   accountId: string,
 ): Promise<Result<AccountList[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT id, account_id, title, replies_policy, created_at, updated_at
-         FROM account_lists
-         WHERE account_id = ?
-         ORDER BY created_at DESC`,
-      )
-      .bind(accountId)
-      .all();
-    return (results ?? []).flatMap((raw) => {
+    const results = await queryTyped(db, listListsForAccountSql(accountId));
+    return results.flatMap((raw) => {
       const row = parseRow(ListRowSchema, raw);
       return row.isOk() ? [listFromRow(row.value)] : [];
     });
@@ -73,23 +77,17 @@ export const findListForAccount = async (
   accountId: string,
   listId: string,
 ): Promise<Result<AccountList | undefined, RepositoryError>> => {
-  const queried = await runD1(() =>
-    db
-      .prepare(
-        `SELECT id, account_id, title, replies_policy, created_at, updated_at
-         FROM account_lists
-         WHERE id = ? AND account_id = ?`,
-      )
-      .bind(listId, accountId)
-      .first(),
-  );
+  const queried = await runD1(async () => {
+    return queryTyped(db, findListForAccountSql(listId, accountId));
+  });
   if (queried.isErr()) {
     return err(queried.error);
   }
-  if (!queried.value) {
+  const raw = queried.value[0];
+  if (!raw) {
     return ok(undefined);
   }
-  const row = parseRow(ListRowSchema, queried.value);
+  const row = parseRow(ListRowSchema, raw);
   if (row.isErr()) {
     return err(toRepositoryError("invalid list row"));
   }
@@ -105,13 +103,7 @@ export const createList = async (
   const now = nowIso();
   const repliesPolicy = input.repliesPolicy ?? "list";
   const written = await runD1(async () => {
-    await db
-      .prepare(
-        `INSERT INTO account_lists (id, account_id, title, replies_policy, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(id, accountId, input.title, repliesPolicy, now, now)
-      .run();
+    await runTyped(db, createListSql(id, accountId, input.title, repliesPolicy, now, now));
   });
   if (written.isErr()) {
     return err(written.error);
@@ -140,14 +132,7 @@ export const updateList = async (
   const title = input.title?.trim() || existing.value.title;
   const repliesPolicy = input.repliesPolicy ?? existing.value.repliesPolicy;
   const written = await runD1(async () => {
-    await db
-      .prepare(
-        `UPDATE account_lists
-         SET title = ?, replies_policy = ?, updated_at = ?
-         WHERE id = ? AND account_id = ?`,
-      )
-      .bind(title, repliesPolicy, nowIso(), listId, accountId)
-      .run();
+    await runTyped(db, updateListSql(title, repliesPolicy, nowIso(), listId, accountId));
   });
   if (written.isErr()) {
     return err(written.error);
@@ -166,11 +151,8 @@ export const deleteList = async (
   listId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const result = await db
-      .prepare(`DELETE FROM account_lists WHERE id = ? AND account_id = ?`)
-      .bind(listId, accountId)
-      .run();
-    return (result.meta?.changes ?? 0) > 0;
+    const rows = await queryTyped<{ id: string }>(db, deleteListSql(listId, accountId));
+    return rows.length > 0;
   });
 
 export const listListMemberIds = async (
@@ -178,15 +160,11 @@ export const listListMemberIds = async (
   listId: string,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT member_account_id FROM account_list_members
-         WHERE list_id = ?
-         ORDER BY created_at ASC`,
-      )
-      .bind(listId)
-      .all<{ member_account_id: string }>();
-    return (results ?? []).map((row) => row.member_account_id);
+    const results = await queryTyped<{ member_account_id: string }>(
+      db,
+      listListMemberIdsSql(listId),
+    );
+    return results.map((row) => row.member_account_id);
   });
 
 export const addListMembers = async (
@@ -198,13 +176,11 @@ export const addListMembers = async (
     return ok(undefined);
   }
   const now = nowIso();
-  const insert = db.prepare(
-    `INSERT OR IGNORE INTO account_list_members (list_id, member_account_id, created_at)
-     VALUES (?, ?, ?)`,
-  );
   const batched = await runD1BatchChunked(
     db,
-    memberAccountIds.map((memberId) => insert.bind(listId, memberId, now)),
+    memberAccountIds.map((memberId) =>
+      d1PrepareTyped(db, insertListMemberSql(listId, memberId, now)),
+    ),
   );
   if (batched.isErr()) {
     return err(batched.error);
@@ -220,12 +196,9 @@ export const removeListMembers = async (
   if (memberAccountIds.length === 0) {
     return ok(undefined);
   }
-  const del = db.prepare(
-    `DELETE FROM account_list_members WHERE list_id = ? AND member_account_id = ?`,
-  );
   const batched = await runD1BatchChunked(
     db,
-    memberAccountIds.map((memberId) => del.bind(listId, memberId)),
+    memberAccountIds.map((memberId) => d1PrepareTyped(db, deleteListMemberSql(listId, memberId))),
   );
   if (batched.isErr()) {
     return err(batched.error);
@@ -239,17 +212,11 @@ export const listListsContainingAccount = async (
   memberAccountId: string,
 ): Promise<Result<AccountList[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT l.id, l.account_id, l.title, l.replies_policy, l.created_at, l.updated_at
-         FROM account_lists l
-         JOIN account_list_members m ON m.list_id = l.id
-         WHERE l.account_id = ? AND m.member_account_id = ?
-         ORDER BY l.created_at DESC`,
-      )
-      .bind(ownerAccountId, memberAccountId)
-      .all();
-    return (results ?? []).flatMap((raw) => {
+    const results = await queryTyped(
+      db,
+      listListsContainingAccountSql(ownerAccountId, memberAccountId),
+    );
+    return results.flatMap((raw) => {
       const row = parseRow(ListRowSchema, raw);
       return row.isOk() ? [listFromRow(row.value)] : [];
     });
@@ -266,6 +233,7 @@ export const listListTimelineStatuses = async (
   }>,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
+    // Dynamic reply-policy SQL stays on D1 prepare (escape hatch).
     const replyFilter =
       input.repliesPolicy === "none"
         ? `AND in_reply_to_id IS NULL`

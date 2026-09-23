@@ -1,7 +1,14 @@
 import { runD1, type RepositoryError } from "./d1";
+import { queryTyped, runTyped } from "./typed-sql";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import type { Result } from "neverthrow";
+import {
+  deleteFilter as deleteFilterSql,
+  insertFilter as insertFilterSql,
+  insertReport as insertReportSql,
+  listFilters as listFiltersSql,
+} from "./generated/prisma/sql";
 
 export type FilterRow = {
   id: string;
@@ -26,31 +33,31 @@ export const insertFilter = async (
 ): Promise<Result<FilterRow, RepositoryError>> =>
   runD1(async () => {
     const id = newEntityId();
-    await db
-      .prepare(
-        `INSERT INTO filters (
-          id, account_id, phrase, context_json, whole_word, irreversible, expires_at, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
+    const contextJson = JSON.stringify(input.context);
+    const wholeWord = input.wholeWord ? 1 : 0;
+    const irreversible = input.irreversible ? 1 : 0;
+    const expiresAt = input.expiresAt ?? null;
+    await runTyped(
+      db,
+      insertFilterSql(
         id,
         input.accountId,
         input.phrase,
-        JSON.stringify(input.context),
-        input.wholeWord ? 1 : 0,
-        input.irreversible ? 1 : 0,
-        input.expiresAt ?? null,
+        contextJson,
+        wholeWord,
+        irreversible,
+        expiresAt,
         nowIso(),
-      )
-      .run();
+      ),
+    );
     return {
       id,
       account_id: input.accountId,
       phrase: input.phrase,
-      context_json: JSON.stringify(input.context),
-      whole_word: input.wholeWord ? 1 : 0,
-      irreversible: input.irreversible ? 1 : 0,
-      expires_at: input.expiresAt ?? null,
+      context_json: contextJson,
+      whole_word: wholeWord,
+      irreversible: irreversible,
+      expires_at: expiresAt,
     };
   });
 
@@ -59,14 +66,16 @@ export const listFilters = async (
   accountId: string,
 ): Promise<Result<FilterRow[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT id, account_id, phrase, context_json, whole_word, irreversible, expires_at
-         FROM filters WHERE account_id = ? ORDER BY created_at DESC`,
-      )
-      .bind(accountId)
-      .all<FilterRow>();
-    return results ?? [];
+    const rows = await queryTyped<FilterRow>(db, listFiltersSql(accountId));
+    return rows.map((row) => ({
+      id: row.id ?? "",
+      account_id: row.account_id,
+      phrase: row.phrase,
+      context_json: row.context_json,
+      whole_word: row.whole_word,
+      irreversible: row.irreversible,
+      expires_at: row.expires_at,
+    }));
   });
 
 export const deleteFilter = async (
@@ -75,11 +84,8 @@ export const deleteFilter = async (
   id: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const result = await db
-      .prepare(`DELETE FROM filters WHERE id = ? AND account_id = ?`)
-      .bind(id, accountId)
-      .run();
-    return (result.meta.changes ?? 0) > 0;
+    const rows = await queryTyped<{ id: string }>(db, deleteFilterSql(id, accountId));
+    return rows.length > 0;
   });
 
 export const insertReport = async (
@@ -93,19 +99,16 @@ export const insertReport = async (
 ): Promise<Result<{ id: string }, RepositoryError>> =>
   runD1(async () => {
     const id = newEntityId();
-    await db
-      .prepare(
-        `INSERT INTO reports (id, account_id, target_account_id, status_ids_json, comment, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
+    await runTyped(
+      db,
+      insertReportSql(
         id,
         input.accountId,
         input.targetAccountId,
         JSON.stringify(input.statusIds),
         input.comment,
         nowIso(),
-      )
-      .run();
+      ),
+    );
     return { id };
   });

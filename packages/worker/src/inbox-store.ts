@@ -1,7 +1,7 @@
 import { runD1, type RepositoryError } from "./d1";
+import { queryTyped, runTyped } from "./typed-sql";
 import { nowIso } from "./clock";
 import type { Result } from "neverthrow";
-import { createPrisma } from "./prisma";
 import {
   inboxActivityExists as inboxActivityExistsSql,
   insertInboxActivity as insertInboxActivitySql,
@@ -12,8 +12,7 @@ export const inboxActivityExists = async (
   activityId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const prisma = createPrisma(db);
-    const rows = await prisma.$queryRawTyped(inboxActivityExistsSql(activityId));
+    const rows = await queryTyped(db, inboxActivityExistsSql(activityId));
     return rows.length > 0;
   });
 
@@ -26,9 +25,9 @@ export const insertInboxActivity = async (
   },
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    const prisma = createPrisma(db);
     // Prisma 7 exposes TypedSQL writes through $queryRawTyped (no $executeRawTyped yet).
-    await prisma.$queryRawTyped(
+    await runTyped(
+      db,
       insertInboxActivitySql(input.activityId, input.kind, JSON.stringify(input.payload), nowIso()),
     );
   });

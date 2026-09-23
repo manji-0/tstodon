@@ -1,8 +1,8 @@
 import { err, ok, type Result } from "neverthrow";
 import { chunkArray, runD1, type RepositoryError } from "./d1";
+import { queryTyped, runTyped } from "./typed-sql";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
-import { createPrisma } from "./prisma";
 import {
   findMediaById as findMediaByIdSql,
   insertMedia as insertMediaSql,
@@ -28,9 +28,9 @@ export const insertMedia = async (
   runD1(async () => {
     const id = newEntityId();
     const createdAt = nowIso();
-    const prisma = createPrisma(db);
     // Prisma 7 exposes TypedSQL writes through $queryRawTyped (no $executeRawTyped yet).
-    await prisma.$queryRawTyped(
+    await runTyped(
+      db,
       insertMediaSql(id, input.accountId, input.objectKey, input.contentType, createdAt),
     );
     return {
@@ -48,8 +48,7 @@ export const findMediaById = async (
   id: string,
 ): Promise<Result<MediaRow | undefined, RepositoryError>> =>
   runD1(async () => {
-    const prisma = createPrisma(db);
-    const rows = await prisma.$queryRawTyped(findMediaByIdSql(id));
+    const rows = await queryTyped<MediaRow>(db, findMediaByIdSql(id));
     const row = rows[0];
     if (!row || row.id == null) {
       return undefined;

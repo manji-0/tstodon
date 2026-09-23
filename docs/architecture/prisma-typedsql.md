@@ -7,7 +7,7 @@
 
 Worker SQL that is a **single statement** should live in `prisma/sql/*.sql` and run via `$queryRawTyped` through `createPrisma(env.DB)`.
 
-Prisma 7.10 TypedSQL helpers cover both reads and writes; the client API is `$queryRawTyped` only (no `$executeRawTyped` yet).
+Prisma 7.10 TypedSQL helpers are generated from `prisma/sql/*.sql`. At runtime we execute them through D1 via `queryTyped` / `runTyped` / `d1PrepareTyped` in `packages/worker/src/typed-sql.ts`, converting `$1`-style placeholders to `?` (D1 positional bind).
 
 **Do not** use Prisma model CRUD APIs for domain persistence in this initiative.
 

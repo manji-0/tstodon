@@ -4,6 +4,13 @@ import { z } from "zod";
 import { nowIso } from "./clock";
 import { runD1, runD1Batch, type RepositoryError } from "./d1";
 import { parseRow } from "./schemas";
+import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
+import {
+  getConversationRead as getConversationReadSql,
+  getMarkersByTimelines as getMarkersByTimelinesSql,
+  upsertConversationRead as upsertConversationReadSql,
+  upsertMarker as upsertMarkerSql,
+} from "./generated/prisma/sql";
 
 export const MarkerTimelineSchema = z.union([z.literal("home"), z.literal("notifications")]);
 export type MarkerTimeline = z.infer<typeof MarkerTimelineSchema>;
@@ -32,18 +39,13 @@ export const getMarkers = async (
   if (timelines.length === 0) {
     return ok({});
   }
+  // At most two timelines exist; pad the fixed-arity TypedSQL IN list.
+  const timelineA = timelines[0] ?? "home";
+  const timelineB = timelines[1] ?? timelineA;
   return runD1(async () => {
-    const placeholders = timelines.map(() => "?").join(", ");
-    const { results } = await db
-      .prepare(
-        `SELECT account_id, timeline, last_read_id, version, updated_at
-         FROM markers
-         WHERE account_id = ? AND timeline IN (${placeholders})`,
-      )
-      .bind(accountId, ...timelines)
-      .all();
+    const results = await queryTyped(db, getMarkersByTimelinesSql(accountId, timelineA, timelineB));
     const markers: Record<string, MarkerDocument> = {};
-    for (const raw of results ?? []) {
+    for (const raw of results) {
       const row = parseRow(MarkerRowSchema, raw);
       if (row.isErr()) {
         continue;
@@ -67,17 +69,11 @@ export const upsertMarkers = async (
     return ok({});
   }
   const updatedAt = nowIso();
-  const upsert = db.prepare(
-    `INSERT INTO markers (account_id, timeline, last_read_id, version, updated_at)
-     VALUES (?, ?, ?, 1, ?)
-     ON CONFLICT(account_id, timeline) DO UPDATE SET
-       last_read_id = excluded.last_read_id,
-       version = markers.version + 1,
-       updated_at = excluded.updated_at`,
-  );
   const batched = await runD1Batch(
     db,
-    patches.map((patch) => upsert.bind(accountId, patch.timeline, patch.last_read_id, updatedAt)),
+    patches.map((patch) =>
+      d1PrepareTyped(db, upsertMarkerSql(accountId, patch.timeline, patch.last_read_id, updatedAt)),
+    ),
   );
   if (batched.isErr()) {
     return err(batched.error);
@@ -96,16 +92,10 @@ export const markConversationRead = async (
   lastReadStatusId: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(
-        `INSERT INTO conversation_reads (account_id, conversation_id, last_read_status_id, updated_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(account_id, conversation_id) DO UPDATE SET
-           last_read_status_id = excluded.last_read_status_id,
-           updated_at = excluded.updated_at`,
-      )
-      .bind(accountId, conversationId, lastReadStatusId, nowIso())
-      .run();
+    await runTyped(
+      db,
+      upsertConversationReadSql(accountId, conversationId, lastReadStatusId, nowIso()),
+    );
   });
 
 export const getConversationRead = async (
@@ -113,19 +103,16 @@ export const getConversationRead = async (
   accountId: string,
   conversationId: string,
 ): Promise<Result<string | undefined, RepositoryError>> => {
-  const queried = await runD1(() =>
-    db
-      .prepare(
-        `SELECT last_read_status_id FROM conversation_reads
-         WHERE account_id = ? AND conversation_id = ?`,
-      )
-      .bind(accountId, conversationId)
-      .first<{ last_read_status_id: string }>(),
-  );
+  const queried = await runD1(async () => {
+    return queryTyped<{ last_read_status_id: string }>(
+      db,
+      getConversationReadSql(accountId, conversationId),
+    );
+  });
   if (queried.isErr()) {
     return err(queried.error);
   }
-  return ok(queried.value?.last_read_status_id);
+  return ok(queried.value[0]?.last_read_status_id);
 };
 
 export const parseMarkerTimelines = (raw: unknown): MarkerTimeline[] => {
