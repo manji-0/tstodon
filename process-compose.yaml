@@ -4,7 +4,7 @@ processes:
   tstodon-a:
     command: >
       pnpm exec wrangler dev
-      -c e2e/instances/a.wrangler.jsonc
+      -c e2e/a.wrangler.jsonc
       --port 8791
       --ip 127.0.0.1
       --local
@@ -23,7 +23,7 @@ processes:
   tstodon-b:
     command: >
       pnpm exec wrangler dev
-      -c e2e/instances/b.wrangler.jsonc
+      -c e2e/b.wrangler.jsonc
       --port 8792
       --ip 127.0.0.1
       --local
@@ -51,6 +51,16 @@ processes:
 
   e2e-federation-follow-create:
     command: node e2e/federation-follow-create.mjs
+    depends_on:
+      tstodon-a:
+        condition: process_healthy
+      tstodon-b:
+        condition: process_healthy
+    availability:
+      restart: "no"
+
+  e2e-federation-interactions:
+    command: node e2e/federation-interactions.mjs
     depends_on:
       tstodon-a:
         condition: process_healthy

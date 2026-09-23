@@ -21,14 +21,14 @@ Run **two local tstodon Workers** and check federation discovery surfaces agains
 | `INSTANCE_DOMAIN`        | acct domain (`127.0.0.1:8791`)                                 |
 | `FEDERATION_ALLOW_HOSTS` | Comma hosts that bypass private-IP SSRF block (`127.0.0.1`)    |
 
-Configs: `e2e/instances/a.wrangler.jsonc`, `e2e/instances/b.wrangler.jsonc`.
+Configs: `e2e/a.wrangler.jsonc`, `e2e/b.wrangler.jsonc`.
 
 ## Commands
 
 ```sh
 # apply migrations into each local persist dir (first run)
-pnpm exec wrangler d1 migrations apply tstodon-e2e-a --local --config e2e/instances/a.wrangler.jsonc --persist-to .wrangler/e2e-a
-pnpm exec wrangler d1 migrations apply tstodon-e2e-b --local --config e2e/instances/b.wrangler.jsonc --persist-to .wrangler/e2e-b
+pnpm exec wrangler d1 migrations apply tstodon-e2e-a --local --config e2e/a.wrangler.jsonc --persist-to .wrangler/e2e-a
+pnpm exec wrangler d1 migrations apply tstodon-e2e-b --local --config e2e/b.wrangler.jsonc --persist-to .wrangler/e2e-b
 
 # bring up A+B and run smoke
 process-compose up
@@ -44,6 +44,7 @@ pnpm e2e:federation
 | ------------- | ----------------------------------- | -------------------------------------------------------------------------------------- |
 | Smoke         | `pnpm e2e:federation`               | Nodeinfo, provision, WebFinger, actor docs, host cross-fetch                           |
 | Follow→Create | `pnpm e2e:federation:follow-create` | Signed Follow into A; ExpandFollowers outbox target; Create into B → `remote_statuses` |
+| Interactions  | `pnpm e2e:federation:interactions`  | Undo Follow; Like; Announce; Undo Like (+ count asserts)                               |
 
 ### Loopback limitation
 

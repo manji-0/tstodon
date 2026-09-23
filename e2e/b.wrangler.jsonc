@@ -2,7 +2,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "tstodon-e2e-b",
-  "main": "../../packages/worker/src/index.ts",
+  "main": "../packages/worker/src/index.ts",
   "compatibility_date": "2026-09-20",
   "compatibility_flags": ["nodejs_compat"],
   "placement": {
@@ -20,7 +20,7 @@
     },
   },
   "assets": {
-    "directory": "../../assets",
+    "directory": "../assets",
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "none",
@@ -53,7 +53,7 @@
       "binding": "DB",
       "database_name": "tstodon-e2e-b",
       "database_id": "00000000-0000-0000-0000-0000000000b1",
-      "migrations_dir": "../../migrations",
+      "migrations_dir": "../migrations",
     },
   ],
   "r2_buckets": [

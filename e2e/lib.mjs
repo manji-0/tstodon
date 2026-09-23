@@ -75,8 +75,7 @@ export const authHeaders = async (email) => {
 };
 
 export const d1Json = (instance, sql) => {
-  const config =
-    instance === "a" ? "e2e/instances/a.wrangler.jsonc" : "e2e/instances/b.wrangler.jsonc";
+  const config = instance === "a" ? "e2e/a.wrangler.jsonc" : "e2e/b.wrangler.jsonc";
   const persist = instance === "a" ? ".wrangler/e2e-a" : ".wrangler/e2e-b";
   const db = instance === "a" ? "tstodon-e2e-a" : "tstodon-e2e-b";
   const raw = execFileSync(
