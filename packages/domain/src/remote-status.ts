@@ -36,21 +36,40 @@ const PUBLIC_AUDIENCE = new Set([
   "Public",
 ]);
 
+const parseRemoteStatus = schemaResult(RemoteStatusSchema);
+
+const audienceHasFollowers = (uris: ReadonlyArray<string>): boolean => {
+  for (const uri of uris) {
+    if (uri.endsWith("/followers")) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const audienceHasPublic = (uris: ReadonlyArray<string>): boolean => {
+  for (const uri of uris) {
+    if (PUBLIC_AUDIENCE.has(uri)) {
+      return true;
+    }
+  }
+  return false;
+};
+
 export const RemoteStatus = {
   schema: RemoteStatusSchema,
-  parse: schemaResult(RemoteStatusSchema),
+  parse: parseRemoteStatus,
   visibilityFromAudience: (
     to: ReadonlyArray<string>,
     cc: ReadonlyArray<string>,
   ): z.infer<typeof Visibility.schema> => {
-    const addressed = [...to, ...cc];
-    if (to.some((uri) => PUBLIC_AUDIENCE.has(uri))) {
+    if (audienceHasPublic(to)) {
       return Visibility.Public;
     }
-    if (cc.some((uri) => PUBLIC_AUDIENCE.has(uri))) {
+    if (audienceHasPublic(cc)) {
       return Visibility.Unlisted;
     }
-    if (addressed.some((uri) => uri.endsWith("/followers"))) {
+    if (audienceHasFollowers(to) || audienceHasFollowers(cc)) {
       return Visibility.FollowersOnly;
     }
     return Visibility.Direct;
@@ -67,7 +86,7 @@ export const RemoteStatus = {
     language: StatusLanguage;
     publishedAt: z.infer<typeof IsoInstant.schema>;
   }): Result<RemoteStatus, RemoteStatusParseError> => {
-    const parsed = schemaResult(RemoteStatusSchema)({
+    const parsed = parseRemoteStatus({
       kind: "RemoteNote",
       id: input.id,
       actorUri: input.actorUri,

@@ -55,6 +55,9 @@ import { findStatusById, insertLocalReblog } from "../status-store";
 import { nowInstant } from "../clock";
 import { newEntityId } from "../ids";
 
+const parseNestedActivityObject = schemaResult(NestedActivityObjectSchema);
+const parseActivityJson = schemaResult(ActivityJsonSchema);
+
 export const activityPubRoutes = new Hono<{ Bindings: Env }>();
 
 const jsonLd = {
@@ -218,7 +221,7 @@ const objectUriOf = (value: string | Readonly<{ id: string }>): string =>
   typeof value === "string" ? value : value.id;
 
 const nestedActivityTarget = (raw: unknown): { type: string; objectUri: string } | undefined => {
-  const parsed = schemaResult(NestedActivityObjectSchema)(raw);
+  const parsed = parseNestedActivityObject(raw);
   if (parsed.isErr()) {
     return undefined;
   }
@@ -235,7 +238,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   if (json.isErr()) {
     return c.json({ kind: "ValidationError" }, 400);
   }
-  const activityJson = schemaResult(ActivityJsonSchema)(json.value);
+  const activityJson = parseActivityJson(json.value);
   if (activityJson.isErr()) {
     return c.json({ kind: "ValidationError" }, 400);
   }

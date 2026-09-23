@@ -25,6 +25,7 @@ import {
 import { mastodonAccountDocument, mastodonStatuses } from "../mastodon";
 import { parseInstanceIdentity } from "../runtime-config";
 import { stringList } from "../schemas";
+import { warmSchemas } from "@tstodon/core";
 import { z } from "zod";
 
 export const listRoutes = new Hono<{ Bindings: Env }>();
@@ -42,6 +43,8 @@ const UpdateListBodySchema = z.object({
 const ListAccountsBodySchema = z.object({
   account_ids: z.union([z.array(z.string()), z.string()]),
 });
+
+warmSchemas([CreateListBodySchema, UpdateListBodySchema, ListAccountsBodySchema]);
 
 listRoutes.get("/api/v1/lists", async (c) => {
   const user = await requireUser(c);

@@ -11,7 +11,7 @@ import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
 import { nowInstant, nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { chunkArray, runD1, type RepositoryError } from "./d1";
 import { generateAccountKeys } from "./keys";
 import { newEntityId } from "./ids";
 import { AccountRowSchema, toRepositoryError } from "./schemas";
@@ -20,6 +20,9 @@ import { quotePolicyFromSql, quotePolicySql, visibilitySql } from "./sql-enums";
 export type AccountRow = z.infer<typeof AccountRowSchema>;
 
 const accountSelect = `id, username, access_email, display_name, locked, default_post_visibility, default_quote_policy, public_key_pem, private_key_jwk, created_at, COALESCE(bio_text, '') AS bio_text`;
+
+const parseAccountRow = schemaResult(AccountRowSchema);
+const parseLocalAccount = schemaResult(LocalAccount.schema);
 
 export const accountFromRow = (row: AccountRow): Result<LocalAccount, RepositoryError> => {
   const id = AccountId.parse(row.id);
@@ -30,7 +33,7 @@ export const accountFromRow = (row: AccountRow): Result<LocalAccount, Repository
   if (id.isErr() || username.isErr() || email.isErr() || createdAt.isErr() || visibility.isErr()) {
     return err({ kind: "RepositoryError", message: "invalid account row" });
   }
-  const parsed = schemaResult(LocalAccount.schema)({
+  const parsed = parseLocalAccount({
     kind: "LocalAccount",
     id: id.value,
     username: username.value,
@@ -59,11 +62,45 @@ export const findAccountById = async (
   if (!queried.value) {
     return ok(undefined);
   }
-  const row = schemaResult(AccountRowSchema)(queried.value);
+  const row = parseAccountRow(queried.value);
   if (row.isErr()) {
     return err(toRepositoryError("invalid account row"));
   }
   return accountFromRow(row.value);
+};
+
+export const findAccountsByIds = async (
+  db: D1Database,
+  ids: ReadonlyArray<string>,
+): Promise<Result<Map<string, LocalAccount>, RepositoryError>> => {
+  const unique = [...new Set(ids.filter((id) => id.length > 0))];
+  const accounts = new Map<string, LocalAccount>();
+  if (unique.length === 0) {
+    return ok(accounts);
+  }
+  for (const chunk of chunkArray(unique)) {
+    const placeholders = chunk.map(() => "?").join(", ");
+    const queried = await runD1(() =>
+      db
+        .prepare(`SELECT ${accountSelect} FROM accounts WHERE id IN (${placeholders})`)
+        .bind(...chunk)
+        .all(),
+    );
+    if (queried.isErr()) {
+      return err(queried.error);
+    }
+    for (const raw of queried.value.results ?? []) {
+      const row = parseAccountRow(raw);
+      if (row.isErr()) {
+        continue;
+      }
+      const account = accountFromRow(row.value);
+      if (account.isOk()) {
+        accounts.set(account.value.id, account.value);
+      }
+    }
+  }
+  return ok(accounts);
 };
 
 export const findAccountByUsername = async (
@@ -82,11 +119,54 @@ export const findAccountByUsername = async (
   if (!queried.value) {
     return ok(undefined);
   }
-  const row = schemaResult(AccountRowSchema)(queried.value);
+  const row = parseAccountRow(queried.value);
   if (row.isErr()) {
     return err(toRepositoryError("invalid account row"));
   }
   return accountFromRow(row.value);
+};
+
+/** Resolve many local usernames in one (or few chunked) IN queries. */
+export const findAccountsByUsernames = async (
+  db: D1Database,
+  usernames: ReadonlyArray<string>,
+): Promise<Result<LocalAccount[], RepositoryError>> => {
+  const normalized = [
+    ...new Set(
+      usernames
+        .map((username) => username.trim().toLowerCase())
+        .filter((username) => username.length > 0),
+    ),
+  ];
+  if (normalized.length === 0) {
+    return ok([]);
+  }
+  const accounts: LocalAccount[] = [];
+  const chunkSize = 50;
+  for (let offset = 0; offset < normalized.length; offset += chunkSize) {
+    const chunk = normalized.slice(offset, offset + chunkSize);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const queried = await runD1(() =>
+      db
+        .prepare(`SELECT ${accountSelect} FROM accounts WHERE username IN (${placeholders})`)
+        .bind(...chunk)
+        .all(),
+    );
+    if (queried.isErr()) {
+      return err(queried.error);
+    }
+    for (const raw of queried.value.results ?? []) {
+      const row = parseAccountRow(raw);
+      if (row.isErr()) {
+        continue;
+      }
+      const parsed = accountFromRow(row.value);
+      if (parsed.isOk()) {
+        accounts.push(parsed.value);
+      }
+    }
+  }
+  return ok(accounts);
 };
 
 export const findAccountByEmail = async (
@@ -105,7 +185,7 @@ export const findAccountByEmail = async (
   if (!queried.value) {
     return ok(undefined);
   }
-  const row = schemaResult(AccountRowSchema)(queried.value);
+  const row = parseAccountRow(queried.value);
   if (row.isErr()) {
     return err(toRepositoryError("invalid account row"));
   }
@@ -125,7 +205,7 @@ export const searchAccounts = async (
       .bind(`%${query.toLowerCase()}%`, `%${query}%`, limit)
       .all();
     return (results ?? []).flatMap((raw) => {
-      const row = schemaResult(AccountRowSchema)(raw);
+      const row = parseAccountRow(raw);
       if (row.isErr()) {
         return [];
       }
@@ -238,7 +318,7 @@ export const listDirectoryAccounts = async (
       .all();
     const accounts: LocalAccount[] = [];
     for (const raw of results ?? []) {
-      const row = schemaResult(AccountRowSchema)(raw);
+      const row = parseAccountRow(raw);
       if (row.isErr()) {
         continue;
       }
@@ -250,12 +330,16 @@ export const listDirectoryAccounts = async (
     return accounts;
   });
 
+export type AccountCounts = Readonly<{
+  followers: number;
+  following: number;
+  statuses: number;
+}>;
+
 export const accountCounts = async (
   db: D1Database,
   accountId: string,
-): Promise<
-  Result<Readonly<{ followers: number; following: number; statuses: number }>, RepositoryError>
-> =>
+): Promise<Result<AccountCounts, RepositoryError>> =>
   runD1(async () => {
     const row = await db
       .prepare(
@@ -272,6 +356,71 @@ export const accountCounts = async (
       statuses: row?.statuses ?? 0,
     };
   });
+
+export const accountCountsByIds = async (
+  db: D1Database,
+  accountIds: ReadonlyArray<string>,
+): Promise<Result<Map<string, AccountCounts>, RepositoryError>> => {
+  const unique = [...new Set(accountIds.filter((id) => id.length > 0))];
+  const counts = new Map<string, AccountCounts>();
+  for (const id of unique) {
+    counts.set(id, { followers: 0, following: 0, statuses: 0 });
+  }
+  if (unique.length === 0) {
+    return ok(counts);
+  }
+  for (const chunk of chunkArray(unique)) {
+    const placeholders = chunk.map(() => "?").join(", ");
+    const queried = await runD1(() =>
+      db.batch([
+        db
+          .prepare(
+            `SELECT target_account_id AS account_id, COUNT(*) AS count
+             FROM follows
+             WHERE kind = 'Accepted' AND target_account_id IN (${placeholders})
+             GROUP BY target_account_id`,
+          )
+          .bind(...chunk),
+        db
+          .prepare(
+            `SELECT follower_account_id AS account_id, COUNT(*) AS count
+             FROM follows
+             WHERE kind = 'Accepted' AND follower_account_id IN (${placeholders})
+             GROUP BY follower_account_id`,
+          )
+          .bind(...chunk),
+        db
+          .prepare(
+            `SELECT account_id, COUNT(*) AS count
+             FROM statuses
+             WHERE account_id IN (${placeholders})
+             GROUP BY account_id`,
+          )
+          .bind(...chunk),
+      ]),
+    );
+    if (queried.isErr()) {
+      return err(queried.error);
+    }
+    const apply = (
+      result: D1Result | undefined,
+      key: "followers" | "following" | "statuses",
+    ): void => {
+      for (const row of (result?.results ?? []) as Array<{ account_id: string; count: number }>) {
+        const current = counts.get(row.account_id) ?? {
+          followers: 0,
+          following: 0,
+          statuses: 0,
+        };
+        counts.set(row.account_id, { ...current, [key]: row.count });
+      }
+    };
+    apply(queried.value[0], "followers");
+    apply(queried.value[1], "following");
+    apply(queried.value[2], "statuses");
+  }
+  return ok(counts);
+};
 
 export const findAccountByIdOrUsername = async (
   db: D1Database,

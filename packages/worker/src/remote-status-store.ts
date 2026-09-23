@@ -9,6 +9,8 @@ import { visibilitySql } from "./sql-enums";
 
 export type RemoteStatusRow = z.infer<typeof RemoteStatusRowSchema>;
 
+const parseRemoteStatusRow = schemaResult(RemoteStatusRowSchema);
+
 const remoteStatusSelect = `id, actor_uri, object_uri, url, content_html, spoiler_text, visibility, sensitive, language, published_at`;
 
 const remoteStatusFromRow = (row: RemoteStatusRow): Result<RemoteStatus, RepositoryError> => {
@@ -44,7 +46,7 @@ const readRemoteStatus = async (
   if (!queried.value) {
     return ok(undefined);
   }
-  const row = schemaResult(RemoteStatusRowSchema)(queried.value);
+  const row = parseRemoteStatusRow(queried.value);
   if (row.isErr()) {
     return err(toRepositoryError("invalid remote status row"));
   }
@@ -140,7 +142,7 @@ export const listPublicRemoteStatuses = async (
       .all();
     const statuses: RemoteStatus[] = [];
     for (const raw of results ?? []) {
-      const row = schemaResult(RemoteStatusRowSchema)(raw);
+      const row = parseRemoteStatusRow(raw);
       if (row.isErr()) {
         continue;
       }

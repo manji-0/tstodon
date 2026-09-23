@@ -16,12 +16,14 @@ export type RemoteActorResolveError =
   | Readonly<{ kind: "VerificationUnavailable" }>
   | RepositoryError;
 
+const parseActorDocument = schemaResult(ActorDocumentSchema);
+
 const remoteActorFromDocument = (
   raw: unknown,
   keyId: string,
   actorUri: string,
 ): Result<RemoteActor, RemoteActorResolveError> => {
-  const document = schemaResult(ActorDocumentSchema)(raw);
+  const document = parseActorDocument(raw);
   if (document.isErr()) {
     return err({ kind: "InvalidSignature" });
   }

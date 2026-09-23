@@ -16,11 +16,13 @@ import { parseLocalStatusId } from "./activitypub";
 import { findRemoteStatusByObjectUri, upsertRemoteStatus } from "./remote-status-store";
 import { isTruthy, NoteDocumentSchema, stringList } from "./schemas";
 
+const parseNoteDocument = schemaResult(NoteDocumentSchema);
+
 const noteFromUnknown = (
   raw: unknown,
   actorUri: string,
 ): Result<RemoteStatusValue, { kind: "InvalidObject" } | RepositoryError> => {
-  const document = schemaResult(NoteDocumentSchema)(raw);
+  const document = parseNoteDocument(raw);
   if (document.isErr()) {
     return err({ kind: "InvalidObject" });
   }

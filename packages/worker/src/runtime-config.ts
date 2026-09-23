@@ -14,8 +14,10 @@ const envSchema = z.object({
   MEDIA_PUBLIC_BASE_URL: z.url(),
 });
 
+const parseEnv = schemaResult(envSchema);
+
 export const parseInstanceIdentity = (env: Env): Result<InstanceIdentity, ValidationError> =>
-  schemaResult(envSchema)(env).andThen((vars) =>
+  parseEnv(env).andThen((vars) =>
     InstanceIdentity.parse({
       kind: "InstanceIdentity",
       domain: vars.INSTANCE_DOMAIN,

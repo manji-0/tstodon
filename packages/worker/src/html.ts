@@ -1,9 +1,13 @@
+const HTML_ESCAPE_RE = /[&<>"]/g;
+const HTML_ESCAPE_MAP = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+} as const;
+
 export const escapeHtml = (value: string): string =>
-  value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+  value.replace(HTML_ESCAPE_RE, (ch) => HTML_ESCAPE_MAP[ch as keyof typeof HTML_ESCAPE_MAP]);
 
 export const textToHtml = (text: string): string => {
   const escaped = escapeHtml(text).replaceAll("\n", "<br>");

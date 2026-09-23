@@ -1,7 +1,8 @@
+import { warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { chunkArray, runD1, runD1Batch, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
 import {
   ExpiredPollTargetRowSchema,
@@ -11,6 +12,13 @@ import {
   PollRowSchema,
   toRepositoryError,
 } from "./schemas";
+
+export const PollVoteTargetRowSchema = z.object({
+  options_json: z.string().min(1),
+  expires_at: z.string().min(1),
+});
+
+warmSchemas([PollVoteTargetRowSchema]);
 
 export type PollOption = Readonly<{ title: string; votesCount: number }>;
 
@@ -33,10 +41,10 @@ export const insertPoll = async (
     expiresAt: string;
     options: ReadonlyArray<string>;
   },
-): Promise<Result<string, RepositoryError>> =>
-  runD1(async () => {
-    const id = newEntityId();
-    await db
+): Promise<Result<string, RepositoryError>> => {
+  const id = newEntityId();
+  const batched = await runD1Batch(db, [
+    db
       .prepare(
         `INSERT INTO polls (id, status_id, multiple, expires_at, options_json)
          VALUES (?, ?, ?, ?, ?)`,
@@ -47,11 +55,14 @@ export const insertPoll = async (
         input.multiple ? 1 : 0,
         input.expiresAt,
         JSON.stringify(input.options.map((title) => ({ title, votesCount: 0 }))),
-      )
-      .run();
-    await db.prepare(`UPDATE statuses SET poll_id = ? WHERE id = ?`).bind(id, input.statusId).run();
-    return id;
-  });
+      ),
+    db.prepare(`UPDATE statuses SET poll_id = ? WHERE id = ?`).bind(id, input.statusId),
+  ]);
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  return ok(id);
+};
 
 const pollFromRow = async (
   db: D1Database,
@@ -121,6 +132,81 @@ export const findPollByStatusId = async (
   return loadPoll(queried, db, viewerId);
 };
 
+export const findPollsByStatusIds = async (
+  db: D1Database,
+  statusIds: ReadonlyArray<string>,
+  viewerId: string | undefined,
+): Promise<Result<Map<string, PollRecord>, RepositoryError>> => {
+  const unique = [...new Set(statusIds.filter((id) => id.length > 0))];
+  const polls = new Map<string, PollRecord>();
+  if (unique.length === 0) {
+    return ok(polls);
+  }
+  const rows: PollRow[] = [];
+  for (const chunk of chunkArray(unique)) {
+    const placeholders = chunk.map(() => "?").join(", ");
+    const queried = await runD1(() =>
+      db
+        .prepare(
+          `SELECT id, status_id, multiple, expires_at, options_json
+           FROM polls WHERE status_id IN (${placeholders})`,
+        )
+        .bind(...chunk)
+        .all(),
+    );
+    if (queried.isErr()) {
+      return err(queried.error);
+    }
+    for (const raw of queried.value.results ?? []) {
+      const row = parseRow(PollRowSchema, raw);
+      if (row.isOk()) {
+        rows.push(row.value);
+      }
+    }
+  }
+  if (rows.length === 0) {
+    return ok(polls);
+  }
+  const votesByPoll = new Map<string, number[]>();
+  if (viewerId) {
+    for (const chunk of chunkArray(rows.map((row) => row.id))) {
+      const placeholders = chunk.map(() => "?").join(", ");
+      const queried = await runD1(() =>
+        db
+          .prepare(
+            `SELECT poll_id, option_index FROM poll_votes
+             WHERE account_id = ? AND poll_id IN (${placeholders})`,
+          )
+          .bind(viewerId, ...chunk)
+          .all<{ poll_id: string; option_index: number }>(),
+      );
+      if (queried.isErr()) {
+        return err(queried.error);
+      }
+      for (const vote of queried.value.results ?? []) {
+        const list = votesByPoll.get(vote.poll_id) ?? [];
+        list.push(vote.option_index);
+        votesByPoll.set(vote.poll_id, list);
+      }
+    }
+  }
+  for (const row of rows) {
+    const options = parseJsonColumn(PollOptionsSchema, row.options_json);
+    if (options.isErr()) {
+      continue;
+    }
+    polls.set(row.status_id, {
+      id: row.id,
+      statusId: row.status_id,
+      multiple: row.multiple === 1,
+      expiresAt: row.expires_at,
+      options: options.value,
+      votedIndexes: votesByPoll.get(row.id) ?? [],
+    });
+  }
+  return ok(polls);
+};
+
 export const findPollById = async (
   db: D1Database,
   pollId: string,
@@ -150,13 +236,7 @@ export const votePoll = async (
   if (!queried.value) {
     return err(toRepositoryError("poll not found"));
   }
-  const row = parseRow(
-    z.object({
-      options_json: z.string().min(1),
-      expires_at: z.string().min(1),
-    }),
-    queried.value,
-  );
+  const row = parseRow(PollVoteTargetRowSchema, queried.value);
   if (row.isErr()) {
     return err(toRepositoryError("invalid poll row"));
   }
@@ -168,26 +248,34 @@ export const votePoll = async (
     return err(options.error);
   }
   const next = options.value.map((option) => ({ ...option }));
-  return runD1(async () => {
-    for (const choice of choices) {
-      const option = next[choice];
-      if (!option) {
-        continue;
-      }
-      next[choice] = { title: option.title, votesCount: option.votesCount + 1 };
-      await db
-        .prepare(
-          `INSERT OR IGNORE INTO poll_votes (poll_id, account_id, option_index, created_at)
-           VALUES (?, ?, ?, ?)`,
-        )
-        .bind(pollId, accountId, choice, nowIso())
-        .run();
+  const now = nowIso();
+  const voteInsert = db.prepare(
+    `INSERT OR IGNORE INTO poll_votes (poll_id, account_id, option_index, created_at)
+     VALUES (?, ?, ?, ?)`,
+  );
+  const statements: D1PreparedStatement[] = [];
+  for (const choice of choices) {
+    const option = next[choice];
+    if (!option) {
+      continue;
     }
-    await db
-      .prepare(`UPDATE polls SET options_json = ? WHERE id = ?`)
-      .bind(JSON.stringify(next), pollId)
-      .run();
-  });
+    next[choice] = { title: option.title, votesCount: option.votesCount + 1 };
+    statements.push(voteInsert.bind(pollId, accountId, choice, now));
+  }
+  statements.push(
+    db
+      .prepare(`UPDATE polls SET options_json = ? WHERE id = ? AND expires_at > ?`)
+      .bind(JSON.stringify(next), pollId, now),
+  );
+  const batched = await runD1Batch(db, statements);
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  const updateResult = batched.value[batched.value.length - 1];
+  if ((updateResult?.meta.changes ?? 0) === 0) {
+    return err(toRepositoryError("poll expired"));
+  }
+  return ok(undefined);
 };
 
 export type ExpiredPollTarget = Readonly<{

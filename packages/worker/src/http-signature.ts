@@ -6,11 +6,7 @@ const encoder = new TextEncoder();
 export const sha256DigestHeader = async (body: string): Promise<string> => {
   const hash = await crypto.subtle.digest("SHA-256", encoder.encode(body));
   const bytes = new Uint8Array(hash);
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return `SHA-256=${btoa(binary)}`;
+  return `SHA-256=${btoa(String.fromCharCode(...bytes))}`;
 };
 
 export const buildSigningString = (

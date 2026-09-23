@@ -75,15 +75,17 @@ export const StatusComposition = {
     poll: input.poll ?? nonePoll,
   }),
   validate: (composing: ComposingStatus): Result<ValidatedStatusDraft, StatusDraftError> => {
-    const mediaIds = composing.mediaIds
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
-    const parsedMedia = mediaIds.flatMap((value) => {
-      const parsed = MediaId.parse(value);
-      return parsed.isOk() ? [parsed.value] : [];
-    });
-    if (parsedMedia.length !== mediaIds.length) {
-      return err({ kind: "EmptyPayload" });
+    const parsedMedia: Array<z.infer<typeof MediaId.schema>> = [];
+    for (const value of composing.mediaIds) {
+      const trimmed = value.trim();
+      if (trimmed.length === 0) {
+        continue;
+      }
+      const parsed = MediaId.parse(trimmed);
+      if (parsed.isErr()) {
+        return err({ kind: "EmptyPayload" });
+      }
+      parsedMedia.push(parsed.value);
     }
 
     const hasText = composing.text.trim().length > 0;

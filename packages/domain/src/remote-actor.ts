@@ -20,9 +20,11 @@ export type RemoteActor = z.infer<typeof RemoteActorSchema>;
 
 export type RemoteActorParseError = Readonly<{ kind: "InvalidActor" }>;
 
+const parseRemoteActor = schemaResult(RemoteActorSchema);
+
 export const RemoteActor = {
   schema: RemoteActorSchema,
-  parse: schemaResult(RemoteActorSchema),
+  parse: parseRemoteActor,
   fromFetched: (input: {
     actorUri: string;
     username: string;
@@ -34,7 +36,7 @@ export const RemoteActor = {
     displayName: string;
     fetchedAt: z.infer<typeof IsoInstant.schema>;
   }): Result<RemoteActor, RemoteActorParseError> => {
-    const parsed = schemaResult(RemoteActorSchema)({
+    const parsed = parseRemoteActor({
       kind: "RemoteActor",
       actorUri: input.actorUri,
       username: input.username,

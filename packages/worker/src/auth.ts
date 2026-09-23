@@ -6,6 +6,10 @@ import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@ts
 import type { RepositoryError } from "./d1";
 import { AccessJwksSchema, AccessJwtSchema, JoseErrorCodeSchema } from "./schemas";
 
+const parseAccessJwks = schemaResult(AccessJwksSchema);
+const parseJoseErrorCode = schemaResult(JoseErrorCodeSchema);
+const parseAccessJwt = schemaResult(AccessJwtSchema);
+
 export type AuthError =
   | Readonly<{ kind: "MissingToken" }>
   | Readonly<{ kind: "InvalidToken" }>
@@ -88,7 +92,7 @@ const accessJwks = (env: Env): Result<JWTVerifyGetKey, AuthError> => {
     }
     try {
       const raw: unknown = JSON.parse(inline);
-      const parsed = schemaResult(AccessJwksSchema)(raw);
+      const parsed = parseAccessJwks(raw);
       if (parsed.isErr()) {
         return err({ kind: "VerificationUnavailable" });
       }
@@ -122,7 +126,7 @@ const accessJwks = (env: Env): Result<JWTVerifyGetKey, AuthError> => {
 };
 
 const authErrorFromJose = (cause: unknown): AuthError => {
-  const parsed = schemaResult(JoseErrorCodeSchema)(cause);
+  const parsed = parseJoseErrorCode(cause);
   if (parsed.isOk() && parsed.value.code === "ERR_JWKS_TIMEOUT") {
     return { kind: "VerificationUnavailable" };
   }
@@ -148,7 +152,7 @@ const identityFromAccessToken = async (
       audience,
       clockTolerance: 5,
     });
-    const claims = schemaResult(AccessJwtSchema)(verified.payload);
+    const claims = parseAccessJwt(verified.payload);
     if (claims.isErr() || !claims.value.email) {
       return err({ kind: "InvalidToken" });
     }

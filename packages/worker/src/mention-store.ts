@@ -1,20 +1,24 @@
-import { runD1, type RepositoryError } from "./d1";
+import { runD1, runD1Batch, type RepositoryError } from "./d1";
 import { err, ok, type Result } from "neverthrow";
 
 export const replaceStatusMentions = async (
   db: D1Database,
   statusId: string,
   accountIds: ReadonlyArray<string>,
-): Promise<Result<void, RepositoryError>> =>
-  runD1(async () => {
-    await db.prepare(`DELETE FROM status_mentions WHERE status_id = ?`).bind(statusId).run();
-    for (const accountId of accountIds) {
-      await db
-        .prepare(`INSERT OR IGNORE INTO status_mentions (status_id, account_id) VALUES (?, ?)`)
-        .bind(statusId, accountId)
-        .run();
-    }
-  });
+): Promise<Result<void, RepositoryError>> => {
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO status_mentions (status_id, account_id) VALUES (?, ?)`,
+  );
+  const statements: D1PreparedStatement[] = [
+    db.prepare(`DELETE FROM status_mentions WHERE status_id = ?`).bind(statusId),
+    ...accountIds.map((accountId) => insert.bind(statusId, accountId)),
+  ];
+  const batched = await runD1Batch(db, statements);
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  return ok(undefined);
+};
 
 export const isAccountMentionedOnStatus = async (
   db: D1Database,

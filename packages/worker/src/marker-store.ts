@@ -1,11 +1,14 @@
+import { compileSchema, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { runD1, runD1Batch, type RepositoryError } from "./d1";
 import { parseRow } from "./schemas";
 
 export const MarkerTimelineSchema = z.union([z.literal("home"), z.literal("notifications")]);
 export type MarkerTimeline = z.infer<typeof MarkerTimelineSchema>;
+
+const compiledMarkerTimelineSchema = compileSchema(MarkerTimelineSchema);
 
 const MarkerRowSchema = z.object({
   account_id: z.string().min(1),
@@ -64,23 +67,20 @@ export const upsertMarkers = async (
     return ok({});
   }
   const updatedAt = nowIso();
-  for (const patch of patches) {
-    const written = await runD1(async () => {
-      await db
-        .prepare(
-          `INSERT INTO markers (account_id, timeline, last_read_id, version, updated_at)
-           VALUES (?, ?, ?, 1, ?)
-           ON CONFLICT(account_id, timeline) DO UPDATE SET
-             last_read_id = excluded.last_read_id,
-             version = markers.version + 1,
-             updated_at = excluded.updated_at`,
-        )
-        .bind(accountId, patch.timeline, patch.last_read_id, updatedAt)
-        .run();
-    });
-    if (written.isErr()) {
-      return err(written.error);
-    }
+  const upsert = db.prepare(
+    `INSERT INTO markers (account_id, timeline, last_read_id, version, updated_at)
+     VALUES (?, ?, ?, 1, ?)
+     ON CONFLICT(account_id, timeline) DO UPDATE SET
+       last_read_id = excluded.last_read_id,
+       version = markers.version + 1,
+       updated_at = excluded.updated_at`,
+  );
+  const batched = await runD1Batch(
+    db,
+    patches.map((patch) => upsert.bind(accountId, patch.timeline, patch.last_read_id, updatedAt)),
+  );
+  if (batched.isErr()) {
+    return err(batched.error);
   }
   return getMarkers(
     db,
@@ -135,7 +135,7 @@ export const parseMarkerTimelines = (raw: unknown): MarkerTimeline[] => {
     if (typeof value !== "string") {
       continue;
     }
-    const parsed = MarkerTimelineSchema.safeParse(value);
+    const parsed = compiledMarkerTimelineSchema.safeParse(value);
     if (parsed.success) {
       timelines.push(parsed.data);
     }
@@ -147,3 +147,5 @@ export const markerBodySchema = z.object({
   home: z.object({ last_read_id: z.string().min(1) }).optional(),
   notifications: z.object({ last_read_id: z.string().min(1) }).optional(),
 });
+
+warmSchemas([MarkerTimelineSchema, MarkerRowSchema, markerBodySchema]);

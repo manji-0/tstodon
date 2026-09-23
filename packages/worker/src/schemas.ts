@@ -1,4 +1,4 @@
-import { schemaResult } from "@tstodon/core";
+import { schemaResult, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import type { RepositoryError } from "./d1";
@@ -352,7 +352,7 @@ export const isTruthy = (value: boolean | string | number | undefined): boolean 
 
 export const stringList = (value: ReadonlyArray<string> | string | undefined): string[] => {
   if (Array.isArray(value)) {
-    return [...value];
+    return value.length === 0 ? [] : value.slice();
   }
   if (typeof value === "string" && value.length > 0) {
     return [value];
@@ -362,7 +362,61 @@ export const stringList = (value: ReadonlyArray<string> | string | undefined): s
 
 export const numberList = (value: ReadonlyArray<number | string> | number | string): number[] => {
   const items = Array.isArray(value) ? value : [value];
-  return items
-    .map((item) => (typeof item === "number" ? item : Number.parseInt(item, 10)))
-    .filter((item) => Number.isInteger(item));
+  const out: number[] = [];
+  for (const item of items) {
+    const n = typeof item === "number" ? item : Number.parseInt(item, 10);
+    if (Number.isInteger(n)) {
+      out.push(n);
+    }
+  }
+  return out;
 };
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([
+  JsonObjectSchema,
+  ActivityJsonSchema,
+  NestedActivityObjectSchema,
+  PollOptionSchema,
+  PollOptionsSchema,
+  FilterContextSchema,
+  RsaPrivateJwkSchema,
+  AccountRowSchema,
+  StatusRowSchema,
+  PollRowSchema,
+  ExpiredPollTargetRowSchema,
+  OutboundActivityRowSchema,
+  OutboxDeliveryRowSchema,
+  CreateStatusBodySchema,
+  PollVoteBodySchema,
+  FilterBodySchema,
+  ReportBodySchema,
+  AppBodySchema,
+  OAuthTokenBodySchema,
+  UpdateCredentialsBodySchema,
+  MastodonAccountPreviewSchema,
+  MastodonStatusPreviewSchema,
+  MastodonContextPreviewSchema,
+  MastodonAppPreviewSchema,
+  MastodonRelationshipPreviewSchema,
+  MastodonNotificationPreviewSchema,
+  MastodonSearchPreviewSchema,
+  MastodonFilterPreviewSchema,
+  MastodonReportPreviewSchema,
+  MastodonStatusListPreviewSchema,
+  MastodonNotificationListPreviewSchema,
+  MastodonRelationshipListPreviewSchema,
+  MastodonMediaPreviewSchema,
+  WebfingerPreviewSchema,
+  ActorPreviewSchema,
+  ActorPublicKeySchema,
+  ActorDocumentSchema,
+  RemoteActorRowSchema,
+  NoteDocumentSchema,
+  RemoteStatusRowSchema,
+  NotePreviewSchema,
+  JoseErrorCodeSchema,
+  AccessJwtSchema,
+  JsonWebKeySchema,
+  AccessJwksSchema,
+]);

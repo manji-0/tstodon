@@ -11,7 +11,7 @@ import {
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
-import { runD1, type RepositoryError } from "./d1";
+import { chunkArray, runD1, runD1Batch, type RepositoryError } from "./d1";
 import { parseRow, StatusRowSchema, toRepositoryError } from "./schemas";
 import { visibilitySql } from "./sql-enums";
 
@@ -118,12 +118,43 @@ export const findStatusById = async (
   return statusFromRow(row.value, media.value);
 };
 
+export const findStatusesByIds = async (
+  db: D1Database,
+  ids: ReadonlyArray<string>,
+): Promise<Result<Map<string, LocalStatusValue>, RepositoryError>> => {
+  const unique = [...new Set(ids.filter((id) => id.length > 0))];
+  const statuses = new Map<string, LocalStatusValue>();
+  if (unique.length === 0) {
+    return ok(statuses);
+  }
+  for (const chunk of chunkArray(unique)) {
+    const placeholders = chunk.map(() => "?").join(", ");
+    const queried = await runD1(() =>
+      db
+        .prepare(`SELECT ${statusSelect} FROM statuses WHERE id IN (${placeholders})`)
+        .bind(...chunk)
+        .all(),
+    );
+    if (queried.isErr()) {
+      return err(queried.error);
+    }
+    const hydrated = await hydrateStatusRows(db, queried.value.results ?? []);
+    for (const status of hydrated) {
+      statuses.set(status.id, status);
+    }
+  }
+  return ok(statuses);
+};
+
 export const insertLocalNote = async (
   db: D1Database,
   note: LocalNote,
-): Promise<Result<void, RepositoryError>> =>
-  runD1(async () => {
-    await db
+): Promise<Result<void, RepositoryError>> => {
+  const mediaUpdate = db.prepare(
+    `UPDATE media_attachments SET status_id = ? WHERE id = ? AND account_id = ?`,
+  );
+  const statements: D1PreparedStatement[] = [
+    db
       .prepare(
         `INSERT INTO statuses (
           id, account_id, kind, in_reply_to_id, content_text, content_html, visibility, sensitive,
@@ -142,15 +173,15 @@ export const insertLocalNote = async (
         note.language.kind === "Present" ? note.language.value : null,
         note.createdAt,
         note.createdAt,
-      )
-      .run();
-    for (const mediaId of note.mediaIds) {
-      await db
-        .prepare(`UPDATE media_attachments SET status_id = ? WHERE id = ? AND account_id = ?`)
-        .bind(note.id, mediaId, note.accountId)
-        .run();
-    }
-  });
+      ),
+    ...note.mediaIds.map((mediaId) => mediaUpdate.bind(note.id, mediaId, note.accountId)),
+  ];
+  const batched = await runD1Batch(db, statements);
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  return ok(undefined);
+};
 
 export const insertLocalReblog = async (
   db: D1Database,
@@ -271,14 +302,38 @@ export const hydrateStatusRows = async (
   db: D1Database,
   rows: unknown[],
 ): Promise<LocalStatusValue[]> => {
-  const statuses: LocalStatusValue[] = [];
+  const statusRows: StatusRow[] = [];
   for (const raw of rows) {
     const row = parseRow(StatusRowSchema, raw);
-    if (row.isErr()) {
-      continue;
+    if (row.isOk()) {
+      statusRows.push(row.value);
     }
-    const mediaIds = await mediaIdsFor(db, row.value.id);
-    const parsed = statusFromRow(row.value, mediaIds);
+  }
+  if (statusRows.length === 0) {
+    return [];
+  }
+  const mediaByStatus = new Map<string, MediaId[]>();
+  const chunkSize = 50;
+  for (let offset = 0; offset < statusRows.length; offset += chunkSize) {
+    const chunk = statusRows.slice(offset, offset + chunkSize);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const { results } = await db
+      .prepare(`SELECT status_id, id FROM media_attachments WHERE status_id IN (${placeholders})`)
+      .bind(...chunk.map((row) => row.id))
+      .all<{ status_id: string; id: string }>();
+    for (const media of results ?? []) {
+      const parsed = MediaId.parse(media.id);
+      if (parsed.isErr()) {
+        continue;
+      }
+      const list = mediaByStatus.get(media.status_id) ?? [];
+      list.push(parsed.value);
+      mediaByStatus.set(media.status_id, list);
+    }
+  }
+  const statuses: LocalStatusValue[] = [];
+  for (const row of statusRows) {
+    const parsed = statusFromRow(row, mediaByStatus.get(row.id) ?? []);
     if (parsed.isOk()) {
       statuses.push(parsed.value);
     }

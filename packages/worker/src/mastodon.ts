@@ -2,15 +2,26 @@ import {
   InstanceIdentity,
   Visibility,
   type LocalAccount,
+  type LocalNote,
   type LocalStatus,
   type RemoteActor,
   type RemoteStatus as RemoteStatusValue,
 } from "@tstodon/domain";
-import { accountCounts, findAccountById } from "./account-store";
-import { findPollByStatusId, type PollRecord } from "./poll-store";
-import { findStatusById } from "./status-store";
-import { statusInteractionCounts, type NotificationRow } from "./social-store";
-import { findMediaById } from "./media-store";
+import {
+  accountCounts,
+  accountCountsByIds,
+  findAccountById,
+  findAccountsByIds,
+  type AccountCounts,
+} from "./account-store";
+import { findPollsByStatusIds, type PollRecord } from "./poll-store";
+import { findStatusById, findStatusesByIds } from "./status-store";
+import {
+  statusInteractionCountsByIds,
+  type NotificationRow,
+  type StatusInteractionCounts,
+} from "./social-store";
+import { findMediaByIds, type MediaRow } from "./media-store";
 import { FilterContextSchema, parseJsonColumn } from "./schemas";
 import type { FilterRow } from "./moderation-store";
 
@@ -149,78 +160,49 @@ export const pollJson = (poll: PollRecord): Record<string, unknown> => ({
   emojis: [],
 });
 
-export const mastodonStatus = async (
-  env: Env,
+const mediaAttachmentsJson = (
   identity: InstanceIdentity,
-  status: LocalStatus,
-  viewerId: string | undefined,
-): Promise<Record<string, unknown> | undefined> => {
-  const accountResult = await findAccountById(env.DB, status.accountId);
-  if (accountResult.isErr() || !accountResult.value) {
-    return undefined;
-  }
-  const account = await mastodonAccountDocument(env, identity, accountResult.value);
-  if (status.kind === "LocalReblog") {
-    const target = await findStatusById(env.DB, status.reblogOfId);
-    if (target.isErr() || !target.value) {
-      return undefined;
+  mediaIds: ReadonlyArray<string>,
+  mediaById: ReadonlyMap<string, MediaRow>,
+): Record<string, unknown>[] => {
+  const media: Record<string, unknown>[] = [];
+  for (const mediaId of mediaIds) {
+    const row = mediaById.get(mediaId);
+    if (!row) {
+      continue;
     }
-    const wrapped = await mastodonStatus(env, identity, target.value, viewerId);
-    if (!wrapped) {
-      return undefined;
-    }
-    return {
-      ...wrapped,
-      id: status.id,
-      reblog: wrapped,
-      account,
-      created_at: status.createdAt,
-    };
+    const url = mediaUrl(identity, row.object_key);
+    media.push({
+      id: row.id,
+      type: row.content_type.startsWith("video/") ? "video" : "image",
+      url,
+      preview_url: url,
+      remote_url: null,
+      text_url: url,
+      meta: {},
+      description: null,
+      blurhash: null,
+    });
   }
-  const counts = await statusInteractionCounts(env.DB, status.id, viewerId);
-  const interactions = counts.isOk()
-    ? counts.value
-    : {
-        favourites: 0,
-        reblogs: 0,
-        favourited: false,
-        reblogged: false,
-        bookmarked: false,
-      };
-  const poll = await findPollByStatusId(env.DB, status.id, viewerId);
-  const media = [];
-  for (const mediaId of status.mediaIds) {
-    const row = await findMediaById(env.DB, mediaId);
-    if (row.isOk() && row.value) {
-      const url = mediaUrl(identity, row.value.object_key);
-      media.push({
-        id: row.value.id,
-        type: row.value.content_type.startsWith("video/") ? "video" : "image",
-        url,
-        preview_url: url,
-        remote_url: null,
-        text_url: url,
-        meta: {},
-        description: null,
-        blurhash: null,
-      });
-    }
-  }
-  let inReplyToId: string | null = null;
-  let inReplyToAccountId: string | null = null;
-  if (status.inReplyToId) {
-    inReplyToId = status.inReplyToId;
-    const parent = await findStatusById(env.DB, status.inReplyToId);
-    if (parent.isOk() && parent.value) {
-      inReplyToAccountId = parent.value.accountId;
-    }
-  }
-  const url = `${InstanceIdentity.actorUrl(identity, accountResult.value.username)}/statuses/${status.id}`;
+  return media;
+};
+
+const buildLocalNoteDocument = (
+  identity: InstanceIdentity,
+  status: LocalNote,
+  account: LocalAccount,
+  accountDoc: Record<string, unknown>,
+  interactions: StatusInteractionCounts,
+  poll: PollRecord | undefined,
+  mediaById: ReadonlyMap<string, MediaRow>,
+  parentAccountId: string | null,
+): Record<string, unknown> => {
+  const url = `${InstanceIdentity.actorUrl(identity, account.username)}/statuses/${status.id}`;
   return {
     id: status.id,
     created_at: status.createdAt,
-    in_reply_to_id: inReplyToId,
-    in_reply_to_account_id: inReplyToAccountId,
+    in_reply_to_id: status.inReplyToId,
+    in_reply_to_account_id: parentAccountId,
     sensitive: status.sensitive,
     spoiler_text: status.spoilerText,
     visibility: Visibility.toMastodon(status.visibility),
@@ -237,14 +219,24 @@ export const mastodonStatus = async (
     bookmarked: interactions.bookmarked,
     content: status.contentHtml,
     reblog: null,
-    account,
-    media_attachments: media,
+    account: accountDoc,
+    media_attachments: mediaAttachmentsJson(identity, status.mediaIds, mediaById),
     mentions: [],
     tags: [],
     emojis: [],
     card: null,
-    poll: poll.isOk() && poll.value ? pollJson(poll.value) : null,
+    poll: poll ? pollJson(poll) : null,
   };
+};
+
+export const mastodonStatus = async (
+  env: Env,
+  identity: InstanceIdentity,
+  status: LocalStatus,
+  viewerId: string | undefined,
+): Promise<Record<string, unknown> | undefined> => {
+  const documents = await mastodonStatuses(env, identity, [status], viewerId);
+  return documents[0];
 };
 
 export const mastodonStatuses = async (
@@ -253,9 +245,149 @@ export const mastodonStatuses = async (
   statuses: ReadonlyArray<LocalStatus>,
   viewerId: string | undefined,
 ): Promise<Record<string, unknown>[]> => {
+  if (statuses.length === 0) {
+    return [];
+  }
+
+  const byId = new Map<string, LocalStatus>();
+  for (const status of statuses) {
+    byId.set(status.id, status);
+  }
+
+  // Resolve reblog targets (including reblog-of-reblog) and reply parents.
+  for (let pass = 0; pass < 4; pass += 1) {
+    const missing = new Set<string>();
+    for (const status of byId.values()) {
+      if (status.kind === "LocalReblog" && !byId.has(status.reblogOfId)) {
+        missing.add(status.reblogOfId);
+      }
+      if (
+        status.kind === "LocalNote" &&
+        status.inReplyToId &&
+        status.inReplyToId.length > 0 &&
+        !byId.has(status.inReplyToId)
+      ) {
+        missing.add(status.inReplyToId);
+      }
+    }
+    if (missing.size === 0) {
+      break;
+    }
+    const loaded = await findStatusesByIds(env.DB, [...missing]);
+    if (loaded.isErr()) {
+      break;
+    }
+    let added = 0;
+    for (const [id, status] of loaded.value) {
+      if (!byId.has(id)) {
+        byId.set(id, status);
+        added += 1;
+      }
+    }
+    if (added === 0) {
+      break;
+    }
+  }
+
+  const allStatuses = [...byId.values()];
+  const accountIds = [...new Set(allStatuses.map((status) => status.accountId))];
+  const noteIds = allStatuses
+    .filter((status): status is LocalNote => status.kind === "LocalNote")
+    .map((status) => status.id);
+  const mediaIds = [
+    ...new Set(
+      allStatuses.flatMap((status) => (status.kind === "LocalNote" ? [...status.mediaIds] : [])),
+    ),
+  ];
+
+  const [accountsResult, countsResult, interactionsResult, pollsResult, mediaResult] =
+    await Promise.all([
+      findAccountsByIds(env.DB, accountIds),
+      accountCountsByIds(env.DB, accountIds),
+      statusInteractionCountsByIds(env.DB, noteIds, viewerId),
+      findPollsByStatusIds(env.DB, noteIds, viewerId),
+      findMediaByIds(env.DB, mediaIds),
+    ]);
+
+  const accounts = accountsResult.isOk() ? accountsResult.value : new Map<string, LocalAccount>();
+  const accountCountsMap = countsResult.isOk()
+    ? countsResult.value
+    : new Map<string, AccountCounts>();
+  const interactions = interactionsResult.isOk()
+    ? interactionsResult.value
+    : new Map<string, StatusInteractionCounts>();
+  const polls = pollsResult.isOk() ? pollsResult.value : new Map<string, PollRecord>();
+  const mediaById = mediaResult.isOk() ? mediaResult.value : new Map<string, MediaRow>();
+
+  const accountDocs = new Map<string, Record<string, unknown>>();
+  for (const [id, account] of accounts) {
+    accountDocs.set(
+      id,
+      mastodonAccount(
+        identity,
+        account,
+        accountCountsMap.get(id) ?? { followers: 0, following: 0, statuses: 0 },
+      ),
+    );
+  }
+
+  const noteDocs = new Map<string, Record<string, unknown>>();
+  for (const status of allStatuses) {
+    if (status.kind !== "LocalNote") {
+      continue;
+    }
+    const account = accounts.get(status.accountId);
+    const accountDoc = accountDocs.get(status.accountId);
+    if (!account || !accountDoc) {
+      continue;
+    }
+    const parent = status.inReplyToId ? byId.get(status.inReplyToId) : undefined;
+    noteDocs.set(
+      status.id,
+      buildLocalNoteDocument(
+        identity,
+        status,
+        account,
+        accountDoc,
+        interactions.get(status.id) ?? {
+          favourites: 0,
+          reblogs: 0,
+          favourited: false,
+          reblogged: false,
+          bookmarked: false,
+        },
+        polls.get(status.id),
+        mediaById,
+        parent?.accountId ?? null,
+      ),
+    );
+  }
+
+  const render = (status: LocalStatus): Record<string, unknown> | undefined => {
+    if (status.kind === "LocalNote") {
+      return noteDocs.get(status.id);
+    }
+    const accountDoc = accountDocs.get(status.accountId);
+    const target = byId.get(status.reblogOfId);
+    if (!accountDoc || !target) {
+      return undefined;
+    }
+    const wrapped = render(target);
+    if (!wrapped) {
+      return undefined;
+    }
+    return {
+      ...wrapped,
+      id: status.id,
+      reblog: wrapped,
+      account: accountDoc,
+      created_at: status.createdAt,
+    };
+  };
+
   const documents: Record<string, unknown>[] = [];
   for (const status of statuses) {
-    const document = await mastodonStatus(env, identity, status, viewerId);
+    const document = render(status);
     if (document) {
       documents.push(document);
     }

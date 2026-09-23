@@ -9,6 +9,9 @@ import {
   OAuthTokenBodySchema,
 } from "../schemas";
 
+const parseJsonWebKey = schemaResult(JsonWebKeySchema);
+const parseAccessJwks = schemaResult(AccessJwksSchema);
+
 export const appRoutes = new Hono<{ Bindings: Env }>();
 
 appRoutes.post("/api/v1/apps", async (c) => {
@@ -57,7 +60,7 @@ appRoutes.post("/oauth/token", async (c) => {
   }
   const email = username.includes("@") ? username : `${username}@${c.env.INSTANCE_DOMAIN}`;
   try {
-    const privateJwk = schemaResult(JsonWebKeySchema)(JSON.parse(privateJwkRaw));
+    const privateJwk = parseJsonWebKey(JSON.parse(privateJwkRaw));
     if (privateJwk.isErr()) {
       return c.json({ error: "server_error", kind: "VerificationUnavailable" }, 503);
     }
@@ -66,7 +69,7 @@ appRoutes.post("/oauth/token", async (c) => {
     const jwksJson = `${c.env.CF_ACCESS_JWKS_JSON ?? ""}`;
     let kid = "tstodon-local-access";
     if (jwksJson.length > 0) {
-      const parsed = schemaResult(AccessJwksSchema)(JSON.parse(jwksJson));
+      const parsed = parseAccessJwks(JSON.parse(jwksJson));
       if (parsed.isOk()) {
         const firstKid = parsed.value.keys[0]?.kid;
         if (typeof firstKid === "string" && firstKid.length > 0) {

@@ -9,6 +9,8 @@ import { RemoteActorRowSchema, toRepositoryError } from "./schemas";
 
 export type RemoteActorRow = z.infer<typeof RemoteActorRowSchema>;
 
+const parseRemoteActorRow = schemaResult(RemoteActorRowSchema);
+
 const remoteActorSelect = `actor_uri, username, domain, inbox_uri, shared_inbox_uri, public_key_id, public_key_pem, display_name, fetched_at`;
 
 const remoteActorFromRow = (row: RemoteActorRow): Result<RemoteActor, RepositoryError> => {
@@ -38,7 +40,7 @@ const readRemoteActor = async (
   if (!queried.value) {
     return ok(undefined);
   }
-  const row = schemaResult(RemoteActorRowSchema)(queried.value);
+  const row = parseRemoteActorRow(queried.value);
   if (row.isErr()) {
     return err(toRepositoryError("invalid remote actor row"));
   }

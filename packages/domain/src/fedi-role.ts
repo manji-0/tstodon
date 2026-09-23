@@ -24,11 +24,8 @@ export const FediRole = {
   Admin: { kind: "Admin" } as const satisfies AdminFediRole,
   User: { kind: "User" } as const satisfies UserFediRole,
   fromName: (raw: string): FediRole => {
-    const parsed = schemaResult(FediRoleNameSchema)(raw.trim().toLowerCase());
-    if (parsed.isOk() && parsed.value === "admin") {
-      return FediRole.Admin;
-    }
-    return FediRole.User;
+    const normalized = raw.trim().toLowerCase();
+    return normalized === "admin" ? FediRole.Admin : FediRole.User;
   },
   fromMetadata: (metadata: Readonly<Record<string, unknown>> | undefined): FediRole => {
     if (!metadata) {

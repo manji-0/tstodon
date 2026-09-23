@@ -1,9 +1,10 @@
+import { compileSchema } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 
 export const AccessEmailBrand = Symbol("AccessEmail");
 
-const schema = z
+const rawSchema = z
   .string()
   .trim()
   .toLowerCase()
@@ -25,14 +26,16 @@ const schema = z
   })
   .brand<typeof AccessEmailBrand>();
 
-export type AccessEmail = z.infer<typeof schema>;
+const schema = compileSchema(rawSchema);
+
+export type AccessEmail = z.infer<typeof rawSchema>;
 
 export type AccessEmailError = Readonly<{ kind: "Blank" }> | Readonly<{ kind: "Invalid" }>;
 
 const fnvChecksum = (value: string): number => {
   let acc = 0;
-  for (const char of value) {
-    acc = (Math.imul(acc, 16777619) + char.charCodeAt(0)) >>> 0;
+  for (let i = 0; i < value.length; i += 1) {
+    acc = (Math.imul(acc, 16777619) + value.charCodeAt(i)) >>> 0;
   }
   return acc;
 };

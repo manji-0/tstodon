@@ -1,10 +1,11 @@
-import { schemaResult } from "@tstodon/core";
+import { compileSchema, schemaResult } from "@tstodon/core";
 import { z } from "zod";
 
 export const InstanceDomainBrand = Symbol("InstanceDomain");
-const domainSchema = z.string().trim().toLowerCase().min(1).brand<typeof InstanceDomainBrand>();
+const rawDomainSchema = z.string().trim().toLowerCase().min(1).brand<typeof InstanceDomainBrand>();
+const domainSchema = compileSchema(rawDomainSchema);
 
-export type InstanceDomain = z.infer<typeof domainSchema>;
+export type InstanceDomain = z.infer<typeof rawDomainSchema>;
 
 export const InstanceIdentitySchema = z.object({
   kind: z.literal("InstanceIdentity"),

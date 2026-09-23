@@ -1,8 +1,9 @@
+import { warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { runD1, runD1BatchChunked, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
 import { parseRow, toRepositoryError } from "./schemas";
 import { STATUS_SELECT, hydrateStatusRows } from "./status-store";
@@ -22,6 +23,8 @@ const ListRowSchema = z.object({
   created_at: z.string().min(1),
   updated_at: z.string().min(1),
 });
+
+warmSchemas([ListRepliesPolicySchema, ListRowSchema]);
 
 export type AccountList = Readonly<{
   id: string;
@@ -190,33 +193,45 @@ export const addListMembers = async (
   db: D1Database,
   listId: string,
   memberAccountIds: ReadonlyArray<string>,
-): Promise<Result<void, RepositoryError>> =>
-  runD1(async () => {
-    const now = nowIso();
-    for (const memberId of memberAccountIds) {
-      await db
-        .prepare(
-          `INSERT OR IGNORE INTO account_list_members (list_id, member_account_id, created_at)
-           VALUES (?, ?, ?)`,
-        )
-        .bind(listId, memberId, now)
-        .run();
-    }
-  });
+): Promise<Result<void, RepositoryError>> => {
+  if (memberAccountIds.length === 0) {
+    return ok(undefined);
+  }
+  const now = nowIso();
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO account_list_members (list_id, member_account_id, created_at)
+     VALUES (?, ?, ?)`,
+  );
+  const batched = await runD1BatchChunked(
+    db,
+    memberAccountIds.map((memberId) => insert.bind(listId, memberId, now)),
+  );
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  return ok(undefined);
+};
 
 export const removeListMembers = async (
   db: D1Database,
   listId: string,
   memberAccountIds: ReadonlyArray<string>,
-): Promise<Result<void, RepositoryError>> =>
-  runD1(async () => {
-    for (const memberId of memberAccountIds) {
-      await db
-        .prepare(`DELETE FROM account_list_members WHERE list_id = ? AND member_account_id = ?`)
-        .bind(listId, memberId)
-        .run();
-    }
-  });
+): Promise<Result<void, RepositoryError>> => {
+  if (memberAccountIds.length === 0) {
+    return ok(undefined);
+  }
+  const del = db.prepare(
+    `DELETE FROM account_list_members WHERE list_id = ? AND member_account_id = ?`,
+  );
+  const batched = await runD1BatchChunked(
+    db,
+    memberAccountIds.map((memberId) => del.bind(listId, memberId)),
+  );
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  return ok(undefined);
+};
 
 export const listListsContainingAccount = async (
   db: D1Database,

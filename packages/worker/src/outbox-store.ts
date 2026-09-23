@@ -7,7 +7,7 @@ import {
 import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { runD1, runD1Batch, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
 import {
   parseRow,
@@ -103,34 +103,36 @@ export const insertOutboundActivity = async (
     kind: string;
     payload: unknown;
   },
-): Promise<Result<OutboundActivityRow, RepositoryError>> =>
-  runD1(async () => {
-    const id = newEntityId();
-    const createdAt = nowIso();
-    const payloadJson = JSON.stringify(input.payload);
-    await db
+): Promise<Result<OutboundActivityRow, RepositoryError>> => {
+  const id = newEntityId();
+  const createdAt = nowIso();
+  const payloadJson = JSON.stringify(input.payload);
+  const queued = OutboxDelivery.queued();
+  const batched = await runD1Batch(db, [
+    db
       .prepare(
         `INSERT INTO outbound_activities (id, account_id, kind, payload_json, created_at)
          VALUES (?, ?, ?, ?, ?)`,
       )
-      .bind(id, input.accountId, input.kind, payloadJson, createdAt)
-      .run();
-    const queued = OutboxDelivery.queued();
-    await db
+      .bind(id, input.accountId, input.kind, payloadJson, createdAt),
+    db
       .prepare(
         `INSERT INTO outbox_deliveries (id, activity_id, kind, attempt_count, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .bind(newEntityId(), id, queued.kind, queued.attemptCount, createdAt, createdAt)
-      .run();
-    return {
-      id,
-      account_id: input.accountId,
-      kind: input.kind,
-      payload_json: payloadJson,
-      created_at: createdAt,
-    };
+      .bind(newEntityId(), id, queued.kind, queued.attemptCount, createdAt, createdAt),
+  ]);
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  return ok({
+    id,
+    account_id: input.accountId,
+    kind: input.kind,
+    payload_json: payloadJson,
+    created_at: createdAt,
   });
+};
 
 export const findOutboundActivity = async (
   db: D1Database,

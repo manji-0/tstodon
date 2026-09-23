@@ -7,7 +7,7 @@ import {
   type StatusIdValue,
 } from "@tstodon/domain";
 import { Hono } from "hono";
-import { findAccountByUsername } from "../account-store";
+import { findAccountsByUsernames } from "../account-store";
 import { authenticate } from "../auth";
 import { noteDocument } from "../activitypub";
 import { nowInstant } from "../clock";
@@ -146,20 +146,22 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
       return jsonRepositoryError(c, poll.error.message);
     }
   }
-  const mentionedAccountIds: string[] = [];
-  for (const username of mentionUsernames(note.text)) {
-    const mentioned = await findAccountByUsername(c.env.DB, username);
-    if (mentioned.isOk() && mentioned.value) {
-      mentionedAccountIds.push(mentioned.value.id);
-      if (mentioned.value.id !== user.value.id) {
-        await notifyAccount(c.env, {
-          accountId: mentioned.value.id,
-          fromAccountId: user.value.id,
-          kind: "mention",
-          statusId: note.id,
-        });
-      }
+  const mentionNames = mentionUsernames(note.text);
+  const mentionedAccounts = await findAccountsByUsernames(c.env.DB, [...mentionNames]);
+  if (mentionedAccounts.isErr()) {
+    return jsonRepositoryError(c, mentionedAccounts.error.message);
+  }
+  const mentionedAccountIds = mentionedAccounts.value.map((account) => account.id);
+  for (const mentioned of mentionedAccounts.value) {
+    if (mentioned.id === user.value.id) {
+      continue;
     }
+    await notifyAccount(c.env, {
+      accountId: mentioned.id,
+      fromAccountId: user.value.id,
+      kind: "mention",
+      statusId: note.id,
+    });
   }
   const mentionsSaved = await replaceStatusMentions(c.env.DB, note.id, mentionedAccountIds);
   if (mentionsSaved.isErr()) {

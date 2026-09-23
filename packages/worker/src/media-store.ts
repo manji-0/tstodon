@@ -1,7 +1,7 @@
-import { runD1, type RepositoryError } from "./d1";
+import { err, ok, type Result } from "neverthrow";
+import { chunkArray, runD1, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
-import type { Result } from "neverthrow";
 
 export type MediaRow = {
   id: string;
@@ -54,3 +54,33 @@ export const findMediaById = async (
       .first<MediaRow>();
     return row ?? undefined;
   });
+
+export const findMediaByIds = async (
+  db: D1Database,
+  ids: ReadonlyArray<string>,
+): Promise<Result<Map<string, MediaRow>, RepositoryError>> => {
+  const unique = [...new Set(ids.filter((id) => id.length > 0))];
+  const media = new Map<string, MediaRow>();
+  if (unique.length === 0) {
+    return ok(media);
+  }
+  for (const chunk of chunkArray(unique)) {
+    const placeholders = chunk.map(() => "?").join(", ");
+    const queried = await runD1(() =>
+      db
+        .prepare(
+          `SELECT id, account_id, status_id, object_key, content_type, created_at
+           FROM media_attachments WHERE id IN (${placeholders})`,
+        )
+        .bind(...chunk)
+        .all<MediaRow>(),
+    );
+    if (queried.isErr()) {
+      return err(queried.error);
+    }
+    for (const row of queried.value.results ?? []) {
+      media.set(row.id, row);
+    }
+  }
+  return ok(media);
+};
