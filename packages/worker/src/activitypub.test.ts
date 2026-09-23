@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { InstanceIdentity } from "@tstodon/domain";
+import {
+  AccountId,
+  InstanceIdentity,
+  IsoInstant,
+  LocalAccount,
+  MediaObjectRef,
+  Registration,
+} from "@tstodon/domain";
 import {
   activityPayloadFromJson,
+  actorDocument,
   parseLocalActorUsername,
   parseLocalStatusId,
 } from "./activitypub";
@@ -23,6 +31,37 @@ const identity = () => {
     throw new Error("fixture identity failed to parse");
   }
   return parsed.value;
+};
+
+const account = (opts?: { avatar?: string; header?: string }) => {
+  const intent = Registration.validate(
+    Registration.composing({
+      username: "alice",
+      email: "alice@social.example",
+      passwordPresent: true,
+      agreement: true,
+    }),
+  );
+  if (intent.isErr()) {
+    throw new Error("fixture intent failed");
+  }
+  const id = AccountId.parse("acct-1");
+  const createdAt = IsoInstant.parse("2024-01-01T00:00:00.000Z");
+  if (id.isErr() || createdAt.isErr()) {
+    throw new Error("fixture ids failed");
+  }
+  const base = LocalAccount.provision(
+    Registration.register(intent.value, id.value, {
+      publicKeyPem: "pem",
+      privateKeyJwk: "{}",
+    }),
+    createdAt.value,
+  );
+  return {
+    ...base,
+    avatarObjectKey: opts?.avatar ? MediaObjectRef.present(opts.avatar) : MediaObjectRef.none,
+    headerObjectKey: opts?.header ? MediaObjectRef.present(opts.header) : MediaObjectRef.none,
+  };
 };
 
 describe("activitypub local URL parsers", () => {
@@ -64,5 +103,25 @@ describe("activitypub local URL parsers", () => {
       actor: "https://example.com/users/alice",
       object: "https://example.com/users/bob/statuses/9",
     });
+  });
+
+  it("emits icon and image when avatar and header object keys are present", () => {
+    const doc = actorDocument(
+      identity(),
+      account({
+        avatar: "avatars/acct-1/blob-a",
+        header: "headers/acct-1/blob-h",
+      }),
+    );
+    expect(doc.icon).toEqual({
+      type: "Image",
+      url: "https://media.social.example/avatars/acct-1/blob-a",
+    });
+    expect(doc.image).toEqual({
+      type: "Image",
+      url: "https://media.social.example/headers/acct-1/blob-h",
+    });
+    expect(actorDocument(identity(), account()).icon).toBeUndefined();
+    expect(actorDocument(identity(), account()).image).toBeUndefined();
   });
 });

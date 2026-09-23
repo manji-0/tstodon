@@ -126,6 +126,11 @@ export const CreateStatusBodySchema = z.object({
     .optional(),
 });
 
+export const UpdateMediaBodySchema = z.object({
+  description: z.string().optional(),
+  focus: z.string().optional(),
+});
+
 export const PollVoteBodySchema = z.object({
   choices: z.union([z.array(z.union([z.number(), z.string()])), z.number(), z.string()]),
 });
@@ -396,6 +401,7 @@ warmSchemas([
   OutboundActivityRowSchema,
   OutboxDeliveryRowSchema,
   CreateStatusBodySchema,
+  UpdateMediaBodySchema,
   PollVoteBodySchema,
   FilterBodySchema,
   ReportBodySchema,
