@@ -21,6 +21,7 @@ import {
   markOutboundExpanded,
 } from "./outbox-store";
 import { listExpiredUnnotifiedPolls, markPollExpiryNotified } from "./poll-store";
+import { elapsedMs, writeMetric } from "./metrics";
 import { listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
 import { findStatusById } from "./status-store";
@@ -83,6 +84,7 @@ export const enqueueLocalActivity = async (
     );
     return err({ kind: "QueueSendFailed", message });
   }
+  writeMetric(env, "outbox.enqueue", [1], [kind]);
   return ok(undefined);
 };
 
@@ -231,6 +233,7 @@ export const processOutboxJob = async (env: Env, job: OutboxJobValue): Promise<v
       await processExpiredPolls(env);
       return;
     case "ExpandFollowers": {
+      const startedAt = Date.now();
       const activity = await findOutboundActivity(env.DB, job.activityId);
       if (activity.isErr() || !activity.value) {
         return;
@@ -263,6 +266,12 @@ export const processOutboxJob = async (env: Env, job: OutboxJobValue): Promise<v
             message: ensured.error.message,
           }),
         );
+        writeMetric(
+          env,
+          "outbox.expand",
+          [remoteInboxes.length, elapsedMs(startedAt), 0],
+          ["targets_failed"],
+        );
         return;
       }
       for (const inboxUrl of remoteInboxes) {
@@ -276,6 +285,8 @@ export const processOutboxJob = async (env: Env, job: OutboxJobValue): Promise<v
         }
         await startOutboxDeliveryWorkflow(env, deliver.value);
       }
+      // doubles: [remoteTargetCount, expandMs, okFlag]
+      writeMetric(env, "outbox.expand", [remoteInboxes.length, elapsedMs(startedAt), 1], ["ok"]);
       return;
     }
     case "DeliverTarget": {

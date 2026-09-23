@@ -311,16 +311,16 @@ Do not move timeline truth into DO storage as a first response to load.
 
 ## Observability for heavy paths
 
-| Path             | What to watch                                                                                              |
-| ---------------- | ---------------------------------------------------------------------------------------------------------- |
-| Timeline preload | Latency of `mastodonStatuses`; count of chain passes used; preload error rate                              |
-| ExpandFollowers  | **Remote** targets per activity; time in expand handler; Workflow create failures                          |
-| Outbox enqueue   | Insert/parse/queue-send failures currently silent — fixed by **Doc A PR5** (not a second Doc B change set) |
-| Inbox/hydrate    | Idempotent-ignore rate; federated fetch failures                                                           |
-| Poll expiry      | Jobs hitting the 50 cap; publish failures                                                                  |
-| Search/tag       | p95 query time vs table row counts                                                                         |
+| Path             | What to watch                                                                             |
+| ---------------- | ----------------------------------------------------------------------------------------- |
+| Timeline preload | Latency of `mastodonStatuses`; count of chain passes used; preload error rate             |
+| ExpandFollowers  | `METRICS` index `outbox.expand` doubles: `[remoteTargetCount, expandMs, okFlag]`          |
+| Outbox enqueue   | `METRICS` index `outbox.enqueue` on success; failures still structured-logged (Doc A PR5) |
+| Inbox/hydrate    | Idempotent-ignore rate; federated fetch failures                                          |
+| Poll expiry      | Jobs hitting the 50 cap; publish failures                                                 |
+| Search/tag       | `METRICS` indexes `search` / `timeline.tag` doubles: `[latencyMs, …hitCounts]`            |
 
-Analytics Engine is already wired for cron (`METRICS`); extend blobs/indexes per path rather than inventing a parallel system.
+Analytics Engine is already wired for cron (`METRICS` via `writeMetric` in `packages/worker/src/metrics.ts`); extend blobs/indexes per path rather than inventing a parallel system.
 
 ## Security & Privacy Considerations
 

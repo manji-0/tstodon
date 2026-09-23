@@ -1,3 +1,5 @@
+import { writeMetric } from "./metrics";
+
 export const handleScheduled = (
   controller: ScheduledController,
   env: Env,
@@ -7,11 +9,7 @@ export const handleScheduled = (
     env.OUTBOX_PROCESS_QUEUE.send({
       kind: "ProcessExpiredPolls",
     }).then(() => {
-      env.METRICS.writeDataPoint({
-        blobs: [controller.cron, "scheduled"],
-        doubles: [1],
-        indexes: ["cron"],
-      });
+      writeMetric(env, "cron", [1], [controller.cron, "scheduled"]);
     }),
   );
 };

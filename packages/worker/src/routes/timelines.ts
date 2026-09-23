@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { authenticate } from "../auth";
 import { jsonAuthError, jsonRepositoryError, queryLimit, requireUser } from "../http";
 import { mastodonRemoteStatus, mastodonStatuses, remoteStatusVisible } from "../mastodon";
+import { elapsedMs, writeMetric } from "../metrics";
 import { parseInstanceIdentity } from "../runtime-config";
 import { findRemoteActorByUri } from "../remote-actor-store";
 import { listPublicRemoteStatuses } from "../remote-status-store";
@@ -75,6 +76,7 @@ timelineRoutes.get("/api/v1/timelines/home", async (c) => {
 });
 
 timelineRoutes.get("/api/v1/timelines/tag/:hashtag", async (c) => {
+  const startedAt = Date.now();
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -92,7 +94,9 @@ timelineRoutes.get("/api/v1/timelines/tag/:hashtag", async (c) => {
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
-  return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, viewerId));
+  const documents = await mastodonStatuses(c.env, identity.value, statuses.value, viewerId);
+  writeMetric(c.env, "timeline.tag", [elapsedMs(startedAt), documents.length], ["ok"]);
+  return c.json(documents);
 });
 
 timelineRoutes.get("/api/v1/timelines/direct", async (c) => {

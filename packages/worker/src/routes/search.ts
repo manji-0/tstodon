@@ -3,6 +3,7 @@ import { searchAccounts } from "../account-store";
 import { authenticate } from "../auth";
 import { jsonAuthError, jsonRepositoryError, queryLimit } from "../http";
 import { mastodonAccountDocument, mastodonStatuses } from "../mastodon";
+import { elapsedMs, writeMetric } from "../metrics";
 import { parseInstanceIdentity } from "../runtime-config";
 import { searchStatuses } from "../status-store";
 import type { Context } from "hono";
@@ -10,6 +11,7 @@ import type { Context } from "hono";
 export const searchRoutes = new Hono<{ Bindings: Env }>();
 
 const search = async (c: Context<{ Bindings: Env }>) => {
+  const startedAt = Date.now();
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -20,7 +22,7 @@ const search = async (c: Context<{ Bindings: Env }>) => {
   }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
   const query = (c.req.query("q") ?? "").trim();
-  const type = c.req.query("type");
+  const type = c.req.query("type") ?? "all";
   const limit = queryLimit(c.req.query("limit"), 5);
   if (query.length === 0) {
     return c.json({ accounts: [], statuses: [], hashtags: [] });
@@ -60,6 +62,13 @@ const search = async (c: Context<{ Bindings: Env }>) => {
             },
           ]
         : [];
+  // doubles: [latencyMs, accountHits, statusHits]
+  writeMetric(
+    c.env,
+    "search",
+    [elapsedMs(startedAt), accountDocs.length, statusDocs.length],
+    [type],
+  );
   return c.json({
     accounts: accountDocs,
     statuses: statusDocs,
