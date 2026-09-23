@@ -151,14 +151,21 @@ model markers {
 }
 
 model media_attachments {
-  id           String @id
-  account_id   String
-  status_id    String?
-  object_key   String    @unique(map: "sqlite_autoindex_media_attachments_2")
-  content_type String
-  created_at   String    @default("CURRENT_TIMESTAMP")
-  statuses     statuses? @relation(fields: [status_id], references: [id], onUpdate: NoAction)
-  accounts     accounts  @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                 String  @id
+  account_id         String
+  status_id          String?
+  object_key         String  @unique(map: "sqlite_autoindex_media_attachments_2")
+  content_type       String
+  created_at         String  @default("CURRENT_TIMESTAMP")
+  description        String  @default("")
+  focus_x            Float?
+  focus_y            Float?
+  preview_object_key String?
+  meta_json          String  @default("{}")
+  blurhash           String?
+  is_private         Int     @default(1)
+  statuses           statuses? @relation(fields: [status_id], references: [id], onUpdate: NoAction)
+  accounts           accounts  @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 model notifications {

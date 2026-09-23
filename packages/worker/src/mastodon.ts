@@ -22,9 +22,31 @@ import {
   type StatusInteractionCounts,
 } from "./social-store";
 import { findMediaByIds, type MediaRow } from "./media-store";
-import { mediaPublicUrl } from "./media-keys";
+import { mediaAuthUrl, mediaPublicUrl } from "./media-keys";
 import { FilterContextSchema, parseJsonColumn } from "./schemas";
 import type { FilterRow } from "./moderation-store";
+
+const parseMediaMeta = (metaJson: string): Record<string, unknown> => {
+  try {
+    const parsed: unknown = JSON.parse(metaJson);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    /* ignore malformed meta */
+  }
+  return {};
+};
+
+const mediaFocus = (
+  focusX: number | null,
+  focusY: number | null,
+): { x: number; y: number } | undefined => {
+  if (focusX == null || focusY == null) {
+    return undefined;
+  }
+  return { x: focusX, y: focusY };
+};
 
 export const mastodonAccount = (
   identity: InstanceIdentity,
@@ -177,18 +199,7 @@ const mediaAttachmentsJson = (
     if (!row) {
       continue;
     }
-    const url = mediaPublicUrl(identity, row.object_key);
-    media.push({
-      id: row.id,
-      type: row.content_type.startsWith("video/") ? "video" : "image",
-      url,
-      preview_url: url,
-      remote_url: null,
-      text_url: url,
-      meta: {},
-      description: null,
-      blurhash: null,
-    });
+    media.push(mastodonMedia(identity, row));
   }
   return media;
 };
@@ -480,23 +491,31 @@ export const mastodonFilterV2 = (row: FilterRow): Record<string, unknown> => {
 
 export const mastodonMedia = (
   identity: InstanceIdentity,
-  row: {
-    id: string;
-    object_key: string;
-    content_type: string;
-  },
+  row: MediaRow,
 ): Record<string, unknown> => {
-  const url = mediaPublicUrl(identity, row.object_key);
+  const privateAttachment = row.is_private === 1;
+  const url = privateAttachment
+    ? mediaAuthUrl(identity, row.id)
+    : mediaPublicUrl(identity, row.object_key);
+  const previewUrl =
+    !privateAttachment && row.preview_object_key
+      ? mediaPublicUrl(identity, row.preview_object_key)
+      : url;
+  const meta = parseMediaMeta(row.meta_json);
+  const focus = mediaFocus(row.focus_x, row.focus_y);
+  if (focus) {
+    meta.focus = focus;
+  }
   return {
     id: row.id,
     type: row.content_type.startsWith("video/") ? "video" : "image",
     url,
-    preview_url: url,
+    preview_url: previewUrl,
     remote_url: null,
     text_url: url,
-    meta: {},
-    description: null,
-    blurhash: null,
+    meta,
+    description: row.description.length > 0 ? row.description : null,
+    blurhash: row.blurhash,
   };
 };
 

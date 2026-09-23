@@ -54,6 +54,7 @@ import {
   listStatusDescendants,
 } from "../status-store";
 import { canViewStatus } from "../visibility-guard";
+import { promoteMediaToPublic } from "../media-access";
 
 export const statusRoutes = new Hono<{ Bindings: Env }>();
 
@@ -130,6 +131,20 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
   const inserted = await insertLocalNote(c.env.DB, note);
   if (inserted.isErr()) {
     return jsonRepositoryError(c, inserted.error.message);
+  }
+  if (
+    note.mediaIds.length > 0 &&
+    (note.visibility.kind === "Public" || note.visibility.kind === "Unlisted")
+  ) {
+    const promoted = await promoteMediaToPublic(
+      c.env.DB,
+      c.env.MEDIA,
+      user.value.id,
+      note.mediaIds,
+    );
+    if (promoted.isErr()) {
+      return jsonRepositoryError(c, promoted.error.message);
+    }
   }
   if (pollOptions.length >= 2) {
     const expiresIn = Number(pollRaw?.expires_in ?? 86400);

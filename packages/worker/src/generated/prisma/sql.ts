@@ -182,6 +182,10 @@ export * from "./sql/updateAccountProfile";
 
 export * from "./sql/updateList";
 
+export * from "./sql/updateMediaMetadata";
+
+export * from "./sql/updateMediaStorage";
+
 export * from "./sql/updateOutboxFanout";
 
 export * from "./sql/updateOutboxTarget";

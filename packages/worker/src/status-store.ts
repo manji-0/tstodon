@@ -176,7 +176,15 @@ export const insertLocalNote = async (
       ),
     ),
     ...note.mediaIds.map((mediaId) =>
-      d1PrepareTyped(db, attachMediaToStatusSql(note.id, mediaId, note.accountId)),
+      d1PrepareTyped(
+        db,
+        attachMediaToStatusSql(
+          note.id,
+          note.visibility.kind === "Public" || note.visibility.kind === "Unlisted" ? 0 : 1,
+          mediaId,
+          note.accountId,
+        ),
+      ),
     ),
   ];
   const batched = await runD1Batch(db, statements);

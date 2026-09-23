@@ -12,6 +12,15 @@ export type MediaObjectKind = (typeof MediaObjectKind)[keyof typeof MediaObjectK
 export const attachmentObjectKey = (accountId: string, mediaId: string): string =>
   `${MediaObjectKind.Attachment}/${accountId}/${mediaId}`;
 
+export const attachmentPreviewObjectKey = (accountId: string, mediaId: string): string =>
+  `${MediaObjectKind.Attachment}/${accountId}/${mediaId}/preview`;
+
+export const privateAttachmentObjectKey = (accountId: string, mediaId: string): string =>
+  `private/${MediaObjectKind.Attachment}/${accountId}/${mediaId}`;
+
+export const privateAttachmentPreviewObjectKey = (accountId: string, mediaId: string): string =>
+  `private/${MediaObjectKind.Attachment}/${accountId}/${mediaId}/preview`;
+
 export const avatarObjectKey = (accountId: string, blobId: string): string =>
   `${MediaObjectKind.Avatar}/${accountId}/${blobId}`;
 
@@ -21,13 +30,24 @@ export const headerObjectKey = (accountId: string, blobId: string): string =>
 export const mediaPublicUrl = (identity: InstanceIdentity, objectKey: string): string =>
   `${identity.mediaPublicBaseUrl.replace(/\/$/, "")}/${objectKey.replace(/^\//, "")}`;
 
-const OBJECT_KEY_RE = /^(attachments|avatars|headers)\/[A-Za-z0-9._~-]+\/[A-Za-z0-9._~-]+$/;
+/** Worker-gated URL for private / owner-only attachments. */
+export const mediaAuthUrl = (identity: InstanceIdentity, mediaId: string): string =>
+  `${identity.publicOrigin.replace(/\/$/, "")}/media/${mediaId}`;
 
-/** Reject path traversal and unexpected key shapes before R2.get. */
+const PUBLIC_OBJECT_KEY_RE =
+  /^(attachments|avatars|headers)\/[A-Za-z0-9._~-]+\/[A-Za-z0-9._~-]+(?:\/preview)?$/;
+
+const PRIVATE_OBJECT_KEY_RE =
+  /^private\/attachments\/[A-Za-z0-9._~-]+\/[A-Za-z0-9._~-]+(?:\/preview)?$/;
+
+/** Reject path traversal; public proxy routes must not serve private/* keys. */
 export const parseMediaObjectKey = (raw: string): string | undefined => {
   const key = raw.replace(/^\/+/, "");
-  if (!OBJECT_KEY_RE.test(key)) {
+  if (!PUBLIC_OBJECT_KEY_RE.test(key)) {
     return undefined;
   }
   return key;
 };
+
+export const isPrivateMediaObjectKey = (objectKey: string): boolean =>
+  PRIVATE_OBJECT_KEY_RE.test(objectKey);

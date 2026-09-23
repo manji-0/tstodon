@@ -1,13 +1,14 @@
 import { InstanceIdentity, type LocalAccount, type LocalNote } from "@tstodon/domain";
 import type { z } from "zod";
 import type { ActivityJsonSchema } from "./schemas";
+import { mediaPublicUrl } from "./media-keys";
 
 export const actorDocument = (
   identity: InstanceIdentity,
   account: LocalAccount,
 ): Record<string, unknown> => {
   const id = InstanceIdentity.actorUrl(identity, account.username);
-  return {
+  const doc: Record<string, unknown> = {
     "@context": ["https://www.w3.org/ns/activitystreams", "https://w3id.org/security/v1"],
     id,
     type: "Person",
@@ -27,6 +28,19 @@ export const actorDocument = (
       publicKeyPem: account.publicKeyPem,
     },
   };
+  if (account.avatarObjectKey.kind === "Present") {
+    doc.icon = {
+      type: "Image",
+      url: mediaPublicUrl(identity, account.avatarObjectKey.value),
+    };
+  }
+  if (account.headerObjectKey.kind === "Present") {
+    doc.image = {
+      type: "Image",
+      url: mediaPublicUrl(identity, account.headerObjectKey.value),
+    };
+  }
+  return doc;
 };
 
 const usersPrefix = (identity: InstanceIdentity): string => {

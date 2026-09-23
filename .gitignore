@@ -13,3 +13,4 @@
 /e2e/dist
 e2e/instances/.wrangler
 worker-configuration.d.ts
+.cursor/

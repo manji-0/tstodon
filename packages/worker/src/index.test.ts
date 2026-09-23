@@ -277,8 +277,20 @@ describe("worker http", () => {
   });
 
   it("uploads media, creates polls, filters, and reports", async () => {
+    const rejected = await SELF.fetch("https://example.com/api/v1/media", {
+      method: "POST",
+      headers: await auth("alice@example.com"),
+      body: (() => {
+        const form = new FormData();
+        form.set("file", new File(["hello"], "hello.txt", { type: "text/plain" }));
+        return form;
+      })(),
+    });
+    expect(rejected.status).toBe(422);
+
     const form = new FormData();
-    form.set("file", new File(["hello"], "hello.txt", { type: "text/plain" }));
+    form.set("file", new File(["png-bytes"], "hello.png", { type: "image/png" }));
+    form.set("description", "a hello image");
     const mediaResponse = await SELF.fetch("https://example.com/api/v1/media", {
       method: "POST",
       headers: await auth("alice@example.com"),
@@ -287,16 +299,34 @@ describe("worker http", () => {
     expect(mediaResponse.status).toBe(200);
     const media = read(MastodonMediaPreviewSchema, await mediaResponse.json());
     expect(media.id).toBeTruthy();
-    expect(media.url).toContain("/attachments/");
-    expect(media.url.endsWith(`/${media.id}`)).toBe(true);
+    expect(media.url).toContain(`/media/${media.id}`);
     expect(media.preview_url).toBe(media.url);
 
+    const mediaPut = await SELF.fetch(`https://example.com/api/v1/media/${media.id}`, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        ...(await auth("alice@example.com")),
+      },
+      body: JSON.stringify({ description: "updated alt", focus: "0.5,-0.25" }),
+    });
+    expect(mediaPut.status).toBe(200);
+    const updatedMedia = (await mediaPut.json()) as {
+      description: string | null;
+      meta: { focus?: { x: number; y: number } };
+    };
+    expect(updatedMedia.description).toBe("updated alt");
+    expect(updatedMedia.meta.focus).toEqual({ x: 0.5, y: -0.25 });
+
+    const anonymousGet = await SELF.fetch(media.url);
+    expect(anonymousGet.status).toBe(404);
+
     const mediaGet = await SELF.fetch(media.url, {
-      headers: { Origin: "https://other.example" },
+      headers: { ...(await auth("alice@example.com")), Origin: "https://other.example" },
     });
     expect(mediaGet.status).toBe(200);
-    expect(await mediaGet.text()).toBe("hello");
-    expect(mediaGet.headers.get("cache-control")).toContain("max-age=31536000");
+    expect(await mediaGet.arrayBuffer().then((b) => new TextDecoder().decode(b))).toBe("png-bytes");
+    expect(mediaGet.headers.get("cache-control")).toContain("private");
     expect(mediaGet.headers.get("access-control-allow-origin")).toBe("*");
 
     const mediaOptions = await SELF.fetch(media.url, {
@@ -330,9 +360,29 @@ describe("worker http", () => {
     });
     expect(apiDenied.headers.get("access-control-allow-origin")).toBeNull();
 
-    const byId = await SELF.fetch(`https://example.com/media/${media.id}`);
+    const byId = await SELF.fetch(`https://example.com/media/${media.id}`, {
+      headers: await auth("alice@example.com"),
+    });
     expect(byId.status).toBe(200);
-    expect(await byId.text()).toBe("hello");
+    expect(await byId.arrayBuffer().then((b) => new TextDecoder().decode(b))).toBe("png-bytes");
+
+    const publicStatus = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth("alice@example.com")) },
+      body: JSON.stringify({ status: "with media", media_ids: [media.id] }),
+    });
+    expect(publicStatus.status).toBe(200);
+    const postedBody = publicStatus.body as {
+      media_attachments: Array<{ url: string; description: string | null }>;
+    };
+    const attachment = postedBody.media_attachments[0];
+    expect(attachment?.url).toContain("/attachments/");
+    expect(attachment?.description).toBe("updated alt");
+    const publicBytes = await SELF.fetch(attachment!.url);
+    expect(publicBytes.status).toBe(200);
+    expect(await publicBytes.arrayBuffer().then((b) => new TextDecoder().decode(b))).toBe(
+      "png-bytes",
+    );
 
     const avatarForm = new FormData();
     avatarForm.set("display_name", "Alice Avatar");
@@ -356,6 +406,17 @@ describe("worker http", () => {
     const headerGet = await SELF.fetch(profile.header!);
     expect(headerGet.status).toBe(200);
     expect(await headerGet.text()).toBe("header-bytes");
+
+    const actorWithMedia = await json("/users/alice");
+    expect(actorWithMedia.status).toBe(200);
+    const actorBody = actorWithMedia.body as {
+      icon?: { type: string; url: string };
+      image?: { type: string; url: string };
+    };
+    expect(actorBody.icon?.type).toBe("Image");
+    expect(actorBody.icon?.url).toContain("/avatars/");
+    expect(actorBody.image?.type).toBe("Image");
+    expect(actorBody.image?.url).toContain("/headers/");
 
     const poll = await json("/api/v1/statuses", {
       method: "POST",

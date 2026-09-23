@@ -10,15 +10,29 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param objectKey
  * @param contentType
  * @param createdAt
+ * @param description
+ * @param focusX
+ * @param focusY
+ * @param previewObjectKey
+ * @param metaJson
+ * @param blurhash
+ * @param isPrivate
  */
 export const insertMedia = $runtime.makeTypedQueryFactory(
-  "INSERT INTO media_attachments (id, account_id, object_key, content_type, created_at)\nVALUES ($1, $2, $3, $4, $5)",
+  "INSERT INTO media_attachments (\nid, account_id, object_key, content_type, created_at,\ndescription, focus_x, focus_y, preview_object_key, meta_json, blurhash, is_private\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
 ) as (
   id: string,
   accountId: string,
   objectKey: string,
   contentType: string,
   createdAt: string,
+  description: string,
+  focusX: number | null,
+  focusY: number | null,
+  previewObjectKey: string | null,
+  metaJson: string,
+  blurhash: string | null,
+  isPrivate: number,
 ) => $runtime.TypedSql<insertMedia.Parameters, insertMedia.Result>;
 
 export namespace insertMedia {
@@ -28,6 +42,13 @@ export namespace insertMedia {
     objectKey: string,
     contentType: string,
     createdAt: string,
+    description: string,
+    focusX: number | null,
+    focusY: number | null,
+    previewObjectKey: string | null,
+    metaJson: string,
+    blurhash: string | null,
+    isPrivate: number,
   ];
   export type Result = {};
 }
