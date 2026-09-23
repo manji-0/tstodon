@@ -311,6 +311,43 @@ export const listDirectoryAccounts = async (
     return accounts;
   });
 
+/** Local directory accounts the viewer is not already following or requesting. */
+export const listSuggestedAccounts = async (
+  db: D1Database,
+  viewerId: string,
+  limit: number,
+): Promise<Result<LocalAccount[], RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT id, username, access_email, display_name, locked, default_post_visibility,
+                default_quote_policy, public_key_pem, private_key_jwk, created_at,
+                COALESCE(bio_text, '') AS bio_text
+         FROM accounts
+         WHERE id != ?
+           AND id NOT IN (
+             SELECT target_account_id FROM follows WHERE follower_account_id = ?
+           )
+         ORDER BY (SELECT COUNT(*) FROM statuses s WHERE s.account_id = accounts.id) DESC,
+                  accounts.created_at DESC
+         LIMIT ?`,
+      )
+      .bind(viewerId, viewerId, limit)
+      .all();
+    const accounts: LocalAccount[] = [];
+    for (const raw of results ?? []) {
+      const row = parseAccountRow(raw);
+      if (row.isErr()) {
+        continue;
+      }
+      const account = accountFromRow(row.value);
+      if (account.isOk()) {
+        accounts.push(account.value);
+      }
+    }
+    return accounts;
+  });
+
 export type AccountCounts = Readonly<{
   followers: number;
   following: number;

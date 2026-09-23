@@ -16,7 +16,10 @@ export {
   InboxActivitySchema,
   type InboxActivity as InboxActivityValue,
 } from "./inbox-activity";
+export { Announcement, type Announcement as AnnouncementValue } from "./announcement";
+export { CustomEmoji, type CustomEmoji as CustomEmojiValue } from "./custom-emoji";
 export { InstanceIdentity } from "./instance-identity";
+export { InstanceRule, type InstanceRule as InstanceRuleValue } from "./instance-rule";
 export { IsoInstant } from "./iso-instant";
 export { FediRole, type FediRole as FediRoleValue, type FediRoleName } from "./fedi-role";
 export { LocalFollow, type LocalFollow as LocalFollowValue } from "./local-follow";

@@ -7,3 +7,8 @@
 # CF_ACCESS_JWKS_JSON=
 # CF_ACCESS_LOCAL_PRIVATE_JWK=
 # RESEND_API_KEY=
+#
+# Optional instance catalogs (also settable in wrangler.jsonc vars):
+# INSTANCE_RULES=[{"id":"1","text":"Be excellent to each other"}]
+# INSTANCE_CUSTOM_EMOJIS=[{"shortcode":"wave","url":"https://media.example.com/wave.png"}]
+# INSTANCE_ANNOUNCEMENTS=[{"id":"welcome","content":"Hello","published_at":"2026-09-22T12:00:00.000Z"}]

@@ -1,6 +1,12 @@
 import { Hono } from "hono";
-import { countAccounts, findAccountById, listDirectoryAccounts } from "../account-store";
+import {
+  countAccounts,
+  findAccountById,
+  listDirectoryAccounts,
+  listSuggestedAccounts,
+} from "../account-store";
 import { listConversationsForAccount, latestStatusIdInConversation } from "../conversation-store";
+import { textToHtml } from "../html";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -9,6 +15,14 @@ import {
   readBody,
   requireUser,
 } from "../http";
+import {
+  mastodonAnnouncementDocument,
+  mastodonCustomEmojiDocument,
+  mastodonInstanceRuleDocument,
+  parseAnnouncements,
+  parseCustomEmojis,
+  parseInstanceRules,
+} from "../instance-catalog";
 import { mastodonAccountDocument, mastodonStatus, mastodonStatuses } from "../mastodon";
 import {
   getMarkers,
@@ -22,6 +36,7 @@ import { listPeerDomains } from "../remote-actor-store";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
   countStatuses,
+  listTrendingLinks,
   listTrendingStatuses,
   listTrendingTags,
   listWeeklyStatusActivity,
@@ -29,11 +44,102 @@ import {
 
 export const metaRoutes = new Hono<{ Bindings: Env }>();
 
-metaRoutes.get("/api/v1/custom_emojis", (c) => c.json([]));
-metaRoutes.get("/api/v1/announcements", (c) => c.json([]));
-metaRoutes.get("/api/v1/suggestions", (c) => c.json([]));
-metaRoutes.get("/api/v1/trends/links", (c) => c.json([]));
-metaRoutes.get("/api/v1/instance/rules", (c) => c.json([]));
+metaRoutes.get("/api/v1/custom_emojis", (c) => {
+  const emojis = parseCustomEmojis(c.env);
+  if (emojis.isErr()) {
+    return jsonValidationError(c);
+  }
+  return c.json(emojis.value.map(mastodonCustomEmojiDocument));
+});
+
+metaRoutes.get("/api/v1/announcements", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const announcements = parseAnnouncements(c.env);
+  if (announcements.isErr()) {
+    return jsonValidationError(c);
+  }
+  return c.json(
+    announcements.value.map((announcement) =>
+      mastodonAnnouncementDocument(announcement, textToHtml(announcement.content)),
+    ),
+  );
+});
+
+metaRoutes.get("/api/v1/suggestions", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const accounts = await listSuggestedAccounts(
+    c.env.DB,
+    user.value.id,
+    queryLimit(c.req.query("limit"), 40),
+  );
+  if (accounts.isErr()) {
+    return jsonRepositoryError(c, accounts.error.message);
+  }
+  const documents = [];
+  for (const account of accounts.value) {
+    documents.push(await mastodonAccountDocument(c.env, identity.value, account));
+  }
+  return c.json(documents);
+});
+
+metaRoutes.get("/api/v1/trends/links", async (c) => {
+  const links = await listTrendingLinks(c.env.DB, queryLimit(c.req.query("limit"), 10));
+  if (links.isErr()) {
+    return jsonRepositoryError(c, links.error.message);
+  }
+  const day = `${Math.floor(Date.now() / 1000)}`;
+  return c.json(
+    links.value.map((link) => {
+      let providerName = "";
+      try {
+        providerName = new URL(link.url).hostname;
+      } catch {
+        providerName = "";
+      }
+      return {
+        url: link.url,
+        title: "",
+        description: "",
+        type: "link",
+        author_name: "",
+        author_url: "",
+        provider_name: providerName,
+        provider_url: "",
+        html: "",
+        width: 0,
+        height: 0,
+        image: null,
+        embed_url: "",
+        blurhash: null,
+        history: [
+          {
+            day,
+            accounts: String(link.accounts),
+            uses: String(link.uses),
+          },
+        ],
+      };
+    }),
+  );
+});
+
+metaRoutes.get("/api/v1/instance/rules", (c) => {
+  const rules = parseInstanceRules(c.env);
+  if (rules.isErr()) {
+    return jsonValidationError(c);
+  }
+  return c.json(rules.value.map(mastodonInstanceRuleDocument));
+});
 
 metaRoutes.get("/api/v1/markers", async (c) => {
   const user = await requireUser(c);
@@ -247,6 +353,10 @@ metaRoutes.get("/api/v2/instance", async (c) => {
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
+  const rules = parseInstanceRules(c.env);
+  if (rules.isErr()) {
+    return jsonValidationError(c);
+  }
   const instance = identity.value;
   return c.json({
     domain: instance.domain,
@@ -272,6 +382,6 @@ metaRoutes.get("/api/v2/instance", async (c) => {
     },
     registrations: { enabled: false, approval_required: true, message: null },
     contact: { email: instance.contactEmail, account: null },
-    rules: [],
+    rules: rules.value.map(mastodonInstanceRuleDocument),
   });
 });

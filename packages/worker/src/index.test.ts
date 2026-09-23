@@ -1142,6 +1142,55 @@ describe("worker http", () => {
     const trendStatuses = await json("/api/v1/trends/statuses");
     expect(trendStatuses.status).toBe(200);
     expect(read(MastodonStatusListPreviewSchema, trendStatuses.body).length).toBeGreaterThan(0);
+
+    const linked = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth("link-trend@example.com")) },
+      body: JSON.stringify({
+        status: "check https://news.example/story and https://news.example/story",
+      }),
+    });
+    expect(linked.status).toBe(200);
+
+    const trendLinks = await json("/api/v1/trends/links");
+    expect(trendLinks.status).toBe(200);
+    const links = read(
+      z.array(
+        z.object({ url: z.string().url(), history: z.array(z.object({ uses: z.string() })) }),
+      ),
+      trendLinks.body,
+    );
+    expect(links.some((link) => link.url === "https://news.example/story")).toBe(true);
+
+    const rules = await json("/api/v1/instance/rules");
+    expect(rules.status).toBe(200);
+    expect(
+      read(z.array(z.object({ id: z.string(), text: z.string() })), rules.body).length,
+    ).toBeGreaterThan(0);
+
+    const emojis = await json("/api/v1/custom_emojis");
+    expect(emojis.status).toBe(200);
+    expect(
+      read(z.array(z.object({ shortcode: z.string(), url: z.string().url() })), emojis.body).some(
+        (emoji) => emoji.shortcode === "blobcat",
+      ),
+    ).toBe(true);
+
+    const announcements = await json("/api/v1/announcements", {
+      headers: await auth("directory-user@example.com"),
+    });
+    expect(announcements.status).toBe(200);
+    expect(
+      read(z.array(z.object({ id: z.string(), content: z.string() })), announcements.body).some(
+        (row) => row.id === "welcome",
+      ),
+    ).toBe(true);
+
+    const suggestions = await json("/api/v1/suggestions", {
+      headers: await auth("directory-user@example.com"),
+    });
+    expect(suggestions.status).toBe(200);
+    expect(read(z.array(MastodonAccountPreviewSchema), suggestions.body).length).toBeGreaterThan(0);
   });
 });
 

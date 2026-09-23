@@ -455,6 +455,32 @@ export const extractHashtags = (text: string): string[] => {
   return [...tags];
 };
 
+export const extractHttpUrls = (text: string): string[] => {
+  const urls = new Set<string>();
+  for (const match of text.matchAll(/https?:\/\/[^\s<>"']+/gi)) {
+    let candidate = match[0] ?? "";
+    candidate = candidate.replace(/[.,;:!?)]+$/g, "");
+    if (candidate.length === 0) {
+      continue;
+    }
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        urls.add(parsed.href);
+      }
+    } catch {
+      // ignore malformed URLs
+    }
+  }
+  return [...urls];
+};
+
+export type TrendingLink = Readonly<{
+  url: string;
+  uses: number;
+  accounts: number;
+}>;
+
 export const listTrendingTags = async (
   db: D1Database,
   limit: number,
@@ -478,6 +504,39 @@ export const listTrendingTags = async (
     return [...counts.entries()]
       .map(([name, uses]) => ({ name, uses }))
       .toSorted((a, b) => b.uses - a.uses || a.name.localeCompare(b.name))
+      .slice(0, limit);
+  });
+
+export const listTrendingLinks = async (
+  db: D1Database,
+  limit: number,
+): Promise<Result<ReadonlyArray<TrendingLink>, RepositoryError>> =>
+  runD1(async () => {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { results } = await db
+      .prepare(
+        `SELECT content_text, account_id FROM statuses
+         WHERE kind = 'LocalNote' AND visibility = 'public' AND created_at >= ?
+         ORDER BY id DESC LIMIT 500`,
+      )
+      .bind(since)
+      .all<{ content_text: string; account_id: string }>();
+    const counts = new Map<string, { uses: number; accounts: Set<string> }>();
+    for (const row of results ?? []) {
+      for (const url of extractHttpUrls(row.content_text)) {
+        const entry = counts.get(url) ?? { uses: 0, accounts: new Set<string>() };
+        entry.uses += 1;
+        entry.accounts.add(row.account_id);
+        counts.set(url, entry);
+      }
+    }
+    return [...counts.entries()]
+      .map(([url, value]) => ({
+        url,
+        uses: value.uses,
+        accounts: value.accounts.size,
+      }))
+      .toSorted((a, b) => b.uses - a.uses || a.url.localeCompare(b.url))
       .slice(0, limit);
   });
 

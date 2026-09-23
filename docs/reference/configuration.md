@@ -22,6 +22,14 @@ Placeholder resource IDs in `wrangler.jsonc` are local-only. Create real D1 / KV
 
 `INSTANCE_DOMAIN`, `INSTANCE_NAME`, `INSTANCE_DESCRIPTION`, `SOURCE_URL`, `INSTANCE_LANGUAGES`, `CONTACT_EMAIL`, `INSTANCE_THUMBNAIL_URL`, and `MEDIA_PUBLIC_BASE_URL` are public configuration.
 
+Optional catalog vars (empty ⇒ empty API arrays):
+
+| Var                      | Purpose                                                                                             |
+| ------------------------ | --------------------------------------------------------------------------------------------------- |
+| `INSTANCE_RULES`         | JSON array of `{id?, text}` / strings, or newline-separated rule texts for `/api/v1/instance/rules` |
+| `INSTANCE_CUSTOM_EMOJIS` | JSON array of `{shortcode, url, static_url?, visible_in_picker?, category?}`                        |
+| `INSTANCE_ANNOUNCEMENTS` | JSON array of `{id, content, published_at?, updated_at?, starts_at?, ends_at?, all_day?}`           |
+
 ## Cloudflare Access authentication vars
 
 <!-- constrained-by ../planning/local-core.md#authentication -->
