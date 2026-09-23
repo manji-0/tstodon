@@ -28,9 +28,9 @@ Placeholder resource IDs in `wrangler.jsonc` are local-only. Create real D1 / KV
 
 Media blobs live in the `MEDIA` R2 bucket. Mastodon JSON emits absolute URLs as `${MEDIA_PUBLIC_BASE_URL}/${objectKey}` (no Worker hop in production).
 
-| Environment | `MEDIA_PUBLIC_BASE_URL` | How bytes are served |
-| ----------- | ----------------------- | -------------------- |
-| Production  | R2 custom domain (e.g. `https://media.example.com`) | R2 public hostname |
+| Environment   | `MEDIA_PUBLIC_BASE_URL`                                       | How bytes are served                                                                         |
+| ------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Production    | R2 custom domain (e.g. `https://media.example.com`)           | R2 public hostname                                                                           |
 | Local / tests | Same as `INSTANCE_PUBLIC_ORIGIN` (e.g. `https://example.com`) | Worker object-key proxy (`/attachments/*`, `/avatars/*`, `/headers/*`) plus `GET /media/:id` |
 
 Object keys: `attachments/{accountId}/{mediaId}`, `avatars/{accountId}/{blobId}`, `headers/{accountId}/{blobId}`. The `IMAGES` binding is reserved for transforms; it is not used on the read path yet.

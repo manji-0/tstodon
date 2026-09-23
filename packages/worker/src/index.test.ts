@@ -304,11 +304,14 @@ describe("worker http", () => {
     avatarForm.set("display_name", "Alice Avatar");
     avatarForm.set("avatar", new File(["avatar-bytes"], "avatar.png", { type: "image/png" }));
     avatarForm.set("header", new File(["header-bytes"], "header.png", { type: "image/png" }));
-    const profileResponse = await SELF.fetch("https://example.com/api/v1/accounts/update_credentials", {
-      method: "PATCH",
-      headers: await auth("alice@example.com"),
-      body: avatarForm,
-    });
+    const profileResponse = await SELF.fetch(
+      "https://example.com/api/v1/accounts/update_credentials",
+      {
+        method: "PATCH",
+        headers: await auth("alice@example.com"),
+        body: avatarForm,
+      },
+    );
     expect(profileResponse.status).toBe(200);
     const profile = read(MastodonAccountPreviewSchema, await profileResponse.json());
     expect(profile.avatar).toContain("/avatars/");

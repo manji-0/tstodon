@@ -21,8 +21,7 @@ export const headerObjectKey = (accountId: string, blobId: string): string =>
 export const mediaPublicUrl = (identity: InstanceIdentity, objectKey: string): string =>
   `${identity.mediaPublicBaseUrl.replace(/\/$/, "")}/${objectKey.replace(/^\//, "")}`;
 
-const OBJECT_KEY_RE =
-  /^(attachments|avatars|headers)\/[A-Za-z0-9._~-]+\/[A-Za-z0-9._~-]+$/;
+const OBJECT_KEY_RE = /^(attachments|avatars|headers)\/[A-Za-z0-9._~-]+\/[A-Za-z0-9._~-]+$/;
 
 /** Reject path traversal and unexpected key shapes before R2.get. */
 export const parseMediaObjectKey = (raw: string): string | undefined => {
