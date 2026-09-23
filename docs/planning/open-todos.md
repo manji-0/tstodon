@@ -25,8 +25,9 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Active track
 
-| ID    | Item                                                                | Status                                    |
-| ----- | ------------------------------------------------------------------- | ----------------------------------------- |
-| E2E-1 | process-compose multi-instance harness                              | done (scaffold)                           |
-| E2E-2 | Minimal 2-instance federation smoke (WebFinger + actor cross-fetch) | done (smoke); Follow/Create delivery next |
-| E2E-3 | Expand scenario matrix (Undo/Announce/Like/Delete/shared inbox)     | later                                     |
+| ID    | Item                                                            | Status                        |
+| ----- | --------------------------------------------------------------- | ----------------------------- |
+| E2E-1 | process-compose multi-instance harness                          | done                          |
+| E2E-2 | Minimal 2-instance federation (WebFinger + Follow→Create)       | done (host-driven Create hop) |
+| E2E-3 | Expand scenario matrix (Undo/Announce/Like/Delete/shared inbox) | later                         |
+| E2E-4 | Remove host-driven Create hop when workerd loopback fetch works | later                         |

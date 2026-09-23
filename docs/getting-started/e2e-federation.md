@@ -38,12 +38,15 @@ process-compose up
 pnpm e2e:federation
 ```
 
-## Smoke coverage today
+## Scenarios
 
-1. Nodeinfo readiness on A and B
-2. Access JWT provision of alice@A / bob@B
-3. WebFinger subjects for both domains
-4. Actor documents use `INSTANCE_PUBLIC_ORIGIN`
-5. Cross-instance HTTP GET of the remote actor JSON
+| Script        | Command                             | Coverage                                                                               |
+| ------------- | ----------------------------------- | -------------------------------------------------------------------------------------- |
+| Smoke         | `pnpm e2e:federation`               | Nodeinfo, provision, WebFinger, actor docs, host cross-fetch                           |
+| Follow→Create | `pnpm e2e:federation:follow-create` | Signed Follow into A; ExpandFollowers outbox target; Create into B → `remote_statuses` |
 
-Not yet: signed Follow/Accept, Create delivery, Undo, Announce, shared-inbox fan-out.
+### Loopback limitation
+
+`workerd` often cannot `fetch()` another loopback port. Follow→Create therefore pre-seeds `remote_actors` and may drive the Create HTTP hop from the host while still asserting A's ExpandFollowers selected B. See `e2e/federation-follow-create.mjs`.
+
+Not yet automated: Undo, Announce/Like, Accept activity round-trip, shared-inbox-only fan-out.

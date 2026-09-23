@@ -13,6 +13,8 @@
     "prisma:pull": "./packages/worker/node_modules/.bin/prisma db pull",
     "prisma:generate": "./packages/worker/node_modules/.bin/prisma generate --sql",
     "e2e:federation": "node e2e/federation-smoke.mjs",
+    "e2e:federation:follow-create": "node e2e/federation-follow-create.mjs",
+    "e2e:federation:all": "node e2e/federation-smoke.mjs && node e2e/federation-follow-create.mjs",
     "e2e:up": "process-compose up",
     "ci": "pnpm typecheck && pnpm lint && pnpm fmt:check && pnpm test && wrangler deploy --dry-run"
   },

@@ -48,3 +48,13 @@ processes:
         condition: process_healthy
     availability:
       restart: "no"
+
+  e2e-federation-follow-create:
+    command: node e2e/federation-follow-create.mjs
+    depends_on:
+      tstodon-a:
+        condition: process_healthy
+      tstodon-b:
+        condition: process_healthy
+    availability:
+      restart: "no"
