@@ -1,6 +1,15 @@
 import { runD1, type RepositoryError } from "./d1";
 import { nowIso } from "./clock";
 import type { Result } from "neverthrow";
+import { queryTyped, runTyped } from "./typed-sql";
+import {
+  countRemoteAnnounces as countRemoteAnnouncesSql,
+  countRemoteFavourites as countRemoteFavouritesSql,
+  deleteRemoteAnnounce as deleteRemoteAnnounceSql,
+  deleteRemoteFavourite as deleteRemoteFavouriteSql,
+  upsertRemoteAnnounce as upsertRemoteAnnounceSql,
+  upsertRemoteFavourite as upsertRemoteFavouriteSql,
+} from "./generated/prisma/sql";
 
 export const upsertRemoteFavourite = async (
   db: D1Database,
@@ -8,14 +17,7 @@ export const upsertRemoteFavourite = async (
   statusId: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(
-        `INSERT INTO remote_favourites (remote_actor_uri, status_id, created_at)
-         VALUES (?, ?, ?)
-         ON CONFLICT(remote_actor_uri, status_id) DO NOTHING`,
-      )
-      .bind(remoteActorUri, statusId, nowIso())
-      .run();
+    await runTyped(db, upsertRemoteFavouriteSql(remoteActorUri, statusId, nowIso()));
   });
 
 export const deleteRemoteFavourite = async (
@@ -24,10 +26,7 @@ export const deleteRemoteFavourite = async (
   statusId: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(`DELETE FROM remote_favourites WHERE remote_actor_uri = ? AND status_id = ?`)
-      .bind(remoteActorUri, statusId)
-      .run();
+    await runTyped(db, deleteRemoteFavouriteSql(remoteActorUri, statusId));
   });
 
 export const upsertRemoteAnnounce = async (
@@ -37,15 +36,7 @@ export const upsertRemoteAnnounce = async (
   activityId: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(
-        `INSERT INTO remote_announces (remote_actor_uri, status_id, activity_id, created_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(remote_actor_uri, status_id) DO UPDATE SET
-           activity_id = excluded.activity_id`,
-      )
-      .bind(remoteActorUri, statusId, activityId, nowIso())
-      .run();
+    await runTyped(db, upsertRemoteAnnounceSql(remoteActorUri, statusId, activityId, nowIso()));
   });
 
 export const deleteRemoteAnnounce = async (
@@ -54,10 +45,7 @@ export const deleteRemoteAnnounce = async (
   statusId: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(`DELETE FROM remote_announces WHERE remote_actor_uri = ? AND status_id = ?`)
-      .bind(remoteActorUri, statusId)
-      .run();
+    await runTyped(db, deleteRemoteAnnounceSql(remoteActorUri, statusId));
   });
 
 export const countRemoteFavourites = async (
@@ -65,11 +53,8 @@ export const countRemoteFavourites = async (
   statusId: string,
 ): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
-    const row = await db
-      .prepare(`SELECT COUNT(*) AS count FROM remote_favourites WHERE status_id = ?`)
-      .bind(statusId)
-      .first<{ count: number }>();
-    return row?.count ?? 0;
+    const rows = await queryTyped<{ count: number }>(db, countRemoteFavouritesSql(statusId));
+    return Number(rows[0]?.count ?? 0);
   });
 
 export const countRemoteAnnounces = async (
@@ -77,9 +62,6 @@ export const countRemoteAnnounces = async (
   statusId: string,
 ): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
-    const row = await db
-      .prepare(`SELECT COUNT(*) AS count FROM remote_announces WHERE status_id = ?`)
-      .bind(statusId)
-      .first<{ count: number }>();
-    return row?.count ?? 0;
+    const rows = await queryTyped<{ count: number }>(db, countRemoteAnnouncesSql(statusId));
+    return Number(rows[0]?.count ?? 0);
   });

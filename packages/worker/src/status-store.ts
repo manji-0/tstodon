@@ -14,6 +14,18 @@ import type { z } from "zod";
 import { chunkArray, runD1, runD1Batch, type RepositoryError } from "./d1";
 import { parseRow, StatusRowSchema, toRepositoryError } from "./schemas";
 import { visibilitySql } from "./sql-enums";
+import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
+import {
+  attachMediaToStatus as attachMediaToStatusSql,
+  countStatuses as countStatusesSql,
+  deleteReblogOf as deleteReblogOfSql,
+  deleteStatusOwned as deleteStatusOwnedSql,
+  findStatusById as findStatusByIdSql,
+  insertLocalNote as insertLocalNoteSql,
+  insertLocalReblog as insertLocalReblogSql,
+  listAccountStatuses as listAccountStatusesSql,
+  listMediaIdsForStatus as listMediaIdsForStatusSql,
+} from "./generated/prisma/sql";
 
 export type StatusRow = z.infer<typeof StatusRowSchema>;
 
@@ -84,11 +96,11 @@ export const statusFromRow = (
 };
 
 const mediaIdsFor = async (db: D1Database, statusId: string): Promise<MediaId[]> => {
-  const { results } = await db
-    .prepare(`SELECT id FROM media_attachments WHERE status_id = ? ORDER BY created_at`)
-    .bind(statusId)
-    .all<{ id: string }>();
-  return (results ?? []).flatMap((row) => {
+  const results = await queryTyped<{ id: string | null }>(db, listMediaIdsForStatusSql(statusId));
+  return results.flatMap((row) => {
+    if (!row.id) {
+      return [];
+    }
     const parsed = MediaId.parse(row.id);
     return parsed.isOk() ? [parsed.value] : [];
   });
@@ -98,16 +110,15 @@ export const findStatusById = async (
   db: D1Database,
   id: string,
 ): Promise<Result<LocalStatusValue | undefined, RepositoryError>> => {
-  const queried = await runD1(() =>
-    db.prepare(`SELECT ${statusSelect} FROM statuses WHERE id = ?`).bind(id).first(),
-  );
+  const queried = await runD1(async () => queryTyped(db, findStatusByIdSql(id)));
   if (queried.isErr()) {
     return err(queried.error);
   }
-  if (!queried.value) {
+  const raw = queried.value[0];
+  if (!raw) {
     return ok(undefined);
   }
-  const row = parseRow(StatusRowSchema, queried.value);
+  const row = parseRow(StatusRowSchema, raw);
   if (row.isErr()) {
     return err(toRepositoryError("invalid status row"));
   }
@@ -150,18 +161,10 @@ export const insertLocalNote = async (
   db: D1Database,
   note: LocalNote,
 ): Promise<Result<void, RepositoryError>> => {
-  const mediaUpdate = db.prepare(
-    `UPDATE media_attachments SET status_id = ? WHERE id = ? AND account_id = ?`,
-  );
   const statements: D1PreparedStatement[] = [
-    db
-      .prepare(
-        `INSERT INTO statuses (
-          id, account_id, kind, in_reply_to_id, content_text, content_html, visibility, sensitive,
-          spoiler_text, language, created_at, updated_at
-        ) VALUES (?, ?, 'LocalNote', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
+    d1PrepareTyped(
+      db,
+      insertLocalNoteSql(
         note.id,
         note.accountId,
         note.inReplyToId,
@@ -174,7 +177,10 @@ export const insertLocalNote = async (
         note.createdAt,
         note.createdAt,
       ),
-    ...note.mediaIds.map((mediaId) => mediaUpdate.bind(note.id, mediaId, note.accountId)),
+    ),
+    ...note.mediaIds.map((mediaId) =>
+      d1PrepareTyped(db, attachMediaToStatusSql(note.id, mediaId, note.accountId)),
+    ),
   ];
   const batched = await runD1Batch(db, statements);
   if (batched.isErr()) {
@@ -188,14 +194,16 @@ export const insertLocalReblog = async (
   reblog: LocalReblog,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(
-        `INSERT INTO statuses (
-          id, account_id, kind, reblog_of_id, content_text, visibility, created_at, updated_at
-        ) VALUES (?, ?, 'LocalReblog', ?, '', 'public', ?, ?)`,
-      )
-      .bind(reblog.id, reblog.accountId, reblog.reblogOfId, reblog.createdAt, reblog.createdAt)
-      .run();
+    await runTyped(
+      db,
+      insertLocalReblogSql(
+        reblog.id,
+        reblog.accountId,
+        reblog.reblogOfId,
+        reblog.createdAt,
+        reblog.createdAt,
+      ),
+    );
   });
 
 export const listPublicStatuses = async (
@@ -241,11 +249,8 @@ export const listAccountStatuses = async (
   limit: number,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(`SELECT ${statusSelect} FROM statuses WHERE account_id = ? ORDER BY id DESC LIMIT ?`)
-      .bind(accountId, limit)
-      .all();
-    return hydrateStatusRows(db, results ?? []);
+    const results = await queryTyped(db, listAccountStatusesSql(accountId, limit));
+    return hydrateStatusRows(db, results);
   });
 
 export const searchStatuses = async (
@@ -269,11 +274,8 @@ export const deleteStatus = async (
   accountId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const result = await db
-      .prepare(`DELETE FROM statuses WHERE id = ? AND account_id = ?`)
-      .bind(id, accountId)
-      .run();
-    return (result.meta.changes ?? 0) > 0;
+    const rows = await queryTyped<{ id: string | null }>(db, deleteStatusOwnedSql(id, accountId));
+    return rows.length > 0;
   });
 
 export const deleteReblogOf = async (
@@ -282,20 +284,13 @@ export const deleteReblogOf = async (
   reblogOfId: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(
-        `DELETE FROM statuses WHERE account_id = ? AND kind = 'LocalReblog' AND reblog_of_id = ?`,
-      )
-      .bind(accountId, reblogOfId)
-      .run();
+    await runTyped(db, deleteReblogOfSql(accountId, reblogOfId));
   });
 
 export const countStatuses = async (db: D1Database): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
-    const row = await db
-      .prepare(`SELECT COUNT(*) AS count FROM statuses`)
-      .first<{ count: number }>();
-    return row?.count ?? 0;
+    const rows = await queryTyped<{ count: number | bigint }>(db, countStatusesSql());
+    return Number(rows[0]?.count ?? 0);
   });
 
 export const hydrateStatusRows = async (

@@ -4,6 +4,14 @@
 // @ts-nocheck
 export * from "./sql/accountCounts";
 
+export * from "./sql/attachMediaToStatus";
+
+export * from "./sql/countRemoteAnnounces";
+
+export * from "./sql/countRemoteFavourites";
+
+export * from "./sql/countStatuses";
+
 export * from "./sql/createList";
 
 export * from "./sql/deleteBookmark";
@@ -18,7 +26,17 @@ export * from "./sql/deleteList";
 
 export * from "./sql/deleteListMember";
 
+export * from "./sql/deleteReblogOf";
+
+export * from "./sql/deleteRemoteAnnounce";
+
+export * from "./sql/deleteRemoteFavourite";
+
+export * from "./sql/deleteRemoteFollow";
+
 export * from "./sql/deleteStatusMentions";
+
+export * from "./sql/deleteStatusOwned";
 
 export * from "./sql/findAccountByEmail";
 
@@ -31,6 +49,28 @@ export * from "./sql/findFollowKind";
 export * from "./sql/findListForAccount";
 
 export * from "./sql/findMediaById";
+
+export * from "./sql/findOutboundActivity";
+
+export * from "./sql/findOutboxFanout";
+
+export * from "./sql/findOutboxTarget";
+
+export * from "./sql/findPollById";
+
+export * from "./sql/findPollByStatusId";
+
+export * from "./sql/findPollVoteTarget";
+
+export * from "./sql/findRemoteActorByPublicKeyId";
+
+export * from "./sql/findRemoteActorByUri";
+
+export * from "./sql/findRemoteStatusById";
+
+export * from "./sql/findRemoteStatusByObjectUri";
+
+export * from "./sql/findStatusById";
 
 export * from "./sql/getConversationRead";
 
@@ -50,15 +90,37 @@ export * from "./sql/insertInboxActivity";
 
 export * from "./sql/insertListMember";
 
+export * from "./sql/insertLocalNote";
+
+export * from "./sql/insertLocalReblog";
+
 export * from "./sql/insertMedia";
 
 export * from "./sql/insertNotification";
+
+export * from "./sql/insertOutboundActivity";
+
+export * from "./sql/insertOutboxDeliveryFanout";
+
+export * from "./sql/insertOutboxTargetOrIgnore";
+
+export * from "./sql/insertPoll";
+
+export * from "./sql/insertPollVoteOrIgnore";
 
 export * from "./sql/insertReport";
 
 export * from "./sql/insertStatusMention";
 
 export * from "./sql/isAccountMentionedOnStatus";
+
+export * from "./sql/listAcceptedRemoteFollowerInboxes";
+
+export * from "./sql/listAcceptedRemoteFollowerUris";
+
+export * from "./sql/listAccountStatuses";
+
+export * from "./sql/listExpiredUnnotifiedPolls";
 
 export * from "./sql/listFilters";
 
@@ -68,12 +130,42 @@ export * from "./sql/listListsContainingAccount";
 
 export * from "./sql/listListsForAccount";
 
+export * from "./sql/listMediaIdsForStatus";
+
 export * from "./sql/listMentionedAccountIds";
 
 export * from "./sql/listNotifications";
 
+export * from "./sql/listOutboundActivities";
+
+export * from "./sql/listPeerDomains";
+
+export * from "./sql/listPollVotesForAccount";
+
+export * from "./sql/listPublicRemoteStatuses";
+
+export * from "./sql/markPollExpiryNotified";
+
 export * from "./sql/updateList";
+
+export * from "./sql/updateOutboxFanout";
+
+export * from "./sql/updateOutboxTarget";
+
+export * from "./sql/updatePollOptionsIfActive";
+
+export * from "./sql/updateStatusPollId";
 
 export * from "./sql/upsertConversationRead";
 
 export * from "./sql/upsertMarker";
+
+export * from "./sql/upsertRemoteActor";
+
+export * from "./sql/upsertRemoteAnnounce";
+
+export * from "./sql/upsertRemoteFavourite";
+
+export * from "./sql/upsertRemoteFollow";
+
+export * from "./sql/upsertRemoteStatus";

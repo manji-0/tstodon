@@ -15,6 +15,18 @@ import {
   OutboxDeliveryRowSchema,
   toRepositoryError,
 } from "./schemas";
+import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
+import {
+  findOutboundActivity as findOutboundActivitySql,
+  findOutboxFanout as findOutboxFanoutSql,
+  findOutboxTarget as findOutboxTargetSql,
+  insertOutboundActivity as insertOutboundActivitySql,
+  insertOutboxDeliveryFanout as insertOutboxDeliveryFanoutSql,
+  insertOutboxTargetOrIgnore as insertOutboxTargetOrIgnoreSql,
+  listOutboundActivities as listOutboundActivitiesSql,
+  updateOutboxFanout as updateOutboxFanoutSql,
+  updateOutboxTarget as updateOutboxTargetSql,
+} from "./generated/prisma/sql";
 
 export type OutboundActivityRow = z.infer<typeof OutboundActivityRowSchema>;
 
@@ -109,18 +121,21 @@ export const insertOutboundActivity = async (
   const payloadJson = JSON.stringify(input.payload);
   const queued = OutboxDelivery.queued();
   const batched = await runD1Batch(db, [
-    db
-      .prepare(
-        `INSERT INTO outbound_activities (id, account_id, kind, payload_json, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .bind(id, input.accountId, input.kind, payloadJson, createdAt),
-    db
-      .prepare(
-        `INSERT INTO outbox_deliveries (id, activity_id, kind, attempt_count, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(newEntityId(), id, queued.kind, queued.attemptCount, createdAt, createdAt),
+    d1PrepareTyped(
+      db,
+      insertOutboundActivitySql(id, input.accountId, input.kind, payloadJson, createdAt),
+    ),
+    d1PrepareTyped(
+      db,
+      insertOutboxDeliveryFanoutSql(
+        newEntityId(),
+        id,
+        queued.kind,
+        queued.attemptCount,
+        createdAt,
+        createdAt,
+      ),
+    ),
   ]);
   if (batched.isErr()) {
     return err(batched.error);
@@ -138,21 +153,17 @@ export const findOutboundActivity = async (
   db: D1Database,
   id: string,
 ): Promise<Result<OutboundActivityRow | undefined, RepositoryError>> => {
-  const queried = await runD1(() =>
-    db
-      .prepare(
-        `SELECT id, account_id, kind, payload_json, created_at FROM outbound_activities WHERE id = ?`,
-      )
-      .bind(id)
-      .first(),
-  );
+  const queried = await runD1(async () => {
+    return queryTyped(db, findOutboundActivitySql(id));
+  });
   if (queried.isErr()) {
     return err(queried.error);
   }
-  if (!queried.value) {
+  const raw = queried.value[0];
+  if (!raw) {
     return ok(undefined);
   }
-  const row = parseRow(OutboundActivityRowSchema, queried.value);
+  const row = parseRow(OutboundActivityRowSchema, raw);
   if (row.isErr()) {
     return err(toRepositoryError("invalid outbound activity row"));
   }
@@ -165,14 +176,8 @@ export const listOutboundActivities = async (
   limit: number,
 ): Promise<Result<OutboundActivityRow[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT id, account_id, kind, payload_json, created_at
-         FROM outbound_activities WHERE account_id = ? ORDER BY id DESC LIMIT ?`,
-      )
-      .bind(accountId, limit)
-      .all();
-    return (results ?? []).flatMap((raw) => {
+    const results = await queryTyped(db, listOutboundActivitiesSql(accountId, limit));
+    return results.flatMap((raw) => {
       const row = parseRow(OutboundActivityRowSchema, raw);
       return row.isOk() ? [row.value] : [];
     });
@@ -190,21 +195,17 @@ export const markOutboundExpanded = async (
   return runD1(async () => {
     const next = OutboxDelivery.afterExpand(followerTargetCount);
     const columns = persistColumns(next);
-    await db
-      .prepare(
-        `UPDATE outbox_deliveries
-         SET kind = ?, reason_kind = ?, attempt_count = ?, http_status = ?, updated_at = ?
-         WHERE activity_id = ? AND inbox_url IS NULL`,
-      )
-      .bind(
+    await runTyped(
+      db,
+      updateOutboxFanoutSql(
         columns.kind,
         columns.reasonKind,
         columns.attemptCount,
         columns.httpStatus,
         nowIso(),
         activityId,
-      )
-      .run();
+      ),
+    );
   });
 };
 
@@ -220,13 +221,9 @@ export const ensureOutboxTarget = async (
   const inserted = await runD1(async () => {
     const queued = OutboxDelivery.queued();
     const createdAt = nowIso();
-    await db
-      .prepare(
-        `INSERT OR IGNORE INTO outbox_deliveries
-         (id, activity_id, kind, attempt_count, inbox_url, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
+    await runTyped(
+      db,
+      insertOutboxTargetOrIgnoreSql(
         newEntityId(),
         activityId,
         queued.kind,
@@ -234,8 +231,8 @@ export const ensureOutboxTarget = async (
         inboxUrl,
         createdAt,
         createdAt,
-      )
-      .run();
+      ),
+    );
   });
   if (inserted.isErr()) {
     return err(inserted.error);
@@ -255,44 +252,34 @@ export const findOutboxTarget = async (
   activityId: string,
   inboxUrl: string,
 ): Promise<Result<OutboxDeliveryValue | undefined, RepositoryError>> => {
-  const queried = await runD1(() =>
-    db
-      .prepare(
-        `SELECT kind, reason_kind, attempt_count, http_status, inbox_url
-         FROM outbox_deliveries WHERE activity_id = ? AND inbox_url = ?`,
-      )
-      .bind(activityId, inboxUrl)
-      .first(),
-  );
+  const queried = await runD1(async () => {
+    return queryTyped(db, findOutboxTargetSql(activityId, inboxUrl));
+  });
   if (queried.isErr()) {
     return err(queried.error);
   }
-  if (!queried.value) {
+  const raw = queried.value[0];
+  if (!raw) {
     return ok(undefined);
   }
-  return parseOutboxDelivery(queried.value);
+  return parseOutboxDelivery(raw);
 };
 
 export const findOutboxFanout = async (
   db: D1Database,
   activityId: string,
 ): Promise<Result<OutboxDeliveryValue | undefined, RepositoryError>> => {
-  const queried = await runD1(() =>
-    db
-      .prepare(
-        `SELECT kind, reason_kind, attempt_count, http_status, inbox_url
-         FROM outbox_deliveries WHERE activity_id = ? AND inbox_url IS NULL`,
-      )
-      .bind(activityId)
-      .first(),
-  );
+  const queried = await runD1(async () => {
+    return queryTyped(db, findOutboxFanoutSql(activityId));
+  });
   if (queried.isErr()) {
     return err(queried.error);
   }
-  if (!queried.value) {
+  const raw = queried.value[0];
+  if (!raw) {
     return ok(undefined);
   }
-  return parseOutboxDelivery(queried.value);
+  return parseOutboxDelivery(raw);
 };
 
 export const persistOutboxTarget = async (
@@ -307,13 +294,9 @@ export const persistOutboxTarget = async (
   }
   return runD1(async () => {
     const columns = persistColumns(delivery);
-    await db
-      .prepare(
-        `UPDATE outbox_deliveries
-         SET kind = ?, reason_kind = ?, attempt_count = ?, http_status = ?, updated_at = ?
-         WHERE activity_id = ? AND inbox_url = ?`,
-      )
-      .bind(
+    await runTyped(
+      db,
+      updateOutboxTargetSql(
         columns.kind,
         columns.reasonKind,
         columns.attemptCount,
@@ -321,7 +304,7 @@ export const persistOutboxTarget = async (
         nowIso(),
         activityId,
         inboxUrl,
-      )
-      .run();
+      ),
+    );
   });
 };

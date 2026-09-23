@@ -6,12 +6,17 @@ import { nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
 import { RemoteStatusRowSchema, toRepositoryError } from "./schemas";
 import { visibilitySql } from "./sql-enums";
+import { queryTyped, runTyped } from "./typed-sql";
+import {
+  findRemoteStatusById as findRemoteStatusByIdSql,
+  findRemoteStatusByObjectUri as findRemoteStatusByObjectUriSql,
+  listPublicRemoteStatuses as listPublicRemoteStatusesSql,
+  upsertRemoteStatus as upsertRemoteStatusSql,
+} from "./generated/prisma/sql";
 
 export type RemoteStatusRow = z.infer<typeof RemoteStatusRowSchema>;
 
 const parseRemoteStatusRow = schemaResult(RemoteStatusRowSchema);
-
-const remoteStatusSelect = `id, actor_uri, object_uri, url, content_html, spoiler_text, visibility, sensitive, language, published_at`;
 
 const remoteStatusFromRow = (row: RemoteStatusRow): Result<RemoteStatus, RepositoryError> => {
   const id = StatusId.parse(row.id);
@@ -58,9 +63,10 @@ export const findRemoteStatusById = async (
   id: string,
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> =>
   readRemoteStatus(
-    await runD1(() =>
-      db.prepare(`SELECT ${remoteStatusSelect} FROM remote_statuses WHERE id = ?`).bind(id).first(),
-    ),
+    await runD1(async () => {
+      const rows = await queryTyped(db, findRemoteStatusByIdSql(id));
+      return rows[0];
+    }),
   );
 
 export const findRemoteStatusByObjectUri = async (
@@ -68,12 +74,10 @@ export const findRemoteStatusByObjectUri = async (
   objectUri: string,
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> =>
   readRemoteStatus(
-    await runD1(() =>
-      db
-        .prepare(`SELECT ${remoteStatusSelect} FROM remote_statuses WHERE object_uri = ?`)
-        .bind(objectUri)
-        .first(),
-    ),
+    await runD1(async () => {
+      const rows = await queryTyped(db, findRemoteStatusByObjectUriSql(objectUri));
+      return rows[0];
+    }),
   );
 
 export const upsertRemoteStatus = async (
@@ -88,23 +92,9 @@ export const upsertRemoteStatus = async (
     ? { ...status, id: existing.value.id, kind: "RemoteNote" as const }
     : status;
   const written = await runD1(async () => {
-    await db
-      .prepare(
-        `INSERT INTO remote_statuses (
-           id, actor_uri, object_uri, url, content_html, spoiler_text,
-           visibility, sensitive, language, published_at, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(object_uri) DO UPDATE SET
-           content_html = excluded.content_html,
-           spoiler_text = excluded.spoiler_text,
-           visibility = excluded.visibility,
-           sensitive = excluded.sensitive,
-           language = excluded.language,
-           published_at = excluded.published_at,
-           url = excluded.url,
-           updated_at = excluded.updated_at`,
-      )
-      .bind(
+    await runTyped(
+      db,
+      upsertRemoteStatusSql(
         persisted.id,
         persisted.actorUri,
         persisted.objectUri,
@@ -117,8 +107,8 @@ export const upsertRemoteStatus = async (
         persisted.publishedAt,
         nowIso(),
         nowIso(),
-      )
-      .run();
+      ),
+    );
     return persisted;
   });
   if (written.isErr()) {
@@ -132,16 +122,9 @@ export const listPublicRemoteStatuses = async (
   limit: number,
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT ${remoteStatusSelect} FROM remote_statuses
-         WHERE visibility = 'public'
-         ORDER BY published_at DESC LIMIT ?`,
-      )
-      .bind(limit)
-      .all();
+    const results = await queryTyped(db, listPublicRemoteStatusesSql(limit));
     const statuses: RemoteStatus[] = [];
-    for (const raw of results ?? []) {
+    for (const raw of results) {
       const row = parseRemoteStatusRow(raw);
       if (row.isErr()) {
         continue;

@@ -6,12 +6,21 @@ import { nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
 import { RemoteActorRowSchema, toRepositoryError } from "./schemas";
+import { queryTyped, runTyped } from "./typed-sql";
+import {
+  deleteRemoteFollow as deleteRemoteFollowSql,
+  findRemoteActorByPublicKeyId as findRemoteActorByPublicKeyIdSql,
+  findRemoteActorByUri as findRemoteActorByUriSql,
+  listAcceptedRemoteFollowerInboxes as listAcceptedRemoteFollowerInboxesSql,
+  listAcceptedRemoteFollowerUris as listAcceptedRemoteFollowerUrisSql,
+  listPeerDomains as listPeerDomainsSql,
+  upsertRemoteActor as upsertRemoteActorSql,
+  upsertRemoteFollow as upsertRemoteFollowSql,
+} from "./generated/prisma/sql";
 
 export type RemoteActorRow = z.infer<typeof RemoteActorRowSchema>;
 
 const parseRemoteActorRow = schemaResult(RemoteActorRowSchema);
-
-const remoteActorSelect = `actor_uri, username, domain, inbox_uri, shared_inbox_uri, public_key_id, public_key_pem, display_name, fetched_at`;
 
 const remoteActorFromRow = (row: RemoteActorRow): Result<RemoteActor, RepositoryError> => {
   const fetchedAt = IsoInstant.parse(row.fetched_at);
@@ -52,12 +61,10 @@ export const findRemoteActorByUri = async (
   actorUri: string,
 ): Promise<Result<RemoteActor | undefined, RepositoryError>> =>
   readRemoteActor(
-    await runD1(() =>
-      db
-        .prepare(`SELECT ${remoteActorSelect} FROM remote_actors WHERE actor_uri = ?`)
-        .bind(actorUri)
-        .first(),
-    ),
+    await runD1(async () => {
+      const rows = await queryTyped(db, findRemoteActorByUriSql(actorUri));
+      return rows[0];
+    }),
   );
 
 export const findRemoteActorByPublicKeyId = async (
@@ -65,12 +72,10 @@ export const findRemoteActorByPublicKeyId = async (
   publicKeyId: string,
 ): Promise<Result<RemoteActor | undefined, RepositoryError>> =>
   readRemoteActor(
-    await runD1(() =>
-      db
-        .prepare(`SELECT ${remoteActorSelect} FROM remote_actors WHERE public_key_id = ?`)
-        .bind(publicKeyId)
-        .first(),
-    ),
+    await runD1(async () => {
+      const rows = await queryTyped(db, findRemoteActorByPublicKeyIdSql(publicKeyId));
+      return rows[0];
+    }),
   );
 
 export const upsertRemoteActor = async (
@@ -78,24 +83,10 @@ export const upsertRemoteActor = async (
   actor: RemoteActor,
 ): Promise<Result<RemoteActor, RepositoryError>> => {
   const written = await runD1(async () => {
-    await db
-      .prepare(
-        `INSERT INTO remote_actors (
-           actor_uri, username, domain, inbox_uri, shared_inbox_uri,
-           public_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(actor_uri) DO UPDATE SET
-           username = excluded.username,
-           domain = excluded.domain,
-           inbox_uri = excluded.inbox_uri,
-           shared_inbox_uri = excluded.shared_inbox_uri,
-           public_key_id = excluded.public_key_id,
-           public_key_pem = excluded.public_key_pem,
-           display_name = excluded.display_name,
-           fetched_at = excluded.fetched_at,
-           updated_at = excluded.updated_at`,
-      )
-      .bind(
+    const now = nowIso();
+    await runTyped(
+      db,
+      upsertRemoteActorSql(
         actor.actorUri,
         actor.username,
         actor.domain,
@@ -105,10 +96,10 @@ export const upsertRemoteActor = async (
         actor.publicKeyPem,
         actor.displayName,
         actor.fetchedAt,
-        nowIso(),
-        nowIso(),
-      )
-      .run();
+        now,
+        now,
+      ),
+    );
     return actor;
   });
   if (written.isErr()) {
@@ -128,24 +119,17 @@ export const upsertRemoteFollow = async (
     return err(toRepositoryError("expected remote follower"));
   }
   return runD1(async () => {
-    await db
-      .prepare(
-        `INSERT INTO remote_follows (
-           id, remote_actor_uri, target_account_id, remote_request_kind, follow_kind, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(remote_actor_uri, target_account_id) DO UPDATE SET
-           remote_request_kind = excluded.remote_request_kind,
-           follow_kind = excluded.follow_kind`,
-      )
-      .bind(
+    await runTyped(
+      db,
+      upsertRemoteFollowSql(
         newEntityId(),
         remoteActorUri,
         targetAccountId,
         state.remoteRequest.kind,
         state.follow.kind,
         nowIso(),
-      )
-      .run();
+      ),
+    );
   });
 };
 
@@ -155,10 +139,7 @@ export const deleteRemoteFollow = async (
   targetAccountId: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(`DELETE FROM remote_follows WHERE remote_actor_uri = ? AND target_account_id = ?`)
-      .bind(remoteActorUri, targetAccountId)
-      .run();
+    await runTyped(db, deleteRemoteFollowSql(remoteActorUri, targetAccountId));
   });
 
 export const listAcceptedRemoteFollowerInboxes = async (
@@ -166,17 +147,12 @@ export const listAcceptedRemoteFollowerInboxes = async (
   targetAccountId: string,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT a.inbox_uri, a.shared_inbox_uri
-         FROM remote_follows f
-         JOIN remote_actors a ON a.actor_uri = f.remote_actor_uri
-         WHERE f.target_account_id = ? AND f.follow_kind = 'Accepted'`,
-      )
-      .bind(targetAccountId)
-      .all<{ inbox_uri: string; shared_inbox_uri: string | null }>();
+    const results = await queryTyped<{ inbox_uri: string; shared_inbox_uri: string | null }>(
+      db,
+      listAcceptedRemoteFollowerInboxesSql(targetAccountId),
+    );
     const inboxes = new Set<string>();
-    for (const row of results ?? []) {
+    for (const row of results) {
       inboxes.add(row.shared_inbox_uri ?? row.inbox_uri);
     }
     return [...inboxes];
@@ -188,25 +164,15 @@ export const listAcceptedRemoteFollowerUris = async (
   limit: number,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT remote_actor_uri FROM remote_follows
-         WHERE target_account_id = ? AND follow_kind = 'Accepted'
-         ORDER BY created_at DESC LIMIT ?`,
-      )
-      .bind(targetAccountId, limit)
-      .all<{ remote_actor_uri: string }>();
-    return (results ?? []).map((row) => row.remote_actor_uri);
+    const results = await queryTyped<{ remote_actor_uri: string }>(
+      db,
+      listAcceptedRemoteFollowerUrisSql(targetAccountId, limit),
+    );
+    return results.map((row) => row.remote_actor_uri);
   });
 
 export const listPeerDomains = async (db: D1Database): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT DISTINCT domain FROM remote_actors
-         WHERE domain IS NOT NULL AND domain != ''
-         ORDER BY domain ASC`,
-      )
-      .all<{ domain: string }>();
-    return (results ?? []).map((row) => row.domain);
+    const results = await queryTyped<{ domain: string }>(db, listPeerDomainsSql());
+    return results.map((row) => row.domain);
   });

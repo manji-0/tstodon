@@ -12,6 +12,19 @@ import {
   PollRowSchema,
   toRepositoryError,
 } from "./schemas";
+import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
+import {
+  findPollById as findPollByIdSql,
+  findPollByStatusId as findPollByStatusIdSql,
+  findPollVoteTarget as findPollVoteTargetSql,
+  insertPoll as insertPollSql,
+  insertPollVoteOrIgnore as insertPollVoteOrIgnoreSql,
+  listExpiredUnnotifiedPolls as listExpiredUnnotifiedPollsSql,
+  listPollVotesForAccount as listPollVotesForAccountSql,
+  markPollExpiryNotified as markPollExpiryNotifiedSql,
+  updatePollOptionsIfActive as updatePollOptionsIfActiveSql,
+  updateStatusPollId as updateStatusPollIdSql,
+} from "./generated/prisma/sql";
 
 export const PollVoteTargetRowSchema = z.object({
   options_json: z.string().min(1),
@@ -44,19 +57,17 @@ export const insertPoll = async (
 ): Promise<Result<string, RepositoryError>> => {
   const id = newEntityId();
   const batched = await runD1Batch(db, [
-    db
-      .prepare(
-        `INSERT INTO polls (id, status_id, multiple, expires_at, options_json)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .bind(
+    d1PrepareTyped(
+      db,
+      insertPollSql(
         id,
         input.statusId,
         input.multiple ? 1 : 0,
         input.expiresAt,
         JSON.stringify(input.options.map((title) => ({ title, votesCount: 0 }))),
       ),
-    db.prepare(`UPDATE statuses SET poll_id = ? WHERE id = ?`).bind(id, input.statusId),
+    ),
+    d1PrepareTyped(db, updateStatusPollIdSql(id, input.statusId)),
   ]);
   if (batched.isErr()) {
     return err(batched.error);
@@ -74,13 +85,10 @@ const pollFromRow = async (
     return err(options.error);
   }
   const votes = viewerId
-    ? await runD1(() =>
-        db
-          .prepare(`SELECT option_index FROM poll_votes WHERE poll_id = ? AND account_id = ?`)
-          .bind(row.id, viewerId)
-          .all<{ option_index: number }>(),
+    ? await runD1(async () =>
+        queryTyped<{ option_index: number }>(db, listPollVotesForAccountSql(row.id, viewerId)),
       )
-    : ok<{ results: { option_index: number }[] }>({ results: [] });
+    : ok<{ option_index: number }[]>([]);
   if (votes.isErr()) {
     return err(votes.error);
   }
@@ -90,7 +98,7 @@ const pollFromRow = async (
     multiple: row.multiple === 1,
     expiresAt: row.expires_at,
     options: options.value,
-    votedIndexes: (votes.value.results ?? []).map((vote) => vote.option_index),
+    votedIndexes: votes.value.map((vote) => vote.option_index),
   });
 };
 
@@ -121,14 +129,10 @@ export const findPollByStatusId = async (
   statusId: string,
   viewerId: string | undefined,
 ): Promise<Result<PollRecord | undefined, RepositoryError>> => {
-  const queried = await runD1(() =>
-    db
-      .prepare(
-        `SELECT id, status_id, multiple, expires_at, options_json FROM polls WHERE status_id = ?`,
-      )
-      .bind(statusId)
-      .first(),
-  );
+  const queried = await runD1(async () => {
+    const rows = await queryTyped(db, findPollByStatusIdSql(statusId));
+    return rows[0];
+  });
   return loadPoll(queried, db, viewerId);
 };
 
@@ -212,12 +216,10 @@ export const findPollById = async (
   pollId: string,
   viewerId: string | undefined,
 ): Promise<Result<PollRecord | undefined, RepositoryError>> => {
-  const queried = await runD1(() =>
-    db
-      .prepare(`SELECT id, status_id, multiple, expires_at, options_json FROM polls WHERE id = ?`)
-      .bind(pollId)
-      .first(),
-  );
+  const queried = await runD1(async () => {
+    const rows = await queryTyped(db, findPollByIdSql(pollId));
+    return rows[0];
+  });
   return loadPoll(queried, db, viewerId);
 };
 
@@ -227,16 +229,17 @@ export const votePoll = async (
   accountId: string,
   choices: ReadonlyArray<number>,
 ): Promise<Result<void, RepositoryError>> => {
-  const queried = await runD1(() =>
-    db.prepare(`SELECT options_json, expires_at FROM polls WHERE id = ?`).bind(pollId).first(),
-  );
+  const queried = await runD1(async () => {
+    return queryTyped(db, findPollVoteTargetSql(pollId));
+  });
   if (queried.isErr()) {
     return err(queried.error);
   }
-  if (!queried.value) {
+  const target = queried.value[0];
+  if (!target) {
     return err(toRepositoryError("poll not found"));
   }
-  const row = parseRow(PollVoteTargetRowSchema, queried.value);
+  const row = parseRow(PollVoteTargetRowSchema, target);
   if (row.isErr()) {
     return err(toRepositoryError("invalid poll row"));
   }
@@ -249,10 +252,6 @@ export const votePoll = async (
   }
   const next = options.value.map((option) => ({ ...option }));
   const now = nowIso();
-  const voteInsert = db.prepare(
-    `INSERT OR IGNORE INTO poll_votes (poll_id, account_id, option_index, created_at)
-     VALUES (?, ?, ?, ?)`,
-  );
   const statements: D1PreparedStatement[] = [];
   for (const choice of choices) {
     const option = next[choice];
@@ -260,12 +259,10 @@ export const votePoll = async (
       continue;
     }
     next[choice] = { title: option.title, votesCount: option.votesCount + 1 };
-    statements.push(voteInsert.bind(pollId, accountId, choice, now));
+    statements.push(d1PrepareTyped(db, insertPollVoteOrIgnoreSql(pollId, accountId, choice, now)));
   }
   statements.push(
-    db
-      .prepare(`UPDATE polls SET options_json = ? WHERE id = ? AND expires_at > ?`)
-      .bind(JSON.stringify(next), pollId, now),
+    d1PrepareTyped(db, updatePollOptionsIfActiveSql(JSON.stringify(next), pollId, now)),
   );
   const batched = await runD1Batch(db, statements);
   if (batched.isErr()) {
@@ -290,18 +287,8 @@ export const listExpiredUnnotifiedPolls = async (
   limit: number,
 ): Promise<Result<ExpiredPollTarget[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT p.id, p.status_id, s.account_id
-         FROM polls p
-         JOIN statuses s ON s.id = p.status_id
-         WHERE p.expires_at <= ? AND p.expiry_notified_at IS NULL
-         ORDER BY p.expires_at ASC
-         LIMIT ?`,
-      )
-      .bind(now, limit)
-      .all();
-    return (results ?? []).flatMap((raw) => {
+    const results = await queryTyped(db, listExpiredUnnotifiedPollsSql(now, limit));
+    return results.flatMap((raw) => {
       const row = parseRow(ExpiredPollTargetRowSchema, raw);
       return row.isOk()
         ? [
@@ -321,11 +308,5 @@ export const markPollExpiryNotified = async (
   notifiedAt: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(
-        `UPDATE polls SET expiry_notified_at = ?
-         WHERE id = ? AND expiry_notified_at IS NULL`,
-      )
-      .bind(notifiedAt, pollId)
-      .run();
+    await runTyped(db, markPollExpiryNotifiedSql(notifiedAt, pollId));
   });
