@@ -23,15 +23,19 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@tstodon/core": "workspace:*",
+    "@tstodon/domain": "workspace:*",
     "@types/node": "^24.13.6",
     "jose": "^6.2.12",
+    "neverthrow": "^8.2.0",
     "oxfmt": "^0.70.0",
     "oxlint": "^1.85.0",
     "oxlint-tsgolint": "^7.0.2002",
     "tsx": "^4.23.15",
     "typescript": "~7.0.2",
     "vitest": "^4.1.11",
-    "wrangler": "^4.135.0"
+    "wrangler": "^4.135.0",
+    "zod": "^4.6.5"
   },
   "engines": {
     "node": ">=24"

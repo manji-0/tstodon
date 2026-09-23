@@ -6,11 +6,12 @@ import {
   B_DOMAIN,
   authHeaders,
   fail,
-  getJson,
-  isRecord,
-  requireUsername,
+  fetchApPerson,
+  fetchMastodonAccount,
+  getJsonParsed,
   waitOk,
 } from "./lib.js";
+import { ApPerson, WebFinger } from "./schemas.js";
 
 const main = async (): Promise<void> => {
   await waitOk(`${A}/.well-known/nodeinfo`, "instance A");
@@ -19,77 +20,49 @@ const main = async (): Promise<void> => {
   const aliceHeaders = await authHeaders("alice@e2e.example");
   const bobHeaders = await authHeaders("bob@e2e.example");
 
-  const alice = await getJson(`${A}/api/v1/accounts/verify_credentials`, {
-    headers: aliceHeaders,
-  });
-  if (alice.status !== 200) {
-    return fail("provision alice on A", alice);
-  }
-  const bob = await getJson(`${B}/api/v1/accounts/verify_credentials`, {
-    headers: bobHeaders,
-  });
-  if (bob.status !== 200) {
-    return fail("provision bob on B", bob);
-  }
-  const aliceUsername = requireUsername(alice.body, "provision alice body");
-  const bobUsername = requireUsername(bob.body, "provision bob body");
-  console.log(`ok provisioned @${aliceUsername} on A, @${bobUsername} on B`);
+  const alice = await fetchMastodonAccount(A, aliceHeaders, "provision alice on A");
+  const bob = await fetchMastodonAccount(B, bobHeaders, "provision bob on B");
+  console.log(`ok provisioned @${alice.username} on A, @${bob.username} on B`);
 
-  const wfA = await getJson(
-    `${A}/.well-known/webfinger?resource=${encodeURIComponent(`acct:${aliceUsername}@${A_DOMAIN}`)}`,
+  const wfA = await getJsonParsed(
+    `${A}/.well-known/webfinger?resource=${encodeURIComponent(`acct:${alice.username}@${A_DOMAIN}`)}`,
+    WebFinger.parse,
+    "webfinger A",
   );
-  if (wfA.status !== 200 || !isRecord(wfA.body) || !Array.isArray(wfA.body.links)) {
+  if (wfA.status !== 200) {
     return fail("webfinger A", wfA);
   }
-  const wfALinks = wfA.body.links;
-  const wfASelf = wfALinks.find(
-    (l: unknown): l is { rel: string; href: string } =>
-      isRecord(l) && l.rel === "self" && typeof l.href === "string",
-  );
-  if (!wfASelf) {
-    return fail("webfinger A", wfA);
+  const actorAHref = WebFinger.selfHref(wfA.body);
+  if (!actorAHref) {
+    return fail("webfinger A self link", wfA.body);
   }
-  const wfB = await getJson(
-    `${B}/.well-known/webfinger?resource=${encodeURIComponent(`acct:${bobUsername}@${B_DOMAIN}`)}`,
+
+  const wfB = await getJsonParsed(
+    `${B}/.well-known/webfinger?resource=${encodeURIComponent(`acct:${bob.username}@${B_DOMAIN}`)}`,
+    WebFinger.parse,
+    "webfinger B",
   );
-  if (wfB.status !== 200 || !isRecord(wfB.body) || !Array.isArray(wfB.body.links)) {
+  if (wfB.status !== 200) {
     return fail("webfinger B", wfB);
   }
-  const wfBLinks = wfB.body.links;
-  const wfBSelf = wfBLinks.find(
-    (l: unknown): l is { rel: string; href: string } =>
-      isRecord(l) && l.rel === "self" && typeof l.href === "string",
-  );
-  if (!wfBSelf) {
-    return fail("webfinger B", wfB);
+  const actorBHref = WebFinger.selfHref(wfB.body);
+  if (!actorBHref) {
+    return fail("webfinger B self link", wfB.body);
   }
   console.log("ok webfinger A/B");
 
-  const actorAHref = wfASelf.href;
-  const actorBHref = wfBSelf.href;
   if (!actorAHref.startsWith(A) || !actorBHref.startsWith(B)) {
     return fail("actor href origins", { actorAHref, actorBHref, A, B });
   }
 
-  const actorA = await getJson(actorAHref, {
-    headers: { Accept: "application/activity+json" },
-  });
-  const actorB = await getJson(actorBHref, {
-    headers: { Accept: "application/activity+json" },
-  });
-  if (actorA.status !== 200 || !isRecord(actorA.body) || actorA.body.type !== "Person") {
-    return fail("actor document A", actorA);
-  }
-  const actorAId = actorA.body.id;
-  if (actorB.status !== 200 || !isRecord(actorB.body) || actorB.body.type !== "Person") {
-    return fail("actor document B", actorB);
-  }
+  const actorA = await fetchApPerson(actorAHref, "actor document A");
+  await fetchApPerson(actorBHref, "actor document B");
   console.log("ok actor documents");
 
-  const cross = await getJson(actorAHref, {
+  const cross = await getJsonParsed(actorAHref, ApPerson.parse, "cross-instance actor fetch", {
     headers: { Accept: "application/activity+json" },
   });
-  if (cross.status !== 200 || !isRecord(cross.body) || cross.body.id !== actorAId) {
+  if (cross.status !== 200 || cross.body.id !== actorA.id) {
     return fail("cross-instance actor fetch", cross);
   }
   console.log("ok cross-instance actor fetch");

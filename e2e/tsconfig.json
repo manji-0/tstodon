@@ -5,7 +5,8 @@
     "outDir": "dist",
     "rootDir": ".",
     "types": ["node"],
-    "lib": ["ES2025"]
+    "lib": ["ES2025", "DOM"]
   },
-  "include": ["*.ts"]
+  "include": ["*.ts"],
+  "references": [{ "path": "../packages/core" }, { "path": "../packages/domain" }]
 }
