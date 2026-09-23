@@ -71,6 +71,7 @@ export const resolveRemoteActor = async (
   identity: InstanceIdentity,
   keyId: string,
   actorUri: string,
+  options: Readonly<{ allowHosts?: ReadonlySet<string> }> = {},
 ): Promise<Result<RemoteActor, RemoteActorResolveError>> => {
   const byKey = await findRemoteActorByPublicKeyId(db, keyId);
   if (byKey.isErr()) {
@@ -86,7 +87,7 @@ export const resolveRemoteActor = async (
   if (byUri.value && byUri.value.publicKeyId === keyId) {
     return ok(byUri.value);
   }
-  const fetched = await fetchActivityJson(identity, keyId);
+  const fetched = await fetchActivityJson(identity, keyId, options);
   if (fetched.isErr()) {
     return err(fetched.error);
   }

@@ -36,6 +36,8 @@ pnpm dev
 
 Local routes that depend on D1, R2, or Access need matching local or remote bindings. Start with [Clone And Run](docs/getting-started/clone-and-run.md).
 
+Two-instance federation smoke (process-compose): [e2e federation](docs/getting-started/e2e-federation.md).
+
 ## Documentation
 
 <!-- derived-from ./docs/architecture/tstodon-architecture.md -->
@@ -57,8 +59,13 @@ Before opening a change, run:
 pnpm run ci
 ```
 
+Federation local e2e (two Workers via process-compose): see [docs/getting-started/e2e-federation.md](docs/getting-started/e2e-federation.md).
+
+```
+
 Use conventional commit messages.
 
 ## License
 
 AGPL-3.0-or-later.
+```

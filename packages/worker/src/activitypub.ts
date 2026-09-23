@@ -26,11 +26,16 @@ export const actorDocument = (
   };
 };
 
+const usersPrefix = (identity: InstanceIdentity): string => {
+  const sample = InstanceIdentity.actorUrl(identity, "_");
+  return sample.slice(0, sample.lastIndexOf("/") + 1);
+};
+
 export const parseLocalActorUsername = (
   identity: InstanceIdentity,
   value: string,
 ): string | undefined => {
-  const actorPrefix = `https://${identity.domain}/users/`;
+  const actorPrefix = usersPrefix(identity);
   if (!value.startsWith(actorPrefix)) {
     return undefined;
   }
@@ -43,7 +48,7 @@ export const parseLocalStatusId = (
   identity: InstanceIdentity,
   value: string,
 ): string | undefined => {
-  const actorPrefix = `https://${identity.domain}/users/`;
+  const actorPrefix = usersPrefix(identity);
   if (!value.startsWith(actorPrefix)) {
     return undefined;
   }

@@ -51,7 +51,7 @@ discoveryRoutes.get("/.well-known/nodeinfo", (c) => {
     links: [
       {
         rel: "http://nodeinfo.diaspora.software/ns/schema/2.0",
-        href: `https://${identity.value.domain}/nodeinfo/2.0`,
+        href: `${identity.value.publicOrigin.replace(/\/$/, "")}/nodeinfo/2.0`,
       },
     ],
   });

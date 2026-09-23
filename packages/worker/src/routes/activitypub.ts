@@ -34,7 +34,7 @@ import {
   upsertRemoteAnnounce,
   upsertRemoteFavourite,
 } from "../remote-interaction-store";
-import { parseInstanceIdentity } from "../runtime-config";
+import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import {
   ActivityJsonSchema,
   JsonObjectSchema,
@@ -260,7 +260,9 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     }
     signer = { kind: "Local", account: actorAccount.value };
   } else {
-    const remote = await resolveRemoteActor(c.env.DB, identity.value, signature.keyId, actorUri);
+    const remote = await resolveRemoteActor(c.env.DB, identity.value, signature.keyId, actorUri, {
+      allowHosts: federationAllowHosts(c.env),
+    });
     if (remote.isErr()) {
       if (remote.error.kind === "VerificationUnavailable") {
         c.header("Retry-After", "5");
@@ -357,7 +359,9 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       }
     }
     if (activity.kind === "Create" || activity.kind === "Announce") {
-      await persistRemoteObject(c.env.DB, identity.value, signer.actor, activityJson.value.object);
+      await persistRemoteObject(c.env.DB, identity.value, signer.actor, activityJson.value.object, {
+        allowHosts: federationAllowHosts(c.env),
+      });
       if (activity.kind === "Announce") {
         const statusId = parseLocalStatusId(identity.value, activity.object);
         if (statusId) {

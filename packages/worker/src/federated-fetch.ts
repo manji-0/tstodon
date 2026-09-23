@@ -5,9 +5,16 @@ export type FederatedFetchError =
   | Readonly<{ kind: "InvalidSignature" }>
   | Readonly<{ kind: "VerificationUnavailable" }>;
 
-export const isBlockedFederatedHost = (hostname: string, instanceDomain: string): boolean => {
+export const isBlockedFederatedHost = (
+  hostname: string,
+  instanceDomain: string,
+  allowHosts: ReadonlySet<string> = new Set(),
+): boolean => {
   const host = hostname.toLowerCase();
-  if (host === instanceDomain) {
+  if (allowHosts.has(host)) {
+    return false;
+  }
+  if (host === instanceDomain.toLowerCase()) {
     return true;
   }
   if (
@@ -49,12 +56,13 @@ export const parseFederatedUrl = (value: string): Result<URL, FederatedFetchErro
 export const fetchActivityJson = async (
   identity: InstanceIdentity,
   href: string,
+  options: Readonly<{ allowHosts?: ReadonlySet<string> }> = {},
 ): Promise<Result<unknown, FederatedFetchError>> => {
   const url = parseFederatedUrl(href);
   if (url.isErr()) {
     return err(url.error);
   }
-  if (isBlockedFederatedHost(url.value.hostname, identity.domain)) {
+  if (isBlockedFederatedHost(url.value.hostname, identity.domain, options.allowHosts)) {
     return err({ kind: "InvalidSignature" });
   }
   try {
@@ -63,7 +71,7 @@ export const fetchActivityJson = async (
       headers: {
         Accept:
           'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
-        "User-Agent": `tstodon (https://${identity.domain})`,
+        "User-Agent": `tstodon (${identity.publicOrigin})`,
       },
       redirect: "error",
       signal: AbortSignal.timeout(5000),

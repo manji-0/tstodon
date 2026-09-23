@@ -61,6 +61,7 @@ export const persistRemoteObject = async (
   identity: InstanceIdentity,
   actor: RemoteActor,
   object: string | Readonly<{ id: string }>,
+  options: Readonly<{ allowHosts?: ReadonlySet<string> }> = {},
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
   const objectUri = typeof object === "string" ? object : object.id;
   if (parseLocalStatusId(identity, objectUri)) {
@@ -73,7 +74,8 @@ export const persistRemoteObject = async (
   if (cached.value) {
     return ok(cached.value);
   }
-  const raw = typeof object === "string" ? await fetchActivityJson(identity, object) : ok(object);
+  const raw =
+    typeof object === "string" ? await fetchActivityJson(identity, object, options) : ok(object);
   if (raw.isErr()) {
     return ok(undefined);
   }

@@ -1,0 +1,50 @@
+version: "0.5"
+
+processes:
+  tstodon-a:
+    command: >
+      pnpm exec wrangler dev
+      -c e2e/instances/a.wrangler.jsonc
+      --port 8791
+      --ip 127.0.0.1
+      --local
+      --persist-to .wrangler/e2e-a
+    availability:
+      restart: "always"
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 8791
+        path: "/.well-known/nodeinfo"
+      initial_delay_seconds: 2
+      period_seconds: 2
+      failure_threshold: 30
+
+  tstodon-b:
+    command: >
+      pnpm exec wrangler dev
+      -c e2e/instances/b.wrangler.jsonc
+      --port 8792
+      --ip 127.0.0.1
+      --local
+      --persist-to .wrangler/e2e-b
+    availability:
+      restart: "always"
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 8792
+        path: "/.well-known/nodeinfo"
+      initial_delay_seconds: 2
+      period_seconds: 2
+      failure_threshold: 30
+
+  e2e-federation-smoke:
+    command: node e2e/federation-smoke.mjs
+    depends_on:
+      tstodon-a:
+        condition: process_healthy
+      tstodon-b:
+        condition: process_healthy
+    availability:
+      restart: "no"

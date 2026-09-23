@@ -1,7 +1,8 @@
+// e2e instance tstodon-e2e-a — local origin http://127.0.0.1:8791 (port 8791)
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "tstodon",
-  "main": "packages/worker/src/index.ts",
+  "name": "tstodon-e2e-a",
+  "main": "../../packages/worker/src/index.ts",
   "compatibility_date": "2026-09-20",
   "compatibility_flags": ["nodejs_compat"],
   "placement": {
@@ -19,7 +20,7 @@
     },
   },
   "assets": {
-    "directory": "./assets",
+    "directory": "../../assets",
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "none",
@@ -29,16 +30,16 @@
     "crons": ["17 * * * *", "17 */6 * * *"],
   },
   "vars": {
-    "INSTANCE_DOMAIN": "example.com",
-    "INSTANCE_PUBLIC_ORIGIN": "https://example.com",
-    "FEDERATION_ALLOW_HOSTS": "",
-    "INSTANCE_NAME": "tstodon",
+    "INSTANCE_DOMAIN": "127.0.0.1:8791",
+    "INSTANCE_PUBLIC_ORIGIN": "http://127.0.0.1:8791",
+    "FEDERATION_ALLOW_HOSTS": "127.0.0.1",
+    "INSTANCE_NAME": "tstodon-e2e-a",
     "INSTANCE_DESCRIPTION": "Cloudflare Workers + D1 + R2 + Queues based Mastodon-compatible server",
     "SOURCE_URL": "https://github.com/YOUR_ORG/tstodon",
     "INSTANCE_LANGUAGES": "ja,en",
     "CONTACT_EMAIL": "admin@example.com",
-    "INSTANCE_THUMBNAIL_URL": "https://media.example.com/site/thumbnail.png",
-    "MEDIA_PUBLIC_BASE_URL": "https://media.example.com",
+    "INSTANCE_THUMBNAIL_URL": "http://127.0.0.1:8791/site/thumbnail.png",
+    "MEDIA_PUBLIC_BASE_URL": "http://127.0.0.1:8791",
     "EMAIL_FROM": "tstodon <noreply@example.com>",
     "CF_ACCESS_TEAM_DOMAIN": "https://tstodon.cloudflareaccess.com",
     "CF_ACCESS_AUD": "tstodon-local-aud",
@@ -50,37 +51,37 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "tstodon",
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "./migrations",
+      "database_name": "tstodon-e2e-a",
+      "database_id": "00000000-0000-0000-0000-0000000000a1",
+      "migrations_dir": "../../migrations",
     },
   ],
   "r2_buckets": [
     {
       "binding": "MEDIA",
-      "bucket_name": "tstodon-media",
+      "bucket_name": "tstodon-e2e-a-media",
     },
   ],
   "kv_namespaces": [
     {
       "binding": "REMOTE_DNS_CACHE",
-      "id": "00000000000000000000000000000001",
+      "id": "000000000000000000000000000000a1",
     },
     {
       "binding": "APP_CACHE",
-      "id": "00000000000000000000000000000002",
+      "id": "000000000000000000000000000000a2",
     },
   ],
   "queues": {
     "producers": [
       {
         "binding": "OUTBOX_PROCESS_QUEUE",
-        "queue": "tstodon-outbox-process",
+        "queue": "tstodon-e2e-a-outbox",
       },
     ],
     "consumers": [
       {
-        "queue": "tstodon-outbox-process",
+        "queue": "tstodon-e2e-a-outbox",
         "max_batch_size": 10,
         "max_batch_timeout": 0,
         "max_retries": 3,
@@ -106,7 +107,7 @@
   "analytics_engine_datasets": [
     {
       "binding": "METRICS",
-      "dataset": "tstodon_metrics",
+      "dataset": "tstodon_e2e_a_metrics",
     },
   ],
   "images": {
