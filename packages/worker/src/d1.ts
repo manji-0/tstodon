@@ -8,12 +8,26 @@ export type RepositoryError = Readonly<{
 /** Soft cap for `db.batch` size — stay clear of statement/parameter platform limits. */
 export const D1_BATCH_CHUNK_SIZE = 100;
 
-/** Soft cap for `IN (...)` bind lists (platform max bound params is 100). */
-export const D1_IN_CHUNK_SIZE = 50;
+/**
+ * Cloudflare D1 (SQLite) rejects statements with more than 100 bound parameters.
+ * Prefer {@link sqlInJsonEach} for variable-length membership so bind count stays O(1)
+ * (same lesson as cfwdon: growing `IN (?,?,…)` lists 500 when N > 100).
+ */
+export const D1_MAX_BOUND_PARAMETERS = 100;
+
+/**
+ * SQL fragment `IN (SELECT value FROM json_each(?))` — one bind for any list size.
+ * Bind {@link jsonStringArray} as that single parameter.
+ */
+export const sqlInJsonEach = (): string => "IN (SELECT value FROM json_each(?))";
+
+/** JSON text array payload for {@link sqlInJsonEach}. */
+export const jsonStringArray = (values: ReadonlyArray<string>): string =>
+  JSON.stringify([...values]);
 
 export const chunkArray = <T>(
   items: ReadonlyArray<T>,
-  chunkSize: number = D1_IN_CHUNK_SIZE,
+  chunkSize: number = D1_BATCH_CHUNK_SIZE,
 ): T[][] => {
   if (items.length === 0) {
     return [];

@@ -11,7 +11,7 @@ import {
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
-import { chunkArray, runD1, runD1Batch, type RepositoryError } from "./d1";
+import { jsonStringArray, runD1, runD1Batch, sqlInJsonEach, type RepositoryError } from "./d1";
 import { parseRow, StatusRowSchema, toRepositoryError } from "./schemas";
 import { visibilitySql } from "./sql-enums";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
@@ -138,21 +138,18 @@ export const findStatusesByIds = async (
   if (unique.length === 0) {
     return ok(statuses);
   }
-  for (const chunk of chunkArray(unique)) {
-    const placeholders = chunk.map(() => "?").join(", ");
-    const queried = await runD1(() =>
-      db
-        .prepare(`SELECT ${statusSelect} FROM statuses WHERE id IN (${placeholders})`)
-        .bind(...chunk)
-        .all(),
-    );
-    if (queried.isErr()) {
-      return err(queried.error);
-    }
-    const hydrated = await hydrateStatusRows(db, queried.value.results ?? []);
-    for (const status of hydrated) {
-      statuses.set(status.id, status);
-    }
+  const queried = await runD1(() =>
+    db
+      .prepare(`SELECT ${statusSelect} FROM statuses WHERE id ${sqlInJsonEach()}`)
+      .bind(jsonStringArray(unique))
+      .all(),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  const hydrated = await hydrateStatusRows(db, queried.value.results ?? []);
+  for (const status of hydrated) {
+    statuses.set(status.id, status);
   }
   return ok(statuses);
 };
@@ -308,23 +305,18 @@ export const hydrateStatusRows = async (
     return [];
   }
   const mediaByStatus = new Map<string, MediaId[]>();
-  const chunkSize = 50;
-  for (let offset = 0; offset < statusRows.length; offset += chunkSize) {
-    const chunk = statusRows.slice(offset, offset + chunkSize);
-    const placeholders = chunk.map(() => "?").join(", ");
-    const { results } = await db
-      .prepare(`SELECT status_id, id FROM media_attachments WHERE status_id IN (${placeholders})`)
-      .bind(...chunk.map((row) => row.id))
-      .all<{ status_id: string; id: string }>();
-    for (const media of results ?? []) {
-      const parsed = MediaId.parse(media.id);
-      if (parsed.isErr()) {
-        continue;
-      }
-      const list = mediaByStatus.get(media.status_id) ?? [];
-      list.push(parsed.value);
-      mediaByStatus.set(media.status_id, list);
+  const { results } = await db
+    .prepare(`SELECT status_id, id FROM media_attachments WHERE status_id ${sqlInJsonEach()}`)
+    .bind(jsonStringArray(statusRows.map((row) => row.id)))
+    .all<{ status_id: string; id: string }>();
+  for (const media of results ?? []) {
+    const parsed = MediaId.parse(media.id);
+    if (parsed.isErr()) {
+      continue;
     }
+    const list = mediaByStatus.get(media.status_id) ?? [];
+    list.push(parsed.value);
+    mediaByStatus.set(media.status_id, list);
   }
   const statuses: LocalStatusValue[] = [];
   for (const row of statusRows) {

@@ -1,5 +1,5 @@
 import { err, ok, type Result } from "neverthrow";
-import { chunkArray, runD1, type RepositoryError } from "./d1";
+import { jsonStringArray, runD1, sqlInJsonEach, type RepositoryError } from "./d1";
 import { queryTyped, runTyped } from "./typed-sql";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
@@ -73,23 +73,20 @@ export const findMediaByIds = async (
   if (unique.length === 0) {
     return ok(media);
   }
-  for (const chunk of chunkArray(unique)) {
-    const placeholders = chunk.map(() => "?").join(", ");
-    const queried = await runD1(() =>
-      db
-        .prepare(
-          `SELECT id, account_id, status_id, object_key, content_type, created_at
-           FROM media_attachments WHERE id IN (${placeholders})`,
-        )
-        .bind(...chunk)
-        .all<MediaRow>(),
-    );
-    if (queried.isErr()) {
-      return err(queried.error);
-    }
-    for (const row of queried.value.results ?? []) {
-      media.set(row.id, row);
-    }
+  const queried = await runD1(() =>
+    db
+      .prepare(
+        `SELECT id, account_id, status_id, object_key, content_type, created_at
+         FROM media_attachments WHERE id ${sqlInJsonEach()}`,
+      )
+      .bind(jsonStringArray(unique))
+      .all<MediaRow>(),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  for (const row of queried.value.results ?? []) {
+    media.set(row.id, row);
   }
   return ok(media);
 };

@@ -2,7 +2,7 @@ import { warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { chunkArray, runD1, runD1Batch, type RepositoryError } from "./d1";
+import { jsonStringArray, runD1, runD1Batch, sqlInJsonEach, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
 import {
   ExpiredPollTargetRowSchema,
@@ -147,25 +147,22 @@ export const findPollsByStatusIds = async (
     return ok(polls);
   }
   const rows: PollRow[] = [];
-  for (const chunk of chunkArray(unique)) {
-    const placeholders = chunk.map(() => "?").join(", ");
-    const queried = await runD1(() =>
-      db
-        .prepare(
-          `SELECT id, status_id, multiple, expires_at, options_json
-           FROM polls WHERE status_id IN (${placeholders})`,
-        )
-        .bind(...chunk)
-        .all(),
-    );
-    if (queried.isErr()) {
-      return err(queried.error);
-    }
-    for (const raw of queried.value.results ?? []) {
-      const row = parseRow(PollRowSchema, raw);
-      if (row.isOk()) {
-        rows.push(row.value);
-      }
+  const queried = await runD1(() =>
+    db
+      .prepare(
+        `SELECT id, status_id, multiple, expires_at, options_json
+         FROM polls WHERE status_id ${sqlInJsonEach()}`,
+      )
+      .bind(jsonStringArray(unique))
+      .all(),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  for (const raw of queried.value.results ?? []) {
+    const row = parseRow(PollRowSchema, raw);
+    if (row.isOk()) {
+      rows.push(row.value);
     }
   }
   if (rows.length === 0) {
@@ -173,25 +170,23 @@ export const findPollsByStatusIds = async (
   }
   const votesByPoll = new Map<string, number[]>();
   if (viewerId) {
-    for (const chunk of chunkArray(rows.map((row) => row.id))) {
-      const placeholders = chunk.map(() => "?").join(", ");
-      const queried = await runD1(() =>
-        db
-          .prepare(
-            `SELECT poll_id, option_index FROM poll_votes
-             WHERE account_id = ? AND poll_id IN (${placeholders})`,
-          )
-          .bind(viewerId, ...chunk)
-          .all<{ poll_id: string; option_index: number }>(),
-      );
-      if (queried.isErr()) {
-        return err(queried.error);
-      }
-      for (const vote of queried.value.results ?? []) {
-        const list = votesByPoll.get(vote.poll_id) ?? [];
-        list.push(vote.option_index);
-        votesByPoll.set(vote.poll_id, list);
-      }
+    const pollIds = rows.map((row) => row.id);
+    const votesQueried = await runD1(() =>
+      db
+        .prepare(
+          `SELECT poll_id, option_index FROM poll_votes
+           WHERE account_id = ? AND poll_id ${sqlInJsonEach()}`,
+        )
+        .bind(viewerId, jsonStringArray(pollIds))
+        .all<{ poll_id: string; option_index: number }>(),
+    );
+    if (votesQueried.isErr()) {
+      return err(votesQueried.error);
+    }
+    for (const vote of votesQueried.value.results ?? []) {
+      const list = votesByPoll.get(vote.poll_id) ?? [];
+      list.push(vote.option_index);
+      votesByPoll.set(vote.poll_id, list);
     }
   }
   for (const row of rows) {

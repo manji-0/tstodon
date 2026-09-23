@@ -19,7 +19,20 @@
 
 ## Timeline / status document reads
 
-`mastodonStatuses` preloads a page of related rows (`findAccountsByIds`, `accountCountsByIds`, `statusInteractionCountsByIds`, `findPollsByStatusIds`, `findMediaByIds`, `findStatusesByIds`) instead of calling `mastodonStatus` once per item. Prefer `IN (...)` chunked with `D1_IN_CHUNK_SIZE` for homogeneous lookups; use `db.batch` when several aggregate shapes are needed for the same id set.
+`mastodonStatuses` preloads a page of related rows (`findAccountsByIds`, `accountCountsByIds`, `statusInteractionCountsByIds`, `findPollsByStatusIds`, `findMediaByIds`, `findStatusesByIds`) instead of calling `mastodonStatus` once per item. Use `db.batch` when several aggregate shapes are needed for the same id set.
+
+## Variable-length `IN` lists
+
+D1 rejects statements with more than **100** bound parameters. Do **not** build growing `IN (?,?,…)` lists (cfwdon hit this when N > 100 and returned opaque 500s).
+
+Use the cfwdon pattern from `packages/worker/src/d1.ts`:
+
+```ts
+`WHERE id ${sqlInJsonEach()}` // → IN (SELECT value FROM json_each(?))
+  .bind(jsonStringArray(ids)); // one bind, any list size
+```
+
+`sql_placeholders`-style fixed lists are fine only when N is known and ≤ 100.
 
 ## TypedSQL
 

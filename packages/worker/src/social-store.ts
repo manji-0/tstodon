@@ -1,6 +1,6 @@
 import { FollowRequest, LocalFollow } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { chunkArray, runD1, runD1Batch, type RepositoryError } from "./d1";
+import { jsonStringArray, runD1, runD1Batch, sqlInJsonEach, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
@@ -211,96 +211,95 @@ export const statusInteractionCountsByIds = async (
     counts.set(statusId, { ...current, ...patch });
   };
 
-  for (const chunk of chunkArray(unique)) {
-    const placeholders = chunk.map(() => "?").join(", ");
-    const statements: D1PreparedStatement[] = [
+  const idsJson = jsonStringArray(unique);
+  const inList = sqlInJsonEach();
+  const statements: D1PreparedStatement[] = [
+    db
+      .prepare(
+        `SELECT status_id, COUNT(*) AS count FROM favourites
+         WHERE status_id ${inList} GROUP BY status_id`,
+      )
+      .bind(idsJson),
+    db
+      .prepare(
+        `SELECT reblog_of_id AS status_id, COUNT(*) AS count FROM statuses
+         WHERE kind = 'LocalReblog' AND reblog_of_id ${inList}
+         GROUP BY reblog_of_id`,
+      )
+      .bind(idsJson),
+    db
+      .prepare(
+        `SELECT status_id, COUNT(*) AS count FROM remote_favourites
+         WHERE status_id ${inList} GROUP BY status_id`,
+      )
+      .bind(idsJson),
+    db
+      .prepare(
+        `SELECT status_id, COUNT(*) AS count FROM remote_announces
+         WHERE status_id ${inList} GROUP BY status_id`,
+      )
+      .bind(idsJson),
+  ];
+  if (viewerId) {
+    statements.push(
       db
         .prepare(
-          `SELECT status_id, COUNT(*) AS count FROM favourites
-           WHERE status_id IN (${placeholders}) GROUP BY status_id`,
+          `SELECT status_id FROM favourites
+           WHERE account_id = ? AND status_id ${inList}`,
         )
-        .bind(...chunk),
+        .bind(viewerId, idsJson),
       db
         .prepare(
-          `SELECT reblog_of_id AS status_id, COUNT(*) AS count FROM statuses
-           WHERE kind = 'LocalReblog' AND reblog_of_id IN (${placeholders})
-           GROUP BY reblog_of_id`,
+          `SELECT reblog_of_id AS status_id FROM statuses
+           WHERE kind = 'LocalReblog' AND account_id = ? AND reblog_of_id ${inList}`,
         )
-        .bind(...chunk),
+        .bind(viewerId, idsJson),
       db
         .prepare(
-          `SELECT status_id, COUNT(*) AS count FROM remote_favourites
-           WHERE status_id IN (${placeholders}) GROUP BY status_id`,
+          `SELECT status_id FROM bookmarks
+           WHERE account_id = ? AND status_id ${inList}`,
         )
-        .bind(...chunk),
-      db
-        .prepare(
-          `SELECT status_id, COUNT(*) AS count FROM remote_announces
-           WHERE status_id IN (${placeholders}) GROUP BY status_id`,
-        )
-        .bind(...chunk),
-    ];
-    if (viewerId) {
-      statements.push(
-        db
-          .prepare(
-            `SELECT status_id FROM favourites
-             WHERE account_id = ? AND status_id IN (${placeholders})`,
-          )
-          .bind(viewerId, ...chunk),
-        db
-          .prepare(
-            `SELECT reblog_of_id AS status_id FROM statuses
-             WHERE kind = 'LocalReblog' AND account_id = ? AND reblog_of_id IN (${placeholders})`,
-          )
-          .bind(viewerId, ...chunk),
-        db
-          .prepare(
-            `SELECT status_id FROM bookmarks
-             WHERE account_id = ? AND status_id IN (${placeholders})`,
-          )
-          .bind(viewerId, ...chunk),
-      );
-    }
-    const batched = await runD1Batch(db, statements);
-    if (batched.isErr()) {
-      return err(batched.error);
-    }
-    const countRows = (index: number): Array<{ status_id: string; count: number }> =>
-      (batched.value[index]?.results ?? []) as Array<{ status_id: string; count: number }>;
-    const idRows = (index: number): Array<{ status_id: string }> =>
-      (batched.value[index]?.results ?? []) as Array<{ status_id: string }>;
+        .bind(viewerId, idsJson),
+    );
+  }
+  const batched = await runD1Batch(db, statements);
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  const countRows = (index: number): Array<{ status_id: string; count: number }> =>
+    (batched.value[index]?.results ?? []) as Array<{ status_id: string; count: number }>;
+  const idRows = (index: number): Array<{ status_id: string }> =>
+    (batched.value[index]?.results ?? []) as Array<{ status_id: string }>;
 
-    for (const row of countRows(0)) {
-      bump(row.status_id, {
-        favourites: (counts.get(row.status_id)?.favourites ?? 0) + row.count,
-      });
+  for (const row of countRows(0)) {
+    bump(row.status_id, {
+      favourites: (counts.get(row.status_id)?.favourites ?? 0) + row.count,
+    });
+  }
+  for (const row of countRows(2)) {
+    bump(row.status_id, {
+      favourites: (counts.get(row.status_id)?.favourites ?? 0) + row.count,
+    });
+  }
+  for (const row of countRows(1)) {
+    bump(row.status_id, {
+      reblogs: (counts.get(row.status_id)?.reblogs ?? 0) + row.count,
+    });
+  }
+  for (const row of countRows(3)) {
+    bump(row.status_id, {
+      reblogs: (counts.get(row.status_id)?.reblogs ?? 0) + row.count,
+    });
+  }
+  if (viewerId) {
+    for (const row of idRows(4)) {
+      bump(row.status_id, { favourited: true });
     }
-    for (const row of countRows(2)) {
-      bump(row.status_id, {
-        favourites: (counts.get(row.status_id)?.favourites ?? 0) + row.count,
-      });
+    for (const row of idRows(5)) {
+      bump(row.status_id, { reblogged: true });
     }
-    for (const row of countRows(1)) {
-      bump(row.status_id, {
-        reblogs: (counts.get(row.status_id)?.reblogs ?? 0) + row.count,
-      });
-    }
-    for (const row of countRows(3)) {
-      bump(row.status_id, {
-        reblogs: (counts.get(row.status_id)?.reblogs ?? 0) + row.count,
-      });
-    }
-    if (viewerId) {
-      for (const row of idRows(4)) {
-        bump(row.status_id, { favourited: true });
-      }
-      for (const row of idRows(5)) {
-        bump(row.status_id, { reblogged: true });
-      }
-      for (const row of idRows(6)) {
-        bump(row.status_id, { bookmarked: true });
-      }
+    for (const row of idRows(6)) {
+      bump(row.status_id, { bookmarked: true });
     }
   }
   return ok(counts);

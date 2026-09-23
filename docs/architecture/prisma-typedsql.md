@@ -33,11 +33,11 @@ Generated client lives at `packages/worker/src/generated/prisma/` (committed so 
 
 ## Escape hatches
 
-| Case                     | Approach                                                                                      |
-| ------------------------ | --------------------------------------------------------------------------------------------- |
-| Multi-statement writes   | Keep `runD1Batch` / `env.DB.batch` (Prisma D1 adapter does not provide transactional batches) |
-| Dynamic `IN (...)` arity | Keep `db.prepare` + Zod/Result until fixed-arity TypedSQL variants exist                      |
-| Domain branded types     | Parse TypedSQL rows with existing Zod companions                                              |
+| Case                       | Approach                                                                                      |
+| -------------------------- | --------------------------------------------------------------------------------------------- |
+| Multi-statement writes     | Keep `runD1Batch` / `env.DB.batch` (Prisma D1 adapter does not provide transactional batches) |
+| Variable-length membership | `sqlInJsonEach()` + `jsonStringArray()` (O(1) binds; never grow `IN (?,?,…)`)                 |
+| Domain branded types       | Parse TypedSQL rows with existing Zod companions                                              |
 
 ## SQLite params
 
