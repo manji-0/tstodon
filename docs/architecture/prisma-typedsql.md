@@ -5,7 +5,9 @@
 
 ## Scope
 
-Worker SQL that is a **single statement** should live in `prisma/sql/*.sql` and run via `$queryRawTyped` / `$executeRawTyped` through `createPrisma(env.DB)`.
+Worker SQL that is a **single statement** should live in `prisma/sql/*.sql` and run via `$queryRawTyped` through `createPrisma(env.DB)`.
+
+Prisma 7.10 TypedSQL helpers cover both reads and writes; the client API is `$queryRawTyped` only (no `$executeRawTyped` yet).
 
 **Do not** use Prisma model CRUD APIs for domain persistence in this initiative.
 
