@@ -10,19 +10,19 @@ import {
 } from "./media-keys";
 import { findMediaById, updateMediaStorage, type MediaRow } from "./media-store";
 
-const copyR2Object = async (
-  bucket: R2Bucket,
-  fromKey: string,
-  toKey: string,
-): Promise<boolean> => {
+const copyR2Object = async (bucket: R2Bucket, fromKey: string, toKey: string): Promise<boolean> => {
   const object = await bucket.get(fromKey);
   if (!object) {
     return false;
   }
-  await bucket.put(toKey, object.body, {
-    httpMetadata: object.httpMetadata,
-    customMetadata: object.customMetadata,
-  });
+  const options: R2PutOptions = {};
+  if (object.httpMetadata) {
+    options.httpMetadata = object.httpMetadata;
+  }
+  if (object.customMetadata) {
+    options.customMetadata = object.customMetadata;
+  }
+  await bucket.put(toKey, object.body, options);
   await bucket.delete(fromKey);
   return true;
 };

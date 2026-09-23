@@ -489,7 +489,10 @@ export const mastodonFilterV2 = (row: FilterRow): Record<string, unknown> => {
   };
 };
 
-export const mastodonMedia = (identity: InstanceIdentity, row: MediaRow): Record<string, unknown> => {
+export const mastodonMedia = (
+  identity: InstanceIdentity,
+  row: MediaRow,
+): Record<string, unknown> => {
   const privateAttachment = row.is_private === 1;
   const url = privateAttachment
     ? mediaAuthUrl(identity, row.id)

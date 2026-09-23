@@ -10,12 +10,7 @@ import {
 } from "../http";
 import { mastodonMedia } from "../mastodon";
 import { mediaIsPrivate, privateKeysForUpload } from "../media-access";
-import {
-  findMediaById,
-  insertMedia,
-  updateMediaMetadata,
-  type MediaRow,
-} from "../media-store";
+import { findMediaById, insertMedia, updateMediaMetadata, type MediaRow } from "../media-store";
 import { parseMediaObjectKey } from "../media-keys";
 import { normalizeMediaContentType, validateMediaUpload } from "../media-limits";
 import { processUploadedImage } from "../media-process";
