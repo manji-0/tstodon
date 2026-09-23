@@ -129,27 +129,10 @@ const main = async () => {
   }
   console.log("ok outbox target for B", targetRow.inbox_url);
 
-  // Host-driven Create delivery (workerd often cannot fetch loopback peers).
-  const activities = d1Json(
-    "a",
-    `SELECT id, payload_json FROM outbound_activities WHERE id = '${String(targetRow.activity_id).replaceAll("'", "''")}' LIMIT 1`,
-  );
-  const payload = activities[0]?.payload_json;
-  if (!payload) {
-    fail("outbound activity payload missing", activities);
-  }
-  const aliceKey = accountPrivateKeyJwk("a", aliceUser);
-  const createActivity = JSON.parse(payload);
-  // Ensure activity id is unique if re-delivered
-  createActivity.id = `${createActivity.id}-e2e-host-${Date.now()}`;
-  const delivered = await postSignedInbox(bobInbox, aliceKey, aliceKeyId, createActivity);
-  if (delivered.status !== 202 && delivered.status !== 200) {
-    fail("host-driven Create → bob inbox", delivered);
-  }
-  console.log("ok Create delivered to B inbox", delivered.status);
-
+  // Prefer worker-delivered Create; fall back to host hop if loopback fetch fails.
   let remoteNote;
-  for (let i = 0; i < 20; i += 1) {
+  let deliveryMode = "worker";
+  for (let i = 0; i < 25; i += 1) {
     const rows = d1Json(
       "b",
       `SELECT id, object_uri, actor_uri, content_html FROM remote_statuses WHERE actor_uri = '${aliceActor}' ORDER BY published_at DESC LIMIT 5`,
@@ -160,7 +143,38 @@ const main = async () => {
     if (remoteNote) {
       break;
     }
-    await sleep(500);
+    await sleep(1000);
+  }
+  if (!remoteNote) {
+    deliveryMode = "host";
+    const activities = d1Json(
+      "a",
+      `SELECT id, payload_json FROM outbound_activities WHERE id = '${String(targetRow.activity_id).replaceAll("'", "''")}' LIMIT 1`,
+    );
+    const payload = activities[0]?.payload_json;
+    if (!payload) {
+      fail("outbound activity payload missing", activities);
+    }
+    const aliceKey = accountPrivateKeyJwk("a", aliceUser);
+    const createActivity = JSON.parse(payload);
+    createActivity.id = `${createActivity.id}-e2e-host-${Date.now()}`;
+    const delivered = await postSignedInbox(bobInbox, aliceKey, aliceKeyId, createActivity);
+    if (delivered.status !== 202 && delivered.status !== 200) {
+      fail("host-driven Create → bob inbox", delivered);
+    }
+    for (let i = 0; i < 20; i += 1) {
+      const rows = d1Json(
+        "b",
+        `SELECT id, object_uri, actor_uri, content_html FROM remote_statuses WHERE actor_uri = '${aliceActor}' ORDER BY published_at DESC LIMIT 5`,
+      );
+      remoteNote = rows.find((row) =>
+        String(row.content_html ?? "").includes("hello bob from alice e2e"),
+      );
+      if (remoteNote) {
+        break;
+      }
+      await sleep(500);
+    }
   }
   if (!remoteNote) {
     fail("remote Create not persisted on B", {
@@ -170,7 +184,7 @@ const main = async () => {
       ),
     });
   }
-  console.log("ok remote Create Note on B", remoteNote.object_uri);
+  console.log(`ok remote Create Note on B (${deliveryMode}-delivered)`, remoteNote.object_uri);
   console.log("PASS federation follow→create");
 };
 

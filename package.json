@@ -16,7 +16,8 @@
     "e2e:federation:follow-create": "node e2e/federation-follow-create.mjs",
     "e2e:federation:interactions": "node e2e/federation-interactions.mjs",
     "e2e:federation:delete-shared-inbox": "node e2e/federation-delete-shared-inbox.mjs",
-    "e2e:federation:all": "node e2e/federation-smoke.mjs && node e2e/federation-follow-create.mjs && node e2e/federation-interactions.mjs && node e2e/federation-delete-shared-inbox.mjs",
+    "e2e:federation:accept": "node e2e/federation-accept.mjs",
+    "e2e:federation:all": "node e2e/federation-smoke.mjs && node e2e/federation-follow-create.mjs && node e2e/federation-interactions.mjs && node e2e/federation-delete-shared-inbox.mjs && node e2e/federation-accept.mjs",
     "e2e:up": "process-compose up",
     "ci": "pnpm typecheck && pnpm lint && pnpm fmt:check && pnpm test && wrangler deploy --dry-run"
   },

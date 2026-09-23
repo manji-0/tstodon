@@ -25,10 +25,11 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Active track
 
-| ID    | Item                                                            | Status                        |
-| ----- | --------------------------------------------------------------- | ----------------------------- |
-| E2E-1 | process-compose multi-instance harness                          | done                          |
-| E2E-2 | Minimal 2-instance federation (WebFinger + Follow→Create)       | done (host-driven Create hop) |
-| E2E-3 | Undo/Like/Announce (+ Undo Like) e2e                            | done                          |
-| E2E-5 | Delete + shared-inbox-only fan-out e2e                          | done                          |
-| E2E-4 | Remove host-driven Create hop when workerd loopback fetch works | later                         |
+| ID    | Item                                                           | Status |
+| ----- | -------------------------------------------------------------- | ------ |
+| E2E-1 | process-compose multi-instance harness                         | done   |
+| E2E-2 | Minimal 2-instance federation (WebFinger + Follow→Create)      | done   |
+| E2E-3 | Undo/Like/Announce (+ Undo Like) e2e                           | done   |
+| E2E-6 | Accept round-trip after remote Follow                          | done   |
+| E2E-5 | Delete + shared-inbox-only fan-out e2e                         | done   |
+| E2E-4 | Prefer worker-delivered Create/Accept (host hop fallback only) | done   |

@@ -3,9 +3,10 @@ import {
   InboxActivity,
   InstanceIdentity,
   LocalStatus,
+  RemoteActor,
   StatusId,
   type LocalAccount,
-  type RemoteActor,
+  type RemoteActor as RemoteActorValue,
 } from "@tstodon/domain";
 import { Hono } from "hono";
 import type { Context } from "hono";
@@ -35,6 +36,7 @@ import {
   upsertRemoteAnnounce,
   upsertRemoteFavourite,
 } from "../remote-interaction-store";
+import { enqueueTargetedActivity } from "../delivery";
 import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import {
   ActivityJsonSchema,
@@ -250,7 +252,9 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   const payload = activityPayloadFromJson(activityJson.value);
   const actorUri = String(payload.actor);
   const actorUsername = parseLocalActorUsername(identity.value, actorUri);
-  let signer: { kind: "Local"; account: LocalAccount } | { kind: "Remote"; actor: RemoteActor };
+  let signer:
+    | { kind: "Local"; account: LocalAccount }
+    | { kind: "Remote"; actor: RemoteActorValue };
   if (actorUsername) {
     const actorAccount = await findAccountByUsername(c.env.DB, actorUsername);
     if (actorAccount.isErr()) {
@@ -327,6 +331,29 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
           target.value.id,
           target.value.locked,
         );
+        // Unlocked accounts auto-accept: send Accept to the follower's inbox.
+        if (!target.value.locked) {
+          const acceptActor = InstanceIdentity.actorUrl(identity.value, target.value.username);
+          const followerInbox = RemoteActor.deliveryInbox(signer.actor);
+          await enqueueTargetedActivity(
+            c.env,
+            target.value.id,
+            "Accept",
+            {
+              "@context": "https://www.w3.org/ns/activitystreams",
+              id: `${acceptActor}/activities/accept-${activity.id}`,
+              type: "Accept",
+              actor: acceptActor,
+              object: {
+                id: activity.id,
+                type: "Follow",
+                actor: signer.actor.actorUri,
+                object: activity.object,
+              },
+            },
+            followerInbox,
+          );
+        }
       }
     }
     if (activity.kind === "Undo") {

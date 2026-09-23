@@ -47,8 +47,6 @@ pnpm e2e:federation
 | Interactions          | `pnpm e2e:federation:interactions`        | Undo Follow; Like; Announce; Undo Like (+ count asserts)                               |
 | Delete + shared inbox | `pnpm e2e:federation:delete-shared-inbox` | Shared-inbox fan-out target; Create via `/inbox`; Delete clears `remote_statuses`      |
 
-### Loopback limitation
+### Local peer fetch
 
-`workerd` often cannot `fetch()` another loopback port. Follow→Create / Delete scenarios therefore pre-seed `remote_actors` and may drive Create/Delete HTTP hops from the host while still asserting A's ExpandFollowers selected B (including shared inbox). See `e2e/federation-*.mjs`.
-
-Not yet automated: Accept activity round-trip; removing the host-driven hop (E2E-4).
+Actor resolution still pre-seeds `remote_actors` to avoid fragile loopback GETs during signature setup. Outbound **Create/Accept delivery** prefers the Worker workflow path and only falls back to a host-driven signed POST if the peer note/accept never appears. See `e2e/federation-*.mjs`.

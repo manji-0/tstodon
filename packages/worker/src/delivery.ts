@@ -88,6 +88,51 @@ export const enqueueLocalActivity = async (
   return ok(undefined);
 };
 
+/** Insert outbound activity and deliver to one inbox (Accept, etc.) without ExpandFollowers. */
+export const enqueueTargetedActivity = async (
+  env: Env,
+  accountId: string,
+  kind: string,
+  payload: unknown,
+  inboxUrl: string,
+): Promise<Result<void, EnqueueLocalActivityError>> => {
+  const inserted = await insertOutboundActivity(env.DB, {
+    accountId,
+    kind,
+    payload,
+  });
+  if (inserted.isErr()) {
+    console.error(
+      JSON.stringify({
+        kind: "OutboxEnqueueInsertFailed",
+        accountId,
+        activityKind: kind,
+        message: inserted.error.message,
+      }),
+    );
+    return err(inserted.error);
+  }
+  const activityId = ActivityId.parse(inserted.value.id);
+  if (activityId.isErr()) {
+    return err({ kind: "InvalidActivityId" });
+  }
+  const target = await ensureOutboxTarget(env.DB, activityId.value, inboxUrl);
+  if (target.isErr()) {
+    return err(target.error);
+  }
+  const deliver = OutboxJob.parse({
+    kind: "DeliverTarget",
+    activityId: activityId.value,
+    inboxUrl,
+  });
+  if (deliver.isErr() || deliver.value.kind !== "DeliverTarget") {
+    return err({ kind: "InvalidActivityId" });
+  }
+  await startOutboxDeliveryWorkflow(env, deliver.value);
+  writeMetric(env, "outbox.enqueue", [1], [kind, "targeted"]);
+  return ok(undefined);
+};
+
 export const deliveryWorkflowId = async (activityId: string, inboxUrl: string): Promise<string> => {
   const digest = await crypto.subtle.digest(
     "SHA-256",
