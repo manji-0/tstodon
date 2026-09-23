@@ -15,9 +15,20 @@ import { pollRoutes } from "./routes/polls";
 import { searchRoutes } from "./routes/search";
 import { statusRoutes } from "./routes/statuses";
 import { timelineRoutes } from "./routes/timelines";
+import { apiCors, mediaCors } from "./cors";
 import { jsonAuthError, requireUser } from "./http";
 
 export const app = new Hono<{ Bindings: Env }>();
+
+// Public media proxy (local-core / same-origin MEDIA_PUBLIC_BASE_URL). Production R2
+// custom domains need a matching bucket CORS policy (see docs/operations).
+app.use("/media/*", mediaCors());
+app.use("/attachments/*", mediaCors());
+app.use("/avatars/*", mediaCors());
+app.use("/headers/*", mediaCors());
+
+// Browser Mastodon clients: allowlisted Origin + Authorization / Access JWT headers.
+app.use("/api/*", apiCors());
 
 app.route("/", healthRoutes);
 app.route("/", loginRoutes);

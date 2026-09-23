@@ -12,3 +12,6 @@
 # INSTANCE_RULES=[{"id":"1","text":"Be excellent to each other"}]
 # INSTANCE_CUSTOM_EMOJIS=[{"shortcode":"wave","url":"https://media.example.com/wave.png"}]
 # INSTANCE_ANNOUNCEMENTS=[{"id":"welcome","content":"Hello","published_at":"2026-09-22T12:00:00.000Z"}]
+#
+# Extra browser origins for /api/* CORS (comma-separated). INSTANCE_PUBLIC_ORIGIN is always allowed.
+# CORS_ALLOWED_ORIGINS=https://web.example.com
