@@ -39,6 +39,7 @@
     "CONTACT_EMAIL": "admin@example.com",
     "INSTANCE_THUMBNAIL_URL": "https://example.com/site/thumbnail.png",
     "MEDIA_PUBLIC_BASE_URL": "https://example.com",
+    "CORS_ALLOWED_ORIGINS": "",
     "INSTANCE_RULES": "[{\"id\":\"1\",\"text\":\"Be excellent to each other\"},{\"id\":\"2\",\"text\":\"No illegal content\"}]",
     "INSTANCE_CUSTOM_EMOJIS": "[{\"shortcode\":\"blobcat\",\"url\":\"https://example.com/emoji/blobcat.png\",\"static_url\":\"https://example.com/emoji/blobcat-static.png\",\"visible_in_picker\":true,\"category\":\"Blobs\"}]",
     "INSTANCE_ANNOUNCEMENTS": "[{\"id\":\"welcome\",\"content\":\"Welcome to the local tstodon core\",\"published_at\":\"2026-09-22T12:00:00.000Z\"}]",

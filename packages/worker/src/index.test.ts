@@ -291,10 +291,44 @@ describe("worker http", () => {
     expect(media.url.endsWith(`/${media.id}`)).toBe(true);
     expect(media.preview_url).toBe(media.url);
 
-    const mediaGet = await SELF.fetch(media.url);
+    const mediaGet = await SELF.fetch(media.url, {
+      headers: { Origin: "https://other.example" },
+    });
     expect(mediaGet.status).toBe(200);
     expect(await mediaGet.text()).toBe("hello");
     expect(mediaGet.headers.get("cache-control")).toContain("max-age=31536000");
+    expect(mediaGet.headers.get("access-control-allow-origin")).toBe("*");
+
+    const mediaOptions = await SELF.fetch(media.url, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://other.example",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+    expect(mediaOptions.status).toBe(204);
+    expect(mediaOptions.headers.get("access-control-allow-origin")).toBe("*");
+
+    const apiOptions = await SELF.fetch("https://example.com/api/v1/instance", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://example.com",
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "authorization",
+      },
+    });
+    expect(apiOptions.status).toBe(204);
+    expect(apiOptions.headers.get("access-control-allow-origin")).toBe("https://example.com");
+    expect(apiOptions.headers.get("access-control-allow-headers") ?? "").toMatch(/authorization/i);
+
+    const apiDenied = await SELF.fetch("https://example.com/api/v1/instance", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://evil.example",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+    expect(apiDenied.headers.get("access-control-allow-origin")).toBeNull();
 
     const byId = await SELF.fetch(`https://example.com/media/${media.id}`);
     expect(byId.status).toBe(200);

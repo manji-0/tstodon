@@ -35,6 +35,18 @@ Media blobs live in the `MEDIA` R2 bucket. Mastodon JSON emits absolute URLs as 
 
 Object keys: `attachments/{accountId}/{mediaId}`, `avatars/{accountId}/{blobId}`, `headers/{accountId}/{blobId}`. The `IMAGES` binding is reserved for transforms; it is not used on the read path yet.
 
+### CORS / allowed origins
+
+<!-- constrained-by ../operations/cloudflare-deploy.md -->
+
+| Surface                                                                       | Behavior                                                                                                                                                                                     |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Worker media proxy (`/media/*`, `/attachments/*`, `/avatars/*`, `/headers/*`) | `Access-Control-Allow-Origin: *` (GET/HEAD/OPTIONS; no credentials)                                                                                                                          |
+| Worker `/api/*`                                                               | Reflect `Origin` only when it matches `INSTANCE_PUBLIC_ORIGIN` or an entry in `CORS_ALLOWED_ORIGINS` (comma-separated). Allows `Authorization`, `Content-Type`, `Cf-Access-Jwt-Assertion`.   |
+| Production R2 custom domain                                                   | Apply a bucket CORS policy (see [`infra/cloudflare/media-cors.json.example`](../../infra/cloudflare/media-cors.json.example) and deploy checklist). Worker CORS does not cover R2 hostnames. |
+
+`CORS_ALLOWED_ORIGINS` is optional. Empty ⇒ API CORS still allows the instance public origin. Trailing slashes are normalized.
+
 Optional catalog vars (empty ⇒ empty API arrays):
 
 | Var                      | Purpose                                                                                             |
