@@ -325,7 +325,7 @@ describe("worker http", () => {
       headers: { ...(await auth("alice@example.com")), Origin: "https://other.example" },
     });
     expect(mediaGet.status).toBe(200);
-    expect(await mediaGet.text()).toBe("png-bytes");
+    expect(await mediaGet.arrayBuffer().then((b) => new TextDecoder().decode(b))).toBe("png-bytes");
     expect(mediaGet.headers.get("cache-control")).toContain("private");
     expect(mediaGet.headers.get("access-control-allow-origin")).toBe("*");
 
@@ -364,7 +364,7 @@ describe("worker http", () => {
       headers: await auth("alice@example.com"),
     });
     expect(byId.status).toBe(200);
-    expect(await byId.text()).toBe("png-bytes");
+    expect(await byId.arrayBuffer().then((b) => new TextDecoder().decode(b))).toBe("png-bytes");
 
     const publicStatus = await json("/api/v1/statuses", {
       method: "POST",
@@ -380,7 +380,9 @@ describe("worker http", () => {
     expect(attachment?.description).toBe("updated alt");
     const publicBytes = await SELF.fetch(attachment!.url);
     expect(publicBytes.status).toBe(200);
-    expect(await publicBytes.text()).toBe("png-bytes");
+    expect(await publicBytes.arrayBuffer().then((b) => new TextDecoder().decode(b))).toBe(
+      "png-bytes",
+    );
 
     const avatarForm = new FormData();
     avatarForm.set("display_name", "Alice Avatar");

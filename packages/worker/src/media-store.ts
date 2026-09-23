@@ -130,8 +130,8 @@ export const updateMediaMetadata = async (
         input.description,
         input.focusX,
         input.focusY,
-        input.accountId,
         input.mediaId,
+        input.accountId,
       ),
     );
     const rows = await queryTyped<MediaRow>(db, findMediaByIdSql(input.mediaId));
