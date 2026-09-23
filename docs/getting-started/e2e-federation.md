@@ -46,6 +46,7 @@ pnpm e2e:federation
 | Follow→Create         | `pnpm e2e:federation:follow-create`       | Signed Follow into A; ExpandFollowers outbox target; Create into B → `remote_statuses` |
 | Interactions          | `pnpm e2e:federation:interactions`        | Undo Follow; Like; Announce; Undo Like (+ count asserts)                               |
 | Delete + shared inbox | `pnpm e2e:federation:delete-shared-inbox` | Shared-inbox fan-out target; Create via `/inbox`; Delete clears `remote_statuses`      |
+| Accept                | `pnpm e2e:federation:accept`              | Unlocked Follow enqueues targeted Accept; delivered to follower inbox                  |
 
 ### Local peer fetch
 
