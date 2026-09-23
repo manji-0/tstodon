@@ -34,6 +34,8 @@ Use the cfwdon pattern from `packages/worker/src/d1.ts`:
 
 `sql_placeholders`-style fixed lists are fine only when N is known and ≤ 100.
 
+Shape-varying timeline / search SQL stays on `db.prepare` by design: [adr-variable-timeline-sql.md](./adr-variable-timeline-sql.md).
+
 ## TypedSQL
 
 Single-statement SQL is moving to Prisma TypedSQL. See [prisma-typedsql.md](./prisma-typedsql.md).

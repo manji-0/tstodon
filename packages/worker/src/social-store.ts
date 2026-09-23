@@ -13,6 +13,9 @@ import {
   insertFavouriteOrIgnore as insertFavouriteOrIgnoreSql,
   insertFollowOrIgnore as insertFollowOrIgnoreSql,
   insertNotification as insertNotificationSql,
+  listAcceptedFollowerIds as listAcceptedFollowerIdsSql,
+  listFollowers as listFollowersSql,
+  listFollowing as listFollowingSql,
   listNotifications as listNotificationsSql,
 } from "./generated/prisma/sql";
 
@@ -310,14 +313,11 @@ export const listAcceptedFollowerIds = async (
   targetAccountId: string,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT follower_account_id FROM follows
-         WHERE target_account_id = ? AND kind = 'Accepted'`,
-      )
-      .bind(targetAccountId)
-      .all<{ follower_account_id: string }>();
-    return (results ?? []).map((row) => row.follower_account_id);
+    const results = await queryTyped<{ follower_account_id: string }>(
+      db,
+      listAcceptedFollowerIdsSql(targetAccountId),
+    );
+    return results.map((row) => row.follower_account_id);
   });
 
 export const listFollowers = async (
@@ -326,15 +326,11 @@ export const listFollowers = async (
   limit: number,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT follower_account_id FROM follows
-         WHERE target_account_id = ? AND kind = 'Accepted'
-         ORDER BY created_at DESC LIMIT ?`,
-      )
-      .bind(accountId, limit)
-      .all<{ follower_account_id: string }>();
-    return (results ?? []).map((row) => row.follower_account_id);
+    const results = await queryTyped<{ follower_account_id: string }>(
+      db,
+      listFollowersSql(accountId, limit),
+    );
+    return results.map((row) => row.follower_account_id);
   });
 
 export const listFollowing = async (
@@ -343,13 +339,9 @@ export const listFollowing = async (
   limit: number,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT target_account_id FROM follows
-         WHERE follower_account_id = ? AND kind = 'Accepted'
-         ORDER BY created_at DESC LIMIT ?`,
-      )
-      .bind(accountId, limit)
-      .all<{ target_account_id: string }>();
-    return (results ?? []).map((row) => row.target_account_id);
+    const results = await queryTyped<{ target_account_id: string }>(
+      db,
+      listFollowingSql(accountId, limit),
+    );
+    return results.map((row) => row.target_account_id);
   });

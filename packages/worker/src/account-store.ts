@@ -11,22 +11,31 @@ import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
 import { nowInstant, nowIso } from "./clock";
-import { jsonStringArray, runD1, sqlInJsonEach, type RepositoryError } from "./d1";
-import { queryTyped } from "./typed-sql";
+import { jsonStringArray, runD1, runD1Batch, type RepositoryError } from "./d1";
+import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import { generateAccountKeys } from "./keys";
 import { newEntityId } from "./ids";
 import { AccountRowSchema, toRepositoryError } from "./schemas";
 import { quotePolicyFromSql, quotePolicySql, visibilitySql } from "./sql-enums";
 import {
   accountCounts as accountCountsSql,
+  countAccounts as countAccountsSql,
+  countFollowersByAccountIdsJson as countFollowersByAccountIdsJsonSql,
+  countFollowingByAccountIdsJson as countFollowingByAccountIdsJsonSql,
+  countStatusesByAccountIdsJson as countStatusesByAccountIdsJsonSql,
   findAccountByEmail as findAccountByEmailSql,
   findAccountById as findAccountByIdSql,
   findAccountByUsername as findAccountByUsernameSql,
+  findAccountsByIdsJson as findAccountsByIdsJsonSql,
+  findAccountsByUsernamesJson as findAccountsByUsernamesJsonSql,
+  insertAccount as insertAccountSql,
+  listDirectoryAccountsByActive as listDirectoryAccountsByActiveSql,
+  listDirectoryAccountsByNew as listDirectoryAccountsByNewSql,
+  searchAccounts as searchAccountsSql,
+  updateAccountProfile as updateAccountProfileSql,
 } from "./generated/prisma/sql";
 
 export type AccountRow = z.infer<typeof AccountRowSchema>;
-
-const accountSelect = `id, username, access_email, display_name, locked, default_post_visibility, default_quote_policy, public_key_pem, private_key_jwk, created_at, COALESCE(bio_text, '') AS bio_text`;
 
 const parseAccountRow = schemaResult(AccountRowSchema);
 const parseLocalAccount = schemaResult(LocalAccount.schema);
@@ -86,16 +95,13 @@ export const findAccountsByIds = async (
   if (unique.length === 0) {
     return ok(accounts);
   }
-  const queried = await runD1(() =>
-    db
-      .prepare(`SELECT ${accountSelect} FROM accounts WHERE id ${sqlInJsonEach()}`)
-      .bind(jsonStringArray(unique))
-      .all(),
+  const queried = await runD1(async () =>
+    queryTyped(db, findAccountsByIdsJsonSql(jsonStringArray(unique))),
   );
   if (queried.isErr()) {
     return err(queried.error);
   }
-  for (const raw of queried.value.results ?? []) {
+  for (const raw of queried.value) {
     const row = parseAccountRow(raw);
     if (row.isErr()) {
       continue;
@@ -145,16 +151,13 @@ export const findAccountsByUsernames = async (
     return ok([]);
   }
   const accounts: LocalAccount[] = [];
-  const queried = await runD1(() =>
-    db
-      .prepare(`SELECT ${accountSelect} FROM accounts WHERE username ${sqlInJsonEach()}`)
-      .bind(jsonStringArray(normalized))
-      .all(),
+  const queried = await runD1(async () =>
+    queryTyped(db, findAccountsByUsernamesJsonSql(jsonStringArray(normalized))),
   );
   if (queried.isErr()) {
     return err(queried.error);
   }
-  for (const raw of queried.value.results ?? []) {
+  for (const raw of queried.value) {
     const row = parseAccountRow(raw);
     if (row.isErr()) {
       continue;
@@ -194,13 +197,11 @@ export const searchAccounts = async (
   limit: number,
 ): Promise<Result<LocalAccount[], RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT ${accountSelect} FROM accounts WHERE username LIKE ? OR display_name LIKE ? ORDER BY username LIMIT ?`,
-      )
-      .bind(`%${query.toLowerCase()}%`, `%${query}%`, limit)
-      .all();
-    return (results ?? []).flatMap((raw) => {
+    const results = await queryTyped(
+      db,
+      searchAccountsSql(`%${query.toLowerCase()}%`, `%${query}%`, limit),
+    );
+    return results.flatMap((raw) => {
       const row = parseAccountRow(raw);
       if (row.isErr()) {
         return [];
@@ -215,15 +216,9 @@ export const insertAccount = async (
   account: LocalAccount,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(
-        `INSERT INTO accounts (
-          id, username, access_email, display_name, locked,
-          default_post_visibility, default_quote_policy,
-          public_key_pem, private_key_jwk, created_at, updated_at, bio_text
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
+    await runTyped(
+      db,
+      insertAccountSql(
         account.id,
         account.username,
         account.accessEmail.unwrap(),
@@ -236,8 +231,8 @@ export const insertAccount = async (
         account.createdAt,
         account.createdAt,
         "",
-      )
-      .run();
+      ),
+    );
   });
 
 export const provisionAccountFromEmail = async (
@@ -289,10 +284,8 @@ export const provisionAccountFromEmail = async (
 
 export const countAccounts = async (db: D1Database): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
-    const row = await db
-      .prepare(`SELECT COUNT(*) AS count FROM accounts`)
-      .first<{ count: number }>();
-    return row?.count ?? 0;
+    const rows = await queryTyped<{ count: number | bigint }>(db, countAccountsSql());
+    return Number(rows[0]?.count ?? 0);
   });
 
 export const listDirectoryAccounts = async (
@@ -300,20 +293,12 @@ export const listDirectoryAccounts = async (
   input: Readonly<{ order: "new" | "active"; limit: number; offset: number }>,
 ): Promise<Result<LocalAccount[], RepositoryError>> =>
   runD1(async () => {
-    const orderSql =
+    const results =
       input.order === "active"
-        ? `(SELECT COUNT(*) FROM statuses s WHERE s.account_id = accounts.id) DESC, accounts.created_at DESC`
-        : `accounts.created_at DESC`;
-    const { results } = await db
-      .prepare(
-        `SELECT ${accountSelect} FROM accounts
-         ORDER BY ${orderSql}
-         LIMIT ? OFFSET ?`,
-      )
-      .bind(input.limit, input.offset)
-      .all();
+        ? await queryTyped(db, listDirectoryAccountsByActiveSql(input.limit, input.offset))
+        : await queryTyped(db, listDirectoryAccountsByNewSql(input.limit, input.offset));
     const accounts: LocalAccount[] = [];
-    for (const raw of results ?? []) {
+    for (const raw of results) {
       const row = parseAccountRow(raw);
       if (row.isErr()) {
         continue;
@@ -359,35 +344,11 @@ export const accountCountsByIds = async (
     return ok(counts);
   }
   const idsJson = jsonStringArray(unique);
-  const inList = sqlInJsonEach();
-  const queried = await runD1(() =>
-    db.batch([
-      db
-        .prepare(
-          `SELECT target_account_id AS account_id, COUNT(*) AS count
-           FROM follows
-           WHERE kind = 'Accepted' AND target_account_id ${inList}
-           GROUP BY target_account_id`,
-        )
-        .bind(idsJson),
-      db
-        .prepare(
-          `SELECT follower_account_id AS account_id, COUNT(*) AS count
-           FROM follows
-           WHERE kind = 'Accepted' AND follower_account_id ${inList}
-           GROUP BY follower_account_id`,
-        )
-        .bind(idsJson),
-      db
-        .prepare(
-          `SELECT account_id, COUNT(*) AS count
-           FROM statuses
-           WHERE account_id ${inList}
-           GROUP BY account_id`,
-        )
-        .bind(idsJson),
-    ]),
-  );
+  const queried = await runD1Batch(db, [
+    d1PrepareTyped(db, countFollowersByAccountIdsJsonSql(idsJson)),
+    d1PrepareTyped(db, countFollowingByAccountIdsJsonSql(idsJson)),
+    d1PrepareTyped(db, countStatusesByAccountIdsJsonSql(idsJson)),
+  ]);
   if (queried.isErr()) {
     return err(queried.error);
   }
@@ -430,8 +391,5 @@ export const updateAccountProfile = async (
   displayName: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await db
-      .prepare(`UPDATE accounts SET display_name = ?, updated_at = ? WHERE id = ?`)
-      .bind(displayName, nowIso(), accountId)
-      .run();
+    await runTyped(db, updateAccountProfileSql(displayName, nowIso(), accountId));
   });

@@ -6,11 +6,19 @@ export * from "./sql/accountCounts";
 
 export * from "./sql/attachMediaToStatus";
 
+export * from "./sql/countAccounts";
+
+export * from "./sql/countFollowersByAccountIdsJson";
+
+export * from "./sql/countFollowingByAccountIdsJson";
+
 export * from "./sql/countRemoteAnnounces";
 
 export * from "./sql/countRemoteFavourites";
 
 export * from "./sql/countStatuses";
+
+export * from "./sql/countStatusesByAccountIdsJson";
 
 export * from "./sql/createList";
 
@@ -43,6 +51,10 @@ export * from "./sql/findAccountByEmail";
 export * from "./sql/findAccountById";
 
 export * from "./sql/findAccountByUsername";
+
+export * from "./sql/findAccountsByIdsJson";
+
+export * from "./sql/findAccountsByUsernamesJson";
 
 export * from "./sql/findFollowKind";
 
@@ -77,6 +89,8 @@ export * from "./sql/getConversationRead";
 export * from "./sql/getMarkersByTimelines";
 
 export * from "./sql/inboxActivityExists";
+
+export * from "./sql/insertAccount";
 
 export * from "./sql/insertBookmarkOrIgnore";
 
@@ -114,15 +128,25 @@ export * from "./sql/insertStatusMention";
 
 export * from "./sql/isAccountMentionedOnStatus";
 
+export * from "./sql/listAcceptedFollowerIds";
+
 export * from "./sql/listAcceptedRemoteFollowerInboxes";
 
 export * from "./sql/listAcceptedRemoteFollowerUris";
 
 export * from "./sql/listAccountStatuses";
 
+export * from "./sql/listDirectoryAccountsByActive";
+
+export * from "./sql/listDirectoryAccountsByNew";
+
 export * from "./sql/listExpiredUnnotifiedPolls";
 
 export * from "./sql/listFilters";
+
+export * from "./sql/listFollowers";
+
+export * from "./sql/listFollowing";
 
 export * from "./sql/listListMemberIds";
 
@@ -145,6 +169,10 @@ export * from "./sql/listPollVotesForAccount";
 export * from "./sql/listPublicRemoteStatuses";
 
 export * from "./sql/markPollExpiryNotified";
+
+export * from "./sql/searchAccounts";
+
+export * from "./sql/updateAccountProfile";
 
 export * from "./sql/updateList";
 
