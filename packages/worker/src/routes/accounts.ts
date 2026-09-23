@@ -5,6 +5,8 @@ import {
   findAccountById,
   findAccountByIdOrUsername,
   findAccountByUsername,
+  updateAccountAvatarKey,
+  updateAccountHeaderKey,
   updateAccountProfile,
 } from "../account-store";
 import { authenticate } from "../auth";
@@ -13,11 +15,12 @@ import {
   jsonRepositoryError,
   jsonValidationError,
   queryLimit,
-  readBody,
+  readUnknownBody,
   requireSession,
   requireUser,
 } from "../http";
 import { mastodonAccountDocument, mastodonRelationship, mastodonStatuses } from "../mastodon";
+import { avatarObjectKey, headerObjectKey } from "../media-keys";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
   followAccount,
@@ -29,6 +32,8 @@ import {
 import { notifyAccount } from "../notify";
 import { listAccountStatuses } from "../status-store";
 import { UpdateCredentialsBodySchema } from "../schemas";
+import { newEntityId } from "../ids";
+import { schemaResult } from "@tstodon/core";
 
 export const accountRoutes = new Hono<{ Bindings: Env }>();
 
@@ -65,7 +70,8 @@ accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const body = await readBody(c, UpdateCredentialsBodySchema);
+  const raw = await readUnknownBody(c);
+  const body = schemaResult(UpdateCredentialsBodySchema)(raw);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
@@ -77,6 +83,35 @@ accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
   if (updated.isErr()) {
     return jsonRepositoryError(c, updated.error.message);
   }
+
+  const avatarFile = body.value.avatar instanceof File ? body.value.avatar : undefined;
+  const headerFile = body.value.header instanceof File ? body.value.header : undefined;
+
+  if (avatarFile) {
+    const blobId = newEntityId();
+    const objectKey = avatarObjectKey(user.value.id, blobId);
+    const contentType = avatarFile.type || "application/octet-stream";
+    await c.env.MEDIA.put(objectKey, await avatarFile.arrayBuffer(), {
+      httpMetadata: { contentType },
+    });
+    const avatarUpdated = await updateAccountAvatarKey(c.env.DB, user.value.id, objectKey);
+    if (avatarUpdated.isErr()) {
+      return jsonRepositoryError(c, avatarUpdated.error.message);
+    }
+  }
+  if (headerFile) {
+    const blobId = newEntityId();
+    const objectKey = headerObjectKey(user.value.id, blobId);
+    const contentType = headerFile.type || "application/octet-stream";
+    await c.env.MEDIA.put(objectKey, await headerFile.arrayBuffer(), {
+      httpMetadata: { contentType },
+    });
+    const headerUpdated = await updateAccountHeaderKey(c.env.DB, user.value.id, objectKey);
+    if (headerUpdated.isErr()) {
+      return jsonRepositoryError(c, headerUpdated.error.message);
+    }
+  }
+
   const latest = await findAccountById(c.env.DB, user.value.id);
   if (latest.isErr() || !latest.value) {
     return jsonRepositoryError(c, "account missing after update");

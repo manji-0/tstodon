@@ -57,6 +57,8 @@ export const AccountRowSchema = z.object({
   private_key_jwk: z.string().min(1),
   created_at: z.string().min(1),
   bio_text: z.string(),
+  avatar_object_key: z.string().nullable(),
+  header_object_key: z.string().nullable(),
 });
 
 export const StatusRowSchema = z.object({
@@ -154,12 +156,16 @@ export const OAuthTokenBodySchema = z.object({
 
 export const UpdateCredentialsBodySchema = z.object({
   display_name: z.string().optional(),
+  avatar: z.unknown().optional(),
+  header: z.unknown().optional(),
 });
 
 export const MastodonAccountPreviewSchema = z.object({
   id: z.string().min(1),
   username: z.string().min(1),
   acct: z.string().min(1),
+  avatar: z.string().url().optional(),
+  header: z.string().url().optional(),
   role: z
     .object({
       id: z.string().min(1),
@@ -223,6 +229,8 @@ export const MastodonRelationshipListPreviewSchema = z.array(MastodonRelationshi
 
 export const MastodonMediaPreviewSchema = z.object({
   id: z.string().min(1),
+  url: z.string().url(),
+  preview_url: z.string().url(),
 });
 
 export const WebfingerPreviewSchema = z.object({

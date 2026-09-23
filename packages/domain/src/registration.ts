@@ -4,6 +4,7 @@ import { z } from "zod";
 import { AccessEmail } from "./access-email";
 import { AccountId } from "./account-id";
 import { IsoInstant } from "./iso-instant";
+import { MediaObjectRef } from "./media-object-ref";
 import { QuoteApprovalPolicy } from "./quote-approval-policy";
 import { Username } from "./username";
 import { Visibility } from "./visibility";
@@ -158,6 +159,8 @@ export const LocalAccountSchema = z.object({
     .min(1)
     .transform((jwk): SensitiveValue<string> => Sensitive.of(jwk)),
   createdAt: IsoInstant.schema,
+  avatarObjectKey: MediaObjectRef.schema,
+  headerObjectKey: MediaObjectRef.schema,
 });
 
 export type LocalAccount = z.infer<typeof LocalAccountSchema>;
@@ -179,5 +182,7 @@ export const LocalAccount = {
     publicKeyPem: registering.publicKeyPem,
     privateKeyJwk: Sensitive.of(registering.privateKeyJwk),
     createdAt,
+    avatarObjectKey: MediaObjectRef.none,
+    headerObjectKey: MediaObjectRef.none,
   }),
 } as const;

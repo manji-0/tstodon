@@ -22,11 +22,9 @@ import {
   type StatusInteractionCounts,
 } from "./social-store";
 import { findMediaByIds, type MediaRow } from "./media-store";
+import { mediaPublicUrl } from "./media-keys";
 import { FilterContextSchema, parseJsonColumn } from "./schemas";
 import type { FilterRow } from "./moderation-store";
-
-const mediaUrl = (identity: InstanceIdentity, objectKey: string): string =>
-  `${identity.mediaPublicBaseUrl.replace(/\/$/, "")}/${objectKey}`;
 
 export const mastodonAccount = (
   identity: InstanceIdentity,
@@ -34,6 +32,14 @@ export const mastodonAccount = (
   counts: { followers: number; following: number; statuses: number },
 ): Record<string, unknown> => {
   const url = InstanceIdentity.actorUrl(identity, account.username);
+  const avatar =
+    account.avatarObjectKey.kind === "Present"
+      ? mediaPublicUrl(identity, account.avatarObjectKey.value)
+      : identity.thumbnailUrl;
+  const header =
+    account.headerObjectKey.kind === "Present"
+      ? mediaPublicUrl(identity, account.headerObjectKey.value)
+      : identity.thumbnailUrl;
   return {
     id: account.id,
     username: account.username,
@@ -47,10 +53,10 @@ export const mastodonAccount = (
     note: "",
     url,
     uri: url,
-    avatar: identity.thumbnailUrl,
-    avatar_static: identity.thumbnailUrl,
-    header: identity.thumbnailUrl,
-    header_static: identity.thumbnailUrl,
+    avatar,
+    avatar_static: avatar,
+    header,
+    header_static: header,
     followers_count: counts.followers,
     following_count: counts.following,
     statuses_count: counts.statuses,
@@ -171,7 +177,7 @@ const mediaAttachmentsJson = (
     if (!row) {
       continue;
     }
-    const url = mediaUrl(identity, row.object_key);
+    const url = mediaPublicUrl(identity, row.object_key);
     media.push({
       id: row.id,
       type: row.content_type.startsWith("video/") ? "video" : "image",
@@ -480,7 +486,7 @@ export const mastodonMedia = (
     content_type: string;
   },
 ): Record<string, unknown> => {
-  const url = mediaUrl(identity, row.object_key);
+  const url = mediaPublicUrl(identity, row.object_key);
   return {
     id: row.id,
     type: row.content_type.startsWith("video/") ? "video" : "image",

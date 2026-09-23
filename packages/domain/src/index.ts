@@ -26,6 +26,10 @@ export { LocalFollow, type LocalFollow as LocalFollowValue } from "./local-follo
 export { LocalAccount, type LocalAccount as LocalAccountValue } from "./registration";
 export { MediaId } from "./media-id";
 export {
+  MediaObjectRef,
+  type MediaObjectRef as MediaObjectRefValue,
+} from "./media-object-ref";
+export {
   OutboxDelivery,
   DELIVERY_MAX_ATTEMPTS,
   type OutboxDelivery as OutboxDeliveryValue,

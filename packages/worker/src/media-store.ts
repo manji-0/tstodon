@@ -1,7 +1,6 @@
 import { err, ok, type Result } from "neverthrow";
 import { jsonStringArray, runD1, sqlInJsonEach, type RepositoryError } from "./d1";
 import { queryTyped, runTyped } from "./typed-sql";
-import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import {
   findMediaById as findMediaByIdSql,
@@ -20,21 +19,21 @@ export type MediaRow = {
 export const insertMedia = async (
   db: D1Database,
   input: {
+    id: string;
     accountId: string;
     objectKey: string;
     contentType: string;
   },
 ): Promise<Result<MediaRow, RepositoryError>> =>
   runD1(async () => {
-    const id = newEntityId();
     const createdAt = nowIso();
     // Prisma 7 exposes TypedSQL writes through $queryRawTyped (no $executeRawTyped yet).
     await runTyped(
       db,
-      insertMediaSql(id, input.accountId, input.objectKey, input.contentType, createdAt),
+      insertMediaSql(input.id, input.accountId, input.objectKey, input.contentType, createdAt),
     );
     return {
-      id,
+      id: input.id,
       account_id: input.accountId,
       status_id: null,
       object_key: input.objectKey,
