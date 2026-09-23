@@ -41,21 +41,21 @@ Do not encode domain state machines as Hono middleware. A follow request's `Pend
 
 <!-- constrained-by ../reference/configuration.md#cloudflare-bindings -->
 
-| Concern                                  | Primitive                            |
-| ---------------------------------------- | ------------------------------------ |
-| HTTP API, ActivityPub, discovery         | Workers + Hono                       |
-| Accounts, statuses, follows, outbox rows | D1 (see [D1 writes](./d1-writes.md)) |
-| Media blobs                              | R2                                   |
-| Media transforms                         | Images                               |
-| Streaming fan-out                        | Durable Object `StreamHub`           |
-| Outbox fan-out                           | Queues                               |
-| Multi-step delivery                      | Workflows                            |
-| Host-level DNS / SSRF cache              | KV `REMOTE_DNS_CACHE`                |
-| Short-lived app cache                    | KV `APP_CACHE`                       |
-| Maintenance                              | Cron triggers                        |
-| Request metrics                          | Analytics Engine                     |
-| Static UI                                | Workers Assets                       |
-| Authn                                    | Cloudflare Access JWT vars           |
+| Concern                                  | Primitive                                                                                                                                                                                                                               |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HTTP API, ActivityPub, discovery         | Workers + Hono                                                                                                                                                                                                                          |
+| Accounts, statuses, follows, outbox rows | D1 (see [D1 writes](./d1-writes.md); ADRs: [json_each](./adr-json-each-membership.md), [TypedSQL exec](./adr-typedsql-d1-execution.md), [migrations](./adr-wrangler-migrations-sot.md), [timeline SQL](./adr-variable-timeline-sql.md)) |
+| Media blobs                              | R2                                                                                                                                                                                                                                      |
+| Media transforms                         | Images                                                                                                                                                                                                                                  |
+| Streaming fan-out                        | Durable Object `StreamHub`                                                                                                                                                                                                              |
+| Outbox fan-out                           | Queues                                                                                                                                                                                                                                  |
+| Multi-step delivery                      | Workflows                                                                                                                                                                                                                               |
+| Host-level DNS / SSRF cache              | KV `REMOTE_DNS_CACHE`                                                                                                                                                                                                                   |
+| Short-lived app cache                    | KV `APP_CACHE`                                                                                                                                                                                                                          |
+| Maintenance                              | Cron triggers                                                                                                                                                                                                                           |
+| Request metrics                          | Analytics Engine                                                                                                                                                                                                                        |
+| Static UI                                | Workers Assets                                                                                                                                                                                                                          |
+| Authn                                    | Cloudflare Access JWT vars                                                                                                                                                                                                              |
 
 Workers AI and Vectorize are the intended search/moderation path, but they are not bound yet because Workers AI is remote-billed even in local dev.
 

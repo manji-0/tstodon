@@ -2,20 +2,28 @@
 
 <!-- constrained-by ./d1-writes.md -->
 <!-- constrained-by ./tstodon-architecture.md#cloudflare-mapping -->
+<!-- constrained-by ./adr-typedsql-d1-execution.md -->
+<!-- constrained-by ./adr-wrangler-migrations-sot.md -->
+<!-- constrained-by ./adr-json-each-membership.md -->
 
 ## Scope
 
-Worker SQL that is a **single statement** should live in `prisma/sql/*.sql` and run via `$queryRawTyped` through `createPrisma(env.DB)`.
+Worker SQL that is a **single, fixed-shape statement** should live in `prisma/sql/*.sql`.
 
-Prisma 7.10 TypedSQL helpers are generated from `prisma/sql/*.sql`. At runtime we execute them through D1 via `queryTyped` / `runTyped` / `d1PrepareTyped` in `packages/worker/src/typed-sql.ts`, converting `$1`-style placeholders to `?` (D1 positional bind). There is no runtime `PrismaClient` / `createPrisma` path.
+Prisma generates typed factories under `packages/worker/src/generated/prisma`. At runtime we execute them through D1 via `queryTyped` / `runTyped` / `d1PrepareTyped` in `packages/worker/src/typed-sql.ts` (rewrites `$1`-style placeholders to `?`). There is **no** runtime `PrismaClient` path.
 
-**Do not** use Prisma model CRUD APIs for domain persistence in this initiative.
+Do **not** use Prisma model CRUD APIs for domain persistence.
 
-Shape-varying timeline SQL: see [adr-variable-timeline-sql.md](./adr-variable-timeline-sql.md).
+Design decisions:
+
+- [adr-typedsql-d1-execution.md](./adr-typedsql-d1-execution.md) — codegen only, D1 execution
+- [adr-wrangler-migrations-sot.md](./adr-wrangler-migrations-sot.md) — Wrangler owns applied schema
+- [adr-json-each-membership.md](./adr-json-each-membership.md) — variable membership binds
+- [adr-variable-timeline-sql.md](./adr-variable-timeline-sql.md) — shape-varying timeline SQL on `prepare`
 
 ## Migrations
 
-Wrangler D1 migrations under `migrations/` remain the applied schema history. After changing migrations:
+Wrangler D1 migrations under `migrations/` are the applied schema history. After changing migrations:
 
 ```sh
 pnpm exec wrangler d1 migrations apply tstodon --local
@@ -40,6 +48,7 @@ Generated client lives at `packages/worker/src/generated/prisma/` (committed so 
 | Multi-statement writes     | Keep `runD1Batch` / `env.DB.batch` (Prisma D1 adapter does not provide transactional batches) |
 | Variable-length membership | `sqlInJsonEach()` + `jsonStringArray()` (O(1) binds; never grow `IN (?,?,…)`)                 |
 | Domain branded types       | Parse TypedSQL rows with existing Zod companions                                              |
+| Shape-varying timeline SQL | `db.prepare` branches — see [adr-variable-timeline-sql.md](./adr-variable-timeline-sql.md)    |
 
 ## SQLite params
 

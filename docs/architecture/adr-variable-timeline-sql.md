@@ -2,6 +2,8 @@
 
 <!-- constrained-by ./d1-writes.md -->
 <!-- constrained-by ./prisma-typedsql.md -->
+<!-- constrained-by ./adr-json-each-membership.md -->
+<!-- constrained-by ./adr-typedsql-d1-execution.md -->
 
 ## Status
 

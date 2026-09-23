@@ -23,22 +23,23 @@
 
 ## Variable-length `IN` lists
 
-D1 rejects statements with more than **100** bound parameters. Do **not** build growing `IN (?,?,…)` lists (cfwdon hit this when N > 100 and returned opaque 500s).
+<!-- constrained-by ./adr-json-each-membership.md -->
 
-Use the cfwdon pattern from `packages/worker/src/d1.ts`:
+D1 rejects statements with more than **100** bound parameters. Do **not** build growing `IN (?,?,…)` lists. Decision and rationale: [adr-json-each-membership.md](./adr-json-each-membership.md).
 
 ```ts
 `WHERE id ${sqlInJsonEach()}` // → IN (SELECT value FROM json_each(?))
   .bind(jsonStringArray(ids)); // one bind, any list size
 ```
 
-`sql_placeholders`-style fixed lists are fine only when N is known and ≤ 100.
-
 Shape-varying timeline / search SQL stays on `db.prepare` by design: [adr-variable-timeline-sql.md](./adr-variable-timeline-sql.md).
 
 ## TypedSQL
 
-Single-statement SQL is moving to Prisma TypedSQL. See [prisma-typedsql.md](./prisma-typedsql.md).
+<!-- constrained-by ./adr-typedsql-d1-execution.md -->
+<!-- constrained-by ./adr-wrangler-migrations-sot.md -->
+
+Fixed-shape single statements: Prisma TypedSQL codegen + D1 execution helpers. See [prisma-typedsql.md](./prisma-typedsql.md), [adr-typedsql-d1-execution.md](./adr-typedsql-d1-execution.md), and [adr-wrangler-migrations-sot.md](./adr-wrangler-migrations-sot.md).
 
 ## When a single statement is better
 
