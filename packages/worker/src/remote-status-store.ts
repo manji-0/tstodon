@@ -8,6 +8,7 @@ import { RemoteStatusRowSchema, toRepositoryError } from "./schemas";
 import { visibilitySql } from "./sql-enums";
 import { queryTyped, runTyped } from "./typed-sql";
 import {
+  deleteRemoteStatusByObjectUri as deleteRemoteStatusByObjectUriSql,
   findRemoteStatusById as findRemoteStatusByIdSql,
   findRemoteStatusByObjectUri as findRemoteStatusByObjectUriSql,
   listPublicRemoteStatuses as listPublicRemoteStatusesSql,
@@ -135,4 +136,13 @@ export const listPublicRemoteStatuses = async (
       }
     }
     return statuses;
+  });
+
+export const deleteRemoteStatusByObjectUri = async (
+  db: D1Database,
+  objectUri: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ id: string }>(db, deleteRemoteStatusByObjectUriSql(objectUri));
+    return rows.length > 0;
   });

@@ -17,6 +17,9 @@ export const actorDocument = (
     outbox: `${id}/outbox`,
     followers: `${id}/followers`,
     following: `${id}/following`,
+    endpoints: {
+      sharedInbox: InstanceIdentity.sharedInboxUrl(identity),
+    },
     url: id,
     publicKey: {
       id: `${id}#main-key`,

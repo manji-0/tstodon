@@ -40,14 +40,15 @@ pnpm e2e:federation
 
 ## Scenarios
 
-| Script        | Command                             | Coverage                                                                               |
-| ------------- | ----------------------------------- | -------------------------------------------------------------------------------------- |
-| Smoke         | `pnpm e2e:federation`               | Nodeinfo, provision, WebFinger, actor docs, host cross-fetch                           |
-| Follow→Create | `pnpm e2e:federation:follow-create` | Signed Follow into A; ExpandFollowers outbox target; Create into B → `remote_statuses` |
-| Interactions  | `pnpm e2e:federation:interactions`  | Undo Follow; Like; Announce; Undo Like (+ count asserts)                               |
+| Script                | Command                                   | Coverage                                                                               |
+| --------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------- |
+| Smoke                 | `pnpm e2e:federation`                     | Nodeinfo, provision, WebFinger, actor docs, host cross-fetch                           |
+| Follow→Create         | `pnpm e2e:federation:follow-create`       | Signed Follow into A; ExpandFollowers outbox target; Create into B → `remote_statuses` |
+| Interactions          | `pnpm e2e:federation:interactions`        | Undo Follow; Like; Announce; Undo Like (+ count asserts)                               |
+| Delete + shared inbox | `pnpm e2e:federation:delete-shared-inbox` | Shared-inbox fan-out target; Create via `/inbox`; Delete clears `remote_statuses`      |
 
 ### Loopback limitation
 
-`workerd` often cannot `fetch()` another loopback port. Follow→Create therefore pre-seeds `remote_actors` and may drive the Create HTTP hop from the host while still asserting A's ExpandFollowers selected B. See `e2e/federation-follow-create.mjs`.
+`workerd` often cannot `fetch()` another loopback port. Follow→Create / Delete scenarios therefore pre-seed `remote_actors` and may drive Create/Delete HTTP hops from the host while still asserting A's ExpandFollowers selected B (including shared inbox). See `e2e/federation-*.mjs`.
 
-Not yet automated: Undo, Announce/Like, Accept activity round-trip, shared-inbox-only fan-out.
+Not yet automated: Accept activity round-trip; removing the host-driven hop (E2E-4).

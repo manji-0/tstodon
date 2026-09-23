@@ -68,3 +68,13 @@ processes:
         condition: process_healthy
     availability:
       restart: "no"
+
+  e2e-federation-delete-shared-inbox:
+    command: node e2e/federation-delete-shared-inbox.mjs
+    depends_on:
+      tstodon-a:
+        condition: process_healthy
+      tstodon-b:
+        condition: process_healthy
+    availability:
+      restart: "no"

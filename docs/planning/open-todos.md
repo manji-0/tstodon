@@ -30,5 +30,5 @@ Tracked leftovers so e2e work can proceed without losing them.
 | E2E-1 | process-compose multi-instance harness                          | done                          |
 | E2E-2 | Minimal 2-instance federation (WebFinger + Follow→Create)       | done (host-driven Create hop) |
 | E2E-3 | Undo/Like/Announce (+ Undo Like) e2e                            | done                          |
-| E2E-5 | Delete + shared-inbox-only fan-out e2e                          | later                         |
+| E2E-5 | Delete + shared-inbox-only fan-out e2e                          | done                          |
 | E2E-4 | Remove host-driven Create hop when workerd loopback fetch works | later                         |

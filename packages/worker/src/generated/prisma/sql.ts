@@ -42,6 +42,8 @@ export * from "./sql/deleteRemoteFavourite";
 
 export * from "./sql/deleteRemoteFollow";
 
+export * from "./sql/deleteRemoteStatusByObjectUri";
+
 export * from "./sql/deleteStatusMentions";
 
 export * from "./sql/deleteStatusOwned";

@@ -28,6 +28,7 @@ import {
   upsertRemoteFollow,
 } from "../remote-actor-store";
 import { persistRemoteObject } from "../remote-status-persist";
+import { deleteRemoteStatusByObjectUri } from "../remote-status-store";
 import {
   deleteRemoteAnnounce,
   deleteRemoteFavourite,
@@ -356,6 +357,13 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       const statusId = parseLocalStatusId(identity.value, activity.object);
       if (statusId) {
         await upsertRemoteFavourite(c.env.DB, signer.actor.actorUri, statusId);
+      }
+    }
+    if (activity.kind === "Delete") {
+      const objectUri = activity.object;
+      // Remote note delete (object is remote URI we may have cached).
+      if (!parseLocalStatusId(identity.value, objectUri)) {
+        await deleteRemoteStatusByObjectUri(c.env.DB, objectUri);
       }
     }
     if (activity.kind === "Create" || activity.kind === "Announce") {
