@@ -1,7 +1,11 @@
 # D1 write conventions
 
+Short checklist. Long-form design: [d1-write-strategy.md](./d1-write-strategy.md), heavy scenarios: [d1-heavy-scenarios.md](./d1-heavy-scenarios.md).
+
 <!-- constrained-by ./tstodon-architecture.md#cloudflare-mapping -->
 <!-- constrained-by ../planning/local-core.md#quality-bar -->
+<!-- constrained-by ./d1-write-strategy.md -->
+<!-- constrained-by ./d1-heavy-scenarios.md -->
 
 ## Rules
 
