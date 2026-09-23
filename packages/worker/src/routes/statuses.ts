@@ -152,6 +152,11 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
     return jsonRepositoryError(c, mentionedAccounts.error.message);
   }
   const mentionedAccountIds = mentionedAccounts.value.map((account) => account.id);
+  // Persist mention rows before side-effect notifies (D1 write strategy / Create saga).
+  const mentionsSaved = await replaceStatusMentions(c.env.DB, note.id, mentionedAccountIds);
+  if (mentionsSaved.isErr()) {
+    return jsonRepositoryError(c, mentionsSaved.error.message);
+  }
   for (const mentioned of mentionedAccounts.value) {
     if (mentioned.id === user.value.id) {
       continue;
@@ -163,18 +168,24 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
       statusId: note.id,
     });
   }
-  const mentionsSaved = await replaceStatusMentions(c.env.DB, note.id, mentionedAccountIds);
-  if (mentionsSaved.isErr()) {
-    return jsonRepositoryError(c, mentionsSaved.error.message);
-  }
   const actor = InstanceIdentity.actorUrl(identity.value, user.value.username);
-  await enqueueLocalActivity(c.env, user.value.id, "Create", {
+  const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Create", {
     "@context": "https://www.w3.org/ns/activitystreams",
     id: `${actor}/statuses/${note.id}/activity`,
     type: "Create",
     actor,
     object: noteDocument(identity.value, user.value, note),
   });
+  if (enqueued.isErr()) {
+    return jsonRepositoryError(
+      c,
+      enqueued.error.kind === "RepositoryError"
+        ? enqueued.error.message
+        : enqueued.error.kind === "QueueSendFailed"
+          ? enqueued.error.message
+          : "invalid activity id",
+    );
+  }
   const document = await mastodonStatus(c.env, identity.value, note, user.value.id);
   await publishToAccount(c.env, user.value.id, {
     kind: "update",
@@ -381,11 +392,21 @@ statusRoutes.post("/api/v1/statuses/:id/reblog", async (c) => {
     });
   }
   const actor = InstanceIdentity.actorUrl(identity.value, user.value.username);
-  await enqueueLocalActivity(c.env, user.value.id, "Announce", {
+  const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Announce", {
     type: "Announce",
     actor,
     object: `${actor}/statuses/${status.value.id}`,
   });
+  if (enqueued.isErr()) {
+    return jsonRepositoryError(
+      c,
+      enqueued.error.kind === "RepositoryError"
+        ? enqueued.error.message
+        : enqueued.error.kind === "QueueSendFailed"
+          ? enqueued.error.message
+          : "invalid activity id",
+    );
+  }
   const latest = await findStatusById(c.env.DB, status.value.id);
   if (latest.isErr() || !latest.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);

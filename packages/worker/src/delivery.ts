@@ -4,20 +4,23 @@ import {
   InstanceIdentity,
   OutboxJob,
   type DeliveryAttemptOutcome as DeliveryAttemptOutcomeValue,
+  type LocalStatus,
   type OutboxJob as OutboxJobValue,
 } from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
 import { findAccountById } from "./account-store";
 import { nowIso } from "./clock";
+import type { RepositoryError } from "./d1";
 import { signInboxRequest } from "./http-signature";
-import { mastodonStatus } from "./mastodon";
+import { mastodonStatuses } from "./mastodon";
 import {
   ensureOutboxTarget,
+  ensureOutboxTargets,
   findOutboundActivity,
   insertOutboundActivity,
   markOutboundExpanded,
 } from "./outbox-store";
 import { listExpiredUnnotifiedPolls, markPollExpiryNotified } from "./poll-store";
-import { listAcceptedFollowerIds } from "./social-store";
 import { listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
 import { findStatusById } from "./status-store";
@@ -25,28 +28,62 @@ import { publishToAccount } from "./stream-publish";
 
 type DeliverTargetJob = Extract<OutboxJobValue, { kind: "DeliverTarget" }>;
 
+export type EnqueueLocalActivityError =
+  | RepositoryError
+  | Readonly<{ kind: "InvalidActivityId" }>
+  | Readonly<{ kind: "QueueSendFailed"; message: string }>;
+
 export const enqueueLocalActivity = async (
   env: Env,
   accountId: string,
   kind: string,
   payload: unknown,
-): Promise<void> => {
+): Promise<Result<void, EnqueueLocalActivityError>> => {
   const inserted = await insertOutboundActivity(env.DB, {
     accountId,
     kind,
     payload,
   });
   if (inserted.isErr()) {
-    return;
+    console.error(
+      JSON.stringify({
+        kind: "OutboxEnqueueInsertFailed",
+        accountId,
+        activityKind: kind,
+        message: inserted.error.message,
+      }),
+    );
+    return err(inserted.error);
   }
   const activityId = ActivityId.parse(inserted.value.id);
   if (activityId.isErr()) {
-    return;
+    console.error(
+      JSON.stringify({
+        kind: "OutboxEnqueueInvalidActivityId",
+        accountId,
+        rawId: inserted.value.id,
+      }),
+    );
+    return err({ kind: "InvalidActivityId" });
   }
-  await env.OUTBOX_PROCESS_QUEUE.send({
-    kind: "ExpandFollowers",
-    activityId: activityId.value,
-  });
+  try {
+    await env.OUTBOX_PROCESS_QUEUE.send({
+      kind: "ExpandFollowers",
+      activityId: activityId.value,
+    });
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    console.error(
+      JSON.stringify({
+        kind: "OutboxEnqueueQueueSendFailed",
+        accountId,
+        activityId: activityId.value,
+        message,
+      }),
+    );
+    return err({ kind: "QueueSendFailed", message });
+  }
+  return ok(undefined);
 };
 
 export const deliveryWorkflowId = async (activityId: string, inboxUrl: string): Promise<string> => {
@@ -141,16 +178,50 @@ const processExpiredPolls = async (env: Env): Promise<void> => {
   if (expired.isErr()) {
     return;
   }
+  type Pending = Readonly<{
+    pollId: string;
+    accountId: string;
+    status: LocalStatus;
+  }>;
+  const pending: Pending[] = [];
   for (const poll of expired.value) {
     const status = await findStatusById(env.DB, poll.statusId);
     if (status.isOk() && status.value) {
-      const document = await mastodonStatus(env, identity.value, status.value, poll.accountId);
-      await publishToAccount(env, poll.accountId, {
-        kind: "status.update",
-        payload: document,
-      });
+      pending.push({ pollId: poll.id, accountId: poll.accountId, status: status.value });
+    } else {
+      await markPollExpiryNotified(env.DB, poll.id, notifiedAt);
     }
-    await markPollExpiryNotified(env.DB, poll.id, notifiedAt);
+  }
+  const byOwner = new Map<string, Pending[]>();
+  for (const item of pending) {
+    const list = byOwner.get(item.accountId) ?? [];
+    list.push(item);
+    byOwner.set(item.accountId, list);
+  }
+  for (const [accountId, items] of byOwner) {
+    const documents = await mastodonStatuses(
+      env,
+      identity.value,
+      items.map((item) => item.status),
+      accountId,
+    );
+    const byStatusId = new Map<string, Record<string, unknown>>();
+    for (const document of documents) {
+      const id = document.id;
+      if (typeof id === "string") {
+        byStatusId.set(id, document);
+      }
+    }
+    for (const item of items) {
+      const document = byStatusId.get(item.status.id);
+      if (document) {
+        await publishToAccount(env, accountId, {
+          kind: "status.update",
+          payload: document,
+        });
+      }
+      await markPollExpiryNotified(env.DB, item.pollId, notifiedAt);
+    }
   }
 };
 
@@ -164,50 +235,46 @@ export const processOutboxJob = async (env: Env, job: OutboxJobValue): Promise<v
       if (activity.isErr() || !activity.value) {
         return;
       }
-      const followerIds = await listAcceptedFollowerIds(env.DB, activity.value.account_id);
       const identity = parseInstanceIdentity(env);
-      const remoteTargets: string[] = [];
-      if (followerIds.isOk() && identity.isOk()) {
-        for (const followerId of followerIds.value) {
-          const follower = await findAccountById(env.DB, followerId);
-          if (follower.isErr() || !follower.value) {
-            continue;
-          }
-          const inbox = `${InstanceIdentity.actorUrl(identity.value, follower.value.username)}/inbox`;
-          remoteTargets.push(inbox);
-        }
-      }
       const remoteFollowers = await listAcceptedRemoteFollowerInboxes(
         env.DB,
         activity.value.account_id,
       );
-      if (remoteFollowers.isOk()) {
-        remoteTargets.push(...remoteFollowers.value);
-      }
+      const candidateInboxes = remoteFollowers.isOk() ? remoteFollowers.value : [];
       const sameHost = identity.isOk() ? identity.value.domain : "";
-      const remoteInboxes = remoteTargets.filter((inbox) => {
-        try {
-          return new URL(inbox).host !== sameHost;
-        } catch {
-          return false;
-        }
-      });
+      const remoteInboxes = [
+        ...new Set(
+          candidateInboxes.filter((inbox) => {
+            try {
+              return new URL(inbox).host !== sameHost;
+            } catch {
+              return false;
+            }
+          }),
+        ),
+      ];
       await markOutboundExpanded(env.DB, job.activityId, remoteInboxes.length);
+      const ensured = await ensureOutboxTargets(env.DB, job.activityId, remoteInboxes);
+      if (ensured.isErr()) {
+        console.error(
+          JSON.stringify({
+            kind: "OutboxExpandTargetsFailed",
+            activityId: job.activityId,
+            message: ensured.error.message,
+          }),
+        );
+        return;
+      }
       for (const inboxUrl of remoteInboxes) {
-        const parsedInbox = OutboxJob.parse({
+        const deliver = OutboxJob.parse({
           kind: "DeliverTarget",
           activityId: job.activityId,
           inboxUrl,
         });
-        if (parsedInbox.isErr() || parsedInbox.value.kind !== "DeliverTarget") {
+        if (deliver.isErr() || deliver.value.kind !== "DeliverTarget") {
           continue;
         }
-        const deliverTarget = parsedInbox.value;
-        const target = await ensureOutboxTarget(env.DB, job.activityId, deliverTarget.inboxUrl);
-        if (target.isErr()) {
-          continue;
-        }
-        await startOutboxDeliveryWorkflow(env, deliverTarget);
+        await startOutboxDeliveryWorkflow(env, deliver.value);
       }
       return;
     }

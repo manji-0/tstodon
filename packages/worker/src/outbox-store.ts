@@ -15,7 +15,7 @@ import {
   OutboxDeliveryRowSchema,
   toRepositoryError,
 } from "./schemas";
-import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
+import { d1PrepareTyped, queryTyped, runTyped, runTypedBatchChunked } from "./typed-sql";
 import {
   findOutboundActivity as findOutboundActivitySql,
   findOutboxFanout as findOutboxFanoutSql,
@@ -214,28 +214,9 @@ export const ensureOutboxTarget = async (
   activityId: string,
   inboxUrl: string,
 ): Promise<Result<OutboxDeliveryValue, RepositoryError>> => {
-  const parsed = ActivityId.parse(activityId);
-  if (parsed.isErr()) {
-    return err(toRepositoryError("invalid activity id"));
-  }
-  const inserted = await runD1(async () => {
-    const queued = OutboxDelivery.queued();
-    const createdAt = nowIso();
-    await runTyped(
-      db,
-      insertOutboxTargetOrIgnoreSql(
-        newEntityId(),
-        activityId,
-        queued.kind,
-        queued.attemptCount,
-        inboxUrl,
-        createdAt,
-        createdAt,
-      ),
-    );
-  });
-  if (inserted.isErr()) {
-    return err(inserted.error);
+  const ensured = await ensureOutboxTargets(db, activityId, [inboxUrl]);
+  if (ensured.isErr()) {
+    return err(ensured.error);
   }
   const loaded = await findOutboxTarget(db, activityId, inboxUrl);
   if (loaded.isErr()) {
@@ -245,6 +226,40 @@ export const ensureOutboxTarget = async (
     return err(toRepositoryError("outbox target missing after insert"));
   }
   return ok(loaded.value);
+};
+
+/** Insert many outbox delivery targets in chunked D1 batches (INSERT OR IGNORE). */
+export const ensureOutboxTargets = async (
+  db: D1Database,
+  activityId: string,
+  inboxUrls: ReadonlyArray<string>,
+): Promise<Result<void, RepositoryError>> => {
+  const parsed = ActivityId.parse(activityId);
+  if (parsed.isErr()) {
+    return err(toRepositoryError("invalid activity id"));
+  }
+  const unique = [...new Set(inboxUrls.filter((url) => url.length > 0))];
+  if (unique.length === 0) {
+    return ok(undefined);
+  }
+  const queued = OutboxDelivery.queued();
+  const createdAt = nowIso();
+  const statements = unique.map((inboxUrl) =>
+    insertOutboxTargetOrIgnoreSql(
+      newEntityId(),
+      activityId,
+      queued.kind,
+      queued.attemptCount,
+      inboxUrl,
+      createdAt,
+      createdAt,
+    ),
+  );
+  const batched = await runTypedBatchChunked(db, statements);
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  return ok(undefined);
 };
 
 export const findOutboxTarget = async (
