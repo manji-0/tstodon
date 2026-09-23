@@ -1,6 +1,13 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { authenticate } from "../auth";
-import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
+import {
+  jsonAuthError,
+  jsonRepositoryError,
+  jsonValidationError,
+  readBody,
+  requireUser,
+} from "../http";
 import { mastodonMedia } from "../mastodon";
 import { mediaIsPrivate, privateKeysForUpload } from "../media-access";
 import {
@@ -17,8 +24,6 @@ import { newEntityId } from "../ids";
 import { findStatusById } from "../status-store";
 import { canViewStatus } from "../visibility-guard";
 import { UpdateMediaBodySchema } from "../schemas";
-import type { Context } from "hono";
-import { readBody } from "../http";
 
 export const mediaRoutes = new Hono<{ Bindings: Env }>();
 
