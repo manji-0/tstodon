@@ -25,6 +25,7 @@ export { FediRole, type FediRole as FediRoleValue, type FediRoleName } from "./f
 export { LocalFollow, type LocalFollow as LocalFollowValue } from "./local-follow";
 export { LocalAccount, type LocalAccount as LocalAccountValue } from "./registration";
 export { MediaId } from "./media-id";
+export { MediaObjectRef, type MediaObjectRef as MediaObjectRefValue } from "./media-object-ref";
 export {
   OutboxDelivery,
   DELIVERY_MAX_ATTEMPTS,

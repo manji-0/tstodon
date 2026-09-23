@@ -287,6 +287,41 @@ describe("worker http", () => {
     expect(mediaResponse.status).toBe(200);
     const media = read(MastodonMediaPreviewSchema, await mediaResponse.json());
     expect(media.id).toBeTruthy();
+    expect(media.url).toContain("/attachments/");
+    expect(media.url.endsWith(`/${media.id}`)).toBe(true);
+    expect(media.preview_url).toBe(media.url);
+
+    const mediaGet = await SELF.fetch(media.url);
+    expect(mediaGet.status).toBe(200);
+    expect(await mediaGet.text()).toBe("hello");
+    expect(mediaGet.headers.get("cache-control")).toContain("max-age=31536000");
+
+    const byId = await SELF.fetch(`https://example.com/media/${media.id}`);
+    expect(byId.status).toBe(200);
+    expect(await byId.text()).toBe("hello");
+
+    const avatarForm = new FormData();
+    avatarForm.set("display_name", "Alice Avatar");
+    avatarForm.set("avatar", new File(["avatar-bytes"], "avatar.png", { type: "image/png" }));
+    avatarForm.set("header", new File(["header-bytes"], "header.png", { type: "image/png" }));
+    const profileResponse = await SELF.fetch(
+      "https://example.com/api/v1/accounts/update_credentials",
+      {
+        method: "PATCH",
+        headers: await auth("alice@example.com"),
+        body: avatarForm,
+      },
+    );
+    expect(profileResponse.status).toBe(200);
+    const profile = read(MastodonAccountPreviewSchema, await profileResponse.json());
+    expect(profile.avatar).toContain("/avatars/");
+    expect(profile.header).toContain("/headers/");
+    const avatarGet = await SELF.fetch(profile.avatar!);
+    expect(avatarGet.status).toBe(200);
+    expect(await avatarGet.text()).toBe("avatar-bytes");
+    const headerGet = await SELF.fetch(profile.header!);
+    expect(headerGet.status).toBe(200);
+    expect(await headerGet.text()).toBe("header-bytes");
 
     const poll = await json("/api/v1/statuses", {
       method: "POST",

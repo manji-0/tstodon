@@ -10,7 +10,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param limit
  */
 export const searchAccounts = $runtime.makeTypedQueryFactory(
-  "SELECT id, username, access_email, display_name, locked, default_post_visibility, default_quote_policy, public_key_pem, private_key_jwk, created_at, COALESCE(bio_text, '') AS bio_text\nFROM accounts\nWHERE username LIKE $1 OR display_name LIKE $2\nORDER BY username\nLIMIT $3",
+  "SELECT id, username, access_email, display_name, locked, default_post_visibility, default_quote_policy, public_key_pem, private_key_jwk, created_at, COALESCE(bio_text, '') AS bio_text, avatar_object_key, header_object_key\nFROM accounts\nWHERE username LIKE $1 OR display_name LIKE $2\nORDER BY username\nLIMIT $3",
 ) as (
   usernameLike: string,
   displayNameLike: string,
@@ -31,5 +31,7 @@ export namespace searchAccounts {
     private_key_jwk: string;
     created_at: string;
     bio_text: string;
+    avatar_object_key: string | null;
+    header_object_key: string | null;
   };
 }

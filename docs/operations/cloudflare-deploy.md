@@ -7,7 +7,7 @@
 3. Copy `tofu output -json worker_vars` into production Worker vars. Clear local fixture vars (`CF_ACCESS_JWKS_JSON`, `CF_ACCESS_LOCAL_PRIVATE_JWK`).
 4. Confirm Access path coverage matches [Configuration](../reference/configuration.md#federation-path-policy-ops) (`/api*` protected; `/.well-known*`, `/nodeinfo*`, `/users*`, `/healthz*` bypassed).
 5. Apply D1 migrations: `wrangler d1 migrations apply tstodon --remote`.
-6. Put the media bucket on a public hostname and set `MEDIA_PUBLIC_BASE_URL`.
+6. Put the media bucket on a public hostname (R2 custom domain) and set `MEDIA_PUBLIC_BASE_URL` to that origin. Object keys under the bucket are the URL path (`attachments/…`, `avatars/…`, `headers/…`). See [Configuration — Media public URLs](../reference/configuration.md#media-public-urls).
 7. `pnpm run ci`
 8. `wrangler deploy`
 9. Re-apply Terraform with `attach_queue_consumer = true` so the outbox Queue consumer points at the deployed Worker.

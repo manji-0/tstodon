@@ -3,6 +3,7 @@ import {
   AccountId,
   IsoInstant,
   LocalAccount,
+  MediaObjectRef,
   Registration,
   Username,
   Visibility,
@@ -32,6 +33,8 @@ import {
   listDirectoryAccountsByActive as listDirectoryAccountsByActiveSql,
   listDirectoryAccountsByNew as listDirectoryAccountsByNewSql,
   searchAccounts as searchAccountsSql,
+  updateAccountAvatar as updateAccountAvatarSql,
+  updateAccountHeader as updateAccountHeaderSql,
   updateAccountProfile as updateAccountProfileSql,
 } from "./generated/prisma/sql";
 
@@ -61,6 +64,8 @@ export const accountFromRow = (row: AccountRow): Result<LocalAccount, Repository
     publicKeyPem: row.public_key_pem,
     privateKeyJwk: row.private_key_jwk,
     createdAt: createdAt.value,
+    avatarObjectKey: MediaObjectRef.fromNullable(row.avatar_object_key),
+    headerObjectKey: MediaObjectRef.fromNullable(row.header_object_key),
   });
   return parsed.mapErr(() => toRepositoryError("account schema rejected row"));
 };
@@ -322,7 +327,7 @@ export const listSuggestedAccounts = async (
       .prepare(
         `SELECT id, username, access_email, display_name, locked, default_post_visibility,
                 default_quote_policy, public_key_pem, private_key_jwk, created_at,
-                COALESCE(bio_text, '') AS bio_text
+                COALESCE(bio_text, '') AS bio_text, avatar_object_key, header_object_key
          FROM accounts
          WHERE id != ?
            AND id NOT IN (
@@ -429,4 +434,22 @@ export const updateAccountProfile = async (
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await runTyped(db, updateAccountProfileSql(displayName, nowIso(), accountId));
+  });
+
+export const updateAccountAvatarKey = async (
+  db: D1Database,
+  accountId: string,
+  objectKey: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, updateAccountAvatarSql(objectKey, nowIso(), accountId));
+  });
+
+export const updateAccountHeaderKey = async (
+  db: D1Database,
+  accountId: string,
+  objectKey: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, updateAccountHeaderSql(objectKey, nowIso(), accountId));
   });

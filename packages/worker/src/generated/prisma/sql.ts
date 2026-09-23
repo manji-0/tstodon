@@ -174,6 +174,10 @@ export * from "./sql/markPollExpiryNotified";
 
 export * from "./sql/searchAccounts";
 
+export * from "./sql/updateAccountAvatar";
+
+export * from "./sql/updateAccountHeader";
+
 export * from "./sql/updateAccountProfile";
 
 export * from "./sql/updateList";
