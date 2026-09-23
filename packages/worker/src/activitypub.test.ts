@@ -31,9 +31,9 @@ describe("activitypub local URL parsers", () => {
     expect(parseLocalActorUsername(id, "https://social.example/users/alice")).toBe("alice");
     expect(parseLocalActorUsername(id, "https://social.example/users/alice/inbox")).toBe("alice");
     expect(parseLocalActorUsername(id, "https://other.example/users/alice")).toBeUndefined();
-    expect(
-      parseLocalStatusId(id, "https://social.example/users/alice/statuses/status-1"),
-    ).toBe("status-1");
+    expect(parseLocalStatusId(id, "https://social.example/users/alice/statuses/status-1")).toBe(
+      "status-1",
+    );
     expect(parseLocalStatusId(id, "https://social.example/users/alice")).toBeUndefined();
   });
 
