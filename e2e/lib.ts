@@ -1,12 +1,9 @@
-import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { SignJWT, importJWK, type JWK } from "jose";
 
-const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const josePath = require.resolve("jose", { paths: [path.join(root, "packages/worker"), root] });
-const { SignJWT, importJWK } = await import(josePath);
 
 export const A = process.env.E2E_A_ORIGIN ?? "http://127.0.0.1:8791";
 export const B = process.env.E2E_B_ORIGIN ?? "http://127.0.0.1:8792";
@@ -26,17 +23,104 @@ const LOCAL_PRIVATE_JWK = {
   dp: "wDdJI6X_HAHHwo0TK0ECOphYUpIGbrNTZ2YzEKP7G4mt70JBrb8pIDCVGTkJn0uPML-kR5tTQGkw7I6R2aaeyhVLKlpmdVKvf1j72M8xzEcdznwoegCUDNheTrXo_6bpmfIoGLxpf4G9qTfNRvzCjCq9_HbHp_y_kogYpEgpCWk",
   dq: "bxayYO2oziMqUZpb81kJR-iqCmG4rTW3i8E35qRF4owIJHfndpKOirEL0xAiDhKBdgCANSIhQCwOJdrxQtJLS0Gv9Bu4ws2PfOFMQTF_121KpGF9RsKEeiA0BdaFQ7w-BT5KGkcdnWlnErRwwTYCulm4H55A7Qq8_NGBiOVkQPE",
   qi: "A3Uy5wXgpeDH9l1qxhKtN_O-3F6Ia_mhWeG6mTaNUlKXjI6cJ4rjdEnQCZaZk8IPGWfDutxG9-FQgklx_TgHFc0jdJGuabtNl3QlYTY-QSsKcfq1qQaRRC-n3CB6MiP-CEm3E-6ufbAE1J2YOqgkfv_sB9WvCWPkzJANZJSbEFk",
+} as const satisfies JWK;
+
+export type E2eInstance = "a" | "b";
+
+export type JsonBody = unknown;
+
+export type HttpJsonResult = {
+  status: number;
+  body: JsonBody;
+  headers: Headers;
 };
 
-export const fail = (message, detail) => {
+export type D1Row = Record<string, unknown>;
+
+export type ActorDocument = {
+  id: string;
+  preferredUsername: string;
+  inbox: string;
+  name?: string;
+  endpoints?: {
+    sharedInbox?: string;
+  };
+  publicKey: {
+    id: string;
+    publicKeyPem: string;
+  };
+};
+
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+export const asString = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  if (value == null) {
+    return "";
+  }
+  return JSON.stringify(value);
+};
+
+export function fail(message: string, detail?: unknown): never {
   console.error(`FAIL: ${message}`, detail ?? "");
   process.exit(1);
+}
+
+export const requireUsername = (body: unknown, label: string): string => {
+  if (isRecord(body) && typeof body.username === "string") {
+    return body.username;
+  }
+  return fail(label, body);
 };
 
-export const getJson = async (url, init) => {
+export const asActorDocument = (body: unknown, label: string): ActorDocument => {
+  if (!isRecord(body)) {
+    return fail(label, body);
+  }
+  const { id, preferredUsername, inbox, publicKey, name, endpoints } = body;
+  if (typeof id !== "string") {
+    return fail(label, body);
+  }
+  if (typeof preferredUsername !== "string") {
+    return fail(label, body);
+  }
+  if (typeof inbox !== "string") {
+    return fail(label, body);
+  }
+  if (!isRecord(publicKey)) {
+    return fail(label, body);
+  }
+  if (typeof publicKey.id !== "string" || typeof publicKey.publicKeyPem !== "string") {
+    return fail(label, body);
+  }
+  const actor: ActorDocument = {
+    id,
+    preferredUsername,
+    inbox,
+    publicKey: {
+      id: publicKey.id,
+      publicKeyPem: publicKey.publicKeyPem,
+    },
+  };
+  if (typeof name === "string") {
+    actor.name = name;
+  }
+  if (isRecord(endpoints) && typeof endpoints.sharedInbox === "string") {
+    actor.endpoints = { sharedInbox: endpoints.sharedInbox };
+  }
+  return actor;
+};
+
+export const getJson = async (url: string, init?: RequestInit): Promise<HttpJsonResult> => {
   const response = await fetch(url, init);
   const text = await response.text();
-  let body;
+  let body: JsonBody;
   try {
     body = text.length === 0 ? null : JSON.parse(text);
   } catch {
@@ -45,7 +129,7 @@ export const getJson = async (url, init) => {
   return { status: response.status, body, headers: response.headers };
 };
 
-export const waitOk = async (url, label) => {
+export const waitOk = async (url: string, label: string): Promise<void> => {
   for (let i = 0; i < 90; i += 1) {
     try {
       const { status } = await getJson(url);
@@ -61,7 +145,7 @@ export const waitOk = async (url, label) => {
   fail(`${label} not ready`, url);
 };
 
-export const authHeaders = async (email) => {
+export const authHeaders = async (email: string): Promise<Record<string, string>> => {
   const key = await importJWK(LOCAL_PRIVATE_JWK, "RS256");
   const token = await new SignJWT({ email, type: "app", groups: [], custom: { groups: [] } })
     .setProtectedHeader({ alg: "RS256", kid: "tstodon-local-access", typ: "JWT" })
@@ -74,7 +158,7 @@ export const authHeaders = async (email) => {
   return { Authorization: `Bearer ${token}` };
 };
 
-export const d1Json = (instance, sql) => {
+export const d1Json = (instance: E2eInstance, sql: string): D1Row[] => {
   const config = instance === "a" ? "e2e/a.wrangler.jsonc" : "e2e/b.wrangler.jsonc";
   const persist = instance === "a" ? ".wrangler/e2e-a" : ".wrangler/e2e-b";
   const db = instance === "a" ? "tstodon-e2e-a" : "tstodon-e2e-b";
@@ -97,30 +181,46 @@ export const d1Json = (instance, sql) => {
     ],
     { cwd: root, encoding: "utf8" },
   );
-  const parsed = JSON.parse(raw);
-  const results = parsed?.[0]?.results ?? parsed?.results ?? [];
-  return results;
+  const parsed: unknown = JSON.parse(raw);
+  if (Array.isArray(parsed)) {
+    const first = parsed[0];
+    if (first && typeof first === "object" && "results" in first) {
+      const results = (first as { results?: unknown }).results;
+      return Array.isArray(results) ? (results as D1Row[]) : [];
+    }
+    return [];
+  }
+  if (parsed && typeof parsed === "object" && "results" in parsed) {
+    const results = (parsed as { results?: unknown }).results;
+    return Array.isArray(results) ? (results as D1Row[]) : [];
+  }
+  return [];
 };
 
-export const accountPrivateKeyJwk = (instance, username) => {
+export const accountPrivateKeyJwk = (instance: E2eInstance, username: string): string => {
   const rows = d1Json(
     instance,
     `SELECT private_key_jwk FROM accounts WHERE username = '${username.replaceAll("'", "''")}' LIMIT 1`,
   );
   const jwk = rows[0]?.private_key_jwk;
-  if (!jwk || typeof jwk !== "string") {
-    fail(`private key missing for ${username} on ${instance}`, rows);
+  if (typeof jwk === "string") {
+    return jwk;
   }
-  return jwk;
+  return fail(`private key missing for ${username} on ${instance}`, rows);
 };
 
-const sha256DigestHeader = async (body) => {
+const sha256DigestHeader = async (body: string): Promise<string> => {
   const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
   const bytes = new Uint8Array(hash);
   return `SHA-256=${btoa(String.fromCharCode(...bytes))}`;
 };
 
-export const signInboxPost = async (inboxUrl, privateKeyJwkJson, keyId, body) => {
+export const signInboxPost = async (
+  inboxUrl: string,
+  privateKeyJwkJson: string,
+  keyId: string,
+  body: string,
+): Promise<Record<string, string>> => {
   const url = new URL(inboxUrl);
   const digest = await sha256DigestHeader(body);
   const date = new Date().toUTCString();
@@ -131,7 +231,17 @@ export const signInboxPost = async (inboxUrl, privateKeyJwkJson, keyId, body) =>
     `date: ${date}`,
     `digest: ${digest}`,
   ].join("\n");
-  const jwk = JSON.parse(privateKeyJwkJson);
+  const jwk = JSON.parse(privateKeyJwkJson) as {
+    kty: string;
+    n?: string;
+    e?: string;
+    d?: string;
+    p?: string;
+    q?: string;
+    dp?: string;
+    dq?: string;
+    qi?: string;
+  };
   const key = await crypto.subtle.importKey(
     "jwk",
     jwk,
@@ -155,16 +265,38 @@ export const signInboxPost = async (inboxUrl, privateKeyJwkJson, keyId, body) =>
   };
 };
 
-export const postSignedInbox = async (inboxUrl, privateKeyJwkJson, keyId, activity) => {
+export const postSignedInbox = async (
+  inboxUrl: string,
+  privateKeyJwkJson: string,
+  keyId: string,
+  activity: unknown,
+): Promise<HttpJsonResult> => {
   const body = JSON.stringify(activity);
   const headers = await signInboxPost(inboxUrl, privateKeyJwkJson, keyId, body);
   return getJson(inboxUrl, { method: "POST", headers, body });
 };
 
-export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+export const waitRows = async (
+  instance: E2eInstance,
+  sql: string,
+  predicate: (rows: D1Row[]) => boolean,
+  label: string,
+  attempts = 30,
+): Promise<D1Row[]> => {
+  for (let i = 0; i < attempts; i += 1) {
+    const rows = d1Json(instance, sql);
+    if (predicate(rows)) {
+      return rows;
+    }
+    await sleep(500);
+  }
+  return fail(label, d1Json(instance, sql));
+};
 
 /** Seed a remote actor row so inbox verification can skip loopback fetch (workerd blocks 127.0.0.1). */
-export const seedRemoteActor = (instance, actor) => {
+export const seedRemoteActor = (instance: E2eInstance, actor: ActorDocument): void => {
   const shared = actor.endpoints?.sharedInbox
     ? `'${String(actor.endpoints.sharedInbox).replaceAll("'", "''")}'`
     : "NULL";

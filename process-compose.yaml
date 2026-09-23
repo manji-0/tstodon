@@ -40,7 +40,7 @@ processes:
       failure_threshold: 30
 
   e2e-federation-smoke:
-    command: node e2e/federation-smoke.mjs
+    command: pnpm exec tsx e2e/federation-smoke.ts
     depends_on:
       tstodon-a:
         condition: process_healthy
@@ -50,7 +50,7 @@ processes:
       restart: "no"
 
   e2e-federation-follow-create:
-    command: node e2e/federation-follow-create.mjs
+    command: pnpm exec tsx e2e/federation-follow-create.ts
     depends_on:
       tstodon-a:
         condition: process_healthy
@@ -60,7 +60,7 @@ processes:
       restart: "no"
 
   e2e-federation-interactions:
-    command: node e2e/federation-interactions.mjs
+    command: pnpm exec tsx e2e/federation-interactions.ts
     depends_on:
       tstodon-a:
         condition: process_healthy
@@ -70,7 +70,7 @@ processes:
       restart: "no"
 
   e2e-federation-delete-shared-inbox:
-    command: node e2e/federation-delete-shared-inbox.mjs
+    command: pnpm exec tsx e2e/federation-delete-shared-inbox.ts
     depends_on:
       tstodon-a:
         condition: process_healthy
@@ -80,7 +80,7 @@ processes:
       restart: "no"
 
   e2e-federation-accept:
-    command: node e2e/federation-accept.mjs
+    command: pnpm exec tsx e2e/federation-accept.ts
     depends_on:
       tstodon-a:
         condition: process_healthy

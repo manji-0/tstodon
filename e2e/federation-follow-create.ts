@@ -13,17 +13,21 @@ import {
   A_DOMAIN,
   B_DOMAIN,
   accountPrivateKeyJwk,
+  asActorDocument,
   authHeaders,
   d1Json,
   fail,
   getJson,
+  asString,
+  isRecord,
   postSignedInbox,
+  requireUsername,
   seedRemoteActor,
   sleep,
   waitOk,
-} from "./lib.mjs";
+} from "./lib.js";
 
-const main = async () => {
+const main = async (): Promise<void> => {
   await waitOk(`${A}/.well-known/nodeinfo`, "instance A");
   await waitOk(`${B}/.well-known/nodeinfo`, "instance B");
 
@@ -37,10 +41,10 @@ const main = async () => {
     headers: bobHeaders,
   });
   if (alice.status !== 200 || bob.status !== 200) {
-    fail("provision users", { alice, bob });
+    return fail("provision users", { alice, bob });
   }
-  const aliceUser = alice.body.username;
-  const bobUser = bob.body.username;
+  const aliceUser = requireUsername(alice.body, "provision users");
+  const bobUser = requireUsername(bob.body, "provision users");
   console.log(`ok users @${aliceUser}@${A_DOMAIN}, @${bobUser}@${B_DOMAIN}`);
 
   const aliceActor = `${A}/users/${aliceUser}`;
@@ -55,10 +59,10 @@ const main = async () => {
     headers: { Accept: "application/activity+json" },
   });
   if (bobDoc.status !== 200 || aliceDoc.status !== 200) {
-    fail("actor documents", { bobDoc, aliceDoc });
+    return fail("actor documents", { bobDoc, aliceDoc });
   }
-  seedRemoteActor("a", bobDoc.body);
-  seedRemoteActor("b", aliceDoc.body);
+  seedRemoteActor("a", asActorDocument(bobDoc.body, "bob actor document"));
+  seedRemoteActor("b", asActorDocument(aliceDoc.body, "alice actor document"));
   console.log("ok seeded remote_actors (loopback fetch workaround)");
 
   const bobKey = accountPrivateKeyJwk("b", bobUser);
@@ -71,7 +75,7 @@ const main = async () => {
     object: aliceActor,
   });
   if (follow.status !== 202) {
-    fail("bob Follow → alice inbox", follow);
+    return fail("bob Follow → alice inbox", follow);
   }
   console.log("ok Follow accepted by A");
 
@@ -88,7 +92,7 @@ const main = async () => {
     await sleep(500);
   }
   if (!foundFollower) {
-    fail("remote_follows missing Accepted bob→alice on A");
+    return fail("remote_follows missing Accepted bob→alice on A");
   }
   console.log("ok remote_follows Accepted on A");
 
@@ -101,13 +105,14 @@ const main = async () => {
       visibility: "public",
     }),
   });
-  if (created.status !== 200 || !created.body?.id) {
-    fail("alice create status", created);
+  if (created.status !== 200 || !isRecord(created.body) || created.body.id == null) {
+    return fail("alice create status", created);
   }
-  console.log(`ok alice created status ${created.body.id}`);
+  const createdId = created.body.id;
+  console.log(`ok alice created status ${asString(createdId)}`);
 
   // Wait for ExpandFollowers to register Bob's inbox as a delivery target.
-  let targetRow;
+  let targetRow: Record<string, unknown> | undefined;
   for (let i = 0; i < 30; i += 1) {
     const rows = d1Json(
       "a",
@@ -120,17 +125,18 @@ const main = async () => {
     await sleep(1000);
   }
   if (!targetRow) {
-    fail("ExpandFollowers did not create outbox target for B", {
+    return fail("ExpandFollowers did not create outbox target for B", {
       deliveries: d1Json(
         "a",
         "SELECT activity_id, inbox_url, kind FROM outbox_deliveries ORDER BY created_at DESC LIMIT 10",
       ),
     });
   }
-  console.log("ok outbox target for B", targetRow.inbox_url);
+  const outboxTarget = targetRow;
+  console.log("ok outbox target for B", outboxTarget.inbox_url);
 
   // Prefer worker-delivered Create; fall back to host hop if loopback fetch fails.
-  let remoteNote;
+  let remoteNote: Record<string, unknown> | undefined;
   let deliveryMode = "worker";
   for (let i = 0; i < 25; i += 1) {
     const rows = d1Json(
@@ -138,7 +144,7 @@ const main = async () => {
       `SELECT id, object_uri, actor_uri, content_html FROM remote_statuses WHERE actor_uri = '${aliceActor}' ORDER BY published_at DESC LIMIT 5`,
     );
     remoteNote = rows.find((row) =>
-      String(row.content_html ?? "").includes("hello bob from alice e2e"),
+      asString(row.content_html ?? "").includes("hello bob from alice e2e"),
     );
     if (remoteNote) {
       break;
@@ -149,18 +155,18 @@ const main = async () => {
     deliveryMode = "host";
     const activities = d1Json(
       "a",
-      `SELECT id, payload_json FROM outbound_activities WHERE id = '${String(targetRow.activity_id).replaceAll("'", "''")}' LIMIT 1`,
+      `SELECT id, payload_json FROM outbound_activities WHERE id = '${asString(outboxTarget.activity_id).replaceAll("'", "''")}' LIMIT 1`,
     );
     const payload = activities[0]?.payload_json;
-    if (!payload) {
-      fail("outbound activity payload missing", activities);
+    if (typeof payload !== "string") {
+      return fail("outbound activity payload missing", activities);
     }
     const aliceKey = accountPrivateKeyJwk("a", aliceUser);
-    const createActivity = JSON.parse(payload);
-    createActivity.id = `${createActivity.id}-e2e-host-${Date.now()}`;
+    const createActivity = JSON.parse(payload) as Record<string, unknown>;
+    createActivity.id = `${String(createActivity.id)}-e2e-host-${Date.now()}`;
     const delivered = await postSignedInbox(bobInbox, aliceKey, aliceKeyId, createActivity);
     if (delivered.status !== 202 && delivered.status !== 200) {
-      fail("host-driven Create → bob inbox", delivered);
+      return fail("host-driven Create → bob inbox", delivered);
     }
     for (let i = 0; i < 20; i += 1) {
       const rows = d1Json(
@@ -168,7 +174,7 @@ const main = async () => {
         `SELECT id, object_uri, actor_uri, content_html FROM remote_statuses WHERE actor_uri = '${aliceActor}' ORDER BY published_at DESC LIMIT 5`,
       );
       remoteNote = rows.find((row) =>
-        String(row.content_html ?? "").includes("hello bob from alice e2e"),
+        asString(row.content_html ?? "").includes("hello bob from alice e2e"),
       );
       if (remoteNote) {
         break;
@@ -177,7 +183,7 @@ const main = async () => {
     }
   }
   if (!remoteNote) {
-    fail("remote Create not persisted on B", {
+    return fail("remote Create not persisted on B", {
       inbox: d1Json(
         "b",
         "SELECT activity_id, kind FROM inbox_activities ORDER BY rowid DESC LIMIT 10",
@@ -188,4 +194,4 @@ const main = async () => {
   console.log("PASS federation follow→create");
 };
 
-main().catch((error) => fail("unhandled", error));
+main().catch((error: unknown) => fail("unhandled", error));

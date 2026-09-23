@@ -8,28 +8,21 @@ import {
   A_DOMAIN,
   B_DOMAIN,
   accountPrivateKeyJwk,
+  asActorDocument,
   authHeaders,
-  d1Json,
   fail,
   getJson,
+  asString,
+  isRecord,
   postSignedInbox,
+  requireUsername,
   seedRemoteActor,
-  sleep,
   waitOk,
-} from "./lib.mjs";
+  waitRows,
+  type D1Row,
+} from "./lib.js";
 
-const waitRows = async (instance, sql, predicate, label, attempts = 30) => {
-  for (let i = 0; i < attempts; i += 1) {
-    const rows = d1Json(instance, sql);
-    if (predicate(rows)) {
-      return rows;
-    }
-    await sleep(500);
-  }
-  fail(label, d1Json(instance, sql));
-};
-
-const main = async () => {
+const main = async (): Promise<void> => {
   await waitOk(`${A}/.well-known/nodeinfo`, "instance A");
   await waitOk(`${B}/.well-known/nodeinfo`, "instance B");
 
@@ -42,10 +35,10 @@ const main = async () => {
     headers: bobHeaders,
   });
   if (alice.status !== 200 || bob.status !== 200) {
-    fail("provision", { alice, bob });
+    return fail("provision", { alice, bob });
   }
-  const aliceUser = alice.body.username;
-  const bobUser = bob.body.username;
+  const aliceUser = requireUsername(alice.body, "provision");
+  const bobUser = requireUsername(bob.body, "provision");
   const aliceActor = `${A}/users/${aliceUser}`;
   const bobActor = `${B}/users/${bobUser}`;
   const bobKeyId = `${bobActor}#main-key`;
@@ -57,10 +50,10 @@ const main = async () => {
     headers: { Accept: "application/activity+json" },
   });
   if (bobDoc.status !== 200 || aliceDoc.status !== 200) {
-    fail("actor docs", { bobDoc, aliceDoc });
+    return fail("actor docs", { bobDoc, aliceDoc });
   }
-  seedRemoteActor("a", bobDoc.body);
-  seedRemoteActor("b", aliceDoc.body);
+  seedRemoteActor("a", asActorDocument(bobDoc.body, "bob actor document"));
+  seedRemoteActor("b", asActorDocument(aliceDoc.body, "alice actor document"));
 
   const bobKey = accountPrivateKeyJwk("b", bobUser);
   const followId = `${B}/activities/follow-ix-${Date.now()}`;
@@ -72,12 +65,12 @@ const main = async () => {
     object: aliceActor,
   });
   if (follow.status !== 202) {
-    fail("Follow", follow);
+    return fail("Follow", follow);
   }
   await waitRows(
     "a",
     `SELECT remote_actor_uri, follow_kind FROM remote_follows WHERE remote_actor_uri = '${bobActor}'`,
-    (rows) => rows.some((r) => r.follow_kind === "Accepted"),
+    (rows: D1Row[]) => rows.some((r) => r.follow_kind === "Accepted"),
     "follow not Accepted",
   );
   console.log("ok Follow");
@@ -95,12 +88,12 @@ const main = async () => {
     },
   });
   if (undoFollow.status !== 202) {
-    fail("Undo Follow", undoFollow);
+    return fail("Undo Follow", undoFollow);
   }
   await waitRows(
     "a",
     `SELECT remote_actor_uri FROM remote_follows WHERE remote_actor_uri = '${bobActor}'`,
-    (rows) => rows.length === 0,
+    (rows: D1Row[]) => rows.length === 0,
     "Undo Follow did not remove remote_follows",
   );
   console.log("ok Undo Follow");
@@ -112,10 +105,10 @@ const main = async () => {
     headers: { ...aliceHeaders, "Content-Type": "application/json" },
     body: JSON.stringify({ status: `interact me ${Date.now()}`, visibility: "public" }),
   });
-  if (created.status !== 200 || !created.body?.id) {
-    fail("create status", created);
+  if (created.status !== 200 || !isRecord(created.body) || created.body.id == null) {
+    return fail("create status", created);
   }
-  const statusId = created.body.id;
+  const statusId = asString(created.body.id);
   const statusUri = `${aliceActor}/statuses/${statusId}`;
   console.log(`ok alice status ${statusId}`);
 
@@ -128,12 +121,12 @@ const main = async () => {
     object: statusUri,
   });
   if (like.status !== 202) {
-    fail("Like", like);
+    return fail("Like", like);
   }
   await waitRows(
     "a",
     `SELECT remote_actor_uri, status_id FROM remote_favourites WHERE status_id = '${statusId}'`,
-    (rows) => rows.some((r) => r.remote_actor_uri === bobActor),
+    (rows: D1Row[]) => rows.some((r) => r.remote_actor_uri === bobActor),
     "Like not in remote_favourites",
   );
   console.log("ok Like");
@@ -147,22 +140,27 @@ const main = async () => {
     object: statusUri,
   });
   if (announce.status !== 202) {
-    fail("Announce", announce);
+    return fail("Announce", announce);
   }
   await waitRows(
     "a",
     `SELECT remote_actor_uri, status_id FROM remote_announces WHERE status_id = '${statusId}'`,
-    (rows) => rows.some((r) => r.remote_actor_uri === bobActor),
+    (rows: D1Row[]) => rows.some((r) => r.remote_actor_uri === bobActor),
     "Announce not in remote_announces",
   );
   console.log("ok Announce");
 
   const counted = await getJson(`${A}/api/v1/statuses/${statusId}`, { headers: aliceHeaders });
-  if (counted.status !== 200) {
-    fail("status counts fetch", counted);
+  if (counted.status !== 200 || !isRecord(counted.body)) {
+    return fail("status counts fetch", counted);
   }
-  if ((counted.body.favourites_count ?? 0) < 1 || (counted.body.reblogs_count ?? 0) < 1) {
-    fail("status counts missing remote interactions", counted.body);
+  const countedBody = counted.body;
+  const favouritesCount =
+    typeof countedBody.favourites_count === "number" ? countedBody.favourites_count : 0;
+  const reblogsCount =
+    typeof countedBody.reblogs_count === "number" ? countedBody.reblogs_count : 0;
+  if (favouritesCount < 1 || reblogsCount < 1) {
+    return fail("status counts missing remote interactions", countedBody);
   }
   console.log("ok favourites_count/reblogs_count");
 
@@ -178,12 +176,12 @@ const main = async () => {
     },
   });
   if (undoLike.status !== 202) {
-    fail("Undo Like", undoLike);
+    return fail("Undo Like", undoLike);
   }
   await waitRows(
     "a",
     `SELECT remote_actor_uri FROM remote_favourites WHERE status_id = '${statusId}' AND remote_actor_uri = '${bobActor}'`,
-    (rows) => rows.length === 0,
+    (rows: D1Row[]) => rows.length === 0,
     "Undo Like did not clear remote_favourites",
   );
   console.log("ok Undo Like");
@@ -191,4 +189,4 @@ const main = async () => {
   console.log("PASS federation interactions");
 };
 
-main().catch((error) => fail("unhandled", error));
+main().catch((error: unknown) => fail("unhandled", error));

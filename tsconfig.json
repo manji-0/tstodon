@@ -3,6 +3,7 @@
   "references": [
     { "path": "./packages/core" },
     { "path": "./packages/domain" },
-    { "path": "./packages/worker" }
+    { "path": "./packages/worker" },
+    { "path": "./e2e" }
   ]
 }

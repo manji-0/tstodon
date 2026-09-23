@@ -50,4 +50,4 @@ pnpm e2e:federation
 
 ### Local peer fetch
 
-Actor resolution still pre-seeds `remote_actors` to avoid fragile loopback GETs during signature setup. Outbound **Create/Accept delivery** prefers the Worker workflow path and only falls back to a host-driven signed POST if the peer note/accept never appears. See `e2e/federation-*.mjs`.
+Actor resolution still pre-seeds `remote_actors` to avoid fragile loopback GETs during signature setup. Outbound **Create/Accept delivery** prefers the Worker workflow path and only falls back to a host-driven signed POST if the peer note/accept never appears. See `e2e/federation-*.ts`.

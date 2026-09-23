@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "types": ["node"],
+    "lib": ["ES2025"]
+  },
+  "include": ["*.ts"]
+}
