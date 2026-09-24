@@ -67,24 +67,14 @@ export const promoteMediaToPublic = async (
       continue;
     }
     const publicKey = attachmentObjectKey(accountId, mediaId);
-    const moved = await copyBetweenBuckets(
-      privateBucket,
-      publicBucket,
-      row.object_key,
-      publicKey,
-    );
+    const moved = await copyBetweenBuckets(privateBucket, publicBucket, row.object_key, publicKey);
     if (!moved) {
       return err({ kind: "RepositoryError", message: `missing private media object ${mediaId}` });
     }
     let publicPreview: string | null = null;
     if (row.preview_object_key && isPrivateMediaObjectKey(row.preview_object_key)) {
       publicPreview = attachmentPreviewObjectKey(accountId, mediaId);
-      await copyBetweenBuckets(
-        privateBucket,
-        publicBucket,
-        row.preview_object_key,
-        publicPreview,
-      );
+      await copyBetweenBuckets(privateBucket, publicBucket, row.preview_object_key, publicPreview);
     } else if (row.preview_object_key) {
       publicPreview = row.preview_object_key;
     }

@@ -87,10 +87,7 @@ export const activityPayloadFromJson = (
   };
 };
 
-const noteAttachment = (
-  identity: InstanceIdentity,
-  row: MediaRow,
-): Record<string, unknown> => {
+const noteAttachment = (identity: InstanceIdentity, row: MediaRow): Record<string, unknown> => {
   const privateAttachment = row.is_private === 1;
   const url = privateAttachment
     ? mediaAuthUrl(identity, row.id)

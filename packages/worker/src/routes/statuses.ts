@@ -195,9 +195,7 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
     id: `${actor}/statuses/${note.id}/activity`,
     type: "Create",
     actor,
-    object: noteDocument(identity.value, user.value, note, [
-      ...mediaForNote.value.values(),
-    ]),
+    object: noteDocument(identity.value, user.value, note, [...mediaForNote.value.values()]),
   });
   if (enqueued.isErr()) {
     return jsonRepositoryError(
