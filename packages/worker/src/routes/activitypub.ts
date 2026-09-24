@@ -38,6 +38,7 @@ import {
 } from "../remote-interaction-store";
 import { enqueueTargetedActivity } from "../delivery";
 import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
+import { findMediaByIds } from "../media-store";
 import {
   ActivityJsonSchema,
   JsonObjectSchema,
@@ -105,7 +106,15 @@ activityPubRoutes.get("/users/:username/statuses/:id", async (c) => {
   ) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  return c.json(noteDocument(identity.value, account.value, status.value), 200, jsonLd);
+  const media = await findMediaByIds(c.env.DB, status.value.mediaIds);
+  if (media.isErr()) {
+    return jsonRepositoryError(c, media.error.message);
+  }
+  return c.json(
+    noteDocument(identity.value, account.value, status.value, [...media.value.values()]),
+    200,
+    jsonLd,
+  );
 });
 
 const collection = (id: string, items: ReadonlyArray<string>) => ({

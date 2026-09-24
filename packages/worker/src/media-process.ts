@@ -1,3 +1,6 @@
+import { encode as encodeBlurhash } from "blurhash";
+import jpeg from "jpeg-js";
+
 export type MediaImageMeta = {
   original?: { width: number; height: number; size: number };
   small?: { width: number; height: number; size: number };
@@ -12,10 +15,32 @@ export type ProcessedMediaImage = {
 };
 
 const PREVIEW_MAX_WIDTH = 640;
+const BLURHASH_SAMPLE_WIDTH = 32;
+const BLURHASH_COMPONENTS_X = 4;
+const BLURHASH_COMPONENTS_Y = 3;
+
+const encodeBlurhashFromJpeg = (jpegBytes: ArrayBuffer): string | null => {
+  try {
+    const decoded = jpeg.decode(new Uint8Array(jpegBytes), { useTArray: true });
+    if (!decoded.width || !decoded.height || decoded.data.length === 0) {
+      return null;
+    }
+    return encodeBlurhash(
+      new Uint8ClampedArray(decoded.data),
+      decoded.width,
+      decoded.height,
+      BLURHASH_COMPONENTS_X,
+      BLURHASH_COMPONENTS_Y,
+    );
+  } catch {
+    return null;
+  }
+};
 
 /**
- * Use Cloudflare Images to read dimensions and build a WebP preview.
- * Falls back quietly when the binding is unavailable (local/miniflare gaps).
+ * Use Cloudflare Images to read dimensions, build a WebP preview, and sample a
+ * blurhash (via a tiny JPEG downsample + jpeg-js). Falls back quietly when the
+ * binding is unavailable (local/miniflare gaps).
  */
 export const processUploadedImage = async (
   images: ImagesBinding,
@@ -48,11 +73,22 @@ export const processUploadedImage = async (
       height: Math.max(1, Math.round(original.height * scale)),
       size: previewBytes.byteLength,
     };
+    let blurhash: string | null = null;
+    try {
+      const sample = await images
+        .input(new Blob([bytes]).stream())
+        .transform({ width: BLURHASH_SAMPLE_WIDTH, fit: "scale-down" })
+        .output({ format: "image/jpeg", quality: 40 });
+      const sampleBytes = await new Response(sample.image()).arrayBuffer();
+      blurhash = encodeBlurhashFromJpeg(sampleBytes);
+    } catch {
+      blurhash = null;
+    }
     return {
       meta: { original, small },
       previewBytes,
       previewContentType: "image/webp",
-      blurhash: null,
+      blurhash,
     };
   } catch {
     return empty;

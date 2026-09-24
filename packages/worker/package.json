@@ -10,12 +10,15 @@
     "@prisma/client": "^7.10.0",
     "@tstodon/core": "workspace:*",
     "@tstodon/domain": "workspace:*",
+    "blurhash": "^2.0.5",
     "hono": "^4.13.8",
     "jose": "^6.2.12",
+    "jpeg-js": "^0.4.4",
     "neverthrow": "^8.2.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@types/jpeg-js": "^0.3.7",
     "prisma": "7.10.0"
   }
 }

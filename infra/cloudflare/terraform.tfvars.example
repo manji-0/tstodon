@@ -11,7 +11,8 @@ d1_primary_location_hint = "apac" # matches wrangler placement aws:ap-southeast-
 
 kv_remote_dns_cache_title = "tstodon-remote-dns-cache"
 kv_app_cache_title        = "tstodon-app-cache"
-r2_media_bucket_name      = "tstodon-media"
+r2_media_bucket_name         = "tstodon-media"
+r2_media_private_bucket_name = "tstodon-media-private"
 outbox_queue_name         = "tstodon-outbox-process"
 
 worker_script_name     = "tstodon"

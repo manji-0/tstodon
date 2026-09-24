@@ -10,8 +10,13 @@ import {
 } from "./media-keys";
 import { findMediaById, updateMediaStorage, type MediaRow } from "./media-store";
 
-const copyR2Object = async (bucket: R2Bucket, fromKey: string, toKey: string): Promise<boolean> => {
-  const object = await bucket.get(fromKey);
+const copyBetweenBuckets = async (
+  from: R2Bucket,
+  to: R2Bucket,
+  fromKey: string,
+  toKey: string,
+): Promise<boolean> => {
+  const object = await from.get(fromKey);
   if (!object) {
     return false;
   }
@@ -22,18 +27,20 @@ const copyR2Object = async (bucket: R2Bucket, fromKey: string, toKey: string): P
   if (object.customMetadata) {
     options.customMetadata = object.customMetadata;
   }
-  await bucket.put(toKey, object.body, options);
-  await bucket.delete(fromKey);
+  await to.put(toKey, object.body, options);
+  await from.delete(fromKey);
   return true;
 };
 
 /**
- * After attaching media to a Public/Unlisted status, move bytes off the
- * `private/` prefix onto public object keys so MEDIA_PUBLIC_BASE_URL can serve them.
+ * After attaching media to a Public/Unlisted status, move bytes from MEDIA_PRIVATE
+ * onto the public MEDIA bucket (and public object keys) so MEDIA_PUBLIC_BASE_URL
+ * can serve them without exposing the private bucket.
  */
 export const promoteMediaToPublic = async (
   db: D1Database,
-  bucket: R2Bucket,
+  publicBucket: R2Bucket,
+  privateBucket: R2Bucket,
   accountId: string,
   mediaIds: ReadonlyArray<string>,
 ): Promise<Result<void, RepositoryError>> => {
@@ -60,14 +67,24 @@ export const promoteMediaToPublic = async (
       continue;
     }
     const publicKey = attachmentObjectKey(accountId, mediaId);
-    const moved = await copyR2Object(bucket, row.object_key, publicKey);
+    const moved = await copyBetweenBuckets(
+      privateBucket,
+      publicBucket,
+      row.object_key,
+      publicKey,
+    );
     if (!moved) {
       return err({ kind: "RepositoryError", message: `missing private media object ${mediaId}` });
     }
     let publicPreview: string | null = null;
     if (row.preview_object_key && isPrivateMediaObjectKey(row.preview_object_key)) {
       publicPreview = attachmentPreviewObjectKey(accountId, mediaId);
-      await copyR2Object(bucket, row.preview_object_key, publicPreview);
+      await copyBetweenBuckets(
+        privateBucket,
+        publicBucket,
+        row.preview_object_key,
+        publicPreview,
+      );
     } else if (row.preview_object_key) {
       publicPreview = row.preview_object_key;
     }
@@ -94,3 +111,7 @@ export const privateKeysForUpload = (
 });
 
 export const mediaIsPrivate = (row: MediaRow): boolean => row.is_private === 1;
+
+/** Bucket that holds the object for this row (private vs public). */
+export const mediaBucketForRow = (env: Env, row: MediaRow): R2Bucket =>
+  mediaIsPrivate(row) || isPrivateMediaObjectKey(row.object_key) ? env.MEDIA_PRIVATE : env.MEDIA;

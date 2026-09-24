@@ -7,7 +7,8 @@
 Configured in `wrangler.jsonc`:
 
 - `DB` — D1
-- `MEDIA` — R2
+- `MEDIA` — R2 (public attachments, avatars, headers)
+- `MEDIA_PRIVATE` — R2 (unattached / restricted attachments; no public hostname)
 - `REMOTE_DNS_CACHE`, `APP_CACHE` — KV
 - `OUTBOX_PROCESS_QUEUE` — Queue producer/consumer (`ExpandFollowers` fan-out and `ProcessExpiredPolls`)
 - `STREAM_HUB` — Durable Object
@@ -26,22 +27,22 @@ Placeholder resource IDs in `wrangler.jsonc` are local-only. Create real D1 / KV
 
 <!-- constrained-by ../operations/cloudflare-deploy.md -->
 
-Media blobs live in the `MEDIA` R2 bucket. Public Mastodon JSON emits absolute URLs as `${MEDIA_PUBLIC_BASE_URL}/${objectKey}` (no Worker hop in production). Unattached uploads and restricted-visibility attachments emit Worker-gated `${INSTANCE_PUBLIC_ORIGIN}/media/:id` URLs instead.
+Public attachment / avatar / header bytes live in the `MEDIA` R2 bucket. Unattached uploads and restricted-visibility attachments live in a separate `MEDIA_PRIVATE` bucket (no public hostname). Public Mastodon JSON emits `${MEDIA_PUBLIC_BASE_URL}/${objectKey}`. Private rows emit Worker-gated `${INSTANCE_PUBLIC_ORIGIN}/media/:id`.
 
 | Environment   | `MEDIA_PUBLIC_BASE_URL`                                       | How bytes are served                                                                         |
 | ------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Production    | R2 custom domain (e.g. `https://media.example.com`)           | R2 public hostname for public keys; Worker `/media/:id` for private attachments              |
+| Production    | R2 custom domain on the **public** `MEDIA` bucket only        | R2 public hostname for public keys; Worker `/media/:id` reads `MEDIA_PRIVATE` when needed    |
 | Local / tests | Same as `INSTANCE_PUBLIC_ORIGIN` (e.g. `https://example.com`) | Worker object-key proxy (`/attachments/*`, `/avatars/*`, `/headers/*`) plus `GET /media/:id` |
 
 Object keys:
 
-- Public attachments / previews: `attachments/{accountId}/{mediaId}`, `attachments/{accountId}/{mediaId}/preview`
-- Private (unattached or restricted visibility): `private/attachments/{accountId}/{mediaId}` (+ `/preview`)
-- Avatars / headers: `avatars/{accountId}/{blobId}`, `headers/{accountId}/{blobId}`
+- Public attachments / previews: `attachments/{accountId}/{mediaId}`, `attachments/{accountId}/{mediaId}/preview` (in `MEDIA`)
+- Private (unattached or restricted visibility): `private/attachments/{accountId}/{mediaId}` (+ `/preview`) in `MEDIA_PRIVATE`
+- Avatars / headers: `avatars/{accountId}/{blobId}`, `headers/{accountId}/{blobId}` (in `MEDIA`)
 
-Uploads accept `image/jpeg`, `image/png`, and `image/webp` up to 8 MiB. The `IMAGES` binding builds a WebP preview and dimension meta on upload when available; blurhash stays `null` until a pixel-decode path exists. Attaching media to a Public/Unlisted status promotes private object keys onto the public prefix.
+Uploads accept `image/jpeg`, `image/png`, and `image/webp` up to 8 MiB. The `IMAGES` binding builds a WebP preview, dimension meta, and a blurhash sample when available. Attaching media to a Public/Unlisted status promotes private objects into the public `MEDIA` bucket.
 
-Do not expose `private/` keys on the R2 custom domain (or treat them as guessable). Prefer Worker-gated `/media/:id` for anything with `is_private = 1`.
+Never attach a custom domain to `MEDIA_PRIVATE`.
 
 ### CORS / allowed origins
 

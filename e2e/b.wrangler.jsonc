@@ -61,6 +61,10 @@
       "binding": "MEDIA",
       "bucket_name": "tstodon-e2e-b-media",
     },
+    {
+      "binding": "MEDIA_PRIVATE",
+      "bucket_name": "tstodon-e2e-b-media-private",
+    },
   ],
   "kv_namespaces": [
     {
