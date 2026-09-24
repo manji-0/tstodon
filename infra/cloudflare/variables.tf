@@ -59,8 +59,14 @@ variable "kv_app_cache_title" {
 
 variable "r2_media_bucket_name" {
   type        = string
-  description = "R2 bucket name for MEDIA."
+  description = "R2 bucket name for MEDIA (public attachments/avatars/headers)."
   default     = "tstodon-media"
+}
+
+variable "r2_media_private_bucket_name" {
+  type        = string
+  description = "R2 bucket name for MEDIA_PRIVATE (unattached / restricted attachments). Never put a public custom domain on this bucket."
+  default     = "tstodon-media-private"
 }
 
 variable "outbox_queue_name" {

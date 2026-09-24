@@ -62,14 +62,15 @@ tofu apply
 
 ## Outputs to wire
 
-| Output                                        | Destination                        |
-| --------------------------------------------- | ---------------------------------- |
-| `wrangler_bindings.d1_database_id`            | `d1_databases[].database_id`       |
-| `wrangler_bindings.kv_remote_dns_cache_id`    | `kv_namespaces` `REMOTE_DNS_CACHE` |
-| `wrangler_bindings.kv_app_cache_id`           | `kv_namespaces` `APP_CACHE`        |
-| `wrangler_bindings.r2_media_bucket_name`      | `r2_buckets[].bucket_name`         |
-| `wrangler_bindings.outbox_process_queue_name` | `queues.producers/consumers`       |
-| `worker_vars`                                 | `CF_ACCESS_*` production vars      |
+| Output                                           | Destination                        |
+| ------------------------------------------------ | ---------------------------------- |
+| `wrangler_bindings.d1_database_id`               | `d1_databases[].database_id`       |
+| `wrangler_bindings.kv_remote_dns_cache_id`       | `kv_namespaces` `REMOTE_DNS_CACHE` |
+| `wrangler_bindings.kv_app_cache_id`              | `kv_namespaces` `APP_CACHE`        |
+| `wrangler_bindings.r2_media_bucket_name`         | `r2_buckets` `MEDIA`               |
+| `wrangler_bindings.r2_media_private_bucket_name` | `r2_buckets` `MEDIA_PRIVATE`       |
+| `wrangler_bindings.outbox_process_queue_name`    | `queues.producers/consumers`       |
+| `worker_vars`                                    | `CF_ACCESS_*` production vars      |
 
 ## Feature flags
 

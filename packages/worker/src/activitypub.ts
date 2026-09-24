@@ -1,7 +1,8 @@
 import { InstanceIdentity, type LocalAccount, type LocalNote } from "@tstodon/domain";
 import type { z } from "zod";
 import type { ActivityJsonSchema } from "./schemas";
-import { mediaPublicUrl } from "./media-keys";
+import { mediaAuthUrl, mediaPublicUrl } from "./media-keys";
+import type { MediaRow } from "./media-store";
 
 export const actorDocument = (
   identity: InstanceIdentity,
@@ -86,10 +87,29 @@ export const activityPayloadFromJson = (
   };
 };
 
+const noteAttachment = (identity: InstanceIdentity, row: MediaRow): Record<string, unknown> => {
+  const privateAttachment = row.is_private === 1;
+  const url = privateAttachment
+    ? mediaAuthUrl(identity, row.id)
+    : mediaPublicUrl(identity, row.object_key);
+  const mediaType = row.content_type.length > 0 ? row.content_type : "application/octet-stream";
+  const attachment: Record<string, unknown> = {
+    type: mediaType.startsWith("video/") ? "Document" : "Image",
+    mediaType,
+    url,
+    name: row.description.length > 0 ? row.description : null,
+  };
+  if (row.blurhash) {
+    attachment.blurhash = row.blurhash;
+  }
+  return attachment;
+};
+
 export const noteDocument = (
   identity: InstanceIdentity,
   account: LocalAccount,
   note: LocalNote,
+  media: ReadonlyArray<MediaRow> = [],
 ): Record<string, unknown> => {
   const actor = InstanceIdentity.actorUrl(identity, account.username);
   const id = `${actor}/statuses/${note.id}`;
@@ -107,7 +127,12 @@ export const noteDocument = (
       : note.visibility.kind === "Unlisted"
         ? ["https://www.w3.org/ns/activitystreams#Public"]
         : [];
-  return {
+  const byId = new Map(media.map((row) => [row.id, row]));
+  const attachments = note.mediaIds
+    .map((mediaId) => byId.get(mediaId))
+    .filter((row): row is MediaRow => row != null)
+    .map((row) => noteAttachment(identity, row));
+  const doc: Record<string, unknown> = {
     "@context": "https://www.w3.org/ns/activitystreams",
     id,
     type: "Note",
@@ -119,4 +144,10 @@ export const noteDocument = (
     sensitive: note.sensitive,
     summary: note.spoilerText.length > 0 ? note.spoilerText : null,
   };
+  if (attachments.length === 1) {
+    doc.attachment = attachments[0];
+  } else if (attachments.length > 1) {
+    doc.attachment = attachments;
+  }
+  return doc;
 };

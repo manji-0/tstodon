@@ -4,12 +4,18 @@ import {
   InstanceIdentity,
   IsoInstant,
   LocalAccount,
+  LocalStatus,
+  MediaId,
   MediaObjectRef,
   Registration,
+  StatusComposition,
+  StatusId,
+  Visibility,
 } from "@tstodon/domain";
 import {
   activityPayloadFromJson,
   actorDocument,
+  noteDocument,
   parseLocalActorUsername,
   parseLocalStatusId,
 } from "./activitypub";
@@ -123,5 +129,57 @@ describe("activitypub local URL parsers", () => {
     });
     expect(actorDocument(identity(), account()).icon).toBeUndefined();
     expect(actorDocument(identity(), account()).image).toBeUndefined();
+  });
+
+  it("emits Note attachment Image entries for local media", () => {
+    const acct = account();
+    const statusId = StatusId.parse("status-1");
+    const mediaId = MediaId.parse("media-1");
+    const createdAt = IsoInstant.parse("2024-01-01T00:00:00.000Z");
+    if (statusId.isErr() || mediaId.isErr() || createdAt.isErr()) {
+      throw new Error("fixture ids failed");
+    }
+    const draft = StatusComposition.validate(
+      StatusComposition.composing({
+        text: "hi",
+        visibility: Visibility.Public,
+        mediaIds: [mediaId.value],
+      }),
+    );
+    if (draft.isErr()) {
+      throw new Error("fixture draft failed");
+    }
+    const note = LocalStatus.publish(
+      statusId.value,
+      acct.id,
+      draft.value,
+      createdAt.value,
+      "<p>hi</p>",
+      null,
+    );
+    const doc = noteDocument(identity(), acct, note, [
+      {
+        id: mediaId.value,
+        account_id: acct.id,
+        status_id: statusId.value,
+        object_key: "attachments/acct-1/media-1",
+        content_type: "image/png",
+        created_at: createdAt.value,
+        description: "cat",
+        focus_x: null,
+        focus_y: null,
+        preview_object_key: null,
+        meta_json: "{}",
+        blurhash: "LEHV6nWB2yk8pyo0adR*.7kCMdnj",
+        is_private: 0,
+      },
+    ]);
+    expect(doc.attachment).toEqual({
+      type: "Image",
+      mediaType: "image/png",
+      url: "https://media.social.example/attachments/acct-1/media-1",
+      name: "cat",
+      blurhash: "LEHV6nWB2yk8pyo0adR*.7kCMdnj",
+    });
   });
 });

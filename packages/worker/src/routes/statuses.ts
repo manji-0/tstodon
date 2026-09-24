@@ -29,6 +29,7 @@ import {
   mastodonStatuses,
   remoteStatusVisible,
 } from "../mastodon";
+import { findMediaByIds } from "../media-store";
 import { insertPoll } from "../poll-store";
 import { CreateStatusBodySchema, isTruthy, stringList } from "../schemas";
 import { parseInstanceIdentity } from "../runtime-config";
@@ -139,6 +140,7 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
     const promoted = await promoteMediaToPublic(
       c.env.DB,
       c.env.MEDIA,
+      c.env.MEDIA_PRIVATE,
       user.value.id,
       note.mediaIds,
     );
@@ -184,12 +186,16 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
     });
   }
   const actor = InstanceIdentity.actorUrl(identity.value, user.value.username);
+  const mediaForNote = await findMediaByIds(c.env.DB, note.mediaIds);
+  if (mediaForNote.isErr()) {
+    return jsonRepositoryError(c, mediaForNote.error.message);
+  }
   const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Create", {
     "@context": "https://www.w3.org/ns/activitystreams",
     id: `${actor}/statuses/${note.id}/activity`,
     type: "Create",
     actor,
-    object: noteDocument(identity.value, user.value, note),
+    object: noteDocument(identity.value, user.value, note, [...mediaForNote.value.values()]),
   });
   if (enqueued.isErr()) {
     return jsonRepositoryError(

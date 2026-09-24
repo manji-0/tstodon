@@ -64,6 +64,10 @@
       "binding": "MEDIA",
       "bucket_name": "tstodon-media",
     },
+    {
+      "binding": "MEDIA_PRIVATE",
+      "bucket_name": "tstodon-media-private",
+    },
   ],
   "kv_namespaces": [
     {

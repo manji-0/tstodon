@@ -9,7 +9,7 @@ import {
   requireUser,
 } from "../http";
 import { mastodonMedia } from "../mastodon";
-import { mediaIsPrivate, privateKeysForUpload } from "../media-access";
+import { mediaBucketForRow, mediaIsPrivate, privateKeysForUpload } from "../media-access";
 import { findMediaById, insertMedia, updateMediaMetadata, type MediaRow } from "../media-store";
 import { parseMediaObjectKey } from "../media-keys";
 import { normalizeMediaContentType, validateMediaUpload } from "../media-limits";
@@ -66,13 +66,13 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
   const id = newEntityId();
   const keys = privateKeysForUpload(user.value.id, id);
   const processed = await processUploadedImage(c.env.IMAGES, bytes);
-  await c.env.MEDIA.put(keys.objectKey, bytes, {
+  await c.env.MEDIA_PRIVATE.put(keys.objectKey, bytes, {
     httpMetadata: { contentType },
   });
   let previewObjectKey: string | null = null;
   if (processed.previewBytes) {
     previewObjectKey = keys.previewObjectKey;
-    await c.env.MEDIA.put(previewObjectKey, processed.previewBytes, {
+    await c.env.MEDIA_PRIVATE.put(previewObjectKey, processed.previewBytes, {
       httpMetadata: { contentType: processed.previewContentType ?? "image/webp" },
     });
   }
@@ -97,6 +97,7 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
 
 const serveR2Object = async (
   c: Context<{ Bindings: Env }>,
+  bucket: R2Bucket,
   objectKey: string,
   contentTypeFallback: string,
   cacheControl: string,
@@ -108,7 +109,7 @@ const serveR2Object = async (
     if (cached) {
       return cached;
     }
-    const object = await c.env.MEDIA.get(objectKey);
+    const object = await bucket.get(objectKey);
     if (!object) {
       return c.json({ error: "Record not found", kind: "NotFound" }, 404);
     }
@@ -125,7 +126,7 @@ const serveR2Object = async (
     c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()));
     return response;
   }
-  const object = await c.env.MEDIA.get(objectKey);
+  const object = await bucket.get(objectKey);
   if (!object) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
@@ -250,6 +251,7 @@ mediaRoutes.get("/media/:id", async (c) => {
       : row.value.object_key;
   return serveR2Object(
     c,
+    mediaBucketForRow(c.env, row.value),
     objectKey,
     row.value.content_type,
     privateMedia ? CACHE_CONTROL_PRIVATE : CACHE_CONTROL_PUBLIC,
@@ -258,14 +260,15 @@ mediaRoutes.get("/media/:id", async (c) => {
 
 /**
  * Object-key proxy for local-core when MEDIA_PUBLIC_BASE_URL is the Worker origin.
- * Production serves the same keys from the R2 custom domain. Never serves private/* keys.
+ * Production serves the same keys from the R2 custom domain. Never serves private/* keys
+ * (those live only in MEDIA_PRIVATE).
  */
 const serveObjectKeyPath = async (c: Context<{ Bindings: Env }>) => {
   const key = parseMediaObjectKey(c.req.path.replace(/^\//, ""));
   if (!key) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return serveR2Object(c, key, "application/octet-stream", CACHE_CONTROL_PUBLIC);
+  return serveR2Object(c, c.env.MEDIA, key, "application/octet-stream", CACHE_CONTROL_PUBLIC);
 };
 
 mediaRoutes.get("/attachments/:accountId/:blobId", (c) => serveObjectKeyPath(c));

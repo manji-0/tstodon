@@ -30,6 +30,13 @@ resource "cloudflare_r2_bucket" "media" {
   name       = var.r2_media_bucket_name
 }
 
+resource "cloudflare_r2_bucket" "media_private" {
+  count = var.create_r2 ? 1 : 0
+
+  account_id = var.account_id
+  name       = var.r2_media_private_bucket_name
+}
+
 resource "cloudflare_queue" "outbox_process" {
   count = var.create_queue ? 1 : 0
 
