@@ -395,6 +395,7 @@ export const ModelName = {
   account_lists: "account_lists",
   endorsements: "endorsements",
   account_notes: "account_notes",
+  announcements: "announcements",
   accounts: "accounts",
   bookmarks: "bookmarks",
   conversation_reads: "conversation_reads",
@@ -454,6 +455,7 @@ export type TypeMap<
       | "account_lists"
       | "endorsements"
       | "account_notes"
+      | "announcements"
       | "accounts"
       | "bookmarks"
       | "conversation_reads"
@@ -792,6 +794,82 @@ export type TypeMap<
           args: Prisma.account_notesCountArgs<ExtArgs>;
           result:
             | runtime.Types.Utils.Optional<Prisma.Account_notesCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    announcements: {
+      payload: Prisma.$announcementsPayload<ExtArgs>;
+      fields: Prisma.announcementsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.announcementsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$announcementsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.announcementsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$announcementsPayload>;
+        };
+        findFirst: {
+          args: Prisma.announcementsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$announcementsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.announcementsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$announcementsPayload>;
+        };
+        findMany: {
+          args: Prisma.announcementsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$announcementsPayload>[];
+        };
+        create: {
+          args: Prisma.announcementsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$announcementsPayload>;
+        };
+        createMany: {
+          args: Prisma.announcementsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.announcementsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$announcementsPayload>[];
+        };
+        delete: {
+          args: Prisma.announcementsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$announcementsPayload>;
+        };
+        update: {
+          args: Prisma.announcementsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$announcementsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.announcementsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.announcementsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.announcementsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$announcementsPayload>[];
+        };
+        upsert: {
+          args: Prisma.announcementsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$announcementsPayload>;
+        };
+        aggregate: {
+          args: Prisma.AnnouncementsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAnnouncements>;
+        };
+        groupBy: {
+          args: Prisma.announcementsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AnnouncementsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.announcementsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.AnnouncementsCountAggregateOutputType>
             | number;
         };
       };
@@ -3514,6 +3592,20 @@ export const Account_notesScalarFieldEnum = {
 export type Account_notesScalarFieldEnum =
   (typeof Account_notesScalarFieldEnum)[keyof typeof Account_notesScalarFieldEnum];
 
+export const AnnouncementsScalarFieldEnum = {
+  id: "id",
+  content: "content",
+  starts_at: "starts_at",
+  ends_at: "ends_at",
+  all_day: "all_day",
+  published_at: "published_at",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type AnnouncementsScalarFieldEnum =
+  (typeof AnnouncementsScalarFieldEnum)[keyof typeof AnnouncementsScalarFieldEnum];
+
 export const AccountsScalarFieldEnum = {
   id: "id",
   username: "username",
@@ -4112,6 +4204,7 @@ export type GlobalOmitConfig = {
   account_lists?: Prisma.account_listsOmit;
   endorsements?: Prisma.endorsementsOmit;
   account_notes?: Prisma.account_notesOmit;
+  announcements?: Prisma.announcementsOmit;
   accounts?: Prisma.accountsOmit;
   bookmarks?: Prisma.bookmarksOmit;
   conversation_reads?: Prisma.conversation_readsOmit;

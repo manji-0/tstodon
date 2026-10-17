@@ -1,6 +1,13 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { err, ok, type Result } from "neverthrow";
 import { countAccounts, findAccountById, listDirectoryAccounts } from "../account-store";
+import {
+  announcementFromRow,
+  findAnnouncementRowById,
+  listPublishedAnnouncements,
+} from "../announcement-admin-store";
+import { nowIso } from "../clock";
 import {
   addAnnouncementReaction,
   announcementReactionState,
@@ -93,8 +100,26 @@ const reactionAllowed = (
   announcement.reactions.includes(name) ||
   emojis.some((emoji) => emoji.shortcode.toLowerCase() === name.toLowerCase());
 
-const configuredAnnouncement = (env: Env, id: string): Announcement | undefined =>
-  activeAnnouncements(announcements(env)).find((announcement) => announcement.id === id);
+/** An announcement is addressable when it is a live config one or a stored row. */
+const findAnnouncement = async (env: Env, id: string): Promise<Announcement | undefined> => {
+  const configured = activeAnnouncements(announcements(env)).find(
+    (announcement) => announcement.id === id,
+  );
+  if (configured) {
+    return configured;
+  }
+  const row = await findAnnouncementRowById(env.DB, id);
+  return row.isOk() && row.value ? announcementFromRow(row.value) : undefined;
+};
+
+/** Runtime-authored announcements first, then the ANNOUNCEMENTS var. */
+const publicAnnouncements = async (env: Env): Promise<Result<Announcement[], string>> => {
+  const stored = await listPublishedAnnouncements(env.DB, nowIso());
+  if (stored.isErr()) {
+    return err(stored.error.message);
+  }
+  return ok([...stored.value.map(announcementFromRow), ...activeAnnouncements(announcements(env))]);
+};
 
 metaRoutes.get("/api/v1/announcements", async (c) => {
   const identity = parseInstanceIdentity(c.env);
@@ -105,7 +130,10 @@ metaRoutes.get("/api/v1/announcements", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const active = activeAnnouncements(announcements(c.env));
+  const active = await publicAnnouncements(c.env);
+  if (active.isErr()) {
+    return jsonRepositoryError(c, active.error);
+  }
   const dismissed = await listAnnouncementDismissals(c.env.DB, user.value.id);
   if (dismissed.isErr()) {
     return jsonRepositoryError(c, dismissed.error.message);
@@ -117,7 +145,7 @@ metaRoutes.get("/api/v1/announcements", async (c) => {
   const emojis = await loadCustomEmojis(c.env, identity.value.mediaPublicBaseUrl);
   const empty = new Map<string, AnnouncementReactionState>();
   return c.json(
-    active.map((announcement) =>
+    active.value.map((announcement) =>
       announcementDocument(
         announcement,
         dismissed.value.has(announcement.id),
@@ -133,7 +161,7 @@ metaRoutes.post("/api/v1/announcements/:id/dismiss", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const announcement = configuredAnnouncement(c.env, c.req.param("id") ?? "");
+  const announcement = await findAnnouncement(c.env, c.req.param("id") ?? "");
   if (!announcement) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
@@ -153,7 +181,7 @@ const putAnnouncementReaction = async (c: Context<{ Bindings: Env }>): Promise<R
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const announcement = configuredAnnouncement(c.env, c.req.param("id") ?? "");
+  const announcement = await findAnnouncement(c.env, c.req.param("id") ?? "");
   if (!announcement) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
@@ -176,7 +204,7 @@ const deleteAnnouncementReactionRoute = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const announcement = configuredAnnouncement(c.env, c.req.param("id") ?? "");
+  const announcement = await findAnnouncement(c.env, c.req.param("id") ?? "");
   if (!announcement) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }

@@ -40,6 +40,8 @@ export * from "./sql/createList";
 
 export * from "./sql/deleteAccountNote";
 
+export * from "./sql/deleteAnnouncementById";
+
 export * from "./sql/deleteAnnouncementReaction";
 
 export * from "./sql/deleteBlock";
@@ -96,6 +98,8 @@ export * from "./sql/findAccountsByUsernamesJson";
 
 export * from "./sql/findActiveMute";
 
+export * from "./sql/findAnnouncementById";
+
 export * from "./sql/findBlock";
 
 export * from "./sql/findCustomEmojiById";
@@ -147,6 +151,8 @@ export * from "./sql/getMarkersByTimelines";
 export * from "./sql/inboxActivityExists";
 
 export * from "./sql/insertAccount";
+
+export * from "./sql/insertAnnouncement";
 
 export * from "./sql/insertBookmarkOrIgnore";
 
@@ -206,6 +212,8 @@ export * from "./sql/listAccountStatuses";
 
 export * from "./sql/listAccountStatusesFiltered";
 
+export * from "./sql/listAdminAnnouncements";
+
 export * from "./sql/listAnnouncementDismissals";
 
 export * from "./sql/listAnnouncementReactions";
@@ -260,6 +268,8 @@ export * from "./sql/listPollVotesForAccount";
 
 export * from "./sql/listPublicRemoteStatuses";
 
+export * from "./sql/listPublishedAnnouncements";
+
 export * from "./sql/listStatusEditSnapshots";
 
 export * from "./sql/listStatusMuteRoots";
@@ -286,6 +296,8 @@ export * from "./sql/searchAccounts";
 
 export * from "./sql/searchRemoteActors";
 
+export * from "./sql/setAnnouncementPublished";
+
 export * from "./sql/unfeatureTag";
 
 export * from "./sql/unfollowTag";
@@ -295,6 +307,8 @@ export * from "./sql/unmuteStatus";
 export * from "./sql/unpinStatus";
 
 export * from "./sql/updateAccountProfile";
+
+export * from "./sql/updateAnnouncement";
 
 export * from "./sql/updateCustomEmojiAttributes";
 

@@ -11,6 +11,7 @@ export type * from "./models/account_list_members";
 export type * from "./models/account_lists";
 export type * from "./models/endorsements";
 export type * from "./models/account_notes";
+export type * from "./models/announcements";
 export type * from "./models/accounts";
 export type * from "./models/bookmarks";
 export type * from "./models/conversation_reads";
