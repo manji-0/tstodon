@@ -457,15 +457,31 @@ export type NotificationRow = {
   created_at: string;
 };
 
+export type NotificationFilters = Readonly<{
+  types?: ReadonlyArray<string>;
+  excludeTypes?: ReadonlyArray<string>;
+  fromAccountId?: string | undefined;
+  maxId?: string | undefined;
+}>;
+
 export const listNotifications = async (
   db: D1Database,
   accountId: string,
   limit: number,
+  filters: NotificationFilters = {},
 ): Promise<Result<NotificationRow[], RepositoryError>> =>
   runD1(async () => {
     const results = await queryTyped<NotificationRow>(
       db,
-      listNotificationsSql(accountId, nowIso(), limit),
+      listNotificationsSql(
+        accountId,
+        nowIso(),
+        limit,
+        jsonStringArray(filters.types ?? []),
+        jsonStringArray(filters.excludeTypes ?? []),
+        filters.fromAccountId ?? "",
+        filters.maxId ?? "",
+      ),
     );
     return results.map((row) => ({
       id: row.id ?? "",

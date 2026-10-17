@@ -22,7 +22,16 @@ notificationRoutes.get("/api/v1/notifications", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const rows = await listNotifications(c.env.DB, user.value.id, queryLimit(c.req.query("limit")));
+  const queryValues = (key: string): string[] =>
+    [...(c.req.queries(`${key}[]`) ?? []), ...(c.req.queries(key) ?? [])].filter(
+      (value) => value.length > 0,
+    );
+  const rows = await listNotifications(c.env.DB, user.value.id, queryLimit(c.req.query("limit")), {
+    types: queryValues("types"),
+    excludeTypes: queryValues("exclude_types"),
+    fromAccountId: c.req.query("account_id"),
+    maxId: c.req.query("max_id"),
+  });
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }

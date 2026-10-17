@@ -8,17 +8,33 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  * @param now
  * @param limit
+ * @param typesJson
+ * @param excludeTypesJson
+ * @param fromAccountId
+ * @param maxId
  */
 export const listNotifications = $runtime.makeTypedQueryFactory(
-  "SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.created_at\nFROM notifications n\nWHERE n.account_id = $1\nAND n.created_at > COALESCE(\n(SELECT cleared_at FROM notification_clear_markers WHERE account_id = $1), ''\n)\nAND n.id NOT IN (\nSELECT notification_id FROM notification_dismissals WHERE account_id = $1\n)\nAND n.from_account_id NOT IN (\nSELECT target_account_id FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id IS NOT NULL\nUNION\nSELECT blocker_account_id FROM blocks\nWHERE target_account_id = $1 AND blocker_account_id IS NOT NULL\nUNION\nSELECT target_account_id FROM mutes\nWHERE account_id = $1 AND target_account_id IS NOT NULL AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $2)\n)\nORDER BY n.id DESC LIMIT $3",
+  "SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.created_at\nFROM notifications n\nWHERE n.account_id = $1\nAND n.created_at > COALESCE(\n(SELECT cleared_at FROM notification_clear_markers WHERE account_id = $1), ''\n)\nAND n.id NOT IN (\nSELECT notification_id FROM notification_dismissals WHERE account_id = $1\n)\nAND ($4 = '[]' OR n.kind IN (SELECT value FROM json_each($4)))\nAND ($5 = '[]' OR n.kind NOT IN (SELECT value FROM json_each($5)))\nAND ($6 = '' OR n.from_account_id = $6)\nAND ($7 = '' OR n.id < $7)\nAND n.from_account_id NOT IN (\nSELECT target_account_id FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id IS NOT NULL\nUNION\nSELECT blocker_account_id FROM blocks\nWHERE target_account_id = $1 AND blocker_account_id IS NOT NULL\nUNION\nSELECT target_account_id FROM mutes\nWHERE account_id = $1 AND target_account_id IS NOT NULL AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $2)\n)\nORDER BY n.id DESC LIMIT $3",
 ) as (
   accountId: string,
   now: string,
   limit: number,
+  typesJson: string,
+  excludeTypesJson: string,
+  fromAccountId: string,
+  maxId: string,
 ) => $runtime.TypedSql<listNotifications.Parameters, listNotifications.Result>;
 
 export namespace listNotifications {
-  export type Parameters = [accountId: string, now: string, limit: number];
+  export type Parameters = [
+    accountId: string,
+    now: string,
+    limit: number,
+    typesJson: string,
+    excludeTypesJson: string,
+    fromAccountId: string,
+    maxId: string,
+  ];
   export type Result = {
     id: string | null;
     account_id: string;
