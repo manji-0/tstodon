@@ -20,8 +20,18 @@ export type account_listsModel =
 
 export type AggregateAccount_lists = {
   _count: Account_listsCountAggregateOutputType | null;
+  _avg: Account_listsAvgAggregateOutputType | null;
+  _sum: Account_listsSumAggregateOutputType | null;
   _min: Account_listsMinAggregateOutputType | null;
   _max: Account_listsMaxAggregateOutputType | null;
+};
+
+export type Account_listsAvgAggregateOutputType = {
+  exclusive: number | null;
+};
+
+export type Account_listsSumAggregateOutputType = {
+  exclusive: number | null;
 };
 
 export type Account_listsMinAggregateOutputType = {
@@ -29,6 +39,7 @@ export type Account_listsMinAggregateOutputType = {
   account_id: string | null;
   title: string | null;
   replies_policy: string | null;
+  exclusive: number | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -38,6 +49,7 @@ export type Account_listsMaxAggregateOutputType = {
   account_id: string | null;
   title: string | null;
   replies_policy: string | null;
+  exclusive: number | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -47,9 +59,18 @@ export type Account_listsCountAggregateOutputType = {
   account_id: number;
   title: number;
   replies_policy: number;
+  exclusive: number;
   created_at: number;
   updated_at: number;
   _all: number;
+};
+
+export type Account_listsAvgAggregateInputType = {
+  exclusive?: true;
+};
+
+export type Account_listsSumAggregateInputType = {
+  exclusive?: true;
 };
 
 export type Account_listsMinAggregateInputType = {
@@ -57,6 +78,7 @@ export type Account_listsMinAggregateInputType = {
   account_id?: true;
   title?: true;
   replies_policy?: true;
+  exclusive?: true;
   created_at?: true;
   updated_at?: true;
 };
@@ -66,6 +88,7 @@ export type Account_listsMaxAggregateInputType = {
   account_id?: true;
   title?: true;
   replies_policy?: true;
+  exclusive?: true;
   created_at?: true;
   updated_at?: true;
 };
@@ -75,6 +98,7 @@ export type Account_listsCountAggregateInputType = {
   account_id?: true;
   title?: true;
   replies_policy?: true;
+  exclusive?: true;
   created_at?: true;
   updated_at?: true;
   _all?: true;
@@ -122,6 +146,18 @@ export type Account_listsAggregateArgs<
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    *
+   * Select which fields to average
+   **/
+  _avg?: Account_listsAvgAggregateInputType;
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
+   * Select which fields to sum
+   **/
+  _sum?: Account_listsSumAggregateInputType;
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
    * Select which fields to find the minimum value
    **/
   _min?: Account_listsMinAggregateInputType;
@@ -153,6 +189,8 @@ export type account_listsGroupByArgs<
   take?: number;
   skip?: number;
   _count?: Account_listsCountAggregateInputType | true;
+  _avg?: Account_listsAvgAggregateInputType;
+  _sum?: Account_listsSumAggregateInputType;
   _min?: Account_listsMinAggregateInputType;
   _max?: Account_listsMaxAggregateInputType;
 };
@@ -162,9 +200,12 @@ export type Account_listsGroupByOutputType = {
   account_id: string;
   title: string;
   replies_policy: string;
+  exclusive: number;
   created_at: string;
   updated_at: string;
   _count: Account_listsCountAggregateOutputType | null;
+  _avg: Account_listsAvgAggregateOutputType | null;
+  _sum: Account_listsSumAggregateOutputType | null;
   _min: Account_listsMinAggregateOutputType | null;
   _max: Account_listsMaxAggregateOutputType | null;
 };
@@ -190,6 +231,7 @@ export type account_listsWhereInput = {
   account_id?: Prisma.StringFilter<"account_lists"> | string;
   title?: Prisma.StringFilter<"account_lists"> | string;
   replies_policy?: Prisma.StringFilter<"account_lists"> | string;
+  exclusive?: Prisma.IntFilter<"account_lists"> | number;
   created_at?: Prisma.StringFilter<"account_lists"> | string;
   updated_at?: Prisma.StringFilter<"account_lists"> | string;
   account_list_members?: Prisma.Account_list_membersListRelationFilter;
@@ -201,6 +243,7 @@ export type account_listsOrderByWithRelationInput = {
   account_id?: Prisma.SortOrder;
   title?: Prisma.SortOrder;
   replies_policy?: Prisma.SortOrder;
+  exclusive?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   account_list_members?: Prisma.account_list_membersOrderByRelationAggregateInput;
@@ -216,6 +259,7 @@ export type account_listsWhereUniqueInput = Prisma.AtLeast<
     account_id?: Prisma.StringFilter<"account_lists"> | string;
     title?: Prisma.StringFilter<"account_lists"> | string;
     replies_policy?: Prisma.StringFilter<"account_lists"> | string;
+    exclusive?: Prisma.IntFilter<"account_lists"> | number;
     created_at?: Prisma.StringFilter<"account_lists"> | string;
     updated_at?: Prisma.StringFilter<"account_lists"> | string;
     account_list_members?: Prisma.Account_list_membersListRelationFilter;
@@ -229,11 +273,14 @@ export type account_listsOrderByWithAggregationInput = {
   account_id?: Prisma.SortOrder;
   title?: Prisma.SortOrder;
   replies_policy?: Prisma.SortOrder;
+  exclusive?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   _count?: Prisma.account_listsCountOrderByAggregateInput;
+  _avg?: Prisma.account_listsAvgOrderByAggregateInput;
   _max?: Prisma.account_listsMaxOrderByAggregateInput;
   _min?: Prisma.account_listsMinOrderByAggregateInput;
+  _sum?: Prisma.account_listsSumOrderByAggregateInput;
 };
 
 export type account_listsScalarWhereWithAggregatesInput = {
@@ -248,6 +295,7 @@ export type account_listsScalarWhereWithAggregatesInput = {
   account_id?: Prisma.StringWithAggregatesFilter<"account_lists"> | string;
   title?: Prisma.StringWithAggregatesFilter<"account_lists"> | string;
   replies_policy?: Prisma.StringWithAggregatesFilter<"account_lists"> | string;
+  exclusive?: Prisma.IntWithAggregatesFilter<"account_lists"> | number;
   created_at?: Prisma.StringWithAggregatesFilter<"account_lists"> | string;
   updated_at?: Prisma.StringWithAggregatesFilter<"account_lists"> | string;
 };
@@ -256,6 +304,7 @@ export type account_listsCreateInput = {
   id: string;
   title: string;
   replies_policy?: string;
+  exclusive?: number;
   created_at: string;
   updated_at: string;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccount_listsInput;
@@ -267,6 +316,7 @@ export type account_listsUncheckedCreateInput = {
   account_id: string;
   title: string;
   replies_policy?: string;
+  exclusive?: number;
   created_at: string;
   updated_at: string;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccount_listsInput;
@@ -276,6 +326,7 @@ export type account_listsUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   title?: Prisma.StringFieldUpdateOperationsInput | string;
   replies_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  exclusive?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccount_listsNestedInput;
@@ -287,6 +338,7 @@ export type account_listsUncheckedUpdateInput = {
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   title?: Prisma.StringFieldUpdateOperationsInput | string;
   replies_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  exclusive?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccount_listsNestedInput;
@@ -297,6 +349,7 @@ export type account_listsCreateManyInput = {
   account_id: string;
   title: string;
   replies_policy?: string;
+  exclusive?: number;
   created_at: string;
   updated_at: string;
 };
@@ -305,6 +358,7 @@ export type account_listsUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   title?: Prisma.StringFieldUpdateOperationsInput | string;
   replies_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  exclusive?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -314,6 +368,7 @@ export type account_listsUncheckedUpdateManyInput = {
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   title?: Prisma.StringFieldUpdateOperationsInput | string;
   replies_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  exclusive?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -328,8 +383,13 @@ export type account_listsCountOrderByAggregateInput = {
   account_id?: Prisma.SortOrder;
   title?: Prisma.SortOrder;
   replies_policy?: Prisma.SortOrder;
+  exclusive?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+};
+
+export type account_listsAvgOrderByAggregateInput = {
+  exclusive?: Prisma.SortOrder;
 };
 
 export type account_listsMaxOrderByAggregateInput = {
@@ -337,6 +397,7 @@ export type account_listsMaxOrderByAggregateInput = {
   account_id?: Prisma.SortOrder;
   title?: Prisma.SortOrder;
   replies_policy?: Prisma.SortOrder;
+  exclusive?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
@@ -346,8 +407,13 @@ export type account_listsMinOrderByAggregateInput = {
   account_id?: Prisma.SortOrder;
   title?: Prisma.SortOrder;
   replies_policy?: Prisma.SortOrder;
+  exclusive?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+};
+
+export type account_listsSumOrderByAggregateInput = {
+  exclusive?: Prisma.SortOrder;
 };
 
 export type Account_listsListRelationFilter = {
@@ -384,6 +450,14 @@ export type account_listsUpdateOneRequiredWithoutAccount_list_membersNestedInput
     >,
     Prisma.account_listsUncheckedUpdateWithoutAccount_list_membersInput
   >;
+};
+
+export type IntFieldUpdateOperationsInput = {
+  set?: number;
+  increment?: number;
+  decrement?: number;
+  multiply?: number;
+  divide?: number;
 };
 
 export type account_listsCreateNestedManyWithoutAccountsInput = {
@@ -476,6 +550,7 @@ export type account_listsCreateWithoutAccount_list_membersInput = {
   id: string;
   title: string;
   replies_policy?: string;
+  exclusive?: number;
   created_at: string;
   updated_at: string;
   accounts: Prisma.accountsCreateNestedOneWithoutAccount_listsInput;
@@ -486,6 +561,7 @@ export type account_listsUncheckedCreateWithoutAccount_list_membersInput = {
   account_id: string;
   title: string;
   replies_policy?: string;
+  exclusive?: number;
   created_at: string;
   updated_at: string;
 };
@@ -522,6 +598,7 @@ export type account_listsUpdateWithoutAccount_list_membersInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   title?: Prisma.StringFieldUpdateOperationsInput | string;
   replies_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  exclusive?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutAccount_listsNestedInput;
@@ -532,6 +609,7 @@ export type account_listsUncheckedUpdateWithoutAccount_list_membersInput = {
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   title?: Prisma.StringFieldUpdateOperationsInput | string;
   replies_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  exclusive?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -540,6 +618,7 @@ export type account_listsCreateWithoutAccountsInput = {
   id: string;
   title: string;
   replies_policy?: string;
+  exclusive?: number;
   created_at: string;
   updated_at: string;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccount_listsInput;
@@ -549,6 +628,7 @@ export type account_listsUncheckedCreateWithoutAccountsInput = {
   id: string;
   title: string;
   replies_policy?: string;
+  exclusive?: number;
   created_at: string;
   updated_at: string;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccount_listsInput;
@@ -602,6 +682,7 @@ export type account_listsScalarWhereInput = {
   account_id?: Prisma.StringFilter<"account_lists"> | string;
   title?: Prisma.StringFilter<"account_lists"> | string;
   replies_policy?: Prisma.StringFilter<"account_lists"> | string;
+  exclusive?: Prisma.IntFilter<"account_lists"> | number;
   created_at?: Prisma.StringFilter<"account_lists"> | string;
   updated_at?: Prisma.StringFilter<"account_lists"> | string;
 };
@@ -610,6 +691,7 @@ export type account_listsCreateManyAccountsInput = {
   id: string;
   title: string;
   replies_policy?: string;
+  exclusive?: number;
   created_at: string;
   updated_at: string;
 };
@@ -618,6 +700,7 @@ export type account_listsUpdateWithoutAccountsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   title?: Prisma.StringFieldUpdateOperationsInput | string;
   replies_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  exclusive?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccount_listsNestedInput;
@@ -627,6 +710,7 @@ export type account_listsUncheckedUpdateWithoutAccountsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   title?: Prisma.StringFieldUpdateOperationsInput | string;
   replies_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  exclusive?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccount_listsNestedInput;
@@ -636,6 +720,7 @@ export type account_listsUncheckedUpdateManyWithoutAccountsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   title?: Prisma.StringFieldUpdateOperationsInput | string;
   replies_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  exclusive?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -683,6 +768,7 @@ export type account_listsSelect<
     account_id?: boolean;
     title?: boolean;
     replies_policy?: boolean;
+    exclusive?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
     account_list_members?: boolean | Prisma.account_lists$account_list_membersArgs<ExtArgs>;
@@ -700,6 +786,7 @@ export type account_listsSelectCreateManyAndReturn<
     account_id?: boolean;
     title?: boolean;
     replies_policy?: boolean;
+    exclusive?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
@@ -715,6 +802,7 @@ export type account_listsSelectUpdateManyAndReturn<
     account_id?: boolean;
     title?: boolean;
     replies_policy?: boolean;
+    exclusive?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
@@ -727,6 +815,7 @@ export type account_listsSelectScalar = {
   account_id?: boolean;
   title?: boolean;
   replies_policy?: boolean;
+  exclusive?: boolean;
   created_at?: boolean;
   updated_at?: boolean;
 };
@@ -734,7 +823,7 @@ export type account_listsSelectScalar = {
 export type account_listsOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "id" | "account_id" | "title" | "replies_policy" | "created_at" | "updated_at",
+  "id" | "account_id" | "title" | "replies_policy" | "exclusive" | "created_at" | "updated_at",
   ExtArgs["result"]["account_lists"]
 >;
 export type account_listsInclude<
@@ -769,6 +858,7 @@ export type $account_listsPayload<
       account_id: string;
       title: string;
       replies_policy: string;
+      exclusive: number;
       created_at: string;
       updated_at: string;
     },
@@ -1370,6 +1460,7 @@ export interface account_listsFieldRefs {
   readonly account_id: Prisma.FieldRef<"account_lists", "String">;
   readonly title: Prisma.FieldRef<"account_lists", "String">;
   readonly replies_policy: Prisma.FieldRef<"account_lists", "String">;
+  readonly exclusive: Prisma.FieldRef<"account_lists", "Int">;
   readonly created_at: Prisma.FieldRef<"account_lists", "String">;
   readonly updated_at: Prisma.FieldRef<"account_lists", "String">;
 }

@@ -431,7 +431,7 @@ export const mastodonRelationship = (
   muting_expires_at: flags.mutingExpiresAt,
   requested: flags.requested,
   domain_blocking: false,
-  endorsed: false,
+  endorsed: flags.endorsed,
   note: "",
 });
 

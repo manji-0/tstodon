@@ -29,14 +29,17 @@ import { RemoteAccountId } from "../remote-account-id";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
   blockAccount,
+  endorseAccount,
   followAccount,
   listBlockedAccounts,
+  listEndorsements,
   listFollowers,
   listFollowing,
   listMutedAccounts,
   muteAccount,
   relationshipFlags,
   unblockAccount,
+  unendorseAccount,
   unfollowAccount,
   unmuteAccount,
 } from "../social-store";
@@ -471,4 +474,107 @@ accountRoutes.get("/api/v1/mutes", async (c) => {
     }
   }
   return c.json(documents);
+});
+
+/** Resolve an endorsement target to a local account id or a remote actor URI. */
+const endorsementTarget = async (
+  c: Context<{ Bindings: Env }>,
+  identity: InstanceIdentity,
+  targetId: string,
+): Promise<Readonly<{ accountId: string | null; actorUri: string }> | undefined> => {
+  const local = await findAccountByIdOrUsername(c.env.DB, targetId);
+  if (local.isOk() && local.value) {
+    return {
+      accountId: local.value.id,
+      actorUri: InstanceIdentity.actorUrl(identity, local.value.username),
+    };
+  }
+  const actorUri = RemoteAccountId.decode(targetId);
+  if (actorUri.isOk()) {
+    return { accountId: null, actorUri: actorUri.value };
+  }
+  return undefined;
+};
+
+const setEndorsed = async (c: Context<{ Bindings: Env }>, endorse: boolean): Promise<Response> => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const targetId = c.req.param("id") ?? "";
+  const target = await endorsementTarget(c, identity.value, targetId);
+  if (!target) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const changed = endorse
+    ? await endorseAccount(c.env.DB, user.value.id, target)
+    : await unendorseAccount(c.env.DB, user.value.id, targetId);
+  if (changed.isErr()) {
+    return jsonRepositoryError(c, changed.error.message);
+  }
+  const flags = await relationshipFlags(c.env.DB, user.value.id, targetId);
+  if (flags.isErr()) {
+    return jsonRepositoryError(c, flags.error.message);
+  }
+  return c.json(mastodonRelationship(targetId, flags.value));
+};
+
+accountRoutes.post("/api/v1/accounts/:id/endorse", (c) => setEndorsed(c, true));
+accountRoutes.post("/api/v1/accounts/:id/unendorse", (c) => setEndorsed(c, false));
+
+const endorsementDocuments = async (
+  c: Context<{ Bindings: Env }>,
+  identity: InstanceIdentity,
+  ownerId: string,
+): Promise<Response> => {
+  const rows = await listEndorsements(c.env.DB, ownerId);
+  if (rows.isErr()) {
+    return jsonRepositoryError(c, rows.error.message);
+  }
+  const documents: Record<string, unknown>[] = [];
+  for (const row of rows.value) {
+    if (row.accountId) {
+      const account = await findAccountById(c.env.DB, row.accountId);
+      if (account.isOk() && account.value) {
+        documents.push(await mastodonAccountDocument(c.env, identity, account.value));
+        continue;
+      }
+    }
+    const actor = await findRemoteActorByUri(c.env.DB, row.actorUri);
+    if (actor.isOk() && actor.value) {
+      documents.push(mastodonRemoteAccount(identity, actor.value));
+    }
+  }
+  return c.json(documents);
+};
+
+accountRoutes.get("/api/v1/endorsements", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  return endorsementDocuments(c, identity.value, user.value.id);
+});
+
+accountRoutes.get("/api/v1/accounts/:id/endorsements", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const account = await findAccountByIdOrUsername(c.env.DB, c.req.param("id") ?? "");
+  if (account.isErr()) {
+    return jsonRepositoryError(c, account.error.message);
+  }
+  if (!account.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return endorsementDocuments(c, identity.value, account.value.id);
 });

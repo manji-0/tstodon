@@ -27,6 +27,11 @@ export type account_list_members = Prisma.account_list_membersModel;
  */
 export type account_lists = Prisma.account_listsModel;
 /**
+ * Model endorsements
+ *
+ */
+export type endorsements = Prisma.endorsementsModel;
+/**
  * Model accounts
  *
  */

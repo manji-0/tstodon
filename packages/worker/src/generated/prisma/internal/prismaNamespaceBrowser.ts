@@ -50,6 +50,7 @@ export const AnyNull = runtime.AnyNull;
 export const ModelName = {
   account_list_members: "account_list_members",
   account_lists: "account_lists",
+  endorsements: "endorsements",
   accounts: "accounts",
   bookmarks: "bookmarks",
   conversation_reads: "conversation_reads",
@@ -114,12 +115,23 @@ export const Account_listsScalarFieldEnum = {
   account_id: "account_id",
   title: "title",
   replies_policy: "replies_policy",
+  exclusive: "exclusive",
   created_at: "created_at",
   updated_at: "updated_at",
 } as const;
 
 export type Account_listsScalarFieldEnum =
   (typeof Account_listsScalarFieldEnum)[keyof typeof Account_listsScalarFieldEnum];
+
+export const EndorsementsScalarFieldEnum = {
+  account_id: "account_id",
+  target_account_id: "target_account_id",
+  target_actor_uri: "target_actor_uri",
+  created_at: "created_at",
+} as const;
+
+export type EndorsementsScalarFieldEnum =
+  (typeof EndorsementsScalarFieldEnum)[keyof typeof EndorsementsScalarFieldEnum];
 
 export const AccountsScalarFieldEnum = {
   id: "id",

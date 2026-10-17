@@ -25,20 +25,24 @@ import {
 import { mastodonAccountDocument, mastodonStatuses } from "../mastodon";
 import { parseInstanceIdentity } from "../runtime-config";
 import { filterMutedThreads } from "../status-mute-store";
-import { stringList } from "../schemas";
+import { isTruthy, stringList } from "../schemas";
 import { warmSchemas } from "@tstodon/core";
 import { z } from "zod";
 
 export const listRoutes = new Hono<{ Bindings: Env }>();
 
+const booleanish = z.union([z.boolean(), z.string(), z.number()]).optional();
+
 const CreateListBodySchema = z.object({
   title: z.string().min(1),
   replies_policy: ListRepliesPolicySchema.optional(),
+  exclusive: booleanish,
 });
 
 const UpdateListBodySchema = z.object({
   title: z.string().min(1).optional(),
   replies_policy: ListRepliesPolicySchema.optional(),
+  exclusive: booleanish,
 });
 
 const ListAccountsBodySchema = z.object({
@@ -71,6 +75,7 @@ listRoutes.post("/api/v1/lists", async (c) => {
   const created = await createList(c.env.DB, user.value.id, {
     title: body.value.title.trim(),
     ...(body.value.replies_policy ? { repliesPolicy: body.value.replies_policy } : {}),
+    ...(body.value.exclusive !== undefined ? { exclusive: isTruthy(body.value.exclusive) } : {}),
   });
   if (created.isErr()) {
     return jsonRepositoryError(c, created.error.message);
@@ -105,6 +110,7 @@ listRoutes.put("/api/v1/lists/:id", async (c) => {
   const updated = await updateList(c.env.DB, user.value.id, c.req.param("id"), {
     ...(body.value.title ? { title: body.value.title } : {}),
     ...(body.value.replies_policy ? { repliesPolicy: body.value.replies_policy } : {}),
+    ...(body.value.exclusive !== undefined ? { exclusive: isTruthy(body.value.exclusive) } : {}),
   });
   if (updated.isErr()) {
     return jsonRepositoryError(c, updated.error.message);

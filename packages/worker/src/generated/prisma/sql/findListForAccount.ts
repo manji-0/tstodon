@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  */
 export const findListForAccount = $runtime.makeTypedQueryFactory(
-  "SELECT id, account_id, title, replies_policy, created_at, updated_at\nFROM account_lists\nWHERE id = $1 AND account_id = $2",
+  "SELECT id, account_id, title, replies_policy, exclusive, created_at, updated_at\nFROM account_lists\nWHERE id = $1 AND account_id = $2",
 ) as (
   listId: string,
   accountId: string,
@@ -22,6 +22,7 @@ export namespace findListForAccount {
     account_id: string;
     title: string;
     replies_policy: string;
+    exclusive: number;
     created_at: string;
     updated_at: string;
   };

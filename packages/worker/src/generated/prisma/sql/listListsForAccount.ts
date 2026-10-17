@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  */
 export const listListsForAccount = $runtime.makeTypedQueryFactory(
-  "SELECT id, account_id, title, replies_policy, created_at, updated_at\nFROM account_lists\nWHERE account_id = $1\nORDER BY created_at DESC",
+  "SELECT id, account_id, title, replies_policy, exclusive, created_at, updated_at\nFROM account_lists\nWHERE account_id = $1\nORDER BY created_at DESC",
 ) as (
   accountId: string,
 ) => $runtime.TypedSql<listListsForAccount.Parameters, listListsForAccount.Result>;
@@ -20,6 +20,7 @@ export namespace listListsForAccount {
     account_id: string;
     title: string;
     replies_policy: string;
+    exclusive: number;
     created_at: string;
     updated_at: string;
   };

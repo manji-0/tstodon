@@ -9,16 +9,18 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  * @param title
  * @param repliesPolicy
+ * @param exclusive
  * @param createdAt
  * @param updatedAt
  */
 export const createList = $runtime.makeTypedQueryFactory(
-  "INSERT INTO account_lists (id, account_id, title, replies_policy, created_at, updated_at)\nVALUES ($1, $2, $3, $4, $5, $6)",
+  "INSERT INTO account_lists (id, account_id, title, replies_policy, exclusive, created_at, updated_at)\nVALUES ($1, $2, $3, $4, $5, $6, $7)",
 ) as (
   id: string,
   accountId: string,
   title: string,
   repliesPolicy: string,
+  exclusive: number,
   createdAt: string,
   updatedAt: string,
 ) => $runtime.TypedSql<createList.Parameters, createList.Result>;
@@ -29,6 +31,7 @@ export namespace createList {
     accountId: string,
     title: string,
     repliesPolicy: string,
+    exclusive: number,
     createdAt: string,
     updatedAt: string,
   ];

@@ -46,6 +46,8 @@ export * from "./sql/deleteBookmark";
 
 export * from "./sql/deleteCustomEmoji";
 
+export * from "./sql/deleteEndorsement";
+
 export * from "./sql/deleteFavourite";
 
 export * from "./sql/deleteFilter";
@@ -96,6 +98,8 @@ export * from "./sql/findCustomEmojiById";
 
 export * from "./sql/findCustomEmojiByShortcode";
 
+export * from "./sql/findEndorsement";
+
 export * from "./sql/findFollowKind";
 
 export * from "./sql/findListForAccount";
@@ -143,6 +147,8 @@ export * from "./sql/insertAccount";
 export * from "./sql/insertBookmarkOrIgnore";
 
 export * from "./sql/insertCustomEmoji";
+
+export * from "./sql/insertEndorsement";
 
 export * from "./sql/insertFavouriteOrIgnore";
 
@@ -207,6 +213,8 @@ export * from "./sql/listCustomEmojiRows";
 export * from "./sql/listDirectoryAccountsByActive";
 
 export * from "./sql/listDirectoryAccountsByNew";
+
+export * from "./sql/listEndorsements";
 
 export * from "./sql/listExpiredUnnotifiedPolls";
 

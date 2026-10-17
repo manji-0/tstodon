@@ -7,15 +7,17 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param title
  * @param repliesPolicy
+ * @param exclusive
  * @param updatedAt
  * @param listId
  * @param accountId
  */
 export const updateList = $runtime.makeTypedQueryFactory(
-  "UPDATE account_lists\nSET title = $1, replies_policy = $2, updated_at = $3\nWHERE id = $4 AND account_id = $5",
+  "UPDATE account_lists\nSET title = $1, replies_policy = $2, exclusive = $3, updated_at = $4\nWHERE id = $5 AND account_id = $6",
 ) as (
   title: string,
   repliesPolicy: string,
+  exclusive: number,
   updatedAt: string,
   listId: string,
   accountId: string,
@@ -25,6 +27,7 @@ export namespace updateList {
   export type Parameters = [
     title: string,
     repliesPolicy: string,
+    exclusive: number,
     updatedAt: string,
     listId: string,
     accountId: string,

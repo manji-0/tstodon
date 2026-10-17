@@ -10,20 +10,24 @@ import {
   countUnreadNotifications as countUnreadNotificationsSql,
   deleteBlock as deleteBlockSql,
   deleteBookmark as deleteBookmarkSql,
+  deleteEndorsement as deleteEndorsementSql,
   deleteFavourite as deleteFavouriteSql,
   deleteFollow as deleteFollowSql,
   deleteMute as deleteMuteSql,
   dismissNotification as dismissNotificationSql,
   findActiveMute as findActiveMuteSql,
   findBlock as findBlockSql,
+  findEndorsement as findEndorsementSql,
   findFollowKind as findFollowKindSql,
   findNotificationOwned as findNotificationOwnedSql,
   insertBookmarkOrIgnore as insertBookmarkOrIgnoreSql,
+  insertEndorsement as insertEndorsementSql,
   insertFavouriteOrIgnore as insertFavouriteOrIgnoreSql,
   insertFollowOrIgnore as insertFollowOrIgnoreSql,
   insertNotification as insertNotificationSql,
   listAcceptedFollowerIds as listAcceptedFollowerIdsSql,
   listBlockedAccounts as listBlockedAccountsSql,
+  listEndorsements as listEndorsementsSql,
   listFollowers as listFollowersSql,
   listFollowing as listFollowingSql,
   listMutedAccounts as listMutedAccountsSql,
@@ -255,6 +259,7 @@ export type RelationshipFlags = Readonly<{
   muting: boolean;
   mutingNotifications: boolean;
   mutingExpiresAt: string | null;
+  endorsed: boolean;
 }>;
 
 export const relationshipFlags = async (
@@ -268,6 +273,7 @@ export const relationshipFlags = async (
     d1PrepareTyped(db, findBlockSql(viewerId, targetId)),
     d1PrepareTyped(db, findBlockSql(targetId, viewerId)),
     d1PrepareTyped(db, findActiveMuteSql(viewerId, targetId, nowIso())),
+    d1PrepareTyped(db, findEndorsementSql(viewerId, targetId)),
   ]);
   if (batched.isErr()) {
     return err(batched.error);
@@ -279,6 +285,7 @@ export const relationshipFlags = async (
   const mute = batched.value[4]?.results?.[0] as
     | { notifications: number; expires_at: string | null }
     | undefined;
+  const endorsed = (batched.value[5]?.results?.length ?? 0) > 0;
   return ok({
     following: outgoing?.kind === "Accepted",
     followedBy: incoming?.kind === "Accepted",
@@ -288,8 +295,49 @@ export const relationshipFlags = async (
     muting: mute !== undefined,
     mutingNotifications: mute ? mute.notifications !== 0 : false,
     mutingExpiresAt: mute?.expires_at ?? null,
+    endorsed,
   });
 };
+
+export const endorseAccount = async (
+  db: D1Database,
+  viewerId: string,
+  target: Readonly<{ accountId: string | null; actorUri: string }>,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, insertEndorsementSql(viewerId, target.accountId, target.actorUri, nowIso()));
+  });
+
+export const unendorseAccount = async (
+  db: D1Database,
+  viewerId: string,
+  targetId: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ target_actor_uri: string }>(
+      db,
+      deleteEndorsementSql(viewerId, targetId),
+    );
+    return rows.length > 0;
+  });
+
+/** Endorsed targets, newest first, as local account ids or remote actor URIs. */
+export const listEndorsements = async (
+  db: D1Database,
+  viewerId: string,
+): Promise<
+  Result<ReadonlyArray<Readonly<{ accountId: string | null; actorUri: string }>>, RepositoryError>
+> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ target_account_id: string | null; target_actor_uri: string }>(
+      db,
+      listEndorsementsSql(viewerId),
+    );
+    return rows.map((row) => ({
+      accountId: row.target_account_id,
+      actorUri: row.target_actor_uri,
+    }));
+  });
 
 /**
  * SQL fragment selecting the account ids a viewer must not see: accounts the

@@ -33,6 +33,7 @@ const ListRowSchema = z.object({
   account_id: z.string().min(1),
   title: z.string().min(1),
   replies_policy: ListRepliesPolicySchema,
+  exclusive: z.number(),
   created_at: z.string().min(1),
   updated_at: z.string().min(1),
 });
@@ -44,6 +45,7 @@ export type AccountList = Readonly<{
   accountId: string;
   title: string;
   repliesPolicy: ListRepliesPolicy;
+  exclusive: boolean;
 }>;
 
 const listFromRow = (row: z.infer<typeof ListRowSchema>): AccountList => ({
@@ -51,14 +53,21 @@ const listFromRow = (row: z.infer<typeof ListRowSchema>): AccountList => ({
   accountId: row.account_id,
   title: row.title,
   repliesPolicy: row.replies_policy,
+  exclusive: row.exclusive !== 0,
 });
 
 export const toMastodonList = (
   list: AccountList,
-): Readonly<{ id: string; title: string; replies_policy: ListRepliesPolicy }> => ({
+): Readonly<{
+  id: string;
+  title: string;
+  replies_policy: ListRepliesPolicy;
+  exclusive: boolean;
+}> => ({
   id: list.id,
   title: list.title,
   replies_policy: list.repliesPolicy,
+  exclusive: list.exclusive,
 });
 
 export const listListsForAccount = async (
@@ -98,13 +107,17 @@ export const findListForAccount = async (
 export const createList = async (
   db: D1Database,
   accountId: string,
-  input: Readonly<{ title: string; repliesPolicy?: ListRepliesPolicy }>,
+  input: Readonly<{ title: string; repliesPolicy?: ListRepliesPolicy; exclusive?: boolean }>,
 ): Promise<Result<AccountList, RepositoryError>> => {
   const id = newEntityId();
   const now = nowIso();
   const repliesPolicy = input.repliesPolicy ?? "list";
+  const exclusive = input.exclusive ?? false;
   const written = await runD1(async () => {
-    await runTyped(db, createListSql(id, accountId, input.title, repliesPolicy, now, now));
+    await runTyped(
+      db,
+      createListSql(id, accountId, input.title, repliesPolicy, exclusive ? 1 : 0, now, now),
+    );
   });
   if (written.isErr()) {
     return err(written.error);
@@ -114,6 +127,7 @@ export const createList = async (
     accountId,
     title: input.title,
     repliesPolicy,
+    exclusive,
   });
 };
 
@@ -121,7 +135,7 @@ export const updateList = async (
   db: D1Database,
   accountId: string,
   listId: string,
-  input: Readonly<{ title?: string; repliesPolicy?: ListRepliesPolicy }>,
+  input: Readonly<{ title?: string; repliesPolicy?: ListRepliesPolicy; exclusive?: boolean }>,
 ): Promise<Result<AccountList | undefined, RepositoryError>> => {
   const existing = await findListForAccount(db, accountId, listId);
   if (existing.isErr()) {
@@ -132,8 +146,12 @@ export const updateList = async (
   }
   const title = input.title?.trim() || existing.value.title;
   const repliesPolicy = input.repliesPolicy ?? existing.value.repliesPolicy;
+  const exclusive = input.exclusive ?? existing.value.exclusive;
   const written = await runD1(async () => {
-    await runTyped(db, updateListSql(title, repliesPolicy, nowIso(), listId, accountId));
+    await runTyped(
+      db,
+      updateListSql(title, repliesPolicy, exclusive ? 1 : 0, nowIso(), listId, accountId),
+    );
   });
   if (written.isErr()) {
     return err(written.error);
@@ -143,6 +161,7 @@ export const updateList = async (
     accountId,
     title,
     repliesPolicy,
+    exclusive,
   });
 };
 
