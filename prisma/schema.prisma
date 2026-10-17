@@ -178,6 +178,26 @@ model status_pins {
   @@index([account_id, created_at(sort: Desc)], map: "idx_status_pins_account_created")
 }
 
+model account_announcement_dismissals {
+  account_id      String
+  announcement_id String
+  created_at      String @default("CURRENT_TIMESTAMP")
+  updated_at      String @default("CURRENT_TIMESTAMP")
+
+  @@id([account_id, announcement_id])
+}
+
+model account_announcement_reactions {
+  account_id      String
+  announcement_id String
+  reaction_name   String
+  created_at      String @default("CURRENT_TIMESTAMP")
+  updated_at      String @default("CURRENT_TIMESTAMP")
+
+  @@id([account_id, announcement_id, reaction_name])
+  @@index([announcement_id, reaction_name], map: "idx_announcement_reactions_group")
+}
+
 model inbox_activities {
   activity_id  String @id
   kind         String

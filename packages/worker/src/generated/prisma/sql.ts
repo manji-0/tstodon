@@ -32,6 +32,8 @@ export * from "./sql/countUnreadNotifications";
 
 export * from "./sql/createList";
 
+export * from "./sql/deleteAnnouncementReaction";
+
 export * from "./sql/deleteBlock";
 
 export * from "./sql/deleteBookmark";
@@ -170,6 +172,10 @@ export * from "./sql/listAcceptedRemoteFollowerUris";
 
 export * from "./sql/listAccountStatuses";
 
+export * from "./sql/listAnnouncementDismissals";
+
+export * from "./sql/listAnnouncementReactions";
+
 export * from "./sql/listBlockedAccounts";
 
 export * from "./sql/listDirectoryAccountsByActive";
@@ -243,6 +249,10 @@ export * from "./sql/updateOutboxTarget";
 export * from "./sql/updatePollOptionsIfActive";
 
 export * from "./sql/updateStatusPollId";
+
+export * from "./sql/upsertAnnouncementDismissal";
+
+export * from "./sql/upsertAnnouncementReaction";
 
 export * from "./sql/upsertBlock";
 

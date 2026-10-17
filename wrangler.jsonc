@@ -38,6 +38,8 @@
     "INSTANCE_LANGUAGES": "ja,en",
     "CONTACT_EMAIL": "admin@example.com",
     "INSTANCE_RULES": "[\"Be kind to others.\",\"No spam or harassment.\"]",
+    "CUSTOM_EMOJIS": "[{\"shortcode\":\"tstodon\",\"url\":\"https://media.example.com/emoji/tstodon.png\"}]",
+    "ANNOUNCEMENTS": "[{\"id\":\"1\",\"content\":\"Welcome to tstodon!\",\"reactions\":[\"🎉\"]}]",
     "INSTANCE_THUMBNAIL_URL": "https://media.example.com/site/thumbnail.png",
     "MEDIA_PUBLIC_BASE_URL": "https://media.example.com",
     "EMAIL_FROM": "tstodon <noreply@example.com>",

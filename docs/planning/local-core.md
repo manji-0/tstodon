@@ -20,114 +20,119 @@ This is the planning source for `tstodon`'s current slice: a local-only Mastodon
 Labels:
 
 - **implemented** — local accounts can exercise the behavior; tests should cover the main path.
-- **placeholder** — the route exists with an empty or conservative response; do not treat it as compatibility.
+- **placeholder** — the route exists with an empty or conservative response; do not treat it as compatibility. No placeholder routes remain.
 - **out of scope** — not in this slice.
 
 ### Implemented
 
-| Method | Path                                    |
-| ------ | --------------------------------------- |
-| GET    | `/healthz`                              |
-| GET    | `/login`                                |
-| GET    | `/api/v1/instance`                      |
-| GET    | `/api/v1/instance/rules`                |
-| GET    | `/api/v2/instance`                      |
-| GET    | `/.well-known/webfinger`                |
-| GET    | `/.well-known/nodeinfo`                 |
-| GET    | `/nodeinfo/2.0`                         |
-| POST   | `/api/v1/apps`                          |
-| GET    | `/api/v1/apps/verify_credentials`       |
-| POST   | `/oauth/token`                          |
-| GET    | `/api/v1/accounts/verify_credentials`   |
-| PATCH  | `/api/v1/accounts/update_credentials`   |
-| GET    | `/api/v1/accounts/lookup`               |
-| GET    | `/api/v1/accounts/relationships`        |
-| GET    | `/api/v1/accounts/:id`                  |
-| GET    | `/api/v1/accounts/:id/statuses`         |
-| GET    | `/api/v1/accounts/:id/followers`        |
-| GET    | `/api/v1/accounts/:id/following`        |
-| POST   | `/api/v1/accounts/:id/follow`           |
-| POST   | `/api/v1/accounts/:id/unfollow`         |
-| GET    | `/api/v1/follow_requests`               |
-| POST   | `/api/v1/follow_requests/:id/authorize` |
-| POST   | `/api/v1/follow_requests/:id/reject`    |
-| POST   | `/api/v1/accounts/:id/block`            |
-| POST   | `/api/v1/accounts/:id/unblock`          |
-| POST   | `/api/v1/accounts/:id/mute`             |
-| POST   | `/api/v1/accounts/:id/unmute`           |
-| GET    | `/api/v1/blocks`                        |
-| GET    | `/api/v1/mutes`                         |
-| POST   | `/api/v1/statuses`                      |
-| GET    | `/api/v1/statuses/:id`                  |
-| DELETE | `/api/v1/statuses/:id`                  |
-| PUT    | `/api/v1/statuses/:id`                  |
-| PATCH  | `/api/v1/statuses/:id`                  |
-| GET    | `/api/v1/statuses/:id/history`          |
-| GET    | `/api/v1/statuses/:id/source`           |
-| POST   | `/api/v1/statuses/:id/favourite`        |
-| POST   | `/api/v1/statuses/:id/unfavourite`      |
-| POST   | `/api/v1/statuses/:id/reblog`           |
-| POST   | `/api/v1/statuses/:id/unreblog`         |
-| POST   | `/api/v1/statuses/:id/bookmark`         |
-| POST   | `/api/v1/statuses/:id/unbookmark`       |
-| POST   | `/api/v1/statuses/:id/pin`              |
-| POST   | `/api/v1/statuses/:id/unpin`            |
-| GET    | `/api/v1/favourites`                    |
-| GET    | `/api/v1/bookmarks`                     |
-| GET    | `/api/v1/timelines/public`              |
-| GET    | `/api/v1/timelines/home`                |
-| GET    | `/api/v1/timelines/tag/:hashtag`        |
-| POST   | `/api/v1/media`                         |
-| POST   | `/api/v2/media`                         |
-| GET    | `/media/:id`                            |
-| GET    | `/api/v1/notifications`                 |
-| GET    | `/api/v1/notifications/unread_count`    |
-| POST   | `/api/v1/notifications/clear`           |
-| POST   | `/api/v1/notifications/:id/dismiss`     |
-| GET    | `/api/v1/polls/:id`                     |
-| POST   | `/api/v1/polls/:id/votes`               |
-| GET    | `/api/v1/filters`                       |
-| POST   | `/api/v1/filters`                       |
-| DELETE | `/api/v1/filters/:id`                   |
-| GET    | `/api/v2/filters`                       |
-| POST   | `/api/v1/reports`                       |
-| GET    | `/api/v1/search`                        |
-| GET    | `/api/v2/search`                        |
-| GET    | `/api/v1/statuses/:id/context`          |
-| GET    | `/api/v1/directory`                     |
-| GET    | `/api/v1/instance/peers`                |
-| GET    | `/api/v1/instance/activity`             |
-| GET    | `/api/v1/trends`                        |
-| GET    | `/api/v1/trends/tags`                   |
-| GET    | `/api/v1/trends/statuses`               |
-| GET    | `/api/v1/trends/links`                  |
-| GET    | `/api/v1/suggestions`                   |
-| GET    | `/api/v2/suggestions`                   |
-| GET    | `/api/v1/markers`                       |
-| POST   | `/api/v1/markers`                       |
-| GET    | `/api/v1/conversations`                 |
-| POST   | `/api/v1/conversations/:id/read`        |
-| GET    | `/api/v1/timelines/direct`              |
-| GET    | `/api/v1/lists`                         |
-| POST   | `/api/v1/lists`                         |
-| GET    | `/api/v1/lists/:id`                     |
-| PUT    | `/api/v1/lists/:id`                     |
-| DELETE | `/api/v1/lists/:id`                     |
-| GET    | `/api/v1/lists/:id/accounts`            |
-| POST   | `/api/v1/lists/:id/accounts`            |
-| DELETE | `/api/v1/lists/:id/accounts`            |
-| GET    | `/api/v1/accounts/:id/lists`            |
-| GET    | `/api/v1/timelines/list/:id`            |
-| GET    | `/api/v1/streaming`                     |
-| GET    | `/users/:username`                      |
-| GET    | `/users/:username/statuses/:id`         |
-| GET    | `/users/:username/outbox`               |
-| GET    | `/users/:username/followers`            |
-| GET    | `/users/:username/following`            |
-| POST   | `/users/:username/inbox`                |
-| POST   | `/inbox`                                |
+| Method | Path                                        |
+| ------ | ------------------------------------------- |
+| GET    | `/healthz`                                  |
+| GET    | `/login`                                    |
+| GET    | `/api/v1/instance`                          |
+| GET    | `/api/v1/instance/rules`                    |
+| GET    | `/api/v2/instance`                          |
+| GET    | `/api/v1/custom_emojis`                     |
+| GET    | `/api/v1/announcements`                     |
+| POST   | `/api/v1/announcements/:id/dismiss`         |
+| PUT    | `/api/v1/announcements/:id/reactions/:name` |
+| DELETE | `/api/v1/announcements/:id/reactions/:name` |
+| GET    | `/.well-known/webfinger`                    |
+| GET    | `/.well-known/nodeinfo`                     |
+| GET    | `/nodeinfo/2.0`                             |
+| POST   | `/api/v1/apps`                              |
+| GET    | `/api/v1/apps/verify_credentials`           |
+| POST   | `/oauth/token`                              |
+| GET    | `/api/v1/accounts/verify_credentials`       |
+| PATCH  | `/api/v1/accounts/update_credentials`       |
+| GET    | `/api/v1/accounts/lookup`                   |
+| GET    | `/api/v1/accounts/relationships`            |
+| GET    | `/api/v1/accounts/:id`                      |
+| GET    | `/api/v1/accounts/:id/statuses`             |
+| GET    | `/api/v1/accounts/:id/followers`            |
+| GET    | `/api/v1/accounts/:id/following`            |
+| POST   | `/api/v1/accounts/:id/follow`               |
+| POST   | `/api/v1/accounts/:id/unfollow`             |
+| GET    | `/api/v1/follow_requests`                   |
+| POST   | `/api/v1/follow_requests/:id/authorize`     |
+| POST   | `/api/v1/follow_requests/:id/reject`        |
+| POST   | `/api/v1/accounts/:id/block`                |
+| POST   | `/api/v1/accounts/:id/unblock`              |
+| POST   | `/api/v1/accounts/:id/mute`                 |
+| POST   | `/api/v1/accounts/:id/unmute`               |
+| GET    | `/api/v1/blocks`                            |
+| GET    | `/api/v1/mutes`                             |
+| POST   | `/api/v1/statuses`                          |
+| GET    | `/api/v1/statuses/:id`                      |
+| DELETE | `/api/v1/statuses/:id`                      |
+| PUT    | `/api/v1/statuses/:id`                      |
+| PATCH  | `/api/v1/statuses/:id`                      |
+| GET    | `/api/v1/statuses/:id/history`              |
+| GET    | `/api/v1/statuses/:id/source`               |
+| POST   | `/api/v1/statuses/:id/favourite`            |
+| POST   | `/api/v1/statuses/:id/unfavourite`          |
+| POST   | `/api/v1/statuses/:id/reblog`               |
+| POST   | `/api/v1/statuses/:id/unreblog`             |
+| POST   | `/api/v1/statuses/:id/bookmark`             |
+| POST   | `/api/v1/statuses/:id/unbookmark`           |
+| POST   | `/api/v1/statuses/:id/pin`                  |
+| POST   | `/api/v1/statuses/:id/unpin`                |
+| GET    | `/api/v1/favourites`                        |
+| GET    | `/api/v1/bookmarks`                         |
+| GET    | `/api/v1/timelines/public`                  |
+| GET    | `/api/v1/timelines/home`                    |
+| GET    | `/api/v1/timelines/tag/:hashtag`            |
+| POST   | `/api/v1/media`                             |
+| POST   | `/api/v2/media`                             |
+| GET    | `/media/:id`                                |
+| GET    | `/api/v1/notifications`                     |
+| GET    | `/api/v1/notifications/unread_count`        |
+| POST   | `/api/v1/notifications/clear`               |
+| POST   | `/api/v1/notifications/:id/dismiss`         |
+| GET    | `/api/v1/polls/:id`                         |
+| POST   | `/api/v1/polls/:id/votes`                   |
+| GET    | `/api/v1/filters`                           |
+| POST   | `/api/v1/filters`                           |
+| DELETE | `/api/v1/filters/:id`                       |
+| GET    | `/api/v2/filters`                           |
+| POST   | `/api/v1/reports`                           |
+| GET    | `/api/v1/search`                            |
+| GET    | `/api/v2/search`                            |
+| GET    | `/api/v1/statuses/:id/context`              |
+| GET    | `/api/v1/directory`                         |
+| GET    | `/api/v1/instance/peers`                    |
+| GET    | `/api/v1/instance/activity`                 |
+| GET    | `/api/v1/trends`                            |
+| GET    | `/api/v1/trends/tags`                       |
+| GET    | `/api/v1/trends/statuses`                   |
+| GET    | `/api/v1/trends/links`                      |
+| GET    | `/api/v1/suggestions`                       |
+| GET    | `/api/v2/suggestions`                       |
+| GET    | `/api/v1/markers`                           |
+| POST   | `/api/v1/markers`                           |
+| GET    | `/api/v1/conversations`                     |
+| POST   | `/api/v1/conversations/:id/read`            |
+| GET    | `/api/v1/timelines/direct`                  |
+| GET    | `/api/v1/lists`                             |
+| POST   | `/api/v1/lists`                             |
+| GET    | `/api/v1/lists/:id`                         |
+| PUT    | `/api/v1/lists/:id`                         |
+| DELETE | `/api/v1/lists/:id`                         |
+| GET    | `/api/v1/lists/:id/accounts`                |
+| POST   | `/api/v1/lists/:id/accounts`                |
+| DELETE | `/api/v1/lists/:id/accounts`                |
+| GET    | `/api/v1/accounts/:id/lists`                |
+| GET    | `/api/v1/timelines/list/:id`                |
+| GET    | `/api/v1/streaming`                         |
+| GET    | `/users/:username`                          |
+| GET    | `/users/:username/statuses/:id`             |
+| GET    | `/users/:username/outbox`                   |
+| GET    | `/users/:username/followers`                |
+| GET    | `/users/:username/following`                |
+| POST   | `/users/:username/inbox`                    |
+| POST   | `/inbox`                                    |
 
-Search is D1 `LIKE` over local usernames and status text, plus cached remote actors. With `resolve=true`, a `@user@domain` handle is resolved over WebFinger (or an actor URL fetched directly) and cached before being returned; remote status search is not included. Tag timelines match `#hashtag` in local public notes. Status create accepts `in_reply_to_id`; context walks ancestors/descendants with visibility filtering. Status authors can edit a note (`PUT`/`PATCH /api/v1/statuses/:id`): each edit snapshots the previous revision into `status_edits`, the status `edited_at` appears once `updated_at != created_at`, `GET /api/v1/statuses/:id/history` returns revisions oldest-first with the current version last, `GET /api/v1/statuses/:id/source` returns the raw text and spoiler, poll edits are rejected (422), and an `Update` activity is delivered to remote followers. Authors can pin up to five non-direct notes (`POST /api/v1/statuses/:id/pin|unpin`, `status_pins`); `GET /api/v1/accounts/:id/statuses?pinned=true` returns them. Directory lists local accounts. Peers are distinct `remote_actors.domain` values. Activity aggregates weekly local status and registration counts. Trends tags/statuses are derived from recent public local notes. Suggestions (`/api/v1/suggestions`, `/api/v2/suggestions`) are directory accounts the viewer has not followed, blocked, or muted; `/api/v1/trends/links` ranks link cards extracted from recent public notes. Instance rules are read from the `INSTANCE_RULES` var. Direct visibility is limited to the author and locally mentioned accounts (`status_mentions`); conversations group Direct threads by root status id; markers persist home/notifications read positions. Lists are per-account named member sets with optional `replies_policy` and a dedicated list timeline. Inbox accepts signed Follow / Undo / Like / Announce / Create that target this instance. Local actors verify against the stored account key. Remote actors verify against a cached `RemoteActor` public key, fetching and persisting the actor document from `keyId` on a cache miss. Remote `Create` / `Announce` Notes are stored as `RemoteStatus` and appear on the public timeline. Remote Like / Announce of a local status increment that status's favourite and reblog counts. `GET /api/v1/streaming` is a Durable Object WebSocket hub with write-time fan-out for updates and notifications.
+Search is D1 `LIKE` over local usernames and status text, plus cached remote actors. With `resolve=true`, a `@user@domain` handle is resolved over WebFinger (or an actor URL fetched directly) and cached before being returned; remote status search is not included. Tag timelines match `#hashtag` in local public notes. Status create accepts `in_reply_to_id`; context walks ancestors/descendants with visibility filtering. Status authors can edit a note (`PUT`/`PATCH /api/v1/statuses/:id`): each edit snapshots the previous revision into `status_edits`, the status `edited_at` appears once `updated_at != created_at`, `GET /api/v1/statuses/:id/history` returns revisions oldest-first with the current version last, `GET /api/v1/statuses/:id/source` returns the raw text and spoiler, poll edits are rejected (422), and an `Update` activity is delivered to remote followers. Authors can pin up to five non-direct notes (`POST /api/v1/statuses/:id/pin|unpin`, `status_pins`); `GET /api/v1/accounts/:id/statuses?pinned=true` returns them. Directory lists local accounts. Peers are distinct `remote_actors.domain` values. Activity aggregates weekly local status and registration counts. Trends tags/statuses are derived from recent public local notes. Suggestions (`/api/v1/suggestions`, `/api/v2/suggestions`) are directory accounts the viewer has not followed, blocked, or muted; `/api/v1/trends/links` ranks link cards extracted from recent public notes. Instance rules are read from the `INSTANCE_RULES` var. Custom emojis are read from the `CUSTOM_EMOJIS` var and surface on account/status/poll documents as the `emojis` array whenever their `:shortcode:` appears (inline `<img>` rendering inside `content` is not done). Announcements come from the `ANNOUNCEMENTS` var, filtered to those live for the viewer; dismissals and reactions are per-viewer rows in `account_announcement_dismissals` / `account_announcement_reactions` (`migration 0015`), a reaction is accepted only when the announcement declares it or it is a configured custom emoji, and the announcement list requires authentication. Direct visibility is limited to the author and locally mentioned accounts (`status_mentions`); conversations group Direct threads by root status id; markers persist home/notifications read positions. Lists are per-account named member sets with optional `replies_policy` and a dedicated list timeline. Inbox accepts signed Follow / Undo / Like / Announce / Create that target this instance. Local actors verify against the stored account key. Remote actors verify against a cached `RemoteActor` public key, fetching and persisting the actor document from `keyId` on a cache miss. Remote `Create` / `Announce` Notes are stored as `RemoteStatus` and appear on the public timeline. Remote Like / Announce of a local status increment that status's favourite and reblog counts. `GET /api/v1/streaming` is a Durable Object WebSocket hub with write-time fan-out for updates and notifications.
 
 Locked accounts collect pending follow requests from local followers (`follows.kind = 'Pending'`) and remote followers (`remote_follows.remote_request_kind = 'Queued'`). `GET /api/v1/follow_requests` lists both as account documents, most recent first. `POST /api/v1/follow_requests/:id/authorize` promotes the request to `Accepted`; for a remote follower it also delivers a signed `Accept` that references the original Follow activity to the follower's inbox. `POST /api/v1/follow_requests/:id/reject` deletes the pending request and, for a remote follower, delivers a signed `Reject`. Both endpoints return the requester `Relationship`; an unknown or non-pending id is `NotFound`.
 
@@ -135,10 +140,7 @@ Blocks and mutes are stored per viewer keyed by the target actor URI (`blocks`, 
 
 ### Placeholder
 
-| Method | Path                    | Response |
-| ------ | ----------------------- | -------- |
-| GET    | `/api/v1/custom_emojis` | `[]`     |
-| GET    | `/api/v1/announcements` | `[]`     |
+None: every route listed above is implemented.
 
 `OutboxDeliveryWorkflow` retries signed inbox POSTs per remote target. Cron enqueues `ProcessExpiredPolls`, which marks expired polls and pushes `status.update` onto the author's `StreamHub`. Status creates and notifications also publish onto per-account hubs.
 

@@ -405,6 +405,8 @@ export const ModelName = {
   notification_clear_markers: "notification_clear_markers",
   status_edits: "status_edits",
   status_pins: "status_pins",
+  account_announcement_dismissals: "account_announcement_dismissals",
+  account_announcement_reactions: "account_announcement_reactions",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
   markers: "markers",
@@ -456,6 +458,8 @@ export type TypeMap<
       | "notification_clear_markers"
       | "status_edits"
       | "status_pins"
+      | "account_announcement_dismissals"
+      | "account_announcement_reactions"
       | "inbox_activities"
       | "instance_settings"
       | "markers"
@@ -1521,6 +1525,158 @@ export type TypeMap<
         count: {
           args: Prisma.status_pinsCountArgs<ExtArgs>;
           result: runtime.Types.Utils.Optional<Prisma.Status_pinsCountAggregateOutputType> | number;
+        };
+      };
+    };
+    account_announcement_dismissals: {
+      payload: Prisma.$account_announcement_dismissalsPayload<ExtArgs>;
+      fields: Prisma.account_announcement_dismissalsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.account_announcement_dismissalsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_dismissalsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.account_announcement_dismissalsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_dismissalsPayload>;
+        };
+        findFirst: {
+          args: Prisma.account_announcement_dismissalsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_dismissalsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.account_announcement_dismissalsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_dismissalsPayload>;
+        };
+        findMany: {
+          args: Prisma.account_announcement_dismissalsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_dismissalsPayload>[];
+        };
+        create: {
+          args: Prisma.account_announcement_dismissalsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_dismissalsPayload>;
+        };
+        createMany: {
+          args: Prisma.account_announcement_dismissalsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.account_announcement_dismissalsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_dismissalsPayload>[];
+        };
+        delete: {
+          args: Prisma.account_announcement_dismissalsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_dismissalsPayload>;
+        };
+        update: {
+          args: Prisma.account_announcement_dismissalsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_dismissalsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.account_announcement_dismissalsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.account_announcement_dismissalsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.account_announcement_dismissalsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_dismissalsPayload>[];
+        };
+        upsert: {
+          args: Prisma.account_announcement_dismissalsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_dismissalsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Account_announcement_dismissalsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAccount_announcement_dismissals>;
+        };
+        groupBy: {
+          args: Prisma.account_announcement_dismissalsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Account_announcement_dismissalsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.account_announcement_dismissalsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Account_announcement_dismissalsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    account_announcement_reactions: {
+      payload: Prisma.$account_announcement_reactionsPayload<ExtArgs>;
+      fields: Prisma.account_announcement_reactionsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.account_announcement_reactionsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_reactionsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.account_announcement_reactionsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_reactionsPayload>;
+        };
+        findFirst: {
+          args: Prisma.account_announcement_reactionsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_reactionsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.account_announcement_reactionsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_reactionsPayload>;
+        };
+        findMany: {
+          args: Prisma.account_announcement_reactionsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_reactionsPayload>[];
+        };
+        create: {
+          args: Prisma.account_announcement_reactionsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_reactionsPayload>;
+        };
+        createMany: {
+          args: Prisma.account_announcement_reactionsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.account_announcement_reactionsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_reactionsPayload>[];
+        };
+        delete: {
+          args: Prisma.account_announcement_reactionsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_reactionsPayload>;
+        };
+        update: {
+          args: Prisma.account_announcement_reactionsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_reactionsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.account_announcement_reactionsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.account_announcement_reactionsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.account_announcement_reactionsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_reactionsPayload>[];
+        };
+        upsert: {
+          args: Prisma.account_announcement_reactionsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_announcement_reactionsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Account_announcement_reactionsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAccount_announcement_reactions>;
+        };
+        groupBy: {
+          args: Prisma.account_announcement_reactionsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Account_announcement_reactionsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.account_announcement_reactionsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Account_announcement_reactionsCountAggregateOutputType>
+            | number;
         };
       };
     };
@@ -2997,6 +3153,27 @@ export const Status_pinsScalarFieldEnum = {
 export type Status_pinsScalarFieldEnum =
   (typeof Status_pinsScalarFieldEnum)[keyof typeof Status_pinsScalarFieldEnum];
 
+export const Account_announcement_dismissalsScalarFieldEnum = {
+  account_id: "account_id",
+  announcement_id: "announcement_id",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Account_announcement_dismissalsScalarFieldEnum =
+  (typeof Account_announcement_dismissalsScalarFieldEnum)[keyof typeof Account_announcement_dismissalsScalarFieldEnum];
+
+export const Account_announcement_reactionsScalarFieldEnum = {
+  account_id: "account_id",
+  announcement_id: "announcement_id",
+  reaction_name: "reaction_name",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Account_announcement_reactionsScalarFieldEnum =
+  (typeof Account_announcement_reactionsScalarFieldEnum)[keyof typeof Account_announcement_reactionsScalarFieldEnum];
+
 export const Inbox_activitiesScalarFieldEnum = {
   activity_id: "activity_id",
   kind: "kind",
@@ -3413,6 +3590,8 @@ export type GlobalOmitConfig = {
   notification_clear_markers?: Prisma.notification_clear_markersOmit;
   status_edits?: Prisma.status_editsOmit;
   status_pins?: Prisma.status_pinsOmit;
+  account_announcement_dismissals?: Prisma.account_announcement_dismissalsOmit;
+  account_announcement_reactions?: Prisma.account_announcement_reactionsOmit;
   inbox_activities?: Prisma.inbox_activitiesOmit;
   instance_settings?: Prisma.instance_settingsOmit;
   markers?: Prisma.markersOmit;

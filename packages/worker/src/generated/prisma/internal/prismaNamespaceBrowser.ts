@@ -62,6 +62,8 @@ export const ModelName = {
   notification_clear_markers: "notification_clear_markers",
   status_edits: "status_edits",
   status_pins: "status_pins",
+  account_announcement_dismissals: "account_announcement_dismissals",
+  account_announcement_reactions: "account_announcement_reactions",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
   markers: "markers",
@@ -244,6 +246,27 @@ export const Status_pinsScalarFieldEnum = {
 
 export type Status_pinsScalarFieldEnum =
   (typeof Status_pinsScalarFieldEnum)[keyof typeof Status_pinsScalarFieldEnum];
+
+export const Account_announcement_dismissalsScalarFieldEnum = {
+  account_id: "account_id",
+  announcement_id: "announcement_id",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Account_announcement_dismissalsScalarFieldEnum =
+  (typeof Account_announcement_dismissalsScalarFieldEnum)[keyof typeof Account_announcement_dismissalsScalarFieldEnum];
+
+export const Account_announcement_reactionsScalarFieldEnum = {
+  account_id: "account_id",
+  announcement_id: "announcement_id",
+  reaction_name: "reaction_name",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Account_announcement_reactionsScalarFieldEnum =
+  (typeof Account_announcement_reactionsScalarFieldEnum)[keyof typeof Account_announcement_reactionsScalarFieldEnum];
 
 export const Inbox_activitiesScalarFieldEnum = {
   activity_id: "activity_id",

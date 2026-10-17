@@ -21,6 +21,8 @@ export type * from "./models/notification_dismissals";
 export type * from "./models/notification_clear_markers";
 export type * from "./models/status_edits";
 export type * from "./models/status_pins";
+export type * from "./models/account_announcement_dismissals";
+export type * from "./models/account_announcement_reactions";
 export type * from "./models/inbox_activities";
 export type * from "./models/instance_settings";
 export type * from "./models/markers";

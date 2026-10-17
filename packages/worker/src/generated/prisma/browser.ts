@@ -87,6 +87,16 @@ export type status_edits = Prisma.status_editsModel;
  */
 export type status_pins = Prisma.status_pinsModel;
 /**
+ * Model account_announcement_dismissals
+ *
+ */
+export type account_announcement_dismissals = Prisma.account_announcement_dismissalsModel;
+/**
+ * Model account_announcement_reactions
+ *
+ */
+export type account_announcement_reactions = Prisma.account_announcement_reactionsModel;
+/**
  * Model inbox_activities
  *
  */

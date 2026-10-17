@@ -1,6 +1,15 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { countAccounts, findAccountById, listDirectoryAccounts } from "../account-store";
+import {
+  addAnnouncementReaction,
+  announcementReactionState,
+  dismissAnnouncement,
+  listAnnouncementDismissals,
+  removeAnnouncementReaction,
+  type AnnouncementReactionState,
+} from "../announcement-store";
+import { customEmojiJson, emojisInText, type CustomEmoji } from "../emoji";
 import { listConversationsForAccount, latestStatusIdInConversation } from "../conversation-store";
 import {
   jsonAuthError,
@@ -20,7 +29,14 @@ import {
   type MarkerTimeline,
 } from "../marker-store";
 import { listPeerDomains } from "../remote-actor-store";
-import { instanceRules, parseInstanceIdentity } from "../runtime-config";
+import {
+  activeAnnouncements,
+  announcements,
+  customEmojis,
+  instanceRules,
+  parseInstanceIdentity,
+  type Announcement,
+} from "../runtime-config";
 import { listSuggestionExclusionIds } from "../social-store";
 import {
   countStatuses,
@@ -31,9 +47,139 @@ import {
 
 export const metaRoutes = new Hono<{ Bindings: Env }>();
 
-metaRoutes.get("/api/v1/custom_emojis", (c) => c.json([]));
-metaRoutes.get("/api/v1/announcements", (c) => c.json([]));
+metaRoutes.get("/api/v1/custom_emojis", (c) => c.json(customEmojis(c.env).map(customEmojiJson)));
 metaRoutes.get("/api/v1/instance/rules", (c) => c.json(instanceRules(c.env)));
+
+const announcementDocument = (
+  announcement: Announcement,
+  read: boolean,
+  reactions: ReadonlyMap<string, AnnouncementReactionState>,
+  emojis: ReadonlyArray<CustomEmoji>,
+): Record<string, unknown> => {
+  const names = [...new Set([...announcement.reactions, ...reactions.keys()])];
+  return {
+    id: announcement.id,
+    content: announcement.content,
+    starts_at: announcement.startsAt,
+    ends_at: announcement.endsAt,
+    all_day: announcement.allDay,
+    published_at: announcement.publishedAt,
+    updated_at: announcement.updatedAt,
+    read,
+    mentions: [],
+    statuses: [],
+    tags: [],
+    emojis: emojisInText(announcement.content, emojis).map(customEmojiJson),
+    reactions: names.map((name) => {
+      const state = reactions.get(name);
+      return { name, count: state?.count ?? 0, me: state?.me ?? false };
+    }),
+  };
+};
+
+/** A reaction is allowed when the announcement declares it or it is a custom emoji. */
+const reactionAllowed = (
+  announcement: Announcement,
+  name: string,
+  emojis: ReadonlyArray<CustomEmoji>,
+): boolean =>
+  announcement.reactions.includes(name) ||
+  emojis.some((emoji) => emoji.shortcode.toLowerCase() === name.toLowerCase());
+
+const configuredAnnouncement = (env: Env, id: string): Announcement | undefined =>
+  activeAnnouncements(announcements(env)).find((announcement) => announcement.id === id);
+
+metaRoutes.get("/api/v1/announcements", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const active = activeAnnouncements(announcements(c.env));
+  const dismissed = await listAnnouncementDismissals(c.env.DB, user.value.id);
+  if (dismissed.isErr()) {
+    return jsonRepositoryError(c, dismissed.error.message);
+  }
+  const reactions = await announcementReactionState(c.env.DB, user.value.id);
+  if (reactions.isErr()) {
+    return jsonRepositoryError(c, reactions.error.message);
+  }
+  const emojis = customEmojis(c.env);
+  const empty = new Map<string, AnnouncementReactionState>();
+  return c.json(
+    active.map((announcement) =>
+      announcementDocument(
+        announcement,
+        dismissed.value.has(announcement.id),
+        reactions.value.get(announcement.id) ?? empty,
+        emojis,
+      ),
+    ),
+  );
+});
+
+metaRoutes.post("/api/v1/announcements/:id/dismiss", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const announcement = configuredAnnouncement(c.env, c.req.param("id") ?? "");
+  if (!announcement) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const dismissed = await dismissAnnouncement(c.env.DB, user.value.id, announcement.id);
+  if (dismissed.isErr()) {
+    return jsonRepositoryError(c, dismissed.error.message);
+  }
+  return c.json({});
+});
+
+const putAnnouncementReaction = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const announcement = configuredAnnouncement(c.env, c.req.param("id") ?? "");
+  if (!announcement) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const name = c.req.param("name") ?? "";
+  if (!reactionAllowed(announcement, name, customEmojis(c.env))) {
+    return c.json({ error: "Reaction not allowed", kind: "ReactionNotAllowed" }, 422);
+  }
+  const added = await addAnnouncementReaction(c.env.DB, user.value.id, announcement.id, name);
+  if (added.isErr()) {
+    return jsonRepositoryError(c, added.error.message);
+  }
+  return c.json({});
+};
+
+const deleteAnnouncementReactionRoute = async (
+  c: Context<{ Bindings: Env }>,
+): Promise<Response> => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const announcement = configuredAnnouncement(c.env, c.req.param("id") ?? "");
+  if (!announcement) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const removed = await removeAnnouncementReaction(
+    c.env.DB,
+    user.value.id,
+    announcement.id,
+    c.req.param("name") ?? "",
+  );
+  if (removed.isErr()) {
+    return jsonRepositoryError(c, removed.error.message);
+  }
+  return c.json({});
+};
+
+metaRoutes.put("/api/v1/announcements/:id/reactions/:name", (c) => putAnnouncementReaction(c));
+metaRoutes.delete("/api/v1/announcements/:id/reactions/:name", (c) =>
+  deleteAnnouncementReactionRoute(c),
+);
 
 const suggestedAccounts = async (
   c: Context<{ Bindings: Env }>,

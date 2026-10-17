@@ -24,6 +24,8 @@ import {
   type StatusInteractionCounts,
 } from "./social-store";
 import { findMediaByIds, type MediaRow } from "./media-store";
+import { customEmojiJson, emojisInText, emojisInTexts, type CustomEmoji } from "./emoji";
+import { customEmojis } from "./runtime-config";
 import { FilterContextSchema, parseJsonColumn } from "./schemas";
 import type { FilterRow } from "./moderation-store";
 
@@ -34,6 +36,7 @@ export const mastodonAccount = (
   identity: InstanceIdentity,
   account: LocalAccount,
   counts: { followers: number; following: number; statuses: number },
+  emojis: ReadonlyArray<CustomEmoji> = [],
 ): Record<string, unknown> => {
   const url = InstanceIdentity.actorUrl(identity, account.username);
   return {
@@ -57,7 +60,7 @@ export const mastodonAccount = (
     following_count: counts.following,
     statuses_count: counts.statuses,
     last_status_at: null,
-    emojis: [],
+    emojis: emojis.map(customEmojiJson),
     fields: [],
   };
 };
@@ -72,6 +75,7 @@ export const mastodonAccountDocument = async (
     identity,
     account,
     counts.isOk() ? counts.value : { followers: 0, following: 0, statuses: 0 },
+    emojisInText(account.displayName, customEmojis(env)),
   );
 };
 
@@ -198,6 +202,7 @@ const buildLocalNoteDocument = (
   poll: PollRecord | undefined,
   mediaById: ReadonlyMap<string, MediaRow>,
   parentAccountId: string | null,
+  emojis: ReadonlyArray<CustomEmoji>,
 ): Record<string, unknown> => {
   const url = `${InstanceIdentity.actorUrl(identity, account.username)}/statuses/${status.id}`;
   return {
@@ -225,7 +230,7 @@ const buildLocalNoteDocument = (
     media_attachments: mediaAttachmentsJson(identity, status.mediaIds, mediaById),
     mentions: [],
     tags: [],
-    emojis: [],
+    emojis: emojis.map(customEmojiJson),
     card: null,
     poll: poll ? pollJson(poll) : null,
   };
@@ -250,6 +255,8 @@ export const mastodonStatuses = async (
   if (statuses.length === 0) {
     return [];
   }
+
+  const instanceEmojis = customEmojis(env);
 
   const byId = new Map<string, LocalStatus>();
   for (const status of statuses) {
@@ -329,6 +336,7 @@ export const mastodonStatuses = async (
         identity,
         account,
         accountCountsMap.get(id) ?? { followers: 0, following: 0, statuses: 0 },
+        emojisInText(account.displayName, instanceEmojis),
       ),
     );
   }
@@ -361,6 +369,7 @@ export const mastodonStatuses = async (
         polls.get(status.id),
         mediaById,
         parent?.accountId ?? null,
+        emojisInTexts([status.text, status.spoilerText], instanceEmojis),
       ),
     );
   }
