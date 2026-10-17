@@ -3,9 +3,21 @@ import type { Result } from "neverthrow";
 
 type TypedSqlLike = { readonly sql: string; readonly values: ReadonlyArray<unknown> };
 
-/** Convert Prisma TypedSQL ($1-style) into a D1 prepared statement (?-style). */
-export const d1PrepareTyped = (db: D1Database, typed: TypedSqlLike): D1PreparedStatement =>
-  db.prepare(typed.sql.replace(/\$\d+/g, "?")).bind(...(typed.values as unknown[]));
+/**
+ * Convert Prisma TypedSQL ($1-style) into a D1 prepared statement (?-style).
+ *
+ * Prisma parameters are positional names ($1, $2, ...) and may be referenced
+ * more than once. D1 placeholders are positional and each `?` needs its own
+ * bound value, so expand one value per occurrence in the order they appear.
+ */
+export const d1PrepareTyped = (db: D1Database, typed: TypedSqlLike): D1PreparedStatement => {
+  const values: unknown[] = [];
+  const sql = typed.sql.replace(/\$(\d+)/g, (_match, index: string) => {
+    values.push(typed.values[Number(index) - 1]);
+    return "?";
+  });
+  return db.prepare(sql).bind(...values);
+};
 
 /** Run a TypedSQL SELECT / RETURNING query through D1. */
 export const queryTyped = async <Row = Record<string, unknown>>(

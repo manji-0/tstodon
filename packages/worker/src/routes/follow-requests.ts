@@ -18,12 +18,25 @@ import {
   listPendingFollowRequesters,
   rejectFollowRequest,
   relationshipFlags,
+  type RelationshipFlags,
 } from "../social-store";
 
 export const followRequestRoutes = new Hono<{ Bindings: Env }>();
 
 const notFound = (c: Context<{ Bindings: Env }>) =>
   c.json({ error: "Record not found", kind: "NotFound" }, 404);
+
+/** A remote follower has no local relationship rows, so only followed_by is known. */
+const remoteFollowerFlags = (followedBy: boolean): RelationshipFlags => ({
+  following: false,
+  followedBy,
+  requested: false,
+  blocking: false,
+  blockedBy: false,
+  muting: false,
+  mutingNotifications: false,
+  mutingExpiresAt: null,
+});
 
 /** Resolve a follow request target id to a local account or a remote actor uri. */
 const localRequester = async (c: Context<{ Bindings: Env }>, id: string) => {
@@ -149,7 +162,7 @@ followRequestRoutes.post("/api/v1/follow_requests/:id/authorize", async (c) => {
       followerInbox,
     );
   }
-  return c.json(mastodonRelationship(id, { following: false, followedBy: true, requested: false }));
+  return c.json(mastodonRelationship(id, remoteFollowerFlags(true)));
 });
 
 followRequestRoutes.post("/api/v1/follow_requests/:id/reject", async (c) => {
@@ -222,7 +235,5 @@ followRequestRoutes.post("/api/v1/follow_requests/:id/reject", async (c) => {
       followerInbox,
     );
   }
-  return c.json(
-    mastodonRelationship(id, { following: false, followedBy: false, requested: false }),
-  );
+  return c.json(mastodonRelationship(id, remoteFollowerFlags(false)));
 });

@@ -19,6 +19,7 @@ import { findStatusById, findStatusesByIds } from "./status-store";
 import {
   statusInteractionCountsByIds,
   type NotificationRow,
+  type RelationshipFlags,
   type StatusInteractionCounts,
 } from "./social-store";
 import { findMediaByIds, type MediaRow } from "./media-store";
@@ -397,17 +398,18 @@ export const mastodonStatuses = async (
 
 export const mastodonRelationship = (
   targetId: string,
-  flags: Readonly<{ following: boolean; followedBy: boolean; requested: boolean }>,
+  flags: RelationshipFlags,
 ): Record<string, unknown> => ({
   id: targetId,
   following: flags.following,
   showing_reblogs: flags.following,
   notifying: false,
   followed_by: flags.followedBy,
-  blocking: false,
-  blocked_by: false,
-  muting: false,
-  muting_notifications: false,
+  blocking: flags.blocking,
+  blocked_by: flags.blockedBy,
+  muting: flags.muting,
+  muting_notifications: flags.mutingNotifications,
+  muting_expires_at: flags.mutingExpiresAt,
   requested: flags.requested,
   domain_blocking: false,
   endorsed: false,

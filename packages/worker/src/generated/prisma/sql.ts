@@ -26,6 +26,8 @@ export * from "./sql/countStatusesByAccountIdsJson";
 
 export * from "./sql/createList";
 
+export * from "./sql/deleteBlock";
+
 export * from "./sql/deleteBookmark";
 
 export * from "./sql/deleteFavourite";
@@ -37,6 +39,8 @@ export * from "./sql/deleteFollow";
 export * from "./sql/deleteList";
 
 export * from "./sql/deleteListMember";
+
+export * from "./sql/deleteMute";
 
 export * from "./sql/deleteReblogOf";
 
@@ -61,6 +65,10 @@ export * from "./sql/findAccountByUsername";
 export * from "./sql/findAccountsByIdsJson";
 
 export * from "./sql/findAccountsByUsernamesJson";
+
+export * from "./sql/findActiveMute";
+
+export * from "./sql/findBlock";
 
 export * from "./sql/findFollowKind";
 
@@ -144,6 +152,8 @@ export * from "./sql/listAcceptedRemoteFollowerUris";
 
 export * from "./sql/listAccountStatuses";
 
+export * from "./sql/listBlockedAccounts";
+
 export * from "./sql/listDirectoryAccountsByActive";
 
 export * from "./sql/listDirectoryAccountsByNew";
@@ -165,6 +175,8 @@ export * from "./sql/listListsForAccount";
 export * from "./sql/listMediaIdsForStatus";
 
 export * from "./sql/listMentionedAccountIds";
+
+export * from "./sql/listMutedAccounts";
 
 export * from "./sql/listNotifications";
 
@@ -200,9 +212,13 @@ export * from "./sql/updatePollOptionsIfActive";
 
 export * from "./sql/updateStatusPollId";
 
+export * from "./sql/upsertBlock";
+
 export * from "./sql/upsertConversationRead";
 
 export * from "./sql/upsertMarker";
+
+export * from "./sql/upsertMute";
 
 export * from "./sql/upsertRemoteActor";
 

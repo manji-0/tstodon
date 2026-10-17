@@ -399,6 +399,8 @@ export const ModelName = {
   favourites: "favourites",
   filters: "filters",
   follows: "follows",
+  blocks: "blocks",
+  mutes: "mutes",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
   markers: "markers",
@@ -444,6 +446,8 @@ export type TypeMap<
       | "favourites"
       | "filters"
       | "follows"
+      | "blocks"
+      | "mutes"
       | "inbox_activities"
       | "instance_settings"
       | "markers"
@@ -1059,6 +1063,154 @@ export type TypeMap<
         count: {
           args: Prisma.followsCountArgs<ExtArgs>;
           result: runtime.Types.Utils.Optional<Prisma.FollowsCountAggregateOutputType> | number;
+        };
+      };
+    };
+    blocks: {
+      payload: Prisma.$blocksPayload<ExtArgs>;
+      fields: Prisma.blocksFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.blocksFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$blocksPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.blocksFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$blocksPayload>;
+        };
+        findFirst: {
+          args: Prisma.blocksFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$blocksPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.blocksFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$blocksPayload>;
+        };
+        findMany: {
+          args: Prisma.blocksFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$blocksPayload>[];
+        };
+        create: {
+          args: Prisma.blocksCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$blocksPayload>;
+        };
+        createMany: {
+          args: Prisma.blocksCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.blocksCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$blocksPayload>[];
+        };
+        delete: {
+          args: Prisma.blocksDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$blocksPayload>;
+        };
+        update: {
+          args: Prisma.blocksUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$blocksPayload>;
+        };
+        deleteMany: {
+          args: Prisma.blocksDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.blocksUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.blocksUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$blocksPayload>[];
+        };
+        upsert: {
+          args: Prisma.blocksUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$blocksPayload>;
+        };
+        aggregate: {
+          args: Prisma.BlocksAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateBlocks>;
+        };
+        groupBy: {
+          args: Prisma.blocksGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.BlocksGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.blocksCountArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.BlocksCountAggregateOutputType> | number;
+        };
+      };
+    };
+    mutes: {
+      payload: Prisma.$mutesPayload<ExtArgs>;
+      fields: Prisma.mutesFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.mutesFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$mutesPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.mutesFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$mutesPayload>;
+        };
+        findFirst: {
+          args: Prisma.mutesFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$mutesPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.mutesFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$mutesPayload>;
+        };
+        findMany: {
+          args: Prisma.mutesFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$mutesPayload>[];
+        };
+        create: {
+          args: Prisma.mutesCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$mutesPayload>;
+        };
+        createMany: {
+          args: Prisma.mutesCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.mutesCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$mutesPayload>[];
+        };
+        delete: {
+          args: Prisma.mutesDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$mutesPayload>;
+        };
+        update: {
+          args: Prisma.mutesUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$mutesPayload>;
+        };
+        deleteMany: {
+          args: Prisma.mutesDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.mutesUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.mutesUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$mutesPayload>[];
+        };
+        upsert: {
+          args: Prisma.mutesUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$mutesPayload>;
+        };
+        aggregate: {
+          args: Prisma.MutesAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateMutes>;
+        };
+        groupBy: {
+          args: Prisma.mutesGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.MutesGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.mutesCountArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.MutesCountAggregateOutputType> | number;
         };
       };
     };
@@ -2478,6 +2630,27 @@ export const FollowsScalarFieldEnum = {
 export type FollowsScalarFieldEnum =
   (typeof FollowsScalarFieldEnum)[keyof typeof FollowsScalarFieldEnum];
 
+export const BlocksScalarFieldEnum = {
+  blocker_account_id: "blocker_account_id",
+  target_account_id: "target_account_id",
+  target_actor_uri: "target_actor_uri",
+  created_at: "created_at",
+} as const;
+
+export type BlocksScalarFieldEnum =
+  (typeof BlocksScalarFieldEnum)[keyof typeof BlocksScalarFieldEnum];
+
+export const MutesScalarFieldEnum = {
+  account_id: "account_id",
+  target_account_id: "target_account_id",
+  target_actor_uri: "target_actor_uri",
+  notifications: "notifications",
+  expires_at: "expires_at",
+  created_at: "created_at",
+} as const;
+
+export type MutesScalarFieldEnum = (typeof MutesScalarFieldEnum)[keyof typeof MutesScalarFieldEnum];
+
 export const Inbox_activitiesScalarFieldEnum = {
   activity_id: "activity_id",
   kind: "kind",
@@ -2888,6 +3061,8 @@ export type GlobalOmitConfig = {
   favourites?: Prisma.favouritesOmit;
   filters?: Prisma.filtersOmit;
   follows?: Prisma.followsOmit;
+  blocks?: Prisma.blocksOmit;
+  mutes?: Prisma.mutesOmit;
   inbox_activities?: Prisma.inbox_activitiesOmit;
   instance_settings?: Prisma.instance_settingsOmit;
   markers?: Prisma.markersOmit;

@@ -6,6 +6,7 @@ import { nowIso } from "./clock";
 import { runD1, runD1BatchChunked, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
 import { parseRow, toRepositoryError } from "./schemas";
+import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./social-store";
 import { STATUS_SELECT, hydrateStatusRows } from "./status-store";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
@@ -250,6 +251,7 @@ export const listListTimelineStatuses = async (
              )`
           : "";
     const binds: Array<string | number> = [input.listId];
+    binds.push(input.ownerAccountId, input.ownerAccountId, input.ownerAccountId, nowIso());
     if (input.repliesPolicy === "followed") {
       binds.push(input.ownerAccountId);
     }
@@ -264,6 +266,7 @@ export const listListTimelineStatuses = async (
          WHERE kind = 'LocalNote'
            AND visibility != 'direct'
            AND account_id IN (SELECT member_account_id FROM account_list_members WHERE list_id = ?)
+           AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
            ${replyFilter}
            ${maxFilter}
          ORDER BY id DESC

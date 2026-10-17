@@ -1,6 +1,7 @@
-import { FediRole } from "@tstodon/domain";
+import { FediRole, InstanceIdentity } from "@tstodon/domain";
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { z } from "zod";
 import {
   findAccountById,
   findAccountByIdOrUsername,
@@ -20,11 +21,17 @@ import {
 import { mastodonAccountDocument, mastodonRelationship, mastodonStatuses } from "../mastodon";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
+  blockAccount,
   followAccount,
+  listBlockedAccounts,
   listFollowers,
   listFollowing,
+  listMutedAccounts,
+  muteAccount,
   relationshipFlags,
+  unblockAccount,
   unfollowAccount,
+  unmuteAccount,
 } from "../social-store";
 import { notifyAccount } from "../notify";
 import { listAccountStatuses } from "../status-store";
@@ -259,4 +266,182 @@ accountRoutes.post("/api/v1/accounts/:id/unfollow", async (c) => {
     return jsonRepositoryError(c, flags.error.message);
   }
   return c.json(mastodonRelationship(target.value.id, flags.value));
+});
+
+const MuteBodySchema = z.object({
+  notifications: z.union([z.boolean(), z.string(), z.null()]).optional(),
+  duration: z.union([z.number(), z.string(), z.null()]).optional(),
+});
+
+const selfTargetError = (c: Context<{ Bindings: Env }>, action: string) =>
+  c.json({ error: `Cannot ${action} yourself`, kind: "InvalidRelationship" }, 400);
+
+/** Load the viewer's relationship with a local target and respond with it. */
+const respondWithRelationship = async (
+  c: Context<{ Bindings: Env }>,
+  viewerId: string,
+  targetId: string,
+): Promise<Response> => {
+  const flags = await relationshipFlags(c.env.DB, viewerId, targetId);
+  if (flags.isErr()) {
+    return jsonRepositoryError(c, flags.error.message);
+  }
+  return c.json(mastodonRelationship(targetId, flags.value));
+};
+
+const blockOrUnblock = async (c: Context<{ Bindings: Env }>, block: boolean): Promise<Response> => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const target = await findAccountByIdOrUsername(c.env.DB, c.req.param("id") ?? "");
+  if (target.isErr()) {
+    return jsonRepositoryError(c, target.error.message);
+  }
+  if (!target.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  if (target.value.id === user.value.id) {
+    return selfTargetError(c, block ? "block" : "unblock");
+  }
+  const actorUri = InstanceIdentity.actorUrl(identity.value, target.value.username);
+  const written = block
+    ? await blockAccount(c.env.DB, user.value.id, target.value.id, actorUri)
+    : await unblockAccount(c.env.DB, user.value.id, actorUri);
+  if (written.isErr()) {
+    return jsonRepositoryError(c, written.error.message);
+  }
+  return respondWithRelationship(c, user.value.id, target.value.id);
+};
+
+accountRoutes.post("/api/v1/accounts/:id/block", (c) => blockOrUnblock(c, true));
+accountRoutes.post("/api/v1/accounts/:id/unblock", (c) => blockOrUnblock(c, false));
+
+accountRoutes.post("/api/v1/accounts/:id/mute", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const target = await findAccountByIdOrUsername(c.env.DB, c.req.param("id") ?? "");
+  if (target.isErr()) {
+    return jsonRepositoryError(c, target.error.message);
+  }
+  if (!target.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  if (target.value.id === user.value.id) {
+    return selfTargetError(c, "mute");
+  }
+  const body = await readBody(c, MuteBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  const notifications =
+    body.value.notifications === undefined ||
+    body.value.notifications === null ||
+    body.value.notifications === true ||
+    body.value.notifications === "true";
+  const duration = Number(body.value.duration ?? 0);
+  const expiresAt =
+    Number.isFinite(duration) && duration > 0
+      ? new Date(Date.now() + duration * 1000).toISOString()
+      : null;
+  const actorUri = InstanceIdentity.actorUrl(identity.value, target.value.username);
+  const muted = await muteAccount(c.env.DB, user.value.id, target.value.id, actorUri, {
+    notifications,
+    expiresAt,
+  });
+  if (muted.isErr()) {
+    return jsonRepositoryError(c, muted.error.message);
+  }
+  return respondWithRelationship(c, user.value.id, target.value.id);
+});
+
+accountRoutes.post("/api/v1/accounts/:id/unmute", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const target = await findAccountByIdOrUsername(c.env.DB, c.req.param("id") ?? "");
+  if (target.isErr()) {
+    return jsonRepositoryError(c, target.error.message);
+  }
+  if (!target.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  if (target.value.id === user.value.id) {
+    return selfTargetError(c, "unmute");
+  }
+  const actorUri = InstanceIdentity.actorUrl(identity.value, target.value.username);
+  const unmuted = await unmuteAccount(c.env.DB, user.value.id, actorUri);
+  if (unmuted.isErr()) {
+    return jsonRepositoryError(c, unmuted.error.message);
+  }
+  return respondWithRelationship(c, user.value.id, target.value.id);
+});
+
+accountRoutes.get("/api/v1/blocks", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const rows = await listBlockedAccounts(
+    c.env.DB,
+    user.value.id,
+    queryLimit(c.req.query("limit"), 40),
+  );
+  if (rows.isErr()) {
+    return jsonRepositoryError(c, rows.error.message);
+  }
+  const documents = [];
+  for (const row of rows.value) {
+    const account = await findAccountById(c.env.DB, row.accountId);
+    if (account.isOk() && account.value) {
+      documents.push(await mastodonAccountDocument(c.env, identity.value, account.value));
+    }
+  }
+  return c.json(documents);
+});
+
+accountRoutes.get("/api/v1/mutes", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const rows = await listMutedAccounts(
+    c.env.DB,
+    user.value.id,
+    queryLimit(c.req.query("limit"), 40),
+  );
+  if (rows.isErr()) {
+    return jsonRepositoryError(c, rows.error.message);
+  }
+  const documents = [];
+  for (const row of rows.value) {
+    const account = await findAccountById(c.env.DB, row.accountId);
+    if (account.isOk() && account.value) {
+      documents.push(await mastodonAccountDocument(c.env, identity.value, account.value));
+    }
+  }
+  return c.json(documents);
 });

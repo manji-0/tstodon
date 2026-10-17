@@ -11,8 +11,10 @@ import {
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
+import { nowIso } from "./clock";
 import { jsonStringArray, runD1, runD1Batch, sqlInJsonEach, type RepositoryError } from "./d1";
 import { parseRow, StatusRowSchema, toRepositoryError } from "./schemas";
+import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./social-store";
 import { visibilitySql } from "./sql-enums";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
@@ -224,18 +226,22 @@ export const listHomeStatuses = async (
   maxId: string | undefined,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
+    const suppressed = `AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}`;
     const sql = maxId
       ? `SELECT ${statusSelect} FROM statuses
          WHERE visibility != 'direct' AND (account_id = ? OR account_id IN (
            SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
-         )) AND id < ? ORDER BY id DESC LIMIT ?`
+         )) ${suppressed} AND id < ? ORDER BY id DESC LIMIT ?`
       : `SELECT ${statusSelect} FROM statuses
          WHERE visibility != 'direct' AND (account_id = ? OR account_id IN (
            SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
-         )) ORDER BY id DESC LIMIT ?`;
+         )) ${suppressed} ORDER BY id DESC LIMIT ?`;
+    const now = nowIso();
     const stmt = maxId
-      ? db.prepare(sql).bind(accountId, accountId, maxId, limit)
-      : db.prepare(sql).bind(accountId, accountId, limit);
+      ? db
+          .prepare(sql)
+          .bind(accountId, accountId, accountId, accountId, accountId, now, maxId, limit)
+      : db.prepare(sql).bind(accountId, accountId, accountId, accountId, accountId, now, limit);
     const { results } = await stmt.all();
     return hydrateStatusRows(db, results ?? []);
   });
@@ -509,19 +515,25 @@ export const listDirectStatusesForAccount = async (
   maxId: string | undefined,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
+    const suppressed = `AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}`;
     const sql = maxId
       ? `SELECT ${statusSelect} FROM statuses
          WHERE kind = 'LocalNote' AND visibility = 'direct'
            AND (account_id = ? OR id IN (SELECT status_id FROM status_mentions WHERE account_id = ?))
+           ${suppressed}
            AND id < ?
          ORDER BY id DESC LIMIT ?`
       : `SELECT ${statusSelect} FROM statuses
          WHERE kind = 'LocalNote' AND visibility = 'direct'
            AND (account_id = ? OR id IN (SELECT status_id FROM status_mentions WHERE account_id = ?))
+           ${suppressed}
          ORDER BY id DESC LIMIT ?`;
+    const now = nowIso();
     const stmt = maxId
-      ? db.prepare(sql).bind(accountId, accountId, maxId, limit)
-      : db.prepare(sql).bind(accountId, accountId, limit);
+      ? db
+          .prepare(sql)
+          .bind(accountId, accountId, accountId, accountId, accountId, now, maxId, limit)
+      : db.prepare(sql).bind(accountId, accountId, accountId, accountId, accountId, now, limit);
     const { results } = await stmt.all();
     return hydrateStatusRows(db, results ?? []);
   });

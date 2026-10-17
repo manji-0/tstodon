@@ -124,6 +124,29 @@ model follows {
   @@index([target_account_id, kind], map: "idx_follows_target")
 }
 
+model blocks {
+  blocker_account_id String
+  target_account_id  String?
+  target_actor_uri   String
+  created_at         String  @default("CURRENT_TIMESTAMP")
+
+  @@id([blocker_account_id, target_actor_uri])
+  @@index([target_account_id], map: "idx_blocks_target_account_id")
+}
+
+model mutes {
+  account_id        String
+  target_account_id String?
+  target_actor_uri  String
+  notifications     Int     @default(1)
+  expires_at        String?
+  created_at        String  @default("CURRENT_TIMESTAMP")
+
+  @@id([account_id, target_actor_uri])
+  @@index([target_account_id], map: "idx_mutes_target_account_id")
+  @@index([account_id, created_at(sort: Desc)], map: "idx_mutes_account_created_at")
+}
+
 model inbox_activities {
   activity_id  String @id
   kind         String

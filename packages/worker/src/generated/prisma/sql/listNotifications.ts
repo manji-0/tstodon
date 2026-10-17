@@ -6,17 +6,19 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
  * @param accountId
+ * @param now
  * @param limit
  */
 export const listNotifications = $runtime.makeTypedQueryFactory(
-  "SELECT id, account_id, from_account_id, kind, status_id, created_at\nFROM notifications WHERE account_id = $1 ORDER BY id DESC LIMIT $2",
+  "SELECT id, account_id, from_account_id, kind, status_id, created_at\nFROM notifications\nWHERE account_id = $1\nAND from_account_id NOT IN (\nSELECT target_account_id FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id IS NOT NULL\nUNION\nSELECT blocker_account_id FROM blocks\nWHERE target_account_id = $1 AND blocker_account_id IS NOT NULL\nUNION\nSELECT target_account_id FROM mutes\nWHERE account_id = $1 AND target_account_id IS NOT NULL AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $2)\n)\nORDER BY id DESC LIMIT $3",
 ) as (
   accountId: string,
+  now: string,
   limit: number,
 ) => $runtime.TypedSql<listNotifications.Parameters, listNotifications.Result>;
 
 export namespace listNotifications {
-  export type Parameters = [accountId: string, limit: number];
+  export type Parameters = [accountId: string, now: string, limit: number];
   export type Result = {
     id: string | null;
     account_id: string;

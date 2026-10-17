@@ -56,6 +56,8 @@ export const ModelName = {
   favourites: "favourites",
   filters: "filters",
   follows: "follows",
+  blocks: "blocks",
+  mutes: "mutes",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
   markers: "markers",
@@ -181,6 +183,27 @@ export const FollowsScalarFieldEnum = {
 
 export type FollowsScalarFieldEnum =
   (typeof FollowsScalarFieldEnum)[keyof typeof FollowsScalarFieldEnum];
+
+export const BlocksScalarFieldEnum = {
+  blocker_account_id: "blocker_account_id",
+  target_account_id: "target_account_id",
+  target_actor_uri: "target_actor_uri",
+  created_at: "created_at",
+} as const;
+
+export type BlocksScalarFieldEnum =
+  (typeof BlocksScalarFieldEnum)[keyof typeof BlocksScalarFieldEnum];
+
+export const MutesScalarFieldEnum = {
+  account_id: "account_id",
+  target_account_id: "target_account_id",
+  target_actor_uri: "target_actor_uri",
+  notifications: "notifications",
+  expires_at: "expires_at",
+  created_at: "created_at",
+} as const;
+
+export type MutesScalarFieldEnum = (typeof MutesScalarFieldEnum)[keyof typeof MutesScalarFieldEnum];
 
 export const Inbox_activitiesScalarFieldEnum = {
   activity_id: "activity_id",

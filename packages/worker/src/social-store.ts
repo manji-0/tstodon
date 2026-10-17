@@ -6,20 +6,28 @@ import { nowIso } from "./clock";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   authorizeFollowRequest as authorizeFollowRequestSql,
+  deleteBlock as deleteBlockSql,
   deleteBookmark as deleteBookmarkSql,
   deleteFavourite as deleteFavouriteSql,
   deleteFollow as deleteFollowSql,
+  deleteMute as deleteMuteSql,
+  findActiveMute as findActiveMuteSql,
+  findBlock as findBlockSql,
   findFollowKind as findFollowKindSql,
   insertBookmarkOrIgnore as insertBookmarkOrIgnoreSql,
   insertFavouriteOrIgnore as insertFavouriteOrIgnoreSql,
   insertFollowOrIgnore as insertFollowOrIgnoreSql,
   insertNotification as insertNotificationSql,
   listAcceptedFollowerIds as listAcceptedFollowerIdsSql,
+  listBlockedAccounts as listBlockedAccountsSql,
   listFollowers as listFollowersSql,
   listFollowing as listFollowingSql,
+  listMutedAccounts as listMutedAccountsSql,
   listNotifications as listNotificationsSql,
   listPendingFollowRequesters as listPendingFollowRequestersSql,
   rejectFollowRequest as rejectFollowRequestSql,
+  upsertBlock as upsertBlockSql,
+  upsertMute as upsertMuteSql,
 } from "./generated/prisma/sql";
 
 export const followAccount = async (
@@ -110,28 +118,190 @@ export const rejectFollowRequest = async (
     return rows.length > 0;
   });
 
+export type BlockedAccount = Readonly<{
+  accountId: string;
+  targetActorUri: string;
+  createdAt: string;
+}>;
+
+export type MutedAccount = Readonly<{
+  accountId: string;
+  targetActorUri: string;
+  notifications: boolean;
+  expiresAt: string | null;
+  createdAt: string;
+}>;
+
+export const blockAccount = async (
+  db: D1Database,
+  blockerAccountId: string,
+  targetAccountId: string | null,
+  targetActorUri: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, upsertBlockSql(blockerAccountId, targetAccountId, targetActorUri, nowIso()));
+  });
+
+export const unblockAccount = async (
+  db: D1Database,
+  blockerAccountId: string,
+  targetActorUri: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ target_actor_uri: string }>(
+      db,
+      deleteBlockSql(blockerAccountId, targetActorUri),
+    );
+    return rows.length > 0;
+  });
+
+export const muteAccount = async (
+  db: D1Database,
+  accountId: string,
+  targetAccountId: string | null,
+  targetActorUri: string,
+  input: Readonly<{ notifications: boolean; expiresAt: string | null }>,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(
+      db,
+      upsertMuteSql(
+        accountId,
+        targetAccountId,
+        targetActorUri,
+        input.notifications ? 1 : 0,
+        input.expiresAt,
+        nowIso(),
+      ),
+    );
+  });
+
+export const unmuteAccount = async (
+  db: D1Database,
+  accountId: string,
+  targetActorUri: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ target_actor_uri: string }>(
+      db,
+      deleteMuteSql(accountId, targetActorUri),
+    );
+    return rows.length > 0;
+  });
+
+export const listBlockedAccounts = async (
+  db: D1Database,
+  blockerAccountId: string,
+  limit: number,
+): Promise<Result<BlockedAccount[], RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{
+      target_account_id: string | null;
+      target_actor_uri: string;
+      created_at: string;
+    }>(db, listBlockedAccountsSql(blockerAccountId, limit));
+    return rows.flatMap((row) =>
+      row.target_account_id
+        ? [
+            {
+              accountId: row.target_account_id,
+              targetActorUri: row.target_actor_uri,
+              createdAt: row.created_at,
+            },
+          ]
+        : [],
+    );
+  });
+
+export const listMutedAccounts = async (
+  db: D1Database,
+  accountId: string,
+  limit: number,
+): Promise<Result<MutedAccount[], RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{
+      target_account_id: string | null;
+      target_actor_uri: string;
+      notifications: number;
+      expires_at: string | null;
+      created_at: string;
+    }>(db, listMutedAccountsSql(accountId, nowIso(), limit));
+    return rows.flatMap((row) =>
+      row.target_account_id
+        ? [
+            {
+              accountId: row.target_account_id,
+              targetActorUri: row.target_actor_uri,
+              notifications: row.notifications !== 0,
+              expiresAt: row.expires_at,
+              createdAt: row.created_at,
+            },
+          ]
+        : [],
+    );
+  });
+
+export type RelationshipFlags = Readonly<{
+  following: boolean;
+  followedBy: boolean;
+  requested: boolean;
+  blocking: boolean;
+  blockedBy: boolean;
+  muting: boolean;
+  mutingNotifications: boolean;
+  mutingExpiresAt: string | null;
+}>;
+
 export const relationshipFlags = async (
   db: D1Database,
   viewerId: string,
   targetId: string,
-): Promise<
-  Result<Readonly<{ following: boolean; followedBy: boolean; requested: boolean }>, RepositoryError>
-> => {
+): Promise<Result<RelationshipFlags, RepositoryError>> => {
   const batched = await runD1Batch(db, [
     d1PrepareTyped(db, findFollowKindSql(viewerId, targetId)),
     d1PrepareTyped(db, findFollowKindSql(targetId, viewerId)),
+    d1PrepareTyped(db, findBlockSql(viewerId, targetId)),
+    d1PrepareTyped(db, findBlockSql(targetId, viewerId)),
+    d1PrepareTyped(db, findActiveMuteSql(viewerId, targetId, nowIso())),
   ]);
   if (batched.isErr()) {
     return err(batched.error);
   }
   const outgoing = batched.value[0]?.results?.[0] as { kind: string } | undefined;
   const incoming = batched.value[1]?.results?.[0] as { kind: string } | undefined;
+  const blocking = (batched.value[2]?.results?.length ?? 0) > 0;
+  const blockedBy = (batched.value[3]?.results?.length ?? 0) > 0;
+  const mute = batched.value[4]?.results?.[0] as
+    | { notifications: number; expires_at: string | null }
+    | undefined;
   return ok({
     following: outgoing?.kind === "Accepted",
     followedBy: incoming?.kind === "Accepted",
     requested: outgoing?.kind === "Pending",
+    blocking,
+    blockedBy,
+    muting: mute !== undefined,
+    mutingNotifications: mute ? mute.notifications !== 0 : false,
+    mutingExpiresAt: mute?.expires_at ?? null,
   });
 };
+
+/**
+ * SQL fragment selecting the account ids a viewer must not see: accounts the
+ * viewer blocks, accounts that block the viewer, and active muted accounts.
+ * Bind order: (viewerId, viewerId, viewerId, nowIso).
+ */
+export const SUPPRESSED_ACCOUNT_IDS_SQL = `(
+  SELECT target_account_id FROM blocks
+    WHERE blocker_account_id = ? AND target_account_id IS NOT NULL
+  UNION
+  SELECT blocker_account_id FROM blocks
+    WHERE target_account_id = ? AND blocker_account_id IS NOT NULL
+  UNION
+  SELECT target_account_id FROM mutes
+    WHERE account_id = ? AND target_account_id IS NOT NULL
+      AND (expires_at IS NULL OR expires_at > ?)
+)`;
 
 export const favouriteStatus = async (
   db: D1Database,
@@ -208,7 +378,10 @@ export const listNotifications = async (
   limit: number,
 ): Promise<Result<NotificationRow[], RepositoryError>> =>
   runD1(async () => {
-    const results = await queryTyped<NotificationRow>(db, listNotificationsSql(accountId, limit));
+    const results = await queryTyped<NotificationRow>(
+      db,
+      listNotificationsSql(accountId, nowIso(), limit),
+    );
     return results.map((row) => ({
       id: row.id ?? "",
       account_id: row.account_id,

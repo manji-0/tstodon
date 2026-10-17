@@ -21,7 +21,7 @@ On D1 that path is a poor default:
 ## Decision
 
 - **Generate** with Prisma (`pnpm prisma:generate` → `packages/worker/src/generated/prisma`).
-- **Execute** only via `queryTyped` / `runTyped` / `d1PrepareTyped` in `packages/worker/src/typed-sql.ts`, which rewrite `$N` → `?` and call D1.
+- **Execute** only via `queryTyped` / `runTyped` / `d1PrepareTyped` in `packages/worker/src/typed-sql.ts`, which rewrite `$N` → `?` and call D1. Because TypedSQL names are positional and may repeat (`accountCounts` binds `$1` three times), `d1PrepareTyped` expands one value per `$N` occurrence rather than assuming a 1:1 argument list.
 - Do **not** construct `PrismaClient` / `@prisma/adapter-d1` on the request path.
 - Do **not** use Prisma model CRUD (`findMany`, `create`, …) for domain persistence.
 
@@ -40,3 +40,4 @@ Fixed-arity SQL belongs in `prisma/sql/*.sql`. Shape-varying timeline SQL stays 
 - `@prisma/adapter-d1` is not a runtime dependency; `prisma` / `@prisma/client` remain for generate and typed factories.
 - Generated `sql/*.ts` still import Prisma’s typed-sql runtime helpers; bundle cost is smaller than a full Client path but non-zero.
 - Agents must not “simplify” stores back to `createPrisma(env.DB)`.
+- A single `$N` reused across a statement (e.g. `accountCounts`) binds the same value to every occurrence; unexpanded placeholders would otherwise fall back to SQLite `NULL` and silently return wrong counts.

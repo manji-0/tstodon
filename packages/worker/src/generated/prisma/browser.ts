@@ -57,6 +57,16 @@ export type filters = Prisma.filtersModel;
  */
 export type follows = Prisma.followsModel;
 /**
+ * Model blocks
+ *
+ */
+export type blocks = Prisma.blocksModel;
+/**
+ * Model mutes
+ *
+ */
+export type mutes = Prisma.mutesModel;
+/**
  * Model inbox_activities
  *
  */

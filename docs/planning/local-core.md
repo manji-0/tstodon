@@ -50,6 +50,12 @@ Labels:
 | GET    | `/api/v1/follow_requests`               |
 | POST   | `/api/v1/follow_requests/:id/authorize` |
 | POST   | `/api/v1/follow_requests/:id/reject`    |
+| POST   | `/api/v1/accounts/:id/block`            |
+| POST   | `/api/v1/accounts/:id/unblock`          |
+| POST   | `/api/v1/accounts/:id/mute`             |
+| POST   | `/api/v1/accounts/:id/unmute`           |
+| GET    | `/api/v1/blocks`                        |
+| GET    | `/api/v1/mutes`                         |
 | POST   | `/api/v1/statuses`                      |
 | GET    | `/api/v1/statuses/:id`                  |
 | DELETE | `/api/v1/statuses/:id`                  |
@@ -111,6 +117,8 @@ Labels:
 Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#hashtag` in local public notes. Status create accepts `in_reply_to_id`; context walks ancestors/descendants with visibility filtering. Directory lists local accounts. Peers are distinct `remote_actors.domain` values. Activity aggregates weekly local status and registration counts. Trends tags/statuses are derived from recent public local notes. Direct visibility is limited to the author and locally mentioned accounts (`status_mentions`); conversations group Direct threads by root status id; markers persist home/notifications read positions. Lists are per-account named member sets with optional `replies_policy` and a dedicated list timeline. Inbox accepts signed Follow / Undo / Like / Announce / Create that target this instance. Local actors verify against the stored account key. Remote actors verify against a cached `RemoteActor` public key, fetching and persisting the actor document from `keyId` on a cache miss. Remote `Create` / `Announce` Notes are stored as `RemoteStatus` and appear on the public timeline. Remote Like / Announce of a local status increment that status's favourite and reblog counts. `GET /api/v1/streaming` is a Durable Object WebSocket hub with write-time fan-out for updates and notifications.
 
 Locked accounts collect pending follow requests from local followers (`follows.kind = 'Pending'`) and remote followers (`remote_follows.remote_request_kind = 'Queued'`). `GET /api/v1/follow_requests` lists both as account documents, most recent first. `POST /api/v1/follow_requests/:id/authorize` promotes the request to `Accepted`; for a remote follower it also delivers a signed `Accept` that references the original Follow activity to the follower's inbox. `POST /api/v1/follow_requests/:id/reject` deletes the pending request and, for a remote follower, delivers a signed `Reject`. Both endpoints return the requester `Relationship`; an unknown or non-pending id is `NotFound`.
+
+Blocks and mutes are stored per viewer keyed by the target actor URI (`blocks`, `mutes`; `migration 0011`), with the local target account id recorded for local targets. `POST /api/v1/accounts/:id/block|unblock` and `.../mute|unmute` return the viewer `Relationship`; `mute` accepts `notifications` (default true) and `duration` seconds (0 or absent = no expiry). Blocks and active mutes hide the target's notes from the viewer's home, list, and direct timelines, and — as in Mastodon — a block also hides the viewer's notes from the blocked account (the `blocked_by` direction). Notifications exclude senders the viewer blocks and senders the viewer muted with `notifications`; a mute with `notifications=false` still hides the timeline but keeps notifications. A mute expires when `expires_at` passes. `GET /api/v1/blocks` and `GET /api/v1/mutes` list the viewer's targets as account documents. Unlike cfwdon, tstodon applies the block to these timelines (cfwdon filters only mutes) and leaves public/tag timelines unfiltered.
 
 ### Placeholder
 
