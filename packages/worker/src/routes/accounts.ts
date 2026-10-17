@@ -41,10 +41,13 @@ import {
   unmuteAccount,
 } from "../social-store";
 import { notifyAccount } from "../notify";
-import { listAccountStatuses, listPinnedStatuses } from "../status-store";
+import { listAccountStatusesFiltered, listPinnedStatuses } from "../status-store";
 import { UpdateCredentialsBodySchema } from "../schemas";
 
 export const accountRoutes = new Hono<{ Bindings: Env }>();
+
+/** Mastodon boolean query params: `true`/`1` are on, anything else is off. */
+const queryFlag = (value: string | undefined): boolean => value === "true" || value === "1";
 
 accountRoutes.get("/api/v1/accounts/verify_credentials", async (c) => {
   const identity = parseInstanceIdentity(c.env);
@@ -179,7 +182,14 @@ accountRoutes.get("/api/v1/accounts/:id/statuses", async (c) => {
   const statuses =
     c.req.query("pinned") === "true"
       ? await listPinnedStatuses(c.env.DB, account.value.id)
-      : await listAccountStatuses(c.env.DB, account.value.id, queryLimit(c.req.query("limit")));
+      : await listAccountStatusesFiltered(c.env.DB, account.value.id, {
+          limit: queryLimit(c.req.query("limit")),
+          maxId: c.req.query("max_id"),
+          excludeReplies: queryFlag(c.req.query("exclude_replies")),
+          excludeReblogs: queryFlag(c.req.query("exclude_reblogs")),
+          onlyMedia: queryFlag(c.req.query("only_media")),
+          tagged: c.req.query("tagged"),
+        });
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }

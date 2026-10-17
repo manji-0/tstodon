@@ -32,6 +32,7 @@ import {
   insertStatusEdit as insertStatusEditSql,
   isStatusPinned as isStatusPinnedSql,
   listAccountStatuses as listAccountStatusesSql,
+  listAccountStatusesFiltered as listAccountStatusesFilteredSql,
   listMediaIdsForStatus as listMediaIdsForStatusSql,
   listPinnedStatuses as listPinnedStatusesSql,
   listStatusEditSnapshots as listStatusEditSnapshotsSql,
@@ -399,6 +400,37 @@ export const listAccountStatuses = async (
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
     const results = await queryTyped(db, listAccountStatusesSql(accountId, limit));
+    return hydrateStatusRows(db, results);
+  });
+
+export type AccountStatusFilters = Readonly<{
+  limit: number;
+  maxId?: string | undefined;
+  excludeReplies: boolean;
+  excludeReblogs: boolean;
+  onlyMedia: boolean;
+  tagged?: string | undefined;
+}>;
+
+export const listAccountStatusesFiltered = async (
+  db: D1Database,
+  accountId: string,
+  filters: AccountStatusFilters,
+): Promise<Result<LocalStatusValue[], RepositoryError>> =>
+  runD1(async () => {
+    const tagged = filters.tagged?.replace(/^#/, "") ?? "";
+    const results = await queryTyped(
+      db,
+      listAccountStatusesFilteredSql(
+        accountId,
+        filters.excludeReplies ? 1 : 0,
+        filters.excludeReblogs ? 1 : 0,
+        filters.onlyMedia ? 1 : 0,
+        tagged.length > 0 ? `%#${tagged}%` : "",
+        filters.maxId ?? "",
+        filters.limit,
+      ),
+    );
     return hydrateStatusRows(db, results);
   });
 

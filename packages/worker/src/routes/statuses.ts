@@ -773,7 +773,7 @@ statusRoutes.post("/api/v1/statuses/:id/reblog", async (c) => {
           : "invalid activity id",
     );
   }
-  const latest = await findStatusById(c.env.DB, status.value.id);
+  const latest = await findStatusById(c.env.DB, reblog.id);
   if (latest.isErr() || !latest.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }

@@ -194,6 +194,8 @@ export * from "./sql/listAcceptedRemoteFollowerUris";
 
 export * from "./sql/listAccountStatuses";
 
+export * from "./sql/listAccountStatusesFiltered";
+
 export * from "./sql/listAnnouncementDismissals";
 
 export * from "./sql/listAnnouncementReactions";
