@@ -206,6 +206,24 @@ model status_mutes {
   @@id([account_id, thread_root_status_id])
 }
 
+model followed_tags {
+  account_id String
+  tag_name   String
+  created_at String @default("CURRENT_TIMESTAMP")
+
+  @@id([account_id, tag_name])
+  @@index([account_id, created_at(sort: Desc)], map: "idx_followed_tags_account_created")
+}
+
+model featured_tags {
+  account_id String
+  tag_name   String
+  created_at String @default("CURRENT_TIMESTAMP")
+
+  @@id([account_id, tag_name])
+  @@index([account_id, created_at(sort: Desc)], map: "idx_featured_tags_account_created")
+}
+
 model inbox_activities {
   activity_id  String @id
   kind         String

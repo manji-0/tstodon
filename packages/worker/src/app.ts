@@ -15,6 +15,7 @@ import { notificationRoutes } from "./routes/notifications";
 import { pollRoutes } from "./routes/polls";
 import { searchRoutes } from "./routes/search";
 import { statusRoutes } from "./routes/statuses";
+import { tagRoutes } from "./routes/tags";
 import { timelineRoutes } from "./routes/timelines";
 import { jsonAuthError, requireUser } from "./http";
 
@@ -33,6 +34,7 @@ app.route("/", statusRoutes);
 app.route("/", timelineRoutes);
 app.route("/", mediaRoutes);
 app.route("/", notificationRoutes);
+app.route("/", tagRoutes);
 app.route("/", pollRoutes);
 app.route("/", moderationRoutes);
 app.route("/", searchRoutes);

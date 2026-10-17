@@ -408,6 +408,8 @@ export const ModelName = {
   account_announcement_dismissals: "account_announcement_dismissals",
   account_announcement_reactions: "account_announcement_reactions",
   status_mutes: "status_mutes",
+  followed_tags: "followed_tags",
+  featured_tags: "featured_tags",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
   markers: "markers",
@@ -462,6 +464,8 @@ export type TypeMap<
       | "account_announcement_dismissals"
       | "account_announcement_reactions"
       | "status_mutes"
+      | "followed_tags"
+      | "featured_tags"
       | "inbox_activities"
       | "instance_settings"
       | "markers"
@@ -1754,6 +1758,158 @@ export type TypeMap<
           args: Prisma.status_mutesCountArgs<ExtArgs>;
           result:
             | runtime.Types.Utils.Optional<Prisma.Status_mutesCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    followed_tags: {
+      payload: Prisma.$followed_tagsPayload<ExtArgs>;
+      fields: Prisma.followed_tagsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.followed_tagsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$followed_tagsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.followed_tagsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$followed_tagsPayload>;
+        };
+        findFirst: {
+          args: Prisma.followed_tagsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$followed_tagsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.followed_tagsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$followed_tagsPayload>;
+        };
+        findMany: {
+          args: Prisma.followed_tagsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$followed_tagsPayload>[];
+        };
+        create: {
+          args: Prisma.followed_tagsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$followed_tagsPayload>;
+        };
+        createMany: {
+          args: Prisma.followed_tagsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.followed_tagsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$followed_tagsPayload>[];
+        };
+        delete: {
+          args: Prisma.followed_tagsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$followed_tagsPayload>;
+        };
+        update: {
+          args: Prisma.followed_tagsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$followed_tagsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.followed_tagsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.followed_tagsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.followed_tagsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$followed_tagsPayload>[];
+        };
+        upsert: {
+          args: Prisma.followed_tagsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$followed_tagsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Followed_tagsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateFollowed_tags>;
+        };
+        groupBy: {
+          args: Prisma.followed_tagsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Followed_tagsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.followed_tagsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Followed_tagsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    featured_tags: {
+      payload: Prisma.$featured_tagsPayload<ExtArgs>;
+      fields: Prisma.featured_tagsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.featured_tagsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$featured_tagsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.featured_tagsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$featured_tagsPayload>;
+        };
+        findFirst: {
+          args: Prisma.featured_tagsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$featured_tagsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.featured_tagsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$featured_tagsPayload>;
+        };
+        findMany: {
+          args: Prisma.featured_tagsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$featured_tagsPayload>[];
+        };
+        create: {
+          args: Prisma.featured_tagsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$featured_tagsPayload>;
+        };
+        createMany: {
+          args: Prisma.featured_tagsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.featured_tagsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$featured_tagsPayload>[];
+        };
+        delete: {
+          args: Prisma.featured_tagsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$featured_tagsPayload>;
+        };
+        update: {
+          args: Prisma.featured_tagsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$featured_tagsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.featured_tagsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.featured_tagsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.featured_tagsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$featured_tagsPayload>[];
+        };
+        upsert: {
+          args: Prisma.featured_tagsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$featured_tagsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Featured_tagsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateFeatured_tags>;
+        };
+        groupBy: {
+          args: Prisma.featured_tagsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Featured_tagsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.featured_tagsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Featured_tagsCountAggregateOutputType>
             | number;
         };
       };
@@ -3261,6 +3417,24 @@ export const Status_mutesScalarFieldEnum = {
 export type Status_mutesScalarFieldEnum =
   (typeof Status_mutesScalarFieldEnum)[keyof typeof Status_mutesScalarFieldEnum];
 
+export const Followed_tagsScalarFieldEnum = {
+  account_id: "account_id",
+  tag_name: "tag_name",
+  created_at: "created_at",
+} as const;
+
+export type Followed_tagsScalarFieldEnum =
+  (typeof Followed_tagsScalarFieldEnum)[keyof typeof Followed_tagsScalarFieldEnum];
+
+export const Featured_tagsScalarFieldEnum = {
+  account_id: "account_id",
+  tag_name: "tag_name",
+  created_at: "created_at",
+} as const;
+
+export type Featured_tagsScalarFieldEnum =
+  (typeof Featured_tagsScalarFieldEnum)[keyof typeof Featured_tagsScalarFieldEnum];
+
 export const Inbox_activitiesScalarFieldEnum = {
   activity_id: "activity_id",
   kind: "kind",
@@ -3680,6 +3854,8 @@ export type GlobalOmitConfig = {
   account_announcement_dismissals?: Prisma.account_announcement_dismissalsOmit;
   account_announcement_reactions?: Prisma.account_announcement_reactionsOmit;
   status_mutes?: Prisma.status_mutesOmit;
+  followed_tags?: Prisma.followed_tagsOmit;
+  featured_tags?: Prisma.featured_tagsOmit;
   inbox_activities?: Prisma.inbox_activitiesOmit;
   instance_settings?: Prisma.instance_settingsOmit;
   markers?: Prisma.markersOmit;

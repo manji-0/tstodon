@@ -12,7 +12,11 @@ export * from "./sql/authorizeRemoteFollowRequest";
 
 export * from "./sql/clearNotifications";
 
+export * from "./sql/countAccountTagUses";
+
 export * from "./sql/countAccounts";
+
+export * from "./sql/countFeaturedTags";
 
 export * from "./sql/countFollowersByAccountIdsJson";
 
@@ -68,6 +72,8 @@ export * from "./sql/detachStatusMedia";
 
 export * from "./sql/dismissNotification";
 
+export * from "./sql/featureTag";
+
 export * from "./sql/findAccountByEmail";
 
 export * from "./sql/findAccountById";
@@ -115,6 +121,8 @@ export * from "./sql/findRemoteStatusByObjectUri";
 export * from "./sql/findStatusById";
 
 export * from "./sql/findStatusUpdatedAt";
+
+export * from "./sql/followTag";
 
 export * from "./sql/getConversationRead";
 
@@ -164,6 +172,10 @@ export * from "./sql/isAccountMentionedOnStatus";
 
 export * from "./sql/isStatusPinned";
 
+export * from "./sql/isTagFeatured";
+
+export * from "./sql/isTagFollowed";
+
 export * from "./sql/listAcceptedFollowerIds";
 
 export * from "./sql/listAcceptedRemoteFollowerInboxes";
@@ -184,7 +196,11 @@ export * from "./sql/listDirectoryAccountsByNew";
 
 export * from "./sql/listExpiredUnnotifiedPolls";
 
+export * from "./sql/listFeaturedTags";
+
 export * from "./sql/listFilters";
+
+export * from "./sql/listFollowedTags";
 
 export * from "./sql/listFollowers";
 
@@ -239,6 +255,10 @@ export * from "./sql/rejectRemoteFollowRequest";
 export * from "./sql/searchAccounts";
 
 export * from "./sql/searchRemoteActors";
+
+export * from "./sql/unfeatureTag";
+
+export * from "./sql/unfollowTag";
 
 export * from "./sql/unmuteStatus";
 

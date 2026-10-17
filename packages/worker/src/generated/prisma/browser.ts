@@ -102,6 +102,16 @@ export type account_announcement_reactions = Prisma.account_announcement_reactio
  */
 export type status_mutes = Prisma.status_mutesModel;
 /**
+ * Model followed_tags
+ *
+ */
+export type followed_tags = Prisma.followed_tagsModel;
+/**
+ * Model featured_tags
+ *
+ */
+export type featured_tags = Prisma.featured_tagsModel;
+/**
  * Model inbox_activities
  *
  */

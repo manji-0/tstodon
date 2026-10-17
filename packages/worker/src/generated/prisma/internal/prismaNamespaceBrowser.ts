@@ -65,6 +65,8 @@ export const ModelName = {
   account_announcement_dismissals: "account_announcement_dismissals",
   account_announcement_reactions: "account_announcement_reactions",
   status_mutes: "status_mutes",
+  followed_tags: "followed_tags",
+  featured_tags: "featured_tags",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
   markers: "markers",
@@ -277,6 +279,24 @@ export const Status_mutesScalarFieldEnum = {
 
 export type Status_mutesScalarFieldEnum =
   (typeof Status_mutesScalarFieldEnum)[keyof typeof Status_mutesScalarFieldEnum];
+
+export const Followed_tagsScalarFieldEnum = {
+  account_id: "account_id",
+  tag_name: "tag_name",
+  created_at: "created_at",
+} as const;
+
+export type Followed_tagsScalarFieldEnum =
+  (typeof Followed_tagsScalarFieldEnum)[keyof typeof Followed_tagsScalarFieldEnum];
+
+export const Featured_tagsScalarFieldEnum = {
+  account_id: "account_id",
+  tag_name: "tag_name",
+  created_at: "created_at",
+} as const;
+
+export type Featured_tagsScalarFieldEnum =
+  (typeof Featured_tagsScalarFieldEnum)[keyof typeof Featured_tagsScalarFieldEnum];
 
 export const Inbox_activitiesScalarFieldEnum = {
   activity_id: "activity_id",
