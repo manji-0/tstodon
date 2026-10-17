@@ -8,12 +8,16 @@ import { newEntityId } from "./ids";
 import { RemoteActorRowSchema, toRepositoryError } from "./schemas";
 import { queryTyped, runTyped } from "./typed-sql";
 import {
+  authorizeRemoteFollowRequest as authorizeRemoteFollowRequestSql,
   deleteRemoteFollow as deleteRemoteFollowSql,
+  findPendingRemoteFollowRequest as findPendingRemoteFollowRequestSql,
   findRemoteActorByPublicKeyId as findRemoteActorByPublicKeyIdSql,
   findRemoteActorByUri as findRemoteActorByUriSql,
   listAcceptedRemoteFollowerInboxes as listAcceptedRemoteFollowerInboxesSql,
   listAcceptedRemoteFollowerUris as listAcceptedRemoteFollowerUrisSql,
   listPeerDomains as listPeerDomainsSql,
+  listPendingRemoteFollowRequesters as listPendingRemoteFollowRequestersSql,
+  rejectRemoteFollowRequest as rejectRemoteFollowRequestSql,
   upsertRemoteActor as upsertRemoteActorSql,
   upsertRemoteFollow as upsertRemoteFollowSql,
 } from "./generated/prisma/sql";
@@ -113,6 +117,7 @@ export const upsertRemoteFollow = async (
   remoteActorUri: string,
   targetAccountId: string,
   targetLocked: boolean,
+  followActivityId: string | null,
 ): Promise<Result<void, RepositoryError>> => {
   const state = FollowRequest.initial("RemoteFollower", targetLocked);
   if (state.kind !== "RemoteFollower") {
@@ -127,11 +132,75 @@ export const upsertRemoteFollow = async (
         targetAccountId,
         state.remoteRequest.kind,
         state.follow.kind,
+        followActivityId,
         nowIso(),
       ),
     );
   });
 };
+
+export type PendingRemoteFollowRequester = Readonly<{
+  remoteActorUri: string;
+  createdAt: string;
+}>;
+
+export const listPendingRemoteFollowRequesters = async (
+  db: D1Database,
+  targetAccountId: string,
+  limit: number,
+): Promise<Result<PendingRemoteFollowRequester[], RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ remote_actor_uri: string; created_at: string }>(
+      db,
+      listPendingRemoteFollowRequestersSql(targetAccountId, limit),
+    );
+    return rows.map((row) => ({
+      remoteActorUri: row.remote_actor_uri,
+      createdAt: row.created_at,
+    }));
+  });
+
+/** The original Follow activity id of a pending remote follow, if one exists. */
+export const findPendingRemoteFollowRequest = async (
+  db: D1Database,
+  targetAccountId: string,
+  remoteActorUri: string,
+): Promise<Result<string | null, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ follow_activity_id: string | null }>(
+      db,
+      findPendingRemoteFollowRequestSql(targetAccountId, remoteActorUri),
+    );
+    return rows[0]?.follow_activity_id ?? null;
+  });
+
+/** Promote a `Queued` remote follow to `Accepted`. Returns true when a row moved. */
+export const authorizeRemoteFollowRequest = async (
+  db: D1Database,
+  targetAccountId: string,
+  remoteActorUri: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ remote_actor_uri: string }>(
+      db,
+      authorizeRemoteFollowRequestSql(targetAccountId, remoteActorUri),
+    );
+    return rows.length > 0;
+  });
+
+/** Remove a `Queued` remote follow. Returns true when a row was deleted. */
+export const rejectRemoteFollowRequest = async (
+  db: D1Database,
+  targetAccountId: string,
+  remoteActorUri: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ remote_actor_uri: string }>(
+      db,
+      rejectRemoteFollowRequestSql(targetAccountId, remoteActorUri),
+    );
+    return rows.length > 0;
+  });
 
 export const deleteRemoteFollow = async (
   db: D1Database,

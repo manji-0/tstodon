@@ -265,17 +265,19 @@ model remote_favourites {
 }
 
 model remote_follows {
-  id                  String @id
+  id                  String  @id
   remote_actor_uri    String
   target_account_id   String
   remote_request_kind String
   follow_kind         String
-  created_at          String        @default("CURRENT_TIMESTAMP")
+  follow_activity_id  String?
+  created_at          String  @default("CURRENT_TIMESTAMP")
   accounts            accounts      @relation(fields: [target_account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   remote_actors       remote_actors @relation(fields: [remote_actor_uri], references: [actor_uri], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([remote_actor_uri, target_account_id], map: "sqlite_autoindex_remote_follows_2")
   @@index([target_account_id, follow_kind], map: "idx_remote_follows_target")
+  @@index([target_account_id, remote_request_kind], map: "idx_remote_follows_pending")
 }
 
 model remote_statuses {

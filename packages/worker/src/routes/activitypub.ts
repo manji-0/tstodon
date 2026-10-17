@@ -330,6 +330,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
           signer.actor.actorUri,
           target.value.id,
           target.value.locked,
+          activity.id,
         );
         // Unlocked accounts auto-accept: send Accept to the follower's inbox.
         if (!target.value.locked) {

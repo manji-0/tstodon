@@ -30,6 +30,7 @@ export type Remote_followsMinAggregateOutputType = {
   target_account_id: string | null;
   remote_request_kind: string | null;
   follow_kind: string | null;
+  follow_activity_id: string | null;
   created_at: string | null;
 };
 
@@ -39,6 +40,7 @@ export type Remote_followsMaxAggregateOutputType = {
   target_account_id: string | null;
   remote_request_kind: string | null;
   follow_kind: string | null;
+  follow_activity_id: string | null;
   created_at: string | null;
 };
 
@@ -48,6 +50,7 @@ export type Remote_followsCountAggregateOutputType = {
   target_account_id: number;
   remote_request_kind: number;
   follow_kind: number;
+  follow_activity_id: number;
   created_at: number;
   _all: number;
 };
@@ -58,6 +61,7 @@ export type Remote_followsMinAggregateInputType = {
   target_account_id?: true;
   remote_request_kind?: true;
   follow_kind?: true;
+  follow_activity_id?: true;
   created_at?: true;
 };
 
@@ -67,6 +71,7 @@ export type Remote_followsMaxAggregateInputType = {
   target_account_id?: true;
   remote_request_kind?: true;
   follow_kind?: true;
+  follow_activity_id?: true;
   created_at?: true;
 };
 
@@ -76,6 +81,7 @@ export type Remote_followsCountAggregateInputType = {
   target_account_id?: true;
   remote_request_kind?: true;
   follow_kind?: true;
+  follow_activity_id?: true;
   created_at?: true;
   _all?: true;
 };
@@ -163,6 +169,7 @@ export type Remote_followsGroupByOutputType = {
   target_account_id: string;
   remote_request_kind: string;
   follow_kind: string;
+  follow_activity_id: string | null;
   created_at: string;
   _count: Remote_followsCountAggregateOutputType | null;
   _min: Remote_followsMinAggregateOutputType | null;
@@ -191,6 +198,7 @@ export type remote_followsWhereInput = {
   target_account_id?: Prisma.StringFilter<"remote_follows"> | string;
   remote_request_kind?: Prisma.StringFilter<"remote_follows"> | string;
   follow_kind?: Prisma.StringFilter<"remote_follows"> | string;
+  follow_activity_id?: Prisma.StringNullableFilter<"remote_follows"> | string | null;
   created_at?: Prisma.StringFilter<"remote_follows"> | string;
   accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
   remote_actors?: Prisma.XOR<
@@ -205,6 +213,7 @@ export type remote_followsOrderByWithRelationInput = {
   target_account_id?: Prisma.SortOrder;
   remote_request_kind?: Prisma.SortOrder;
   follow_kind?: Prisma.SortOrder;
+  follow_activity_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   accounts?: Prisma.accountsOrderByWithRelationInput;
   remote_actors?: Prisma.remote_actorsOrderByWithRelationInput;
@@ -221,6 +230,7 @@ export type remote_followsWhereUniqueInput = Prisma.AtLeast<
     target_account_id?: Prisma.StringFilter<"remote_follows"> | string;
     remote_request_kind?: Prisma.StringFilter<"remote_follows"> | string;
     follow_kind?: Prisma.StringFilter<"remote_follows"> | string;
+    follow_activity_id?: Prisma.StringNullableFilter<"remote_follows"> | string | null;
     created_at?: Prisma.StringFilter<"remote_follows"> | string;
     accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
     remote_actors?: Prisma.XOR<
@@ -237,6 +247,7 @@ export type remote_followsOrderByWithAggregationInput = {
   target_account_id?: Prisma.SortOrder;
   remote_request_kind?: Prisma.SortOrder;
   follow_kind?: Prisma.SortOrder;
+  follow_activity_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   _count?: Prisma.remote_followsCountOrderByAggregateInput;
   _max?: Prisma.remote_followsMaxOrderByAggregateInput;
@@ -256,6 +267,7 @@ export type remote_followsScalarWhereWithAggregatesInput = {
   target_account_id?: Prisma.StringWithAggregatesFilter<"remote_follows"> | string;
   remote_request_kind?: Prisma.StringWithAggregatesFilter<"remote_follows"> | string;
   follow_kind?: Prisma.StringWithAggregatesFilter<"remote_follows"> | string;
+  follow_activity_id?: Prisma.StringNullableWithAggregatesFilter<"remote_follows"> | string | null;
   created_at?: Prisma.StringWithAggregatesFilter<"remote_follows"> | string;
 };
 
@@ -263,6 +275,7 @@ export type remote_followsCreateInput = {
   id: string;
   remote_request_kind: string;
   follow_kind: string;
+  follow_activity_id?: string | null;
   created_at?: string;
   accounts: Prisma.accountsCreateNestedOneWithoutRemote_followsInput;
   remote_actors: Prisma.remote_actorsCreateNestedOneWithoutRemote_followsInput;
@@ -274,6 +287,7 @@ export type remote_followsUncheckedCreateInput = {
   target_account_id: string;
   remote_request_kind: string;
   follow_kind: string;
+  follow_activity_id?: string | null;
   created_at?: string;
 };
 
@@ -281,6 +295,7 @@ export type remote_followsUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_request_kind?: Prisma.StringFieldUpdateOperationsInput | string;
   follow_kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  follow_activity_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutRemote_followsNestedInput;
   remote_actors?: Prisma.remote_actorsUpdateOneRequiredWithoutRemote_followsNestedInput;
@@ -292,6 +307,7 @@ export type remote_followsUncheckedUpdateInput = {
   target_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_request_kind?: Prisma.StringFieldUpdateOperationsInput | string;
   follow_kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  follow_activity_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -301,6 +317,7 @@ export type remote_followsCreateManyInput = {
   target_account_id: string;
   remote_request_kind: string;
   follow_kind: string;
+  follow_activity_id?: string | null;
   created_at?: string;
 };
 
@@ -308,6 +325,7 @@ export type remote_followsUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_request_kind?: Prisma.StringFieldUpdateOperationsInput | string;
   follow_kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  follow_activity_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -317,6 +335,7 @@ export type remote_followsUncheckedUpdateManyInput = {
   target_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_request_kind?: Prisma.StringFieldUpdateOperationsInput | string;
   follow_kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  follow_activity_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -341,6 +360,7 @@ export type remote_followsCountOrderByAggregateInput = {
   target_account_id?: Prisma.SortOrder;
   remote_request_kind?: Prisma.SortOrder;
   follow_kind?: Prisma.SortOrder;
+  follow_activity_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
@@ -350,6 +370,7 @@ export type remote_followsMaxOrderByAggregateInput = {
   target_account_id?: Prisma.SortOrder;
   remote_request_kind?: Prisma.SortOrder;
   follow_kind?: Prisma.SortOrder;
+  follow_activity_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
@@ -359,6 +380,7 @@ export type remote_followsMinOrderByAggregateInput = {
   target_account_id?: Prisma.SortOrder;
   remote_request_kind?: Prisma.SortOrder;
   follow_kind?: Prisma.SortOrder;
+  follow_activity_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
@@ -538,6 +560,7 @@ export type remote_followsCreateWithoutAccountsInput = {
   id: string;
   remote_request_kind: string;
   follow_kind: string;
+  follow_activity_id?: string | null;
   created_at?: string;
   remote_actors: Prisma.remote_actorsCreateNestedOneWithoutRemote_followsInput;
 };
@@ -547,6 +570,7 @@ export type remote_followsUncheckedCreateWithoutAccountsInput = {
   remote_actor_uri: string;
   remote_request_kind: string;
   follow_kind: string;
+  follow_activity_id?: string | null;
   created_at?: string;
 };
 
@@ -601,6 +625,7 @@ export type remote_followsScalarWhereInput = {
   target_account_id?: Prisma.StringFilter<"remote_follows"> | string;
   remote_request_kind?: Prisma.StringFilter<"remote_follows"> | string;
   follow_kind?: Prisma.StringFilter<"remote_follows"> | string;
+  follow_activity_id?: Prisma.StringNullableFilter<"remote_follows"> | string | null;
   created_at?: Prisma.StringFilter<"remote_follows"> | string;
 };
 
@@ -608,6 +633,7 @@ export type remote_followsCreateWithoutRemote_actorsInput = {
   id: string;
   remote_request_kind: string;
   follow_kind: string;
+  follow_activity_id?: string | null;
   created_at?: string;
   accounts: Prisma.accountsCreateNestedOneWithoutRemote_followsInput;
 };
@@ -617,6 +643,7 @@ export type remote_followsUncheckedCreateWithoutRemote_actorsInput = {
   target_account_id: string;
   remote_request_kind: string;
   follow_kind: string;
+  follow_activity_id?: string | null;
   created_at?: string;
 };
 
@@ -667,6 +694,7 @@ export type remote_followsCreateManyAccountsInput = {
   remote_actor_uri: string;
   remote_request_kind: string;
   follow_kind: string;
+  follow_activity_id?: string | null;
   created_at?: string;
 };
 
@@ -674,6 +702,7 @@ export type remote_followsUpdateWithoutAccountsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_request_kind?: Prisma.StringFieldUpdateOperationsInput | string;
   follow_kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  follow_activity_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_actors?: Prisma.remote_actorsUpdateOneRequiredWithoutRemote_followsNestedInput;
 };
@@ -683,6 +712,7 @@ export type remote_followsUncheckedUpdateWithoutAccountsInput = {
   remote_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_request_kind?: Prisma.StringFieldUpdateOperationsInput | string;
   follow_kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  follow_activity_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -691,6 +721,7 @@ export type remote_followsUncheckedUpdateManyWithoutAccountsInput = {
   remote_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_request_kind?: Prisma.StringFieldUpdateOperationsInput | string;
   follow_kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  follow_activity_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -699,6 +730,7 @@ export type remote_followsCreateManyRemote_actorsInput = {
   target_account_id: string;
   remote_request_kind: string;
   follow_kind: string;
+  follow_activity_id?: string | null;
   created_at?: string;
 };
 
@@ -706,6 +738,7 @@ export type remote_followsUpdateWithoutRemote_actorsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_request_kind?: Prisma.StringFieldUpdateOperationsInput | string;
   follow_kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  follow_activity_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutRemote_followsNestedInput;
 };
@@ -715,6 +748,7 @@ export type remote_followsUncheckedUpdateWithoutRemote_actorsInput = {
   target_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_request_kind?: Prisma.StringFieldUpdateOperationsInput | string;
   follow_kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  follow_activity_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -723,6 +757,7 @@ export type remote_followsUncheckedUpdateManyWithoutRemote_actorsInput = {
   target_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_request_kind?: Prisma.StringFieldUpdateOperationsInput | string;
   follow_kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  follow_activity_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -735,6 +770,7 @@ export type remote_followsSelect<
     target_account_id?: boolean;
     remote_request_kind?: boolean;
     follow_kind?: boolean;
+    follow_activity_id?: boolean;
     created_at?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     remote_actors?: boolean | Prisma.remote_actorsDefaultArgs<ExtArgs>;
@@ -751,6 +787,7 @@ export type remote_followsSelectCreateManyAndReturn<
     target_account_id?: boolean;
     remote_request_kind?: boolean;
     follow_kind?: boolean;
+    follow_activity_id?: boolean;
     created_at?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     remote_actors?: boolean | Prisma.remote_actorsDefaultArgs<ExtArgs>;
@@ -767,6 +804,7 @@ export type remote_followsSelectUpdateManyAndReturn<
     target_account_id?: boolean;
     remote_request_kind?: boolean;
     follow_kind?: boolean;
+    follow_activity_id?: boolean;
     created_at?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     remote_actors?: boolean | Prisma.remote_actorsDefaultArgs<ExtArgs>;
@@ -780,6 +818,7 @@ export type remote_followsSelectScalar = {
   target_account_id?: boolean;
   remote_request_kind?: boolean;
   follow_kind?: boolean;
+  follow_activity_id?: boolean;
   created_at?: boolean;
 };
 
@@ -791,6 +830,7 @@ export type remote_followsOmit<
   | "target_account_id"
   | "remote_request_kind"
   | "follow_kind"
+  | "follow_activity_id"
   | "created_at",
   ExtArgs["result"]["remote_follows"]
 >;
@@ -828,6 +868,7 @@ export type $remote_followsPayload<
       target_account_id: string;
       remote_request_kind: string;
       follow_kind: string;
+      follow_activity_id: string | null;
       created_at: string;
     },
     ExtArgs["result"]["remote_follows"]
@@ -1434,6 +1475,7 @@ export interface remote_followsFieldRefs {
   readonly target_account_id: Prisma.FieldRef<"remote_follows", "String">;
   readonly remote_request_kind: Prisma.FieldRef<"remote_follows", "String">;
   readonly follow_kind: Prisma.FieldRef<"remote_follows", "String">;
+  readonly follow_activity_id: Prisma.FieldRef<"remote_follows", "String">;
   readonly created_at: Prisma.FieldRef<"remote_follows", "String">;
 }
 

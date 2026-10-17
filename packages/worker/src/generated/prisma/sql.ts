@@ -6,6 +6,10 @@ export * from "./sql/accountCounts";
 
 export * from "./sql/attachMediaToStatus";
 
+export * from "./sql/authorizeFollowRequest";
+
+export * from "./sql/authorizeRemoteFollowRequest";
+
 export * from "./sql/countAccounts";
 
 export * from "./sql/countFollowersByAccountIdsJson";
@@ -69,6 +73,8 @@ export * from "./sql/findOutboundActivity";
 export * from "./sql/findOutboxFanout";
 
 export * from "./sql/findOutboxTarget";
+
+export * from "./sql/findPendingRemoteFollowRequest";
 
 export * from "./sql/findPollById";
 
@@ -166,11 +172,19 @@ export * from "./sql/listOutboundActivities";
 
 export * from "./sql/listPeerDomains";
 
+export * from "./sql/listPendingFollowRequesters";
+
+export * from "./sql/listPendingRemoteFollowRequesters";
+
 export * from "./sql/listPollVotesForAccount";
 
 export * from "./sql/listPublicRemoteStatuses";
 
 export * from "./sql/markPollExpiryNotified";
+
+export * from "./sql/rejectFollowRequest";
+
+export * from "./sql/rejectRemoteFollowRequest";
 
 export * from "./sql/searchAccounts";
 

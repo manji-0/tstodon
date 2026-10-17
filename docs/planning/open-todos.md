@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Follow requests: list/authorize/reject for local + remote pending, Accept/Reject delivery, `remote_follows.follow_activity_id`
 - json_each membership; TypedSQL fixed SQL; wrangler migrations SoT ADRs
 - `runTypedBatch`; ExpandFollowers remote-only + chunked targets
 - Create saga mentions-before-notify; `enqueueLocalActivity` Result

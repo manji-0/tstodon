@@ -5,6 +5,7 @@ import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
+  authorizeFollowRequest as authorizeFollowRequestSql,
   deleteBookmark as deleteBookmarkSql,
   deleteFavourite as deleteFavouriteSql,
   deleteFollow as deleteFollowSql,
@@ -17,6 +18,8 @@ import {
   listFollowers as listFollowersSql,
   listFollowing as listFollowingSql,
   listNotifications as listNotificationsSql,
+  listPendingFollowRequesters as listPendingFollowRequestersSql,
+  rejectFollowRequest as rejectFollowRequestSql,
 } from "./generated/prisma/sql";
 
 export const followAccount = async (
@@ -56,6 +59,55 @@ export const unfollowAccount = async (
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await runTyped(db, deleteFollowSql(followerId, targetId));
+  });
+
+export type PendingFollowRequester = Readonly<{
+  followerAccountId: string;
+  createdAt: string;
+}>;
+
+export const listPendingFollowRequesters = async (
+  db: D1Database,
+  targetAccountId: string,
+  limit: number,
+): Promise<Result<PendingFollowRequester[], RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ follower_account_id: string; created_at: string }>(
+      db,
+      listPendingFollowRequestersSql(targetAccountId, limit),
+    );
+    return rows.map((row) => ({
+      followerAccountId: row.follower_account_id,
+      createdAt: row.created_at,
+    }));
+  });
+
+/** Promote a `Pending` follow to `Accepted`. Returns true when a row moved. */
+export const authorizeFollowRequest = async (
+  db: D1Database,
+  targetAccountId: string,
+  followerAccountId: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ follower_account_id: string }>(
+      db,
+      authorizeFollowRequestSql(targetAccountId, followerAccountId),
+    );
+    return rows.length > 0;
+  });
+
+/** Remove a `Pending` follow. Returns true when a row was deleted. */
+export const rejectFollowRequest = async (
+  db: D1Database,
+  targetAccountId: string,
+  followerAccountId: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ follower_account_id: string }>(
+      db,
+      rejectFollowRequestSql(targetAccountId, followerAccountId),
+    );
+    return rows.length > 0;
   });
 
 export const relationshipFlags = async (

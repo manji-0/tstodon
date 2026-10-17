@@ -2623,6 +2623,7 @@ export const Remote_followsScalarFieldEnum = {
   target_account_id: "target_account_id",
   remote_request_kind: "remote_request_kind",
   follow_kind: "follow_kind",
+  follow_activity_id: "follow_activity_id",
   created_at: "created_at",
 } as const;
 
