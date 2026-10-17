@@ -13,6 +13,7 @@ import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
 import { nowIso } from "./clock";
 import { jsonStringArray, runD1, runD1Batch, sqlInJsonEach, type RepositoryError } from "./d1";
+import { newEntityId } from "./ids";
 import { parseRow, StatusRowSchema, toRepositoryError } from "./schemas";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./social-store";
 import { visibilitySql } from "./sql-enums";
@@ -22,16 +23,21 @@ import {
   countStatuses as countStatusesSql,
   deleteReblogOf as deleteReblogOfSql,
   deleteStatusOwned as deleteStatusOwnedSql,
+  detachStatusMedia as detachStatusMediaSql,
   findStatusById as findStatusByIdSql,
+  findStatusUpdatedAt as findStatusUpdatedAtSql,
   insertLocalNote as insertLocalNoteSql,
   insertLocalReblog as insertLocalReblogSql,
+  insertStatusEdit as insertStatusEditSql,
   listAccountStatuses as listAccountStatusesSql,
   listMediaIdsForStatus as listMediaIdsForStatusSql,
+  listStatusEditSnapshots as listStatusEditSnapshotsSql,
+  updateLocalNote as updateLocalNoteSql,
 } from "./generated/prisma/sql";
 
 export type StatusRow = z.infer<typeof StatusRowSchema>;
 
-export const STATUS_SELECT = `id, account_id, kind, reblog_of_id, in_reply_to_id, content_text, COALESCE(content_html, '') AS content_html, visibility, sensitive, COALESCE(spoiler_text, '') AS spoiler_text, language, created_at, poll_id`;
+export const STATUS_SELECT = `id, account_id, kind, reblog_of_id, in_reply_to_id, content_text, COALESCE(content_html, '') AS content_html, visibility, sensitive, COALESCE(spoiler_text, '') AS spoiler_text, language, created_at, updated_at, poll_id`;
 const statusSelect = STATUS_SELECT;
 
 const CONTEXT_ANCESTOR_LIMIT = 40;
@@ -79,6 +85,8 @@ export const statusFromRow = (
     }
     inReplyToId = replyTo.value;
   }
+  const editedAtValue =
+    row.updated_at !== row.created_at ? IsoInstant.parse(row.updated_at) : undefined;
   return ok({
     kind: "LocalNote",
     id: id.value,
@@ -94,6 +102,7 @@ export const statusFromRow = (
     poll: row.poll_id ? { kind: "Present" } : { kind: "None" },
     inReplyToId,
     createdAt: createdAt.value,
+    editedAt: editedAtValue?.isOk() ? editedAtValue.value : null,
   });
 };
 
@@ -203,6 +212,88 @@ export const insertLocalReblog = async (
         reblog.createdAt,
       ),
     );
+  });
+
+/** Replace a note's media: detach the current attachments, then attach the new set. */
+export const replaceStatusMedia = async (
+  db: D1Database,
+  statusId: string,
+  accountId: string,
+  mediaIds: ReadonlyArray<string>,
+): Promise<Result<void, RepositoryError>> => {
+  const batched = await runD1Batch(db, [
+    d1PrepareTyped(db, detachStatusMediaSql(statusId, accountId)),
+    ...mediaIds.map((mediaId) =>
+      d1PrepareTyped(db, attachMediaToStatusSql(statusId, mediaId, accountId)),
+    ),
+  ]);
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  return ok(undefined);
+};
+
+/** Apply an edited note to its status row. False when the row is not the author's. */
+export const updateLocalNote = async (
+  db: D1Database,
+  note: LocalNote,
+  updatedAt: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ id: string }>(
+      db,
+      updateLocalNoteSql(
+        note.id,
+        note.text,
+        note.contentHtml,
+        visibilitySql(note.visibility),
+        note.sensitive ? 1 : 0,
+        note.spoilerText,
+        note.language.kind === "Present" ? note.language.value : null,
+        updatedAt,
+        note.accountId,
+      ),
+    );
+    return rows.length > 0;
+  });
+
+/** Store the previous revision of a status as a history snapshot. */
+export const insertStatusEdit = async (
+  db: D1Database,
+  statusId: string,
+  snapshotJson: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, insertStatusEditSql(newEntityId(), statusId, snapshotJson, nowIso()));
+  });
+
+/** Previous revisions, newest first. */
+export const listStatusEdits = async (
+  db: D1Database,
+  statusId: string,
+): Promise<Result<Record<string, unknown>[], RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ snapshot_json: string }>(
+      db,
+      listStatusEditSnapshotsSql(statusId),
+    );
+    const snapshots: Record<string, unknown>[] = [];
+    for (const row of rows) {
+      const parsed: unknown = JSON.parse(row.snapshot_json);
+      if (parsed !== null && typeof parsed === "object") {
+        snapshots.push({ ...parsed });
+      }
+    }
+    return snapshots;
+  });
+
+export const findStatusUpdatedAt = async (
+  db: D1Database,
+  statusId: string,
+): Promise<Result<string | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ updated_at: string }>(db, findStatusUpdatedAtSql(statusId));
+    return rows[0]?.updated_at;
   });
 
 export const listPublicStatuses = async (

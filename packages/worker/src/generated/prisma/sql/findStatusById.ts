@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param id
  */
 export const findStatusById = $runtime.makeTypedQueryFactory(
-  "SELECT id, account_id, kind, reblog_of_id, in_reply_to_id, content_text, COALESCE(content_html, '') AS content_html, visibility, sensitive, COALESCE(spoiler_text, '') AS spoiler_text, language, created_at, poll_id\nFROM statuses WHERE id = $1",
+  "SELECT id, account_id, kind, reblog_of_id, in_reply_to_id, content_text, COALESCE(content_html, '') AS content_html, visibility, sensitive, COALESCE(spoiler_text, '') AS spoiler_text, language, created_at, updated_at, poll_id\nFROM statuses WHERE id = $1",
 ) as (id: string) => $runtime.TypedSql<findStatusById.Parameters, findStatusById.Result>;
 
 export namespace findStatusById {
@@ -26,6 +26,7 @@ export namespace findStatusById {
     spoiler_text: null | null;
     language: string | null;
     created_at: string;
+    updated_at: string;
     poll_id: string | null;
   };
 }

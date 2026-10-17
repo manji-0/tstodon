@@ -403,6 +403,7 @@ export const ModelName = {
   mutes: "mutes",
   notification_dismissals: "notification_dismissals",
   notification_clear_markers: "notification_clear_markers",
+  status_edits: "status_edits",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
   markers: "markers",
@@ -452,6 +453,7 @@ export type TypeMap<
       | "mutes"
       | "notification_dismissals"
       | "notification_clear_markers"
+      | "status_edits"
       | "inbox_activities"
       | "instance_settings"
       | "markers"
@@ -1366,6 +1368,82 @@ export type TypeMap<
           args: Prisma.notification_clear_markersCountArgs<ExtArgs>;
           result:
             | runtime.Types.Utils.Optional<Prisma.Notification_clear_markersCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    status_edits: {
+      payload: Prisma.$status_editsPayload<ExtArgs>;
+      fields: Prisma.status_editsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.status_editsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_editsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.status_editsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_editsPayload>;
+        };
+        findFirst: {
+          args: Prisma.status_editsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_editsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.status_editsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_editsPayload>;
+        };
+        findMany: {
+          args: Prisma.status_editsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_editsPayload>[];
+        };
+        create: {
+          args: Prisma.status_editsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_editsPayload>;
+        };
+        createMany: {
+          args: Prisma.status_editsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.status_editsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_editsPayload>[];
+        };
+        delete: {
+          args: Prisma.status_editsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_editsPayload>;
+        };
+        update: {
+          args: Prisma.status_editsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_editsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.status_editsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.status_editsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.status_editsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_editsPayload>[];
+        };
+        upsert: {
+          args: Prisma.status_editsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_editsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Status_editsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateStatus_edits>;
+        };
+        groupBy: {
+          args: Prisma.status_editsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Status_editsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.status_editsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Status_editsCountAggregateOutputType>
             | number;
         };
       };
@@ -2824,6 +2902,16 @@ export const Notification_clear_markersScalarFieldEnum = {
 export type Notification_clear_markersScalarFieldEnum =
   (typeof Notification_clear_markersScalarFieldEnum)[keyof typeof Notification_clear_markersScalarFieldEnum];
 
+export const Status_editsScalarFieldEnum = {
+  id: "id",
+  status_id: "status_id",
+  snapshot_json: "snapshot_json",
+  created_at: "created_at",
+} as const;
+
+export type Status_editsScalarFieldEnum =
+  (typeof Status_editsScalarFieldEnum)[keyof typeof Status_editsScalarFieldEnum];
+
 export const Inbox_activitiesScalarFieldEnum = {
   activity_id: "activity_id",
   kind: "kind",
@@ -3238,6 +3326,7 @@ export type GlobalOmitConfig = {
   mutes?: Prisma.mutesOmit;
   notification_dismissals?: Prisma.notification_dismissalsOmit;
   notification_clear_markers?: Prisma.notification_clear_markersOmit;
+  status_edits?: Prisma.status_editsOmit;
   inbox_activities?: Prisma.inbox_activitiesOmit;
   instance_settings?: Prisma.instance_settingsOmit;
   markers?: Prisma.markersOmit;

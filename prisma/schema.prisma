@@ -160,6 +160,15 @@ model notification_clear_markers {
   cleared_at String
 }
 
+model status_edits {
+  id            String @id
+  status_id     String
+  snapshot_json String
+  created_at    String @default("CURRENT_TIMESTAMP")
+
+  @@index([status_id, created_at(sort: Desc), id(sort: Desc)], map: "idx_status_edits_status_created")
+}
+
 model inbox_activities {
   activity_id  String @id
   kind         String

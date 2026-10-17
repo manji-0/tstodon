@@ -72,6 +72,7 @@ export const StatusRowSchema = z.object({
   spoiler_text: z.string(),
   language: z.string().nullable(),
   created_at: z.string().min(1),
+  updated_at: z.string().min(1),
   poll_id: z.string().nullable(),
 });
 

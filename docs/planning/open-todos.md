@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Status edit: PUT/PATCH `/statuses/:id`, `/history`, `/source`, `status_edits` snapshots, `edited_at`, Update activity
 - Instance rules served from `INSTANCE_RULES` (v1 rules endpoint + v2 instance)
 - Suggestions (v1/v2) and trends/links derived from local accounts and public notes
 - Notifications: clear, dismiss, unread_count (marker-aware, honoring blocks/mutes)

@@ -60,6 +60,8 @@ export * from "./sql/deleteStatusMentions";
 
 export * from "./sql/deleteStatusOwned";
 
+export * from "./sql/detachStatusMedia";
+
 export * from "./sql/dismissNotification";
 
 export * from "./sql/findAccountByEmail";
@@ -108,6 +110,8 @@ export * from "./sql/findRemoteStatusByObjectUri";
 
 export * from "./sql/findStatusById";
 
+export * from "./sql/findStatusUpdatedAt";
+
 export * from "./sql/getConversationRead";
 
 export * from "./sql/getMarkersByTimelines";
@@ -147,6 +151,8 @@ export * from "./sql/insertPoll";
 export * from "./sql/insertPollVoteOrIgnore";
 
 export * from "./sql/insertReport";
+
+export * from "./sql/insertStatusEdit";
 
 export * from "./sql/insertStatusMention";
 
@@ -200,6 +206,8 @@ export * from "./sql/listPollVotesForAccount";
 
 export * from "./sql/listPublicRemoteStatuses";
 
+export * from "./sql/listStatusEditSnapshots";
+
 export * from "./sql/listSuggestionExclusionIds";
 
 export * from "./sql/markPollExpiryNotified";
@@ -213,6 +221,8 @@ export * from "./sql/searchAccounts";
 export * from "./sql/updateAccountProfile";
 
 export * from "./sql/updateList";
+
+export * from "./sql/updateLocalNote";
 
 export * from "./sql/updateOutboxFanout";
 

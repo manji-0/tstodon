@@ -77,6 +77,11 @@ export type notification_dismissals = Prisma.notification_dismissalsModel;
  */
 export type notification_clear_markers = Prisma.notification_clear_markersModel;
 /**
+ * Model status_edits
+ *
+ */
+export type status_edits = Prisma.status_editsModel;
+/**
  * Model inbox_activities
  *
  */

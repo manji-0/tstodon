@@ -132,6 +132,7 @@ export const LocalNoteSchema = z.object({
   poll: StatusPollPresenceSchema,
   inReplyToId: StatusId.schema.nullable(),
   createdAt: IsoInstant.schema,
+  editedAt: IsoInstant.schema.nullable(),
 });
 
 export const LocalReblogSchema = z.object({
@@ -172,6 +173,7 @@ export const LocalStatus = {
     poll: draft.poll,
     inReplyToId,
     createdAt,
+    editedAt: null,
   }),
   reblog: (
     id: StatusId,
@@ -184,5 +186,23 @@ export const LocalStatus = {
     accountId,
     reblogOfId,
     createdAt,
+  }),
+  /** Apply an edited draft to a note, keeping id, author, thread, and time. */
+  revise: (note: LocalNote, draft: ValidatedStatusDraft, contentHtml: string): LocalNote => ({
+    kind: "LocalNote",
+    id: note.id,
+    accountId: note.accountId,
+    text: draft.text,
+    contentHtml,
+    visibility: draft.visibility,
+    spoilerText: draft.spoilerText,
+    sensitive: draft.sensitive,
+    language: draft.language,
+    quote: draft.quote,
+    mediaIds: draft.mediaIds,
+    poll: note.poll,
+    inReplyToId: note.inReplyToId,
+    createdAt: note.createdAt,
+    editedAt: note.editedAt,
   }),
 } as const;

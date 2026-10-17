@@ -7,10 +7,11 @@ import {
   type StatusIdValue,
 } from "@tstodon/domain";
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { findAccountsByUsernames } from "../account-store";
 import { authenticate } from "../auth";
 import { noteDocument } from "../activitypub";
-import { nowInstant } from "../clock";
+import { nowInstant, nowIso } from "../clock";
 import { enqueueLocalActivity } from "../delivery";
 import { mentionUsernames, textToHtml } from "../html";
 import { replaceStatusMentions } from "../mention-store";
@@ -46,12 +47,17 @@ import {
   deleteReblogOf,
   deleteStatus,
   findStatusById,
+  findStatusUpdatedAt,
   insertLocalNote,
   insertLocalReblog,
+  insertStatusEdit,
   listBookmarkedStatuses,
   listFavouritedStatuses,
   listStatusAncestors,
   listStatusDescendants,
+  listStatusEdits,
+  replaceStatusMedia,
+  updateLocalNote,
 } from "../status-store";
 import { canViewStatus } from "../visibility-guard";
 
@@ -261,6 +267,193 @@ statusRoutes.delete("/api/v1/statuses/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(document ?? {});
+});
+
+const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const found = await findStatusById(c.env.DB, c.req.param("id") ?? "");
+  if (found.isErr()) {
+    return jsonRepositoryError(c, found.error.message);
+  }
+  const existing = found.value;
+  if (!existing || existing.kind !== "LocalNote" || existing.accountId !== user.value.id) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const body = await readBody(c, CreateStatusBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  if (body.value.poll) {
+    return c.json({ error: "cannot edit a poll", kind: "PollEditUnsupported" }, 422);
+  }
+  let visibilityValue = existing.visibility;
+  if (body.value.visibility && body.value.visibility.length > 0) {
+    const parsedVisibility = Visibility.fromMastodon(body.value.visibility);
+    if (parsedVisibility.isErr()) {
+      return c.json({ error: "Invalid visibility", kind: "Unknown" }, 400);
+    }
+    visibilityValue = parsedVisibility.value;
+  }
+  const composing = StatusComposition.composing({
+    text: body.value.status ?? existing.text,
+    visibility: visibilityValue,
+    spoilerText: body.value.spoiler_text ?? existing.spoilerText,
+    sensitive:
+      body.value.sensitive !== undefined ? isTruthy(body.value.sensitive) : existing.sensitive,
+    language:
+      body.value.language === undefined
+        ? existing.language
+        : body.value.language.length > 0
+          ? { kind: "Present", value: body.value.language }
+          : { kind: "None" },
+    mediaIds:
+      body.value.media_ids !== undefined ? stringList(body.value.media_ids) : existing.mediaIds,
+    poll: existing.poll,
+  });
+  const draft = StatusComposition.validate(composing);
+  if (draft.isErr()) {
+    return c.json({ error: draft.error.kind, kind: draft.error.kind }, 422);
+  }
+  const revised = LocalStatus.revise(existing, draft.value, textToHtml(draft.value.text));
+
+  // Snapshot the previous revision before mutating, stamped with its revision time.
+  const priorUpdatedAt = await findStatusUpdatedAt(c.env.DB, existing.id);
+  const revisionAt =
+    priorUpdatedAt.isOk() && priorUpdatedAt.value ? priorUpdatedAt.value : existing.createdAt;
+  const previousDocument = await mastodonStatus(c.env, identity.value, existing, user.value.id);
+  if (previousDocument) {
+    const snapshotted = await insertStatusEdit(
+      c.env.DB,
+      existing.id,
+      JSON.stringify({ ...previousDocument, created_at: revisionAt }),
+    );
+    if (snapshotted.isErr()) {
+      return jsonRepositoryError(c, snapshotted.error.message);
+    }
+  }
+
+  const updatedAt = nowIso();
+  const applied = await updateLocalNote(c.env.DB, revised, updatedAt);
+  if (applied.isErr()) {
+    return jsonRepositoryError(c, applied.error.message);
+  }
+  if (!applied.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const media = await replaceStatusMedia(c.env.DB, existing.id, user.value.id, revised.mediaIds);
+  if (media.isErr()) {
+    return jsonRepositoryError(c, media.error.message);
+  }
+  const mentionedAccounts = await findAccountsByUsernames(c.env.DB, [
+    ...mentionUsernames(revised.text),
+  ]);
+  if (mentionedAccounts.isErr()) {
+    return jsonRepositoryError(c, mentionedAccounts.error.message);
+  }
+  const mentions = await replaceStatusMentions(
+    c.env.DB,
+    existing.id,
+    mentionedAccounts.value.map((account) => account.id),
+  );
+  if (mentions.isErr()) {
+    return jsonRepositoryError(c, mentions.error.message);
+  }
+
+  const actor = InstanceIdentity.actorUrl(identity.value, user.value.username);
+  const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Update", {
+    "@context": "https://www.w3.org/ns/activitystreams",
+    id: `${actor}/statuses/${existing.id}/updates/${newEntityId()}`,
+    type: "Update",
+    actor,
+    published: updatedAt,
+    object: noteDocument(identity.value, user.value, revised),
+  });
+  if (enqueued.isErr()) {
+    return jsonRepositoryError(
+      c,
+      enqueued.error.kind === "RepositoryError"
+        ? enqueued.error.message
+        : enqueued.error.kind === "QueueSendFailed"
+          ? enqueued.error.message
+          : "invalid activity id",
+    );
+  }
+
+  const latest = await findStatusById(c.env.DB, existing.id);
+  if (latest.isErr() || !latest.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const document = await mastodonStatus(c.env, identity.value, latest.value, user.value.id);
+  if (document) {
+    await publishToAccount(c.env, user.value.id, { kind: "update", payload: document });
+  }
+  return c.json(document ?? {});
+};
+
+statusRoutes.put("/api/v1/statuses/:id", (c) => updateStatus(c));
+statusRoutes.patch("/api/v1/statuses/:id", (c) => updateStatus(c));
+
+statusRoutes.get("/api/v1/statuses/:id/history", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const auth = await authenticate(c.req.raw, c.env);
+  if (auth.isErr()) {
+    return jsonAuthError(c, auth.error);
+  }
+  const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
+  const status = await findStatusById(c.env.DB, c.req.param("id") ?? "");
+  if (status.isErr()) {
+    return jsonRepositoryError(c, status.error.message);
+  }
+  if (!status.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  if (!(await canViewStatus(c.env.DB, status.value, viewerId))) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  if (status.value.kind !== "LocalNote") {
+    return c.json([]);
+  }
+  const snapshots = await listStatusEdits(c.env.DB, status.value.id);
+  if (snapshots.isErr()) {
+    return jsonRepositoryError(c, snapshots.error.message);
+  }
+  const updatedAt = await findStatusUpdatedAt(c.env.DB, status.value.id);
+  const current = await mastodonStatus(c.env, identity.value, status.value, viewerId);
+  if (!current) {
+    return c.json([]);
+  }
+  const revisions = [...snapshots.value].reverse();
+  const revisionAt = updatedAt.isOk() && updatedAt.value ? updatedAt.value : status.value.createdAt;
+  return c.json([...revisions, { ...current, created_at: revisionAt }]);
+});
+
+statusRoutes.get("/api/v1/statuses/:id/source", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const status = await findStatusById(c.env.DB, c.req.param("id") ?? "");
+  if (status.isErr()) {
+    return jsonRepositoryError(c, status.error.message);
+  }
+  if (!status.value || status.value.kind !== "LocalNote") {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json({
+    id: status.value.id,
+    text: status.value.text,
+    spoiler_text: status.value.spoilerText,
+  });
 });
 
 statusRoutes.get("/api/v1/statuses/:id/context", async (c) => {

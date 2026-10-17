@@ -214,7 +214,7 @@ const buildLocalNoteDocument = (
     replies_count: 0,
     reblogs_count: interactions.reblogs,
     favourites_count: interactions.favourites,
-    edited_at: null,
+    edited_at: status.editedAt,
     favourited: interactions.favourited,
     reblogged: interactions.reblogged,
     muted: false,
