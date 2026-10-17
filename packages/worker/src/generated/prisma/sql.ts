@@ -200,6 +200,8 @@ export * from "./sql/listPollVotesForAccount";
 
 export * from "./sql/listPublicRemoteStatuses";
 
+export * from "./sql/listSuggestionExclusionIds";
+
 export * from "./sql/markPollExpiryNotified";
 
 export * from "./sql/rejectFollowRequest";

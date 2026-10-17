@@ -29,6 +29,7 @@ import {
   listMutedAccounts as listMutedAccountsSql,
   listNotifications as listNotificationsSql,
   listPendingFollowRequesters as listPendingFollowRequestersSql,
+  listSuggestionExclusionIds as listSuggestionExclusionIdsSql,
   rejectFollowRequest as rejectFollowRequestSql,
   upsertBlock as upsertBlockSql,
   upsertMute as upsertMuteSql,
@@ -435,6 +436,19 @@ export const countUnreadNotifications = async (
       countUnreadNotificationsSql(accountId, markerId ?? "", nowIso()),
     );
     return Number(rows[0]?.count ?? 0);
+  });
+
+/** Account ids the viewer already follows, blocks, or has muted (suggestions skip these). */
+export const listSuggestionExclusionIds = async (
+  db: D1Database,
+  viewerId: string,
+): Promise<Result<Set<string>, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ id: string | null }>(
+      db,
+      listSuggestionExclusionIdsSql(viewerId, nowIso()),
+    );
+    return new Set(rows.flatMap((row) => (row.id ? [row.id] : [])));
   });
 
 export type StatusInteractionCounts = Readonly<{

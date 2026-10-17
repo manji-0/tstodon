@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { countAccounts, findAccountById, listDirectoryAccounts } from "../account-store";
 import { listConversationsForAccount, latestStatusIdInConversation } from "../conversation-store";
 import {
@@ -20,6 +21,7 @@ import {
 } from "../marker-store";
 import { listPeerDomains } from "../remote-actor-store";
 import { parseInstanceIdentity } from "../runtime-config";
+import { listSuggestionExclusionIds } from "../social-store";
 import {
   countStatuses,
   listTrendingStatuses,
@@ -31,9 +33,112 @@ export const metaRoutes = new Hono<{ Bindings: Env }>();
 
 metaRoutes.get("/api/v1/custom_emojis", (c) => c.json([]));
 metaRoutes.get("/api/v1/announcements", (c) => c.json([]));
-metaRoutes.get("/api/v1/suggestions", (c) => c.json([]));
-metaRoutes.get("/api/v1/trends/links", (c) => c.json([]));
 metaRoutes.get("/api/v1/instance/rules", (c) => c.json([]));
+
+const suggestedAccounts = async (
+  c: Context<{ Bindings: Env }>,
+): Promise<Response | Record<string, unknown>[]> => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const limit = queryLimit(c.req.query("limit"), 40);
+  const excluded = await listSuggestionExclusionIds(c.env.DB, user.value.id);
+  if (excluded.isErr()) {
+    return jsonRepositoryError(c, excluded.error.message);
+  }
+  // Pull a wider directory page, then drop self and already-related accounts.
+  const candidates = await listDirectoryAccounts(c.env.DB, {
+    order: "active",
+    limit: 80,
+    offset: 0,
+  });
+  if (candidates.isErr()) {
+    return jsonRepositoryError(c, candidates.error.message);
+  }
+  const accounts = candidates.value
+    .filter((account) => account.id !== user.value.id && !excluded.value.has(account.id))
+    .slice(0, limit);
+  const documents = [];
+  for (const account of accounts) {
+    documents.push(await mastodonAccountDocument(c.env, identity.value, account));
+  }
+  return documents;
+};
+
+metaRoutes.get("/api/v1/suggestions", async (c) => {
+  const result = await suggestedAccounts(c);
+  return Array.isArray(result) ? c.json(result) : result;
+});
+
+metaRoutes.get("/api/v2/suggestions", async (c) => {
+  const result = await suggestedAccounts(c);
+  if (!Array.isArray(result)) {
+    return result;
+  }
+  return c.json(result.map((account) => ({ source: "global", account })));
+});
+
+const LINK_PATTERN = /https?:\/\/[^\s<>"')\]]+/g;
+
+const linkCard = (url: string): Record<string, unknown> | undefined => {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return undefined;
+  }
+  const host = parsed.host;
+  return {
+    url,
+    title: host,
+    description: "",
+    type: "link",
+    author_name: "",
+    author_url: "",
+    provider_name: host,
+    provider_url: `${parsed.protocol}//${host}`,
+    html: "",
+    width: 0,
+    height: 0,
+    image: null,
+    blurhash: null,
+    embed_url: "",
+  };
+};
+
+metaRoutes.get("/api/v1/trends/links", async (c) => {
+  const limit = queryLimit(c.req.query("limit"), 10);
+  const statuses = await listTrendingStatuses(c.env.DB, 100);
+  if (statuses.isErr()) {
+    return jsonRepositoryError(c, statuses.error.message);
+  }
+  const counts = new Map<string, number>();
+  for (const status of statuses.value) {
+    if (status.kind !== "LocalNote") {
+      continue;
+    }
+    for (const match of status.text.matchAll(LINK_PATTERN)) {
+      const url = match[0].replace(/[.,;:!?]+$/, "");
+      counts.set(url, (counts.get(url) ?? 0) + 1);
+    }
+  }
+  const ranked = [...counts.entries()]
+    .toSorted((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, limit);
+  const cards = [];
+  for (const [url] of ranked) {
+    const card = linkCard(url);
+    if (card) {
+      cards.push(card);
+    }
+  }
+  return c.json(cards);
+});
 
 metaRoutes.get("/api/v1/markers", async (c) => {
   const user = await requireUser(c);

@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Suggestions (v1/v2) and trends/links derived from local accounts and public notes
 - Notifications: clear, dismiss, unread_count (marker-aware, honoring blocks/mutes)
 - Path-safe remote account ids: `r_` + base64url actor URI; accounts/:id and follow request targets decode it
 - Blocks + mutes: endpoints, relationship flags, home/list/direct timeline suppression, notification gating; `d1PrepareTyped` expands repeated `$N`
