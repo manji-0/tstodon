@@ -41,7 +41,7 @@ import {
   unmuteAccount,
 } from "../social-store";
 import { notifyAccount } from "../notify";
-import { listAccountStatuses } from "../status-store";
+import { listAccountStatuses, listPinnedStatuses } from "../status-store";
 import { UpdateCredentialsBodySchema } from "../schemas";
 
 export const accountRoutes = new Hono<{ Bindings: Env }>();
@@ -176,11 +176,10 @@ accountRoutes.get("/api/v1/accounts/:id/statuses", async (c) => {
   if (!account.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const statuses = await listAccountStatuses(
-    c.env.DB,
-    account.value.id,
-    queryLimit(c.req.query("limit")),
-  );
+  const statuses =
+    c.req.query("pinned") === "true"
+      ? await listPinnedStatuses(c.env.DB, account.value.id)
+      : await listAccountStatuses(c.env.DB, account.value.id, queryLimit(c.req.query("limit")));
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }

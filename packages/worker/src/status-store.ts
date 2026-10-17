@@ -20,6 +20,7 @@ import { visibilitySql } from "./sql-enums";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   attachMediaToStatus as attachMediaToStatusSql,
+  countPinnedStatuses as countPinnedStatusesSql,
   countStatuses as countStatusesSql,
   deleteReblogOf as deleteReblogOfSql,
   deleteStatusOwned as deleteStatusOwnedSql,
@@ -29,9 +30,13 @@ import {
   insertLocalNote as insertLocalNoteSql,
   insertLocalReblog as insertLocalReblogSql,
   insertStatusEdit as insertStatusEditSql,
+  isStatusPinned as isStatusPinnedSql,
   listAccountStatuses as listAccountStatusesSql,
   listMediaIdsForStatus as listMediaIdsForStatusSql,
+  listPinnedStatuses as listPinnedStatusesSql,
   listStatusEditSnapshots as listStatusEditSnapshotsSql,
+  pinStatus as pinStatusSql,
+  unpinStatus as unpinStatusSql,
   updateLocalNote as updateLocalNoteSql,
 } from "./generated/prisma/sql";
 
@@ -294,6 +299,56 @@ export const findStatusUpdatedAt = async (
   runD1(async () => {
     const rows = await queryTyped<{ updated_at: string }>(db, findStatusUpdatedAtSql(statusId));
     return rows[0]?.updated_at;
+  });
+
+export const pinStatus = async (
+  db: D1Database,
+  accountId: string,
+  statusId: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, pinStatusSql(accountId, statusId, nowIso()));
+  });
+
+export const unpinStatus = async (
+  db: D1Database,
+  accountId: string,
+  statusId: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ status_id: string }>(db, unpinStatusSql(accountId, statusId));
+    return rows.length > 0;
+  });
+
+export const isStatusPinned = async (
+  db: D1Database,
+  accountId: string,
+  statusId: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ present: number }>(db, isStatusPinnedSql(accountId, statusId));
+    return rows.length > 0;
+  });
+
+export const countPinnedStatuses = async (
+  db: D1Database,
+  accountId: string,
+): Promise<Result<number, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ count: number | bigint }>(
+      db,
+      countPinnedStatusesSql(accountId),
+    );
+    return Number(rows[0]?.count ?? 0);
+  });
+
+export const listPinnedStatuses = async (
+  db: D1Database,
+  accountId: string,
+): Promise<Result<LocalStatusValue[], RepositoryError>> =>
+  runD1(async () => {
+    const results = await queryTyped(db, listPinnedStatusesSql(accountId));
+    return hydrateStatusRows(db, results);
   });
 
 export const listPublicStatuses = async (

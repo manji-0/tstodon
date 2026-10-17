@@ -107,6 +107,11 @@ export type notification_clear_markers = Prisma.notification_clear_markersModel;
  */
 export type status_edits = Prisma.status_editsModel;
 /**
+ * Model status_pins
+ *
+ */
+export type status_pins = Prisma.status_pinsModel;
+/**
  * Model inbox_activities
  *
  */

@@ -18,6 +18,8 @@ export * from "./sql/countFollowersByAccountIdsJson";
 
 export * from "./sql/countFollowingByAccountIdsJson";
 
+export * from "./sql/countPinnedStatuses";
+
 export * from "./sql/countRemoteAnnounces";
 
 export * from "./sql/countRemoteFavourites";
@@ -158,6 +160,8 @@ export * from "./sql/insertStatusMention";
 
 export * from "./sql/isAccountMentionedOnStatus";
 
+export * from "./sql/isStatusPinned";
+
 export * from "./sql/listAcceptedFollowerIds";
 
 export * from "./sql/listAcceptedRemoteFollowerInboxes";
@@ -202,6 +206,8 @@ export * from "./sql/listPendingFollowRequesters";
 
 export * from "./sql/listPendingRemoteFollowRequesters";
 
+export * from "./sql/listPinnedStatuses";
+
 export * from "./sql/listPollVotesForAccount";
 
 export * from "./sql/listPublicRemoteStatuses";
@@ -212,11 +218,15 @@ export * from "./sql/listSuggestionExclusionIds";
 
 export * from "./sql/markPollExpiryNotified";
 
+export * from "./sql/pinStatus";
+
 export * from "./sql/rejectFollowRequest";
 
 export * from "./sql/rejectRemoteFollowRequest";
 
 export * from "./sql/searchAccounts";
+
+export * from "./sql/unpinStatus";
 
 export * from "./sql/updateAccountProfile";
 

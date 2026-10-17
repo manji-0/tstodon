@@ -44,6 +44,7 @@ import {
 import { notifyAccount } from "../notify";
 import { publishToAccount } from "../stream-publish";
 import {
+  countPinnedStatuses,
   deleteReblogOf,
   deleteStatus,
   findStatusById,
@@ -51,12 +52,15 @@ import {
   insertLocalNote,
   insertLocalReblog,
   insertStatusEdit,
+  isStatusPinned,
   listBookmarkedStatuses,
   listFavouritedStatuses,
   listStatusAncestors,
   listStatusDescendants,
   listStatusEdits,
+  pinStatus,
   replaceStatusMedia,
+  unpinStatus,
   updateLocalNote,
 } from "../status-store";
 import { canViewStatus } from "../visibility-guard";
@@ -455,6 +459,74 @@ statusRoutes.get("/api/v1/statuses/:id/source", async (c) => {
     spoiler_text: status.value.spoilerText,
   });
 });
+
+const STATUS_PIN_LIMIT = 5;
+
+const setStatusPinned = async (c: Context<{ Bindings: Env }>, pin: boolean): Promise<Response> => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const found = await findStatusById(c.env.DB, c.req.param("id") ?? "");
+  if (found.isErr()) {
+    return jsonRepositoryError(c, found.error.message);
+  }
+  const existing = found.value;
+  if (!existing || existing.kind !== "LocalNote" || existing.accountId !== user.value.id) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  if (pin) {
+    const already = await isStatusPinned(c.env.DB, user.value.id, existing.id);
+    if (already.isErr()) {
+      return jsonRepositoryError(c, already.error.message);
+    }
+    if (!already.value) {
+      if (existing.visibility.kind === "Direct") {
+        return c.json(
+          {
+            error: "Posts that are only visible to mentioned users cannot be pinned",
+            kind: "PinnedDirectUnsupported",
+          },
+          422,
+        );
+      }
+      const count = await countPinnedStatuses(c.env.DB, user.value.id);
+      if (count.isErr()) {
+        return jsonRepositoryError(c, count.error.message);
+      }
+      if (count.value >= STATUS_PIN_LIMIT) {
+        return c.json(
+          {
+            error: "You have already pinned the maximum number of posts",
+            kind: "PinnedLimitReached",
+          },
+          422,
+        );
+      }
+    }
+    const pinned = await pinStatus(c.env.DB, user.value.id, existing.id);
+    if (pinned.isErr()) {
+      return jsonRepositoryError(c, pinned.error.message);
+    }
+  } else {
+    const unpinned = await unpinStatus(c.env.DB, user.value.id, existing.id);
+    if (unpinned.isErr()) {
+      return jsonRepositoryError(c, unpinned.error.message);
+    }
+  }
+  const latest = await findStatusById(c.env.DB, existing.id);
+  if (latest.isErr() || !latest.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
+};
+
+statusRoutes.post("/api/v1/statuses/:id/pin", (c) => setStatusPinned(c, true));
+statusRoutes.post("/api/v1/statuses/:id/unpin", (c) => setStatusPinned(c, false));
 
 statusRoutes.get("/api/v1/statuses/:id/context", async (c) => {
   const identity = parseInstanceIdentity(c.env);
