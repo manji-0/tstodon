@@ -256,6 +256,21 @@ export const ActorDocumentSchema = z
   })
   .passthrough();
 
+export const RemoteWebfingerSchema = z
+  .object({
+    subject: z.string().optional(),
+    links: z
+      .array(
+        z.object({
+          rel: z.string(),
+          type: z.string().optional(),
+          href: z.string().optional(),
+        }),
+      )
+      .optional(),
+  })
+  .passthrough();
+
 export const RemoteActorRowSchema = z.object({
   actor_uri: z.string().min(1),
   username: z.string().min(1),

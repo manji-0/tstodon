@@ -18,6 +18,7 @@ import {
   listPeerDomains as listPeerDomainsSql,
   listPendingRemoteFollowRequesters as listPendingRemoteFollowRequestersSql,
   rejectRemoteFollowRequest as rejectRemoteFollowRequestSql,
+  searchRemoteActors as searchRemoteActorsSql,
   upsertRemoteActor as upsertRemoteActorSql,
   upsertRemoteFollow as upsertRemoteFollowSql,
 } from "./generated/prisma/sql";
@@ -244,4 +245,26 @@ export const listPeerDomains = async (db: D1Database): Promise<Result<string[], 
   runD1(async () => {
     const results = await queryTyped<{ domain: string }>(db, listPeerDomainsSql());
     return results.map((row) => row.domain);
+  });
+
+/** Cached remote actors matching a username or `username@domain` substring. */
+export const searchRemoteActors = async (
+  db: D1Database,
+  query: string,
+  limit: number,
+): Promise<Result<RemoteActor[], RepositoryError>> =>
+  runD1(async () => {
+    const results = await queryTyped(db, searchRemoteActorsSql(`%${query}%`, limit));
+    const actors: RemoteActor[] = [];
+    for (const raw of results) {
+      const row = parseRemoteActorRow(raw);
+      if (row.isErr()) {
+        continue;
+      }
+      const actor = remoteActorFromRow(row.value);
+      if (actor.isOk()) {
+        actors.push(actor.value);
+      }
+    }
+    return actors;
   });

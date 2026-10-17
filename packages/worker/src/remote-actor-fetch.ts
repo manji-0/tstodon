@@ -3,7 +3,7 @@ import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
-import { fetchActivityJson } from "./federated-fetch";
+import { fetchActivityJson, fetchWebfingerActorUri } from "./federated-fetch";
 import { ActorDocumentSchema } from "./schemas";
 import {
   findRemoteActorByPublicKeyId,
@@ -100,4 +100,18 @@ export const resolveRemoteActor = async (
     return err(stored.error);
   }
   return ok(stored.value);
+};
+
+/** Resolve and cache a `user@domain` handle by WebFinger, then fetch its actor. */
+export const resolveRemoteActorByHandle = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  handle: string,
+  options: Readonly<{ allowHosts?: ReadonlySet<string> }> = {},
+): Promise<Result<RemoteActor, RemoteActorResolveError>> => {
+  const actorUri = await fetchWebfingerActorUri(identity, handle, options);
+  if (actorUri.isErr()) {
+    return err(actorUri.error);
+  }
+  return resolveRemoteActor(db, identity, `${actorUri.value}#main-key`, actorUri.value, options);
 };

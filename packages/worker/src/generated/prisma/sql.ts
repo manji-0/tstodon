@@ -226,6 +226,8 @@ export * from "./sql/rejectRemoteFollowRequest";
 
 export * from "./sql/searchAccounts";
 
+export * from "./sql/searchRemoteActors";
+
 export * from "./sql/unpinStatus";
 
 export * from "./sql/updateAccountProfile";

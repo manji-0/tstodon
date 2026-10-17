@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Remote search: cached remote actors + `resolve=true` WebFinger/actor resolution
 - Pinned statuses: pin/unpin, five-pin limit, `?pinned=true` account statuses
 - Status edit: PUT/PATCH `/statuses/:id`, `/history`, `/source`, `status_edits` snapshots, `edited_at`, Update activity
 - Instance rules served from `INSTANCE_RULES` (v1 rules endpoint + v2 instance)
