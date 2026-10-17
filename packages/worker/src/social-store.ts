@@ -30,6 +30,7 @@ import {
   listAcceptedFollowerIds as listAcceptedFollowerIdsSql,
   listBlockedAccounts as listBlockedAccountsSql,
   listEndorsements as listEndorsementsSql,
+  listFamiliarFollowerIds as listFamiliarFollowerIdsSql,
   listFollowers as listFollowersSql,
   listFollowing as listFollowingSql,
   listMutedAccounts as listMutedAccountsSql,
@@ -369,6 +370,24 @@ export const listEndorsements = async (
       accountId: row.target_account_id,
       actorUri: row.target_actor_uri,
     }));
+  });
+
+/**
+ * Accounts the viewer follows that also follow `targetId` — "familiar
+ * followers" of a shared target, ordered by username, capped at `limit`.
+ */
+export const familiarFollowerIds = async (
+  db: D1Database,
+  viewerId: string,
+  targetId: string,
+  limit: number,
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ id: string }>(
+      db,
+      listFamiliarFollowerIdsSql(viewerId, targetId, limit),
+    );
+    return rows.map((row) => row.id);
   });
 
 /**

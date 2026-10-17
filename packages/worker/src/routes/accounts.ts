@@ -30,6 +30,7 @@ import { parseInstanceIdentity } from "../runtime-config";
 import {
   blockAccount,
   endorseAccount,
+  familiarFollowerIds,
   followAccount,
   listBlockedAccounts,
   listEndorsements,
@@ -138,6 +139,53 @@ accountRoutes.get("/api/v1/accounts/relationships", async (c) => {
     }
   }
   return c.json(relationships);
+});
+
+/** Mastodon caps familiar followers per requested account. */
+const FAMILIAR_FOLLOWERS_LIMIT = 3;
+
+accountRoutes.get("/api/v1/accounts/familiar_followers", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const url = new URL(c.req.url);
+  const requestedIds = [
+    ...url.searchParams.getAll("id[]"),
+    ...url.searchParams.getAll("id"),
+  ].filter((value) => value.length > 0);
+
+  const groups: Record<string, unknown>[] = [];
+  for (const requestedId of requestedIds) {
+    const account = await findAccountByIdOrUsername(c.env.DB, requestedId);
+    if (account.isErr()) {
+      return jsonRepositoryError(c, account.error.message);
+    }
+    const accounts: Record<string, unknown>[] = [];
+    if (account.value) {
+      const followerIds = await familiarFollowerIds(
+        c.env.DB,
+        user.value.id,
+        account.value.id,
+        FAMILIAR_FOLLOWERS_LIMIT,
+      );
+      if (followerIds.isErr()) {
+        return jsonRepositoryError(c, followerIds.error.message);
+      }
+      for (const followerId of followerIds.value) {
+        const follower = await findAccountById(c.env.DB, followerId);
+        if (follower.isOk() && follower.value) {
+          accounts.push(await mastodonAccountDocument(c.env, identity.value, follower.value));
+        }
+      }
+    }
+    groups.push({ id: requestedId, accounts });
+  }
+  return c.json(groups);
 });
 
 accountRoutes.get("/api/v1/accounts/:id", async (c) => {

@@ -230,6 +230,8 @@ export * from "./sql/listEndorsements";
 
 export * from "./sql/listExpiredUnnotifiedPolls";
 
+export * from "./sql/listFamiliarFollowerIds";
+
 export * from "./sql/listFeaturedTags";
 
 export * from "./sql/listFilters";
