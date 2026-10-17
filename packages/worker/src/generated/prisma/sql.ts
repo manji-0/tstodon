@@ -24,6 +24,8 @@ export * from "./sql/countFollowingByAccountIdsJson";
 
 export * from "./sql/countPinnedStatuses";
 
+export * from "./sql/countPollVotes";
+
 export * from "./sql/countRemoteAnnounces";
 
 export * from "./sql/countRemoteFavourites";
@@ -263,6 +265,8 @@ export * from "./sql/rejectFollowRequest";
 export * from "./sql/rejectRemoteFollowRequest";
 
 export * from "./sql/replaceCustomEmojiImage";
+
+export * from "./sql/replacePollOptions";
 
 export * from "./sql/searchAccounts";
 

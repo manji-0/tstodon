@@ -115,7 +115,7 @@ describe("status editing", () => {
     expect(denied.status).toBe(404);
   });
 
-  it("rejects editing a poll", async () => {
+  it("edits an unvoted poll in place", async () => {
     const email = "edit-poll@example.com";
     const created = await json(
       "/api/v1/statuses",
@@ -125,10 +125,72 @@ describe("status editing", () => {
       )(),
     );
     const status = read(EditedStatusSchema, created.body);
+
     const edited = await json(`/api/v1/statuses/${status.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json", ...(await auth(email)) },
-      body: JSON.stringify({ status: "polled", poll: { options: ["a", "b"] } }),
+      body: JSON.stringify({
+        status: "poll status v2",
+        poll: { options: ["alpha", "beta", "gamma"], expires_in: 7200, multiple: true },
+      }),
+    });
+    expect(edited.status).toBe(200);
+    const poll = read(
+      z.object({
+        poll: z
+          .object({
+            options: z.array(z.object({ title: z.string() })),
+            multiple: z.boolean(),
+          })
+          .nullable(),
+      }),
+      edited.body,
+    );
+    expect(poll.poll?.options.map((option) => option.title)).toEqual(["alpha", "beta", "gamma"]);
+    expect(poll.poll?.multiple).toBe(true);
+  });
+
+  it("rejects editing a poll after voting has started", async () => {
+    const author = "edit-poll-author@example.com";
+    const voter = "edit-poll-voter@example.com";
+    const created = await json(
+      "/api/v1/statuses",
+      await jsonBody(
+        { status: "voted poll", poll: { options: ["one", "two"], expires_in: 3600 } },
+        author,
+      )(),
+    );
+    const pollId = read(z.object({ poll: z.object({ id: z.string().min(1) }) }), created.body).poll
+      .id;
+    const voted = await json(`/api/v1/polls/${pollId}/votes`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(voter)) },
+      body: JSON.stringify({ choices: [0] }),
+    });
+    expect(voted.status).toBe(200);
+
+    const edited = await json(`/api/v1/statuses/${read(EditedStatusSchema, created.body).id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth(author)) },
+      body: JSON.stringify({ poll: { options: ["a", "b"] } }),
+    });
+    expect(edited.status).toBe(422);
+  });
+
+  it("requires at least two poll options", async () => {
+    const email = "edit-poll-short@example.com";
+    const created = await json(
+      "/api/v1/statuses",
+      await jsonBody(
+        { status: "short poll", poll: { options: ["one", "two"], expires_in: 3600 } },
+        email,
+      )(),
+    );
+    const status = read(EditedStatusSchema, created.body);
+    const edited = await json(`/api/v1/statuses/${status.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth(email)) },
+      body: JSON.stringify({ poll: { options: ["only"] } }),
     });
     expect(edited.status).toBe(422);
   });

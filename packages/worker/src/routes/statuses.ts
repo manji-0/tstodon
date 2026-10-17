@@ -30,7 +30,7 @@ import {
   mastodonStatuses,
   remoteStatusVisible,
 } from "../mastodon";
-import { insertPoll } from "../poll-store";
+import { countPollVotes, findPollByStatusId, insertPoll, replacePollOptions } from "../poll-store";
 import { CreateStatusBodySchema, isTruthy, stringList } from "../schemas";
 import { parseInstanceIdentity } from "../runtime-config";
 import { findRemoteActorByUri } from "../remote-actor-store";
@@ -299,8 +299,55 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  if (body.value.poll) {
-    return c.json({ error: "cannot edit a poll", kind: "PollEditUnsupported" }, 422);
+  const pollEdit = body.value.poll;
+  let pollUpdate:
+    | Readonly<{
+        pollId: string;
+        options: ReadonlyArray<string>;
+        multiple: boolean;
+        expiresAt: string;
+      }>
+    | undefined;
+  if (pollEdit) {
+    const current = await findPollByStatusId(c.env.DB, existing.id, user.value.id);
+    if (current.isErr()) {
+      return jsonRepositoryError(c, current.error.message);
+    }
+    if (!current.value) {
+      return c.json({ error: "cannot edit a poll", kind: "PollEditUnsupported" }, 422);
+    }
+    const votes = await countPollVotes(c.env.DB, current.value.id);
+    if (votes.isErr()) {
+      return jsonRepositoryError(c, votes.error.message);
+    }
+    if (votes.value > 0) {
+      return c.json(
+        { error: "cannot edit a poll after voting has started", kind: "PollVotesCast" },
+        422,
+      );
+    }
+    if (Date.parse(current.value.expiresAt) <= Date.now()) {
+      return c.json({ error: "cannot edit a poll after it has expired", kind: "PollExpired" }, 422);
+    }
+    const options = pollEdit.options
+      .map((option) => option.trim())
+      .filter((option) => option.length > 0);
+    if (options.length < 2) {
+      return c.json(
+        { error: "poll must have at least two options", kind: "PollOptionsRequired" },
+        422,
+      );
+    }
+    const expiresIn = pollEdit.expires_in === undefined ? undefined : Number(pollEdit.expires_in);
+    pollUpdate = {
+      pollId: current.value.id,
+      options,
+      multiple: isTruthy(pollEdit.multiple),
+      expiresAt:
+        expiresIn !== undefined && Number.isFinite(expiresIn)
+          ? new Date(Date.now() + expiresIn * 1000).toISOString()
+          : current.value.expiresAt,
+    };
   }
   let visibilityValue = existing.visibility;
   if (body.value.visibility && body.value.visibility.length > 0) {
@@ -355,6 +402,12 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   }
   if (!applied.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  if (pollUpdate) {
+    const poll = await replacePollOptions(c.env.DB, pollUpdate);
+    if (poll.isErr()) {
+      return jsonRepositoryError(c, poll.error.message);
+    }
   }
   const media = await replaceStatusMedia(c.env.DB, existing.id, user.value.id, revised.mediaIds);
   if (media.isErr()) {

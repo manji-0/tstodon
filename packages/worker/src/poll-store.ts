@@ -14,6 +14,7 @@ import {
 } from "./schemas";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
+  countPollVotes as countPollVotesSql,
   findPollById as findPollByIdSql,
   findPollByStatusId as findPollByStatusIdSql,
   findPollVoteTarget as findPollVoteTargetSql,
@@ -22,6 +23,7 @@ import {
   listExpiredUnnotifiedPolls as listExpiredUnnotifiedPollsSql,
   listPollVotesForAccount as listPollVotesForAccountSql,
   markPollExpiryNotified as markPollExpiryNotifiedSql,
+  replacePollOptions as replacePollOptionsSql,
   updatePollOptionsIfActive as updatePollOptionsIfActiveSql,
   updateStatusPollId as updateStatusPollIdSql,
 } from "./generated/prisma/sql";
@@ -135,6 +137,39 @@ export const findPollByStatusId = async (
   });
   return loadPoll(queried, db, viewerId);
 };
+
+/** Total votes cast on a poll, across all accounts and options. */
+export const countPollVotes = async (
+  db: D1Database,
+  pollId: string,
+): Promise<Result<number, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ count: number | bigint }>(db, countPollVotesSql(pollId));
+    return Number(rows[0]?.count ?? 0);
+  });
+
+/** Replace a poll's options. Callers must first confirm no votes and no expiry. */
+export const replacePollOptions = async (
+  db: D1Database,
+  input: {
+    pollId: string;
+    options: ReadonlyArray<string>;
+    multiple: boolean;
+    expiresAt: string;
+  },
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ id: string }>(
+      db,
+      replacePollOptionsSql(
+        input.pollId,
+        JSON.stringify(input.options.map((title) => ({ title, votesCount: 0 }))),
+        input.multiple ? 1 : 0,
+        input.expiresAt,
+      ),
+    );
+    return rows.length > 0;
+  });
 
 export const findPollsByStatusIds = async (
   db: D1Database,
