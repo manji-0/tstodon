@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Conversation mutes: `status_mutes` by thread root, `muted` flag, timeline/notification suppression
 - Custom emojis (`CUSTOM_EMOJIS`) and announcements (`ANNOUNCEMENTS`) replace the last placeholder routes
 - Remote search: cached remote actors + `resolve=true` WebFinger/actor resolution
 - Pinned statuses: pin/unpin, five-pin limit, `?pinned=true` account statuses

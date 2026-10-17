@@ -9,6 +9,7 @@ import {
   dismissNotification,
   listNotifications,
 } from "../social-store";
+import { mutedThreadStatusIds } from "../status-mute-store";
 
 export const notificationRoutes = new Hono<{ Bindings: Env }>();
 
@@ -25,8 +26,18 @@ notificationRoutes.get("/api/v1/notifications", async (c) => {
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
+  const statusIds = rows.value
+    .map((row) => row.status_id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  const mutedStatuses = await mutedThreadStatusIds(c.env.DB, user.value.id, statusIds);
+  if (mutedStatuses.isErr()) {
+    return jsonRepositoryError(c, mutedStatuses.error.message);
+  }
   const documents = [];
   for (const row of rows.value) {
+    if (row.status_id && mutedStatuses.value.has(row.status_id)) {
+      continue;
+    }
     const document = await mastodonNotification(c.env, identity.value, row, user.value.id);
     if (document) {
       documents.push(document);

@@ -198,6 +198,14 @@ model account_announcement_reactions {
   @@index([announcement_id, reaction_name], map: "idx_announcement_reactions_group")
 }
 
+model status_mutes {
+  account_id            String
+  thread_root_status_id String
+  created_at            String @default("CURRENT_TIMESTAMP")
+
+  @@id([account_id, thread_root_status_id])
+}
+
 model inbox_activities {
   activity_id  String @id
   kind         String

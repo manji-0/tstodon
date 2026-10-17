@@ -63,6 +63,11 @@ import {
   unpinStatus,
   updateLocalNote,
 } from "../status-store";
+import {
+  muteStatusThread,
+  resolveThreadRootStatusIds,
+  unmuteStatusThread,
+} from "../status-mute-store";
 import { canViewStatus } from "../visibility-guard";
 
 export const statusRoutes = new Hono<{ Bindings: Env }>();
@@ -527,6 +532,49 @@ const setStatusPinned = async (c: Context<{ Bindings: Env }>, pin: boolean): Pro
 
 statusRoutes.post("/api/v1/statuses/:id/pin", (c) => setStatusPinned(c, true));
 statusRoutes.post("/api/v1/statuses/:id/unpin", (c) => setStatusPinned(c, false));
+
+const setStatusMuted = async (c: Context<{ Bindings: Env }>, mute: boolean): Promise<Response> => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const found = await findStatusById(c.env.DB, c.req.param("id") ?? "");
+  if (found.isErr()) {
+    return jsonRepositoryError(c, found.error.message);
+  }
+  const existing = found.value;
+  if (!existing || existing.kind !== "LocalNote") {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const roots = await resolveThreadRootStatusIds(c.env.DB, [existing]);
+  if (roots.isErr()) {
+    return jsonRepositoryError(c, roots.error.message);
+  }
+  const rootId = roots.value.get(existing.id) ?? existing.id;
+  if (mute) {
+    const muted = await muteStatusThread(c.env.DB, user.value.id, rootId);
+    if (muted.isErr()) {
+      return jsonRepositoryError(c, muted.error.message);
+    }
+  } else {
+    const unmuted = await unmuteStatusThread(c.env.DB, user.value.id, rootId);
+    if (unmuted.isErr()) {
+      return jsonRepositoryError(c, unmuted.error.message);
+    }
+  }
+  const latest = await findStatusById(c.env.DB, existing.id);
+  if (latest.isErr() || !latest.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
+};
+
+statusRoutes.post("/api/v1/statuses/:id/mute", (c) => setStatusMuted(c, true));
+statusRoutes.post("/api/v1/statuses/:id/unmute", (c) => setStatusMuted(c, false));
 
 statusRoutes.get("/api/v1/statuses/:id/context", async (c) => {
   const identity = parseInstanceIdentity(c.env);

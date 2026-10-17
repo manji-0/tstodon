@@ -25,6 +25,7 @@ import {
 } from "./social-store";
 import { findMediaByIds, type MediaRow } from "./media-store";
 import { customEmojiJson, emojisInText, emojisInTexts, type CustomEmoji } from "./emoji";
+import { listStatusMuteRoots, resolveThreadRootStatusIds } from "./status-mute-store";
 import { customEmojis } from "./runtime-config";
 import { FilterContextSchema, parseJsonColumn } from "./schemas";
 import type { FilterRow } from "./moderation-store";
@@ -203,6 +204,7 @@ const buildLocalNoteDocument = (
   mediaById: ReadonlyMap<string, MediaRow>,
   parentAccountId: string | null,
   emojis: ReadonlyArray<CustomEmoji>,
+  muted: boolean,
 ): Record<string, unknown> => {
   const url = `${InstanceIdentity.actorUrl(identity, account.username)}/statuses/${status.id}`;
   return {
@@ -222,7 +224,7 @@ const buildLocalNoteDocument = (
     edited_at: status.editedAt,
     favourited: interactions.favourited,
     reblogged: interactions.reblogged,
-    muted: false,
+    muted,
     bookmarked: interactions.bookmarked,
     content: status.contentHtml,
     reblog: null,
@@ -342,6 +344,11 @@ export const mastodonStatuses = async (
   }
 
   const noteDocs = new Map<string, Record<string, unknown>>();
+  const mutedRoots = viewerId ? await listStatusMuteRoots(env.DB, viewerId) : undefined;
+  const mutedSet = mutedRoots?.isOk() ? mutedRoots.value : new Set<string>();
+  const threadRoots =
+    mutedSet.size > 0 ? await resolveThreadRootStatusIds(env.DB, allStatuses) : undefined;
+  const rootById = threadRoots?.isOk() ? threadRoots.value : undefined;
   for (const status of allStatuses) {
     if (status.kind !== "LocalNote") {
       continue;
@@ -352,6 +359,7 @@ export const mastodonStatuses = async (
       continue;
     }
     const parent = status.inReplyToId ? byId.get(status.inReplyToId) : undefined;
+    const root = rootById?.get(status.id);
     noteDocs.set(
       status.id,
       buildLocalNoteDocument(
@@ -370,6 +378,7 @@ export const mastodonStatuses = async (
         mediaById,
         parent?.accountId ?? null,
         emojisInTexts([status.text, status.spoilerText], instanceEmojis),
+        root !== undefined && mutedSet.has(root),
       ),
     );
   }

@@ -97,6 +97,11 @@ export type account_announcement_dismissals = Prisma.account_announcement_dismis
  */
 export type account_announcement_reactions = Prisma.account_announcement_reactionsModel;
 /**
+ * Model status_mutes
+ *
+ */
+export type status_mutes = Prisma.status_mutesModel;
+/**
  * Model inbox_activities
  *
  */

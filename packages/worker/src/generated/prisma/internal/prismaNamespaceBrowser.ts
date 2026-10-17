@@ -64,6 +64,7 @@ export const ModelName = {
   status_pins: "status_pins",
   account_announcement_dismissals: "account_announcement_dismissals",
   account_announcement_reactions: "account_announcement_reactions",
+  status_mutes: "status_mutes",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
   markers: "markers",
@@ -267,6 +268,15 @@ export const Account_announcement_reactionsScalarFieldEnum = {
 
 export type Account_announcement_reactionsScalarFieldEnum =
   (typeof Account_announcement_reactionsScalarFieldEnum)[keyof typeof Account_announcement_reactionsScalarFieldEnum];
+
+export const Status_mutesScalarFieldEnum = {
+  account_id: "account_id",
+  thread_root_status_id: "thread_root_status_id",
+  created_at: "created_at",
+} as const;
+
+export type Status_mutesScalarFieldEnum =
+  (typeof Status_mutesScalarFieldEnum)[keyof typeof Status_mutesScalarFieldEnum];
 
 export const Inbox_activitiesScalarFieldEnum = {
   activity_id: "activity_id",

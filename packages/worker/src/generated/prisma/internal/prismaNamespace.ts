@@ -407,6 +407,7 @@ export const ModelName = {
   status_pins: "status_pins",
   account_announcement_dismissals: "account_announcement_dismissals",
   account_announcement_reactions: "account_announcement_reactions",
+  status_mutes: "status_mutes",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
   markers: "markers",
@@ -460,6 +461,7 @@ export type TypeMap<
       | "status_pins"
       | "account_announcement_dismissals"
       | "account_announcement_reactions"
+      | "status_mutes"
       | "inbox_activities"
       | "instance_settings"
       | "markers"
@@ -1676,6 +1678,82 @@ export type TypeMap<
           args: Prisma.account_announcement_reactionsCountArgs<ExtArgs>;
           result:
             | runtime.Types.Utils.Optional<Prisma.Account_announcement_reactionsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    status_mutes: {
+      payload: Prisma.$status_mutesPayload<ExtArgs>;
+      fields: Prisma.status_mutesFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.status_mutesFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_mutesPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.status_mutesFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_mutesPayload>;
+        };
+        findFirst: {
+          args: Prisma.status_mutesFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_mutesPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.status_mutesFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_mutesPayload>;
+        };
+        findMany: {
+          args: Prisma.status_mutesFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_mutesPayload>[];
+        };
+        create: {
+          args: Prisma.status_mutesCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_mutesPayload>;
+        };
+        createMany: {
+          args: Prisma.status_mutesCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.status_mutesCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_mutesPayload>[];
+        };
+        delete: {
+          args: Prisma.status_mutesDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_mutesPayload>;
+        };
+        update: {
+          args: Prisma.status_mutesUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_mutesPayload>;
+        };
+        deleteMany: {
+          args: Prisma.status_mutesDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.status_mutesUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.status_mutesUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_mutesPayload>[];
+        };
+        upsert: {
+          args: Prisma.status_mutesUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_mutesPayload>;
+        };
+        aggregate: {
+          args: Prisma.Status_mutesAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateStatus_mutes>;
+        };
+        groupBy: {
+          args: Prisma.status_mutesGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Status_mutesGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.status_mutesCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Status_mutesCountAggregateOutputType>
             | number;
         };
       };
@@ -3174,6 +3252,15 @@ export const Account_announcement_reactionsScalarFieldEnum = {
 export type Account_announcement_reactionsScalarFieldEnum =
   (typeof Account_announcement_reactionsScalarFieldEnum)[keyof typeof Account_announcement_reactionsScalarFieldEnum];
 
+export const Status_mutesScalarFieldEnum = {
+  account_id: "account_id",
+  thread_root_status_id: "thread_root_status_id",
+  created_at: "created_at",
+} as const;
+
+export type Status_mutesScalarFieldEnum =
+  (typeof Status_mutesScalarFieldEnum)[keyof typeof Status_mutesScalarFieldEnum];
+
 export const Inbox_activitiesScalarFieldEnum = {
   activity_id: "activity_id",
   kind: "kind",
@@ -3592,6 +3679,7 @@ export type GlobalOmitConfig = {
   status_pins?: Prisma.status_pinsOmit;
   account_announcement_dismissals?: Prisma.account_announcement_dismissalsOmit;
   account_announcement_reactions?: Prisma.account_announcement_reactionsOmit;
+  status_mutes?: Prisma.status_mutesOmit;
   inbox_activities?: Prisma.inbox_activitiesOmit;
   instance_settings?: Prisma.instance_settingsOmit;
   markers?: Prisma.markersOmit;

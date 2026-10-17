@@ -12,6 +12,7 @@ import {
   listPublicStatuses,
   listTagStatuses,
 } from "../status-store";
+import { filterMutedThreads } from "../status-mute-store";
 
 export const timelineRoutes = new Hono<{ Bindings: Env }>();
 
@@ -72,7 +73,11 @@ timelineRoutes.get("/api/v1/timelines/home", async (c) => {
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
-  return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, user.value.id));
+  const visible = await filterMutedThreads(c.env.DB, user.value.id, statuses.value);
+  if (visible.isErr()) {
+    return jsonRepositoryError(c, visible.error.message);
+  }
+  return c.json(await mastodonStatuses(c.env, identity.value, visible.value, user.value.id));
 });
 
 timelineRoutes.get("/api/v1/timelines/tag/:hashtag", async (c) => {
@@ -117,5 +122,9 @@ timelineRoutes.get("/api/v1/timelines/direct", async (c) => {
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
-  return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, user.value.id));
+  const visible = await filterMutedThreads(c.env.DB, user.value.id, statuses.value);
+  if (visible.isErr()) {
+    return jsonRepositoryError(c, visible.error.message);
+  }
+  return c.json(await mastodonStatuses(c.env, identity.value, visible.value, user.value.id));
 });

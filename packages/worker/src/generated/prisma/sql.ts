@@ -220,9 +220,15 @@ export * from "./sql/listPublicRemoteStatuses";
 
 export * from "./sql/listStatusEditSnapshots";
 
+export * from "./sql/listStatusMuteRoots";
+
+export * from "./sql/listStatusReplyLinks";
+
 export * from "./sql/listSuggestionExclusionIds";
 
 export * from "./sql/markPollExpiryNotified";
+
+export * from "./sql/muteStatus";
 
 export * from "./sql/pinStatus";
 
@@ -233,6 +239,8 @@ export * from "./sql/rejectRemoteFollowRequest";
 export * from "./sql/searchAccounts";
 
 export * from "./sql/searchRemoteActors";
+
+export * from "./sql/unmuteStatus";
 
 export * from "./sql/unpinStatus";
 
