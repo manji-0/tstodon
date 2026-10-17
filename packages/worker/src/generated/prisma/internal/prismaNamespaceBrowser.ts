@@ -58,6 +58,8 @@ export const ModelName = {
   follows: "follows",
   blocks: "blocks",
   mutes: "mutes",
+  notification_dismissals: "notification_dismissals",
+  notification_clear_markers: "notification_clear_markers",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
   markers: "markers",
@@ -204,6 +206,23 @@ export const MutesScalarFieldEnum = {
 } as const;
 
 export type MutesScalarFieldEnum = (typeof MutesScalarFieldEnum)[keyof typeof MutesScalarFieldEnum];
+
+export const Notification_dismissalsScalarFieldEnum = {
+  account_id: "account_id",
+  notification_id: "notification_id",
+  created_at: "created_at",
+} as const;
+
+export type Notification_dismissalsScalarFieldEnum =
+  (typeof Notification_dismissalsScalarFieldEnum)[keyof typeof Notification_dismissalsScalarFieldEnum];
+
+export const Notification_clear_markersScalarFieldEnum = {
+  account_id: "account_id",
+  cleared_at: "cleared_at",
+} as const;
+
+export type Notification_clear_markersScalarFieldEnum =
+  (typeof Notification_clear_markersScalarFieldEnum)[keyof typeof Notification_clear_markersScalarFieldEnum];
 
 export const Inbox_activitiesScalarFieldEnum = {
   activity_id: "activity_id",

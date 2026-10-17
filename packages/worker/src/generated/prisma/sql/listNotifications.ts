@@ -10,7 +10,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param limit
  */
 export const listNotifications = $runtime.makeTypedQueryFactory(
-  "SELECT id, account_id, from_account_id, kind, status_id, created_at\nFROM notifications\nWHERE account_id = $1\nAND from_account_id NOT IN (\nSELECT target_account_id FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id IS NOT NULL\nUNION\nSELECT blocker_account_id FROM blocks\nWHERE target_account_id = $1 AND blocker_account_id IS NOT NULL\nUNION\nSELECT target_account_id FROM mutes\nWHERE account_id = $1 AND target_account_id IS NOT NULL AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $2)\n)\nORDER BY id DESC LIMIT $3",
+  "SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.created_at\nFROM notifications n\nWHERE n.account_id = $1\nAND n.created_at > COALESCE(\n(SELECT cleared_at FROM notification_clear_markers WHERE account_id = $1), ''\n)\nAND n.id NOT IN (\nSELECT notification_id FROM notification_dismissals WHERE account_id = $1\n)\nAND n.from_account_id NOT IN (\nSELECT target_account_id FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id IS NOT NULL\nUNION\nSELECT blocker_account_id FROM blocks\nWHERE target_account_id = $1 AND blocker_account_id IS NOT NULL\nUNION\nSELECT target_account_id FROM mutes\nWHERE account_id = $1 AND target_account_id IS NOT NULL AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $2)\n)\nORDER BY n.id DESC LIMIT $3",
 ) as (
   accountId: string,
   now: string,

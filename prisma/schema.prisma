@@ -147,6 +147,19 @@ model mutes {
   @@index([account_id, created_at(sort: Desc)], map: "idx_mutes_account_created_at")
 }
 
+model notification_dismissals {
+  account_id      String
+  notification_id String
+  created_at      String @default("CURRENT_TIMESTAMP")
+
+  @@id([account_id, notification_id])
+}
+
+model notification_clear_markers {
+  account_id String @id
+  cleared_at String
+}
+
 model inbox_activities {
   activity_id  String @id
   kind         String

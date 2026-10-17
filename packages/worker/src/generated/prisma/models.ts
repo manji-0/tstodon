@@ -17,6 +17,8 @@ export type * from "./models/filters";
 export type * from "./models/follows";
 export type * from "./models/blocks";
 export type * from "./models/mutes";
+export type * from "./models/notification_dismissals";
+export type * from "./models/notification_clear_markers";
 export type * from "./models/inbox_activities";
 export type * from "./models/instance_settings";
 export type * from "./models/markers";

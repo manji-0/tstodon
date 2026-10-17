@@ -6,14 +6,18 @@ import { nowIso } from "./clock";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   authorizeFollowRequest as authorizeFollowRequestSql,
+  clearNotifications as clearNotificationsSql,
+  countUnreadNotifications as countUnreadNotificationsSql,
   deleteBlock as deleteBlockSql,
   deleteBookmark as deleteBookmarkSql,
   deleteFavourite as deleteFavouriteSql,
   deleteFollow as deleteFollowSql,
   deleteMute as deleteMuteSql,
+  dismissNotification as dismissNotificationSql,
   findActiveMute as findActiveMuteSql,
   findBlock as findBlockSql,
   findFollowKind as findFollowKindSql,
+  findNotificationOwned as findNotificationOwnedSql,
   insertBookmarkOrIgnore as insertBookmarkOrIgnoreSql,
   insertFavouriteOrIgnore as insertFavouriteOrIgnoreSql,
   insertFollowOrIgnore as insertFollowOrIgnoreSql,
@@ -390,6 +394,47 @@ export const listNotifications = async (
       status_id: row.status_id,
       created_at: row.created_at,
     }));
+  });
+
+/** Hide one notification for an account. False when the row is not theirs. */
+export const dismissNotification = async (
+  db: D1Database,
+  accountId: string,
+  notificationId: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const owned = await queryTyped<{ present: number }>(
+      db,
+      findNotificationOwnedSql(accountId, notificationId),
+    );
+    if (owned.length === 0) {
+      return false;
+    }
+    await runTyped(db, dismissNotificationSql(accountId, notificationId, nowIso()));
+    return true;
+  });
+
+/** Hide every current notification for an account by moving the clear marker. */
+export const clearNotifications = async (
+  db: D1Database,
+  accountId: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, clearNotificationsSql(accountId, nowIso()));
+  });
+
+/** Count visible notifications newer than the notifications marker. */
+export const countUnreadNotifications = async (
+  db: D1Database,
+  accountId: string,
+  markerId: string | undefined,
+): Promise<Result<number, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ count: number | bigint }>(
+      db,
+      countUnreadNotificationsSql(accountId, markerId ?? "", nowIso()),
+    );
+    return Number(rows[0]?.count ?? 0);
   });
 
 export type StatusInteractionCounts = Readonly<{

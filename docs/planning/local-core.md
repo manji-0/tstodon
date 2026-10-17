@@ -74,6 +74,9 @@ Labels:
 | POST   | `/api/v2/media`                         |
 | GET    | `/media/:id`                            |
 | GET    | `/api/v1/notifications`                 |
+| GET    | `/api/v1/notifications/unread_count`    |
+| POST   | `/api/v1/notifications/clear`           |
+| POST   | `/api/v1/notifications/:id/dismiss`     |
 | GET    | `/api/v1/polls/:id`                     |
 | POST   | `/api/v1/polls/:id/votes`               |
 | GET    | `/api/v1/filters`                       |
@@ -118,7 +121,7 @@ Search is D1 `LIKE` over local usernames and status text. Tag timelines match `#
 
 Locked accounts collect pending follow requests from local followers (`follows.kind = 'Pending'`) and remote followers (`remote_follows.remote_request_kind = 'Queued'`). `GET /api/v1/follow_requests` lists both as account documents, most recent first. `POST /api/v1/follow_requests/:id/authorize` promotes the request to `Accepted`; for a remote follower it also delivers a signed `Accept` that references the original Follow activity to the follower's inbox. `POST /api/v1/follow_requests/:id/reject` deletes the pending request and, for a remote follower, delivers a signed `Reject`. Both endpoints return the requester `Relationship`; an unknown or non-pending id is `NotFound`.
 
-Blocks and mutes are stored per viewer keyed by the target actor URI (`blocks`, `mutes`; `migration 0011`), with the local target account id recorded for local targets. `POST /api/v1/accounts/:id/block|unblock` and `.../mute|unmute` return the viewer `Relationship`; `mute` accepts `notifications` (default true) and `duration` seconds (0 or absent = no expiry). Blocks and active mutes hide the target's notes from the viewer's home, list, and direct timelines, and — as in Mastodon — a block also hides the viewer's notes from the blocked account (the `blocked_by` direction). Notifications exclude senders the viewer blocks and senders the viewer muted with `notifications`; a mute with `notifications=false` still hides the timeline but keeps notifications. A mute expires when `expires_at` passes. `GET /api/v1/blocks` and `GET /api/v1/mutes` list the viewer's targets as account documents. Unlike cfwdon, tstodon applies the block to these timelines (cfwdon filters only mutes) and leaves public/tag timelines unfiltered.
+Blocks and mutes are stored per viewer keyed by the target actor URI (`blocks`, `mutes`; `migration 0011`), with the local target account id recorded for local targets. `POST /api/v1/accounts/:id/block|unblock` and `.../mute|unmute` return the viewer `Relationship`; `mute` accepts `notifications` (default true) and `duration` seconds (0 or absent = no expiry). Blocks and active mutes hide the target's notes from the viewer's home, list, and direct timelines, and — as in Mastodon — a block also hides the viewer's notes from the blocked account (the `blocked_by` direction). Notifications exclude senders the viewer blocks and senders the viewer muted with `notifications`; a mute with `notifications=false` still hides the timeline but keeps notifications. A mute expires when `expires_at` passes. `GET /api/v1/blocks` and `GET /api/v1/mutes` list the viewer's targets as account documents. Unlike cfwdon, tstodon applies the block to these timelines (cfwdon filters only mutes) and leaves public/tag timelines unfiltered. Notifications honor per-account actions: `POST /api/v1/notifications/:id/dismiss` records a dismissal, `POST /api/v1/notifications/clear` moves a clear marker, and `GET /api/v1/notifications/unread_count` counts visible notifications newer than the notifications marker (excluding cleared, dismissed, blocked, and notification-muted senders).
 
 ### Placeholder
 

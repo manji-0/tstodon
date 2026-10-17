@@ -67,6 +67,16 @@ export type blocks = Prisma.blocksModel;
  */
 export type mutes = Prisma.mutesModel;
 /**
+ * Model notification_dismissals
+ *
+ */
+export type notification_dismissals = Prisma.notification_dismissalsModel;
+/**
+ * Model notification_clear_markers
+ *
+ */
+export type notification_clear_markers = Prisma.notification_clear_markersModel;
+/**
  * Model inbox_activities
  *
  */

@@ -10,6 +10,8 @@ export * from "./sql/authorizeFollowRequest";
 
 export * from "./sql/authorizeRemoteFollowRequest";
 
+export * from "./sql/clearNotifications";
+
 export * from "./sql/countAccounts";
 
 export * from "./sql/countFollowersByAccountIdsJson";
@@ -23,6 +25,8 @@ export * from "./sql/countRemoteFavourites";
 export * from "./sql/countStatuses";
 
 export * from "./sql/countStatusesByAccountIdsJson";
+
+export * from "./sql/countUnreadNotifications";
 
 export * from "./sql/createList";
 
@@ -56,6 +60,8 @@ export * from "./sql/deleteStatusMentions";
 
 export * from "./sql/deleteStatusOwned";
 
+export * from "./sql/dismissNotification";
+
 export * from "./sql/findAccountByEmail";
 
 export * from "./sql/findAccountById";
@@ -75,6 +81,8 @@ export * from "./sql/findFollowKind";
 export * from "./sql/findListForAccount";
 
 export * from "./sql/findMediaById";
+
+export * from "./sql/findNotificationOwned";
 
 export * from "./sql/findOutboundActivity";
 

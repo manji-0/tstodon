@@ -401,6 +401,8 @@ export const ModelName = {
   follows: "follows",
   blocks: "blocks",
   mutes: "mutes",
+  notification_dismissals: "notification_dismissals",
+  notification_clear_markers: "notification_clear_markers",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
   markers: "markers",
@@ -448,6 +450,8 @@ export type TypeMap<
       | "follows"
       | "blocks"
       | "mutes"
+      | "notification_dismissals"
+      | "notification_clear_markers"
       | "inbox_activities"
       | "instance_settings"
       | "markers"
@@ -1211,6 +1215,158 @@ export type TypeMap<
         count: {
           args: Prisma.mutesCountArgs<ExtArgs>;
           result: runtime.Types.Utils.Optional<Prisma.MutesCountAggregateOutputType> | number;
+        };
+      };
+    };
+    notification_dismissals: {
+      payload: Prisma.$notification_dismissalsPayload<ExtArgs>;
+      fields: Prisma.notification_dismissalsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.notification_dismissalsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_dismissalsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.notification_dismissalsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_dismissalsPayload>;
+        };
+        findFirst: {
+          args: Prisma.notification_dismissalsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_dismissalsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.notification_dismissalsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_dismissalsPayload>;
+        };
+        findMany: {
+          args: Prisma.notification_dismissalsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_dismissalsPayload>[];
+        };
+        create: {
+          args: Prisma.notification_dismissalsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_dismissalsPayload>;
+        };
+        createMany: {
+          args: Prisma.notification_dismissalsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.notification_dismissalsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_dismissalsPayload>[];
+        };
+        delete: {
+          args: Prisma.notification_dismissalsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_dismissalsPayload>;
+        };
+        update: {
+          args: Prisma.notification_dismissalsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_dismissalsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.notification_dismissalsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.notification_dismissalsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.notification_dismissalsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_dismissalsPayload>[];
+        };
+        upsert: {
+          args: Prisma.notification_dismissalsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_dismissalsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Notification_dismissalsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateNotification_dismissals>;
+        };
+        groupBy: {
+          args: Prisma.notification_dismissalsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Notification_dismissalsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.notification_dismissalsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Notification_dismissalsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    notification_clear_markers: {
+      payload: Prisma.$notification_clear_markersPayload<ExtArgs>;
+      fields: Prisma.notification_clear_markersFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.notification_clear_markersFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_clear_markersPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.notification_clear_markersFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_clear_markersPayload>;
+        };
+        findFirst: {
+          args: Prisma.notification_clear_markersFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_clear_markersPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.notification_clear_markersFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_clear_markersPayload>;
+        };
+        findMany: {
+          args: Prisma.notification_clear_markersFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_clear_markersPayload>[];
+        };
+        create: {
+          args: Prisma.notification_clear_markersCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_clear_markersPayload>;
+        };
+        createMany: {
+          args: Prisma.notification_clear_markersCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.notification_clear_markersCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_clear_markersPayload>[];
+        };
+        delete: {
+          args: Prisma.notification_clear_markersDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_clear_markersPayload>;
+        };
+        update: {
+          args: Prisma.notification_clear_markersUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_clear_markersPayload>;
+        };
+        deleteMany: {
+          args: Prisma.notification_clear_markersDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.notification_clear_markersUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.notification_clear_markersUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_clear_markersPayload>[];
+        };
+        upsert: {
+          args: Prisma.notification_clear_markersUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_clear_markersPayload>;
+        };
+        aggregate: {
+          args: Prisma.Notification_clear_markersAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateNotification_clear_markers>;
+        };
+        groupBy: {
+          args: Prisma.notification_clear_markersGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Notification_clear_markersGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.notification_clear_markersCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Notification_clear_markersCountAggregateOutputType>
+            | number;
         };
       };
     };
@@ -2651,6 +2807,23 @@ export const MutesScalarFieldEnum = {
 
 export type MutesScalarFieldEnum = (typeof MutesScalarFieldEnum)[keyof typeof MutesScalarFieldEnum];
 
+export const Notification_dismissalsScalarFieldEnum = {
+  account_id: "account_id",
+  notification_id: "notification_id",
+  created_at: "created_at",
+} as const;
+
+export type Notification_dismissalsScalarFieldEnum =
+  (typeof Notification_dismissalsScalarFieldEnum)[keyof typeof Notification_dismissalsScalarFieldEnum];
+
+export const Notification_clear_markersScalarFieldEnum = {
+  account_id: "account_id",
+  cleared_at: "cleared_at",
+} as const;
+
+export type Notification_clear_markersScalarFieldEnum =
+  (typeof Notification_clear_markersScalarFieldEnum)[keyof typeof Notification_clear_markersScalarFieldEnum];
+
 export const Inbox_activitiesScalarFieldEnum = {
   activity_id: "activity_id",
   kind: "kind",
@@ -3063,6 +3236,8 @@ export type GlobalOmitConfig = {
   follows?: Prisma.followsOmit;
   blocks?: Prisma.blocksOmit;
   mutes?: Prisma.mutesOmit;
+  notification_dismissals?: Prisma.notification_dismissalsOmit;
+  notification_clear_markers?: Prisma.notification_clear_markersOmit;
   inbox_activities?: Prisma.inbox_activitiesOmit;
   instance_settings?: Prisma.instance_settingsOmit;
   markers?: Prisma.markersOmit;
