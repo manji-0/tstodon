@@ -15,6 +15,7 @@ import {
   type AccountCounts,
 } from "./account-store";
 import { findPollsByStatusIds, type PollRecord } from "./poll-store";
+import { RemoteAccountId } from "./remote-account-id";
 import { findStatusById, findStatusesByIds } from "./status-store";
 import {
   statusInteractionCountsByIds,
@@ -80,7 +81,7 @@ export const mastodonRemoteAccount = (
 ): Record<string, unknown> => {
   const url = actor.actorUri;
   return {
-    id: actor.actorUri,
+    id: RemoteAccountId.encode(actor.actorUri),
     username: actor.username,
     acct: `${actor.username}@${actor.domain}`,
     display_name: actor.displayName,

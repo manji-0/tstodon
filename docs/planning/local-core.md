@@ -169,6 +169,8 @@ Public discovery and actor documents are unauthenticated. Inbox requests must ca
 
 Outbound Create / Announce jobs enqueue `ExpandFollowers` on `OUTBOX_PROCESS_QUEUE`. The queue inserts a `Queued` `outbox_deliveries` row per remote inbox and starts `OutboxDeliveryWorkflow`. The workflow signs POSTs, maps HTTP status onto `DeliveryAttemptOutcome`, and applies `OutboxDelivery.afterAttempt` with `workflowSleep` between transient failures. Same-host inboxes are skipped. Inbound Create / Announce persist a `RemoteStatus` when the object is a Note attributed to the signing actor. Remote Like / Announce of a local status are stored separately from local account rows and counted on that status. Nested Undo of Like or Announce removes the remote row.
 
+Remote accounts are exposed to the Mastodon API under a path-safe id: `r_` + base64url(actor URI) (`RemoteAccountId`). `GET /api/v1/accounts/:id` and the follow request authorize/reject endpoints decode it back to the actor URI, so remote targets no longer need percent-encoding in path segments.
+
 ## Next
 
 <!-- derived-from #out-of-scope -->

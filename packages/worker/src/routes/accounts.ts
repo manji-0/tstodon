@@ -18,7 +18,14 @@ import {
   requireSession,
   requireUser,
 } from "../http";
-import { mastodonAccountDocument, mastodonRelationship, mastodonStatuses } from "../mastodon";
+import {
+  mastodonAccountDocument,
+  mastodonRelationship,
+  mastodonRemoteAccount,
+  mastodonStatuses,
+} from "../mastodon";
+import { findRemoteActorByUri } from "../remote-actor-store";
+import { RemoteAccountId } from "../remote-account-id";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
   blockAccount,
@@ -131,14 +138,25 @@ accountRoutes.get("/api/v1/accounts/:id", async (c) => {
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const account = await findAccountByIdOrUsername(c.env.DB, c.req.param("id") ?? "");
+  const id = c.req.param("id") ?? "";
+  const account = await findAccountByIdOrUsername(c.env.DB, id);
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
   }
-  if (!account.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  if (account.value) {
+    return c.json(await mastodonAccountDocument(c.env, identity.value, account.value));
   }
-  return c.json(await mastodonAccountDocument(c.env, identity.value, account.value));
+  const actorUri = RemoteAccountId.decode(id);
+  if (actorUri.isOk()) {
+    const actor = await findRemoteActorByUri(c.env.DB, actorUri.value);
+    if (actor.isErr()) {
+      return jsonRepositoryError(c, actor.error.message);
+    }
+    if (actor.value) {
+      return c.json(mastodonRemoteAccount(identity.value, actor.value));
+    }
+  }
+  return c.json({ error: "Record not found", kind: "NotFound" }, 404);
 });
 
 accountRoutes.get("/api/v1/accounts/:id/statuses", async (c) => {

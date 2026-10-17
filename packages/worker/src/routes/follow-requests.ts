@@ -13,6 +13,7 @@ import {
   rejectRemoteFollowRequest,
 } from "../remote-actor-store";
 import { parseInstanceIdentity } from "../runtime-config";
+import { RemoteAccountId } from "../remote-account-id";
 import {
   authorizeFollowRequest,
   listPendingFollowRequesters,
@@ -45,6 +46,22 @@ const localRequester = async (c: Context<{ Bindings: Env }>, id: string) => {
     return { kind: "error" as const, message: account.error.message };
   }
   return { kind: "local" as const, account: account.value };
+};
+
+/** Resolve a path id to a remote actor via the reversible `r_` account id. */
+const remoteRequester = async (c: Context<{ Bindings: Env }>, id: string) => {
+  const actorUri = RemoteAccountId.decode(id);
+  if (actorUri.isErr()) {
+    return { kind: "notFound" as const };
+  }
+  const actor = await findRemoteActorByUri(c.env.DB, actorUri.value);
+  if (actor.isErr()) {
+    return { kind: "error" as const, message: actor.error.message };
+  }
+  if (!actor.value) {
+    return { kind: "notFound" as const };
+  }
+  return { kind: "remote" as const, actor: actor.value, actorUri: actorUri.value };
 };
 
 followRequestRoutes.get("/api/v1/follow_requests", async (c) => {
@@ -122,18 +139,22 @@ followRequestRoutes.post("/api/v1/follow_requests/:id/authorize", async (c) => {
     return c.json(mastodonRelationship(local.account.id, flags.value));
   }
 
-  const actor = await findRemoteActorByUri(c.env.DB, id);
-  if (actor.isErr()) {
-    return jsonRepositoryError(c, actor.error.message);
-  }
-  if (!actor.value) {
+  const remote = await remoteRequester(c, id);
+  if (remote.kind === "notFound") {
     return notFound(c);
   }
-  const followActivityId = await findPendingRemoteFollowRequest(c.env.DB, user.value.id, id);
+  if (remote.kind === "error") {
+    return jsonRepositoryError(c, remote.message);
+  }
+  const followActivityId = await findPendingRemoteFollowRequest(
+    c.env.DB,
+    user.value.id,
+    remote.actorUri,
+  );
   if (followActivityId.isErr()) {
     return jsonRepositoryError(c, followActivityId.error.message);
   }
-  const authorized = await authorizeRemoteFollowRequest(c.env.DB, user.value.id, id);
+  const authorized = await authorizeRemoteFollowRequest(c.env.DB, user.value.id, remote.actorUri);
   if (authorized.isErr()) {
     return jsonRepositoryError(c, authorized.error.message);
   }
@@ -142,7 +163,7 @@ followRequestRoutes.post("/api/v1/follow_requests/:id/authorize", async (c) => {
   }
   const acceptActor = InstanceIdentity.actorUrl(identity.value, user.value.username);
   if (followActivityId.value) {
-    const followerInbox = RemoteActor.deliveryInbox(actor.value);
+    const followerInbox = RemoteActor.deliveryInbox(remote.actor);
     await enqueueTargetedActivity(
       c.env,
       user.value.id,
@@ -155,7 +176,7 @@ followRequestRoutes.post("/api/v1/follow_requests/:id/authorize", async (c) => {
         object: {
           id: followActivityId.value,
           type: "Follow",
-          actor: actor.value.actorUri,
+          actor: remote.actorUri,
           object: acceptActor,
         },
       },
@@ -195,18 +216,22 @@ followRequestRoutes.post("/api/v1/follow_requests/:id/reject", async (c) => {
     return c.json(mastodonRelationship(local.account.id, flags.value));
   }
 
-  const actor = await findRemoteActorByUri(c.env.DB, id);
-  if (actor.isErr()) {
-    return jsonRepositoryError(c, actor.error.message);
-  }
-  if (!actor.value) {
+  const remote = await remoteRequester(c, id);
+  if (remote.kind === "notFound") {
     return notFound(c);
   }
-  const followActivityId = await findPendingRemoteFollowRequest(c.env.DB, user.value.id, id);
+  if (remote.kind === "error") {
+    return jsonRepositoryError(c, remote.message);
+  }
+  const followActivityId = await findPendingRemoteFollowRequest(
+    c.env.DB,
+    user.value.id,
+    remote.actorUri,
+  );
   if (followActivityId.isErr()) {
     return jsonRepositoryError(c, followActivityId.error.message);
   }
-  const rejected = await rejectRemoteFollowRequest(c.env.DB, user.value.id, id);
+  const rejected = await rejectRemoteFollowRequest(c.env.DB, user.value.id, remote.actorUri);
   if (rejected.isErr()) {
     return jsonRepositoryError(c, rejected.error.message);
   }
@@ -215,7 +240,7 @@ followRequestRoutes.post("/api/v1/follow_requests/:id/reject", async (c) => {
   }
   const rejectActor = InstanceIdentity.actorUrl(identity.value, user.value.username);
   if (followActivityId.value) {
-    const followerInbox = RemoteActor.deliveryInbox(actor.value);
+    const followerInbox = RemoteActor.deliveryInbox(remote.actor);
     await enqueueTargetedActivity(
       c.env,
       user.value.id,
@@ -228,7 +253,7 @@ followRequestRoutes.post("/api/v1/follow_requests/:id/reject", async (c) => {
         object: {
           id: followActivityId.value,
           type: "Follow",
-          actor: actor.value.actorUri,
+          actor: remote.actorUri,
           object: rejectActor,
         },
       },

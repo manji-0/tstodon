@@ -12,6 +12,7 @@ import {
   upsertRemoteActor,
 } from "./remote-actor-store";
 import { MastodonAccountPreviewSchema } from "./schemas";
+import { RemoteAccountId } from "./remote-account-id";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
 
@@ -200,16 +201,21 @@ describe("follow requests", () => {
       headers: await auth("fr-remote-viewer@example.com"),
     });
     expect(listed.status).toBe(200);
+    const remoteId = RemoteAccountId.encode(actorUri);
     expect(read(z.array(MastodonAccountPreviewSchema), listed.body)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: actorUri, acct: "fr-frank@remote.example" }),
+        expect.objectContaining({ id: remoteId, acct: "fr-frank@remote.example" }),
       ]),
     );
 
-    const authorize = await json(
-      `/api/v1/follow_requests/${encodeURIComponent(actorUri)}/authorize`,
-      { method: "POST", headers: await auth("fr-remote-viewer@example.com") },
-    );
+    const profile = await json(`/api/v1/accounts/${remoteId}`);
+    expect(profile.status).toBe(200);
+    expect(profile.body).toMatchObject({ id: remoteId, acct: "fr-frank@remote.example" });
+
+    const authorize = await json(`/api/v1/follow_requests/${remoteId}/authorize`, {
+      method: "POST",
+      headers: await auth("fr-remote-viewer@example.com"),
+    });
     expect(authorize.status).toBe(200);
     expect(authorize.body).toMatchObject({ followed_by: true });
 
@@ -289,10 +295,13 @@ describe("follow requests", () => {
       202,
     );
 
-    const rejected = await json(`/api/v1/follow_requests/${encodeURIComponent(actorUri)}/reject`, {
-      method: "POST",
-      headers: await auth("fr-remote-reject-viewer@example.com"),
-    });
+    const rejected = await json(
+      `/api/v1/follow_requests/${RemoteAccountId.encode(actorUri)}/reject`,
+      {
+        method: "POST",
+        headers: await auth("fr-remote-reject-viewer@example.com"),
+      },
+    );
     expect(rejected.status).toBe(200);
     expect(rejected.body).toMatchObject({ followed_by: false });
 
