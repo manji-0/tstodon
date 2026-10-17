@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Account notes: `POST /api/v1/accounts/:id/note` + `Relationship.note` (private per viewer)
 - Endorsements (featured accounts) + list `exclusive`
 - Account status filters: `exclude_replies` / `exclude_reblogs` / `only_media` / `tagged` / `max_id`; reblog now returns the reblog document
 - Poll editing: re-option an unvoted, unexpired poll via `PUT /api/v1/statuses/:id`

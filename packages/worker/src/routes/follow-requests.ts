@@ -38,6 +38,7 @@ const remoteFollowerFlags = (followedBy: boolean): RelationshipFlags => ({
   mutingNotifications: false,
   mutingExpiresAt: null,
   endorsed: false,
+  note: "",
 });
 
 /** Resolve a follow request target id to a local account or a remote actor uri. */

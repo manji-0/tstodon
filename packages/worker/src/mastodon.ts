@@ -432,7 +432,7 @@ export const mastodonRelationship = (
   requested: flags.requested,
   domain_blocking: false,
   endorsed: flags.endorsed,
-  note: "",
+  note: flags.note,
 });
 
 export const mastodonNotification = async (

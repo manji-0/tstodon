@@ -45,6 +45,18 @@ model endorsements {
   @@index([target_account_id], map: "idx_endorsements_target_account_id")
 }
 
+model account_notes {
+  account_id        String
+  target_account_id String?
+  target_actor_uri  String
+  note              String  @default("")
+  created_at        String  @default("CURRENT_TIMESTAMP")
+  updated_at        String  @default("CURRENT_TIMESTAMP")
+
+  @@id([account_id, target_actor_uri])
+  @@index([target_account_id], map: "idx_account_notes_target_account_id")
+}
+
 model accounts {
   id                                                    String @id
   username                                              String                 @unique(map: "sqlite_autoindex_accounts_2")

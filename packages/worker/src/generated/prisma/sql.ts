@@ -38,6 +38,8 @@ export * from "./sql/countUnreadNotifications";
 
 export * from "./sql/createList";
 
+export * from "./sql/deleteAccountNote";
+
 export * from "./sql/deleteAnnouncementReaction";
 
 export * from "./sql/deleteBlock";
@@ -85,6 +87,8 @@ export * from "./sql/findAccountByEmail";
 export * from "./sql/findAccountById";
 
 export * from "./sql/findAccountByUsername";
+
+export * from "./sql/findAccountNote";
 
 export * from "./sql/findAccountsByIdsJson";
 
@@ -305,6 +309,8 @@ export * from "./sql/updateOutboxTarget";
 export * from "./sql/updatePollOptionsIfActive";
 
 export * from "./sql/updateStatusPollId";
+
+export * from "./sql/upsertAccountNote";
 
 export * from "./sql/upsertAnnouncementDismissal";
 

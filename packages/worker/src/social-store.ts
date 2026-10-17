@@ -8,6 +8,7 @@ import {
   authorizeFollowRequest as authorizeFollowRequestSql,
   clearNotifications as clearNotificationsSql,
   countUnreadNotifications as countUnreadNotificationsSql,
+  deleteAccountNote as deleteAccountNoteSql,
   deleteBlock as deleteBlockSql,
   deleteBookmark as deleteBookmarkSql,
   deleteEndorsement as deleteEndorsementSql,
@@ -15,6 +16,7 @@ import {
   deleteFollow as deleteFollowSql,
   deleteMute as deleteMuteSql,
   dismissNotification as dismissNotificationSql,
+  findAccountNote as findAccountNoteSql,
   findActiveMute as findActiveMuteSql,
   findBlock as findBlockSql,
   findEndorsement as findEndorsementSql,
@@ -35,6 +37,7 @@ import {
   listPendingFollowRequesters as listPendingFollowRequestersSql,
   listSuggestionExclusionIds as listSuggestionExclusionIdsSql,
   rejectFollowRequest as rejectFollowRequestSql,
+  upsertAccountNote as upsertAccountNoteSql,
   upsertBlock as upsertBlockSql,
   upsertMute as upsertMuteSql,
 } from "./generated/prisma/sql";
@@ -260,6 +263,7 @@ export type RelationshipFlags = Readonly<{
   mutingNotifications: boolean;
   mutingExpiresAt: string | null;
   endorsed: boolean;
+  note: string;
 }>;
 
 export const relationshipFlags = async (
@@ -274,6 +278,7 @@ export const relationshipFlags = async (
     d1PrepareTyped(db, findBlockSql(targetId, viewerId)),
     d1PrepareTyped(db, findActiveMuteSql(viewerId, targetId, nowIso())),
     d1PrepareTyped(db, findEndorsementSql(viewerId, targetId)),
+    d1PrepareTyped(db, findAccountNoteSql(viewerId, targetId)),
   ]);
   if (batched.isErr()) {
     return err(batched.error);
@@ -286,6 +291,7 @@ export const relationshipFlags = async (
     | { notifications: number; expires_at: string | null }
     | undefined;
   const endorsed = (batched.value[5]?.results?.length ?? 0) > 0;
+  const note = (batched.value[6]?.results?.[0] as { note: string } | undefined)?.note ?? "";
   return ok({
     following: outgoing?.kind === "Accepted",
     followedBy: incoming?.kind === "Accepted",
@@ -296,6 +302,32 @@ export const relationshipFlags = async (
     mutingNotifications: mute ? mute.notifications !== 0 : false,
     mutingExpiresAt: mute?.expires_at ?? null,
     endorsed,
+    note,
+  });
+};
+
+/** Set (or, for an empty note, clear) the viewer's private note about a target. */
+export const setAccountNote = async (
+  db: D1Database,
+  viewerId: string,
+  target: Readonly<{ accountId: string | null; actorUri: string; id: string }>,
+  note: string,
+): Promise<Result<void, RepositoryError>> => {
+  const trimmed = note.trim();
+  if (trimmed.length === 0) {
+    const removed = await runD1(async () => {
+      await runTyped(db, deleteAccountNoteSql(viewerId, target.id));
+    });
+    if (removed.isErr()) {
+      return err(removed.error);
+    }
+    return ok(undefined);
+  }
+  return runD1(async () => {
+    await runTyped(
+      db,
+      upsertAccountNoteSql(viewerId, target.accountId, target.actorUri, trimmed, nowIso()),
+    );
   });
 };
 

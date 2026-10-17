@@ -38,6 +38,7 @@ import {
   listMutedAccounts,
   muteAccount,
   relationshipFlags,
+  setAccountNote,
   unblockAccount,
   unendorseAccount,
   unfollowAccount,
@@ -525,6 +526,42 @@ const setEndorsed = async (c: Context<{ Bindings: Env }>, endorse: boolean): Pro
 
 accountRoutes.post("/api/v1/accounts/:id/endorse", (c) => setEndorsed(c, true));
 accountRoutes.post("/api/v1/accounts/:id/unendorse", (c) => setEndorsed(c, false));
+
+const AccountNoteBodySchema = z.object({ comment: z.string() });
+
+accountRoutes.post("/api/v1/accounts/:id/note", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const targetId = c.req.param("id") ?? "";
+  const target = await endorsementTarget(c, identity.value, targetId);
+  if (!target) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const body = await readBody(c, AccountNoteBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  const saved = await setAccountNote(
+    c.env.DB,
+    user.value.id,
+    { ...target, id: targetId },
+    body.value.comment,
+  );
+  if (saved.isErr()) {
+    return jsonRepositoryError(c, saved.error.message);
+  }
+  const flags = await relationshipFlags(c.env.DB, user.value.id, targetId);
+  if (flags.isErr()) {
+    return jsonRepositoryError(c, flags.error.message);
+  }
+  return c.json(mastodonRelationship(targetId, flags.value));
+});
 
 const endorsementDocuments = async (
   c: Context<{ Bindings: Env }>,
