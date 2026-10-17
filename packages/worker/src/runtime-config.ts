@@ -18,6 +18,48 @@ const envSchema = z.object({
 
 const parseEnv = schemaResult(envSchema);
 
+export const instanceRules = (env: Env): ReadonlyArray<InstanceRule> =>
+  parseInstanceRules(`${(env as { INSTANCE_RULES?: string }).INSTANCE_RULES ?? ""}`);
+
+const instanceRulesSchema = z.array(
+  z.union([
+    z.string().min(1),
+    z.object({ text: z.string().min(1), hint: z.string().min(1).optional() }),
+  ]),
+);
+
+const parseInstanceRulesResult = schemaResult(instanceRulesSchema);
+
+export type InstanceRule = Readonly<{ id: string; text: string; hint?: string }>;
+
+/**
+ * Parse `INSTANCE_RULES`: a JSON array of strings or `{ text, hint? }` objects.
+ * Anything malformed yields no rules rather than failing the instance.
+ */
+export const parseInstanceRules = (raw: string): ReadonlyArray<InstanceRule> => {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return [];
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(trimmed);
+  } catch {
+    return [];
+  }
+  const parsed = parseInstanceRulesResult(json);
+  if (parsed.isErr()) {
+    return [];
+  }
+  return parsed.value.map((entry, index) => {
+    const id = String(index + 1);
+    if (typeof entry === "string") {
+      return { id, text: entry };
+    }
+    return entry.hint ? { id, text: entry.text, hint: entry.hint } : { id, text: entry.text };
+  });
+};
+
 export const federationAllowHosts = (env: Env): ReadonlySet<string> => {
   const raw = `${(env as { FEDERATION_ALLOW_HOSTS?: string }).FEDERATION_ALLOW_HOSTS ?? ""}`;
   return new Set(

@@ -20,7 +20,7 @@ import {
   type MarkerTimeline,
 } from "../marker-store";
 import { listPeerDomains } from "../remote-actor-store";
-import { parseInstanceIdentity } from "../runtime-config";
+import { instanceRules, parseInstanceIdentity } from "../runtime-config";
 import { listSuggestionExclusionIds } from "../social-store";
 import {
   countStatuses,
@@ -33,7 +33,7 @@ export const metaRoutes = new Hono<{ Bindings: Env }>();
 
 metaRoutes.get("/api/v1/custom_emojis", (c) => c.json([]));
 metaRoutes.get("/api/v1/announcements", (c) => c.json([]));
-metaRoutes.get("/api/v1/instance/rules", (c) => c.json([]));
+metaRoutes.get("/api/v1/instance/rules", (c) => c.json(instanceRules(c.env)));
 
 const suggestedAccounts = async (
   c: Context<{ Bindings: Env }>,
@@ -377,6 +377,6 @@ metaRoutes.get("/api/v2/instance", async (c) => {
     },
     registrations: { enabled: false, approval_required: true, message: null },
     contact: { email: instance.contactEmail, account: null },
-    rules: [],
+    rules: instanceRules(c.env),
   });
 });
