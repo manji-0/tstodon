@@ -25,8 +25,8 @@ import {
 } from "./social-store";
 import { findMediaByIds, type MediaRow } from "./media-store";
 import { customEmojiJson, emojisInText, emojisInTexts, type CustomEmoji } from "./emoji";
+import { loadCustomEmojis } from "./custom-emoji-store";
 import { listStatusMuteRoots, resolveThreadRootStatusIds } from "./status-mute-store";
-import { customEmojis } from "./runtime-config";
 import { FilterContextSchema, parseJsonColumn } from "./schemas";
 import type { FilterRow } from "./moderation-store";
 
@@ -76,7 +76,7 @@ export const mastodonAccountDocument = async (
     identity,
     account,
     counts.isOk() ? counts.value : { followers: 0, following: 0, statuses: 0 },
-    emojisInText(account.displayName, customEmojis(env)),
+    emojisInText(account.displayName, await loadCustomEmojis(env, identity.mediaPublicBaseUrl)),
   );
 };
 
@@ -258,7 +258,7 @@ export const mastodonStatuses = async (
     return [];
   }
 
-  const instanceEmojis = customEmojis(env);
+  const instanceEmojis = await loadCustomEmojis(env, identity.mediaPublicBaseUrl);
 
   const byId = new Map<string, LocalStatus>();
   for (const status of statuses) {

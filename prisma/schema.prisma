@@ -224,6 +224,19 @@ model featured_tags {
   @@index([account_id, created_at(sort: Desc)], map: "idx_featured_tags_account_created")
 }
 
+model custom_emojis {
+  id                String  @id
+  shortcode         String  @unique
+  object_key        String  @unique
+  content_type      String
+  visible_in_picker Int     @default(1)
+  category          String?
+  created_at        String  @default("CURRENT_TIMESTAMP")
+  updated_at        String  @default("CURRENT_TIMESTAMP")
+
+  @@index([shortcode], map: "idx_custom_emojis_shortcode")
+}
+
 model inbox_activities {
   activity_id  String @id
   kind         String

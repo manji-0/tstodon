@@ -10,6 +10,7 @@ import {
   type AnnouncementReactionState,
 } from "../announcement-store";
 import { customEmojiJson, emojisInText, type CustomEmoji } from "../emoji";
+import { loadCustomEmojis } from "../custom-emoji-store";
 import { listConversationsForAccount, latestStatusIdInConversation } from "../conversation-store";
 import {
   jsonAuthError,
@@ -32,7 +33,6 @@ import { listPeerDomains } from "../remote-actor-store";
 import {
   activeAnnouncements,
   announcements,
-  customEmojis,
   instanceRules,
   parseInstanceIdentity,
   type Announcement,
@@ -47,7 +47,14 @@ import {
 
 export const metaRoutes = new Hono<{ Bindings: Env }>();
 
-metaRoutes.get("/api/v1/custom_emojis", (c) => c.json(customEmojis(c.env).map(customEmojiJson)));
+metaRoutes.get("/api/v1/custom_emojis", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const emojis = await loadCustomEmojis(c.env, identity.value.mediaPublicBaseUrl);
+  return c.json(emojis.map(customEmojiJson));
+});
 metaRoutes.get("/api/v1/instance/rules", (c) => c.json(instanceRules(c.env)));
 
 const announcementDocument = (
@@ -90,6 +97,10 @@ const configuredAnnouncement = (env: Env, id: string): Announcement | undefined 
   activeAnnouncements(announcements(env)).find((announcement) => announcement.id === id);
 
 metaRoutes.get("/api/v1/announcements", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -103,7 +114,7 @@ metaRoutes.get("/api/v1/announcements", async (c) => {
   if (reactions.isErr()) {
     return jsonRepositoryError(c, reactions.error.message);
   }
-  const emojis = customEmojis(c.env);
+  const emojis = await loadCustomEmojis(c.env, identity.value.mediaPublicBaseUrl);
   const empty = new Map<string, AnnouncementReactionState>();
   return c.json(
     active.map((announcement) =>
@@ -134,6 +145,10 @@ metaRoutes.post("/api/v1/announcements/:id/dismiss", async (c) => {
 });
 
 const putAnnouncementReaction = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -143,7 +158,8 @@ const putAnnouncementReaction = async (c: Context<{ Bindings: Env }>): Promise<R
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const name = c.req.param("name") ?? "";
-  if (!reactionAllowed(announcement, name, customEmojis(c.env))) {
+  const emojis = await loadCustomEmojis(c.env, identity.value.mediaPublicBaseUrl);
+  if (!reactionAllowed(announcement, name, emojis)) {
     return c.json({ error: "Reaction not allowed", kind: "ReactionNotAllowed" }, 422);
   }
   const added = await addAnnouncementReaction(c.env.DB, user.value.id, announcement.id, name);

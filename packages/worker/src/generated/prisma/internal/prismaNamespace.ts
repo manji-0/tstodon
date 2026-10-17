@@ -410,6 +410,7 @@ export const ModelName = {
   status_mutes: "status_mutes",
   followed_tags: "followed_tags",
   featured_tags: "featured_tags",
+  custom_emojis: "custom_emojis",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
   markers: "markers",
@@ -466,6 +467,7 @@ export type TypeMap<
       | "status_mutes"
       | "followed_tags"
       | "featured_tags"
+      | "custom_emojis"
       | "inbox_activities"
       | "instance_settings"
       | "markers"
@@ -1910,6 +1912,82 @@ export type TypeMap<
           args: Prisma.featured_tagsCountArgs<ExtArgs>;
           result:
             | runtime.Types.Utils.Optional<Prisma.Featured_tagsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    custom_emojis: {
+      payload: Prisma.$custom_emojisPayload<ExtArgs>;
+      fields: Prisma.custom_emojisFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.custom_emojisFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$custom_emojisPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.custom_emojisFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$custom_emojisPayload>;
+        };
+        findFirst: {
+          args: Prisma.custom_emojisFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$custom_emojisPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.custom_emojisFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$custom_emojisPayload>;
+        };
+        findMany: {
+          args: Prisma.custom_emojisFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$custom_emojisPayload>[];
+        };
+        create: {
+          args: Prisma.custom_emojisCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$custom_emojisPayload>;
+        };
+        createMany: {
+          args: Prisma.custom_emojisCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.custom_emojisCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$custom_emojisPayload>[];
+        };
+        delete: {
+          args: Prisma.custom_emojisDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$custom_emojisPayload>;
+        };
+        update: {
+          args: Prisma.custom_emojisUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$custom_emojisPayload>;
+        };
+        deleteMany: {
+          args: Prisma.custom_emojisDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.custom_emojisUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.custom_emojisUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$custom_emojisPayload>[];
+        };
+        upsert: {
+          args: Prisma.custom_emojisUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$custom_emojisPayload>;
+        };
+        aggregate: {
+          args: Prisma.Custom_emojisAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateCustom_emojis>;
+        };
+        groupBy: {
+          args: Prisma.custom_emojisGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Custom_emojisGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.custom_emojisCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Custom_emojisCountAggregateOutputType>
             | number;
         };
       };
@@ -3435,6 +3513,20 @@ export const Featured_tagsScalarFieldEnum = {
 export type Featured_tagsScalarFieldEnum =
   (typeof Featured_tagsScalarFieldEnum)[keyof typeof Featured_tagsScalarFieldEnum];
 
+export const Custom_emojisScalarFieldEnum = {
+  id: "id",
+  shortcode: "shortcode",
+  object_key: "object_key",
+  content_type: "content_type",
+  visible_in_picker: "visible_in_picker",
+  category: "category",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Custom_emojisScalarFieldEnum =
+  (typeof Custom_emojisScalarFieldEnum)[keyof typeof Custom_emojisScalarFieldEnum];
+
 export const Inbox_activitiesScalarFieldEnum = {
   activity_id: "activity_id",
   kind: "kind",
@@ -3856,6 +3948,7 @@ export type GlobalOmitConfig = {
   status_mutes?: Prisma.status_mutesOmit;
   followed_tags?: Prisma.followed_tagsOmit;
   featured_tags?: Prisma.featured_tagsOmit;
+  custom_emojis?: Prisma.custom_emojisOmit;
   inbox_activities?: Prisma.inbox_activitiesOmit;
   instance_settings?: Prisma.instance_settingsOmit;
   markers?: Prisma.markersOmit;

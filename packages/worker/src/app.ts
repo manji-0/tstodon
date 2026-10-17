@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { accountRoutes } from "./routes/accounts";
 import { activityPubRoutes } from "./routes/activitypub";
+import { adminRoutes } from "./routes/admin";
 import { appRoutes } from "./routes/apps";
 import { discoveryRoutes } from "./routes/discovery";
 import { followRequestRoutes } from "./routes/follow-requests";
@@ -38,6 +39,7 @@ app.route("/", tagRoutes);
 app.route("/", pollRoutes);
 app.route("/", moderationRoutes);
 app.route("/", searchRoutes);
+app.route("/", adminRoutes);
 app.route("/", activityPubRoutes);
 
 app.get("/api/v1/streaming", async (c) => {

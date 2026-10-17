@@ -42,6 +42,8 @@ export * from "./sql/deleteBlock";
 
 export * from "./sql/deleteBookmark";
 
+export * from "./sql/deleteCustomEmoji";
+
 export * from "./sql/deleteFavourite";
 
 export * from "./sql/deleteFilter";
@@ -88,6 +90,10 @@ export * from "./sql/findActiveMute";
 
 export * from "./sql/findBlock";
 
+export * from "./sql/findCustomEmojiById";
+
+export * from "./sql/findCustomEmojiByShortcode";
+
 export * from "./sql/findFollowKind";
 
 export * from "./sql/findListForAccount";
@@ -133,6 +139,8 @@ export * from "./sql/inboxActivityExists";
 export * from "./sql/insertAccount";
 
 export * from "./sql/insertBookmarkOrIgnore";
+
+export * from "./sql/insertCustomEmoji";
 
 export * from "./sql/insertFavouriteOrIgnore";
 
@@ -189,6 +197,8 @@ export * from "./sql/listAnnouncementDismissals";
 export * from "./sql/listAnnouncementReactions";
 
 export * from "./sql/listBlockedAccounts";
+
+export * from "./sql/listCustomEmojiRows";
 
 export * from "./sql/listDirectoryAccountsByActive";
 
@@ -252,6 +262,8 @@ export * from "./sql/rejectFollowRequest";
 
 export * from "./sql/rejectRemoteFollowRequest";
 
+export * from "./sql/replaceCustomEmojiImage";
+
 export * from "./sql/searchAccounts";
 
 export * from "./sql/searchRemoteActors";
@@ -265,6 +277,8 @@ export * from "./sql/unmuteStatus";
 export * from "./sql/unpinStatus";
 
 export * from "./sql/updateAccountProfile";
+
+export * from "./sql/updateCustomEmojiAttributes";
 
 export * from "./sql/updateList";
 

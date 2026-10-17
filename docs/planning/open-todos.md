@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Admin custom emojis: `/api/v1/admin/custom_emojis` CRUD (bucket `emoji/` + `custom_emojis`), merged with `CUSTOM_EMOJIS`
 - Tag actions: follow/unfollow, tag documents with 7-day history, featured tags (10 cap) + suggestions
 - Conversation mutes: `status_mutes` by thread root, `muted` flag, timeline/notification suppression
 - Custom emojis (`CUSTOM_EMOJIS`) and announcements (`ANNOUNCEMENTS`) replace the last placeholder routes

@@ -67,6 +67,7 @@ export const ModelName = {
   status_mutes: "status_mutes",
   followed_tags: "followed_tags",
   featured_tags: "featured_tags",
+  custom_emojis: "custom_emojis",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
   markers: "markers",
@@ -297,6 +298,20 @@ export const Featured_tagsScalarFieldEnum = {
 
 export type Featured_tagsScalarFieldEnum =
   (typeof Featured_tagsScalarFieldEnum)[keyof typeof Featured_tagsScalarFieldEnum];
+
+export const Custom_emojisScalarFieldEnum = {
+  id: "id",
+  shortcode: "shortcode",
+  object_key: "object_key",
+  content_type: "content_type",
+  visible_in_picker: "visible_in_picker",
+  category: "category",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Custom_emojisScalarFieldEnum =
+  (typeof Custom_emojisScalarFieldEnum)[keyof typeof Custom_emojisScalarFieldEnum];
 
 export const Inbox_activitiesScalarFieldEnum = {
   activity_id: "activity_id",

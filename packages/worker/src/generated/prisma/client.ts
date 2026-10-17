@@ -137,6 +137,11 @@ export type followed_tags = Prisma.followed_tagsModel;
  */
 export type featured_tags = Prisma.featured_tagsModel;
 /**
+ * Model custom_emojis
+ *
+ */
+export type custom_emojis = Prisma.custom_emojisModel;
+/**
  * Model inbox_activities
  *
  */
