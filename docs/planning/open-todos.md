@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Remove from followers: `POST /api/v1/accounts/:id/remove_from_followers` (local + remote Reject)
 - Timeline cursors: `max_id` / `since_id` / `min_id` on home, public, tag, bookmarks, favourites, account statuses
 - Familiar followers: `GET /api/v1/accounts/familiar_followers?id[]=`
 - Notification filters: `types[]` / `exclude_types[]` / `account_id` / `max_id`

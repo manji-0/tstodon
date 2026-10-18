@@ -13,6 +13,7 @@ import {
   findPendingRemoteFollowRequest as findPendingRemoteFollowRequestSql,
   findRemoteActorByPublicKeyId as findRemoteActorByPublicKeyIdSql,
   findRemoteActorByUri as findRemoteActorByUriSql,
+  findRemoteFollow as findRemoteFollowSql,
   listAcceptedRemoteFollowerInboxes as listAcceptedRemoteFollowerInboxesSql,
   listAcceptedRemoteFollowerUris as listAcceptedRemoteFollowerUrisSql,
   listPeerDomains as listPeerDomainsSql,
@@ -173,6 +174,28 @@ export const findPendingRemoteFollowRequest = async (
       findPendingRemoteFollowRequestSql(targetAccountId, remoteActorUri),
     );
     return rows[0]?.follow_activity_id ?? null;
+  });
+
+/** Any remote follow of a local account, pending or accepted. */
+export const findRemoteFollow = async (
+  db: D1Database,
+  targetAccountId: string,
+  remoteActorUri: string,
+): Promise<
+  Result<
+    Readonly<{ followActivityId: string | null; requestKind: string }> | undefined,
+    RepositoryError
+  >
+> =>
+  runD1(async () => {
+    const rows = await queryTyped<{
+      follow_activity_id: string | null;
+      remote_request_kind: string;
+    }>(db, findRemoteFollowSql(targetAccountId, remoteActorUri));
+    const row = rows[0];
+    return row
+      ? { followActivityId: row.follow_activity_id, requestKind: row.remote_request_kind }
+      : undefined;
   });
 
 /** Promote a `Queued` remote follow to `Accepted`. Returns true when a row moved. */

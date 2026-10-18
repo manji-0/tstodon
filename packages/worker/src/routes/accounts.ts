@@ -1,4 +1,4 @@
-import { FediRole, InstanceIdentity } from "@tstodon/domain";
+import { FediRole, InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
@@ -9,6 +9,7 @@ import {
   updateAccountProfile,
 } from "../account-store";
 import { authenticate } from "../auth";
+import { enqueueTargetedActivity } from "../delivery";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -24,7 +25,7 @@ import {
   mastodonRemoteAccount,
   mastodonStatuses,
 } from "../mastodon";
-import { findRemoteActorByUri } from "../remote-actor-store";
+import { findRemoteActorByUri, deleteRemoteFollow, findRemoteFollow } from "../remote-actor-store";
 import { RemoteAccountId } from "../remote-account-id";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
@@ -609,6 +610,80 @@ accountRoutes.post("/api/v1/accounts/:id/note", async (c) => {
     return jsonRepositoryError(c, saved.error.message);
   }
   const flags = await relationshipFlags(c.env.DB, user.value.id, targetId);
+  if (flags.isErr()) {
+    return jsonRepositoryError(c, flags.error.message);
+  }
+  return c.json(mastodonRelationship(targetId, flags.value));
+});
+
+accountRoutes.post("/api/v1/accounts/:id/remove_from_followers", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const targetId = c.req.param("id") ?? "";
+
+  const local = await findAccountByIdOrUsername(c.env.DB, targetId);
+  if (local.isErr()) {
+    return jsonRepositoryError(c, local.error.message);
+  }
+  if (local.value) {
+    const removed = await unfollowAccount(c.env.DB, local.value.id, user.value.id);
+    if (removed.isErr()) {
+      return jsonRepositoryError(c, removed.error.message);
+    }
+    const flags = await relationshipFlags(c.env.DB, user.value.id, local.value.id);
+    if (flags.isErr()) {
+      return jsonRepositoryError(c, flags.error.message);
+    }
+    return c.json(mastodonRelationship(local.value.id, flags.value));
+  }
+
+  const actorUri = RemoteAccountId.decode(targetId);
+  if (actorUri.isErr()) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const actor = await findRemoteActorByUri(c.env.DB, actorUri.value);
+  if (actor.isErr()) {
+    return jsonRepositoryError(c, actor.error.message);
+  }
+  if (!actor.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const existing = await findRemoteFollow(c.env.DB, user.value.id, actorUri.value);
+  if (existing.isErr()) {
+    return jsonRepositoryError(c, existing.error.message);
+  }
+  if (!existing.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const dropped = await deleteRemoteFollow(c.env.DB, actorUri.value, user.value.id);
+  if (dropped.isErr()) {
+    return jsonRepositoryError(c, dropped.error.message);
+  }
+
+  // Tell the remote follower it no longer follows; delivery is best effort.
+  const actorUrl = InstanceIdentity.actorUrl(identity.value, user.value.username);
+  const followObjectId = existing.value.followActivityId ?? actorUri.value;
+  await enqueueTargetedActivity(
+    c.env,
+    user.value.id,
+    "Reject",
+    {
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: `${actorUrl}/activities/reject-${followObjectId}`,
+      type: "Reject",
+      actor: actorUrl,
+      object: { id: followObjectId, type: "Follow", actor: actorUri.value, object: actorUrl },
+    },
+    RemoteActor.deliveryInbox(actor.value),
+  );
+
+  const flags = await relationshipFlags(c.env.DB, user.value.id, actorUri.value);
   if (flags.isErr()) {
     return jsonRepositoryError(c, flags.error.message);
   }

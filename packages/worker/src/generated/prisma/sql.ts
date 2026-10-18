@@ -134,6 +134,8 @@ export * from "./sql/findRemoteActorByPublicKeyId";
 
 export * from "./sql/findRemoteActorByUri";
 
+export * from "./sql/findRemoteFollow";
+
 export * from "./sql/findRemoteStatusById";
 
 export * from "./sql/findRemoteStatusByObjectUri";
