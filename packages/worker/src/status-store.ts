@@ -350,6 +350,9 @@ export const listPinnedStatuses = async (
     return hydrateStatusRows(db, results);
   });
 
+/** Authors silenced or suspended by an admin are hidden from public surfaces. */
+export const MODERATED_ACCOUNTS_SQL = `AND account_id NOT IN (SELECT account_id FROM account_moderation)`;
+
 export type StatusCursor = Readonly<{
   maxId?: string | undefined;
   sinceId?: string | undefined;
@@ -388,7 +391,7 @@ export const listPublicStatuses = async (
     const { where, order, binds } = cursorFragment(cursor);
     const { results } = await db
       .prepare(
-        `SELECT ${statusSelect} FROM statuses WHERE visibility = 'public' ${where} ${order} LIMIT ?`,
+        `SELECT ${statusSelect} FROM statuses WHERE visibility = 'public' ${MODERATED_ACCOUNTS_SQL} ${where} ${order} LIMIT ?`,
       )
       .bind(...binds, limit)
       .all();
@@ -463,7 +466,7 @@ export const searchStatuses = async (
   runD1(async () => {
     const { results } = await db
       .prepare(
-        `SELECT ${statusSelect} FROM statuses WHERE kind = 'LocalNote' AND content_text LIKE ? ORDER BY id DESC LIMIT ?`,
+        `SELECT ${statusSelect} FROM statuses WHERE kind = 'LocalNote' ${MODERATED_ACCOUNTS_SQL} AND content_text LIKE ? ORDER BY id DESC LIMIT ?`,
       )
       .bind(`%${query}%`, limit)
       .all();
@@ -582,7 +585,7 @@ export const listTagStatuses = async (
     const { results } = await db
       .prepare(
         `SELECT ${statusSelect} FROM statuses
-         WHERE kind = 'LocalNote' AND visibility = 'public'
+         WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
            AND (content_text LIKE ? OR content_text LIKE ?)
          ${where} ${order} LIMIT ?`,
       )
@@ -675,7 +678,7 @@ export const listTrendingTags = async (
     const { results } = await db
       .prepare(
         `SELECT content_text FROM statuses
-         WHERE kind = 'LocalNote' AND visibility = 'public' AND created_at >= ?
+         WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL} AND created_at >= ?
          ORDER BY id DESC LIMIT 500`,
       )
       .bind(since)
@@ -704,7 +707,7 @@ export const listTrendingStatuses = async (
             (SELECT COUNT(*) FROM favourites f WHERE f.status_id = statuses.id) AS favourite_count,
             (SELECT COUNT(*) FROM statuses r WHERE r.reblog_of_id = statuses.id) AS reblog_count
          FROM statuses
-         WHERE kind = 'LocalNote' AND visibility = 'public' AND created_at >= ?
+         WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL} AND created_at >= ?
          ORDER BY (favourite_count + reblog_count) DESC, id DESC
          LIMIT ?`,
       )

@@ -53,6 +53,7 @@ export const ModelName = {
   endorsements: "endorsements",
   account_notes: "account_notes",
   announcements: "announcements",
+  account_moderation: "account_moderation",
   accounts: "accounts",
   bookmarks: "bookmarks",
   conversation_reads: "conversation_reads",
@@ -160,6 +161,16 @@ export const AnnouncementsScalarFieldEnum = {
 
 export type AnnouncementsScalarFieldEnum =
   (typeof AnnouncementsScalarFieldEnum)[keyof typeof AnnouncementsScalarFieldEnum];
+
+export const Account_moderationScalarFieldEnum = {
+  account_id: "account_id",
+  moderation: "moderation",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Account_moderationScalarFieldEnum =
+  (typeof Account_moderationScalarFieldEnum)[keyof typeof Account_moderationScalarFieldEnum];
 
 export const AccountsScalarFieldEnum = {
   id: "id",

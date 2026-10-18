@@ -396,6 +396,7 @@ export const ModelName = {
   endorsements: "endorsements",
   account_notes: "account_notes",
   announcements: "announcements",
+  account_moderation: "account_moderation",
   accounts: "accounts",
   bookmarks: "bookmarks",
   conversation_reads: "conversation_reads",
@@ -456,6 +457,7 @@ export type TypeMap<
       | "endorsements"
       | "account_notes"
       | "announcements"
+      | "account_moderation"
       | "accounts"
       | "bookmarks"
       | "conversation_reads"
@@ -870,6 +872,82 @@ export type TypeMap<
           args: Prisma.announcementsCountArgs<ExtArgs>;
           result:
             | runtime.Types.Utils.Optional<Prisma.AnnouncementsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    account_moderation: {
+      payload: Prisma.$account_moderationPayload<ExtArgs>;
+      fields: Prisma.account_moderationFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.account_moderationFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_moderationPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.account_moderationFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_moderationPayload>;
+        };
+        findFirst: {
+          args: Prisma.account_moderationFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_moderationPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.account_moderationFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_moderationPayload>;
+        };
+        findMany: {
+          args: Prisma.account_moderationFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_moderationPayload>[];
+        };
+        create: {
+          args: Prisma.account_moderationCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_moderationPayload>;
+        };
+        createMany: {
+          args: Prisma.account_moderationCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.account_moderationCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_moderationPayload>[];
+        };
+        delete: {
+          args: Prisma.account_moderationDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_moderationPayload>;
+        };
+        update: {
+          args: Prisma.account_moderationUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_moderationPayload>;
+        };
+        deleteMany: {
+          args: Prisma.account_moderationDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.account_moderationUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.account_moderationUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_moderationPayload>[];
+        };
+        upsert: {
+          args: Prisma.account_moderationUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_moderationPayload>;
+        };
+        aggregate: {
+          args: Prisma.Account_moderationAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAccount_moderation>;
+        };
+        groupBy: {
+          args: Prisma.account_moderationGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Account_moderationGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.account_moderationCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Account_moderationCountAggregateOutputType>
             | number;
         };
       };
@@ -3606,6 +3684,16 @@ export const AnnouncementsScalarFieldEnum = {
 export type AnnouncementsScalarFieldEnum =
   (typeof AnnouncementsScalarFieldEnum)[keyof typeof AnnouncementsScalarFieldEnum];
 
+export const Account_moderationScalarFieldEnum = {
+  account_id: "account_id",
+  moderation: "moderation",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Account_moderationScalarFieldEnum =
+  (typeof Account_moderationScalarFieldEnum)[keyof typeof Account_moderationScalarFieldEnum];
+
 export const AccountsScalarFieldEnum = {
   id: "id",
   username: "username",
@@ -4208,6 +4296,7 @@ export type GlobalOmitConfig = {
   endorsements?: Prisma.endorsementsOmit;
   account_notes?: Prisma.account_notesOmit;
   announcements?: Prisma.announcementsOmit;
+  account_moderation?: Prisma.account_moderationOmit;
   accounts?: Prisma.accountsOmit;
   bookmarks?: Prisma.bookmarksOmit;
   conversation_reads?: Prisma.conversation_readsOmit;

@@ -42,6 +42,11 @@ export type account_notes = Prisma.account_notesModel;
  */
 export type announcements = Prisma.announcementsModel;
 /**
+ * Model account_moderation
+ *
+ */
+export type account_moderation = Prisma.account_moderationModel;
+/**
  * Model accounts
  *
  */

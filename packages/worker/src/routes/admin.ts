@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
+import type { InstanceIdentity, LocalAccount } from "@tstodon/domain";
 import {
   deleteAnnouncementById,
   findAnnouncementRowById,
@@ -26,13 +27,21 @@ import {
 } from "../custom-emoji-store";
 import { nowIso } from "../clock";
 import {
+  listAccountModerations,
+  setAccountModeration,
+  type AccountModeration,
+} from "../account-moderation-store";
+import { findAccountById, listAdminAccounts } from "../account-store";
+import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
+  queryLimit,
   readBody,
   requireAdmin,
 } from "../http";
 import { newEntityId } from "../ids";
+import { mastodonAccountDocument } from "../mastodon";
 import { parseInstanceIdentity } from "../runtime-config";
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
@@ -430,3 +439,96 @@ adminRoutes.post("/api/v1/admin/announcements/:id/publish", (c) =>
 adminRoutes.post("/api/v1/admin/announcements/:id/unpublish", (c) =>
   setAnnouncementPublication(c, false),
 );
+
+const adminAccountDocument = async (
+  env: Env,
+  identity: InstanceIdentity,
+  account: LocalAccount,
+  moderation: AccountModeration | null,
+): Promise<Record<string, unknown>> => ({
+  ...(await mastodonAccountDocument(env, identity, account)),
+  email: account.accessEmail.unwrap(),
+  ip: null,
+  role: { id: "-1", name: "user", highlighted: false },
+  approved: true,
+  disabled: moderation === "Suspended",
+  silenced: moderation === "Silenced",
+  suspended: moderation === "Suspended",
+  limited: moderation !== null,
+  sensitized: false,
+  invited_by_account_id: null,
+  created_by_application_id: null,
+  invite_request: null,
+});
+
+adminRoutes.get("/api/v1/admin/accounts", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const admin = await requireAdmin(c);
+  if (admin.isErr()) {
+    return jsonAuthError(c, admin.error);
+  }
+  const limit = queryLimit(c.req.query("limit"), 40);
+  const offset = Math.max(Number.parseInt(c.req.query("offset") ?? "0", 10) || 0, 0);
+  const accounts = await listAdminAccounts(c.env.DB, limit, offset);
+  if (accounts.isErr()) {
+    return jsonRepositoryError(c, accounts.error.message);
+  }
+  const moderations = await listAccountModerations(
+    c.env.DB,
+    accounts.value.map((account) => account.id),
+  );
+  if (moderations.isErr()) {
+    return jsonRepositoryError(c, moderations.error.message);
+  }
+  const documents: Record<string, unknown>[] = [];
+  for (const account of accounts.value) {
+    documents.push(
+      await adminAccountDocument(
+        c.env,
+        identity.value,
+        account,
+        moderations.value.get(account.id) ?? null,
+      ),
+    );
+  }
+  return c.json(documents);
+});
+
+const setAccountModerationRoute = async (
+  c: Context<{ Bindings: Env }>,
+  moderation: AccountModeration | null,
+): Promise<Response> => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const admin = await requireAdmin(c);
+  if (admin.isErr()) {
+    return jsonAuthError(c, admin.error);
+  }
+  const account = await findAccountById(c.env.DB, c.req.param("id") ?? "");
+  if (account.isErr()) {
+    return jsonRepositoryError(c, account.error.message);
+  }
+  if (!account.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const changed = await setAccountModeration(c.env.DB, account.value.id, moderation);
+  if (changed.isErr()) {
+    return jsonRepositoryError(c, changed.error.message);
+  }
+  return c.json(await adminAccountDocument(c.env, identity.value, account.value, moderation));
+};
+
+adminRoutes.post("/api/v1/admin/accounts/:id/silence", (c) =>
+  setAccountModerationRoute(c, "Silenced"),
+);
+adminRoutes.post("/api/v1/admin/accounts/:id/unsilence", (c) => setAccountModerationRoute(c, null));
+adminRoutes.post("/api/v1/admin/accounts/:id/suspend", (c) =>
+  setAccountModerationRoute(c, "Suspended"),
+);
+adminRoutes.post("/api/v1/admin/accounts/:id/unsuspend", (c) => setAccountModerationRoute(c, null));
+adminRoutes.post("/api/v1/admin/accounts/:id/enable", (c) => setAccountModerationRoute(c, null));

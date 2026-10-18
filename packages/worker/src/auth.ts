@@ -4,6 +4,7 @@ import { createLocalJWKSet, createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey 
 import { provisionAccountFromEmail } from "./account-store";
 import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
 import type { RepositoryError } from "./d1";
+import { getAccountModeration } from "./account-moderation-store";
 import { AccessJwksSchema, AccessJwtSchema, JoseErrorCodeSchema } from "./schemas";
 
 const parseAccessJwks = schemaResult(AccessJwksSchema);
@@ -180,6 +181,10 @@ export const authenticate = async (
   const account = await provisionAccountFromEmail(env.DB, identity.value.email);
   if (account.isErr()) {
     return err(account.error);
+  }
+  const moderation = await getAccountModeration(env.DB, account.value.id);
+  if (moderation.isOk() && moderation.value === "Suspended") {
+    return err({ kind: "Forbidden" });
   }
   return ok({
     kind: "Account",

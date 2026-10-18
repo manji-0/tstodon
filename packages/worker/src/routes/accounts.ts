@@ -9,6 +9,7 @@ import {
   updateAccountProfile,
 } from "../account-store";
 import { authenticate } from "../auth";
+import { getAccountModeration } from "../account-moderation-store";
 import { enqueueTargetedActivity } from "../delivery";
 import {
   jsonAuthError,
@@ -200,6 +201,10 @@ accountRoutes.get("/api/v1/accounts/:id", async (c) => {
     return jsonRepositoryError(c, account.error.message);
   }
   if (account.value) {
+    const moderation = await getAccountModeration(c.env.DB, account.value.id);
+    if (moderation.isOk() && moderation.value === "Suspended") {
+      return c.json({ error: "This account is suspended", kind: "AccountSuspended" }, 410);
+    }
     return c.json(await mastodonAccountDocument(c.env, identity.value, account.value));
   }
   const actorUri = RemoteAccountId.decode(id);

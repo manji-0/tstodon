@@ -29,6 +29,7 @@ import {
   findAccountsByIdsJson as findAccountsByIdsJsonSql,
   findAccountsByUsernamesJson as findAccountsByUsernamesJsonSql,
   insertAccount as insertAccountSql,
+  listAdminAccounts as listAdminAccountsSql,
   listDirectoryAccountsByActive as listDirectoryAccountsByActiveSql,
   listDirectoryAccountsByNew as listDirectoryAccountsByNewSql,
   searchAccounts as searchAccountsSql,
@@ -311,11 +312,29 @@ export const listDirectoryAccounts = async (
     return accounts;
   });
 
-export type AccountCounts = Readonly<{
-  followers: number;
-  following: number;
-  statuses: number;
-}>;
+/** Every local account (including silenced/suspended), newest first. */
+export const listAdminAccounts = async (
+  db: D1Database,
+  limit: number,
+  offset: number,
+): Promise<Result<LocalAccount[], RepositoryError>> =>
+  runD1(async () => {
+    const results = await queryTyped(db, listAdminAccountsSql(limit, offset));
+    const accounts: LocalAccount[] = [];
+    for (const raw of results) {
+      const row = parseAccountRow(raw);
+      if (row.isErr()) {
+        continue;
+      }
+      const account = accountFromRow(row.value);
+      if (account.isOk()) {
+        accounts.push(account.value);
+      }
+    }
+    return accounts;
+  });
+
+export type AccountCounts = Readonly<{ followers: number; following: number; statuses: number }>;
 
 export const accountCounts = async (
   db: D1Database,
