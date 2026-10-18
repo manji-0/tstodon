@@ -98,3 +98,46 @@ describe("suggestions and trending links", () => {
     expect(cards[0]?.provider_name).toBe("news.example");
   });
 });
+
+describe("tag history", () => {
+  it("reports a week of history for trending and searched tags", async () => {
+    await postStatus("trends-history@example.com", "hello #historywave");
+
+    const trends = await json("/api/v1/trends/tags");
+    expect(trends.status).toBe(200);
+    const tags = read(
+      z.array(
+        z.object({
+          name: z.string().min(1),
+          url: z.string().min(1),
+          history: z.array(z.object({ day: z.string(), uses: z.string(), accounts: z.string() })),
+        }),
+      ),
+      trends.body,
+    );
+    const trended = tags.find((entry) => entry.name === "historywave");
+    expect(trended?.history).toHaveLength(7);
+    expect(Number(trended?.history[0]?.uses ?? "0")).toBeGreaterThanOrEqual(1);
+    expect(Number(trended?.history[0]?.accounts ?? "0")).toBeGreaterThanOrEqual(1);
+
+    const search = await json("/api/v2/search?q=%23historywave&type=hashtags", {
+      headers: await auth("trends-history-viewer@example.com"),
+    });
+    expect(search.status).toBe(200);
+    const hashtags = read(
+      z.object({
+        hashtags: z.array(
+          z.object({
+            name: z.string().min(1),
+            following: z.boolean(),
+            history: z.array(z.object({ day: z.string(), uses: z.string() })),
+          }),
+        ),
+      }),
+      search.body,
+    );
+    expect(hashtags.hashtags[0]?.name).toBe("historywave");
+    expect(hashtags.hashtags[0]?.history).toHaveLength(7);
+    expect(hashtags.hashtags[0]?.following).toBe(false);
+  });
+});

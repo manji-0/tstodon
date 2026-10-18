@@ -3,13 +3,19 @@ import type { InstanceIdentity } from "@tstodon/domain";
 import { searchAccounts } from "../account-store";
 import { authenticate } from "../auth";
 import { jsonAuthError, jsonRepositoryError, queryLimit } from "../http";
-import { mastodonAccountDocument, mastodonRemoteAccount, mastodonStatuses } from "../mastodon";
+import {
+  mastodonAccountDocument,
+  mastodonRemoteAccount,
+  mastodonStatuses,
+  mastodonTag,
+} from "../mastodon";
 import { elapsedMs, writeMetric } from "../metrics";
 import { resolveRemoteActor, resolveRemoteActorByHandle } from "../remote-actor-fetch";
 import { suspendedDomains } from "../admin-domain-block-store";
 import { searchRemoteActors } from "../remote-actor-store";
 import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import { searchStatuses } from "../status-store";
+import { isTagFeatured, isTagFollowed, tagDailyHistory } from "../tag-store";
 import type { Context } from "hono";
 
 export const searchRoutes = new Hono<{ Bindings: Env }>();
@@ -100,18 +106,20 @@ const search = async (c: Context<{ Bindings: Env }>) => {
   if (!Array.isArray(statusDocs)) {
     return jsonRepositoryError(c, statusDocs.error.message);
   }
-  const hashtags =
-    type === "accounts" || type === "statuses"
-      ? []
-      : query.startsWith("#")
-        ? [
-            {
-              name: query.replace(/^#/, ""),
-              url: `https://${identity.value.domain}/tags/${query.replace(/^#/, "")}`,
-              history: [],
-            },
-          ]
-        : [];
+  let hashtags: Record<string, unknown>[] = [];
+  if (type !== "accounts" && type !== "statuses" && query.startsWith("#")) {
+    const name = query.replace(/^#/, "").toLowerCase();
+    const history = await tagDailyHistory(c.env.DB, name);
+    const following = viewerId ? await isTagFollowed(c.env.DB, viewerId, name) : undefined;
+    const featuring = viewerId ? await isTagFeatured(c.env.DB, viewerId, name) : undefined;
+    hashtags = [
+      mastodonTag(identity.value, name, {
+        history: history.isOk() ? history.value : [],
+        following: following?.unwrapOr(false) ?? false,
+        featuring: featuring?.unwrapOr(false) ?? false,
+      }),
+    ];
+  }
   // doubles: [latencyMs, accountHits, statusHits]
   writeMetric(
     c.env,

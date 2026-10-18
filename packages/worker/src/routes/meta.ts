@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
+import type { InstanceIdentity } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { countAccounts, findAccountById, listDirectoryAccounts } from "../account-store";
 import {
@@ -27,7 +28,12 @@ import {
   readBody,
   requireUser,
 } from "../http";
-import { mastodonAccountDocument, mastodonStatus, mastodonStatuses } from "../mastodon";
+import {
+  mastodonAccountDocument,
+  mastodonStatus,
+  mastodonStatuses,
+  mastodonTag,
+} from "../mastodon";
 import {
   getMarkers,
   markConversationRead,
@@ -36,7 +42,9 @@ import {
   upsertMarkers,
   type MarkerTimeline,
 } from "../marker-store";
+import { authenticate } from "../auth";
 import { listPeerDomains } from "../remote-actor-store";
+import { listFeaturedTags, listFollowedTags, tagDailyHistory } from "../tag-store";
 import {
   activeAnnouncements,
   announcements,
@@ -438,6 +446,33 @@ metaRoutes.post("/api/v1/conversations/:id/read", async (c) => {
   return c.body(null, 200);
 });
 
+/** Trending tags as Tag documents with a real seven-day history. */
+const trendingTagDocuments = async (
+  c: Context<{ Bindings: Env }>,
+  identity: InstanceIdentity,
+  names: ReadonlyArray<string>,
+): Promise<ReadonlyArray<Record<string, unknown>>> => {
+  const auth = await authenticate(c.req.raw, c.env);
+  const viewerId = auth.isOk() && auth.value.kind === "Account" ? auth.value.account.id : undefined;
+  const followed = new Set(
+    viewerId ? (await listFollowedTags(c.env.DB, viewerId)).unwrapOr([]) : [],
+  );
+  const featured = new Set(
+    viewerId ? (await listFeaturedTags(c.env.DB, viewerId)).unwrapOr([]) : [],
+  );
+  const documents: Record<string, unknown>[] = [];
+  for (const name of names) {
+    documents.push(
+      mastodonTag(identity, name, {
+        history: (await tagDailyHistory(c.env.DB, name)).unwrapOr([]),
+        following: followed.has(name),
+        featuring: featured.has(name),
+      }),
+    );
+  }
+  return documents;
+};
+
 metaRoutes.get("/api/v1/trends", async (c) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -448,11 +483,11 @@ metaRoutes.get("/api/v1/trends", async (c) => {
     return jsonRepositoryError(c, tags.error.message);
   }
   return c.json(
-    tags.value.map((tag) => ({
-      name: tag.name,
-      url: `https://${identity.value.domain}/tags/${tag.name}`,
-      history: [{ day: `${Math.floor(Date.now() / 1000)}`, accounts: "0", uses: String(tag.uses) }],
-    })),
+    await trendingTagDocuments(
+      c,
+      identity.value,
+      tags.value.map((tag) => tag.name),
+    ),
   );
 });
 
@@ -466,11 +501,11 @@ metaRoutes.get("/api/v1/trends/tags", async (c) => {
     return jsonRepositoryError(c, tags.error.message);
   }
   return c.json(
-    tags.value.map((tag) => ({
-      name: tag.name,
-      url: `https://${identity.value.domain}/tags/${tag.name}`,
-      history: [{ day: `${Math.floor(Date.now() / 1000)}`, accounts: "0", uses: String(tag.uses) }],
-    })),
+    await trendingTagDocuments(
+      c,
+      identity.value,
+      tags.value.map((tag) => tag.name),
+    ),
   );
 });
 
