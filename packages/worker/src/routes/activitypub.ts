@@ -20,6 +20,7 @@ import {
 } from "../activitypub";
 import { jsonRepositoryError, queryLimit } from "../http";
 import { verifyInboxRequest, parseSignatureHeader } from "../http-signature";
+import { suspendedDomains } from "../admin-domain-block-store";
 import { inboxActivityExists, insertInboxActivity } from "../inbox-store";
 import { listOutboundActivities } from "../outbox-store";
 import { resolveRemoteActor } from "../remote-actor-fetch";
@@ -249,6 +250,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   if (!signature) {
     return c.json({ kind: "InvalidSignature" }, 401);
   }
+  const suspended = await suspendedDomains(c.env.DB);
   const payload = activityPayloadFromJson(activityJson.value);
   const actorUri = String(payload.actor);
   const actorUsername = parseLocalActorUsername(identity.value, actorUri);
@@ -267,6 +269,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   } else {
     const remote = await resolveRemoteActor(c.env.DB, identity.value, signature.keyId, actorUri, {
       allowHosts: federationAllowHosts(c.env),
+      blockedHosts: suspended,
     });
     if (remote.isErr()) {
       if (remote.error.kind === "VerificationUnavailable") {
@@ -277,6 +280,12 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         return jsonRepositoryError(c, remote.error.message);
       }
       return c.json({ kind: "InvalidSignature" }, 401);
+    }
+    if (suspended.has(remote.value.domain.toLowerCase())) {
+      return c.json(
+        { error: "This instance does not federate with that domain", kind: "Forbidden" },
+        403,
+      );
     }
     signer = { kind: "Remote", actor: remote.value };
   }

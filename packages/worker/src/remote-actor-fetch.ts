@@ -3,7 +3,11 @@ import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
-import { fetchActivityJson, fetchWebfingerActorUri } from "./federated-fetch";
+import {
+  fetchActivityJson,
+  fetchWebfingerActorUri,
+  type FederatedFetchOptions,
+} from "./federated-fetch";
 import { ActorDocumentSchema } from "./schemas";
 import {
   findRemoteActorByPublicKeyId,
@@ -71,7 +75,7 @@ export const resolveRemoteActor = async (
   identity: InstanceIdentity,
   keyId: string,
   actorUri: string,
-  options: Readonly<{ allowHosts?: ReadonlySet<string> }> = {},
+  options: FederatedFetchOptions = {},
 ): Promise<Result<RemoteActor, RemoteActorResolveError>> => {
   const byKey = await findRemoteActorByPublicKeyId(db, keyId);
   if (byKey.isErr()) {
@@ -107,7 +111,7 @@ export const resolveRemoteActorByHandle = async (
   db: D1Database,
   identity: InstanceIdentity,
   handle: string,
-  options: Readonly<{ allowHosts?: ReadonlySet<string> }> = {},
+  options: FederatedFetchOptions = {},
 ): Promise<Result<RemoteActor, RemoteActorResolveError>> => {
   const actorUri = await fetchWebfingerActorUri(identity, handle, options);
   if (actorUri.isErr()) {

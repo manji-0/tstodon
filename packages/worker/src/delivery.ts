@@ -22,6 +22,8 @@ import {
 } from "./outbox-store";
 import { listExpiredUnnotifiedPolls, markPollExpiryNotified } from "./poll-store";
 import { elapsedMs, writeMetric } from "./metrics";
+import { suspendedDomains } from "./admin-domain-block-store";
+import { hostnameOf } from "./domain-block-store";
 import { listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
 import { findStatusById } from "./status-store";
@@ -96,6 +98,11 @@ export const enqueueTargetedActivity = async (
   payload: unknown,
   inboxUrl: string,
 ): Promise<Result<void, EnqueueLocalActivityError>> => {
+  // A suspended domain is never contacted; the activity is dropped quietly.
+  const inboxHost = hostnameOf(inboxUrl);
+  if (inboxHost && (await suspendedDomains(env.DB)).has(inboxHost)) {
+    return ok(undefined);
+  }
   const inserted = await insertOutboundActivity(env.DB, {
     accountId,
     kind,
@@ -290,11 +297,13 @@ export const processOutboxJob = async (env: Env, job: OutboxJobValue): Promise<v
       );
       const candidateInboxes = remoteFollowers.isOk() ? remoteFollowers.value : [];
       const sameHost = identity.isOk() ? identity.value.domain : "";
+      const suspended = await suspendedDomains(env.DB);
       const remoteInboxes = [
         ...new Set(
           candidateInboxes.filter((inbox) => {
             try {
-              return new URL(inbox).host !== sameHost;
+              const host = new URL(inbox).host.toLowerCase();
+              return host !== sameHost && !suspended.has(host);
             } catch {
               return false;
             }

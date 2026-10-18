@@ -54,6 +54,8 @@ export * from "./sql/deleteBookmark";
 
 export * from "./sql/deleteCustomEmoji";
 
+export * from "./sql/deleteDomainBlock";
+
 export * from "./sql/deleteEndorsement";
 
 export * from "./sql/deleteFavourite";
@@ -116,6 +118,10 @@ export * from "./sql/findCustomEmojiById";
 
 export * from "./sql/findCustomEmojiByShortcode";
 
+export * from "./sql/findDomainBlockByDomain";
+
+export * from "./sql/findDomainBlockById";
+
 export * from "./sql/findEndorsement";
 
 export * from "./sql/findFollowKind";
@@ -171,6 +177,8 @@ export * from "./sql/insertAnnouncement";
 export * from "./sql/insertBookmarkOrIgnore";
 
 export * from "./sql/insertCustomEmoji";
+
+export * from "./sql/insertDomainBlock";
 
 export * from "./sql/insertEndorsement";
 
@@ -242,6 +250,8 @@ export * from "./sql/listDirectoryAccountsByActive";
 
 export * from "./sql/listDirectoryAccountsByNew";
 
+export * from "./sql/listDomainBlocks";
+
 export * from "./sql/listEndorsements";
 
 export * from "./sql/listExpiredUnnotifiedPolls";
@@ -288,6 +298,8 @@ export * from "./sql/listPublicRemoteStatuses";
 
 export * from "./sql/listPublishedAnnouncements";
 
+export * from "./sql/listRestrictedDomains";
+
 export * from "./sql/listStatusEditSnapshots";
 
 export * from "./sql/listStatusMuteRoots";
@@ -295,6 +307,8 @@ export * from "./sql/listStatusMuteRoots";
 export * from "./sql/listStatusReplyLinks";
 
 export * from "./sql/listSuggestionExclusionIds";
+
+export * from "./sql/listSuspendedDomains";
 
 export * from "./sql/markPollExpiryNotified";
 
@@ -329,6 +343,8 @@ export * from "./sql/updateAccountProfile";
 export * from "./sql/updateAnnouncement";
 
 export * from "./sql/updateCustomEmojiAttributes";
+
+export * from "./sql/updateDomainBlock";
 
 export * from "./sql/updateList";
 

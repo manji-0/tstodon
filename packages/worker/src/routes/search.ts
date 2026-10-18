@@ -6,6 +6,7 @@ import { jsonAuthError, jsonRepositoryError, queryLimit } from "../http";
 import { mastodonAccountDocument, mastodonRemoteAccount, mastodonStatuses } from "../mastodon";
 import { elapsedMs, writeMetric } from "../metrics";
 import { resolveRemoteActor, resolveRemoteActorByHandle } from "../remote-actor-fetch";
+import { suspendedDomains } from "../admin-domain-block-store";
 import { searchRemoteActors } from "../remote-actor-store";
 import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import { searchStatuses } from "../status-store";
@@ -20,13 +21,18 @@ const resolveSearchAccount = async (
 ): Promise<Record<string, unknown> | undefined> => {
   const bare = query.replace(/^@/, "").trim();
   const allowHosts = federationAllowHosts(env);
+  const blockedHosts = await suspendedDomains(env.DB);
   if (/^[^\s@]+@[^\s@]+$/.test(bare)) {
-    const actor = await resolveRemoteActorByHandle(env.DB, identity, bare, { allowHosts });
+    const actor = await resolveRemoteActorByHandle(env.DB, identity, bare, {
+      allowHosts,
+      blockedHosts,
+    });
     return actor.isOk() ? mastodonRemoteAccount(identity, actor.value) : undefined;
   }
   if (bare.startsWith("http://") || bare.startsWith("https://")) {
     const actor = await resolveRemoteActor(env.DB, identity, `${bare}#main-key`, bare, {
       allowHosts,
+      blockedHosts,
     });
     return actor.isOk() ? mastodonRemoteAccount(identity, actor.value) : undefined;
   }

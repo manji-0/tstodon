@@ -44,6 +44,22 @@ export const isBlockedFederatedHost = (
   return false;
 };
 
+/** Options shared by every outbound federation fetch. */
+export type FederatedFetchOptions = Readonly<{
+  allowHosts?: ReadonlySet<string>;
+  /** Hostnames this instance refuses to talk to (admin-suspended domains). */
+  blockedHosts?: ReadonlySet<string>;
+}>;
+
+/** True when the host is refused by the allowlist, a private range, or a block. */
+export const isFederatedHostRefused = (
+  hostname: string,
+  instanceDomain: string,
+  options: FederatedFetchOptions = {},
+): boolean =>
+  isBlockedFederatedHost(hostname, instanceDomain, options.allowHosts) ||
+  (options.blockedHosts?.has(hostname.toLowerCase()) ?? false);
+
 export const parseFederatedUrl = (value: string): Result<URL, FederatedFetchError> => {
   try {
     const url = new URL(value);
@@ -60,13 +76,13 @@ export const parseFederatedUrl = (value: string): Result<URL, FederatedFetchErro
 export const fetchActivityJson = async (
   identity: InstanceIdentity,
   href: string,
-  options: Readonly<{ allowHosts?: ReadonlySet<string> }> = {},
+  options: FederatedFetchOptions = {},
 ): Promise<Result<unknown, FederatedFetchError>> => {
   const url = parseFederatedUrl(href);
   if (url.isErr()) {
     return err(url.error);
   }
-  if (isBlockedFederatedHost(url.value.hostname, identity.domain, options.allowHosts)) {
+  if (isFederatedHostRefused(url.value.hostname, identity.domain, options)) {
     return err({ kind: "InvalidSignature" });
   }
   try {
@@ -96,7 +112,7 @@ export const fetchActivityJson = async (
 export const fetchWebfingerActorUri = async (
   identity: InstanceIdentity,
   handle: string,
-  options: Readonly<{ allowHosts?: ReadonlySet<string> }> = {},
+  options: FederatedFetchOptions = {},
 ): Promise<Result<string, FederatedFetchError>> => {
   const trimmed = handle.replace(/^@/, "").trim();
   const atIndex = trimmed.lastIndexOf("@");
@@ -112,7 +128,7 @@ export const fetchWebfingerActorUri = async (
   if (url.isErr()) {
     return err(url.error);
   }
-  if (isBlockedFederatedHost(url.value.hostname, identity.domain, options.allowHosts)) {
+  if (isFederatedHostRefused(url.value.hostname, identity.domain, options)) {
     return err({ kind: "InvalidSignature" });
   }
   try {

@@ -77,6 +77,11 @@ export type account_moderation = Prisma.account_moderationModel;
  */
 export type account_domain_blocks = Prisma.account_domain_blocksModel;
 /**
+ * Model domain_blocks
+ *
+ */
+export type domain_blocks = Prisma.domain_blocksModel;
+/**
  * Model accounts
  *
  */
