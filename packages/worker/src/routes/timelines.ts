@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { authenticate } from "../auth";
+import { listBlockedDomains } from "../domain-block-store";
 import { jsonAuthError, jsonRepositoryError, queryCursor, queryLimit, requireUser } from "../http";
 import { mastodonRemoteStatus, mastodonStatuses, remoteStatusVisible } from "../mastodon";
 import { elapsedMs, writeMetric } from "../metrics";
@@ -39,10 +40,17 @@ timelineRoutes.get("/api/v1/timelines/public", async (c) => {
     return jsonRepositoryError(c, remote.error.message);
   }
   const localDocuments = await mastodonStatuses(c.env, identity.value, statuses.value, viewerId);
+  const blockedDomains = viewerId ? await listBlockedDomains(c.env.DB, viewerId) : undefined;
+  const blocked = new Set(
+    (blockedDomains?.isOk() ? blockedDomains.value : []).map((domain) => domain.toLowerCase()),
+  );
   const remoteDocuments: Record<string, unknown>[] = [];
   for (const status of remote.value) {
     const actor = await findRemoteActorByUri(c.env.DB, status.actorUri);
     if (actor.isErr() || !actor.value || !remoteStatusVisible(status)) {
+      continue;
+    }
+    if (blocked.has(actor.value.domain.toLowerCase())) {
       continue;
     }
     remoteDocuments.push(mastodonRemoteStatus(identity.value, status, actor.value));

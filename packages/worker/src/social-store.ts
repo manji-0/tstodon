@@ -3,6 +3,8 @@ import { err, ok, type Result } from "neverthrow";
 import { jsonStringArray, runD1, runD1Batch, sqlInJsonEach, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
+import { hostnameOf } from "./domain-block-store";
+import { RemoteAccountId } from "./remote-account-id";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   authorizeFollowRequest as authorizeFollowRequestSql,
@@ -16,6 +18,7 @@ import {
   deleteFollow as deleteFollowSql,
   deleteMute as deleteMuteSql,
   dismissNotification as dismissNotificationSql,
+  findAccountDomainBlock as findAccountDomainBlockSql,
   findAccountNote as findAccountNoteSql,
   findActiveMute as findActiveMuteSql,
   findBlock as findBlockSql,
@@ -265,6 +268,7 @@ export type RelationshipFlags = Readonly<{
   mutingExpiresAt: string | null;
   endorsed: boolean;
   note: string;
+  domainBlocking: boolean;
 }>;
 
 export const relationshipFlags = async (
@@ -272,6 +276,8 @@ export const relationshipFlags = async (
   viewerId: string,
   targetId: string,
 ): Promise<Result<RelationshipFlags, RepositoryError>> => {
+  const targetActorUri = RemoteAccountId.decode(targetId);
+  const targetDomain = targetActorUri.isOk() ? hostnameOf(targetActorUri.value) : undefined;
   const batched = await runD1Batch(db, [
     d1PrepareTyped(db, findFollowKindSql(viewerId, targetId)),
     d1PrepareTyped(db, findFollowKindSql(targetId, viewerId)),
@@ -280,6 +286,7 @@ export const relationshipFlags = async (
     d1PrepareTyped(db, findActiveMuteSql(viewerId, targetId, nowIso())),
     d1PrepareTyped(db, findEndorsementSql(viewerId, targetId)),
     d1PrepareTyped(db, findAccountNoteSql(viewerId, targetId)),
+    d1PrepareTyped(db, findAccountDomainBlockSql(viewerId, targetDomain ?? "")),
   ]);
   if (batched.isErr()) {
     return err(batched.error);
@@ -293,6 +300,7 @@ export const relationshipFlags = async (
     | undefined;
   const endorsed = (batched.value[5]?.results?.length ?? 0) > 0;
   const note = (batched.value[6]?.results?.[0] as { note: string } | undefined)?.note ?? "";
+  const domainBlocking = (batched.value[7]?.results?.length ?? 0) > 0;
   return ok({
     following: outgoing?.kind === "Accepted",
     followedBy: incoming?.kind === "Accepted",
@@ -304,6 +312,7 @@ export const relationshipFlags = async (
     mutingExpiresAt: mute?.expires_at ?? null,
     endorsed,
     note,
+    domainBlocking,
   });
 };
 

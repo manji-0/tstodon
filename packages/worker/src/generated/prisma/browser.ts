@@ -47,6 +47,11 @@ export type announcements = Prisma.announcementsModel;
  */
 export type account_moderation = Prisma.account_moderationModel;
 /**
+ * Model account_domain_blocks
+ *
+ */
+export type account_domain_blocks = Prisma.account_domain_blocksModel;
+/**
  * Model accounts
  *
  */

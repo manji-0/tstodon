@@ -397,6 +397,7 @@ export const ModelName = {
   account_notes: "account_notes",
   announcements: "announcements",
   account_moderation: "account_moderation",
+  account_domain_blocks: "account_domain_blocks",
   accounts: "accounts",
   bookmarks: "bookmarks",
   conversation_reads: "conversation_reads",
@@ -458,6 +459,7 @@ export type TypeMap<
       | "account_notes"
       | "announcements"
       | "account_moderation"
+      | "account_domain_blocks"
       | "accounts"
       | "bookmarks"
       | "conversation_reads"
@@ -948,6 +950,82 @@ export type TypeMap<
           args: Prisma.account_moderationCountArgs<ExtArgs>;
           result:
             | runtime.Types.Utils.Optional<Prisma.Account_moderationCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    account_domain_blocks: {
+      payload: Prisma.$account_domain_blocksPayload<ExtArgs>;
+      fields: Prisma.account_domain_blocksFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.account_domain_blocksFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_domain_blocksPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.account_domain_blocksFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_domain_blocksPayload>;
+        };
+        findFirst: {
+          args: Prisma.account_domain_blocksFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_domain_blocksPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.account_domain_blocksFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_domain_blocksPayload>;
+        };
+        findMany: {
+          args: Prisma.account_domain_blocksFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_domain_blocksPayload>[];
+        };
+        create: {
+          args: Prisma.account_domain_blocksCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_domain_blocksPayload>;
+        };
+        createMany: {
+          args: Prisma.account_domain_blocksCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.account_domain_blocksCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_domain_blocksPayload>[];
+        };
+        delete: {
+          args: Prisma.account_domain_blocksDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_domain_blocksPayload>;
+        };
+        update: {
+          args: Prisma.account_domain_blocksUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_domain_blocksPayload>;
+        };
+        deleteMany: {
+          args: Prisma.account_domain_blocksDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.account_domain_blocksUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.account_domain_blocksUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_domain_blocksPayload>[];
+        };
+        upsert: {
+          args: Prisma.account_domain_blocksUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_domain_blocksPayload>;
+        };
+        aggregate: {
+          args: Prisma.Account_domain_blocksAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAccount_domain_blocks>;
+        };
+        groupBy: {
+          args: Prisma.account_domain_blocksGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Account_domain_blocksGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.account_domain_blocksCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Account_domain_blocksCountAggregateOutputType>
             | number;
         };
       };
@@ -3694,6 +3772,15 @@ export const Account_moderationScalarFieldEnum = {
 export type Account_moderationScalarFieldEnum =
   (typeof Account_moderationScalarFieldEnum)[keyof typeof Account_moderationScalarFieldEnum];
 
+export const Account_domain_blocksScalarFieldEnum = {
+  account_id: "account_id",
+  domain: "domain",
+  created_at: "created_at",
+} as const;
+
+export type Account_domain_blocksScalarFieldEnum =
+  (typeof Account_domain_blocksScalarFieldEnum)[keyof typeof Account_domain_blocksScalarFieldEnum];
+
 export const AccountsScalarFieldEnum = {
   id: "id",
   username: "username",
@@ -4297,6 +4384,7 @@ export type GlobalOmitConfig = {
   account_notes?: Prisma.account_notesOmit;
   announcements?: Prisma.announcementsOmit;
   account_moderation?: Prisma.account_moderationOmit;
+  account_domain_blocks?: Prisma.account_domain_blocksOmit;
   accounts?: Prisma.accountsOmit;
   bookmarks?: Prisma.bookmarksOmit;
   conversation_reads?: Prisma.conversation_readsOmit;

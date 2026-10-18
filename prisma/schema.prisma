@@ -79,6 +79,15 @@ model account_moderation {
   @@index([moderation, account_id], map: "idx_account_moderation_state")
 }
 
+model account_domain_blocks {
+  account_id String
+  domain     String
+  created_at String @default("CURRENT_TIMESTAMP")
+
+  @@id([account_id, domain])
+  @@index([account_id, created_at(sort: Desc)], map: "idx_account_domain_blocks_account_created")
+}
+
 model accounts {
   id                                                    String @id
   username                                              String                 @unique(map: "sqlite_autoindex_accounts_2")

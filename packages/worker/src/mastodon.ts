@@ -419,7 +419,7 @@ export const mastodonRelationship = (
   muting_notifications: flags.mutingNotifications,
   muting_expires_at: flags.mutingExpiresAt,
   requested: flags.requested,
-  domain_blocking: false,
+  domain_blocking: flags.domainBlocking,
   endorsed: flags.endorsed,
   note: flags.note,
 });

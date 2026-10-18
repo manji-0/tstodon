@@ -38,6 +38,8 @@ export * from "./sql/countUnreadNotifications";
 
 export * from "./sql/createList";
 
+export * from "./sql/deleteAccountDomainBlock";
+
 export * from "./sql/deleteAccountModeration";
 
 export * from "./sql/deleteAccountNote";
@@ -93,6 +95,8 @@ export * from "./sql/findAccountByEmail";
 export * from "./sql/findAccountById";
 
 export * from "./sql/findAccountByUsername";
+
+export * from "./sql/findAccountDomainBlock";
 
 export * from "./sql/findAccountModeration";
 
@@ -160,6 +164,8 @@ export * from "./sql/inboxActivityExists";
 
 export * from "./sql/insertAccount";
 
+export * from "./sql/insertAccountDomainBlock";
+
 export * from "./sql/insertAnnouncement";
 
 export * from "./sql/insertBookmarkOrIgnore";
@@ -215,6 +221,8 @@ export * from "./sql/listAcceptedFollowerIds";
 export * from "./sql/listAcceptedRemoteFollowerInboxes";
 
 export * from "./sql/listAcceptedRemoteFollowerUris";
+
+export * from "./sql/listAccountDomainBlocks";
 
 export * from "./sql/listAccountModerations";
 
