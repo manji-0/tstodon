@@ -26,6 +26,17 @@ export const MediaRowSchema = z.object({
 
 export type MediaRow = z.infer<typeof MediaRowSchema>;
 
+/** Mastodon's `focus` value: `"x,y"` with each component in [-1, 1]. */
+export const parseMediaFocus = (raw: string): Readonly<{ x: number; y: number }> | undefined => {
+  const [xRaw, yRaw] = raw.split(",");
+  const x = Number.parseFloat((xRaw ?? "").trim());
+  const y = Number.parseFloat((yRaw ?? "").trim());
+  if (!Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x) > 1 || Math.abs(y) > 1) {
+    return undefined;
+  }
+  return { x, y };
+};
+
 export const insertMedia = async (
   db: D1Database,
   input: {

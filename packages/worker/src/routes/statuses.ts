@@ -21,7 +21,7 @@ import {
   jsonValidationError,
   queryCursor,
   queryLimit,
-  readBody,
+  readUnknownBody,
   requireUser,
 } from "../http";
 import { newEntityId } from "../ids";
@@ -32,7 +32,9 @@ import {
   remoteStatusVisible,
 } from "../mastodon";
 import { countPollVotes, findPollByStatusId, insertPoll, replacePollOptions } from "../poll-store";
-import { CreateStatusBodySchema, isTruthy, stringList } from "../schemas";
+import { CreateStatusBodySchema, isTruthy, mediaAttributesFromForm, stringList } from "../schemas";
+import { schemaResult } from "@tstodon/core";
+import type { MediaAttribute } from "../schemas";
 import { parseInstanceIdentity } from "../runtime-config";
 import { findRemoteActorByUri } from "../remote-actor-store";
 import { findRemoteStatusById } from "../remote-status-store";
@@ -65,6 +67,7 @@ import {
   unpinStatus,
   updateLocalNote,
 } from "../status-store";
+import { findMediaById, parseMediaFocus, updateMediaMetadata } from "../media-store";
 import {
   muteStatusThread,
   resolveThreadRootStatusIds,
@@ -73,6 +76,51 @@ import {
 import { canViewStatus } from "../visibility-guard";
 
 export const statusRoutes = new Hono<{ Bindings: Env }>();
+
+/** Apply `media_attributes` to media already attached to this status. */
+const applyMediaAttributes = async (
+  env: Env,
+  accountId: string,
+  statusId: string,
+  attributes: ReadonlyArray<MediaAttribute>,
+): Promise<string | undefined> => {
+  for (const attribute of attributes) {
+    const found = await findMediaById(env.DB, attribute.id);
+    if (found.isErr()) {
+      return found.error.message;
+    }
+    const media = found.value;
+    if (!media || media.account_id !== accountId || media.status_id !== statusId) {
+      continue;
+    }
+    let focusX = media.focus_x;
+    let focusY = media.focus_y;
+    if (attribute.focus !== undefined) {
+      const focus = parseMediaFocus(attribute.focus);
+      if (focus) {
+        focusX = focus.x;
+        focusY = focus.y;
+      }
+    }
+    const description =
+      attribute.description === undefined
+        ? media.description
+        : attribute.description.trim().length > 0
+          ? attribute.description
+          : null;
+    const updated = await updateMediaMetadata(env.DB, {
+      id: media.id,
+      accountId,
+      description,
+      focusX,
+      focusY,
+    });
+    if (updated.isErr()) {
+      return updated.error.message;
+    }
+  }
+  return undefined;
+};
 
 statusRoutes.post("/api/v1/statuses", async (c) => {
   const identity = parseInstanceIdentity(c.env);
@@ -83,10 +131,14 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const body = await readBody(c, CreateStatusBodySchema);
+  const rawBody = await readUnknownBody(c);
+  const body = schemaResult(CreateStatusBodySchema)(rawBody).mapErr(() => ({
+    kind: "ValidationError" as const,
+  }));
   if (body.isErr()) {
     return jsonValidationError(c);
   }
+  const mediaAttributes = body.value.media_attributes ?? mediaAttributesFromForm(rawBody);
   const visibilityRaw =
     body.value.visibility && body.value.visibility.length > 0
       ? body.value.visibility
@@ -162,6 +214,10 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
     if (poll.isErr()) {
       return jsonRepositoryError(c, poll.error.message);
     }
+  }
+  const attributeError = await applyMediaAttributes(c.env, user.value.id, note.id, mediaAttributes);
+  if (attributeError) {
+    return jsonRepositoryError(c, attributeError);
   }
   const mentionNames = mentionUsernames(note.text);
   const mentionedAccounts = await findAccountsByUsernames(c.env.DB, [...mentionNames]);
@@ -297,10 +353,14 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   if (!existing || existing.kind !== "LocalNote" || existing.accountId !== user.value.id) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const body = await readBody(c, CreateStatusBodySchema);
+  const rawBody = await readUnknownBody(c);
+  const body = schemaResult(CreateStatusBodySchema)(rawBody).mapErr(() => ({
+    kind: "ValidationError" as const,
+  }));
   if (body.isErr()) {
     return jsonValidationError(c);
   }
+  const mediaAttributes = body.value.media_attributes ?? mediaAttributesFromForm(rawBody);
   const pollEdit = body.value.poll;
   let pollUpdate:
     | Readonly<{
@@ -414,6 +474,15 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   const media = await replaceStatusMedia(c.env.DB, existing.id, user.value.id, revised.mediaIds);
   if (media.isErr()) {
     return jsonRepositoryError(c, media.error.message);
+  }
+  const attributeError = await applyMediaAttributes(
+    c.env,
+    user.value.id,
+    existing.id,
+    mediaAttributes,
+  );
+  if (attributeError) {
+    return jsonRepositoryError(c, attributeError);
   }
   const mentionedAccounts = await findAccountsByUsernames(c.env.DB, [
     ...mentionUsernames(revised.text),

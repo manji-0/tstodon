@@ -1,7 +1,13 @@
 import { Hono } from "hono";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../http";
 import { mastodonMedia } from "../mastodon";
-import { deleteMedia, findMediaById, insertMedia, updateMediaMetadata } from "../media-store";
+import {
+  deleteMedia,
+  findMediaById,
+  insertMedia,
+  parseMediaFocus,
+  updateMediaMetadata,
+} from "../media-store";
 import { parseInstanceIdentity } from "../runtime-config";
 import { newEntityId } from "../ids";
 import type { Context } from "hono";
@@ -61,16 +67,8 @@ mediaRoutes.get("/media/:id", async (c) => {
   });
 });
 
-/** Parse Mastodon's `focus` value: `"x,y"` with each component in [-1, 1]. */
-const parseFocus = (raw: string): Readonly<{ x: number; y: number }> | undefined => {
-  const [xRaw, yRaw] = raw.split(",");
-  const x = Number.parseFloat((xRaw ?? "").trim());
-  const y = Number.parseFloat((yRaw ?? "").trim());
-  if (!Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x) > 1 || Math.abs(y) > 1) {
-    return undefined;
-  }
-  return { x, y };
-};
+const parseFocus = (raw: string): Readonly<{ x: number; y: number }> | undefined =>
+  parseMediaFocus(raw);
 
 mediaRoutes.put("/api/v1/media/:id", async (c) => {
   const identity = parseInstanceIdentity(c.env);
