@@ -45,6 +45,7 @@ import {
 import { notifyAccount } from "../notify";
 import { publishToAccount } from "../stream-publish";
 import {
+  ContextLimits,
   countPinnedStatuses,
   deleteReblogOf,
   deleteStatus,
@@ -650,11 +651,17 @@ statusRoutes.get("/api/v1/statuses/:id/context", async (c) => {
   if (!(await canViewStatus(c.env.DB, status.value, viewerId))) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const ancestors = await listStatusAncestors(c.env.DB, status.value.id);
+  const limits = viewerId ? ContextLimits.authenticated : ContextLimits.anonymous;
+  const ancestors = await listStatusAncestors(c.env.DB, status.value.id, limits.depth);
   if (ancestors.isErr()) {
     return jsonRepositoryError(c, ancestors.error.message);
   }
-  const descendants = await listStatusDescendants(c.env.DB, status.value.id);
+  const descendants = await listStatusDescendants(
+    c.env.DB,
+    status.value.id,
+    limits.descendants,
+    limits.depth,
+  );
   if (descendants.isErr()) {
     return jsonRepositoryError(c, descendants.error.message);
   }

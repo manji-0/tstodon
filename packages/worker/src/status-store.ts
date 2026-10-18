@@ -45,7 +45,16 @@ export const STATUS_SELECT = `id, account_id, kind, reblog_of_id, in_reply_to_id
 const statusSelect = STATUS_SELECT;
 
 const CONTEXT_ANCESTOR_LIMIT = 40;
-const CONTEXT_DESCENDANT_LIMIT = 60;
+
+/**
+ * Mastodon's `GET /statuses/:id/context` bounds: anonymous callers get 40
+ * ancestors and 60 descendants at depth 20; authenticated callers get up to
+ * 4096 of each at effectively unlimited depth.
+ */
+export const ContextLimits = {
+  anonymous: { ancestors: 40, descendants: 60, depth: 20 },
+  authenticated: { ancestors: 4096, descendants: 4096, depth: 4096 },
+} as const;
 
 export const statusFromRow = (
   row: StatusRow,
@@ -597,10 +606,11 @@ export const listTagStatuses = async (
 export const listStatusAncestors = async (
   db: D1Database,
   statusId: string,
+  depth: number = ContextLimits.anonymous.depth,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> => {
   const chain: LocalStatusValue[] = [];
   let currentId: string | undefined = statusId;
-  for (let depth = 0; depth < CONTEXT_ANCESTOR_LIMIT; depth += 1) {
+  for (let step = 0; step < depth; step += 1) {
     const current = await findStatusById(db, currentId);
     if (current.isErr()) {
       return err(current.error);
@@ -621,41 +631,49 @@ export const listStatusAncestors = async (
   return ok(chain.reverse());
 };
 
+/**
+ * Replies below a status, breadth-first, ordered by id (chronological).
+ * Mastodon bounds this by depth: 20 for anonymous callers, effectively
+ * unbounded (but count-limited) for authenticated ones.
+ */
 export const listStatusDescendants = async (
   db: D1Database,
   statusId: string,
+  limit: number = ContextLimits.anonymous.descendants,
+  depth: number = ContextLimits.anonymous.depth,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
     const collected: LocalStatusValue[] = [];
-    const queue = [statusId];
     const seen = new Set<string>([statusId]);
-    while (queue.length > 0 && collected.length < CONTEXT_DESCENDANT_LIMIT) {
-      const parentId = queue.shift();
-      if (!parentId) {
+    let frontier = [statusId];
+    for (let level = 0; level < depth && frontier.length > 0; level += 1) {
+      if (collected.length >= limit) {
         break;
       }
       const { results } = await db
         .prepare(
           `SELECT ${statusSelect} FROM statuses
-           WHERE in_reply_to_id = ? AND kind = 'LocalNote'
+           WHERE kind = 'LocalNote' AND in_reply_to_id ${sqlInJsonEach()}
            ORDER BY id ASC LIMIT ?`,
         )
-        .bind(parentId, CONTEXT_DESCENDANT_LIMIT - collected.length)
+        .bind(jsonStringArray(frontier), limit - collected.length)
         .all();
       const children = await hydrateStatusRows(db, results ?? []);
+      const next: string[] = [];
       for (const child of children) {
         if (seen.has(child.id)) {
           continue;
         }
         seen.add(child.id);
         collected.push(child);
-        queue.push(child.id);
-        if (collected.length >= CONTEXT_DESCENDANT_LIMIT) {
+        next.push(child.id);
+        if (collected.length >= limit) {
           break;
         }
       }
+      frontier = next;
     }
-    return collected;
+    return collected.toSorted((left, right) => left.id.localeCompare(right.id));
   });
 
 export const extractHashtags = (text: string): string[] => {

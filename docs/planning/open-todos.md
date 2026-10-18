@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Status context bounds: anonymous 40/60 depth 20 vs authenticated 4096, descendants in id order
 - Admin accounts: `GET /api/v1/admin/accounts` + silence/suspend/enable, 403/410 and public-surface exclusion
 - Media metadata: `PUT` / `DELETE /api/v1/media/:id` (alt text, focus, unattached-only)
 - Remove from followers: `POST /api/v1/accounts/:id/remove_from_followers` (local + remote Reject)
