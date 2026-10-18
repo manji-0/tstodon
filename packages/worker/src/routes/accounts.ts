@@ -236,11 +236,15 @@ accountRoutes.get("/api/v1/accounts/:id/statuses", async (c) => {
       ? await listPinnedStatuses(c.env.DB, account.value.id)
       : await listAccountStatusesFiltered(c.env.DB, account.value.id, {
           limit: queryLimit(c.req.query("limit")),
-          maxId: c.req.query("max_id"),
           excludeReplies: queryFlag(c.req.query("exclude_replies")),
           excludeReblogs: queryFlag(c.req.query("exclude_reblogs")),
           onlyMedia: queryFlag(c.req.query("only_media")),
           tagged: c.req.query("tagged"),
+          cursor: {
+            maxId: c.req.query("max_id"),
+            sinceId: c.req.query("since_id"),
+            minId: c.req.query("min_id"),
+          },
         });
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);

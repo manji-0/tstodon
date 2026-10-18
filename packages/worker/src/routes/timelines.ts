@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { authenticate } from "../auth";
-import { jsonAuthError, jsonRepositoryError, queryLimit, requireUser } from "../http";
+import { jsonAuthError, jsonRepositoryError, queryCursor, queryLimit, requireUser } from "../http";
 import { mastodonRemoteStatus, mastodonStatuses, remoteStatusVisible } from "../mastodon";
 import { elapsedMs, writeMetric } from "../metrics";
 import { parseInstanceIdentity } from "../runtime-config";
@@ -29,7 +29,7 @@ timelineRoutes.get("/api/v1/timelines/public", async (c) => {
   const statuses = await listPublicStatuses(
     c.env.DB,
     queryLimit(c.req.query("limit")),
-    c.req.query("max_id"),
+    queryCursor(c),
   );
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
@@ -68,7 +68,7 @@ timelineRoutes.get("/api/v1/timelines/home", async (c) => {
     c.env.DB,
     user.value.id,
     queryLimit(c.req.query("limit")),
-    c.req.query("max_id"),
+    queryCursor(c),
   );
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
@@ -95,6 +95,7 @@ timelineRoutes.get("/api/v1/timelines/tag/:hashtag", async (c) => {
     c.env.DB,
     c.req.param("hashtag"),
     queryLimit(c.req.query("limit")),
+    queryCursor(c),
   );
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);

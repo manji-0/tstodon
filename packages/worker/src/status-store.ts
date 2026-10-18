@@ -31,8 +31,6 @@ import {
   insertLocalReblog as insertLocalReblogSql,
   insertStatusEdit as insertStatusEditSql,
   isStatusPinned as isStatusPinnedSql,
-  listAccountStatuses as listAccountStatusesSql,
-  listAccountStatusesFiltered as listAccountStatusesFilteredSql,
   listMediaIdsForStatus as listMediaIdsForStatusSql,
   listPinnedStatuses as listPinnedStatusesSql,
   listStatusEditSnapshots as listStatusEditSnapshotsSql,
@@ -352,17 +350,48 @@ export const listPinnedStatuses = async (
     return hydrateStatusRows(db, results);
   });
 
+export type StatusCursor = Readonly<{
+  maxId?: string | undefined;
+  sinceId?: string | undefined;
+  minId?: string | undefined;
+}>;
+
+/**
+ * Mastodon id cursors: `max_id` pages older (newest first), `since_id` pages
+ * newer (newest first), and `min_id` pages newer from the oldest side so a
+ * client can prepend. `min_id` wins, then `since_id`, then `max_id`.
+ */
+const cursorFragment = (
+  cursor: StatusCursor = {},
+): Readonly<{ where: string; order: string; binds: string[] }> => {
+  const minId = cursor.minId ?? "";
+  if (minId.length > 0) {
+    return { where: "AND id > ?", order: "ORDER BY id ASC", binds: [minId] };
+  }
+  const sinceId = cursor.sinceId ?? "";
+  if (sinceId.length > 0) {
+    return { where: "AND id > ?", order: "ORDER BY id DESC", binds: [sinceId] };
+  }
+  const maxId = cursor.maxId ?? "";
+  if (maxId.length > 0) {
+    return { where: "AND id < ?", order: "ORDER BY id DESC", binds: [maxId] };
+  }
+  return { where: "", order: "ORDER BY id DESC", binds: [] };
+};
+
 export const listPublicStatuses = async (
   db: D1Database,
   limit: number,
-  maxId: string | undefined,
+  cursor: StatusCursor = {},
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
-    const sql = maxId
-      ? `SELECT ${statusSelect} FROM statuses WHERE visibility = 'public' AND id < ? ORDER BY id DESC LIMIT ?`
-      : `SELECT ${statusSelect} FROM statuses WHERE visibility = 'public' ORDER BY id DESC LIMIT ?`;
-    const stmt = maxId ? db.prepare(sql).bind(maxId, limit) : db.prepare(sql).bind(limit);
-    const { results } = await stmt.all();
+    const { where, order, binds } = cursorFragment(cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT ${statusSelect} FROM statuses WHERE visibility = 'public' ${where} ${order} LIMIT ?`,
+      )
+      .bind(...binds, limit)
+      .all();
     return hydrateStatusRows(db, results ?? []);
   });
 
@@ -370,42 +399,25 @@ export const listHomeStatuses = async (
   db: D1Database,
   accountId: string,
   limit: number,
-  maxId: string | undefined,
+  cursor: StatusCursor = {},
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
     const suppressed = `AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}`;
-    const sql = maxId
-      ? `SELECT ${statusSelect} FROM statuses
+    const { where, order, binds } = cursorFragment(cursor);
+    const sql = `SELECT ${statusSelect} FROM statuses
          WHERE visibility != 'direct' AND (account_id = ? OR account_id IN (
            SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
-         )) ${suppressed} AND id < ? ORDER BY id DESC LIMIT ?`
-      : `SELECT ${statusSelect} FROM statuses
-         WHERE visibility != 'direct' AND (account_id = ? OR account_id IN (
-           SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
-         )) ${suppressed} ORDER BY id DESC LIMIT ?`;
-    const now = nowIso();
-    const stmt = maxId
-      ? db
-          .prepare(sql)
-          .bind(accountId, accountId, accountId, accountId, accountId, now, maxId, limit)
-      : db.prepare(sql).bind(accountId, accountId, accountId, accountId, accountId, now, limit);
-    const { results } = await stmt.all();
+         )) ${suppressed} ${where} ${order} LIMIT ?`;
+    const { results } = await db
+      .prepare(sql)
+      .bind(accountId, accountId, accountId, accountId, accountId, nowIso(), ...binds, limit)
+      .all();
     return hydrateStatusRows(db, results ?? []);
-  });
-
-export const listAccountStatuses = async (
-  db: D1Database,
-  accountId: string,
-  limit: number,
-): Promise<Result<LocalStatusValue[], RepositoryError>> =>
-  runD1(async () => {
-    const results = await queryTyped(db, listAccountStatusesSql(accountId, limit));
-    return hydrateStatusRows(db, results);
   });
 
 export type AccountStatusFilters = Readonly<{
   limit: number;
-  maxId?: string | undefined;
+  cursor?: StatusCursor;
   excludeReplies: boolean;
   excludeReblogs: boolean;
   onlyMedia: boolean;
@@ -419,19 +431,28 @@ export const listAccountStatusesFiltered = async (
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
     const tagged = filters.tagged?.replace(/^#/, "") ?? "";
-    const results = await queryTyped(
-      db,
-      listAccountStatusesFilteredSql(
+    const { where, order, binds } = cursorFragment(filters.cursor);
+    const sql = `SELECT ${statusSelect} FROM statuses
+         WHERE account_id = ?
+           AND (? = 0 OR in_reply_to_id IS NULL)
+           AND (? = 0 OR kind <> 'LocalReblog')
+           AND (? = 0 OR id IN (SELECT status_id FROM media_attachments WHERE status_id IS NOT NULL))
+           AND (? = '' OR content_text LIKE ?)
+           ${where} ${order} LIMIT ?`;
+    const { results } = await db
+      .prepare(sql)
+      .bind(
         accountId,
         filters.excludeReplies ? 1 : 0,
         filters.excludeReblogs ? 1 : 0,
         filters.onlyMedia ? 1 : 0,
         tagged.length > 0 ? `%#${tagged}%` : "",
-        filters.maxId ?? "",
+        tagged.length > 0 ? `%#${tagged}%` : "",
+        ...binds,
         filters.limit,
-      ),
-    );
-    return hydrateStatusRows(db, results);
+      )
+      .all();
+    return hydrateStatusRows(db, results ?? []);
   });
 
 export const searchStatuses = async (
@@ -516,15 +537,17 @@ export const listFavouritedStatuses = async (
   db: D1Database,
   accountId: string,
   limit: number,
+  cursor: StatusCursor = {},
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
+    const { where, order, binds } = cursorFragment(cursor);
     const { results } = await db
       .prepare(
         `SELECT ${statusSelect} FROM statuses
          WHERE id IN (SELECT status_id FROM favourites WHERE account_id = ?)
-         ORDER BY id DESC LIMIT ?`,
+         ${where} ${order} LIMIT ?`,
       )
-      .bind(accountId, limit)
+      .bind(accountId, ...binds, limit)
       .all();
     return hydrateStatusRows(db, results ?? []);
   });
@@ -533,15 +556,17 @@ export const listBookmarkedStatuses = async (
   db: D1Database,
   accountId: string,
   limit: number,
+  cursor: StatusCursor = {},
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
+    const { where, order, binds } = cursorFragment(cursor);
     const { results } = await db
       .prepare(
         `SELECT ${statusSelect} FROM statuses
          WHERE id IN (SELECT status_id FROM bookmarks WHERE account_id = ?)
-         ORDER BY id DESC LIMIT ?`,
+         ${where} ${order} LIMIT ?`,
       )
-      .bind(accountId, limit)
+      .bind(accountId, ...binds, limit)
       .all();
     return hydrateStatusRows(db, results ?? []);
   });
@@ -550,16 +575,18 @@ export const listTagStatuses = async (
   db: D1Database,
   tag: string,
   limit: number,
+  cursor: StatusCursor = {},
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
+    const { where, order, binds } = cursorFragment(cursor);
     const { results } = await db
       .prepare(
         `SELECT ${statusSelect} FROM statuses
          WHERE kind = 'LocalNote' AND visibility = 'public'
            AND (content_text LIKE ? OR content_text LIKE ?)
-         ORDER BY id DESC LIMIT ?`,
+         ${where} ${order} LIMIT ?`,
       )
-      .bind(`%#${tag}%`, `%#${tag.toLowerCase()}%`, limit)
+      .bind(`%#${tag}%`, `%#${tag.toLowerCase()}%`, ...binds, limit)
       .all();
     return hydrateStatusRows(db, results ?? []);
   });

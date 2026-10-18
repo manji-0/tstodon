@@ -19,6 +19,19 @@ export const queryLimit = (raw: string | undefined, fallback = 20): number => {
   return Math.min(parsed, 40);
 };
 
+/** Mastodon's `max_id` / `since_id` / `min_id` query cursors. */
+export const queryCursor = (
+  c: Context<{ Bindings: Env }>,
+): Readonly<{
+  maxId?: string | undefined;
+  sinceId?: string | undefined;
+  minId?: string | undefined;
+}> => ({
+  maxId: c.req.query("max_id"),
+  sinceId: c.req.query("since_id"),
+  minId: c.req.query("min_id"),
+});
+
 export const jsonAuthError = (c: Context<{ Bindings: Env }>, error: AuthError) => {
   if (error.kind === "MissingToken" || error.kind === "InvalidToken") {
     return c.json({ error: "This method requires an authenticated user", kind: error.kind }, 401);

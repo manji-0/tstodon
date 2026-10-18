@@ -208,10 +208,6 @@ export * from "./sql/listAcceptedRemoteFollowerInboxes";
 
 export * from "./sql/listAcceptedRemoteFollowerUris";
 
-export * from "./sql/listAccountStatuses";
-
-export * from "./sql/listAccountStatusesFiltered";
-
 export * from "./sql/listAdminAnnouncements";
 
 export * from "./sql/listAnnouncementDismissals";

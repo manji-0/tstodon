@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Timeline cursors: `max_id` / `since_id` / `min_id` on home, public, tag, bookmarks, favourites, account statuses
 - Familiar followers: `GET /api/v1/accounts/familiar_followers?id[]=`
 - Notification filters: `types[]` / `exclude_types[]` / `account_id` / `max_id`
 - Admin announcements: `/api/v1/admin/announcements` CRUD + publish/unpublish, merged with `ANNOUNCEMENTS`

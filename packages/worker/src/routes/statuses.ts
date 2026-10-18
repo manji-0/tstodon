@@ -19,6 +19,7 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
+  queryCursor,
   queryLimit,
   readBody,
   requireUser,
@@ -844,6 +845,7 @@ statusRoutes.get("/api/v1/favourites", async (c) => {
     c.env.DB,
     user.value.id,
     queryLimit(c.req.query("limit")),
+    queryCursor(c),
   );
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
@@ -864,6 +866,7 @@ statusRoutes.get("/api/v1/bookmarks", async (c) => {
     c.env.DB,
     user.value.id,
     queryLimit(c.req.query("limit")),
+    queryCursor(c),
   );
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
