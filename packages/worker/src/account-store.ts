@@ -23,6 +23,7 @@ import {
   countFollowersByAccountIdsJson as countFollowersByAccountIdsJsonSql,
   countFollowingByAccountIdsJson as countFollowingByAccountIdsJsonSql,
   countStatusesByAccountIdsJson as countStatusesByAccountIdsJsonSql,
+  deleteAccount as deleteAccountSql,
   findAccountByEmail as findAccountByEmailSql,
   findAccountById as findAccountByIdSql,
   findAccountByUsername as findAccountByUsernameSql,
@@ -310,6 +311,16 @@ export const listDirectoryAccounts = async (
       }
     }
     return accounts;
+  });
+
+/** Purge a local account; every dependent row cascades from it. */
+export const deleteAccount = async (
+  db: D1Database,
+  id: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ id: string }>(db, deleteAccountSql(id));
+    return rows.length > 0;
   });
 
 /** Every local account (including silenced/suspended), newest first. */

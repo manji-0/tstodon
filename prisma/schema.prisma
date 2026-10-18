@@ -88,8 +88,14 @@ model account_domain_blocks {
   @@index([account_id, created_at(sort: Desc)], map: "idx_account_domain_blocks_account_created")
 }
 
-model domain_blocks {
-  id              String  @id
+model account_flags {
+  account_id String @id
+  sensitized Int    @default(0)
+  created_at String @default("CURRENT_TIMESTAMP")
+  updated_at String @default("CURRENT_TIMESTAMP")
+}
+
+model domain_blocks {  id              String  @id
   domain          String  @unique
   severity        String
   reject_media    Int     @default(0)

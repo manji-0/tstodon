@@ -27,6 +27,7 @@ import {
 } from "../custom-emoji-store";
 import { nowIso } from "../clock";
 import {
+  getAccountModeration,
   listAccountModerations,
   setAccountModeration,
   type AccountModeration,
@@ -41,7 +42,13 @@ import {
   listDomainBlocks,
   updateDomainBlock,
 } from "../admin-domain-block-store";
-import { findAccountById, listAdminAccounts } from "../account-store";
+import {
+  isAccountSensitized,
+  mediaObjectKeysForAccount,
+  sensitizedAccountIds,
+  setAccountSensitized,
+} from "../account-flag-store";
+import { deleteAccount, findAccountById, listAdminAccounts } from "../account-store";
 import { normalizeDomain } from "../domain-block-store";
 import {
   jsonAuthError,
@@ -456,6 +463,7 @@ const adminAccountDocument = async (
   identity: InstanceIdentity,
   account: LocalAccount,
   moderation: AccountModeration | null,
+  sensitized: boolean,
 ): Promise<Record<string, unknown>> => ({
   ...(await mastodonAccountDocument(env, identity, account)),
   email: account.accessEmail.unwrap(),
@@ -466,7 +474,7 @@ const adminAccountDocument = async (
   silenced: moderation === "Silenced",
   suspended: moderation === "Suspended",
   limited: moderation !== null,
-  sensitized: false,
+  sensitized,
   invited_by_account_id: null,
   created_by_application_id: null,
   invite_request: null,
@@ -494,6 +502,13 @@ adminRoutes.get("/api/v1/admin/accounts", async (c) => {
   if (moderations.isErr()) {
     return jsonRepositoryError(c, moderations.error.message);
   }
+  const sensitized = await sensitizedAccountIds(
+    c.env.DB,
+    accounts.value.map((account) => account.id),
+  );
+  if (sensitized.isErr()) {
+    return jsonRepositoryError(c, sensitized.error.message);
+  }
   const documents: Record<string, unknown>[] = [];
   for (const account of accounts.value) {
     documents.push(
@@ -502,6 +517,7 @@ adminRoutes.get("/api/v1/admin/accounts", async (c) => {
         identity.value,
         account,
         moderations.value.get(account.id) ?? null,
+        sensitized.value.has(account.id),
       ),
     );
   }
@@ -531,7 +547,16 @@ const setAccountModerationRoute = async (
   if (changed.isErr()) {
     return jsonRepositoryError(c, changed.error.message);
   }
-  return c.json(await adminAccountDocument(c.env, identity.value, account.value, moderation));
+  const sensitized = await isAccountSensitized(c.env.DB, account.value.id);
+  return c.json(
+    await adminAccountDocument(
+      c.env,
+      identity.value,
+      account.value,
+      moderation,
+      sensitized.isOk() ? sensitized.value : false,
+    ),
+  );
 };
 
 adminRoutes.post("/api/v1/admin/accounts/:id/silence", (c) =>
@@ -698,6 +723,75 @@ adminRoutes.delete("/api/v1/admin/domain_blocks/:id", async (c) => {
     return jsonRepositoryError(c, removed.error.message);
   }
   if (!removed.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json({});
+});
+
+const setSensitized = async (
+  c: Context<{ Bindings: Env }>,
+  sensitized: boolean,
+): Promise<Response> => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const admin = await requireAdmin(c);
+  if (admin.isErr()) {
+    return jsonAuthError(c, admin.error);
+  }
+  const account = await findAccountById(c.env.DB, c.req.param("id") ?? "");
+  if (account.isErr()) {
+    return jsonRepositoryError(c, account.error.message);
+  }
+  if (!account.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const changed = await setAccountSensitized(c.env.DB, account.value.id, sensitized);
+  if (changed.isErr()) {
+    return jsonRepositoryError(c, changed.error.message);
+  }
+  const moderation = await getAccountModeration(c.env.DB, account.value.id);
+  return c.json(
+    await adminAccountDocument(
+      c.env,
+      identity.value,
+      account.value,
+      moderation.isOk() ? moderation.value : null,
+      sensitized,
+    ),
+  );
+};
+
+adminRoutes.post("/api/v1/admin/accounts/:id/sensitize", (c) => setSensitized(c, true));
+adminRoutes.post("/api/v1/admin/accounts/:id/unsensitize", (c) => setSensitized(c, false));
+
+adminRoutes.delete("/api/v1/admin/accounts/:id", async (c) => {
+  const admin = await requireAdmin(c);
+  if (admin.isErr()) {
+    return jsonAuthError(c, admin.error);
+  }
+  const id = c.req.param("id") ?? "";
+  const account = await findAccountById(c.env.DB, id);
+  if (account.isErr()) {
+    return jsonRepositoryError(c, account.error.message);
+  }
+  if (!account.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  // Drop the account's bucket objects first; rows cascade from `accounts`.
+  const objects = await mediaObjectKeysForAccount(c.env.DB, id);
+  if (objects.isErr()) {
+    return jsonRepositoryError(c, objects.error.message);
+  }
+  for (const objectKey of objects.value) {
+    await c.env.MEDIA.delete(objectKey);
+  }
+  const purged = await deleteAccount(c.env.DB, id);
+  if (purged.isErr()) {
+    return jsonRepositoryError(c, purged.error.message);
+  }
+  if (!purged.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json({});

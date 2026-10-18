@@ -55,6 +55,7 @@ export const ModelName = {
   announcements: "announcements",
   account_moderation: "account_moderation",
   account_domain_blocks: "account_domain_blocks",
+  account_flags: "account_flags",
   domain_blocks: "domain_blocks",
   accounts: "accounts",
   bookmarks: "bookmarks",
@@ -183,8 +184,17 @@ export const Account_domain_blocksScalarFieldEnum = {
 export type Account_domain_blocksScalarFieldEnum =
   (typeof Account_domain_blocksScalarFieldEnum)[keyof typeof Account_domain_blocksScalarFieldEnum];
 
+export const Account_flagsScalarFieldEnum = {
+  account_id: "account_id",
+  sensitized: "sensitized",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Account_flagsScalarFieldEnum =
+  (typeof Account_flagsScalarFieldEnum)[keyof typeof Account_flagsScalarFieldEnum];
+
 export const Domain_blocksScalarFieldEnum = {
-  id: "id",
   domain: "domain",
   severity: "severity",
   reject_media: "reject_media",

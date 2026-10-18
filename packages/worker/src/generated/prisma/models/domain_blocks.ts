@@ -39,7 +39,6 @@ export type Domain_blocksSumAggregateOutputType = {
 };
 
 export type Domain_blocksMinAggregateOutputType = {
-  id: string | null;
   domain: string | null;
   severity: string | null;
   reject_media: number | null;
@@ -52,7 +51,6 @@ export type Domain_blocksMinAggregateOutputType = {
 };
 
 export type Domain_blocksMaxAggregateOutputType = {
-  id: string | null;
   domain: string | null;
   severity: string | null;
   reject_media: number | null;
@@ -65,7 +63,6 @@ export type Domain_blocksMaxAggregateOutputType = {
 };
 
 export type Domain_blocksCountAggregateOutputType = {
-  id: number;
   domain: number;
   severity: number;
   reject_media: number;
@@ -91,7 +88,6 @@ export type Domain_blocksSumAggregateInputType = {
 };
 
 export type Domain_blocksMinAggregateInputType = {
-  id?: true;
   domain?: true;
   severity?: true;
   reject_media?: true;
@@ -104,7 +100,6 @@ export type Domain_blocksMinAggregateInputType = {
 };
 
 export type Domain_blocksMaxAggregateInputType = {
-  id?: true;
   domain?: true;
   severity?: true;
   reject_media?: true;
@@ -117,7 +112,6 @@ export type Domain_blocksMaxAggregateInputType = {
 };
 
 export type Domain_blocksCountAggregateInputType = {
-  id?: true;
   domain?: true;
   severity?: true;
   reject_media?: true;
@@ -222,7 +216,6 @@ export type domain_blocksGroupByArgs<
 };
 
 export type Domain_blocksGroupByOutputType = {
-  id: string;
   domain: string;
   severity: string;
   reject_media: number;
@@ -256,7 +249,6 @@ export type domain_blocksWhereInput = {
   AND?: Prisma.domain_blocksWhereInput | Prisma.domain_blocksWhereInput[];
   OR?: Prisma.domain_blocksWhereInput[];
   NOT?: Prisma.domain_blocksWhereInput | Prisma.domain_blocksWhereInput[];
-  id?: Prisma.StringFilter<"domain_blocks"> | string;
   domain?: Prisma.StringFilter<"domain_blocks"> | string;
   severity?: Prisma.StringFilter<"domain_blocks"> | string;
   reject_media?: Prisma.IntFilter<"domain_blocks"> | number;
@@ -269,7 +261,6 @@ export type domain_blocksWhereInput = {
 };
 
 export type domain_blocksOrderByWithRelationInput = {
-  id?: Prisma.SortOrder;
   domain?: Prisma.SortOrder;
   severity?: Prisma.SortOrder;
   reject_media?: Prisma.SortOrder;
@@ -283,7 +274,6 @@ export type domain_blocksOrderByWithRelationInput = {
 
 export type domain_blocksWhereUniqueInput = Prisma.AtLeast<
   {
-    id?: string;
     domain?: string;
     AND?: Prisma.domain_blocksWhereInput | Prisma.domain_blocksWhereInput[];
     OR?: Prisma.domain_blocksWhereInput[];
@@ -297,11 +287,10 @@ export type domain_blocksWhereUniqueInput = Prisma.AtLeast<
     created_at?: Prisma.StringFilter<"domain_blocks"> | string;
     updated_at?: Prisma.StringFilter<"domain_blocks"> | string;
   },
-  "id" | "domain"
+  "domain"
 >;
 
 export type domain_blocksOrderByWithAggregationInput = {
-  id?: Prisma.SortOrder;
   domain?: Prisma.SortOrder;
   severity?: Prisma.SortOrder;
   reject_media?: Prisma.SortOrder;
@@ -326,7 +315,6 @@ export type domain_blocksScalarWhereWithAggregatesInput = {
   NOT?:
     | Prisma.domain_blocksScalarWhereWithAggregatesInput
     | Prisma.domain_blocksScalarWhereWithAggregatesInput[];
-  id?: Prisma.StringWithAggregatesFilter<"domain_blocks"> | string;
   domain?: Prisma.StringWithAggregatesFilter<"domain_blocks"> | string;
   severity?: Prisma.StringWithAggregatesFilter<"domain_blocks"> | string;
   reject_media?: Prisma.IntWithAggregatesFilter<"domain_blocks"> | number;
@@ -339,7 +327,6 @@ export type domain_blocksScalarWhereWithAggregatesInput = {
 };
 
 export type domain_blocksCreateInput = {
-  id: string;
   domain: string;
   severity: string;
   reject_media?: number;
@@ -352,7 +339,6 @@ export type domain_blocksCreateInput = {
 };
 
 export type domain_blocksUncheckedCreateInput = {
-  id: string;
   domain: string;
   severity: string;
   reject_media?: number;
@@ -365,7 +351,6 @@ export type domain_blocksUncheckedCreateInput = {
 };
 
 export type domain_blocksUpdateInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string;
   domain?: Prisma.StringFieldUpdateOperationsInput | string;
   severity?: Prisma.StringFieldUpdateOperationsInput | string;
   reject_media?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -378,7 +363,6 @@ export type domain_blocksUpdateInput = {
 };
 
 export type domain_blocksUncheckedUpdateInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string;
   domain?: Prisma.StringFieldUpdateOperationsInput | string;
   severity?: Prisma.StringFieldUpdateOperationsInput | string;
   reject_media?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -391,7 +375,6 @@ export type domain_blocksUncheckedUpdateInput = {
 };
 
 export type domain_blocksCreateManyInput = {
-  id: string;
   domain: string;
   severity: string;
   reject_media?: number;
@@ -404,7 +387,6 @@ export type domain_blocksCreateManyInput = {
 };
 
 export type domain_blocksUpdateManyMutationInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string;
   domain?: Prisma.StringFieldUpdateOperationsInput | string;
   severity?: Prisma.StringFieldUpdateOperationsInput | string;
   reject_media?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -417,7 +399,6 @@ export type domain_blocksUpdateManyMutationInput = {
 };
 
 export type domain_blocksUncheckedUpdateManyInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string;
   domain?: Prisma.StringFieldUpdateOperationsInput | string;
   severity?: Prisma.StringFieldUpdateOperationsInput | string;
   reject_media?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -430,7 +411,6 @@ export type domain_blocksUncheckedUpdateManyInput = {
 };
 
 export type domain_blocksCountOrderByAggregateInput = {
-  id?: Prisma.SortOrder;
   domain?: Prisma.SortOrder;
   severity?: Prisma.SortOrder;
   reject_media?: Prisma.SortOrder;
@@ -449,7 +429,6 @@ export type domain_blocksAvgOrderByAggregateInput = {
 };
 
 export type domain_blocksMaxOrderByAggregateInput = {
-  id?: Prisma.SortOrder;
   domain?: Prisma.SortOrder;
   severity?: Prisma.SortOrder;
   reject_media?: Prisma.SortOrder;
@@ -462,7 +441,6 @@ export type domain_blocksMaxOrderByAggregateInput = {
 };
 
 export type domain_blocksMinOrderByAggregateInput = {
-  id?: Prisma.SortOrder;
   domain?: Prisma.SortOrder;
   severity?: Prisma.SortOrder;
   reject_media?: Prisma.SortOrder;
@@ -484,7 +462,6 @@ export type domain_blocksSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
-    id?: boolean;
     domain?: boolean;
     severity?: boolean;
     reject_media?: boolean;
@@ -502,7 +479,6 @@ export type domain_blocksSelectCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
-    id?: boolean;
     domain?: boolean;
     severity?: boolean;
     reject_media?: boolean;
@@ -520,7 +496,6 @@ export type domain_blocksSelectUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
-    id?: boolean;
     domain?: boolean;
     severity?: boolean;
     reject_media?: boolean;
@@ -535,7 +510,6 @@ export type domain_blocksSelectUpdateManyAndReturn<
 >;
 
 export type domain_blocksSelectScalar = {
-  id?: boolean;
   domain?: boolean;
   severity?: boolean;
   reject_media?: boolean;
@@ -550,7 +524,6 @@ export type domain_blocksSelectScalar = {
 export type domain_blocksOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  | "id"
   | "domain"
   | "severity"
   | "reject_media"
@@ -570,7 +543,6 @@ export type $domain_blocksPayload<
   objects: {};
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
-      id: string;
       domain: string;
       severity: string;
       reject_media: number;
@@ -722,8 +694,8 @@ export interface domain_blocksDelegate<
    * // Get first 10 Domain_blocks
    * const domain_blocks = await prisma.domain_blocks.findMany({ take: 10 })
    *
-   * // Only select the `id`
-   * const domain_blocksWithIdOnly = await prisma.domain_blocks.findMany({ select: { id: true } })
+   * // Only select the `domain`
+   * const domain_blocksWithDomainOnly = await prisma.domain_blocks.findMany({ select: { domain: true } })
    *
    */
   findMany<T extends domain_blocksFindManyArgs>(
@@ -790,9 +762,9 @@ export interface domain_blocksDelegate<
    *   ]
    * })
    *
-   * // Create many Domain_blocks and only return the `id`
-   * const domain_blocksWithIdOnly = await prisma.domain_blocks.createManyAndReturn({
-   *   select: { id: true },
+   * // Create many Domain_blocks and only return the `domain`
+   * const domain_blocksWithDomainOnly = await prisma.domain_blocks.createManyAndReturn({
+   *   select: { domain: true },
    *   data: [
    *     // ... provide data here
    *   ]
@@ -918,9 +890,9 @@ export interface domain_blocksDelegate<
    *   ]
    * })
    *
-   * // Update zero or more Domain_blocks and only return the `id`
-   * const domain_blocksWithIdOnly = await prisma.domain_blocks.updateManyAndReturn({
-   *   select: { id: true },
+   * // Update zero or more Domain_blocks and only return the `domain`
+   * const domain_blocksWithDomainOnly = await prisma.domain_blocks.updateManyAndReturn({
+   *   select: { domain: true },
    *   where: {
    *     // ... provide filter here
    *   },
@@ -1150,7 +1122,6 @@ export interface Prisma__domain_blocksClient<
  * Fields of the domain_blocks model
  */
 export interface domain_blocksFieldRefs {
-  readonly id: Prisma.FieldRef<"domain_blocks", "String">;
   readonly domain: Prisma.FieldRef<"domain_blocks", "String">;
   readonly severity: Prisma.FieldRef<"domain_blocks", "String">;
   readonly reject_media: Prisma.FieldRef<"domain_blocks", "Int">;

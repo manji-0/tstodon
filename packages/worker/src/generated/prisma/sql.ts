@@ -38,7 +38,11 @@ export * from "./sql/countUnreadNotifications";
 
 export * from "./sql/createList";
 
+export * from "./sql/deleteAccount";
+
 export * from "./sql/deleteAccountDomainBlock";
+
+export * from "./sql/deleteAccountFlag";
 
 export * from "./sql/deleteAccountModeration";
 
@@ -99,6 +103,8 @@ export * from "./sql/findAccountById";
 export * from "./sql/findAccountByUsername";
 
 export * from "./sql/findAccountDomainBlock";
+
+export * from "./sql/findAccountFlag";
 
 export * from "./sql/findAccountModeration";
 
@@ -276,6 +282,8 @@ export * from "./sql/listListsForAccount";
 
 export * from "./sql/listMediaIdsForStatus";
 
+export * from "./sql/listMediaObjectKeysForAccount";
+
 export * from "./sql/listMentionedAccountIds";
 
 export * from "./sql/listMutedAccounts";
@@ -299,6 +307,8 @@ export * from "./sql/listPublicRemoteStatuses";
 export * from "./sql/listPublishedAnnouncements";
 
 export * from "./sql/listRestrictedDomains";
+
+export * from "./sql/listSensitizedAccountIds";
 
 export * from "./sql/listStatusEditSnapshots";
 
@@ -363,6 +373,8 @@ export * from "./sql/updateStatusPollId";
 export * from "./sql/upsertAccountModeration";
 
 export * from "./sql/upsertAccountNote";
+
+export * from "./sql/upsertAccountSensitized";
 
 export * from "./sql/upsertAnnouncementDismissal";
 

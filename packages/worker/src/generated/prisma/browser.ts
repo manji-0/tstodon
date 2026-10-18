@@ -52,6 +52,11 @@ export type account_moderation = Prisma.account_moderationModel;
  */
 export type account_domain_blocks = Prisma.account_domain_blocksModel;
 /**
+ * Model account_flags
+ *
+ */
+export type account_flags = Prisma.account_flagsModel;
+/**
  * Model domain_blocks
  *
  */

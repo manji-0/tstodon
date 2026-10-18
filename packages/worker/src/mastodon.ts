@@ -25,6 +25,7 @@ import {
 } from "./social-store";
 import { findMediaByIds, type MediaRow } from "./media-store";
 import { customEmojiJson, emojisInText, emojisInTexts, type CustomEmoji } from "./emoji";
+import { sensitizedAccountIds } from "./account-flag-store";
 import { loadCustomEmojis } from "./custom-emoji-store";
 import { listStatusMuteRoots, resolveThreadRootStatusIds } from "./status-mute-store";
 import { FilterContextSchema, parseJsonColumn } from "./schemas";
@@ -194,14 +195,16 @@ const buildLocalNoteDocument = (
   parentAccountId: string | null,
   emojis: ReadonlyArray<CustomEmoji>,
   muted: boolean,
+  sensitized: boolean,
 ): Record<string, unknown> => {
   const url = `${InstanceIdentity.actorUrl(identity, account.username)}/statuses/${status.id}`;
+  const attachments = mediaAttachmentsJson(identity, status.mediaIds, mediaById);
   return {
     id: status.id,
     created_at: status.createdAt,
     in_reply_to_id: status.inReplyToId,
     in_reply_to_account_id: parentAccountId,
-    sensitive: status.sensitive,
+    sensitive: status.sensitive || (sensitized && attachments.length > 0),
     spoiler_text: status.spoilerText,
     visibility: Visibility.toMastodon(status.visibility),
     language: status.language.kind === "Present" ? status.language.value : null,
@@ -218,7 +221,7 @@ const buildLocalNoteDocument = (
     content: status.contentHtml,
     reblog: null,
     account: accountDoc,
-    media_attachments: mediaAttachmentsJson(identity, status.mediaIds, mediaById),
+    media_attachments: attachments,
     mentions: [],
     tags: [],
     emojis: emojis.map(customEmojiJson),
@@ -300,14 +303,21 @@ export const mastodonStatuses = async (
     ),
   ];
 
-  const [accountsResult, countsResult, interactionsResult, pollsResult, mediaResult] =
-    await Promise.all([
-      findAccountsByIds(env.DB, accountIds),
-      accountCountsByIds(env.DB, accountIds),
-      statusInteractionCountsByIds(env.DB, noteIds, viewerId),
-      findPollsByStatusIds(env.DB, noteIds, viewerId),
-      findMediaByIds(env.DB, mediaIds),
-    ]);
+  const [
+    accountsResult,
+    countsResult,
+    interactionsResult,
+    pollsResult,
+    mediaResult,
+    sensitizedResult,
+  ] = await Promise.all([
+    findAccountsByIds(env.DB, accountIds),
+    accountCountsByIds(env.DB, accountIds),
+    statusInteractionCountsByIds(env.DB, noteIds, viewerId),
+    findPollsByStatusIds(env.DB, noteIds, viewerId),
+    findMediaByIds(env.DB, mediaIds),
+    sensitizedAccountIds(env.DB, accountIds),
+  ]);
 
   const accounts = accountsResult.isOk() ? accountsResult.value : new Map<string, LocalAccount>();
   const accountCountsMap = countsResult.isOk()
@@ -318,6 +328,7 @@ export const mastodonStatuses = async (
     : new Map<string, StatusInteractionCounts>();
   const polls = pollsResult.isOk() ? pollsResult.value : new Map<string, PollRecord>();
   const mediaById = mediaResult.isOk() ? mediaResult.value : new Map<string, MediaRow>();
+  const sensitizedIds = sensitizedResult.isOk() ? sensitizedResult.value : new Set<string>();
 
   const accountDocs = new Map<string, Record<string, unknown>>();
   for (const [id, account] of accounts) {
@@ -368,6 +379,7 @@ export const mastodonStatuses = async (
         parent?.accountId ?? null,
         emojisInTexts([status.text, status.spoilerText], instanceEmojis),
         root !== undefined && mutedSet.has(root),
+        sensitizedIds.has(status.accountId),
       ),
     );
   }
