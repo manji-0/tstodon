@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../http";
 import { mastodonMedia } from "../mastodon";
-import { findMediaById, insertMedia } from "../media-store";
+import { deleteMedia, findMediaById, insertMedia, updateMediaMetadata } from "../media-store";
 import { parseInstanceIdentity } from "../runtime-config";
 import { newEntityId } from "../ids";
 import type { Context } from "hono";
@@ -59,4 +59,102 @@ mediaRoutes.get("/media/:id", async (c) => {
       "cache-control": "public, max-age=31536000",
     },
   });
+});
+
+/** Parse Mastodon's `focus` value: `"x,y"` with each component in [-1, 1]. */
+const parseFocus = (raw: string): Readonly<{ x: number; y: number }> | undefined => {
+  const [xRaw, yRaw] = raw.split(",");
+  const x = Number.parseFloat((xRaw ?? "").trim());
+  const y = Number.parseFloat((yRaw ?? "").trim());
+  if (!Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x) > 1 || Math.abs(y) > 1) {
+    return undefined;
+  }
+  return { x, y };
+};
+
+mediaRoutes.put("/api/v1/media/:id", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const id = c.req.param("id") ?? "";
+  const row = await findMediaById(c.env.DB, id);
+  if (row.isErr()) {
+    return jsonRepositoryError(c, row.error.message);
+  }
+  if (!row.value || row.value.account_id !== user.value.id) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  if (row.value.status_id) {
+    return c.json({ error: "media is already attached to a status", kind: "MediaAttached" }, 422);
+  }
+
+  const body = await c.req.parseBody();
+  const descriptionRaw = typeof body.description === "string" ? body.description : undefined;
+  const focusRaw = typeof body.focus === "string" ? body.focus : undefined;
+  let focusX = row.value.focus_x;
+  let focusY = row.value.focus_y;
+  if (focusRaw !== undefined) {
+    const focus = parseFocus(focusRaw);
+    if (!focus) {
+      return c.json({ error: "invalid focus", kind: "ValidationError" }, 422);
+    }
+    focusX = focus.x;
+    focusY = focus.y;
+  }
+  const description =
+    descriptionRaw === undefined
+      ? row.value.description
+      : descriptionRaw.trim().length > 0
+        ? descriptionRaw
+        : null;
+
+  const updated = await updateMediaMetadata(c.env.DB, {
+    id,
+    accountId: user.value.id,
+    description,
+    focusX,
+    focusY,
+  });
+  if (updated.isErr()) {
+    return jsonRepositoryError(c, updated.error.message);
+  }
+  if (!updated.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const latest = await findMediaById(c.env.DB, id);
+  if (latest.isErr() || !latest.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(mastodonMedia(identity.value, latest.value));
+});
+
+mediaRoutes.delete("/api/v1/media/:id", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const id = c.req.param("id") ?? "";
+  const row = await findMediaById(c.env.DB, id);
+  if (row.isErr()) {
+    return jsonRepositoryError(c, row.error.message);
+  }
+  if (!row.value || row.value.account_id !== user.value.id) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  if (row.value.status_id) {
+    return c.json({ error: "media is already attached to a status", kind: "MediaAttached" }, 422);
+  }
+  const removed = await deleteMedia(c.env.DB, id, user.value.id);
+  if (removed.isErr()) {
+    return jsonRepositoryError(c, removed.error.message);
+  }
+  if (removed.value) {
+    await c.env.MEDIA.delete(removed.value);
+  }
+  return c.json({});
 });

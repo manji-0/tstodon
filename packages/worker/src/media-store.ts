@@ -1,21 +1,30 @@
 import { err, ok, type Result } from "neverthrow";
+import { z } from "zod";
 import { jsonStringArray, runD1, sqlInJsonEach, type RepositoryError } from "./d1";
 import { queryTyped, runTyped } from "./typed-sql";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
+import { parseRow } from "./schemas";
 import {
+  deleteMedia as deleteMediaSql,
   findMediaById as findMediaByIdSql,
   insertMedia as insertMediaSql,
+  updateMediaMetadata as updateMediaMetadataSql,
 } from "./generated/prisma/sql";
 
-export type MediaRow = {
-  id: string;
-  account_id: string;
-  status_id: string | null;
-  object_key: string;
-  content_type: string;
-  created_at: string;
-};
+export const MediaRowSchema = z.object({
+  id: z.string().min(1),
+  account_id: z.string().min(1),
+  status_id: z.string().nullable(),
+  object_key: z.string().min(1),
+  content_type: z.string().min(1),
+  created_at: z.string().min(1),
+  description: z.string().nullable(),
+  focus_x: z.number().nullable(),
+  focus_y: z.number().nullable(),
+});
+
+export type MediaRow = z.infer<typeof MediaRowSchema>;
 
 export const insertMedia = async (
   db: D1Database,
@@ -40,6 +49,9 @@ export const insertMedia = async (
       object_key: input.objectKey,
       content_type: input.contentType,
       created_at: createdAt,
+      description: null,
+      focus_x: null,
+      focus_y: null,
     };
   });
 
@@ -48,19 +60,9 @@ export const findMediaById = async (
   id: string,
 ): Promise<Result<MediaRow | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<MediaRow>(db, findMediaByIdSql(id));
-    const row = rows[0];
-    if (!row || row.id == null) {
-      return undefined;
-    }
-    return {
-      id: row.id,
-      account_id: row.account_id,
-      status_id: row.status_id,
-      object_key: row.object_key,
-      content_type: row.content_type,
-      created_at: row.created_at,
-    };
+    const rows = await queryTyped(db, findMediaByIdSql(id));
+    const row = parseRow(MediaRowSchema, rows[0]);
+    return row.isOk() ? row.value : undefined;
   });
 
 /** Dynamic IN arity stays on D1 prepare until fixed-arity TypedSQL variants land. */
@@ -76,17 +78,56 @@ export const findMediaByIds = async (
   const queried = await runD1(() =>
     db
       .prepare(
-        `SELECT id, account_id, status_id, object_key, content_type, created_at
+        `SELECT id, account_id, status_id, object_key, content_type, created_at, description, focus_x, focus_y
          FROM media_attachments WHERE id ${sqlInJsonEach()}`,
       )
       .bind(jsonStringArray(unique))
-      .all<MediaRow>(),
+      .all(),
   );
   if (queried.isErr()) {
     return err(queried.error);
   }
-  for (const row of queried.value.results ?? []) {
-    media.set(row.id, row);
+  for (const raw of queried.value.results ?? []) {
+    const row = parseRow(MediaRowSchema, raw);
+    if (row.isOk()) {
+      media.set(row.value.id, row.value);
+    }
   }
   return ok(media);
 };
+
+/** Set alt text and an optional focal point on one of the account's media rows. */
+export const updateMediaMetadata = async (
+  db: D1Database,
+  input: {
+    id: string;
+    accountId: string;
+    description: string | null;
+    focusX: number | null;
+    focusY: number | null;
+  },
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ id: string }>(
+      db,
+      updateMediaMetadataSql(
+        input.id,
+        input.accountId,
+        input.description,
+        input.focusX,
+        input.focusY,
+      ),
+    );
+    return rows.length > 0;
+  });
+
+/** Delete a media row, returning its object key so the caller can drop the object. */
+export const deleteMedia = async (
+  db: D1Database,
+  id: string,
+  accountId: string,
+): Promise<Result<string | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ object_key: string }>(db, deleteMediaSql(id, accountId));
+    return rows[0]?.object_key;
+  });

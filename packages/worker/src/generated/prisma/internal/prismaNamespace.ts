@@ -3837,6 +3837,9 @@ export const Media_attachmentsScalarFieldEnum = {
   object_key: "object_key",
   content_type: "content_type",
   created_at: "created_at",
+  description: "description",
+  focus_x: "focus_x",
+  focus_y: "focus_y",
 } as const;
 
 export type Media_attachmentsScalarFieldEnum =

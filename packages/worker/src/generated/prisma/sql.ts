@@ -62,6 +62,8 @@ export * from "./sql/deleteList";
 
 export * from "./sql/deleteListMember";
 
+export * from "./sql/deleteMedia";
+
 export * from "./sql/deleteMute";
 
 export * from "./sql/deleteReblogOf";
@@ -315,6 +317,8 @@ export * from "./sql/updateCustomEmojiAttributes";
 export * from "./sql/updateList";
 
 export * from "./sql/updateLocalNote";
+
+export * from "./sql/updateMediaMetadata";
 
 export * from "./sql/updateOutboxFanout";
 
