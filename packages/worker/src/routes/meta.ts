@@ -19,6 +19,7 @@ import {
   type AnnouncementReactionState,
 } from "../announcement-store";
 import { customEmojiJson, emojisInText, type CustomEmoji } from "../emoji";
+import { cardDocument, listCachedLinkCards } from "../link-card";
 import { loadCustomEmojis } from "../custom-emoji-store";
 import { listConversationsForAccount, latestStatusIdInConversation } from "../conversation-store";
 import {
@@ -333,9 +334,16 @@ metaRoutes.get("/api/v1/trends/links", async (c) => {
   const ranked = [...counts.entries()]
     .toSorted((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
     .slice(0, limit);
+  // Prefer the unfurled card when the link has been previewed, so trends
+  // report real titles, descriptions, and images.
+  const cached = await listCachedLinkCards(
+    c.env.DB,
+    ranked.map(([url]) => url),
+  );
   const cards = [];
   for (const [url] of ranked) {
-    const card = linkCard(url);
+    const preview = cached.get(url);
+    const card = preview ? cardDocument(preview) : linkCard(url);
     if (card) {
       cards.push(card);
     }

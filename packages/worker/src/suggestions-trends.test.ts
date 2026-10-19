@@ -1,9 +1,31 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
 import { schemaResult } from "@tstodon/core";
 import { MastodonAccountPreviewSchema } from "./schemas";
+import { buildLinkCard } from "./link-card";
+import { parseInstanceIdentity } from "./runtime-config";
+
+const withFetchStub = async (
+  handler: (url: URL) => Response | undefined,
+  run: () => Promise<void>,
+): Promise<number> => {
+  let calls = 0;
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    calls += 1;
+    const href = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const stubbed = handler(new URL(href));
+    return stubbed ?? original(input as RequestInfo, init);
+  }) as typeof fetch;
+  try {
+    await run();
+  } finally {
+    globalThis.fetch = original;
+  }
+  return calls;
+};
 
 const auth = (email: string): Promise<Record<string, string>> => accessAuthHeaders(email);
 
@@ -139,5 +161,53 @@ describe("tag history", () => {
     expect(hashtags.hashtags[0]?.name).toBe("historywave");
     expect(hashtags.hashtags[0]?.history).toHaveLength(7);
     expect(hashtags.hashtags[0]?.following).toBe(false);
+  });
+
+  it("prefers a previewed card for trending links", async () => {
+    const email = "trend-links-preview@example.com";
+    await postStatus(email, "look at https://trend-preview.example/story");
+    await postStatus(
+      "trend-links-preview2@example.com",
+      "again https://trend-preview.example/story",
+    );
+
+    // Before the unfurl, the card falls back to the bare host.
+    const before = await json("/api/v1/trends/links");
+    const bare = read(
+      z.array(z.object({ url: z.string().min(1), title: z.string() })),
+      before.body,
+    ).find((card) => card.url === "https://trend-preview.example/story");
+    expect(bare?.title).toBe("trend-preview.example");
+
+    const identity = parseInstanceIdentity(env);
+    if (identity.isErr()) {
+      throw new Error("identity");
+    }
+    const calls = await withFetchStub(
+      (url) =>
+        url.hostname === "trend-preview.example"
+          ? new Response(
+              '<meta property="og:title" content="Previewed Story" /><meta property="og:site_name" content="Preview Press" />',
+              { headers: { "content-type": "text/html" } },
+            )
+          : undefined,
+      async () => {
+        const card = await buildLinkCard(
+          env,
+          identity.value,
+          "https://trend-preview.example/story",
+        );
+        expect(card?.title).toBe("Previewed Story");
+      },
+    );
+    expect(calls).toBe(1);
+
+    const after = await json("/api/v1/trends/links");
+    const previewed = read(
+      z.array(z.object({ url: z.string().min(1), title: z.string(), provider_name: z.string() })),
+      after.body,
+    ).find((card) => card.url === "https://trend-preview.example/story");
+    expect(previewed?.title).toBe("Previewed Story");
+    expect(previewed?.provider_name).toBe("Preview Press");
   });
 });

@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Trending links prefer the cached Open Graph preview
 - `filtered` on remote statuses (HTML stripped to text for keyword matching)
 - `notifications_merged` stream event when requests are accepted
 - Notification cursors: `since_id` / `min_id` on the v1 and grouped v2 lists

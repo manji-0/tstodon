@@ -3,12 +3,13 @@ import type { InstanceIdentity } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { jsonStringArray, runD1, type RepositoryError } from "./d1";
 import { isFederatedHostRefused } from "./federated-fetch";
 import { decodeHtmlEntities } from "./html";
 import type { OutboxJob } from "@tstodon/domain";
 import {
   findLinkCard as findLinkCardSql,
+  listLinkCards as listLinkCardsSql,
   upsertLinkCard as upsertLinkCardSql,
 } from "./generated/prisma/sql";
 import { suspendedDomains } from "./admin-domain-block-store";
@@ -204,6 +205,31 @@ export const buildLinkCard = async (
   } catch {
     return undefined;
   }
+};
+
+/** Cached cards for the given URLs, keyed by URL. */
+export const listCachedLinkCards = async (
+  db: D1Database,
+  urls: ReadonlyArray<string>,
+): Promise<ReadonlyMap<string, LinkCard>> => {
+  const unique = [...new Set(urls.filter((url) => url.length > 0))];
+  if (unique.length === 0) {
+    return new Map<string, LinkCard>();
+  }
+  const queried = await runD1(async () =>
+    queryTyped<{ url: string; card_json: string }>(db, listLinkCardsSql(jsonStringArray(unique))),
+  );
+  if (queried.isErr()) {
+    return new Map<string, LinkCard>();
+  }
+  const cards = new Map<string, LinkCard>();
+  for (const row of queried.value) {
+    const card = parseCardJson(row.card_json);
+    if (card) {
+      cards.set(row.url, card);
+    }
+  }
+  return cards;
 };
 
 /** Queue the unfurl for a stored status (or remote status); never blocks a request. */
