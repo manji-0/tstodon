@@ -30,6 +30,14 @@ const NotificationSchema = z.object({
   type: z.string().min(1),
   account: z.object({ id: z.string().min(1), acct: z.string().min(1) }),
   status: z.object({ id: z.string().min(1) }).nullable(),
+  filtered: z
+    .array(
+      z.object({
+        filter: z.object({ title: z.string() }),
+        keyword_matches: z.array(z.string()),
+      }),
+    )
+    .optional(),
 });
 
 describe("single notification", () => {
@@ -90,6 +98,40 @@ describe("single notification", () => {
     });
     expect(unread.status).toBe(200);
     expect(read(z.object({ count: z.number() }), unread.body).count).toBeGreaterThanOrEqual(1);
+
+    // A filter on the notification context is reported on the single
+    // notification too, exactly as in the list.
+    const created2 = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(await auth("single-notif-sender2@example.com")),
+      },
+      body: JSON.stringify({ status: `@${viewer} spoiler alert` }),
+    });
+    const status2 = read(z.object({ id: z.string().min(1) }), created2.body).id;
+    const list2 = await json("/api/v1/notifications", { headers: await auth(viewerEmail) });
+    const notification2 = read(z.array(NotificationSchema), list2.body).find(
+      (row) => row.status?.id === status2,
+    );
+
+    const createdFilter = await json("/api/v2/filters", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(viewerEmail)) },
+      body: JSON.stringify({
+        title: "spoiler",
+        context: ["notifications"],
+        keywords: ["spoiler"],
+      }),
+    });
+    expect(createdFilter.status).toBe(200);
+
+    const singleFiltered = await json(`/api/v1/notifications/${notification2?.id ?? ""}`, {
+      headers: await auth(viewerEmail),
+    });
+    expect(read(NotificationSchema, singleFiltered.body).filtered?.[0]?.filter.title).toBe(
+      "spoiler",
+    );
 
     // Dismissing hides it from the list; like Mastodon, the single
     // notification is still addressable by id.

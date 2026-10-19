@@ -1,7 +1,13 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
+import type { LocalStatus } from "@tstodon/domain";
 import { findAccountById } from "../account-store";
-import { filteredAttribute, loadViewerFilters, matchFilters } from "../filter-match";
+import {
+  filteredAttribute,
+  loadViewerFilters,
+  matchFilters,
+  type FilterWithStatuses,
+} from "../filter-match";
 import { jsonAuthError, jsonRepositoryError, queryCursor, queryLimit, requireUser } from "../http";
 import { getMarkers } from "../marker-store";
 import {
@@ -24,11 +30,27 @@ import {
   findNotificationById,
   listNotifications,
   type NotificationFilters,
+  type NotificationRow,
 } from "../social-store";
 import { findStatusesByIds } from "../status-store";
 import { mutedThreadStatusIds } from "../status-mute-store";
 
 export const notificationRoutes = new Hono<{ Bindings: Env }>();
+
+/** Filters matching this notification, for the `filtered` attribute. */
+const notificationFiltered = (
+  row: NotificationRow,
+  filters: ReadonlyArray<FilterWithStatuses>,
+  statuses: ReadonlyMap<string, LocalStatus>,
+): ReadonlyArray<Record<string, unknown>> => {
+  if (filters.length === 0 || !row.status_id) {
+    return [];
+  }
+  const status = statuses.get(row.status_id);
+  const text = status && status.kind === "LocalNote" ? status.text : "";
+  const matches = matchFilters(filters, "notifications", text, row.status_id);
+  return filteredAttribute(matches, (filterRow) => mastodonFilterV2(filterRow));
+};
 
 notificationRoutes.get("/api/v1/notifications", async (c) => {
   const identity = parseInstanceIdentity(c.env);
@@ -71,15 +93,13 @@ notificationRoutes.get("/api/v1/notifications", async (c) => {
     if (!document) {
       continue;
     }
-    if (filters.isOk() && filters.value.length > 0 && row.status_id) {
-      const status = notificationStatuses.isOk()
-        ? notificationStatuses.value.get(row.status_id)
-        : undefined;
-      const text = status && status.kind === "LocalNote" ? status.text : "";
-      const matches = matchFilters(filters.value, "notifications", text, row.status_id);
-      if (matches.length > 0) {
-        document.filtered = filteredAttribute(matches, (filterRow) => mastodonFilterV2(filterRow));
-      }
+    const filtered = notificationFiltered(
+      row,
+      filters.isOk() ? filters.value : [],
+      notificationStatuses.isOk() ? notificationStatuses.value : new Map(),
+    );
+    if (filtered.length > 0) {
+      document.filtered = filtered;
     }
     documents.push(document);
   }
@@ -123,7 +143,17 @@ notificationRoutes.get("/api/v1/notifications/:id", async (c) => {
   if (!document) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.json(document);
+  // The single notification carries the same `filtered` attribute as the list.
+  const filters = await loadViewerFilters(c.env.DB, user.value.id);
+  const statuses = row.value.status_id
+    ? await findStatusesByIds(c.env.DB, [row.value.status_id])
+    : undefined;
+  const filtered = notificationFiltered(
+    row.value,
+    filters.isOk() ? filters.value : [],
+    statuses?.isOk() ? statuses.value : new Map(),
+  );
+  return c.json(filtered.length > 0 ? { ...document, filtered } : document);
 });
 
 notificationRoutes.post("/api/v1/notifications/clear", async (c) => {
