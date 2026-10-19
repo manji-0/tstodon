@@ -23,6 +23,22 @@ const parseEnv = schemaResult(envSchema);
  * Parse a JSON array from an optional env var. Empty or malformed input yields
  * no entries rather than failing the request.
  */
+/** Parse an optional JSON env var; empty or malformed input yields `undefined`. */
+const parseJsonValue = <T>(schema: z.ZodType<T>, raw: string): T | undefined => {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+  const parsed = schemaResult(schema)(json);
+  return parsed.isOk() ? parsed.value : undefined;
+};
+
 const parseJsonArray = <T>(schema: z.ZodType<T[]>, raw: string): ReadonlyArray<T> => {
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
@@ -148,6 +164,59 @@ export const activeAnnouncements = (
     }
     return true;
   });
+
+/** Optional description of the instance thumbnail (`INSTANCE_THUMBNAIL_DESCRIPTION`). */
+export const thumbnailDescription = (env: Env): string | undefined => {
+  const raw =
+    `${(env as { INSTANCE_THUMBNAIL_DESCRIPTION?: string }).INSTANCE_THUMBNAIL_DESCRIPTION ?? ""}`.trim();
+  return raw.length > 0 ? raw : undefined;
+};
+
+const policyDocumentSchema = z.object({
+  content: z.string(),
+  updated_at: z.string().min(1).optional(),
+});
+
+export type PolicyDocument = Readonly<{ content: string; updatedAt: string | null }>;
+
+const toPolicyDocument = (raw: z.infer<typeof policyDocumentSchema>): PolicyDocument => ({
+  content: raw.content,
+  updatedAt: raw.updated_at ?? null,
+});
+
+/** `INSTANCE_EXTENDED_DESCRIPTION`: JSON `{ content, updated_at? }`. */
+export const extendedDescription = (env: Env): PolicyDocument | undefined => {
+  const parsed = parseJsonValue(
+    policyDocumentSchema,
+    `${(env as { INSTANCE_EXTENDED_DESCRIPTION?: string }).INSTANCE_EXTENDED_DESCRIPTION ?? ""}`,
+  );
+  return parsed ? toPolicyDocument(parsed) : undefined;
+};
+
+/** `INSTANCE_PRIVACY_POLICY`: JSON `{ content, updated_at? }`. */
+export const privacyPolicy = (env: Env): PolicyDocument | undefined => {
+  const parsed = parseJsonValue(
+    policyDocumentSchema,
+    `${(env as { INSTANCE_PRIVACY_POLICY?: string }).INSTANCE_PRIVACY_POLICY ?? ""}`,
+  );
+  return parsed ? toPolicyDocument(parsed) : undefined;
+};
+
+const termsOfServiceSchema = z.object({
+  content: z.string(),
+  effective_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+export type TermsOfService = Readonly<{ content: string; effectiveDate: string }>;
+
+/** `INSTANCE_TERMS_OF_SERVICE`: JSON `{ content, effective_date }`. */
+export const termsOfService = (env: Env): TermsOfService | undefined => {
+  const parsed = parseJsonValue(
+    termsOfServiceSchema,
+    `${(env as { INSTANCE_TERMS_OF_SERVICE?: string }).INSTANCE_TERMS_OF_SERVICE ?? ""}`,
+  );
+  return parsed ? { content: parsed.content, effectiveDate: parsed.effective_date } : undefined;
+};
 
 export const federationAllowHosts = (env: Env): ReadonlySet<string> => {
   const raw = `${(env as { FEDERATION_ALLOW_HOSTS?: string }).FEDERATION_ALLOW_HOSTS ?? ""}`;
