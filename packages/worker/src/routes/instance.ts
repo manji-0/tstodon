@@ -1,10 +1,24 @@
 import { Hono } from "hono";
 import { countAccounts } from "../account-store";
+import { listPublicDomainBlocks, publicDomainBlockDocument } from "../admin-domain-block-store";
 import { jsonRepositoryError } from "../http";
 import { parseInstanceIdentity } from "../runtime-config";
 import { countStatuses } from "../status-store";
 
 export const instanceRoutes = new Hono<{ Bindings: Env }>();
+
+/** Public list of moderated servers (`noop` entries stay private, obfuscated ones hash the name). */
+instanceRoutes.get("/api/v1/instance/domain_blocks", async (c) => {
+  const blocks = await listPublicDomainBlocks(c.env.DB);
+  if (blocks.isErr()) {
+    return jsonRepositoryError(c, blocks.error.message);
+  }
+  const documents: Record<string, unknown>[] = [];
+  for (const block of blocks.value) {
+    documents.push(await publicDomainBlockDocument(block));
+  }
+  return c.json(documents);
+});
 
 instanceRoutes.get("/api/v1/instance", async (c) => {
   const identity = parseInstanceIdentity(c.env);

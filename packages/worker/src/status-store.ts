@@ -792,6 +792,7 @@ export const resolveDirectConversationRoot = async (
   return ok(current.id);
 };
 
+/** Weekly status and registration counts; `week` is the Monday 00:00 UTC as UNIX seconds. */
 export const listWeeklyStatusActivity = async (
   db: D1Database,
   weeks: number,
@@ -801,7 +802,7 @@ export const listWeeklyStatusActivity = async (
   runD1(async () => {
     const { results: statusRows } = await db
       .prepare(
-        `SELECT strftime('%Y-%W', created_at) AS week, COUNT(*) AS statuses
+        `SELECT strftime('%s', date(created_at, '-6 days', 'weekday 1')) AS week, COUNT(*) AS statuses
          FROM statuses
          WHERE created_at >= datetime('now', ?)
          GROUP BY week
@@ -812,7 +813,7 @@ export const listWeeklyStatusActivity = async (
       .all<{ week: string; statuses: number }>();
     const { results: registrationRows } = await db
       .prepare(
-        `SELECT strftime('%Y-%W', created_at) AS week, COUNT(*) AS registrations
+        `SELECT strftime('%s', date(created_at, '-6 days', 'weekday 1')) AS week, COUNT(*) AS registrations
          FROM accounts
          WHERE created_at >= datetime('now', ?)
          GROUP BY week`,

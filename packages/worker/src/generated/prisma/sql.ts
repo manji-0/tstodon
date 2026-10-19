@@ -302,6 +302,8 @@ export * from "./sql/listPinnedStatuses";
 
 export * from "./sql/listPollVotesForAccount";
 
+export * from "./sql/listPublicDomainBlocks";
+
 export * from "./sql/listPublicRemoteStatuses";
 
 export * from "./sql/listPublishedAnnouncements";

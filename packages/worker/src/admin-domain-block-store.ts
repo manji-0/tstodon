@@ -9,6 +9,7 @@ import {
   findDomainBlockById as findDomainBlockByIdSql,
   insertDomainBlock as insertDomainBlockSql,
   listDomainBlocks as listDomainBlocksSql,
+  listPublicDomainBlocks as listPublicDomainBlocksSql,
   listRestrictedDomains as listRestrictedDomainsSql,
   listSuspendedDomains as listSuspendedDomainsSql,
   updateDomainBlock as updateDomainBlockSql,
@@ -172,3 +173,38 @@ export const domainBlockDocument = (row: DomainBlockRow): Record<string, unknown
   public_comment: row.public_comment,
   created_at: row.created_at,
 });
+
+/** Lowercase hex SHA-256 of the domain, as Mastodon's public digest. */
+export const domainDigest = async (domain: string): Promise<string> => {
+  const bytes = new TextEncoder().encode(domain);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+};
+
+/** Blocks shown publicly by `GET /api/v1/instance/domain_blocks` (`noop` is omitted). */
+export const listPublicDomainBlocks = async (
+  db: D1Database,
+): Promise<Result<DomainBlockRow[], RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped(db, listPublicDomainBlocksSql());
+    const blocks: DomainBlockRow[] = [];
+    for (const raw of rows) {
+      const row = parseRow(raw);
+      if (row.isOk()) {
+        blocks.push(row.value);
+      }
+    }
+    return blocks;
+  });
+
+export const publicDomainBlockDocument = async (
+  row: DomainBlockRow,
+): Promise<Record<string, unknown>> => {
+  const digest = await domainDigest(row.domain);
+  return {
+    domain: row.obfuscate !== 0 ? digest : row.domain,
+    digest,
+    severity: row.severity,
+    comment: row.public_comment,
+  };
+};
