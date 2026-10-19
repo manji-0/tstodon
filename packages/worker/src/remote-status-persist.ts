@@ -13,6 +13,7 @@ import type { RepositoryError } from "./d1";
 import { fetchActivityJson } from "./federated-fetch";
 import { newEntityId } from "./ids";
 import { parseLocalStatusId } from "./activitypub";
+import { mediaRejectedDomains } from "./admin-domain-block-store";
 import { findRemoteStatusByObjectUri, upsertRemoteStatus } from "./remote-status-store";
 import { isTruthy, NoteDocumentSchema, stringList } from "./schemas";
 
@@ -97,5 +98,10 @@ export const persistRemoteObject = async (
   if (parsed.isErr()) {
     return parsed.error.kind === "RepositoryError" ? err(parsed.error) : ok(undefined);
   }
-  return upsertRemoteStatus(db, parsed.value);
+  // An admin block with `reject_media` keeps the post but not its attachments.
+  const rejected = await mediaRejectedDomains(db);
+  const status = rejected.has(actor.domain.toLowerCase())
+    ? { ...parsed.value, media: [] }
+    : parsed.value;
+  return upsertRemoteStatus(db, status);
 };

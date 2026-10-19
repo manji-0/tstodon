@@ -34,6 +34,7 @@ import {
 } from "../account-moderation-store";
 import {
   DomainBlockSeveritySchema,
+  clearRemoteMediaForDomain,
   deleteDomainBlock,
   domainBlockDocument,
   findDomainBlockByDomain,
@@ -664,6 +665,9 @@ adminRoutes.post("/api/v1/admin/domain_blocks", async (c) => {
   if (block.isErr() || !block.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
+  if (block.value.reject_media !== 0) {
+    await clearRemoteMediaForDomain(c.env.DB, block.value.domain);
+  }
   return c.json(domainBlockDocument(block.value));
 });
 
@@ -709,6 +713,9 @@ adminRoutes.put("/api/v1/admin/domain_blocks/:id", async (c) => {
   const block = await findDomainBlockById(c.env.DB, id);
   if (block.isErr() || !block.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  if (block.value.reject_media !== 0) {
+    await clearRemoteMediaForDomain(c.env.DB, block.value.domain);
   }
   return c.json(domainBlockDocument(block.value));
 });

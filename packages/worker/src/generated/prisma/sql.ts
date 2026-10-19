@@ -12,6 +12,8 @@ export * from "./sql/authorizeRemoteFollowRequest";
 
 export * from "./sql/clearNotifications";
 
+export * from "./sql/clearRemoteMediaForDomain";
+
 export * from "./sql/completeStatusIdempotency";
 
 export * from "./sql/countAccountTagUses";
@@ -287,6 +289,8 @@ export * from "./sql/listListsForAccount";
 export * from "./sql/listMediaIdsForStatus";
 
 export * from "./sql/listMediaObjectKeysForAccount";
+
+export * from "./sql/listMediaRejectedDomains";
 
 export * from "./sql/listMentionedAccountIds";
 

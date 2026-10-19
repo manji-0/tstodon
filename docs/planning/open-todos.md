@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `reject_media` enforced: remote attachments dropped on persist and cleared for existing rows
 - Remote status attachments captured from ActivityPub and rendered (`remote_statuses.media_json`)
 - `DELETE /api/v1/statuses/:id` returns the raw `text` for delete-and-redraft
 - `Idempotency-Key` on POST /api/v1/statuses (`status_idempotency`, one hour, per account)

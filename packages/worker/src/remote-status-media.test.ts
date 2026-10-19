@@ -8,9 +8,17 @@ import { generateAccountKeys } from "./keys";
 import { parseInstanceIdentity } from "./runtime-config";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
+import { findRemoteStatusByObjectUri } from "./remote-status-store";
+import { accessAuthHeaders } from "../test/access-jwt-fixture";
 
-const json = async (path: string): Promise<{ status: number; body: unknown }> => {
-  const response = await SELF.fetch(`https://example.com${path}`);
+const auth = (email: string): Promise<Record<string, string>> =>
+  accessAuthHeaders(email, { admin: true });
+
+const json = async (
+  path: string,
+  init?: RequestInit,
+): Promise<{ status: number; body: unknown }> => {
+  const response = await SELF.fetch(`https://example.com${path}`, init);
   const contentType = response.headers.get("content-type") ?? "";
   const body = contentType.includes("json") ? await response.json() : await response.text();
   return { status: response.status, body };
@@ -137,5 +145,68 @@ describe("remote status media", () => {
     });
     expect(persisted.isOk()).toBe(true);
     expect(persisted.value?.kind === "RemoteNote" ? persisted.value.media.length : 0).toBe(4);
+  });
+});
+
+describe("reject_media domain blocks", () => {
+  it("strips stored media and drops media on later posts", async () => {
+    const actorUri = "https://media-blocked.example/users/erin";
+    const actor = await seedRemoteActor(actorUri, "erin", "media-blocked.example");
+    const identity = parseInstanceIdentity(env);
+    if (identity.isErr()) {
+      throw new Error("identity");
+    }
+    const note = (suffix: string) => ({
+      id: `${actorUri}/statuses/${suffix}`,
+      type: "Note" as const,
+      attributedTo: actorUri,
+      content: `<p>post ${suffix}</p>`,
+      published: new Date().toISOString(),
+      to: ["https://www.w3.org/ns/activitystreams#Public"],
+      attachment: [
+        {
+          type: "Document",
+          mediaType: "image/png",
+          url: `https://media-blocked.example/${suffix}.png`,
+          name: "alt",
+        },
+      ],
+    });
+
+    expect((await persistRemoteObject(env.DB, identity.value, actor, note("before"))).isOk()).toBe(
+      true,
+    );
+
+    const blocked = await json("/api/v1/admin/domain_blocks", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(await auth("reject-media-admin@example.com")),
+      },
+      // `noop` keeps the domain's posts visible so only the media rule shows.
+      body: JSON.stringify({
+        domain: "media-blocked.example",
+        severity: "noop",
+        reject_media: true,
+      }),
+    });
+    expect(blocked.status).toBe(200);
+
+    // The already-stored post loses its media when the block is created.
+    const before = await findRemoteStatusByObjectUri(env.DB, `${actorUri}/statuses/before`);
+    expect(
+      before.isOk() && before.value?.kind === "RemoteNote" ? before.value.media : undefined,
+    ).toEqual([]);
+
+    expect((await persistRemoteObject(env.DB, identity.value, actor, note("after"))).isOk()).toBe(
+      true,
+    );
+
+    const timeline = await json("/api/v1/timelines/public");
+    const statuses = read(z.array(RemoteStatusSchema), timeline.body).filter(
+      (entry) => entry.account.acct === "erin@media-blocked.example",
+    );
+    expect(statuses).toHaveLength(2);
+    expect(statuses.flatMap((status) => status.media_attachments)).toHaveLength(0);
   });
 });

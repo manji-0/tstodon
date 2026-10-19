@@ -9,6 +9,8 @@ import {
   findDomainBlockById as findDomainBlockByIdSql,
   insertDomainBlock as insertDomainBlockSql,
   listDomainBlocks as listDomainBlocksSql,
+  clearRemoteMediaForDomain as clearRemoteMediaForDomainSql,
+  listMediaRejectedDomains as listMediaRejectedDomainsSql,
   listPublicDomainBlocks as listPublicDomainBlocksSql,
   listRestrictedDomains as listRestrictedDomainsSql,
   listSuspendedDomains as listSuspendedDomainsSql,
@@ -207,4 +209,23 @@ export const publicDomainBlockDocument = async (
     severity: row.severity,
     comment: row.public_comment,
   };
+};
+
+/** Domains whose remote media must not be kept (`reject_media`). */
+export const mediaRejectedDomains = async (db: D1Database): Promise<ReadonlySet<string>> => {
+  const rows = await runD1(async () =>
+    queryTyped<{ domain: string }>(db, listMediaRejectedDomainsSql()),
+  );
+  return new Set((rows.isOk() ? rows.value : []).map((row) => row.domain.toLowerCase()));
+};
+
+/** Called when a block starts rejecting media so stored attachments go away too. */
+export const clearRemoteMediaForDomain = async (
+  db: D1Database,
+  domain: string,
+): Promise<Result<void, RepositoryError>> => {
+  const cleared = await runD1(async () => {
+    await runTyped(db, clearRemoteMediaForDomainSql(domain, nowIso()));
+  });
+  return cleared.map(() => undefined);
 };
