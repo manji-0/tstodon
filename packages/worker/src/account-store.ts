@@ -34,6 +34,7 @@ import {
   listDirectoryAccountsByActive as listDirectoryAccountsByActiveSql,
   listDirectoryAccountsByNew as listDirectoryAccountsByNewSql,
   searchAccounts as searchAccountsSql,
+  setAccountLocked as setAccountLockedSql,
   updateAccountProfile as updateAccountProfileSql,
 } from "./generated/prisma/sql";
 
@@ -312,6 +313,18 @@ export const listDirectoryAccounts = async (
     }
     return accounts;
   });
+
+/** Toggle whether the account approves followers by hand. */
+export const setAccountLocked = async (
+  db: D1Database,
+  accountId: string,
+  locked: boolean,
+): Promise<Result<void, RepositoryError>> => {
+  const written = await runD1(async () => {
+    await queryTyped(db, setAccountLockedSql(locked ? 1 : 0, accountId));
+  });
+  return written.map(() => undefined);
+};
 
 /** Purge a local account; every dependent row cascades from it. */
 export const deleteAccount = async (

@@ -6,9 +6,11 @@ import {
   findAccountById,
   findAccountByIdOrUsername,
   findAccountByUsername,
+  setAccountLocked,
   updateAccountProfile,
 } from "../account-store";
 import { findAccountProfile, upsertAccountProfile } from "../account-profile-store";
+import { InstanceLimits } from "@tstodon/core";
 import { authenticate } from "../auth";
 import { getAccountModeration } from "../account-moderation-store";
 import { enqueueTargetedActivity } from "../delivery";
@@ -81,6 +83,40 @@ accountRoutes.get("/api/v1/accounts/verify_credentials", async (c) => {
   });
 });
 
+/** Avatar and header uploads: image types only, up to the advertised size cap. */
+const PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+const storeProfileImage = async (
+  env: Env,
+  accountId: string,
+  kind: "avatar" | "header",
+  value: unknown,
+): Promise<
+  | Readonly<{ kind: "Ok"; objectKey: string | null; contentType: string | null }>
+  | Readonly<{ kind: "Err"; message: string }>
+> => {
+  if (value === undefined || value === null) {
+    return { kind: "Ok", objectKey: null, contentType: null };
+  }
+  if (!(value instanceof File)) {
+    return { kind: "Err", message: `${kind} must be sent as a file` };
+  }
+  const contentType = value.type.split(";")[0]?.trim().toLowerCase() ?? "";
+  const allowed: ReadonlyArray<string> = InstanceLimits.media.supportedMimeTypes.filter((type) =>
+    type.startsWith("image/"),
+  );
+  if (!allowed.includes(contentType)) {
+    return { kind: "Err", message: `${kind} must be one of ${allowed.join(", ")}` };
+  }
+  const bytes = await value.arrayBuffer();
+  if (bytes.byteLength > PROFILE_IMAGE_MAX_BYTES) {
+    return { kind: "Err", message: `${kind} exceeds ${PROFILE_IMAGE_MAX_BYTES} bytes` };
+  }
+  const objectKey = `${kind}s/${accountId}`;
+  await env.MEDIA.put(objectKey, bytes, { httpMetadata: { contentType } });
+  return { kind: "Ok", objectKey, contentType };
+};
+
 accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -113,6 +149,15 @@ accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
     const value = field.value?.trim() ?? "";
     return name.length > 0 && value.length > 0 ? [{ name, value }] : [];
   });
+  // Avatar / header uploads land in the media bucket like any other object.
+  const uploaded = await storeProfileImage(c.env, user.value.id, "avatar", body.value.avatar);
+  if (uploaded.kind === "Err") {
+    return c.json({ error: uploaded.message, kind: "ValidationError" }, 422);
+  }
+  const header = await storeProfileImage(c.env, user.value.id, "header", body.value.header);
+  if (header.kind === "Err") {
+    return c.json({ error: header.message, kind: "ValidationError" }, 422);
+  }
   const saved = await upsertAccountProfile(c.env.DB, user.value.id, {
     note: body.value.note === undefined ? existingProfile.value.note : body.value.note,
     fields: fields === undefined ? existingProfile.value.fields : fields,
@@ -121,9 +166,19 @@ accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
       body.value.discoverable === undefined
         ? existingProfile.value.discoverable
         : isTruthy(body.value.discoverable),
+    avatarObjectKey: uploaded.objectKey ?? existingProfile.value.avatarObjectKey,
+    avatarContentType: uploaded.contentType ?? existingProfile.value.avatarContentType,
+    headerObjectKey: header.objectKey ?? existingProfile.value.headerObjectKey,
+    headerContentType: header.contentType ?? existingProfile.value.headerContentType,
   });
   if (saved.isErr()) {
     return jsonRepositoryError(c, saved.error.message);
+  }
+  if (body.value.locked !== undefined) {
+    const locked = await setAccountLocked(c.env.DB, user.value.id, isTruthy(body.value.locked));
+    if (locked.isErr()) {
+      return jsonRepositoryError(c, locked.error.message);
+    }
   }
   const latest = await findAccountById(c.env.DB, user.value.id);
   if (latest.isErr() || !latest.value) {

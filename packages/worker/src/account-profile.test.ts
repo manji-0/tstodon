@@ -30,6 +30,9 @@ const AccountSchema = z.object({
   note: z.string(),
   bot: z.boolean(),
   discoverable: z.boolean(),
+  locked: z.boolean(),
+  avatar: z.string().min(1),
+  header: z.string().min(1),
   fields: z.array(
     z.object({ name: z.string(), value: z.string(), verified_at: z.string().nullable() }),
   ),
@@ -46,6 +49,47 @@ const updateCredentials = async (
   });
 
 describe("account profiles", () => {
+  it("stores avatar and header images and toggles locked", async () => {
+    const email = "profile-images@example.com";
+    const form = new FormData();
+    form.set("display_name", "Image Owner");
+    form.set("locked", "true");
+    form.set(
+      "avatar",
+      new File([new Uint8Array([137, 80, 78, 71])], "a.png", { type: "image/png" }),
+    );
+    form.set("header", new File([new Uint8Array([71, 73, 70])], "h.gif", { type: "image/gif" }));
+    const updated = await json("/api/v1/accounts/update_credentials", {
+      method: "PATCH",
+      headers: await auth(email),
+      body: form,
+    });
+    expect(updated.status).toBe(200);
+    const account = read(AccountSchema, updated.body);
+    expect(account.locked).toBe(true);
+    expect(account.avatar).toContain("/avatars/");
+    expect(account.header).toContain("/headers/");
+    expect(account.avatar).not.toBe(account.header);
+
+    // The public profile reports the same images.
+    const fetched = await json(`/api/v1/accounts/${account.id}`);
+    const publicAccount = read(AccountSchema, fetched.body);
+    expect(publicAccount.avatar).toBe(account.avatar);
+    expect(publicAccount.header).toBe(account.header);
+
+    // A non-image upload is refused and leaves the stored image alone.
+    const bad = new FormData();
+    bad.set("avatar", new File([new Uint8Array([1])], "a.txt", { type: "text/plain" }));
+    const rejected = await json("/api/v1/accounts/update_credentials", {
+      method: "PATCH",
+      headers: await auth(email),
+      body: bad,
+    });
+    expect(rejected.status).toBe(422);
+    const stillThere = await json(`/api/v1/accounts/${account.id}`);
+    expect(read(AccountSchema, stillThere.body).avatar).toBe(account.avatar);
+  });
+
   it("stores the bio, fields, and flags and reports them everywhere", async () => {
     const email = "profile-owner@example.com";
     const updated = await updateCredentials(email, {

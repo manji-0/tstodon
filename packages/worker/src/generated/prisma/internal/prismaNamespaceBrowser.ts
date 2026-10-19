@@ -238,6 +238,10 @@ export const Account_profilesScalarFieldEnum = {
   fields_json: "fields_json",
   bot: "bot",
   discoverable: "discoverable",
+  avatar_object_key: "avatar_object_key",
+  avatar_content_type: "avatar_content_type",
+  header_object_key: "header_object_key",
+  header_content_type: "header_content_type",
   updated_at: "updated_at",
 } as const;
 

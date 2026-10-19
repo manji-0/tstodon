@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Profile images (`avatar`/`header` uploads) and the `locked` toggle
 - Notification policy + requests with `drop`/`filter`/`accept`, and `api_versions: {mastodon: 2}`
 - Media uploads validate the advertised `supported_mime_types`
 - Account profiles: bio (`note`), fields, bot/discoverable in every account document

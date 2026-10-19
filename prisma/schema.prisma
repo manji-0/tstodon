@@ -126,12 +126,16 @@ model notification_request_acceptances {
 }
 
 model account_profiles {
-  account_id   String @id
-  note         String @default("")
-  fields_json  String @default("[]")
-  bot          Int    @default(0)
-  discoverable Int    @default(1)
-  updated_at   String @default("CURRENT_TIMESTAMP")
+  account_id          String  @id
+  note                String  @default("")
+  fields_json         String  @default("[]")
+  bot                 Int     @default(0)
+  discoverable        Int     @default(1)
+  avatar_object_key   String?
+  avatar_content_type String?
+  header_object_key   String?
+  header_content_type String?
+  updated_at          String  @default("CURRENT_TIMESTAMP")
 }
 
 model account_flags {

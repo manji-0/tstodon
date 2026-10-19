@@ -269,6 +269,8 @@ export const OAuthTokenBodySchema = z.object({
 
 export const UpdateCredentialsBodySchema = z.object({
   display_name: z.string().optional(),
+  avatar: z.unknown().optional(),
+  header: z.unknown().optional(),
   note: z.string().optional(),
   bot: booleanish,
   discoverable: booleanish,

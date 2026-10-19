@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param idsJson
  */
 export const listAccountProfiles = $runtime.makeTypedQueryFactory(
-  "SELECT account_id, note, fields_json, bot, discoverable FROM account_profiles\nWHERE account_id IN (SELECT value FROM json_each($1))",
+  "SELECT account_id, note, fields_json, bot, discoverable,\navatar_object_key, avatar_content_type, header_object_key, header_content_type\nFROM account_profiles\nWHERE account_id IN (SELECT value FROM json_each($1))",
 ) as (
   idsJson: string,
 ) => $runtime.TypedSql<listAccountProfiles.Parameters, listAccountProfiles.Result>;
@@ -21,5 +21,9 @@ export namespace listAccountProfiles {
     fields_json: string;
     bot: number;
     discoverable: number;
+    avatar_object_key: string | null;
+    avatar_content_type: string | null;
+    header_object_key: string | null;
+    header_content_type: string | null;
   };
 }

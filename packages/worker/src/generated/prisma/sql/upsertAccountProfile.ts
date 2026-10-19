@@ -10,16 +10,24 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param fieldsJson
  * @param bot
  * @param discoverable
+ * @param avatarObjectKey
+ * @param avatarContentType
+ * @param headerObjectKey
+ * @param headerContentType
  * @param now
  */
 export const upsertAccountProfile = $runtime.makeTypedQueryFactory(
-  "INSERT INTO account_profiles (account_id, note, fields_json, bot, discoverable, updated_at)\nVALUES ($1, $2, $3, $4, $5, $6)\nON CONFLICT(account_id) DO UPDATE SET\nnote = $2, fields_json = $3, bot = $4, discoverable = $5, updated_at = $6",
+  "INSERT INTO account_profiles (\naccount_id, note, fields_json, bot, discoverable,\navatar_object_key, avatar_content_type, header_object_key, header_content_type, updated_at\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\nON CONFLICT(account_id) DO UPDATE SET\nnote = $2, fields_json = $3, bot = $4, discoverable = $5,\navatar_object_key = $6, avatar_content_type = $7,\nheader_object_key = $8, header_content_type = $9, updated_at = $10",
 ) as (
   accountId: string,
   note: string,
   fieldsJson: string,
   bot: number,
   discoverable: number,
+  avatarObjectKey: string | null,
+  avatarContentType: string | null,
+  headerObjectKey: string | null,
+  headerContentType: string | null,
   now: string,
 ) => $runtime.TypedSql<upsertAccountProfile.Parameters, upsertAccountProfile.Result>;
 
@@ -30,6 +38,10 @@ export namespace upsertAccountProfile {
     fieldsJson: string,
     bot: number,
     discoverable: number,
+    avatarObjectKey: string | null,
+    avatarContentType: string | null,
+    headerObjectKey: string | null,
+    headerContentType: string | null,
     now: string,
   ];
   export type Result = {};

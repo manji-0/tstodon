@@ -62,10 +62,18 @@ export const mastodonAccount = (
     note: textToHtml(profile.note),
     url,
     uri: url,
-    avatar: identity.thumbnailUrl,
-    avatar_static: identity.thumbnailUrl,
-    header: identity.thumbnailUrl,
-    header_static: identity.thumbnailUrl,
+    avatar: profile.avatarObjectKey
+      ? mediaUrl(identity, profile.avatarObjectKey)
+      : identity.thumbnailUrl,
+    avatar_static: profile.avatarObjectKey
+      ? mediaUrl(identity, profile.avatarObjectKey)
+      : identity.thumbnailUrl,
+    header: profile.headerObjectKey
+      ? mediaUrl(identity, profile.headerObjectKey)
+      : identity.thumbnailUrl,
+    header_static: profile.headerObjectKey
+      ? mediaUrl(identity, profile.headerObjectKey)
+      : identity.thumbnailUrl,
     followers_count: counts.followers,
     following_count: counts.following,
     statuses_count: counts.statuses,

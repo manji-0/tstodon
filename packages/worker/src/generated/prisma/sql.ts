@@ -384,6 +384,8 @@ export * from "./sql/searchAccounts";
 
 export * from "./sql/searchRemoteActors";
 
+export * from "./sql/setAccountLocked";
+
 export * from "./sql/setAnnouncementPublished";
 
 export * from "./sql/unfeatureTag";

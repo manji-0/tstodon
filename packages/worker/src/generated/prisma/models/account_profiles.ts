@@ -42,6 +42,10 @@ export type Account_profilesMinAggregateOutputType = {
   fields_json: string | null;
   bot: number | null;
   discoverable: number | null;
+  avatar_object_key: string | null;
+  avatar_content_type: string | null;
+  header_object_key: string | null;
+  header_content_type: string | null;
   updated_at: string | null;
 };
 
@@ -51,6 +55,10 @@ export type Account_profilesMaxAggregateOutputType = {
   fields_json: string | null;
   bot: number | null;
   discoverable: number | null;
+  avatar_object_key: string | null;
+  avatar_content_type: string | null;
+  header_object_key: string | null;
+  header_content_type: string | null;
   updated_at: string | null;
 };
 
@@ -60,6 +68,10 @@ export type Account_profilesCountAggregateOutputType = {
   fields_json: number;
   bot: number;
   discoverable: number;
+  avatar_object_key: number;
+  avatar_content_type: number;
+  header_object_key: number;
+  header_content_type: number;
   updated_at: number;
   _all: number;
 };
@@ -80,6 +92,10 @@ export type Account_profilesMinAggregateInputType = {
   fields_json?: true;
   bot?: true;
   discoverable?: true;
+  avatar_object_key?: true;
+  avatar_content_type?: true;
+  header_object_key?: true;
+  header_content_type?: true;
   updated_at?: true;
 };
 
@@ -89,6 +105,10 @@ export type Account_profilesMaxAggregateInputType = {
   fields_json?: true;
   bot?: true;
   discoverable?: true;
+  avatar_object_key?: true;
+  avatar_content_type?: true;
+  header_object_key?: true;
+  header_content_type?: true;
   updated_at?: true;
 };
 
@@ -98,6 +118,10 @@ export type Account_profilesCountAggregateInputType = {
   fields_json?: true;
   bot?: true;
   discoverable?: true;
+  avatar_object_key?: true;
+  avatar_content_type?: true;
+  header_object_key?: true;
+  header_content_type?: true;
   updated_at?: true;
   _all?: true;
 };
@@ -199,6 +223,10 @@ export type Account_profilesGroupByOutputType = {
   fields_json: string;
   bot: number;
   discoverable: number;
+  avatar_object_key: string | null;
+  avatar_content_type: string | null;
+  header_object_key: string | null;
+  header_content_type: string | null;
   updated_at: string;
   _count: Account_profilesCountAggregateOutputType | null;
   _avg: Account_profilesAvgAggregateOutputType | null;
@@ -229,6 +257,10 @@ export type account_profilesWhereInput = {
   fields_json?: Prisma.StringFilter<"account_profiles"> | string;
   bot?: Prisma.IntFilter<"account_profiles"> | number;
   discoverable?: Prisma.IntFilter<"account_profiles"> | number;
+  avatar_object_key?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
+  avatar_content_type?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
+  header_object_key?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
+  header_content_type?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
   updated_at?: Prisma.StringFilter<"account_profiles"> | string;
 };
 
@@ -238,6 +270,10 @@ export type account_profilesOrderByWithRelationInput = {
   fields_json?: Prisma.SortOrder;
   bot?: Prisma.SortOrder;
   discoverable?: Prisma.SortOrder;
+  avatar_object_key?: Prisma.SortOrderInput | Prisma.SortOrder;
+  avatar_content_type?: Prisma.SortOrderInput | Prisma.SortOrder;
+  header_object_key?: Prisma.SortOrderInput | Prisma.SortOrder;
+  header_content_type?: Prisma.SortOrderInput | Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
 
@@ -251,6 +287,10 @@ export type account_profilesWhereUniqueInput = Prisma.AtLeast<
     fields_json?: Prisma.StringFilter<"account_profiles"> | string;
     bot?: Prisma.IntFilter<"account_profiles"> | number;
     discoverable?: Prisma.IntFilter<"account_profiles"> | number;
+    avatar_object_key?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
+    avatar_content_type?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
+    header_object_key?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
+    header_content_type?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
     updated_at?: Prisma.StringFilter<"account_profiles"> | string;
   },
   "account_id"
@@ -262,6 +302,10 @@ export type account_profilesOrderByWithAggregationInput = {
   fields_json?: Prisma.SortOrder;
   bot?: Prisma.SortOrder;
   discoverable?: Prisma.SortOrder;
+  avatar_object_key?: Prisma.SortOrderInput | Prisma.SortOrder;
+  avatar_content_type?: Prisma.SortOrderInput | Prisma.SortOrder;
+  header_object_key?: Prisma.SortOrderInput | Prisma.SortOrder;
+  header_content_type?: Prisma.SortOrderInput | Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   _count?: Prisma.account_profilesCountOrderByAggregateInput;
   _avg?: Prisma.account_profilesAvgOrderByAggregateInput;
@@ -283,6 +327,16 @@ export type account_profilesScalarWhereWithAggregatesInput = {
   fields_json?: Prisma.StringWithAggregatesFilter<"account_profiles"> | string;
   bot?: Prisma.IntWithAggregatesFilter<"account_profiles"> | number;
   discoverable?: Prisma.IntWithAggregatesFilter<"account_profiles"> | number;
+  avatar_object_key?: Prisma.StringNullableWithAggregatesFilter<"account_profiles"> | string | null;
+  avatar_content_type?:
+    | Prisma.StringNullableWithAggregatesFilter<"account_profiles">
+    | string
+    | null;
+  header_object_key?: Prisma.StringNullableWithAggregatesFilter<"account_profiles"> | string | null;
+  header_content_type?:
+    | Prisma.StringNullableWithAggregatesFilter<"account_profiles">
+    | string
+    | null;
   updated_at?: Prisma.StringWithAggregatesFilter<"account_profiles"> | string;
 };
 
@@ -292,6 +346,10 @@ export type account_profilesCreateInput = {
   fields_json?: string;
   bot?: number;
   discoverable?: number;
+  avatar_object_key?: string | null;
+  avatar_content_type?: string | null;
+  header_object_key?: string | null;
+  header_content_type?: string | null;
   updated_at?: string;
 };
 
@@ -301,6 +359,10 @@ export type account_profilesUncheckedCreateInput = {
   fields_json?: string;
   bot?: number;
   discoverable?: number;
+  avatar_object_key?: string | null;
+  avatar_content_type?: string | null;
+  header_object_key?: string | null;
+  header_content_type?: string | null;
   updated_at?: string;
 };
 
@@ -310,6 +372,10 @@ export type account_profilesUpdateInput = {
   fields_json?: Prisma.StringFieldUpdateOperationsInput | string;
   bot?: Prisma.IntFieldUpdateOperationsInput | number;
   discoverable?: Prisma.IntFieldUpdateOperationsInput | number;
+  avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  avatar_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -319,6 +385,10 @@ export type account_profilesUncheckedUpdateInput = {
   fields_json?: Prisma.StringFieldUpdateOperationsInput | string;
   bot?: Prisma.IntFieldUpdateOperationsInput | number;
   discoverable?: Prisma.IntFieldUpdateOperationsInput | number;
+  avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  avatar_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -328,6 +398,10 @@ export type account_profilesCreateManyInput = {
   fields_json?: string;
   bot?: number;
   discoverable?: number;
+  avatar_object_key?: string | null;
+  avatar_content_type?: string | null;
+  header_object_key?: string | null;
+  header_content_type?: string | null;
   updated_at?: string;
 };
 
@@ -337,6 +411,10 @@ export type account_profilesUpdateManyMutationInput = {
   fields_json?: Prisma.StringFieldUpdateOperationsInput | string;
   bot?: Prisma.IntFieldUpdateOperationsInput | number;
   discoverable?: Prisma.IntFieldUpdateOperationsInput | number;
+  avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  avatar_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -346,6 +424,10 @@ export type account_profilesUncheckedUpdateManyInput = {
   fields_json?: Prisma.StringFieldUpdateOperationsInput | string;
   bot?: Prisma.IntFieldUpdateOperationsInput | number;
   discoverable?: Prisma.IntFieldUpdateOperationsInput | number;
+  avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  avatar_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -355,6 +437,10 @@ export type account_profilesCountOrderByAggregateInput = {
   fields_json?: Prisma.SortOrder;
   bot?: Prisma.SortOrder;
   discoverable?: Prisma.SortOrder;
+  avatar_object_key?: Prisma.SortOrder;
+  avatar_content_type?: Prisma.SortOrder;
+  header_object_key?: Prisma.SortOrder;
+  header_content_type?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
 
@@ -369,6 +455,10 @@ export type account_profilesMaxOrderByAggregateInput = {
   fields_json?: Prisma.SortOrder;
   bot?: Prisma.SortOrder;
   discoverable?: Prisma.SortOrder;
+  avatar_object_key?: Prisma.SortOrder;
+  avatar_content_type?: Prisma.SortOrder;
+  header_object_key?: Prisma.SortOrder;
+  header_content_type?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
 
@@ -378,6 +468,10 @@ export type account_profilesMinOrderByAggregateInput = {
   fields_json?: Prisma.SortOrder;
   bot?: Prisma.SortOrder;
   discoverable?: Prisma.SortOrder;
+  avatar_object_key?: Prisma.SortOrder;
+  avatar_content_type?: Prisma.SortOrder;
+  header_object_key?: Prisma.SortOrder;
+  header_content_type?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
 
@@ -395,6 +489,10 @@ export type account_profilesSelect<
     fields_json?: boolean;
     bot?: boolean;
     discoverable?: boolean;
+    avatar_object_key?: boolean;
+    avatar_content_type?: boolean;
+    header_object_key?: boolean;
+    header_content_type?: boolean;
     updated_at?: boolean;
   },
   ExtArgs["result"]["account_profiles"]
@@ -409,6 +507,10 @@ export type account_profilesSelectCreateManyAndReturn<
     fields_json?: boolean;
     bot?: boolean;
     discoverable?: boolean;
+    avatar_object_key?: boolean;
+    avatar_content_type?: boolean;
+    header_object_key?: boolean;
+    header_content_type?: boolean;
     updated_at?: boolean;
   },
   ExtArgs["result"]["account_profiles"]
@@ -423,6 +525,10 @@ export type account_profilesSelectUpdateManyAndReturn<
     fields_json?: boolean;
     bot?: boolean;
     discoverable?: boolean;
+    avatar_object_key?: boolean;
+    avatar_content_type?: boolean;
+    header_object_key?: boolean;
+    header_content_type?: boolean;
     updated_at?: boolean;
   },
   ExtArgs["result"]["account_profiles"]
@@ -434,13 +540,26 @@ export type account_profilesSelectScalar = {
   fields_json?: boolean;
   bot?: boolean;
   discoverable?: boolean;
+  avatar_object_key?: boolean;
+  avatar_content_type?: boolean;
+  header_object_key?: boolean;
+  header_content_type?: boolean;
   updated_at?: boolean;
 };
 
 export type account_profilesOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "account_id" | "note" | "fields_json" | "bot" | "discoverable" | "updated_at",
+  | "account_id"
+  | "note"
+  | "fields_json"
+  | "bot"
+  | "discoverable"
+  | "avatar_object_key"
+  | "avatar_content_type"
+  | "header_object_key"
+  | "header_content_type"
+  | "updated_at",
   ExtArgs["result"]["account_profiles"]
 >;
 
@@ -456,6 +575,10 @@ export type $account_profilesPayload<
       fields_json: string;
       bot: number;
       discoverable: number;
+      avatar_object_key: string | null;
+      avatar_content_type: string | null;
+      header_object_key: string | null;
+      header_content_type: string | null;
       updated_at: string;
     },
     ExtArgs["result"]["account_profiles"]
@@ -1034,6 +1157,10 @@ export interface account_profilesFieldRefs {
   readonly fields_json: Prisma.FieldRef<"account_profiles", "String">;
   readonly bot: Prisma.FieldRef<"account_profiles", "Int">;
   readonly discoverable: Prisma.FieldRef<"account_profiles", "Int">;
+  readonly avatar_object_key: Prisma.FieldRef<"account_profiles", "String">;
+  readonly avatar_content_type: Prisma.FieldRef<"account_profiles", "String">;
+  readonly header_object_key: Prisma.FieldRef<"account_profiles", "String">;
+  readonly header_content_type: Prisma.FieldRef<"account_profiles", "String">;
   readonly updated_at: Prisma.FieldRef<"account_profiles", "String">;
 }
 

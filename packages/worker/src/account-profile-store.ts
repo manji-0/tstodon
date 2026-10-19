@@ -22,6 +22,10 @@ export type AccountProfile = Readonly<{
   fields: ReadonlyArray<ProfileField>;
   bot: boolean;
   discoverable: boolean;
+  avatarObjectKey: string | null;
+  avatarContentType: string | null;
+  headerObjectKey: string | null;
+  headerContentType: string | null;
 }>;
 
 export const EMPTY_ACCOUNT_PROFILE: AccountProfile = {
@@ -29,6 +33,10 @@ export const EMPTY_ACCOUNT_PROFILE: AccountProfile = {
   fields: [],
   bot: false,
   discoverable: true,
+  avatarObjectKey: null,
+  avatarContentType: null,
+  headerObjectKey: null,
+  headerContentType: null,
 };
 
 const ProfileRowSchema = z.object({
@@ -37,6 +45,10 @@ const ProfileRowSchema = z.object({
   fields_json: z.string(),
   bot: z.number(),
   discoverable: z.number(),
+  avatar_object_key: z.string().nullable(),
+  avatar_content_type: z.string().nullable(),
+  header_object_key: z.string().nullable(),
+  header_content_type: z.string().nullable(),
 });
 
 const parseProfileRow = schemaResult(ProfileRowSchema);
@@ -49,6 +61,10 @@ const profileFromRow = (row: z.infer<typeof ProfileRowSchema>): AccountProfile =
     fields: fields.isOk() ? fields.value : [],
     bot: row.bot !== 0,
     discoverable: row.discoverable !== 0,
+    avatarObjectKey: row.avatar_object_key,
+    avatarContentType: row.avatar_content_type,
+    headerObjectKey: row.header_object_key,
+    headerContentType: row.header_content_type,
   };
 };
 
@@ -100,6 +116,10 @@ export const upsertAccountProfile = async (
         JSON.stringify(profile.fields),
         profile.bot ? 1 : 0,
         profile.discoverable ? 1 : 0,
+        profile.avatarObjectKey,
+        profile.avatarContentType,
+        profile.headerObjectKey,
+        profile.headerContentType,
         nowIso(),
       ),
     );
