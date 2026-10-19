@@ -516,6 +516,8 @@ export type NotificationFilters = Readonly<{
   maxId?: string | undefined;
   sinceId?: string | undefined;
   minId?: string | undefined;
+  /** Include notifications held back by the notification policy. */
+  includeFiltered?: boolean | undefined;
 }>;
 
 /**
@@ -556,6 +558,7 @@ export const listNotifications = async (
         cursor.id,
         cursor.greaterThan,
         cursor.ascending,
+        filters.includeFiltered ? 1 : 0,
       ),
     );
     return results.map((row) => ({

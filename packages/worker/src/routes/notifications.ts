@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { LocalStatus } from "@tstodon/domain";
+import { isTruthy } from "../schemas";
 import { findAccountById } from "../account-store";
 import {
   filteredAttribute,
@@ -79,6 +80,9 @@ notificationRoutes.get("/api/v1/notifications", async (c) => {
       types: queryValues("types"),
       excludeTypes: queryValues("exclude_types"),
       fromAccountId: c.req.query("account_id"),
+      // Mastodon's `include_filtered`: the policy-held notifications come back
+      // in the list instead of only under `notifications/requests`.
+      includeFiltered: isTruthy(c.req.query("include_filtered")),
       ...queryCursor(c),
     },
   );
@@ -215,6 +219,7 @@ const groupedQuery = (
       types: queryValues("types"),
       excludeTypes: queryValues("exclude_types"),
       fromAccountId: c.req.query("account_id"),
+      includeFiltered: isTruthy(c.req.query("include_filtered")),
       ...queryCursor(c),
     },
     limit: queryNotificationsLimit(c.req.query("limit")),

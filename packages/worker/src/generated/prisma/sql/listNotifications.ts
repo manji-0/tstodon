@@ -14,9 +14,10 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param cursorId
  * @param cursorGreaterThan
  * @param ascending
+ * @param includeFiltered
  */
 export const listNotifications = $runtime.makeTypedQueryFactory(
-  "SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.created_at\nFROM notifications n\nWHERE n.account_id = $1\nAND n.created_at > COALESCE(\n(SELECT cleared_at FROM notification_clear_markers WHERE account_id = $1), ''\n)\nAND n.id NOT IN (\nSELECT notification_id FROM notification_dismissals WHERE account_id = $1\n)\nAND n.id NOT IN (\nSELECT notification_id FROM notification_requests WHERE account_id = $1\n)\nAND ($4 = '[]' OR n.kind IN (SELECT value FROM json_each($4)))\nAND ($5 = '[]' OR n.kind NOT IN (SELECT value FROM json_each($5)))\nAND ($6 = '' OR n.from_account_id = $6)\nAND (\n$7 = ''\nOR ($8 = 1 AND n.id > $7)\nOR ($8 = 0 AND n.id < $7)\n)\nAND n.from_account_id NOT IN (\nSELECT target_account_id FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id IS NOT NULL\nUNION\nSELECT blocker_account_id FROM blocks\nWHERE target_account_id = $1 AND blocker_account_id IS NOT NULL\nUNION\nSELECT target_account_id FROM mutes\nWHERE account_id = $1 AND target_account_id IS NOT NULL AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $2)\n)\nORDER BY (CASE WHEN $9 = 1 THEN n.id END) ASC, (CASE WHEN $9 = 0 THEN n.id END) DESC\nLIMIT $3",
+  "SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.created_at\nFROM notifications n\nWHERE n.account_id = $1\nAND n.created_at > COALESCE(\n(SELECT cleared_at FROM notification_clear_markers WHERE account_id = $1), ''\n)\nAND n.id NOT IN (\nSELECT notification_id FROM notification_dismissals WHERE account_id = $1\n)\nAND (\n$10 = 1\nOR n.id NOT IN (SELECT notification_id FROM notification_requests WHERE account_id = $1)\n)\nAND ($4 = '[]' OR n.kind IN (SELECT value FROM json_each($4)))\nAND ($5 = '[]' OR n.kind NOT IN (SELECT value FROM json_each($5)))\nAND ($6 = '' OR n.from_account_id = $6)\nAND (\n$7 = ''\nOR ($8 = 1 AND n.id > $7)\nOR ($8 = 0 AND n.id < $7)\n)\nAND n.from_account_id NOT IN (\nSELECT target_account_id FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id IS NOT NULL\nUNION\nSELECT blocker_account_id FROM blocks\nWHERE target_account_id = $1 AND blocker_account_id IS NOT NULL\nUNION\nSELECT target_account_id FROM mutes\nWHERE account_id = $1 AND target_account_id IS NOT NULL AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $2)\n)\nORDER BY (CASE WHEN $9 = 1 THEN n.id END) ASC, (CASE WHEN $9 = 0 THEN n.id END) DESC\nLIMIT $3",
 ) as (
   accountId: string,
   now: string,
@@ -27,6 +28,7 @@ export const listNotifications = $runtime.makeTypedQueryFactory(
   cursorId: string,
   cursorGreaterThan: number,
   ascending: number,
+  includeFiltered: number,
 ) => $runtime.TypedSql<listNotifications.Parameters, listNotifications.Result>;
 
 export namespace listNotifications {
@@ -40,6 +42,7 @@ export namespace listNotifications {
     cursorId: string,
     cursorGreaterThan: number,
     ascending: number,
+    includeFiltered: number,
   ];
   export type Result = {
     id: string | null;

@@ -7,6 +7,7 @@
 -- @param {String} $7:cursorId
 -- @param {Int} $8:cursorGreaterThan
 -- @param {Int} $9:ascending
+-- @param {Int} $10:includeFiltered
 SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.created_at
 FROM notifications n
 WHERE n.account_id = $1
@@ -16,8 +17,9 @@ WHERE n.account_id = $1
   AND n.id NOT IN (
     SELECT notification_id FROM notification_dismissals WHERE account_id = $1
   )
-  AND n.id NOT IN (
-    SELECT notification_id FROM notification_requests WHERE account_id = $1
+  AND (
+    $10 = 1
+    OR n.id NOT IN (SELECT notification_id FROM notification_requests WHERE account_id = $1)
   )
   AND ($4 = '[]' OR n.kind IN (SELECT value FROM json_each($4)))
   AND ($5 = '[]' OR n.kind NOT IN (SELECT value FROM json_each($5)))

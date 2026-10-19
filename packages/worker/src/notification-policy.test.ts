@@ -232,4 +232,56 @@ describe("notification policy", () => {
     // rejected.
     expect(await list("?limit=200")).toHaveLength(3);
   });
+
+  it("includes held notifications with include_filtered", async () => {
+    const recipientEmail = "policy-include-recipient@example.com";
+    const senderEmail = "policy-include-sender@example.com";
+    const recipient = await credentials(recipientEmail);
+    const sender = await credentials(senderEmail);
+
+    // Silence the sender so the default policy holds their mention back.
+    await json(`/api/v1/admin/accounts/${sender.id}/silence`, {
+      method: "POST",
+      headers: await auth("policy-include-admin@example.com", true),
+    });
+    await postStatus(senderEmail, { status: `@${recipient.username} held from the list` });
+
+    // The default list leaves it out; `include_filtered=true` puts it back.
+    expect(await notifications(recipientEmail)).toHaveLength(0);
+    const included = await json("/api/v1/notifications?include_filtered=true", {
+      headers: await auth(recipientEmail),
+    });
+    expect(included.status).toBe(200);
+    const listed = read(
+      z.array(z.object({ type: z.string(), status: z.object({ id: z.string() }).nullable() })),
+      included.body,
+    );
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.type).toBe("mention");
+
+    // The grouped endpoint takes the same flag.
+    const grouped = await json("/api/v2/notifications?include_filtered=true", {
+      headers: await auth(recipientEmail),
+    });
+    expect(grouped.status).toBe(200);
+    const envelope = read(
+      z.object({
+        notification_groups: z.array(
+          z.object({ type: z.string(), notifications_count: z.number() }),
+        ),
+      }),
+      grouped.body,
+    );
+    expect(envelope.notification_groups).toHaveLength(1);
+    expect(envelope.notification_groups[0]?.notifications_count).toBe(1);
+
+    // Without the flag the grouped list is empty, exactly like the v1 list.
+    const withoutFlag = await json("/api/v2/notifications", {
+      headers: await auth(recipientEmail),
+    });
+    expect(
+      read(z.object({ notification_groups: z.array(z.unknown()) }), withoutFlag.body)
+        .notification_groups,
+    ).toHaveLength(0);
+  });
 });
