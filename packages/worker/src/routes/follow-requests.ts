@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { findAccountById } from "../account-store";
 import { enqueueTargetedActivity } from "../delivery";
-import { jsonAuthError, jsonRepositoryError, queryLimit, requireUser } from "../http";
+import { jsonAuthError, jsonRepositoryError, queryAccountsLimit, requireUser } from "../http";
 import { mastodonAccountDocument, mastodonRelationship, mastodonRemoteAccount } from "../mastodon";
 import {
   authorizeRemoteFollowRequest,
@@ -76,7 +76,7 @@ followRequestRoutes.get("/api/v1/follow_requests", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const limit = queryLimit(c.req.query("limit"), 40);
+  const limit = queryAccountsLimit(c.req.query("limit"));
   const [local, remote] = await Promise.all([
     listPendingFollowRequesters(c.env.DB, user.value.id, limit),
     listPendingRemoteFollowRequesters(c.env.DB, user.value.id, limit),

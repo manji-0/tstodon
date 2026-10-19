@@ -383,13 +383,14 @@ export const unendorseAccount = async (
 export const listEndorsements = async (
   db: D1Database,
   viewerId: string,
+  limit: number = 40,
 ): Promise<
   Result<ReadonlyArray<Readonly<{ accountId: string | null; actorUri: string }>>, RepositoryError>
 > =>
   runD1(async () => {
     const rows = await queryTyped<{ target_account_id: string | null; target_actor_uri: string }>(
       db,
-      listEndorsementsSql(viewerId),
+      listEndorsementsSql(viewerId, limit),
     );
     return rows.map((row) => ({
       accountId: row.target_account_id,

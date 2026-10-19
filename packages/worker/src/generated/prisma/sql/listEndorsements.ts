@@ -6,13 +6,17 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
  * @param accountId
+ * @param limit
  */
 export const listEndorsements = $runtime.makeTypedQueryFactory(
-  "SELECT target_account_id, target_actor_uri FROM endorsements\nWHERE account_id = $1\nORDER BY created_at DESC, target_actor_uri ASC",
-) as (accountId: string) => $runtime.TypedSql<listEndorsements.Parameters, listEndorsements.Result>;
+  "SELECT target_account_id, target_actor_uri FROM endorsements\nWHERE account_id = $1\nORDER BY created_at DESC, target_actor_uri ASC\nLIMIT $2",
+) as (
+  accountId: string,
+  limit: number,
+) => $runtime.TypedSql<listEndorsements.Parameters, listEndorsements.Result>;
 
 export namespace listEndorsements {
-  export type Parameters = [accountId: string];
+  export type Parameters = [accountId: string, limit: number];
   export type Result = {
     target_account_id: string | null;
     target_actor_uri: string;

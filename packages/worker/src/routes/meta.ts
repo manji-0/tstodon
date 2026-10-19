@@ -26,6 +26,7 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
+  queryAccountsLimit,
   queryLimit,
   readBody,
   requireUser,
@@ -250,7 +251,7 @@ const suggestedAccounts = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const limit = queryLimit(c.req.query("limit"), 40);
+  const limit = queryAccountsLimit(c.req.query("limit"));
   const excluded = await listSuggestionExclusionIds(c.env.DB, user.value.id);
   if (excluded.isErr()) {
     return jsonRepositoryError(c, excluded.error.message);
@@ -588,7 +589,7 @@ metaRoutes.get("/api/v1/directory", async (c) => {
   }
   const orderRaw = (c.req.query("order") ?? "active").toLowerCase();
   const order = orderRaw === "new" ? "new" : "active";
-  const limit = queryLimit(c.req.query("limit"), 40);
+  const limit = queryAccountsLimit(c.req.query("limit"));
   const offset = Math.max(0, Number.parseInt(c.req.query("offset") ?? "0", 10) || 0);
   const accounts = await listDirectoryAccounts(c.env.DB, { order, limit, offset });
   if (accounts.isErr()) {

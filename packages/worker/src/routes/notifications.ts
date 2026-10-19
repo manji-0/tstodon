@@ -8,7 +8,13 @@ import {
   matchFilters,
   type FilterWithStatuses,
 } from "../filter-match";
-import { jsonAuthError, jsonRepositoryError, queryCursor, queryLimit, requireUser } from "../http";
+import {
+  jsonAuthError,
+  jsonRepositoryError,
+  queryCursor,
+  queryNotificationsLimit,
+  requireUser,
+} from "../http";
 import { getMarkers } from "../marker-store";
 import {
   mastodonAccountDocument,
@@ -65,12 +71,17 @@ notificationRoutes.get("/api/v1/notifications", async (c) => {
     [...(c.req.queries(`${key}[]`) ?? []), ...(c.req.queries(key) ?? [])].filter(
       (value) => value.length > 0,
     );
-  const rows = await listNotifications(c.env.DB, user.value.id, queryLimit(c.req.query("limit")), {
-    types: queryValues("types"),
-    excludeTypes: queryValues("exclude_types"),
-    fromAccountId: c.req.query("account_id"),
-    ...queryCursor(c),
-  });
+  const rows = await listNotifications(
+    c.env.DB,
+    user.value.id,
+    queryNotificationsLimit(c.req.query("limit")),
+    {
+      types: queryValues("types"),
+      excludeTypes: queryValues("exclude_types"),
+      fromAccountId: c.req.query("account_id"),
+      ...queryCursor(c),
+    },
+  );
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
@@ -206,7 +217,7 @@ const groupedQuery = (
       fromAccountId: c.req.query("account_id"),
       ...queryCursor(c),
     },
-    limit: queryLimit(c.req.query("limit"), 40),
+    limit: queryNotificationsLimit(c.req.query("limit")),
   };
 };
 

@@ -7,7 +7,7 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryAccountsLimit,
+  queryNotificationsLimit,
   readBody,
   requireUser,
 } from "../http";
@@ -179,7 +179,7 @@ notificationRequestRoutes.get("/api/v1/notifications/requests", async (c) => {
   const requests = await listNotificationRequests(
     c.env.DB,
     user.value.id,
-    queryAccountsLimit(c.req.query("limit")),
+    queryNotificationsLimit(c.req.query("limit")),
   );
   if (requests.isErr()) {
     return jsonRepositoryError(c, requests.error.message);

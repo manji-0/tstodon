@@ -55,7 +55,7 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryLimit,
+  queryAdminLimit,
   readBody,
   requireAdmin,
 } from "../http";
@@ -490,7 +490,7 @@ adminRoutes.get("/api/v1/admin/accounts", async (c) => {
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const limit = queryLimit(c.req.query("limit"), 40);
+  const limit = queryAdminLimit(c.req.query("limit"));
   const offset = Math.max(Number.parseInt(c.req.query("offset") ?? "0", 10) || 0, 0);
   const accounts = await listAdminAccounts(c.env.DB, limit, offset);
   if (accounts.isErr()) {
@@ -598,7 +598,7 @@ adminRoutes.get("/api/v1/admin/domain_blocks", async (c) => {
   }
   const blocks = await listDomainBlocks(
     c.env.DB,
-    queryLimit(c.req.query("limit"), 40),
+    queryAdminLimit(c.req.query("limit")),
     c.req.query("max_id") ?? null,
   );
   if (blocks.isErr()) {

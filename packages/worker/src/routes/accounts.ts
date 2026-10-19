@@ -19,6 +19,7 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
+  queryAccountsLimit,
   queryLimit,
   readBody,
   requireSession,
@@ -363,8 +364,8 @@ const accountList = async (c: Context<{ Bindings: Env }>, kind: "followers" | "f
   }
   const ids =
     kind === "followers"
-      ? await listFollowers(c.env.DB, account.value.id, queryLimit(c.req.query("limit")))
-      : await listFollowing(c.env.DB, account.value.id, queryLimit(c.req.query("limit")));
+      ? await listFollowers(c.env.DB, account.value.id, queryAccountsLimit(c.req.query("limit")))
+      : await listFollowing(c.env.DB, account.value.id, queryAccountsLimit(c.req.query("limit")));
   if (ids.isErr()) {
     return jsonRepositoryError(c, ids.error.message);
   }
@@ -584,7 +585,7 @@ accountRoutes.get("/api/v1/blocks", async (c) => {
   const rows = await listBlockedAccounts(
     c.env.DB,
     user.value.id,
-    queryLimit(c.req.query("limit"), 40),
+    queryAccountsLimit(c.req.query("limit")),
   );
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
@@ -791,7 +792,7 @@ const endorsementDocuments = async (
   identity: InstanceIdentity,
   ownerId: string,
 ): Promise<Response> => {
-  const rows = await listEndorsements(c.env.DB, ownerId);
+  const rows = await listEndorsements(c.env.DB, ownerId, queryAccountsLimit(c.req.query("limit")));
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }

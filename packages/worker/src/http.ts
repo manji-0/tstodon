@@ -11,25 +11,30 @@ import type { LocalAccount } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import type { z } from "zod";
 
-export const queryLimit = (raw: string | undefined, fallback = 20): number => {
+/** Read a `limit` query parameter, defaulted to `fallback` and clamped to `max`. */
+const queryLimitMax = (raw: string | undefined, fallback: number, max: number): number => {
   const parsed = Number.parseInt(raw ?? "", 10);
   if (!Number.isFinite(parsed) || parsed < 1) {
     return fallback;
   }
-  return Math.min(parsed, 40);
+  return Math.min(parsed, max);
 };
 
-/**
- * Mastodon caps *status* collections at 40 but account collections
- * (`favourited_by`, `reblogged_by`, followers…) at 80.
- */
-export const queryAccountsLimit = (raw: string | undefined, fallback = 40): number => {
-  const parsed = Number.parseInt(raw ?? "", 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return fallback;
-  }
-  return Math.min(parsed, 80);
-};
+/** Status collections: 20 by default, capped at 40. */
+export const queryLimit = (raw: string | undefined, fallback = 20): number =>
+  queryLimitMax(raw, fallback, 40);
+
+/** Account collections (followers, blocks, directory…): 40 by default, capped at 80. */
+export const queryAccountsLimit = (raw: string | undefined, fallback = 40): number =>
+  queryLimitMax(raw, fallback, 80);
+
+/** Notifications and notification requests: 40 by default, capped at 80. */
+export const queryNotificationsLimit = (raw: string | undefined, fallback = 40): number =>
+  queryLimitMax(raw, fallback, 80);
+
+/** Admin lists (accounts, reports, domain blocks): 100 by default, capped at 200. */
+export const queryAdminLimit = (raw: string | undefined, fallback = 100): number =>
+  queryLimitMax(raw, fallback, 200);
 
 /** Mastodon's `max_id` / `since_id` / `min_id` query cursors. */
 export const queryCursor = (
