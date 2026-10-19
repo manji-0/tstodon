@@ -1,4 +1,4 @@
-import { schemaResult } from "@tstodon/core";
+import { schemaResult, unitKind } from "@tstodon/core";
 import { z } from "zod";
 import { StatusId } from "./status-id";
 
@@ -18,12 +18,15 @@ const StatusUpdateSchema = z.object({
   kind: z.literal("status.update"),
   payload: z.unknown(),
 });
+/** Mastodon's event telling clients that accepted requests have merged. */
+const NotificationsMergedSchema = unitKind("notifications_merged");
 
 export const StreamEventSchema = z.discriminatedUnion("kind", [
   UpdateSchema,
   DeleteSchema,
   NotificationSchema,
   StatusUpdateSchema,
+  NotificationsMergedSchema,
 ]);
 
 export type StreamEvent = z.infer<typeof StreamEventSchema>;

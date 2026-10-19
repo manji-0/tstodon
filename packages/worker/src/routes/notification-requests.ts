@@ -32,6 +32,7 @@ import {
   stringList,
 } from "../schemas";
 import { dismissNotification, listNotifications } from "../social-store";
+import { publishToAccount } from "../stream-publish";
 import { findStatusById } from "../status-store";
 
 /**
@@ -248,6 +249,8 @@ const acceptOrDismiss = async (c: Context<{ Bindings: Env }>, accept: boolean) =
     if (released.isErr()) {
       return jsonRepositoryError(c, released.error.message);
     }
+    // Clients refresh the notification list when the merge lands.
+    await publishToAccount(c.env, user.value.id, { kind: "notifications_merged" });
     return c.json({});
   }
   const dismissed = await dismissNotificationRequests(
@@ -284,6 +287,7 @@ const bulkRequests = async (c: Context<{ Bindings: Env }>, accept: boolean): Pro
     return jsonValidationError(c);
   }
   const ids = [...stringList(body.value.id), ...stringList(body.value["id[]"])];
+  let acceptedAny = false;
   for (const id of [...new Set(ids)]) {
     const request = await findNotificationRequest(c.env.DB, user.value.id, id);
     if (request.isErr()) {
@@ -301,6 +305,7 @@ const bulkRequests = async (c: Context<{ Bindings: Env }>, accept: boolean): Pro
       if (released.isErr()) {
         return jsonRepositoryError(c, released.error.message);
       }
+      acceptedAny = true;
       continue;
     }
     const dismissed = await dismissNotificationRequests(
@@ -314,6 +319,9 @@ const bulkRequests = async (c: Context<{ Bindings: Env }>, accept: boolean): Pro
     for (const notificationId of dismissed.value) {
       await dismissNotification(c.env.DB, user.value.id, notificationId);
     }
+  }
+  if (acceptedAny) {
+    await publishToAccount(c.env, user.value.id, { kind: "notifications_merged" });
   }
   return c.json({});
 };
