@@ -342,6 +342,17 @@ export const setAccountNote = async (
   });
 };
 
+/** The follow kind between two local accounts, when any. */
+export const findFollowKind = async (
+  db: D1Database,
+  followerId: string,
+  targetId: string,
+): Promise<Result<string | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ kind: string }>(db, findFollowKindSql(followerId, targetId));
+    return rows[0]?.kind;
+  });
+
 export const endorseAccount = async (
   db: D1Database,
   viewerId: string,
@@ -462,12 +473,13 @@ export const insertNotification = async (
     kind: string;
     statusId?: string;
   },
-): Promise<Result<void, RepositoryError>> =>
-  runD1(async () => {
+): Promise<Result<string, RepositoryError>> => {
+  const id = newEntityId();
+  const written = await runD1(async () => {
     await runTyped(
       db,
       insertNotificationSql(
-        newEntityId(),
+        id,
         input.accountId,
         input.fromAccountId,
         input.kind,
@@ -476,6 +488,11 @@ export const insertNotification = async (
       ),
     );
   });
+  if (written.isErr()) {
+    return err(written.error);
+  }
+  return ok(id);
+};
 
 export type NotificationRow = {
   id: string;

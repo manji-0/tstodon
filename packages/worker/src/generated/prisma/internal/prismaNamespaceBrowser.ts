@@ -56,6 +56,9 @@ export const ModelName = {
   account_moderation: "account_moderation",
   account_domain_blocks: "account_domain_blocks",
   status_idempotency: "status_idempotency",
+  notification_policies: "notification_policies",
+  notification_requests: "notification_requests",
+  notification_request_acceptances: "notification_request_acceptances",
   account_profiles: "account_profiles",
   account_flags: "account_flags",
   domain_blocks: "domain_blocks",
@@ -196,6 +199,38 @@ export const Status_idempotencyScalarFieldEnum = {
 
 export type Status_idempotencyScalarFieldEnum =
   (typeof Status_idempotencyScalarFieldEnum)[keyof typeof Status_idempotencyScalarFieldEnum];
+
+export const Notification_policiesScalarFieldEnum = {
+  account_id: "account_id",
+  for_not_following: "for_not_following",
+  for_not_followers: "for_not_followers",
+  for_new_accounts: "for_new_accounts",
+  for_private_mentions: "for_private_mentions",
+  for_limited_accounts: "for_limited_accounts",
+  updated_at: "updated_at",
+} as const;
+
+export type Notification_policiesScalarFieldEnum =
+  (typeof Notification_policiesScalarFieldEnum)[keyof typeof Notification_policiesScalarFieldEnum];
+
+export const Notification_requestsScalarFieldEnum = {
+  notification_id: "notification_id",
+  account_id: "account_id",
+  from_account_id: "from_account_id",
+  created_at: "created_at",
+} as const;
+
+export type Notification_requestsScalarFieldEnum =
+  (typeof Notification_requestsScalarFieldEnum)[keyof typeof Notification_requestsScalarFieldEnum];
+
+export const Notification_request_acceptancesScalarFieldEnum = {
+  account_id: "account_id",
+  from_account_id: "from_account_id",
+  accepted_at: "accepted_at",
+} as const;
+
+export type Notification_request_acceptancesScalarFieldEnum =
+  (typeof Notification_request_acceptancesScalarFieldEnum)[keyof typeof Notification_request_acceptancesScalarFieldEnum];
 
 export const Account_profilesScalarFieldEnum = {
   account_id: "account_id",

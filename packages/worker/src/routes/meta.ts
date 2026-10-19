@@ -660,5 +660,8 @@ metaRoutes.get("/api/v2/instance", async (c) => {
     },
     contact: { email: instance.contactEmail, account: null },
     rules: instanceRules(c.env),
+    // Mastodon gates features by API version; 2 covers the 4.3 set this server
+    // implements (grouped notifications plus the notification policy/requests).
+    api_versions: { mastodon: 2 },
   });
 });

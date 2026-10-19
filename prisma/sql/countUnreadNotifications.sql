@@ -10,6 +10,9 @@ WHERE n.account_id = $1
   AND n.id NOT IN (
     SELECT notification_id FROM notification_dismissals WHERE account_id = $1
   )
+  AND n.id NOT IN (
+    SELECT notification_id FROM notification_requests WHERE account_id = $1
+  )
   AND n.from_account_id NOT IN (
     SELECT target_account_id FROM blocks
       WHERE blocker_account_id = $1 AND target_account_id IS NOT NULL

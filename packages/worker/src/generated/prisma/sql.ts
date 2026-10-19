@@ -26,6 +26,8 @@ export * from "./sql/countFollowersByAccountIdsJson";
 
 export * from "./sql/countFollowingByAccountIdsJson";
 
+export * from "./sql/countNotificationRequests";
+
 export * from "./sql/countPinnedStatuses";
 
 export * from "./sql/countPollVotes";
@@ -81,6 +83,8 @@ export * from "./sql/deleteListMember";
 export * from "./sql/deleteMedia";
 
 export * from "./sql/deleteMute";
+
+export * from "./sql/deleteNotificationRequests";
 
 export * from "./sql/deleteReblogOf";
 
@@ -150,6 +154,10 @@ export * from "./sql/findNotificationById";
 
 export * from "./sql/findNotificationOwned";
 
+export * from "./sql/findNotificationPolicy";
+
+export * from "./sql/findNotificationRequest";
+
 export * from "./sql/findOutboundActivity";
 
 export * from "./sql/findOutboxFanout";
@@ -186,6 +194,8 @@ export * from "./sql/getConversationRead";
 
 export * from "./sql/getMarkersByTimelines";
 
+export * from "./sql/hasNotificationAcceptance";
+
 export * from "./sql/inboxActivityExists";
 
 export * from "./sql/insertAccount";
@@ -221,6 +231,10 @@ export * from "./sql/insertLocalReblog";
 export * from "./sql/insertMedia";
 
 export * from "./sql/insertNotification";
+
+export * from "./sql/insertNotificationAcceptance";
+
+export * from "./sql/insertNotificationRequest";
 
 export * from "./sql/insertOutboundActivity";
 
@@ -309,6 +323,8 @@ export * from "./sql/listMediaRejectedDomains";
 export * from "./sql/listMentionedAccountIds";
 
 export * from "./sql/listMutedAccounts";
+
+export * from "./sql/listNotificationRequests";
 
 export * from "./sql/listNotifications";
 
@@ -421,6 +437,8 @@ export * from "./sql/upsertConversationRead";
 export * from "./sql/upsertMarker";
 
 export * from "./sql/upsertMute";
+
+export * from "./sql/upsertNotificationPolicy";
 
 export * from "./sql/upsertRemoteActor";
 

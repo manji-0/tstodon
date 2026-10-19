@@ -57,6 +57,21 @@ export type account_domain_blocks = Prisma.account_domain_blocksModel;
  */
 export type status_idempotency = Prisma.status_idempotencyModel;
 /**
+ * Model notification_policies
+ *
+ */
+export type notification_policies = Prisma.notification_policiesModel;
+/**
+ * Model notification_requests
+ *
+ */
+export type notification_requests = Prisma.notification_requestsModel;
+/**
+ * Model notification_request_acceptances
+ *
+ */
+export type notification_request_acceptances = Prisma.notification_request_acceptancesModel;
+/**
  * Model account_profiles
  *
  */

@@ -98,6 +98,33 @@ model status_idempotency {
   @@index([account_id, created_at], map: "idx_status_idempotency_created")
 }
 
+model notification_policies {
+  account_id           String @id
+  for_not_following    String @default("accept")
+  for_not_followers    String @default("accept")
+  for_new_accounts     String @default("accept")
+  for_private_mentions String @default("drop")
+  for_limited_accounts String @default("filter")
+  updated_at           String @default("CURRENT_TIMESTAMP")
+}
+
+model notification_requests {
+  notification_id String @id
+  account_id      String
+  from_account_id String
+  created_at      String @default("CURRENT_TIMESTAMP")
+
+  @@index([account_id, from_account_id], map: "idx_notification_requests_account")
+}
+
+model notification_request_acceptances {
+  account_id      String
+  from_account_id String
+  accepted_at     String @default("CURRENT_TIMESTAMP")
+
+  @@id([account_id, from_account_id])
+}
+
 model account_profiles {
   account_id   String @id
   note         String @default("")

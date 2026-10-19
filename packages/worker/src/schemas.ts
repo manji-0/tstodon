@@ -229,6 +229,24 @@ export const FilterKeywordBodySchema = z.object({
   whole_word: booleanish,
 });
 
+export const NotificationPolicyBodySchema = z.object({
+  for_not_following: z.string().optional(),
+  for_not_followers: z.string().optional(),
+  for_new_accounts: z.string().optional(),
+  for_private_mentions: z.string().optional(),
+  for_limited_accounts: z.string().optional(),
+  filter_not_following: booleanish,
+  filter_not_followers: booleanish,
+  filter_new_accounts: booleanish,
+  filter_private_mentions: booleanish,
+  filter_limited_accounts: booleanish,
+});
+
+export const NotificationRequestIdsBodySchema = z.object({
+  id: z.union([z.array(z.string()), z.string()]).optional(),
+  "id[]": z.union([z.array(z.string()), z.string()]).optional(),
+});
+
 export const FilterStatusesBodySchema = z.object({
   status_ids: z.union([z.array(z.string()), z.string()]).optional(),
 });
@@ -523,6 +541,8 @@ warmSchemas([
   FilterV2BodySchema,
   FilterKeywordBodySchema,
   FilterStatusesBodySchema,
+  NotificationPolicyBodySchema,
+  NotificationRequestIdsBodySchema,
   ReportBodySchema,
   AppBodySchema,
   OAuthTokenBodySchema,

@@ -399,6 +399,9 @@ export const ModelName = {
   account_moderation: "account_moderation",
   account_domain_blocks: "account_domain_blocks",
   status_idempotency: "status_idempotency",
+  notification_policies: "notification_policies",
+  notification_requests: "notification_requests",
+  notification_request_acceptances: "notification_request_acceptances",
   account_profiles: "account_profiles",
   account_flags: "account_flags",
   domain_blocks: "domain_blocks",
@@ -466,6 +469,9 @@ export type TypeMap<
       | "account_moderation"
       | "account_domain_blocks"
       | "status_idempotency"
+      | "notification_policies"
+      | "notification_requests"
+      | "notification_request_acceptances"
       | "account_profiles"
       | "account_flags"
       | "domain_blocks"
@@ -1112,6 +1118,234 @@ export type TypeMap<
           args: Prisma.status_idempotencyCountArgs<ExtArgs>;
           result:
             | runtime.Types.Utils.Optional<Prisma.Status_idempotencyCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    notification_policies: {
+      payload: Prisma.$notification_policiesPayload<ExtArgs>;
+      fields: Prisma.notification_policiesFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.notification_policiesFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_policiesPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.notification_policiesFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_policiesPayload>;
+        };
+        findFirst: {
+          args: Prisma.notification_policiesFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_policiesPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.notification_policiesFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_policiesPayload>;
+        };
+        findMany: {
+          args: Prisma.notification_policiesFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_policiesPayload>[];
+        };
+        create: {
+          args: Prisma.notification_policiesCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_policiesPayload>;
+        };
+        createMany: {
+          args: Prisma.notification_policiesCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.notification_policiesCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_policiesPayload>[];
+        };
+        delete: {
+          args: Prisma.notification_policiesDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_policiesPayload>;
+        };
+        update: {
+          args: Prisma.notification_policiesUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_policiesPayload>;
+        };
+        deleteMany: {
+          args: Prisma.notification_policiesDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.notification_policiesUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.notification_policiesUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_policiesPayload>[];
+        };
+        upsert: {
+          args: Prisma.notification_policiesUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_policiesPayload>;
+        };
+        aggregate: {
+          args: Prisma.Notification_policiesAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateNotification_policies>;
+        };
+        groupBy: {
+          args: Prisma.notification_policiesGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Notification_policiesGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.notification_policiesCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Notification_policiesCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    notification_requests: {
+      payload: Prisma.$notification_requestsPayload<ExtArgs>;
+      fields: Prisma.notification_requestsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.notification_requestsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_requestsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.notification_requestsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_requestsPayload>;
+        };
+        findFirst: {
+          args: Prisma.notification_requestsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_requestsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.notification_requestsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_requestsPayload>;
+        };
+        findMany: {
+          args: Prisma.notification_requestsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_requestsPayload>[];
+        };
+        create: {
+          args: Prisma.notification_requestsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_requestsPayload>;
+        };
+        createMany: {
+          args: Prisma.notification_requestsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.notification_requestsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_requestsPayload>[];
+        };
+        delete: {
+          args: Prisma.notification_requestsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_requestsPayload>;
+        };
+        update: {
+          args: Prisma.notification_requestsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_requestsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.notification_requestsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.notification_requestsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.notification_requestsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_requestsPayload>[];
+        };
+        upsert: {
+          args: Prisma.notification_requestsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_requestsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Notification_requestsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateNotification_requests>;
+        };
+        groupBy: {
+          args: Prisma.notification_requestsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Notification_requestsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.notification_requestsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Notification_requestsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    notification_request_acceptances: {
+      payload: Prisma.$notification_request_acceptancesPayload<ExtArgs>;
+      fields: Prisma.notification_request_acceptancesFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.notification_request_acceptancesFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_acceptancesPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.notification_request_acceptancesFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_acceptancesPayload>;
+        };
+        findFirst: {
+          args: Prisma.notification_request_acceptancesFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_acceptancesPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.notification_request_acceptancesFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_acceptancesPayload>;
+        };
+        findMany: {
+          args: Prisma.notification_request_acceptancesFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_acceptancesPayload>[];
+        };
+        create: {
+          args: Prisma.notification_request_acceptancesCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_acceptancesPayload>;
+        };
+        createMany: {
+          args: Prisma.notification_request_acceptancesCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.notification_request_acceptancesCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_acceptancesPayload>[];
+        };
+        delete: {
+          args: Prisma.notification_request_acceptancesDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_acceptancesPayload>;
+        };
+        update: {
+          args: Prisma.notification_request_acceptancesUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_acceptancesPayload>;
+        };
+        deleteMany: {
+          args: Prisma.notification_request_acceptancesDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.notification_request_acceptancesUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.notification_request_acceptancesUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_acceptancesPayload>[];
+        };
+        upsert: {
+          args: Prisma.notification_request_acceptancesUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_acceptancesPayload>;
+        };
+        aggregate: {
+          args: Prisma.Notification_request_acceptancesAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateNotification_request_acceptances>;
+        };
+        groupBy: {
+          args: Prisma.notification_request_acceptancesGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Notification_request_acceptancesGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.notification_request_acceptancesCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Notification_request_acceptancesCountAggregateOutputType>
             | number;
         };
       };
@@ -4181,6 +4415,38 @@ export const Status_idempotencyScalarFieldEnum = {
 export type Status_idempotencyScalarFieldEnum =
   (typeof Status_idempotencyScalarFieldEnum)[keyof typeof Status_idempotencyScalarFieldEnum];
 
+export const Notification_policiesScalarFieldEnum = {
+  account_id: "account_id",
+  for_not_following: "for_not_following",
+  for_not_followers: "for_not_followers",
+  for_new_accounts: "for_new_accounts",
+  for_private_mentions: "for_private_mentions",
+  for_limited_accounts: "for_limited_accounts",
+  updated_at: "updated_at",
+} as const;
+
+export type Notification_policiesScalarFieldEnum =
+  (typeof Notification_policiesScalarFieldEnum)[keyof typeof Notification_policiesScalarFieldEnum];
+
+export const Notification_requestsScalarFieldEnum = {
+  notification_id: "notification_id",
+  account_id: "account_id",
+  from_account_id: "from_account_id",
+  created_at: "created_at",
+} as const;
+
+export type Notification_requestsScalarFieldEnum =
+  (typeof Notification_requestsScalarFieldEnum)[keyof typeof Notification_requestsScalarFieldEnum];
+
+export const Notification_request_acceptancesScalarFieldEnum = {
+  account_id: "account_id",
+  from_account_id: "from_account_id",
+  accepted_at: "accepted_at",
+} as const;
+
+export type Notification_request_acceptancesScalarFieldEnum =
+  (typeof Notification_request_acceptancesScalarFieldEnum)[keyof typeof Notification_request_acceptancesScalarFieldEnum];
+
 export const Account_profilesScalarFieldEnum = {
   account_id: "account_id",
   note: "note",
@@ -4834,6 +5100,9 @@ export type GlobalOmitConfig = {
   account_moderation?: Prisma.account_moderationOmit;
   account_domain_blocks?: Prisma.account_domain_blocksOmit;
   status_idempotency?: Prisma.status_idempotencyOmit;
+  notification_policies?: Prisma.notification_policiesOmit;
+  notification_requests?: Prisma.notification_requestsOmit;
+  notification_request_acceptances?: Prisma.notification_request_acceptancesOmit;
   account_profiles?: Prisma.account_profilesOmit;
   account_flags?: Prisma.account_flagsOmit;
   domain_blocks?: Prisma.domain_blocksOmit;

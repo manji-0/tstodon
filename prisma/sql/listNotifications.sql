@@ -14,6 +14,9 @@ WHERE n.account_id = $1
   AND n.id NOT IN (
     SELECT notification_id FROM notification_dismissals WHERE account_id = $1
   )
+  AND n.id NOT IN (
+    SELECT notification_id FROM notification_requests WHERE account_id = $1
+  )
   AND ($4 = '[]' OR n.kind IN (SELECT value FROM json_each($4)))
   AND ($5 = '[]' OR n.kind NOT IN (SELECT value FROM json_each($5)))
   AND ($6 = '' OR n.from_account_id = $6)
