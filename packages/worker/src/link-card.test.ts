@@ -1,8 +1,15 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
+import { IsoInstant, RemoteActor } from "@tstodon/domain";
+import { nowIso } from "./clock";
+import { generateAccountKeys } from "./keys";
+import { parseInstanceIdentity } from "./runtime-config";
+import { upsertRemoteActor } from "./remote-actor-store";
+import { persistRemoteObject } from "./remote-status-persist";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { processLinkCardJob } from "./link-card";
 
 const auth = (email: string): Promise<Record<string, string>> => accessAuthHeaders(email);
 
@@ -74,8 +81,17 @@ const postStatus = async (email: string, status: string): Promise<z.infer<typeof
   return read(StatusSchema, response.body);
 };
 
+const statusCard = async (statusId: string): Promise<z.infer<typeof CardSchema> | null> => {
+  const response = await json(`/api/v1/statuses/${statusId}`);
+  expect(response.status).toBe(200);
+  return read(StatusSchema, response.body).card;
+};
+
+const unfurl = (statusId: string, url: string) =>
+  processLinkCardJob(env, { kind: "ProcessLinkCard", target: "Status", id: statusId, url });
+
 describe("link cards", () => {
-  it("unfurls the first link, caches it, and renders the card", async () => {
+  it("unfurls through the queue job, caches it, and renders the card", async () => {
     const email = "card-author@example.com";
     const calls = await withFetchStub(
       (url) =>
@@ -83,37 +99,101 @@ describe("link cards", () => {
           ? new Response(OG_HTML, { headers: { "content-type": "text/html; charset=utf-8" } })
           : undefined,
       async () => {
+        // The request only queues the unfurl, so the card is not there yet.
         const created = await postStatus(
           email,
           "please read https://news.example/story-one it is good",
         );
-        expect(created.card?.title).toBe("A Fine Article");
-        expect(created.card?.description).toBe("Plenty to say & more");
-        expect(created.card?.provider_name).toBe("Example News");
-        expect(created.card?.image).toBe("https://news.example/cover.jpg");
+        expect(created.card).toBeNull();
 
-        // The card is stored on the status and served from the cache next time.
-        const fetched = await json(`/api/v1/statuses/${created.id}`);
-        expect(read(StatusSchema, fetched.body).card?.title).toBe("A Fine Article");
+        await unfurl(created.id, "https://news.example/story-one");
+        const card = await statusCard(created.id);
+        expect(card?.title).toBe("A Fine Article");
+        expect(card?.description).toBe("Plenty to say & more");
+        expect(card?.provider_name).toBe("Example News");
+        expect(card?.image).toBe("https://news.example/cover.jpg");
 
+        // The URL is cached, so another post of the same link is unfurled
+        // without another fetch.
         const second = await postStatus(email, "same link again https://news.example/story-one");
-        expect(second.card?.title).toBe("A Fine Article");
+        await unfurl(second.id, "https://news.example/story-one");
+        expect((await statusCard(second.id))?.title).toBe("A Fine Article");
       },
     );
-    // Once for the first post; the second and the refetch come from the cache.
     expect(calls).toBe(1);
   });
 
-  it("does not reach into private hosts and leaves the card empty", async () => {
+  it("does not reach into private hosts", async () => {
     const email = "card-private@example.com";
     const calls = await withFetchStub(
       () => new Response("nope", { status: 500 }),
       async () => {
         const status = await postStatus(email, "local link http://127.0.0.1:8080/secret");
-        expect(status.card).toBeNull();
+        await unfurl(status.id, "http://127.0.0.1:8080/secret");
+        expect(await statusCard(status.id)).toBeNull();
       },
     );
     expect(calls).toBe(0);
+  });
+
+  it("unfurls a remote status and renders its card on the public timeline", async () => {
+    const keys = await generateAccountKeys();
+    const fetchedAt = IsoInstant.parse(nowIso());
+    if (fetchedAt.isErr()) {
+      throw new Error("clock");
+    }
+    const actorUri = "https://card-remote.example/users/erin";
+    const actor = RemoteActor.fromFetched({
+      actorUri,
+      username: "erin",
+      domain: "card-remote.example",
+      inboxUri: `${actorUri}/inbox`,
+      publicKeyId: `${actorUri}#main-key`,
+      publicKeyPem: keys.publicKeyPem,
+      displayName: "erin",
+      fetchedAt: fetchedAt.value,
+    });
+    if (actor.isErr()) {
+      throw new Error("actor fixture rejected");
+    }
+    await upsertRemoteActor(env.DB, actor.value);
+    const identity = parseInstanceIdentity(env);
+    if (identity.isErr()) {
+      throw new Error("identity");
+    }
+    const persisted = await persistRemoteObject(env, identity.value, actor.value, {
+      id: `${actorUri}/statuses/1`,
+      type: "Note",
+      attributedTo: actorUri,
+      content: '<p>reading <a href="https://news.example/story-remote">this</a></p>',
+      published: new Date().toISOString(),
+      to: ["https://www.w3.org/ns/activitystreams#Public"],
+    });
+    expect(persisted.isOk()).toBe(true);
+    const remoteId = persisted.isOk() && persisted.value ? persisted.value.id : "";
+    expect(remoteId.length).toBeGreaterThan(0);
+
+    await withFetchStub(
+      (url) =>
+        url.hostname === "news.example"
+          ? new Response(OG_HTML, { headers: { "content-type": "text/html; charset=utf-8" } })
+          : undefined,
+      async () => {
+        await processLinkCardJob(env, {
+          kind: "ProcessLinkCard",
+          target: "RemoteStatus",
+          id: remoteId,
+          url: "https://news.example/story-remote",
+        });
+      },
+    );
+
+    const timeline = await json("/api/v1/timelines/public");
+    const status = read(
+      z.array(z.object({ id: z.string(), card: CardSchema.nullable() })),
+      timeline.body,
+    ).find((entry) => entry.id === remoteId);
+    expect(status?.card?.title).toBe("A Fine Article");
   });
 
   it("keeps the status when the link cannot be fetched", async () => {
@@ -122,7 +202,8 @@ describe("link cards", () => {
       () => new Response("nope", { status: 404, headers: { "content-type": "text/html" } }),
       async () => {
         const status = await postStatus(email, "dead link https://missing.example/gone");
-        expect(status.card).toBeNull();
+        await unfurl(status.id, "https://missing.example/gone");
+        expect(await statusCard(status.id)).toBeNull();
       },
     );
   });

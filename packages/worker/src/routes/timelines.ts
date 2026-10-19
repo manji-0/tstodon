@@ -3,12 +3,13 @@ import { authenticate } from "../auth";
 import { restrictedDomains } from "../admin-domain-block-store";
 import { listBlockedDomains } from "../domain-block-store";
 import { attachFilteredToStatuses } from "../filter-match";
+import { cardDocument, parseCardJson } from "../link-card";
 import { jsonAuthError, jsonRepositoryError, queryCursor, queryLimit, requireUser } from "../http";
 import { mastodonRemoteStatus, mastodonStatuses, remoteStatusVisible } from "../mastodon";
 import { elapsedMs, writeMetric } from "../metrics";
 import { parseInstanceIdentity } from "../runtime-config";
 import { findRemoteActorByUri } from "../remote-actor-store";
-import { listPublicRemoteStatuses } from "../remote-status-store";
+import { listPublicRemoteStatuses, listRemoteStatusCards } from "../remote-status-store";
 import {
   listDirectStatusesForAccount,
   listHomeStatuses,
@@ -49,6 +50,10 @@ timelineRoutes.get("/api/v1/timelines/public", async (c) => {
   for (const domain of await restrictedDomains(c.env.DB)) {
     blocked.add(domain);
   }
+  const remoteCards = await listRemoteStatusCards(
+    c.env.DB,
+    remote.value.map((status) => status.id),
+  );
   const remoteDocuments: Record<string, unknown>[] = [];
   for (const status of remote.value) {
     const actor = await findRemoteActorByUri(c.env.DB, status.actorUri);
@@ -58,7 +63,11 @@ timelineRoutes.get("/api/v1/timelines/public", async (c) => {
     if (blocked.has(actor.value.domain.toLowerCase())) {
       continue;
     }
-    remoteDocuments.push(mastodonRemoteStatus(identity.value, status, actor.value));
+    const rawCard = remoteCards.isOk() ? remoteCards.value.get(status.id) : undefined;
+    const card = rawCard ? parseCardJson(rawCard) : undefined;
+    remoteDocuments.push(
+      mastodonRemoteStatus(identity.value, status, actor.value, card ? cardDocument(card) : null),
+    );
   }
   const filteredLocal = await attachFilteredToStatuses(
     c.env.DB,

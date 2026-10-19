@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Link previews run off the request path (`ProcessLinkCard` queue job) and cover remote statuses
 - `filtered` on the home/list/direct/public/tag/account-status timelines
 - Link previews: bounded Open Graph unfurl cached in `link_cards`, stored on the status
 - Profile fields capped at four

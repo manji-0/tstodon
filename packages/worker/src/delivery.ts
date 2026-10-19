@@ -23,6 +23,7 @@ import {
 import { listExpiredUnnotifiedPolls, markPollExpiryNotified } from "./poll-store";
 import { elapsedMs, writeMetric } from "./metrics";
 import { suspendedDomains } from "./admin-domain-block-store";
+import { processLinkCardJob } from "./link-card";
 import { hostnameOf } from "./domain-block-store";
 import { listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
@@ -283,6 +284,9 @@ export const processOutboxJob = async (env: Env, job: OutboxJobValue): Promise<v
   switch (job.kind) {
     case "ProcessExpiredPolls":
       await processExpiredPolls(env);
+      return;
+    case "ProcessLinkCard":
+      await processLinkCardJob(env, job);
       return;
     case "ExpandFollowers": {
       const startedAt = Date.now();

@@ -5,10 +5,15 @@ import { z } from "zod";
 import { nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
 import { isFederatedHostRefused } from "./federated-fetch";
+import type { OutboxJob } from "@tstodon/domain";
 import {
   findLinkCard as findLinkCardSql,
   upsertLinkCard as upsertLinkCardSql,
 } from "./generated/prisma/sql";
+import { suspendedDomains } from "./admin-domain-block-store";
+import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
+import { setRemoteStatusCard } from "./remote-status-store";
+import { setStatusCard } from "./status-store";
 import { queryTyped, runTyped } from "./typed-sql";
 
 /** A small `PreviewCard`: what a client needs to render a link preview. */
@@ -153,9 +158,10 @@ const cachedCard = async (
   });
 
 /**
- * Preview card for a link, from the cache when possible. Fetching is bounded
+ * Build the preview card for a link and cache it. Fetching is bounded
  * (3 s, 200 kB) and refused for hosts the federation rules already reject, so a
- * slow or hostile host cannot make a post fail or reach into the network.
+ * slow or hostile host cannot make a request fail or reach into the network.
+ * Called from the queue, never from a request path.
  */
 export const buildLinkCard = async (
   env: Env,
@@ -206,4 +212,42 @@ export const buildLinkCard = async (
   } catch {
     return undefined;
   }
+};
+
+/** Queue the unfurl for a stored status (or remote status); never blocks a request. */
+export const enqueueLinkCard = async (
+  env: Env,
+  target: "Status" | "RemoteStatus",
+  id: string,
+  text: string,
+): Promise<void> => {
+  const url = extractFirstUrl(text);
+  if (!url) {
+    return;
+  }
+  await env.OUTBOX_PROCESS_QUEUE.send({ kind: "ProcessLinkCard", target, id, url });
+};
+
+/** Queue handler: unfurl and store the card for one status. */
+export const processLinkCardJob = async (
+  env: Env,
+  job: Extract<OutboxJob, { kind: "ProcessLinkCard" }>,
+): Promise<void> => {
+  const identity = parseInstanceIdentity(env);
+  if (identity.isErr()) {
+    return;
+  }
+  const card = await buildLinkCard(env, identity.value, job.url, {
+    allowHosts: federationAllowHosts(env),
+    blockedHosts: await suspendedDomains(env.DB),
+  });
+  if (!card) {
+    return;
+  }
+  const cardJson = JSON.stringify(cardDocument(card));
+  if (job.target === "Status") {
+    await setStatusCard(env.DB, job.id, cardJson);
+    return;
+  }
+  await setRemoteStatusCard(env.DB, job.id, cardJson);
 };

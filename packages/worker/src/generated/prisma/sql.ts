@@ -348,6 +348,8 @@ export * from "./sql/listPublicRemoteStatuses";
 
 export * from "./sql/listPublishedAnnouncements";
 
+export * from "./sql/listRemoteStatusCards";
+
 export * from "./sql/listRestrictedDomains";
 
 export * from "./sql/listSensitizedAccountIds";
@@ -391,6 +393,8 @@ export * from "./sql/searchRemoteActors";
 export * from "./sql/setAccountLocked";
 
 export * from "./sql/setAnnouncementPublished";
+
+export * from "./sql/setRemoteStatusCard";
 
 export * from "./sql/unfeatureTag";
 

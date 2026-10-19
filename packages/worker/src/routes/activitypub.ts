@@ -404,7 +404,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       }
     }
     if (activity.kind === "Create" || activity.kind === "Announce") {
-      await persistRemoteObject(c.env.DB, identity.value, signer.actor, activityJson.value.object, {
+      await persistRemoteObject(c.env, identity.value, signer.actor, activityJson.value.object, {
         allowHosts: federationAllowHosts(c.env),
       });
       if (activity.kind === "Announce") {

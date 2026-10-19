@@ -444,6 +444,7 @@ export const RemoteStatusRowSchema = z.object({
   language: z.string().nullable(),
   published_at: z.string().min(1),
   media_json: z.string(),
+  card_json: z.string().nullable(),
 });
 
 export const NotePreviewSchema = z.object({

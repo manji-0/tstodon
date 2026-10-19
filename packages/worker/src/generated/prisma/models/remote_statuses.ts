@@ -46,6 +46,7 @@ export type Remote_statusesMinAggregateOutputType = {
   language: string | null;
   published_at: string | null;
   media_json: string | null;
+  card_json: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -62,6 +63,7 @@ export type Remote_statusesMaxAggregateOutputType = {
   language: string | null;
   published_at: string | null;
   media_json: string | null;
+  card_json: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -78,6 +80,7 @@ export type Remote_statusesCountAggregateOutputType = {
   language: number;
   published_at: number;
   media_json: number;
+  card_json: number;
   created_at: number;
   updated_at: number;
   _all: number;
@@ -103,6 +106,7 @@ export type Remote_statusesMinAggregateInputType = {
   language?: true;
   published_at?: true;
   media_json?: true;
+  card_json?: true;
   created_at?: true;
   updated_at?: true;
 };
@@ -119,6 +123,7 @@ export type Remote_statusesMaxAggregateInputType = {
   language?: true;
   published_at?: true;
   media_json?: true;
+  card_json?: true;
   created_at?: true;
   updated_at?: true;
 };
@@ -135,6 +140,7 @@ export type Remote_statusesCountAggregateInputType = {
   language?: true;
   published_at?: true;
   media_json?: true;
+  card_json?: true;
   created_at?: true;
   updated_at?: true;
   _all?: true;
@@ -243,6 +249,7 @@ export type Remote_statusesGroupByOutputType = {
   language: string | null;
   published_at: string;
   media_json: string;
+  card_json: string | null;
   created_at: string;
   updated_at: string;
   _count: Remote_statusesCountAggregateOutputType | null;
@@ -280,6 +287,7 @@ export type remote_statusesWhereInput = {
   language?: Prisma.StringNullableFilter<"remote_statuses"> | string | null;
   published_at?: Prisma.StringFilter<"remote_statuses"> | string;
   media_json?: Prisma.StringFilter<"remote_statuses"> | string;
+  card_json?: Prisma.StringNullableFilter<"remote_statuses"> | string | null;
   created_at?: Prisma.StringFilter<"remote_statuses"> | string;
   updated_at?: Prisma.StringFilter<"remote_statuses"> | string;
   remote_actors?: Prisma.XOR<
@@ -300,6 +308,7 @@ export type remote_statusesOrderByWithRelationInput = {
   language?: Prisma.SortOrderInput | Prisma.SortOrder;
   published_at?: Prisma.SortOrder;
   media_json?: Prisma.SortOrder;
+  card_json?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   remote_actors?: Prisma.remote_actorsOrderByWithRelationInput;
@@ -321,6 +330,7 @@ export type remote_statusesWhereUniqueInput = Prisma.AtLeast<
     language?: Prisma.StringNullableFilter<"remote_statuses"> | string | null;
     published_at?: Prisma.StringFilter<"remote_statuses"> | string;
     media_json?: Prisma.StringFilter<"remote_statuses"> | string;
+    card_json?: Prisma.StringNullableFilter<"remote_statuses"> | string | null;
     created_at?: Prisma.StringFilter<"remote_statuses"> | string;
     updated_at?: Prisma.StringFilter<"remote_statuses"> | string;
     remote_actors?: Prisma.XOR<
@@ -343,6 +353,7 @@ export type remote_statusesOrderByWithAggregationInput = {
   language?: Prisma.SortOrderInput | Prisma.SortOrder;
   published_at?: Prisma.SortOrder;
   media_json?: Prisma.SortOrder;
+  card_json?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   _count?: Prisma.remote_statusesCountOrderByAggregateInput;
@@ -371,6 +382,7 @@ export type remote_statusesScalarWhereWithAggregatesInput = {
   language?: Prisma.StringNullableWithAggregatesFilter<"remote_statuses"> | string | null;
   published_at?: Prisma.StringWithAggregatesFilter<"remote_statuses"> | string;
   media_json?: Prisma.StringWithAggregatesFilter<"remote_statuses"> | string;
+  card_json?: Prisma.StringNullableWithAggregatesFilter<"remote_statuses"> | string | null;
   created_at?: Prisma.StringWithAggregatesFilter<"remote_statuses"> | string;
   updated_at?: Prisma.StringWithAggregatesFilter<"remote_statuses"> | string;
 };
@@ -386,6 +398,7 @@ export type remote_statusesCreateInput = {
   language?: string | null;
   published_at: string;
   media_json?: string;
+  card_json?: string | null;
   created_at?: string;
   updated_at?: string;
   remote_actors: Prisma.remote_actorsCreateNestedOneWithoutRemote_statusesInput;
@@ -403,6 +416,7 @@ export type remote_statusesUncheckedCreateInput = {
   language?: string | null;
   published_at: string;
   media_json?: string;
+  card_json?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -418,6 +432,7 @@ export type remote_statusesUpdateInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   published_at?: Prisma.StringFieldUpdateOperationsInput | string;
   media_json?: Prisma.StringFieldUpdateOperationsInput | string;
+  card_json?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_actors?: Prisma.remote_actorsUpdateOneRequiredWithoutRemote_statusesNestedInput;
@@ -435,6 +450,7 @@ export type remote_statusesUncheckedUpdateInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   published_at?: Prisma.StringFieldUpdateOperationsInput | string;
   media_json?: Prisma.StringFieldUpdateOperationsInput | string;
+  card_json?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -451,6 +467,7 @@ export type remote_statusesCreateManyInput = {
   language?: string | null;
   published_at: string;
   media_json?: string;
+  card_json?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -466,6 +483,7 @@ export type remote_statusesUpdateManyMutationInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   published_at?: Prisma.StringFieldUpdateOperationsInput | string;
   media_json?: Prisma.StringFieldUpdateOperationsInput | string;
+  card_json?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -482,6 +500,7 @@ export type remote_statusesUncheckedUpdateManyInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   published_at?: Prisma.StringFieldUpdateOperationsInput | string;
   media_json?: Prisma.StringFieldUpdateOperationsInput | string;
+  card_json?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -508,6 +527,7 @@ export type remote_statusesCountOrderByAggregateInput = {
   language?: Prisma.SortOrder;
   published_at?: Prisma.SortOrder;
   media_json?: Prisma.SortOrder;
+  card_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
@@ -528,6 +548,7 @@ export type remote_statusesMaxOrderByAggregateInput = {
   language?: Prisma.SortOrder;
   published_at?: Prisma.SortOrder;
   media_json?: Prisma.SortOrder;
+  card_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
@@ -544,6 +565,7 @@ export type remote_statusesMinOrderByAggregateInput = {
   language?: Prisma.SortOrder;
   published_at?: Prisma.SortOrder;
   media_json?: Prisma.SortOrder;
+  card_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
@@ -649,6 +671,7 @@ export type remote_statusesCreateWithoutRemote_actorsInput = {
   language?: string | null;
   published_at: string;
   media_json?: string;
+  card_json?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -664,6 +687,7 @@ export type remote_statusesUncheckedCreateWithoutRemote_actorsInput = {
   language?: string | null;
   published_at: string;
   media_json?: string;
+  card_json?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -725,6 +749,7 @@ export type remote_statusesScalarWhereInput = {
   language?: Prisma.StringNullableFilter<"remote_statuses"> | string | null;
   published_at?: Prisma.StringFilter<"remote_statuses"> | string;
   media_json?: Prisma.StringFilter<"remote_statuses"> | string;
+  card_json?: Prisma.StringNullableFilter<"remote_statuses"> | string | null;
   created_at?: Prisma.StringFilter<"remote_statuses"> | string;
   updated_at?: Prisma.StringFilter<"remote_statuses"> | string;
 };
@@ -740,6 +765,7 @@ export type remote_statusesCreateManyRemote_actorsInput = {
   language?: string | null;
   published_at: string;
   media_json?: string;
+  card_json?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -755,6 +781,7 @@ export type remote_statusesUpdateWithoutRemote_actorsInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   published_at?: Prisma.StringFieldUpdateOperationsInput | string;
   media_json?: Prisma.StringFieldUpdateOperationsInput | string;
+  card_json?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -770,6 +797,7 @@ export type remote_statusesUncheckedUpdateWithoutRemote_actorsInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   published_at?: Prisma.StringFieldUpdateOperationsInput | string;
   media_json?: Prisma.StringFieldUpdateOperationsInput | string;
+  card_json?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -785,6 +813,7 @@ export type remote_statusesUncheckedUpdateManyWithoutRemote_actorsInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   published_at?: Prisma.StringFieldUpdateOperationsInput | string;
   media_json?: Prisma.StringFieldUpdateOperationsInput | string;
+  card_json?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -804,6 +833,7 @@ export type remote_statusesSelect<
     language?: boolean;
     published_at?: boolean;
     media_json?: boolean;
+    card_json?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
     remote_actors?: boolean | Prisma.remote_actorsDefaultArgs<ExtArgs>;
@@ -826,6 +856,7 @@ export type remote_statusesSelectCreateManyAndReturn<
     language?: boolean;
     published_at?: boolean;
     media_json?: boolean;
+    card_json?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
     remote_actors?: boolean | Prisma.remote_actorsDefaultArgs<ExtArgs>;
@@ -848,6 +879,7 @@ export type remote_statusesSelectUpdateManyAndReturn<
     language?: boolean;
     published_at?: boolean;
     media_json?: boolean;
+    card_json?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
     remote_actors?: boolean | Prisma.remote_actorsDefaultArgs<ExtArgs>;
@@ -867,6 +899,7 @@ export type remote_statusesSelectScalar = {
   language?: boolean;
   published_at?: boolean;
   media_json?: boolean;
+  card_json?: boolean;
   created_at?: boolean;
   updated_at?: boolean;
 };
@@ -885,6 +918,7 @@ export type remote_statusesOmit<
   | "language"
   | "published_at"
   | "media_json"
+  | "card_json"
   | "created_at"
   | "updated_at",
   ExtArgs["result"]["remote_statuses"]
@@ -925,6 +959,7 @@ export type $remote_statusesPayload<
       language: string | null;
       published_at: string;
       media_json: string;
+      card_json: string | null;
       created_at: string;
       updated_at: string;
     },
@@ -1524,6 +1559,7 @@ export interface remote_statusesFieldRefs {
   readonly language: Prisma.FieldRef<"remote_statuses", "String">;
   readonly published_at: Prisma.FieldRef<"remote_statuses", "String">;
   readonly media_json: Prisma.FieldRef<"remote_statuses", "String">;
+  readonly card_json: Prisma.FieldRef<"remote_statuses", "String">;
   readonly created_at: Prisma.FieldRef<"remote_statuses", "String">;
   readonly updated_at: Prisma.FieldRef<"remote_statuses", "String">;
 }

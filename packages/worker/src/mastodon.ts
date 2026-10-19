@@ -141,6 +141,7 @@ export const mastodonRemoteStatus = (
   identity: InstanceIdentity,
   status: RemoteStatusValue,
   actor: RemoteActor,
+  card: Record<string, unknown> | null = null,
 ): Record<string, unknown> => {
   const url = status.url ?? status.objectUri;
   return {
@@ -179,7 +180,7 @@ export const mastodonRemoteStatus = (
     mentions: [],
     tags: [],
     emojis: [],
-    card: null,
+    card,
     poll: null,
   };
 };

@@ -12,11 +12,19 @@ const DeliverTargetSchema = z.object({
   inboxUrl: z.url(),
 });
 const ProcessExpiredPollsSchema = unitKind("ProcessExpiredPolls");
+/** Build the link preview for a stored status or remote status. */
+const ProcessLinkCardSchema = z.object({
+  kind: z.literal("ProcessLinkCard"),
+  target: z.union([z.literal("Status"), z.literal("RemoteStatus")]),
+  id: z.string().min(1),
+  url: z.url(),
+});
 
 export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ExpandFollowersSchema,
   DeliverTargetSchema,
   ProcessExpiredPollsSchema,
+  ProcessLinkCardSchema,
 ]);
 
 export type OutboxJob = z.infer<typeof OutboxJobSchema>;

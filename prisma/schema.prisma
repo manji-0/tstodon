@@ -543,6 +543,7 @@ model remote_statuses {
   language      String?
   published_at  String
   media_json    String        @default("[]")
+  card_json     String?
   created_at    String        @default("CURRENT_TIMESTAMP")
   updated_at    String        @default("CURRENT_TIMESTAMP")
   remote_actors remote_actors @relation(fields: [actor_uri], references: [actor_uri], onDelete: Cascade, onUpdate: NoAction)

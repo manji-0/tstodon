@@ -83,7 +83,7 @@ describe("remote status media", () => {
       throw new Error("identity");
     }
 
-    const persisted = await persistRemoteObject(env.DB, identity.value, actor, {
+    const persisted = await persistRemoteObject(env, identity.value, actor, {
       id: `${actorUri}/statuses/1`,
       type: "Note",
       attributedTo: actorUri,
@@ -130,7 +130,7 @@ describe("remote status media", () => {
       throw new Error("identity");
     }
 
-    const persisted = await persistRemoteObject(env.DB, identity.value, actor, {
+    const persisted = await persistRemoteObject(env, identity.value, actor, {
       id: `${actorUri}/statuses/2`,
       type: "Note",
       attributedTo: actorUri,
@@ -173,7 +173,7 @@ describe("reject_media domain blocks", () => {
       ],
     });
 
-    expect((await persistRemoteObject(env.DB, identity.value, actor, note("before"))).isOk()).toBe(
+    expect((await persistRemoteObject(env, identity.value, actor, note("before"))).isOk()).toBe(
       true,
     );
 
@@ -198,7 +198,7 @@ describe("reject_media domain blocks", () => {
       before.isOk() && before.value?.kind === "RemoteNote" ? before.value.media : undefined,
     ).toEqual([]);
 
-    expect((await persistRemoteObject(env.DB, identity.value, actor, note("after"))).isOk()).toBe(
+    expect((await persistRemoteObject(env, identity.value, actor, note("after"))).isOk()).toBe(
       true,
     );
 

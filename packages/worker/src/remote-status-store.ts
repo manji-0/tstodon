@@ -10,7 +10,7 @@ import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { jsonStringArray, runD1, type RepositoryError } from "./d1";
 import { parseJsonText, RemoteStatusRowSchema, toRepositoryError } from "./schemas";
 import { visibilitySql } from "./sql-enums";
 import { queryTyped, runTyped } from "./typed-sql";
@@ -19,6 +19,8 @@ import {
   findRemoteStatusById as findRemoteStatusByIdSql,
   findRemoteStatusByObjectUri as findRemoteStatusByObjectUriSql,
   listPublicRemoteStatuses as listPublicRemoteStatusesSql,
+  listRemoteStatusCards as listRemoteStatusCardsSql,
+  setRemoteStatusCard as setRemoteStatusCardSql,
   upsertRemoteStatus as upsertRemoteStatusSql,
 } from "./generated/prisma/sql";
 
@@ -130,6 +132,39 @@ export const upsertRemoteStatus = async (
     return err(written.error);
   }
   return ok(written.value);
+};
+
+/** Store the link preview built for a remote status. */
+export const setRemoteStatusCard = async (
+  db: D1Database,
+  statusId: string,
+  cardJson: string,
+): Promise<Result<void, RepositoryError>> => {
+  const written = await runD1(async () => {
+    await queryTyped(db, setRemoteStatusCardSql(statusId, cardJson));
+  });
+  return written.map(() => undefined);
+};
+
+/** Link previews for the given remote statuses, keyed by status id. */
+export const listRemoteStatusCards = async (
+  db: D1Database,
+  statusIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, string>, RepositoryError>> => {
+  const unique = [...new Set(statusIds.filter((id) => id.length > 0))];
+  if (unique.length === 0) {
+    return ok(new Map<string, string>());
+  }
+  const queried = await runD1(async () =>
+    queryTyped<{ id: string; card_json: string }>(
+      db,
+      listRemoteStatusCardsSql(jsonStringArray(unique)),
+    ),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  return ok(new Map(queried.value.map((row) => [row.id, row.card_json])));
 };
 
 export const listPublicRemoteStatuses = async (

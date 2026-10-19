@@ -14,6 +14,7 @@ import { fetchActivityJson } from "./federated-fetch";
 import { newEntityId } from "./ids";
 import { parseLocalStatusId } from "./activitypub";
 import { mediaRejectedDomains } from "./admin-domain-block-store";
+import { enqueueLinkCard } from "./link-card";
 import { findRemoteStatusByObjectUri, upsertRemoteStatus } from "./remote-status-store";
 import { isTruthy, NoteDocumentSchema, stringList } from "./schemas";
 
@@ -72,7 +73,7 @@ const noteFromUnknown = (
 };
 
 export const persistRemoteObject = async (
-  db: D1Database,
+  env: Env,
   identity: InstanceIdentity,
   actor: RemoteActor,
   object: string | Readonly<{ id: string }>,
@@ -82,7 +83,7 @@ export const persistRemoteObject = async (
   if (parseLocalStatusId(identity, objectUri)) {
     return ok(undefined);
   }
-  const cached = await findRemoteStatusByObjectUri(db, objectUri);
+  const cached = await findRemoteStatusByObjectUri(env.DB, objectUri);
   if (cached.isErr()) {
     return err(cached.error);
   }
@@ -99,9 +100,14 @@ export const persistRemoteObject = async (
     return parsed.error.kind === "RepositoryError" ? err(parsed.error) : ok(undefined);
   }
   // An admin block with `reject_media` keeps the post but not its attachments.
-  const rejected = await mediaRejectedDomains(db);
+  const rejected = await mediaRejectedDomains(env.DB);
   const status = rejected.has(actor.domain.toLowerCase())
     ? { ...parsed.value, media: [] }
     : parsed.value;
-  return upsertRemoteStatus(db, status);
+  const stored = await upsertRemoteStatus(env.DB, status);
+  if (stored.isOk()) {
+    // Preview cards are built off the request path like for local posts.
+    await enqueueLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);
+  }
+  return stored;
 };
