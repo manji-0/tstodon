@@ -1,8 +1,14 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { IsoInstant, RemoteActor } from "@tstodon/domain";
+import { nowIso } from "./clock";
+import { generateAccountKeys } from "./keys";
+import { parseInstanceIdentity } from "./runtime-config";
+import { upsertRemoteActor } from "./remote-actor-store";
+import { persistRemoteObject } from "./remote-status-persist";
 
 const auth = (email: string): Promise<Record<string, string>> => accessAuthHeaders(email);
 
@@ -70,6 +76,53 @@ const createFilter = async (email: string, context: string, keyword: string): Pr
 };
 
 describe("filtered on timelines", () => {
+  it("marks remote statuses from their stored HTML", async () => {
+    const viewerEmail = "timeline-filtered-remote-viewer@example.com";
+    const keys = await generateAccountKeys();
+    const fetchedAt = IsoInstant.parse(nowIso());
+    if (fetchedAt.isErr()) {
+      throw new Error("clock");
+    }
+    const actorUri = "https://filtered-remote.example/users/frank";
+    const actor = RemoteActor.fromFetched({
+      actorUri,
+      username: "frank",
+      domain: "filtered-remote.example",
+      inboxUri: `${actorUri}/inbox`,
+      publicKeyId: `${actorUri}#main-key`,
+      publicKeyPem: keys.publicKeyPem,
+      displayName: "frank",
+      fetchedAt: fetchedAt.value,
+    });
+    if (actor.isErr()) {
+      throw new Error("actor fixture rejected");
+    }
+    await upsertRemoteActor(env.DB, actor.value);
+    const identity = parseInstanceIdentity(env);
+    if (identity.isErr()) {
+      throw new Error("identity");
+    }
+    const persisted = await persistRemoteObject(env, identity.value, actor.value, {
+      id: `${actorUri}/statuses/1`,
+      type: "Note",
+      attributedTo: actorUri,
+      content: '<p>remote spoilers from <a href="https://x.example">someone</a></p>',
+      published: new Date().toISOString(),
+      to: ["https://www.w3.org/ns/activitystreams#Public"],
+    });
+    expect(persisted.isOk()).toBe(true);
+    const remoteId = persisted.isOk() && persisted.value ? persisted.value.id : "";
+
+    await createFilter(viewerEmail, "public", "spoilers");
+
+    const timeline = await json("/api/v1/timelines/public", { headers: await auth(viewerEmail) });
+    expect(filteredTitles(read(TimelineSchema, timeline.body), remoteId)).toEqual(["spoilers"]);
+
+    // Anonymous readers get no filtering.
+    const anonymous = await json("/api/v1/timelines/public");
+    expect(filteredTitles(read(TimelineSchema, anonymous.body), remoteId)).toEqual([]);
+  });
+
   it("marks home, public, and account statuses for the viewer", async () => {
     const viewerEmail = "timeline-filtered-viewer@example.com";
     const authorEmail = "timeline-filtered-author@example.com";

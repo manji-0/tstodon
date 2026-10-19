@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { authenticate } from "../auth";
 import { restrictedDomains } from "../admin-domain-block-store";
 import { listBlockedDomains } from "../domain-block-store";
-import { attachFilteredToStatuses } from "../filter-match";
+import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "../filter-match";
 import { cardDocument, parseCardJson } from "../link-card";
 import { jsonAuthError, jsonRepositoryError, queryCursor, queryLimit, requireUser } from "../http";
 import { mastodonRemoteStatus, mastodonStatuses, remoteStatusVisible } from "../mastodon";
@@ -76,7 +76,14 @@ timelineRoutes.get("/api/v1/timelines/public", async (c) => {
     statuses.value,
     localDocuments,
   );
-  const merged = [...filteredLocal, ...remoteDocuments].sort((left, right) => {
+  const filteredRemote = await attachFilteredToRemoteStatuses(
+    c.env.DB,
+    viewerId,
+    "public",
+    remote.value,
+    remoteDocuments,
+  );
+  const merged = [...filteredLocal, ...filteredRemote].sort((left, right) => {
     const leftAt = typeof left.created_at === "string" ? left.created_at : "";
     const rightAt = typeof right.created_at === "string" ? right.created_at : "";
     return rightAt.localeCompare(leftAt);

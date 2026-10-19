@@ -1,6 +1,7 @@
 import { err, ok, type Result } from "neverthrow";
 import type { LocalStatus } from "@tstodon/domain";
 import type { RepositoryError } from "./d1";
+import { htmlToText } from "./html";
 import { mastodonFilterV2 } from "./mastodon";
 import { FilterContextSchema, parseJsonColumn } from "./schemas";
 import {
@@ -125,6 +126,41 @@ export const attachFilteredToStatuses = async <T extends Record<string, unknown>
     if (status.kind === "LocalNote") {
       texts.set(status.id, status.text);
     }
+  }
+  return documents.map((document) => {
+    const id = typeof document.id === "string" ? document.id : "";
+    const text = texts.get(id);
+    if (text === undefined) {
+      return document;
+    }
+    const matches = matchFilters(filters.value, context, text, id);
+    return matches.length > 0
+      ? { ...document, filtered: filteredAttribute(matches, (row) => mastodonFilterV2(row)) }
+      : document;
+  });
+};
+
+/**
+ * The same `filtered` attribute for remote status documents, matched against
+ * the text of their stored HTML.
+ */
+export const attachFilteredToRemoteStatuses = async <T extends Record<string, unknown>>(
+  db: D1Database,
+  viewerId: string | undefined,
+  context: string,
+  statuses: ReadonlyArray<Readonly<{ id: string; contentHtml: string }>>,
+  documents: ReadonlyArray<T>,
+): Promise<ReadonlyArray<T>> => {
+  if (!viewerId) {
+    return documents;
+  }
+  const filters = await loadViewerFilters(db, viewerId);
+  if (filters.isErr() || filters.value.length === 0) {
+    return documents;
+  }
+  const texts = new Map<string, string>();
+  for (const status of statuses) {
+    texts.set(status.id, htmlToText(status.contentHtml));
   }
   return documents.map((document) => {
     const id = typeof document.id === "string" ? document.id : "";

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
 import { isFederatedHostRefused } from "./federated-fetch";
+import { decodeHtmlEntities } from "./html";
 import type { OutboxJob } from "@tstodon/domain";
 import {
   findLinkCard as findLinkCardSql,
@@ -101,17 +102,8 @@ const metaContent = (html: string, property: string): string | undefined => {
     return undefined;
   }
   const content = /content=["']([^"']*)["']/i.exec(tag)?.[1];
-  return content && content.trim().length > 0 ? decodeEntities(content.trim()) : undefined;
+  return content && content.trim().length > 0 ? decodeHtmlEntities(content.trim()) : undefined;
 };
-
-const decodeEntities = (value: string): string =>
-  value
-    .replaceAll("&amp;", "&")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#39;", "'")
-    .replaceAll("&nbsp;", " ");
 
 const absolute = (value: string | undefined, base: string): string | null => {
   if (value === undefined) {
@@ -130,7 +122,7 @@ export const parseLinkCard = (html: string, url: string): LinkCard => {
   const parsed = new URL(url);
   const title =
     metaContent(document, "og:title") ??
-    decodeEntities(/<title[^>]*>([^<]*)<\/title>/i.exec(document)?.[1]?.trim() ?? "");
+    decodeHtmlEntities(/<title[^>]*>([^<]*)<\/title>/i.exec(document)?.[1]?.trim() ?? "");
   const description =
     metaContent(document, "og:description") ?? metaContent(document, "description") ?? "";
   const siteName = metaContent(document, "og:site_name") ?? parsed.hostname;

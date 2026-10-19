@@ -25,3 +25,19 @@ export const mentionUsernames = (text: string): ReadonlyArray<string> => {
   }
   return [...names];
 };
+
+/** Decode the entities our own renderers produce (and the common ones). */
+export const decodeHtmlEntities = (value: string): string =>
+  value
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll("&nbsp;", " ");
+
+/** Plain text of an HTML fragment, for keyword matching against remote posts. */
+export const htmlToText = (html: string): string =>
+  decodeHtmlEntities(html.replace(/<[^>]*>/g, " "))
+    .replace(/\s+/g, " ")
+    .trim();
