@@ -185,7 +185,9 @@ export const authenticate = async (
     pending: registrationApprovalRequired(env),
   });
   if (account.isErr()) {
-    return err(account.error);
+    return err(
+      account.error.kind === "RegistrationBlocked" ? { kind: "Forbidden" } : account.error,
+    );
   }
   const moderation = await getAccountModeration(env.DB, account.value.id);
   if (moderation.isOk() && moderation.value === "Suspended") {

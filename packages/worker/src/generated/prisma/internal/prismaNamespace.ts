@@ -438,6 +438,8 @@ export const ModelName = {
   remote_favourites: "remote_favourites",
   remote_follows: "remote_follows",
   remote_statuses: "remote_statuses",
+  canonical_email_blocks: "canonical_email_blocks",
+  email_domain_blocks: "email_domain_blocks",
   reports: "reports",
   status_mentions: "status_mentions",
   link_cards: "link_cards",
@@ -509,6 +511,8 @@ export type TypeMap<
       | "remote_favourites"
       | "remote_follows"
       | "remote_statuses"
+      | "canonical_email_blocks"
+      | "email_domain_blocks"
       | "reports"
       | "status_mentions"
       | "link_cards"
@@ -4066,6 +4070,158 @@ export type TypeMap<
         };
       };
     };
+    canonical_email_blocks: {
+      payload: Prisma.$canonical_email_blocksPayload<ExtArgs>;
+      fields: Prisma.canonical_email_blocksFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.canonical_email_blocksFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$canonical_email_blocksPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.canonical_email_blocksFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$canonical_email_blocksPayload>;
+        };
+        findFirst: {
+          args: Prisma.canonical_email_blocksFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$canonical_email_blocksPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.canonical_email_blocksFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$canonical_email_blocksPayload>;
+        };
+        findMany: {
+          args: Prisma.canonical_email_blocksFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$canonical_email_blocksPayload>[];
+        };
+        create: {
+          args: Prisma.canonical_email_blocksCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$canonical_email_blocksPayload>;
+        };
+        createMany: {
+          args: Prisma.canonical_email_blocksCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.canonical_email_blocksCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$canonical_email_blocksPayload>[];
+        };
+        delete: {
+          args: Prisma.canonical_email_blocksDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$canonical_email_blocksPayload>;
+        };
+        update: {
+          args: Prisma.canonical_email_blocksUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$canonical_email_blocksPayload>;
+        };
+        deleteMany: {
+          args: Prisma.canonical_email_blocksDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.canonical_email_blocksUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.canonical_email_blocksUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$canonical_email_blocksPayload>[];
+        };
+        upsert: {
+          args: Prisma.canonical_email_blocksUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$canonical_email_blocksPayload>;
+        };
+        aggregate: {
+          args: Prisma.Canonical_email_blocksAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateCanonical_email_blocks>;
+        };
+        groupBy: {
+          args: Prisma.canonical_email_blocksGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Canonical_email_blocksGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.canonical_email_blocksCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Canonical_email_blocksCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    email_domain_blocks: {
+      payload: Prisma.$email_domain_blocksPayload<ExtArgs>;
+      fields: Prisma.email_domain_blocksFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.email_domain_blocksFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$email_domain_blocksPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.email_domain_blocksFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$email_domain_blocksPayload>;
+        };
+        findFirst: {
+          args: Prisma.email_domain_blocksFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$email_domain_blocksPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.email_domain_blocksFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$email_domain_blocksPayload>;
+        };
+        findMany: {
+          args: Prisma.email_domain_blocksFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$email_domain_blocksPayload>[];
+        };
+        create: {
+          args: Prisma.email_domain_blocksCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$email_domain_blocksPayload>;
+        };
+        createMany: {
+          args: Prisma.email_domain_blocksCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.email_domain_blocksCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$email_domain_blocksPayload>[];
+        };
+        delete: {
+          args: Prisma.email_domain_blocksDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$email_domain_blocksPayload>;
+        };
+        update: {
+          args: Prisma.email_domain_blocksUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$email_domain_blocksPayload>;
+        };
+        deleteMany: {
+          args: Prisma.email_domain_blocksDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.email_domain_blocksUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.email_domain_blocksUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$email_domain_blocksPayload>[];
+        };
+        upsert: {
+          args: Prisma.email_domain_blocksUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$email_domain_blocksPayload>;
+        };
+        aggregate: {
+          args: Prisma.Email_domain_blocksAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateEmail_domain_blocks>;
+        };
+        groupBy: {
+          args: Prisma.email_domain_blocksGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Email_domain_blocksGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.email_domain_blocksCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Email_domain_blocksCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
     reports: {
       payload: Prisma.$reportsPayload<ExtArgs>;
       fields: Prisma.reportsFieldRefs;
@@ -4944,6 +5100,24 @@ export const Remote_statusesScalarFieldEnum = {
 export type Remote_statusesScalarFieldEnum =
   (typeof Remote_statusesScalarFieldEnum)[keyof typeof Remote_statusesScalarFieldEnum];
 
+export const Canonical_email_blocksScalarFieldEnum = {
+  id: "id",
+  canonical_email_hash: "canonical_email_hash",
+  created_at: "created_at",
+} as const;
+
+export type Canonical_email_blocksScalarFieldEnum =
+  (typeof Canonical_email_blocksScalarFieldEnum)[keyof typeof Canonical_email_blocksScalarFieldEnum];
+
+export const Email_domain_blocksScalarFieldEnum = {
+  id: "id",
+  domain: "domain",
+  created_at: "created_at",
+} as const;
+
+export type Email_domain_blocksScalarFieldEnum =
+  (typeof Email_domain_blocksScalarFieldEnum)[keyof typeof Email_domain_blocksScalarFieldEnum];
+
 export const ReportsScalarFieldEnum = {
   id: "id",
   account_id: "account_id",
@@ -5238,6 +5412,8 @@ export type GlobalOmitConfig = {
   remote_favourites?: Prisma.remote_favouritesOmit;
   remote_follows?: Prisma.remote_followsOmit;
   remote_statuses?: Prisma.remote_statusesOmit;
+  canonical_email_blocks?: Prisma.canonical_email_blocksOmit;
+  email_domain_blocks?: Prisma.email_domain_blocksOmit;
   reports?: Prisma.reportsOmit;
   status_mentions?: Prisma.status_mentionsOmit;
   link_cards?: Prisma.link_cardsOmit;

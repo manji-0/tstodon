@@ -62,9 +62,13 @@ export * from "./sql/deleteBlock";
 
 export * from "./sql/deleteBookmark";
 
+export * from "./sql/deleteCanonicalEmailBlock";
+
 export * from "./sql/deleteCustomEmoji";
 
 export * from "./sql/deleteDomainBlock";
+
+export * from "./sql/deleteEmailDomainBlock";
 
 export * from "./sql/deleteEndorsement";
 
@@ -104,6 +108,8 @@ export * from "./sql/detachStatusMedia";
 
 export * from "./sql/dismissNotification";
 
+export * from "./sql/emailDomainAccountHistory";
+
 export * from "./sql/featureTag";
 
 export * from "./sql/findAccountByEmail";
@@ -132,6 +138,10 @@ export * from "./sql/findAnnouncementById";
 
 export * from "./sql/findBlock";
 
+export * from "./sql/findCanonicalEmailBlockByHash";
+
+export * from "./sql/findCanonicalEmailBlockById";
+
 export * from "./sql/findCustomEmojiById";
 
 export * from "./sql/findCustomEmojiByShortcode";
@@ -139,6 +149,10 @@ export * from "./sql/findCustomEmojiByShortcode";
 export * from "./sql/findDomainBlockByDomain";
 
 export * from "./sql/findDomainBlockById";
+
+export * from "./sql/findEmailDomainBlockByDomain";
+
+export * from "./sql/findEmailDomainBlockById";
 
 export * from "./sql/findEndorsement";
 
@@ -210,9 +224,13 @@ export * from "./sql/insertAnnouncement";
 
 export * from "./sql/insertBookmarkOrIgnore";
 
+export * from "./sql/insertCanonicalEmailBlock";
+
 export * from "./sql/insertCustomEmoji";
 
 export * from "./sql/insertDomainBlock";
+
+export * from "./sql/insertEmailDomainBlock";
 
 export * from "./sql/insertEndorsement";
 

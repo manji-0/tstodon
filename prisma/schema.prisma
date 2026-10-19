@@ -555,6 +555,18 @@ model remote_statuses {
   @@index([visibility, published_at(sort: Desc)], map: "idx_remote_statuses_visibility_published")
 }
 
+model canonical_email_blocks {
+  id                   String @id
+  canonical_email_hash String @unique
+  created_at           String @default("CURRENT_TIMESTAMP")
+}
+
+model email_domain_blocks {
+  id         String @id
+  domain     String @unique
+  created_at String @default("CURRENT_TIMESTAMP")
+}
+
 model reports {
   id                                           String @id
   account_id                                   String

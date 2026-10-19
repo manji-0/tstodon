@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Canonical email + email domain blocks (enforced at sign-up)
 - `GET /api/v1/admin/accounts/:id`
 - `/action` resolves the named report (or all open reports for the account)
 - Report `PUT` (category/rules), `assign_to_self`/`unassign`, `rule_ids` on create

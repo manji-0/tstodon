@@ -277,6 +277,16 @@ export type remote_follows = Prisma.remote_followsModel;
  */
 export type remote_statuses = Prisma.remote_statusesModel;
 /**
+ * Model canonical_email_blocks
+ *
+ */
+export type canonical_email_blocks = Prisma.canonical_email_blocksModel;
+/**
+ * Model email_domain_blocks
+ *
+ */
+export type email_domain_blocks = Prisma.email_domain_blocksModel;
+/**
  * Model reports
  *
  */

@@ -11,6 +11,7 @@ import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
 import { markAccountPending } from "./account-flag-store";
+import { isRegistrationBlocked } from "./registration-block-store";
 import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { nowInstant, nowIso } from "./clock";
 import { jsonStringArray, runD1, runD1Batch, type RepositoryError } from "./d1";
@@ -240,11 +241,14 @@ export const insertAccount = async (
     );
   });
 
+/** A sign-up block refuses the new account without touching existing ones. */
+export type ProvisionError = RepositoryError | Readonly<{ kind: "RegistrationBlocked" }>;
+
 export const provisionAccountFromEmail = async (
   db: D1Database,
   rawEmail: string,
   options: Readonly<{ pending?: boolean }> = {},
-): Promise<Result<LocalAccount, RepositoryError>> => {
+): Promise<Result<LocalAccount, ProvisionError>> => {
   const existing = await findAccountByEmail(db, rawEmail);
   if (existing.isErr()) {
     return err(existing.error);
@@ -269,6 +273,13 @@ export const provisionAccountFromEmail = async (
     : ok(baseUsername.value);
   if (username.isErr()) {
     return err({ kind: "RepositoryError", message: "invalid username" });
+  }
+  const blocked = await isRegistrationBlocked(db, email.value);
+  if (blocked.isErr()) {
+    return err(blocked.error);
+  }
+  if (blocked.value) {
+    return err({ kind: "RegistrationBlocked" });
   }
   const keys = await generateAccountKeys();
   const id = AccountId.parse(newEntityId());

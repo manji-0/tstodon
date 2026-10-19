@@ -95,6 +95,8 @@ export const ModelName = {
   remote_favourites: "remote_favourites",
   remote_follows: "remote_follows",
   remote_statuses: "remote_statuses",
+  canonical_email_blocks: "canonical_email_blocks",
+  email_domain_blocks: "email_domain_blocks",
   reports: "reports",
   status_mentions: "status_mentions",
   link_cards: "link_cards",
@@ -653,6 +655,24 @@ export const Remote_statusesScalarFieldEnum = {
 
 export type Remote_statusesScalarFieldEnum =
   (typeof Remote_statusesScalarFieldEnum)[keyof typeof Remote_statusesScalarFieldEnum];
+
+export const Canonical_email_blocksScalarFieldEnum = {
+  id: "id",
+  canonical_email_hash: "canonical_email_hash",
+  created_at: "created_at",
+} as const;
+
+export type Canonical_email_blocksScalarFieldEnum =
+  (typeof Canonical_email_blocksScalarFieldEnum)[keyof typeof Canonical_email_blocksScalarFieldEnum];
+
+export const Email_domain_blocksScalarFieldEnum = {
+  id: "id",
+  domain: "domain",
+  created_at: "created_at",
+} as const;
+
+export type Email_domain_blocksScalarFieldEnum =
+  (typeof Email_domain_blocksScalarFieldEnum)[keyof typeof Email_domain_blocksScalarFieldEnum];
 
 export const ReportsScalarFieldEnum = {
   id: "id",
