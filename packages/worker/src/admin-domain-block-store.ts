@@ -8,7 +8,6 @@ import {
   findDomainBlockByDomain as findDomainBlockByDomainSql,
   findDomainBlockById as findDomainBlockByIdSql,
   insertDomainBlock as insertDomainBlockSql,
-  listDomainBlocks as listDomainBlocksSql,
   clearRemoteMediaForDomain as clearRemoteMediaForDomainSql,
   listMediaRejectedDomains as listMediaRejectedDomainsSql,
   listPublicDomainBlocks as listPublicDomainBlocksSql,
@@ -17,6 +16,7 @@ import {
   updateDomainBlock as updateDomainBlockSql,
 } from "./generated/prisma/sql";
 import { newEntityId } from "./ids";
+import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { queryTyped, runTyped } from "./typed-sql";
 
 export const DomainBlockSeveritySchema = z.union([
@@ -57,9 +57,18 @@ export const listDomainBlocks = async (
   db: D1Database,
   limit: number,
   maxId: string | null,
+  cursor: IdCursor = { maxId: maxId ?? undefined },
 ): Promise<Result<DomainBlockRow[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, listDomainBlocksSql(limit, maxId ?? ""));
+    const { where, order, binds } = idCursorFragment(cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT id, domain, severity, reject_media, reject_reports, obfuscate, private_comment, public_comment, created_at
+         FROM domain_blocks WHERE 1 = 1 ${where} ${order} LIMIT ?`,
+      )
+      .bind(...binds, limit)
+      .all();
+    const rows = results ?? [];
     const blocks: DomainBlockRow[] = [];
     for (const raw of rows) {
       const row = parseRow(raw);

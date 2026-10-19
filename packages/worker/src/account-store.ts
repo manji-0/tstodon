@@ -11,6 +11,7 @@ import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
 import { markAccountPending } from "./account-flag-store";
+import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { nowInstant, nowIso } from "./clock";
 import { jsonStringArray, runD1, runD1Batch, type RepositoryError } from "./d1";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
@@ -360,6 +361,7 @@ export type AdminAccountFilters = Readonly<{
   byDomain?: string | undefined;
   ip?: string | undefined;
   staff?: boolean | undefined;
+  cursor?: IdCursor | undefined;
   limit: number;
   offset: number;
 }>;
@@ -400,16 +402,25 @@ export const listAdminAccounts = async (
       // No domain (local only), no recorded IPs, no staff accounts.
       conditions.push("0");
     }
+    // Mastodon pages this list by account id; `offset` stays as an
+    // undocumented fallback for callers that still use it.
+    const { where, order, binds: cursorBinds } = idCursorFragment(filters.cursor);
+    const pagination = filters.cursor === undefined ? "LIMIT ? OFFSET ?" : `LIMIT ?`;
     const { results } = await db
       .prepare(
         `SELECT id, username, access_email, display_name, locked, default_post_visibility, default_quote_policy,
                 public_key_pem, private_key_jwk, created_at, COALESCE(bio_text, '') AS bio_text
          FROM accounts
-         WHERE ${conditions.join(" AND ")}
-         ORDER BY accounts.created_at DESC, accounts.id DESC
-         LIMIT ? OFFSET ?`,
+         WHERE ${conditions.join(" AND ")} ${where}
+         ${order}
+         ${pagination}`,
       )
-      .bind(...binds, filters.limit, filters.offset)
+      .bind(
+        ...binds,
+        ...cursorBinds,
+        filters.limit,
+        ...(filters.cursor === undefined ? [filters.offset] : []),
+      )
       .all();
     const accounts: LocalAccount[] = [];
     for (const raw of results ?? []) {

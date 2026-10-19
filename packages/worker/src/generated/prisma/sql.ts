@@ -290,8 +290,6 @@ export * from "./sql/listDirectoryAccountsByActive";
 
 export * from "./sql/listDirectoryAccountsByNew";
 
-export * from "./sql/listDomainBlocks";
-
 export * from "./sql/listEndorsements";
 
 export * from "./sql/listExpiredUnnotifiedPolls";

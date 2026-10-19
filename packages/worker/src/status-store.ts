@@ -17,6 +17,7 @@ import { newEntityId } from "./ids";
 import { parseRow, StatusRowSchema, toRepositoryError } from "./schemas";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./social-store";
 import { visibilitySql } from "./sql-enums";
+import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   attachMediaToStatus as attachMediaToStatusSql,
@@ -419,34 +420,9 @@ export const MODERATED_ACCOUNTS_SQL = `AND account_id NOT IN (SELECT account_id 
  */
 export const SEARCHABLE_ACCOUNTS_SQL = `AND account_id NOT IN (SELECT account_id FROM account_flags WHERE pending <> 0)`;
 
-export type StatusCursor = Readonly<{
-  maxId?: string | undefined;
-  sinceId?: string | undefined;
-  minId?: string | undefined;
-}>;
+export type StatusCursor = IdCursor;
 
-/**
- * Mastodon id cursors: `max_id` pages older (newest first), `since_id` pages
- * newer (newest first), and `min_id` pages newer from the oldest side so a
- * client can prepend. `min_id` wins, then `since_id`, then `max_id`.
- */
-const cursorFragment = (
-  cursor: StatusCursor = {},
-): Readonly<{ where: string; order: string; binds: string[] }> => {
-  const minId = cursor.minId ?? "";
-  if (minId.length > 0) {
-    return { where: "AND id > ?", order: "ORDER BY id ASC", binds: [minId] };
-  }
-  const sinceId = cursor.sinceId ?? "";
-  if (sinceId.length > 0) {
-    return { where: "AND id > ?", order: "ORDER BY id DESC", binds: [sinceId] };
-  }
-  const maxId = cursor.maxId ?? "";
-  if (maxId.length > 0) {
-    return { where: "AND id < ?", order: "ORDER BY id DESC", binds: [maxId] };
-  }
-  return { where: "", order: "ORDER BY id DESC", binds: [] };
-};
+const cursorFragment = idCursorFragment;
 
 export const listPublicStatuses = async (
   db: D1Database,

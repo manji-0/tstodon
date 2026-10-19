@@ -58,6 +58,7 @@ import {
   jsonRepositoryError,
   jsonValidationError,
   queryAdminLimit,
+  queryCursor,
   readBody,
   requireAdmin,
 } from "../http";
@@ -540,6 +541,7 @@ adminRoutes.get("/api/v1/admin/accounts", async (c) => {
   const offset = Math.max(Number.parseInt(c.req.query("offset") ?? "0", 10) || 0, 0);
   const accounts = await listAdminAccounts(c.env.DB, {
     ...adminAccountFilters(c),
+    cursor: queryCursor(c),
     limit,
     offset,
   });
@@ -660,6 +662,7 @@ adminRoutes.get("/api/v1/admin/domain_blocks", async (c) => {
     c.env.DB,
     queryAdminLimit(c.req.query("limit")),
     c.req.query("max_id") ?? null,
+    queryCursor(c),
   );
   if (blocks.isErr()) {
     return jsonRepositoryError(c, blocks.error.message);
