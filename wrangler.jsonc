@@ -43,6 +43,7 @@
     "INSTANCE_PRIVACY_POLICY": "{\"content\":\"<p>This instance stores only what federation requires.</p>\",\"updated_at\":\"2026-01-01T00:00:00.000Z\"}",
     "INSTANCE_TERMS_OF_SERVICE": "{\"content\":\"<p>Be kind.</p>\",\"effective_date\":\"2026-01-01\"}",
     "ANNOUNCEMENTS": "[{\"id\":\"1\",\"content\":\"Welcome to tstodon!\",\"reactions\":[\"🎉\"]}]",
+    "INSTANCE_THUMBNAIL_DESCRIPTION": "tstodon instance thumbnail",
     "INSTANCE_THUMBNAIL_URL": "https://media.example.com/site/thumbnail.png",
     "MEDIA_PUBLIC_BASE_URL": "https://media.example.com",
     "EMAIL_FROM": "tstodon <noreply@example.com>",

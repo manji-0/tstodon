@@ -52,6 +52,9 @@ import {
   federationAllowHosts,
   instanceRules,
   parseInstanceIdentity,
+  privacyPolicy,
+  termsOfService,
+  thumbnailDescription,
   type Announcement,
 } from "../runtime-config";
 import { listSuggestionExclusionIds } from "../social-store";
@@ -589,10 +592,20 @@ metaRoutes.get("/api/v2/instance", async (c) => {
     usage: {
       users: { active_month: users.value },
     },
-    thumbnail: { url: instance.thumbnailUrl },
+    thumbnail: {
+      url: instance.thumbnailUrl,
+      ...(thumbnailDescription(c.env) ? { description: thumbnailDescription(c.env) } : {}),
+    },
     languages: instance.languages,
     configuration: {
-      urls: { streaming: `wss://${instance.domain}` },
+      urls: {
+        streaming: `wss://${instance.domain}`,
+        about: null,
+        privacy_policy: privacyPolicy(c.env) ? `${instance.publicOrigin}/privacy-policy` : null,
+        terms_of_service: termsOfService(c.env)
+          ? `${instance.publicOrigin}/terms-of-service`
+          : null,
+      },
       accounts: {
         max_featured_tags: InstanceLimits.account.maxFeaturedTags,
         max_pinned_statuses: InstanceLimits.account.maxPinnedStatuses,
@@ -623,7 +636,14 @@ metaRoutes.get("/api/v2/instance", async (c) => {
       translation: { enabled: false },
       limited_federation: federationAllowHosts(c.env).size > 0,
     },
-    registrations: { enabled: false, approval_required: true, message: null },
+    registrations: {
+      enabled: false,
+      approval_required: true,
+      reason_required: false,
+      message: null,
+      min_age: 16,
+      url: null,
+    },
     contact: { email: instance.contactEmail, account: null },
     rules: instanceRules(c.env),
   });

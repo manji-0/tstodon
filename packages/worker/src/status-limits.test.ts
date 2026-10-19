@@ -127,6 +127,20 @@ describe("status limits", () => {
           media_attachments: z.object({ description_limit: z.number() }),
           translation: z.object({ enabled: z.boolean() }),
           limited_federation: z.boolean(),
+          urls: z.object({
+            streaming: z.string().min(1),
+            about: z.string().nullable(),
+            privacy_policy: z.string().nullable(),
+            terms_of_service: z.string().nullable(),
+          }),
+        }),
+        thumbnail: z.object({ url: z.string().min(1), description: z.string().optional() }),
+        registrations: z.object({
+          enabled: z.boolean(),
+          approval_required: z.boolean(),
+          reason_required: z.boolean(),
+          min_age: z.number(),
+          url: z.string().nullable(),
         }),
       }),
       response.body,
@@ -140,5 +154,12 @@ describe("status limits", () => {
     expect(instance.configuration.media_attachments.description_limit).toBe(1500);
     expect(instance.configuration.translation.enabled).toBe(false);
     expect(instance.configuration.limited_federation).toBe(false);
+    // Policy documents are configured in the test environment, so their URLs are published.
+    expect(instance.configuration.urls.privacy_policy).toContain("/privacy-policy");
+    expect(instance.configuration.urls.terms_of_service).toContain("/terms-of-service");
+    expect(instance.configuration.urls.streaming.startsWith("wss://")).toBe(true);
+    expect(instance.thumbnail.description).toBe("tstodon instance thumbnail");
+    expect(instance.registrations.min_age).toBe(16);
+    expect(instance.registrations.reason_required).toBe(false);
   });
 });
