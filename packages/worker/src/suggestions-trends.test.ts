@@ -180,4 +180,27 @@ describe("tag history", () => {
     expect(previewed?.title).toBe("Previewed Story");
     expect(previewed?.provider_name).toBe("Preview Press");
   });
+
+  it("pages trending links with limit and offset", async () => {
+    await postStatus("trend-offset-a@example.com", "one https://offset.example/first");
+    await postStatus("trend-offset-b@example.com", "one https://offset.example/first");
+    await postStatus("trend-offset-c@example.com", "two https://offset.example/second");
+
+    const urls = async (query: string): Promise<string[]> => {
+      const response = await json(`/api/v1/trends/links${query}`);
+      expect(response.status).toBe(200);
+      return read(z.array(z.object({ url: z.string().min(1) })), response.body).map(
+        (card) => card.url,
+      );
+    };
+
+    // Other tests in this file post links too, so assert offset slices the
+    // ranking rather than hard-coding positions.
+    const all = await urls("?limit=20");
+    expect(all).toContain("https://offset.example/first");
+    expect(all).toContain("https://offset.example/second");
+    expect(await urls("?limit=2&offset=0")).toEqual(all.slice(0, 2));
+    expect(await urls("?limit=2&offset=2")).toEqual(all.slice(2, 4));
+    expect(await urls("?limit=1&offset=50")).toEqual([]);
+  });
 });

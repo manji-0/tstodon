@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `trends/links` supports `limit` + `offset` paging
 - Cron `RefreshLinkCards` job refreshes aged previews (20 per run)
 - Single notification reports `filtered` like the list
 - Link previews refresh after a week in the cache

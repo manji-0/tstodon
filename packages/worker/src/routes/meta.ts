@@ -317,6 +317,8 @@ const linkCard = (url: string): Record<string, unknown> | undefined => {
 
 metaRoutes.get("/api/v1/trends/links", async (c) => {
   const limit = queryLimit(c.req.query("limit"), 10);
+  const requestedOffset = Number.parseInt(c.req.query("offset") ?? "0", 10);
+  const offset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
   const statuses = await listTrendingStatuses(c.env.DB, 100);
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
@@ -333,7 +335,7 @@ metaRoutes.get("/api/v1/trends/links", async (c) => {
   }
   const ranked = [...counts.entries()]
     .toSorted((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-    .slice(0, limit);
+    .slice(offset, offset + limit);
   // Prefer the unfurled card when the link has been previewed, so trends
   // report real titles, descriptions, and images.
   const cached = await listCachedLinkCards(
