@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Visibility } from "./visibility";
+import { Visibility, reblogVisibility } from "./visibility";
 
 describe("Visibility", () => {
   it("round-trips Mastodon private to FollowersOnly", () => {
@@ -18,5 +18,22 @@ describe("Visibility", () => {
     if (parsed.isErr()) {
       expect(parsed.error.kind).toBe("Unknown");
     }
+  });
+
+  it("keeps a restricted original's visibility on a boost", () => {
+    // A private original wins over the requested visibility.
+    expect(
+      reblogVisibility(Visibility.FollowersOnly, Visibility.Public, Visibility.Public).kind,
+    ).toBe("FollowersOnly");
+    expect(reblogVisibility(Visibility.Direct, undefined, Visibility.Public).kind).toBe("Direct");
+  });
+
+  it("uses the request, then the account default, for a distributable original", () => {
+    expect(reblogVisibility(Visibility.Public, Visibility.Unlisted, Visibility.Public).kind).toBe(
+      "Unlisted",
+    );
+    expect(reblogVisibility(Visibility.Public, undefined, Visibility.FollowersOnly).kind).toBe(
+      "FollowersOnly",
+    );
   });
 });

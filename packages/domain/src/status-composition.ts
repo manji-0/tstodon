@@ -153,6 +153,8 @@ export const LocalReblogSchema = z.object({
   id: StatusId.schema,
   accountId: AccountId.schema,
   reblogOfId: StatusId.schema,
+  /** The boost's own visibility, which may be narrower than the original's. */
+  visibility: Visibility.schema,
   createdAt: IsoInstant.schema,
 });
 
@@ -193,11 +195,13 @@ export const LocalStatus = {
     accountId: AccountId,
     reblogOfId: StatusId,
     createdAt: z.infer<typeof IsoInstant.schema>,
+    visibility: Visibility,
   ): LocalReblog => ({
     kind: "LocalReblog",
     id,
     accountId,
     reblogOfId,
+    visibility,
     createdAt,
   }),
   /** Apply an edited draft to a note, keeping id, author, thread, and time. */

@@ -478,6 +478,8 @@ export const mastodonStatuses = async (
       reblog: wrapped,
       account: accountDoc,
       created_at: status.createdAt,
+      // The boost's own visibility, which may be narrower than the original's.
+      visibility: Visibility.toMastodon(status.visibility),
     };
   };
 

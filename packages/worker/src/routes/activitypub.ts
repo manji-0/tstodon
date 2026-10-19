@@ -5,6 +5,8 @@ import {
   LocalStatus,
   RemoteActor,
   StatusId,
+  Visibility,
+  reblogVisibility,
   type LocalAccount,
   type RemoteActor as RemoteActorValue,
 } from "@tstodon/domain";
@@ -461,11 +463,19 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     const statusId = parseLocalStatusId(identity.value, activity.object);
     const parsedStatusId = statusId ? StatusId.parse(statusId) : undefined;
     if (parsedStatusId?.isOk()) {
+      // The boost shares the original's visibility when that one is restricted.
+      const target = await findStatusById(c.env.DB, parsedStatusId.value);
       const reblogId = StatusId.parse(newEntityId());
-      if (reblogId.isOk()) {
+      if (reblogId.isOk() && target.isOk() && target.value) {
         await insertLocalReblog(
           c.env.DB,
-          LocalStatus.reblog(reblogId.value, actor.id, parsedStatusId.value, nowInstant()),
+          LocalStatus.reblog(
+            reblogId.value,
+            actor.id,
+            parsedStatusId.value,
+            nowInstant(),
+            reblogVisibility(target.value.visibility, undefined, Visibility.Public),
+          ),
         );
       }
     }

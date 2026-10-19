@@ -84,6 +84,23 @@ export const readUnknownBody = async (c: Context<{ Bindings: Env }>): Promise<un
   return { ...(await c.req.parseBody()) };
 };
 
+/**
+ * Body for endpoints that are also valid without one: an absent (or
+ * unparseable) body parses as an empty object instead of failing the request.
+ */
+export const readOptionalBody = async <T>(
+  c: Context<{ Bindings: Env }>,
+  schema: z.ZodType<T>,
+): Promise<Result<T, { kind: "ValidationError" }>> => {
+  let raw: unknown = {};
+  try {
+    raw = await readUnknownBody(c);
+  } catch {
+    raw = {};
+  }
+  return schemaResult(schema)(raw).mapErr(() => ({ kind: "ValidationError" as const }));
+};
+
 export const readBody = async <T>(
   c: Context<{ Bindings: Env }>,
   schema: z.ZodType<T>,

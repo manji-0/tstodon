@@ -28,6 +28,7 @@ import {
   findStatusById as findStatusByIdSql,
   findStatusUpdatedAt as findStatusUpdatedAtSql,
   insertLocalNote as insertLocalNoteSql,
+  findLocalReblog as findLocalReblogSql,
   insertLocalReblog as insertLocalReblogSql,
   insertStatusEdit as insertStatusEditSql,
   isStatusPinned as isStatusPinnedSql,
@@ -76,11 +77,16 @@ export const statusFromRow = (
     if (reblogOfId.isErr()) {
       return err({ kind: "RepositoryError", message: "invalid reblog target" });
     }
+    const reblogVisibility = Visibility.fromMastodon(row.visibility);
+    if (reblogVisibility.isErr()) {
+      return err({ kind: "RepositoryError", message: "invalid visibility" });
+    }
     return ok({
       kind: "LocalReblog",
       id: id.value,
       accountId: accountId.value,
       reblogOfId: reblogOfId.value,
+      visibility: reblogVisibility.value,
       createdAt: createdAt.value,
     });
   }
@@ -212,6 +218,17 @@ export const insertLocalNote = async (
   return ok(undefined);
 };
 
+/** The account's existing boost of a status, if it has one. */
+export const findLocalReblog = async (
+  db: D1Database,
+  accountId: string,
+  reblogOfId: string,
+): Promise<Result<string | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ id: string }>(db, findLocalReblogSql(accountId, reblogOfId));
+    return rows[0]?.id;
+  });
+
 export const insertLocalReblog = async (
   db: D1Database,
   reblog: LocalReblog,
@@ -225,6 +242,7 @@ export const insertLocalReblog = async (
         reblog.reblogOfId,
         reblog.createdAt,
         reblog.createdAt,
+        Visibility.toMastodon(reblog.visibility),
       ),
     );
   });

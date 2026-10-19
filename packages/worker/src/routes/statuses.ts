@@ -4,6 +4,7 @@ import {
   StatusComposition,
   StatusId,
   Visibility,
+  reblogVisibility,
   type LocalStatus as LocalStatusValue,
   type StatusIdValue,
 } from "@tstodon/domain";
@@ -23,6 +24,7 @@ import {
   queryAccountsLimit,
   queryCursor,
   queryLimit,
+  readOptionalBody,
   readUnknownBody,
   requireUser,
 } from "../http";
@@ -38,7 +40,13 @@ import {
 import { countPollVotes, findPollByStatusId, insertPoll, replacePollOptions } from "../poll-store";
 import { listStatusFavouritedBy, listStatusRebloggedBy } from "../social-store";
 import { findAccountById } from "../account-store";
-import { CreateStatusBodySchema, isTruthy, mediaAttributesFromForm, stringList } from "../schemas";
+import {
+  CreateStatusBodySchema,
+  ReblogBodySchema,
+  isTruthy,
+  mediaAttributesFromForm,
+  stringList,
+} from "../schemas";
 import { z } from "zod";
 import {
   completeStatusIdempotency,
@@ -65,6 +73,7 @@ import {
   countPinnedStatuses,
   deleteReblogOf,
   deleteStatus,
+  findLocalReblog,
   findStatusById,
   findStatusUpdatedAt,
   insertLocalNote,
@@ -1005,35 +1014,89 @@ statusRoutes.post("/api/v1/statuses/:id/reblog", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const status = await findStatusById(c.env.DB, c.req.param("id"));
-  if (status.isErr()) {
-    return jsonRepositoryError(c, status.error.message);
+  const body = await readOptionalBody(c, ReblogBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
   }
-  if (!status.value) {
+  const found = await findStatusById(c.env.DB, c.req.param("id") ?? "");
+  if (found.isErr()) {
+    return jsonRepositoryError(c, found.error.message);
+  }
+  if (!found.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  // Boosting a boost shares the underlying status, as Mastodon does.
+  let target = found.value;
+  for (let depth = 0; target.kind === "LocalReblog" && depth < 5; depth += 1) {
+    const original = await findStatusById(c.env.DB, target.reblogOfId);
+    if (original.isErr()) {
+      return jsonRepositoryError(c, original.error.message);
+    }
+    if (!original.value) {
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    }
+    target = original.value;
+  }
+  // Mastodon's `StatusPolicy#reblog?`: never a direct status, never someone
+  // else's followers-only post, and never one the viewer cannot see.
+  const rebloggable =
+    target.kind === "LocalNote" &&
+    target.visibility.kind !== "Direct" &&
+    (target.visibility.kind !== "FollowersOnly" || target.accountId === user.value.id) &&
+    (await canViewStatus(c.env.DB, target, user.value.id));
+  if (!rebloggable) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const existing = await findLocalReblog(c.env.DB, user.value.id, target.id);
+  if (existing.isErr()) {
+    return jsonRepositoryError(c, existing.error.message);
+  }
+  if (existing.value) {
+    // Mastodon answers the boost it already has rather than stacking another.
+    const document = await findStatusById(c.env.DB, existing.value);
+    if (document.isErr() || !document.value) {
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    }
+    return c.json(await mastodonStatus(c.env, identity.value, document.value, user.value.id));
+  }
+  const requested = body.value.visibility;
+  let requestedVisibility: Visibility | undefined;
+  if (requested !== undefined && requested.length > 0) {
+    const parsed = Visibility.fromMastodon(requested);
+    // A boost may not be direct (Mastodon excludes it for reblogs).
+    if (parsed.isErr() || parsed.value.kind === "Direct") {
+      return c.json({ error: "Invalid visibility", kind: "Unknown" }, 400);
+    }
+    requestedVisibility = parsed.value;
   }
   const reblogId = StatusId.parse(newEntityId());
   if (reblogId.isErr()) {
     return jsonRepositoryError(c, "invalid status id");
   }
-  const reblog = LocalStatus.reblog(reblogId.value, user.value.id, status.value.id, nowInstant());
+  const reblog = LocalStatus.reblog(
+    reblogId.value,
+    user.value.id,
+    target.id,
+    nowInstant(),
+    reblogVisibility(target.visibility, requestedVisibility, user.value.defaultPostVisibility),
+  );
   const inserted = await insertLocalReblog(c.env.DB, reblog);
   if (inserted.isErr()) {
     return jsonRepositoryError(c, inserted.error.message);
   }
-  if (status.value.accountId !== user.value.id) {
+  if (target.accountId !== user.value.id) {
     await notifyAccount(c.env, {
-      accountId: status.value.accountId,
+      accountId: target.accountId,
       fromAccountId: user.value.id,
       kind: "reblog",
-      statusId: status.value.id,
+      statusId: target.id,
     });
   }
   const actor = InstanceIdentity.actorUrl(identity.value, user.value.username);
   const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Announce", {
     type: "Announce",
     actor,
-    object: `${actor}/statuses/${status.value.id}`,
+    object: `${actor}/statuses/${target.id}`,
   });
   if (enqueued.isErr()) {
     return jsonRepositoryError(

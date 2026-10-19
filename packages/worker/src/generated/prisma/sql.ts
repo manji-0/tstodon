@@ -150,6 +150,8 @@ export * from "./sql/findLinkCard";
 
 export * from "./sql/findListForAccount";
 
+export * from "./sql/findLocalReblog";
+
 export * from "./sql/findMediaById";
 
 export * from "./sql/findNotificationById";

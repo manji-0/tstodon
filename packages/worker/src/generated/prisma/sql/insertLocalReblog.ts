@@ -10,15 +10,17 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param reblogOfId
  * @param createdAt
  * @param updatedAt
+ * @param visibility
  */
 export const insertLocalReblog = $runtime.makeTypedQueryFactory(
-  "INSERT INTO statuses (\nid, account_id, kind, reblog_of_id, content_text, content_html, visibility, sensitive,\nspoiler_text, created_at, updated_at\n) VALUES ($1, $2, 'LocalReblog', $3, '', '', 'public', 0, '', $4, $5)",
+  "INSERT INTO statuses (\nid, account_id, kind, reblog_of_id, content_text, content_html, visibility, sensitive,\nspoiler_text, created_at, updated_at\n) VALUES ($1, $2, 'LocalReblog', $3, '', '', $6, 0, '', $4, $5)",
 ) as (
   id: string,
   accountId: string,
   reblogOfId: string,
   createdAt: string,
   updatedAt: string,
+  visibility: string,
 ) => $runtime.TypedSql<insertLocalReblog.Parameters, insertLocalReblog.Result>;
 
 export namespace insertLocalReblog {
@@ -28,6 +30,7 @@ export namespace insertLocalReblog {
     reblogOfId: string,
     createdAt: string,
     updatedAt: string,
+    visibility: string,
   ];
   export type Result = {};
 }

@@ -193,6 +193,11 @@ export const FilterBodySchema = z.object({
   expires_in: z.union([z.number(), z.string()]).optional(),
 });
 
+/** `POST /api/v1/statuses/:id/reblog` — `visibility` is the only parameter. */
+export const ReblogBodySchema = z.object({
+  visibility: z.string().optional(),
+});
+
 export const FilterV2BodySchema = z.object({
   title: z.string().optional(),
   phrase: z.string().optional(),
@@ -542,6 +547,7 @@ warmSchemas([
   PollVoteBodySchema,
   FilterBodySchema,
   FilterV2BodySchema,
+  ReblogBodySchema,
   FilterKeywordBodySchema,
   FilterStatusesBodySchema,
   NotificationPolicyBodySchema,

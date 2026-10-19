@@ -65,3 +65,15 @@ export const Visibility = {
   isRestricted: (visibility: Visibility): boolean =>
     visibility.kind === "FollowersOnly" || visibility.kind === "Direct",
 } as const;
+
+/**
+ * Mastodon's reblog visibility: a restricted original (private or direct)
+ * keeps its own visibility, so a boost is never more visible than the status
+ * it shares; otherwise the requested visibility wins, then the account default.
+ */
+export const reblogVisibility = (
+  original: Visibility,
+  requested: Visibility | undefined,
+  fallback: Visibility,
+): Visibility =>
+  Visibility.isRestricted(original) ? original : requested === undefined ? fallback : requested;

@@ -57,5 +57,5 @@ export {
 } from "./status-quote-target";
 export { StreamEvent, type StreamEvent as StreamEventValue } from "./stream-event";
 export { Username } from "./username";
-export { Visibility, type Visibility as VisibilityValue } from "./visibility";
+export { Visibility, reblogVisibility, type Visibility as VisibilityValue } from "./visibility";
 export { Notification, type Notification as NotificationValue } from "./notification";

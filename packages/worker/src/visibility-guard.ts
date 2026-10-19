@@ -1,4 +1,4 @@
-import { Visibility, type LocalStatus } from "@tstodon/domain";
+import { Visibility, type LocalStatus, type Visibility as VisibilityValue } from "@tstodon/domain";
 import { isAccountMentionedOnStatus } from "./mention-store";
 import { relationshipFlags } from "./social-store";
 import { findStatusById } from "./status-store";
@@ -28,13 +28,34 @@ const canViewDirectStatus = async (
   return canViewDirectStatus(db, parent.value, viewerId);
 };
 
+/** Visible to everyone when public/unlisted, otherwise to the author and followers. */
+const canViewRestricted = async (
+  db: D1Database,
+  visibility: VisibilityValue,
+  authorId: string,
+  viewerId: string | undefined,
+): Promise<boolean> => {
+  if (!Visibility.isRestricted(visibility)) {
+    return true;
+  }
+  if (viewerId === authorId) {
+    return true;
+  }
+  if (!viewerId) {
+    return false;
+  }
+  const flags = await relationshipFlags(db, viewerId, authorId);
+  return flags.isOk() && flags.value.following;
+};
+
 export const canViewStatus = async (
   db: D1Database,
   status: LocalStatus,
   viewerId: string | undefined,
 ): Promise<boolean> => {
+  // A boost's own visibility decides who sees it; it is never direct.
   if (status.kind === "LocalReblog") {
-    return true;
+    return canViewRestricted(db, status.visibility, status.accountId, viewerId);
   }
   if (status.visibility.kind === "Direct") {
     if (!viewerId) {
@@ -42,15 +63,5 @@ export const canViewStatus = async (
     }
     return canViewDirectStatus(db, status, viewerId);
   }
-  if (!Visibility.isRestricted(status.visibility)) {
-    return true;
-  }
-  if (viewerId === status.accountId) {
-    return true;
-  }
-  if (!viewerId) {
-    return false;
-  }
-  const flags = await relationshipFlags(db, viewerId, status.accountId);
-  return flags.isOk() && flags.value.following;
+  return canViewRestricted(db, status.visibility, status.accountId, viewerId);
 };
