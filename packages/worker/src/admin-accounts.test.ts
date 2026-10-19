@@ -128,8 +128,8 @@ describe("admin accounts", () => {
       read(z.array(MastodonAccountPreviewSchema), suggestions.body).map((a) => a.id),
     ).not.toContain(targetId);
 
-    const enabled = await adminPost(adminEmail, `/api/v1/admin/accounts/${targetId}/enable`);
-    expect(read(AdminAccountSchema, enabled.body).silenced).toBe(false);
+    const unsilenced = await adminPost(adminEmail, `/api/v1/admin/accounts/${targetId}/unsilence`);
+    expect(read(AdminAccountSchema, unsilenced.body).silenced).toBe(false);
     expect(await publicIds()).toContain(statusId);
   });
 

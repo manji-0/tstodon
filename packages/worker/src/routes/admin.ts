@@ -45,10 +45,12 @@ import {
 } from "../admin-domain-block-store";
 import {
   approveAccount,
+  disabledAccountIds,
   isAccountSensitized,
   mediaObjectKeysForAccount,
   pendingAccountIds,
   sensitizedAccountIds,
+  setAccountDisabled,
   setAccountSensitized,
 } from "../account-flag-store";
 import { deleteAccount, findAccountById, listAdminAccounts } from "../account-store";
@@ -511,14 +513,15 @@ const adminAccountDocument = async (
   moderation: AccountModeration | null,
   sensitized: boolean,
   pending: boolean,
+  disabled: boolean,
 ): Promise<Record<string, unknown>> => ({
   ...(await mastodonAccountDocument(env, identity, account)),
   email: account.accessEmail.unwrap(),
   ip: null,
   role: { id: "-1", name: "user", highlighted: false },
   approved: !pending,
-  // This instance has no disabled state; suspension is its own flag below.
-  disabled: false,
+  // `disable` blocks the login; it is separate from suspension.
+  disabled,
   silenced: moderation === "Silenced",
   suspended: moderation === "Suspended",
   limited: moderation !== null,
@@ -569,6 +572,13 @@ adminRoutes.get("/api/v1/admin/accounts", async (c) => {
   if (pending.isErr()) {
     return jsonRepositoryError(c, pending.error.message);
   }
+  const disabled = await disabledAccountIds(
+    c.env.DB,
+    accounts.value.map((account) => account.id),
+  );
+  if (disabled.isErr()) {
+    return jsonRepositoryError(c, disabled.error.message);
+  }
   const documents: Record<string, unknown>[] = [];
   for (const account of accounts.value) {
     documents.push(
@@ -579,6 +589,7 @@ adminRoutes.get("/api/v1/admin/accounts", async (c) => {
         moderations.value.get(account.id) ?? null,
         sensitized.value.has(account.id),
         pending.value.has(account.id),
+        disabled.value.has(account.id),
       ),
     );
   }
@@ -610,6 +621,7 @@ const setAccountModerationRoute = async (
   }
   const sensitized = await isAccountSensitized(c.env.DB, account.value.id);
   const pending = await pendingAccountIds(c.env.DB, [account.value.id]);
+  const disabled = await disabledAccountIds(c.env.DB, [account.value.id]);
   return c.json(
     await adminAccountDocument(
       c.env,
@@ -618,6 +630,7 @@ const setAccountModerationRoute = async (
       moderation,
       sensitized.isOk() ? sensitized.value : false,
       pending.isOk() ? pending.value.has(account.value.id) : false,
+      disabled.isOk() ? disabled.value.has(account.value.id) : false,
     ),
   );
 };
@@ -630,7 +643,45 @@ adminRoutes.post("/api/v1/admin/accounts/:id/suspend", (c) =>
   setAccountModerationRoute(c, "Suspended"),
 );
 adminRoutes.post("/api/v1/admin/accounts/:id/unsuspend", (c) => setAccountModerationRoute(c, null));
-adminRoutes.post("/api/v1/admin/accounts/:id/enable", (c) => setAccountModerationRoute(c, null));
+/**
+ * `POST /:id/enable` restores a disabled login (Mastodon's `user.enable!`); it
+ * does not lift a silence or a suspension — `/unsilence` and `/unsuspend` do.
+ */
+adminRoutes.post("/api/v1/admin/accounts/:id/enable", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const admin = await requireAdmin(c);
+  if (admin.isErr()) {
+    return jsonAuthError(c, admin.error);
+  }
+  const account = await findAccountById(c.env.DB, c.req.param("id") ?? "");
+  if (account.isErr()) {
+    return jsonRepositoryError(c, account.error.message);
+  }
+  if (!account.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const enabled = await setAccountDisabled(c.env.DB, account.value.id, false);
+  if (enabled.isErr()) {
+    return jsonRepositoryError(c, enabled.error.message);
+  }
+  const moderation = await getAccountModeration(c.env.DB, account.value.id);
+  const sensitized = await isAccountSensitized(c.env.DB, account.value.id);
+  const pending = await pendingAccountIds(c.env.DB, [account.value.id]);
+  return c.json(
+    await adminAccountDocument(
+      c.env,
+      identity.value,
+      account.value,
+      moderation.isOk() ? moderation.value : null,
+      sensitized.isOk() ? sensitized.value : false,
+      pending.isOk() ? pending.value.has(account.value.id) : false,
+      false,
+    ),
+  );
+});
 
 const AdminDomainBlockBodySchema = z.object({
   domain: z.string().min(1).optional(),
@@ -823,6 +874,7 @@ const setSensitized = async (
   }
   const moderation = await getAccountModeration(c.env.DB, account.value.id);
   const pending = await pendingAccountIds(c.env.DB, [account.value.id]);
+  const disabled = await disabledAccountIds(c.env.DB, [account.value.id]);
   return c.json(
     await adminAccountDocument(
       c.env,
@@ -831,6 +883,7 @@ const setSensitized = async (
       moderation.isOk() ? moderation.value : null,
       sensitized,
       pending.isOk() ? pending.value.has(account.value.id) : false,
+      disabled.isOk() ? disabled.value.has(account.value.id) : false,
     ),
   );
 };
@@ -859,6 +912,8 @@ const approveOrReject = async (c: Context<{ Bindings: Env }>, approve: boolean) 
   }
   const moderation = await getAccountModeration(c.env.DB, id);
   const sensitized = await isAccountSensitized(c.env.DB, id);
+  const disabled = await disabledAccountIds(c.env.DB, [id]);
+  const loginDisabled = disabled.isOk() && disabled.value.has(id);
   if (approve) {
     const approved = await approveAccount(c.env.DB, id);
     if (approved.isErr()) {
@@ -872,6 +927,7 @@ const approveOrReject = async (c: Context<{ Bindings: Env }>, approve: boolean) 
         moderation.isOk() ? moderation.value : null,
         sensitized.isOk() ? sensitized.value : false,
         false,
+        loginDisabled,
       ),
     );
   }
@@ -882,6 +938,7 @@ const approveOrReject = async (c: Context<{ Bindings: Env }>, approve: boolean) 
     moderation.isOk() ? moderation.value : null,
     sensitized.isOk() ? sensitized.value : false,
     true,
+    loginDisabled,
   );
   const objects = await mediaObjectKeysForAccount(c.env.DB, id);
   if (objects.isErr()) {
@@ -896,6 +953,61 @@ const approveOrReject = async (c: Context<{ Bindings: Env }>, approve: boolean) 
   }
   return c.json(document);
 };
+
+const AccountActionBodySchema = z.object({
+  type: z.string().optional(),
+});
+
+/**
+ * `POST /api/v1/admin/accounts/:id/action` — the moderation action Mastodon
+ * documents (`none`, `sensitive`, `disable`, `silence`, `suspend`). The report
+ * resolution and warning text around it are not part of this instance yet.
+ */
+adminRoutes.post("/api/v1/admin/accounts/:id/action", async (c) => {
+  const admin = await requireAdmin(c);
+  if (admin.isErr()) {
+    return jsonAuthError(c, admin.error);
+  }
+  const body = await readBody(c, AccountActionBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  const type = (body.value.type ?? "").trim().toLowerCase();
+  if (!["none", "sensitive", "disable", "silence", "suspend"].includes(type)) {
+    return c.json({ error: "Record invalid", kind: "ValidationError" }, 422);
+  }
+  const account = await findAccountById(c.env.DB, c.req.param("id") ?? "");
+  if (account.isErr()) {
+    return jsonRepositoryError(c, account.error.message);
+  }
+  if (!account.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const id = account.value.id;
+  if (type === "sensitive") {
+    const changed = await setAccountSensitized(c.env.DB, id, true);
+    if (changed.isErr()) {
+      return jsonRepositoryError(c, changed.error.message);
+    }
+  }
+  if (type === "disable") {
+    const changed = await setAccountDisabled(c.env.DB, id, true);
+    if (changed.isErr()) {
+      return jsonRepositoryError(c, changed.error.message);
+    }
+  }
+  if (type === "silence" || type === "suspend") {
+    const changed = await setAccountModeration(
+      c.env.DB,
+      id,
+      type === "silence" ? "Silenced" : "Suspended",
+    );
+    if (changed.isErr()) {
+      return jsonRepositoryError(c, changed.error.message);
+    }
+  }
+  return c.json({});
+});
 
 adminRoutes.post("/api/v1/admin/accounts/:id/approve", (c) => approveOrReject(c, true));
 adminRoutes.post("/api/v1/admin/accounts/:id/reject", (c) => approveOrReject(c, false));

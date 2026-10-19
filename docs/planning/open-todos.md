@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `POST /admin/accounts/:id/action` + a real `disabled` state (`/enable` restores login only)
 - Admin account/domain-block lists page by `max_id`/`since_id`/`min_id`
 - Link-preview TTL test asserts the served title, not fetch counts (queue-flake free)
 - `GET /api/v1/accounts/search` (exact handle, `offset`, `following`, resolve 503)

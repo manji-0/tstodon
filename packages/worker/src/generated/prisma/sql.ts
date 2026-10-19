@@ -290,6 +290,8 @@ export * from "./sql/listDirectoryAccountsByActive";
 
 export * from "./sql/listDirectoryAccountsByNew";
 
+export * from "./sql/listDisabledAccountIds";
+
 export * from "./sql/listEndorsements";
 
 export * from "./sql/listExpiredUnnotifiedPolls";
@@ -445,6 +447,8 @@ export * from "./sql/updatePollOptionsIfActive";
 export * from "./sql/updateStatusCard";
 
 export * from "./sql/updateStatusPollId";
+
+export * from "./sql/upsertAccountDisabled";
 
 export * from "./sql/upsertAccountModeration";
 

@@ -5,9 +5,11 @@ import {
   clearAccountSensitized as clearAccountSensitizedSql,
   findAccountFlag as findAccountFlagSql,
   listMediaObjectKeysForAccount as listMediaObjectKeysForAccountSql,
+  listDisabledAccountIds as listDisabledAccountIdsSql,
   listPendingAccountIds as listPendingAccountIdsSql,
   listSensitizedAccountIds as listSensitizedAccountIdsSql,
   setAccountApproved as setAccountApprovedSql,
+  upsertAccountDisabled as upsertAccountDisabledSql,
   upsertAccountPending as upsertAccountPendingSql,
   upsertAccountSensitized as upsertAccountSensitizedSql,
 } from "./generated/prisma/sql";
@@ -83,6 +85,39 @@ export const markAccountPending = async (
 ): Promise<Result<void, RepositoryError>> => {
   const written = await runD1(async () => {
     await runTyped(db, upsertAccountPendingSql(accountId, nowIso()));
+  });
+  return written.map(() => undefined);
+};
+
+/** Of the given account ids, the ones whose login an admin disabled. */
+export const disabledAccountIds = async (
+  db: D1Database,
+  accountIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlySet<string>, RepositoryError>> => {
+  const unique = [...new Set(accountIds)];
+  if (unique.length === 0) {
+    return ok(new Set<string>());
+  }
+  const queried = await runD1(async () =>
+    queryTyped<{ account_id: string }>(db, listDisabledAccountIdsSql(jsonStringArray(unique))),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  return ok(new Set(queried.value.map((row) => row.account_id)));
+};
+
+/**
+ * Block or restore an account's login (`disable` / `enable`). Silence,
+ * suspension, and approval are separate bits on the same row.
+ */
+export const setAccountDisabled = async (
+  db: D1Database,
+  accountId: string,
+  disabled: boolean,
+): Promise<Result<void, RepositoryError>> => {
+  const written = await runD1(async () => {
+    await runTyped(db, upsertAccountDisabledSql(accountId, disabled ? 1 : 0, nowIso()));
   });
   return written.map(() => undefined);
 };

@@ -1,6 +1,7 @@
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { createLocalJWKSet, createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
+import { disabledAccountIds } from "./account-flag-store";
 import { provisionAccountFromEmail } from "./account-store";
 import { registrationApprovalRequired } from "./runtime-config";
 import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
@@ -188,6 +189,11 @@ export const authenticate = async (
   }
   const moderation = await getAccountModeration(env.DB, account.value.id);
   if (moderation.isOk() && moderation.value === "Suspended") {
+    return err({ kind: "Forbidden" });
+  }
+  const disabled = await disabledAccountIds(env.DB, [account.value.id]);
+  if (disabled.isOk() && disabled.value.has(account.value.id)) {
+    // Mastodon's `disable` action blocks the login while the profile stays.
     return err({ kind: "Forbidden" });
   }
   return ok({

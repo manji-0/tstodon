@@ -369,7 +369,7 @@ export type AdminAccountFilters = Readonly<{
 const STATUS_SQL: Readonly<Record<AdminAccountFilters["status"], string>> = {
   active: `id NOT IN (SELECT account_id FROM account_moderation WHERE moderation = 'Suspended')`,
   pending: "id IN (SELECT account_id FROM account_flags WHERE pending <> 0)",
-  disabled: "0",
+  disabled: "id IN (SELECT account_id FROM account_flags WHERE disabled <> 0)",
   silenced: `id IN (SELECT account_id FROM account_moderation WHERE moderation = 'Silenced')`,
   suspended: `id IN (SELECT account_id FROM account_moderation WHERE moderation = 'Suspended')`,
   sensitized: "id IN (SELECT account_id FROM account_flags WHERE sensitized <> 0)",

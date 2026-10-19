@@ -29,17 +29,20 @@ export type AggregateAccount_flags = {
 export type Account_flagsAvgAggregateOutputType = {
   sensitized: number | null;
   pending: number | null;
+  disabled: number | null;
 };
 
 export type Account_flagsSumAggregateOutputType = {
   sensitized: number | null;
   pending: number | null;
+  disabled: number | null;
 };
 
 export type Account_flagsMinAggregateOutputType = {
   account_id: string | null;
   sensitized: number | null;
   pending: number | null;
+  disabled: number | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -48,6 +51,7 @@ export type Account_flagsMaxAggregateOutputType = {
   account_id: string | null;
   sensitized: number | null;
   pending: number | null;
+  disabled: number | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -56,6 +60,7 @@ export type Account_flagsCountAggregateOutputType = {
   account_id: number;
   sensitized: number;
   pending: number;
+  disabled: number;
   created_at: number;
   updated_at: number;
   _all: number;
@@ -64,17 +69,20 @@ export type Account_flagsCountAggregateOutputType = {
 export type Account_flagsAvgAggregateInputType = {
   sensitized?: true;
   pending?: true;
+  disabled?: true;
 };
 
 export type Account_flagsSumAggregateInputType = {
   sensitized?: true;
   pending?: true;
+  disabled?: true;
 };
 
 export type Account_flagsMinAggregateInputType = {
   account_id?: true;
   sensitized?: true;
   pending?: true;
+  disabled?: true;
   created_at?: true;
   updated_at?: true;
 };
@@ -83,6 +91,7 @@ export type Account_flagsMaxAggregateInputType = {
   account_id?: true;
   sensitized?: true;
   pending?: true;
+  disabled?: true;
   created_at?: true;
   updated_at?: true;
 };
@@ -91,6 +100,7 @@ export type Account_flagsCountAggregateInputType = {
   account_id?: true;
   sensitized?: true;
   pending?: true;
+  disabled?: true;
   created_at?: true;
   updated_at?: true;
   _all?: true;
@@ -191,6 +201,7 @@ export type Account_flagsGroupByOutputType = {
   account_id: string;
   sensitized: number;
   pending: number;
+  disabled: number;
   created_at: string;
   updated_at: string;
   _count: Account_flagsCountAggregateOutputType | null;
@@ -220,6 +231,7 @@ export type account_flagsWhereInput = {
   account_id?: Prisma.StringFilter<"account_flags"> | string;
   sensitized?: Prisma.IntFilter<"account_flags"> | number;
   pending?: Prisma.IntFilter<"account_flags"> | number;
+  disabled?: Prisma.IntFilter<"account_flags"> | number;
   created_at?: Prisma.StringFilter<"account_flags"> | string;
   updated_at?: Prisma.StringFilter<"account_flags"> | string;
 };
@@ -228,6 +240,7 @@ export type account_flagsOrderByWithRelationInput = {
   account_id?: Prisma.SortOrder;
   sensitized?: Prisma.SortOrder;
   pending?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
@@ -240,6 +253,7 @@ export type account_flagsWhereUniqueInput = Prisma.AtLeast<
     NOT?: Prisma.account_flagsWhereInput | Prisma.account_flagsWhereInput[];
     sensitized?: Prisma.IntFilter<"account_flags"> | number;
     pending?: Prisma.IntFilter<"account_flags"> | number;
+    disabled?: Prisma.IntFilter<"account_flags"> | number;
     created_at?: Prisma.StringFilter<"account_flags"> | string;
     updated_at?: Prisma.StringFilter<"account_flags"> | string;
   },
@@ -250,6 +264,7 @@ export type account_flagsOrderByWithAggregationInput = {
   account_id?: Prisma.SortOrder;
   sensitized?: Prisma.SortOrder;
   pending?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   _count?: Prisma.account_flagsCountOrderByAggregateInput;
@@ -270,6 +285,7 @@ export type account_flagsScalarWhereWithAggregatesInput = {
   account_id?: Prisma.StringWithAggregatesFilter<"account_flags"> | string;
   sensitized?: Prisma.IntWithAggregatesFilter<"account_flags"> | number;
   pending?: Prisma.IntWithAggregatesFilter<"account_flags"> | number;
+  disabled?: Prisma.IntWithAggregatesFilter<"account_flags"> | number;
   created_at?: Prisma.StringWithAggregatesFilter<"account_flags"> | string;
   updated_at?: Prisma.StringWithAggregatesFilter<"account_flags"> | string;
 };
@@ -278,6 +294,7 @@ export type account_flagsCreateInput = {
   account_id: string;
   sensitized?: number;
   pending?: number;
+  disabled?: number;
   created_at?: string;
   updated_at?: string;
 };
@@ -286,6 +303,7 @@ export type account_flagsUncheckedCreateInput = {
   account_id: string;
   sensitized?: number;
   pending?: number;
+  disabled?: number;
   created_at?: string;
   updated_at?: string;
 };
@@ -294,6 +312,7 @@ export type account_flagsUpdateInput = {
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitized?: Prisma.IntFieldUpdateOperationsInput | number;
   pending?: Prisma.IntFieldUpdateOperationsInput | number;
+  disabled?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -302,6 +321,7 @@ export type account_flagsUncheckedUpdateInput = {
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitized?: Prisma.IntFieldUpdateOperationsInput | number;
   pending?: Prisma.IntFieldUpdateOperationsInput | number;
+  disabled?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -310,6 +330,7 @@ export type account_flagsCreateManyInput = {
   account_id: string;
   sensitized?: number;
   pending?: number;
+  disabled?: number;
   created_at?: string;
   updated_at?: string;
 };
@@ -318,6 +339,7 @@ export type account_flagsUpdateManyMutationInput = {
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitized?: Prisma.IntFieldUpdateOperationsInput | number;
   pending?: Prisma.IntFieldUpdateOperationsInput | number;
+  disabled?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -326,6 +348,7 @@ export type account_flagsUncheckedUpdateManyInput = {
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitized?: Prisma.IntFieldUpdateOperationsInput | number;
   pending?: Prisma.IntFieldUpdateOperationsInput | number;
+  disabled?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -334,6 +357,7 @@ export type account_flagsCountOrderByAggregateInput = {
   account_id?: Prisma.SortOrder;
   sensitized?: Prisma.SortOrder;
   pending?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
@@ -341,12 +365,14 @@ export type account_flagsCountOrderByAggregateInput = {
 export type account_flagsAvgOrderByAggregateInput = {
   sensitized?: Prisma.SortOrder;
   pending?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
 };
 
 export type account_flagsMaxOrderByAggregateInput = {
   account_id?: Prisma.SortOrder;
   sensitized?: Prisma.SortOrder;
   pending?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
@@ -355,6 +381,7 @@ export type account_flagsMinOrderByAggregateInput = {
   account_id?: Prisma.SortOrder;
   sensitized?: Prisma.SortOrder;
   pending?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
@@ -362,6 +389,7 @@ export type account_flagsMinOrderByAggregateInput = {
 export type account_flagsSumOrderByAggregateInput = {
   sensitized?: Prisma.SortOrder;
   pending?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
 };
 
 export type account_flagsSelect<
@@ -371,6 +399,7 @@ export type account_flagsSelect<
     account_id?: boolean;
     sensitized?: boolean;
     pending?: boolean;
+    disabled?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
   },
@@ -384,6 +413,7 @@ export type account_flagsSelectCreateManyAndReturn<
     account_id?: boolean;
     sensitized?: boolean;
     pending?: boolean;
+    disabled?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
   },
@@ -397,6 +427,7 @@ export type account_flagsSelectUpdateManyAndReturn<
     account_id?: boolean;
     sensitized?: boolean;
     pending?: boolean;
+    disabled?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
   },
@@ -407,6 +438,7 @@ export type account_flagsSelectScalar = {
   account_id?: boolean;
   sensitized?: boolean;
   pending?: boolean;
+  disabled?: boolean;
   created_at?: boolean;
   updated_at?: boolean;
 };
@@ -414,7 +446,7 @@ export type account_flagsSelectScalar = {
 export type account_flagsOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "account_id" | "sensitized" | "pending" | "created_at" | "updated_at",
+  "account_id" | "sensitized" | "pending" | "disabled" | "created_at" | "updated_at",
   ExtArgs["result"]["account_flags"]
 >;
 
@@ -428,6 +460,7 @@ export type $account_flagsPayload<
       account_id: string;
       sensitized: number;
       pending: number;
+      disabled: number;
       created_at: string;
       updated_at: string;
     },
@@ -1003,6 +1036,7 @@ export interface account_flagsFieldRefs {
   readonly account_id: Prisma.FieldRef<"account_flags", "String">;
   readonly sensitized: Prisma.FieldRef<"account_flags", "Int">;
   readonly pending: Prisma.FieldRef<"account_flags", "Int">;
+  readonly disabled: Prisma.FieldRef<"account_flags", "Int">;
   readonly created_at: Prisma.FieldRef<"account_flags", "String">;
   readonly updated_at: Prisma.FieldRef<"account_flags", "String">;
 }
