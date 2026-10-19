@@ -193,6 +193,42 @@ export const FilterBodySchema = z.object({
   expires_in: z.union([z.number(), z.string()]).optional(),
 });
 
+export const FilterV2BodySchema = z.object({
+  title: z.string().optional(),
+  phrase: z.string().optional(),
+  context: z.union([z.array(z.string()), z.string()]).optional(),
+  filter_action: z.string().optional(),
+  irreversible: booleanish,
+  expires_in: z.union([z.number(), z.string()]).optional(),
+  keywords_attributes: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        keyword: z.string().optional(),
+        whole_word: booleanish,
+        _destroy: booleanish,
+      }),
+    )
+    .optional(),
+  keywords: z
+    .array(
+      z.union([
+        z.string(),
+        z.object({
+          id: z.string().optional(),
+          keyword: z.string().optional(),
+          whole_word: booleanish,
+        }),
+      ]),
+    )
+    .optional(),
+});
+
+export const FilterKeywordBodySchema = z.object({
+  keyword: z.string().optional(),
+  whole_word: booleanish,
+});
+
 export const ReportBodySchema = z.object({
   account_id: z.string().min(1),
   status_ids: z.union([z.array(z.string()), z.string()]).optional(),
@@ -473,6 +509,8 @@ warmSchemas([
   CreateStatusBodySchema,
   PollVoteBodySchema,
   FilterBodySchema,
+  FilterV2BodySchema,
+  FilterKeywordBodySchema,
   ReportBodySchema,
   AppBodySchema,
   OAuthTokenBodySchema,

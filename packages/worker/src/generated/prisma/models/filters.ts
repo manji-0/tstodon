@@ -43,6 +43,7 @@ export type FiltersMinAggregateOutputType = {
   whole_word: number | null;
   irreversible: number | null;
   expires_at: string | null;
+  keywords_json: string | null;
   created_at: string | null;
 };
 
@@ -54,6 +55,7 @@ export type FiltersMaxAggregateOutputType = {
   whole_word: number | null;
   irreversible: number | null;
   expires_at: string | null;
+  keywords_json: string | null;
   created_at: string | null;
 };
 
@@ -65,6 +67,7 @@ export type FiltersCountAggregateOutputType = {
   whole_word: number;
   irreversible: number;
   expires_at: number;
+  keywords_json: number;
   created_at: number;
   _all: number;
 };
@@ -87,6 +90,7 @@ export type FiltersMinAggregateInputType = {
   whole_word?: true;
   irreversible?: true;
   expires_at?: true;
+  keywords_json?: true;
   created_at?: true;
 };
 
@@ -98,6 +102,7 @@ export type FiltersMaxAggregateInputType = {
   whole_word?: true;
   irreversible?: true;
   expires_at?: true;
+  keywords_json?: true;
   created_at?: true;
 };
 
@@ -109,6 +114,7 @@ export type FiltersCountAggregateInputType = {
   whole_word?: true;
   irreversible?: true;
   expires_at?: true;
+  keywords_json?: true;
   created_at?: true;
   _all?: true;
 };
@@ -208,6 +214,7 @@ export type FiltersGroupByOutputType = {
   whole_word: number;
   irreversible: number;
   expires_at: string | null;
+  keywords_json: string;
   created_at: string;
   _count: FiltersCountAggregateOutputType | null;
   _avg: FiltersAvgAggregateOutputType | null;
@@ -239,6 +246,7 @@ export type filtersWhereInput = {
   whole_word?: Prisma.IntFilter<"filters"> | number;
   irreversible?: Prisma.IntFilter<"filters"> | number;
   expires_at?: Prisma.StringNullableFilter<"filters"> | string | null;
+  keywords_json?: Prisma.StringFilter<"filters"> | string;
   created_at?: Prisma.StringFilter<"filters"> | string;
   accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
 };
@@ -251,6 +259,7 @@ export type filtersOrderByWithRelationInput = {
   whole_word?: Prisma.SortOrder;
   irreversible?: Prisma.SortOrder;
   expires_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  keywords_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   accounts?: Prisma.accountsOrderByWithRelationInput;
 };
@@ -267,6 +276,7 @@ export type filtersWhereUniqueInput = Prisma.AtLeast<
     whole_word?: Prisma.IntFilter<"filters"> | number;
     irreversible?: Prisma.IntFilter<"filters"> | number;
     expires_at?: Prisma.StringNullableFilter<"filters"> | string | null;
+    keywords_json?: Prisma.StringFilter<"filters"> | string;
     created_at?: Prisma.StringFilter<"filters"> | string;
     accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
   },
@@ -281,6 +291,7 @@ export type filtersOrderByWithAggregationInput = {
   whole_word?: Prisma.SortOrder;
   irreversible?: Prisma.SortOrder;
   expires_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  keywords_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   _count?: Prisma.filtersCountOrderByAggregateInput;
   _avg?: Prisma.filtersAvgOrderByAggregateInput;
@@ -304,6 +315,7 @@ export type filtersScalarWhereWithAggregatesInput = {
   whole_word?: Prisma.IntWithAggregatesFilter<"filters"> | number;
   irreversible?: Prisma.IntWithAggregatesFilter<"filters"> | number;
   expires_at?: Prisma.StringNullableWithAggregatesFilter<"filters"> | string | null;
+  keywords_json?: Prisma.StringWithAggregatesFilter<"filters"> | string;
   created_at?: Prisma.StringWithAggregatesFilter<"filters"> | string;
 };
 
@@ -314,6 +326,7 @@ export type filtersCreateInput = {
   whole_word?: number;
   irreversible?: number;
   expires_at?: string | null;
+  keywords_json?: string;
   created_at?: string;
   accounts: Prisma.accountsCreateNestedOneWithoutFiltersInput;
 };
@@ -326,6 +339,7 @@ export type filtersUncheckedCreateInput = {
   whole_word?: number;
   irreversible?: number;
   expires_at?: string | null;
+  keywords_json?: string;
   created_at?: string;
 };
 
@@ -336,6 +350,7 @@ export type filtersUpdateInput = {
   whole_word?: Prisma.IntFieldUpdateOperationsInput | number;
   irreversible?: Prisma.IntFieldUpdateOperationsInput | number;
   expires_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  keywords_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutFiltersNestedInput;
 };
@@ -348,6 +363,7 @@ export type filtersUncheckedUpdateInput = {
   whole_word?: Prisma.IntFieldUpdateOperationsInput | number;
   irreversible?: Prisma.IntFieldUpdateOperationsInput | number;
   expires_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  keywords_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -359,6 +375,7 @@ export type filtersCreateManyInput = {
   whole_word?: number;
   irreversible?: number;
   expires_at?: string | null;
+  keywords_json?: string;
   created_at?: string;
 };
 
@@ -369,6 +386,7 @@ export type filtersUpdateManyMutationInput = {
   whole_word?: Prisma.IntFieldUpdateOperationsInput | number;
   irreversible?: Prisma.IntFieldUpdateOperationsInput | number;
   expires_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  keywords_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -380,6 +398,7 @@ export type filtersUncheckedUpdateManyInput = {
   whole_word?: Prisma.IntFieldUpdateOperationsInput | number;
   irreversible?: Prisma.IntFieldUpdateOperationsInput | number;
   expires_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  keywords_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -401,6 +420,7 @@ export type filtersCountOrderByAggregateInput = {
   whole_word?: Prisma.SortOrder;
   irreversible?: Prisma.SortOrder;
   expires_at?: Prisma.SortOrder;
+  keywords_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
@@ -417,6 +437,7 @@ export type filtersMaxOrderByAggregateInput = {
   whole_word?: Prisma.SortOrder;
   irreversible?: Prisma.SortOrder;
   expires_at?: Prisma.SortOrder;
+  keywords_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
@@ -428,6 +449,7 @@ export type filtersMinOrderByAggregateInput = {
   whole_word?: Prisma.SortOrder;
   irreversible?: Prisma.SortOrder;
   expires_at?: Prisma.SortOrder;
+  keywords_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
@@ -529,6 +551,7 @@ export type filtersCreateWithoutAccountsInput = {
   whole_word?: number;
   irreversible?: number;
   expires_at?: string | null;
+  keywords_json?: string;
   created_at?: string;
 };
 
@@ -539,6 +562,7 @@ export type filtersUncheckedCreateWithoutAccountsInput = {
   whole_word?: number;
   irreversible?: number;
   expires_at?: string | null;
+  keywords_json?: string;
   created_at?: string;
 };
 
@@ -593,6 +617,7 @@ export type filtersScalarWhereInput = {
   whole_word?: Prisma.IntFilter<"filters"> | number;
   irreversible?: Prisma.IntFilter<"filters"> | number;
   expires_at?: Prisma.StringNullableFilter<"filters"> | string | null;
+  keywords_json?: Prisma.StringFilter<"filters"> | string;
   created_at?: Prisma.StringFilter<"filters"> | string;
 };
 
@@ -603,6 +628,7 @@ export type filtersCreateManyAccountsInput = {
   whole_word?: number;
   irreversible?: number;
   expires_at?: string | null;
+  keywords_json?: string;
   created_at?: string;
 };
 
@@ -613,6 +639,7 @@ export type filtersUpdateWithoutAccountsInput = {
   whole_word?: Prisma.IntFieldUpdateOperationsInput | number;
   irreversible?: Prisma.IntFieldUpdateOperationsInput | number;
   expires_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  keywords_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -623,6 +650,7 @@ export type filtersUncheckedUpdateWithoutAccountsInput = {
   whole_word?: Prisma.IntFieldUpdateOperationsInput | number;
   irreversible?: Prisma.IntFieldUpdateOperationsInput | number;
   expires_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  keywords_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -633,6 +661,7 @@ export type filtersUncheckedUpdateManyWithoutAccountsInput = {
   whole_word?: Prisma.IntFieldUpdateOperationsInput | number;
   irreversible?: Prisma.IntFieldUpdateOperationsInput | number;
   expires_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  keywords_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -647,6 +676,7 @@ export type filtersSelect<
     whole_word?: boolean;
     irreversible?: boolean;
     expires_at?: boolean;
+    keywords_json?: boolean;
     created_at?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
@@ -664,6 +694,7 @@ export type filtersSelectCreateManyAndReturn<
     whole_word?: boolean;
     irreversible?: boolean;
     expires_at?: boolean;
+    keywords_json?: boolean;
     created_at?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
@@ -681,6 +712,7 @@ export type filtersSelectUpdateManyAndReturn<
     whole_word?: boolean;
     irreversible?: boolean;
     expires_at?: boolean;
+    keywords_json?: boolean;
     created_at?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
@@ -695,6 +727,7 @@ export type filtersSelectScalar = {
   whole_word?: boolean;
   irreversible?: boolean;
   expires_at?: boolean;
+  keywords_json?: boolean;
   created_at?: boolean;
 };
 
@@ -708,6 +741,7 @@ export type filtersOmit<
   | "whole_word"
   | "irreversible"
   | "expires_at"
+  | "keywords_json"
   | "created_at",
   ExtArgs["result"]["filters"]
 >;
@@ -743,6 +777,7 @@ export type $filtersPayload<
       whole_word: number;
       irreversible: number;
       expires_at: string | null;
+      keywords_json: string;
       created_at: string;
     },
     ExtArgs["result"]["filters"]
@@ -1311,6 +1346,7 @@ export interface filtersFieldRefs {
   readonly whole_word: Prisma.FieldRef<"filters", "Int">;
   readonly irreversible: Prisma.FieldRef<"filters", "Int">;
   readonly expires_at: Prisma.FieldRef<"filters", "String">;
+  readonly keywords_json: Prisma.FieldRef<"filters", "String">;
   readonly created_at: Prisma.FieldRef<"filters", "String">;
 }
 

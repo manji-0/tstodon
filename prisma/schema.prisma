@@ -186,14 +186,15 @@ model favourites {
 }
 
 model filters {
-  id           String @id
-  account_id   String
-  phrase       String
-  context_json String
-  whole_word   Int      @default(0)
-  irreversible Int      @default(0)
-  expires_at   String?
-  created_at   String   @default("CURRENT_TIMESTAMP")
+  id            String @id
+  account_id    String
+  phrase        String
+  context_json  String
+  whole_word    Int      @default(0)
+  irreversible  Int      @default(0)
+  expires_at    String?
+  keywords_json String   @default("[]")
+  created_at    String   @default("CURRENT_TIMESTAMP")
   accounts     accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 

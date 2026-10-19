@@ -276,6 +276,7 @@ export const FiltersScalarFieldEnum = {
   whole_word: "whole_word",
   irreversible: "irreversible",
   expires_at: "expires_at",
+  keywords_json: "keywords_json",
   created_at: "created_at",
 } as const;
 

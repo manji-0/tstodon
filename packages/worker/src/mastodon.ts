@@ -29,7 +29,7 @@ import { sensitizedAccountIds } from "./account-flag-store";
 import { loadCustomEmojis } from "./custom-emoji-store";
 import { listStatusMuteRoots, resolveThreadRootStatusIds } from "./status-mute-store";
 import { FilterContextSchema, parseJsonColumn } from "./schemas";
-import type { FilterRow } from "./moderation-store";
+import { filterKeywords, type FilterRow } from "./moderation-store";
 
 const mediaUrl = (identity: InstanceIdentity, objectKey: string): string =>
   `${identity.mediaPublicBaseUrl.replace(/\/$/, "")}/${objectKey}`;
@@ -516,13 +516,11 @@ export const mastodonFilterV2 = (row: FilterRow): Record<string, unknown> => {
     context: v1.context,
     expires_at: row.expires_at,
     filter_action: row.irreversible === 1 ? "hide" : "warn",
-    keywords: [
-      {
-        id: row.id,
-        keyword: row.phrase,
-        whole_word: row.whole_word === 1,
-      },
-    ],
+    keywords: filterKeywords(row).map((keyword) => ({
+      id: keyword.id,
+      keyword: keyword.keyword,
+      whole_word: keyword.whole_word,
+    })),
   };
 };
 

@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  */
 export const listFilters = $runtime.makeTypedQueryFactory(
-  "SELECT id, account_id, phrase, context_json, whole_word, irreversible, expires_at\nFROM filters WHERE account_id = $1 ORDER BY created_at DESC",
+  "SELECT id, account_id, phrase, context_json, whole_word, irreversible, expires_at, keywords_json\nFROM filters WHERE account_id = $1 ORDER BY created_at DESC",
 ) as (accountId: string) => $runtime.TypedSql<listFilters.Parameters, listFilters.Result>;
 
 export namespace listFilters {
@@ -21,5 +21,6 @@ export namespace listFilters {
     whole_word: number;
     irreversible: number;
     expires_at: string | null;
+    keywords_json: string;
   };
 }

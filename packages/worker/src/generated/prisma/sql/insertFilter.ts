@@ -12,10 +12,11 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param wholeWord
  * @param irreversible
  * @param expiresAt
+ * @param keywordsJson
  * @param createdAt
  */
 export const insertFilter = $runtime.makeTypedQueryFactory(
-  "INSERT INTO filters (\nid, account_id, phrase, context_json, whole_word, irreversible, expires_at, created_at\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+  "INSERT INTO filters (\nid, account_id, phrase, context_json, whole_word, irreversible, expires_at, keywords_json, created_at\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
 ) as (
   id: string,
   accountId: string,
@@ -24,6 +25,7 @@ export const insertFilter = $runtime.makeTypedQueryFactory(
   wholeWord: number,
   irreversible: number,
   expiresAt: string | null,
+  keywordsJson: string,
   createdAt: string,
 ) => $runtime.TypedSql<insertFilter.Parameters, insertFilter.Result>;
 
@@ -36,6 +38,7 @@ export namespace insertFilter {
     wholeWord: number,
     irreversible: number,
     expiresAt: string | null,
+    keywordsJson: string,
     createdAt: string,
   ];
   export type Result = {};

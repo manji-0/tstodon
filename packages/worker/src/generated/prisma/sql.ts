@@ -134,6 +134,8 @@ export * from "./sql/findDomainBlockById";
 
 export * from "./sql/findEndorsement";
 
+export * from "./sql/findFilterById";
+
 export * from "./sql/findFollowKind";
 
 export * from "./sql/findListForAccount";
@@ -371,6 +373,8 @@ export * from "./sql/updateAnnouncement";
 export * from "./sql/updateCustomEmojiAttributes";
 
 export * from "./sql/updateDomainBlock";
+
+export * from "./sql/updateFilter";
 
 export * from "./sql/updateList";
 

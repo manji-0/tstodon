@@ -5,7 +5,8 @@
 -- @param {Int} $5:wholeWord
 -- @param {Int} $6:irreversible
 -- @param {String} $7:expiresAt?
--- @param {String} $8:createdAt
+-- @param {String} $8:keywordsJson
+-- @param {String} $9:createdAt
 INSERT INTO filters (
-  id, account_id, phrase, context_json, whole_word, irreversible, expires_at, created_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+  id, account_id, phrase, context_json, whole_word, irreversible, expires_at, keywords_json, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)

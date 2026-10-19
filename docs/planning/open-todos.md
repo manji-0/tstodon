@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- v2 filter verbs plus keyword sub-resources (`filters.keywords_json`)
 - Grouped notifications (`/api/v2/notifications` + group_key endpoints and unread count)
 - Poll `hide_totals` (counts null until expiry) and a vote now answers the Poll entity
 - `reject_media` enforced: remote attachments dropped on persist and cleared for existing rows

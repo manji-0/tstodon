@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
+import type { z } from "zod";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -6,9 +8,26 @@ import {
   readBody,
   requireUser,
 } from "../http";
+import { newEntityId } from "../ids";
 import { mastodonFilter, mastodonFilterV2 } from "../mastodon";
-import { deleteFilter, insertFilter, insertReport, listFilters } from "../moderation-store";
-import { FilterBodySchema, isTruthy, ReportBodySchema, stringList } from "../schemas";
+import {
+  deleteFilter,
+  filterKeywords,
+  findFilterById,
+  insertFilter,
+  insertReport,
+  listFilters,
+  updateFilter,
+  type FilterKeyword,
+} from "../moderation-store";
+import {
+  FilterBodySchema,
+  FilterKeywordBodySchema,
+  FilterV2BodySchema,
+  isTruthy,
+  ReportBodySchema,
+  stringList,
+} from "../schemas";
 
 export const moderationRoutes = new Hono<{ Bindings: Env }>();
 
@@ -66,6 +85,40 @@ moderationRoutes.delete("/api/v1/filters/:id", async (c) => {
   return c.body(null, 200);
 });
 
+moderationRoutes.post("/api/v2/filters", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const body = await readBody(c, FilterV2BodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  const keywords = keywordsFromBody(body.value);
+  const title = (body.value.title ?? body.value.phrase ?? "").trim();
+  const phrase = title.length > 0 ? title : (keywords[0]?.keyword ?? "");
+  if (phrase.length === 0) {
+    return c.json({ error: "title is required", kind: "ValidationError" }, 422);
+  }
+  const contexts = stringList(body.value.context);
+  const created = await insertFilter(c.env.DB, {
+    accountId: user.value.id,
+    phrase,
+    context: contexts.length > 0 ? contexts : ["home"],
+    wholeWord: keywords[0]?.whole_word ?? false,
+    irreversible:
+      body.value.filter_action !== undefined
+        ? body.value.filter_action === "hide"
+        : isTruthy(body.value.irreversible),
+    expiresAt: expiresAtFromBody(body.value.expires_in) ?? undefined,
+    keywords,
+  });
+  if (created.isErr()) {
+    return jsonRepositoryError(c, created.error.message);
+  }
+  return c.json(mastodonFilterV2(created.value), 200);
+});
+
 moderationRoutes.get("/api/v2/filters", async (c) => {
   const user = await requireUser(c);
   if (user.isErr()) {
@@ -76,6 +129,274 @@ moderationRoutes.get("/api/v2/filters", async (c) => {
     return jsonRepositoryError(c, rows.error.message);
   }
   return c.json(rows.value.map(mastodonFilterV2));
+});
+
+/** Keywords from either `keywords_attributes[]` or `keywords[]`, in order. */
+const keywordsFromBody = (
+  body: z.infer<typeof FilterV2BodySchema>,
+  extra: ReadonlyArray<{
+    id?: string | undefined;
+    keyword?: string | undefined;
+    whole_word?: boolean;
+  }> = [],
+): FilterKeyword[] => {
+  const entries = [
+    ...(body.keywords_attributes ?? []).filter((entry) => !isTruthy(entry._destroy)),
+    ...(body.keywords ?? []).map((entry) =>
+      typeof entry === "string" ? { keyword: entry } : entry,
+    ),
+    ...extra,
+  ];
+  const keywords: FilterKeyword[] = [];
+  for (const entry of entries) {
+    const keyword = entry.keyword?.trim() ?? "";
+    if (keyword.length === 0) {
+      continue;
+    }
+    keywords.push({
+      id: entry.id && entry.id.length > 0 ? entry.id : newEntityId(),
+      keyword,
+      whole_word: entry.whole_word !== undefined ? isTruthy(entry.whole_word) : false,
+    });
+  }
+  return keywords;
+};
+
+const expiresAtFromBody = (raw: number | string | undefined): string | null => {
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) && seconds > 0
+    ? new Date(Date.now() + seconds * 1000).toISOString()
+    : null;
+};
+
+const filterNotFound = (c: Context<{ Bindings: Env }>) =>
+  c.json({ error: "Record not found", kind: "NotFound" }, 404);
+
+moderationRoutes.get("/api/v2/filters/:id", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const row = await findFilterById(c.env.DB, user.value.id, c.req.param("id"));
+  if (row.isErr()) {
+    return jsonRepositoryError(c, row.error.message);
+  }
+  if (!row.value) {
+    return filterNotFound(c);
+  }
+  return c.json(mastodonFilterV2(row.value));
+});
+
+moderationRoutes.put("/api/v2/filters/:id", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const id = c.req.param("id") ?? "";
+  const existing = await findFilterById(c.env.DB, user.value.id, id);
+  if (existing.isErr()) {
+    return jsonRepositoryError(c, existing.error.message);
+  }
+  if (!existing.value) {
+    return filterNotFound(c);
+  }
+  const body = await readBody(c, FilterV2BodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  // Omitted keywords keep whatever the filter already had.
+  const keywordsProvided =
+    body.value.keywords !== undefined || body.value.keywords_attributes !== undefined;
+  const keywords = keywordsProvided ? keywordsFromBody(body.value) : filterKeywords(existing.value);
+  const title = (body.value.title ?? body.value.phrase ?? "").trim();
+  const phrase = title.length > 0 ? title : (keywords[0]?.keyword ?? existing.value.phrase);
+  const contexts = stringList(body.value.context);
+  const action = body.value.filter_action;
+  const updated = await updateFilter(c.env.DB, user.value.id, id, {
+    phrase,
+    context: contexts.length > 0 ? contexts : (JSON.parse(existing.value.context_json) as string[]),
+    wholeWord: keywords[0]?.whole_word ?? existing.value.whole_word === 1,
+    irreversible: action === undefined ? existing.value.irreversible === 1 : action === "hide",
+    expiresAt:
+      body.value.expires_in === undefined
+        ? existing.value.expires_at
+        : expiresAtFromBody(body.value.expires_in),
+    keywords,
+  });
+  if (updated.isErr()) {
+    return jsonRepositoryError(c, updated.error.message);
+  }
+  const row = await findFilterById(c.env.DB, user.value.id, id);
+  if (row.isErr() || !row.value) {
+    return filterNotFound(c);
+  }
+  return c.json(mastodonFilterV2(row.value));
+});
+
+moderationRoutes.delete("/api/v2/filters/:id", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const deleted = await deleteFilter(c.env.DB, user.value.id, c.req.param("id"));
+  if (deleted.isErr()) {
+    return jsonRepositoryError(c, deleted.error.message);
+  }
+  if (!deleted.value) {
+    return filterNotFound(c);
+  }
+  return c.json({});
+});
+
+moderationRoutes.get("/api/v2/filters/:id/keywords", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const row = await findFilterById(c.env.DB, user.value.id, c.req.param("id"));
+  if (row.isErr()) {
+    return jsonRepositoryError(c, row.error.message);
+  }
+  if (!row.value) {
+    return filterNotFound(c);
+  }
+  return c.json(filterKeywords(row.value));
+});
+
+const writeKeywords = async (
+  c: Context<{ Bindings: Env }>,
+  keywords: ReadonlyArray<FilterKeyword>,
+): Promise<Response> => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const id = c.req.param("id") ?? "";
+  const row = await findFilterById(c.env.DB, user.value.id, id);
+  if (row.isErr()) {
+    return jsonRepositoryError(c, row.error.message);
+  }
+  if (!row.value) {
+    return filterNotFound(c);
+  }
+  const updated = await updateFilter(c.env.DB, user.value.id, id, {
+    phrase: keywords[0]?.keyword ?? row.value.phrase,
+    context: JSON.parse(row.value.context_json) as string[],
+    wholeWord: keywords[0]?.whole_word ?? row.value.whole_word === 1,
+    irreversible: row.value.irreversible === 1,
+    expiresAt: row.value.expires_at,
+    keywords,
+  });
+  if (updated.isErr()) {
+    return jsonRepositoryError(c, updated.error.message);
+  }
+  return c.json({});
+};
+
+moderationRoutes.post("/api/v2/filters/:id/keywords", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const row = await findFilterById(c.env.DB, user.value.id, c.req.param("id"));
+  if (row.isErr()) {
+    return jsonRepositoryError(c, row.error.message);
+  }
+  if (!row.value) {
+    return filterNotFound(c);
+  }
+  const body = await readBody(c, FilterKeywordBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  const keyword = (body.value.keyword ?? "").trim();
+  if (keyword.length === 0) {
+    return c.json({ error: "keyword is required", kind: "ValidationError" }, 422);
+  }
+  const existing = filterKeywords(row.value);
+  if (existing.some((entry) => entry.keyword.toLowerCase() === keyword.toLowerCase())) {
+    return c.json({ error: "keyword has already been added", kind: "ValidationError" }, 422);
+  }
+  const appended: FilterKeyword = {
+    id: newEntityId(),
+    keyword,
+    whole_word: isTruthy(body.value.whole_word),
+  };
+  const response = await writeKeywords(c, [...existing, appended]);
+  if (response.status !== 200) {
+    return response;
+  }
+  return c.json(appended);
+});
+
+moderationRoutes.put("/api/v2/filters/:id/keywords/:keywordId", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const row = await findFilterById(c.env.DB, user.value.id, c.req.param("id"));
+  if (row.isErr()) {
+    return jsonRepositoryError(c, row.error.message);
+  }
+  if (!row.value) {
+    return filterNotFound(c);
+  }
+  const keywordId = c.req.param("keywordId") ?? "";
+  const existing = filterKeywords(row.value);
+  const current = existing.find((entry) => entry.id === keywordId);
+  if (!current) {
+    return filterNotFound(c);
+  }
+  const body = await readBody(c, FilterKeywordBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  const keyword =
+    body.value.keyword === undefined || body.value.keyword.trim().length === 0
+      ? current.keyword
+      : body.value.keyword.trim();
+  const next: FilterKeyword = {
+    id: current.id,
+    keyword,
+    whole_word:
+      body.value.whole_word === undefined ? current.whole_word : isTruthy(body.value.whole_word),
+  };
+  const response = await writeKeywords(
+    c,
+    existing.map((entry) => (entry.id === keywordId ? next : entry)),
+  );
+  if (response.status !== 200) {
+    return response;
+  }
+  return c.json(next);
+});
+
+moderationRoutes.delete("/api/v2/filters/:id/keywords/:keywordId", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const row = await findFilterById(c.env.DB, user.value.id, c.req.param("id"));
+  if (row.isErr()) {
+    return jsonRepositoryError(c, row.error.message);
+  }
+  if (!row.value) {
+    return filterNotFound(c);
+  }
+  const keywordId = c.req.param("keywordId") ?? "";
+  const existing = filterKeywords(row.value);
+  if (!existing.some((entry) => entry.id === keywordId)) {
+    return filterNotFound(c);
+  }
+  const remaining = existing.filter((entry) => entry.id !== keywordId);
+  if (remaining.length === 0) {
+    return c.json({ error: "a filter needs at least one keyword", kind: "ValidationError" }, 422);
+  }
+  const response = await writeKeywords(c, remaining);
+  if (response.status !== 200) {
+    return response;
+  }
+  return c.json({});
 });
 
 moderationRoutes.post("/api/v1/reports", async (c) => {
