@@ -4,6 +4,7 @@
 -- @param {String} $4:statusIdsJson
 -- @param {String} $5:comment
 -- @param {String} $6:category
--- @param {String} $7:createdAt
-INSERT INTO reports (id, account_id, target_account_id, status_ids_json, comment, category, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+-- @param {String} $7:ruleIdsJson
+-- @param {String} $8:createdAt
+INSERT INTO reports (id, account_id, target_account_id, status_ids_json, comment, category, rule_ids_json, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

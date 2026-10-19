@@ -234,6 +234,8 @@ export type ReportRow = Readonly<{
   statusIds: ReadonlyArray<string>;
   comment: string;
   category: string;
+  ruleIds: ReadonlyArray<string>;
+  assignedAccountId: string | null;
   actionTakenAt: string | null;
   actionTakenByAccountId: string | null;
   createdAt: string;
@@ -247,6 +249,8 @@ const reportFromRow = (row: {
   status_ids_json: string;
   comment: string;
   category: string;
+  rule_ids_json: string;
+  assigned_account_id: string | null;
   action_taken_at: string | null;
   action_taken_by_account_id: string | null;
   created_at: string;
@@ -258,6 +262,8 @@ const reportFromRow = (row: {
   statusIds: parseJsonColumn(z.array(z.string()), row.status_ids_json).unwrapOr([]),
   comment: row.comment,
   category: row.category,
+  ruleIds: parseJsonColumn(z.array(z.string()), row.rule_ids_json).unwrapOr([]),
+  assignedAccountId: row.assigned_account_id,
   actionTakenAt: row.action_taken_at,
   actionTakenByAccountId: row.action_taken_by_account_id,
   createdAt: row.created_at,
@@ -265,7 +271,7 @@ const reportFromRow = (row: {
 });
 
 const REPORT_SELECT = `id, account_id, target_account_id, status_ids_json, comment, category,
-       action_taken_at, action_taken_by_account_id, created_at, updated_at`;
+       rule_ids_json, assigned_account_id, action_taken_at, action_taken_by_account_id, created_at, updated_at`;
 
 export const insertReport = async (
   db: D1Database,
@@ -275,6 +281,7 @@ export const insertReport = async (
     statusIds: ReadonlyArray<string>;
     comment: string;
     category?: string;
+    ruleIds?: ReadonlyArray<string>;
   },
 ): Promise<Result<{ id: string }, RepositoryError>> =>
   runD1(async () => {
@@ -288,6 +295,7 @@ export const insertReport = async (
         JSON.stringify(input.statusIds),
         input.comment,
         input.category ?? "other",
+        JSON.stringify(input.ruleIds ?? []),
         nowIso(),
       ),
     );
@@ -346,6 +354,51 @@ export const findReportById = async (
       .all();
     const row = rows.results?.[0];
     return row ? reportFromRow(row as never) : undefined;
+  });
+
+/** Update a report's category and the rules it is tied to. */
+export const updateReport = async (
+  db: D1Database,
+  id: string,
+  input: Readonly<{ category?: string; ruleIds?: ReadonlyArray<string> | undefined }>,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const assignments: string[] = [];
+    const binds: Array<string | null> = [];
+    if (input.category !== undefined) {
+      assignments.push("category = ?");
+      binds.push(input.category);
+    }
+    if (input.ruleIds !== undefined) {
+      assignments.push("rule_ids_json = ?");
+      binds.push(JSON.stringify(input.ruleIds));
+    }
+    if (assignments.length === 0) {
+      return true;
+    }
+    assignments.push("updated_at = ?");
+    binds.push(nowIso());
+    const { results } = await db
+      .prepare(`UPDATE reports SET ${assignments.join(", ")} WHERE id = ? RETURNING id`)
+      .bind(...binds, id)
+      .all();
+    return (results?.length ?? 0) > 0;
+  });
+
+/** Assign a report to a moderator (`null` unassigns it). */
+export const setReportAssigned = async (
+  db: D1Database,
+  id: string,
+  accountId: string | null,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        "UPDATE reports SET assigned_account_id = ?, updated_at = ? WHERE id = ? RETURNING id",
+      )
+      .bind(accountId, nowIso(), id)
+      .all();
+    return (results?.length ?? 0) > 0;
   });
 
 /** Resolve (`byAccountId` set) or reopen (`null`) a report. */

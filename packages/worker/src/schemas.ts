@@ -261,6 +261,9 @@ export const ReportBodySchema = z.object({
   status_ids: z.union([z.array(z.string()), z.string()]).optional(),
   comment: z.string().optional(),
   category: z.string().optional(),
+  rule_ids: z
+    .union([z.array(z.union([z.string(), z.number()])), z.string(), z.number()])
+    .optional(),
 });
 
 export const AppBodySchema = z.object({

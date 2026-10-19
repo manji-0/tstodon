@@ -661,6 +661,8 @@ export const ReportsScalarFieldEnum = {
   status_ids_json: "status_ids_json",
   comment: "comment",
   category: "category",
+  assigned_account_id: "assigned_account_id",
+  rule_ids_json: "rule_ids_json",
   action_taken_at: "action_taken_at",
   action_taken_by_account_id: "action_taken_by_account_id",
   created_at: "created_at",

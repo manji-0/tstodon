@@ -40,10 +40,10 @@ const ReportSchema = z.object({
   updated_at: z.string(),
   account: MastodonAccountPreviewSchema.nullable(),
   target_account: MastodonAccountPreviewSchema.nullable(),
-  assigned_account: z.unknown().nullable(),
+  assigned_account: MastodonAccountPreviewSchema.nullable(),
   action_taken_by_account: MastodonAccountPreviewSchema.nullable(),
   statuses: z.array(z.object({ id: z.string().min(1) })),
-  rules: z.array(z.unknown()),
+  rules: z.array(z.object({ id: z.string(), text: z.string(), hint: z.string().optional() })),
 });
 
 /** `POST /api/v1/reports` answers Mastodon's plain Report entity. */
@@ -81,6 +81,18 @@ const fileReport = async (
   });
   expect(response.status).toBe(200);
   return read(CreatedReportSchema, response.body);
+};
+
+const reportWithRules = async (email: string, targetId: string) => {
+  const response = await json("/api/v1/reports", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(await auth(email)) },
+    body: JSON.stringify({ account_id: targetId, category: "violation", rule_ids: ["2"] }),
+  });
+  expect(response.status).toBe(200);
+  const created = read(CreatedReportSchema, response.body);
+  expect(created.rule_ids).toEqual(["2"]);
+  return created;
 };
 
 const adminReports = async (email: string, query = ""): Promise<z.infer<typeof ReportSchema>[]> => {
@@ -171,5 +183,55 @@ describe("admin reports", () => {
       body: JSON.stringify({ account_id: target.id, category: "rude" }),
     });
     expect(response.status).toBe(422);
+  });
+
+  it("updates the category and rules, and assigns the report", async () => {
+    const admin = "reports4-admin@example.com";
+    const target = await credentials("reports4-target@example.com");
+    const filed = await reportWithRules("reports4-reporter@example.com", target.id);
+
+    // The configured INSTANCE_RULES carry ids 1..2; a violation may cite them.
+    const updated = await json(`/api/v1/admin/reports/${filed.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth(admin, { admin: true })) },
+      body: JSON.stringify({ category: "violation", rule_ids: ["1"] }),
+    });
+    expect(updated.status).toBe(200);
+    const document = read(ReportSchema, updated.body);
+    expect(document.category).toBe("violation");
+    expect(document.rules.map((rule) => rule.id)).toEqual(["1"]);
+
+    // Rules are only meaningful for a violation, and must exist.
+    const wrongCategory = await json(`/api/v1/admin/reports/${filed.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth(admin, { admin: true })) },
+      body: JSON.stringify({ category: "spam", rule_ids: ["1"] }),
+    });
+    expect(wrongCategory.status).toBe(422);
+    const unknownRule = await json(`/api/v1/admin/reports/${filed.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth(admin, { admin: true })) },
+      body: JSON.stringify({ rule_ids: ["99"] }),
+    });
+    expect(unknownRule.status).toBe(422);
+    const badCategory = await json(`/api/v1/admin/reports/${filed.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth(admin, { admin: true })) },
+      body: JSON.stringify({ category: "rude" }),
+    });
+    expect(badCategory.status).toBe(422);
+
+    // Assignment names the moderator and unassign clears it.
+    const assigned = await json(`/api/v1/admin/reports/${filed.id}/assign_to_self`, {
+      method: "POST",
+      headers: await auth(admin, { admin: true }),
+    });
+    expect(assigned.status).toBe(200);
+    expect(read(ReportSchema, assigned.body).assigned_account?.id).toBeDefined();
+    const unassigned = await json(`/api/v1/admin/reports/${filed.id}/unassign`, {
+      method: "POST",
+      headers: await auth(admin, { admin: true }),
+    });
+    expect(read(ReportSchema, unassigned.body).assigned_account).toBeNull();
   });
 });

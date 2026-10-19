@@ -562,6 +562,8 @@ model reports {
   status_ids_json                              String   @default("[]")
   comment                                      String   @default("")
   category                                     String   @default("other")
+  assigned_account_id                          String?
+  rule_ids_json                                String   @default("[]")
   action_taken_at                              String?
   action_taken_by_account_id                   String?
   created_at                                   String   @default("CURRENT_TIMESTAMP")

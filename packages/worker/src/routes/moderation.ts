@@ -12,7 +12,7 @@ import {
 import { newEntityId } from "../ids";
 import { authenticate } from "../auth";
 import { mastodonFilter, mastodonFilterV2, mastodonStatuses } from "../mastodon";
-import { parseInstanceIdentity } from "../runtime-config";
+import { instanceRules, parseInstanceIdentity } from "../runtime-config";
 import { findStatusesByIds } from "../status-store";
 import {
   addFilterStatuses,
@@ -539,12 +539,36 @@ moderationRoutes.post("/api/v1/reports", async (c) => {
       422,
     );
   }
+  // Rule ids are the configured `INSTANCE_RULES` entries, and Mastodon keeps
+  // them for `violation` reports only.
+  const rawRuleIds = body.value.rule_ids;
+  const requestedRules = (
+    Array.isArray(rawRuleIds)
+      ? rawRuleIds.map((value) => String(value).trim())
+      : typeof rawRuleIds === "string" || typeof rawRuleIds === "number"
+        ? [String(rawRuleIds).trim()]
+        : []
+  ).filter((value) => value.length > 0);
+  const knownRules = new Set(instanceRules(c.env).map((rule) => rule.id));
+  if (requestedRules.length > 0 && category.value !== "violation") {
+    return c.json(
+      { error: "Validation failed: Rule ids must be blank", kind: "ValidationError" },
+      422,
+    );
+  }
+  if (requestedRules.some((id) => !knownRules.has(id))) {
+    return c.json(
+      { error: "Validation failed: Rule ids are invalid", kind: "ValidationError" },
+      422,
+    );
+  }
   const report = await insertReport(c.env.DB, {
     accountId: user.value.id,
     targetAccountId: body.value.account_id,
     statusIds: stringList(body.value.status_ids),
     comment: body.value.comment ?? "",
     category: category.value,
+    ruleIds: requestedRules,
   });
   if (report.isErr()) {
     return jsonRepositoryError(c, report.error.message);
@@ -557,7 +581,7 @@ moderationRoutes.post("/api/v1/reports", async (c) => {
     comment: body.value.comment ?? "",
     forwarded: false,
     status_ids: stringList(body.value.status_ids),
-    rule_ids: [],
+    rule_ids: requestedRules,
     target_account: { id: body.value.account_id },
   });
 });
