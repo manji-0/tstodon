@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Link previews: bounded Open Graph unfurl cached in `link_cards`, stored on the status
 - Profile fields capped at four
 - Profile images (`avatar`/`header` uploads) and the `locked` toggle
 - Notification policy + requests with `drop`/`filter`/`accept`, and `api_versions: {mastodon: 2}`
