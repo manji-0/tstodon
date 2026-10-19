@@ -25,9 +25,16 @@ import {
 } from "./social-store";
 import { findMediaByIds, type MediaRow } from "./media-store";
 import { customEmojiJson, emojisInText, emojisInTexts, type CustomEmoji } from "./emoji";
+import {
+  EMPTY_ACCOUNT_PROFILE,
+  findAccountProfile,
+  listAccountProfiles,
+  type AccountProfile,
+} from "./account-profile-store";
 import { sensitizedAccountIds } from "./account-flag-store";
 import { loadCustomEmojis } from "./custom-emoji-store";
 import { listStatusMuteRoots, resolveThreadRootStatusIds } from "./status-mute-store";
+import { textToHtml } from "./html";
 import { FilterContextSchema, parseJsonColumn } from "./schemas";
 import { filterKeywords, type FilterRow } from "./moderation-store";
 
@@ -39,6 +46,7 @@ export const mastodonAccount = (
   account: LocalAccount,
   counts: { followers: number; following: number; statuses: number },
   emojis: ReadonlyArray<CustomEmoji> = [],
+  profile: AccountProfile = EMPTY_ACCOUNT_PROFILE,
 ): Record<string, unknown> => {
   const url = InstanceIdentity.actorUrl(identity, account.username);
   return {
@@ -47,11 +55,11 @@ export const mastodonAccount = (
     acct: `${account.username}`,
     display_name: account.displayName,
     locked: account.locked,
-    bot: false,
-    discoverable: true,
+    bot: profile.bot,
+    discoverable: profile.discoverable,
     group: false,
     created_at: account.createdAt,
-    note: "",
+    note: textToHtml(profile.note),
     url,
     uri: url,
     avatar: identity.thumbnailUrl,
@@ -63,7 +71,11 @@ export const mastodonAccount = (
     statuses_count: counts.statuses,
     last_status_at: null,
     emojis: emojis.map(customEmojiJson),
-    fields: [],
+    fields: profile.fields.map((field) => ({
+      name: field.name,
+      value: field.value,
+      verified_at: null,
+    })),
   };
 };
 
@@ -72,12 +84,16 @@ export const mastodonAccountDocument = async (
   identity: InstanceIdentity,
   account: LocalAccount,
 ): Promise<Record<string, unknown>> => {
-  const counts = await accountCounts(env.DB, account.id);
+  const [counts, profile] = await Promise.all([
+    accountCounts(env.DB, account.id),
+    findAccountProfile(env.DB, account.id),
+  ]);
   return mastodonAccount(
     identity,
     account,
     counts.isOk() ? counts.value : { followers: 0, following: 0, statuses: 0 },
     emojisInText(account.displayName, await loadCustomEmojis(env, identity.mediaPublicBaseUrl)),
+    profile.isOk() ? profile.value : EMPTY_ACCOUNT_PROFILE,
   );
 };
 
@@ -342,6 +358,7 @@ export const mastodonStatuses = async (
     pollsResult,
     mediaResult,
     sensitizedResult,
+    profilesResult,
   ] = await Promise.all([
     findAccountsByIds(env.DB, accountIds),
     accountCountsByIds(env.DB, accountIds),
@@ -349,6 +366,7 @@ export const mastodonStatuses = async (
     findPollsByStatusIds(env.DB, noteIds, viewerId),
     findMediaByIds(env.DB, mediaIds),
     sensitizedAccountIds(env.DB, accountIds),
+    listAccountProfiles(env.DB, accountIds),
   ]);
 
   const accounts = accountsResult.isOk() ? accountsResult.value : new Map<string, LocalAccount>();
@@ -361,6 +379,7 @@ export const mastodonStatuses = async (
   const polls = pollsResult.isOk() ? pollsResult.value : new Map<string, PollRecord>();
   const mediaById = mediaResult.isOk() ? mediaResult.value : new Map<string, MediaRow>();
   const sensitizedIds = sensitizedResult.isOk() ? sensitizedResult.value : new Set<string>();
+  const profiles = profilesResult.isOk() ? profilesResult.value : new Map<string, AccountProfile>();
 
   const accountDocs = new Map<string, Record<string, unknown>>();
   for (const [id, account] of accounts) {
@@ -371,6 +390,7 @@ export const mastodonStatuses = async (
         account,
         accountCountsMap.get(id) ?? { followers: 0, following: 0, statuses: 0 },
         emojisInText(account.displayName, instanceEmojis),
+        profiles.get(id) ?? EMPTY_ACCOUNT_PROFILE,
       ),
     );
   }

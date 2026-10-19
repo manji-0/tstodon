@@ -8,6 +8,7 @@ import {
   findAccountByUsername,
   updateAccountProfile,
 } from "../account-store";
+import { findAccountProfile, upsertAccountProfile } from "../account-profile-store";
 import { authenticate } from "../auth";
 import { getAccountModeration } from "../account-moderation-store";
 import { enqueueTargetedActivity } from "../delivery";
@@ -49,7 +50,7 @@ import {
 } from "../social-store";
 import { notifyAccount } from "../notify";
 import { listAccountStatusesFiltered, listPinnedStatuses } from "../status-store";
-import { UpdateCredentialsBodySchema } from "../schemas";
+import { isTruthy, UpdateCredentialsBodySchema } from "../schemas";
 
 export const accountRoutes = new Hono<{ Bindings: Env }>();
 
@@ -100,6 +101,29 @@ accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
   const updated = await updateAccountProfile(c.env.DB, user.value.id, displayName);
   if (updated.isErr()) {
     return jsonRepositoryError(c, updated.error.message);
+  }
+
+  // Bio, profile fields, and the bot/discoverable flags live beside the row.
+  const existingProfile = await findAccountProfile(c.env.DB, user.value.id);
+  if (existingProfile.isErr()) {
+    return jsonRepositoryError(c, existingProfile.error.message);
+  }
+  const fields = body.value.fields?.flatMap((field) => {
+    const name = field.name?.trim() ?? "";
+    const value = field.value?.trim() ?? "";
+    return name.length > 0 && value.length > 0 ? [{ name, value }] : [];
+  });
+  const saved = await upsertAccountProfile(c.env.DB, user.value.id, {
+    note: body.value.note === undefined ? existingProfile.value.note : body.value.note,
+    fields: fields === undefined ? existingProfile.value.fields : fields,
+    bot: body.value.bot === undefined ? existingProfile.value.bot : isTruthy(body.value.bot),
+    discoverable:
+      body.value.discoverable === undefined
+        ? existingProfile.value.discoverable
+        : isTruthy(body.value.discoverable),
+  });
+  if (saved.isErr()) {
+    return jsonRepositoryError(c, saved.error.message);
   }
   const latest = await findAccountById(c.env.DB, user.value.id);
   if (latest.isErr() || !latest.value) {

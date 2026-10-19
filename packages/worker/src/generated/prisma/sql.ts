@@ -116,6 +116,8 @@ export * from "./sql/findAccountModeration";
 
 export * from "./sql/findAccountNote";
 
+export * from "./sql/findAccountProfile";
+
 export * from "./sql/findAccountsByIdsJson";
 
 export * from "./sql/findAccountsByUsernamesJson";
@@ -253,6 +255,8 @@ export * from "./sql/listAcceptedRemoteFollowerUris";
 export * from "./sql/listAccountDomainBlocks";
 
 export * from "./sql/listAccountModerations";
+
+export * from "./sql/listAccountProfiles";
 
 export * from "./sql/listAdminAccounts";
 
@@ -401,6 +405,8 @@ export * from "./sql/updateStatusPollId";
 export * from "./sql/upsertAccountModeration";
 
 export * from "./sql/upsertAccountNote";
+
+export * from "./sql/upsertAccountProfile";
 
 export * from "./sql/upsertAccountSensitized";
 

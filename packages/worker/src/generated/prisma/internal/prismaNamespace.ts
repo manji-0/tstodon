@@ -399,6 +399,7 @@ export const ModelName = {
   account_moderation: "account_moderation",
   account_domain_blocks: "account_domain_blocks",
   status_idempotency: "status_idempotency",
+  account_profiles: "account_profiles",
   account_flags: "account_flags",
   domain_blocks: "domain_blocks",
   accounts: "accounts",
@@ -465,6 +466,7 @@ export type TypeMap<
       | "account_moderation"
       | "account_domain_blocks"
       | "status_idempotency"
+      | "account_profiles"
       | "account_flags"
       | "domain_blocks"
       | "accounts"
@@ -1110,6 +1112,82 @@ export type TypeMap<
           args: Prisma.status_idempotencyCountArgs<ExtArgs>;
           result:
             | runtime.Types.Utils.Optional<Prisma.Status_idempotencyCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    account_profiles: {
+      payload: Prisma.$account_profilesPayload<ExtArgs>;
+      fields: Prisma.account_profilesFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.account_profilesFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_profilesPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.account_profilesFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_profilesPayload>;
+        };
+        findFirst: {
+          args: Prisma.account_profilesFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_profilesPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.account_profilesFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_profilesPayload>;
+        };
+        findMany: {
+          args: Prisma.account_profilesFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_profilesPayload>[];
+        };
+        create: {
+          args: Prisma.account_profilesCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_profilesPayload>;
+        };
+        createMany: {
+          args: Prisma.account_profilesCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.account_profilesCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_profilesPayload>[];
+        };
+        delete: {
+          args: Prisma.account_profilesDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_profilesPayload>;
+        };
+        update: {
+          args: Prisma.account_profilesUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_profilesPayload>;
+        };
+        deleteMany: {
+          args: Prisma.account_profilesDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.account_profilesUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.account_profilesUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_profilesPayload>[];
+        };
+        upsert: {
+          args: Prisma.account_profilesUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_profilesPayload>;
+        };
+        aggregate: {
+          args: Prisma.Account_profilesAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAccount_profiles>;
+        };
+        groupBy: {
+          args: Prisma.account_profilesGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Account_profilesGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.account_profilesCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Account_profilesCountAggregateOutputType>
             | number;
         };
       };
@@ -4103,6 +4181,18 @@ export const Status_idempotencyScalarFieldEnum = {
 export type Status_idempotencyScalarFieldEnum =
   (typeof Status_idempotencyScalarFieldEnum)[keyof typeof Status_idempotencyScalarFieldEnum];
 
+export const Account_profilesScalarFieldEnum = {
+  account_id: "account_id",
+  note: "note",
+  fields_json: "fields_json",
+  bot: "bot",
+  discoverable: "discoverable",
+  updated_at: "updated_at",
+} as const;
+
+export type Account_profilesScalarFieldEnum =
+  (typeof Account_profilesScalarFieldEnum)[keyof typeof Account_profilesScalarFieldEnum];
+
 export const Account_flagsScalarFieldEnum = {
   account_id: "account_id",
   sensitized: "sensitized",
@@ -4744,6 +4834,7 @@ export type GlobalOmitConfig = {
   account_moderation?: Prisma.account_moderationOmit;
   account_domain_blocks?: Prisma.account_domain_blocksOmit;
   status_idempotency?: Prisma.status_idempotencyOmit;
+  account_profiles?: Prisma.account_profilesOmit;
   account_flags?: Prisma.account_flagsOmit;
   domain_blocks?: Prisma.domain_blocksOmit;
   accounts?: Prisma.accountsOmit;

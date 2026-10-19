@@ -251,6 +251,13 @@ export const OAuthTokenBodySchema = z.object({
 
 export const UpdateCredentialsBodySchema = z.object({
   display_name: z.string().optional(),
+  note: z.string().optional(),
+  bot: booleanish,
+  discoverable: booleanish,
+  locked: booleanish,
+  fields: z
+    .array(z.object({ name: z.string().optional(), value: z.string().optional() }))
+    .optional(),
 });
 
 export const MastodonAccountPreviewSchema = z.object({

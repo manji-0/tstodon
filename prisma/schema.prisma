@@ -98,6 +98,15 @@ model status_idempotency {
   @@index([account_id, created_at], map: "idx_status_idempotency_created")
 }
 
+model account_profiles {
+  account_id   String @id
+  note         String @default("")
+  fields_json  String @default("[]")
+  bot          Int    @default(0)
+  discoverable Int    @default(1)
+  updated_at   String @default("CURRENT_TIMESTAMP")
+}
+
 model account_flags {
   account_id String @id
   sensitized Int    @default(0)

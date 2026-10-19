@@ -56,6 +56,7 @@ export const ModelName = {
   account_moderation: "account_moderation",
   account_domain_blocks: "account_domain_blocks",
   status_idempotency: "status_idempotency",
+  account_profiles: "account_profiles",
   account_flags: "account_flags",
   domain_blocks: "domain_blocks",
   accounts: "accounts",
@@ -195,6 +196,18 @@ export const Status_idempotencyScalarFieldEnum = {
 
 export type Status_idempotencyScalarFieldEnum =
   (typeof Status_idempotencyScalarFieldEnum)[keyof typeof Status_idempotencyScalarFieldEnum];
+
+export const Account_profilesScalarFieldEnum = {
+  account_id: "account_id",
+  note: "note",
+  fields_json: "fields_json",
+  bot: "bot",
+  discoverable: "discoverable",
+  updated_at: "updated_at",
+} as const;
+
+export type Account_profilesScalarFieldEnum =
+  (typeof Account_profilesScalarFieldEnum)[keyof typeof Account_profilesScalarFieldEnum];
 
 export const Account_flagsScalarFieldEnum = {
   account_id: "account_id",
