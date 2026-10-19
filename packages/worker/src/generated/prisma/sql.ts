@@ -146,6 +146,8 @@ export * from "./sql/findFilterById";
 
 export * from "./sql/findFollowKind";
 
+export * from "./sql/findLinkCard";
+
 export * from "./sql/findListForAccount";
 
 export * from "./sql/findMediaById";
@@ -350,6 +352,8 @@ export * from "./sql/listRestrictedDomains";
 
 export * from "./sql/listSensitizedAccountIds";
 
+export * from "./sql/listStatusCards";
+
 export * from "./sql/listStatusEditSnapshots";
 
 export * from "./sql/listStatusMuteRoots";
@@ -418,6 +422,8 @@ export * from "./sql/updateOutboxTarget";
 
 export * from "./sql/updatePollOptionsIfActive";
 
+export * from "./sql/updateStatusCard";
+
 export * from "./sql/updateStatusPollId";
 
 export * from "./sql/upsertAccountModeration";
@@ -435,6 +441,8 @@ export * from "./sql/upsertAnnouncementReaction";
 export * from "./sql/upsertBlock";
 
 export * from "./sql/upsertConversationRead";
+
+export * from "./sql/upsertLinkCard";
 
 export * from "./sql/upsertMarker";
 

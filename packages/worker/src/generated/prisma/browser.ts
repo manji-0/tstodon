@@ -262,6 +262,11 @@ export type reports = Prisma.reportsModel;
  */
 export type status_mentions = Prisma.status_mentionsModel;
 /**
+ * Model link_cards
+ *
+ */
+export type link_cards = Prisma.link_cardsModel;
+/**
  * Model statuses
  *
  */

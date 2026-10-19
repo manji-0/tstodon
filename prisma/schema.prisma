@@ -572,6 +572,12 @@ model status_mentions {
   @@index([account_id, status_id], map: "idx_status_mentions_account")
 }
 
+model link_cards {
+  url       String @id
+  card_json String
+  fetched_at String @default("CURRENT_TIMESTAMP")
+}
+
 model statuses {
   id                                               String @id
   account_id                                       String

@@ -44,7 +44,8 @@ import {
 import { InstanceLimits, characterCount } from "@tstodon/core";
 import { schemaResult } from "@tstodon/core";
 import type { MediaAttribute } from "../schemas";
-import { parseInstanceIdentity } from "../runtime-config";
+import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
+import { suspendedDomains } from "../admin-domain-block-store";
 import { findRemoteActorByUri } from "../remote-actor-store";
 import { findRemoteStatusById } from "../remote-status-store";
 import {
@@ -73,9 +74,11 @@ import {
   listStatusEdits,
   pinStatus,
   replaceStatusMedia,
+  setStatusCard,
   unpinStatus,
   updateLocalNote,
 } from "../status-store";
+import { buildLinkCard, cardDocument, extractFirstUrl } from "../link-card";
 import { findMediaById, parseMediaFocus, updateMediaMetadata } from "../media-store";
 import {
   muteStatusThread,
@@ -135,6 +138,30 @@ const applyMediaAttributes = async (
     }
   }
   return undefined;
+};
+
+/**
+ * Build and store the link preview for a status' first URL. Failure is not
+ * fatal: the status keeps `card: null` (the fetch is bounded and cached).
+ */
+const attachLinkCard = async (
+  env: Env,
+  identity: InstanceIdentity,
+  statusId: string,
+  text: string,
+): Promise<void> => {
+  const url = extractFirstUrl(text);
+  if (!url) {
+    return;
+  }
+  const card = await buildLinkCard(env, identity, url, {
+    allowHosts: federationAllowHosts(env),
+    blockedHosts: await suspendedDomains(env.DB),
+  });
+  if (!card) {
+    return;
+  }
+  await setStatusCard(env.DB, statusId, JSON.stringify(cardDocument(card)));
 };
 
 const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
@@ -253,6 +280,7 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
       return jsonRepositoryError(c, poll.error.message);
     }
   }
+  await attachLinkCard(c.env, identity.value, note.id, note.text);
   const attributeError = await applyMediaAttributes(c.env, user.value.id, note.id, mediaAttributes);
   if (attributeError) {
     return jsonRepositoryError(c, attributeError);
@@ -583,6 +611,7 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   if (!applied.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
+  await attachLinkCard(c.env, identity.value, existing.id, revised.text);
   if (pollUpdate) {
     const poll = await replacePollOptions(c.env.DB, pollUpdate);
     if (poll.isErr()) {

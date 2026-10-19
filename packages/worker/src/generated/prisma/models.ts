@@ -56,5 +56,6 @@ export type * from "./models/remote_follows";
 export type * from "./models/remote_statuses";
 export type * from "./models/reports";
 export type * from "./models/status_mentions";
+export type * from "./models/link_cards";
 export type * from "./models/statuses";
 export type * from "./commonInputTypes";

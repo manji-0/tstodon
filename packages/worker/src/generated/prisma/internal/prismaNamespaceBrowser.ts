@@ -97,6 +97,7 @@ export const ModelName = {
   remote_statuses: "remote_statuses",
   reports: "reports",
   status_mentions: "status_mentions",
+  link_cards: "link_cards",
   statuses: "statuses",
 } as const;
 
@@ -668,6 +669,15 @@ export const Status_mentionsScalarFieldEnum = {
 
 export type Status_mentionsScalarFieldEnum =
   (typeof Status_mentionsScalarFieldEnum)[keyof typeof Status_mentionsScalarFieldEnum];
+
+export const Link_cardsScalarFieldEnum = {
+  url: "url",
+  card_json: "card_json",
+  fetched_at: "fetched_at",
+} as const;
+
+export type Link_cardsScalarFieldEnum =
+  (typeof Link_cardsScalarFieldEnum)[keyof typeof Link_cardsScalarFieldEnum];
 
 export const StatusesScalarFieldEnum = {
   id: "id",

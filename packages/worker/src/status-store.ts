@@ -33,9 +33,11 @@ import {
   isStatusPinned as isStatusPinnedSql,
   listMediaIdsForStatus as listMediaIdsForStatusSql,
   listPinnedStatuses as listPinnedStatusesSql,
+  listStatusCards as listStatusCardsSql,
   listStatusEditSnapshots as listStatusEditSnapshotsSql,
   pinStatus as pinStatusSql,
   unpinStatus as unpinStatusSql,
+  updateStatusCard as updateStatusCardSql,
   updateLocalNote as updateLocalNoteSql,
 } from "./generated/prisma/sql";
 
@@ -308,6 +310,36 @@ export const findStatusUpdatedAt = async (
     const rows = await queryTyped<{ updated_at: string }>(db, findStatusUpdatedAtSql(statusId));
     return rows[0]?.updated_at;
   });
+
+/** Store the link preview built for a status. */
+export const setStatusCard = async (
+  db: D1Database,
+  statusId: string,
+  cardJson: string,
+): Promise<Result<void, RepositoryError>> => {
+  const written = await runD1(async () => {
+    await queryTyped(db, updateStatusCardSql(statusId, cardJson));
+  });
+  return written.map(() => undefined);
+};
+
+/** Link previews for the given statuses, keyed by status id. */
+export const listStatusCards = async (
+  db: D1Database,
+  statusIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, string>, RepositoryError>> => {
+  const unique = [...new Set(statusIds.filter((id) => id.length > 0))];
+  if (unique.length === 0) {
+    return ok(new Map<string, string>());
+  }
+  const queried = await runD1(async () =>
+    queryTyped<{ id: string; card_json: string }>(db, listStatusCardsSql(jsonStringArray(unique))),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  return ok(new Map(queried.value.map((row) => [row.id, row.card_json])));
+};
 
 export const pinStatus = async (
   db: D1Database,

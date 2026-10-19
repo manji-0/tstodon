@@ -16,7 +16,7 @@ import {
 } from "./account-store";
 import { findPollsByStatusIds, type PollRecord } from "./poll-store";
 import { RemoteAccountId } from "./remote-account-id";
-import { findStatusById, findStatusesByIds } from "./status-store";
+import { findStatusById, findStatusesByIds, listStatusCards } from "./status-store";
 import {
   statusInteractionCountsByIds,
   type NotificationRow,
@@ -35,6 +35,7 @@ import { sensitizedAccountIds } from "./account-flag-store";
 import { loadCustomEmojis } from "./custom-emoji-store";
 import { listStatusMuteRoots, resolveThreadRootStatusIds } from "./status-mute-store";
 import { textToHtml } from "./html";
+import { cardDocument, parseCardJson } from "./link-card";
 import { FilterContextSchema, parseJsonColumn } from "./schemas";
 import { filterKeywords, type FilterRow } from "./moderation-store";
 
@@ -252,6 +253,7 @@ const buildLocalNoteDocument = (
   emojis: ReadonlyArray<CustomEmoji>,
   muted: boolean,
   sensitized: boolean,
+  card: Record<string, unknown> | null,
 ): Record<string, unknown> => {
   const url = `${InstanceIdentity.actorUrl(identity, account.username)}/statuses/${status.id}`;
   const attachments = mediaAttachmentsJson(identity, status.mediaIds, mediaById);
@@ -281,7 +283,7 @@ const buildLocalNoteDocument = (
     mentions: [],
     tags: [],
     emojis: emojis.map(customEmojiJson),
-    card: null,
+    card,
     poll: poll ? pollJson(poll) : null,
   };
 };
@@ -367,6 +369,7 @@ export const mastodonStatuses = async (
     mediaResult,
     sensitizedResult,
     profilesResult,
+    cardsResult,
   ] = await Promise.all([
     findAccountsByIds(env.DB, accountIds),
     accountCountsByIds(env.DB, accountIds),
@@ -375,6 +378,7 @@ export const mastodonStatuses = async (
     findMediaByIds(env.DB, mediaIds),
     sensitizedAccountIds(env.DB, accountIds),
     listAccountProfiles(env.DB, accountIds),
+    listStatusCards(env.DB, noteIds),
   ]);
 
   const accounts = accountsResult.isOk() ? accountsResult.value : new Map<string, LocalAccount>();
@@ -388,6 +392,15 @@ export const mastodonStatuses = async (
   const mediaById = mediaResult.isOk() ? mediaResult.value : new Map<string, MediaRow>();
   const sensitizedIds = sensitizedResult.isOk() ? sensitizedResult.value : new Set<string>();
   const profiles = profilesResult.isOk() ? profilesResult.value : new Map<string, AccountProfile>();
+  const cards = new Map<string, Record<string, unknown>>();
+  if (cardsResult.isOk()) {
+    for (const [statusId, raw] of cardsResult.value) {
+      const card = parseCardJson(raw);
+      if (card) {
+        cards.set(statusId, cardDocument(card));
+      }
+    }
+  }
 
   const accountDocs = new Map<string, Record<string, unknown>>();
   for (const [id, account] of accounts) {
@@ -440,6 +453,7 @@ export const mastodonStatuses = async (
         emojisInTexts([status.text, status.spoilerText], instanceEmojis),
         root !== undefined && mutedSet.has(root),
         sensitizedIds.has(status.accountId),
+        cards.get(status.id) ?? null,
       ),
     );
   }

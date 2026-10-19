@@ -440,6 +440,7 @@ export const ModelName = {
   remote_statuses: "remote_statuses",
   reports: "reports",
   status_mentions: "status_mentions",
+  link_cards: "link_cards",
   statuses: "statuses",
 } as const;
 
@@ -510,6 +511,7 @@ export type TypeMap<
       | "remote_statuses"
       | "reports"
       | "status_mentions"
+      | "link_cards"
       | "statuses";
     txIsolationLevel: TransactionIsolationLevel;
   };
@@ -4214,6 +4216,80 @@ export type TypeMap<
         };
       };
     };
+    link_cards: {
+      payload: Prisma.$link_cardsPayload<ExtArgs>;
+      fields: Prisma.link_cardsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.link_cardsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$link_cardsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.link_cardsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$link_cardsPayload>;
+        };
+        findFirst: {
+          args: Prisma.link_cardsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$link_cardsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.link_cardsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$link_cardsPayload>;
+        };
+        findMany: {
+          args: Prisma.link_cardsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$link_cardsPayload>[];
+        };
+        create: {
+          args: Prisma.link_cardsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$link_cardsPayload>;
+        };
+        createMany: {
+          args: Prisma.link_cardsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.link_cardsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$link_cardsPayload>[];
+        };
+        delete: {
+          args: Prisma.link_cardsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$link_cardsPayload>;
+        };
+        update: {
+          args: Prisma.link_cardsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$link_cardsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.link_cardsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.link_cardsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.link_cardsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$link_cardsPayload>[];
+        };
+        upsert: {
+          args: Prisma.link_cardsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$link_cardsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Link_cardsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateLink_cards>;
+        };
+        groupBy: {
+          args: Prisma.link_cardsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Link_cardsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.link_cardsCountArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Link_cardsCountAggregateOutputType> | number;
+        };
+      };
+    };
     statuses: {
       payload: Prisma.$statusesPayload<ExtArgs>;
       fields: Prisma.statusesFieldRefs;
@@ -4884,6 +4960,15 @@ export const Status_mentionsScalarFieldEnum = {
 export type Status_mentionsScalarFieldEnum =
   (typeof Status_mentionsScalarFieldEnum)[keyof typeof Status_mentionsScalarFieldEnum];
 
+export const Link_cardsScalarFieldEnum = {
+  url: "url",
+  card_json: "card_json",
+  fetched_at: "fetched_at",
+} as const;
+
+export type Link_cardsScalarFieldEnum =
+  (typeof Link_cardsScalarFieldEnum)[keyof typeof Link_cardsScalarFieldEnum];
+
 export const StatusesScalarFieldEnum = {
   id: "id",
   account_id: "account_id",
@@ -5145,6 +5230,7 @@ export type GlobalOmitConfig = {
   remote_statuses?: Prisma.remote_statusesOmit;
   reports?: Prisma.reportsOmit;
   status_mentions?: Prisma.status_mentionsOmit;
+  link_cards?: Prisma.link_cardsOmit;
   statuses?: Prisma.statusesOmit;
 };
 
