@@ -8,12 +8,13 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param url
  */
 export const findLinkCard = $runtime.makeTypedQueryFactory(
-  "SELECT card_json FROM link_cards WHERE url = $1",
+  "SELECT card_json, fetched_at FROM link_cards WHERE url = $1",
 ) as (url: string) => $runtime.TypedSql<findLinkCard.Parameters, findLinkCard.Result>;
 
 export namespace findLinkCard {
   export type Parameters = [url: string];
   export type Result = {
     card_json: string;
+    fetched_at: string;
   };
 }

@@ -4,28 +4,7 @@ import { z } from "zod";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
 import { schemaResult } from "@tstodon/core";
 import { MastodonAccountPreviewSchema } from "./schemas";
-import { buildLinkCard } from "./link-card";
-import { parseInstanceIdentity } from "./runtime-config";
-
-const withFetchStub = async (
-  handler: (url: URL) => Response | undefined,
-  run: () => Promise<void>,
-): Promise<number> => {
-  let calls = 0;
-  const original = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    calls += 1;
-    const href = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    const stubbed = handler(new URL(href));
-    return stubbed ?? original(input as RequestInfo, init);
-  }) as typeof fetch;
-  try {
-    await run();
-  } finally {
-    globalThis.fetch = original;
-  }
-  return calls;
-};
+import { cacheLinkCard } from "./link-card";
 
 const auth = (email: string): Promise<Record<string, string>> => accessAuthHeaders(email);
 
@@ -179,28 +158,19 @@ describe("tag history", () => {
     ).find((card) => card.url === "https://trend-preview.example/story");
     expect(bare?.title).toBe("trend-preview.example");
 
-    const identity = parseInstanceIdentity(env);
-    if (identity.isErr()) {
-      throw new Error("identity");
-    }
-    const calls = await withFetchStub(
-      (url) =>
-        url.hostname === "trend-preview.example"
-          ? new Response(
-              '<meta property="og:title" content="Previewed Story" /><meta property="og:site_name" content="Preview Press" />',
-              { headers: { "content-type": "text/html" } },
-            )
-          : undefined,
-      async () => {
-        const card = await buildLinkCard(
-          env,
-          identity.value,
-          "https://trend-preview.example/story",
-        );
-        expect(card?.title).toBe("Previewed Story");
-      },
-    );
-    expect(calls).toBe(1);
+    // Seed the preview cache the way an unfurl would.
+    const cached = await cacheLinkCard(env.DB, "https://trend-preview.example/story", {
+      url: "https://trend-preview.example/story",
+      title: "Previewed Story",
+      description: "",
+      providerName: "Preview Press",
+      providerUrl: "https://trend-preview.example",
+      authorName: "",
+      authorUrl: "",
+      image: null,
+      type: "link",
+    });
+    expect(cached.isOk()).toBe(true);
 
     const after = await json("/api/v1/trends/links");
     const previewed = read(

@@ -33,6 +33,8 @@ export type LinkCard = Readonly<{
 
 const MAX_HTML_CHARS = 200_000;
 const FETCH_TIMEOUT_MS = 3000;
+/** Previews older than this are refreshed the next time the link is posted. */
+const CARD_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const CardSchema = z.object({
   url: z.string().min(1),
@@ -143,11 +145,22 @@ export const parseLinkCard = (html: string, url: string): LinkCard => {
 const cachedCard = async (
   db: D1Database,
   url: string,
-): Promise<Result<LinkCard | undefined, RepositoryError>> =>
+): Promise<Result<Readonly<{ card: LinkCard; fresh: boolean }> | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ card_json: string }>(db, findLinkCardSql(url));
-    const raw = rows[0]?.card_json;
-    return raw === undefined ? undefined : parseCardJson(raw);
+    const rows = await queryTyped<{ card_json: string; fetched_at: string }>(
+      db,
+      findLinkCardSql(url),
+    );
+    const row = rows[0];
+    if (row === undefined) {
+      return undefined;
+    }
+    const card = parseCardJson(row.card_json);
+    if (!card) {
+      return undefined;
+    }
+    const fetched = Date.parse(row.fetched_at);
+    return { card, fresh: Number.isFinite(fetched) && Date.now() - fetched < CARD_TTL_MS };
   });
 
 /**
@@ -178,9 +191,11 @@ export const resolveLinkCard = async (
   if (cached.isErr()) {
     return { kind: "Transient" };
   }
-  if (cached.value) {
-    return { kind: "Cached", card: cached.value };
+  if (cached.value?.fresh) {
+    return { kind: "Cached", card: cached.value.card };
   }
+  // A stale preview is refreshed below; if the refresh fails we keep serving it.
+  const stale = cached.value?.card;
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -203,28 +218,26 @@ export const resolveLinkCard = async (
     });
   } catch {
     // Timeouts and network errors are worth another attempt.
-    return { kind: "Transient" };
+    return stale ? { kind: "Cached", card: stale } : { kind: "Transient" };
   }
   if (response.status >= 500) {
-    return { kind: "Transient" };
+    return stale ? { kind: "Cached", card: stale } : { kind: "Transient" };
   }
   const contentType = response.headers.get("content-type") ?? "";
   if (!response.ok || !contentType.includes("html")) {
-    return { kind: "Skipped" };
+    return stale ? { kind: "Cached", card: stale } : { kind: "Skipped" };
   }
   let html: string;
   try {
     html = (await response.text()).slice(0, MAX_HTML_CHARS);
   } catch {
-    return { kind: "Transient" };
+    return stale ? { kind: "Cached", card: stale } : { kind: "Transient" };
   }
   const card = parseLinkCard(html, url);
   // The card is cached so the same link is never unfurled twice.
-  const stored = await runD1(async () => {
-    await runTyped(env.DB, upsertLinkCardSql(url, JSON.stringify(cardDocument(card)), nowIso()));
-  });
+  const stored = await cacheLinkCard(env.DB, url, card);
   if (stored.isErr()) {
-    return { kind: "Transient" };
+    return stale ? { kind: "Cached", card: stale } : { kind: "Transient" };
   }
   return { kind: "Built", card };
 };
@@ -241,6 +254,18 @@ export const buildLinkCard = async (
 ): Promise<LinkCard | undefined> => {
   const outcome = await resolveLinkCard(env, identity, url, options);
   return outcome.kind === "Built" || outcome.kind === "Cached" ? outcome.card : undefined;
+};
+
+/** Store a card in the URL cache (what the unfurl writes). */
+export const cacheLinkCard = async (
+  db: D1Database,
+  url: string,
+  card: LinkCard,
+): Promise<Result<void, RepositoryError>> => {
+  const written = await runD1(async () => {
+    await runTyped(db, upsertLinkCardSql(url, JSON.stringify(cardDocument(card)), nowIso()));
+  });
+  return written.map(() => undefined);
 };
 
 /** Cached cards for the given URLs, keyed by URL. */

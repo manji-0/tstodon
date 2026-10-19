@@ -208,6 +208,39 @@ describe("link cards", () => {
     );
   });
 
+  it("refreshes a preview older than a week", async () => {
+    const email = "card-ttl@example.com";
+    const url = "https://news.example/story-ttl";
+    let title = "First Title";
+    const stub = () =>
+      new Response(`<meta property="og:title" content="${title}" />`, {
+        headers: { "content-type": "text/html" },
+      });
+
+    const first = await postStatus(email, `ttl link ${url}`);
+    const firstCalls = await withFetchStub(stub, () => unfurl(first.id, url));
+    expect(firstCalls).toBe(1);
+    expect((await statusCard(first.id))?.title).toBe("First Title");
+
+    // Age the cache past its TTL.
+    const aged = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    await env.DB.prepare("UPDATE link_cards SET fetched_at = ? WHERE url = ?")
+      .bind(aged, url)
+      .run();
+
+    title = "Second Title";
+    const second = await postStatus(email, `ttl link again ${url}`);
+    const secondCalls = await withFetchStub(stub, () => unfurl(second.id, url));
+    expect(secondCalls).toBe(1);
+    expect((await statusCard(second.id))?.title).toBe("Second Title");
+
+    // A third post within the TTL is served from the cache.
+    const third = await postStatus(email, `ttl link third ${url}`);
+    const thirdCalls = await withFetchStub(stub, () => unfurl(third.id, url));
+    expect(thirdCalls).toBe(0);
+    expect((await statusCard(third.id))?.title).toBe("Second Title");
+  });
+
   it("distinguishes transient failures from settled ones", async () => {
     const email = "card-outcomes@example.com";
     const status = await postStatus(email, "outcome link https://outcome.example/page");
