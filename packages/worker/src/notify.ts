@@ -39,6 +39,7 @@ export const notifyAccount = async (
       inserted.value,
       input.accountId,
       input.fromAccountId,
+      input.statusId,
     );
     if (held.isErr()) {
       return err(held.error);

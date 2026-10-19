@@ -112,6 +112,7 @@ model notification_requests {
   notification_id String @id
   account_id      String
   from_account_id String
+  status_id       String?
   created_at      String @default("CURRENT_TIMESTAMP")
 
   @@index([account_id, from_account_id], map: "idx_notification_requests_account")

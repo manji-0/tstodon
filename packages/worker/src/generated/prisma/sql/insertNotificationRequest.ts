@@ -8,14 +8,16 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param notificationId
  * @param accountId
  * @param fromAccountId
+ * @param statusId
  * @param now
  */
 export const insertNotificationRequest = $runtime.makeTypedQueryFactory(
-  "INSERT INTO notification_requests (notification_id, account_id, from_account_id, created_at)\nVALUES ($1, $2, $3, $4)\nON CONFLICT(notification_id) DO NOTHING",
+  "INSERT INTO notification_requests (notification_id, account_id, from_account_id, status_id, created_at)\nVALUES ($1, $2, $3, $4, $5)\nON CONFLICT(notification_id) DO NOTHING",
 ) as (
   notificationId: string,
   accountId: string,
   fromAccountId: string,
+  statusId: string | null,
   now: string,
 ) => $runtime.TypedSql<insertNotificationRequest.Parameters, insertNotificationRequest.Result>;
 
@@ -24,6 +26,7 @@ export namespace insertNotificationRequest {
     notificationId: string,
     accountId: string,
     fromAccountId: string,
+    statusId: string | null,
     now: string,
   ];
   export type Result = {};

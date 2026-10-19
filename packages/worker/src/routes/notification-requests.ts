@@ -31,7 +31,7 @@ import {
   NotificationRequestIdsBodySchema,
   stringList,
 } from "../schemas";
-import { dismissNotification, listNotifications } from "../social-store";
+import { dismissNotification } from "../social-store";
 import { publishToAccount } from "../stream-publish";
 import { findStatusById } from "../status-store";
 
@@ -54,18 +54,12 @@ const requestDocument = async (
     account.isOk() && account.value
       ? await mastodonAccountDocument(c.env, identity, account.value)
       : null;
-  // The most recent status that triggered a held notification, if any.
-  const rows = await listNotifications(c.env.DB, accountId, 100, {
-    fromAccountId: request.fromAccountId,
-  });
+  // The status stored with the held notification is the exact one.
   let lastStatus: Record<string, unknown> | null = null;
-  if (rows.isOk()) {
-    const statusId = rows.value.find((row) => row.status_id)?.status_id ?? undefined;
-    if (statusId) {
-      const status = await findStatusById(c.env.DB, statusId);
-      if (status.isOk() && status.value) {
-        lastStatus = (await mastodonStatus(c.env, identity, status.value, accountId)) ?? null;
-      }
+  if (request.statusId) {
+    const status = await findStatusById(c.env.DB, request.statusId);
+    if (status.isOk() && status.value) {
+      lastStatus = (await mastodonStatus(c.env, identity, status.value, accountId)) ?? null;
     }
   }
   return {

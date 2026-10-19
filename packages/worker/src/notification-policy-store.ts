@@ -116,6 +116,8 @@ export const saveNotificationPolicy = async (
 export type NotificationRequest = Readonly<{
   fromAccountId: string;
   notificationsCount: number;
+  /** The status behind the held notifications, when there is one. */
+  statusId: string | null;
   createdAt: string;
   updatedAt: string;
 }>;
@@ -123,6 +125,7 @@ export type NotificationRequest = Readonly<{
 const RequestRowSchema = z.object({
   from_account_id: z.string().min(1),
   notifications_count: z.number(),
+  status_id: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -133,6 +136,7 @@ const requestFromRow = (raw: unknown): NotificationRequest | undefined => {
     ? {
         fromAccountId: row.value.from_account_id,
         notificationsCount: row.value.notifications_count,
+        statusId: row.value.status_id,
         createdAt: row.value.created_at,
         updatedAt: row.value.updated_at,
       }
@@ -182,11 +186,18 @@ export const holdNotification = async (
   notificationId: string,
   accountId: string,
   fromAccountId: string,
+  statusId: string | undefined,
 ): Promise<Result<void, RepositoryError>> => {
   const written = await runD1(async () => {
     await runTyped(
       db,
-      insertNotificationRequestSql(notificationId, accountId, fromAccountId, nowIso()),
+      insertNotificationRequestSql(
+        notificationId,
+        accountId,
+        fromAccountId,
+        statusId ?? null,
+        nowIso(),
+      ),
     );
   });
   return written.map(() => undefined);

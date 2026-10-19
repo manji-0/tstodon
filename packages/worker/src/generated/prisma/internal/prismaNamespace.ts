@@ -4508,6 +4508,7 @@ export const Notification_requestsScalarFieldEnum = {
   notification_id: "notification_id",
   account_id: "account_id",
   from_account_id: "from_account_id",
+  status_id: "status_id",
   created_at: "created_at",
 } as const;
 

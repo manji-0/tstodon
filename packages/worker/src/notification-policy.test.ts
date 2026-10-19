@@ -43,6 +43,7 @@ const RequestSchema = z.object({
   id: z.string().min(1),
   notifications_count: z.string(),
   account: MastodonAccountPreviewSchema.nullable(),
+  last_status: z.object({ id: z.string().min(1) }).nullable(),
 });
 
 const credentials = async (email: string): Promise<{ id: string; username: string }> => {
@@ -137,7 +138,15 @@ describe("notification policy", () => {
     const held = read(z.array(RequestSchema), requests.body);
     expect(held).toHaveLength(1);
     expect(held[0]?.account?.id).toBe(sender.id);
+    // The held status is the second mention, not the first (already delivered).
+    const heldStatus = await json(`/api/v1/statuses/${held[0]?.last_status?.id ?? ""}`, {
+      headers: await auth(recipientEmail),
+    });
+    expect(read(z.object({ content: z.string() }), heldStatus.body).content).toContain(
+      "second hello",
+    );
     expect(held[0]?.notifications_count).toBe("1");
+    expect(held[0]?.last_status?.id).toBeDefined();
 
     const summary = await json("/api/v2/notifications/policy", {
       headers: await auth(recipientEmail),
