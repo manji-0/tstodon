@@ -1,3 +1,4 @@
+import { InstanceLimits } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
@@ -18,8 +19,8 @@ import { queryTyped, runTyped } from "./typed-sql";
 
 export type TagHistoryEntry = Readonly<{ day: string; uses: string; accounts: string }>;
 
-/** Mastodon's `FeaturedTag::LIMIT`. */
-export const FEATURED_TAG_LIMIT = 10;
+/** Mastodon's `FeaturedTag::LIMIT`, shared with the instance document. */
+export const FEATURED_TAG_LIMIT = InstanceLimits.account.maxFeaturedTags;
 
 const TAG_HISTORY_DAYS = 7;
 const SECONDS_PER_DAY = 86_400;

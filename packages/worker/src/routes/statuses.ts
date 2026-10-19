@@ -33,6 +33,7 @@ import {
 } from "../mastodon";
 import { countPollVotes, findPollByStatusId, insertPoll, replacePollOptions } from "../poll-store";
 import { CreateStatusBodySchema, isTruthy, mediaAttributesFromForm, stringList } from "../schemas";
+import { InstanceLimits, characterCount } from "@tstodon/core";
 import { schemaResult } from "@tstodon/core";
 import type { MediaAttribute } from "../schemas";
 import { parseInstanceIdentity } from "../runtime-config";
@@ -102,6 +103,12 @@ const applyMediaAttributes = async (
         focusY = focus.y;
       }
     }
+    if (
+      attribute.description !== undefined &&
+      characterCount(attribute.description) > InstanceLimits.media.maxDescriptionCharacters
+    ) {
+      return "media description is too long";
+    }
     const description =
       attribute.description === undefined
         ? media.description
@@ -148,7 +155,25 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
     return c.json({ error: "Invalid visibility", kind: "Unknown" }, 400);
   }
   const pollRaw = body.value.poll;
-  const pollOptions = pollRaw ? [...pollRaw.options] : [];
+  const pollOptions = pollRaw
+    ? [...pollRaw.options].map((option) => option.trim()).filter((option) => option.length > 0)
+    : [];
+  if (pollRaw) {
+    if (
+      pollOptions.length < InstanceLimits.poll.minOptions ||
+      pollOptions.length > InstanceLimits.poll.maxOptions
+    ) {
+      return c.json(
+        { error: "poll options must be between 2 and 4", kind: "PollOptionsOutOfRange" },
+        422,
+      );
+    }
+    if (
+      pollOptions.some((option) => characterCount(option) > InstanceLimits.poll.maxOptionCharacters)
+    ) {
+      return c.json({ error: "poll option is too long", kind: "PollOptionTooLong" }, 422);
+    }
+  }
   const composing = StatusComposition.composing({
     text: body.value.status ?? "",
     visibility: visibility.value,
@@ -201,10 +226,14 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
     return jsonRepositoryError(c, inserted.error.message);
   }
   if (pollOptions.length >= 2) {
-    const expiresIn = Number(pollRaw?.expires_in ?? 86400);
-    const expiresAt = new Date(
-      Date.now() + (Number.isFinite(expiresIn) ? expiresIn : 86400) * 1000,
-    ).toISOString();
+    const requested = Number(pollRaw?.expires_in ?? 86400);
+    const expiresIn = Number.isFinite(requested)
+      ? Math.min(
+          Math.max(requested, InstanceLimits.poll.minExpirationSeconds),
+          InstanceLimits.poll.maxExpirationSeconds,
+        )
+      : 86400;
+    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
     const poll = await insertPoll(c.env.DB, {
       statusId: note.id,
       multiple: isTruthy(pollRaw?.multiple),
@@ -589,7 +618,7 @@ statusRoutes.get("/api/v1/statuses/:id/source", async (c) => {
   });
 });
 
-const STATUS_PIN_LIMIT = 5;
+const STATUS_PIN_LIMIT = InstanceLimits.account.maxPinnedStatuses;
 
 const setStatusPinned = async (c: Context<{ Bindings: Env }>, pin: boolean): Promise<Response> => {
   const identity = parseInstanceIdentity(c.env);

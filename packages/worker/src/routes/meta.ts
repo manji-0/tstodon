@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { InstanceIdentity } from "@tstodon/domain";
+import { InstanceLimits } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { countAccounts, findAccountById, listDirectoryAccounts } from "../account-store";
 import {
@@ -48,6 +49,7 @@ import { listFeaturedTags, listFollowedTags, tagDailyHistory } from "../tag-stor
 import {
   activeAnnouncements,
   announcements,
+  federationAllowHosts,
   instanceRules,
   parseInstanceIdentity,
   type Announcement,
@@ -591,14 +593,35 @@ metaRoutes.get("/api/v2/instance", async (c) => {
     languages: instance.languages,
     configuration: {
       urls: { streaming: `wss://${instance.domain}` },
-      statuses: { max_characters: 500, max_media_attachments: 4 },
-      media_attachments: { supported_mime_types: ["image/jpeg", "image/png", "image/webp"] },
-      polls: {
-        max_options: 4,
-        max_characters_per_option: 50,
-        min_expiration: 300,
-        max_expiration: 2629746,
+      accounts: {
+        max_featured_tags: InstanceLimits.account.maxFeaturedTags,
+        max_pinned_statuses: InstanceLimits.account.maxPinnedStatuses,
       },
+      statuses: {
+        max_characters: InstanceLimits.status.maxCharacters,
+        max_media_attachments: InstanceLimits.status.maxMediaAttachments,
+        characters_reserved_per_url: InstanceLimits.status.charactersReservedPerUrl,
+      },
+      media_attachments: {
+        description_limit: InstanceLimits.media.maxDescriptionCharacters,
+        supported_mime_types: [
+          "image/jpeg",
+          "image/png",
+          "image/gif",
+          "image/webp",
+          "image/avif",
+          "video/mp4",
+          "video/webm",
+        ],
+      },
+      polls: {
+        max_options: InstanceLimits.poll.maxOptions,
+        max_characters_per_option: InstanceLimits.poll.maxOptionCharacters,
+        min_expiration: InstanceLimits.poll.minExpirationSeconds,
+        max_expiration: InstanceLimits.poll.maxExpirationSeconds,
+      },
+      translation: { enabled: false },
+      limited_federation: federationAllowHosts(c.env).size > 0,
     },
     registrations: { enabled: false, approval_required: true, message: null },
     contact: { email: instance.contactEmail, account: null },

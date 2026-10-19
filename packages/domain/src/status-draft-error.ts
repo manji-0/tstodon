@@ -6,11 +6,17 @@ const TooManyMediaSchema = z.object({
   kind: z.literal("TooManyMedia"),
   count: z.number().int().positive(),
 });
+const TooLongSchema = z.object({
+  kind: z.literal("TooLong"),
+  field: z.union([z.literal("text"), z.literal("spoiler_text")]),
+  limit: z.number().int().positive(),
+});
 const PollWithMediaSchema = unitKind("PollWithMedia");
 const QuoteWithMediaOrPollSchema = unitKind("QuoteWithMediaOrPoll");
 
 export const StatusDraftErrorSchema = z.discriminatedUnion("kind", [
   EmptyPayloadSchema,
+  TooLongSchema,
   TooManyMediaSchema,
   PollWithMediaSchema,
   QuoteWithMediaOrPollSchema,

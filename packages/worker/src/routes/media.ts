@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { InstanceLimits, characterCount } from "@tstodon/core";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../http";
 import { mastodonMedia } from "../mastodon";
 import {
@@ -103,6 +104,12 @@ mediaRoutes.put("/api/v1/media/:id", async (c) => {
     }
     focusX = focus.x;
     focusY = focus.y;
+  }
+  if (
+    descriptionRaw !== undefined &&
+    characterCount(descriptionRaw) > InstanceLimits.media.maxDescriptionCharacters
+  ) {
+    return c.json({ error: "description is too long", kind: "ValidationError" }, 422);
   }
   const description =
     descriptionRaw === undefined

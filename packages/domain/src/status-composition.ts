@@ -1,3 +1,4 @@
+import { InstanceLimits, characterCount } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { AccountId } from "./account-id";
@@ -88,12 +89,24 @@ export const StatusComposition = {
       parsedMedia.push(parsed.value);
     }
 
-    const hasText = composing.text.trim().length > 0;
+    const text = composing.text.trim();
+    const spoilerText = composing.spoilerText.trim();
+    const hasText = text.length > 0;
     const hasPoll = composing.poll.kind === "Present";
     if (!hasText && parsedMedia.length === 0 && !hasPoll) {
       return err({ kind: "EmptyPayload" });
     }
-    if (parsedMedia.length > 4) {
+    if (characterCount(text) > InstanceLimits.status.maxCharacters) {
+      return err({ kind: "TooLong", field: "text", limit: InstanceLimits.status.maxCharacters });
+    }
+    if (characterCount(spoilerText) > InstanceLimits.status.maxSpoilerCharacters) {
+      return err({
+        kind: "TooLong",
+        field: "spoiler_text",
+        limit: InstanceLimits.status.maxSpoilerCharacters,
+      });
+    }
+    if (parsedMedia.length > InstanceLimits.status.maxMediaAttachments) {
       return err({ kind: "TooManyMedia", count: parsedMedia.length });
     }
     if (hasPoll && parsedMedia.length > 0) {
@@ -105,9 +118,9 @@ export const StatusComposition = {
 
     return ok({
       kind: "Validated",
-      text: composing.text.trim(),
+      text,
       visibility: composing.visibility,
-      spoilerText: composing.spoilerText.trim(),
+      spoilerText,
       sensitive: composing.sensitive,
       language: composing.language,
       quote: composing.quote,
