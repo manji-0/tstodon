@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `DELETE /api/v1/statuses/:id` returns the raw `text` for delete-and-redraft
 - `Idempotency-Key` on POST /api/v1/statuses (`status_idempotency`, one hour, per account)
 - `instance/peers` and `instance/activity` require a user token under limited federation
 - `/api/v2/instance`: registrations detail, thumbnail description, policy URLs (icon and `api_versions` intentionally omitted)

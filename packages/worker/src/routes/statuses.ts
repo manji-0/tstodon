@@ -447,7 +447,10 @@ statusRoutes.delete("/api/v1/statuses/:id", async (c) => {
   if (!deleted.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.json(document ?? {});
+  // Mastodon returns the raw source text so a client can delete and redraft;
+  // media attachments and the poll are already part of the rendered document.
+  const sourceText = existing.value.kind === "LocalNote" ? existing.value.text : "";
+  return c.json({ ...(document ?? {}), text: sourceText });
 });
 
 const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
