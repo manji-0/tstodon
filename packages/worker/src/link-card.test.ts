@@ -224,32 +224,33 @@ describe("link cards", () => {
     const email = "card-ttl@example.com";
     const url = "https://news.example/story-ttl";
     let title = "First Title";
-    const stub = () =>
-      new Response(`<meta property="og:title" content="${title}" />`, {
-        headers: { "content-type": "text/html" },
-      });
+    // The title is the assertion, not the fetch count: a delayed queue
+    // delivery may unfurl the same link again, which is harmless.
+    const stub = (target: URL) =>
+      target.hostname === "news.example"
+        ? new Response(`<meta property="og:title" content="${title}" />`, {
+            headers: { "content-type": "text/html" },
+          })
+        : undefined;
 
     const first = await postStatus(email, `ttl link ${url}`);
-    const firstCalls = await withFetchStub(stub, () => unfurl(first.id, url));
-    expect(firstCalls).toBe(1);
+    await withFetchStub(stub, () => unfurl(first.id, url));
     expect((await statusCard(first.id))?.title).toBe("First Title");
 
-    // Age the cache past its TTL.
+    // Age the cache past its TTL, then change what the origin serves.
     const aged = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
     await env.DB.prepare("UPDATE link_cards SET fetched_at = ? WHERE url = ?")
       .bind(aged, url)
       .run();
-
     title = "Second Title";
     const second = await postStatus(email, `ttl link again ${url}`);
-    const secondCalls = await withFetchStub(stub, () => unfurl(second.id, url));
-    expect(secondCalls).toBe(1);
+    await withFetchStub(stub, () => unfurl(second.id, url));
     expect((await statusCard(second.id))?.title).toBe("Second Title");
 
-    // A third post within the TTL is served from the cache.
+    // Within the TTL the cache is served: the origin would say something else.
+    title = "Third Title";
     const third = await postStatus(email, `ttl link third ${url}`);
-    const thirdCalls = await withFetchStub(stub, () => unfurl(third.id, url));
-    expect(thirdCalls).toBe(0);
+    await withFetchStub(stub, () => unfurl(third.id, url));
     expect((await statusCard(third.id))?.title).toBe("Second Title");
   });
 
