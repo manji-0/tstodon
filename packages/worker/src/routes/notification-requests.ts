@@ -7,6 +7,7 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
+  queryAccountsLimit,
   readBody,
   requireUser,
 } from "../http";
@@ -174,7 +175,12 @@ notificationRequestRoutes.get("/api/v1/notifications/requests", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const requests = await listNotificationRequests(c.env.DB, user.value.id);
+  // Mastodon: `limit` defaults to 40 and caps at 80.
+  const requests = await listNotificationRequests(
+    c.env.DB,
+    user.value.id,
+    queryAccountsLimit(c.req.query("limit")),
+  );
   if (requests.isErr()) {
     return jsonRepositoryError(c, requests.error.message);
   }

@@ -199,4 +199,37 @@ describe("notification policy", () => {
     });
     expect(read(z.array(RequestSchema), after.body)).toHaveLength(0);
   });
+
+  it("pages notification requests with limit", async () => {
+    const recipientEmail = "policy-limit-recipient@example.com";
+    const recipient = await credentials(recipientEmail);
+    const senders = ["a", "b", "c"];
+
+    for (const sender of senders) {
+      const email = `policy-limit-${sender}@example.com`;
+      const account = await credentials(email);
+      await json(`/api/v1/admin/accounts/${account.id}/silence`, {
+        method: "POST",
+        headers: await auth(`policy-limit-admin-${sender}@example.com`, true),
+      });
+      await postStatus(email, { status: `@${recipient.username} held ${sender}` });
+    }
+
+    const list = async (query = ""): Promise<z.infer<typeof RequestSchema>[]> => {
+      const response = await json(`/api/v1/notifications/requests${query}`, {
+        headers: await auth(recipientEmail),
+      });
+      expect(response.status).toBe(200);
+      return read(z.array(RequestSchema), response.body);
+    };
+
+    const all = await list();
+    expect(all).toHaveLength(3);
+    // The newest request first, and `limit` takes a page off the top.
+    expect(await list("?limit=1")).toEqual([all[0]]);
+    expect(await list("?limit=2")).toEqual(all.slice(0, 2));
+    // The documented cap is 80, so a larger request is clamped rather than
+    // rejected.
+    expect(await list("?limit=200")).toHaveLength(3);
+  });
 });

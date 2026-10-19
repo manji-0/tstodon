@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `notifications/requests` accepts `limit` (40 default, 80 cap)
 - Link-card test fetch stubs are host-scoped (no cross-file flake)
 - Tag timeline accepts `any[]`/`all[]`/`none[]` (4-tag cap) and `only_media`
 - Reblog honours `visibility`, refuses non-rebloggable statuses, and is idempotent

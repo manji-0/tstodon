@@ -144,12 +144,14 @@ const requestFromRow = (raw: unknown): NotificationRequest | undefined => {
 };
 
 /** Held-back notifications grouped by sender, newest first. */
+/** Mastodon returns at most 80 requests per page, 40 by default. */
 export const listNotificationRequests = async (
   db: D1Database,
   accountId: string,
+  limit: number = 40,
 ): Promise<Result<NotificationRequest[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, listNotificationRequestsSql(accountId));
+    const rows = await queryTyped(db, listNotificationRequestsSql(accountId, limit));
     return rows.flatMap((raw) => {
       const request = requestFromRow(raw);
       return request ? [request] : [];
