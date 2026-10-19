@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { findStatusById } from "../status-store";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -7,9 +6,8 @@ import {
   readBody,
   requireUser,
 } from "../http";
-import { mastodonStatus, pollJson } from "../mastodon";
+import { pollJson } from "../mastodon";
 import { findPollById, votePoll } from "../poll-store";
-import { parseInstanceIdentity } from "../runtime-config";
 import { numberList, PollVoteBodySchema } from "../schemas";
 
 export const pollRoutes = new Hono<{ Bindings: Env }>();
@@ -31,10 +29,6 @@ pollRoutes.get("/api/v1/polls/:id", async (c) => {
 });
 
 pollRoutes.post("/api/v1/polls/:id/votes", async (c) => {
-  const identity = parseInstanceIdentity(c.env);
-  if (identity.isErr()) {
-    return c.json(identity.error, 500);
-  }
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -55,9 +49,6 @@ pollRoutes.post("/api/v1/polls/:id/votes", async (c) => {
   if (poll.isErr() || !poll.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const status = await findStatusById(c.env.DB, poll.value.statusId);
-  if (status.isOk() && status.value) {
-    return c.json(await mastodonStatus(c.env, identity.value, status.value, user.value.id));
-  }
+  // Mastodon answers a vote with the updated Poll entity, not the status.
   return c.json(pollJson(poll.value));
 });

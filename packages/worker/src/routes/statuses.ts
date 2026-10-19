@@ -247,6 +247,7 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
       multiple: isTruthy(pollRaw?.multiple),
       expiresAt,
       options: pollOptions,
+      hideTotals: isTruthy(pollRaw?.hide_totals),
     });
     if (poll.isErr()) {
       return jsonRepositoryError(c, poll.error.message);

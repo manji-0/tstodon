@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Poll `hide_totals` (counts null until expiry) and a vote now answers the Poll entity
 - `reject_media` enforced: remote attachments dropped on persist and cleared for existing rows
 - Remote status attachments captured from ActivityPub and rendered (`remote_statuses.media_json`)
 - `DELETE /api/v1/statuses/:id` returns the raw `text` for delete-and-redraft

@@ -10,15 +10,17 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param multiple
  * @param expiresAt
  * @param optionsJson
+ * @param hideTotals
  */
 export const insertPoll = $runtime.makeTypedQueryFactory(
-  "INSERT INTO polls (id, status_id, multiple, expires_at, options_json)\nVALUES ($1, $2, $3, $4, $5)",
+  "INSERT INTO polls (id, status_id, multiple, expires_at, options_json, hide_totals)\nVALUES ($1, $2, $3, $4, $5, $6)",
 ) as (
   id: string,
   statusId: string,
   multiple: number,
   expiresAt: string,
   optionsJson: string,
+  hideTotals: number,
 ) => $runtime.TypedSql<insertPoll.Parameters, insertPoll.Result>;
 
 export namespace insertPoll {
@@ -28,6 +30,7 @@ export namespace insertPoll {
     multiple: number,
     expiresAt: string,
     optionsJson: string,
+    hideTotals: number,
   ];
   export type Result = {};
 }

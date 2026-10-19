@@ -42,6 +42,7 @@ export type PollRecord = Readonly<{
   statusId: string;
   multiple: boolean;
   expiresAt: string;
+  hideTotals: boolean;
   options: ReadonlyArray<PollOption>;
   votedIndexes: ReadonlyArray<number>;
 }>;
@@ -55,6 +56,7 @@ export const insertPoll = async (
     multiple: boolean;
     expiresAt: string;
     options: ReadonlyArray<string>;
+    hideTotals?: boolean;
   },
 ): Promise<Result<string, RepositoryError>> => {
   const id = newEntityId();
@@ -67,6 +69,7 @@ export const insertPoll = async (
         input.multiple ? 1 : 0,
         input.expiresAt,
         JSON.stringify(input.options.map((title) => ({ title, votesCount: 0 }))),
+        input.hideTotals ? 1 : 0,
       ),
     ),
     d1PrepareTyped(db, updateStatusPollIdSql(id, input.statusId)),
@@ -99,6 +102,7 @@ const pollFromRow = async (
     statusId: row.status_id,
     multiple: row.multiple === 1,
     expiresAt: row.expires_at,
+    hideTotals: row.hide_totals === 1,
     options: options.value,
     votedIndexes: votes.value.map((vote) => vote.option_index),
   });
@@ -185,7 +189,7 @@ export const findPollsByStatusIds = async (
   const queried = await runD1(() =>
     db
       .prepare(
-        `SELECT id, status_id, multiple, expires_at, options_json
+        `SELECT id, status_id, multiple, expires_at, options_json, hide_totals
          FROM polls WHERE status_id ${sqlInJsonEach()}`,
       )
       .bind(jsonStringArray(unique))
@@ -234,6 +238,7 @@ export const findPollsByStatusIds = async (
       statusId: row.status_id,
       multiple: row.multiple === 1,
       expiresAt: row.expires_at,
+      hideTotals: row.hide_totals === 1,
       options: options.value,
       votedIndexes: votesByPoll.get(row.id) ?? [],
     });

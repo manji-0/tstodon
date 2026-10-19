@@ -179,21 +179,26 @@ const remoteMediaType = (mediaType: string): string => {
 export const remoteStatusVisible = (status: RemoteStatusValue): boolean =>
   status.visibility.kind === "Public" || status.visibility.kind === "Unlisted";
 
-export const pollJson = (poll: PollRecord): Record<string, unknown> => ({
-  id: poll.id,
-  expires_at: poll.expiresAt,
-  expired: Date.parse(poll.expiresAt) <= Date.now(),
-  multiple: poll.multiple,
-  votes_count: poll.options.reduce((sum, option) => sum + option.votesCount, 0),
-  voters_count: poll.votedIndexes.length,
-  voted: poll.votedIndexes.length > 0,
-  own_votes: [...poll.votedIndexes],
-  options: poll.options.map((option) => ({
-    title: option.title,
-    votes_count: option.votesCount,
-  })),
-  emojis: [],
-});
+export const pollJson = (poll: PollRecord): Record<string, unknown> => {
+  const expired = Date.parse(poll.expiresAt) <= Date.now();
+  // A poll that hides totals keeps them secret until it ends.
+  const hidden = poll.hideTotals && !expired;
+  return {
+    id: poll.id,
+    expires_at: poll.expiresAt,
+    expired,
+    multiple: poll.multiple,
+    votes_count: hidden ? null : poll.options.reduce((sum, option) => sum + option.votesCount, 0),
+    voters_count: hidden || !poll.multiple ? null : poll.votedIndexes.length,
+    voted: poll.votedIndexes.length > 0,
+    own_votes: [...poll.votedIndexes],
+    options: poll.options.map((option) => ({
+      title: option.title,
+      votes_count: hidden ? null : option.votesCount,
+    })),
+    emojis: [],
+  };
+};
 
 const mediaAttachmentsJson = (
   identity: InstanceIdentity,

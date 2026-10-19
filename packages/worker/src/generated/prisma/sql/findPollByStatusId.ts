@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param statusId
  */
 export const findPollByStatusId = $runtime.makeTypedQueryFactory(
-  "SELECT id, status_id, multiple, expires_at, options_json FROM polls WHERE status_id = $1",
+  "SELECT id, status_id, multiple, expires_at, options_json, hide_totals FROM polls WHERE status_id = $1",
 ) as (
   statusId: string,
 ) => $runtime.TypedSql<findPollByStatusId.Parameters, findPollByStatusId.Result>;
@@ -21,5 +21,6 @@ export namespace findPollByStatusId {
     multiple: number;
     expires_at: string;
     options_json: string;
+    hide_totals: number;
   };
 }

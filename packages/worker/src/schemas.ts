@@ -82,6 +82,7 @@ export const PollRowSchema = z.object({
   multiple: z.number(),
   expires_at: z.string().min(1),
   options_json: z.string().min(1),
+  hide_totals: z.number(),
 });
 
 export const ExpiredPollTargetRowSchema = z.object({
@@ -130,6 +131,7 @@ export const CreateStatusBodySchema = z.object({
       options: z.array(z.string()),
       expires_in: z.union([z.number(), z.string()]).optional(),
       multiple: booleanish,
+      hide_totals: booleanish,
     })
     .optional(),
 });
