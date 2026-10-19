@@ -6,6 +6,15 @@ import { StatusId } from "./status-id";
 import { Visibility } from "./visibility";
 import type { StatusLanguage } from "./status-quote-target";
 
+export const RemoteAttachmentSchema = z.object({
+  url: z.url(),
+  /** Empty when the remote note did not declare a media type. */
+  mediaType: z.string(),
+  description: z.string(),
+});
+
+export type RemoteAttachment = z.infer<typeof RemoteAttachmentSchema>;
+
 const RemoteNoteSchema = z.object({
   kind: z.literal("RemoteNote"),
   id: StatusId.schema,
@@ -21,6 +30,7 @@ const RemoteNoteSchema = z.object({
     z.object({ kind: z.literal("Present"), value: z.string().min(1) }),
   ]),
   publishedAt: IsoInstant.schema,
+  media: z.array(RemoteAttachmentSchema),
 });
 
 export const RemoteStatusSchema = z.discriminatedUnion("kind", [RemoteNoteSchema]);
@@ -76,6 +86,7 @@ export const RemoteStatus = {
   },
   fromFetched: (input: {
     id: z.infer<typeof StatusId.schema>;
+    media?: ReadonlyArray<RemoteAttachment> | undefined;
     actorUri: string;
     objectUri: string;
     url?: string | undefined;
@@ -97,6 +108,8 @@ export const RemoteStatus = {
       sensitive: input.sensitive,
       language: input.language,
       publishedAt: input.publishedAt,
+      // Mastodon carries at most four attachments on a status.
+      media: (input.media ?? []).slice(0, 4),
       ...(input.url ? { url: input.url } : {}),
     });
     return parsed.mapErr((): RemoteStatusParseError => ({ kind: "InvalidObject" }));

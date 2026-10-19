@@ -39,8 +39,22 @@ const noteFromUnknown = (
   if (id.isErr()) {
     return err({ kind: "InvalidObject" });
   }
+  const attachments = (document.value.attachment ?? []).flatMap((entry) => {
+    const url = entry.url;
+    if (!url || url.length === 0) {
+      return [];
+    }
+    return [
+      {
+        url,
+        mediaType: entry.mediaType ?? "",
+        description: entry.name ?? "",
+      },
+    ];
+  });
   return RemoteStatus.fromFetched({
     id: id.value,
+    media: attachments,
     actorUri,
     objectUri: document.value.id,
     contentHtml: document.value.content,

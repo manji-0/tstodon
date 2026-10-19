@@ -350,6 +350,16 @@ export const NoteDocumentSchema = z
     sensitive: booleanish,
     summary: z.string().nullable().optional(),
     inReplyTo: z.string().nullable().optional(),
+    attachment: z
+      .array(
+        z.object({
+          type: z.string().optional(),
+          mediaType: z.string().optional(),
+          url: z.string().optional(),
+          name: z.string().nullable().optional(),
+        }),
+      )
+      .optional(),
   })
   .passthrough();
 
@@ -364,6 +374,7 @@ export const RemoteStatusRowSchema = z.object({
   sensitive: z.number(),
   language: z.string().nullable(),
   published_at: z.string().min(1),
+  media_json: z.string(),
 });
 
 export const NotePreviewSchema = z.object({

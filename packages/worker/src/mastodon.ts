@@ -140,13 +140,40 @@ export const mastodonRemoteStatus = (
     content: status.contentHtml,
     reblog: null,
     account: mastodonRemoteAccount(identity, actor),
-    media_attachments: [],
+    media_attachments: status.media.map((attachment, index) => ({
+      id: `${status.id}-${index}`,
+      type: remoteMediaType(attachment.mediaType),
+      url: attachment.url,
+      preview_url: attachment.url,
+      remote_url: attachment.url,
+      text_url: attachment.url,
+      meta: {},
+      description: attachment.description.length > 0 ? attachment.description : null,
+      blurhash: null,
+    })),
     mentions: [],
     tags: [],
     emojis: [],
     card: null,
     poll: null,
   };
+};
+
+const remoteMediaType = (mediaType: string): string => {
+  const type = mediaType.toLowerCase();
+  if (type.length === 0) {
+    return "unknown";
+  }
+  if (type.startsWith("video/")) {
+    return "video";
+  }
+  if (type.startsWith("audio/")) {
+    return "audio";
+  }
+  if (type.startsWith("image/")) {
+    return "image";
+  }
+  return "unknown";
 };
 
 export const remoteStatusVisible = (status: RemoteStatusValue): boolean =>

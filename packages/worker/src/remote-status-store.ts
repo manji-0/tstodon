@@ -1,10 +1,17 @@
-import { IsoInstant, RemoteStatus, StatusId, Visibility } from "@tstodon/domain";
+import {
+  IsoInstant,
+  RemoteAttachmentSchema,
+  RemoteStatus,
+  StatusId,
+  Visibility,
+  type RemoteAttachment,
+} from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
-import type { z } from "zod";
+import { z } from "zod";
 import { nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
-import { RemoteStatusRowSchema, toRepositoryError } from "./schemas";
+import { parseJsonText, RemoteStatusRowSchema, toRepositoryError } from "./schemas";
 import { visibilitySql } from "./sql-enums";
 import { queryTyped, runTyped } from "./typed-sql";
 import {
@@ -18,6 +25,11 @@ import {
 export type RemoteStatusRow = z.infer<typeof RemoteStatusRowSchema>;
 
 const parseRemoteStatusRow = schemaResult(RemoteStatusRowSchema);
+
+const mediaFromJson = (raw: string): ReadonlyArray<RemoteAttachment> => {
+  const parsed = schemaResult(z.array(RemoteAttachmentSchema))(parseJsonText(raw).unwrapOr([]));
+  return parsed.isOk() ? parsed.value : [];
+};
 
 const remoteStatusFromRow = (row: RemoteStatusRow): Result<RemoteStatus, RepositoryError> => {
   const id = StatusId.parse(row.id);
@@ -39,6 +51,7 @@ const remoteStatusFromRow = (row: RemoteStatusRow): Result<RemoteStatus, Reposit
         ? { kind: "Present", value: row.language }
         : { kind: "None" },
     publishedAt: publishedAt.value,
+    media: mediaFromJson(row.media_json),
     ...(row.url ? { url: row.url } : {}),
   }).mapErr(() => toRepositoryError("invalid remote status row"));
 };
@@ -106,6 +119,7 @@ export const upsertRemoteStatus = async (
         persisted.sensitive ? 1 : 0,
         persisted.language.kind === "Present" ? persisted.language.value : null,
         persisted.publishedAt,
+        JSON.stringify(persisted.media),
         nowIso(),
         nowIso(),
       ),

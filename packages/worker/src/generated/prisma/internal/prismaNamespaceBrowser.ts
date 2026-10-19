@@ -578,6 +578,7 @@ export const Remote_statusesScalarFieldEnum = {
   sensitive: "sensitive",
   language: "language",
   published_at: "published_at",
+  media_json: "media_json",
   created_at: "created_at",
   updated_at: "updated_at",
 } as const;

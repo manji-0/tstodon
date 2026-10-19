@@ -30,7 +30,12 @@ export {
 export { OutboxJob, type OutboxJob as OutboxJobValue } from "./outbox-job";
 export { QuoteApprovalPolicy } from "./quote-approval-policy";
 export { RemoteActor, type RemoteActor as RemoteActorValue } from "./remote-actor";
-export { RemoteStatus, type RemoteStatus as RemoteStatusValue } from "./remote-status";
+export {
+  RemoteAttachmentSchema,
+  RemoteStatus,
+  type RemoteAttachment,
+  type RemoteStatus as RemoteStatusValue,
+} from "./remote-status";
 export {
   Registration,
   type Registration as RegistrationValue,

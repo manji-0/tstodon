@@ -45,6 +45,7 @@ export type Remote_statusesMinAggregateOutputType = {
   sensitive: number | null;
   language: string | null;
   published_at: string | null;
+  media_json: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -60,6 +61,7 @@ export type Remote_statusesMaxAggregateOutputType = {
   sensitive: number | null;
   language: string | null;
   published_at: string | null;
+  media_json: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -75,6 +77,7 @@ export type Remote_statusesCountAggregateOutputType = {
   sensitive: number;
   language: number;
   published_at: number;
+  media_json: number;
   created_at: number;
   updated_at: number;
   _all: number;
@@ -99,6 +102,7 @@ export type Remote_statusesMinAggregateInputType = {
   sensitive?: true;
   language?: true;
   published_at?: true;
+  media_json?: true;
   created_at?: true;
   updated_at?: true;
 };
@@ -114,6 +118,7 @@ export type Remote_statusesMaxAggregateInputType = {
   sensitive?: true;
   language?: true;
   published_at?: true;
+  media_json?: true;
   created_at?: true;
   updated_at?: true;
 };
@@ -129,6 +134,7 @@ export type Remote_statusesCountAggregateInputType = {
   sensitive?: true;
   language?: true;
   published_at?: true;
+  media_json?: true;
   created_at?: true;
   updated_at?: true;
   _all?: true;
@@ -236,6 +242,7 @@ export type Remote_statusesGroupByOutputType = {
   sensitive: number;
   language: string | null;
   published_at: string;
+  media_json: string;
   created_at: string;
   updated_at: string;
   _count: Remote_statusesCountAggregateOutputType | null;
@@ -272,6 +279,7 @@ export type remote_statusesWhereInput = {
   sensitive?: Prisma.IntFilter<"remote_statuses"> | number;
   language?: Prisma.StringNullableFilter<"remote_statuses"> | string | null;
   published_at?: Prisma.StringFilter<"remote_statuses"> | string;
+  media_json?: Prisma.StringFilter<"remote_statuses"> | string;
   created_at?: Prisma.StringFilter<"remote_statuses"> | string;
   updated_at?: Prisma.StringFilter<"remote_statuses"> | string;
   remote_actors?: Prisma.XOR<
@@ -291,6 +299,7 @@ export type remote_statusesOrderByWithRelationInput = {
   sensitive?: Prisma.SortOrder;
   language?: Prisma.SortOrderInput | Prisma.SortOrder;
   published_at?: Prisma.SortOrder;
+  media_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   remote_actors?: Prisma.remote_actorsOrderByWithRelationInput;
@@ -311,6 +320,7 @@ export type remote_statusesWhereUniqueInput = Prisma.AtLeast<
     sensitive?: Prisma.IntFilter<"remote_statuses"> | number;
     language?: Prisma.StringNullableFilter<"remote_statuses"> | string | null;
     published_at?: Prisma.StringFilter<"remote_statuses"> | string;
+    media_json?: Prisma.StringFilter<"remote_statuses"> | string;
     created_at?: Prisma.StringFilter<"remote_statuses"> | string;
     updated_at?: Prisma.StringFilter<"remote_statuses"> | string;
     remote_actors?: Prisma.XOR<
@@ -332,6 +342,7 @@ export type remote_statusesOrderByWithAggregationInput = {
   sensitive?: Prisma.SortOrder;
   language?: Prisma.SortOrderInput | Prisma.SortOrder;
   published_at?: Prisma.SortOrder;
+  media_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   _count?: Prisma.remote_statusesCountOrderByAggregateInput;
@@ -359,6 +370,7 @@ export type remote_statusesScalarWhereWithAggregatesInput = {
   sensitive?: Prisma.IntWithAggregatesFilter<"remote_statuses"> | number;
   language?: Prisma.StringNullableWithAggregatesFilter<"remote_statuses"> | string | null;
   published_at?: Prisma.StringWithAggregatesFilter<"remote_statuses"> | string;
+  media_json?: Prisma.StringWithAggregatesFilter<"remote_statuses"> | string;
   created_at?: Prisma.StringWithAggregatesFilter<"remote_statuses"> | string;
   updated_at?: Prisma.StringWithAggregatesFilter<"remote_statuses"> | string;
 };
@@ -373,6 +385,7 @@ export type remote_statusesCreateInput = {
   sensitive?: number;
   language?: string | null;
   published_at: string;
+  media_json?: string;
   created_at?: string;
   updated_at?: string;
   remote_actors: Prisma.remote_actorsCreateNestedOneWithoutRemote_statusesInput;
@@ -389,6 +402,7 @@ export type remote_statusesUncheckedCreateInput = {
   sensitive?: number;
   language?: string | null;
   published_at: string;
+  media_json?: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -403,6 +417,7 @@ export type remote_statusesUpdateInput = {
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   published_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  media_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_actors?: Prisma.remote_actorsUpdateOneRequiredWithoutRemote_statusesNestedInput;
@@ -419,6 +434,7 @@ export type remote_statusesUncheckedUpdateInput = {
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   published_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  media_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -434,6 +450,7 @@ export type remote_statusesCreateManyInput = {
   sensitive?: number;
   language?: string | null;
   published_at: string;
+  media_json?: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -448,6 +465,7 @@ export type remote_statusesUpdateManyMutationInput = {
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   published_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  media_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -463,6 +481,7 @@ export type remote_statusesUncheckedUpdateManyInput = {
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   published_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  media_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -488,6 +507,7 @@ export type remote_statusesCountOrderByAggregateInput = {
   sensitive?: Prisma.SortOrder;
   language?: Prisma.SortOrder;
   published_at?: Prisma.SortOrder;
+  media_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
@@ -507,6 +527,7 @@ export type remote_statusesMaxOrderByAggregateInput = {
   sensitive?: Prisma.SortOrder;
   language?: Prisma.SortOrder;
   published_at?: Prisma.SortOrder;
+  media_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
@@ -522,6 +543,7 @@ export type remote_statusesMinOrderByAggregateInput = {
   sensitive?: Prisma.SortOrder;
   language?: Prisma.SortOrder;
   published_at?: Prisma.SortOrder;
+  media_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
@@ -626,6 +648,7 @@ export type remote_statusesCreateWithoutRemote_actorsInput = {
   sensitive?: number;
   language?: string | null;
   published_at: string;
+  media_json?: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -640,6 +663,7 @@ export type remote_statusesUncheckedCreateWithoutRemote_actorsInput = {
   sensitive?: number;
   language?: string | null;
   published_at: string;
+  media_json?: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -700,6 +724,7 @@ export type remote_statusesScalarWhereInput = {
   sensitive?: Prisma.IntFilter<"remote_statuses"> | number;
   language?: Prisma.StringNullableFilter<"remote_statuses"> | string | null;
   published_at?: Prisma.StringFilter<"remote_statuses"> | string;
+  media_json?: Prisma.StringFilter<"remote_statuses"> | string;
   created_at?: Prisma.StringFilter<"remote_statuses"> | string;
   updated_at?: Prisma.StringFilter<"remote_statuses"> | string;
 };
@@ -714,6 +739,7 @@ export type remote_statusesCreateManyRemote_actorsInput = {
   sensitive?: number;
   language?: string | null;
   published_at: string;
+  media_json?: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -728,6 +754,7 @@ export type remote_statusesUpdateWithoutRemote_actorsInput = {
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   published_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  media_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -742,6 +769,7 @@ export type remote_statusesUncheckedUpdateWithoutRemote_actorsInput = {
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   published_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  media_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -756,6 +784,7 @@ export type remote_statusesUncheckedUpdateManyWithoutRemote_actorsInput = {
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   published_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  media_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -774,6 +803,7 @@ export type remote_statusesSelect<
     sensitive?: boolean;
     language?: boolean;
     published_at?: boolean;
+    media_json?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
     remote_actors?: boolean | Prisma.remote_actorsDefaultArgs<ExtArgs>;
@@ -795,6 +825,7 @@ export type remote_statusesSelectCreateManyAndReturn<
     sensitive?: boolean;
     language?: boolean;
     published_at?: boolean;
+    media_json?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
     remote_actors?: boolean | Prisma.remote_actorsDefaultArgs<ExtArgs>;
@@ -816,6 +847,7 @@ export type remote_statusesSelectUpdateManyAndReturn<
     sensitive?: boolean;
     language?: boolean;
     published_at?: boolean;
+    media_json?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
     remote_actors?: boolean | Prisma.remote_actorsDefaultArgs<ExtArgs>;
@@ -834,6 +866,7 @@ export type remote_statusesSelectScalar = {
   sensitive?: boolean;
   language?: boolean;
   published_at?: boolean;
+  media_json?: boolean;
   created_at?: boolean;
   updated_at?: boolean;
 };
@@ -851,6 +884,7 @@ export type remote_statusesOmit<
   | "sensitive"
   | "language"
   | "published_at"
+  | "media_json"
   | "created_at"
   | "updated_at",
   ExtArgs["result"]["remote_statuses"]
@@ -890,6 +924,7 @@ export type $remote_statusesPayload<
       sensitive: number;
       language: string | null;
       published_at: string;
+      media_json: string;
       created_at: string;
       updated_at: string;
     },
@@ -1488,6 +1523,7 @@ export interface remote_statusesFieldRefs {
   readonly sensitive: Prisma.FieldRef<"remote_statuses", "Int">;
   readonly language: Prisma.FieldRef<"remote_statuses", "String">;
   readonly published_at: Prisma.FieldRef<"remote_statuses", "String">;
+  readonly media_json: Prisma.FieldRef<"remote_statuses", "String">;
   readonly created_at: Prisma.FieldRef<"remote_statuses", "String">;
   readonly updated_at: Prisma.FieldRef<"remote_statuses", "String">;
 }

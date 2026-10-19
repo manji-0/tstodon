@@ -15,11 +15,12 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param sensitive
  * @param language
  * @param publishedAt
+ * @param mediaJson
  * @param createdAt
  * @param updatedAt
  */
 export const upsertRemoteStatus = $runtime.makeTypedQueryFactory(
-  "INSERT INTO remote_statuses (\nid, actor_uri, object_uri, url, content_html, spoiler_text,\nvisibility, sensitive, language, published_at, created_at, updated_at\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)\nON CONFLICT(object_uri) DO UPDATE SET\ncontent_html = excluded.content_html,\nspoiler_text = excluded.spoiler_text,\nvisibility = excluded.visibility,\nsensitive = excluded.sensitive,\nlanguage = excluded.language,\npublished_at = excluded.published_at,\nurl = excluded.url,\nupdated_at = excluded.updated_at",
+  "INSERT INTO remote_statuses (\nid, actor_uri, object_uri, url, content_html, spoiler_text,\nvisibility, sensitive, language, published_at, media_json, created_at, updated_at\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)\nON CONFLICT(object_uri) DO UPDATE SET\ncontent_html = excluded.content_html,\nspoiler_text = excluded.spoiler_text,\nvisibility = excluded.visibility,\nsensitive = excluded.sensitive,\nlanguage = excluded.language,\npublished_at = excluded.published_at,\nurl = excluded.url,\nmedia_json = excluded.media_json,\nupdated_at = excluded.updated_at",
 ) as (
   id: string,
   actorUri: string,
@@ -31,6 +32,7 @@ export const upsertRemoteStatus = $runtime.makeTypedQueryFactory(
   sensitive: number,
   language: string | null,
   publishedAt: string,
+  mediaJson: string,
   createdAt: string,
   updatedAt: string,
 ) => $runtime.TypedSql<upsertRemoteStatus.Parameters, upsertRemoteStatus.Result>;
@@ -47,6 +49,7 @@ export namespace upsertRemoteStatus {
     sensitive: number,
     language: string | null,
     publishedAt: string,
+    mediaJson: string,
     createdAt: string,
     updatedAt: string,
   ];
