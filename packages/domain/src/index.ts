@@ -33,6 +33,7 @@ export { RemoteActor, type RemoteActor as RemoteActorValue } from "./remote-acto
 export {
   RemoteAttachmentSchema,
   RemoteStatus,
+  type RemoteNote,
   type RemoteAttachment,
   type RemoteStatus as RemoteStatusValue,
 } from "./remote-status";

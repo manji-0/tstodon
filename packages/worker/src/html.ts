@@ -36,6 +36,23 @@ export const decodeHtmlEntities = (value: string): string =>
     .replaceAll("&#39;", "'")
     .replaceAll("&nbsp;", " ");
 
+/**
+ * Hashtags in a remote post's HTML. Mastodon renders them as
+ * `#<span>name</span>` inside a link, so stripping tags with a space would
+ * split the `#` from the name; these forms are matched directly.
+ */
+export const htmlHashtags = (html: string): string[] => {
+  const tags = new Set<string>();
+  const decoded = decodeHtmlEntities(html);
+  for (const match of decoded.matchAll(/#(?:<span[^>]*>)?([A-Za-z0-9_]+)/g)) {
+    const tag = match[1];
+    if (tag) {
+      tags.add(tag.toLowerCase());
+    }
+  }
+  return [...tags];
+};
+
 /** Plain text of an HTML fragment, for keyword matching against remote posts. */
 export const htmlToText = (html: string): string =>
   decodeHtmlEntities(html.replace(/<[^>]*>/g, " "))

@@ -13,6 +13,8 @@ import { nowIso } from "./clock";
 import { jsonStringArray, runD1, type RepositoryError } from "./d1";
 import { parseJsonText, RemoteStatusRowSchema, toRepositoryError } from "./schemas";
 import { visibilitySql } from "./sql-enums";
+import { htmlHashtags } from "./html";
+import { matchesTagFilters, type StatusCursor, type TagStatusFilters } from "./status-store";
 import { queryTyped, runTyped } from "./typed-sql";
 import {
   deleteRemoteStatusByObjectUri as deleteRemoteStatusByObjectUriSql,
@@ -186,6 +188,51 @@ export const listPublicRemoteStatuses = async (
     }
     return statuses;
   });
+
+/**
+ * Remote statuses on a tag timeline. Tags are read from the stored HTML (the
+ * same `#tag` extraction the local notes use), over a bounded window of recent
+ * public statuses, because the remote rows carry no tag index.
+ */
+export const listTagRemoteStatuses = async (
+  db: D1Database,
+  tag: string,
+  limit: number,
+  cursor: StatusCursor = {},
+  filters: TagStatusFilters = { any: [], all: [], none: [], onlyMedia: false },
+): Promise<Result<RemoteStatus[], RepositoryError>> => {
+  const window = Math.max(200, limit * 4);
+  const fetched = await listPublicRemoteStatuses(db, window);
+  if (fetched.isErr()) {
+    return fetched;
+  }
+  const minId = cursor.minId ?? "";
+  const sinceId = cursor.sinceId ?? "";
+  const maxId = cursor.maxId ?? "";
+  const keep = (status: RemoteStatus): boolean => {
+    if (!matchesTagFilters(new Set(htmlHashtags(status.contentHtml)), tag, filters)) {
+      return false;
+    }
+    if (filters.onlyMedia && status.media.length === 0) {
+      return false;
+    }
+    if (minId.length > 0) {
+      return status.id > minId;
+    }
+    if (sinceId.length > 0) {
+      return status.id > sinceId;
+    }
+    if (maxId.length > 0) {
+      return status.id < maxId;
+    }
+    return true;
+  };
+  const matching = fetched.value.filter(keep);
+  matching.sort((left, right) =>
+    minId.length > 0 ? left.id.localeCompare(right.id) : right.id.localeCompare(left.id),
+  );
+  return ok(matching.slice(0, limit));
+};
 
 export const deleteRemoteStatusByObjectUri = async (
   db: D1Database,

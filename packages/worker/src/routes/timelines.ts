@@ -1,5 +1,10 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
+import type {
+  InstanceIdentity,
+  LocalStatus as LocalStatusValue,
+  RemoteNote,
+} from "@tstodon/domain";
 import { authenticate } from "../auth";
 import { restrictedDomains } from "../admin-domain-block-store";
 import { listBlockedDomains } from "../domain-block-store";
@@ -10,7 +15,11 @@ import { mastodonRemoteStatus, mastodonStatuses, remoteStatusVisible } from "../
 import { elapsedMs, writeMetric } from "../metrics";
 import { parseInstanceIdentity } from "../runtime-config";
 import { findRemoteActorByUri } from "../remote-actor-store";
-import { listPublicRemoteStatuses, listRemoteStatusCards } from "../remote-status-store";
+import {
+  listPublicRemoteStatuses,
+  listRemoteStatusCards,
+  listTagRemoteStatuses,
+} from "../remote-status-store";
 import {
   listDirectStatusesForAccount,
   listHomeStatuses,
@@ -23,6 +32,86 @@ import { filterMutedThreads } from "../status-mute-store";
 
 export const timelineRoutes = new Hono<{ Bindings: Env }>();
 
+/**
+ * `local`/`remote` on a timeline (both documented): `local=true` keeps local
+ * statuses, `remote=true` keeps remote ones, and neither or both keeps both.
+ */
+const timelineScopes = (
+  c: Context<{ Bindings: Env }>,
+): Readonly<{ local: boolean; remote: boolean }> => {
+  const local = isTruthy(c.req.query("local"));
+  const remote = isTruthy(c.req.query("remote"));
+  if (!local && !remote) {
+    return { local: true, remote: true };
+  }
+  return { local, remote };
+};
+
+/**
+ * Remote statuses rendered for a timeline: the visible ones whose actor is not
+ * on a blocked domain, with their preview card. The retained statuses come back
+ * alongside their documents so `filtered` can be attached to the same rows.
+ */
+const remoteTimelineDocuments = async (
+  c: Context<{ Bindings: Env }>,
+  identity: InstanceIdentity,
+  remote: ReadonlyArray<RemoteNote>,
+  viewerId: string | undefined,
+): Promise<
+  Readonly<{
+    statuses: RemoteNote[];
+    documents: Record<string, unknown>[];
+    cards: ReadonlyMap<string, string>;
+  }>
+> => {
+  const blockedDomains = viewerId ? await listBlockedDomains(c.env.DB, viewerId) : undefined;
+  const blocked = new Set(
+    (blockedDomains?.isOk() ? blockedDomains.value : []).map((domain) => domain.toLowerCase()),
+  );
+  for (const domain of await restrictedDomains(c.env.DB)) {
+    blocked.add(domain);
+  }
+  const cards = await listRemoteStatusCards(
+    c.env.DB,
+    remote.map((status) => status.id),
+  );
+  const statuses: RemoteNote[] = [];
+  const documents: Record<string, unknown>[] = [];
+  for (const status of remote) {
+    const actor = await findRemoteActorByUri(c.env.DB, status.actorUri);
+    if (actor.isErr() || !actor.value || !remoteStatusVisible(status)) {
+      continue;
+    }
+    if (blocked.has(actor.value.domain.toLowerCase())) {
+      continue;
+    }
+    const rawCard = cards.isOk() ? cards.value.get(status.id) : undefined;
+    const card = rawCard ? parseCardJson(rawCard) : undefined;
+    statuses.push(status);
+    documents.push(
+      mastodonRemoteStatus(identity, status, actor.value, card ? cardDocument(card) : null),
+    );
+  }
+  return { statuses, documents, cards: cards.isOk() ? cards.value : new Map() };
+};
+
+/** Merge local and remote timeline documents, newest first (`min_id` oldest first). */
+const mergeTimelineDocuments = (
+  local: ReadonlyArray<Record<string, unknown>>,
+  remote: ReadonlyArray<Record<string, unknown>>,
+  cursor: { minId?: string | undefined },
+  limit: number,
+): Record<string, unknown>[] => {
+  const ascending = (cursor.minId ?? "").length > 0;
+  return [...local, ...remote]
+    .sort((left, right) => {
+      const leftId = typeof left.id === "string" ? left.id : "";
+      const rightId = typeof right.id === "string" ? right.id : "";
+      return ascending ? leftId.localeCompare(rightId) : rightId.localeCompare(leftId);
+    })
+    .slice(0, limit);
+};
+
 timelineRoutes.get("/api/v1/timelines/public", async (c) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -33,65 +122,47 @@ timelineRoutes.get("/api/v1/timelines/public", async (c) => {
     return jsonAuthError(c, auth.error);
   }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
-  const statuses = await listPublicStatuses(
-    c.env.DB,
-    queryLimit(c.req.query("limit")),
-    queryCursor(c),
-  );
-  if (statuses.isErr()) {
-    return jsonRepositoryError(c, statuses.error.message);
-  }
-  const remote = await listPublicRemoteStatuses(c.env.DB, queryLimit(c.req.query("limit")));
-  if (remote.isErr()) {
-    return jsonRepositoryError(c, remote.error.message);
-  }
-  const localDocuments = await mastodonStatuses(c.env, identity.value, statuses.value, viewerId);
-  const blockedDomains = viewerId ? await listBlockedDomains(c.env.DB, viewerId) : undefined;
-  const blocked = new Set(
-    (blockedDomains?.isOk() ? blockedDomains.value : []).map((domain) => domain.toLowerCase()),
-  );
-  for (const domain of await restrictedDomains(c.env.DB)) {
-    blocked.add(domain);
-  }
-  const remoteCards = await listRemoteStatusCards(
-    c.env.DB,
-    remote.value.map((status) => status.id),
-  );
-  const remoteDocuments: Record<string, unknown>[] = [];
-  for (const status of remote.value) {
-    const actor = await findRemoteActorByUri(c.env.DB, status.actorUri);
-    if (actor.isErr() || !actor.value || !remoteStatusVisible(status)) {
-      continue;
+  const scopes = timelineScopes(c);
+  const limit = queryLimit(c.req.query("limit"));
+  const cursor = queryCursor(c);
+  const localDocuments: Record<string, unknown>[] = [];
+  const localStatuses: LocalStatusValue[] = [];
+  if (scopes.local) {
+    const statuses = await listPublicStatuses(c.env.DB, limit, cursor);
+    if (statuses.isErr()) {
+      return jsonRepositoryError(c, statuses.error.message);
     }
-    if (blocked.has(actor.value.domain.toLowerCase())) {
-      continue;
-    }
-    const rawCard = remoteCards.isOk() ? remoteCards.value.get(status.id) : undefined;
-    const card = rawCard ? parseCardJson(rawCard) : undefined;
-    remoteDocuments.push(
-      mastodonRemoteStatus(identity.value, status, actor.value, card ? cardDocument(card) : null),
+    localStatuses.push(...statuses.value);
+    localDocuments.push(
+      ...(await mastodonStatuses(c.env, identity.value, statuses.value, viewerId)),
     );
+  }
+  const remoteDocuments: Record<string, unknown>[] = [];
+  let remoteStatuses: RemoteNote[] = [];
+  if (scopes.remote) {
+    const remote = await listPublicRemoteStatuses(c.env.DB, limit);
+    if (remote.isErr()) {
+      return jsonRepositoryError(c, remote.error.message);
+    }
+    const rendered = await remoteTimelineDocuments(c, identity.value, remote.value, viewerId);
+    remoteStatuses = [...rendered.statuses];
+    remoteDocuments.push(...rendered.documents);
   }
   const filteredLocal = await attachFilteredToStatuses(
     c.env.DB,
     viewerId,
     "public",
-    statuses.value,
+    localStatuses,
     localDocuments,
   );
   const filteredRemote = await attachFilteredToRemoteStatuses(
     c.env.DB,
     viewerId,
     "public",
-    remote.value,
+    remoteStatuses,
     remoteDocuments,
   );
-  const merged = [...filteredLocal, ...filteredRemote].sort((left, right) => {
-    const leftAt = typeof left.created_at === "string" ? left.created_at : "";
-    const rightAt = typeof right.created_at === "string" ? right.created_at : "";
-    return rightAt.localeCompare(leftAt);
-  });
-  return c.json(merged.slice(0, queryLimit(c.req.query("limit"))));
+  return c.json(mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit));
 });
 
 timelineRoutes.get("/api/v1/timelines/home", async (c) => {
@@ -170,23 +241,60 @@ timelineRoutes.get("/api/v1/timelines/tag/:hashtag", async (c) => {
     return jsonAuthError(c, auth.error);
   }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
-  const statuses = await listTagStatuses(
-    c.env.DB,
-    c.req.param("hashtag"),
-    queryLimit(c.req.query("limit")),
-    queryCursor(c),
-    tagStatusFilters(c),
-  );
-  if (statuses.isErr()) {
-    return jsonRepositoryError(c, statuses.error.message);
+  const scopes = timelineScopes(c);
+  const limit = queryLimit(c.req.query("limit"));
+  const cursor = queryCursor(c);
+  const filters = tagStatusFilters(c);
+  const localDocuments: Record<string, unknown>[] = [];
+  let localStatuses: LocalStatusValue[] = [];
+  if (scopes.local) {
+    const statuses = await listTagStatuses(
+      c.env.DB,
+      c.req.param("hashtag"),
+      limit,
+      cursor,
+      filters,
+    );
+    if (statuses.isErr()) {
+      return jsonRepositoryError(c, statuses.error.message);
+    }
+    localStatuses = [...statuses.value];
+    localDocuments.push(
+      ...(await mastodonStatuses(c.env, identity.value, statuses.value, viewerId)),
+    );
   }
-  const documents = await attachFilteredToStatuses(
+  const remoteDocuments: Record<string, unknown>[] = [];
+  let remoteStatuses: RemoteNote[] = [];
+  if (scopes.remote) {
+    const remote = await listTagRemoteStatuses(
+      c.env.DB,
+      c.req.param("hashtag"),
+      limit,
+      cursor,
+      filters,
+    );
+    if (remote.isErr()) {
+      return jsonRepositoryError(c, remote.error.message);
+    }
+    const rendered = await remoteTimelineDocuments(c, identity.value, remote.value, viewerId);
+    remoteStatuses = [...rendered.statuses];
+    remoteDocuments.push(...rendered.documents);
+  }
+  const filteredLocal = await attachFilteredToStatuses(
     c.env.DB,
     viewerId,
     "public",
-    statuses.value,
-    await mastodonStatuses(c.env, identity.value, statuses.value, viewerId),
+    localStatuses,
+    localDocuments,
   );
+  const filteredRemote = await attachFilteredToRemoteStatuses(
+    c.env.DB,
+    viewerId,
+    "public",
+    remoteStatuses,
+    remoteDocuments,
+  );
+  const documents = mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit);
   writeMetric(c.env, "timeline.tag", [elapsedMs(startedAt), documents.length], ["ok"]);
   return c.json(documents);
 });

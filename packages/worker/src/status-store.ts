@@ -624,6 +624,29 @@ export type TagStatusFilters = Readonly<{
   onlyMedia: boolean;
 }>;
 
+/**
+ * Does `text` carry the primary tag and the `any`/`all`/`none` constraints?
+ * Used for remote statuses, whose tags are matched from their stored HTML.
+ */
+export const matchesTagFilters = (
+  present: ReadonlySet<string>,
+  tag: string,
+  filters: TagStatusFilters,
+): boolean => {
+  const primary = tag.replace(/^#/, "").toLowerCase();
+  if (!present.has(primary)) {
+    return false;
+  }
+  const has = (value: string): boolean => present.has(value.toLowerCase());
+  if (filters.any.length > 0 && !filters.any.some(has)) {
+    return false;
+  }
+  if (!filters.all.every(has)) {
+    return false;
+  }
+  return !filters.none.some(has);
+};
+
 export const listTagStatuses = async (
   db: D1Database,
   tag: string,
