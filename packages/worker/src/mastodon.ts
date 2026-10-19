@@ -508,7 +508,10 @@ export const mastodonFilter = (row: FilterRow): Record<string, unknown> => {
   };
 };
 
-export const mastodonFilterV2 = (row: FilterRow): Record<string, unknown> => {
+export const mastodonFilterV2 = (
+  row: FilterRow,
+  statuses: ReadonlyArray<Record<string, unknown>> = [],
+): Record<string, unknown> => {
   const v1 = mastodonFilter(row);
   return {
     id: row.id,
@@ -516,6 +519,7 @@ export const mastodonFilterV2 = (row: FilterRow): Record<string, unknown> => {
     context: v1.context,
     expires_at: row.expires_at,
     filter_action: row.irreversible === 1 ? "hide" : "warn",
+    statuses,
     keywords: filterKeywords(row).map((keyword) => ({
       id: keyword.id,
       keyword: keyword.keyword,

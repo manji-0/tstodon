@@ -70,6 +70,8 @@ export * from "./sql/deleteFavourite";
 
 export * from "./sql/deleteFilter";
 
+export * from "./sql/deleteFilterStatus";
+
 export * from "./sql/deleteFollow";
 
 export * from "./sql/deleteList";
@@ -200,6 +202,8 @@ export * from "./sql/insertFavouriteOrIgnore";
 
 export * from "./sql/insertFilter";
 
+export * from "./sql/insertFilterStatus";
+
 export * from "./sql/insertFollowOrIgnore";
 
 export * from "./sql/insertInboxActivity";
@@ -273,6 +277,8 @@ export * from "./sql/listExpiredUnnotifiedPolls";
 export * from "./sql/listFamiliarFollowerIds";
 
 export * from "./sql/listFeaturedTags";
+
+export * from "./sql/listFilterStatusIds";
 
 export * from "./sql/listFilters";
 

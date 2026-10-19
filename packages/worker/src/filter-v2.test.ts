@@ -153,6 +153,52 @@ describe("v2 filters", () => {
     ).toBe(422);
   });
 
+  it("narrows a filter to specific statuses", async () => {
+    const email = "filter-v2-narrow@example.com";
+    const created = await send(email, "POST", "/api/v2/filters", {
+      title: "narrowed",
+      keywords: ["spoiler"],
+    });
+    const filter = read(FilterSchema, created.body);
+
+    const status = await send(email, "POST", "/api/v1/statuses", {
+      status: "a status to narrow",
+    });
+    const statusId = read(z.object({ id: z.string().min(1) }), status.body).id;
+
+    const added = await send(email, "POST", `/api/v2/filters/${filter.id}/statuses`, {
+      status_ids: [statusId],
+    });
+    expect(added.status).toBe(200);
+
+    const narrowed = await send(email, "GET", `/api/v2/filters/${filter.id}/statuses`);
+    expect(narrowed.status).toBe(200);
+    expect(
+      read(z.array(z.object({ id: z.string().min(1) })), narrowed.body).map((entry) => entry.id),
+    ).toEqual([statusId]);
+
+    // The filter document carries the narrowing too.
+    const fetched = await send(email, "GET", `/api/v2/filters/${filter.id}`);
+    expect(
+      read(
+        FilterSchema.extend({ statuses: z.array(z.object({ id: z.string().min(1) })) }),
+        fetched.body,
+      ).statuses.map((entry) => entry.id),
+    ).toEqual([statusId]);
+
+    const removed = await send(
+      email,
+      "DELETE",
+      `/api/v2/filters/${filter.id}/statuses/${statusId}`,
+    );
+    expect(removed.status).toBe(200);
+    const after = await send(email, "GET", `/api/v2/filters/${filter.id}/statuses`);
+    expect(read(z.array(z.unknown()), after.body)).toHaveLength(0);
+    expect(
+      (await send(email, "DELETE", `/api/v2/filters/${filter.id}/statuses/${statusId}`)).status,
+    ).toBe(404);
+  });
+
   it("requires auth and hides other accounts' filters", async () => {
     const email = "filter-v2-private@example.com";
     const created = await send(email, "POST", "/api/v2/filters", {

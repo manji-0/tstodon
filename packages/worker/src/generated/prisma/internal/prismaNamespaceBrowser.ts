@@ -62,6 +62,7 @@ export const ModelName = {
   bookmarks: "bookmarks",
   conversation_reads: "conversation_reads",
   favourites: "favourites",
+  filter_statuses: "filter_statuses",
   filters: "filters",
   follows: "follows",
   blocks: "blocks",
@@ -267,6 +268,15 @@ export const FavouritesScalarFieldEnum = {
 
 export type FavouritesScalarFieldEnum =
   (typeof FavouritesScalarFieldEnum)[keyof typeof FavouritesScalarFieldEnum];
+
+export const Filter_statusesScalarFieldEnum = {
+  filter_id: "filter_id",
+  status_id: "status_id",
+  created_at: "created_at",
+} as const;
+
+export type Filter_statusesScalarFieldEnum =
+  (typeof Filter_statusesScalarFieldEnum)[keyof typeof Filter_statusesScalarFieldEnum];
 
 export const FiltersScalarFieldEnum = {
   id: "id",

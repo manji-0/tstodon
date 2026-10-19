@@ -405,6 +405,7 @@ export const ModelName = {
   bookmarks: "bookmarks",
   conversation_reads: "conversation_reads",
   favourites: "favourites",
+  filter_statuses: "filter_statuses",
   filters: "filters",
   follows: "follows",
   blocks: "blocks",
@@ -470,6 +471,7 @@ export type TypeMap<
       | "bookmarks"
       | "conversation_reads"
       | "favourites"
+      | "filter_statuses"
       | "filters"
       | "follows"
       | "blocks"
@@ -1559,6 +1561,82 @@ export type TypeMap<
         count: {
           args: Prisma.favouritesCountArgs<ExtArgs>;
           result: runtime.Types.Utils.Optional<Prisma.FavouritesCountAggregateOutputType> | number;
+        };
+      };
+    };
+    filter_statuses: {
+      payload: Prisma.$filter_statusesPayload<ExtArgs>;
+      fields: Prisma.filter_statusesFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.filter_statusesFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$filter_statusesPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.filter_statusesFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$filter_statusesPayload>;
+        };
+        findFirst: {
+          args: Prisma.filter_statusesFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$filter_statusesPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.filter_statusesFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$filter_statusesPayload>;
+        };
+        findMany: {
+          args: Prisma.filter_statusesFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$filter_statusesPayload>[];
+        };
+        create: {
+          args: Prisma.filter_statusesCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$filter_statusesPayload>;
+        };
+        createMany: {
+          args: Prisma.filter_statusesCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.filter_statusesCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$filter_statusesPayload>[];
+        };
+        delete: {
+          args: Prisma.filter_statusesDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$filter_statusesPayload>;
+        };
+        update: {
+          args: Prisma.filter_statusesUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$filter_statusesPayload>;
+        };
+        deleteMany: {
+          args: Prisma.filter_statusesDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.filter_statusesUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.filter_statusesUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$filter_statusesPayload>[];
+        };
+        upsert: {
+          args: Prisma.filter_statusesUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$filter_statusesPayload>;
+        };
+        aggregate: {
+          args: Prisma.Filter_statusesAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateFilter_statuses>;
+        };
+        groupBy: {
+          args: Prisma.filter_statusesGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Filter_statusesGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.filter_statusesCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Filter_statusesCountAggregateOutputType>
+            | number;
         };
       };
     };
@@ -4098,6 +4176,15 @@ export const FavouritesScalarFieldEnum = {
 export type FavouritesScalarFieldEnum =
   (typeof FavouritesScalarFieldEnum)[keyof typeof FavouritesScalarFieldEnum];
 
+export const Filter_statusesScalarFieldEnum = {
+  filter_id: "filter_id",
+  status_id: "status_id",
+  created_at: "created_at",
+} as const;
+
+export type Filter_statusesScalarFieldEnum =
+  (typeof Filter_statusesScalarFieldEnum)[keyof typeof Filter_statusesScalarFieldEnum];
+
 export const FiltersScalarFieldEnum = {
   id: "id",
   account_id: "account_id",
@@ -4663,6 +4750,7 @@ export type GlobalOmitConfig = {
   bookmarks?: Prisma.bookmarksOmit;
   conversation_reads?: Prisma.conversation_readsOmit;
   favourites?: Prisma.favouritesOmit;
+  filter_statuses?: Prisma.filter_statusesOmit;
   filters?: Prisma.filtersOmit;
   follows?: Prisma.followsOmit;
   blocks?: Prisma.blocksOmit;

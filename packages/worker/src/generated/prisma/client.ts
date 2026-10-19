@@ -112,6 +112,11 @@ export type conversation_reads = Prisma.conversation_readsModel;
  */
 export type favourites = Prisma.favouritesModel;
 /**
+ * Model filter_statuses
+ *
+ */
+export type filter_statuses = Prisma.filter_statusesModel;
+/**
  * Model filters
  *
  */

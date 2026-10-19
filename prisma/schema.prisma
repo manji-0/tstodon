@@ -185,6 +185,14 @@ model favourites {
   @@id([account_id, status_id])
 }
 
+model filter_statuses {
+  filter_id  String
+  status_id  String
+  created_at String @default("CURRENT_TIMESTAMP")
+
+  @@id([filter_id, status_id])
+}
+
 model filters {
   id            String @id
   account_id    String

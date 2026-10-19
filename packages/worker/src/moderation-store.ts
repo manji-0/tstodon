@@ -7,7 +7,10 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import {
   deleteFilter as deleteFilterSql,
+  deleteFilterStatus as deleteFilterStatusSql,
   findFilterById as findFilterByIdSql,
+  insertFilterStatus as insertFilterStatusSql,
+  listFilterStatusIds as listFilterStatusIdsSql,
   insertFilter as insertFilterSql,
   insertReport as insertReportSql,
   listFilters as listFiltersSql,
@@ -172,6 +175,42 @@ export const updateFilter = async (
           ? JSON.stringify(input.keywords)
           : JSON.stringify([{ id, keyword: input.phrase, whole_word: input.wholeWord }]),
       ),
+    );
+    return rows.length > 0;
+  });
+
+/** Status ids a filter is narrowed to. */
+export const listFilterStatusIds = async (
+  db: D1Database,
+  filterId: string,
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ status_id: string }>(db, listFilterStatusIdsSql(filterId));
+    return rows.map((row) => row.status_id);
+  });
+
+export const addFilterStatuses = async (
+  db: D1Database,
+  filterId: string,
+  statusIds: ReadonlyArray<string>,
+): Promise<Result<void, RepositoryError>> => {
+  const written = await runD1(async () => {
+    for (const statusId of [...new Set(statusIds)].filter((id) => id.length > 0)) {
+      await runTyped(db, insertFilterStatusSql(filterId, statusId, nowIso()));
+    }
+  });
+  return written.map(() => undefined);
+};
+
+export const removeFilterStatus = async (
+  db: D1Database,
+  filterId: string,
+  statusId: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ status_id: string }>(
+      db,
+      deleteFilterStatusSql(filterId, statusId),
     );
     return rows.length > 0;
   });

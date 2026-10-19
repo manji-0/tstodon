@@ -229,6 +229,10 @@ export const FilterKeywordBodySchema = z.object({
   whole_word: booleanish,
 });
 
+export const FilterStatusesBodySchema = z.object({
+  status_ids: z.union([z.array(z.string()), z.string()]).optional(),
+});
+
 export const ReportBodySchema = z.object({
   account_id: z.string().min(1),
   status_ids: z.union([z.array(z.string()), z.string()]).optional(),
@@ -511,6 +515,7 @@ warmSchemas([
   FilterBodySchema,
   FilterV2BodySchema,
   FilterKeywordBodySchema,
+  FilterStatusesBodySchema,
   ReportBodySchema,
   AppBodySchema,
   OAuthTokenBodySchema,

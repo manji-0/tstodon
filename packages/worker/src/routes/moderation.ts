@@ -9,20 +9,27 @@ import {
   requireUser,
 } from "../http";
 import { newEntityId } from "../ids";
-import { mastodonFilter, mastodonFilterV2 } from "../mastodon";
+import { authenticate } from "../auth";
+import { mastodonFilter, mastodonFilterV2, mastodonStatuses } from "../mastodon";
+import { parseInstanceIdentity } from "../runtime-config";
+import { findStatusesByIds } from "../status-store";
 import {
+  addFilterStatuses,
   deleteFilter,
   filterKeywords,
   findFilterById,
   insertFilter,
   insertReport,
+  listFilterStatusIds,
   listFilters,
+  removeFilterStatus,
   updateFilter,
   type FilterKeyword,
 } from "../moderation-store";
 import {
   FilterBodySchema,
   FilterKeywordBodySchema,
+  FilterStatusesBodySchema,
   FilterV2BodySchema,
   isTruthy,
   ReportBodySchema,
@@ -128,7 +135,17 @@ moderationRoutes.get("/api/v2/filters", async (c) => {
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
-  return c.json(rows.value.map(mastodonFilterV2));
+  const documents: Record<string, unknown>[] = [];
+  for (const row of rows.value) {
+    const statusIds = await listFilterStatusIds(c.env.DB, row.id);
+    documents.push(
+      mastodonFilterV2(
+        row,
+        await filterStatusDocuments(c, statusIds.isOk() ? statusIds.value : []),
+      ),
+    );
+  }
+  return c.json(documents);
 });
 
 /** Keywords from either `keywords_attributes[]` or `keywords[]`, in order. */
@@ -184,7 +201,13 @@ moderationRoutes.get("/api/v2/filters/:id", async (c) => {
   if (!row.value) {
     return filterNotFound(c);
   }
-  return c.json(mastodonFilterV2(row.value));
+  const statusIds = await listFilterStatusIds(c.env.DB, row.value.id);
+  return c.json(
+    mastodonFilterV2(
+      row.value,
+      await filterStatusDocuments(c, statusIds.isOk() ? statusIds.value : []),
+    ),
+  );
 });
 
 moderationRoutes.put("/api/v2/filters/:id", async (c) => {
@@ -230,7 +253,13 @@ moderationRoutes.put("/api/v2/filters/:id", async (c) => {
   if (row.isErr() || !row.value) {
     return filterNotFound(c);
   }
-  return c.json(mastodonFilterV2(row.value));
+  const statusIds = await listFilterStatusIds(c.env.DB, row.value.id);
+  return c.json(
+    mastodonFilterV2(
+      row.value,
+      await filterStatusDocuments(c, statusIds.isOk() ? statusIds.value : []),
+    ),
+  );
 });
 
 moderationRoutes.delete("/api/v2/filters/:id", async (c) => {
@@ -395,6 +424,90 @@ moderationRoutes.delete("/api/v2/filters/:id/keywords/:keywordId", async (c) => 
   const response = await writeKeywords(c, remaining);
   if (response.status !== 200) {
     return response;
+  }
+  return c.json({});
+});
+
+const filterStatusDocuments = async (
+  c: Context<{ Bindings: Env }>,
+  statusIds: ReadonlyArray<string>,
+): Promise<Record<string, unknown>[]> => {
+  if (statusIds.length === 0) {
+    return [];
+  }
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return [];
+  }
+  const found = await findStatusesByIds(c.env.DB, statusIds);
+  if (found.isErr()) {
+    return [];
+  }
+  const auth = await authenticate(c.req.raw, c.env);
+  const viewerId = auth.isOk() && auth.value.kind === "Account" ? auth.value.account.id : undefined;
+  return mastodonStatuses(c.env, identity.value, [...found.value.values()], viewerId);
+};
+
+moderationRoutes.get("/api/v2/filters/:id/statuses", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const row = await findFilterById(c.env.DB, user.value.id, c.req.param("id") ?? "");
+  if (row.isErr()) {
+    return jsonRepositoryError(c, row.error.message);
+  }
+  if (!row.value) {
+    return filterNotFound(c);
+  }
+  const statusIds = await listFilterStatusIds(c.env.DB, row.value.id);
+  if (statusIds.isErr()) {
+    return jsonRepositoryError(c, statusIds.error.message);
+  }
+  return c.json(await filterStatusDocuments(c, statusIds.value));
+});
+
+moderationRoutes.post("/api/v2/filters/:id/statuses", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const row = await findFilterById(c.env.DB, user.value.id, c.req.param("id") ?? "");
+  if (row.isErr()) {
+    return jsonRepositoryError(c, row.error.message);
+  }
+  if (!row.value) {
+    return filterNotFound(c);
+  }
+  const body = await readBody(c, FilterStatusesBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  const added = await addFilterStatuses(c.env.DB, row.value.id, stringList(body.value.status_ids));
+  if (added.isErr()) {
+    return jsonRepositoryError(c, added.error.message);
+  }
+  return c.json({});
+});
+
+moderationRoutes.delete("/api/v2/filters/:id/statuses/:statusId", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const row = await findFilterById(c.env.DB, user.value.id, c.req.param("id") ?? "");
+  if (row.isErr()) {
+    return jsonRepositoryError(c, row.error.message);
+  }
+  if (!row.value) {
+    return filterNotFound(c);
+  }
+  const removed = await removeFilterStatus(c.env.DB, row.value.id, c.req.param("statusId") ?? "");
+  if (removed.isErr()) {
+    return jsonRepositoryError(c, removed.error.message);
+  }
+  if (!removed.value) {
+    return filterNotFound(c);
   }
   return c.json({});
 });
