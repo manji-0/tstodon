@@ -35,6 +35,7 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
 const AdminAccountSchema = MastodonAccountPreviewSchema.extend({
   email: z.string(),
   approved: z.boolean(),
+  disabled: z.boolean(),
   suspended: z.boolean(),
   limited: z.boolean(),
 });
@@ -153,5 +154,30 @@ describe("registration approval", () => {
         (row) => row.id,
       ),
     ).toEqual([targetId]);
+  });
+
+  it("serves a single admin account and 404s for an unknown one", async () => {
+    const admin = "approval-single-admin@example.com";
+    const target = await json("/api/v1/accounts/verify_credentials", {
+      headers: await auth("approval-single-target@example.com"),
+    });
+    const targetId = read(MastodonAccountPreviewSchema, target.body).id;
+
+    const single = await json(`/api/v1/admin/accounts/${targetId}`, {
+      headers: await auth(admin, { admin: true }),
+    });
+    expect(single.status).toBe(200);
+    const document = read(AdminAccountSchema, single.body);
+    expect(document.id).toBe(targetId);
+    expect(document.approved).toBe(true);
+    expect(document.disabled).toBe(false);
+
+    expect(
+      (
+        await json("/api/v1/admin/accounts/does-not-exist", {
+          headers: await auth(admin, { admin: true }),
+        })
+      ).status,
+    ).toBe(404);
   });
 });

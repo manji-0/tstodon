@@ -542,6 +542,22 @@ const adminAccountDocument = async (
   invite_request: null,
 });
 
+adminRoutes.get("/api/v1/admin/accounts/:id", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const admin = await requireAdmin(c);
+  if (admin.isErr()) {
+    return jsonAuthError(c, admin.error);
+  }
+  const document = await adminAccountFor(c.env, identity.value, c.req.param("id") ?? "");
+  if (!document) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(document);
+});
+
 adminRoutes.get("/api/v1/admin/accounts", async (c) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
