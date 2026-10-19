@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { authenticate } from "../auth";
 import { restrictedDomains } from "../admin-domain-block-store";
 import { listBlockedDomains } from "../domain-block-store";
@@ -15,7 +16,9 @@ import {
   listHomeStatuses,
   listPublicStatuses,
   listTagStatuses,
+  type TagStatusFilters,
 } from "../status-store";
+import { isTruthy } from "../schemas";
 import { filterMutedThreads } from "../status-mute-store";
 
 export const timelineRoutes = new Hono<{ Bindings: Env }>();
@@ -124,6 +127,38 @@ timelineRoutes.get("/api/v1/timelines/home", async (c) => {
   );
 });
 
+/**
+ * Mastodon's `any[]`/`all[]`/`none[]` on a tag timeline. Both the `name[]` and
+ * `name` forms are accepted, a leading `#` is dropped, and — as the API
+ * documents — at most four additional tags are applied, `any` first.
+ */
+const TAG_FILTER_LIMIT = 4;
+
+const tagStatusFilters = (c: Context<{ Bindings: Env }>): TagStatusFilters => {
+  const values = (key: string): string[] =>
+    [...(c.req.queries(`${key}[]`) ?? []), ...(c.req.queries(key) ?? [])]
+      .map((value) => value.trim().replace(/^#/, ""))
+      .filter((value) => value.length > 0);
+  const any: string[] = [];
+  const all: string[] = [];
+  const none: string[] = [];
+  for (const [target, list] of [
+    [any, values("any")],
+    [all, values("all")],
+    [none, values("none")],
+  ] as const) {
+    for (const value of list) {
+      if (any.length + all.length + none.length >= TAG_FILTER_LIMIT) {
+        break;
+      }
+      if (!target.includes(value)) {
+        target.push(value);
+      }
+    }
+  }
+  return { any, all, none, onlyMedia: isTruthy(c.req.query("only_media")) };
+};
+
 timelineRoutes.get("/api/v1/timelines/tag/:hashtag", async (c) => {
   const startedAt = Date.now();
   const identity = parseInstanceIdentity(c.env);
@@ -140,6 +175,7 @@ timelineRoutes.get("/api/v1/timelines/tag/:hashtag", async (c) => {
     c.req.param("hashtag"),
     queryLimit(c.req.query("limit")),
     queryCursor(c),
+    tagStatusFilters(c),
   );
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);

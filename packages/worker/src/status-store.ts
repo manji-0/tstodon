@@ -633,22 +633,61 @@ export const listBookmarkedStatuses = async (
     return hydrateStatusRows(db, results ?? []);
   });
 
+/** Additional tag constraints on a tag timeline (`any[]`/`all[]`/`none[]`). */
+export type TagStatusFilters = Readonly<{
+  any: ReadonlyArray<string>;
+  all: ReadonlyArray<string>;
+  none: ReadonlyArray<string>;
+  onlyMedia: boolean;
+}>;
+
 export const listTagStatuses = async (
   db: D1Database,
   tag: string,
   limit: number,
   cursor: StatusCursor = {},
+  filters: TagStatusFilters = { any: [], all: [], none: [], onlyMedia: false },
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
     const { where, order, binds } = cursorFragment(cursor);
-    const { results } = await db
-      .prepare(
-        `SELECT ${statusSelect} FROM statuses
+    // Hashtags are matched case-insensitively, like the primary one.
+    const patterns = (tags: ReadonlyArray<string>): string[] =>
+      tags.flatMap((value) => [`%#${value}%`, `%#${value.toLowerCase()}%`]);
+    const contains = (tags: ReadonlyArray<string>): string =>
+      tags.length === 0
+        ? ""
+        : ` AND (${patterns(tags)
+            .map(() => "content_text LIKE ?")
+            .join(" OR ")})`;
+    const containsAll = (tags: ReadonlyArray<string>): string =>
+      tags.length === 0
+        ? ""
+        : ` AND (${tags.map(() => "content_text LIKE ? AND content_text LIKE ?").join(" AND ")})`;
+    const excludes = (tags: ReadonlyArray<string>): string =>
+      tags.length === 0
+        ? ""
+        : ` AND ${patterns(tags)
+            .map(() => "content_text NOT LIKE ?")
+            .join(" AND ")}`;
+    const onlyMedia = filters.onlyMedia
+      ? " AND id IN (SELECT status_id FROM media_attachments WHERE status_id IS NOT NULL)"
+      : "";
+    const sql = `SELECT ${statusSelect} FROM statuses
          WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
            AND (content_text LIKE ? OR content_text LIKE ?)
-         ${where} ${order} LIMIT ?`,
+           ${contains(filters.any)}${containsAll(filters.all)}${excludes(filters.none)}${onlyMedia}
+         ${where} ${order} LIMIT ?`;
+    const { results } = await db
+      .prepare(sql)
+      .bind(
+        `%#${tag}%`,
+        `%#${tag.toLowerCase()}%`,
+        ...patterns(filters.any),
+        ...patterns(filters.all),
+        ...patterns(filters.none),
+        ...binds,
+        limit,
       )
-      .bind(`%#${tag}%`, `%#${tag.toLowerCase()}%`, ...binds, limit)
       .all();
     return hydrateStatusRows(db, results ?? []);
   });

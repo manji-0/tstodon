@@ -17,6 +17,8 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Link-card test fetch stubs are host-scoped (no cross-file flake)
+- Tag timeline accepts `any[]`/`all[]`/`none[]` (4-tag cap) and `only_media`
 - Reblog honours `visibility`, refuses non-rebloggable statuses, and is idempotent
 - `favourited_by` / `reblogged_by` list local and remote accounts behind a status's counts
 - Poll edit accepts `hide_totals`

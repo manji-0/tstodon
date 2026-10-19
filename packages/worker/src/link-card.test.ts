@@ -52,6 +52,11 @@ const OG_HTML = `<!doctype html><html><head>
 <meta property="og:image" content="/cover.jpg" />
 <title>ignored</title></head><body>hi</body></html>`;
 
+/**
+ * Install a fetch stub for one test. Only the calls the handler answers are
+ * counted, and anything else falls through to the real fetch, so another test
+ * file running in this isolate cannot skew the count.
+ */
 const withFetchStub = async (
   handler: (url: URL) => Response | undefined,
   run: () => Promise<void>,
@@ -59,10 +64,13 @@ const withFetchStub = async (
   let calls = 0;
   const original = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    calls += 1;
     const href = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const stubbed = handler(new URL(href));
-    return stubbed ?? original(input as RequestInfo, init);
+    if (stubbed) {
+      calls += 1;
+      return stubbed;
+    }
+    return original(input as RequestInfo, init);
   }) as typeof fetch;
   try {
     await run();
@@ -127,7 +135,7 @@ describe("link cards", () => {
   it("does not reach into private hosts", async () => {
     const email = "card-private@example.com";
     const calls = await withFetchStub(
-      () => new Response("nope", { status: 500 }),
+      (url) => (url.hostname === "127.0.0.1" ? new Response("nope", { status: 500 }) : undefined),
       async () => {
         const status = await postStatus(email, "local link http://127.0.0.1:8080/secret");
         await unfurl(status.id, "http://127.0.0.1:8080/secret");
@@ -200,7 +208,10 @@ describe("link cards", () => {
   it("keeps the status when the link cannot be fetched", async () => {
     const email = "card-broken@example.com";
     await withFetchStub(
-      () => new Response("nope", { status: 404, headers: { "content-type": "text/html" } }),
+      (url) =>
+        url.hostname === "missing.example"
+          ? new Response("nope", { status: 404, headers: { "content-type": "text/html" } })
+          : undefined,
       async () => {
         const status = await postStatus(email, "dead link https://missing.example/gone");
         await unfurl(status.id, "https://missing.example/gone");
@@ -262,10 +273,12 @@ describe("link cards", () => {
       .run();
 
     const calls = await withFetchStub(
-      () =>
-        new Response('<meta property="og:title" content="Fresh Title" />', {
-          headers: { "content-type": "text/html" },
-        }),
+      (url) =>
+        url.hostname === "cron.example"
+          ? new Response('<meta property="og:title" content="Fresh Title" />', {
+              headers: { "content-type": "text/html" },
+            })
+          : undefined,
       async () => {
         expect(await processOutboxJob(env, { kind: "RefreshLinkCards" })).toBe("ok");
       },
@@ -281,7 +294,10 @@ describe("link cards", () => {
       .bind(aged, url)
       .run();
     await withFetchStub(
-      () => new Response("boom", { status: 503, headers: { "content-type": "text/html" } }),
+      (url) =>
+        url.hostname === "cron.example"
+          ? new Response("boom", { status: 503, headers: { "content-type": "text/html" } })
+          : undefined,
       async () => {
         expect(await processOutboxJob(env, { kind: "RefreshLinkCards" })).toBe("ok");
       },
@@ -298,7 +314,10 @@ describe("link cards", () => {
 
     // A 404 is settled: retrying would never help.
     await withFetchStub(
-      () => new Response("gone", { status: 404, headers: { "content-type": "text/html" } }),
+      (url) =>
+        url.hostname === "outcome.example"
+          ? new Response("gone", { status: 404, headers: { "content-type": "text/html" } })
+          : undefined,
       async () => {
         expect(
           await processLinkCardJob(env, {
@@ -313,7 +332,10 @@ describe("link cards", () => {
 
     // A 500 (or a thrown fetch) asks the queue to try again.
     await withFetchStub(
-      () => new Response("boom", { status: 500, headers: { "content-type": "text/html" } }),
+      (url) =>
+        url.hostname === "outcome.example"
+          ? new Response("boom", { status: 500, headers: { "content-type": "text/html" } })
+          : undefined,
       async () => {
         expect(
           await processLinkCardJob(env, {
