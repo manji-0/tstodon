@@ -234,4 +234,47 @@ describe("admin reports", () => {
     });
     expect(read(ReportSchema, unassigned.body).assigned_account).toBeNull();
   });
+
+  it("resolves the report behind a moderation action", async () => {
+    const admin = "reports5-admin@example.com";
+    const target = await credentials("reports5-target@example.com");
+    const first = await fileReport("reports5-reporter@example.com", target.id);
+    const second = await fileReport("reports5-reporter@example.com", target.id);
+
+    // A named report resolves only that one.
+    const action = await json(`/api/v1/admin/accounts/${target.id}/action`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(admin, { admin: true })) },
+      body: JSON.stringify({ type: "silence", report_id: first.id }),
+    });
+    expect(action.status).toBe(200);
+    const afterFirst = await json("/api/v1/admin/reports?resolved=true", {
+      headers: await auth(admin, { admin: true }),
+    });
+    expect(read(z.array(ReportSchema), afterFirst.body).map((report) => report.id)).toEqual([
+      first.id,
+    ]);
+
+    // Without a report id every open report against the account is resolved.
+    const bulk = await json(`/api/v1/admin/accounts/${target.id}/action`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(admin, { admin: true })) },
+      body: JSON.stringify({ type: "none" }),
+    });
+    expect(bulk.status).toBe(200);
+    const afterBulk = await json("/api/v1/admin/reports?resolved=true", {
+      headers: await auth(admin, { admin: true }),
+    });
+    expect(read(z.array(ReportSchema), afterBulk.body).map((report) => report.id)).toEqual(
+      expect.arrayContaining([first.id, second.id]),
+    );
+
+    // An unknown report id is a 404.
+    const missing = await json(`/api/v1/admin/accounts/${target.id}/action`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(admin, { admin: true })) },
+      body: JSON.stringify({ type: "none", report_id: "nope" }),
+    });
+    expect(missing.status).toBe(404);
+  });
 });

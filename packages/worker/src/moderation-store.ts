@@ -401,6 +401,21 @@ export const setReportAssigned = async (
     return (results?.length ?? 0) > 0;
   });
 
+/** Ids of the open reports targeting an account, for a moderation action. */
+export const listOpenReportIdsForTarget = async (
+  db: D1Database,
+  targetAccountId: string,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        "SELECT id FROM reports WHERE target_account_id = ? AND action_taken_at IS NULL ORDER BY id DESC",
+      )
+      .bind(targetAccountId)
+      .all<{ id: string }>();
+    return (results ?? []).map((row) => row.id);
+  });
+
 /** Resolve (`byAccountId` set) or reopen (`null`) a report. */
 export const setReportResolved = async (
   db: D1Database,

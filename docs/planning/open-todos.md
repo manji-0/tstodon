@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `/action` resolves the named report (or all open reports for the account)
 - Report `PUT` (category/rules), `assign_to_self`/`unassign`, `rule_ids` on create
 - Admin reports list/single/resolve/reopen + report `category`
 - Tag and public timelines honor `local`/`remote`; tag timelines include remote statuses

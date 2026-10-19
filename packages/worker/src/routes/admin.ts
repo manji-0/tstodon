@@ -70,6 +70,7 @@ import { instanceRules, parseInstanceIdentity } from "../runtime-config";
 import { ReportCategorySchema, type ReportRow } from "../moderation-store";
 import {
   findReportById,
+  listOpenReportIdsForTarget,
   listReports,
   setReportAssigned,
   setReportResolved,
@@ -1227,6 +1228,7 @@ const approveOrReject = async (c: Context<{ Bindings: Env }>, approve: boolean) 
 
 const AccountActionBodySchema = z.object({
   type: z.string().optional(),
+  report_id: z.union([z.string(), z.number()]).optional(),
 });
 
 /**
@@ -1275,6 +1277,35 @@ adminRoutes.post("/api/v1/admin/accounts/:id/action", async (c) => {
     );
     if (changed.isErr()) {
       return jsonRepositoryError(c, changed.error.message);
+    }
+  }
+  // Mastodon resolves the report that prompted the action, or every open
+  // report against the account when none is named.
+  const requestedReport = body.value.report_id;
+  const reportId = requestedReport === undefined ? "" : String(requestedReport).trim();
+  const reporterAccountId = admin.value.account.id;
+  if (reportId.length > 0) {
+    const report = await findReportById(c.env.DB, reportId);
+    if (report.isErr()) {
+      return jsonRepositoryError(c, report.error.message);
+    }
+    if (!report.value) {
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    }
+    const resolved = await setReportResolved(c.env.DB, reportId, reporterAccountId);
+    if (resolved.isErr()) {
+      return jsonRepositoryError(c, resolved.error.message);
+    }
+  } else {
+    const open = await listOpenReportIdsForTarget(c.env.DB, id);
+    if (open.isErr()) {
+      return jsonRepositoryError(c, open.error.message);
+    }
+    for (const openId of open.value) {
+      const resolved = await setReportResolved(c.env.DB, openId, reporterAccountId);
+      if (resolved.isErr()) {
+        return jsonRepositoryError(c, resolved.error.message);
+      }
     }
   }
   return c.json({});
