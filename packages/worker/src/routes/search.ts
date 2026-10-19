@@ -1,10 +1,13 @@
 import { Hono } from "hono";
 import type { InstanceIdentity } from "@tstodon/domain";
 import { searchAccounts } from "../account-store";
+import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import { authenticate } from "../auth";
+import { filteredAttribute, loadViewerFilters, matchFilters } from "../filter-match";
 import { jsonAuthError, jsonRepositoryError, queryLimit } from "../http";
 import {
   mastodonAccountDocument,
+  mastodonFilterV2,
   mastodonRemoteAccount,
   mastodonStatuses,
   mastodonTag,
@@ -93,6 +96,7 @@ const search = async (c: Context<{ Bindings: Env }>) => {
       }
     }
   }
+  const statusesById = new Map<string, LocalStatusValue>();
   const statusDocs =
     type === "accounts" || type === "hashtags"
       ? []
@@ -101,10 +105,29 @@ const search = async (c: Context<{ Bindings: Env }>) => {
           if (statuses.isErr()) {
             return statuses;
           }
+          for (const status of statuses.value) {
+            statusesById.set(status.id, status);
+          }
           return mastodonStatuses(c.env, identity.value, statuses.value, viewerId);
         })();
   if (!Array.isArray(statusDocs)) {
     return jsonRepositoryError(c, statusDocs.error.message);
+  }
+  // Mastodon reports which of the viewer's filters matched each result.
+  if (viewerId) {
+    const filters = await loadViewerFilters(c.env.DB, viewerId);
+    if (filters.isOk() && filters.value.length > 0) {
+      for (const document of statusDocs) {
+        const id = typeof document.id === "string" ? document.id : "";
+        const status = statusesById.get(id);
+        const renderedContent = typeof document.content === "string" ? document.content : "";
+        const text = status && status.kind === "LocalNote" ? status.text : renderedContent;
+        const matches = matchFilters(filters.value, "public", text, id.length > 0 ? id : null);
+        if (matches.length > 0) {
+          document.filtered = filteredAttribute(matches, (row) => mastodonFilterV2(row));
+        }
+      }
+    }
   }
   let hashtags: Record<string, unknown>[] = [];
   if (type !== "accounts" && type !== "statuses" && query.startsWith("#")) {

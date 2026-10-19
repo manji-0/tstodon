@@ -1,9 +1,15 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { findAccountById } from "../account-store";
+import { filteredAttribute, loadViewerFilters, matchFilters } from "../filter-match";
 import { jsonAuthError, jsonRepositoryError, queryLimit, requireUser } from "../http";
 import { getMarkers } from "../marker-store";
-import { mastodonAccountDocument, mastodonNotification, mastodonStatuses } from "../mastodon";
+import {
+  mastodonAccountDocument,
+  mastodonFilterV2,
+  mastodonNotification,
+  mastodonStatuses,
+} from "../mastodon";
 import {
   DEFAULT_GROUPED_TYPES,
   groupNotifications,
@@ -52,15 +58,29 @@ notificationRoutes.get("/api/v1/notifications", async (c) => {
   if (mutedStatuses.isErr()) {
     return jsonRepositoryError(c, mutedStatuses.error.message);
   }
-  const documents = [];
+  // Notifications carry the same `filtered` attribute the search results do.
+  const filters = await loadViewerFilters(c.env.DB, user.value.id);
+  const notificationStatuses = await findStatusesByIds(c.env.DB, statusIds);
+  const documents: Record<string, unknown>[] = [];
   for (const row of rows.value) {
     if (row.status_id && mutedStatuses.value.has(row.status_id)) {
       continue;
     }
     const document = await mastodonNotification(c.env, identity.value, row, user.value.id);
-    if (document) {
-      documents.push(document);
+    if (!document) {
+      continue;
     }
+    if (filters.isOk() && filters.value.length > 0 && row.status_id) {
+      const status = notificationStatuses.isOk()
+        ? notificationStatuses.value.get(row.status_id)
+        : undefined;
+      const text = status && status.kind === "LocalNote" ? status.text : "";
+      const matches = matchFilters(filters.value, "notifications", text, row.status_id);
+      if (matches.length > 0) {
+        document.filtered = filteredAttribute(matches, (filterRow) => mastodonFilterV2(filterRow));
+      }
+    }
+    documents.push(document);
   }
   return c.json(documents);
 });
