@@ -151,11 +151,85 @@ const cachedCard = async (
   });
 
 /**
- * Build the preview card for a link and cache it. Fetching is bounded
+ * Unfurl outcome: `Transient` is worth retrying, everything else is settled.
+ */
+export type LinkCardOutcome =
+  | Readonly<{ kind: "Built"; card: LinkCard }>
+  | Readonly<{ kind: "Cached"; card: LinkCard }>
+  | Readonly<{ kind: "Skipped" }>
+  | Readonly<{ kind: "Transient" }>;
+
+/**
+ * Preview card for a link, from the cache when possible. Fetching is bounded
  * (3 s, 200 kB) and refused for hosts the federation rules already reject, so a
  * slow or hostile host cannot make a request fail or reach into the network.
  * Called from the queue, never from a request path.
  */
+export const resolveLinkCard = async (
+  env: Env,
+  identity: InstanceIdentity,
+  url: string,
+  options: Readonly<{
+    allowHosts?: ReadonlySet<string>;
+    blockedHosts?: ReadonlySet<string>;
+  }> = {},
+): Promise<LinkCardOutcome> => {
+  const cached = await cachedCard(env.DB, url);
+  if (cached.isErr()) {
+    return { kind: "Transient" };
+  }
+  if (cached.value) {
+    return { kind: "Cached", card: cached.value };
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { kind: "Skipped" };
+  }
+  if (isFederatedHostRefused(parsed.hostname, identity.domain, options)) {
+    return { kind: "Skipped" };
+  }
+  let response: Response;
+  try {
+    response = await fetch(parsed, {
+      method: "GET",
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": `tstodon (${identity.publicOrigin})`,
+      },
+      redirect: "follow",
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+  } catch {
+    // Timeouts and network errors are worth another attempt.
+    return { kind: "Transient" };
+  }
+  if (response.status >= 500) {
+    return { kind: "Transient" };
+  }
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!response.ok || !contentType.includes("html")) {
+    return { kind: "Skipped" };
+  }
+  let html: string;
+  try {
+    html = (await response.text()).slice(0, MAX_HTML_CHARS);
+  } catch {
+    return { kind: "Transient" };
+  }
+  const card = parseLinkCard(html, url);
+  // The card is cached so the same link is never unfurled twice.
+  const stored = await runD1(async () => {
+    await runTyped(env.DB, upsertLinkCardSql(url, JSON.stringify(cardDocument(card)), nowIso()));
+  });
+  if (stored.isErr()) {
+    return { kind: "Transient" };
+  }
+  return { kind: "Built", card };
+};
+
+/** Convenience wrapper: the card, or `undefined` when there is none. */
 export const buildLinkCard = async (
   env: Env,
   identity: InstanceIdentity,
@@ -165,46 +239,8 @@ export const buildLinkCard = async (
     blockedHosts?: ReadonlySet<string>;
   }> = {},
 ): Promise<LinkCard | undefined> => {
-  const cached = await cachedCard(env.DB, url);
-  if (cached.isErr()) {
-    return undefined;
-  }
-  if (cached.value) {
-    return cached.value;
-  }
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return undefined;
-  }
-  if (isFederatedHostRefused(parsed.hostname, identity.domain, options)) {
-    return undefined;
-  }
-  try {
-    const response = await fetch(parsed, {
-      method: "GET",
-      headers: {
-        Accept: "text/html,application/xhtml+xml",
-        "User-Agent": `tstodon (${identity.publicOrigin})`,
-      },
-      redirect: "follow",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!response.ok || !contentType.includes("html")) {
-      return undefined;
-    }
-    const html = (await response.text()).slice(0, MAX_HTML_CHARS);
-    const card = parseLinkCard(html, url);
-    // The card is cached so the same link is never unfurled twice.
-    await runD1(async () => {
-      await runTyped(env.DB, upsertLinkCardSql(url, JSON.stringify(cardDocument(card)), nowIso()));
-    });
-    return card;
-  } catch {
-    return undefined;
-  }
+  const outcome = await resolveLinkCard(env, identity, url, options);
+  return outcome.kind === "Built" || outcome.kind === "Cached" ? outcome.card : undefined;
 };
 
 /** Cached cards for the given URLs, keyed by URL. */
@@ -246,26 +282,33 @@ export const enqueueLinkCard = async (
   await env.OUTBOX_PROCESS_QUEUE.send({ kind: "ProcessLinkCard", target, id, url });
 };
 
-/** Queue handler: unfurl and store the card for one status. */
+/**
+ * Queue handler: unfurl and store the card for one status. Returns `"retry"`
+ * for transient failures (timeouts, 5xx, storage errors) so the queue can try
+ * again; a refused or non-HTML link is settled and never retried.
+ */
 export const processLinkCardJob = async (
   env: Env,
   job: Extract<OutboxJob, { kind: "ProcessLinkCard" }>,
-): Promise<void> => {
+): Promise<"ok" | "retry"> => {
   const identity = parseInstanceIdentity(env);
   if (identity.isErr()) {
-    return;
+    return "retry";
   }
-  const card = await buildLinkCard(env, identity.value, job.url, {
+  const outcome = await resolveLinkCard(env, identity.value, job.url, {
     allowHosts: federationAllowHosts(env),
     blockedHosts: await suspendedDomains(env.DB),
   });
-  if (!card) {
-    return;
+  if (outcome.kind === "Transient") {
+    return "retry";
   }
-  const cardJson = JSON.stringify(cardDocument(card));
-  if (job.target === "Status") {
-    await setStatusCard(env.DB, job.id, cardJson);
-    return;
+  if (outcome.kind === "Skipped") {
+    return "ok";
   }
-  await setRemoteStatusCard(env.DB, job.id, cardJson);
+  const cardJson = JSON.stringify(cardDocument(outcome.card));
+  const stored =
+    job.target === "Status"
+      ? await setStatusCard(env.DB, job.id, cardJson)
+      : await setRemoteStatusCard(env.DB, job.id, cardJson);
+  return stored.isErr() ? "retry" : "ok";
 };

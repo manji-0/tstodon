@@ -280,19 +280,24 @@ const processExpiredPolls = async (env: Env): Promise<void> => {
   }
 };
 
-export const processOutboxJob = async (env: Env, job: OutboxJobValue): Promise<void> => {
+/** `retry` asks the queue to redeliver the message. */
+export type OutboxJobOutcome = "ok" | "retry";
+
+export const processOutboxJob = async (
+  env: Env,
+  job: OutboxJobValue,
+): Promise<OutboxJobOutcome> => {
   switch (job.kind) {
     case "ProcessExpiredPolls":
       await processExpiredPolls(env);
-      return;
+      return "ok";
     case "ProcessLinkCard":
-      await processLinkCardJob(env, job);
-      return;
+      return processLinkCardJob(env, job);
     case "ExpandFollowers": {
       const startedAt = Date.now();
       const activity = await findOutboundActivity(env.DB, job.activityId);
       if (activity.isErr() || !activity.value) {
-        return;
+        return "ok";
       }
       const identity = parseInstanceIdentity(env);
       const remoteFollowers = await listAcceptedRemoteFollowerInboxes(
@@ -330,7 +335,7 @@ export const processOutboxJob = async (env: Env, job: OutboxJobValue): Promise<v
           [remoteInboxes.length, elapsedMs(startedAt), 0],
           ["targets_failed"],
         );
-        return;
+        return "ok";
       }
       for (const inboxUrl of remoteInboxes) {
         const deliver = OutboxJob.parse({
@@ -345,14 +350,15 @@ export const processOutboxJob = async (env: Env, job: OutboxJobValue): Promise<v
       }
       // doubles: [remoteTargetCount, expandMs, okFlag]
       writeMetric(env, "outbox.expand", [remoteInboxes.length, elapsedMs(startedAt), 1], ["ok"]);
-      return;
+      return "ok";
     }
     case "DeliverTarget": {
       const target = await ensureOutboxTarget(env.DB, job.activityId, job.inboxUrl);
       if (target.isErr()) {
-        return;
+        return "ok";
       }
       await startOutboxDeliveryWorkflow(env, job);
+      return "ok";
     }
   }
 };

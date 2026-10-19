@@ -207,4 +207,69 @@ describe("link cards", () => {
       },
     );
   });
+
+  it("distinguishes transient failures from settled ones", async () => {
+    const email = "card-outcomes@example.com";
+    const status = await postStatus(email, "outcome link https://outcome.example/page");
+
+    // A 404 is settled: retrying would never help.
+    await withFetchStub(
+      () => new Response("gone", { status: 404, headers: { "content-type": "text/html" } }),
+      async () => {
+        expect(
+          await processLinkCardJob(env, {
+            kind: "ProcessLinkCard",
+            target: "Status",
+            id: status.id,
+            url: "https://outcome.example/page",
+          }),
+        ).toBe("ok");
+      },
+    );
+
+    // A 500 (or a thrown fetch) asks the queue to try again.
+    await withFetchStub(
+      () => new Response("boom", { status: 500, headers: { "content-type": "text/html" } }),
+      async () => {
+        expect(
+          await processLinkCardJob(env, {
+            kind: "ProcessLinkCard",
+            target: "Status",
+            id: status.id,
+            url: "https://outcome.example/retry",
+          }),
+        ).toBe("retry");
+      },
+    );
+    await withFetchStub(
+      () => undefined,
+      async () => {
+        const original = globalThis.fetch;
+        globalThis.fetch = (async () => {
+          throw new Error("network down");
+        }) as typeof fetch;
+        try {
+          expect(
+            await processLinkCardJob(env, {
+              kind: "ProcessLinkCard",
+              target: "Status",
+              id: status.id,
+              url: "https://outcome.example/down",
+            }),
+          ).toBe("retry");
+        } finally {
+          globalThis.fetch = original;
+        }
+      },
+    );
+    // A refused host is settled rather than retried.
+    expect(
+      await processLinkCardJob(env, {
+        kind: "ProcessLinkCard",
+        target: "Status",
+        id: status.id,
+        url: "http://127.0.0.1:9/private",
+      }),
+    ).toBe("ok");
+  });
 });

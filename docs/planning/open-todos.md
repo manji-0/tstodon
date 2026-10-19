@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `ProcessLinkCard` retries transient failures (3 attempts) and reports `outbox.job` metrics
 - `notification_requests.status_id` for an exact request `last_status`
 - Trending links prefer the cached Open Graph preview
 - `filtered` on remote statuses (HTML stripped to text for keyword matching)
