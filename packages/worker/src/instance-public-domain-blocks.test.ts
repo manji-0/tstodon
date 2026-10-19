@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { isLimitedFederation } from "./runtime-config";
 
 const auth = (email: string, admin = false): Promise<Record<string, string>> =>
   accessAuthHeaders(email, { admin });
@@ -42,6 +43,19 @@ const createBlock = async (
     headers: { "content-type": "application/json", ...(await auth(email, true)) },
     body: JSON.stringify(body),
   });
+
+describe("limited federation guards", () => {
+  it("keeps peers and activity public without an allowlist", async () => {
+    const peers = await json("/api/v1/instance/peers");
+    expect(peers.status).toBe(200);
+    expect(read(z.array(z.string()), peers.body)).toEqual([]);
+    expect((await json("/api/v1/instance/activity")).status).toBe(200);
+    expect(isLimitedFederation({ FEDERATION_ALLOW_HOSTS: "" } as unknown as Env)).toBe(false);
+    expect(
+      isLimitedFederation({ FEDERATION_ALLOW_HOSTS: "a.example,b.example" } as unknown as Env),
+    ).toBe(true);
+  });
+});
 
 describe("public instance domain blocks", () => {
   it("lists moderated servers and hashes obfuscated domains", async () => {

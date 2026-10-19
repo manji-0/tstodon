@@ -49,8 +49,8 @@ import { listFeaturedTags, listFollowedTags, tagDailyHistory } from "../tag-stor
 import {
   activeAnnouncements,
   announcements,
-  federationAllowHosts,
   instanceRules,
+  isLimitedFederation,
   parseInstanceIdentity,
   privacyPolicy,
   termsOfService,
@@ -526,7 +526,25 @@ metaRoutes.get("/api/v1/trends/statuses", async (c) => {
   return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, undefined));
 });
 
+/** Mastodon requires a user token for peers and activity under limited federation. */
+const requireUserWhenLimited = async (
+  c: Context<{ Bindings: Env }>,
+): Promise<Response | undefined> => {
+  if (!isLimitedFederation(c.env)) {
+    return undefined;
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  return undefined;
+};
+
 metaRoutes.get("/api/v1/instance/peers", async (c) => {
+  const denied = await requireUserWhenLimited(c);
+  if (denied) {
+    return denied;
+  }
   const peers = await listPeerDomains(c.env.DB);
   if (peers.isErr()) {
     return jsonRepositoryError(c, peers.error.message);
@@ -535,6 +553,10 @@ metaRoutes.get("/api/v1/instance/peers", async (c) => {
 });
 
 metaRoutes.get("/api/v1/instance/activity", async (c) => {
+  const denied = await requireUserWhenLimited(c);
+  if (denied) {
+    return denied;
+  }
   const activity = await listWeeklyStatusActivity(c.env.DB, 12);
   if (activity.isErr()) {
     return jsonRepositoryError(c, activity.error.message);
@@ -634,7 +656,7 @@ metaRoutes.get("/api/v2/instance", async (c) => {
         max_expiration: InstanceLimits.poll.maxExpirationSeconds,
       },
       translation: { enabled: false },
-      limited_federation: federationAllowHosts(c.env).size > 0,
+      limited_federation: isLimitedFederation(c.env),
     },
     registrations: {
       enabled: false,

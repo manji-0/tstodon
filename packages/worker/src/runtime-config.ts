@@ -228,6 +228,9 @@ export const federationAllowHosts = (env: Env): ReadonlySet<string> => {
   );
 };
 
+/** True when an allowlist is configured, which Mastodon calls limited federation. */
+export const isLimitedFederation = (env: Env): boolean => federationAllowHosts(env).size > 0;
+
 export const parseInstanceIdentity = (env: Env): Result<InstanceIdentity, ValidationError> =>
   parseEnv(env).andThen((vars) => {
     const publicOrigin =

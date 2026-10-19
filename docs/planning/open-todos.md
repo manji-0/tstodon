@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `instance/peers` and `instance/activity` require a user token under limited federation
 - `/api/v2/instance`: registrations detail, thumbnail description, policy URLs (icon and `api_versions` intentionally omitted)
 - Instance policy documents from JSON vars (extended description, privacy policy, terms of service by date)
 - Status translate endpoint (403 ineligible, 503 without a backend) and empty `translation_languages`
