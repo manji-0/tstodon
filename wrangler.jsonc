@@ -38,6 +38,7 @@
     "INSTANCE_LANGUAGES": "ja,en",
     "CONTACT_EMAIL": "admin@example.com",
     "INSTANCE_RULES": "[\"Be kind to others.\",\"No spam or harassment.\"]",
+    "REGISTRATION_APPROVAL": "false",
     "CUSTOM_EMOJIS": "[{\"shortcode\":\"tstodon\",\"url\":\"https://media.example.com/emoji/tstodon.png\"}]",
     "INSTANCE_EXTENDED_DESCRIPTION": "{\"content\":\"<p>tstodon is a local-first Cloudflare Workers server.</p>\"}",
     "INSTANCE_PRIVACY_POLICY": "{\"content\":\"<p>This instance stores only what federation requires.</p>\",\"updated_at\":\"2026-01-01T00:00:00.000Z\"}",

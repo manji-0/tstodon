@@ -253,6 +253,7 @@ export type Account_profilesScalarFieldEnum =
 export const Account_flagsScalarFieldEnum = {
   account_id: "account_id",
   sensitized: "sensitized",
+  pending: "pending",
   created_at: "created_at",
   updated_at: "updated_at",
 } as const;

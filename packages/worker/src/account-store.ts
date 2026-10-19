@@ -10,6 +10,7 @@ import {
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
+import { markAccountPending } from "./account-flag-store";
 import { nowInstant, nowIso } from "./clock";
 import { jsonStringArray, runD1, runD1Batch, type RepositoryError } from "./d1";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
@@ -30,7 +31,6 @@ import {
   findAccountsByIdsJson as findAccountsByIdsJsonSql,
   findAccountsByUsernamesJson as findAccountsByUsernamesJsonSql,
   insertAccount as insertAccountSql,
-  listAdminAccounts as listAdminAccountsSql,
   listDirectoryAccountsByActive as listDirectoryAccountsByActiveSql,
   listDirectoryAccountsByNew as listDirectoryAccountsByNewSql,
   searchAccounts as searchAccountsSql,
@@ -241,6 +241,7 @@ export const insertAccount = async (
 export const provisionAccountFromEmail = async (
   db: D1Database,
   rawEmail: string,
+  options: Readonly<{ pending?: boolean }> = {},
 ): Promise<Result<LocalAccount, RepositoryError>> => {
   const existing = await findAccountByEmail(db, rawEmail);
   if (existing.isErr()) {
@@ -281,6 +282,13 @@ export const provisionAccountFromEmail = async (
   const inserted = await insertAccount(db, account);
   if (inserted.isErr()) {
     return err(inserted.error);
+  }
+  if (options.pending) {
+    // Registrations that need approval start unsearchable until an admin acts.
+    const marked = await markAccountPending(db, account.id);
+    if (marked.isErr()) {
+      return err(marked.error);
+    }
   }
   return ok(account);
 };
@@ -336,16 +344,74 @@ export const deleteAccount = async (
     return rows.length > 0;
   });
 
-/** Every local account (including silenced/suspended), newest first. */
+/**
+ * Mastodon's admin account filters. `origin`/`status` are the translated form
+ * (`local`/`active` by default); the text filters are case-insensitive
+ * substrings. States this instance cannot hold (`remote`, `disabled`,
+ * `byDomain`, `ip`, `staff`) match nothing rather than being ignored.
+ */
+export type AdminAccountFilters = Readonly<{
+  origin: "local" | "remote";
+  status: "active" | "pending" | "disabled" | "silenced" | "suspended" | "sensitized";
+  username?: string | undefined;
+  displayName?: string | undefined;
+  email?: string | undefined;
+  byDomain?: string | undefined;
+  ip?: string | undefined;
+  staff?: boolean | undefined;
+  limit: number;
+  offset: number;
+}>;
+
+const STATUS_SQL: Readonly<Record<AdminAccountFilters["status"], string>> = {
+  active: `id NOT IN (SELECT account_id FROM account_moderation WHERE moderation = 'Suspended')`,
+  pending: "id IN (SELECT account_id FROM account_flags WHERE pending <> 0)",
+  disabled: "0",
+  silenced: `id IN (SELECT account_id FROM account_moderation WHERE moderation = 'Silenced')`,
+  suspended: `id IN (SELECT account_id FROM account_moderation WHERE moderation = 'Suspended')`,
+  sensitized: "id IN (SELECT account_id FROM account_flags WHERE sensitized <> 0)",
+};
+
 export const listAdminAccounts = async (
   db: D1Database,
-  limit: number,
-  offset: number,
+  filters: AdminAccountFilters,
 ): Promise<Result<LocalAccount[], RepositoryError>> =>
   runD1(async () => {
-    const results = await queryTyped(db, listAdminAccountsSql(limit, offset));
+    const conditions = [STATUS_SQL[filters.status]];
+    const binds: Array<string | number> = [];
+    if (filters.origin === "remote") {
+      // Every account in this table is local.
+      conditions.push("0");
+    }
+    if (filters.username) {
+      conditions.push("username LIKE ?");
+      binds.push(`%${filters.username}%`);
+    }
+    if (filters.displayName) {
+      conditions.push("display_name LIKE ?");
+      binds.push(`%${filters.displayName}%`);
+    }
+    if (filters.email) {
+      conditions.push("access_email LIKE ?");
+      binds.push(`${filters.email.toLowerCase()}%`);
+    }
+    if (filters.byDomain || filters.ip || filters.staff) {
+      // No domain (local only), no recorded IPs, no staff accounts.
+      conditions.push("0");
+    }
+    const { results } = await db
+      .prepare(
+        `SELECT id, username, access_email, display_name, locked, default_post_visibility, default_quote_policy,
+                public_key_pem, private_key_jwk, created_at, COALESCE(bio_text, '') AS bio_text
+         FROM accounts
+         WHERE ${conditions.join(" AND ")}
+         ORDER BY accounts.created_at DESC, accounts.id DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .bind(...binds, filters.limit, filters.offset)
+      .all();
     const accounts: LocalAccount[] = [];
-    for (const raw of results) {
+    for (const raw of results ?? []) {
       const row = parseAccountRow(raw);
       if (row.isErr()) {
         continue;

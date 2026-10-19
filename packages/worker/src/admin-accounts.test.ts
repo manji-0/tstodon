@@ -73,7 +73,8 @@ describe("admin accounts", () => {
     expect(suspended.status).toBe(200);
     const document = read(AdminAccountSchema, suspended.body);
     expect(document.suspended).toBe(true);
-    expect(document.disabled).toBe(true);
+    // `disabled` is Mastodon's separate `disable` action, not suspension.
+    expect(document.disabled).toBe(false);
     expect(document.limited).toBe(true);
 
     const forbidden = await json("/api/v1/accounts/verify_credentials", {

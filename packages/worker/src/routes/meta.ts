@@ -55,6 +55,7 @@ import {
   isLimitedFederation,
   parseInstanceIdentity,
   privacyPolicy,
+  registrationApprovalRequired,
   termsOfService,
   thumbnailDescription,
   type Announcement,
@@ -662,8 +663,9 @@ metaRoutes.get("/api/v2/instance", async (c) => {
       limited_federation: isLimitedFederation(c.env),
     },
     registrations: {
+      // No self-service registration: accounts come from Cloudflare Access.
       enabled: false,
-      approval_required: true,
+      approval_required: registrationApprovalRequired(c.env),
       reason_required: false,
       message: null,
       min_age: 16,

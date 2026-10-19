@@ -2,6 +2,7 @@ import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { createLocalJWKSet, createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { provisionAccountFromEmail } from "./account-store";
+import { registrationApprovalRequired } from "./runtime-config";
 import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
 import type { RepositoryError } from "./d1";
 import { getAccountModeration } from "./account-moderation-store";
@@ -178,7 +179,10 @@ export const authenticate = async (
   if (identity.isErr()) {
     return err(identity.error);
   }
-  const account = await provisionAccountFromEmail(env.DB, identity.value.email);
+  const account = await provisionAccountFromEmail(env.DB, identity.value.email, {
+    // With `REGISTRATION_APPROVAL` a brand-new account waits for an admin.
+    pending: registrationApprovalRequired(env),
+  });
   if (account.isErr()) {
     return err(account.error);
   }

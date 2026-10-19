@@ -8,12 +8,13 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  */
 export const findAccountFlag = $runtime.makeTypedQueryFactory(
-  "SELECT sensitized FROM account_flags WHERE account_id = $1 LIMIT 1",
+  "SELECT sensitized, pending FROM account_flags WHERE account_id = $1 LIMIT 1",
 ) as (accountId: string) => $runtime.TypedSql<findAccountFlag.Parameters, findAccountFlag.Result>;
 
 export namespace findAccountFlag {
   export type Parameters = [accountId: string];
   export type Result = {
     sensitized: number;
+    pending: number;
   };
 }

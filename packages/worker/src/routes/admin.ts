@@ -44,8 +44,10 @@ import {
   updateDomainBlock,
 } from "../admin-domain-block-store";
 import {
+  approveAccount,
   isAccountSensitized,
   mediaObjectKeysForAccount,
+  pendingAccountIds,
   sensitizedAccountIds,
   setAccountSensitized,
 } from "../account-flag-store";
@@ -62,6 +64,7 @@ import {
 import { newEntityId } from "../ids";
 import { mastodonAccountDocument } from "../mastodon";
 import { parseInstanceIdentity } from "../runtime-config";
+import { isTruthy } from "../schemas";
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -459,19 +462,62 @@ adminRoutes.post("/api/v1/admin/announcements/:id/unpublish", (c) =>
   setAnnouncementPublication(c, false),
 );
 
+/**
+ * Mastodon translates the admin account query parameters into a single
+ * origin/status pair: local and active by default, `remote=true` switching the
+ * origin, and one of the boolean status flags (last one wins in Mastodon's
+ * order) switching the status.
+ */
+const adminAccountFilters = (
+  c: Context<{ Bindings: Env }>,
+): Readonly<{
+  origin: "local" | "remote";
+  status: "active" | "pending" | "disabled" | "silenced" | "suspended" | "sensitized";
+  username?: string | undefined;
+  displayName?: string | undefined;
+  email?: string | undefined;
+  byDomain?: string | undefined;
+  ip?: string | undefined;
+  staff?: boolean | undefined;
+}> => {
+  const present = (key: string): boolean => isTruthy(c.req.query(key));
+  let status: "active" | "pending" | "disabled" | "silenced" | "suspended" = "active";
+  for (const candidate of ["active", "pending", "disabled", "silenced", "suspended"] as const) {
+    if (present(candidate)) {
+      status = candidate;
+    }
+  }
+  const trimmed = (key: string): string | undefined => {
+    const value = c.req.query(key)?.trim() ?? "";
+    return value.length > 0 ? value : undefined;
+  };
+  return {
+    origin: present("remote") ? "remote" : "local",
+    status: present("sensitized") ? "sensitized" : status,
+    username: trimmed("username"),
+    displayName: trimmed("display_name"),
+    email: trimmed("email"),
+    byDomain: trimmed("by_domain"),
+    ip: trimmed("ip"),
+    staff: present("staff"),
+  };
+};
+
 const adminAccountDocument = async (
   env: Env,
   identity: InstanceIdentity,
   account: LocalAccount,
   moderation: AccountModeration | null,
   sensitized: boolean,
+  pending: boolean,
 ): Promise<Record<string, unknown>> => ({
   ...(await mastodonAccountDocument(env, identity, account)),
   email: account.accessEmail.unwrap(),
   ip: null,
   role: { id: "-1", name: "user", highlighted: false },
-  approved: true,
-  disabled: moderation === "Suspended",
+  approved: !pending,
+  // This instance has no disabled state; suspension is its own flag below.
+  disabled: false,
   silenced: moderation === "Silenced",
   suspended: moderation === "Suspended",
   limited: moderation !== null,
@@ -492,7 +538,11 @@ adminRoutes.get("/api/v1/admin/accounts", async (c) => {
   }
   const limit = queryAdminLimit(c.req.query("limit"));
   const offset = Math.max(Number.parseInt(c.req.query("offset") ?? "0", 10) || 0, 0);
-  const accounts = await listAdminAccounts(c.env.DB, limit, offset);
+  const accounts = await listAdminAccounts(c.env.DB, {
+    ...adminAccountFilters(c),
+    limit,
+    offset,
+  });
   if (accounts.isErr()) {
     return jsonRepositoryError(c, accounts.error.message);
   }
@@ -510,6 +560,13 @@ adminRoutes.get("/api/v1/admin/accounts", async (c) => {
   if (sensitized.isErr()) {
     return jsonRepositoryError(c, sensitized.error.message);
   }
+  const pending = await pendingAccountIds(
+    c.env.DB,
+    accounts.value.map((account) => account.id),
+  );
+  if (pending.isErr()) {
+    return jsonRepositoryError(c, pending.error.message);
+  }
   const documents: Record<string, unknown>[] = [];
   for (const account of accounts.value) {
     documents.push(
@@ -519,6 +576,7 @@ adminRoutes.get("/api/v1/admin/accounts", async (c) => {
         account,
         moderations.value.get(account.id) ?? null,
         sensitized.value.has(account.id),
+        pending.value.has(account.id),
       ),
     );
   }
@@ -549,6 +607,7 @@ const setAccountModerationRoute = async (
     return jsonRepositoryError(c, changed.error.message);
   }
   const sensitized = await isAccountSensitized(c.env.DB, account.value.id);
+  const pending = await pendingAccountIds(c.env.DB, [account.value.id]);
   return c.json(
     await adminAccountDocument(
       c.env,
@@ -556,6 +615,7 @@ const setAccountModerationRoute = async (
       account.value,
       moderation,
       sensitized.isOk() ? sensitized.value : false,
+      pending.isOk() ? pending.value.has(account.value.id) : false,
     ),
   );
 };
@@ -759,6 +819,7 @@ const setSensitized = async (
     return jsonRepositoryError(c, changed.error.message);
   }
   const moderation = await getAccountModeration(c.env.DB, account.value.id);
+  const pending = await pendingAccountIds(c.env.DB, [account.value.id]);
   return c.json(
     await adminAccountDocument(
       c.env,
@@ -766,9 +827,75 @@ const setSensitized = async (
       account.value,
       moderation.isOk() ? moderation.value : null,
       sensitized,
+      pending.isOk() ? pending.value.has(account.value.id) : false,
     ),
   );
 };
+
+/**
+ * Approve or reject the local account waiting for approval. Rejecting purges
+ * the account (Mastodon's `DeleteAccountService`), so the document is built
+ * first and answered with `approved: false`.
+ */
+const approveOrReject = async (c: Context<{ Bindings: Env }>, approve: boolean) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const admin = await requireAdmin(c);
+  if (admin.isErr()) {
+    return jsonAuthError(c, admin.error);
+  }
+  const id = c.req.param("id") ?? "";
+  const account = await findAccountById(c.env.DB, id);
+  if (account.isErr()) {
+    return jsonRepositoryError(c, account.error.message);
+  }
+  if (!account.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const moderation = await getAccountModeration(c.env.DB, id);
+  const sensitized = await isAccountSensitized(c.env.DB, id);
+  if (approve) {
+    const approved = await approveAccount(c.env.DB, id);
+    if (approved.isErr()) {
+      return jsonRepositoryError(c, approved.error.message);
+    }
+    return c.json(
+      await adminAccountDocument(
+        c.env,
+        identity.value,
+        account.value,
+        moderation.isOk() ? moderation.value : null,
+        sensitized.isOk() ? sensitized.value : false,
+        false,
+      ),
+    );
+  }
+  const document = await adminAccountDocument(
+    c.env,
+    identity.value,
+    account.value,
+    moderation.isOk() ? moderation.value : null,
+    sensitized.isOk() ? sensitized.value : false,
+    true,
+  );
+  const objects = await mediaObjectKeysForAccount(c.env.DB, id);
+  if (objects.isErr()) {
+    return jsonRepositoryError(c, objects.error.message);
+  }
+  for (const objectKey of objects.value) {
+    await c.env.MEDIA.delete(objectKey);
+  }
+  const purged = await deleteAccount(c.env.DB, id);
+  if (purged.isErr()) {
+    return jsonRepositoryError(c, purged.error.message);
+  }
+  return c.json(document);
+};
+
+adminRoutes.post("/api/v1/admin/accounts/:id/approve", (c) => approveOrReject(c, true));
+adminRoutes.post("/api/v1/admin/accounts/:id/reject", (c) => approveOrReject(c, false));
 
 adminRoutes.post("/api/v1/admin/accounts/:id/sensitize", (c) => setSensitized(c, true));
 adminRoutes.post("/api/v1/admin/accounts/:id/unsensitize", (c) => setSensitized(c, false));

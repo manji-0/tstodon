@@ -231,6 +231,17 @@ export const federationAllowHosts = (env: Env): ReadonlySet<string> => {
 /** True when an allowlist is configured, which Mastodon calls limited federation. */
 export const isLimitedFederation = (env: Env): boolean => federationAllowHosts(env).size > 0;
 
+/**
+ * `REGISTRATION_APPROVAL`: when set, a newly provisioned local account starts
+ * pending until an admin approves it. Advertised as
+ * `registrations.approval_required` and enforced by marking the account
+ * unsearchable until then.
+ */
+export const registrationApprovalRequired = (env: Env): boolean => {
+  const raw = (env as { REGISTRATION_APPROVAL?: string }).REGISTRATION_APPROVAL ?? "";
+  return ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
+};
+
 export const parseInstanceIdentity = (env: Env): Result<InstanceIdentity, ValidationError> =>
   parseEnv(env).andThen((vars) => {
     const publicOrigin =

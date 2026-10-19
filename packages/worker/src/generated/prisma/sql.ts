@@ -10,6 +10,8 @@ export * from "./sql/authorizeFollowRequest";
 
 export * from "./sql/authorizeRemoteFollowRequest";
 
+export * from "./sql/clearAccountSensitized";
+
 export * from "./sql/clearNotifications";
 
 export * from "./sql/clearRemoteMediaForDomain";
@@ -47,8 +49,6 @@ export * from "./sql/createList";
 export * from "./sql/deleteAccount";
 
 export * from "./sql/deleteAccountDomainBlock";
-
-export * from "./sql/deleteAccountFlag";
 
 export * from "./sql/deleteAccountModeration";
 
@@ -276,8 +276,6 @@ export * from "./sql/listAccountModerations";
 
 export * from "./sql/listAccountProfiles";
 
-export * from "./sql/listAdminAccounts";
-
 export * from "./sql/listAdminAnnouncements";
 
 export * from "./sql/listAnnouncementDismissals";
@@ -337,6 +335,8 @@ export * from "./sql/listNotifications";
 export * from "./sql/listOutboundActivities";
 
 export * from "./sql/listPeerDomains";
+
+export * from "./sql/listPendingAccountIds";
 
 export * from "./sql/listPendingFollowRequesters";
 
@@ -404,6 +404,8 @@ export * from "./sql/searchAccounts";
 
 export * from "./sql/searchRemoteActors";
 
+export * from "./sql/setAccountApproved";
+
 export * from "./sql/setAccountLocked";
 
 export * from "./sql/setAnnouncementPublished";
@@ -447,6 +449,8 @@ export * from "./sql/updateStatusPollId";
 export * from "./sql/upsertAccountModeration";
 
 export * from "./sql/upsertAccountNote";
+
+export * from "./sql/upsertAccountPending";
 
 export * from "./sql/upsertAccountProfile";
 

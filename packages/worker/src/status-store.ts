@@ -412,6 +412,13 @@ export const listPinnedStatuses = async (
 /** Authors silenced or suspended by an admin are hidden from public surfaces. */
 export const MODERATED_ACCOUNTS_SQL = `AND account_id NOT IN (SELECT account_id FROM account_moderation)`;
 
+/**
+ * Mastodon's `Account.searchable` also drops unapproved local accounts, so
+ * trends (unlike the public timeline) skip pending ones. The directory and
+ * account search carry the same rule in their own SQL.
+ */
+export const SEARCHABLE_ACCOUNTS_SQL = `AND account_id NOT IN (SELECT account_id FROM account_flags WHERE pending <> 0)`;
+
 export type StatusCursor = Readonly<{
   maxId?: string | undefined;
   sinceId?: string | undefined;
@@ -785,7 +792,7 @@ export const listTrendingTags = async (
     const { results } = await db
       .prepare(
         `SELECT content_text FROM statuses
-         WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL} AND created_at >= ?
+         WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL} ${SEARCHABLE_ACCOUNTS_SQL} AND created_at >= ?
          ORDER BY id DESC LIMIT 500`,
       )
       .bind(since)
@@ -814,7 +821,7 @@ export const listTrendingStatuses = async (
             (SELECT COUNT(*) FROM favourites f WHERE f.status_id = statuses.id) AS favourite_count,
             (SELECT COUNT(*) FROM statuses r WHERE r.reblog_of_id = statuses.id) AS reblog_count
          FROM statuses
-         WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL} AND created_at >= ?
+         WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL} ${SEARCHABLE_ACCOUNTS_SQL} AND created_at >= ?
          ORDER BY (favourite_count + reblog_count) DESC, id DESC
          LIMIT ?`,
       )
