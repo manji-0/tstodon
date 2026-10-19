@@ -310,6 +310,8 @@ export * from "./sql/listFollowers";
 
 export * from "./sql/listFollowing";
 
+export * from "./sql/listFollowingAccountIds";
+
 export * from "./sql/listLinkCards";
 
 export * from "./sql/listListMemberIds";

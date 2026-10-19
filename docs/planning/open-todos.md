@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `GET /api/v1/accounts/search` (exact handle, `offset`, `following`, resolve 503)
 - `REGISTRATION_APPROVAL`, `approve`/`reject`, `approved` field, admin account filters
 - `limit` caps match Mastodon per collection family (40 / 80 / 200); endorsements page
 - `notifications/requests` accepts `limit` (40 default, 80 cap)

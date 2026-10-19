@@ -8,17 +8,24 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param usernameLike
  * @param displayNameLike
  * @param limit
+ * @param offset
  */
 export const searchAccounts = $runtime.makeTypedQueryFactory(
-  "SELECT id, username, access_email, display_name, locked, default_post_visibility, default_quote_policy, public_key_pem, private_key_jwk, created_at, COALESCE(bio_text, '') AS bio_text\nFROM accounts\nWHERE (username LIKE $1 OR display_name LIKE $2)\nAND id NOT IN (SELECT account_id FROM account_flags WHERE pending <> 0)\nORDER BY username\nLIMIT $3",
+  "SELECT id, username, access_email, display_name, locked, default_post_visibility, default_quote_policy, public_key_pem, private_key_jwk, created_at, COALESCE(bio_text, '') AS bio_text\nFROM accounts\nWHERE (username LIKE $1 OR display_name LIKE $2)\nAND id NOT IN (SELECT account_id FROM account_flags WHERE pending <> 0)\nORDER BY username\nLIMIT $3 OFFSET $4",
 ) as (
   usernameLike: string,
   displayNameLike: string,
   limit: number,
+  offset: number,
 ) => $runtime.TypedSql<searchAccounts.Parameters, searchAccounts.Result>;
 
 export namespace searchAccounts {
-  export type Parameters = [usernameLike: string, displayNameLike: string, limit: number];
+  export type Parameters = [
+    usernameLike: string,
+    displayNameLike: string,
+    limit: number,
+    offset: number,
+  ];
   export type Result = {
     id: string | null;
     username: string;

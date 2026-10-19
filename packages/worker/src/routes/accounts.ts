@@ -6,6 +6,7 @@ import {
   findAccountById,
   findAccountByIdOrUsername,
   findAccountByUsername,
+  searchAccounts,
   setAccountLocked,
   updateAccountProfile,
 } from "../account-store";
@@ -31,7 +32,16 @@ import {
   mastodonRemoteAccount,
   mastodonStatuses,
 } from "../mastodon";
-import { findRemoteActorByUri, deleteRemoteFollow, findRemoteFollow } from "../remote-actor-store";
+import {
+  findRemoteActorByUri,
+  deleteRemoteFollow,
+  findRemoteFollow,
+  searchRemoteActors,
+} from "../remote-actor-store";
+import { resolveRemoteActorByHandle } from "../remote-actor-fetch";
+import { suspendedDomains } from "../admin-domain-block-store";
+import { federationAllowHosts } from "../runtime-config";
+import { ok, err } from "neverthrow";
 import { RemoteAccountId } from "../remote-account-id";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
@@ -39,6 +49,7 @@ import {
   endorseAccount,
   familiarFollowerIds,
   followAccount,
+  followingAccountIds,
   listBlockedAccounts,
   listEndorsements,
   listFollowers,
@@ -229,6 +240,125 @@ accountRoutes.get("/api/v1/accounts/relationships", async (c) => {
 
 /** Mastodon caps familiar followers per requested account. */
 const FAMILIAR_FOLLOWERS_LIMIT = 3;
+
+/**
+ * `GET /api/v1/accounts/search`: Mastodon's account-only search. The exact
+ * match for a complete `@user@domain` handle is prepended on the first page
+ * (resolving it only when `resolve=true`), then local accounts and cached
+ * remote actors matching the query follow. `following=true` keeps only
+ * accounts the viewer follows; this instance has no record of following remote
+ * actors, so remote results are dropped there.
+ */
+accountRoutes.get("/api/v1/accounts/search", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const rawQuery = (c.req.query("q") ?? "").trim();
+  const query = rawQuery.replace(/^@/, "");
+  const limit = queryAccountsLimit(c.req.query("limit"));
+  const requestedOffset = Number.parseInt(c.req.query("offset") ?? "0", 10);
+  const offset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
+  const resolve = isTruthy(c.req.query("resolve"));
+  const onlyFollowing = isTruthy(c.req.query("following"));
+  if (query.length === 0) {
+    return c.json([]);
+  }
+  const following = onlyFollowing ? await followingAccountIds(c.env.DB, user.value.id) : undefined;
+  if (following?.isErr()) {
+    return jsonRepositoryError(c, following.error.message);
+  }
+  const documents: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  const push = (document: Record<string, unknown>): void => {
+    const id = String(document.id);
+    if (!seen.has(id)) {
+      seen.add(id);
+      documents.push(document);
+    }
+  };
+  const followed = (accountId: string): boolean =>
+    following === undefined || (following.isOk() && following.value.has(accountId));
+
+  // The exact match, only on the first page and only for a complete handle.
+  const handle = /^[^\s@]+@[^\s@]+$/.test(query) ? query : undefined;
+  if (offset === 0 && handle) {
+    const [username, domain] = handle.split("@");
+    if (domain?.toLowerCase() === identity.value.domain.toLowerCase()) {
+      const local = await findAccountByIdOrUsername(c.env.DB, username ?? "");
+      if (local.isErr()) {
+        return jsonRepositoryError(c, local.error.message);
+      }
+      if (local.value && followed(local.value.id)) {
+        push(await mastodonAccountDocument(c.env, identity.value, local.value));
+      }
+    } else if (following === undefined) {
+      const resolved = resolve
+        ? await resolveRemoteActorByHandle(c.env.DB, identity.value, handle, {
+            allowHosts: federationAllowHosts(c.env),
+            blockedHosts: await suspendedDomains(c.env.DB),
+          })
+        : await (async () => {
+            // Without `resolve` only the actor cache is consulted.
+            const cached = await searchRemoteActors(c.env.DB, handle, 1);
+            const exact = cached.isOk()
+              ? cached.value.find(
+                  (actor) =>
+                    `${actor.username}@${actor.domain}`.toLowerCase() === handle.toLowerCase(),
+                )
+              : undefined;
+            return exact ? ok(exact) : err({ kind: "InvalidSignature" as const });
+          })();
+      if (resolved.isErr() && resolve && resolved.error.kind === "VerificationUnavailable") {
+        // Mastodon's documented 503 for a domain that is not currently live.
+        return c.json({ error: "Remote data could not be fetched" }, 503);
+      }
+      if (resolved.isOk()) {
+        push(mastodonRemoteAccount(identity.value, resolved.value));
+      }
+    }
+  }
+
+  // Non-exact results: local accounts first, then cached remote actors.
+  const remaining = Math.max(limit - documents.length, 0);
+  const terms = handle
+    ? handle.split("@")[1] === identity.value.domain
+      ? (handle.split("@")[0] ?? "")
+      : query
+    : query;
+  if (remaining > 0) {
+    const local = await searchAccounts(c.env.DB, terms, remaining + offset, offset);
+    if (local.isErr()) {
+      return jsonRepositoryError(c, local.error.message);
+    }
+    for (const account of local.value) {
+      if (!followed(account.id)) {
+        continue;
+      }
+      push(await mastodonAccountDocument(c.env, identity.value, account));
+      if (documents.length >= limit) {
+        break;
+      }
+    }
+  }
+  if (following === undefined && documents.length < limit) {
+    const remote = await searchRemoteActors(c.env.DB, query, limit + offset);
+    if (remote.isErr()) {
+      return jsonRepositoryError(c, remote.error.message);
+    }
+    for (const actor of remote.value) {
+      if (documents.length >= limit) {
+        break;
+      }
+      push(mastodonRemoteAccount(identity.value, actor));
+    }
+  }
+  return c.json(documents.slice(0, limit));
+});
 
 accountRoutes.get("/api/v1/accounts/familiar_followers", async (c) => {
   const identity = parseInstanceIdentity(c.env);

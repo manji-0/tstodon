@@ -198,11 +198,12 @@ export const searchAccounts = async (
   db: D1Database,
   query: string,
   limit: number,
+  offset: number = 0,
 ): Promise<Result<LocalAccount[], RepositoryError>> =>
   runD1(async () => {
     const results = await queryTyped(
       db,
-      searchAccountsSql(`%${query.toLowerCase()}%`, `%${query}%`, limit),
+      searchAccountsSql(`%${query.toLowerCase()}%`, `%${query}%`, limit, offset),
     );
     return results.flatMap((raw) => {
       const row = parseAccountRow(raw);

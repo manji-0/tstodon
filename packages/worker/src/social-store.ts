@@ -36,6 +36,7 @@ import {
   listEndorsements as listEndorsementsSql,
   listFamiliarFollowerIds as listFamiliarFollowerIdsSql,
   listFollowers as listFollowersSql,
+  listFollowingAccountIds as listFollowingAccountIdsSql,
   listStatusFavouritedByLocal as listStatusFavouritedByLocalSql,
   listStatusFavouritedByRemote as listStatusFavouritedByRemoteSql,
   listStatusRebloggedByLocal as listStatusRebloggedByLocalSql,
@@ -885,6 +886,19 @@ export const listFollowers = async (
       listFollowersSql(accountId, limit),
     );
     return results.map((row) => row.follower_account_id);
+  });
+
+/** Every local account the viewer follows, for `following=true` searches. */
+export const followingAccountIds = async (
+  db: D1Database,
+  accountId: string,
+): Promise<Result<ReadonlySet<string>, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ target_account_id: string }>(
+      db,
+      listFollowingAccountIdsSql(accountId),
+    );
+    return new Set(rows.map((row) => row.target_account_id));
   });
 
 export const listFollowing = async (
