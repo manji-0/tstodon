@@ -7,6 +7,12 @@ import { countStatuses } from "../status-store";
 
 export const instanceRoutes = new Hono<{ Bindings: Env }>();
 
+/**
+ * No translation backend is configured, so there are no language pairs; the
+ * v2 instance document reports `translation.enabled: false` to match.
+ */
+instanceRoutes.get("/api/v1/instance/translation_languages", (c) => c.json({}));
+
 /** Public list of moderated servers (`noop` entries stay private, obfuscated ones hash the name). */
 instanceRoutes.get("/api/v1/instance/domain_blocks", async (c) => {
   const blocks = await listPublicDomainBlocks(c.env.DB);

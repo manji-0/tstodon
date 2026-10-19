@@ -4,6 +4,7 @@ import {
   StatusComposition,
   StatusId,
   Visibility,
+  type LocalStatus as LocalStatusValue,
   type StatusIdValue,
 } from "@tstodon/domain";
 import { Hono } from "hono";
@@ -977,4 +978,39 @@ statusRoutes.get("/api/v1/bookmarks", async (c) => {
     return jsonRepositoryError(c, statuses.error.message);
   }
   return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, user.value.id));
+});
+
+/**
+ * Translation has no backend in this deployment, so an eligible status answers
+ * 503 the same way Mastodon does when the translation request fails. Statuses
+ * that Mastodon would not translate (private mentions and followers-only posts)
+ * are refused with 403 before that.
+ */
+statusRoutes.post("/api/v1/statuses/:id/translate", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const status = await findStatusById(c.env.DB, c.req.param("id") ?? "");
+  if (status.isErr()) {
+    return jsonRepositoryError(c, status.error.message);
+  }
+  if (!status.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  let translatable: LocalStatusValue | undefined;
+  if (status.value.kind === "LocalNote") {
+    translatable = status.value;
+  } else {
+    const target = await findStatusById(c.env.DB, status.value.reblogOfId);
+    if (target.isErr()) {
+      return jsonRepositoryError(c, target.error.message);
+    }
+    translatable = target.value;
+  }
+  const visibility = translatable?.kind === "LocalNote" ? translatable.visibility.kind : undefined;
+  if (visibility !== "Public" && visibility !== "Unlisted") {
+    return c.json({ error: "This action is not allowed", kind: "Forbidden" }, 403);
+  }
+  return c.json({ error: "Service Unavailable", kind: "TranslationUnavailable" }, 503);
 });
