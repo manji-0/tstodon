@@ -144,6 +144,8 @@ export * from "./sql/findListForAccount";
 
 export * from "./sql/findMediaById";
 
+export * from "./sql/findNotificationById";
+
 export * from "./sql/findNotificationOwned";
 
 export * from "./sql/findOutboundActivity";

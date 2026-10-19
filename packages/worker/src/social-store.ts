@@ -24,6 +24,7 @@ import {
   findBlock as findBlockSql,
   findEndorsement as findEndorsementSql,
   findFollowKind as findFollowKindSql,
+  findNotificationById as findNotificationByIdSql,
   findNotificationOwned as findNotificationOwnedSql,
   insertBookmarkOrIgnore as insertBookmarkOrIgnoreSql,
   insertEndorsement as insertEndorsementSql,
@@ -522,6 +523,31 @@ export const listNotifications = async (
   });
 
 /** Hide one notification for an account. False when the row is not theirs. */
+/** One notification of the account, by id. */
+export const findNotificationById = async (
+  db: D1Database,
+  accountId: string,
+  notificationId: string,
+): Promise<Result<NotificationRow | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<NotificationRow>(
+      db,
+      findNotificationByIdSql(notificationId, accountId),
+    );
+    const row = rows[0];
+    if (!row || row.id === undefined) {
+      return undefined;
+    }
+    return {
+      id: row.id,
+      account_id: row.account_id,
+      from_account_id: row.from_account_id,
+      kind: row.kind,
+      status_id: row.status_id,
+      created_at: row.created_at,
+    };
+  });
+
 export const dismissNotification = async (
   db: D1Database,
   accountId: string,

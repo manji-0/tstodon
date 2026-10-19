@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `GET /api/v1/notifications/:id`
 - `filtered` attribute on search results and notifications (keyword + narrowed-status matching)
 - Filter narrowing: `/api/v2/filters/:id/statuses` + `statuses` on the v2 document
 - v2 filter verbs plus keyword sub-resources (`filters.keywords_json`)

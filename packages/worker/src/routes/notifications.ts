@@ -21,6 +21,7 @@ import {
   clearNotifications,
   countUnreadNotifications,
   dismissNotification,
+  findNotificationById,
   listNotifications,
   type NotificationFilters,
 } from "../social-store";
@@ -100,6 +101,29 @@ notificationRoutes.get("/api/v1/notifications/unread_count", async (c) => {
     return jsonRepositoryError(c, count.error.message);
   }
   return c.json({ count: count.value });
+});
+
+notificationRoutes.get("/api/v1/notifications/:id", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const row = await findNotificationById(c.env.DB, user.value.id, c.req.param("id") ?? "");
+  if (row.isErr()) {
+    return jsonRepositoryError(c, row.error.message);
+  }
+  if (!row.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const document = await mastodonNotification(c.env, identity.value, row.value, user.value.id);
+  if (!document) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(document);
 });
 
 notificationRoutes.post("/api/v1/notifications/clear", async (c) => {
