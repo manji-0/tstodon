@@ -278,7 +278,10 @@ describe("worker http", () => {
 
   it("uploads media, creates polls, filters, and reports", async () => {
     const form = new FormData();
-    form.set("file", new File(["hello"], "hello.txt", { type: "text/plain" }));
+    form.set(
+      "file",
+      new File([new Uint8Array([137, 80, 78, 71])], "hello.png", { type: "image/png" }),
+    );
     const mediaResponse = await SELF.fetch("https://example.com/api/v1/media", {
       method: "POST",
       headers: await auth("alice@example.com"),

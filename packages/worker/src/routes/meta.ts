@@ -639,15 +639,7 @@ metaRoutes.get("/api/v2/instance", async (c) => {
       },
       media_attachments: {
         description_limit: InstanceLimits.media.maxDescriptionCharacters,
-        supported_mime_types: [
-          "image/jpeg",
-          "image/png",
-          "image/gif",
-          "image/webp",
-          "image/avif",
-          "video/mp4",
-          "video/webm",
-        ],
+        supported_mime_types: [...InstanceLimits.media.supportedMimeTypes],
       },
       polls: {
         max_options: InstanceLimits.poll.maxOptions,

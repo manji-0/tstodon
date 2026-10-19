@@ -29,15 +29,27 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
   if (!(file instanceof File)) {
     return c.json({ error: "file is required", kind: "ValidationError" }, 400);
   }
+  // Only the mime types this instance advertises are accepted.
+  const contentType = file.type.split(";")[0]?.trim().toLowerCase() ?? "";
+  const supported: ReadonlyArray<string> = InstanceLimits.media.supportedMimeTypes;
+  if (!supported.includes(contentType)) {
+    return c.json(
+      {
+        error: `unsupported media type: ${contentType || "unknown"}`,
+        kind: "UnsupportedMediaType",
+      },
+      422,
+    );
+  }
   const id = newEntityId();
   const objectKey = `media/${user.value.id}/${id}`;
   await c.env.MEDIA.put(objectKey, await file.arrayBuffer(), {
-    httpMetadata: { contentType: file.type || "application/octet-stream" },
+    httpMetadata: { contentType },
   });
   const row = await insertMedia(c.env.DB, {
     accountId: user.value.id,
     objectKey,
-    contentType: file.type || "application/octet-stream",
+    contentType,
   });
   if (row.isErr()) {
     return jsonRepositoryError(c, row.error.message);

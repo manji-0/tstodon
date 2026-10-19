@@ -23,6 +23,16 @@ export const InstanceLimits = {
   },
   media: {
     maxDescriptionCharacters: 1500,
+    /** What an upload may declare; advertised by /api/v2/instance. */
+    supportedMimeTypes: [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+      "image/avif",
+      "video/mp4",
+      "video/webm",
+    ],
   },
 } as const;
 
