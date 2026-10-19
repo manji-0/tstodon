@@ -92,6 +92,13 @@ moderationRoutes.delete("/api/v1/filters/:id", async (c) => {
   return c.body(null, 200);
 });
 
+/**
+ * Mastodon's `filter_action`: `hide` is the only action tstodon stores, and
+ * anything else (an absent value, or `blur`, which belongs to API version 5)
+ * falls back to `warn`, which is what the entity documents for unknown values.
+ */
+const filterActionOf = (value: unknown): "warn" | "hide" => (value === "hide" ? "hide" : "warn");
+
 moderationRoutes.post("/api/v2/filters", async (c) => {
   const user = await requireUser(c);
   if (user.isErr()) {
@@ -115,7 +122,7 @@ moderationRoutes.post("/api/v2/filters", async (c) => {
     wholeWord: keywords[0]?.whole_word ?? false,
     irreversible:
       body.value.filter_action !== undefined
-        ? body.value.filter_action === "hide"
+        ? filterActionOf(body.value.filter_action) === "hide"
         : isTruthy(body.value.irreversible),
     expiresAt: expiresAtFromBody(body.value.expires_in) ?? undefined,
     keywords,
@@ -239,7 +246,8 @@ moderationRoutes.put("/api/v2/filters/:id", async (c) => {
     phrase,
     context: contexts.length > 0 ? contexts : (JSON.parse(existing.value.context_json) as string[]),
     wholeWord: keywords[0]?.whole_word ?? existing.value.whole_word === 1,
-    irreversible: action === undefined ? existing.value.irreversible === 1 : action === "hide",
+    irreversible:
+      action === undefined ? existing.value.irreversible === 1 : filterActionOf(action) === "hide",
     expiresAt:
       body.value.expires_in === undefined
         ? existing.value.expires_at

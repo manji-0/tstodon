@@ -170,4 +170,45 @@ describe("filtered on timelines", () => {
     expect(filteredTitles(read(TimelineSchema, other.body), statusId)).toEqual([]);
     expect(viewerId).not.toBe(authorId);
   });
+
+  it("marks a hide-action filter without dropping the status", async () => {
+    const viewerEmail = "timeline-hide-viewer@example.com";
+    const authorEmail = "timeline-hide-author@example.com";
+    const authorId = await accountIdFor(authorEmail);
+    const statusId = await postStatus(authorEmail, { status: "hide-action spoilers here" });
+    await json(`/api/v1/accounts/${authorId}/follow`, {
+      method: "POST",
+      headers: await auth(viewerEmail),
+    });
+
+    const created = await json("/api/v2/filters", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(viewerEmail)) },
+      body: JSON.stringify({
+        title: "spoilers",
+        context: ["home"],
+        filter_action: "hide",
+        keywords: ["spoilers"],
+      }),
+    });
+    expect(created.status).toBe(200);
+    expect(read(z.object({ filter_action: z.string() }), created.body).filter_action).toBe("hide");
+
+    // Mastodon matches filters server-side and leaves the action to the client
+    // (`hide` is applied by the client from `filtered`), so the status is still
+    // present, just marked.
+    const timeline = await json("/api/v1/timelines/home", { headers: await auth(viewerEmail) });
+    const home = read(TimelineSchema, timeline.body);
+    expect(home.some((status) => status.id === statusId)).toBe(true);
+    expect(filteredTitles(home, statusId)).toEqual(["spoilers"]);
+
+    // An action tstodon does not store (`blur` is API version 5) reads as warn.
+    const unknown = await json("/api/v2/filters", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(viewerEmail)) },
+      body: JSON.stringify({ title: "blurred", context: ["home"], filter_action: "blur" }),
+    });
+    expect(unknown.status).toBe(200);
+    expect(read(z.object({ filter_action: z.string() }), unknown.body).filter_action).toBe("warn");
+  });
 });
