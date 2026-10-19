@@ -1,14 +1,24 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
+import { findAccountById } from "../account-store";
 import { jsonAuthError, jsonRepositoryError, queryLimit, requireUser } from "../http";
 import { getMarkers } from "../marker-store";
-import { mastodonNotification } from "../mastodon";
+import { mastodonAccountDocument, mastodonNotification, mastodonStatuses } from "../mastodon";
+import {
+  DEFAULT_GROUPED_TYPES,
+  groupNotifications,
+  notificationGroupKey,
+  type NotificationGroup,
+} from "../notification-groups";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
   clearNotifications,
   countUnreadNotifications,
   dismissNotification,
   listNotifications,
+  type NotificationFilters,
 } from "../social-store";
+import { findStatusesByIds } from "../status-store";
 import { mutedThreadStatusIds } from "../status-mute-store";
 
 export const notificationRoutes = new Hono<{ Bindings: Env }>();
@@ -95,6 +105,240 @@ notificationRoutes.post("/api/v1/notifications/:id/dismiss", async (c) => {
   }
   if (!dismissed.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json({});
+});
+
+/** Shared query handling for the grouped (`v2`) endpoints. */
+const groupedQuery = (
+  c: Context<{ Bindings: Env }>,
+): {
+  type: string;
+  groupedTypes: ReadonlySet<string>;
+  filters: NotificationFilters;
+  limit: number;
+} => {
+  const queryValues = (key: string): string[] =>
+    [...(c.req.queries(`${key}[]`) ?? []), ...(c.req.queries(key) ?? [])].filter(
+      (value) => value.length > 0,
+    );
+  const requested = queryValues("grouped_types");
+  return {
+    type: "notifications",
+    groupedTypes: new Set(requested.length > 0 ? requested : DEFAULT_GROUPED_TYPES),
+    filters: {
+      types: queryValues("types"),
+      excludeTypes: queryValues("exclude_types"),
+      fromAccountId: c.req.query("account_id"),
+      maxId: c.req.query("max_id"),
+    },
+    limit: queryLimit(c.req.query("limit"), 40),
+  };
+};
+
+/**
+ * `limit` counts groups, so fetch a wider page of notifications and fold it.
+ * Mastodon caps a page at 80 groups; the row window is capped to keep D1 work
+ * bounded.
+ */
+const groupedNotificationPage = async (
+  c: Context<{ Bindings: Env }>,
+  accountId: string,
+): Promise<
+  | Readonly<{
+      kind: "Ok";
+      groups: ReadonlyArray<NotificationGroup>;
+      accountIds: ReadonlyArray<string>;
+      statusIds: ReadonlyArray<string>;
+    }>
+  | Readonly<{ kind: "Err"; message: string }>
+> => {
+  const { groupedTypes, filters, limit } = groupedQuery(c);
+  const rows = await listNotifications(
+    c.env.DB,
+    accountId,
+    Math.min(Math.max(limit, 1) * 4, NOTIFICATION_GROUP_ROW_CAP),
+    filters,
+  );
+  if (rows.isErr()) {
+    return { kind: "Err", message: rows.error.message };
+  }
+  const grouped = groupNotifications(rows.value, groupedTypes, limit);
+  return {
+    kind: "Ok",
+    groups: grouped.groups,
+    accountIds: grouped.accountIds,
+    statusIds: grouped.statusIds,
+  };
+};
+
+const groupEnvelope = async (
+  c: Context<{ Bindings: Env }>,
+  accountId: string,
+  groups: ReadonlyArray<NotificationGroup>,
+  accountIds: ReadonlyArray<string>,
+  statusIds: ReadonlyArray<string>,
+  withPageIds: boolean,
+): Promise<Record<string, unknown>> => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return { accounts: [], statuses: [], notification_groups: [] };
+  }
+  const accounts =
+    accountIds.length > 0
+      ? (
+          await Promise.all(
+            accountIds.map(async (id) => {
+              const account = await findAccountById(c.env.DB, id);
+              return account.isOk() && account.value
+                ? await mastodonAccountDocument(c.env, identity.value, account.value)
+                : undefined;
+            }),
+          )
+        ).flatMap((document) => (document ? [document] : []))
+      : [];
+  let statuses: Record<string, unknown>[] = [];
+  if (statusIds.length > 0) {
+    const found = await findStatusesByIds(c.env.DB, statusIds);
+    if (found.isOk()) {
+      statuses = await mastodonStatuses(
+        c.env,
+        identity.value,
+        [...found.value.values()],
+        accountId,
+      );
+    }
+  }
+  return {
+    accounts,
+    statuses,
+    notification_groups: groups.map((group) => ({
+      group_key: group.groupKey,
+      notifications_count: group.notificationsCount,
+      type: group.type,
+      most_recent_notification_id: group.mostRecentNotificationId,
+      ...(withPageIds
+        ? {
+            page_min_id: group.pageMinId,
+            page_max_id: group.pageMaxId,
+            latest_page_notification_at: group.latestPageNotificationAt,
+          }
+        : {}),
+      sample_account_ids: group.sampleAccountIds,
+      ...(group.statusId ? { status_id: group.statusId } : {}),
+    })),
+  };
+};
+
+/** Mastodon caps a grouped page at 80 groups; keep the row window bounded too. */
+const NOTIFICATION_GROUP_ROW_CAP = 200;
+
+notificationRoutes.get("/api/v2/notifications/unread_count", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const markers = await getMarkers(c.env.DB, user.value.id, ["notifications"]);
+  if (markers.isErr()) {
+    return jsonRepositoryError(c, markers.error.message);
+  }
+  const markerId = markers.value.notifications?.last_read_id;
+  const { groupedTypes } = groupedQuery(c);
+  const rows = await listNotifications(c.env.DB, user.value.id, NOTIFICATION_GROUP_ROW_CAP, {
+    maxId: undefined,
+  });
+  if (rows.isErr()) {
+    return jsonRepositoryError(c, rows.error.message);
+  }
+  const unreadKeys = new Set<string>();
+  for (const row of rows.value) {
+    if (markerId && row.id <= markerId) {
+      continue;
+    }
+    unreadKeys.add(notificationGroupKey(row, groupedTypes));
+  }
+  return c.json({ count: unreadKeys.size });
+});
+
+notificationRoutes.get("/api/v2/notifications", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const page = await groupedNotificationPage(c, user.value.id);
+  if (page.kind === "Err") {
+    return jsonRepositoryError(c, page.message);
+  }
+  return c.json(
+    await groupEnvelope(c, user.value.id, page.groups, page.accountIds, page.statusIds, true),
+  );
+});
+
+notificationRoutes.get("/api/v2/notifications/:groupKey", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const groupKey = c.req.param("groupKey");
+  const page = await groupedNotificationPage(c, user.value.id);
+  if (page.kind === "Err") {
+    return jsonRepositoryError(c, page.message);
+  }
+  const group = page.groups.find((candidate) => candidate.groupKey === groupKey);
+  if (!group) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(
+    await groupEnvelope(c, user.value.id, [group], page.accountIds, page.statusIds, false),
+  );
+});
+
+notificationRoutes.get("/api/v2/notifications/:groupKey/accounts", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const page = await groupedNotificationPage(c, user.value.id);
+  if (page.kind === "Err") {
+    return jsonRepositoryError(c, page.message);
+  }
+  const group = page.groups.find((candidate) => candidate.groupKey === c.req.param("groupKey"));
+  if (!group) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const accounts: Record<string, unknown>[] = [];
+  for (const id of group.fromAccountIds) {
+    const account = await findAccountById(c.env.DB, id);
+    if (account.isOk() && account.value) {
+      accounts.push(await mastodonAccountDocument(c.env, identity.value, account.value));
+    }
+  }
+  return c.json(accounts);
+});
+
+notificationRoutes.post("/api/v2/notifications/:groupKey/dismiss", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const groupKey = c.req.param("groupKey");
+  const page = await groupedNotificationPage(c, user.value.id);
+  if (page.kind === "Err") {
+    return jsonRepositoryError(c, page.message);
+  }
+  const group = page.groups.find((candidate) => candidate.groupKey === groupKey);
+  if (!group) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  for (const id of group.notificationIds) {
+    const dismissed = await dismissNotification(c.env.DB, user.value.id, id);
+    if (dismissed.isErr()) {
+      return jsonRepositoryError(c, dismissed.error.message);
+    }
   }
   return c.json({});
 });
