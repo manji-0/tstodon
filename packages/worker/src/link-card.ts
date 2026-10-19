@@ -10,6 +10,7 @@ import type { OutboxJob } from "@tstodon/domain";
 import {
   findLinkCard as findLinkCardSql,
   listLinkCards as listLinkCardsSql,
+  listStaleLinkCards as listStaleLinkCardsSql,
   upsertLinkCard as upsertLinkCardSql,
 } from "./generated/prisma/sql";
 import { suspendedDomains } from "./admin-domain-block-store";
@@ -35,6 +36,8 @@ const MAX_HTML_CHARS = 200_000;
 const FETCH_TIMEOUT_MS = 3000;
 /** Previews older than this are refreshed the next time the link is posted. */
 const CARD_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** How many stale previews one cron run refreshes. */
+const STALE_REFRESH_BATCH = 20;
 
 const CardSchema = z.object({
   url: z.string().min(1),
@@ -256,6 +259,18 @@ export const buildLinkCard = async (
   return outcome.kind === "Built" || outcome.kind === "Cached" ? outcome.card : undefined;
 };
 
+/** URLs whose cached preview has aged out, oldest first. */
+export const listStaleLinkCardUrls = async (
+  db: D1Database,
+  limit: number,
+): Promise<ReadonlyArray<string>> => {
+  const before = new Date(Date.now() - CARD_TTL_MS).toISOString();
+  const queried = await runD1(async () =>
+    queryTyped<{ url: string }>(db, listStaleLinkCardsSql(before, limit)),
+  );
+  return queried.isOk() ? queried.value.map((row) => row.url) : [];
+};
+
 /** Store a card in the URL cache (what the unfurl writes). */
 export const cacheLinkCard = async (
   db: D1Database,
@@ -291,6 +306,28 @@ export const listCachedLinkCards = async (
     }
   }
   return cards;
+};
+
+/**
+ * Cron path: refresh the oldest stale previews, a bounded batch per run.
+ * Failures leave the existing (stale) card in place.
+ */
+export const refreshStaleLinkCards = async (env: Env): Promise<void> => {
+  const identity = parseInstanceIdentity(env);
+  if (identity.isErr()) {
+    return;
+  }
+  const urls = await listStaleLinkCardUrls(env.DB, STALE_REFRESH_BATCH);
+  if (urls.length === 0) {
+    return;
+  }
+  const options = {
+    allowHosts: federationAllowHosts(env),
+    blockedHosts: await suspendedDomains(env.DB),
+  };
+  for (const url of urls) {
+    await resolveLinkCard(env, identity.value, url, options);
+  }
 };
 
 /** Queue the unfurl for a stored status (or remote status); never blocks a request. */

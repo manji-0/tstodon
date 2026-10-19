@@ -12,6 +12,8 @@ const DeliverTargetSchema = z.object({
   inboxUrl: z.url(),
 });
 const ProcessExpiredPollsSchema = unitKind("ProcessExpiredPolls");
+/** Refresh previews whose cache entry has aged out (cron driven). */
+const RefreshLinkCardsSchema = unitKind("RefreshLinkCards");
 /** Build the link preview for a stored status or remote status. */
 const ProcessLinkCardSchema = z.object({
   kind: z.literal("ProcessLinkCard"),
@@ -24,6 +26,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ExpandFollowersSchema,
   DeliverTargetSchema,
   ProcessExpiredPollsSchema,
+  RefreshLinkCardsSchema,
   ProcessLinkCardSchema,
 ]);
 

@@ -23,7 +23,7 @@ import {
 import { listExpiredUnnotifiedPolls, markPollExpiryNotified } from "./poll-store";
 import { elapsedMs, writeMetric } from "./metrics";
 import { suspendedDomains } from "./admin-domain-block-store";
-import { processLinkCardJob } from "./link-card";
+import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
 import { hostnameOf } from "./domain-block-store";
 import { listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
@@ -290,6 +290,9 @@ export const processOutboxJob = async (
   switch (job.kind) {
     case "ProcessExpiredPolls":
       await processExpiredPolls(env);
+      return "ok";
+    case "RefreshLinkCards":
+      await refreshStaleLinkCards(env);
       return "ok";
     case "ProcessLinkCard":
       return processLinkCardJob(env, job);

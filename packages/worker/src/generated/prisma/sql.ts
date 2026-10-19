@@ -356,6 +356,8 @@ export * from "./sql/listRestrictedDomains";
 
 export * from "./sql/listSensitizedAccountIds";
 
+export * from "./sql/listStaleLinkCards";
+
 export * from "./sql/listStatusCards";
 
 export * from "./sql/listStatusEditSnapshots";

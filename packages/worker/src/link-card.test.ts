@@ -9,7 +9,8 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
-import { processLinkCardJob } from "./link-card";
+import { cacheLinkCard, processLinkCardJob } from "./link-card";
+import { processOutboxJob } from "./delivery";
 
 const auth = (email: string): Promise<Record<string, string>> => accessAuthHeaders(email);
 
@@ -239,6 +240,56 @@ describe("link cards", () => {
     const thirdCalls = await withFetchStub(stub, () => unfurl(third.id, url));
     expect(thirdCalls).toBe(0);
     expect((await statusCard(third.id))?.title).toBe("Second Title");
+  });
+
+  it("refreshes stale previews from cron and keeps the card when it fails", async () => {
+    const url = "https://cron.example/story";
+    const seeded = await cacheLinkCard(env.DB, url, {
+      url,
+      title: "Old Title",
+      description: "",
+      providerName: "cron.example",
+      providerUrl: "https://cron.example",
+      authorName: "",
+      authorUrl: "",
+      image: null,
+      type: "link",
+    });
+    expect(seeded.isOk()).toBe(true);
+    const aged = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    await env.DB.prepare("UPDATE link_cards SET fetched_at = ? WHERE url = ?")
+      .bind(aged, url)
+      .run();
+
+    const calls = await withFetchStub(
+      () =>
+        new Response('<meta property="og:title" content="Fresh Title" />', {
+          headers: { "content-type": "text/html" },
+        }),
+      async () => {
+        expect(await processOutboxJob(env, { kind: "RefreshLinkCards" })).toBe("ok");
+      },
+    );
+    expect(calls).toBe(1);
+    const refreshed = await env.DB.prepare("SELECT card_json FROM link_cards WHERE url = ?")
+      .bind(url)
+      .first<{ card_json: string }>();
+    expect(refreshed?.card_json).toContain("Fresh Title");
+
+    // A failing refresh leaves the (now stale again) card in place.
+    await env.DB.prepare("UPDATE link_cards SET fetched_at = ? WHERE url = ?")
+      .bind(aged, url)
+      .run();
+    await withFetchStub(
+      () => new Response("boom", { status: 503, headers: { "content-type": "text/html" } }),
+      async () => {
+        expect(await processOutboxJob(env, { kind: "RefreshLinkCards" })).toBe("ok");
+      },
+    );
+    const kept = await env.DB.prepare("SELECT card_json FROM link_cards WHERE url = ?")
+      .bind(url)
+      .first<{ card_json: string }>();
+    expect(kept?.card_json).toContain("Fresh Title");
   });
 
   it("distinguishes transient failures from settled ones", async () => {

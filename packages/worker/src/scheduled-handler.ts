@@ -6,9 +6,11 @@ export const handleScheduled = (
   ctx: ExecutionContext,
 ): void => {
   ctx.waitUntil(
-    env.OUTBOX_PROCESS_QUEUE.send({
-      kind: "ProcessExpiredPolls",
-    }).then(() => {
+    Promise.all([
+      env.OUTBOX_PROCESS_QUEUE.send({ kind: "ProcessExpiredPolls" }),
+      // Refresh the previews whose cache entry has aged out.
+      env.OUTBOX_PROCESS_QUEUE.send({ kind: "RefreshLinkCards" }),
+    ]).then(() => {
       writeMetric(env, "cron", [1], [controller.cron, "scheduled"]);
     }),
   );
