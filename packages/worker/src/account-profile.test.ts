@@ -130,6 +130,25 @@ describe("account profiles", () => {
     expect(status.fields.map((field) => field.name)).toEqual(["Website"]);
   });
 
+  it("keeps at most four profile fields", async () => {
+    const email = "profile-fields@example.com";
+    const updated = await updateCredentials(email, {
+      fields: [
+        { name: "One", value: "1" },
+        { name: "Two", value: "2" },
+        { name: "Three", value: "3" },
+        { name: "Four", value: "4" },
+        { name: "Five", value: "5" },
+      ],
+    });
+    expect(read(AccountSchema, updated.body).fields.map((field) => field.name)).toEqual([
+      "One",
+      "Two",
+      "Three",
+      "Four",
+    ]);
+  });
+
   it("keeps omitted profile fields and replaces them when provided", async () => {
     const email = "profile-partial@example.com";
     await updateCredentials(email, {

@@ -144,11 +144,14 @@ accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
   if (existingProfile.isErr()) {
     return jsonRepositoryError(c, existingProfile.error.message);
   }
-  const fields = body.value.fields?.flatMap((field) => {
-    const name = field.name?.trim() ?? "";
-    const value = field.value?.trim() ?? "";
-    return name.length > 0 && value.length > 0 ? [{ name, value }] : [];
-  });
+  const fields = body.value.fields
+    ?.flatMap((field) => {
+      const name = field.name?.trim() ?? "";
+      const value = field.value?.trim() ?? "";
+      return name.length > 0 && value.length > 0 ? [{ name, value }] : [];
+    })
+    // Mastodon keeps only the first few profile fields.
+    .slice(0, InstanceLimits.account.maxProfileFields);
   // Avatar / header uploads land in the media bucket like any other object.
   const uploaded = await storeProfileImage(c.env, user.value.id, "avatar", body.value.avatar);
   if (uploaded.kind === "Err") {

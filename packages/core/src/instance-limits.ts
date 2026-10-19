@@ -20,6 +20,8 @@ export const InstanceLimits = {
   account: {
     maxPinnedStatuses: 5,
     maxFeaturedTags: 10,
+    /** Mastodon keeps at most this many profile fields (`Account::Field::LIMIT`). */
+    maxProfileFields: 4,
   },
   media: {
     maxDescriptionCharacters: 1500,
