@@ -12,6 +12,7 @@ import {
 import { findAccountProfile, upsertAccountProfile } from "../account-profile-store";
 import { InstanceLimits } from "@tstodon/core";
 import { authenticate } from "../auth";
+import { attachFilteredToStatuses } from "../filter-match";
 import { getAccountModeration } from "../account-moderation-store";
 import { enqueueTargetedActivity } from "../delivery";
 import {
@@ -337,7 +338,15 @@ accountRoutes.get("/api/v1/accounts/:id/statuses", async (c) => {
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
-  return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, viewerId));
+  return c.json(
+    await attachFilteredToStatuses(
+      c.env.DB,
+      viewerId,
+      "public",
+      statuses.value,
+      await mastodonStatuses(c.env, identity.value, statuses.value, viewerId),
+    ),
+  );
 });
 
 const accountList = async (c: Context<{ Bindings: Env }>, kind: "followers" | "following") => {

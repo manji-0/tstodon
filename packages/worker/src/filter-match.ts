@@ -1,5 +1,7 @@
 import { err, ok, type Result } from "neverthrow";
+import type { LocalStatus } from "@tstodon/domain";
 import type { RepositoryError } from "./d1";
+import { mastodonFilterV2 } from "./mastodon";
 import { FilterContextSchema, parseJsonColumn } from "./schemas";
 import {
   filterKeywords,
@@ -98,3 +100,41 @@ export const filteredAttribute = (
     keyword_matches: [...match.keywordMatches],
     status_matches: [...match.statusMatches],
   }));
+
+/**
+ * Attach Mastodon's `filtered` attribute to already-rendered status documents.
+ * Only local notes carry it: a reblog's text lives on another row, so its
+ * document keeps `filtered` unset.
+ */
+export const attachFilteredToStatuses = async <T extends Record<string, unknown>>(
+  db: D1Database,
+  viewerId: string | undefined,
+  context: string,
+  statuses: ReadonlyArray<LocalStatus>,
+  documents: ReadonlyArray<T>,
+): Promise<ReadonlyArray<T>> => {
+  if (!viewerId) {
+    return documents;
+  }
+  const filters = await loadViewerFilters(db, viewerId);
+  if (filters.isErr() || filters.value.length === 0) {
+    return documents;
+  }
+  const texts = new Map<string, string>();
+  for (const status of statuses) {
+    if (status.kind === "LocalNote") {
+      texts.set(status.id, status.text);
+    }
+  }
+  return documents.map((document) => {
+    const id = typeof document.id === "string" ? document.id : "";
+    const text = texts.get(id);
+    if (text === undefined) {
+      return document;
+    }
+    const matches = matchFilters(filters.value, context, text, id);
+    return matches.length > 0
+      ? { ...document, filtered: filteredAttribute(matches, (row) => mastodonFilterV2(row)) }
+      : document;
+  });
+};

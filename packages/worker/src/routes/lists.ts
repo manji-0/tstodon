@@ -24,6 +24,7 @@ import {
 } from "../list-store";
 import { mastodonAccountDocument, mastodonStatuses } from "../mastodon";
 import { parseInstanceIdentity } from "../runtime-config";
+import { attachFilteredToStatuses } from "../filter-match";
 import { filterMutedThreads } from "../status-mute-store";
 import { isTruthy, stringList } from "../schemas";
 import { warmSchemas } from "@tstodon/core";
@@ -266,5 +267,13 @@ listRoutes.get("/api/v1/timelines/list/:id", async (c) => {
   if (visible.isErr()) {
     return jsonRepositoryError(c, visible.error.message);
   }
-  return c.json(await mastodonStatuses(c.env, identity.value, visible.value, user.value.id));
+  return c.json(
+    await attachFilteredToStatuses(
+      c.env.DB,
+      user.value.id,
+      "home",
+      visible.value,
+      await mastodonStatuses(c.env, identity.value, visible.value, user.value.id),
+    ),
+  );
 });

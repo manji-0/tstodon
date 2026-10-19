@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { authenticate } from "../auth";
 import { restrictedDomains } from "../admin-domain-block-store";
 import { listBlockedDomains } from "../domain-block-store";
+import { attachFilteredToStatuses } from "../filter-match";
 import { jsonAuthError, jsonRepositoryError, queryCursor, queryLimit, requireUser } from "../http";
 import { mastodonRemoteStatus, mastodonStatuses, remoteStatusVisible } from "../mastodon";
 import { elapsedMs, writeMetric } from "../metrics";
@@ -59,7 +60,14 @@ timelineRoutes.get("/api/v1/timelines/public", async (c) => {
     }
     remoteDocuments.push(mastodonRemoteStatus(identity.value, status, actor.value));
   }
-  const merged = [...localDocuments, ...remoteDocuments].sort((left, right) => {
+  const filteredLocal = await attachFilteredToStatuses(
+    c.env.DB,
+    viewerId,
+    "public",
+    statuses.value,
+    localDocuments,
+  );
+  const merged = [...filteredLocal, ...remoteDocuments].sort((left, right) => {
     const leftAt = typeof left.created_at === "string" ? left.created_at : "";
     const rightAt = typeof right.created_at === "string" ? right.created_at : "";
     return rightAt.localeCompare(leftAt);
@@ -89,7 +97,15 @@ timelineRoutes.get("/api/v1/timelines/home", async (c) => {
   if (visible.isErr()) {
     return jsonRepositoryError(c, visible.error.message);
   }
-  return c.json(await mastodonStatuses(c.env, identity.value, visible.value, user.value.id));
+  return c.json(
+    await attachFilteredToStatuses(
+      c.env.DB,
+      user.value.id,
+      "home",
+      visible.value,
+      await mastodonStatuses(c.env, identity.value, visible.value, user.value.id),
+    ),
+  );
 });
 
 timelineRoutes.get("/api/v1/timelines/tag/:hashtag", async (c) => {
@@ -112,7 +128,13 @@ timelineRoutes.get("/api/v1/timelines/tag/:hashtag", async (c) => {
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
-  const documents = await mastodonStatuses(c.env, identity.value, statuses.value, viewerId);
+  const documents = await attachFilteredToStatuses(
+    c.env.DB,
+    viewerId,
+    "public",
+    statuses.value,
+    await mastodonStatuses(c.env, identity.value, statuses.value, viewerId),
+  );
   writeMetric(c.env, "timeline.tag", [elapsedMs(startedAt), documents.length], ["ok"]);
   return c.json(documents);
 });
@@ -139,5 +161,13 @@ timelineRoutes.get("/api/v1/timelines/direct", async (c) => {
   if (visible.isErr()) {
     return jsonRepositoryError(c, visible.error.message);
   }
-  return c.json(await mastodonStatuses(c.env, identity.value, visible.value, user.value.id));
+  return c.json(
+    await attachFilteredToStatuses(
+      c.env.DB,
+      user.value.id,
+      "home",
+      visible.value,
+      await mastodonStatuses(c.env, identity.value, visible.value, user.value.id),
+    ),
+  );
 });
