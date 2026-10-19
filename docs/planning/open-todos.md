@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `favourited_by` / `reblogged_by` list local and remote accounts behind a status's counts
 - Poll edit accepts `hide_totals`
 - `filter_action` is client-applied and unknown actions read as `warn` (documented + tested)
 - `trends/links` supports `limit` + `offset` paging

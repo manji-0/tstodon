@@ -36,6 +36,10 @@ import {
   listEndorsements as listEndorsementsSql,
   listFamiliarFollowerIds as listFamiliarFollowerIdsSql,
   listFollowers as listFollowersSql,
+  listStatusFavouritedByLocal as listStatusFavouritedByLocalSql,
+  listStatusFavouritedByRemote as listStatusFavouritedByRemoteSql,
+  listStatusRebloggedByLocal as listStatusRebloggedByLocalSql,
+  listStatusRebloggedByRemote as listStatusRebloggedByRemoteSql,
   listFollowing as listFollowingSql,
   listMutedAccounts as listMutedAccountsSql,
   listNotifications as listNotificationsSql,
@@ -792,6 +796,81 @@ export const listAcceptedFollowerIds = async (
       listAcceptedFollowerIdsSql(targetAccountId),
     );
     return results.map((row) => row.follower_account_id);
+  });
+
+/**
+ * An account that favourited or boosted a status: a local account, or a remote
+ * actor whose `Like`/`Announce` was stored.
+ */
+export type StatusBooster =
+  | Readonly<{ kind: "Local"; accountId: string; createdAt: string }>
+  | Readonly<{ kind: "Remote"; actorUri: string; createdAt: string }>;
+
+/**
+ * The newest `limit` accounts from both halves of a count — the local rows and
+ * the remote actor rows — newest first, with the actor as the tie-break. The
+ * global top `limit` is always inside the union of each side's top `limit`.
+ */
+const mergeStatusBoosters = (
+  local: ReadonlyArray<{ actor: string; created_at: string }>,
+  remote: ReadonlyArray<{ actor: string; created_at: string }>,
+  limit: number,
+): ReadonlyArray<StatusBooster> =>
+  [
+    ...local.map((row) => ({ ...row, kind: "Local" as const })),
+    ...remote.map((row) => ({ ...row, kind: "Remote" as const })),
+  ]
+    .toSorted(
+      (left, right) =>
+        right.created_at.localeCompare(left.created_at) || right.actor.localeCompare(left.actor),
+    )
+    .slice(0, limit)
+    .map((row) =>
+      row.kind === "Local"
+        ? { kind: row.kind, accountId: row.actor, createdAt: row.created_at }
+        : { kind: row.kind, actorUri: row.actor, createdAt: row.created_at },
+    );
+
+export const listStatusFavouritedBy = async (
+  db: D1Database,
+  statusId: string,
+  limit: number,
+): Promise<Result<ReadonlyArray<StatusBooster>, RepositoryError>> =>
+  runD1(async () => {
+    const local = await queryTyped<{ account_id: string; created_at: string }>(
+      db,
+      listStatusFavouritedByLocalSql(statusId, limit),
+    );
+    const remote = await queryTyped<{ actor_uri: string; created_at: string }>(
+      db,
+      listStatusFavouritedByRemoteSql(statusId, limit),
+    );
+    return mergeStatusBoosters(
+      local.map((row) => ({ actor: row.account_id, created_at: row.created_at })),
+      remote.map((row) => ({ actor: row.actor_uri, created_at: row.created_at })),
+      limit,
+    );
+  });
+
+export const listStatusRebloggedBy = async (
+  db: D1Database,
+  statusId: string,
+  limit: number,
+): Promise<Result<ReadonlyArray<StatusBooster>, RepositoryError>> =>
+  runD1(async () => {
+    const local = await queryTyped<{ account_id: string; created_at: string }>(
+      db,
+      listStatusRebloggedByLocalSql(statusId, limit),
+    );
+    const remote = await queryTyped<{ actor_uri: string; created_at: string }>(
+      db,
+      listStatusRebloggedByRemoteSql(statusId, limit),
+    );
+    return mergeStatusBoosters(
+      local.map((row) => ({ actor: row.account_id, created_at: row.created_at })),
+      remote.map((row) => ({ actor: row.actor_uri, created_at: row.created_at })),
+      limit,
+    );
   });
 
 export const listFollowers = async (

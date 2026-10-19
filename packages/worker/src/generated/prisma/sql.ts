@@ -362,7 +362,15 @@ export * from "./sql/listStatusCards";
 
 export * from "./sql/listStatusEditSnapshots";
 
+export * from "./sql/listStatusFavouritedByLocal";
+
+export * from "./sql/listStatusFavouritedByRemote";
+
 export * from "./sql/listStatusMuteRoots";
+
+export * from "./sql/listStatusRebloggedByLocal";
+
+export * from "./sql/listStatusRebloggedByRemote";
 
 export * from "./sql/listStatusReplyLinks";
 

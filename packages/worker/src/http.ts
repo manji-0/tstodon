@@ -19,6 +19,18 @@ export const queryLimit = (raw: string | undefined, fallback = 20): number => {
   return Math.min(parsed, 40);
 };
 
+/**
+ * Mastodon caps *status* collections at 40 but account collections
+ * (`favourited_by`, `reblogged_by`, followers…) at 80.
+ */
+export const queryAccountsLimit = (raw: string | undefined, fallback = 40): number => {
+  const parsed = Number.parseInt(raw ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+  return Math.min(parsed, 80);
+};
+
 /** Mastodon's `max_id` / `since_id` / `min_id` query cursors. */
 export const queryCursor = (
   c: Context<{ Bindings: Env }>,

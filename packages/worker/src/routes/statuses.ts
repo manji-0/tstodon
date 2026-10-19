@@ -20,6 +20,7 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
+  queryAccountsLimit,
   queryCursor,
   queryLimit,
   readUnknownBody,
@@ -27,12 +28,16 @@ import {
 } from "../http";
 import { newEntityId } from "../ids";
 import {
+  mastodonAccountDocument,
+  mastodonRemoteAccount,
   mastodonRemoteStatus,
   mastodonStatus,
   mastodonStatuses,
   remoteStatusVisible,
 } from "../mastodon";
 import { countPollVotes, findPollByStatusId, insertPoll, replacePollOptions } from "../poll-store";
+import { listStatusFavouritedBy, listStatusRebloggedBy } from "../social-store";
+import { findAccountById } from "../account-store";
 import { CreateStatusBodySchema, isTruthy, mediaAttributesFromForm, stringList } from "../schemas";
 import { z } from "zod";
 import {
@@ -389,6 +394,63 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
   }
   return response;
 });
+
+/**
+ * Who favourited or boosted a status (Mastodon's `favourited_by` and
+ * `reblogged_by`). Public for public statuses; anything the requester may not
+ * see answers 404 with the privacy-preserving wording Mastodon uses.
+ */
+const statusEngagementAccounts = async (
+  c: Context<{ Bindings: Env }>,
+  kind: "favourited_by" | "reblogged_by",
+) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const auth = await authenticate(c.req.raw, c.env);
+  if (auth.isErr()) {
+    return jsonAuthError(c, auth.error);
+  }
+  const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
+  const status = await findStatusById(c.env.DB, c.req.param("id") ?? "");
+  if (status.isErr()) {
+    return jsonRepositoryError(c, status.error.message);
+  }
+  if (!status.value || !(await canViewStatus(c.env.DB, status.value, viewerId))) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const limit = queryAccountsLimit(c.req.query("limit"));
+  const engaged =
+    kind === "favourited_by"
+      ? await listStatusFavouritedBy(c.env.DB, status.value.id, limit)
+      : await listStatusRebloggedBy(c.env.DB, status.value.id, limit);
+  if (engaged.isErr()) {
+    return jsonRepositoryError(c, engaged.error.message);
+  }
+  const documents = [];
+  for (const booster of engaged.value) {
+    if (booster.kind === "Local") {
+      const account = await findAccountById(c.env.DB, booster.accountId);
+      if (account.isOk() && account.value) {
+        documents.push(await mastodonAccountDocument(c.env, identity.value, account.value));
+      }
+      continue;
+    }
+    const actor = await findRemoteActorByUri(c.env.DB, booster.actorUri);
+    if (actor.isOk() && actor.value) {
+      documents.push(mastodonRemoteAccount(identity.value, actor.value));
+    }
+  }
+  return c.json(documents);
+};
+
+statusRoutes.get("/api/v1/statuses/:id/favourited_by", (c) =>
+  statusEngagementAccounts(c, "favourited_by"),
+);
+statusRoutes.get("/api/v1/statuses/:id/reblogged_by", (c) =>
+  statusEngagementAccounts(c, "reblogged_by"),
+);
 
 statusRoutes.get("/api/v1/statuses/:id", async (c) => {
   const identity = parseInstanceIdentity(c.env);
