@@ -660,7 +660,11 @@ export const ReportsScalarFieldEnum = {
   target_account_id: "target_account_id",
   status_ids_json: "status_ids_json",
   comment: "comment",
+  category: "category",
+  action_taken_at: "action_taken_at",
+  action_taken_by_account_id: "action_taken_by_account_id",
   created_at: "created_at",
+  updated_at: "updated_at",
 } as const;
 
 export type ReportsScalarFieldEnum =

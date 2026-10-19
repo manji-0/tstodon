@@ -1,0 +1,175 @@
+import { SELF } from "cloudflare:test";
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { schemaResult } from "@tstodon/core";
+import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { MastodonAccountPreviewSchema } from "./schemas";
+
+const auth = (
+  email: string,
+  options?: Readonly<{ admin?: boolean }>,
+): Promise<Record<string, string>> => accessAuthHeaders(email, options);
+
+const json = async (
+  path: string,
+  init?: RequestInit,
+): Promise<{ status: number; body: unknown }> => {
+  const response = await SELF.fetch(`https://example.com${path}`, init);
+  const contentType = response.headers.get("content-type") ?? "";
+  const body = contentType.includes("json") ? await response.json() : await response.text();
+  return { status: response.status, body };
+};
+
+const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
+  const parsed = schemaResult(schema)(body);
+  expect(parsed.isOk()).toBe(true);
+  if (parsed.isErr()) {
+    throw new Error("response schema rejected");
+  }
+  return parsed.value;
+};
+
+const ReportSchema = z.object({
+  id: z.string().min(1),
+  action_taken: z.boolean(),
+  action_taken_at: z.string().nullable(),
+  category: z.string().min(1),
+  comment: z.string(),
+  forwarded: z.boolean(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  account: MastodonAccountPreviewSchema.nullable(),
+  target_account: MastodonAccountPreviewSchema.nullable(),
+  assigned_account: z.unknown().nullable(),
+  action_taken_by_account: MastodonAccountPreviewSchema.nullable(),
+  statuses: z.array(z.object({ id: z.string().min(1) })),
+  rules: z.array(z.unknown()),
+});
+
+/** `POST /api/v1/reports` answers Mastodon's plain Report entity. */
+const CreatedReportSchema = z.object({
+  id: z.string().min(1),
+  action_taken: z.boolean(),
+  action_taken_at: z.string().nullable(),
+  category: z.string().min(1),
+  comment: z.string(),
+  forwarded: z.boolean(),
+  status_ids: z.array(z.string()),
+  rule_ids: z.array(z.string()),
+  target_account: z.object({ id: z.string().min(1) }),
+});
+
+const credentials = async (
+  email: string,
+): Promise<z.infer<typeof MastodonAccountPreviewSchema>> => {
+  const response = await json("/api/v1/accounts/verify_credentials", {
+    headers: await auth(email),
+  });
+  expect(response.status).toBe(200);
+  return read(MastodonAccountPreviewSchema, response.body);
+};
+
+const fileReport = async (
+  email: string,
+  targetId: string,
+  body: Record<string, unknown> = {},
+): Promise<z.infer<typeof CreatedReportSchema>> => {
+  const response = await json("/api/v1/reports", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(await auth(email)) },
+    body: JSON.stringify({ account_id: targetId, ...body }),
+  });
+  expect(response.status).toBe(200);
+  return read(CreatedReportSchema, response.body);
+};
+
+const adminReports = async (email: string, query = ""): Promise<z.infer<typeof ReportSchema>[]> => {
+  const response = await json(`/api/v1/admin/reports${query}`, {
+    headers: await auth(email, { admin: true }),
+  });
+  expect(response.status).toBe(200);
+  return read(z.array(ReportSchema), response.body);
+};
+
+describe("admin reports", () => {
+  it("lists reports with the documented filters and resolution", async () => {
+    const admin = "reports-admin@example.com";
+    const reporter = "reports-reporter@example.com";
+    const target = await credentials("reports-target@example.com");
+    const otherTarget = await credentials("reports-target2@example.com");
+
+    const first = await fileReport(reporter, target.id, {
+      comment: "bad behaviour",
+      category: "spam",
+    });
+    expect(first.category).toBe("spam");
+    expect(first.action_taken).toBe(false);
+    expect(first.target_account.id).toBe(target.id);
+
+    const second = await fileReport(reporter, otherTarget.id);
+    expect(second.category).toBe("other");
+
+    // The list is newest first, and the filters narrow it.
+    const all = await adminReports(admin);
+    expect(all.map((report) => report.id).slice(0, 2)).toEqual([second.id, first.id]);
+    expect((await adminReports(admin, `?target_account_id=${target.id}`)).map((r) => r.id)).toEqual(
+      [first.id],
+    );
+    const reporterAccount = await credentials(reporter);
+    expect((await adminReports(admin, `?account_id=${reporterAccount.id}`)).length).toBe(2);
+
+    const resolved = await json(`/api/v1/admin/reports/${first.id}/resolve`, {
+      method: "POST",
+      headers: await auth(admin, { admin: true }),
+    });
+    expect(resolved.status).toBe(200);
+    const document = read(ReportSchema, resolved.body);
+    expect(document.action_taken).toBe(true);
+    expect(document.action_taken_at).not.toBeNull();
+    expect(document.action_taken_by_account?.id).toBeDefined();
+
+    expect((await adminReports(admin, "?resolved=true")).map((r) => r.id)).toEqual([first.id]);
+    expect((await adminReports(admin, "?resolved=false")).map((r) => r.id)).toContain(second.id);
+    expect((await adminReports(admin, "?resolved=false")).map((r) => r.id)).not.toContain(first.id);
+
+    // Reopening clears the resolution again.
+    const reopened = await json(`/api/v1/admin/reports/${first.id}/reopen`, {
+      method: "POST",
+      headers: await auth(admin, { admin: true }),
+    });
+    expect(reopened.status).toBe(200);
+    expect(read(ReportSchema, reopened.body).action_taken).toBe(false);
+  });
+
+  it("serves a single report and 404s for an unknown one", async () => {
+    const admin = "reports2-admin@example.com";
+    const target = await credentials("reports2-target@example.com");
+    const filed = await fileReport("reports2-reporter@example.com", target.id);
+
+    const one = await json(`/api/v1/admin/reports/${filed.id}`, {
+      headers: await auth(admin, { admin: true }),
+    });
+    expect(one.status).toBe(200);
+    expect(read(ReportSchema, one.body).id).toBe(filed.id);
+
+    const missing = await json("/api/v1/admin/reports/nope", {
+      headers: await auth(admin, { admin: true }),
+    });
+    expect(missing.status).toBe(404);
+    // The endpoints are admin only.
+    expect((await json(`/api/v1/admin/reports/${filed.id}`)).status).toBe(401);
+  });
+
+  it("rejects an unknown report category", async () => {
+    const target = await credentials("reports3-target@example.com");
+    const response = await json("/api/v1/reports", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(await auth("reports3-reporter@example.com")),
+      },
+      body: JSON.stringify({ account_id: target.id, category: "rude" }),
+    });
+    expect(response.status).toBe(422);
+  });
+});

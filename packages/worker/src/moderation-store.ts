@@ -1,6 +1,8 @@
 import { runD1, type RepositoryError } from "./d1";
+import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { queryTyped, runTyped } from "./typed-sql";
 import { newEntityId } from "./ids";
+import { parseJsonColumn } from "./schemas";
 import { nowIso } from "./clock";
 import { schemaResult } from "@tstodon/core";
 import type { Result } from "neverthrow";
@@ -215,6 +217,56 @@ export const removeFilterStatus = async (
     return rows.length > 0;
   });
 
+/** Mastodon's report categories. */
+export const ReportCategorySchema = z.union([
+  z.literal("spam"),
+  z.literal("legal"),
+  z.literal("violation"),
+  z.literal("other"),
+]);
+
+export type ReportCategory = z.infer<typeof ReportCategorySchema>;
+
+export type ReportRow = Readonly<{
+  id: string;
+  accountId: string;
+  targetAccountId: string;
+  statusIds: ReadonlyArray<string>;
+  comment: string;
+  category: string;
+  actionTakenAt: string | null;
+  actionTakenByAccountId: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+}>;
+
+const reportFromRow = (row: {
+  id: string;
+  account_id: string;
+  target_account_id: string;
+  status_ids_json: string;
+  comment: string;
+  category: string;
+  action_taken_at: string | null;
+  action_taken_by_account_id: string | null;
+  created_at: string;
+  updated_at: string | null;
+}): ReportRow => ({
+  id: row.id,
+  accountId: row.account_id,
+  targetAccountId: row.target_account_id,
+  statusIds: parseJsonColumn(z.array(z.string()), row.status_ids_json).unwrapOr([]),
+  comment: row.comment,
+  category: row.category,
+  actionTakenAt: row.action_taken_at,
+  actionTakenByAccountId: row.action_taken_by_account_id,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const REPORT_SELECT = `id, account_id, target_account_id, status_ids_json, comment, category,
+       action_taken_at, action_taken_by_account_id, created_at, updated_at`;
+
 export const insertReport = async (
   db: D1Database,
   input: {
@@ -222,6 +274,7 @@ export const insertReport = async (
     targetAccountId: string;
     statusIds: ReadonlyArray<string>;
     comment: string;
+    category?: string;
   },
 ): Promise<Result<{ id: string }, RepositoryError>> =>
   runD1(async () => {
@@ -234,8 +287,81 @@ export const insertReport = async (
         input.targetAccountId,
         JSON.stringify(input.statusIds),
         input.comment,
+        input.category ?? "other",
         nowIso(),
       ),
     );
     return { id };
+  });
+
+/** Mastodon's admin report filters, paged by report id. */
+export type AdminReportFilters = Readonly<{
+  resolved?: boolean | undefined;
+  accountId?: string | undefined;
+  targetAccountId?: string | undefined;
+  cursor?: IdCursor | undefined;
+  limit: number;
+}>;
+
+export const listReports = async (
+  db: D1Database,
+  filters: AdminReportFilters,
+): Promise<Result<ReadonlyArray<ReportRow>, RepositoryError>> =>
+  runD1(async () => {
+    const conditions = ["1 = 1"];
+    const binds: string[] = [];
+    if (filters.resolved === true) {
+      conditions.push("action_taken_at IS NOT NULL");
+    }
+    if (filters.resolved === false) {
+      conditions.push("action_taken_at IS NULL");
+    }
+    if (filters.accountId) {
+      conditions.push("account_id = ?");
+      binds.push(filters.accountId);
+    }
+    if (filters.targetAccountId) {
+      conditions.push("target_account_id = ?");
+      binds.push(filters.targetAccountId);
+    }
+    const { where, order, binds: cursorBinds } = idCursorFragment(filters.cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT ${REPORT_SELECT} FROM reports
+         WHERE ${conditions.join(" AND ")} ${where} ${order} LIMIT ?`,
+      )
+      .bind(...binds, ...cursorBinds, filters.limit)
+      .all();
+    return (results ?? []).map((row) => reportFromRow(row as never));
+  });
+
+export const findReportById = async (
+  db: D1Database,
+  id: string,
+): Promise<Result<ReportRow | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await db
+      .prepare(`SELECT ${REPORT_SELECT} FROM reports WHERE id = ? LIMIT 1`)
+      .bind(id)
+      .all();
+    const row = rows.results?.[0];
+    return row ? reportFromRow(row as never) : undefined;
+  });
+
+/** Resolve (`byAccountId` set) or reopen (`null`) a report. */
+export const setReportResolved = async (
+  db: D1Database,
+  id: string,
+  byAccountId: string | null,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const now = nowIso();
+    const { results } = await db
+      .prepare(
+        `UPDATE reports SET action_taken_at = ?, action_taken_by_account_id = ?, updated_at = ?
+         WHERE id = ? RETURNING id`,
+      )
+      .bind(byAccountId === null ? null : now, byAccountId, now, id)
+      .all();
+    return (results?.length ?? 0) > 0;
   });

@@ -65,8 +65,15 @@ import {
   requireAdmin,
 } from "../http";
 import { newEntityId } from "../ids";
-import { mastodonAccountDocument } from "../mastodon";
+import { mastodonAccountDocument, mastodonStatuses } from "../mastodon";
 import { parseInstanceIdentity } from "../runtime-config";
+import {
+  findReportById,
+  listReports,
+  setReportResolved,
+  type ReportRow,
+} from "../moderation-store";
+import { findStatusesByIds } from "../status-store";
 import { isTruthy } from "../schemas";
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
@@ -682,6 +689,147 @@ adminRoutes.post("/api/v1/admin/accounts/:id/enable", async (c) => {
     ),
   );
 });
+
+/** An `Admin::Account` for an id, with its moderation and flag state. */
+const adminAccountFor = async (
+  env: Env,
+  identity: InstanceIdentity,
+  accountId: string,
+): Promise<Record<string, unknown> | null> => {
+  const account = await findAccountById(env.DB, accountId);
+  if (account.isErr() || !account.value) {
+    return null;
+  }
+  const moderation = await getAccountModeration(env.DB, accountId);
+  const sensitized = await isAccountSensitized(env.DB, accountId);
+  const pending = await pendingAccountIds(env.DB, [accountId]);
+  const disabled = await disabledAccountIds(env.DB, [accountId]);
+  return adminAccountDocument(
+    env,
+    identity,
+    account.value,
+    moderation.isOk() ? moderation.value : null,
+    sensitized.isOk() ? sensitized.value : false,
+    pending.isOk() && pending.value.has(accountId),
+    disabled.isOk() && disabled.value.has(accountId),
+  );
+};
+
+/** Mastodon's `Admin::Report` document. */
+const adminReportDocument = async (
+  c: Context<{ Bindings: Env }>,
+  identity: InstanceIdentity,
+  report: ReportRow,
+): Promise<Record<string, unknown>> => {
+  const reported = await findStatusesByIds(c.env.DB, [...report.statusIds]);
+  const statuses =
+    reported.isOk() && reported.value.size > 0
+      ? await mastodonStatuses(c.env, identity, [...reported.value.values()], undefined)
+      : [];
+  return {
+    id: report.id,
+    action_taken: report.actionTakenAt !== null,
+    action_taken_at: report.actionTakenAt,
+    category: report.category,
+    comment: report.comment,
+    forwarded: false,
+    created_at: report.createdAt,
+    updated_at: report.updatedAt ?? report.createdAt,
+    account: await adminAccountFor(c.env, identity, report.accountId),
+    target_account: await adminAccountFor(c.env, identity, report.targetAccountId),
+    assigned_account: null,
+    action_taken_by_account: report.actionTakenByAccountId
+      ? await adminAccountFor(c.env, identity, report.actionTakenByAccountId)
+      : null,
+    statuses,
+    rules: [],
+  };
+};
+
+/** Boolean report filters: `resolved=false` narrows to open reports. */
+const reportResolvedFilter = (c: Context<{ Bindings: Env }>): boolean | undefined => {
+  const raw = (c.req.query("resolved") ?? "").trim().toLowerCase();
+  if (raw === "true" || raw === "1") {
+    return true;
+  }
+  if (raw === "false" || raw === "0") {
+    return false;
+  }
+  return undefined;
+};
+
+adminRoutes.get("/api/v1/admin/reports", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const admin = await requireAdmin(c);
+  if (admin.isErr()) {
+    return jsonAuthError(c, admin.error);
+  }
+  const reports = await listReports(c.env.DB, {
+    resolved: reportResolvedFilter(c),
+    accountId: c.req.query("account_id") || undefined,
+    targetAccountId: c.req.query("target_account_id") || undefined,
+    cursor: queryCursor(c),
+    limit: queryAdminLimit(c.req.query("limit")),
+  });
+  if (reports.isErr()) {
+    return jsonRepositoryError(c, reports.error.message);
+  }
+  const documents: Record<string, unknown>[] = [];
+  for (const report of reports.value) {
+    documents.push(await adminReportDocument(c, identity.value, report));
+  }
+  return c.json(documents);
+});
+
+adminRoutes.get("/api/v1/admin/reports/:id", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const admin = await requireAdmin(c);
+  if (admin.isErr()) {
+    return jsonAuthError(c, admin.error);
+  }
+  const report = await findReportById(c.env.DB, c.req.param("id") ?? "");
+  if (report.isErr()) {
+    return jsonRepositoryError(c, report.error.message);
+  }
+  if (!report.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(await adminReportDocument(c, identity.value, report.value));
+});
+
+/** Resolve (`resolve`) or reopen (`reopen`) a report. */
+const resolveReport = async (c: Context<{ Bindings: Env }>, resolved: boolean) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const admin = await requireAdmin(c);
+  if (admin.isErr()) {
+    return jsonAuthError(c, admin.error);
+  }
+  const id = c.req.param("id") ?? "";
+  const changed = await setReportResolved(c.env.DB, id, resolved ? admin.value.account.id : null);
+  if (changed.isErr()) {
+    return jsonRepositoryError(c, changed.error.message);
+  }
+  const report = await findReportById(c.env.DB, id);
+  if (report.isErr()) {
+    return jsonRepositoryError(c, report.error.message);
+  }
+  if (!report.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(await adminReportDocument(c, identity.value, report.value));
+};
+
+adminRoutes.post("/api/v1/admin/reports/:id/resolve", (c) => resolveReport(c, true));
+adminRoutes.post("/api/v1/admin/reports/:id/reopen", (c) => resolveReport(c, false));
 
 const AdminDomainBlockBodySchema = z.object({
   domain: z.string().min(1).optional(),

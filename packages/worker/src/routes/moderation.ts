@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { schemaResult } from "@tstodon/core";
 import type { Context } from "hono";
 import type { z } from "zod";
 import {
@@ -21,6 +22,7 @@ import {
   insertFilter,
   insertReport,
   listFilterStatusIds,
+  ReportCategorySchema,
   listFilters,
   removeFilterStatus,
   updateFilter,
@@ -529,11 +531,20 @@ moderationRoutes.post("/api/v1/reports", async (c) => {
   if (body.isErr()) {
     return jsonValidationError(c);
   }
+  const requestedCategory = (body.value.category ?? "other").trim().toLowerCase();
+  const category = schemaResult(ReportCategorySchema)(requestedCategory);
+  if (category.isErr()) {
+    return c.json(
+      { error: "Validation failed: Category is not included in the list", kind: "ValidationError" },
+      422,
+    );
+  }
   const report = await insertReport(c.env.DB, {
     accountId: user.value.id,
     targetAccountId: body.value.account_id,
     statusIds: stringList(body.value.status_ids),
     comment: body.value.comment ?? "",
+    category: category.value,
   });
   if (report.isErr()) {
     return jsonRepositoryError(c, report.error.message);
@@ -542,7 +553,7 @@ moderationRoutes.post("/api/v1/reports", async (c) => {
     id: report.value.id,
     action_taken: false,
     action_taken_at: null,
-    category: "other",
+    category: category.value,
     comment: body.value.comment ?? "",
     forwarded: false,
     status_ids: stringList(body.value.status_ids),

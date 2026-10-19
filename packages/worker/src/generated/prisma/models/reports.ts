@@ -29,7 +29,11 @@ export type ReportsMinAggregateOutputType = {
   target_account_id: string | null;
   status_ids_json: string | null;
   comment: string | null;
+  category: string | null;
+  action_taken_at: string | null;
+  action_taken_by_account_id: string | null;
   created_at: string | null;
+  updated_at: string | null;
 };
 
 export type ReportsMaxAggregateOutputType = {
@@ -38,7 +42,11 @@ export type ReportsMaxAggregateOutputType = {
   target_account_id: string | null;
   status_ids_json: string | null;
   comment: string | null;
+  category: string | null;
+  action_taken_at: string | null;
+  action_taken_by_account_id: string | null;
   created_at: string | null;
+  updated_at: string | null;
 };
 
 export type ReportsCountAggregateOutputType = {
@@ -47,7 +55,11 @@ export type ReportsCountAggregateOutputType = {
   target_account_id: number;
   status_ids_json: number;
   comment: number;
+  category: number;
+  action_taken_at: number;
+  action_taken_by_account_id: number;
   created_at: number;
+  updated_at: number;
   _all: number;
 };
 
@@ -57,7 +69,11 @@ export type ReportsMinAggregateInputType = {
   target_account_id?: true;
   status_ids_json?: true;
   comment?: true;
+  category?: true;
+  action_taken_at?: true;
+  action_taken_by_account_id?: true;
   created_at?: true;
+  updated_at?: true;
 };
 
 export type ReportsMaxAggregateInputType = {
@@ -66,7 +82,11 @@ export type ReportsMaxAggregateInputType = {
   target_account_id?: true;
   status_ids_json?: true;
   comment?: true;
+  category?: true;
+  action_taken_at?: true;
+  action_taken_by_account_id?: true;
   created_at?: true;
+  updated_at?: true;
 };
 
 export type ReportsCountAggregateInputType = {
@@ -75,7 +95,11 @@ export type ReportsCountAggregateInputType = {
   target_account_id?: true;
   status_ids_json?: true;
   comment?: true;
+  category?: true;
+  action_taken_at?: true;
+  action_taken_by_account_id?: true;
   created_at?: true;
+  updated_at?: true;
   _all?: true;
 };
 
@@ -158,7 +182,11 @@ export type ReportsGroupByOutputType = {
   target_account_id: string;
   status_ids_json: string;
   comment: string;
+  category: string;
+  action_taken_at: string | null;
+  action_taken_by_account_id: string | null;
   created_at: string;
+  updated_at: string | null;
   _count: ReportsCountAggregateOutputType | null;
   _min: ReportsMinAggregateOutputType | null;
   _max: ReportsMaxAggregateOutputType | null;
@@ -185,7 +213,11 @@ export type reportsWhereInput = {
   target_account_id?: Prisma.StringFilter<"reports"> | string;
   status_ids_json?: Prisma.StringFilter<"reports"> | string;
   comment?: Prisma.StringFilter<"reports"> | string;
+  category?: Prisma.StringFilter<"reports"> | string;
+  action_taken_at?: Prisma.StringNullableFilter<"reports"> | string | null;
+  action_taken_by_account_id?: Prisma.StringNullableFilter<"reports"> | string | null;
   created_at?: Prisma.StringFilter<"reports"> | string;
+  updated_at?: Prisma.StringNullableFilter<"reports"> | string | null;
   accounts_reports_target_account_idToaccounts?: Prisma.XOR<
     Prisma.AccountsScalarRelationFilter,
     Prisma.accountsWhereInput
@@ -202,7 +234,11 @@ export type reportsOrderByWithRelationInput = {
   target_account_id?: Prisma.SortOrder;
   status_ids_json?: Prisma.SortOrder;
   comment?: Prisma.SortOrder;
+  category?: Prisma.SortOrder;
+  action_taken_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  action_taken_by_account_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  updated_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   accounts_reports_target_account_idToaccounts?: Prisma.accountsOrderByWithRelationInput;
   accounts_reports_account_idToaccounts?: Prisma.accountsOrderByWithRelationInput;
 };
@@ -217,7 +253,11 @@ export type reportsWhereUniqueInput = Prisma.AtLeast<
     target_account_id?: Prisma.StringFilter<"reports"> | string;
     status_ids_json?: Prisma.StringFilter<"reports"> | string;
     comment?: Prisma.StringFilter<"reports"> | string;
+    category?: Prisma.StringFilter<"reports"> | string;
+    action_taken_at?: Prisma.StringNullableFilter<"reports"> | string | null;
+    action_taken_by_account_id?: Prisma.StringNullableFilter<"reports"> | string | null;
     created_at?: Prisma.StringFilter<"reports"> | string;
+    updated_at?: Prisma.StringNullableFilter<"reports"> | string | null;
     accounts_reports_target_account_idToaccounts?: Prisma.XOR<
       Prisma.AccountsScalarRelationFilter,
       Prisma.accountsWhereInput
@@ -236,7 +276,11 @@ export type reportsOrderByWithAggregationInput = {
   target_account_id?: Prisma.SortOrder;
   status_ids_json?: Prisma.SortOrder;
   comment?: Prisma.SortOrder;
+  category?: Prisma.SortOrder;
+  action_taken_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  action_taken_by_account_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  updated_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   _count?: Prisma.reportsCountOrderByAggregateInput;
   _max?: Prisma.reportsMaxOrderByAggregateInput;
   _min?: Prisma.reportsMinOrderByAggregateInput;
@@ -255,14 +299,22 @@ export type reportsScalarWhereWithAggregatesInput = {
   target_account_id?: Prisma.StringWithAggregatesFilter<"reports"> | string;
   status_ids_json?: Prisma.StringWithAggregatesFilter<"reports"> | string;
   comment?: Prisma.StringWithAggregatesFilter<"reports"> | string;
+  category?: Prisma.StringWithAggregatesFilter<"reports"> | string;
+  action_taken_at?: Prisma.StringNullableWithAggregatesFilter<"reports"> | string | null;
+  action_taken_by_account_id?: Prisma.StringNullableWithAggregatesFilter<"reports"> | string | null;
   created_at?: Prisma.StringWithAggregatesFilter<"reports"> | string;
+  updated_at?: Prisma.StringNullableWithAggregatesFilter<"reports"> | string | null;
 };
 
 export type reportsCreateInput = {
   id: string;
   status_ids_json?: string;
   comment?: string;
+  category?: string;
+  action_taken_at?: string | null;
+  action_taken_by_account_id?: string | null;
   created_at?: string;
+  updated_at?: string | null;
   accounts_reports_target_account_idToaccounts: Prisma.accountsCreateNestedOneWithoutReports_reports_target_account_idToaccountsInput;
   accounts_reports_account_idToaccounts: Prisma.accountsCreateNestedOneWithoutReports_reports_account_idToaccountsInput;
 };
@@ -273,14 +325,22 @@ export type reportsUncheckedCreateInput = {
   target_account_id: string;
   status_ids_json?: string;
   comment?: string;
+  category?: string;
+  action_taken_at?: string | null;
+  action_taken_by_account_id?: string | null;
   created_at?: string;
+  updated_at?: string | null;
 };
 
 export type reportsUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_ids_json?: Prisma.StringFieldUpdateOperationsInput | string;
   comment?: Prisma.StringFieldUpdateOperationsInput | string;
+  category?: Prisma.StringFieldUpdateOperationsInput | string;
+  action_taken_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  action_taken_by_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   accounts_reports_target_account_idToaccounts?: Prisma.accountsUpdateOneRequiredWithoutReports_reports_target_account_idToaccountsNestedInput;
   accounts_reports_account_idToaccounts?: Prisma.accountsUpdateOneRequiredWithoutReports_reports_account_idToaccountsNestedInput;
 };
@@ -291,7 +351,11 @@ export type reportsUncheckedUpdateInput = {
   target_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_ids_json?: Prisma.StringFieldUpdateOperationsInput | string;
   comment?: Prisma.StringFieldUpdateOperationsInput | string;
+  category?: Prisma.StringFieldUpdateOperationsInput | string;
+  action_taken_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  action_taken_by_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type reportsCreateManyInput = {
@@ -300,14 +364,22 @@ export type reportsCreateManyInput = {
   target_account_id: string;
   status_ids_json?: string;
   comment?: string;
+  category?: string;
+  action_taken_at?: string | null;
+  action_taken_by_account_id?: string | null;
   created_at?: string;
+  updated_at?: string | null;
 };
 
 export type reportsUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_ids_json?: Prisma.StringFieldUpdateOperationsInput | string;
   comment?: Prisma.StringFieldUpdateOperationsInput | string;
+  category?: Prisma.StringFieldUpdateOperationsInput | string;
+  action_taken_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  action_taken_by_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type reportsUncheckedUpdateManyInput = {
@@ -316,7 +388,11 @@ export type reportsUncheckedUpdateManyInput = {
   target_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_ids_json?: Prisma.StringFieldUpdateOperationsInput | string;
   comment?: Prisma.StringFieldUpdateOperationsInput | string;
+  category?: Prisma.StringFieldUpdateOperationsInput | string;
+  action_taken_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  action_taken_by_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type ReportsListRelationFilter = {
@@ -335,7 +411,11 @@ export type reportsCountOrderByAggregateInput = {
   target_account_id?: Prisma.SortOrder;
   status_ids_json?: Prisma.SortOrder;
   comment?: Prisma.SortOrder;
+  category?: Prisma.SortOrder;
+  action_taken_at?: Prisma.SortOrder;
+  action_taken_by_account_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  updated_at?: Prisma.SortOrder;
 };
 
 export type reportsMaxOrderByAggregateInput = {
@@ -344,7 +424,11 @@ export type reportsMaxOrderByAggregateInput = {
   target_account_id?: Prisma.SortOrder;
   status_ids_json?: Prisma.SortOrder;
   comment?: Prisma.SortOrder;
+  category?: Prisma.SortOrder;
+  action_taken_at?: Prisma.SortOrder;
+  action_taken_by_account_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  updated_at?: Prisma.SortOrder;
 };
 
 export type reportsMinOrderByAggregateInput = {
@@ -353,7 +437,11 @@ export type reportsMinOrderByAggregateInput = {
   target_account_id?: Prisma.SortOrder;
   status_ids_json?: Prisma.SortOrder;
   comment?: Prisma.SortOrder;
+  category?: Prisma.SortOrder;
+  action_taken_at?: Prisma.SortOrder;
+  action_taken_by_account_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  updated_at?: Prisma.SortOrder;
 };
 
 export type reportsCreateNestedManyWithoutAccounts_reports_target_account_idToaccountsInput = {
@@ -534,7 +622,11 @@ export type reportsCreateWithoutAccounts_reports_target_account_idToaccountsInpu
   id: string;
   status_ids_json?: string;
   comment?: string;
+  category?: string;
+  action_taken_at?: string | null;
+  action_taken_by_account_id?: string | null;
   created_at?: string;
+  updated_at?: string | null;
   accounts_reports_account_idToaccounts: Prisma.accountsCreateNestedOneWithoutReports_reports_account_idToaccountsInput;
 };
 
@@ -543,7 +635,11 @@ export type reportsUncheckedCreateWithoutAccounts_reports_target_account_idToacc
   account_id: string;
   status_ids_json?: string;
   comment?: string;
+  category?: string;
+  action_taken_at?: string | null;
+  action_taken_by_account_id?: string | null;
   created_at?: string;
+  updated_at?: string | null;
 };
 
 export type reportsCreateOrConnectWithoutAccounts_reports_target_account_idToaccountsInput = {
@@ -564,7 +660,11 @@ export type reportsCreateWithoutAccounts_reports_account_idToaccountsInput = {
   id: string;
   status_ids_json?: string;
   comment?: string;
+  category?: string;
+  action_taken_at?: string | null;
+  action_taken_by_account_id?: string | null;
   created_at?: string;
+  updated_at?: string | null;
   accounts_reports_target_account_idToaccounts: Prisma.accountsCreateNestedOneWithoutReports_reports_target_account_idToaccountsInput;
 };
 
@@ -573,7 +673,11 @@ export type reportsUncheckedCreateWithoutAccounts_reports_account_idToaccountsIn
   target_account_id: string;
   status_ids_json?: string;
   comment?: string;
+  category?: string;
+  action_taken_at?: string | null;
+  action_taken_by_account_id?: string | null;
   created_at?: string;
+  updated_at?: string | null;
 };
 
 export type reportsCreateOrConnectWithoutAccounts_reports_account_idToaccountsInput = {
@@ -627,7 +731,11 @@ export type reportsScalarWhereInput = {
   target_account_id?: Prisma.StringFilter<"reports"> | string;
   status_ids_json?: Prisma.StringFilter<"reports"> | string;
   comment?: Prisma.StringFilter<"reports"> | string;
+  category?: Prisma.StringFilter<"reports"> | string;
+  action_taken_at?: Prisma.StringNullableFilter<"reports"> | string | null;
+  action_taken_by_account_id?: Prisma.StringNullableFilter<"reports"> | string | null;
   created_at?: Prisma.StringFilter<"reports"> | string;
+  updated_at?: Prisma.StringNullableFilter<"reports"> | string | null;
 };
 
 export type reportsUpsertWithWhereUniqueWithoutAccounts_reports_account_idToaccountsInput = {
@@ -663,7 +771,11 @@ export type reportsCreateManyAccounts_reports_target_account_idToaccountsInput =
   account_id: string;
   status_ids_json?: string;
   comment?: string;
+  category?: string;
+  action_taken_at?: string | null;
+  action_taken_by_account_id?: string | null;
   created_at?: string;
+  updated_at?: string | null;
 };
 
 export type reportsCreateManyAccounts_reports_account_idToaccountsInput = {
@@ -671,14 +783,22 @@ export type reportsCreateManyAccounts_reports_account_idToaccountsInput = {
   target_account_id: string;
   status_ids_json?: string;
   comment?: string;
+  category?: string;
+  action_taken_at?: string | null;
+  action_taken_by_account_id?: string | null;
   created_at?: string;
+  updated_at?: string | null;
 };
 
 export type reportsUpdateWithoutAccounts_reports_target_account_idToaccountsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_ids_json?: Prisma.StringFieldUpdateOperationsInput | string;
   comment?: Prisma.StringFieldUpdateOperationsInput | string;
+  category?: Prisma.StringFieldUpdateOperationsInput | string;
+  action_taken_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  action_taken_by_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   accounts_reports_account_idToaccounts?: Prisma.accountsUpdateOneRequiredWithoutReports_reports_account_idToaccountsNestedInput;
 };
 
@@ -687,7 +807,11 @@ export type reportsUncheckedUpdateWithoutAccounts_reports_target_account_idToacc
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_ids_json?: Prisma.StringFieldUpdateOperationsInput | string;
   comment?: Prisma.StringFieldUpdateOperationsInput | string;
+  category?: Prisma.StringFieldUpdateOperationsInput | string;
+  action_taken_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  action_taken_by_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type reportsUncheckedUpdateManyWithoutAccounts_reports_target_account_idToaccountsInput = {
@@ -695,14 +819,22 @@ export type reportsUncheckedUpdateManyWithoutAccounts_reports_target_account_idT
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_ids_json?: Prisma.StringFieldUpdateOperationsInput | string;
   comment?: Prisma.StringFieldUpdateOperationsInput | string;
+  category?: Prisma.StringFieldUpdateOperationsInput | string;
+  action_taken_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  action_taken_by_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type reportsUpdateWithoutAccounts_reports_account_idToaccountsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_ids_json?: Prisma.StringFieldUpdateOperationsInput | string;
   comment?: Prisma.StringFieldUpdateOperationsInput | string;
+  category?: Prisma.StringFieldUpdateOperationsInput | string;
+  action_taken_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  action_taken_by_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   accounts_reports_target_account_idToaccounts?: Prisma.accountsUpdateOneRequiredWithoutReports_reports_target_account_idToaccountsNestedInput;
 };
 
@@ -711,7 +843,11 @@ export type reportsUncheckedUpdateWithoutAccounts_reports_account_idToaccountsIn
   target_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_ids_json?: Prisma.StringFieldUpdateOperationsInput | string;
   comment?: Prisma.StringFieldUpdateOperationsInput | string;
+  category?: Prisma.StringFieldUpdateOperationsInput | string;
+  action_taken_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  action_taken_by_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type reportsUncheckedUpdateManyWithoutAccounts_reports_account_idToaccountsInput = {
@@ -719,7 +855,11 @@ export type reportsUncheckedUpdateManyWithoutAccounts_reports_account_idToaccoun
   target_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_ids_json?: Prisma.StringFieldUpdateOperationsInput | string;
   comment?: Prisma.StringFieldUpdateOperationsInput | string;
+  category?: Prisma.StringFieldUpdateOperationsInput | string;
+  action_taken_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  action_taken_by_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type reportsSelect<
@@ -731,7 +871,11 @@ export type reportsSelect<
     target_account_id?: boolean;
     status_ids_json?: boolean;
     comment?: boolean;
+    category?: boolean;
+    action_taken_at?: boolean;
+    action_taken_by_account_id?: boolean;
     created_at?: boolean;
+    updated_at?: boolean;
     accounts_reports_target_account_idToaccounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     accounts_reports_account_idToaccounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
@@ -747,7 +891,11 @@ export type reportsSelectCreateManyAndReturn<
     target_account_id?: boolean;
     status_ids_json?: boolean;
     comment?: boolean;
+    category?: boolean;
+    action_taken_at?: boolean;
+    action_taken_by_account_id?: boolean;
     created_at?: boolean;
+    updated_at?: boolean;
     accounts_reports_target_account_idToaccounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     accounts_reports_account_idToaccounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
@@ -763,7 +911,11 @@ export type reportsSelectUpdateManyAndReturn<
     target_account_id?: boolean;
     status_ids_json?: boolean;
     comment?: boolean;
+    category?: boolean;
+    action_taken_at?: boolean;
+    action_taken_by_account_id?: boolean;
     created_at?: boolean;
+    updated_at?: boolean;
     accounts_reports_target_account_idToaccounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     accounts_reports_account_idToaccounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
@@ -776,13 +928,26 @@ export type reportsSelectScalar = {
   target_account_id?: boolean;
   status_ids_json?: boolean;
   comment?: boolean;
+  category?: boolean;
+  action_taken_at?: boolean;
+  action_taken_by_account_id?: boolean;
   created_at?: boolean;
+  updated_at?: boolean;
 };
 
 export type reportsOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "id" | "account_id" | "target_account_id" | "status_ids_json" | "comment" | "created_at",
+  | "id"
+  | "account_id"
+  | "target_account_id"
+  | "status_ids_json"
+  | "comment"
+  | "category"
+  | "action_taken_at"
+  | "action_taken_by_account_id"
+  | "created_at"
+  | "updated_at",
   ExtArgs["result"]["reports"]
 >;
 export type reportsInclude<
@@ -819,7 +984,11 @@ export type $reportsPayload<
       target_account_id: string;
       status_ids_json: string;
       comment: string;
+      category: string;
+      action_taken_at: string | null;
+      action_taken_by_account_id: string | null;
       created_at: string;
+      updated_at: string | null;
     },
     ExtArgs["result"]["reports"]
   >;
@@ -1399,7 +1568,11 @@ export interface reportsFieldRefs {
   readonly target_account_id: Prisma.FieldRef<"reports", "String">;
   readonly status_ids_json: Prisma.FieldRef<"reports", "String">;
   readonly comment: Prisma.FieldRef<"reports", "String">;
+  readonly category: Prisma.FieldRef<"reports", "String">;
+  readonly action_taken_at: Prisma.FieldRef<"reports", "String">;
+  readonly action_taken_by_account_id: Prisma.FieldRef<"reports", "String">;
   readonly created_at: Prisma.FieldRef<"reports", "String">;
+  readonly updated_at: Prisma.FieldRef<"reports", "String">;
 }
 
 // Custom InputTypes

@@ -260,6 +260,7 @@ export const ReportBodySchema = z.object({
   account_id: z.string().min(1),
   status_ids: z.union([z.array(z.string()), z.string()]).optional(),
   comment: z.string().optional(),
+  category: z.string().optional(),
 });
 
 export const AppBodySchema = z.object({

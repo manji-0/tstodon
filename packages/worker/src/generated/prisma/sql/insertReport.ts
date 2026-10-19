@@ -10,16 +10,18 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param targetAccountId
  * @param statusIdsJson
  * @param comment
+ * @param category
  * @param createdAt
  */
 export const insertReport = $runtime.makeTypedQueryFactory(
-  "INSERT INTO reports (id, account_id, target_account_id, status_ids_json, comment, created_at)\nVALUES ($1, $2, $3, $4, $5, $6)",
+  "INSERT INTO reports (id, account_id, target_account_id, status_ids_json, comment, category, created_at)\nVALUES ($1, $2, $3, $4, $5, $6, $7)",
 ) as (
   id: string,
   accountId: string,
   targetAccountId: string,
   statusIdsJson: string,
   comment: string,
+  category: string,
   createdAt: string,
 ) => $runtime.TypedSql<insertReport.Parameters, insertReport.Result>;
 
@@ -30,6 +32,7 @@ export namespace insertReport {
     targetAccountId: string,
     statusIdsJson: string,
     comment: string,
+    category: string,
     createdAt: string,
   ];
   export type Result = {};
