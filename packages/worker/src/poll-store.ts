@@ -160,6 +160,7 @@ export const replacePollOptions = async (
     options: ReadonlyArray<string>;
     multiple: boolean;
     expiresAt: string;
+    hideTotals: boolean;
   },
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
@@ -170,6 +171,7 @@ export const replacePollOptions = async (
         JSON.stringify(input.options.map((title) => ({ title, votesCount: 0 }))),
         input.multiple ? 1 : 0,
         input.expiresAt,
+        input.hideTotals ? 1 : 0,
       ),
     );
     return rows.length > 0;

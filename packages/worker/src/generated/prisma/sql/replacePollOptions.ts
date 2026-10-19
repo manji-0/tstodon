@@ -9,14 +9,16 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param optionsJson
  * @param multiple
  * @param expiresAt
+ * @param hideTotals
  */
 export const replacePollOptions = $runtime.makeTypedQueryFactory(
-  "UPDATE polls SET options_json = $2, multiple = $3, expires_at = $4\nWHERE id = $1\nRETURNING id",
+  "UPDATE polls SET options_json = $2, multiple = $3, expires_at = $4, hide_totals = $5\nWHERE id = $1\nRETURNING id",
 ) as (
   pollId: string,
   optionsJson: string,
   multiple: number,
   expiresAt: string,
+  hideTotals: number,
 ) => $runtime.TypedSql<replacePollOptions.Parameters, replacePollOptions.Result>;
 
 export namespace replacePollOptions {
@@ -25,6 +27,7 @@ export namespace replacePollOptions {
     optionsJson: string,
     multiple: number,
     expiresAt: string,
+    hideTotals: number,
   ];
   export type Result = {
     id: string | null;

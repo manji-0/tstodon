@@ -494,6 +494,7 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
         options: ReadonlyArray<string>;
         multiple: boolean;
         expiresAt: string;
+        hideTotals: boolean;
       }>
     | undefined;
   if (pollEdit) {
@@ -535,6 +536,11 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
         expiresIn !== undefined && Number.isFinite(expiresIn)
           ? new Date(Date.now() + expiresIn * 1000).toISOString()
           : current.value.expiresAt,
+      // `hide_totals` is optional on an edit: omitting it keeps the poll's.
+      hideTotals:
+        pollEdit.hide_totals === undefined
+          ? current.value.hideTotals
+          : isTruthy(pollEdit.hide_totals),
     };
   }
   let visibilityValue = existing.visibility;

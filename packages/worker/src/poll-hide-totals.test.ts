@@ -99,4 +99,34 @@ describe("poll hide_totals", () => {
     // Single-choice polls report no voter count.
     expect(visible.voters_count).toBeNull();
   });
+
+  it("updates hide_totals when the poll is edited", async () => {
+    const author = "hide-edit-author@example.com";
+    const { statusId, poll } = await createPoll(author, { hide_totals: true });
+    expect(poll.votes_count).toBeNull();
+
+    const edit = async (body: Record<string, unknown>): Promise<z.infer<typeof PollSchema>> => {
+      const response = await json(`/api/v1/statuses/${statusId}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", ...(await auth(author)) },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(200);
+      return read(z.object({ poll: PollSchema }), response.body).poll;
+    };
+
+    // Omitting `hide_totals` keeps the poll's current setting.
+    const kept = await edit({ poll: { options: ["yes", "no", "maybe"] } });
+    expect(kept.options.map((option) => option.title)).toEqual(["yes", "no", "maybe"]);
+    expect(kept.votes_count).toBeNull();
+
+    // An explicit false reveals the totals again.
+    const revealed = await edit({ poll: { options: ["yes", "no"], hide_totals: false } });
+    expect(revealed.votes_count).toBe(0);
+    expect(revealed.options.map((option) => option.votes_count)).toEqual([0, 0]);
+
+    // And an explicit true hides them once more.
+    const hidden = await edit({ poll: { options: ["yes", "no"], hide_totals: true } });
+    expect(hidden.votes_count).toBeNull();
+  });
 });
