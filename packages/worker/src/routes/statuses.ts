@@ -34,6 +34,13 @@ import {
 } from "../mastodon";
 import { countPollVotes, findPollByStatusId, insertPoll, replacePollOptions } from "../poll-store";
 import { CreateStatusBodySchema, isTruthy, mediaAttributesFromForm, stringList } from "../schemas";
+import { z } from "zod";
+import {
+  completeStatusIdempotency,
+  findStatusIdempotency,
+  releaseStatusIdempotency,
+  reserveStatusIdempotency,
+} from "../status-idempotency-store";
 import { InstanceLimits, characterCount } from "@tstodon/core";
 import { schemaResult } from "@tstodon/core";
 import type { MediaAttribute } from "../schemas";
@@ -130,7 +137,7 @@ const applyMediaAttributes = async (
   return undefined;
 };
 
-statusRoutes.post("/api/v1/statuses", async (c) => {
+const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -295,6 +302,83 @@ statusRoutes.post("/api/v1/statuses", async (c) => {
     payload: document,
   });
   return c.json(document, 200);
+};
+
+const statusDocumentById = async (
+  c: Context<{ Bindings: Env }>,
+  statusId: string,
+  viewerId: string,
+): Promise<Record<string, unknown> | undefined> => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return undefined;
+  }
+  const status = await findStatusById(c.env.DB, statusId);
+  if (status.isErr() || !status.value) {
+    return undefined;
+  }
+  return mastodonStatus(c.env, identity.value, status.value, viewerId);
+};
+
+/**
+ * `Idempotency-Key` on POST /api/v1/statuses: Mastodon stores the response for
+ * an hour, so a client retry returns the status the first attempt created
+ * instead of posting again. A key still in flight answers 409, and a failed
+ * create releases the key for a retry.
+ */
+statusRoutes.post("/api/v1/statuses", async (c) => {
+  const key = (c.req.header("Idempotency-Key") ?? "").trim();
+  if (key.length === 0) {
+    return createStatus(c);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const accountId = user.value.id;
+
+  const existing = await findStatusIdempotency(c.env.DB, accountId, key);
+  if (existing.isErr()) {
+    return jsonRepositoryError(c, existing.error.message);
+  }
+  if (existing.value) {
+    if (!existing.value.statusId) {
+      return c.json({ error: "Duplicate request in progress", kind: "Conflict" }, 409);
+    }
+    const document = await statusDocumentById(c, existing.value.statusId, accountId);
+    if (!document) {
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    }
+    return c.json(document);
+  }
+
+  const reserved = await reserveStatusIdempotency(c.env.DB, accountId, key);
+  if (reserved.isErr()) {
+    return jsonRepositoryError(c, reserved.error.message);
+  }
+  if (!reserved.value) {
+    const raced = await findStatusIdempotency(c.env.DB, accountId, key);
+    const racedId = raced.isOk() ? raced.value?.statusId : undefined;
+    if (racedId) {
+      const document = await statusDocumentById(c, racedId, accountId);
+      if (document) {
+        return c.json(document);
+      }
+    }
+    return c.json({ error: "Duplicate request in progress", kind: "Conflict" }, 409);
+  }
+
+  const response = await createStatus(c);
+  if (response.ok) {
+    const body: unknown = await response.clone().json();
+    const parsed = schemaResult(z.object({ id: z.string().min(1) }))(body);
+    if (parsed.isOk()) {
+      await completeStatusIdempotency(c.env.DB, accountId, key, parsed.value.id);
+    }
+  } else {
+    await releaseStatusIdempotency(c.env.DB, accountId, key);
+  }
+  return response;
 });
 
 statusRoutes.get("/api/v1/statuses/:id", async (c) => {

@@ -12,6 +12,8 @@ export * from "./sql/authorizeRemoteFollowRequest";
 
 export * from "./sql/clearNotifications";
 
+export * from "./sql/completeStatusIdempotency";
+
 export * from "./sql/countAccountTagUses";
 
 export * from "./sql/countAccounts";
@@ -163,6 +165,8 @@ export * from "./sql/findRemoteStatusById";
 export * from "./sql/findRemoteStatusByObjectUri";
 
 export * from "./sql/findStatusById";
+
+export * from "./sql/findStatusIdempotency";
 
 export * from "./sql/findStatusUpdatedAt";
 
@@ -328,13 +332,19 @@ export * from "./sql/muteStatus";
 
 export * from "./sql/pinStatus";
 
+export * from "./sql/pruneStatusIdempotency";
+
 export * from "./sql/rejectFollowRequest";
 
 export * from "./sql/rejectRemoteFollowRequest";
 
+export * from "./sql/releaseStatusIdempotency";
+
 export * from "./sql/replaceCustomEmojiImage";
 
 export * from "./sql/replacePollOptions";
+
+export * from "./sql/reserveStatusIdempotency";
 
 export * from "./sql/searchAccounts";
 

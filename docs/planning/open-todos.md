@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `Idempotency-Key` on POST /api/v1/statuses (`status_idempotency`, one hour, per account)
 - `instance/peers` and `instance/activity` require a user token under limited federation
 - `/api/v2/instance`: registrations detail, thumbnail description, policy URLs (icon and `api_versions` intentionally omitted)
 - Instance policy documents from JSON vars (extended description, privacy policy, terms of service by date)

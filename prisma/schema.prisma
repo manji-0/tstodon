@@ -88,6 +88,16 @@ model account_domain_blocks {
   @@index([account_id, created_at(sort: Desc)], map: "idx_account_domain_blocks_account_created")
 }
 
+model status_idempotency {
+  account_id      String
+  idempotency_key String
+  status_id       String @default("")
+  created_at      String @default("CURRENT_TIMESTAMP")
+
+  @@id([account_id, idempotency_key])
+  @@index([account_id, created_at], map: "idx_status_idempotency_created")
+}
+
 model account_flags {
   account_id String @id
   sensitized Int    @default(0)
