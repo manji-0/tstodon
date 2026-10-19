@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { findAccountById } from "../account-store";
 import { filteredAttribute, loadViewerFilters, matchFilters } from "../filter-match";
-import { jsonAuthError, jsonRepositoryError, queryLimit, requireUser } from "../http";
+import { jsonAuthError, jsonRepositoryError, queryCursor, queryLimit, requireUser } from "../http";
 import { getMarkers } from "../marker-store";
 import {
   mastodonAccountDocument,
@@ -47,7 +47,7 @@ notificationRoutes.get("/api/v1/notifications", async (c) => {
     types: queryValues("types"),
     excludeTypes: queryValues("exclude_types"),
     fromAccountId: c.req.query("account_id"),
-    maxId: c.req.query("max_id"),
+    ...queryCursor(c),
   });
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
@@ -174,7 +174,7 @@ const groupedQuery = (
       types: queryValues("types"),
       excludeTypes: queryValues("exclude_types"),
       fromAccountId: c.req.query("account_id"),
-      maxId: c.req.query("max_id"),
+      ...queryCursor(c),
     },
     limit: queryLimit(c.req.query("limit"), 40),
   };

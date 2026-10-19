@@ -508,7 +508,27 @@ export type NotificationFilters = Readonly<{
   excludeTypes?: ReadonlyArray<string>;
   fromAccountId?: string | undefined;
   maxId?: string | undefined;
+  sinceId?: string | undefined;
+  minId?: string | undefined;
 }>;
+
+/**
+ * Mastodon's notification cursors: `max_id` pages older, `since_id` newer
+ * (newest first), `min_id` newer from the oldest side.
+ */
+const notificationCursor = (
+  filters: NotificationFilters,
+): Readonly<{ id: string; greaterThan: number; ascending: number }> => {
+  const minId = filters.minId ?? "";
+  if (minId.length > 0) {
+    return { id: minId, greaterThan: 1, ascending: 1 };
+  }
+  const sinceId = filters.sinceId ?? "";
+  if (sinceId.length > 0) {
+    return { id: sinceId, greaterThan: 1, ascending: 0 };
+  }
+  return { id: filters.maxId ?? "", greaterThan: 0, ascending: 0 };
+};
 
 export const listNotifications = async (
   db: D1Database,
@@ -517,6 +537,7 @@ export const listNotifications = async (
   filters: NotificationFilters = {},
 ): Promise<Result<NotificationRow[], RepositoryError>> =>
   runD1(async () => {
+    const cursor = notificationCursor(filters);
     const results = await queryTyped<NotificationRow>(
       db,
       listNotificationsSql(
@@ -526,7 +547,9 @@ export const listNotifications = async (
         jsonStringArray(filters.types ?? []),
         jsonStringArray(filters.excludeTypes ?? []),
         filters.fromAccountId ?? "",
-        filters.maxId ?? "",
+        cursor.id,
+        cursor.greaterThan,
+        cursor.ascending,
       ),
     );
     return results.map((row) => ({

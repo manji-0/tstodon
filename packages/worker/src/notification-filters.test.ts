@@ -92,4 +92,45 @@ describe("notification filters", () => {
     expect(paged.map((entry) => entry.id)).not.toContain(newest?.id);
     expect(paged.length).toBe(all.length - 1);
   });
+
+  it("pages with max_id, since_id, and min_id", async () => {
+    const viewerEmail = "notif-cursor-viewer@example.com";
+    const actorEmail = "notif-cursor-actor@example.com";
+    const viewer = await credentials(viewerEmail);
+    await credentials(actorEmail);
+
+    const mention = async (suffix: string): Promise<void> => {
+      const response = await json("/api/v1/statuses", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(await auth(actorEmail)) },
+        body: JSON.stringify({ status: `@${viewer.username} cursor ${suffix}` }),
+      });
+      expect(response.status).toBe(200);
+    };
+    await mention("one");
+    await mention("two");
+    await mention("three");
+
+    const all = await notifications(viewerEmail);
+    expect(all).toHaveLength(3);
+    const newest = all[0];
+    const middle = all[1];
+    const oldest = all[2];
+    expect(newest && middle && oldest).toBeTruthy();
+
+    expect((await notifications(viewerEmail, "?limit=2")).map((row) => row.id)).toEqual([
+      newest?.id,
+      middle?.id,
+    ]);
+    expect(
+      (await notifications(viewerEmail, `?max_id=${middle?.id ?? ""}`)).map((row) => row.id),
+    ).toEqual([oldest?.id]);
+    expect(
+      (await notifications(viewerEmail, `?since_id=${oldest?.id ?? ""}`)).map((row) => row.id),
+    ).toEqual([newest?.id, middle?.id]);
+    // min_id pages upward, so the oldest of the newer rows comes first.
+    expect(
+      (await notifications(viewerEmail, `?min_id=${oldest?.id ?? ""}`)).map((row) => row.id),
+    ).toEqual([middle?.id, newest?.id]);
+  });
 });
