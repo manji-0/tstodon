@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `GET /api/v1/accounts?id[]=` and `GET /api/v1/statuses?id[]=` batch lookups
 - `DELETE /api/v1/profile/avatar` and `/header`
 - Quote notifications (`quote`, `quoted_update`)
 - `source[sensitive]`/`source[language]` defaults applied to new posts

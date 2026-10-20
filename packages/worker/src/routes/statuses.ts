@@ -62,6 +62,8 @@ import { InstanceLimits, characterCount } from "@tstodon/core";
 import { schemaResult } from "@tstodon/core";
 import type { MediaAttribute } from "../schemas";
 import { parseInstanceIdentity } from "../runtime-config";
+import { err, ok, type Result } from "neverthrow";
+import type { RepositoryError } from "../d1";
 import { findRemoteActorByUri } from "../remote-actor-store";
 import { findRemoteStatusById } from "../remote-status-store";
 import {
@@ -696,6 +698,72 @@ statusRoutes.post("/api/v1/statuses/:id/quotes/:quoting_status_id/revoke", async
   return c.json((await mastodonStatus(c.env, identity.value, quoting.value, user.value.id)) ?? {});
 });
 
+/** Renders a local or remote status the viewer may see, or `null` when it is hidden or gone. */
+const visibleStatusDocument = async (
+  env: Env,
+  identity: InstanceIdentity,
+  id: string,
+  viewerId: string | undefined,
+): Promise<Result<Record<string, unknown> | null, RepositoryError>> => {
+  const status = await findStatusById(env.DB, id);
+  if (status.isErr()) {
+    return err(status.error);
+  }
+  if (!status.value) {
+    const remote = await findRemoteStatusById(env.DB, id);
+    if (remote.isErr()) {
+      return err(remote.error);
+    }
+    if (!remote.value || !remoteStatusVisible(remote.value)) {
+      return ok(null);
+    }
+    const actor = await findRemoteActorByUri(env.DB, remote.value.actorUri);
+    if (actor.isErr()) {
+      return err(actor.error);
+    }
+    return ok(actor.value ? mastodonRemoteStatus(identity, remote.value, actor.value) : null);
+  }
+  if (!(await canViewStatus(env.DB, status.value, viewerId))) {
+    return ok(null);
+  }
+  return ok((await mastodonStatus(env, identity, status.value, viewerId)) ?? null);
+};
+
+/** Mastodon caps `GET /api/v1/statuses?id[]=` at 20 ids. */
+const MULTIPLE_STATUSES_LIMIT = 20;
+
+statusRoutes.get("/api/v1/statuses", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const auth = await authenticate(c.req.raw, c.env);
+  if (auth.isErr()) {
+    return jsonAuthError(c, auth.error);
+  }
+  const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
+  const url = new URL(c.req.url);
+  const ids = [
+    ...new Set(
+      [...url.searchParams.getAll("id[]"), ...url.searchParams.getAll("id")].filter(
+        (id) => id.length > 0,
+      ),
+    ),
+  ].slice(0, MULTIPLE_STATUSES_LIMIT);
+  // Missing or hidden statuses are left out rather than failing the batch.
+  const documents: Array<Record<string, unknown>> = [];
+  for (const id of ids) {
+    const document = await visibleStatusDocument(c.env, identity.value, id, viewerId);
+    if (document.isErr()) {
+      return jsonRepositoryError(c, document.error.message);
+    }
+    if (document.value) {
+      documents.push(document.value);
+    }
+  }
+  return c.json(documents);
+});
+
 statusRoutes.get("/api/v1/statuses/:id", async (c) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -706,36 +774,14 @@ statusRoutes.get("/api/v1/statuses/:id", async (c) => {
     return jsonAuthError(c, auth.error);
   }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
-  const status = await findStatusById(c.env.DB, c.req.param("id"));
-  if (status.isErr()) {
-    return jsonRepositoryError(c, status.error.message);
+  const document = await visibleStatusDocument(c.env, identity.value, c.req.param("id"), viewerId);
+  if (document.isErr()) {
+    return jsonRepositoryError(c, document.error.message);
   }
-  if (!status.value) {
-    const remote = await findRemoteStatusById(c.env.DB, c.req.param("id"));
-    if (remote.isErr()) {
-      return jsonRepositoryError(c, remote.error.message);
-    }
-    if (!remote.value || !remoteStatusVisible(remote.value)) {
-      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-    }
-    const actor = await findRemoteActorByUri(c.env.DB, remote.value.actorUri);
-    if (actor.isErr()) {
-      return jsonRepositoryError(c, actor.error.message);
-    }
-    if (!actor.value) {
-      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-    }
-    return c.json(mastodonRemoteStatus(identity.value, remote.value, actor.value));
-  }
-  const visible = await canViewStatus(c.env.DB, status.value, viewerId);
-  if (!visible) {
+  if (!document.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const document = await mastodonStatus(c.env, identity.value, status.value, viewerId);
-  if (!document) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  return c.json(document);
+  return c.json(document.value);
 });
 
 statusRoutes.delete("/api/v1/statuses/:id", async (c) => {

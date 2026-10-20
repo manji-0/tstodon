@@ -59,7 +59,8 @@ import {
 import { resolveRemoteActorByHandle } from "../remote-actor-fetch";
 import { suspendedDomains } from "../admin-domain-block-store";
 import { federationAllowHosts } from "../runtime-config";
-import { ok, err } from "neverthrow";
+import { ok, err, type Result } from "neverthrow";
+import type { RepositoryError } from "../d1";
 import { RemoteAccountId } from "../remote-account-id";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
@@ -596,34 +597,91 @@ accountRoutes.get("/api/v1/accounts/familiar_followers", async (c) => {
   return c.json(groups);
 });
 
+type AccountLookup =
+  | Readonly<{ kind: "Found"; document: Record<string, unknown> }>
+  | Readonly<{ kind: "Suspended" }>
+  | Readonly<{ kind: "NotFound" }>;
+
+/** Resolves a local account id/username or a `r_` remote account id to its document. */
+const lookupAccountDocument = async (
+  env: Env,
+  identity: InstanceIdentity,
+  id: string,
+): Promise<Result<AccountLookup, RepositoryError>> => {
+  const account = await findAccountByIdOrUsername(env.DB, id);
+  if (account.isErr()) {
+    return err(account.error);
+  }
+  if (account.value) {
+    const moderation = await getAccountModeration(env.DB, account.value.id);
+    if (moderation.isOk() && moderation.value === "Suspended") {
+      return ok({ kind: "Suspended" });
+    }
+    return ok({
+      kind: "Found",
+      document: await mastodonAccountDocument(env, identity, account.value),
+    });
+  }
+  const actorUri = RemoteAccountId.decode(id);
+  if (actorUri.isOk()) {
+    const actor = await findRemoteActorByUri(env.DB, actorUri.value);
+    if (actor.isErr()) {
+      return err(actor.error);
+    }
+    if (actor.value) {
+      return ok({ kind: "Found", document: mastodonRemoteAccount(identity, actor.value) });
+    }
+  }
+  return ok({ kind: "NotFound" });
+};
+
+/** Mastodon caps `GET /api/v1/accounts?id[]=` at 40 ids. */
+const MULTIPLE_ACCOUNTS_LIMIT = 40;
+
+accountRoutes.get("/api/v1/accounts", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const url = new URL(c.req.url);
+  const ids = [
+    ...new Set(
+      [...url.searchParams.getAll("id[]"), ...url.searchParams.getAll("id")].filter(
+        (id) => id.length > 0,
+      ),
+    ),
+  ].slice(0, MULTIPLE_ACCOUNTS_LIMIT);
+  // Unknown and suspended accounts are left out rather than failing the batch.
+  const documents: Array<Record<string, unknown>> = [];
+  for (const id of ids) {
+    const found = await lookupAccountDocument(c.env, identity.value, id);
+    if (found.isErr()) {
+      return jsonRepositoryError(c, found.error.message);
+    }
+    if (found.value.kind === "Found") {
+      documents.push(found.value.document);
+    }
+  }
+  return c.json(documents);
+});
+
 accountRoutes.get("/api/v1/accounts/:id", async (c) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const id = c.req.param("id") ?? "";
-  const account = await findAccountByIdOrUsername(c.env.DB, id);
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
+  const found = await lookupAccountDocument(c.env, identity.value, c.req.param("id") ?? "");
+  if (found.isErr()) {
+    return jsonRepositoryError(c, found.error.message);
   }
-  if (account.value) {
-    const moderation = await getAccountModeration(c.env.DB, account.value.id);
-    if (moderation.isOk() && moderation.value === "Suspended") {
+  switch (found.value.kind) {
+    case "Found":
+      return c.json(found.value.document);
+    case "Suspended":
       return c.json({ error: "This account is suspended", kind: "AccountSuspended" }, 410);
-    }
-    return c.json(await mastodonAccountDocument(c.env, identity.value, account.value));
+    case "NotFound":
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const actorUri = RemoteAccountId.decode(id);
-  if (actorUri.isOk()) {
-    const actor = await findRemoteActorByUri(c.env.DB, actorUri.value);
-    if (actor.isErr()) {
-      return jsonRepositoryError(c, actor.error.message);
-    }
-    if (actor.value) {
-      return c.json(mastodonRemoteAccount(identity.value, actor.value));
-    }
-  }
-  return c.json({ error: "Record not found", kind: "NotFound" }, 404);
 });
 
 accountRoutes.get("/api/v1/accounts/:id/statuses", async (c) => {
