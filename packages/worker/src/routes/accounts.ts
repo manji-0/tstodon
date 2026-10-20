@@ -245,6 +245,14 @@ accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
       body.value.discoverable === undefined
         ? existingProfile.value.discoverable
         : isTruthy(body.value.discoverable),
+    indexable:
+      body.value.indexable === undefined
+        ? existingProfile.value.indexable
+        : isTruthy(body.value.indexable),
+    hideCollections:
+      body.value.hide_collections === undefined
+        ? existingProfile.value.hideCollections
+        : isTruthy(body.value.hide_collections),
     avatarObjectKey: uploaded.objectKey ?? existingProfile.value.avatarObjectKey,
     avatarContentType: uploaded.contentType ?? existingProfile.value.avatarContentType,
     headerObjectKey: header.objectKey ?? existingProfile.value.headerObjectKey,
@@ -573,6 +581,20 @@ accountRoutes.get("/api/v1/accounts/:id/statuses", async (c) => {
   );
 });
 
+/** True unless the account hides its collections from this viewer. */
+const showsCollections = async (
+  c: Context<{ Bindings: Env }>,
+  accountId: string,
+): Promise<boolean> => {
+  const profile = await findAccountProfile(c.env.DB, accountId);
+  if (profile.isErr() || !profile.value.hideCollections) {
+    return true;
+  }
+  const auth = await authenticate(c.req.raw, c.env);
+  const viewerId = auth.isOk() && auth.value.kind === "Account" ? auth.value.account.id : undefined;
+  return viewerId === accountId;
+};
+
 const accountList = async (c: Context<{ Bindings: Env }>, kind: "followers" | "following") => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -586,6 +608,10 @@ const accountList = async (c: Context<{ Bindings: Env }>, kind: "followers" | "f
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const limit = queryAccountsLimit(c.req.query("limit"));
+  // `hide_collections` clears the lists for everyone but the account itself.
+  if (!(await showsCollections(c, account.value.id))) {
+    return c.json([]);
+  }
   const edges =
     kind === "followers"
       ? await listFollowers(c.env.DB, account.value.id, limit, queryCursor(c))

@@ -22,6 +22,8 @@ export type AccountProfile = Readonly<{
   fields: ReadonlyArray<ProfileField>;
   bot: boolean;
   discoverable: boolean;
+  indexable: boolean;
+  hideCollections: boolean;
   avatarObjectKey: string | null;
   avatarContentType: string | null;
   headerObjectKey: string | null;
@@ -33,6 +35,8 @@ export const EMPTY_ACCOUNT_PROFILE: AccountProfile = {
   fields: [],
   bot: false,
   discoverable: true,
+  indexable: true,
+  hideCollections: false,
   avatarObjectKey: null,
   avatarContentType: null,
   headerObjectKey: null,
@@ -45,6 +49,8 @@ const ProfileRowSchema = z.object({
   fields_json: z.string(),
   bot: z.number(),
   discoverable: z.number(),
+  indexable: z.number().optional(),
+  hide_collections: z.number().optional(),
   avatar_object_key: z.string().nullable(),
   avatar_content_type: z.string().nullable(),
   header_object_key: z.string().nullable(),
@@ -61,6 +67,8 @@ const profileFromRow = (row: z.infer<typeof ProfileRowSchema>): AccountProfile =
     fields: fields.isOk() ? fields.value : [],
     bot: row.bot !== 0,
     discoverable: row.discoverable !== 0,
+    indexable: (row.indexable ?? 1) !== 0,
+    hideCollections: (row.hide_collections ?? 0) !== 0,
     avatarObjectKey: row.avatar_object_key,
     avatarContentType: row.avatar_content_type,
     headerObjectKey: row.header_object_key,
@@ -116,6 +124,8 @@ export const upsertAccountProfile = async (
         JSON.stringify(profile.fields),
         profile.bot ? 1 : 0,
         profile.discoverable ? 1 : 0,
+        profile.indexable ? 1 : 0,
+        profile.hideCollections ? 1 : 0,
         profile.avatarObjectKey,
         profile.avatarContentType,
         profile.headerObjectKey,

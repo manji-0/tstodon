@@ -30,11 +30,17 @@ const SourceSchema = z.object({
   sensitive: z.boolean(),
   note: z.string(),
   quote_policy: z.string(),
+  discoverable: z.boolean(),
+  indexable: z.boolean(),
+  hide_collections: z.boolean(),
   fields: z.array(z.object({ name: z.string(), value: z.string() })),
 });
 
 const CredentialSchema = z.object({
   id: z.string().min(1),
+  indexable: z.boolean(),
+  hide_collections: z.boolean(),
+  noindex: z.boolean(),
   source: SourceSchema,
 });
 
@@ -132,5 +138,56 @@ describe("account source", () => {
     const email = "source-invalid@example.com";
     expect((await patchJson(email, { source: { privacy: "secret" } })).status).toBe(422);
     expect((await patchJson(email, { source: { quote_policy: "maybe" } })).status).toBe(422);
+  });
+
+  it("reports indexable and hide_collections, hiding the collections when set", async () => {
+    const owner = "collections-owner@example.com";
+    const follower = "collections-follower@example.com";
+    const ownerId = (await credentials(owner)).id;
+    const followerId = (await credentials(follower)).id;
+
+    const initial = await credentials(owner);
+    expect(initial.indexable).toBe(true);
+    expect(initial.hide_collections).toBe(false);
+    expect(initial.noindex).toBe(false);
+    expect(initial.source.indexable).toBe(true);
+    expect(initial.source.hide_collections).toBe(false);
+
+    const followed = await json(`/api/v1/accounts/${ownerId}/follow`, {
+      method: "POST",
+      headers: await auth(follower),
+    });
+    expect(followed.status).toBe(200);
+
+    const visible = await json(`/api/v1/accounts/${ownerId}/followers`);
+    expect(read(z.array(z.object({ id: z.string() })), visible.body).map((a) => a.id)).toContain(
+      followerId,
+    );
+
+    const updated = await patchJson(owner, { hide_collections: true, indexable: false });
+    expect(updated.status).toBe(200);
+    const document = read(CredentialSchema, updated.body);
+    expect(document.hide_collections).toBe(true);
+    expect(document.indexable).toBe(false);
+    expect(document.source.hide_collections).toBe(true);
+    expect(document.source.indexable).toBe(false);
+
+    // Everyone but the owner sees an empty collection.
+    const hidden = await json(`/api/v1/accounts/${ownerId}/followers`);
+    expect(hidden.status).toBe(200);
+    expect(read(z.array(z.object({ id: z.string() })), hidden.body)).toEqual([]);
+    const ownerView = await json(`/api/v1/accounts/${ownerId}/followers`, {
+      headers: await auth(owner),
+    });
+    expect(read(z.array(z.object({ id: z.string() })), ownerView.body).map((a) => a.id)).toContain(
+      followerId,
+    );
+
+    const shownAgain = await patchJson(owner, { hide_collections: false });
+    expect(read(CredentialSchema, shownAgain.body).hide_collections).toBe(false);
+    const publicAgain = await json(`/api/v1/accounts/${ownerId}/followers`);
+    expect(
+      read(z.array(z.object({ id: z.string() })), publicAgain.body).map((a) => a.id),
+    ).toContain(followerId);
   });
 });

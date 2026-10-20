@@ -10,6 +10,8 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param fieldsJson
  * @param bot
  * @param discoverable
+ * @param indexable
+ * @param hideCollections
  * @param avatarObjectKey
  * @param avatarContentType
  * @param headerObjectKey
@@ -17,13 +19,15 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param now
  */
 export const upsertAccountProfile = $runtime.makeTypedQueryFactory(
-  "INSERT INTO account_profiles (\naccount_id, note, fields_json, bot, discoverable,\navatar_object_key, avatar_content_type, header_object_key, header_content_type, updated_at\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\nON CONFLICT(account_id) DO UPDATE SET\nnote = $2, fields_json = $3, bot = $4, discoverable = $5,\navatar_object_key = $6, avatar_content_type = $7,\nheader_object_key = $8, header_content_type = $9, updated_at = $10",
+  "INSERT INTO account_profiles (\naccount_id, note, fields_json, bot, discoverable, indexable, hide_collections,\navatar_object_key, avatar_content_type, header_object_key, header_content_type, updated_at\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)\nON CONFLICT(account_id) DO UPDATE SET\nnote = $2, fields_json = $3, bot = $4, discoverable = $5,\nindexable = $6, hide_collections = $7,\navatar_object_key = $8, avatar_content_type = $9,\nheader_object_key = $10, header_content_type = $11, updated_at = $12",
 ) as (
   accountId: string,
   note: string,
   fieldsJson: string,
   bot: number,
   discoverable: number,
+  indexable: number,
+  hideCollections: number,
   avatarObjectKey: string | null,
   avatarContentType: string | null,
   headerObjectKey: string | null,
@@ -38,6 +42,8 @@ export namespace upsertAccountProfile {
     fieldsJson: string,
     bot: number,
     discoverable: number,
+    indexable: number,
+    hideCollections: number,
     avatarObjectKey: string | null,
     avatarContentType: string | null,
     headerObjectKey: string | null,

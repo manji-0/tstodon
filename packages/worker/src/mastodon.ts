@@ -65,6 +65,10 @@ export const mastodonAccount = (
     locked: account.locked,
     bot: profile.bot,
     discoverable: profile.discoverable,
+    indexable: profile.indexable,
+    hide_collections: profile.hideCollections,
+    // This deployment has no HTML profile surface to point a crawler at.
+    noindex: false,
     group: false,
     created_at: account.createdAt,
     note: textToHtml(profile.note),
@@ -114,6 +118,10 @@ export const accountSource = (
   })),
   follow_requests_count: 0,
   quote_policy: quotePolicyName(account.defaultQuotePolicy),
+  discoverable: profile.discoverable,
+  indexable: profile.indexable,
+  hide_collections: profile.hideCollections,
+  attribution_domains: [],
 });
 
 export const mastodonAccountDocument = async (

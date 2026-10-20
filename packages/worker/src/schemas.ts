@@ -293,6 +293,8 @@ export const UpdateCredentialsBodySchema = z.object({
   note: z.string().optional(),
   bot: booleanish,
   discoverable: booleanish,
+  indexable: booleanish,
+  hide_collections: booleanish,
   locked: booleanish,
   fields: z
     .array(z.object({ name: z.string().optional(), value: z.string().optional() }))
