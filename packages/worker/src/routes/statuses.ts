@@ -6,17 +6,19 @@ import {
   Visibility,
   reblogVisibility,
   type LocalStatus as LocalStatusValue,
+  type QuoteApprovalPolicy,
   type StatusIdValue,
 } from "@tstodon/domain";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { findAccountsByUsernames } from "../account-store";
+import { findAccountById, findAccountsByUsernames } from "../account-store";
 import { authenticate } from "../auth";
 import { noteDocument } from "../activitypub";
 import { nowInstant, nowIso } from "../clock";
 import { enqueueLocalActivity } from "../delivery";
-import { mentionUsernames, textToHtml } from "../html";
+import { escapeHtml, mentionUsernames, textToHtml } from "../html";
 import { replaceStatusMentions } from "../mention-store";
+import { findFollowKind } from "../social-store";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -41,7 +43,6 @@ import {
 } from "../mastodon";
 import { countPollVotes, findPollByStatusId, replacePollOptions } from "../poll-store";
 import { listStatusFavouritedBy, listStatusRebloggedBy } from "../social-store";
-import { findAccountById } from "../account-store";
 import {
   CreateStatusBodySchema,
   ReblogBodySchema,
@@ -77,6 +78,7 @@ import {
   deleteStatus,
   findLocalReblog,
   findStatusById,
+  findStatusesByIds,
   findStatusUpdatedAt,
   insertLocalReblog,
   insertStatusEdit,
@@ -105,6 +107,14 @@ import {
 } from "../status-mute-store";
 import { canViewStatus } from "../visibility-guard";
 import { publishLocalNote } from "../local-status-publish";
+import {
+  defaultQuotePolicy,
+  findStatusQuotePolicy,
+  isQuotePolicy,
+  listQuotingStatusIds,
+  revokeStatusQuote,
+  type QuotePolicy,
+} from "../quote-store";
 import {
   MIN_SCHEDULE_OFFSET_MS,
   insertScheduledStatus,
@@ -170,6 +180,22 @@ const queueLinkCard = async (env: Env, statusId: string, text: string): Promise<
   void queued;
 };
 
+/** The account-level default policy as its API name. */
+const quotePolicyName = (policy: QuoteApprovalPolicy): QuotePolicy => {
+  switch (policy.kind) {
+    case "Public":
+      return "public";
+    case "Followers":
+      return "followers";
+    default:
+      return "nobody";
+  }
+};
+
+/** Public and unlisted statuses can be quoted by anyone their policy allows. */
+const visibilityIsPublic = (visibility: Visibility): boolean =>
+  visibility.kind === "Public" || visibility.kind === "Unlisted";
+
 const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -215,9 +241,94 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
       return c.json({ error: "poll option is too long", kind: "PollOptionTooLong" }, 422);
     }
   }
+  // A quote post points at another status the author may see. Its policy is
+  // the quoted status's stored policy (else its author's default), and a
+  // followers-only original clamps the quote to followers-only too.
+  let quotedStatus: LocalStatus | undefined;
+  let statusVisibility = visibility.value;
+  let quoteInlineHtml: string | null = null;
+  const quotedRaw = body.value.quoted_status_id?.trim() ?? "";
+  if (quotedRaw.length > 0) {
+    const quotedId = StatusId.parse(quotedRaw);
+    if (quotedId.isErr()) {
+      return c.json({ error: "Invalid quoted_status_id", kind: "ValidationError" }, 422);
+    }
+    const found = await findStatusById(c.env.DB, quotedId.value);
+    if (found.isErr()) {
+      return jsonRepositoryError(c, found.error.message);
+    }
+    if (!found.value) {
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    }
+    let target = found.value;
+    // Quoting a boost quotes the boosted status, as Mastodon does.
+    if (target.kind === "LocalReblog") {
+      const original = await findStatusById(c.env.DB, target.reblogOfId);
+      if (original.isErr()) {
+        return jsonRepositoryError(c, original.error.message);
+      }
+      if (!original.value) {
+        return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+      }
+      target = original.value;
+    }
+    if (!(await canViewStatus(c.env.DB, target, user.value.id))) {
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    }
+    const targetVisibility = Visibility.toMastodon(target.visibility);
+    if (targetVisibility === "direct") {
+      return c.json({ error: "Direct messages cannot be quoted", kind: "QuoteNotAllowed" }, 422);
+    }
+    const targetAuthor = await findAccountById(c.env.DB, target.accountId);
+    const storedPolicy = await findStatusQuotePolicy(c.env.DB, target.id);
+    const policy: QuotePolicy =
+      (storedPolicy.isOk() ? storedPolicy.value : undefined) ??
+      (targetAuthor.isOk() && targetAuthor.value
+        ? quotePolicyName(targetAuthor.value.defaultQuotePolicy)
+        : defaultQuotePolicy(targetVisibility));
+    if (policy === "nobody" && target.accountId !== user.value.id) {
+      // Mastodon answers 404 for a status it will not let you quote.
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    }
+    if (policy === "followers" && target.accountId !== user.value.id) {
+      const follow = await findFollowKind(c.env.DB, user.value.id, target.accountId);
+      if (follow.isErr()) {
+        return jsonRepositoryError(c, follow.error.message);
+      }
+      if (follow.value !== "Accepted") {
+        return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+      }
+    }
+    if (targetVisibility === "private" && visibilityIsPublic(statusVisibility)) {
+      statusVisibility = Visibility.FollowersOnly;
+    }
+    if (statusVisibility.kind === "Direct" && targetAuthor.isOk() && targetAuthor.value) {
+      const mentioned = mentionUsernames(body.value.status ?? "").includes(
+        targetAuthor.value.username.toLowerCase(),
+      );
+      if (!mentioned) {
+        return c.json(
+          {
+            error: "Quoted status author must be mentioned in a direct quote",
+            kind: "QuoteNotAllowed",
+          },
+          422,
+        );
+      }
+    }
+    quotedStatus = target;
+    const quotedUrl =
+      targetAuthor.isOk() && targetAuthor.value
+        ? `${InstanceIdentity.actorUrl(identity.value, targetAuthor.value.username)}/statuses/${target.id}`
+        : "";
+    if (quotedUrl.length > 0 && !(body.value.status ?? "").includes(quotedUrl)) {
+      quoteInlineHtml = `<p class="quote-inline">RE: <a href="${escapeHtml(quotedUrl)}">${escapeHtml(quotedUrl)}</a></p>`;
+    }
+  }
   const composing = StatusComposition.composing({
     text: body.value.status ?? "",
-    visibility: visibility.value,
+    visibility: statusVisibility,
+    ...(quotedStatus ? { quote: { kind: "Quoted" as const, statusId: quotedStatus.id } } : {}),
     spoilerText: body.value.spoiler_text ?? "",
     sensitive: isTruthy(body.value.sensitive),
     language:
@@ -231,6 +342,16 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   if (draft.isErr()) {
     return c.json({ error: draft.error.kind, kind: draft.error.kind }, 422);
   }
+  const policyRaw = (body.value.quote_approval_policy ?? "").trim().toLowerCase();
+  if (policyRaw.length > 0 && !isQuotePolicy(policyRaw)) {
+    return c.json({ error: "Invalid quote_approval_policy", kind: "ValidationError" }, 422);
+  }
+  // Direct and followers-only posts are never quotable by anyone else.
+  const statusQuotePolicy: QuotePolicy = visibilityIsPublic(draft.value.visibility)
+    ? policyRaw.length > 0
+      ? (policyRaw as QuotePolicy)
+      : quotePolicyName(user.value.defaultQuotePolicy)
+    : "nobody";
   let inReplyToId: StatusIdValue | null = null;
   const replyRaw = body.value.in_reply_to_id?.trim() ?? "";
   if (replyRaw.length > 0) {
@@ -254,6 +375,12 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   // cron publisher replays the same params through `publishLocalNote`.
   const scheduledRaw = body.value.scheduled_at?.trim() ?? "";
   if (scheduledRaw.length > 0) {
+    if (quotedStatus) {
+      return c.json(
+        { error: "Scheduled posts cannot quote a status", kind: "QuoteNotAllowed" },
+        422,
+      );
+    }
     const at = Date.parse(scheduledRaw);
     if (!Number.isFinite(at) || at < Date.now() + MIN_SCHEDULE_OFFSET_MS) {
       return c.json(
@@ -289,6 +416,7 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
               }
             : null,
         in_reply_to_id: inReplyToId === null ? null : inReplyToId,
+        quote_policy: statusQuotePolicy,
       },
     });
     if (stored.isErr()) {
@@ -311,6 +439,10 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   const published = await publishLocalNote(c.env, identity.value, user.value, {
     draft: draft.value,
     inReplyToId,
+    quote: quotedStatus
+      ? { quotedStatusId: quotedStatus.id, inlineHtml: quoteInlineHtml ?? "" }
+      : null,
+    quotePolicy: statusQuotePolicy,
     mediaAttributes,
     poll:
       pollOptions.length >= 2
@@ -469,6 +601,81 @@ statusRoutes.get("/api/v1/statuses/:id/favourited_by", (c) =>
 statusRoutes.get("/api/v1/statuses/:id/reblogged_by", (c) =>
   statusEngagementAccounts(c, "reblogged_by"),
 );
+
+/** Quotes of a status: accepted local quotes the viewer may see, newest first. */
+statusRoutes.get("/api/v1/statuses/:id/quotes", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const auth = await authenticate(c.req.raw, c.env);
+  if (auth.isErr()) {
+    return jsonAuthError(c, auth.error);
+  }
+  const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
+  const status = await findStatusById(c.env.DB, c.req.param("id") ?? "");
+  if (status.isErr()) {
+    return jsonRepositoryError(c, status.error.message);
+  }
+  if (!status.value || !(await canViewStatus(c.env.DB, status.value, viewerId))) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const limit = queryLimit(c.req.query("limit"));
+  const quotingIds = await listQuotingStatusIds(c.env.DB, status.value.id, limit, queryCursor(c));
+  if (quotingIds.isErr()) {
+    return jsonRepositoryError(c, quotingIds.error.message);
+  }
+  const loaded = await findStatusesByIds(c.env.DB, quotingIds.value);
+  if (loaded.isErr()) {
+    return jsonRepositoryError(c, loaded.error.message);
+  }
+  const visible: LocalStatusValue[] = [];
+  for (const id of quotingIds.value) {
+    const quoting = loaded.value.get(id);
+    if (quoting && (await canViewStatus(c.env.DB, quoting, viewerId))) {
+      visible.push(quoting);
+    }
+  }
+  setPaginationLinks(c, quotingIds.value, limit, { prev: "since_id" });
+  return c.json(await mastodonStatuses(c.env, identity.value, visible, viewerId));
+});
+
+/** The quoted author withdraws a quote; the quoting status stays, unattached. */
+statusRoutes.post("/api/v1/statuses/:id/quotes/:quoting_status_id/revoke", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const quoted = await findStatusById(c.env.DB, c.req.param("id") ?? "");
+  if (quoted.isErr()) {
+    return jsonRepositoryError(c, quoted.error.message);
+  }
+  if (!quoted.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  if (quoted.value.accountId !== user.value.id) {
+    return c.json({ error: "This action is not allowed", kind: "Forbidden" }, 403);
+  }
+  const quoting = await findStatusById(c.env.DB, c.req.param("quoting_status_id") ?? "");
+  if (quoting.isErr()) {
+    return jsonRepositoryError(c, quoting.error.message);
+  }
+  if (!quoting.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const revoked = await revokeStatusQuote(c.env.DB, quoted.value.id, quoting.value.id);
+  if (revoked.isErr()) {
+    return jsonRepositoryError(c, revoked.error.message);
+  }
+  if (!revoked.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json((await mastodonStatus(c.env, identity.value, quoting.value, user.value.id)) ?? {});
+});
 
 statusRoutes.get("/api/v1/statuses/:id", async (c) => {
   const identity = parseInstanceIdentity(c.env);

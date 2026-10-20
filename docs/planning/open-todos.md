@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Quote posts (`quoted_status_id`, policy, quotes list, revoke, document fields)
 - `favourited_by`/`reblogged_by` pagination on engagement row ids
 - `Link` pagination headers on notifications, favourites, and bookmarks
 - Follower/following pagination by follow row id with `Link` headers

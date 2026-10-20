@@ -332,6 +332,16 @@ export type domain_allows = Prisma.domain_allowsModel;
  */
 export type trend_reviews = Prisma.trend_reviewsModel;
 /**
+ * Model status_quotes
+ *
+ */
+export type status_quotes = Prisma.status_quotesModel;
+/**
+ * Model status_quote_policies
+ *
+ */
+export type status_quote_policies = Prisma.status_quote_policiesModel;
+/**
  * Model statuses
  *
  */

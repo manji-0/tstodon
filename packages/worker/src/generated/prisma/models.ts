@@ -65,5 +65,7 @@ export type * from "./models/scheduled_statuses";
 export type * from "./models/notification_request_groups";
 export type * from "./models/domain_allows";
 export type * from "./models/trend_reviews";
+export type * from "./models/status_quotes";
+export type * from "./models/status_quote_policies";
 export type * from "./models/statuses";
 export type * from "./commonInputTypes";

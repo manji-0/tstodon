@@ -30,6 +30,7 @@ export const ScheduledStatusParamsSchema = z.object({
     })
     .nullable(),
   in_reply_to_id: z.string().nullable(),
+  quote_policy: z.string().nullable().optional(),
 });
 
 export type ScheduledStatusParams = z.infer<typeof ScheduledStatusParamsSchema>;

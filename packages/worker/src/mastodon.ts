@@ -15,9 +15,16 @@ import {
   type AccountCounts,
 } from "./account-store";
 import { findPollsByStatusIds, type PollRecord } from "./poll-store";
+import {
+  findQuotesByStatusIds,
+  findStatusQuotePolicies,
+  quoteCountsByStatusIds,
+  type QuotePolicy,
+} from "./quote-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { findStatusById, findStatusesByIds, listStatusCards } from "./status-store";
 import {
+  followingAccountIds,
   statusInteractionCountsByIds,
   type NotificationRow,
   type RelationshipFlags,
@@ -182,6 +189,9 @@ export const mastodonRemoteStatus = (
     emojis: [],
     card,
     poll: null,
+    quote: null,
+    quotes_count: 0,
+    quote_approval: { automatic: [], manual: [], current_user: "unknown" },
   };
 };
 
@@ -286,7 +296,22 @@ const buildLocalNoteDocument = (
     emojis: emojis.map(customEmojiJson),
     card,
     poll: poll ? pollJson(poll) : null,
+    quote: null,
+    quotes_count: 0,
+    quote_approval: { automatic: [], manual: [], current_user: "unknown" },
   };
+};
+
+/** The account-level default policy as its API name. */
+const quotePolicyName = (policy: LocalAccount["defaultQuotePolicy"]): QuotePolicy => {
+  switch (policy.kind) {
+    case "Public":
+      return "public";
+    case "Followers":
+      return "followers";
+    default:
+      return "nobody";
+  }
 };
 
 export const mastodonStatus = async (
@@ -350,6 +375,30 @@ export const mastodonStatuses = async (
       break;
     }
   }
+
+  // Quotes point at another note; load the quoted statuses so the quote can be
+  // rendered, then read every quote of the loaded notes.
+  const noteIdsOf = (statuses: Iterable<LocalStatus>): string[] =>
+    [...statuses]
+      .filter((status): status is LocalNote => status.kind === "LocalNote")
+      .map((status) => status.id);
+  const loadQuotes = async (ids: ReadonlyArray<string>) => {
+    const result = await findQuotesByStatusIds(env.DB, ids);
+    return result.isOk() ? result.value : new Map<string, never>();
+  };
+  let quotes = await loadQuotes(noteIdsOf(byId.values()));
+  const quotedMissing = [
+    ...new Set([...quotes.values()].map((quote) => quote.quotedStatusId)),
+  ].filter((id) => !byId.has(id));
+  if (quotedMissing.length > 0) {
+    const loaded = await findStatusesByIds(env.DB, quotedMissing);
+    if (loaded.isOk()) {
+      for (const [id, status] of loaded.value) {
+        byId.set(id, status);
+      }
+    }
+  }
+  quotes = await loadQuotes(noteIdsOf(byId.values()));
 
   const allStatuses = [...byId.values()];
   const accountIds = [...new Set(allStatuses.map((status) => status.accountId))];
@@ -417,6 +466,17 @@ export const mastodonStatuses = async (
     );
   }
 
+  const quoteCountsResult = await quoteCountsByStatusIds(env.DB, noteIdsOf(allStatuses));
+  const quoteCounts = quoteCountsResult.isOk()
+    ? quoteCountsResult.value
+    : new Map<string, number>();
+  const policiesResult = await findStatusQuotePolicies(env.DB, noteIdsOf(allStatuses));
+  const quotePolicies = policiesResult.isOk()
+    ? policiesResult.value
+    : new Map<string, QuotePolicy>();
+  const viewerFollowing = viewerId ? await followingAccountIds(env.DB, viewerId) : undefined;
+  const followedByIds = viewerFollowing?.isOk() ? viewerFollowing.value : new Set<string>();
+
   const noteDocs = new Map<string, Record<string, unknown>>();
   const mutedRoots = viewerId ? await listStatusMuteRoots(env.DB, viewerId) : undefined;
   const mutedSet = mutedRoots?.isOk() ? mutedRoots.value : new Set<string>();
@@ -457,6 +517,40 @@ export const mastodonStatuses = async (
         cards.get(status.id) ?? null,
       ),
     );
+  }
+
+  for (const status of allStatuses) {
+    if (status.kind !== "LocalNote") {
+      continue;
+    }
+    const document = noteDocs.get(status.id);
+    const account = accounts.get(status.accountId);
+    if (!document || !account) {
+      continue;
+    }
+    const quote = quotes.get(status.id);
+    if (quote) {
+      const target = noteDocs.get(quote.quotedStatusId);
+      const state = quote.state === "revoked" ? "revoked" : target ? "accepted" : "deleted";
+      document.quote = {
+        state,
+        quoted_status: state === "accepted" ? (target ?? null) : null,
+      };
+    }
+    document.quotes_count = quoteCounts.get(status.id) ?? 0;
+    const policy = quotePolicies.get(status.id) ?? quotePolicyName(account.defaultQuotePolicy);
+    document.quote_approval = {
+      automatic: [],
+      manual: [],
+      current_user:
+        viewerId === undefined
+          ? "unknown"
+          : viewerId === status.accountId ||
+              policy === "public" ||
+              (policy === "followers" && followedByIds.has(status.accountId))
+            ? "automatic"
+            : "denied",
+    };
   }
 
   const render = (status: LocalStatus): Record<string, unknown> | undefined => {

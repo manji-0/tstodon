@@ -92,6 +92,17 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void
           hideTotals: row.params.poll.hide_totals,
         }
       : null,
+    // Scheduled quotes are refused at create time, and the policy was frozen
+    // with the params.
+    quote: null,
+    quotePolicy:
+      row.params.quote_policy === undefined
+        ? null
+        : row.params.quote_policy === "public" ||
+            row.params.quote_policy === "followers" ||
+            row.params.quote_policy === "nobody"
+          ? row.params.quote_policy
+          : null,
   });
   if (published.isOk()) {
     await deleteScheduledStatus(env.DB, row.accountId, row.id);

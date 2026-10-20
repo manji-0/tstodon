@@ -294,6 +294,14 @@ export type statusesWhereInput = {
   language?: Prisma.StringNullableFilter<"statuses"> | string | null;
   content_html?: Prisma.StringFilter<"statuses"> | string;
   poll_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
+  status_quotes?: Prisma.XOR<
+    Prisma.Status_quotesNullableScalarRelationFilter,
+    Prisma.status_quotesWhereInput
+  > | null;
+  status_quote_policies?: Prisma.XOR<
+    Prisma.Status_quote_policiesNullableScalarRelationFilter,
+    Prisma.status_quote_policiesWhereInput
+  > | null;
   bookmarks?: Prisma.BookmarksListRelationFilter;
   favourites?: Prisma.FavouritesListRelationFilter;
   media_attachments?: Prisma.Media_attachmentsListRelationFilter;
@@ -330,6 +338,8 @@ export type statusesOrderByWithRelationInput = {
   language?: Prisma.SortOrderInput | Prisma.SortOrder;
   content_html?: Prisma.SortOrder;
   poll_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  status_quotes?: Prisma.status_quotesOrderByWithRelationInput;
+  status_quote_policies?: Prisma.status_quote_policiesOrderByWithRelationInput;
   bookmarks?: Prisma.bookmarksOrderByRelationAggregateInput;
   favourites?: Prisma.favouritesOrderByRelationAggregateInput;
   media_attachments?: Prisma.media_attachmentsOrderByRelationAggregateInput;
@@ -364,6 +374,14 @@ export type statusesWhereUniqueInput = Prisma.AtLeast<
     language?: Prisma.StringNullableFilter<"statuses"> | string | null;
     content_html?: Prisma.StringFilter<"statuses"> | string;
     poll_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
+    status_quotes?: Prisma.XOR<
+      Prisma.Status_quotesNullableScalarRelationFilter,
+      Prisma.status_quotesWhereInput
+    > | null;
+    status_quote_policies?: Prisma.XOR<
+      Prisma.Status_quote_policiesNullableScalarRelationFilter,
+      Prisma.status_quote_policiesWhereInput
+    > | null;
     bookmarks?: Prisma.BookmarksListRelationFilter;
     favourites?: Prisma.FavouritesListRelationFilter;
     media_attachments?: Prisma.Media_attachmentsListRelationFilter;
@@ -447,6 +465,8 @@ export type statusesCreateInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
@@ -477,6 +497,8 @@ export type statusesUncheckedCreateInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -501,6 +523,8 @@ export type statusesUpdateInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
@@ -531,6 +555,8 @@ export type statusesUncheckedUpdateInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -945,6 +971,58 @@ export type statusesUpdateOneRequiredWithoutStatus_mentionsNestedInput = {
   >;
 };
 
+export type statusesCreateNestedOneWithoutStatus_quotesInput = {
+  create?: Prisma.XOR<
+    Prisma.statusesCreateWithoutStatus_quotesInput,
+    Prisma.statusesUncheckedCreateWithoutStatus_quotesInput
+  >;
+  connectOrCreate?: Prisma.statusesCreateOrConnectWithoutStatus_quotesInput;
+  connect?: Prisma.statusesWhereUniqueInput;
+};
+
+export type statusesUpdateOneRequiredWithoutStatus_quotesNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.statusesCreateWithoutStatus_quotesInput,
+    Prisma.statusesUncheckedCreateWithoutStatus_quotesInput
+  >;
+  connectOrCreate?: Prisma.statusesCreateOrConnectWithoutStatus_quotesInput;
+  upsert?: Prisma.statusesUpsertWithoutStatus_quotesInput;
+  connect?: Prisma.statusesWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.statusesUpdateToOneWithWhereWithoutStatus_quotesInput,
+      Prisma.statusesUpdateWithoutStatus_quotesInput
+    >,
+    Prisma.statusesUncheckedUpdateWithoutStatus_quotesInput
+  >;
+};
+
+export type statusesCreateNestedOneWithoutStatus_quote_policiesInput = {
+  create?: Prisma.XOR<
+    Prisma.statusesCreateWithoutStatus_quote_policiesInput,
+    Prisma.statusesUncheckedCreateWithoutStatus_quote_policiesInput
+  >;
+  connectOrCreate?: Prisma.statusesCreateOrConnectWithoutStatus_quote_policiesInput;
+  connect?: Prisma.statusesWhereUniqueInput;
+};
+
+export type statusesUpdateOneRequiredWithoutStatus_quote_policiesNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.statusesCreateWithoutStatus_quote_policiesInput,
+    Prisma.statusesUncheckedCreateWithoutStatus_quote_policiesInput
+  >;
+  connectOrCreate?: Prisma.statusesCreateOrConnectWithoutStatus_quote_policiesInput;
+  upsert?: Prisma.statusesUpsertWithoutStatus_quote_policiesInput;
+  connect?: Prisma.statusesWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.statusesUpdateToOneWithWhereWithoutStatus_quote_policiesInput,
+      Prisma.statusesUpdateWithoutStatus_quote_policiesInput
+    >,
+    Prisma.statusesUncheckedUpdateWithoutStatus_quote_policiesInput
+  >;
+};
+
 export type statusesCreateNestedOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesInput = {
   create?: Prisma.XOR<
     Prisma.statusesCreateWithoutOther_statuses_statuses_in_reply_to_idTostatusesInput,
@@ -1190,6 +1268,8 @@ export type statusesCreateWithoutAccountsInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
@@ -1218,6 +1298,8 @@ export type statusesUncheckedCreateWithoutAccountsInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -1303,6 +1385,8 @@ export type statusesCreateWithoutBookmarksInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
@@ -1332,6 +1416,8 @@ export type statusesUncheckedCreateWithoutBookmarksInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
@@ -1383,6 +1469,8 @@ export type statusesUpdateWithoutBookmarksInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
@@ -1412,6 +1500,8 @@ export type statusesUncheckedUpdateWithoutBookmarksInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
@@ -1435,6 +1525,8 @@ export type statusesCreateWithoutFavouritesInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
@@ -1464,6 +1556,8 @@ export type statusesUncheckedCreateWithoutFavouritesInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
@@ -1515,6 +1609,8 @@ export type statusesUpdateWithoutFavouritesInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
@@ -1544,6 +1640,8 @@ export type statusesUncheckedUpdateWithoutFavouritesInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
@@ -1567,6 +1665,8 @@ export type statusesCreateWithoutMedia_attachmentsInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
@@ -1596,6 +1696,8 @@ export type statusesUncheckedCreateWithoutMedia_attachmentsInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
@@ -1647,6 +1749,8 @@ export type statusesUpdateWithoutMedia_attachmentsInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
@@ -1676,6 +1780,8 @@ export type statusesUncheckedUpdateWithoutMedia_attachmentsInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
@@ -1699,6 +1805,8 @@ export type statusesCreateWithoutPollsInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
@@ -1728,6 +1836,8 @@ export type statusesUncheckedCreateWithoutPollsInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -1779,6 +1889,8 @@ export type statusesUpdateWithoutPollsInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
@@ -1808,6 +1920,8 @@ export type statusesUncheckedUpdateWithoutPollsInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -1831,6 +1945,8 @@ export type statusesCreateWithoutRemote_announcesInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
@@ -1860,6 +1976,8 @@ export type statusesUncheckedCreateWithoutRemote_announcesInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -1911,6 +2029,8 @@ export type statusesUpdateWithoutRemote_announcesInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
@@ -1940,6 +2060,8 @@ export type statusesUncheckedUpdateWithoutRemote_announcesInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -1963,6 +2085,8 @@ export type statusesCreateWithoutRemote_favouritesInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
@@ -1992,6 +2116,8 @@ export type statusesUncheckedCreateWithoutRemote_favouritesInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -2043,6 +2169,8 @@ export type statusesUpdateWithoutRemote_favouritesInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
@@ -2072,6 +2200,8 @@ export type statusesUncheckedUpdateWithoutRemote_favouritesInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -2095,6 +2225,8 @@ export type statusesCreateWithoutStatus_mentionsInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
@@ -2124,6 +2256,8 @@ export type statusesUncheckedCreateWithoutStatus_mentionsInput = {
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -2175,6 +2309,8 @@ export type statusesUpdateWithoutStatus_mentionsInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
@@ -2204,12 +2340,294 @@ export type statusesUncheckedUpdateWithoutStatus_mentionsInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+};
+
+export type statusesCreateWithoutStatus_quotesInput = {
+  id: string;
+  kind: string;
+  ap_id?: string | null;
+  content_text?: string;
+  visibility: string;
+  sensitive?: number;
+  created_at?: string;
+  updated_at?: string;
+  spoiler_text?: string;
+  language?: string | null;
+  content_html?: string;
+  poll_id?: string | null;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
+  bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
+  favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
+  media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
+  polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
+  remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
+  status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
+  statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
+  statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
+};
+
+export type statusesUncheckedCreateWithoutStatus_quotesInput = {
+  id: string;
+  account_id: string;
+  kind: string;
+  ap_id?: string | null;
+  reblog_of_id?: string | null;
+  in_reply_to_id?: string | null;
+  content_text?: string;
+  visibility: string;
+  sensitive?: number;
+  created_at?: string;
+  updated_at?: string;
+  spoiler_text?: string;
+  language?: string | null;
+  content_html?: string;
+  poll_id?: string | null;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
+  bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
+  favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
+  media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
+  polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
+  remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
+  status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUncheckedCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+};
+
+export type statusesCreateOrConnectWithoutStatus_quotesInput = {
+  where: Prisma.statusesWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.statusesCreateWithoutStatus_quotesInput,
+    Prisma.statusesUncheckedCreateWithoutStatus_quotesInput
+  >;
+};
+
+export type statusesUpsertWithoutStatus_quotesInput = {
+  update: Prisma.XOR<
+    Prisma.statusesUpdateWithoutStatus_quotesInput,
+    Prisma.statusesUncheckedUpdateWithoutStatus_quotesInput
+  >;
+  create: Prisma.XOR<
+    Prisma.statusesCreateWithoutStatus_quotesInput,
+    Prisma.statusesUncheckedCreateWithoutStatus_quotesInput
+  >;
+  where?: Prisma.statusesWhereInput;
+};
+
+export type statusesUpdateToOneWithWhereWithoutStatus_quotesInput = {
+  where?: Prisma.statusesWhereInput;
+  data: Prisma.XOR<
+    Prisma.statusesUpdateWithoutStatus_quotesInput,
+    Prisma.statusesUncheckedUpdateWithoutStatus_quotesInput
+  >;
+};
+
+export type statusesUpdateWithoutStatus_quotesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  visibility?: Prisma.StringFieldUpdateOperationsInput | string;
+  sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  spoiler_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_html?: Prisma.StringFieldUpdateOperationsInput | string;
+  poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
+  bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
+  favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
+  media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
+  polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
+  remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
+  status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
+  statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesNestedInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
+  statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
+};
+
+export type statusesUncheckedUpdateWithoutStatus_quotesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  visibility?: Prisma.StringFieldUpdateOperationsInput | string;
+  sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  spoiler_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_html?: Prisma.StringFieldUpdateOperationsInput | string;
+  poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
+  bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
+  favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
+  media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
+  polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
+  remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
+  status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+};
+
+export type statusesCreateWithoutStatus_quote_policiesInput = {
+  id: string;
+  kind: string;
+  ap_id?: string | null;
+  content_text?: string;
+  visibility: string;
+  sensitive?: number;
+  created_at?: string;
+  updated_at?: string;
+  spoiler_text?: string;
+  language?: string | null;
+  content_html?: string;
+  poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
+  favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
+  media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
+  polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
+  remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
+  status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
+  statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
+  statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
+};
+
+export type statusesUncheckedCreateWithoutStatus_quote_policiesInput = {
+  id: string;
+  account_id: string;
+  kind: string;
+  ap_id?: string | null;
+  reblog_of_id?: string | null;
+  in_reply_to_id?: string | null;
+  content_text?: string;
+  visibility: string;
+  sensitive?: number;
+  created_at?: string;
+  updated_at?: string;
+  spoiler_text?: string;
+  language?: string | null;
+  content_html?: string;
+  poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
+  favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
+  media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
+  polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
+  remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
+  status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUncheckedCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+};
+
+export type statusesCreateOrConnectWithoutStatus_quote_policiesInput = {
+  where: Prisma.statusesWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.statusesCreateWithoutStatus_quote_policiesInput,
+    Prisma.statusesUncheckedCreateWithoutStatus_quote_policiesInput
+  >;
+};
+
+export type statusesUpsertWithoutStatus_quote_policiesInput = {
+  update: Prisma.XOR<
+    Prisma.statusesUpdateWithoutStatus_quote_policiesInput,
+    Prisma.statusesUncheckedUpdateWithoutStatus_quote_policiesInput
+  >;
+  create: Prisma.XOR<
+    Prisma.statusesCreateWithoutStatus_quote_policiesInput,
+    Prisma.statusesUncheckedCreateWithoutStatus_quote_policiesInput
+  >;
+  where?: Prisma.statusesWhereInput;
+};
+
+export type statusesUpdateToOneWithWhereWithoutStatus_quote_policiesInput = {
+  where?: Prisma.statusesWhereInput;
+  data: Prisma.XOR<
+    Prisma.statusesUpdateWithoutStatus_quote_policiesInput,
+    Prisma.statusesUncheckedUpdateWithoutStatus_quote_policiesInput
+  >;
+};
+
+export type statusesUpdateWithoutStatus_quote_policiesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  visibility?: Prisma.StringFieldUpdateOperationsInput | string;
+  sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  spoiler_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_html?: Prisma.StringFieldUpdateOperationsInput | string;
+  poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
+  favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
+  media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
+  polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
+  remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
+  status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
+  statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesNestedInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
+  statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
+};
+
+export type statusesUncheckedUpdateWithoutStatus_quote_policiesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  visibility?: Prisma.StringFieldUpdateOperationsInput | string;
+  sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  spoiler_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_html?: Prisma.StringFieldUpdateOperationsInput | string;
+  poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
+  favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
+  media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
+  polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
+  remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
+  status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
 };
@@ -2227,6 +2645,8 @@ export type statusesCreateWithoutOther_statuses_statuses_in_reply_to_idTostatuse
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
@@ -2256,6 +2676,8 @@ export type statusesUncheckedCreateWithoutOther_statuses_statuses_in_reply_to_id
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -2287,6 +2709,8 @@ export type statusesCreateWithoutStatuses_statuses_in_reply_to_idTostatusesInput
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
@@ -2315,6 +2739,8 @@ export type statusesUncheckedCreateWithoutStatuses_statuses_in_reply_to_idTostat
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -2353,6 +2779,8 @@ export type statusesCreateWithoutOther_statuses_statuses_reblog_of_idTostatusesI
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
@@ -2382,6 +2810,8 @@ export type statusesUncheckedCreateWithoutOther_statuses_statuses_reblog_of_idTo
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -2413,6 +2843,8 @@ export type statusesCreateWithoutStatuses_statuses_reblog_of_idTostatusesInput =
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
@@ -2441,6 +2873,8 @@ export type statusesUncheckedCreateWithoutStatuses_statuses_reblog_of_idTostatus
   language?: string | null;
   content_html?: string;
   poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -2500,6 +2934,8 @@ export type statusesUpdateWithoutOther_statuses_statuses_in_reply_to_idTostatuse
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
@@ -2529,6 +2965,8 @@ export type statusesUncheckedUpdateWithoutOther_statuses_statuses_in_reply_to_id
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -2601,6 +3039,8 @@ export type statusesUpdateWithoutOther_statuses_statuses_reblog_of_idTostatusesI
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
@@ -2630,6 +3070,8 @@ export type statusesUncheckedUpdateWithoutOther_statuses_statuses_reblog_of_idTo
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -2698,6 +3140,8 @@ export type statusesUpdateWithoutAccountsInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
@@ -2726,6 +3170,8 @@ export type statusesUncheckedUpdateWithoutAccountsInput = {
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -2801,6 +3247,8 @@ export type statusesUpdateWithoutStatuses_statuses_in_reply_to_idTostatusesInput
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
@@ -2829,6 +3277,8 @@ export type statusesUncheckedUpdateWithoutStatuses_statuses_in_reply_to_idTostat
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -2870,6 +3320,8 @@ export type statusesUpdateWithoutStatuses_statuses_reblog_of_idTostatusesInput =
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
@@ -2898,6 +3350,8 @@ export type statusesUncheckedUpdateWithoutStatuses_statuses_reblog_of_idTostatus
   language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_html?: Prisma.StringFieldUpdateOperationsInput | string;
   poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -3061,6 +3515,8 @@ export type statusesSelect<
     language?: boolean;
     content_html?: boolean;
     poll_id?: boolean;
+    status_quotes?: boolean | Prisma.statuses$status_quotesArgs<ExtArgs>;
+    status_quote_policies?: boolean | Prisma.statuses$status_quote_policiesArgs<ExtArgs>;
     bookmarks?: boolean | Prisma.statuses$bookmarksArgs<ExtArgs>;
     favourites?: boolean | Prisma.statuses$favouritesArgs<ExtArgs>;
     media_attachments?: boolean | Prisma.statuses$media_attachmentsArgs<ExtArgs>;
@@ -3187,6 +3643,8 @@ export type statusesOmit<
 export type statusesInclude<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
+  status_quotes?: boolean | Prisma.statuses$status_quotesArgs<ExtArgs>;
+  status_quote_policies?: boolean | Prisma.statuses$status_quote_policiesArgs<ExtArgs>;
   bookmarks?: boolean | Prisma.statuses$bookmarksArgs<ExtArgs>;
   favourites?: boolean | Prisma.statuses$favouritesArgs<ExtArgs>;
   media_attachments?: boolean | Prisma.statuses$media_attachmentsArgs<ExtArgs>;
@@ -3237,6 +3695,8 @@ export type $statusesPayload<
 > = {
   name: "statuses";
   objects: {
+    status_quotes: Prisma.$status_quotesPayload<ExtArgs> | null;
+    status_quote_policies: Prisma.$status_quote_policiesPayload<ExtArgs> | null;
     bookmarks: Prisma.$bookmarksPayload<ExtArgs>[];
     favourites: Prisma.$favouritesPayload<ExtArgs>[];
     media_attachments: Prisma.$media_attachmentsPayload<ExtArgs>[];
@@ -3802,6 +4262,32 @@ export interface Prisma__statusesClient<
   GlobalOmitOptions = {},
 > extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise";
+  status_quotes<T extends Prisma.statuses$status_quotesArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.statuses$status_quotesArgs<ExtArgs>>,
+  ): Prisma.Prisma__status_quotesClient<
+    runtime.Types.Result.GetResult<
+      Prisma.$status_quotesPayload<ExtArgs>,
+      T,
+      "findUniqueOrThrow",
+      GlobalOmitOptions
+    > | null,
+    null,
+    ExtArgs,
+    GlobalOmitOptions
+  >;
+  status_quote_policies<T extends Prisma.statuses$status_quote_policiesArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.statuses$status_quote_policiesArgs<ExtArgs>>,
+  ): Prisma.Prisma__status_quote_policiesClient<
+    runtime.Types.Result.GetResult<
+      Prisma.$status_quote_policiesPayload<ExtArgs>,
+      T,
+      "findUniqueOrThrow",
+      GlobalOmitOptions
+    > | null,
+    null,
+    ExtArgs,
+    GlobalOmitOptions
+  >;
   bookmarks<T extends Prisma.statuses$bookmarksArgs<ExtArgs> = {}>(
     args?: Prisma.Subset<T, Prisma.statuses$bookmarksArgs<ExtArgs>>,
   ): Prisma.PrismaPromise<
@@ -4429,6 +4915,48 @@ export type statusesDeleteManyArgs<
    * Limit how many statuses to delete.
    */
   limit?: number;
+};
+
+/**
+ * statuses.status_quotes
+ */
+export type statuses$status_quotesArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the status_quotes
+   */
+  select?: Prisma.status_quotesSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the status_quotes
+   */
+  omit?: Prisma.status_quotesOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.status_quotesInclude<ExtArgs> | null;
+  where?: Prisma.status_quotesWhereInput;
+};
+
+/**
+ * statuses.status_quote_policies
+ */
+export type statuses$status_quote_policiesArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the status_quote_policies
+   */
+  select?: Prisma.status_quote_policiesSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the status_quote_policies
+   */
+  omit?: Prisma.status_quote_policiesOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.status_quote_policiesInclude<ExtArgs> | null;
+  where?: Prisma.status_quote_policiesWhereInput;
 };
 
 /**

@@ -22,6 +22,7 @@ import { enqueueLinkCard } from "./link-card";
 import type { MediaAttribute } from "./schemas";
 import { notifyingFollowerIds } from "./social-store";
 import { mastodonStatus } from "./mastodon";
+import { insertStatusQuote, setStatusQuotePolicy, type QuotePolicy } from "./quote-store";
 import { insertLocalNote } from "./status-store";
 import { publishToAccount } from "./stream-publish";
 
@@ -40,6 +41,10 @@ export type PublishNoteInput = Readonly<{
   inReplyToId: StatusIdValue | null;
   mediaAttributes: ReadonlyArray<MediaAttribute>;
   poll: PublishPoll | null;
+  /** The quoted status, with the `quote-inline` paragraph to prepend. */
+  quote: Readonly<{ quotedStatusId: string; inlineHtml: string }> | null;
+  /** Who may quote the new status; `null` keeps the account default. */
+  quotePolicy: QuotePolicy | null;
 }>;
 
 /** Apply `media_attributes` to media already attached to this status. */
@@ -109,17 +114,33 @@ export const publishLocalNote = async (
   if (id.isErr()) {
     return err({ kind: "RepositoryError", message: "invalid status id" });
   }
+  const html = textToHtml(input.draft.text);
   const note = LocalStatus.publish(
     id.value,
     user.id,
     input.draft,
     nowInstant(),
-    textToHtml(input.draft.text),
+    input.quote ? `${input.quote.inlineHtml}${html}` : html,
     input.inReplyToId,
   );
   const inserted = await insertLocalNote(env.DB, note);
   if (inserted.isErr()) {
     return err(inserted.error);
+  }
+  if (input.quote) {
+    const quote = await insertStatusQuote(env.DB, note.id, input.quote.quotedStatusId);
+    if (quote.isErr()) {
+      return err(quote.error);
+    }
+  }
+  // The policy is frozen with the status, so a later account default change
+  // cannot loosen or tighten quotes that already exist.
+  const policy = input.quotePolicy;
+  if (policy) {
+    const stored = await setStatusQuotePolicy(env.DB, note.id, policy);
+    if (stored.isErr()) {
+      return err(stored.error);
+    }
   }
   if (input.poll && input.poll.options.length >= 2) {
     const expiresIn = Number.isFinite(input.poll.expiresIn)

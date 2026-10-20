@@ -106,6 +106,8 @@ export const ModelName = {
   notification_request_groups: "notification_request_groups",
   domain_allows: "domain_allows",
   trend_reviews: "trend_reviews",
+  status_quotes: "status_quotes",
+  status_quote_policies: "status_quote_policies",
   statuses: "statuses",
 } as const;
 
@@ -783,6 +785,26 @@ export const Trend_reviewsScalarFieldEnum = {
 
 export type Trend_reviewsScalarFieldEnum =
   (typeof Trend_reviewsScalarFieldEnum)[keyof typeof Trend_reviewsScalarFieldEnum];
+
+export const Status_quotesScalarFieldEnum = {
+  id: "id",
+  status_id: "status_id",
+  quoted_status_id: "quoted_status_id",
+  state: "state",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Status_quotesScalarFieldEnum =
+  (typeof Status_quotesScalarFieldEnum)[keyof typeof Status_quotesScalarFieldEnum];
+
+export const Status_quote_policiesScalarFieldEnum = {
+  status_id: "status_id",
+  policy: "policy",
+} as const;
+
+export type Status_quote_policiesScalarFieldEnum =
+  (typeof Status_quote_policiesScalarFieldEnum)[keyof typeof Status_quote_policiesScalarFieldEnum];
 
 export const StatusesScalarFieldEnum = {
   id: "id",

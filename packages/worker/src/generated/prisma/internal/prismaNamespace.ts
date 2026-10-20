@@ -449,6 +449,8 @@ export const ModelName = {
   notification_request_groups: "notification_request_groups",
   domain_allows: "domain_allows",
   trend_reviews: "trend_reviews",
+  status_quotes: "status_quotes",
+  status_quote_policies: "status_quote_policies",
   statuses: "statuses",
 } as const;
 
@@ -528,6 +530,8 @@ export type TypeMap<
       | "notification_request_groups"
       | "domain_allows"
       | "trend_reviews"
+      | "status_quotes"
+      | "status_quote_policies"
       | "statuses";
     txIsolationLevel: TransactionIsolationLevel;
   };
@@ -4914,6 +4918,158 @@ export type TypeMap<
         };
       };
     };
+    status_quotes: {
+      payload: Prisma.$status_quotesPayload<ExtArgs>;
+      fields: Prisma.status_quotesFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.status_quotesFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quotesPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.status_quotesFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quotesPayload>;
+        };
+        findFirst: {
+          args: Prisma.status_quotesFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quotesPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.status_quotesFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quotesPayload>;
+        };
+        findMany: {
+          args: Prisma.status_quotesFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quotesPayload>[];
+        };
+        create: {
+          args: Prisma.status_quotesCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quotesPayload>;
+        };
+        createMany: {
+          args: Prisma.status_quotesCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.status_quotesCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quotesPayload>[];
+        };
+        delete: {
+          args: Prisma.status_quotesDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quotesPayload>;
+        };
+        update: {
+          args: Prisma.status_quotesUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quotesPayload>;
+        };
+        deleteMany: {
+          args: Prisma.status_quotesDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.status_quotesUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.status_quotesUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quotesPayload>[];
+        };
+        upsert: {
+          args: Prisma.status_quotesUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quotesPayload>;
+        };
+        aggregate: {
+          args: Prisma.Status_quotesAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateStatus_quotes>;
+        };
+        groupBy: {
+          args: Prisma.status_quotesGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Status_quotesGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.status_quotesCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Status_quotesCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    status_quote_policies: {
+      payload: Prisma.$status_quote_policiesPayload<ExtArgs>;
+      fields: Prisma.status_quote_policiesFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.status_quote_policiesFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quote_policiesPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.status_quote_policiesFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quote_policiesPayload>;
+        };
+        findFirst: {
+          args: Prisma.status_quote_policiesFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quote_policiesPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.status_quote_policiesFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quote_policiesPayload>;
+        };
+        findMany: {
+          args: Prisma.status_quote_policiesFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quote_policiesPayload>[];
+        };
+        create: {
+          args: Prisma.status_quote_policiesCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quote_policiesPayload>;
+        };
+        createMany: {
+          args: Prisma.status_quote_policiesCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.status_quote_policiesCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quote_policiesPayload>[];
+        };
+        delete: {
+          args: Prisma.status_quote_policiesDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quote_policiesPayload>;
+        };
+        update: {
+          args: Prisma.status_quote_policiesUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quote_policiesPayload>;
+        };
+        deleteMany: {
+          args: Prisma.status_quote_policiesDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.status_quote_policiesUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.status_quote_policiesUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quote_policiesPayload>[];
+        };
+        upsert: {
+          args: Prisma.status_quote_policiesUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_quote_policiesPayload>;
+        };
+        aggregate: {
+          args: Prisma.Status_quote_policiesAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateStatus_quote_policies>;
+        };
+        groupBy: {
+          args: Prisma.status_quote_policiesGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Status_quote_policiesGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.status_quote_policiesCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Status_quote_policiesCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
     statuses: {
       payload: Prisma.$statusesPayload<ExtArgs>;
       fields: Prisma.statusesFieldRefs;
@@ -5690,6 +5846,26 @@ export const Trend_reviewsScalarFieldEnum = {
 export type Trend_reviewsScalarFieldEnum =
   (typeof Trend_reviewsScalarFieldEnum)[keyof typeof Trend_reviewsScalarFieldEnum];
 
+export const Status_quotesScalarFieldEnum = {
+  id: "id",
+  status_id: "status_id",
+  quoted_status_id: "quoted_status_id",
+  state: "state",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Status_quotesScalarFieldEnum =
+  (typeof Status_quotesScalarFieldEnum)[keyof typeof Status_quotesScalarFieldEnum];
+
+export const Status_quote_policiesScalarFieldEnum = {
+  status_id: "status_id",
+  policy: "policy",
+} as const;
+
+export type Status_quote_policiesScalarFieldEnum =
+  (typeof Status_quote_policiesScalarFieldEnum)[keyof typeof Status_quote_policiesScalarFieldEnum];
+
 export const StatusesScalarFieldEnum = {
   id: "id",
   account_id: "account_id",
@@ -5960,6 +6136,8 @@ export type GlobalOmitConfig = {
   notification_request_groups?: Prisma.notification_request_groupsOmit;
   domain_allows?: Prisma.domain_allowsOmit;
   trend_reviews?: Prisma.trend_reviewsOmit;
+  status_quotes?: Prisma.status_quotesOmit;
+  status_quote_policies?: Prisma.status_quote_policiesOmit;
   statuses?: Prisma.statusesOmit;
 };
 

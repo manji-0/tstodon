@@ -672,7 +672,27 @@ model trend_reviews {
   @@index([kind, state], map: "idx_trend_reviews_state")
 }
 
+model status_quotes {
+  id               String @id
+  status_id        String @unique
+  quoted_status_id String
+  state            String
+  created_at       String
+  updated_at       String
+  statuses         statuses @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([quoted_status_id, state, status_id(sort: Desc)], map: "idx_status_quotes_quoted")
+}
+
+model status_quote_policies {
+  status_id String @id
+  policy    String
+  statuses  statuses @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
 model statuses {
+  status_quotes        status_quotes?
+  status_quote_policies status_quote_policies?
   id                                               String @id
   account_id                                       String
   kind                                             String
