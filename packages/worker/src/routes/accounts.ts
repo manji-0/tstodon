@@ -325,6 +325,56 @@ accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
   });
 });
 
+/** `DELETE /api/v1/profile/avatar|header`: drop the image and answer the credential account. */
+const deleteProfileImage = async (
+  c: Context<{ Bindings: Env }>,
+  kind: "avatar" | "header",
+): Promise<Response> => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const profile = await findAccountProfile(c.env.DB, user.value.id);
+  if (profile.isErr()) {
+    return jsonRepositoryError(c, profile.error.message);
+  }
+  const objectKey =
+    kind === "avatar" ? profile.value.avatarObjectKey : profile.value.headerObjectKey;
+  // Deleting an image that is not set succeeds without a write, like Mastodon.
+  if (objectKey !== null) {
+    const saved = await upsertAccountProfile(c.env.DB, user.value.id, {
+      ...profile.value,
+      ...(kind === "avatar"
+        ? { avatarObjectKey: null, avatarContentType: null }
+        : { headerObjectKey: null, headerContentType: null }),
+    });
+    if (saved.isErr()) {
+      return jsonRepositoryError(c, saved.error.message);
+    }
+    await c.env.MEDIA.delete(objectKey);
+  }
+  const [document, profileAfter, defaults] = await Promise.all([
+    mastodonAccountDocument(c.env, identity.value, user.value),
+    findAccountProfile(c.env.DB, user.value.id),
+    findComposeDefaults(c.env.DB, user.value.id),
+  ]);
+  return c.json({
+    ...document,
+    source: accountSource(
+      user.value,
+      profileAfter.isOk() ? profileAfter.value : EMPTY_ACCOUNT_PROFILE,
+      defaults.isOk() ? defaults.value : { language: null, sensitive: false },
+    ),
+  });
+};
+
+accountRoutes.delete("/api/v1/profile/avatar", (c) => deleteProfileImage(c, "avatar"));
+accountRoutes.delete("/api/v1/profile/header", (c) => deleteProfileImage(c, "header"));
+
 accountRoutes.get("/api/v1/accounts/lookup", async (c) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {

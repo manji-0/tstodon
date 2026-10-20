@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
@@ -88,6 +88,54 @@ describe("account profiles", () => {
     expect(rejected.status).toBe(422);
     const stillThere = await json(`/api/v1/accounts/${account.id}`);
     expect(read(AccountSchema, stillThere.body).avatar).toBe(account.avatar);
+  });
+
+  it("deletes the avatar and header separately", async () => {
+    const email = "profile-image-delete@example.com";
+    const form = new FormData();
+    form.set(
+      "avatar",
+      new File([new Uint8Array([137, 80, 78, 71])], "a.png", { type: "image/png" }),
+    );
+    form.set("header", new File([new Uint8Array([71, 73, 70])], "h.gif", { type: "image/gif" }));
+    const uploaded = await json("/api/v1/accounts/update_credentials", {
+      method: "PATCH",
+      headers: await auth(email),
+      body: form,
+    });
+    const account = read(AccountSchema, uploaded.body);
+    expect(await env.MEDIA.head(`avatars/${account.id}`)).not.toBeNull();
+
+    const avatarDeleted = await json("/api/v1/profile/avatar", {
+      method: "DELETE",
+      headers: await auth(email),
+    });
+    expect(avatarDeleted.status).toBe(200);
+    const withoutAvatar = read(
+      AccountSchema.extend({ source: z.object({ privacy: z.string() }) }),
+      avatarDeleted.body,
+    );
+    expect(withoutAvatar.avatar).not.toContain("/avatars/");
+    expect(withoutAvatar.header).toBe(account.header);
+    // The stored object is gone too.
+    expect(await env.MEDIA.head(`avatars/${account.id}`)).toBeNull();
+
+    const headerDeleted = await json("/api/v1/profile/header", {
+      method: "DELETE",
+      headers: await auth(email),
+    });
+    expect(read(AccountSchema, headerDeleted.body).header).not.toContain("/headers/");
+    const fetched = read(AccountSchema, (await json(`/api/v1/accounts/${account.id}`)).body);
+    expect(fetched.avatar).not.toContain("/avatars/");
+    expect(fetched.header).not.toContain("/headers/");
+
+    // Deleting an image that is already gone still succeeds.
+    const again = await json("/api/v1/profile/avatar", {
+      method: "DELETE",
+      headers: await auth(email),
+    });
+    expect(again.status).toBe(200);
+    expect((await json("/api/v1/profile/header", { method: "DELETE" })).status).toBe(401);
   });
 
   it("stores the bio, fields, and flags and reports them everywhere", async () => {
