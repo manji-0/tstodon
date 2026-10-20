@@ -42,7 +42,12 @@ export type PublishNoteInput = Readonly<{
   mediaAttributes: ReadonlyArray<MediaAttribute>;
   poll: PublishPoll | null;
   /** The quoted status, with its URI and the `quote-inline` paragraph. */
-  quote: Readonly<{ quotedStatusId: string; inlineHtml: string; uri: string }> | null;
+  quote: Readonly<{
+    quotedStatusId: string;
+    quotedAccountId: string;
+    inlineHtml: string;
+    uri: string;
+  }> | null;
   /** Who may quote the new status; `null` keeps the account default. */
   quotePolicy: QuotePolicy | null;
 }>;
@@ -131,6 +136,17 @@ export const publishLocalNote = async (
     const quote = await insertStatusQuote(env.DB, note.id, input.quote.quotedStatusId);
     if (quote.isErr()) {
       return err(quote.error);
+    }
+    if (input.quote.quotedAccountId !== user.id) {
+      const notified = await notifyAccount(env, {
+        accountId: input.quote.quotedAccountId,
+        fromAccountId: user.id,
+        kind: "quote",
+        statusId: note.id,
+      });
+      if (notified.isErr()) {
+        return err(notified.error);
+      }
     }
   }
   // The policy is frozen with the status, so a later account default change

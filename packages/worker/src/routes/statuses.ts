@@ -112,6 +112,7 @@ import {
   defaultQuotePolicy,
   findStatusQuotePolicy,
   isQuotePolicy,
+  listAcceptedQuoteEdges,
   listQuotingStatusIds,
   setStatusQuotePolicy,
   revokeStatusQuote,
@@ -455,6 +456,7 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     quote: quotedStatus
       ? {
           quotedStatusId: quotedStatus.id,
+          quotedAccountId: quotedStatus.accountId,
           inlineHtml: quoteInlineHtml ?? "",
           uri: quotedUrl,
         }
@@ -900,6 +902,21 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   }
   if (!applied.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  // Authors who quoted this status hear that the original changed.
+  const quoteEdges = await listAcceptedQuoteEdges(c.env.DB, existing.id);
+  if (quoteEdges.isOk()) {
+    for (const edge of quoteEdges.value) {
+      if (edge.accountId === user.value.id) {
+        continue;
+      }
+      await notifyAccount(c.env, {
+        accountId: edge.accountId,
+        fromAccountId: user.value.id,
+        kind: "quoted_update",
+        statusId: edge.statusId,
+      });
+    }
   }
   await queueLinkCard(c.env, existing.id, revised.text);
   if (pollUpdate) {

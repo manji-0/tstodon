@@ -326,4 +326,48 @@ describe("quote posts", () => {
       read(z.object({ quote: z.string().optional().nullable() }), afterRevoke.body).quote,
     ).toBeUndefined();
   });
+
+  it("notifies the quoted author and the quoter on an edit", async () => {
+    const author = "quote-notify-author@example.com";
+    const quoter = "quote-notify-quoter@example.com";
+    const original = await create(author, { status: "quote me" });
+    const quoting = await create(quoter, {
+      status: "quoted you",
+      quoted_status_id: original.id,
+    });
+
+    const NotificationSchema = z.object({
+      type: z.string(),
+      status: z.object({ id: z.string() }).nullable(),
+    });
+    const notifications = async (email: string) => {
+      const response = await json("/api/v1/notifications", { headers: await auth(email) });
+      expect(response.status).toBe(200);
+      return read(z.array(NotificationSchema), response.body);
+    };
+
+    const quoteNotification = (await notifications(author)).find(
+      (notification) => notification.type === "quote",
+    );
+    expect(quoteNotification?.status?.id).toBe(quoting.id);
+
+    // A self-quote does not notify its own author.
+    await create(author, { status: "self quote", quoted_status_id: original.id });
+    const selfQuotes = (await notifications(author)).filter(
+      (notification) => notification.type === "quote" && notification.status?.id !== quoting.id,
+    );
+    expect(selfQuotes).toEqual([]);
+
+    // Editing the original tells the person who quoted it, with their quote attached.
+    const edited = await json(`/api/v1/statuses/${original.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth(author)) },
+      body: JSON.stringify({ status: "quote me, edited" }),
+    });
+    expect(edited.status).toBe(200);
+    const updateNotification = (await notifications(quoter)).find(
+      (notification) => notification.type === "quoted_update",
+    );
+    expect(updateNotification?.status?.id).toBe(quoting.id);
+  });
 });

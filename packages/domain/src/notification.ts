@@ -31,6 +31,20 @@ const MentionSchema = z.object({
   statusId: StatusId.schema,
   createdAt: IsoInstant.schema,
 });
+const QuoteSchema = z.object({
+  kind: z.literal("quote"),
+  id: z.string().min(1),
+  accountId: AccountId.schema,
+  statusId: StatusId.schema,
+  createdAt: IsoInstant.schema,
+});
+const QuotedUpdateSchema = z.object({
+  kind: z.literal("quoted_update"),
+  id: z.string().min(1),
+  accountId: AccountId.schema,
+  statusId: StatusId.schema,
+  createdAt: IsoInstant.schema,
+});
 const PollSchema = z.object({
   kind: z.literal("poll"),
   id: z.string().min(1),
@@ -45,6 +59,8 @@ export const NotificationSchema = z.discriminatedUnion("kind", [
   ReblogSchema,
   MentionSchema,
   PollSchema,
+  QuoteSchema,
+  QuotedUpdateSchema,
 ]);
 
 export type Notification = z.infer<typeof NotificationSchema>;

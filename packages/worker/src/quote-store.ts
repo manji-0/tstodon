@@ -155,6 +155,23 @@ export const listQuotingStatusIds = async (
     return (results ?? []).map((row) => row.id);
   });
 
+/** The authors and statuses of the accepted quotes of one status. */
+export const listAcceptedQuoteEdges = async (
+  db: D1Database,
+  quotedStatusId: string,
+): Promise<Result<ReadonlyArray<{ statusId: string; accountId: string }>, RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT q.status_id AS status_id, s.account_id AS account_id
+         FROM status_quotes q JOIN statuses s ON s.id = q.status_id
+         WHERE q.quoted_status_id = ? AND q.state = 'accepted'`,
+      )
+      .bind(quotedStatusId)
+      .all<{ status_id: string; account_id: string }>();
+    return (results ?? []).map((row) => ({ statusId: row.status_id, accountId: row.account_id }));
+  });
+
 /** Revoke one quote; only the quoted author's route calls this. */
 export const revokeStatusQuote = async (
   db: D1Database,
