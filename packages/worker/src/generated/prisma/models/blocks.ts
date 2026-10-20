@@ -24,6 +24,7 @@ export type AggregateBlocks = {
 };
 
 export type BlocksMinAggregateOutputType = {
+  id: string | null;
   blocker_account_id: string | null;
   target_account_id: string | null;
   target_actor_uri: string | null;
@@ -31,6 +32,7 @@ export type BlocksMinAggregateOutputType = {
 };
 
 export type BlocksMaxAggregateOutputType = {
+  id: string | null;
   blocker_account_id: string | null;
   target_account_id: string | null;
   target_actor_uri: string | null;
@@ -38,6 +40,7 @@ export type BlocksMaxAggregateOutputType = {
 };
 
 export type BlocksCountAggregateOutputType = {
+  id: number;
   blocker_account_id: number;
   target_account_id: number;
   target_actor_uri: number;
@@ -46,6 +49,7 @@ export type BlocksCountAggregateOutputType = {
 };
 
 export type BlocksMinAggregateInputType = {
+  id?: true;
   blocker_account_id?: true;
   target_account_id?: true;
   target_actor_uri?: true;
@@ -53,6 +57,7 @@ export type BlocksMinAggregateInputType = {
 };
 
 export type BlocksMaxAggregateInputType = {
+  id?: true;
   blocker_account_id?: true;
   target_account_id?: true;
   target_actor_uri?: true;
@@ -60,6 +65,7 @@ export type BlocksMaxAggregateInputType = {
 };
 
 export type BlocksCountAggregateInputType = {
+  id?: true;
   blocker_account_id?: true;
   target_account_id?: true;
   target_actor_uri?: true;
@@ -141,6 +147,7 @@ export type blocksGroupByArgs<
 };
 
 export type BlocksGroupByOutputType = {
+  id: string | null;
   blocker_account_id: string;
   target_account_id: string | null;
   target_actor_uri: string;
@@ -166,6 +173,7 @@ export type blocksWhereInput = {
   AND?: Prisma.blocksWhereInput | Prisma.blocksWhereInput[];
   OR?: Prisma.blocksWhereInput[];
   NOT?: Prisma.blocksWhereInput | Prisma.blocksWhereInput[];
+  id?: Prisma.StringNullableFilter<"blocks"> | string | null;
   blocker_account_id?: Prisma.StringFilter<"blocks"> | string;
   target_account_id?: Prisma.StringNullableFilter<"blocks"> | string | null;
   target_actor_uri?: Prisma.StringFilter<"blocks"> | string;
@@ -173,6 +181,7 @@ export type blocksWhereInput = {
 };
 
 export type blocksOrderByWithRelationInput = {
+  id?: Prisma.SortOrderInput | Prisma.SortOrder;
   blocker_account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   target_actor_uri?: Prisma.SortOrder;
@@ -181,6 +190,7 @@ export type blocksOrderByWithRelationInput = {
 
 export type blocksWhereUniqueInput = Prisma.AtLeast<
   {
+    id?: string;
     blocker_account_id_target_actor_uri?: Prisma.blocksBlocker_account_idTarget_actor_uriCompoundUniqueInput;
     AND?: Prisma.blocksWhereInput | Prisma.blocksWhereInput[];
     OR?: Prisma.blocksWhereInput[];
@@ -190,10 +200,11 @@ export type blocksWhereUniqueInput = Prisma.AtLeast<
     target_actor_uri?: Prisma.StringFilter<"blocks"> | string;
     created_at?: Prisma.StringFilter<"blocks"> | string;
   },
-  "blocker_account_id_target_actor_uri"
+  "blocker_account_id_target_actor_uri" | "id"
 >;
 
 export type blocksOrderByWithAggregationInput = {
+  id?: Prisma.SortOrderInput | Prisma.SortOrder;
   blocker_account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   target_actor_uri?: Prisma.SortOrder;
@@ -207,6 +218,7 @@ export type blocksScalarWhereWithAggregatesInput = {
   AND?: Prisma.blocksScalarWhereWithAggregatesInput | Prisma.blocksScalarWhereWithAggregatesInput[];
   OR?: Prisma.blocksScalarWhereWithAggregatesInput[];
   NOT?: Prisma.blocksScalarWhereWithAggregatesInput | Prisma.blocksScalarWhereWithAggregatesInput[];
+  id?: Prisma.StringNullableWithAggregatesFilter<"blocks"> | string | null;
   blocker_account_id?: Prisma.StringWithAggregatesFilter<"blocks"> | string;
   target_account_id?: Prisma.StringNullableWithAggregatesFilter<"blocks"> | string | null;
   target_actor_uri?: Prisma.StringWithAggregatesFilter<"blocks"> | string;
@@ -214,6 +226,7 @@ export type blocksScalarWhereWithAggregatesInput = {
 };
 
 export type blocksCreateInput = {
+  id?: string | null;
   blocker_account_id: string;
   target_account_id?: string | null;
   target_actor_uri: string;
@@ -221,6 +234,7 @@ export type blocksCreateInput = {
 };
 
 export type blocksUncheckedCreateInput = {
+  id?: string | null;
   blocker_account_id: string;
   target_account_id?: string | null;
   target_actor_uri: string;
@@ -228,6 +242,7 @@ export type blocksUncheckedCreateInput = {
 };
 
 export type blocksUpdateInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   blocker_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -235,6 +250,7 @@ export type blocksUpdateInput = {
 };
 
 export type blocksUncheckedUpdateInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   blocker_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -242,6 +258,7 @@ export type blocksUncheckedUpdateInput = {
 };
 
 export type blocksCreateManyInput = {
+  id?: string | null;
   blocker_account_id: string;
   target_account_id?: string | null;
   target_actor_uri: string;
@@ -249,6 +266,7 @@ export type blocksCreateManyInput = {
 };
 
 export type blocksUpdateManyMutationInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   blocker_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -256,6 +274,7 @@ export type blocksUpdateManyMutationInput = {
 };
 
 export type blocksUncheckedUpdateManyInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   blocker_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -268,6 +287,7 @@ export type blocksBlocker_account_idTarget_actor_uriCompoundUniqueInput = {
 };
 
 export type blocksCountOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   blocker_account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
   target_actor_uri?: Prisma.SortOrder;
@@ -275,6 +295,7 @@ export type blocksCountOrderByAggregateInput = {
 };
 
 export type blocksMaxOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   blocker_account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
   target_actor_uri?: Prisma.SortOrder;
@@ -282,6 +303,7 @@ export type blocksMaxOrderByAggregateInput = {
 };
 
 export type blocksMinOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   blocker_account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
   target_actor_uri?: Prisma.SortOrder;
@@ -292,6 +314,7 @@ export type blocksSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     blocker_account_id?: boolean;
     target_account_id?: boolean;
     target_actor_uri?: boolean;
@@ -304,6 +327,7 @@ export type blocksSelectCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     blocker_account_id?: boolean;
     target_account_id?: boolean;
     target_actor_uri?: boolean;
@@ -316,6 +340,7 @@ export type blocksSelectUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     blocker_account_id?: boolean;
     target_account_id?: boolean;
     target_actor_uri?: boolean;
@@ -325,6 +350,7 @@ export type blocksSelectUpdateManyAndReturn<
 >;
 
 export type blocksSelectScalar = {
+  id?: boolean;
   blocker_account_id?: boolean;
   target_account_id?: boolean;
   target_actor_uri?: boolean;
@@ -334,7 +360,7 @@ export type blocksSelectScalar = {
 export type blocksOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "blocker_account_id" | "target_account_id" | "target_actor_uri" | "created_at",
+  "id" | "blocker_account_id" | "target_account_id" | "target_actor_uri" | "created_at",
   ExtArgs["result"]["blocks"]
 >;
 
@@ -345,6 +371,7 @@ export type $blocksPayload<
   objects: {};
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
+      id: string | null;
       blocker_account_id: string;
       target_account_id: string | null;
       target_actor_uri: string;
@@ -487,8 +514,8 @@ export interface blocksDelegate<
    * // Get first 10 Blocks
    * const blocks = await prisma.blocks.findMany({ take: 10 })
    *
-   * // Only select the `blocker_account_id`
-   * const blocksWithBlocker_account_idOnly = await prisma.blocks.findMany({ select: { blocker_account_id: true } })
+   * // Only select the `id`
+   * const blocksWithIdOnly = await prisma.blocks.findMany({ select: { id: true } })
    *
    */
   findMany<T extends blocksFindManyArgs>(
@@ -545,9 +572,9 @@ export interface blocksDelegate<
    *   ]
    * })
    *
-   * // Create many Blocks and only return the `blocker_account_id`
-   * const blocksWithBlocker_account_idOnly = await prisma.blocks.createManyAndReturn({
-   *   select: { blocker_account_id: true },
+   * // Create many Blocks and only return the `id`
+   * const blocksWithIdOnly = await prisma.blocks.createManyAndReturn({
+   *   select: { id: true },
    *   data: [
    *     // ... provide data here
    *   ]
@@ -663,9 +690,9 @@ export interface blocksDelegate<
    *   ]
    * })
    *
-   * // Update zero or more Blocks and only return the `blocker_account_id`
-   * const blocksWithBlocker_account_idOnly = await prisma.blocks.updateManyAndReturn({
-   *   select: { blocker_account_id: true },
+   * // Update zero or more Blocks and only return the `id`
+   * const blocksWithIdOnly = await prisma.blocks.updateManyAndReturn({
+   *   select: { id: true },
    *   where: {
    *     // ... provide filter here
    *   },
@@ -890,6 +917,7 @@ export interface Prisma__blocksClient<
  * Fields of the blocks model
  */
 export interface blocksFieldRefs {
+  readonly id: Prisma.FieldRef<"blocks", "String">;
   readonly blocker_account_id: Prisma.FieldRef<"blocks", "String">;
   readonly target_account_id: Prisma.FieldRef<"blocks", "String">;
   readonly target_actor_uri: Prisma.FieldRef<"blocks", "String">;

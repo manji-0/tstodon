@@ -24,6 +24,7 @@ export type AggregateEndorsements = {
 };
 
 export type EndorsementsMinAggregateOutputType = {
+  id: string | null;
   account_id: string | null;
   target_account_id: string | null;
   target_actor_uri: string | null;
@@ -31,6 +32,7 @@ export type EndorsementsMinAggregateOutputType = {
 };
 
 export type EndorsementsMaxAggregateOutputType = {
+  id: string | null;
   account_id: string | null;
   target_account_id: string | null;
   target_actor_uri: string | null;
@@ -38,6 +40,7 @@ export type EndorsementsMaxAggregateOutputType = {
 };
 
 export type EndorsementsCountAggregateOutputType = {
+  id: number;
   account_id: number;
   target_account_id: number;
   target_actor_uri: number;
@@ -46,6 +49,7 @@ export type EndorsementsCountAggregateOutputType = {
 };
 
 export type EndorsementsMinAggregateInputType = {
+  id?: true;
   account_id?: true;
   target_account_id?: true;
   target_actor_uri?: true;
@@ -53,6 +57,7 @@ export type EndorsementsMinAggregateInputType = {
 };
 
 export type EndorsementsMaxAggregateInputType = {
+  id?: true;
   account_id?: true;
   target_account_id?: true;
   target_actor_uri?: true;
@@ -60,6 +65,7 @@ export type EndorsementsMaxAggregateInputType = {
 };
 
 export type EndorsementsCountAggregateInputType = {
+  id?: true;
   account_id?: true;
   target_account_id?: true;
   target_actor_uri?: true;
@@ -145,6 +151,7 @@ export type endorsementsGroupByArgs<
 };
 
 export type EndorsementsGroupByOutputType = {
+  id: string | null;
   account_id: string;
   target_account_id: string | null;
   target_actor_uri: string;
@@ -170,6 +177,7 @@ export type endorsementsWhereInput = {
   AND?: Prisma.endorsementsWhereInput | Prisma.endorsementsWhereInput[];
   OR?: Prisma.endorsementsWhereInput[];
   NOT?: Prisma.endorsementsWhereInput | Prisma.endorsementsWhereInput[];
+  id?: Prisma.StringNullableFilter<"endorsements"> | string | null;
   account_id?: Prisma.StringFilter<"endorsements"> | string;
   target_account_id?: Prisma.StringNullableFilter<"endorsements"> | string | null;
   target_actor_uri?: Prisma.StringFilter<"endorsements"> | string;
@@ -177,6 +185,7 @@ export type endorsementsWhereInput = {
 };
 
 export type endorsementsOrderByWithRelationInput = {
+  id?: Prisma.SortOrderInput | Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   target_actor_uri?: Prisma.SortOrder;
@@ -185,6 +194,7 @@ export type endorsementsOrderByWithRelationInput = {
 
 export type endorsementsWhereUniqueInput = Prisma.AtLeast<
   {
+    id?: string;
     account_id_target_actor_uri?: Prisma.endorsementsAccount_idTarget_actor_uriCompoundUniqueInput;
     AND?: Prisma.endorsementsWhereInput | Prisma.endorsementsWhereInput[];
     OR?: Prisma.endorsementsWhereInput[];
@@ -194,10 +204,11 @@ export type endorsementsWhereUniqueInput = Prisma.AtLeast<
     target_actor_uri?: Prisma.StringFilter<"endorsements"> | string;
     created_at?: Prisma.StringFilter<"endorsements"> | string;
   },
-  "account_id_target_actor_uri"
+  "account_id_target_actor_uri" | "id"
 >;
 
 export type endorsementsOrderByWithAggregationInput = {
+  id?: Prisma.SortOrderInput | Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   target_actor_uri?: Prisma.SortOrder;
@@ -215,6 +226,7 @@ export type endorsementsScalarWhereWithAggregatesInput = {
   NOT?:
     | Prisma.endorsementsScalarWhereWithAggregatesInput
     | Prisma.endorsementsScalarWhereWithAggregatesInput[];
+  id?: Prisma.StringNullableWithAggregatesFilter<"endorsements"> | string | null;
   account_id?: Prisma.StringWithAggregatesFilter<"endorsements"> | string;
   target_account_id?: Prisma.StringNullableWithAggregatesFilter<"endorsements"> | string | null;
   target_actor_uri?: Prisma.StringWithAggregatesFilter<"endorsements"> | string;
@@ -222,6 +234,7 @@ export type endorsementsScalarWhereWithAggregatesInput = {
 };
 
 export type endorsementsCreateInput = {
+  id?: string | null;
   account_id: string;
   target_account_id?: string | null;
   target_actor_uri: string;
@@ -229,6 +242,7 @@ export type endorsementsCreateInput = {
 };
 
 export type endorsementsUncheckedCreateInput = {
+  id?: string | null;
   account_id: string;
   target_account_id?: string | null;
   target_actor_uri: string;
@@ -236,6 +250,7 @@ export type endorsementsUncheckedCreateInput = {
 };
 
 export type endorsementsUpdateInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -243,6 +258,7 @@ export type endorsementsUpdateInput = {
 };
 
 export type endorsementsUncheckedUpdateInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -250,6 +266,7 @@ export type endorsementsUncheckedUpdateInput = {
 };
 
 export type endorsementsCreateManyInput = {
+  id?: string | null;
   account_id: string;
   target_account_id?: string | null;
   target_actor_uri: string;
@@ -257,6 +274,7 @@ export type endorsementsCreateManyInput = {
 };
 
 export type endorsementsUpdateManyMutationInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -264,6 +282,7 @@ export type endorsementsUpdateManyMutationInput = {
 };
 
 export type endorsementsUncheckedUpdateManyInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -276,6 +295,7 @@ export type endorsementsAccount_idTarget_actor_uriCompoundUniqueInput = {
 };
 
 export type endorsementsCountOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
   target_actor_uri?: Prisma.SortOrder;
@@ -283,6 +303,7 @@ export type endorsementsCountOrderByAggregateInput = {
 };
 
 export type endorsementsMaxOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
   target_actor_uri?: Prisma.SortOrder;
@@ -290,6 +311,7 @@ export type endorsementsMaxOrderByAggregateInput = {
 };
 
 export type endorsementsMinOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
   target_actor_uri?: Prisma.SortOrder;
@@ -304,6 +326,7 @@ export type endorsementsSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     account_id?: boolean;
     target_account_id?: boolean;
     target_actor_uri?: boolean;
@@ -316,6 +339,7 @@ export type endorsementsSelectCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     account_id?: boolean;
     target_account_id?: boolean;
     target_actor_uri?: boolean;
@@ -328,6 +352,7 @@ export type endorsementsSelectUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     account_id?: boolean;
     target_account_id?: boolean;
     target_actor_uri?: boolean;
@@ -337,6 +362,7 @@ export type endorsementsSelectUpdateManyAndReturn<
 >;
 
 export type endorsementsSelectScalar = {
+  id?: boolean;
   account_id?: boolean;
   target_account_id?: boolean;
   target_actor_uri?: boolean;
@@ -346,7 +372,7 @@ export type endorsementsSelectScalar = {
 export type endorsementsOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "account_id" | "target_account_id" | "target_actor_uri" | "created_at",
+  "id" | "account_id" | "target_account_id" | "target_actor_uri" | "created_at",
   ExtArgs["result"]["endorsements"]
 >;
 
@@ -357,6 +383,7 @@ export type $endorsementsPayload<
   objects: {};
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
+      id: string | null;
       account_id: string;
       target_account_id: string | null;
       target_actor_uri: string;
@@ -502,8 +529,8 @@ export interface endorsementsDelegate<
    * // Get first 10 Endorsements
    * const endorsements = await prisma.endorsements.findMany({ take: 10 })
    *
-   * // Only select the `account_id`
-   * const endorsementsWithAccount_idOnly = await prisma.endorsements.findMany({ select: { account_id: true } })
+   * // Only select the `id`
+   * const endorsementsWithIdOnly = await prisma.endorsements.findMany({ select: { id: true } })
    *
    */
   findMany<T extends endorsementsFindManyArgs>(
@@ -570,9 +597,9 @@ export interface endorsementsDelegate<
    *   ]
    * })
    *
-   * // Create many Endorsements and only return the `account_id`
-   * const endorsementsWithAccount_idOnly = await prisma.endorsements.createManyAndReturn({
-   *   select: { account_id: true },
+   * // Create many Endorsements and only return the `id`
+   * const endorsementsWithIdOnly = await prisma.endorsements.createManyAndReturn({
+   *   select: { id: true },
    *   data: [
    *     // ... provide data here
    *   ]
@@ -698,9 +725,9 @@ export interface endorsementsDelegate<
    *   ]
    * })
    *
-   * // Update zero or more Endorsements and only return the `account_id`
-   * const endorsementsWithAccount_idOnly = await prisma.endorsements.updateManyAndReturn({
-   *   select: { account_id: true },
+   * // Update zero or more Endorsements and only return the `id`
+   * const endorsementsWithIdOnly = await prisma.endorsements.updateManyAndReturn({
+   *   select: { id: true },
    *   where: {
    *     // ... provide filter here
    *   },
@@ -930,6 +957,7 @@ export interface Prisma__endorsementsClient<
  * Fields of the endorsements model
  */
 export interface endorsementsFieldRefs {
+  readonly id: Prisma.FieldRef<"endorsements", "String">;
   readonly account_id: Prisma.FieldRef<"endorsements", "String">;
   readonly target_account_id: Prisma.FieldRef<"endorsements", "String">;
   readonly target_actor_uri: Prisma.FieldRef<"endorsements", "String">;

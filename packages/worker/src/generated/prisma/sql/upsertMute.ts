@@ -5,6 +5,7 @@
 import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
+ * @param id
  * @param accountId
  * @param targetAccountId
  * @param targetActorUri
@@ -13,8 +14,9 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param createdAt
  */
 export const upsertMute = $runtime.makeTypedQueryFactory(
-  "INSERT INTO mutes (account_id, target_account_id, target_actor_uri, notifications, expires_at, created_at)\nVALUES ($1, $2, $3, $4, $5, $6)\nON CONFLICT(account_id, target_actor_uri) DO UPDATE SET\ntarget_account_id = excluded.target_account_id,\nnotifications = excluded.notifications,\nexpires_at = excluded.expires_at",
+  "INSERT INTO mutes (id, account_id, target_account_id, target_actor_uri, notifications, expires_at, created_at)\nVALUES ($1, $2, $3, $4, $5, $6, $7)\nON CONFLICT(account_id, target_actor_uri) DO UPDATE SET\ntarget_account_id = excluded.target_account_id,\nnotifications = excluded.notifications,\nexpires_at = excluded.expires_at",
 ) as (
+  id: string,
   accountId: string,
   targetAccountId: string | null,
   targetActorUri: string,
@@ -25,6 +27,7 @@ export const upsertMute = $runtime.makeTypedQueryFactory(
 
 export namespace upsertMute {
   export type Parameters = [
+    id: string,
     accountId: string,
     targetAccountId: string | null,
     targetActorUri: string,

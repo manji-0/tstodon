@@ -84,4 +84,47 @@ describe("admin list cursors", () => {
     expect(await list(`?limit=1&max_id=${page[0] ?? ""}`)).toEqual([all[1]]);
     expect(await list(`?min_id=${all[2] ?? ""}`)).toEqual(all.slice(0, 2).toReversed());
   });
+
+  it("pages the block list by the ids in its Link header", async () => {
+    const viewerEmail = "cursor-collections@example.com";
+    await json("/api/v1/accounts/verify_credentials", { headers: await auth(viewerEmail) });
+
+    for (const name of ["blocked-a", "blocked-b", "blocked-c"]) {
+      const created = await json("/api/v1/accounts/verify_credentials", {
+        headers: await auth(`${name}@example.com`),
+      });
+      const id = read(z.object({ id: z.string().min(1) }), created.body).id;
+      const blocked = await json(`/api/v1/accounts/${id}/block`, {
+        method: "POST",
+        headers: await auth(viewerEmail),
+      });
+      expect(blocked.status).toBe(200);
+    }
+
+    const page = await SELF.fetch("https://example.com/api/v1/blocks?limit=2", {
+      headers: await auth(viewerEmail),
+    });
+    expect(page.status).toBe(200);
+    const firstPage = read(z.array(z.object({ id: z.string().min(1) })), await page.clone().json());
+    expect(firstPage).toHaveLength(2);
+    const link = page.headers.get("link") ?? "";
+    // The cursor is the block row id, parsed out of the Link header.
+    const next = /max_id=([^&>]+)>; rel="next"/.exec(link)?.[1];
+    expect(next).toBeDefined();
+
+    const second = await SELF.fetch(
+      `https://example.com/api/v1/blocks?limit=2&max_id=${next ?? ""}`,
+      { headers: await auth(viewerEmail) },
+    );
+    expect(second.status).toBe(200);
+    const secondPage = read(
+      z.array(z.object({ id: z.string().min(1) })),
+      await second.clone().json(),
+    );
+    expect(secondPage.length).toBeGreaterThanOrEqual(1);
+    const firstIds = firstPage.map((account) => account.id);
+    for (const account of secondPage) {
+      expect(firstIds).not.toContain(account.id);
+    }
+  });
 });

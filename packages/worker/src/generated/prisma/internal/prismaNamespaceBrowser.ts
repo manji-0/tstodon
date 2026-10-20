@@ -102,6 +102,7 @@ export const ModelName = {
   reports: "reports",
   status_mentions: "status_mentions",
   link_cards: "link_cards",
+  scheduled_statuses: "scheduled_statuses",
   statuses: "statuses",
 } as const;
 
@@ -141,6 +142,7 @@ export type Account_listsScalarFieldEnum =
   (typeof Account_listsScalarFieldEnum)[keyof typeof Account_listsScalarFieldEnum];
 
 export const EndorsementsScalarFieldEnum = {
+  id: "id",
   account_id: "account_id",
   target_account_id: "target_account_id",
   target_actor_uri: "target_actor_uri",
@@ -378,6 +380,7 @@ export type FollowsScalarFieldEnum =
   (typeof FollowsScalarFieldEnum)[keyof typeof FollowsScalarFieldEnum];
 
 export const BlocksScalarFieldEnum = {
+  id: "id",
   blocker_account_id: "blocker_account_id",
   target_account_id: "target_account_id",
   target_actor_uri: "target_actor_uri",
@@ -388,6 +391,7 @@ export type BlocksScalarFieldEnum =
   (typeof BlocksScalarFieldEnum)[keyof typeof BlocksScalarFieldEnum];
 
 export const MutesScalarFieldEnum = {
+  id: "id",
   account_id: "account_id",
   target_account_id: "target_account_id",
   target_actor_uri: "target_actor_uri",
@@ -732,6 +736,18 @@ export const Link_cardsScalarFieldEnum = {
 
 export type Link_cardsScalarFieldEnum =
   (typeof Link_cardsScalarFieldEnum)[keyof typeof Link_cardsScalarFieldEnum];
+
+export const Scheduled_statusesScalarFieldEnum = {
+  id: "id",
+  account_id: "account_id",
+  params_json: "params_json",
+  scheduled_at: "scheduled_at",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Scheduled_statusesScalarFieldEnum =
+  (typeof Scheduled_statusesScalarFieldEnum)[keyof typeof Scheduled_statusesScalarFieldEnum];
 
 export const StatusesScalarFieldEnum = {
   id: "id",

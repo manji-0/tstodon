@@ -36,6 +36,45 @@ export const queryNotificationsLimit = (raw: string | undefined, fallback = 40):
 export const queryAdminLimit = (raw: string | undefined, fallback = 100): number =>
   queryLimitMax(raw, fallback, 200);
 
+/**
+ * Mastodon's `Link` pagination headers for a collection of row ids: a full page
+ * offers `max_id=<last id>` as `rel="next"`, and any page offers
+ * `min_id=<first id>` as `rel="prev"`. Row ids are what clients page these
+ * account collections by, even though the documents carry account ids.
+ */
+export const setPaginationLinks = (
+  c: Context<{ Bindings: Env }>,
+  rowIds: ReadonlyArray<string>,
+  limit: number,
+): void => {
+  if (rowIds.length === 0) {
+    return;
+  }
+  const url = new URL(c.req.url);
+  const link = (cursor: string, value: string, rel: "next" | "prev"): string => {
+    const target = new URL(url.toString());
+    target.searchParams.delete("max_id");
+    target.searchParams.delete("since_id");
+    target.searchParams.delete("min_id");
+    target.searchParams.set(cursor, value);
+    return `<${target.toString()}>; rel="${rel}"`;
+  };
+  const links: string[] = [];
+  if (rowIds.length >= limit) {
+    const last = rowIds[rowIds.length - 1];
+    if (last !== undefined) {
+      links.push(link("max_id", last, "next"));
+    }
+  }
+  const first = rowIds[0];
+  if (first !== undefined) {
+    links.push(link("min_id", first, "prev"));
+  }
+  if (links.length > 0) {
+    c.header("Link", links.join(", "));
+  }
+};
+
 /** Mastodon's `max_id` / `since_id` / `min_id` query cursors. */
 export const queryCursor = (
   c: Context<{ Bindings: Env }>,

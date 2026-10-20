@@ -34,6 +34,7 @@ export type MutesSumAggregateOutputType = {
 };
 
 export type MutesMinAggregateOutputType = {
+  id: string | null;
   account_id: string | null;
   target_account_id: string | null;
   target_actor_uri: string | null;
@@ -43,6 +44,7 @@ export type MutesMinAggregateOutputType = {
 };
 
 export type MutesMaxAggregateOutputType = {
+  id: string | null;
   account_id: string | null;
   target_account_id: string | null;
   target_actor_uri: string | null;
@@ -52,6 +54,7 @@ export type MutesMaxAggregateOutputType = {
 };
 
 export type MutesCountAggregateOutputType = {
+  id: number;
   account_id: number;
   target_account_id: number;
   target_actor_uri: number;
@@ -70,6 +73,7 @@ export type MutesSumAggregateInputType = {
 };
 
 export type MutesMinAggregateInputType = {
+  id?: true;
   account_id?: true;
   target_account_id?: true;
   target_actor_uri?: true;
@@ -79,6 +83,7 @@ export type MutesMinAggregateInputType = {
 };
 
 export type MutesMaxAggregateInputType = {
+  id?: true;
   account_id?: true;
   target_account_id?: true;
   target_actor_uri?: true;
@@ -88,6 +93,7 @@ export type MutesMaxAggregateInputType = {
 };
 
 export type MutesCountAggregateInputType = {
+  id?: true;
   account_id?: true;
   target_account_id?: true;
   target_actor_uri?: true;
@@ -185,6 +191,7 @@ export type mutesGroupByArgs<
 };
 
 export type MutesGroupByOutputType = {
+  id: string | null;
   account_id: string;
   target_account_id: string | null;
   target_actor_uri: string;
@@ -214,6 +221,7 @@ export type mutesWhereInput = {
   AND?: Prisma.mutesWhereInput | Prisma.mutesWhereInput[];
   OR?: Prisma.mutesWhereInput[];
   NOT?: Prisma.mutesWhereInput | Prisma.mutesWhereInput[];
+  id?: Prisma.StringNullableFilter<"mutes"> | string | null;
   account_id?: Prisma.StringFilter<"mutes"> | string;
   target_account_id?: Prisma.StringNullableFilter<"mutes"> | string | null;
   target_actor_uri?: Prisma.StringFilter<"mutes"> | string;
@@ -223,6 +231,7 @@ export type mutesWhereInput = {
 };
 
 export type mutesOrderByWithRelationInput = {
+  id?: Prisma.SortOrderInput | Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   target_actor_uri?: Prisma.SortOrder;
@@ -233,6 +242,7 @@ export type mutesOrderByWithRelationInput = {
 
 export type mutesWhereUniqueInput = Prisma.AtLeast<
   {
+    id?: string;
     account_id_target_actor_uri?: Prisma.mutesAccount_idTarget_actor_uriCompoundUniqueInput;
     AND?: Prisma.mutesWhereInput | Prisma.mutesWhereInput[];
     OR?: Prisma.mutesWhereInput[];
@@ -244,10 +254,11 @@ export type mutesWhereUniqueInput = Prisma.AtLeast<
     expires_at?: Prisma.StringNullableFilter<"mutes"> | string | null;
     created_at?: Prisma.StringFilter<"mutes"> | string;
   },
-  "account_id_target_actor_uri"
+  "account_id_target_actor_uri" | "id"
 >;
 
 export type mutesOrderByWithAggregationInput = {
+  id?: Prisma.SortOrderInput | Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   target_actor_uri?: Prisma.SortOrder;
@@ -265,6 +276,7 @@ export type mutesScalarWhereWithAggregatesInput = {
   AND?: Prisma.mutesScalarWhereWithAggregatesInput | Prisma.mutesScalarWhereWithAggregatesInput[];
   OR?: Prisma.mutesScalarWhereWithAggregatesInput[];
   NOT?: Prisma.mutesScalarWhereWithAggregatesInput | Prisma.mutesScalarWhereWithAggregatesInput[];
+  id?: Prisma.StringNullableWithAggregatesFilter<"mutes"> | string | null;
   account_id?: Prisma.StringWithAggregatesFilter<"mutes"> | string;
   target_account_id?: Prisma.StringNullableWithAggregatesFilter<"mutes"> | string | null;
   target_actor_uri?: Prisma.StringWithAggregatesFilter<"mutes"> | string;
@@ -274,6 +286,7 @@ export type mutesScalarWhereWithAggregatesInput = {
 };
 
 export type mutesCreateInput = {
+  id?: string | null;
   account_id: string;
   target_account_id?: string | null;
   target_actor_uri: string;
@@ -283,6 +296,7 @@ export type mutesCreateInput = {
 };
 
 export type mutesUncheckedCreateInput = {
+  id?: string | null;
   account_id: string;
   target_account_id?: string | null;
   target_actor_uri: string;
@@ -292,6 +306,7 @@ export type mutesUncheckedCreateInput = {
 };
 
 export type mutesUpdateInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -301,6 +316,7 @@ export type mutesUpdateInput = {
 };
 
 export type mutesUncheckedUpdateInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -310,6 +326,7 @@ export type mutesUncheckedUpdateInput = {
 };
 
 export type mutesCreateManyInput = {
+  id?: string | null;
   account_id: string;
   target_account_id?: string | null;
   target_actor_uri: string;
@@ -319,6 +336,7 @@ export type mutesCreateManyInput = {
 };
 
 export type mutesUpdateManyMutationInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -328,6 +346,7 @@ export type mutesUpdateManyMutationInput = {
 };
 
 export type mutesUncheckedUpdateManyInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -342,6 +361,7 @@ export type mutesAccount_idTarget_actor_uriCompoundUniqueInput = {
 };
 
 export type mutesCountOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
   target_actor_uri?: Prisma.SortOrder;
@@ -355,6 +375,7 @@ export type mutesAvgOrderByAggregateInput = {
 };
 
 export type mutesMaxOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
   target_actor_uri?: Prisma.SortOrder;
@@ -364,6 +385,7 @@ export type mutesMaxOrderByAggregateInput = {
 };
 
 export type mutesMinOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
   target_actor_uri?: Prisma.SortOrder;
@@ -380,6 +402,7 @@ export type mutesSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     account_id?: boolean;
     target_account_id?: boolean;
     target_actor_uri?: boolean;
@@ -394,6 +417,7 @@ export type mutesSelectCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     account_id?: boolean;
     target_account_id?: boolean;
     target_actor_uri?: boolean;
@@ -408,6 +432,7 @@ export type mutesSelectUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     account_id?: boolean;
     target_account_id?: boolean;
     target_actor_uri?: boolean;
@@ -419,6 +444,7 @@ export type mutesSelectUpdateManyAndReturn<
 >;
 
 export type mutesSelectScalar = {
+  id?: boolean;
   account_id?: boolean;
   target_account_id?: boolean;
   target_actor_uri?: boolean;
@@ -430,6 +456,7 @@ export type mutesSelectScalar = {
 export type mutesOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
+  | "id"
   | "account_id"
   | "target_account_id"
   | "target_actor_uri"
@@ -446,6 +473,7 @@ export type $mutesPayload<
   objects: {};
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
+      id: string | null;
       account_id: string;
       target_account_id: string | null;
       target_actor_uri: string;
@@ -590,8 +618,8 @@ export interface mutesDelegate<
    * // Get first 10 Mutes
    * const mutes = await prisma.mutes.findMany({ take: 10 })
    *
-   * // Only select the `account_id`
-   * const mutesWithAccount_idOnly = await prisma.mutes.findMany({ select: { account_id: true } })
+   * // Only select the `id`
+   * const mutesWithIdOnly = await prisma.mutes.findMany({ select: { id: true } })
    *
    */
   findMany<T extends mutesFindManyArgs>(
@@ -648,9 +676,9 @@ export interface mutesDelegate<
    *   ]
    * })
    *
-   * // Create many Mutes and only return the `account_id`
-   * const mutesWithAccount_idOnly = await prisma.mutes.createManyAndReturn({
-   *   select: { account_id: true },
+   * // Create many Mutes and only return the `id`
+   * const mutesWithIdOnly = await prisma.mutes.createManyAndReturn({
+   *   select: { id: true },
    *   data: [
    *     // ... provide data here
    *   ]
@@ -766,9 +794,9 @@ export interface mutesDelegate<
    *   ]
    * })
    *
-   * // Update zero or more Mutes and only return the `account_id`
-   * const mutesWithAccount_idOnly = await prisma.mutes.updateManyAndReturn({
-   *   select: { account_id: true },
+   * // Update zero or more Mutes and only return the `id`
+   * const mutesWithIdOnly = await prisma.mutes.updateManyAndReturn({
+   *   select: { id: true },
    *   where: {
    *     // ... provide filter here
    *   },
@@ -993,6 +1021,7 @@ export interface Prisma__mutesClient<
  * Fields of the mutes model
  */
 export interface mutesFieldRefs {
+  readonly id: Prisma.FieldRef<"mutes", "String">;
   readonly account_id: Prisma.FieldRef<"mutes", "String">;
   readonly target_account_id: Prisma.FieldRef<"mutes", "String">;
   readonly target_actor_uri: Prisma.FieldRef<"mutes", "String">;

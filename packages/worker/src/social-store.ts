@@ -5,6 +5,7 @@ import { jsonStringArray, runD1, runD1Batch, sqlInJsonEach, type RepositoryError
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { hostnameOf } from "./domain-block-store";
+import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { RemoteAccountId } from "./remote-account-id";
 import { parseJsonColumn } from "./schemas";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
@@ -34,8 +35,6 @@ import {
   insertFollowOrIgnore as insertFollowOrIgnoreSql,
   insertNotification as insertNotificationSql,
   listAcceptedFollowerIds as listAcceptedFollowerIdsSql,
-  listBlockedAccounts as listBlockedAccountsSql,
-  listEndorsements as listEndorsementsSql,
   listFamiliarFollowerIds as listFamiliarFollowerIdsSql,
   listFollowers as listFollowersSql,
   listFollowingAccountIds as listFollowingAccountIdsSql,
@@ -46,9 +45,7 @@ import {
   listStatusRebloggedByLocal as listStatusRebloggedByLocalSql,
   listStatusRebloggedByRemote as listStatusRebloggedByRemoteSql,
   listFollowing as listFollowingSql,
-  listMutedAccounts as listMutedAccountsSql,
   listNotifications as listNotificationsSql,
-  listPendingFollowRequesters as listPendingFollowRequestersSql,
   listSuggestionExclusionIds as listSuggestionExclusionIdsSql,
   rejectFollowRequest as rejectFollowRequestSql,
   upsertAccountNote as upsertAccountNoteSql,
@@ -139,12 +136,18 @@ export const listPendingFollowRequesters = async (
   db: D1Database,
   targetAccountId: string,
   limit: number,
+  cursor: IdCursor = {},
 ): Promise<Result<PendingFollowRequester[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ follower_account_id: string; created_at: string }>(
-      db,
-      listPendingFollowRequestersSql(targetAccountId, limit),
-    );
+    const { where, order, binds } = idCursorFragment(cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT follower_account_id, created_at FROM follows
+         WHERE target_account_id = ? AND kind = 'Pending' ${where} ${order} LIMIT ?`,
+      )
+      .bind(targetAccountId, ...binds, limit)
+      .all();
+    const rows = (results ?? []) as Array<{ follower_account_id: string; created_at: string }>;
     return rows.map((row) => ({
       followerAccountId: row.follower_account_id,
       createdAt: row.created_at,
@@ -180,12 +183,14 @@ export const rejectFollowRequest = async (
   });
 
 export type BlockedAccount = Readonly<{
+  id: string;
   accountId: string;
   targetActorUri: string;
   createdAt: string;
 }>;
 
 export type MutedAccount = Readonly<{
+  id: string;
   accountId: string;
   targetActorUri: string;
   notifications: boolean;
@@ -200,7 +205,10 @@ export const blockAccount = async (
   targetActorUri: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(db, upsertBlockSql(blockerAccountId, targetAccountId, targetActorUri, nowIso()));
+    await runTyped(
+      db,
+      upsertBlockSql(newEntityId(), blockerAccountId, targetAccountId, targetActorUri, nowIso()),
+    );
   });
 
 export const unblockAccount = async (
@@ -227,6 +235,7 @@ export const muteAccount = async (
     await runTyped(
       db,
       upsertMuteSql(
+        newEntityId(),
         accountId,
         targetAccountId,
         targetActorUri,
@@ -254,17 +263,28 @@ export const listBlockedAccounts = async (
   db: D1Database,
   blockerAccountId: string,
   limit: number,
+  cursor: IdCursor = {},
 ): Promise<Result<BlockedAccount[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{
+    const { where, order, binds } = idCursorFragment(cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT id, target_account_id, target_actor_uri, created_at FROM blocks
+         WHERE blocker_account_id = ? AND target_account_id IS NOT NULL ${where} ${order} LIMIT ?`,
+      )
+      .bind(blockerAccountId, ...binds, limit)
+      .all();
+    const rows = (results ?? []) as Array<{
+      id: string;
       target_account_id: string | null;
       target_actor_uri: string;
       created_at: string;
-    }>(db, listBlockedAccountsSql(blockerAccountId, limit));
+    }>;
     return rows.flatMap((row) =>
       row.target_account_id
         ? [
             {
+              id: row.id,
               accountId: row.target_account_id,
               targetActorUri: row.target_actor_uri,
               createdAt: row.created_at,
@@ -278,19 +298,31 @@ export const listMutedAccounts = async (
   db: D1Database,
   accountId: string,
   limit: number,
+  cursor: IdCursor = {},
 ): Promise<Result<MutedAccount[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{
+    const { where, order, binds } = idCursorFragment(cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT id, target_account_id, target_actor_uri, notifications, expires_at, created_at FROM mutes
+         WHERE account_id = ? AND target_account_id IS NOT NULL
+           AND (expires_at IS NULL OR expires_at > ?) ${where} ${order} LIMIT ?`,
+      )
+      .bind(accountId, nowIso(), ...binds, limit)
+      .all();
+    const rows = (results ?? []) as Array<{
+      id: string;
       target_account_id: string | null;
       target_actor_uri: string;
       notifications: number;
       expires_at: string | null;
       created_at: string;
-    }>(db, listMutedAccountsSql(accountId, nowIso(), limit));
+    }>;
     return rows.flatMap((row) =>
       row.target_account_id
         ? [
             {
+              id: row.id,
               accountId: row.target_account_id,
               targetActorUri: row.target_actor_uri,
               notifications: row.notifications !== 0,
@@ -414,7 +446,10 @@ export const endorseAccount = async (
   target: Readonly<{ accountId: string | null; actorUri: string }>,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(db, insertEndorsementSql(viewerId, target.accountId, target.actorUri, nowIso()));
+    await runTyped(
+      db,
+      insertEndorsementSql(newEntityId(), viewerId, target.accountId, target.actorUri, nowIso()),
+    );
   });
 
 export const unendorseAccount = async (
@@ -435,15 +470,29 @@ export const listEndorsements = async (
   db: D1Database,
   viewerId: string,
   limit: number = 40,
+  cursor: IdCursor = {},
 ): Promise<
-  Result<ReadonlyArray<Readonly<{ accountId: string | null; actorUri: string }>>, RepositoryError>
+  Result<
+    ReadonlyArray<Readonly<{ id: string; accountId: string | null; actorUri: string }>>,
+    RepositoryError
+  >
 > =>
   runD1(async () => {
-    const rows = await queryTyped<{ target_account_id: string | null; target_actor_uri: string }>(
-      db,
-      listEndorsementsSql(viewerId, limit),
-    );
+    const { where, order, binds } = idCursorFragment(cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT id, target_account_id, target_actor_uri FROM endorsements
+         WHERE account_id = ? ${where} ${order} LIMIT ?`,
+      )
+      .bind(viewerId, ...binds, limit)
+      .all();
+    const rows = (results ?? []) as Array<{
+      id: string;
+      target_account_id: string | null;
+      target_actor_uri: string;
+    }>;
     return rows.map((row) => ({
+      id: row.id,
       accountId: row.target_account_id,
       actorUri: row.target_actor_uri,
     }));

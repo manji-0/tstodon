@@ -5,14 +5,16 @@
 import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
+ * @param id
  * @param accountId
  * @param targetAccountId
  * @param targetActorUri
  * @param createdAt
  */
 export const insertEndorsement = $runtime.makeTypedQueryFactory(
-  "INSERT INTO endorsements (account_id, target_account_id, target_actor_uri, created_at)\nVALUES ($1, $2, $3, $4)\nON CONFLICT(account_id, target_actor_uri) DO UPDATE SET target_account_id = $2",
+  "INSERT INTO endorsements (id, account_id, target_account_id, target_actor_uri, created_at)\nVALUES ($1, $2, $3, $4, $5)\nON CONFLICT(account_id, target_actor_uri) DO UPDATE SET target_account_id = $3",
 ) as (
+  id: string,
   accountId: string,
   targetAccountId: string | null,
   targetActorUri: string,
@@ -21,6 +23,7 @@ export const insertEndorsement = $runtime.makeTypedQueryFactory(
 
 export namespace insertEndorsement {
   export type Parameters = [
+    id: string,
     accountId: string,
     targetAccountId: string | null,
     targetActorUri: string,

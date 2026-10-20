@@ -302,8 +302,6 @@ export * from "./sql/listAnnouncementDismissals";
 
 export * from "./sql/listAnnouncementReactions";
 
-export * from "./sql/listBlockedAccounts";
-
 export * from "./sql/listCustomEmojiRows";
 
 export * from "./sql/listDirectoryAccountsByActive";
@@ -311,8 +309,6 @@ export * from "./sql/listDirectoryAccountsByActive";
 export * from "./sql/listDirectoryAccountsByNew";
 
 export * from "./sql/listDisabledAccountIds";
-
-export * from "./sql/listEndorsements";
 
 export * from "./sql/listExpiredUnnotifiedPolls";
 
@@ -348,8 +344,6 @@ export * from "./sql/listMediaRejectedDomains";
 
 export * from "./sql/listMentionedAccountIds";
 
-export * from "./sql/listMutedAccounts";
-
 export * from "./sql/listNotificationRequests";
 
 export * from "./sql/listNotifications";
@@ -361,8 +355,6 @@ export * from "./sql/listOutboundActivities";
 export * from "./sql/listPeerDomains";
 
 export * from "./sql/listPendingAccountIds";
-
-export * from "./sql/listPendingFollowRequesters";
 
 export * from "./sql/listPendingRemoteFollowRequesters";
 

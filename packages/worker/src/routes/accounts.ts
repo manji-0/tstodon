@@ -21,7 +21,9 @@ import {
   jsonRepositoryError,
   jsonValidationError,
   queryAccountsLimit,
+  queryCursor,
   queryLimit,
+  setPaginationLinks,
   readBody,
   readOptionalBody,
   requireSession,
@@ -759,11 +761,8 @@ accountRoutes.get("/api/v1/blocks", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const rows = await listBlockedAccounts(
-    c.env.DB,
-    user.value.id,
-    queryAccountsLimit(c.req.query("limit")),
-  );
+  const limit = queryAccountsLimit(c.req.query("limit"));
+  const rows = await listBlockedAccounts(c.env.DB, user.value.id, limit, queryCursor(c));
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
@@ -774,6 +773,11 @@ accountRoutes.get("/api/v1/blocks", async (c) => {
       documents.push(await mastodonAccountDocument(c.env, identity.value, account.value));
     }
   }
+  setPaginationLinks(
+    c,
+    rows.value.map((row) => row.id),
+    limit,
+  );
   return c.json(documents);
 });
 
@@ -786,11 +790,8 @@ accountRoutes.get("/api/v1/mutes", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const rows = await listMutedAccounts(
-    c.env.DB,
-    user.value.id,
-    queryLimit(c.req.query("limit"), 40),
-  );
+  const limit = queryAccountsLimit(c.req.query("limit"));
+  const rows = await listMutedAccounts(c.env.DB, user.value.id, limit, queryCursor(c));
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
@@ -969,7 +970,8 @@ const endorsementDocuments = async (
   identity: InstanceIdentity,
   ownerId: string,
 ): Promise<Response> => {
-  const rows = await listEndorsements(c.env.DB, ownerId, queryAccountsLimit(c.req.query("limit")));
+  const limit = queryAccountsLimit(c.req.query("limit"));
+  const rows = await listEndorsements(c.env.DB, ownerId, limit, queryCursor(c));
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
@@ -987,6 +989,11 @@ const endorsementDocuments = async (
       documents.push(mastodonRemoteAccount(identity, actor.value));
     }
   }
+  setPaginationLinks(
+    c,
+    rows.value.map((row) => row.id),
+    limit,
+  );
   return c.json(documents);
 };
 

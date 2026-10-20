@@ -312,6 +312,11 @@ export type status_mentions = Prisma.status_mentionsModel;
  */
 export type link_cards = Prisma.link_cardsModel;
 /**
+ * Model scheduled_statuses
+ *
+ */
+export type scheduled_statuses = Prisma.scheduled_statusesModel;
+/**
  * Model statuses
  *
  */

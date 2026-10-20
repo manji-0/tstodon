@@ -445,6 +445,7 @@ export const ModelName = {
   reports: "reports",
   status_mentions: "status_mentions",
   link_cards: "link_cards",
+  scheduled_statuses: "scheduled_statuses",
   statuses: "statuses",
 } as const;
 
@@ -520,6 +521,7 @@ export type TypeMap<
       | "reports"
       | "status_mentions"
       | "link_cards"
+      | "scheduled_statuses"
       | "statuses";
     txIsolationLevel: TransactionIsolationLevel;
   };
@@ -4602,6 +4604,82 @@ export type TypeMap<
         };
       };
     };
+    scheduled_statuses: {
+      payload: Prisma.$scheduled_statusesPayload<ExtArgs>;
+      fields: Prisma.scheduled_statusesFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.scheduled_statusesFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$scheduled_statusesPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.scheduled_statusesFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$scheduled_statusesPayload>;
+        };
+        findFirst: {
+          args: Prisma.scheduled_statusesFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$scheduled_statusesPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.scheduled_statusesFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$scheduled_statusesPayload>;
+        };
+        findMany: {
+          args: Prisma.scheduled_statusesFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$scheduled_statusesPayload>[];
+        };
+        create: {
+          args: Prisma.scheduled_statusesCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$scheduled_statusesPayload>;
+        };
+        createMany: {
+          args: Prisma.scheduled_statusesCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.scheduled_statusesCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$scheduled_statusesPayload>[];
+        };
+        delete: {
+          args: Prisma.scheduled_statusesDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$scheduled_statusesPayload>;
+        };
+        update: {
+          args: Prisma.scheduled_statusesUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$scheduled_statusesPayload>;
+        };
+        deleteMany: {
+          args: Prisma.scheduled_statusesDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.scheduled_statusesUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.scheduled_statusesUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$scheduled_statusesPayload>[];
+        };
+        upsert: {
+          args: Prisma.scheduled_statusesUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$scheduled_statusesPayload>;
+        };
+        aggregate: {
+          args: Prisma.Scheduled_statusesAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateScheduled_statuses>;
+        };
+        groupBy: {
+          args: Prisma.scheduled_statusesGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Scheduled_statusesGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.scheduled_statusesCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Scheduled_statusesCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
     statuses: {
       payload: Prisma.$statusesPayload<ExtArgs>;
       fields: Prisma.statusesFieldRefs;
@@ -4739,6 +4817,7 @@ export type Account_listsScalarFieldEnum =
   (typeof Account_listsScalarFieldEnum)[keyof typeof Account_listsScalarFieldEnum];
 
 export const EndorsementsScalarFieldEnum = {
+  id: "id",
   account_id: "account_id",
   target_account_id: "target_account_id",
   target_actor_uri: "target_actor_uri",
@@ -4976,6 +5055,7 @@ export type FollowsScalarFieldEnum =
   (typeof FollowsScalarFieldEnum)[keyof typeof FollowsScalarFieldEnum];
 
 export const BlocksScalarFieldEnum = {
+  id: "id",
   blocker_account_id: "blocker_account_id",
   target_account_id: "target_account_id",
   target_actor_uri: "target_actor_uri",
@@ -4986,6 +5066,7 @@ export type BlocksScalarFieldEnum =
   (typeof BlocksScalarFieldEnum)[keyof typeof BlocksScalarFieldEnum];
 
 export const MutesScalarFieldEnum = {
+  id: "id",
   account_id: "account_id",
   target_account_id: "target_account_id",
   target_actor_uri: "target_actor_uri",
@@ -5331,6 +5412,18 @@ export const Link_cardsScalarFieldEnum = {
 export type Link_cardsScalarFieldEnum =
   (typeof Link_cardsScalarFieldEnum)[keyof typeof Link_cardsScalarFieldEnum];
 
+export const Scheduled_statusesScalarFieldEnum = {
+  id: "id",
+  account_id: "account_id",
+  params_json: "params_json",
+  scheduled_at: "scheduled_at",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Scheduled_statusesScalarFieldEnum =
+  (typeof Scheduled_statusesScalarFieldEnum)[keyof typeof Scheduled_statusesScalarFieldEnum];
+
 export const StatusesScalarFieldEnum = {
   id: "id",
   account_id: "account_id",
@@ -5597,6 +5690,7 @@ export type GlobalOmitConfig = {
   reports?: Prisma.reportsOmit;
   status_mentions?: Prisma.status_mentionsOmit;
   link_cards?: Prisma.link_cardsOmit;
+  scheduled_statuses?: Prisma.scheduled_statusesOmit;
   statuses?: Prisma.statusesOmit;
 };
 
