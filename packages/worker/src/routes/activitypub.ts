@@ -269,8 +269,9 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     }
     signer = { kind: "Local", account: actorAccount.value };
   } else {
+    const allowHosts = await federationAllowHosts(c.env);
     const remote = await resolveRemoteActor(c.env.DB, identity.value, signature.keyId, actorUri, {
-      allowHosts: federationAllowHosts(c.env),
+      allowHosts,
       blockedHosts: suspended,
     });
     if (remote.isErr()) {
@@ -283,7 +284,9 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       }
       return c.json({ kind: "InvalidSignature" }, 401);
     }
-    if (suspended.has(remote.value.domain.toLowerCase())) {
+    // Limited federation: an actor outside the allow list never federates here.
+    const remoteHost = remote.value.domain.toLowerCase();
+    if (suspended.has(remoteHost) || (allowHosts.size > 0 && !allowHosts.has(remoteHost))) {
       return c.json(
         { error: "This instance does not federate with that domain", kind: "Forbidden" },
         403,
@@ -407,7 +410,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     }
     if (activity.kind === "Create" || activity.kind === "Announce") {
       await persistRemoteObject(c.env, identity.value, signer.actor, activityJson.value.object, {
-        allowHosts: federationAllowHosts(c.env),
+        allowHosts: await federationAllowHosts(c.env),
       });
       if (activity.kind === "Announce") {
         const statusId = parseLocalStatusId(identity.value, activity.object);

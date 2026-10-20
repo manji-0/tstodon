@@ -513,7 +513,7 @@ metaRoutes.get("/api/v1/trends/statuses", async (c) => {
 const requireUserWhenLimited = async (
   c: Context<{ Bindings: Env }>,
 ): Promise<Response | undefined> => {
-  if (!isLimitedFederation(c.env)) {
+  if (!(await isLimitedFederation(c.env))) {
     return undefined;
   }
   const user = await requireUser(c);
@@ -631,7 +631,7 @@ metaRoutes.get("/api/v2/instance", async (c) => {
         max_expiration: InstanceLimits.poll.maxExpirationSeconds,
       },
       translation: { enabled: false },
-      limited_federation: isLimitedFederation(c.env),
+      limited_federation: await isLimitedFederation(c.env),
     },
     registrations: {
       // No self-service registration: accounts come from Cloudflare Access.

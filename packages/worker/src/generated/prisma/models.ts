@@ -62,6 +62,7 @@ export type * from "./models/reports";
 export type * from "./models/status_mentions";
 export type * from "./models/link_cards";
 export type * from "./models/scheduled_statuses";
+export type * from "./models/domain_allows";
 export type * from "./models/trend_reviews";
 export type * from "./models/statuses";
 export type * from "./commonInputTypes";

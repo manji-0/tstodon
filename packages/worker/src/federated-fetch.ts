@@ -51,14 +51,26 @@ export type FederatedFetchOptions = Readonly<{
   blockedHosts?: ReadonlySet<string>;
 }>;
 
-/** True when the host is refused by the allowlist, a private range, or a block. */
+/**
+ * True when the host is refused: a non-empty allow list names the only hosts
+ * that may federate (limited federation), a private range is refused, or the
+ * host is blocked.
+ */
 export const isFederatedHostRefused = (
   hostname: string,
   instanceDomain: string,
   options: FederatedFetchOptions = {},
-): boolean =>
-  isBlockedFederatedHost(hostname, instanceDomain, options.allowHosts) ||
-  (options.blockedHosts?.has(hostname.toLowerCase()) ?? false);
+): boolean => {
+  const host = hostname.toLowerCase();
+  const allowHosts = options.allowHosts;
+  if (allowHosts && allowHosts.size > 0 && !allowHosts.has(host)) {
+    return true;
+  }
+  return (
+    isBlockedFederatedHost(hostname, instanceDomain, allowHosts) ||
+    (options.blockedHosts?.has(host) ?? false)
+  );
+};
 
 export const parseFederatedUrl = (value: string): Result<URL, FederatedFetchError> => {
   try {

@@ -322,7 +322,7 @@ export const refreshStaleLinkCards = async (env: Env): Promise<void> => {
     return;
   }
   const options = {
-    allowHosts: federationAllowHosts(env),
+    allowHosts: await federationAllowHosts(env),
     blockedHosts: await suspendedDomains(env.DB),
   };
   for (const url of urls) {
@@ -358,7 +358,7 @@ export const processLinkCardJob = async (
     return "retry";
   }
   const outcome = await resolveLinkCard(env, identity.value, job.url, {
-    allowHosts: federationAllowHosts(env),
+    allowHosts: await federationAllowHosts(env),
     blockedHosts: await suspendedDomains(env.DB),
   });
   if (outcome.kind === "Transient") {

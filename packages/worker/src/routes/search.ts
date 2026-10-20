@@ -29,7 +29,7 @@ const resolveSearchAccount = async (
   query: string,
 ): Promise<Record<string, unknown> | undefined> => {
   const bare = query.replace(/^@/, "").trim();
-  const allowHosts = federationAllowHosts(env);
+  const allowHosts = await federationAllowHosts(env);
   const blockedHosts = await suspendedDomains(env.DB);
   if (/^[^\s@]+@[^\s@]+$/.test(bare)) {
     const actor = await resolveRemoteActorByHandle(env.DB, identity, bare, {

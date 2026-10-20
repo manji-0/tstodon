@@ -642,6 +642,12 @@ model scheduled_statuses {
   @@index([scheduled_at], map: "idx_scheduled_statuses_due")
 }
 
+model domain_allows {
+  id         String @id
+  domain     String @unique
+  created_at String
+}
+
 model trend_reviews {
   kind        String
   target      String

@@ -446,6 +446,7 @@ export const ModelName = {
   status_mentions: "status_mentions",
   link_cards: "link_cards",
   scheduled_statuses: "scheduled_statuses",
+  domain_allows: "domain_allows",
   trend_reviews: "trend_reviews",
   statuses: "statuses",
 } as const;
@@ -523,6 +524,7 @@ export type TypeMap<
       | "status_mentions"
       | "link_cards"
       | "scheduled_statuses"
+      | "domain_allows"
       | "trend_reviews"
       | "statuses";
     txIsolationLevel: TransactionIsolationLevel;
@@ -4682,6 +4684,82 @@ export type TypeMap<
         };
       };
     };
+    domain_allows: {
+      payload: Prisma.$domain_allowsPayload<ExtArgs>;
+      fields: Prisma.domain_allowsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.domain_allowsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_allowsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.domain_allowsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_allowsPayload>;
+        };
+        findFirst: {
+          args: Prisma.domain_allowsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_allowsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.domain_allowsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_allowsPayload>;
+        };
+        findMany: {
+          args: Prisma.domain_allowsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_allowsPayload>[];
+        };
+        create: {
+          args: Prisma.domain_allowsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_allowsPayload>;
+        };
+        createMany: {
+          args: Prisma.domain_allowsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.domain_allowsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_allowsPayload>[];
+        };
+        delete: {
+          args: Prisma.domain_allowsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_allowsPayload>;
+        };
+        update: {
+          args: Prisma.domain_allowsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_allowsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.domain_allowsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.domain_allowsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.domain_allowsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_allowsPayload>[];
+        };
+        upsert: {
+          args: Prisma.domain_allowsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_allowsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Domain_allowsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateDomain_allows>;
+        };
+        groupBy: {
+          args: Prisma.domain_allowsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Domain_allowsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.domain_allowsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Domain_allowsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
     trend_reviews: {
       payload: Prisma.$trend_reviewsPayload<ExtArgs>;
       fields: Prisma.trend_reviewsFieldRefs;
@@ -5502,6 +5580,15 @@ export const Scheduled_statusesScalarFieldEnum = {
 export type Scheduled_statusesScalarFieldEnum =
   (typeof Scheduled_statusesScalarFieldEnum)[keyof typeof Scheduled_statusesScalarFieldEnum];
 
+export const Domain_allowsScalarFieldEnum = {
+  id: "id",
+  domain: "domain",
+  created_at: "created_at",
+} as const;
+
+export type Domain_allowsScalarFieldEnum =
+  (typeof Domain_allowsScalarFieldEnum)[keyof typeof Domain_allowsScalarFieldEnum];
+
 export const Trend_reviewsScalarFieldEnum = {
   kind: "kind",
   target: "target",
@@ -5779,6 +5866,7 @@ export type GlobalOmitConfig = {
   status_mentions?: Prisma.status_mentionsOmit;
   link_cards?: Prisma.link_cardsOmit;
   scheduled_statuses?: Prisma.scheduled_statusesOmit;
+  domain_allows?: Prisma.domain_allowsOmit;
   trend_reviews?: Prisma.trend_reviewsOmit;
   statuses?: Prisma.statusesOmit;
 };

@@ -323,7 +323,7 @@ accountRoutes.get("/api/v1/accounts/search", async (c) => {
     } else if (following === undefined) {
       const resolved = resolve
         ? await resolveRemoteActorByHandle(c.env.DB, identity.value, handle, {
-            allowHosts: federationAllowHosts(c.env),
+            allowHosts: await federationAllowHosts(c.env),
             blockedHosts: await suspendedDomains(c.env.DB),
           })
         : await (async () => {

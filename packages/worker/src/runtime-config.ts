@@ -2,6 +2,7 @@ import { schemaResult, type ValidationError } from "@tstodon/core";
 import { InstanceIdentity } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { z } from "zod";
+import { domainAllowHosts } from "./domain-allow-store";
 import type { CustomEmoji } from "./emoji";
 
 const envSchema = z.object({
@@ -218,7 +219,7 @@ export const termsOfService = (env: Env): TermsOfService | undefined => {
   return parsed ? { content: parsed.content, effectiveDate: parsed.effective_date } : undefined;
 };
 
-export const federationAllowHosts = (env: Env): ReadonlySet<string> => {
+const envFederationAllowHosts = (env: Env): ReadonlySet<string> => {
   const raw = `${(env as { FEDERATION_ALLOW_HOSTS?: string }).FEDERATION_ALLOW_HOSTS ?? ""}`;
   return new Set(
     raw
@@ -228,8 +229,35 @@ export const federationAllowHosts = (env: Env): ReadonlySet<string> => {
   );
 };
 
+/**
+ * The hosts allowed to federate: `FEDERATION_ALLOW_HOSTS` plus the domains an
+ * admin allowed at runtime (`domain_allows`). A non-empty set puts the instance
+ * in limited federation, so adding the first allowed domain does too. A failed
+ * read falls back to the configured hosts, which is the narrower answer when
+ * the config already lists domains.
+ */
+export const federationAllowHosts = async (env: Env): Promise<ReadonlySet<string>> => {
+  const configured = envFederationAllowHosts(env);
+  const db = (env as { DB?: D1Database }).DB;
+  if (!db) {
+    return configured;
+  }
+  const stored = await domainAllowHosts(db);
+  if (stored.isErr() || stored.value.size === 0) {
+    return configured;
+  }
+  return new Set([...configured, ...stored.value]);
+};
+
+/** True when this host may federate: no allow list, or the host is on it. */
+export const federatesWithHost = async (env: Env, hostname: string): Promise<boolean> => {
+  const allow = await federationAllowHosts(env);
+  return allow.size === 0 || allow.has(hostname.toLowerCase());
+};
+
 /** True when an allowlist is configured, which Mastodon calls limited federation. */
-export const isLimitedFederation = (env: Env): boolean => federationAllowHosts(env).size > 0;
+export const isLimitedFederation = async (env: Env): Promise<boolean> =>
+  (await federationAllowHosts(env)).size > 0;
 
 /**
  * `REGISTRATION_APPROVAL`: when set, a newly provisioned local account starts

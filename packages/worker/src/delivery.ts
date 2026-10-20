@@ -28,7 +28,7 @@ import { indexMissingRemoteTags } from "./remote-status-store";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { hostnameOf } from "./domain-block-store";
 import { listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
-import { parseInstanceIdentity } from "./runtime-config";
+import { federatesWithHost, federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 import { findStatusById } from "./status-store";
 import { publishToAccount } from "./stream-publish";
 
@@ -101,9 +101,13 @@ export const enqueueTargetedActivity = async (
   payload: unknown,
   inboxUrl: string,
 ): Promise<Result<void, EnqueueLocalActivityError>> => {
-  // A suspended domain is never contacted; the activity is dropped quietly.
+  // A suspended domain, or one outside the federation allow list, is never
+  // contacted; the activity is dropped quietly.
   const inboxHost = hostnameOf(inboxUrl);
-  if (inboxHost && (await suspendedDomains(env.DB)).has(inboxHost)) {
+  if (
+    inboxHost &&
+    ((await suspendedDomains(env.DB)).has(inboxHost) || !(await federatesWithHost(env, inboxHost)))
+  ) {
     return ok(undefined);
   }
   const inserted = await insertOutboundActivity(env.DB, {
@@ -318,12 +322,17 @@ export const processOutboxJob = async (
       const candidateInboxes = remoteFollowers.isOk() ? remoteFollowers.value : [];
       const sameHost = identity.isOk() ? identity.value.domain : "";
       const suspended = await suspendedDomains(env.DB);
+      const allowHosts = await federationAllowHosts(env);
       const remoteInboxes = [
         ...new Set(
           candidateInboxes.filter((inbox) => {
             try {
               const host = new URL(inbox).host.toLowerCase();
-              return host !== sameHost && !suspended.has(host);
+              return (
+                host !== sameHost &&
+                !suspended.has(host) &&
+                (allowHosts.size === 0 || allowHosts.has(host))
+              );
             } catch {
               return false;
             }

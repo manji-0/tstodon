@@ -15,11 +15,11 @@ Run **two local tstodon Workers** and check federation discovery surfaces agains
 
 ## Local federation knobs
 
-| Var                      | Purpose                                                        |
-| ------------------------ | -------------------------------------------------------------- |
-| `INSTANCE_PUBLIC_ORIGIN` | Absolute origin for actor/inbox URLs (`http://127.0.0.1:8791`) |
-| `INSTANCE_DOMAIN`        | acct domain (`127.0.0.1:8791`)                                 |
-| `FEDERATION_ALLOW_HOSTS` | Comma hosts that bypass private-IP SSRF block (`127.0.0.1`)    |
+| Var                      | Purpose                                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `INSTANCE_PUBLIC_ORIGIN` | Absolute origin for actor/inbox URLs (`http://127.0.0.1:8791`)                                                                              |
+| `INSTANCE_DOMAIN`        | acct domain (`127.0.0.1:8791`)                                                                                                              |
+| `FEDERATION_ALLOW_HOSTS` | Comma hosts allowed to federate; a non-empty list is limited federation and also lifts the private-IP refusal for those hosts (`127.0.0.1`) |
 
 Configs: `e2e/a.wrangler.jsonc`, `e2e/b.wrangler.jsonc`.
 

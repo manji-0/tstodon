@@ -50,9 +50,11 @@ describe("limited federation guards", () => {
     expect(peers.status).toBe(200);
     expect(read(z.array(z.string()), peers.body)).toEqual([]);
     expect((await json("/api/v1/instance/activity")).status).toBe(200);
-    expect(isLimitedFederation({ FEDERATION_ALLOW_HOSTS: "" } as unknown as Env)).toBe(false);
+    expect(await isLimitedFederation({ FEDERATION_ALLOW_HOSTS: "" } as unknown as Env)).toBe(false);
     expect(
-      isLimitedFederation({ FEDERATION_ALLOW_HOSTS: "a.example,b.example" } as unknown as Env),
+      await isLimitedFederation({
+        FEDERATION_ALLOW_HOSTS: "a.example,b.example",
+      } as unknown as Env),
     ).toBe(true);
   });
 });
