@@ -124,6 +124,7 @@ export const CreateStatusBodySchema = z.object({
   visibility: z.string().optional(),
   language: z.string().optional(),
   in_reply_to_id: z.string().optional(),
+  scheduled_at: z.string().optional(),
   media_ids: z.union([z.array(z.string()), z.string()]).optional(),
   media_attributes: z.array(MediaAttributeSchema).optional(),
   poll: z

@@ -25,6 +25,7 @@ import { elapsedMs, writeMetric } from "./metrics";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
 import { indexMissingRemoteTags } from "./remote-status-store";
+import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { hostnameOf } from "./domain-block-store";
 import { listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
@@ -297,6 +298,9 @@ export const processOutboxJob = async (
       return "ok";
     case "BackfillRemoteTags":
       await indexMissingRemoteTags(env.DB);
+      return "ok";
+    case "PublishScheduledStatuses":
+      await publishDueScheduledStatuses(env);
       return "ok";
     case "ProcessLinkCard":
       return processLinkCardJob(env, job);

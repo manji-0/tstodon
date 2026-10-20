@@ -31,13 +31,14 @@ import {
 import { newEntityId } from "../ids";
 import {
   mastodonAccountDocument,
+  mastodonMedia,
   mastodonRemoteAccount,
   mastodonRemoteStatus,
   mastodonStatus,
   mastodonStatuses,
   remoteStatusVisible,
 } from "../mastodon";
-import { countPollVotes, findPollByStatusId, insertPoll, replacePollOptions } from "../poll-store";
+import { countPollVotes, findPollByStatusId, replacePollOptions } from "../poll-store";
 import { listStatusFavouritedBy, listStatusRebloggedBy } from "../social-store";
 import { findAccountById } from "../account-store";
 import {
@@ -76,7 +77,6 @@ import {
   findLocalReblog,
   findStatusById,
   findStatusUpdatedAt,
-  insertLocalNote,
   insertLocalReblog,
   insertStatusEdit,
   isStatusPinned,
@@ -91,14 +91,24 @@ import {
   updateLocalNote,
 } from "../status-store";
 import { enqueueLinkCard } from "../link-card";
-import { notifyingFollowerIds } from "../social-store";
-import { findMediaById, parseMediaFocus, updateMediaMetadata } from "../media-store";
+import {
+  findMediaById,
+  findMediaByIds,
+  parseMediaFocus,
+  updateMediaMetadata,
+} from "../media-store";
 import {
   muteStatusThread,
   resolveThreadRootStatusIds,
   unmuteStatusThread,
 } from "../status-mute-store";
 import { canViewStatus } from "../visibility-guard";
+import { publishLocalNote } from "../local-status-publish";
+import {
+  MIN_SCHEDULE_OFFSET_MS,
+  insertScheduledStatus,
+  scheduledStatusDocument,
+} from "../scheduled-status-store";
 
 export const statusRoutes = new Hono<{ Bindings: Env }>();
 
@@ -239,110 +249,82 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     }
     inReplyToId = replyId.value;
   }
-  const id = StatusId.parse(newEntityId());
-  if (id.isErr()) {
-    return jsonRepositoryError(c, "invalid status id");
-  }
-  const note = LocalStatus.publish(
-    id.value,
-    user.value.id,
-    draft.value,
-    nowInstant(),
-    textToHtml(draft.value.text),
-    inReplyToId,
-  );
-  const inserted = await insertLocalNote(c.env.DB, note);
-  if (inserted.isErr()) {
-    return jsonRepositoryError(c, inserted.error.message);
-  }
-  if (pollOptions.length >= 2) {
-    const requested = Number(pollRaw?.expires_in ?? 86400);
-    const expiresIn = Number.isFinite(requested)
-      ? Math.min(
-          Math.max(requested, InstanceLimits.poll.minExpirationSeconds),
-          InstanceLimits.poll.maxExpirationSeconds,
-        )
-      : 86400;
-    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
-    const poll = await insertPoll(c.env.DB, {
-      statusId: note.id,
-      multiple: isTruthy(pollRaw?.multiple),
-      expiresAt,
-      options: pollOptions,
-      hideTotals: isTruthy(pollRaw?.hide_totals),
-    });
-    if (poll.isErr()) {
-      return jsonRepositoryError(c, poll.error.message);
+  // `scheduled_at` stores the validated post instead of publishing it; the
+  // cron publisher replays the same params through `publishLocalNote`.
+  const scheduledRaw = body.value.scheduled_at?.trim() ?? "";
+  if (scheduledRaw.length > 0) {
+    const at = Date.parse(scheduledRaw);
+    if (!Number.isFinite(at) || at < Date.now() + MIN_SCHEDULE_OFFSET_MS) {
+      return c.json(
+        {
+          error: "scheduled_at must be at least 5 minutes in the future",
+          kind: "InvalidScheduledAt",
+        },
+        422,
+      );
     }
-  }
-  await queueLinkCard(c.env, note.id, note.text);
-  const attributeError = await applyMediaAttributes(c.env, user.value.id, note.id, mediaAttributes);
-  if (attributeError) {
-    return jsonRepositoryError(c, attributeError);
-  }
-  const mentionNames = mentionUsernames(note.text);
-  const mentionedAccounts = await findAccountsByUsernames(c.env.DB, [...mentionNames]);
-  if (mentionedAccounts.isErr()) {
-    return jsonRepositoryError(c, mentionedAccounts.error.message);
-  }
-  const mentionedAccountIds = mentionedAccounts.value.map((account) => account.id);
-  // Persist mention rows before side-effect notifies (D1 write strategy / Create saga).
-  const mentionsSaved = await replaceStatusMentions(c.env.DB, note.id, mentionedAccountIds);
-  if (mentionsSaved.isErr()) {
-    return jsonRepositoryError(c, mentionsSaved.error.message);
-  }
-  for (const mentioned of mentionedAccounts.value) {
-    if (mentioned.id === user.value.id) {
-      continue;
-    }
-    await notifyAccount(c.env, {
-      accountId: mentioned.id,
-      fromAccountId: user.value.id,
-      kind: "mention",
-      statusId: note.id,
+    const stored = await insertScheduledStatus(c.env.DB, {
+      accountId: user.value.id,
+      scheduledAt: new Date(at).toISOString(),
+      params: {
+        text: draft.value.text,
+        visibility: Visibility.toMastodon(draft.value.visibility),
+        spoiler_text: draft.value.spoilerText,
+        sensitive: draft.value.sensitive,
+        language: draft.value.language.kind === "Present" ? draft.value.language.value : null,
+        media_ids: [...draft.value.mediaIds],
+        media_attributes: mediaAttributes.map((attribute) => ({
+          id: attribute.id,
+          ...(attribute.description === undefined ? {} : { description: attribute.description }),
+          ...(attribute.focus === undefined ? {} : { focus: attribute.focus }),
+        })),
+        poll:
+          pollOptions.length >= 2
+            ? {
+                options: [...pollOptions],
+                expires_in: Number(pollRaw?.expires_in ?? 86400),
+                multiple: isTruthy(pollRaw?.multiple),
+                hide_totals: isTruthy(pollRaw?.hide_totals),
+              }
+            : null,
+        in_reply_to_id: inReplyToId === null ? null : inReplyToId,
+      },
     });
-  }
-  // Followers who asked for notifications on this account's posts get a
-  // `status` notification, as in Mastodon; the notification policy still
-  // decides whether it is delivered or held.
-  const notifying = await notifyingFollowerIds(c.env.DB, user.value.id);
-  if (notifying.isErr()) {
-    return jsonRepositoryError(c, notifying.error.message);
-  }
-  for (const followerId of notifying.value) {
-    if (followerId === user.value.id) {
-      continue;
+    if (stored.isErr()) {
+      return jsonRepositoryError(c, stored.error.message);
     }
-    await notifyAccount(c.env, {
-      accountId: followerId,
-      fromAccountId: user.value.id,
-      kind: "status",
-      statusId: note.id,
-    });
-  }
-  const actor = InstanceIdentity.actorUrl(identity.value, user.value.username);
-  const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Create", {
-    "@context": "https://www.w3.org/ns/activitystreams",
-    id: `${actor}/statuses/${note.id}/activity`,
-    type: "Create",
-    actor,
-    object: noteDocument(identity.value, user.value, note),
-  });
-  if (enqueued.isErr()) {
-    return jsonRepositoryError(
-      c,
-      enqueued.error.kind === "RepositoryError"
-        ? enqueued.error.message
-        : enqueued.error.kind === "QueueSendFailed"
-          ? enqueued.error.message
-          : "invalid activity id",
+    const media =
+      stored.value.params.media_ids.length > 0
+        ? await findMediaByIds(c.env.DB, [...stored.value.params.media_ids])
+        : undefined;
+    return c.json(
+      scheduledStatusDocument(
+        stored.value,
+        media && media.isOk()
+          ? [...media.value.values()].map((attachment) => mastodonMedia(identity.value, attachment))
+          : [],
+      ),
+      200,
     );
   }
-  const document = await mastodonStatus(c.env, identity.value, note, user.value.id);
-  await publishToAccount(c.env, user.value.id, {
-    kind: "update",
-    payload: document,
+  const published = await publishLocalNote(c.env, identity.value, user.value, {
+    draft: draft.value,
+    inReplyToId,
+    mediaAttributes,
+    poll:
+      pollOptions.length >= 2
+        ? {
+            options: pollOptions,
+            expiresIn: Number(pollRaw?.expires_in ?? 86400),
+            multiple: isTruthy(pollRaw?.multiple),
+            hideTotals: isTruthy(pollRaw?.hide_totals),
+          }
+        : null,
   });
+  if (published.isErr()) {
+    return jsonRepositoryError(c, published.error.message);
+  }
+  const document = await mastodonStatus(c.env, identity.value, published.value, user.value.id);
   return c.json(document, 200);
 };
 

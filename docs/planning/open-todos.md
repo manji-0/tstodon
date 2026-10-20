@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Scheduled statuses (create via `scheduled_at`, CRUD, cron publish)
 - `GET /api/v1/preferences`
 - Follow options: `reblogs`, `notify`, `languages[]` (and the relationship fields)
 - `GET /api/v1/media/:id` and `DELETE /api/v1/conversations/:id`

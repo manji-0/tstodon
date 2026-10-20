@@ -16,6 +16,8 @@ const ProcessExpiredPollsSchema = unitKind("ProcessExpiredPolls");
 const RefreshLinkCardsSchema = unitKind("RefreshLinkCards");
 /** Index the tags of remote statuses written before the tag index (cron). */
 const BackfillRemoteTagsSchema = unitKind("BackfillRemoteTags");
+/** Publish the scheduled statuses whose time has come (cron). */
+const PublishScheduledStatusesSchema = unitKind("PublishScheduledStatuses");
 /** Build the link preview for a stored status or remote status. */
 const ProcessLinkCardSchema = z.object({
   kind: z.literal("ProcessLinkCard"),
@@ -30,6 +32,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ProcessExpiredPollsSchema,
   RefreshLinkCardsSchema,
   BackfillRemoteTagsSchema,
+  PublishScheduledStatusesSchema,
   ProcessLinkCardSchema,
 ]);
 
