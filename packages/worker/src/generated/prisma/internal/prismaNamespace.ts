@@ -437,6 +437,7 @@ export const ModelName = {
   remote_announces: "remote_announces",
   remote_favourites: "remote_favourites",
   remote_follows: "remote_follows",
+  remote_status_tags: "remote_status_tags",
   remote_statuses: "remote_statuses",
   canonical_email_blocks: "canonical_email_blocks",
   email_domain_blocks: "email_domain_blocks",
@@ -510,6 +511,7 @@ export type TypeMap<
       | "remote_announces"
       | "remote_favourites"
       | "remote_follows"
+      | "remote_status_tags"
       | "remote_statuses"
       | "canonical_email_blocks"
       | "email_domain_blocks"
@@ -3994,6 +3996,82 @@ export type TypeMap<
         };
       };
     };
+    remote_status_tags: {
+      payload: Prisma.$remote_status_tagsPayload<ExtArgs>;
+      fields: Prisma.remote_status_tagsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.remote_status_tagsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_tagsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.remote_status_tagsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_tagsPayload>;
+        };
+        findFirst: {
+          args: Prisma.remote_status_tagsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_tagsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.remote_status_tagsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_tagsPayload>;
+        };
+        findMany: {
+          args: Prisma.remote_status_tagsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_tagsPayload>[];
+        };
+        create: {
+          args: Prisma.remote_status_tagsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_tagsPayload>;
+        };
+        createMany: {
+          args: Prisma.remote_status_tagsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.remote_status_tagsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_tagsPayload>[];
+        };
+        delete: {
+          args: Prisma.remote_status_tagsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_tagsPayload>;
+        };
+        update: {
+          args: Prisma.remote_status_tagsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_tagsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.remote_status_tagsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.remote_status_tagsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.remote_status_tagsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_tagsPayload>[];
+        };
+        upsert: {
+          args: Prisma.remote_status_tagsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_tagsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Remote_status_tagsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateRemote_status_tags>;
+        };
+        groupBy: {
+          args: Prisma.remote_status_tagsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Remote_status_tagsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.remote_status_tagsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Remote_status_tagsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
     remote_statuses: {
       payload: Prisma.$remote_statusesPayload<ExtArgs>;
       fields: Prisma.remote_statusesFieldRefs;
@@ -5080,6 +5158,14 @@ export const Remote_followsScalarFieldEnum = {
 export type Remote_followsScalarFieldEnum =
   (typeof Remote_followsScalarFieldEnum)[keyof typeof Remote_followsScalarFieldEnum];
 
+export const Remote_status_tagsScalarFieldEnum = {
+  status_id: "status_id",
+  tag: "tag",
+} as const;
+
+export type Remote_status_tagsScalarFieldEnum =
+  (typeof Remote_status_tagsScalarFieldEnum)[keyof typeof Remote_status_tagsScalarFieldEnum];
+
 export const Remote_statusesScalarFieldEnum = {
   id: "id",
   actor_uri: "actor_uri",
@@ -5092,6 +5178,7 @@ export const Remote_statusesScalarFieldEnum = {
   language: "language",
   published_at: "published_at",
   media_json: "media_json",
+  tags_indexed: "tags_indexed",
   card_json: "card_json",
   created_at: "created_at",
   updated_at: "updated_at",
@@ -5411,6 +5498,7 @@ export type GlobalOmitConfig = {
   remote_announces?: Prisma.remote_announcesOmit;
   remote_favourites?: Prisma.remote_favouritesOmit;
   remote_follows?: Prisma.remote_followsOmit;
+  remote_status_tags?: Prisma.remote_status_tagsOmit;
   remote_statuses?: Prisma.remote_statusesOmit;
   canonical_email_blocks?: Prisma.canonical_email_blocksOmit;
   email_domain_blocks?: Prisma.email_domain_blocksOmit;

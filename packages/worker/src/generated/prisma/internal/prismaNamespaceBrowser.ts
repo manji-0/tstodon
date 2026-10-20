@@ -94,6 +94,7 @@ export const ModelName = {
   remote_announces: "remote_announces",
   remote_favourites: "remote_favourites",
   remote_follows: "remote_follows",
+  remote_status_tags: "remote_status_tags",
   remote_statuses: "remote_statuses",
   canonical_email_blocks: "canonical_email_blocks",
   email_domain_blocks: "email_domain_blocks",
@@ -636,6 +637,14 @@ export const Remote_followsScalarFieldEnum = {
 export type Remote_followsScalarFieldEnum =
   (typeof Remote_followsScalarFieldEnum)[keyof typeof Remote_followsScalarFieldEnum];
 
+export const Remote_status_tagsScalarFieldEnum = {
+  status_id: "status_id",
+  tag: "tag",
+} as const;
+
+export type Remote_status_tagsScalarFieldEnum =
+  (typeof Remote_status_tagsScalarFieldEnum)[keyof typeof Remote_status_tagsScalarFieldEnum];
+
 export const Remote_statusesScalarFieldEnum = {
   id: "id",
   actor_uri: "actor_uri",
@@ -648,6 +657,7 @@ export const Remote_statusesScalarFieldEnum = {
   language: "language",
   published_at: "published_at",
   media_json: "media_json",
+  tags_indexed: "tags_indexed",
   card_json: "card_json",
   created_at: "created_at",
   updated_at: "updated_at",

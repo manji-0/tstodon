@@ -400,7 +400,11 @@ export * from "./sql/listSuggestionExclusionIds";
 
 export * from "./sql/listSuspendedDomains";
 
+export * from "./sql/listUnindexedRemoteStatuses";
+
 export * from "./sql/markPollExpiryNotified";
+
+export * from "./sql/markRemoteStatusTagsIndexed";
 
 export * from "./sql/muteStatus";
 

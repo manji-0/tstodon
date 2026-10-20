@@ -9,6 +9,7 @@ import { generateAccountKeys } from "./keys";
 import { parseInstanceIdentity } from "./runtime-config";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
+import { processOutboxJob } from "./delivery";
 
 const auth = (email: string): Promise<Record<string, string>> => accessAuthHeaders(email);
 
@@ -141,5 +142,25 @@ describe("tag timeline across the fediverse", () => {
     expect(await idsAt("/api/v1/timelines/tag/fedtwo?remote=true&any[]=extra")).toEqual([two]);
     // Neither carries an attachment.
     expect(await idsAt("/api/v1/timelines/tag/fedtwo?remote=true&only_media=true")).toEqual([]);
+  });
+
+  it("indexes older remote statuses from cron", async () => {
+    const actor = await remoteAuthor("tess", "tagbackfill.example");
+    const id = await remotePost(
+      actor,
+      `${actor.actorUri}/statuses/1`,
+      `<p>before the index ${hashtagHtml("backfilltag")}</p>`,
+    );
+
+    // A row written before the index has no tags and is not marked as indexed.
+    await env.DB.prepare("DELETE FROM remote_status_tags WHERE status_id = ?").bind(id).run();
+    await env.DB.prepare("UPDATE remote_statuses SET tags_indexed = 0 WHERE id = ?").bind(id).run();
+    expect(await idsAt("/api/v1/timelines/tag/backfilltag?remote=true")).toEqual([]);
+
+    expect(await processOutboxJob(env, { kind: "BackfillRemoteTags" })).toBe("ok");
+    expect(await idsAt("/api/v1/timelines/tag/backfilltag?remote=true")).toEqual([id]);
+    // A second run leaves the index alone.
+    expect(await processOutboxJob(env, { kind: "BackfillRemoteTags" })).toBe("ok");
+    expect(await idsAt("/api/v1/timelines/tag/backfilltag?remote=true")).toEqual([id]);
   });
 });

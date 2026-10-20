@@ -534,6 +534,15 @@ model remote_follows {
   @@index([target_account_id, remote_request_kind], map: "idx_remote_follows_pending")
 }
 
+model remote_status_tags {
+  status_id     String
+  tag           String
+  remote_statuses remote_statuses @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([status_id, tag])
+  @@index([tag, status_id], map: "idx_remote_status_tags_tag")
+}
+
 model remote_statuses {
   id            String @id
   actor_uri     String
@@ -546,10 +555,12 @@ model remote_statuses {
   language      String?
   published_at  String
   media_json    String        @default("[]")
+  tags_indexed  Int           @default(0)
   card_json     String?
   created_at    String        @default("CURRENT_TIMESTAMP")
   updated_at    String        @default("CURRENT_TIMESTAMP")
   remote_actors remote_actors @relation(fields: [actor_uri], references: [actor_uri], onDelete: Cascade, onUpdate: NoAction)
+  remote_status_tags remote_status_tags[]
 
   @@index([actor_uri, published_at(sort: Desc)], map: "idx_remote_statuses_actor_published")
   @@index([visibility, published_at(sort: Desc)], map: "idx_remote_statuses_visibility_published")

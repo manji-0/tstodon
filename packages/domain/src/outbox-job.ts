@@ -14,6 +14,8 @@ const DeliverTargetSchema = z.object({
 const ProcessExpiredPollsSchema = unitKind("ProcessExpiredPolls");
 /** Refresh previews whose cache entry has aged out (cron driven). */
 const RefreshLinkCardsSchema = unitKind("RefreshLinkCards");
+/** Index the tags of remote statuses written before the tag index (cron). */
+const BackfillRemoteTagsSchema = unitKind("BackfillRemoteTags");
 /** Build the link preview for a stored status or remote status. */
 const ProcessLinkCardSchema = z.object({
   kind: z.literal("ProcessLinkCard"),
@@ -27,6 +29,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   DeliverTargetSchema,
   ProcessExpiredPollsSchema,
   RefreshLinkCardsSchema,
+  BackfillRemoteTagsSchema,
   ProcessLinkCardSchema,
 ]);
 

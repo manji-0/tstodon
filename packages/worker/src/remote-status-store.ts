@@ -10,12 +10,16 @@ import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { jsonStringArray, runD1, type RepositoryError } from "./d1";
+import { jsonStringArray, runD1, runD1Batch, type RepositoryError } from "./d1";
 import { parseJsonText, RemoteStatusRowSchema, toRepositoryError } from "./schemas";
 import { visibilitySql } from "./sql-enums";
 import { htmlHashtags } from "./html";
-import { matchesTagFilters, type StatusCursor, type TagStatusFilters } from "./status-store";
-import { queryTyped, runTyped } from "./typed-sql";
+import {
+  listUnindexedRemoteStatuses as listUnindexedRemoteStatusesSql,
+  markRemoteStatusTagsIndexed as markRemoteStatusTagsIndexedSql,
+} from "./generated/prisma/sql";
+import type { StatusCursor, TagStatusFilters } from "./status-store";
+import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   deleteRemoteStatusByObjectUri as deleteRemoteStatusByObjectUriSql,
   findRemoteStatusById as findRemoteStatusByIdSql,
@@ -98,6 +102,26 @@ export const findRemoteStatusByObjectUri = async (
     }),
   );
 
+/**
+ * Replace a remote status's indexed tags with the hashtags in its HTML, and
+ * mark the row as indexed so the backfill job skips it.
+ */
+const replaceRemoteStatusTags = async (
+  db: D1Database,
+  statusId: string,
+  tags: ReadonlyArray<string>,
+): Promise<void> => {
+  await runD1Batch(db, [
+    db.prepare("DELETE FROM remote_status_tags WHERE status_id = ?").bind(statusId),
+    ...tags.map((tag) =>
+      db
+        .prepare("INSERT OR IGNORE INTO remote_status_tags (status_id, tag) VALUES (?, ?)")
+        .bind(statusId, tag),
+    ),
+    d1PrepareTyped(db, markRemoteStatusTagsIndexedSql(statusId)),
+  ]);
+};
+
 export const upsertRemoteStatus = async (
   db: D1Database,
   status: RemoteStatus,
@@ -128,6 +152,8 @@ export const upsertRemoteStatus = async (
         nowIso(),
       ),
     );
+    // The row has to exist before its tags (the index holds a foreign key).
+    await replaceRemoteStatusTags(db, persisted.id, htmlHashtags(persisted.contentHtml));
     return persisted;
   });
   if (written.isErr()) {
@@ -194,44 +220,89 @@ export const listPublicRemoteStatuses = async (
  * same `#tag` extraction the local notes use), over a bounded window of recent
  * public statuses, because the remote rows carry no tag index.
  */
+const REMOTE_STATUS_SELECT = `s.id, s.actor_uri, s.object_uri, s.url, s.content_html, s.spoiler_text,
+       s.visibility, s.sensitive, s.language, s.published_at, s.media_json, s.card_json`;
+
 export const listTagRemoteStatuses = async (
   db: D1Database,
   tag: string,
   limit: number,
   cursor: StatusCursor = {},
   filters: TagStatusFilters = { any: [], all: [], none: [], onlyMedia: false },
-): Promise<Result<RemoteStatus[], RepositoryError>> => {
-  const window = Math.max(200, limit * 4);
-  const fetched = await listPublicRemoteStatuses(db, window);
-  if (fetched.isErr()) {
-    return fetched;
-  }
-  const minId = cursor.minId ?? "";
-  const sinceId = cursor.sinceId ?? "";
-  const maxId = cursor.maxId ?? "";
-  const keep = (status: RemoteStatus): boolean => {
-    if (!matchesTagFilters(new Set(htmlHashtags(status.contentHtml)), tag, filters)) {
-      return false;
+): Promise<Result<RemoteStatus[], RepositoryError>> =>
+  runD1(async () => {
+    const conditions = [
+      "s.visibility = 'public'",
+      "EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = ?)",
+    ];
+    const binds: string[] = [tag.replace(/^#/, "").toLowerCase()];
+    if (filters.any.length > 0) {
+      conditions.push(
+        `EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag IN (${filters.any.map(() => "?").join(", ")}))`,
+      );
+      binds.push(...filters.any.map((value) => value.toLowerCase()));
     }
-    if (filters.onlyMedia && status.media.length === 0) {
-      return false;
+    for (const required of filters.all) {
+      conditions.push(
+        "EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = ?)",
+      );
+      binds.push(required.toLowerCase());
     }
-    if (minId.length > 0) {
-      return status.id > minId;
+    for (const denied of filters.none) {
+      conditions.push(
+        "NOT EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = ?)",
+      );
+      binds.push(denied.toLowerCase());
     }
-    if (sinceId.length > 0) {
-      return status.id > sinceId;
+    if (filters.onlyMedia) {
+      conditions.push("s.media_json NOT IN ('[]', '')");
     }
-    if (maxId.length > 0) {
-      return status.id < maxId;
+    // Mastodon's id cursors, newest first unless `min_id` pages upward.
+    const minId = cursor.minId ?? "";
+    const sinceId = cursor.sinceId ?? "";
+    const maxId = cursor.maxId ?? "";
+    const cursorId = minId || sinceId || maxId;
+    const cursorWhere =
+      cursorId.length > 0 ? (maxId && !minId && !sinceId ? "AND s.id < ?" : "AND s.id > ?") : "";
+    const order = minId.length > 0 ? "ORDER BY s.id ASC" : "ORDER BY s.id DESC";
+    const { results } = await db
+      .prepare(
+        `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
+         WHERE ${conditions.join(" AND ")} ${cursorWhere} ${order} LIMIT ?`,
+      )
+      .bind(...binds, ...(cursorId.length > 0 ? [cursorId] : []), limit)
+      .all();
+    const statuses: RemoteStatus[] = [];
+    for (const raw of results ?? []) {
+      const row = parseRemoteStatusRow(raw);
+      if (row.isErr()) {
+        continue;
+      }
+      const parsed = remoteStatusFromRow(row.value);
+      if (parsed.isOk()) {
+        statuses.push(parsed.value);
+      }
     }
-    return true;
-  };
-  const matching = fetched.value.filter(keep);
-  matching.sort((left, right) =>
-    minId.length > 0 ? left.id.localeCompare(right.id) : right.id.localeCompare(left.id),
+    return statuses;
+  });
+
+/**
+ * Cron path: index the tags of remote statuses written before the index
+ * existed, a bounded batch per run.
+ */
+export const indexMissingRemoteTags = async (
+  db: D1Database,
+  limit: number = 100,
+): Promise<void> => {
+  const rows = await runD1(async () =>
+    queryTyped<{ id: string; content_html: string }>(db, listUnindexedRemoteStatusesSql(limit)),
   );
-  return ok(matching.slice(0, limit));
+  if (rows.isErr()) {
+    return;
+  }
+  for (const row of rows.value) {
+    await replaceRemoteStatusTags(db, row.id, htmlHashtags(row.content_html));
+  }
 };
 
 export const deleteRemoteStatusByObjectUri = async (
