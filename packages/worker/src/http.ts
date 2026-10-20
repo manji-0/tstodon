@@ -55,6 +55,7 @@ export const setPaginationLinks = (
   c: Context<{ Bindings: Env }>,
   rowIds: ReadonlyArray<string>,
   limit: number,
+  options: Readonly<{ prev?: "min_id" | "since_id" }> = {},
 ): void => {
   if (rowIds.length === 0) {
     return;
@@ -77,7 +78,7 @@ export const setPaginationLinks = (
   }
   const first = rowIds[0];
   if (first !== undefined) {
-    links.push(link("min_id", first, "prev"));
+    links.push(link(options.prev ?? "min_id", first, "prev"));
   }
   if (links.length > 0) {
     c.header("Link", links.join(", "));

@@ -177,8 +177,8 @@ activityPubRoutes.get("/users/:username/followers", async (c) => {
     return jsonRepositoryError(c, ids.error.message);
   }
   const items: string[] = [];
-  for (const id of ids.value) {
-    const follower = await findAccountById(c.env.DB, id);
+  for (const edge of ids.value) {
+    const follower = await findAccountById(c.env.DB, edge.accountId);
     if (follower.isOk() && follower.value) {
       items.push(InstanceIdentity.actorUrl(identity.value, follower.value.username));
     }
@@ -213,8 +213,8 @@ activityPubRoutes.get("/users/:username/following", async (c) => {
     return jsonRepositoryError(c, ids.error.message);
   }
   const items: string[] = [];
-  for (const id of ids.value) {
-    const target = await findAccountById(c.env.DB, id);
+  for (const edge of ids.value) {
+    const target = await findAccountById(c.env.DB, edge.accountId);
     if (target.isOk() && target.value) {
       items.push(InstanceIdentity.actorUrl(identity.value, target.value.username));
     }

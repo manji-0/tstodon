@@ -36,7 +36,6 @@ import {
   insertNotification as insertNotificationSql,
   listAcceptedFollowerIds as listAcceptedFollowerIdsSql,
   listFamiliarFollowerIds as listFamiliarFollowerIdsSql,
-  listFollowers as listFollowersSql,
   listFollowingAccountIds as listFollowingAccountIdsSql,
   listNotifyingFollowerIds as listNotifyingFollowerIdsSql,
   upsertFollowOptions as upsertFollowOptionsSql,
@@ -44,7 +43,6 @@ import {
   listStatusFavouritedByRemote as listStatusFavouritedByRemoteSql,
   listStatusRebloggedByLocal as listStatusRebloggedByLocalSql,
   listStatusRebloggedByRemote as listStatusRebloggedByRemoteSql,
-  listFollowing as listFollowingSql,
   listNotifications as listNotificationsSql,
   listSuggestionExclusionIds as listSuggestionExclusionIdsSql,
   rejectFollowRequest as rejectFollowRequestSql,
@@ -977,17 +975,25 @@ export const listStatusRebloggedBy = async (
     );
   });
 
+/** One follow edge: its row id is the cursor, the account is the document. */
+export type FollowEdge = Readonly<{ id: string; accountId: string }>;
+
 export const listFollowers = async (
   db: D1Database,
   accountId: string,
   limit: number,
-): Promise<Result<string[], RepositoryError>> =>
+  cursor: IdCursor = {},
+): Promise<Result<FollowEdge[], RepositoryError>> =>
   runD1(async () => {
-    const results = await queryTyped<{ follower_account_id: string }>(
-      db,
-      listFollowersSql(accountId, limit),
-    );
-    return results.map((row) => row.follower_account_id);
+    const { where, order, binds } = idCursorFragment(cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT id, follower_account_id FROM follows
+         WHERE target_account_id = ? AND kind = 'Accepted' ${where} ${order} LIMIT ?`,
+      )
+      .bind(accountId, ...binds, limit)
+      .all<{ id: string; follower_account_id: string }>();
+    return (results ?? []).map((row) => ({ id: row.id, accountId: row.follower_account_id }));
   });
 
 /** Local followers who asked for a notification on every new status. */
@@ -1020,11 +1026,16 @@ export const listFollowing = async (
   db: D1Database,
   accountId: string,
   limit: number,
-): Promise<Result<string[], RepositoryError>> =>
+  cursor: IdCursor = {},
+): Promise<Result<FollowEdge[], RepositoryError>> =>
   runD1(async () => {
-    const results = await queryTyped<{ target_account_id: string }>(
-      db,
-      listFollowingSql(accountId, limit),
-    );
-    return results.map((row) => row.target_account_id);
+    const { where, order, binds } = idCursorFragment(cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT id, target_account_id FROM follows
+         WHERE follower_account_id = ? AND kind = 'Accepted' ${where} ${order} LIMIT ?`,
+      )
+      .bind(accountId, ...binds, limit)
+      .all<{ id: string; target_account_id: string }>();
+    return (results ?? []).map((row) => ({ id: row.id, accountId: row.target_account_id }));
   });

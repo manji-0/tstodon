@@ -516,20 +516,28 @@ const accountList = async (c: Context<{ Bindings: Env }>, kind: "followers" | "f
   if (!account.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const ids =
+  const limit = queryAccountsLimit(c.req.query("limit"));
+  const edges =
     kind === "followers"
-      ? await listFollowers(c.env.DB, account.value.id, queryAccountsLimit(c.req.query("limit")))
-      : await listFollowing(c.env.DB, account.value.id, queryAccountsLimit(c.req.query("limit")));
-  if (ids.isErr()) {
-    return jsonRepositoryError(c, ids.error.message);
+      ? await listFollowers(c.env.DB, account.value.id, limit, queryCursor(c))
+      : await listFollowing(c.env.DB, account.value.id, limit, queryCursor(c));
+  if (edges.isErr()) {
+    return jsonRepositoryError(c, edges.error.message);
   }
   const documents = [];
-  for (const id of ids.value) {
-    const found = await findAccountById(c.env.DB, id);
+  for (const edge of edges.value) {
+    const found = await findAccountById(c.env.DB, edge.accountId);
     if (found.isOk() && found.value) {
       documents.push(await mastodonAccountDocument(c.env, identity.value, found.value));
     }
   }
+  // Follow row ids are not in the documents, so the Link header carries them.
+  setPaginationLinks(
+    c,
+    edges.value.map((edge) => edge.id),
+    limit,
+    { prev: "since_id" },
+  );
   return c.json(documents);
 };
 

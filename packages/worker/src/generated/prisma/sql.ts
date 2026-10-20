@@ -320,10 +320,6 @@ export * from "./sql/listFilters";
 
 export * from "./sql/listFollowedTags";
 
-export * from "./sql/listFollowers";
-
-export * from "./sql/listFollowing";
-
 export * from "./sql/listFollowingAccountIds";
 
 export * from "./sql/listLinkCards";
