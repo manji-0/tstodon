@@ -11,7 +11,7 @@ import {
 } from "@tstodon/domain";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { findAccountById, findAccountsByUsernames } from "../account-store";
+import { findAccountById, findAccountsByUsernames, findComposeDefaults } from "../account-store";
 import { authenticate } from "../auth";
 import { noteDocument } from "../activitypub";
 import { nowInstant, nowIso } from "../clock";
@@ -328,16 +328,26 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
       quoteInlineHtml = `<p class="quote-inline">RE: <a href="${escapeHtml(quotedUrl)}">${escapeHtml(quotedUrl)}</a></p>`;
     }
   }
+  // The account's posting defaults fill in what the request omits.
+  const composeDefaultsResult = await findComposeDefaults(c.env.DB, user.value.id);
+  const composeDefaults = composeDefaultsResult.isOk()
+    ? composeDefaultsResult.value
+    : { language: null, sensitive: false };
   const composing = StatusComposition.composing({
     text: body.value.status ?? "",
     visibility: statusVisibility,
     ...(quotedStatus ? { quote: { kind: "Quoted" as const, statusId: quotedStatus.id } } : {}),
     spoilerText: body.value.spoiler_text ?? "",
-    sensitive: isTruthy(body.value.sensitive),
+    sensitive:
+      body.value.sensitive === undefined
+        ? composeDefaults.sensitive
+        : isTruthy(body.value.sensitive),
     language:
       body.value.language && body.value.language.length > 0
         ? { kind: "Present", value: body.value.language }
-        : { kind: "None" },
+        : composeDefaults.language !== null
+          ? { kind: "Present", value: composeDefaults.language }
+          : { kind: "None" },
     mediaIds: stringList(body.value.media_ids),
     poll: pollOptions.length >= 2 ? { kind: "Present" } : { kind: "None" },
   });

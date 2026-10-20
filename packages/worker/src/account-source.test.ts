@@ -34,6 +34,7 @@ const SourceSchema = z.object({
   indexable: z.boolean(),
   hide_collections: z.boolean(),
   fields: z.array(z.object({ name: z.string(), value: z.string() })),
+  language: z.string().nullable(),
 });
 
 const CredentialSchema = z.object({
@@ -189,5 +190,57 @@ describe("account source", () => {
     expect(
       read(z.array(z.object({ id: z.string() })), publicAgain.body).map((a) => a.id),
     ).toContain(followerId);
+  });
+
+  it("applies source sensitive and language to new posts", async () => {
+    const email = "source-compose@example.com";
+    const updated = await patchJson(email, {
+      source: { sensitive: true, language: "ja" },
+    });
+    expect(updated.status).toBe(200);
+    const document = read(CredentialSchema, updated.body);
+    expect(document.source.sensitive).toBe(true);
+    expect(document.source.language).toBe("ja");
+
+    const posted = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(email)) },
+      body: JSON.stringify({ status: "defaults from source" }),
+    });
+    expect(posted.status).toBe(200);
+    const status = read(
+      z.object({ sensitive: z.boolean(), language: z.string().nullable() }),
+      posted.body,
+    );
+    expect(status.sensitive).toBe(true);
+    expect(status.language).toBe("ja");
+
+    // An explicit request value wins over the default.
+    const explicit = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(email)) },
+      body: JSON.stringify({ status: "explicit", sensitive: false, language: "en" }),
+    });
+    const explicitStatus = read(
+      z.object({ sensitive: z.boolean(), language: z.string().nullable() }),
+      explicit.body,
+    );
+    expect(explicitStatus.sensitive).toBe(false);
+    expect(explicitStatus.language).toBe("en");
+
+    // Clearing the language restores a post without one.
+    const cleared = await patchJson(email, { source: { language: "" } });
+    expect(read(CredentialSchema, cleared.body).source.language).toBeNull();
+    const clearedPost = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(email)) },
+      body: JSON.stringify({ status: "no language" }),
+    });
+    expect(
+      read(z.object({ language: z.string().nullable() }), clearedPost.body).language,
+    ).toBeNull();
+
+    const invalid = await patchJson(email, { source: { language: "not a language" } });
+    expect(invalid.status).toBe(422);
   });
 });

@@ -11,6 +11,7 @@ import {
   accountCounts,
   accountCountsByIds,
   findAccountById,
+  type ComposeDefaults,
   findAccountsByIds,
   type AccountCounts,
 } from "./account-store";
@@ -106,10 +107,11 @@ export const mastodonAccount = (
 export const accountSource = (
   account: LocalAccount,
   profile: AccountProfile = EMPTY_ACCOUNT_PROFILE,
+  defaults: ComposeDefaults = { language: null, sensitive: false },
 ): Record<string, unknown> => ({
   privacy: Visibility.toMastodon(account.defaultPostVisibility),
-  sensitive: false,
-  language: null,
+  sensitive: defaults.sensitive,
+  language: defaults.language,
   note: profile.note,
   fields: profile.fields.map((field) => ({
     name: field.name,

@@ -12,6 +12,7 @@ import { z } from "zod";
 import {
   findAccountById,
   findAccountByIdOrUsername,
+  findComposeDefaults,
   findAccountByUsername,
   searchAccounts,
   setAccountLocked,
@@ -99,9 +100,10 @@ accountRoutes.get("/api/v1/accounts/verify_credentials", async (c) => {
   if (session.isErr()) {
     return jsonAuthError(c, session.error);
   }
-  const [document, profile] = await Promise.all([
+  const [document, profile, defaults] = await Promise.all([
     mastodonAccountDocument(c.env, identity.value, session.value.account),
     findAccountProfile(c.env.DB, session.value.account.id),
+    findComposeDefaults(c.env.DB, session.value.account.id),
   ]);
   return c.json({
     ...document,
@@ -109,6 +111,7 @@ accountRoutes.get("/api/v1/accounts/verify_credentials", async (c) => {
     source: accountSource(
       session.value.account,
       profile.isOk() ? profile.value : EMPTY_ACCOUNT_PROFILE,
+      defaults.isOk() ? defaults.value : { language: null, sensitive: false },
     ),
   });
 });
@@ -175,6 +178,27 @@ accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
   };
   const privacyRaw = sourceKey("privacy");
   const quotePolicyRaw = sourceKey("quote_policy");
+  const sensitiveRaw =
+    flat["source[sensitive]"] !== undefined
+      ? flat["source[sensitive]"]
+      : body.value.source?.sensitive;
+  const languageRaw =
+    typeof flat["source[language]"] === "string"
+      ? flat["source[language]"]
+      : body.value.source?.language;
+  const languageValue =
+    typeof languageRaw === "string"
+      ? languageRaw.trim().length === 0
+        ? null
+        : languageRaw.trim().toLowerCase()
+      : undefined;
+  if (
+    languageValue !== undefined &&
+    languageValue !== null &&
+    !/^[a-z]{2,3}(-[a-z0-9]+)?$/.test(languageValue)
+  ) {
+    return c.json({ error: "Invalid source[language]", kind: "ValidationError" }, 422);
+  }
   const sourceVisibility =
     privacyRaw === undefined ? undefined : Visibility.fromMastodon(privacyRaw);
   if (sourceVisibility?.isErr()) {
@@ -188,7 +212,12 @@ accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
   ) {
     return c.json({ error: "Invalid source[quote_policy]", kind: "ValidationError" }, 422);
   }
-  if (sourceVisibility || quotePolicyRaw !== undefined) {
+  if (
+    sourceVisibility ||
+    quotePolicyRaw !== undefined ||
+    sensitiveRaw !== undefined ||
+    languageValue !== undefined
+  ) {
     const defaults = await updateAccountDefaults(c.env.DB, user.value.id, {
       ...(sourceVisibility?.isOk() ? { visibility: sourceVisibility.value } : {}),
       ...(quotePolicyRaw === undefined
@@ -201,6 +230,16 @@ accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
                   ? QuoteApprovalPolicy.Nobody
                   : QuoteApprovalPolicy.Public,
           }),
+      ...(sensitiveRaw === undefined
+        ? {}
+        : {
+            sensitive: isTruthy(
+              typeof sensitiveRaw === "boolean" || typeof sensitiveRaw === "number"
+                ? sensitiveRaw
+                : String(sensitiveRaw),
+            ),
+          }),
+      ...(languageValue === undefined ? {} : { language: languageValue }),
     });
     if (defaults.isErr()) {
       return jsonRepositoryError(c, defaults.error.message);
@@ -271,15 +310,17 @@ accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
   if (latest.isErr() || !latest.value) {
     return jsonRepositoryError(c, "account missing after update");
   }
-  const [document, profileAfter] = await Promise.all([
+  const [document, profileAfter, defaultsAfter] = await Promise.all([
     mastodonAccountDocument(c.env, identity.value, latest.value),
     findAccountProfile(c.env.DB, user.value.id),
+    findComposeDefaults(c.env.DB, user.value.id),
   ]);
   return c.json({
     ...document,
     source: accountSource(
       latest.value,
       profileAfter.isOk() ? profileAfter.value : EMPTY_ACCOUNT_PROFILE,
+      defaultsAfter.isOk() ? defaultsAfter.value : { language: null, sensitive: false },
     ),
   });
 });

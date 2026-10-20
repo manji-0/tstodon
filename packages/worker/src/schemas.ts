@@ -303,6 +303,8 @@ export const UpdateCredentialsBodySchema = z.object({
     .object({
       privacy: z.string().optional(),
       quote_policy: z.string().optional(),
+      sensitive: z.union([z.boolean(), z.string(), z.number()]).optional(),
+      language: z.string().optional(),
     })
     .optional(),
 });

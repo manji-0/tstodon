@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `source[sensitive]`/`source[language]` defaults applied to new posts
 - Outbound quote in the ActivityPub Note (`quote`/`quote_uri`/`_misskey_quote`)
 - `indexable`/`hide_collections`/`noindex` and hidden follower collections
 - Credential `source` (privacy/quote_policy defaults) and `update_credentials` support
