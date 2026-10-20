@@ -25,6 +25,7 @@ export type AggregateRemote_announces = {
 };
 
 export type Remote_announcesMinAggregateOutputType = {
+  id: string | null;
   remote_actor_uri: string | null;
   status_id: string | null;
   activity_id: string | null;
@@ -32,6 +33,7 @@ export type Remote_announcesMinAggregateOutputType = {
 };
 
 export type Remote_announcesMaxAggregateOutputType = {
+  id: string | null;
   remote_actor_uri: string | null;
   status_id: string | null;
   activity_id: string | null;
@@ -39,6 +41,7 @@ export type Remote_announcesMaxAggregateOutputType = {
 };
 
 export type Remote_announcesCountAggregateOutputType = {
+  id: number;
   remote_actor_uri: number;
   status_id: number;
   activity_id: number;
@@ -47,6 +50,7 @@ export type Remote_announcesCountAggregateOutputType = {
 };
 
 export type Remote_announcesMinAggregateInputType = {
+  id?: true;
   remote_actor_uri?: true;
   status_id?: true;
   activity_id?: true;
@@ -54,6 +58,7 @@ export type Remote_announcesMinAggregateInputType = {
 };
 
 export type Remote_announcesMaxAggregateInputType = {
+  id?: true;
   remote_actor_uri?: true;
   status_id?: true;
   activity_id?: true;
@@ -61,6 +66,7 @@ export type Remote_announcesMaxAggregateInputType = {
 };
 
 export type Remote_announcesCountAggregateInputType = {
+  id?: true;
   remote_actor_uri?: true;
   status_id?: true;
   activity_id?: true;
@@ -146,6 +152,7 @@ export type remote_announcesGroupByArgs<
 };
 
 export type Remote_announcesGroupByOutputType = {
+  id: string | null;
   remote_actor_uri: string;
   status_id: string;
   activity_id: string;
@@ -172,6 +179,7 @@ export type remote_announcesWhereInput = {
   AND?: Prisma.remote_announcesWhereInput | Prisma.remote_announcesWhereInput[];
   OR?: Prisma.remote_announcesWhereInput[];
   NOT?: Prisma.remote_announcesWhereInput | Prisma.remote_announcesWhereInput[];
+  id?: Prisma.StringNullableFilter<"remote_announces"> | string | null;
   remote_actor_uri?: Prisma.StringFilter<"remote_announces"> | string;
   status_id?: Prisma.StringFilter<"remote_announces"> | string;
   activity_id?: Prisma.StringFilter<"remote_announces"> | string;
@@ -184,6 +192,7 @@ export type remote_announcesWhereInput = {
 };
 
 export type remote_announcesOrderByWithRelationInput = {
+  id?: Prisma.SortOrderInput | Prisma.SortOrder;
   remote_actor_uri?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   activity_id?: Prisma.SortOrder;
@@ -194,6 +203,7 @@ export type remote_announcesOrderByWithRelationInput = {
 
 export type remote_announcesWhereUniqueInput = Prisma.AtLeast<
   {
+    id?: string;
     remote_actor_uri_status_id?: Prisma.remote_announcesRemote_actor_uriStatus_idCompoundUniqueInput;
     AND?: Prisma.remote_announcesWhereInput | Prisma.remote_announcesWhereInput[];
     OR?: Prisma.remote_announcesWhereInput[];
@@ -208,10 +218,11 @@ export type remote_announcesWhereUniqueInput = Prisma.AtLeast<
       Prisma.remote_actorsWhereInput
     >;
   },
-  "remote_actor_uri_status_id"
+  "remote_actor_uri_status_id" | "id"
 >;
 
 export type remote_announcesOrderByWithAggregationInput = {
+  id?: Prisma.SortOrderInput | Prisma.SortOrder;
   remote_actor_uri?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   activity_id?: Prisma.SortOrder;
@@ -229,6 +240,7 @@ export type remote_announcesScalarWhereWithAggregatesInput = {
   NOT?:
     | Prisma.remote_announcesScalarWhereWithAggregatesInput
     | Prisma.remote_announcesScalarWhereWithAggregatesInput[];
+  id?: Prisma.StringNullableWithAggregatesFilter<"remote_announces"> | string | null;
   remote_actor_uri?: Prisma.StringWithAggregatesFilter<"remote_announces"> | string;
   status_id?: Prisma.StringWithAggregatesFilter<"remote_announces"> | string;
   activity_id?: Prisma.StringWithAggregatesFilter<"remote_announces"> | string;
@@ -236,6 +248,7 @@ export type remote_announcesScalarWhereWithAggregatesInput = {
 };
 
 export type remote_announcesCreateInput = {
+  id?: string | null;
   activity_id: string;
   created_at?: string;
   statuses: Prisma.statusesCreateNestedOneWithoutRemote_announcesInput;
@@ -243,6 +256,7 @@ export type remote_announcesCreateInput = {
 };
 
 export type remote_announcesUncheckedCreateInput = {
+  id?: string | null;
   remote_actor_uri: string;
   status_id: string;
   activity_id: string;
@@ -250,6 +264,7 @@ export type remote_announcesUncheckedCreateInput = {
 };
 
 export type remote_announcesUpdateInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   statuses?: Prisma.statusesUpdateOneRequiredWithoutRemote_announcesNestedInput;
@@ -257,6 +272,7 @@ export type remote_announcesUpdateInput = {
 };
 
 export type remote_announcesUncheckedUpdateInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   remote_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -264,6 +280,7 @@ export type remote_announcesUncheckedUpdateInput = {
 };
 
 export type remote_announcesCreateManyInput = {
+  id?: string | null;
   remote_actor_uri: string;
   status_id: string;
   activity_id: string;
@@ -271,11 +288,13 @@ export type remote_announcesCreateManyInput = {
 };
 
 export type remote_announcesUpdateManyMutationInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type remote_announcesUncheckedUpdateManyInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   remote_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -298,6 +317,7 @@ export type remote_announcesRemote_actor_uriStatus_idCompoundUniqueInput = {
 };
 
 export type remote_announcesCountOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   remote_actor_uri?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   activity_id?: Prisma.SortOrder;
@@ -305,6 +325,7 @@ export type remote_announcesCountOrderByAggregateInput = {
 };
 
 export type remote_announcesMaxOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   remote_actor_uri?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   activity_id?: Prisma.SortOrder;
@@ -312,6 +333,7 @@ export type remote_announcesMaxOrderByAggregateInput = {
 };
 
 export type remote_announcesMinOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   remote_actor_uri?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   activity_id?: Prisma.SortOrder;
@@ -491,12 +513,14 @@ export type remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput = {
 };
 
 export type remote_announcesCreateWithoutRemote_actorsInput = {
+  id?: string | null;
   activity_id: string;
   created_at?: string;
   statuses: Prisma.statusesCreateNestedOneWithoutRemote_announcesInput;
 };
 
 export type remote_announcesUncheckedCreateWithoutRemote_actorsInput = {
+  id?: string | null;
   status_id: string;
   activity_id: string;
   created_at?: string;
@@ -548,6 +572,7 @@ export type remote_announcesScalarWhereInput = {
   AND?: Prisma.remote_announcesScalarWhereInput | Prisma.remote_announcesScalarWhereInput[];
   OR?: Prisma.remote_announcesScalarWhereInput[];
   NOT?: Prisma.remote_announcesScalarWhereInput | Prisma.remote_announcesScalarWhereInput[];
+  id?: Prisma.StringNullableFilter<"remote_announces"> | string | null;
   remote_actor_uri?: Prisma.StringFilter<"remote_announces"> | string;
   status_id?: Prisma.StringFilter<"remote_announces"> | string;
   activity_id?: Prisma.StringFilter<"remote_announces"> | string;
@@ -555,12 +580,14 @@ export type remote_announcesScalarWhereInput = {
 };
 
 export type remote_announcesCreateWithoutStatusesInput = {
+  id?: string | null;
   activity_id: string;
   created_at?: string;
   remote_actors: Prisma.remote_actorsCreateNestedOneWithoutRemote_announcesInput;
 };
 
 export type remote_announcesUncheckedCreateWithoutStatusesInput = {
+  id?: string | null;
   remote_actor_uri: string;
   activity_id: string;
   created_at?: string;
@@ -609,48 +636,56 @@ export type remote_announcesUpdateManyWithWhereWithoutStatusesInput = {
 };
 
 export type remote_announcesCreateManyRemote_actorsInput = {
+  id?: string | null;
   status_id: string;
   activity_id: string;
   created_at?: string;
 };
 
 export type remote_announcesUpdateWithoutRemote_actorsInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   statuses?: Prisma.statusesUpdateOneRequiredWithoutRemote_announcesNestedInput;
 };
 
 export type remote_announcesUncheckedUpdateWithoutRemote_actorsInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type remote_announcesUncheckedUpdateManyWithoutRemote_actorsInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type remote_announcesCreateManyStatusesInput = {
+  id?: string | null;
   remote_actor_uri: string;
   activity_id: string;
   created_at?: string;
 };
 
 export type remote_announcesUpdateWithoutStatusesInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_actors?: Prisma.remote_actorsUpdateOneRequiredWithoutRemote_announcesNestedInput;
 };
 
 export type remote_announcesUncheckedUpdateWithoutStatusesInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   remote_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type remote_announcesUncheckedUpdateManyWithoutStatusesInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   remote_actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -660,6 +695,7 @@ export type remote_announcesSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     remote_actor_uri?: boolean;
     status_id?: boolean;
     activity_id?: boolean;
@@ -674,6 +710,7 @@ export type remote_announcesSelectCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     remote_actor_uri?: boolean;
     status_id?: boolean;
     activity_id?: boolean;
@@ -688,6 +725,7 @@ export type remote_announcesSelectUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     remote_actor_uri?: boolean;
     status_id?: boolean;
     activity_id?: boolean;
@@ -699,6 +737,7 @@ export type remote_announcesSelectUpdateManyAndReturn<
 >;
 
 export type remote_announcesSelectScalar = {
+  id?: boolean;
   remote_actor_uri?: boolean;
   status_id?: boolean;
   activity_id?: boolean;
@@ -708,7 +747,7 @@ export type remote_announcesSelectScalar = {
 export type remote_announcesOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "remote_actor_uri" | "status_id" | "activity_id" | "created_at",
+  "id" | "remote_actor_uri" | "status_id" | "activity_id" | "created_at",
   ExtArgs["result"]["remote_announces"]
 >;
 export type remote_announcesInclude<
@@ -740,6 +779,7 @@ export type $remote_announcesPayload<
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
+      id: string | null;
       remote_actor_uri: string;
       status_id: string;
       activity_id: string;
@@ -886,8 +926,8 @@ export interface remote_announcesDelegate<
    * // Get first 10 Remote_announces
    * const remote_announces = await prisma.remote_announces.findMany({ take: 10 })
    *
-   * // Only select the `remote_actor_uri`
-   * const remote_announcesWithRemote_actor_uriOnly = await prisma.remote_announces.findMany({ select: { remote_actor_uri: true } })
+   * // Only select the `id`
+   * const remote_announcesWithIdOnly = await prisma.remote_announces.findMany({ select: { id: true } })
    *
    */
   findMany<T extends remote_announcesFindManyArgs>(
@@ -954,9 +994,9 @@ export interface remote_announcesDelegate<
    *   ]
    * })
    *
-   * // Create many Remote_announces and only return the `remote_actor_uri`
-   * const remote_announcesWithRemote_actor_uriOnly = await prisma.remote_announces.createManyAndReturn({
-   *   select: { remote_actor_uri: true },
+   * // Create many Remote_announces and only return the `id`
+   * const remote_announcesWithIdOnly = await prisma.remote_announces.createManyAndReturn({
+   *   select: { id: true },
    *   data: [
    *     // ... provide data here
    *   ]
@@ -1082,9 +1122,9 @@ export interface remote_announcesDelegate<
    *   ]
    * })
    *
-   * // Update zero or more Remote_announces and only return the `remote_actor_uri`
-   * const remote_announcesWithRemote_actor_uriOnly = await prisma.remote_announces.updateManyAndReturn({
-   *   select: { remote_actor_uri: true },
+   * // Update zero or more Remote_announces and only return the `id`
+   * const remote_announcesWithIdOnly = await prisma.remote_announces.updateManyAndReturn({
+   *   select: { id: true },
    *   where: {
    *     // ... provide filter here
    *   },
@@ -1344,6 +1384,7 @@ export interface Prisma__remote_announcesClient<
  * Fields of the remote_announces model
  */
 export interface remote_announcesFieldRefs {
+  readonly id: Prisma.FieldRef<"remote_announces", "String">;
   readonly remote_actor_uri: Prisma.FieldRef<"remote_announces", "String">;
   readonly status_id: Prisma.FieldRef<"remote_announces", "String">;
   readonly activity_id: Prisma.FieldRef<"remote_announces", "String">;

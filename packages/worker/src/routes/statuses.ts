@@ -434,8 +434,8 @@ const statusEngagementAccounts = async (
   const limit = queryAccountsLimit(c.req.query("limit"));
   const engaged =
     kind === "favourited_by"
-      ? await listStatusFavouritedBy(c.env.DB, status.value.id, limit)
-      : await listStatusRebloggedBy(c.env.DB, status.value.id, limit);
+      ? await listStatusFavouritedBy(c.env.DB, status.value.id, limit, queryCursor(c))
+      : await listStatusRebloggedBy(c.env.DB, status.value.id, limit, queryCursor(c));
   if (engaged.isErr()) {
     return jsonRepositoryError(c, engaged.error.message);
   }
@@ -453,6 +453,13 @@ const statusEngagementAccounts = async (
       documents.push(mastodonRemoteAccount(identity.value, actor.value));
     }
   }
+  // The documents are accounts; the engagement row ids live in the header.
+  setPaginationLinks(
+    c,
+    engaged.value.map((booster) => booster.id),
+    limit,
+    { prev: "since_id" },
+  );
   return c.json(documents);
 };
 

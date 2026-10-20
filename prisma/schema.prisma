@@ -233,6 +233,7 @@ model conversation_reads {
 }
 
 model favourites {
+  id                String? @unique
   account_id String
   status_id  String
   created_at String   @default("CURRENT_TIMESTAMP")
@@ -515,6 +516,7 @@ model remote_actors {
 }
 
 model remote_announces {
+  id               String?       @unique
   remote_actor_uri String
   status_id        String
   activity_id      String
@@ -527,6 +529,7 @@ model remote_announces {
 }
 
 model remote_favourites {
+  id                String? @unique
   remote_actor_uri String
   status_id        String
   created_at       String        @default("CURRENT_TIMESTAMP")

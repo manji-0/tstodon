@@ -24,18 +24,21 @@ export type AggregateFavourites = {
 };
 
 export type FavouritesMinAggregateOutputType = {
+  id: string | null;
   account_id: string | null;
   status_id: string | null;
   created_at: string | null;
 };
 
 export type FavouritesMaxAggregateOutputType = {
+  id: string | null;
   account_id: string | null;
   status_id: string | null;
   created_at: string | null;
 };
 
 export type FavouritesCountAggregateOutputType = {
+  id: number;
   account_id: number;
   status_id: number;
   created_at: number;
@@ -43,18 +46,21 @@ export type FavouritesCountAggregateOutputType = {
 };
 
 export type FavouritesMinAggregateInputType = {
+  id?: true;
   account_id?: true;
   status_id?: true;
   created_at?: true;
 };
 
 export type FavouritesMaxAggregateInputType = {
+  id?: true;
   account_id?: true;
   status_id?: true;
   created_at?: true;
 };
 
 export type FavouritesCountAggregateInputType = {
+  id?: true;
   account_id?: true;
   status_id?: true;
   created_at?: true;
@@ -137,6 +143,7 @@ export type favouritesGroupByArgs<
 };
 
 export type FavouritesGroupByOutputType = {
+  id: string | null;
   account_id: string;
   status_id: string;
   created_at: string;
@@ -161,6 +168,7 @@ export type favouritesWhereInput = {
   AND?: Prisma.favouritesWhereInput | Prisma.favouritesWhereInput[];
   OR?: Prisma.favouritesWhereInput[];
   NOT?: Prisma.favouritesWhereInput | Prisma.favouritesWhereInput[];
+  id?: Prisma.StringNullableFilter<"favourites"> | string | null;
   account_id?: Prisma.StringFilter<"favourites"> | string;
   status_id?: Prisma.StringFilter<"favourites"> | string;
   created_at?: Prisma.StringFilter<"favourites"> | string;
@@ -169,6 +177,7 @@ export type favouritesWhereInput = {
 };
 
 export type favouritesOrderByWithRelationInput = {
+  id?: Prisma.SortOrderInput | Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
@@ -178,6 +187,7 @@ export type favouritesOrderByWithRelationInput = {
 
 export type favouritesWhereUniqueInput = Prisma.AtLeast<
   {
+    id?: string;
     account_id_status_id?: Prisma.favouritesAccount_idStatus_idCompoundUniqueInput;
     AND?: Prisma.favouritesWhereInput | Prisma.favouritesWhereInput[];
     OR?: Prisma.favouritesWhereInput[];
@@ -188,10 +198,11 @@ export type favouritesWhereUniqueInput = Prisma.AtLeast<
     statuses?: Prisma.XOR<Prisma.StatusesScalarRelationFilter, Prisma.statusesWhereInput>;
     accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
   },
-  "account_id_status_id"
+  "account_id_status_id" | "id"
 >;
 
 export type favouritesOrderByWithAggregationInput = {
+  id?: Prisma.SortOrderInput | Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
@@ -208,46 +219,54 @@ export type favouritesScalarWhereWithAggregatesInput = {
   NOT?:
     | Prisma.favouritesScalarWhereWithAggregatesInput
     | Prisma.favouritesScalarWhereWithAggregatesInput[];
+  id?: Prisma.StringNullableWithAggregatesFilter<"favourites"> | string | null;
   account_id?: Prisma.StringWithAggregatesFilter<"favourites"> | string;
   status_id?: Prisma.StringWithAggregatesFilter<"favourites"> | string;
   created_at?: Prisma.StringWithAggregatesFilter<"favourites"> | string;
 };
 
 export type favouritesCreateInput = {
+  id?: string | null;
   created_at?: string;
   statuses: Prisma.statusesCreateNestedOneWithoutFavouritesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutFavouritesInput;
 };
 
 export type favouritesUncheckedCreateInput = {
+  id?: string | null;
   account_id: string;
   status_id: string;
   created_at?: string;
 };
 
 export type favouritesUpdateInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   statuses?: Prisma.statusesUpdateOneRequiredWithoutFavouritesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutFavouritesNestedInput;
 };
 
 export type favouritesUncheckedUpdateInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type favouritesCreateManyInput = {
+  id?: string | null;
   account_id: string;
   status_id: string;
   created_at?: string;
 };
 
 export type favouritesUpdateManyMutationInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type favouritesUncheckedUpdateManyInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -269,18 +288,21 @@ export type favouritesAccount_idStatus_idCompoundUniqueInput = {
 };
 
 export type favouritesCountOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
 export type favouritesMaxOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
 export type favouritesMinOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
@@ -459,11 +481,13 @@ export type favouritesUncheckedUpdateManyWithoutStatusesNestedInput = {
 };
 
 export type favouritesCreateWithoutAccountsInput = {
+  id?: string | null;
   created_at?: string;
   statuses: Prisma.statusesCreateNestedOneWithoutFavouritesInput;
 };
 
 export type favouritesUncheckedCreateWithoutAccountsInput = {
+  id?: string | null;
   status_id: string;
   created_at?: string;
 };
@@ -512,17 +536,20 @@ export type favouritesScalarWhereInput = {
   AND?: Prisma.favouritesScalarWhereInput | Prisma.favouritesScalarWhereInput[];
   OR?: Prisma.favouritesScalarWhereInput[];
   NOT?: Prisma.favouritesScalarWhereInput | Prisma.favouritesScalarWhereInput[];
+  id?: Prisma.StringNullableFilter<"favourites"> | string | null;
   account_id?: Prisma.StringFilter<"favourites"> | string;
   status_id?: Prisma.StringFilter<"favourites"> | string;
   created_at?: Prisma.StringFilter<"favourites"> | string;
 };
 
 export type favouritesCreateWithoutStatusesInput = {
+  id?: string | null;
   created_at?: string;
   accounts: Prisma.accountsCreateNestedOneWithoutFavouritesInput;
 };
 
 export type favouritesUncheckedCreateWithoutStatusesInput = {
+  id?: string | null;
   account_id: string;
   created_at?: string;
 };
@@ -568,41 +595,49 @@ export type favouritesUpdateManyWithWhereWithoutStatusesInput = {
 };
 
 export type favouritesCreateManyAccountsInput = {
+  id?: string | null;
   status_id: string;
   created_at?: string;
 };
 
 export type favouritesUpdateWithoutAccountsInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   statuses?: Prisma.statusesUpdateOneRequiredWithoutFavouritesNestedInput;
 };
 
 export type favouritesUncheckedUpdateWithoutAccountsInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type favouritesUncheckedUpdateManyWithoutAccountsInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type favouritesCreateManyStatusesInput = {
+  id?: string | null;
   account_id: string;
   created_at?: string;
 };
 
 export type favouritesUpdateWithoutStatusesInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutFavouritesNestedInput;
 };
 
 export type favouritesUncheckedUpdateWithoutStatusesInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type favouritesUncheckedUpdateManyWithoutStatusesInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -611,6 +646,7 @@ export type favouritesSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     account_id?: boolean;
     status_id?: boolean;
     created_at?: boolean;
@@ -624,6 +660,7 @@ export type favouritesSelectCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     account_id?: boolean;
     status_id?: boolean;
     created_at?: boolean;
@@ -637,6 +674,7 @@ export type favouritesSelectUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     account_id?: boolean;
     status_id?: boolean;
     created_at?: boolean;
@@ -647,6 +685,7 @@ export type favouritesSelectUpdateManyAndReturn<
 >;
 
 export type favouritesSelectScalar = {
+  id?: boolean;
   account_id?: boolean;
   status_id?: boolean;
   created_at?: boolean;
@@ -655,7 +694,7 @@ export type favouritesSelectScalar = {
 export type favouritesOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "account_id" | "status_id" | "created_at",
+  "id" | "account_id" | "status_id" | "created_at",
   ExtArgs["result"]["favourites"]
 >;
 export type favouritesInclude<
@@ -687,6 +726,7 @@ export type $favouritesPayload<
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
+      id: string | null;
       account_id: string;
       status_id: string;
       created_at: string;
@@ -831,8 +871,8 @@ export interface favouritesDelegate<
    * // Get first 10 Favourites
    * const favourites = await prisma.favourites.findMany({ take: 10 })
    *
-   * // Only select the `account_id`
-   * const favouritesWithAccount_idOnly = await prisma.favourites.findMany({ select: { account_id: true } })
+   * // Only select the `id`
+   * const favouritesWithIdOnly = await prisma.favourites.findMany({ select: { id: true } })
    *
    */
   findMany<T extends favouritesFindManyArgs>(
@@ -899,9 +939,9 @@ export interface favouritesDelegate<
    *   ]
    * })
    *
-   * // Create many Favourites and only return the `account_id`
-   * const favouritesWithAccount_idOnly = await prisma.favourites.createManyAndReturn({
-   *   select: { account_id: true },
+   * // Create many Favourites and only return the `id`
+   * const favouritesWithIdOnly = await prisma.favourites.createManyAndReturn({
+   *   select: { id: true },
    *   data: [
    *     // ... provide data here
    *   ]
@@ -1027,9 +1067,9 @@ export interface favouritesDelegate<
    *   ]
    * })
    *
-   * // Update zero or more Favourites and only return the `account_id`
-   * const favouritesWithAccount_idOnly = await prisma.favourites.updateManyAndReturn({
-   *   select: { account_id: true },
+   * // Update zero or more Favourites and only return the `id`
+   * const favouritesWithIdOnly = await prisma.favourites.updateManyAndReturn({
+   *   select: { id: true },
    *   where: {
    *     // ... provide filter here
    *   },
@@ -1287,6 +1327,7 @@ export interface Prisma__favouritesClient<
  * Fields of the favourites model
  */
 export interface favouritesFieldRefs {
+  readonly id: Prisma.FieldRef<"favourites", "String">;
   readonly account_id: Prisma.FieldRef<"favourites", "String">;
   readonly status_id: Prisma.FieldRef<"favourites", "String">;
   readonly created_at: Prisma.FieldRef<"favourites", "String">;

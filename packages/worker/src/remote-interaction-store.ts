@@ -1,5 +1,6 @@
 import { runD1, type RepositoryError } from "./d1";
 import { nowIso } from "./clock";
+import { newEntityId } from "./ids";
 import type { Result } from "neverthrow";
 import { queryTyped, runTyped } from "./typed-sql";
 import {
@@ -17,7 +18,7 @@ export const upsertRemoteFavourite = async (
   statusId: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(db, upsertRemoteFavouriteSql(remoteActorUri, statusId, nowIso()));
+    await runTyped(db, upsertRemoteFavouriteSql(newEntityId(), remoteActorUri, statusId, nowIso()));
   });
 
 export const deleteRemoteFavourite = async (
@@ -36,7 +37,10 @@ export const upsertRemoteAnnounce = async (
   activityId: string,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(db, upsertRemoteAnnounceSql(remoteActorUri, statusId, activityId, nowIso()));
+    await runTyped(
+      db,
+      upsertRemoteAnnounceSql(newEntityId(), remoteActorUri, statusId, activityId, nowIso()),
+    );
   });
 
 export const deleteRemoteAnnounce = async (

@@ -336,6 +336,7 @@ export type Conversation_readsScalarFieldEnum =
   (typeof Conversation_readsScalarFieldEnum)[keyof typeof Conversation_readsScalarFieldEnum];
 
 export const FavouritesScalarFieldEnum = {
+  id: "id",
   account_id: "account_id",
   status_id: "status_id",
   created_at: "created_at",
@@ -627,6 +628,7 @@ export type Remote_actorsScalarFieldEnum =
   (typeof Remote_actorsScalarFieldEnum)[keyof typeof Remote_actorsScalarFieldEnum];
 
 export const Remote_announcesScalarFieldEnum = {
+  id: "id",
   remote_actor_uri: "remote_actor_uri",
   status_id: "status_id",
   activity_id: "activity_id",
@@ -637,6 +639,7 @@ export type Remote_announcesScalarFieldEnum =
   (typeof Remote_announcesScalarFieldEnum)[keyof typeof Remote_announcesScalarFieldEnum];
 
 export const Remote_favouritesScalarFieldEnum = {
+  id: "id",
   remote_actor_uri: "remote_actor_uri",
   status_id: "status_id",
   created_at: "created_at",

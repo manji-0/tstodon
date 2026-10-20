@@ -5,19 +5,26 @@
 import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
+ * @param id
  * @param remoteActorUri
  * @param statusId
  * @param createdAt
  */
 export const upsertRemoteFavourite = $runtime.makeTypedQueryFactory(
-  "INSERT INTO remote_favourites (remote_actor_uri, status_id, created_at)\nVALUES ($1, $2, $3)\nON CONFLICT(remote_actor_uri, status_id) DO NOTHING",
+  "INSERT INTO remote_favourites (id, remote_actor_uri, status_id, created_at)\nVALUES ($1, $2, $3, $4)\nON CONFLICT(remote_actor_uri, status_id) DO NOTHING",
 ) as (
+  id: string,
   remoteActorUri: string,
   statusId: string,
   createdAt: string,
 ) => $runtime.TypedSql<upsertRemoteFavourite.Parameters, upsertRemoteFavourite.Result>;
 
 export namespace upsertRemoteFavourite {
-  export type Parameters = [remoteActorUri: string, statusId: string, createdAt: string];
+  export type Parameters = [
+    id: string,
+    remoteActorUri: string,
+    statusId: string,
+    createdAt: string,
+  ];
   export type Result = {};
 }

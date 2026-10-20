@@ -39,10 +39,6 @@ import {
   listFollowingAccountIds as listFollowingAccountIdsSql,
   listNotifyingFollowerIds as listNotifyingFollowerIdsSql,
   upsertFollowOptions as upsertFollowOptionsSql,
-  listStatusFavouritedByLocal as listStatusFavouritedByLocalSql,
-  listStatusFavouritedByRemote as listStatusFavouritedByRemoteSql,
-  listStatusRebloggedByLocal as listStatusRebloggedByLocalSql,
-  listStatusRebloggedByRemote as listStatusRebloggedByRemoteSql,
   listNotifications as listNotificationsSql,
   listSuggestionExclusionIds as listSuggestionExclusionIdsSql,
   rejectFollowRequest as rejectFollowRequestSql,
@@ -537,7 +533,10 @@ export const favouriteStatus = async (
   statusId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, insertFavouriteOrIgnoreSql(accountId, statusId, nowIso()));
+    const rows = await queryTyped(
+      db,
+      insertFavouriteOrIgnoreSql(newEntityId(), accountId, statusId, nowIso()),
+    );
     return rows.length > 0;
   });
 
@@ -905,52 +904,66 @@ export const listAcceptedFollowerIds = async (
  * actor whose `Like`/`Announce` was stored.
  */
 export type StatusBooster =
-  | Readonly<{ kind: "Local"; accountId: string; createdAt: string }>
-  | Readonly<{ kind: "Remote"; actorUri: string; createdAt: string }>;
+  | Readonly<{ kind: "Local"; id: string; accountId: string; createdAt: string }>
+  | Readonly<{ kind: "Remote"; id: string; actorUri: string; createdAt: string }>;
+
+type BoosterRow = Readonly<{ id: string; actor: string; created_at: string }>;
 
 /**
- * The newest `limit` accounts from both halves of a count — the local rows and
- * the remote actor rows — newest first, with the actor as the tie-break. The
- * global top `limit` is always inside the union of each side's top `limit`.
+ * Merge both halves of an engagement count around the cursor. Each side is
+ * read with the same id condition, so the global page is always inside the
+ * union of the two sides.
  */
 const mergeStatusBoosters = (
-  local: ReadonlyArray<{ actor: string; created_at: string }>,
-  remote: ReadonlyArray<{ actor: string; created_at: string }>,
+  local: ReadonlyArray<BoosterRow>,
+  remote: ReadonlyArray<BoosterRow>,
   limit: number,
+  ascending: boolean,
 ): ReadonlyArray<StatusBooster> =>
   [
     ...local.map((row) => ({ ...row, kind: "Local" as const })),
     ...remote.map((row) => ({ ...row, kind: "Remote" as const })),
   ]
-    .toSorted(
-      (left, right) =>
-        right.created_at.localeCompare(left.created_at) || right.actor.localeCompare(left.actor),
+    .toSorted((left, right) =>
+      ascending ? left.id.localeCompare(right.id) : right.id.localeCompare(left.id),
     )
     .slice(0, limit)
     .map((row) =>
       row.kind === "Local"
-        ? { kind: row.kind, accountId: row.actor, createdAt: row.created_at }
-        : { kind: row.kind, actorUri: row.actor, createdAt: row.created_at },
+        ? { kind: row.kind, id: row.id, accountId: row.actor, createdAt: row.created_at }
+        : { kind: row.kind, id: row.id, actorUri: row.actor, createdAt: row.created_at },
     );
+
+/** True when `min_id` asks for the oldest-first side of the page. */
+const cursorAscending = (cursor: IdCursor): boolean => (cursor.minId ?? "").length > 0;
 
 export const listStatusFavouritedBy = async (
   db: D1Database,
   statusId: string,
   limit: number,
+  cursor: IdCursor = {},
 ): Promise<Result<ReadonlyArray<StatusBooster>, RepositoryError>> =>
   runD1(async () => {
-    const local = await queryTyped<{ account_id: string; created_at: string }>(
-      db,
-      listStatusFavouritedByLocalSql(statusId, limit),
-    );
-    const remote = await queryTyped<{ actor_uri: string; created_at: string }>(
-      db,
-      listStatusFavouritedByRemoteSql(statusId, limit),
-    );
+    const { where, order, binds } = idCursorFragment(cursor);
+    const local = await db
+      .prepare(
+        `SELECT id, account_id AS actor, created_at FROM favourites
+         WHERE status_id = ? ${where} ${order} LIMIT ?`,
+      )
+      .bind(statusId, ...binds, limit)
+      .all<BoosterRow>();
+    const remote = await db
+      .prepare(
+        `SELECT id, remote_actor_uri AS actor, created_at FROM remote_favourites
+         WHERE status_id = ? ${where} ${order} LIMIT ?`,
+      )
+      .bind(statusId, ...binds, limit)
+      .all<BoosterRow>();
     return mergeStatusBoosters(
-      local.map((row) => ({ actor: row.account_id, created_at: row.created_at })),
-      remote.map((row) => ({ actor: row.actor_uri, created_at: row.created_at })),
+      local.results ?? [],
+      remote.results ?? [],
       limit,
+      cursorAscending(cursor),
     );
   });
 
@@ -958,20 +971,29 @@ export const listStatusRebloggedBy = async (
   db: D1Database,
   statusId: string,
   limit: number,
+  cursor: IdCursor = {},
 ): Promise<Result<ReadonlyArray<StatusBooster>, RepositoryError>> =>
   runD1(async () => {
-    const local = await queryTyped<{ account_id: string; created_at: string }>(
-      db,
-      listStatusRebloggedByLocalSql(statusId, limit),
-    );
-    const remote = await queryTyped<{ actor_uri: string; created_at: string }>(
-      db,
-      listStatusRebloggedByRemoteSql(statusId, limit),
-    );
+    const { where, order, binds } = idCursorFragment(cursor);
+    const local = await db
+      .prepare(
+        `SELECT id, account_id AS actor, created_at FROM statuses
+         WHERE kind = 'LocalReblog' AND reblog_of_id = ? ${where} ${order} LIMIT ?`,
+      )
+      .bind(statusId, ...binds, limit)
+      .all<BoosterRow>();
+    const remote = await db
+      .prepare(
+        `SELECT id, remote_actor_uri AS actor, created_at FROM remote_announces
+         WHERE status_id = ? ${where} ${order} LIMIT ?`,
+      )
+      .bind(statusId, ...binds, limit)
+      .all<BoosterRow>();
     return mergeStatusBoosters(
-      local.map((row) => ({ actor: row.account_id, created_at: row.created_at })),
-      remote.map((row) => ({ actor: row.actor_uri, created_at: row.created_at })),
+      local.results ?? [],
+      remote.results ?? [],
       limit,
+      cursorAscending(cursor),
     );
   });
 
