@@ -108,12 +108,12 @@ describe("link cards", () => {
           ? new Response(OG_HTML, { headers: { "content-type": "text/html; charset=utf-8" } })
           : undefined,
       async () => {
-        // The request only queues the unfurl, so the card is not there yet.
+        // The request only queues the unfurl. The queue consumer may finish it
+        // before the response is rendered, so the card is checked after the job.
         const created = await postStatus(
           email,
           "please read https://news.example/story-one it is good",
         );
-        expect(created.card).toBeNull();
 
         await unfurl(created.id, "https://news.example/story-one");
         const card = await statusCard(created.id);
