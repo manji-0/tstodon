@@ -196,6 +196,7 @@ model accounts {
   remote_follows                                        remote_follows[]
   reports_reports_target_account_idToaccounts           reports[]              @relation("reports_target_account_idToaccounts")
   reports_reports_account_idToaccounts                  reports[]              @relation("reports_account_idToaccounts")
+  notification_request_groups                            notification_request_groups[]
   scheduled_statuses                                          scheduled_statuses[]
   status_mentions                                       status_mentions[]
   statuses                                              statuses[]            
@@ -640,6 +641,16 @@ model scheduled_statuses {
 
   @@index([account_id, id(sort: Desc)], map: "idx_scheduled_statuses_account")
   @@index([scheduled_at], map: "idx_scheduled_statuses_due")
+}
+
+model notification_request_groups {
+  id              String @id
+  account_id      String
+  from_account_id String
+  created_at      String @default("CURRENT_TIMESTAMP")
+  accounts        accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([account_id, from_account_id])
 }
 
 model domain_allows {

@@ -446,6 +446,7 @@ export const ModelName = {
   status_mentions: "status_mentions",
   link_cards: "link_cards",
   scheduled_statuses: "scheduled_statuses",
+  notification_request_groups: "notification_request_groups",
   domain_allows: "domain_allows",
   trend_reviews: "trend_reviews",
   statuses: "statuses",
@@ -524,6 +525,7 @@ export type TypeMap<
       | "status_mentions"
       | "link_cards"
       | "scheduled_statuses"
+      | "notification_request_groups"
       | "domain_allows"
       | "trend_reviews"
       | "statuses";
@@ -4684,6 +4686,82 @@ export type TypeMap<
         };
       };
     };
+    notification_request_groups: {
+      payload: Prisma.$notification_request_groupsPayload<ExtArgs>;
+      fields: Prisma.notification_request_groupsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.notification_request_groupsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_groupsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.notification_request_groupsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_groupsPayload>;
+        };
+        findFirst: {
+          args: Prisma.notification_request_groupsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_groupsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.notification_request_groupsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_groupsPayload>;
+        };
+        findMany: {
+          args: Prisma.notification_request_groupsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_groupsPayload>[];
+        };
+        create: {
+          args: Prisma.notification_request_groupsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_groupsPayload>;
+        };
+        createMany: {
+          args: Prisma.notification_request_groupsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.notification_request_groupsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_groupsPayload>[];
+        };
+        delete: {
+          args: Prisma.notification_request_groupsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_groupsPayload>;
+        };
+        update: {
+          args: Prisma.notification_request_groupsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_groupsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.notification_request_groupsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.notification_request_groupsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.notification_request_groupsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_groupsPayload>[];
+        };
+        upsert: {
+          args: Prisma.notification_request_groupsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$notification_request_groupsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Notification_request_groupsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateNotification_request_groups>;
+        };
+        groupBy: {
+          args: Prisma.notification_request_groupsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Notification_request_groupsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.notification_request_groupsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Notification_request_groupsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
     domain_allows: {
       payload: Prisma.$domain_allowsPayload<ExtArgs>;
       fields: Prisma.domain_allowsFieldRefs;
@@ -5580,6 +5658,16 @@ export const Scheduled_statusesScalarFieldEnum = {
 export type Scheduled_statusesScalarFieldEnum =
   (typeof Scheduled_statusesScalarFieldEnum)[keyof typeof Scheduled_statusesScalarFieldEnum];
 
+export const Notification_request_groupsScalarFieldEnum = {
+  id: "id",
+  account_id: "account_id",
+  from_account_id: "from_account_id",
+  created_at: "created_at",
+} as const;
+
+export type Notification_request_groupsScalarFieldEnum =
+  (typeof Notification_request_groupsScalarFieldEnum)[keyof typeof Notification_request_groupsScalarFieldEnum];
+
 export const Domain_allowsScalarFieldEnum = {
   id: "id",
   domain: "domain",
@@ -5866,6 +5954,7 @@ export type GlobalOmitConfig = {
   status_mentions?: Prisma.status_mentionsOmit;
   link_cards?: Prisma.link_cardsOmit;
   scheduled_statuses?: Prisma.scheduled_statusesOmit;
+  notification_request_groups?: Prisma.notification_request_groupsOmit;
   domain_allows?: Prisma.domain_allowsOmit;
   trend_reviews?: Prisma.trend_reviewsOmit;
   statuses?: Prisma.statusesOmit;

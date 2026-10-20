@@ -1,9 +1,0 @@
--- @param {String} $1:accountId
--- @param {Int} $2:limit
-SELECT from_account_id, COUNT(*) AS notifications_count, MAX(status_id) AS status_id,
-       MIN(created_at) AS created_at, MAX(created_at) AS updated_at
-FROM notification_requests
-WHERE account_id = $1
-GROUP BY from_account_id
-ORDER BY MAX(created_at) DESC, from_account_id DESC
-LIMIT $2

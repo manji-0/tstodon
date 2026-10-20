@@ -7,6 +7,7 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
+  queryCursor,
   queryNotificationsLimit,
   readBody,
   requireUser,
@@ -64,7 +65,7 @@ const requestDocument = async (
     }
   }
   return {
-    id: request.fromAccountId,
+    id: request.id,
     created_at: request.createdAt,
     updated_at: request.updatedAt,
     notifications_count: String(request.notificationsCount),
@@ -180,6 +181,7 @@ notificationRequestRoutes.get("/api/v1/notifications/requests", async (c) => {
     c.env.DB,
     user.value.id,
     queryNotificationsLimit(c.req.query("limit")),
+    queryCursor(c),
   );
   if (requests.isErr()) {
     return jsonRepositoryError(c, requests.error.message);

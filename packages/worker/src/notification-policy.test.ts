@@ -147,6 +147,8 @@ describe("notification policy", () => {
     );
     expect(held[0]?.notifications_count).toBe("1");
     expect(held[0]?.last_status?.id).toBeDefined();
+    // The request has an id of its own, not the sender's account id.
+    expect(held[0]?.id).not.toBe(sender.id);
 
     const summary = await json("/api/v2/notifications/policy", {
       headers: await auth(recipientEmail),
@@ -156,7 +158,7 @@ describe("notification policy", () => {
     const accepted = await json("/api/v1/notifications/requests/merged");
     expect(read(z.object({ merged: z.boolean() }), accepted.body).merged).toBe(false);
 
-    const accept = await json(`/api/v1/notifications/requests/${sender.id}/accept`, {
+    const accept = await json(`/api/v1/notifications/requests/${held[0]?.id ?? ""}/accept`, {
       method: "POST",
       headers: await auth(recipientEmail),
     });
@@ -283,5 +285,51 @@ describe("notification policy", () => {
       read(z.object({ notification_groups: z.array(z.unknown()) }), withoutFlag.body)
         .notification_groups,
     ).toHaveLength(0);
+  });
+
+  it("pages the request list by its own ids", async () => {
+    const recipientEmail = "policy-page-recipient@example.com";
+    const recipient = await credentials(recipientEmail);
+
+    const senders: Array<{ id: string; email: string }> = [];
+    for (const name of ["page-a", "page-b"]) {
+      const email = `policy-${name}@example.com`;
+      const sender = await credentials(email);
+      senders.push({ id: sender.id, email });
+      await json(`/api/v1/admin/accounts/${sender.id}/silence`, {
+        method: "POST",
+        headers: await auth(`policy-page-admin-${name}@example.com`, true),
+      });
+      await postStatus(email, { status: `@${recipient.username} held ${name}` });
+    }
+
+    const all = await json("/api/v1/notifications/requests", {
+      headers: await auth(recipientEmail),
+    });
+    const requests = read(z.array(RequestSchema), all.body);
+    expect(requests).toHaveLength(2);
+    expect(requests.map((request) => request.id)).not.toEqual(senders.map((sender) => sender.id));
+
+    // Newest first, and `max_id` pages older requests by the request id.
+    const first = await json("/api/v1/notifications/requests?limit=1", {
+      headers: await auth(recipientEmail),
+    });
+    const firstPage = read(z.array(RequestSchema), first.body);
+    expect(firstPage).toHaveLength(1);
+    expect(firstPage[0]?.id).toBe(requests[0]?.id);
+    const older = await json(
+      `/api/v1/notifications/requests?limit=1&max_id=${firstPage[0]?.id ?? ""}`,
+      { headers: await auth(recipientEmail) },
+    );
+    const olderPage = read(z.array(RequestSchema), older.body);
+    expect(olderPage).toHaveLength(1);
+    expect(olderPage[0]?.id).toBe(requests[1]?.id);
+
+    // A resolved request can still be addressed by the sender for compatibility.
+    const dismissed = await json(`/api/v1/notifications/requests/${senders[0]?.id ?? ""}/dismiss`, {
+      method: "POST",
+      headers: await auth(recipientEmail),
+    });
+    expect(dismissed.status).toBe(200);
   });
 });

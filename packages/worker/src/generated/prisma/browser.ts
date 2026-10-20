@@ -292,6 +292,11 @@ export type link_cards = Prisma.link_cardsModel;
  */
 export type scheduled_statuses = Prisma.scheduled_statusesModel;
 /**
+ * Model notification_request_groups
+ *
+ */
+export type notification_request_groups = Prisma.notification_request_groupsModel;
+/**
  * Model domain_allows
  *
  */

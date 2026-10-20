@@ -174,8 +174,6 @@ export * from "./sql/findNotificationOwned";
 
 export * from "./sql/findNotificationPolicy";
 
-export * from "./sql/findNotificationRequest";
-
 export * from "./sql/findOutboundActivity";
 
 export * from "./sql/findOutboxFanout";
@@ -343,8 +341,6 @@ export * from "./sql/listMediaObjectKeysForAccount";
 export * from "./sql/listMediaRejectedDomains";
 
 export * from "./sql/listMentionedAccountIds";
-
-export * from "./sql/listNotificationRequests";
 
 export * from "./sql/listNotifications";
 

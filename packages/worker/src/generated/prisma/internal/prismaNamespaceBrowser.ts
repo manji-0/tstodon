@@ -103,6 +103,7 @@ export const ModelName = {
   status_mentions: "status_mentions",
   link_cards: "link_cards",
   scheduled_statuses: "scheduled_statuses",
+  notification_request_groups: "notification_request_groups",
   domain_allows: "domain_allows",
   trend_reviews: "trend_reviews",
   statuses: "statuses",
@@ -750,6 +751,16 @@ export const Scheduled_statusesScalarFieldEnum = {
 
 export type Scheduled_statusesScalarFieldEnum =
   (typeof Scheduled_statusesScalarFieldEnum)[keyof typeof Scheduled_statusesScalarFieldEnum];
+
+export const Notification_request_groupsScalarFieldEnum = {
+  id: "id",
+  account_id: "account_id",
+  from_account_id: "from_account_id",
+  created_at: "created_at",
+} as const;
+
+export type Notification_request_groupsScalarFieldEnum =
+  (typeof Notification_request_groupsScalarFieldEnum)[keyof typeof Notification_request_groupsScalarFieldEnum];
 
 export const Domain_allowsScalarFieldEnum = {
   id: "id",
