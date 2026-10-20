@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `Link` pagination headers on notifications, favourites, and bookmarks
 - Follower/following pagination by follow row id with `Link` headers
 - Stable notification-request ids (`notification_request_groups`) and id cursors
 - Runtime `domain_allows` admin API and enforced limited federation

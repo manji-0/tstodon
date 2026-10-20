@@ -14,6 +14,7 @@ import {
   jsonRepositoryError,
   queryCursor,
   queryNotificationsLimit,
+  setPaginationLinks,
   requireUser,
 } from "../http";
 import { getMarkers } from "../marker-store";
@@ -72,20 +73,16 @@ notificationRoutes.get("/api/v1/notifications", async (c) => {
     [...(c.req.queries(`${key}[]`) ?? []), ...(c.req.queries(key) ?? [])].filter(
       (value) => value.length > 0,
     );
-  const rows = await listNotifications(
-    c.env.DB,
-    user.value.id,
-    queryNotificationsLimit(c.req.query("limit")),
-    {
-      types: queryValues("types"),
-      excludeTypes: queryValues("exclude_types"),
-      fromAccountId: c.req.query("account_id"),
-      // Mastodon's `include_filtered`: the policy-held notifications come back
-      // in the list instead of only under `notifications/requests`.
-      includeFiltered: isTruthy(c.req.query("include_filtered")),
-      ...queryCursor(c),
-    },
-  );
+  const limit = queryNotificationsLimit(c.req.query("limit"));
+  const rows = await listNotifications(c.env.DB, user.value.id, limit, {
+    types: queryValues("types"),
+    excludeTypes: queryValues("exclude_types"),
+    fromAccountId: c.req.query("account_id"),
+    // Mastodon's `include_filtered`: the policy-held notifications come back
+    // in the list instead of only under `notifications/requests`.
+    includeFiltered: isTruthy(c.req.query("include_filtered")),
+    ...queryCursor(c),
+  });
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
@@ -118,6 +115,12 @@ notificationRoutes.get("/api/v1/notifications", async (c) => {
     }
     documents.push(document);
   }
+  // Mastodon pages the notification list by notification id.
+  setPaginationLinks(
+    c,
+    documents.map((document) => String(document.id)),
+    limit,
+  );
   return c.json(documents);
 });
 

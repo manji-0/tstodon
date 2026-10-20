@@ -24,6 +24,7 @@ import {
   queryAccountsLimit,
   queryCursor,
   queryLimit,
+  setPaginationLinks,
   readOptionalBody,
   readUnknownBody,
   requireUser,
@@ -1176,15 +1177,16 @@ statusRoutes.get("/api/v1/favourites", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const statuses = await listFavouritedStatuses(
-    c.env.DB,
-    user.value.id,
-    queryLimit(c.req.query("limit")),
-    queryCursor(c),
-  );
+  const limit = queryLimit(c.req.query("limit"));
+  const statuses = await listFavouritedStatuses(c.env.DB, user.value.id, limit, queryCursor(c));
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
+  setPaginationLinks(
+    c,
+    statuses.value.map((status) => status.id),
+    limit,
+  );
   return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, user.value.id));
 });
 
@@ -1197,15 +1199,16 @@ statusRoutes.get("/api/v1/bookmarks", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const statuses = await listBookmarkedStatuses(
-    c.env.DB,
-    user.value.id,
-    queryLimit(c.req.query("limit")),
-    queryCursor(c),
-  );
+  const limit = queryLimit(c.req.query("limit"));
+  const statuses = await listBookmarkedStatuses(c.env.DB, user.value.id, limit, queryCursor(c));
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
+  setPaginationLinks(
+    c,
+    statuses.value.map((status) => status.id),
+    limit,
+  );
   return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, user.value.id));
 });
 

@@ -127,4 +127,34 @@ describe("admin list cursors", () => {
       expect(firstIds).not.toContain(account.id);
     }
   });
+
+  it("sets Link headers on notifications and favourites", async () => {
+    const email = "cursor-headers@example.com";
+    const friend = await auth("cursor-headers-friend@example.com");
+    const posted = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...friend },
+      body: JSON.stringify({ status: "favourite me", visibility: "public" }),
+    });
+    expect(posted.status).toBe(200);
+    const statusId = read(z.object({ id: z.string().min(1) }), posted.body).id;
+    const favourited = await json(`/api/v1/statuses/${statusId}/favourite`, {
+      method: "POST",
+      headers: await auth(email),
+    });
+    expect(favourited.status).toBe(200);
+
+    const favourites = await SELF.fetch("https://example.com/api/v1/favourites", {
+      headers: await auth(email),
+    });
+    expect(favourites.status).toBe(200);
+    expect(favourites.headers.get("link") ?? "").toContain('rel="prev"');
+
+    // The friend favourited nothing, so the favourite notification went to them.
+    const notifications = await SELF.fetch("https://example.com/api/v1/notifications", {
+      headers: friend,
+    });
+    expect(notifications.status).toBe(200);
+    expect(notifications.headers.get("link") ?? "").toContain('rel="prev"');
+  });
 });
