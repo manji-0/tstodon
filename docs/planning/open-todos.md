@@ -17,6 +17,9 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Toolchain on Vite+ (`vp check`/`test`/`dev`/`build`, Vitest 5 via `@cloudflare/vitest-plugin`, Worker built by `@cloudflare/vite-plugin`)
+- `FEDERATION_ALLOW_HOSTS` matches `host:port` peers by hostname (inbox gate and follower fan-out)
+- Link-card test no longer asserts an empty card right after posting (queue race)
 - `GET /api/v1/accounts?id[]=` and `GET /api/v1/statuses?id[]=` batch lookups
 - `DELETE /api/v1/profile/avatar` and `/header`
 - Quote notifications (`quote`, `quoted_update`)
