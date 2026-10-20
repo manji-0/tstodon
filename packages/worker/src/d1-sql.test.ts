@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { D1_MAX_BOUND_PARAMETERS, jsonStringArray, sqlInJsonEach } from "./d1";
 
 describe("sqlInJsonEach", () => {

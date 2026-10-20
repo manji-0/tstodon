@@ -12,3 +12,4 @@
 /packages/*/node_modules
 e2e/instances/.wrangler
 worker-configuration.d.ts
+.vitest/

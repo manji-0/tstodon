@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { StatusComposition } from "./status-composition";
 import { StatusId } from "./status-id";
 import { StatusQuoteTarget } from "./status-quote-target";

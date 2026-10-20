@@ -265,8 +265,10 @@ export const isLimitedFederation = async (env: Env): Promise<boolean> =>
  * `registrations.approval_required` and enforced by marking the account
  * unsearchable until then.
  */
-export const registrationApprovalRequired = (env: Env): boolean => {
-  const raw = (env as { REGISTRATION_APPROVAL?: string }).REGISTRATION_APPROVAL ?? "";
+export const registrationApprovalRequired = (
+  env: Readonly<{ REGISTRATION_APPROVAL?: string }>,
+): boolean => {
+  const raw = env.REGISTRATION_APPROVAL ?? "";
   return ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
 };
 

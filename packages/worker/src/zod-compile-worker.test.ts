@@ -1,6 +1,6 @@
 import { peekCompiledFastPath, schemaResult } from "@tstodon/core";
 import { Activity, Visibility } from "@tstodon/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { parseMarkerTimelines } from "./marker-store";
 import { PollVoteTargetRowSchema } from "./poll-store";
 import {

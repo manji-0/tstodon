@@ -1,5 +1,5 @@
 import { SELF } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import type { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { generateAccountKeys } from "./keys";

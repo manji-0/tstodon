@@ -1,5 +1,5 @@
 import { hasCompiledFastPath, schemaResult } from "@tstodon/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { Activity } from "./activity";
 import { AccountId } from "./account-id";

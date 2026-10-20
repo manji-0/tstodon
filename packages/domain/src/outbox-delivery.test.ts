@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { DeliveryAttemptOutcome } from "./delivery-attempt-outcome";
 import { DELIVERY_MAX_ATTEMPTS, OutboxDelivery } from "./outbox-delivery";
 

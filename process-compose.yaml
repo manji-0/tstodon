@@ -2,13 +2,10 @@ version: "0.5"
 
 processes:
   tstodon-a:
-    command: >
-      pnpm exec wrangler dev
-      -c e2e/a.wrangler.jsonc
-      --port 8791
-      --ip 127.0.0.1
-      --local
-      --persist-to .wrangler/e2e-a
+    command: pnpm exec vp dev --port 8791 --strictPort --host 127.0.0.1
+    environment:
+      - TSTODON_WORKER_CONFIG=e2e/a.wrangler.jsonc
+      - TSTODON_PERSIST_TO=.wrangler/e2e-a
     availability:
       restart: "always"
     readiness_probe:
@@ -21,13 +18,10 @@ processes:
       failure_threshold: 30
 
   tstodon-b:
-    command: >
-      pnpm exec wrangler dev
-      -c e2e/b.wrangler.jsonc
-      --port 8792
-      --ip 127.0.0.1
-      --local
-      --persist-to .wrangler/e2e-b
+    command: pnpm exec vp dev --port 8792 --strictPort --host 127.0.0.1
+    environment:
+      - TSTODON_WORKER_CONFIG=e2e/b.wrangler.jsonc
+      - TSTODON_PERSIST_TO=.wrangler/e2e-b
     availability:
       restart: "always"
     readiness_probe:

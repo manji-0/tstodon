@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { RemoteActor, IsoInstant } from "@tstodon/domain";
@@ -102,7 +102,7 @@ describe("remote status media", () => {
       ],
     });
     expect(persisted.isOk()).toBe(true);
-    expect(persisted.value).toBeDefined();
+    expect(persisted.isOk() ? persisted.value : undefined).toBeDefined();
 
     const timeline = await json("/api/v1/timelines/public");
     expect(timeline.status).toBe(200);
@@ -144,7 +144,8 @@ describe("remote status media", () => {
       })),
     });
     expect(persisted.isOk()).toBe(true);
-    expect(persisted.value?.kind === "RemoteNote" ? persisted.value.media.length : 0).toBe(4);
+    const stored = persisted.isOk() ? persisted.value : undefined;
+    expect(stored?.kind === "RemoteNote" ? stored.media.length : 0).toBe(4);
   });
 });
 

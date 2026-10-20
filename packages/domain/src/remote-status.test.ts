@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { IsoInstant } from "./iso-instant";
 import { RemoteStatus } from "./remote-status";
 import { StatusId } from "./status-id";

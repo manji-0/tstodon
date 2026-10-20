@@ -1,12 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "composite": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "types": []
+    "types": ["@cloudflare/vitest-plugin/types"]
   },
-  "include": ["src", "../../worker-configuration.d.ts"],
-  "exclude": ["src/**/*.test.ts"],
-  "references": [{ "path": "../core" }, { "path": "../domain" }]
+  "include": ["src", "test", "../../worker-configuration.d.ts"]
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 
 const meanNs = (samples: number[]): number => samples.reduce((a, b) => a + b, 0) / samples.length;

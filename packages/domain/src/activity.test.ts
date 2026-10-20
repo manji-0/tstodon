@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { Activity } from "./activity";
+import { ActivityId } from "./activity-id";
 import { InboxActivity } from "./inbox-activity";
 
 describe("Activity", () => {
@@ -35,9 +36,13 @@ describe("Activity", () => {
       actor: "https://example.com/users/alice",
       object: "https://example.com/users/alice/statuses/1",
     };
+    const activityId = ActivityId.parse(payload.id);
+    if (activityId.isErr()) {
+      throw new Error("activity id rejected");
+    }
     const received = {
       kind: "Received" as const,
-      activityId: payload.id,
+      activityId: activityId.value,
       payload,
     };
     const dispatched = InboxActivity.dispatch(received, new Set());

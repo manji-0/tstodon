@@ -76,7 +76,7 @@ export const persistRemoteObject = async (
   env: Env,
   identity: InstanceIdentity,
   actor: RemoteActor,
-  object: string | Readonly<{ id: string }>,
+  object: string | Readonly<{ id: string } & Record<string, unknown>>,
   options: Readonly<{ allowHosts?: ReadonlySet<string> }> = {},
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
   const objectUri = typeof object === "string" ? object : object.id;

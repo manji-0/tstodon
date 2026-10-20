@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
@@ -69,9 +69,9 @@ const directoryIds = async (): Promise<string[]> => {
 describe("registration approval", () => {
   it("reads the approval switch from the environment", () => {
     expect(registrationApprovalRequired(env)).toBe(false);
-    expect(registrationApprovalRequired({ REGISTRATION_APPROVAL: "true" } as Env)).toBe(true);
-    expect(registrationApprovalRequired({ REGISTRATION_APPROVAL: " TRUE " } as Env)).toBe(true);
-    expect(registrationApprovalRequired({ REGISTRATION_APPROVAL: "no" } as Env)).toBe(false);
+    expect(registrationApprovalRequired({ REGISTRATION_APPROVAL: "true" })).toBe(true);
+    expect(registrationApprovalRequired({ REGISTRATION_APPROVAL: " TRUE " })).toBe(true);
+    expect(registrationApprovalRequired({ REGISTRATION_APPROVAL: "no" })).toBe(false);
   });
 
   it("keeps an unapproved account out of search, the directory, and trends until approved", async () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { AccountId } from "./account-id";
 import { IsoInstant } from "./iso-instant";
 import { LocalAccount, Registration } from "./registration";

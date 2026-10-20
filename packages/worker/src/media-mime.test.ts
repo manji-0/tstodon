@@ -1,5 +1,5 @@
 import { SELF } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult, InstanceLimits } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";

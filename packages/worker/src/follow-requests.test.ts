@@ -1,6 +1,6 @@
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
 import { env, SELF } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { findAccountByUsername } from "./account-store";
 import { generateAccountKeys } from "./keys";

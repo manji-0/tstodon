@@ -25,35 +25,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 12.4.2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Vite+
+        # Pinned to v1.21.2; setup-vp's README asks for an exact release.
+        uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af
         with:
           node-version: 24
-          cache: pnpm
+          cache: true
+          run-install: false
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: vp install --frozen-lockfile
 
       - name: Generate Worker types
-        run: pnpm types:worker
+        run: vp run types:worker
 
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Format check
-        run: pnpm fmt:check
+      - name: Check (format, lint, types)
+        run: vp check
 
       - name: Test
-        run: pnpm test
+        run: vp test run
+
+      - name: Build
+        run: vp build .
 
       - name: Wrangler dry-run
         if: github.event_name != 'pull_request'
-        run: pnpm exec wrangler deploy --dry-run
+        run: vp exec wrangler deploy --dry-run

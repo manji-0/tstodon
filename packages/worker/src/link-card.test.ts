@@ -5,7 +5,7 @@ import { generateAccountKeys } from "./keys";
 import { parseInstanceIdentity } from "./runtime-config";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
@@ -59,7 +59,7 @@ const OG_HTML = `<!doctype html><html><head>
  */
 const withFetchStub = async (
   handler: (url: URL) => Response | undefined,
-  run: () => Promise<void>,
+  run: () => Promise<unknown>,
 ): Promise<number> => {
   let calls = 0;
   const original = globalThis.fetch;

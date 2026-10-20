@@ -5,7 +5,8 @@
     "scripts": {
       "fmt": ["pnpm fmt"],
       "lint": ["pnpm lint"],
-      "check": ["pnpm typecheck"],
+      "check": ["pnpm check"],
+      "typecheck": ["pnpm typecheck"],
       "test": ["pnpm test"],
       "ci": ["pnpm run ci"],
       "worker:dev": ["pnpm dev"],
