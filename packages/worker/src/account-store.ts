@@ -3,6 +3,7 @@ import {
   AccountId,
   IsoInstant,
   LocalAccount,
+  type QuoteApprovalPolicy,
   Registration,
   Username,
   Visibility,
@@ -516,6 +517,32 @@ export const findAccountByIdOrUsername = async (
   }
   return findAccountByUsername(db, idOrUsername);
 };
+
+/** Store the account-level defaults Mastodon exposes as `source`. */
+export const updateAccountDefaults = async (
+  db: D1Database,
+  accountId: string,
+  input: Readonly<{ visibility?: Visibility; quotePolicy?: QuoteApprovalPolicy }>,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    const assignments: string[] = [];
+    const binds: string[] = [];
+    if (input.visibility) {
+      assignments.push("default_post_visibility = ?");
+      binds.push(visibilitySql(input.visibility));
+    }
+    if (input.quotePolicy) {
+      assignments.push("default_quote_policy = ?");
+      binds.push(quotePolicySql(input.quotePolicy));
+    }
+    if (assignments.length === 0) {
+      return;
+    }
+    await db
+      .prepare(`UPDATE accounts SET ${assignments.join(", ")}, updated_at = ? WHERE id = ?`)
+      .bind(...binds, nowIso(), accountId)
+      .run();
+  });
 
 export const updateAccountProfile = async (
   db: D1Database,

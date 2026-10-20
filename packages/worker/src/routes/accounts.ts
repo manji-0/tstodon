@@ -1,4 +1,11 @@
-import { FediRole, InstanceIdentity, RemoteActor, Visibility } from "@tstodon/domain";
+import {
+  FediRole,
+  InstanceIdentity,
+  QuoteApprovalPolicy,
+  RemoteActor,
+  Visibility,
+} from "@tstodon/domain";
+import { schemaResult } from "@tstodon/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
@@ -8,9 +15,14 @@ import {
   findAccountByUsername,
   searchAccounts,
   setAccountLocked,
+  updateAccountDefaults,
   updateAccountProfile,
 } from "../account-store";
-import { findAccountProfile, upsertAccountProfile } from "../account-profile-store";
+import {
+  EMPTY_ACCOUNT_PROFILE,
+  findAccountProfile,
+  upsertAccountProfile,
+} from "../account-profile-store";
 import { InstanceLimits } from "@tstodon/core";
 import { authenticate } from "../auth";
 import { attachFilteredToStatuses } from "../filter-match";
@@ -26,10 +38,12 @@ import {
   setPaginationLinks,
   readBody,
   readOptionalBody,
+  readUnknownBody,
   requireSession,
   requireUser,
 } from "../http";
 import {
+  accountSource,
   mastodonAccountDocument,
   mastodonRelationship,
   mastodonRemoteAccount,
@@ -85,18 +99,17 @@ accountRoutes.get("/api/v1/accounts/verify_credentials", async (c) => {
   if (session.isErr()) {
     return jsonAuthError(c, session.error);
   }
-  const document = await mastodonAccountDocument(c.env, identity.value, session.value.account);
+  const [document, profile] = await Promise.all([
+    mastodonAccountDocument(c.env, identity.value, session.value.account),
+    findAccountProfile(c.env.DB, session.value.account.id),
+  ]);
   return c.json({
     ...document,
     role: FediRole.toMastodon(session.value.role),
-    source: {
-      privacy:
-        session.value.account.defaultPostVisibility.kind === "FollowersOnly" ? "private" : "public",
-      sensitive: false,
-      language: "",
-      note: "",
-      fields: [],
-    },
+    source: accountSource(
+      session.value.account,
+      profile.isOk() ? profile.value : EMPTY_ACCOUNT_PROFILE,
+    ),
   });
 });
 
@@ -143,9 +156,55 @@ accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const body = await readBody(c, UpdateCredentialsBodySchema);
+  const rawBody = await readUnknownBody(c);
+  const body = schemaResult(UpdateCredentialsBodySchema)(rawBody).mapErr(() => ({
+    kind: "ValidationError" as const,
+  }));
   if (body.isErr()) {
     return jsonValidationError(c);
+  }
+  // `source[privacy]` and `source[quote_policy]` arrive as flat form keys or
+  // nested in a JSON `source` object.
+  const flat = (rawBody ?? {}) as Record<string, unknown>;
+  const sourceKey = (key: "privacy" | "quote_policy"): string | undefined => {
+    const flatValue = flat[`source[${key}]`];
+    if (typeof flatValue === "string" && flatValue.trim().length > 0) {
+      return flatValue.trim();
+    }
+    return body.value.source?.[key]?.trim();
+  };
+  const privacyRaw = sourceKey("privacy");
+  const quotePolicyRaw = sourceKey("quote_policy");
+  const sourceVisibility =
+    privacyRaw === undefined ? undefined : Visibility.fromMastodon(privacyRaw);
+  if (sourceVisibility?.isErr()) {
+    return c.json({ error: "Invalid source[privacy]", kind: "ValidationError" }, 422);
+  }
+  if (
+    quotePolicyRaw !== undefined &&
+    quotePolicyRaw !== "public" &&
+    quotePolicyRaw !== "followers" &&
+    quotePolicyRaw !== "nobody"
+  ) {
+    return c.json({ error: "Invalid source[quote_policy]", kind: "ValidationError" }, 422);
+  }
+  if (sourceVisibility || quotePolicyRaw !== undefined) {
+    const defaults = await updateAccountDefaults(c.env.DB, user.value.id, {
+      ...(sourceVisibility?.isOk() ? { visibility: sourceVisibility.value } : {}),
+      ...(quotePolicyRaw === undefined
+        ? {}
+        : {
+            quotePolicy:
+              quotePolicyRaw === "followers"
+                ? QuoteApprovalPolicy.Followers
+                : quotePolicyRaw === "nobody"
+                  ? QuoteApprovalPolicy.Nobody
+                  : QuoteApprovalPolicy.Public,
+          }),
+    });
+    if (defaults.isErr()) {
+      return jsonRepositoryError(c, defaults.error.message);
+    }
   }
   const displayName =
     body.value.display_name && body.value.display_name.trim().length > 0
@@ -204,7 +263,17 @@ accountRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
   if (latest.isErr() || !latest.value) {
     return jsonRepositoryError(c, "account missing after update");
   }
-  return c.json(await mastodonAccountDocument(c.env, identity.value, latest.value));
+  const [document, profileAfter] = await Promise.all([
+    mastodonAccountDocument(c.env, identity.value, latest.value),
+    findAccountProfile(c.env.DB, user.value.id),
+  ]);
+  return c.json({
+    ...document,
+    source: accountSource(
+      latest.value,
+      profileAfter.isOk() ? profileAfter.value : EMPTY_ACCOUNT_PROFILE,
+    ),
+  });
 });
 
 accountRoutes.get("/api/v1/accounts/lookup", async (c) => {

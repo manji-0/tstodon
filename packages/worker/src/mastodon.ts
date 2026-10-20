@@ -95,6 +95,27 @@ export const mastodonAccount = (
   };
 };
 
+/**
+ * Mastodon's `source` (CredentialAccount only): the settings behind the
+ * rendered account, with the raw bio and fields.
+ */
+export const accountSource = (
+  account: LocalAccount,
+  profile: AccountProfile = EMPTY_ACCOUNT_PROFILE,
+): Record<string, unknown> => ({
+  privacy: Visibility.toMastodon(account.defaultPostVisibility),
+  sensitive: false,
+  language: null,
+  note: profile.note,
+  fields: profile.fields.map((field) => ({
+    name: field.name,
+    value: field.value,
+    verified_at: null,
+  })),
+  follow_requests_count: 0,
+  quote_policy: quotePolicyName(account.defaultQuotePolicy),
+});
+
 export const mastodonAccountDocument = async (
   env: Env,
   identity: InstanceIdentity,

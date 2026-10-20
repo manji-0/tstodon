@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Credential `source` (privacy/quote_policy defaults) and `update_credentials` support
 - Quote posts (`quoted_status_id`, policy, quotes list, revoke, document fields)
 - `favourited_by`/`reblogged_by` pagination on engagement row ids
 - `Link` pagination headers on notifications, favourites, and bookmarks

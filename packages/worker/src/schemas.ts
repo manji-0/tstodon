@@ -297,6 +297,12 @@ export const UpdateCredentialsBodySchema = z.object({
   fields: z
     .array(z.object({ name: z.string().optional(), value: z.string().optional() }))
     .optional(),
+  source: z
+    .object({
+      privacy: z.string().optional(),
+      quote_policy: z.string().optional(),
+    })
+    .optional(),
 });
 
 export const MastodonAccountPreviewSchema = z.object({
