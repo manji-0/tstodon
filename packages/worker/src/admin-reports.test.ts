@@ -277,4 +277,28 @@ describe("admin reports", () => {
     });
     expect(missing.status).toBe(404);
   });
+
+  it("refuses to keep rules on a report that is no longer a violation", async () => {
+    const admin = "reports6-admin@example.com";
+    const target = await credentials("reports6-target@example.com");
+    const filed = await reportWithRules("reports6-reporter@example.com", target.id);
+
+    // Changing the category away from violation without clearing them is 422.
+    const kept = await json(`/api/v1/admin/reports/${filed.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth(admin, { admin: true })) },
+      body: JSON.stringify({ category: "spam" }),
+    });
+    expect(kept.status).toBe(422);
+    // Clearing them explicitly is accepted.
+    const cleared = await json(`/api/v1/admin/reports/${filed.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth(admin, { admin: true })) },
+      body: JSON.stringify({ category: "spam", rule_ids: [] }),
+    });
+    expect(cleared.status).toBe(200);
+    const document = read(ReportSchema, cleared.body);
+    expect(document.category).toBe("spam");
+    expect(document.rules).toEqual([]);
+  });
 });

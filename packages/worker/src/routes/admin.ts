@@ -910,9 +910,25 @@ adminRoutes.put("/api/v1/admin/reports/:id", async (c) => {
       422,
     );
   }
-  const ruleIds = [...reportRuleIds(body.value, undefined), ...rawRuleIds];
-  const uniqueRules = [...new Set(ruleIds)];
+  const providedRules = [...reportRuleIds(body.value, undefined), ...rawRuleIds];
+  const uniqueRules = [...new Set(providedRules)];
   if (uniqueRules.length > 0 && category !== "violation") {
+    return c.json(
+      { error: "Validation failed: Rule ids must be blank", kind: "ValidationError" },
+      422,
+    );
+  }
+  // Mastodon validates `rule_ids` on any category change: leaving `violation`
+  // without clearing them is refused, so rules never linger on a report that is
+  // no longer a violation.
+  const changedCategory = category !== reported.value.category;
+  const rulesProvided = body.value.rule_ids !== undefined || rawRuleIds.length > 0;
+  if (
+    changedCategory &&
+    category !== "violation" &&
+    !rulesProvided &&
+    reported.value.ruleIds.length > 0
+  ) {
     return c.json(
       { error: "Validation failed: Rule ids must be blank", kind: "ValidationError" },
       422,
