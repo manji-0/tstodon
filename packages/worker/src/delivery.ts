@@ -28,7 +28,12 @@ import { indexMissingRemoteTags } from "./remote-status-store";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { hostnameOf } from "./domain-block-store";
 import { listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
-import { federatesWithHost, federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
+import {
+  allowListAdmits,
+  federatesWithHost,
+  federationAllowHosts,
+  parseInstanceIdentity,
+} from "./runtime-config";
 import { findStatusById } from "./status-store";
 import { publishToAccount } from "./stream-publish";
 
@@ -328,11 +333,7 @@ export const processOutboxJob = async (
           candidateInboxes.filter((inbox) => {
             try {
               const host = new URL(inbox).host.toLowerCase();
-              return (
-                host !== sameHost &&
-                !suspended.has(host) &&
-                (allowHosts.size === 0 || allowHosts.has(host))
-              );
+              return host !== sameHost && !suspended.has(host) && allowListAdmits(allowHosts, host);
             } catch {
               return false;
             }

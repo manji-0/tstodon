@@ -4,7 +4,7 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
 import { isFederatedHostRefused } from "./federated-fetch";
-import { federatesWithHost } from "./runtime-config";
+import { allowListAdmits, federatesWithHost } from "./runtime-config";
 
 const auth = (email: string, options?: { admin?: boolean }): Promise<Record<string, string>> =>
   accessAuthHeaders(email, options);
@@ -164,5 +164,13 @@ describe("admin domain allows", () => {
         allowHosts: new Set(["friend.example"]),
       }),
     ).toBe(false);
+  });
+
+  it("matches a host:port authority by its hostname", () => {
+    const allow = new Set(["127.0.0.1", "peer.example"]);
+    expect(allowListAdmits(allow, "127.0.0.1:8792")).toBe(true);
+    expect(allowListAdmits(allow, "PEER.example")).toBe(true);
+    expect(allowListAdmits(allow, "other.example:443")).toBe(false);
+    expect(allowListAdmits(new Set(), "anything.example")).toBe(true);
   });
 });

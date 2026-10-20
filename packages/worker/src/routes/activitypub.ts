@@ -40,7 +40,7 @@ import {
   upsertRemoteFavourite,
 } from "../remote-interaction-store";
 import { enqueueTargetedActivity } from "../delivery";
-import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
+import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import { quotedStatusUri } from "../quote-uri";
 import {
   ActivityJsonSchema,
@@ -296,7 +296,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     }
     // Limited federation: an actor outside the allow list never federates here.
     const remoteHost = remote.value.domain.toLowerCase();
-    if (suspended.has(remoteHost) || (allowHosts.size > 0 && !allowHosts.has(remoteHost))) {
+    if (suspended.has(remoteHost) || !allowListAdmits(allowHosts, remoteHost)) {
       return c.json(
         { error: "This instance does not federate with that domain", kind: "Forbidden" },
         403,

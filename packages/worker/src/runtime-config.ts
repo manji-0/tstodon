@@ -249,11 +249,18 @@ export const federationAllowHosts = async (env: Env): Promise<ReadonlySet<string
   return new Set([...configured, ...stored.value]);
 };
 
-/** True when this host may federate: no allow list, or the host is on it. */
-export const federatesWithHost = async (env: Env, hostname: string): Promise<boolean> => {
-  const allow = await federationAllowHosts(env);
-  return allow.size === 0 || allow.has(hostname.toLowerCase());
+/**
+ * True when the allow list is empty or names this host. The list holds
+ * hostnames, so a `host:port` authority also matches by its hostname.
+ */
+export const allowListAdmits = (allow: ReadonlySet<string>, host: string): boolean => {
+  const normalized = host.toLowerCase();
+  return allow.size === 0 || allow.has(normalized) || allow.has(normalized.replace(/:\d+$/, ""));
 };
+
+/** True when this host may federate: no allow list, or the host is on it. */
+export const federatesWithHost = async (env: Env, hostname: string): Promise<boolean> =>
+  allowListAdmits(await federationAllowHosts(env), hostname);
 
 /** True when an allowlist is configured, which Mastodon calls limited federation. */
 export const isLimitedFederation = async (env: Env): Promise<boolean> =>
