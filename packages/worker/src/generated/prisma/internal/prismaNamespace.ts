@@ -446,6 +446,7 @@ export const ModelName = {
   status_mentions: "status_mentions",
   link_cards: "link_cards",
   scheduled_statuses: "scheduled_statuses",
+  trend_reviews: "trend_reviews",
   statuses: "statuses",
 } as const;
 
@@ -522,6 +523,7 @@ export type TypeMap<
       | "status_mentions"
       | "link_cards"
       | "scheduled_statuses"
+      | "trend_reviews"
       | "statuses";
     txIsolationLevel: TransactionIsolationLevel;
   };
@@ -4680,6 +4682,82 @@ export type TypeMap<
         };
       };
     };
+    trend_reviews: {
+      payload: Prisma.$trend_reviewsPayload<ExtArgs>;
+      fields: Prisma.trend_reviewsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.trend_reviewsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$trend_reviewsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.trend_reviewsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$trend_reviewsPayload>;
+        };
+        findFirst: {
+          args: Prisma.trend_reviewsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$trend_reviewsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.trend_reviewsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$trend_reviewsPayload>;
+        };
+        findMany: {
+          args: Prisma.trend_reviewsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$trend_reviewsPayload>[];
+        };
+        create: {
+          args: Prisma.trend_reviewsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$trend_reviewsPayload>;
+        };
+        createMany: {
+          args: Prisma.trend_reviewsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.trend_reviewsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$trend_reviewsPayload>[];
+        };
+        delete: {
+          args: Prisma.trend_reviewsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$trend_reviewsPayload>;
+        };
+        update: {
+          args: Prisma.trend_reviewsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$trend_reviewsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.trend_reviewsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.trend_reviewsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.trend_reviewsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$trend_reviewsPayload>[];
+        };
+        upsert: {
+          args: Prisma.trend_reviewsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$trend_reviewsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Trend_reviewsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateTrend_reviews>;
+        };
+        groupBy: {
+          args: Prisma.trend_reviewsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Trend_reviewsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.trend_reviewsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Trend_reviewsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
     statuses: {
       payload: Prisma.$statusesPayload<ExtArgs>;
       fields: Prisma.statusesFieldRefs;
@@ -5424,6 +5502,16 @@ export const Scheduled_statusesScalarFieldEnum = {
 export type Scheduled_statusesScalarFieldEnum =
   (typeof Scheduled_statusesScalarFieldEnum)[keyof typeof Scheduled_statusesScalarFieldEnum];
 
+export const Trend_reviewsScalarFieldEnum = {
+  kind: "kind",
+  target: "target",
+  state: "state",
+  reviewed_at: "reviewed_at",
+} as const;
+
+export type Trend_reviewsScalarFieldEnum =
+  (typeof Trend_reviewsScalarFieldEnum)[keyof typeof Trend_reviewsScalarFieldEnum];
+
 export const StatusesScalarFieldEnum = {
   id: "id",
   account_id: "account_id",
@@ -5691,6 +5779,7 @@ export type GlobalOmitConfig = {
   status_mentions?: Prisma.status_mentionsOmit;
   link_cards?: Prisma.link_cardsOmit;
   scheduled_statuses?: Prisma.scheduled_statusesOmit;
+  trend_reviews?: Prisma.trend_reviewsOmit;
   statuses?: Prisma.statusesOmit;
 };
 

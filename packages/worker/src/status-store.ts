@@ -820,6 +820,7 @@ export const extractHashtags = (text: string): string[] => {
 export const listTrendingTags = async (
   db: D1Database,
   limit: number,
+  options: Readonly<{ excluded?: ReadonlySet<string>; offset?: number }> = {},
 ): Promise<Result<ReadonlyArray<{ name: string; uses: number }>, RepositoryError>> =>
   runD1(async () => {
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -837,15 +838,18 @@ export const listTrendingTags = async (
         counts.set(tag, (counts.get(tag) ?? 0) + 1);
       }
     }
+    const offset = options.offset ?? 0;
     return [...counts.entries()]
+      .filter(([name]) => !options.excluded?.has(name))
       .map(([name, uses]) => ({ name, uses }))
       .toSorted((a, b) => b.uses - a.uses || a.name.localeCompare(b.name))
-      .slice(0, limit);
+      .slice(offset, offset + limit);
   });
 
 export const listTrendingStatuses = async (
   db: D1Database,
   limit: number,
+  options: Readonly<{ includeRejected?: boolean; offset?: number }> = {},
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -856,10 +860,11 @@ export const listTrendingStatuses = async (
             (SELECT COUNT(*) FROM statuses r WHERE r.reblog_of_id = statuses.id) AS reblog_count
          FROM statuses
          WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL} ${SEARCHABLE_ACCOUNTS_SQL} AND created_at >= ?
+           ${options.includeRejected ? "" : "AND statuses.id NOT IN (SELECT target FROM trend_reviews WHERE kind = 'Status' AND state = 'Rejected')"}
          ORDER BY (favourite_count + reblog_count) DESC, id DESC
-         LIMIT ?`,
+         LIMIT ? OFFSET ?`,
       )
-      .bind(since, limit)
+      .bind(since, limit, options.offset ?? 0)
       .all();
     return hydrateStatusRows(db, results ?? []);
   });

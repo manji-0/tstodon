@@ -292,6 +292,11 @@ export type link_cards = Prisma.link_cardsModel;
  */
 export type scheduled_statuses = Prisma.scheduled_statusesModel;
 /**
+ * Model trend_reviews
+ *
+ */
+export type trend_reviews = Prisma.trend_reviewsModel;
+/**
  * Model statuses
  *
  */

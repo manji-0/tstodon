@@ -24,6 +24,15 @@ const queryLimitMax = (raw: string | undefined, fallback: number, max: number): 
 export const queryLimit = (raw: string | undefined, fallback = 20): number =>
   queryLimitMax(raw, fallback, 40);
 
+/** Trends: tags and links default to 10 and cap at 20, as Mastodon does. */
+export const queryTrendsLimit = (raw: string | undefined): number => queryLimitMax(raw, 10, 20);
+
+/** Mastodon's `offset` for the trends lists. */
+export const queryOffset = (raw: string | undefined): number => {
+  const parsed = Number.parseInt(raw ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+
 /** Account collections (followers, blocks, directory…): 40 by default, capped at 80. */
 export const queryAccountsLimit = (raw: string | undefined, fallback = 40): number =>
   queryLimitMax(raw, fallback, 80);

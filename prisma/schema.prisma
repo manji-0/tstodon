@@ -642,6 +642,16 @@ model scheduled_statuses {
   @@index([scheduled_at], map: "idx_scheduled_statuses_due")
 }
 
+model trend_reviews {
+  kind        String
+  target      String
+  state       String
+  reviewed_at String
+
+  @@id([kind, target])
+  @@index([kind, state], map: "idx_trend_reviews_state")
+}
+
 model statuses {
   id                                               String @id
   account_id                                       String

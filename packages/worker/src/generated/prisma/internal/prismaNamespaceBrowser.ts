@@ -103,6 +103,7 @@ export const ModelName = {
   status_mentions: "status_mentions",
   link_cards: "link_cards",
   scheduled_statuses: "scheduled_statuses",
+  trend_reviews: "trend_reviews",
   statuses: "statuses",
 } as const;
 
@@ -748,6 +749,16 @@ export const Scheduled_statusesScalarFieldEnum = {
 
 export type Scheduled_statusesScalarFieldEnum =
   (typeof Scheduled_statusesScalarFieldEnum)[keyof typeof Scheduled_statusesScalarFieldEnum];
+
+export const Trend_reviewsScalarFieldEnum = {
+  kind: "kind",
+  target: "target",
+  state: "state",
+  reviewed_at: "reviewed_at",
+} as const;
+
+export type Trend_reviewsScalarFieldEnum =
+  (typeof Trend_reviewsScalarFieldEnum)[keyof typeof Trend_reviewsScalarFieldEnum];
 
 export const StatusesScalarFieldEnum = {
   id: "id",

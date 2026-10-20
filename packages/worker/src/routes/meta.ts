@@ -19,7 +19,6 @@ import {
   type AnnouncementReactionState,
 } from "../announcement-store";
 import { customEmojiJson, emojisInText, type CustomEmoji } from "../emoji";
-import { cardDocument, listCachedLinkCards } from "../link-card";
 import { loadCustomEmojis } from "../custom-emoji-store";
 import {
   hideConversation,
@@ -32,9 +31,13 @@ import {
   jsonValidationError,
   queryAccountsLimit,
   queryLimit,
+  queryOffset,
+  queryTrendsLimit,
   readBody,
   requireUser,
 } from "../http";
+import { listTrendingLinks } from "../trend-store";
+import { rejectedTrendTargets } from "../trend-review-store";
 import {
   mastodonAccountDocument,
   mastodonStatus,
@@ -293,70 +296,20 @@ metaRoutes.get("/api/v2/suggestions", async (c) => {
   return c.json(result.map((account) => ({ source: "global", account })));
 });
 
-const LINK_PATTERN = /https?:\/\/[^\s<>"')\]]+/g;
-
-const linkCard = (url: string): Record<string, unknown> | undefined => {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return undefined;
-  }
-  const host = parsed.host;
-  return {
-    url,
-    title: host,
-    description: "",
-    type: "link",
-    author_name: "",
-    author_url: "",
-    provider_name: host,
-    provider_url: `${parsed.protocol}//${host}`,
-    html: "",
-    width: 0,
-    height: 0,
-    image: null,
-    blurhash: null,
-    embed_url: "",
-  };
-};
-
 metaRoutes.get("/api/v1/trends/links", async (c) => {
-  const limit = queryLimit(c.req.query("limit"), 10);
-  const requestedOffset = Number.parseInt(c.req.query("offset") ?? "0", 10);
-  const offset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
-  const statuses = await listTrendingStatuses(c.env.DB, 100);
-  if (statuses.isErr()) {
-    return jsonRepositoryError(c, statuses.error.message);
+  const rejected = await rejectedTrendTargets(c.env.DB, "Link");
+  if (rejected.isErr()) {
+    return jsonRepositoryError(c, rejected.error.message);
   }
-  const counts = new Map<string, number>();
-  for (const status of statuses.value) {
-    if (status.kind !== "LocalNote") {
-      continue;
-    }
-    for (const match of status.text.matchAll(LINK_PATTERN)) {
-      const url = match[0].replace(/[.,;:!?]+$/, "");
-      counts.set(url, (counts.get(url) ?? 0) + 1);
-    }
+  const links = await listTrendingLinks(c.env.DB, {
+    limit: queryTrendsLimit(c.req.query("limit")),
+    offset: queryOffset(c.req.query("offset")),
+    excluded: rejected.value,
+  });
+  if (links.isErr()) {
+    return jsonRepositoryError(c, links.error.message);
   }
-  const ranked = [...counts.entries()]
-    .toSorted((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-    .slice(offset, offset + limit);
-  // Prefer the unfurled card when the link has been previewed, so trends
-  // report real titles, descriptions, and images.
-  const cached = await listCachedLinkCards(
-    c.env.DB,
-    ranked.map(([url]) => url),
-  );
-  const cards = [];
-  for (const [url] of ranked) {
-    const preview = cached.get(url);
-    const card = preview ? cardDocument(preview) : linkCard(url);
-    if (card) {
-      cards.push(card);
-    }
-  }
-  return c.json(cards);
+  return c.json(links.value.map((link) => link.document));
 });
 
 metaRoutes.get("/api/v1/markers", async (c) => {
@@ -514,12 +467,19 @@ const trendingTagDocuments = async (
   return documents;
 };
 
-metaRoutes.get("/api/v1/trends", async (c) => {
+const trendingTagsResponse = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const tags = await listTrendingTags(c.env.DB, queryLimit(c.req.query("limit"), 10));
+  const rejected = await rejectedTrendTargets(c.env.DB, "Tag");
+  if (rejected.isErr()) {
+    return jsonRepositoryError(c, rejected.error.message);
+  }
+  const tags = await listTrendingTags(c.env.DB, queryTrendsLimit(c.req.query("limit")), {
+    excluded: rejected.value,
+    offset: queryOffset(c.req.query("offset")),
+  });
   if (tags.isErr()) {
     return jsonRepositoryError(c, tags.error.message);
   }
@@ -530,32 +490,19 @@ metaRoutes.get("/api/v1/trends", async (c) => {
       tags.value.map((tag) => tag.name),
     ),
   );
-});
+};
 
-metaRoutes.get("/api/v1/trends/tags", async (c) => {
-  const identity = parseInstanceIdentity(c.env);
-  if (identity.isErr()) {
-    return c.json(identity.error, 500);
-  }
-  const tags = await listTrendingTags(c.env.DB, queryLimit(c.req.query("limit"), 10));
-  if (tags.isErr()) {
-    return jsonRepositoryError(c, tags.error.message);
-  }
-  return c.json(
-    await trendingTagDocuments(
-      c,
-      identity.value,
-      tags.value.map((tag) => tag.name),
-    ),
-  );
-});
+metaRoutes.get("/api/v1/trends", trendingTagsResponse);
+metaRoutes.get("/api/v1/trends/tags", trendingTagsResponse);
 
 metaRoutes.get("/api/v1/trends/statuses", async (c) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const statuses = await listTrendingStatuses(c.env.DB, queryLimit(c.req.query("limit"), 20));
+  const statuses = await listTrendingStatuses(c.env.DB, queryLimit(c.req.query("limit"), 20), {
+    offset: queryOffset(c.req.query("offset")),
+  });
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }

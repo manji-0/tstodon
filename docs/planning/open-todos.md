@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Trend review records and admin approve/reject for tags, links, and statuses
 - Row ids + `Link` pagination for blocks, mutes, endorsements, follow requests
 - Scheduled statuses (create via `scheduled_at`, CRUD, cron publish)
 - `GET /api/v1/preferences`
