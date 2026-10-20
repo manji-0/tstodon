@@ -112,6 +112,7 @@ import {
   findStatusQuotePolicy,
   isQuotePolicy,
   listQuotingStatusIds,
+  setStatusQuotePolicy,
   revokeStatusQuote,
   type QuotePolicy,
 } from "../quote-store";
@@ -889,6 +890,20 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     const poll = await replacePollOptions(c.env.DB, pollUpdate);
     if (poll.isErr()) {
       return jsonRepositoryError(c, poll.error.message);
+    }
+  }
+  const policyEdit = (body.value.quote_approval_policy ?? "").trim().toLowerCase();
+  if (policyEdit.length > 0) {
+    if (!isQuotePolicy(policyEdit)) {
+      return c.json({ error: "Invalid quote_approval_policy", kind: "ValidationError" }, 422);
+    }
+    const stored = await setStatusQuotePolicy(
+      c.env.DB,
+      existing.id,
+      visibilityIsPublic(revised.visibility) ? (policyEdit as QuotePolicy) : "nobody",
+    );
+    if (stored.isErr()) {
+      return jsonRepositoryError(c, stored.error.message);
     }
   }
   const media = await replaceStatusMedia(c.env.DB, existing.id, user.value.id, revised.mediaIds);

@@ -242,4 +242,35 @@ describe("quote posts", () => {
     expect(after.quote?.state).toBe("deleted");
     expect(after.quote?.quoted_status).toBeNull();
   });
+
+  it("changes the policy on edit", async () => {
+    const author = "quote-edit-author@example.com";
+    const other = "quote-edit-other@example.com";
+    const original = await create(author, { status: "quotable until edited" });
+
+    const edited = await json(`/api/v1/statuses/${original.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth(author)) },
+      body: JSON.stringify({ quote_approval_policy: "nobody" }),
+    });
+    expect(edited.status).toBe(200);
+
+    const denied = await post(other, {
+      status: "no longer allowed",
+      quoted_status_id: original.id,
+    });
+    expect(denied.status).toBe(404);
+
+    const allowedAgain = await json(`/api/v1/statuses/${original.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth(author)) },
+      body: JSON.stringify({ quote_approval_policy: "public" }),
+    });
+    expect(allowedAgain.status).toBe(200);
+    const accepted = await create(other, {
+      status: "allowed again",
+      quoted_status_id: original.id,
+    });
+    expect(accepted.quote?.state).toBe("accepted");
+  });
 });
