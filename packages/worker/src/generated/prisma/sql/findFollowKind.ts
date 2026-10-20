@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param targetId
  */
 export const findFollowKind = $runtime.makeTypedQueryFactory(
-  "SELECT kind FROM follows WHERE follower_account_id = $1 AND target_account_id = $2",
+  "SELECT kind, reblogs, notify, languages_json\nFROM follows WHERE follower_account_id = $1 AND target_account_id = $2",
 ) as (
   followerId: string,
   targetId: string,
@@ -19,5 +19,8 @@ export namespace findFollowKind {
   export type Parameters = [followerId: string, targetId: string];
   export type Result = {
     kind: string;
+    reblogs: number;
+    notify: number;
+    languages_json: string;
   };
 }

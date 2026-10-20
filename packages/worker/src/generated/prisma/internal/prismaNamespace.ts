@@ -4966,6 +4966,9 @@ export const FollowsScalarFieldEnum = {
   follower_account_id: "follower_account_id",
   target_account_id: "target_account_id",
   kind: "kind",
+  reblogs: "reblogs",
+  notify: "notify",
+  languages_json: "languages_json",
   created_at: "created_at",
 } as const;
 

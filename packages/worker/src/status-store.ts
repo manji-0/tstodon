@@ -449,13 +449,48 @@ export const listHomeStatuses = async (
   runD1(async () => {
     const suppressed = `AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}`;
     const { where, order, binds } = cursorFragment(cursor);
+    // Followers who turned reblogs off keep their own boosts out of the feed,
+    // and a follow with `languages[]` only keeps statuses in those languages
+    // (statuses without a language still pass, as in Mastodon).
     const sql = `SELECT ${statusSelect} FROM statuses
          WHERE visibility != 'direct' AND (account_id = ? OR account_id IN (
            SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
-         )) ${suppressed} ${where} ${order} LIMIT ?`;
+         ))
+         ${suppressed}
+         AND (
+           account_id = ? OR kind <> 'LocalReblog'
+           OR account_id NOT IN (
+             SELECT target_account_id FROM follows
+             WHERE follower_account_id = ? AND kind = 'Accepted' AND reblogs = 0
+           )
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM follows f
+           WHERE f.follower_account_id = ? AND f.kind = 'Accepted'
+             AND f.target_account_id = statuses.account_id
+             AND f.languages_json <> '[]'
+             AND COALESCE(statuses.language, '') <> ''
+             AND statuses.language NOT IN (SELECT value FROM json_each(f.languages_json))
+         )
+         ${where} ${order} LIMIT ?`;
     const { results } = await db
       .prepare(sql)
-      .bind(accountId, accountId, accountId, accountId, accountId, nowIso(), ...binds, limit)
+      .bind(
+        accountId,
+        accountId,
+        // `SUPPRESSED_ACCOUNT_IDS_SQL` takes the viewer twice and its clock.
+        accountId,
+        accountId,
+        accountId,
+        nowIso(),
+        // Reblogs off: the viewer, then the follows being checked.
+        accountId,
+        accountId,
+        // Languages: the follow whose list is checked.
+        accountId,
+        ...binds,
+        limit,
+      )
       .all();
     return hydrateStatusRows(db, results ?? []);
   });

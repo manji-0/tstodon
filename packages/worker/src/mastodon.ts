@@ -499,8 +499,9 @@ export const mastodonRelationship = (
 ): Record<string, unknown> => ({
   id: targetId,
   following: flags.following,
-  showing_reblogs: flags.following,
-  notifying: false,
+  showing_reblogs: flags.showingReblogs,
+  notifying: flags.notifying,
+  languages: [...flags.languages],
   followed_by: flags.followedBy,
   blocking: flags.blocking,
   blocked_by: flags.blockedBy,

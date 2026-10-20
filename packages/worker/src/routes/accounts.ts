@@ -23,6 +23,7 @@ import {
   queryAccountsLimit,
   queryLimit,
   readBody,
+  readOptionalBody,
   requireSession,
   requireUser,
 } from "../http";
@@ -50,6 +51,7 @@ import {
   familiarFollowerIds,
   followAccount,
   followingAccountIds,
+  type FollowOptions,
   listBlockedAccounts,
   listEndorsements,
   listFollowers,
@@ -65,7 +67,7 @@ import {
 } from "../social-store";
 import { notifyAccount } from "../notify";
 import { listAccountStatusesFiltered, listPinnedStatuses } from "../status-store";
-import { isTruthy, UpdateCredentialsBodySchema } from "../schemas";
+import { FollowBodySchema, isTruthy, stringList, UpdateCredentialsBodySchema } from "../schemas";
 
 export const accountRoutes = new Hono<{ Bindings: Env }>();
 
@@ -527,12 +529,37 @@ accountRoutes.post("/api/v1/accounts/:id/follow", async (c) => {
   if (target.value.id === user.value.id) {
     return c.json({ error: "Cannot follow yourself", kind: "InvalidFollow" }, 400);
   }
+  // Mastodon's follow options: `reblogs`, `notify`, and `languages[]`.
+  const followBody = await readOptionalBody(c, FollowBodySchema);
+  if (followBody.isErr()) {
+    return jsonValidationError(c);
+  }
+  const languageValues = [
+    ...(c.req.queries("languages[]") ?? []),
+    ...(c.req.queries("languages") ?? []),
+    ...stringList(followBody.value.languages),
+  ]
+    .map((language) => language.trim().toLowerCase())
+    .filter((language) => /^[a-z]{2,3}(-[a-z0-9]+)?$/.test(language));
+  // The options arrive as form data; query parameters are accepted too.
+  const reblogsRaw = followBody.value.reblogs ?? c.req.query("reblogs");
+  const notifyRaw = followBody.value.notify ?? c.req.query("notify");
+  const followOptions: FollowOptions = {
+    ...(reblogsRaw === undefined ? {} : { reblogs: isTruthy(reblogsRaw) }),
+    ...(notifyRaw === undefined ? {} : { notify: isTruthy(notifyRaw) }),
+    ...(c.req.queries("languages[]") === undefined &&
+    c.req.queries("languages") === undefined &&
+    followBody.value.languages === undefined
+      ? {}
+      : { languages: [...new Set(languageValues)] }),
+  };
   const prior = await relationshipFlags(c.env.DB, user.value.id, target.value.id);
   const followed = await followAccount(
     c.env.DB,
     user.value.id,
     target.value.id,
     target.value.locked,
+    followOptions,
   );
   if (followed.isErr()) {
     return jsonRepositoryError(c, followed.error.message);

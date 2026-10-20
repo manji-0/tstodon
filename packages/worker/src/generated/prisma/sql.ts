@@ -354,6 +354,8 @@ export * from "./sql/listNotificationRequests";
 
 export * from "./sql/listNotifications";
 
+export * from "./sql/listNotifyingFollowerIds";
+
 export * from "./sql/listOutboundActivities";
 
 export * from "./sql/listPeerDomains";
@@ -493,6 +495,8 @@ export * from "./sql/upsertBlock";
 export * from "./sql/upsertConversationHide";
 
 export * from "./sql/upsertConversationRead";
+
+export * from "./sql/upsertFollowOptions";
 
 export * from "./sql/upsertLinkCard";
 

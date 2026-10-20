@@ -91,6 +91,7 @@ import {
   updateLocalNote,
 } from "../status-store";
 import { enqueueLinkCard } from "../link-card";
+import { notifyingFollowerIds } from "../social-store";
 import { findMediaById, parseMediaFocus, updateMediaMetadata } from "../media-store";
 import {
   muteStatusThread,
@@ -298,6 +299,24 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
       accountId: mentioned.id,
       fromAccountId: user.value.id,
       kind: "mention",
+      statusId: note.id,
+    });
+  }
+  // Followers who asked for notifications on this account's posts get a
+  // `status` notification, as in Mastodon; the notification policy still
+  // decides whether it is delivered or held.
+  const notifying = await notifyingFollowerIds(c.env.DB, user.value.id);
+  if (notifying.isErr()) {
+    return jsonRepositoryError(c, notifying.error.message);
+  }
+  for (const followerId of notifying.value) {
+    if (followerId === user.value.id) {
+      continue;
+    }
+    await notifyAccount(c.env, {
+      accountId: followerId,
+      fromAccountId: user.value.id,
+      kind: "status",
       statusId: note.id,
     });
   }

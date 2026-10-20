@@ -1,10 +1,12 @@
 import { FollowRequest, LocalFollow } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
+import { z } from "zod";
 import { jsonStringArray, runD1, runD1Batch, sqlInJsonEach, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { hostnameOf } from "./domain-block-store";
 import { RemoteAccountId } from "./remote-account-id";
+import { parseJsonColumn } from "./schemas";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   authorizeFollowRequest as authorizeFollowRequestSql,
@@ -37,6 +39,8 @@ import {
   listFamiliarFollowerIds as listFamiliarFollowerIdsSql,
   listFollowers as listFollowersSql,
   listFollowingAccountIds as listFollowingAccountIdsSql,
+  listNotifyingFollowerIds as listNotifyingFollowerIdsSql,
+  upsertFollowOptions as upsertFollowOptionsSql,
   listStatusFavouritedByLocal as listStatusFavouritedByLocalSql,
   listStatusFavouritedByRemote as listStatusFavouritedByRemoteSql,
   listStatusRebloggedByLocal as listStatusRebloggedByLocalSql,
@@ -52,11 +56,19 @@ import {
   upsertMute as upsertMuteSql,
 } from "./generated/prisma/sql";
 
+/** Mastodon's per-follow options; omitted fields keep their defaults. */
+export type FollowOptions = Readonly<{
+  reblogs?: boolean;
+  notify?: boolean;
+  languages?: ReadonlyArray<string>;
+}>;
+
 export const followAccount = async (
   db: D1Database,
   followerId: string,
   targetId: string,
   targetLocked: boolean,
+  options: FollowOptions = {},
 ): Promise<Result<FollowRequest, RepositoryError>> =>
   runD1(async () => {
     const state = FollowRequest.initial("LocalFollower", targetLocked);
@@ -68,17 +80,44 @@ export const followAccount = async (
       db,
       insertFollowOrIgnoreSql(newEntityId(), followerId, targetId, followKind, nowIso()),
     );
+    const existing = await queryTyped<{
+      kind: string;
+      reblogs: number;
+      notify: number;
+      languages_json: string;
+    }>(db, findFollowKindSql(followerId, targetId));
+    const row = existing[0];
+    if (
+      options.reblogs !== undefined ||
+      options.notify !== undefined ||
+      options.languages !== undefined
+    ) {
+      // Following again updates the existing row, as Mastodon does.
+      await runTyped(
+        db,
+        upsertFollowOptionsSql(
+          followerId,
+          targetId,
+          (options.reblogs ?? (row ? row.reblogs !== 0 : true)) ? 1 : 0,
+          (options.notify ?? (row ? row.notify !== 0 : false)) ? 1 : 0,
+          JSON.stringify(
+            options.languages ??
+              (row
+                ? (parseJsonColumn(z.array(z.string()), row.languages_json).unwrapOr(
+                    [],
+                  ) as string[])
+                : []),
+          ),
+        ),
+      );
+    }
     if (inserted.length > 0) {
       return state;
     }
-    const existing = await queryTyped<{ kind: string }>(
-      db,
-      findFollowKindSql(followerId, targetId),
-    );
     return FollowRequest.parse({
       kind: "LocalFollower",
       targetLocked,
-      follow: existing[0]?.kind === "Accepted" ? LocalFollow.Accepted : LocalFollow.Pending,
+      follow: row?.kind === "Accepted" ? LocalFollow.Accepted : LocalFollow.Pending,
     }).unwrapOr(state);
   });
 
@@ -275,6 +314,10 @@ export type RelationshipFlags = Readonly<{
   endorsed: boolean;
   note: string;
   domainBlocking: boolean;
+  /** The viewer's follow options (absent while not following). */
+  showingReblogs: boolean;
+  notifying: boolean;
+  languages: ReadonlyArray<string>;
 }>;
 
 export const relationshipFlags = async (
@@ -297,7 +340,9 @@ export const relationshipFlags = async (
   if (batched.isErr()) {
     return err(batched.error);
   }
-  const outgoing = batched.value[0]?.results?.[0] as { kind: string } | undefined;
+  const outgoing = batched.value[0]?.results?.[0] as
+    | { kind: string; reblogs: number; notify: number; languages_json: string }
+    | undefined;
   const incoming = batched.value[1]?.results?.[0] as { kind: string } | undefined;
   const blocking = (batched.value[2]?.results?.length ?? 0) > 0;
   const blockedBy = (batched.value[3]?.results?.length ?? 0) > 0;
@@ -309,6 +354,11 @@ export const relationshipFlags = async (
   const domainBlocking = (batched.value[7]?.results?.length ?? 0) > 0;
   return ok({
     following: outgoing?.kind === "Accepted",
+    showingReblogs: outgoing ? outgoing.reblogs !== 0 : true,
+    notifying: outgoing ? outgoing.notify !== 0 : false,
+    languages: outgoing
+      ? (parseJsonColumn(z.array(z.string()), outgoing.languages_json).unwrapOr([]) as string[])
+      : [],
     followedBy: incoming?.kind === "Accepted",
     requested: outgoing?.kind === "Pending",
     blocking,
@@ -889,6 +939,19 @@ export const listFollowers = async (
       listFollowersSql(accountId, limit),
     );
     return results.map((row) => row.follower_account_id);
+  });
+
+/** Local followers who asked for a notification on every new status. */
+export const notifyingFollowerIds = async (
+  db: D1Database,
+  accountId: string,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ follower_account_id: string }>(
+      db,
+      listNotifyingFollowerIdsSql(accountId),
+    );
+    return rows.map((row) => row.follower_account_id);
   });
 
 /** Every local account the viewer follows, for `following=true` searches. */

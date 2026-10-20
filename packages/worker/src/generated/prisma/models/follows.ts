@@ -19,8 +19,20 @@ export type followsModel = runtime.Types.Result.DefaultSelection<Prisma.$follows
 
 export type AggregateFollows = {
   _count: FollowsCountAggregateOutputType | null;
+  _avg: FollowsAvgAggregateOutputType | null;
+  _sum: FollowsSumAggregateOutputType | null;
   _min: FollowsMinAggregateOutputType | null;
   _max: FollowsMaxAggregateOutputType | null;
+};
+
+export type FollowsAvgAggregateOutputType = {
+  reblogs: number | null;
+  notify: number | null;
+};
+
+export type FollowsSumAggregateOutputType = {
+  reblogs: number | null;
+  notify: number | null;
 };
 
 export type FollowsMinAggregateOutputType = {
@@ -28,6 +40,9 @@ export type FollowsMinAggregateOutputType = {
   follower_account_id: string | null;
   target_account_id: string | null;
   kind: string | null;
+  reblogs: number | null;
+  notify: number | null;
+  languages_json: string | null;
   created_at: string | null;
 };
 
@@ -36,6 +51,9 @@ export type FollowsMaxAggregateOutputType = {
   follower_account_id: string | null;
   target_account_id: string | null;
   kind: string | null;
+  reblogs: number | null;
+  notify: number | null;
+  languages_json: string | null;
   created_at: string | null;
 };
 
@@ -44,8 +62,21 @@ export type FollowsCountAggregateOutputType = {
   follower_account_id: number;
   target_account_id: number;
   kind: number;
+  reblogs: number;
+  notify: number;
+  languages_json: number;
   created_at: number;
   _all: number;
+};
+
+export type FollowsAvgAggregateInputType = {
+  reblogs?: true;
+  notify?: true;
+};
+
+export type FollowsSumAggregateInputType = {
+  reblogs?: true;
+  notify?: true;
 };
 
 export type FollowsMinAggregateInputType = {
@@ -53,6 +84,9 @@ export type FollowsMinAggregateInputType = {
   follower_account_id?: true;
   target_account_id?: true;
   kind?: true;
+  reblogs?: true;
+  notify?: true;
+  languages_json?: true;
   created_at?: true;
 };
 
@@ -61,6 +95,9 @@ export type FollowsMaxAggregateInputType = {
   follower_account_id?: true;
   target_account_id?: true;
   kind?: true;
+  reblogs?: true;
+  notify?: true;
+  languages_json?: true;
   created_at?: true;
 };
 
@@ -69,6 +106,9 @@ export type FollowsCountAggregateInputType = {
   follower_account_id?: true;
   target_account_id?: true;
   kind?: true;
+  reblogs?: true;
+  notify?: true;
+  languages_json?: true;
   created_at?: true;
   _all?: true;
 };
@@ -113,6 +153,18 @@ export type FollowsAggregateArgs<
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    *
+   * Select which fields to average
+   **/
+  _avg?: FollowsAvgAggregateInputType;
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
+   * Select which fields to sum
+   **/
+  _sum?: FollowsSumAggregateInputType;
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
    * Select which fields to find the minimum value
    **/
   _min?: FollowsMinAggregateInputType;
@@ -142,6 +194,8 @@ export type followsGroupByArgs<
   take?: number;
   skip?: number;
   _count?: FollowsCountAggregateInputType | true;
+  _avg?: FollowsAvgAggregateInputType;
+  _sum?: FollowsSumAggregateInputType;
   _min?: FollowsMinAggregateInputType;
   _max?: FollowsMaxAggregateInputType;
 };
@@ -151,8 +205,13 @@ export type FollowsGroupByOutputType = {
   follower_account_id: string;
   target_account_id: string;
   kind: string;
+  reblogs: number;
+  notify: number;
+  languages_json: string;
   created_at: string;
   _count: FollowsCountAggregateOutputType | null;
+  _avg: FollowsAvgAggregateOutputType | null;
+  _sum: FollowsSumAggregateOutputType | null;
   _min: FollowsMinAggregateOutputType | null;
   _max: FollowsMaxAggregateOutputType | null;
 };
@@ -177,6 +236,9 @@ export type followsWhereInput = {
   follower_account_id?: Prisma.StringFilter<"follows"> | string;
   target_account_id?: Prisma.StringFilter<"follows"> | string;
   kind?: Prisma.StringFilter<"follows"> | string;
+  reblogs?: Prisma.IntFilter<"follows"> | number;
+  notify?: Prisma.IntFilter<"follows"> | number;
+  languages_json?: Prisma.StringFilter<"follows"> | string;
   created_at?: Prisma.StringFilter<"follows"> | string;
   accounts_follows_target_account_idToaccounts?: Prisma.XOR<
     Prisma.AccountsScalarRelationFilter,
@@ -193,6 +255,9 @@ export type followsOrderByWithRelationInput = {
   follower_account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
   kind?: Prisma.SortOrder;
+  reblogs?: Prisma.SortOrder;
+  notify?: Prisma.SortOrder;
+  languages_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   accounts_follows_target_account_idToaccounts?: Prisma.accountsOrderByWithRelationInput;
   accounts_follows_follower_account_idToaccounts?: Prisma.accountsOrderByWithRelationInput;
@@ -208,6 +273,9 @@ export type followsWhereUniqueInput = Prisma.AtLeast<
     follower_account_id?: Prisma.StringFilter<"follows"> | string;
     target_account_id?: Prisma.StringFilter<"follows"> | string;
     kind?: Prisma.StringFilter<"follows"> | string;
+    reblogs?: Prisma.IntFilter<"follows"> | number;
+    notify?: Prisma.IntFilter<"follows"> | number;
+    languages_json?: Prisma.StringFilter<"follows"> | string;
     created_at?: Prisma.StringFilter<"follows"> | string;
     accounts_follows_target_account_idToaccounts?: Prisma.XOR<
       Prisma.AccountsScalarRelationFilter,
@@ -226,10 +294,15 @@ export type followsOrderByWithAggregationInput = {
   follower_account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
   kind?: Prisma.SortOrder;
+  reblogs?: Prisma.SortOrder;
+  notify?: Prisma.SortOrder;
+  languages_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   _count?: Prisma.followsCountOrderByAggregateInput;
+  _avg?: Prisma.followsAvgOrderByAggregateInput;
   _max?: Prisma.followsMaxOrderByAggregateInput;
   _min?: Prisma.followsMinOrderByAggregateInput;
+  _sum?: Prisma.followsSumOrderByAggregateInput;
 };
 
 export type followsScalarWhereWithAggregatesInput = {
@@ -244,12 +317,18 @@ export type followsScalarWhereWithAggregatesInput = {
   follower_account_id?: Prisma.StringWithAggregatesFilter<"follows"> | string;
   target_account_id?: Prisma.StringWithAggregatesFilter<"follows"> | string;
   kind?: Prisma.StringWithAggregatesFilter<"follows"> | string;
+  reblogs?: Prisma.IntWithAggregatesFilter<"follows"> | number;
+  notify?: Prisma.IntWithAggregatesFilter<"follows"> | number;
+  languages_json?: Prisma.StringWithAggregatesFilter<"follows"> | string;
   created_at?: Prisma.StringWithAggregatesFilter<"follows"> | string;
 };
 
 export type followsCreateInput = {
   id: string;
   kind: string;
+  reblogs?: number;
+  notify?: number;
+  languages_json?: string;
   created_at?: string;
   accounts_follows_target_account_idToaccounts: Prisma.accountsCreateNestedOneWithoutFollows_follows_target_account_idToaccountsInput;
   accounts_follows_follower_account_idToaccounts: Prisma.accountsCreateNestedOneWithoutFollows_follows_follower_account_idToaccountsInput;
@@ -260,12 +339,18 @@ export type followsUncheckedCreateInput = {
   follower_account_id: string;
   target_account_id: string;
   kind: string;
+  reblogs?: number;
+  notify?: number;
+  languages_json?: string;
   created_at?: string;
 };
 
 export type followsUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  reblogs?: Prisma.IntFieldUpdateOperationsInput | number;
+  notify?: Prisma.IntFieldUpdateOperationsInput | number;
+  languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   accounts_follows_target_account_idToaccounts?: Prisma.accountsUpdateOneRequiredWithoutFollows_follows_target_account_idToaccountsNestedInput;
   accounts_follows_follower_account_idToaccounts?: Prisma.accountsUpdateOneRequiredWithoutFollows_follows_follower_account_idToaccountsNestedInput;
@@ -276,6 +361,9 @@ export type followsUncheckedUpdateInput = {
   follower_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  reblogs?: Prisma.IntFieldUpdateOperationsInput | number;
+  notify?: Prisma.IntFieldUpdateOperationsInput | number;
+  languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -284,12 +372,18 @@ export type followsCreateManyInput = {
   follower_account_id: string;
   target_account_id: string;
   kind: string;
+  reblogs?: number;
+  notify?: number;
+  languages_json?: string;
   created_at?: string;
 };
 
 export type followsUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  reblogs?: Prisma.IntFieldUpdateOperationsInput | number;
+  notify?: Prisma.IntFieldUpdateOperationsInput | number;
+  languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -298,6 +392,9 @@ export type followsUncheckedUpdateManyInput = {
   follower_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  reblogs?: Prisma.IntFieldUpdateOperationsInput | number;
+  notify?: Prisma.IntFieldUpdateOperationsInput | number;
+  languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -321,7 +418,15 @@ export type followsCountOrderByAggregateInput = {
   follower_account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
   kind?: Prisma.SortOrder;
+  reblogs?: Prisma.SortOrder;
+  notify?: Prisma.SortOrder;
+  languages_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+};
+
+export type followsAvgOrderByAggregateInput = {
+  reblogs?: Prisma.SortOrder;
+  notify?: Prisma.SortOrder;
 };
 
 export type followsMaxOrderByAggregateInput = {
@@ -329,6 +434,9 @@ export type followsMaxOrderByAggregateInput = {
   follower_account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
   kind?: Prisma.SortOrder;
+  reblogs?: Prisma.SortOrder;
+  notify?: Prisma.SortOrder;
+  languages_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
@@ -337,7 +445,15 @@ export type followsMinOrderByAggregateInput = {
   follower_account_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
   kind?: Prisma.SortOrder;
+  reblogs?: Prisma.SortOrder;
+  notify?: Prisma.SortOrder;
+  languages_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+};
+
+export type followsSumOrderByAggregateInput = {
+  reblogs?: Prisma.SortOrder;
+  notify?: Prisma.SortOrder;
 };
 
 export type followsCreateNestedManyWithoutAccounts_follows_target_account_idToaccountsInput = {
@@ -519,6 +635,9 @@ export type followsUncheckedUpdateManyWithoutAccounts_follows_follower_account_i
 export type followsCreateWithoutAccounts_follows_target_account_idToaccountsInput = {
   id: string;
   kind: string;
+  reblogs?: number;
+  notify?: number;
+  languages_json?: string;
   created_at?: string;
   accounts_follows_follower_account_idToaccounts: Prisma.accountsCreateNestedOneWithoutFollows_follows_follower_account_idToaccountsInput;
 };
@@ -527,6 +646,9 @@ export type followsUncheckedCreateWithoutAccounts_follows_target_account_idToacc
   id: string;
   follower_account_id: string;
   kind: string;
+  reblogs?: number;
+  notify?: number;
+  languages_json?: string;
   created_at?: string;
 };
 
@@ -547,6 +669,9 @@ export type followsCreateManyAccounts_follows_target_account_idToaccountsInputEn
 export type followsCreateWithoutAccounts_follows_follower_account_idToaccountsInput = {
   id: string;
   kind: string;
+  reblogs?: number;
+  notify?: number;
+  languages_json?: string;
   created_at?: string;
   accounts_follows_target_account_idToaccounts: Prisma.accountsCreateNestedOneWithoutFollows_follows_target_account_idToaccountsInput;
 };
@@ -555,6 +680,9 @@ export type followsUncheckedCreateWithoutAccounts_follows_follower_account_idToa
   id: string;
   target_account_id: string;
   kind: string;
+  reblogs?: number;
+  notify?: number;
+  languages_json?: string;
   created_at?: string;
 };
 
@@ -608,6 +736,9 @@ export type followsScalarWhereInput = {
   follower_account_id?: Prisma.StringFilter<"follows"> | string;
   target_account_id?: Prisma.StringFilter<"follows"> | string;
   kind?: Prisma.StringFilter<"follows"> | string;
+  reblogs?: Prisma.IntFilter<"follows"> | number;
+  notify?: Prisma.IntFilter<"follows"> | number;
+  languages_json?: Prisma.StringFilter<"follows"> | string;
   created_at?: Prisma.StringFilter<"follows"> | string;
 };
 
@@ -645,6 +776,9 @@ export type followsCreateManyAccounts_follows_target_account_idToaccountsInput =
   id: string;
   follower_account_id: string;
   kind: string;
+  reblogs?: number;
+  notify?: number;
+  languages_json?: string;
   created_at?: string;
 };
 
@@ -652,12 +786,18 @@ export type followsCreateManyAccounts_follows_follower_account_idToaccountsInput
   id: string;
   target_account_id: string;
   kind: string;
+  reblogs?: number;
+  notify?: number;
+  languages_json?: string;
   created_at?: string;
 };
 
 export type followsUpdateWithoutAccounts_follows_target_account_idToaccountsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  reblogs?: Prisma.IntFieldUpdateOperationsInput | number;
+  notify?: Prisma.IntFieldUpdateOperationsInput | number;
+  languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   accounts_follows_follower_account_idToaccounts?: Prisma.accountsUpdateOneRequiredWithoutFollows_follows_follower_account_idToaccountsNestedInput;
 };
@@ -666,6 +806,9 @@ export type followsUncheckedUpdateWithoutAccounts_follows_target_account_idToacc
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   follower_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  reblogs?: Prisma.IntFieldUpdateOperationsInput | number;
+  notify?: Prisma.IntFieldUpdateOperationsInput | number;
+  languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -673,12 +816,18 @@ export type followsUncheckedUpdateManyWithoutAccounts_follows_target_account_idT
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   follower_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  reblogs?: Prisma.IntFieldUpdateOperationsInput | number;
+  notify?: Prisma.IntFieldUpdateOperationsInput | number;
+  languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type followsUpdateWithoutAccounts_follows_follower_account_idToaccountsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  reblogs?: Prisma.IntFieldUpdateOperationsInput | number;
+  notify?: Prisma.IntFieldUpdateOperationsInput | number;
+  languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   accounts_follows_target_account_idToaccounts?: Prisma.accountsUpdateOneRequiredWithoutFollows_follows_target_account_idToaccountsNestedInput;
 };
@@ -687,6 +836,9 @@ export type followsUncheckedUpdateWithoutAccounts_follows_follower_account_idToa
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  reblogs?: Prisma.IntFieldUpdateOperationsInput | number;
+  notify?: Prisma.IntFieldUpdateOperationsInput | number;
+  languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -694,6 +846,9 @@ export type followsUncheckedUpdateManyWithoutAccounts_follows_follower_account_i
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   target_account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  reblogs?: Prisma.IntFieldUpdateOperationsInput | number;
+  notify?: Prisma.IntFieldUpdateOperationsInput | number;
+  languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -705,6 +860,9 @@ export type followsSelect<
     follower_account_id?: boolean;
     target_account_id?: boolean;
     kind?: boolean;
+    reblogs?: boolean;
+    notify?: boolean;
+    languages_json?: boolean;
     created_at?: boolean;
     accounts_follows_target_account_idToaccounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     accounts_follows_follower_account_idToaccounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
@@ -720,6 +878,9 @@ export type followsSelectCreateManyAndReturn<
     follower_account_id?: boolean;
     target_account_id?: boolean;
     kind?: boolean;
+    reblogs?: boolean;
+    notify?: boolean;
+    languages_json?: boolean;
     created_at?: boolean;
     accounts_follows_target_account_idToaccounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     accounts_follows_follower_account_idToaccounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
@@ -735,6 +896,9 @@ export type followsSelectUpdateManyAndReturn<
     follower_account_id?: boolean;
     target_account_id?: boolean;
     kind?: boolean;
+    reblogs?: boolean;
+    notify?: boolean;
+    languages_json?: boolean;
     created_at?: boolean;
     accounts_follows_target_account_idToaccounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     accounts_follows_follower_account_idToaccounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
@@ -747,13 +911,23 @@ export type followsSelectScalar = {
   follower_account_id?: boolean;
   target_account_id?: boolean;
   kind?: boolean;
+  reblogs?: boolean;
+  notify?: boolean;
+  languages_json?: boolean;
   created_at?: boolean;
 };
 
 export type followsOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "id" | "follower_account_id" | "target_account_id" | "kind" | "created_at",
+  | "id"
+  | "follower_account_id"
+  | "target_account_id"
+  | "kind"
+  | "reblogs"
+  | "notify"
+  | "languages_json"
+  | "created_at",
   ExtArgs["result"]["follows"]
 >;
 export type followsInclude<
@@ -789,6 +963,9 @@ export type $followsPayload<
       follower_account_id: string;
       target_account_id: string;
       kind: string;
+      reblogs: number;
+      notify: number;
+      languages_json: string;
       created_at: string;
     },
     ExtArgs["result"]["follows"]
@@ -1370,6 +1547,9 @@ export interface followsFieldRefs {
   readonly follower_account_id: Prisma.FieldRef<"follows", "String">;
   readonly target_account_id: Prisma.FieldRef<"follows", "String">;
   readonly kind: Prisma.FieldRef<"follows", "String">;
+  readonly reblogs: Prisma.FieldRef<"follows", "Int">;
+  readonly notify: Prisma.FieldRef<"follows", "Int">;
+  readonly languages_json: Prisma.FieldRef<"follows", "String">;
   readonly created_at: Prisma.FieldRef<"follows", "String">;
 }
 

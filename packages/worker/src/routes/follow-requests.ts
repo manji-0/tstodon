@@ -40,6 +40,9 @@ const remoteFollowerFlags = (followedBy: boolean): RelationshipFlags => ({
   endorsed: false,
   note: "",
   domainBlocking: false,
+  showingReblogs: true,
+  notifying: false,
+  languages: [],
 });
 
 /** Resolve a follow request target id to a local account or a remote actor uri. */

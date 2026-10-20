@@ -193,6 +193,13 @@ export const FilterBodySchema = z.object({
   expires_in: z.union([z.number(), z.string()]).optional(),
 });
 
+/** `POST /api/v1/accounts/:id/follow` — Mastodon's per-follow options. */
+export const FollowBodySchema = z.object({
+  reblogs: booleanish,
+  notify: booleanish,
+  languages: z.union([z.array(z.string()), z.string()]).optional(),
+});
+
 /** `POST /api/v1/statuses/:id/reblog` — `visibility` is the only parameter. */
 export const ReblogBodySchema = z.object({
   visibility: z.string().optional(),
@@ -551,6 +558,7 @@ warmSchemas([
   PollVoteBodySchema,
   FilterBodySchema,
   FilterV2BodySchema,
+  FollowBodySchema,
   ReblogBodySchema,
   FilterKeywordBodySchema,
   FilterStatusesBodySchema,
