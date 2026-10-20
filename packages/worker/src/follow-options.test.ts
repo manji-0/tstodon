@@ -160,6 +160,27 @@ describe("follow options", () => {
     expect(notifier.map((notification) => notification.type)).toContain("status");
     expect(await notifications(quietEmail)).toEqual([]);
   });
+
+  it("reports the posting defaults as preferences", async () => {
+    const email = "followopts-preferences@example.com";
+    await accountFor(email);
+    const response = await json("/api/v1/preferences", { headers: await auth(email) });
+    expect(response.status).toBe(200);
+    const preferences = read(
+      z.object({
+        "posting:default:visibility": z.string(),
+        "posting:default:sensitive": z.boolean(),
+        "posting:default:language": z.string().nullable(),
+        "reading:expand:media": z.string(),
+        "reading:expand:spoilers": z.boolean(),
+      }),
+      response.body,
+    );
+    expect(preferences["posting:default:visibility"]).toBe("public");
+    expect(preferences["posting:default:sensitive"]).toBe(false);
+    expect(preferences["reading:expand:media"]).toBe("default");
+    expect((await json("/api/v1/preferences")).status).toBe(401);
+  });
 });
 
 const NotificationSchema = z.object({

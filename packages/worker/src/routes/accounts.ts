@@ -1,4 +1,4 @@
-import { FediRole, InstanceIdentity, RemoteActor } from "@tstodon/domain";
+import { FediRole, InstanceIdentity, RemoteActor, Visibility } from "@tstodon/domain";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
@@ -251,6 +251,26 @@ const FAMILIAR_FOLLOWERS_LIMIT = 3;
  * accounts the viewer follows; this instance has no record of following remote
  * actors, so remote results are dropped there.
  */
+/**
+ * `GET /api/v1/preferences`: the posting defaults this instance enforces
+ * (`posting:default:visibility` is what an omitted visibility uses) plus
+ * Mastodon's reading defaults, which are client-side settings we do not store.
+ */
+accountRoutes.get("/api/v1/preferences", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  return c.json({
+    "posting:default:visibility": Visibility.toMastodon(user.value.defaultPostVisibility),
+    "posting:default:sensitive": false,
+    "posting:default:language": null,
+    "reading:expand:media": "default",
+    "reading:expand:spoilers": false,
+    "reading:autoplay:gifs": false,
+  });
+});
+
 accountRoutes.get("/api/v1/accounts/search", async (c) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
