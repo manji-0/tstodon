@@ -41,8 +41,8 @@ export type PublishNoteInput = Readonly<{
   inReplyToId: StatusIdValue | null;
   mediaAttributes: ReadonlyArray<MediaAttribute>;
   poll: PublishPoll | null;
-  /** The quoted status, with the `quote-inline` paragraph to prepend. */
-  quote: Readonly<{ quotedStatusId: string; inlineHtml: string }> | null;
+  /** The quoted status, with its URI and the `quote-inline` paragraph. */
+  quote: Readonly<{ quotedStatusId: string; inlineHtml: string; uri: string }> | null;
   /** Who may quote the new status; `null` keeps the account default. */
   quotePolicy: QuotePolicy | null;
 }>;
@@ -214,7 +214,7 @@ export const publishLocalNote = async (
     id: `${actor}/statuses/${note.id}/activity`,
     type: "Create",
     actor,
-    object: noteDocument(identity, user, note),
+    object: noteDocument(identity, user, note, input.quote?.uri),
   });
   if (enqueued.isErr()) {
     return err(

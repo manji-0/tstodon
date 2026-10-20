@@ -41,6 +41,7 @@ import {
 } from "../remote-interaction-store";
 import { enqueueTargetedActivity } from "../delivery";
 import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
+import { quotedStatusUri } from "../quote-uri";
 import {
   ActivityJsonSchema,
   JsonObjectSchema,
@@ -108,7 +109,16 @@ activityPubRoutes.get("/users/:username/statuses/:id", async (c) => {
   ) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  return c.json(noteDocument(identity.value, account.value, status.value), 200, jsonLd);
+  return c.json(
+    noteDocument(
+      identity.value,
+      account.value,
+      status.value,
+      await quotedStatusUri(c.env, identity.value, status.value.id),
+    ),
+    200,
+    jsonLd,
+  );
 });
 
 const collection = (id: string, items: ReadonlyArray<string>) => ({

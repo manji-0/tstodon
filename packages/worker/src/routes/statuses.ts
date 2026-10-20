@@ -19,6 +19,7 @@ import { enqueueLocalActivity } from "../delivery";
 import { escapeHtml, mentionUsernames, textToHtml } from "../html";
 import { replaceStatusMentions } from "../mention-store";
 import { findFollowKind } from "../social-store";
+import { quotedStatusUri } from "../quote-uri";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -248,6 +249,7 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   let quotedStatus: LocalStatus | undefined;
   let statusVisibility = visibility.value;
   let quoteInlineHtml: string | null = null;
+  let quotedUrl = "";
   const quotedRaw = body.value.quoted_status_id?.trim() ?? "";
   if (quotedRaw.length > 0) {
     const quotedId = StatusId.parse(quotedRaw);
@@ -318,7 +320,7 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
       }
     }
     quotedStatus = target;
-    const quotedUrl =
+    quotedUrl =
       targetAuthor.isOk() && targetAuthor.value
         ? `${InstanceIdentity.actorUrl(identity.value, targetAuthor.value.username)}/statuses/${target.id}`
         : "";
@@ -441,7 +443,11 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     draft: draft.value,
     inReplyToId,
     quote: quotedStatus
-      ? { quotedStatusId: quotedStatus.id, inlineHtml: quoteInlineHtml ?? "" }
+      ? {
+          quotedStatusId: quotedStatus.id,
+          inlineHtml: quoteInlineHtml ?? "",
+          uri: quotedUrl,
+        }
       : null,
     quotePolicy: statusQuotePolicy,
     mediaAttributes,
@@ -934,6 +940,7 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     return jsonRepositoryError(c, mentions.error.message);
   }
 
+  const quoteUri = await quotedStatusUri(c.env, identity.value, existing.id);
   const actor = InstanceIdentity.actorUrl(identity.value, user.value.username);
   const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Update", {
     "@context": "https://www.w3.org/ns/activitystreams",
@@ -941,7 +948,7 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     type: "Update",
     actor,
     published: updatedAt,
-    object: noteDocument(identity.value, user.value, revised),
+    object: noteDocument(identity.value, user.value, revised, quoteUri),
   });
   if (enqueued.isErr()) {
     return jsonRepositoryError(

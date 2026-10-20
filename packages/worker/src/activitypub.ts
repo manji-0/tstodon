@@ -76,6 +76,7 @@ export const noteDocument = (
   identity: InstanceIdentity,
   account: LocalAccount,
   note: LocalNote,
+  quoteUri?: string,
 ): Record<string, unknown> => {
   const actor = InstanceIdentity.actorUrl(identity, account.username);
   const id = `${actor}/statuses/${note.id}`;
@@ -93,8 +94,20 @@ export const noteDocument = (
       : note.visibility.kind === "Unlisted"
         ? ["https://www.w3.org/ns/activitystreams#Public"]
         : [];
+  const quotes = quoteUri !== undefined && quoteUri.length > 0;
   return {
-    "@context": "https://www.w3.org/ns/activitystreams",
+    // FEP-044f names the `quote` property for a quote post.
+    "@context": quotes
+      ? [
+          "https://www.w3.org/ns/activitystreams",
+          {
+            quote: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
+            quote_uri: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
+            _misskey_quote: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
+          },
+        ]
+      : "https://www.w3.org/ns/activitystreams",
+    ...(quotes ? { quote: quoteUri, quote_uri: quoteUri, _misskey_quote: quoteUri } : {}),
     id,
     type: "Note",
     attributedTo: actor,

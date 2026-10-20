@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
@@ -65,12 +65,14 @@ const getStatus = async (id: string, email: string): Promise<StatusDocument> => 
   return read(StatusSchema, response.body);
 };
 
-const accountId = async (email: string): Promise<string> => {
+const account = async (email: string): Promise<{ id: string; username: string }> => {
   const response = await json("/api/v1/accounts/verify_credentials", {
     headers: await auth(email),
   });
-  return read(z.object({ id: z.string().min(1) }), response.body).id;
+  return read(z.object({ id: z.string().min(1), username: z.string().min(1) }), response.body);
 };
+
+const accountId = async (email: string): Promise<string> => (await account(email)).id;
 
 describe("quote posts", () => {
   it("creates an accepted quote with the inline link and counts it", async () => {
@@ -272,5 +274,56 @@ describe("quote posts", () => {
       quoted_status_id: original.id,
     });
     expect(accepted.quote?.state).toBe("accepted");
+  });
+
+  it("sends the quoted status in the ActivityPub Note", async () => {
+    const author = "quote-ap-author@example.com";
+    const quotter = "quote-ap-quotter@example.com";
+    const quotterAccount = await account(quotter);
+    const original = await create(author, { status: "ap original" });
+    const quoting = await create(quotter, {
+      status: "ap take",
+      quoted_status_id: original.id,
+    });
+
+    // The queued Create carries the FEP-044f `quote` properties.
+    const row = await env.DB.prepare(
+      "SELECT payload_json FROM outbound_activities WHERE account_id = ? AND kind = 'Create' ORDER BY rowid DESC LIMIT 1",
+    )
+      .bind(quotterAccount.id)
+      .first<{ payload_json: string }>();
+    expect(row).not.toBeNull();
+    const payload = JSON.parse(row?.payload_json ?? "{}") as {
+      object?: Record<string, unknown>;
+    };
+    const quotedUri = String(payload.object?.quote);
+    expect(quotedUri).toContain(original.id);
+    expect(payload.object?.quote_uri).toBe(quotedUri);
+    expect(payload.object?._misskey_quote).toBe(quotedUri);
+    expect(Array.isArray(payload.object?.["@context"])).toBe(true);
+
+    // The actor's status document (what a remote instance fetches) says the same.
+    const note = await json(`/users/${quotterAccount.username}/statuses/${quoting.id}`);
+    expect(note.status).toBe(200);
+    const document = read(
+      z.object({
+        quote: z.string(),
+        quote_uri: z.string(),
+        _misskey_quote: z.string(),
+      }),
+      note.body,
+    );
+    expect(document.quote).toBe(quotedUri);
+
+    // After a revoke the note no longer points at the original.
+    const revoked = await json(`/api/v1/statuses/${original.id}/quotes/${quoting.id}/revoke`, {
+      method: "POST",
+      headers: await auth(author),
+    });
+    expect(revoked.status).toBe(200);
+    const afterRevoke = await json(`/users/${quotterAccount.username}/statuses/${quoting.id}`);
+    expect(
+      read(z.object({ quote: z.string().optional().nullable() }), afterRevoke.body).quote,
+    ).toBeUndefined();
   });
 });
