@@ -144,6 +144,41 @@ export const mastodonAccountDocument = async (
   );
 };
 
+/** {@link mastodonAccountDocument} for many accounts with one counts batch and one profile query. */
+export const mastodonAccountDocuments = async (
+  env: Env,
+  identity: InstanceIdentity,
+  accounts: ReadonlyArray<LocalAccount>,
+): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
+  const documents = new Map<string, Record<string, unknown>>();
+  if (accounts.length === 0) {
+    return documents;
+  }
+  const accountIds = accounts.map((account) => account.id);
+  const [counts, profiles, emojis] = await Promise.all([
+    accountCountsByIds(env.DB, accountIds),
+    listAccountProfiles(env.DB, accountIds),
+    loadCustomEmojis(env, identity.mediaPublicBaseUrl),
+  ]);
+  for (const account of accounts) {
+    documents.set(
+      account.id,
+      mastodonAccount(
+        identity,
+        account,
+        (counts.isOk() ? counts.value.get(account.id) : undefined) ?? {
+          followers: 0,
+          following: 0,
+          statuses: 0,
+        },
+        emojisInText(account.displayName, emojis),
+        (profiles.isOk() ? profiles.value.get(account.id) : undefined) ?? EMPTY_ACCOUNT_PROFILE,
+      ),
+    );
+  }
+  return documents;
+};
+
 export const mastodonRemoteAccount = (
   identity: InstanceIdentity,
   actor: RemoteActor,

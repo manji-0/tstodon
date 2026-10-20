@@ -3,7 +3,7 @@ import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { jsonStringArray, runD1, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
 import { RemoteActorRowSchema, toRepositoryError } from "./schemas";
 import { queryTyped, runTyped } from "./typed-sql";
@@ -13,6 +13,7 @@ import {
   findPendingRemoteFollowRequest as findPendingRemoteFollowRequestSql,
   findRemoteActorByPublicKeyId as findRemoteActorByPublicKeyIdSql,
   findRemoteActorByUri as findRemoteActorByUriSql,
+  findRemoteActorsByUris as findRemoteActorsByUrisSql,
   findRemoteFollow as findRemoteFollowSql,
   listAcceptedRemoteFollowerInboxes as listAcceptedRemoteFollowerInboxesSql,
   listAcceptedRemoteFollowerUris as listAcceptedRemoteFollowerUrisSql,
@@ -72,6 +73,32 @@ export const findRemoteActorByUri = async (
       return rows[0];
     }),
   );
+
+/** Cached remote actors keyed by actor URI; unknown or unreadable rows are left out. */
+export const findRemoteActorsByUris = async (
+  db: D1Database,
+  actorUris: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, RemoteActor>, RepositoryError>> => {
+  const unique = [...new Set(actorUris.filter((uri) => uri.length > 0))];
+  const actors = new Map<string, RemoteActor>();
+  if (unique.length === 0) {
+    return ok(actors);
+  }
+  const queried = await runD1(async () =>
+    queryTyped(db, findRemoteActorsByUrisSql(jsonStringArray(unique))),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  for (const raw of queried.value) {
+    const row = parseRemoteActorRow(raw);
+    const actor = row.isOk() ? remoteActorFromRow(row.value) : undefined;
+    if (actor?.isOk()) {
+      actors.set(actor.value.actorUri, actor.value);
+    }
+  }
+  return ok(actors);
+};
 
 export const findRemoteActorByPublicKeyId = async (
   db: D1Database,

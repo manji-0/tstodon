@@ -192,11 +192,15 @@ export * from "./sql/findRemoteActorByPublicKeyId";
 
 export * from "./sql/findRemoteActorByUri";
 
+export * from "./sql/findRemoteActorsByUris";
+
 export * from "./sql/findRemoteFollow";
 
 export * from "./sql/findRemoteStatusById";
 
 export * from "./sql/findRemoteStatusByObjectUri";
+
+export * from "./sql/findRemoteStatusesByIds";
 
 export * from "./sql/findStatusById";
 

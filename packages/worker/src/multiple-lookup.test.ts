@@ -1,8 +1,9 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { RemoteAccountId } from "./remote-account-id";
 
 const json = async (
   path: string,
@@ -79,5 +80,57 @@ describe("multiple lookups", () => {
     }
     const listed = await json(`/api/v1/statuses?${ids.map((id) => `id[]=${id}`).join("&")}`);
     expect(read(IdListSchema, listed.body).map((status) => status.id)).toEqual(ids.slice(0, 20));
+  });
+
+  it("includes remote accounts and statuses and leaves out suspended accounts", async () => {
+    const actorUri = "https://remote.example/users/multi";
+    await env.DB.prepare(
+      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, display_name, fetched_at)
+       VALUES (?, 'multi', 'remote.example', ?, ?, 'pem', 'Multi Remote', '2026-01-01T00:00:00.000Z')`,
+    )
+      .bind(actorUri, `${actorUri}/inbox`, `${actorUri}#main-key`)
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at)
+       VALUES (?, ?, ?, '<p>remote</p>', ?, '2026-01-01T00:00:00.000Z')`,
+    )
+      .bind("multi-remote-public", actorUri, `${actorUri}/statuses/1`, "public")
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at)
+       VALUES (?, ?, ?, '<p>remote</p>', ?, '2026-01-01T00:00:00.000Z')`,
+    )
+      .bind("multi-remote-private", actorUri, `${actorUri}/statuses/2`, "private")
+      .run();
+
+    const local = await verify("multi-mixed@example.com");
+    const suspended = await verify("multi-suspended@example.com");
+    const suspendedAction = await json(`/api/v1/admin/accounts/${suspended}/action`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(await accessAuthHeaders("multi-admin@example.com", { admin: true })),
+      },
+      body: JSON.stringify({ type: "suspend" }),
+    });
+    expect(suspendedAction.status).toBe(200);
+
+    const remoteId = RemoteAccountId.encode(actorUri);
+    const accounts = await json(
+      `/api/v1/accounts?id[]=${remoteId}&id[]=${suspended}&id[]=${local}`,
+    );
+    expect(read(IdListSchema, accounts.body).map((account) => account.id)).toEqual([
+      remoteId,
+      local,
+    ]);
+
+    const localStatus = await post("multi-mixed@example.com", "mixed local", "public");
+    const statuses = await json(
+      `/api/v1/statuses?id[]=multi-remote-private&id[]=multi-remote-public&id[]=${localStatus}`,
+    );
+    expect(read(IdListSchema, statuses.body).map((status) => status.id)).toEqual([
+      "multi-remote-public",
+      localStatus,
+    ]);
   });
 });

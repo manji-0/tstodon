@@ -64,8 +64,8 @@ import type { MediaAttribute } from "../schemas";
 import { parseInstanceIdentity } from "../runtime-config";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "../d1";
-import { findRemoteActorByUri } from "../remote-actor-store";
-import { findRemoteStatusById } from "../remote-status-store";
+import { findRemoteActorByUri, findRemoteActorsByUris } from "../remote-actor-store";
+import { findRemoteStatusById, findRemoteStatusesByIds } from "../remote-status-store";
 import {
   bookmarkStatus,
   favouriteStatus,
@@ -750,18 +750,50 @@ statusRoutes.get("/api/v1/statuses", async (c) => {
       ),
     ),
   ].slice(0, MULTIPLE_STATUSES_LIMIT);
-  // Missing or hidden statuses are left out rather than failing the batch.
-  const documents: Array<Record<string, unknown>> = [];
-  for (const id of ids) {
-    const document = await visibleStatusDocument(c.env, identity.value, id, viewerId);
-    if (document.isErr()) {
-      return jsonRepositoryError(c, document.error.message);
-    }
-    if (document.value) {
-      documents.push(document.value);
+  // Local and remote statuses each load in one query; missing or hidden ones
+  // are left out rather than failing the batch.
+  const [locals, remotes] = await Promise.all([
+    findStatusesByIds(c.env.DB, ids),
+    findRemoteStatusesByIds(c.env.DB, ids),
+  ]);
+  if (locals.isErr()) {
+    return jsonRepositoryError(c, locals.error.message);
+  }
+  if (remotes.isErr()) {
+    return jsonRepositoryError(c, remotes.error.message);
+  }
+  // Public and unlisted statuses pass without a query; only restricted ones look further.
+  const visibleLocals = (
+    await Promise.all(
+      [...locals.value.values()].map(async (status) =>
+        (await canViewStatus(c.env.DB, status, viewerId)) ? [status] : [],
+      ),
+    )
+  ).flat();
+  const visibleRemotes = [...remotes.value.values()].filter(remoteStatusVisible);
+  const [localDocuments, actors] = await Promise.all([
+    mastodonStatuses(c.env, identity.value, visibleLocals, viewerId),
+    findRemoteActorsByUris(
+      c.env.DB,
+      visibleRemotes.map((status) => status.actorUri),
+    ),
+  ]);
+  if (actors.isErr()) {
+    return jsonRepositoryError(c, actors.error.message);
+  }
+  const documents = new Map<string, Record<string, unknown>>();
+  for (const document of localDocuments) {
+    if (typeof document.id === "string") {
+      documents.set(document.id, document);
     }
   }
-  return c.json(documents);
+  for (const status of visibleRemotes) {
+    const actor = actors.value.get(status.actorUri);
+    if (actor) {
+      documents.set(status.id, mastodonRemoteStatus(identity.value, status, actor));
+    }
+  }
+  return c.json(ids.flatMap((id) => documents.get(id) ?? []));
 });
 
 statusRoutes.get("/api/v1/statuses/:id", async (c) => {

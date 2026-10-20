@@ -23,6 +23,7 @@ import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   deleteRemoteStatusByObjectUri as deleteRemoteStatusByObjectUriSql,
   findRemoteStatusById as findRemoteStatusByIdSql,
+  findRemoteStatusesByIds as findRemoteStatusesByIdsSql,
   findRemoteStatusByObjectUri as findRemoteStatusByObjectUriSql,
   listPublicRemoteStatuses as listPublicRemoteStatusesSql,
   listRemoteStatusCards as listRemoteStatusCardsSql,
@@ -90,6 +91,31 @@ export const findRemoteStatusById = async (
       return rows[0];
     }),
   );
+
+/** Stored remote statuses keyed by id; unknown or unreadable rows are left out. */
+export const findRemoteStatusesByIds = async (
+  db: D1Database,
+  ids: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, RemoteStatus>, RepositoryError>> => {
+  const unique = [...new Set(ids.filter((id) => id.length > 0))];
+  const statuses = new Map<string, RemoteStatus>();
+  if (unique.length === 0) {
+    return ok(statuses);
+  }
+  const queried = await runD1(async () =>
+    queryTyped(db, findRemoteStatusesByIdsSql(jsonStringArray(unique))),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  for (const raw of queried.value) {
+    const status = await readRemoteStatus(ok(raw));
+    if (status.isOk() && status.value) {
+      statuses.set(status.value.id, status.value);
+    }
+  }
+  return ok(statuses);
+};
 
 export const findRemoteStatusByObjectUri = async (
   db: D1Database,

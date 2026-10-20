@@ -12,6 +12,7 @@ import { z } from "zod";
 import {
   findAccountById,
   findAccountByIdOrUsername,
+  findAccountsByIds,
   findComposeDefaults,
   findAccountByUsername,
   searchAccounts,
@@ -27,7 +28,7 @@ import {
 import { InstanceLimits } from "@tstodon/core";
 import { authenticate } from "../auth";
 import { attachFilteredToStatuses } from "../filter-match";
-import { getAccountModeration } from "../account-moderation-store";
+import { getAccountModeration, listAccountModerations } from "../account-moderation-store";
 import { enqueueTargetedActivity } from "../delivery";
 import {
   jsonAuthError,
@@ -46,12 +47,14 @@ import {
 import {
   accountSource,
   mastodonAccountDocument,
+  mastodonAccountDocuments,
   mastodonRelationship,
   mastodonRemoteAccount,
   mastodonStatuses,
 } from "../mastodon";
 import {
   findRemoteActorByUri,
+  findRemoteActorsByUris,
   deleteRemoteFollow,
   findRemoteFollow,
   searchRemoteActors,
@@ -651,18 +654,44 @@ accountRoutes.get("/api/v1/accounts", async (c) => {
       ),
     ),
   ].slice(0, MULTIPLE_ACCOUNTS_LIMIT);
-  // Unknown and suspended accounts are left out rather than failing the batch.
-  const documents: Array<Record<string, unknown>> = [];
+  // Each lookup is one query for the whole batch; unknown and suspended
+  // accounts are left out rather than failing it.
+  const remoteUris = new Map<string, string>();
   for (const id of ids) {
-    const found = await lookupAccountDocument(c.env, identity.value, id);
-    if (found.isErr()) {
-      return jsonRepositoryError(c, found.error.message);
-    }
-    if (found.value.kind === "Found") {
-      documents.push(found.value.document);
+    const actorUri = RemoteAccountId.decode(id);
+    if (actorUri.isOk()) {
+      remoteUris.set(id, actorUri.value);
     }
   }
-  return c.json(documents);
+  const [locals, moderations, remotes] = await Promise.all([
+    findAccountsByIds(c.env.DB, ids),
+    listAccountModerations(c.env.DB, ids),
+    findRemoteActorsByUris(c.env.DB, [...remoteUris.values()]),
+  ]);
+  if (locals.isErr()) {
+    return jsonRepositoryError(c, locals.error.message);
+  }
+  if (moderations.isErr()) {
+    return jsonRepositoryError(c, moderations.error.message);
+  }
+  if (remotes.isErr()) {
+    return jsonRepositoryError(c, remotes.error.message);
+  }
+  const visibleLocals = [...locals.value.values()].filter(
+    (account) => moderations.value.get(account.id) !== "Suspended",
+  );
+  const localDocuments = await mastodonAccountDocuments(c.env, identity.value, visibleLocals);
+  return c.json(
+    ids.flatMap((id) => {
+      const local = localDocuments.get(id);
+      if (local) {
+        return [local];
+      }
+      const actorUri = remoteUris.get(id);
+      const actor = actorUri === undefined ? undefined : remotes.value.get(actorUri);
+      return actor ? [mastodonRemoteAccount(identity.value, actor)] : [];
+    }),
+  );
 });
 
 accountRoutes.get("/api/v1/accounts/:id", async (c) => {
