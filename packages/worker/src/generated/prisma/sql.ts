@@ -208,6 +208,8 @@ export * from "./sql/findStatusUpdatedAt";
 
 export * from "./sql/followTag";
 
+export * from "./sql/getConversationHide";
+
 export * from "./sql/getConversationRead";
 
 export * from "./sql/getMarkersByTimelines";
@@ -487,6 +489,8 @@ export * from "./sql/upsertAnnouncementDismissal";
 export * from "./sql/upsertAnnouncementReaction";
 
 export * from "./sql/upsertBlock";
+
+export * from "./sql/upsertConversationHide";
 
 export * from "./sql/upsertConversationRead";
 

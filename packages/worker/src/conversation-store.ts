@@ -2,6 +2,13 @@ import { err, ok, type Result } from "neverthrow";
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import type { RepositoryError } from "./d1";
 import { getConversationRead } from "./marker-store";
+import { nowIso } from "./clock";
+import { runD1, type RepositoryError as StoreError } from "./d1";
+import { queryTyped, runTyped } from "./typed-sql";
+import {
+  getConversationHide as getConversationHideSql,
+  upsertConversationHide as upsertConversationHideSql,
+} from "./generated/prisma/sql";
 import { listMentionedAccountIds } from "./mention-store";
 import {
   findStatusById,
@@ -59,6 +66,14 @@ export const listConversationsForAccount = async (
         participantIds.add(mentioned);
       }
     }
+    const hidden = await conversationHiddenStatusId(db, accountId, conversationId);
+    if (hidden.isErr()) {
+      return err(hidden.error);
+    }
+    if (hidden.value !== undefined && lastStatus.id <= hidden.value) {
+      // Removed from the list, and not revived by an older message.
+      continue;
+    }
     participantIds.delete(accountId);
     const read = await getConversationRead(db, accountId, conversationId);
     if (read.isErr()) {
@@ -79,6 +94,35 @@ export const listConversationsForAccount = async (
       .slice(0, limit),
   );
 };
+
+/** Newest status id the viewer saw when they removed this conversation. */
+export const conversationHiddenStatusId = async (
+  db: D1Database,
+  accountId: string,
+  conversationId: string,
+): Promise<Result<string | undefined, StoreError>> => {
+  const rows = await runD1(async () =>
+    queryTyped<{ hidden_status_id: string }>(db, getConversationHideSql(accountId, conversationId)),
+  );
+  if (rows.isErr()) {
+    return err(rows.error);
+  }
+  return ok(rows.value[0]?.hidden_status_id);
+};
+
+/** Remove a conversation until a newer status arrives in it. */
+export const hideConversation = async (
+  db: D1Database,
+  accountId: string,
+  conversationId: string,
+  hiddenStatusId: string,
+): Promise<Result<void, StoreError>> =>
+  runD1(async () => {
+    await runTyped(
+      db,
+      upsertConversationHideSql(accountId, conversationId, hiddenStatusId, nowIso()),
+    );
+  });
 
 export const latestStatusIdInConversation = async (
   db: D1Database,

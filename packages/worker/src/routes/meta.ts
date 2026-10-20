@@ -21,7 +21,11 @@ import {
 import { customEmojiJson, emojisInText, type CustomEmoji } from "../emoji";
 import { cardDocument, listCachedLinkCards } from "../link-card";
 import { loadCustomEmojis } from "../custom-emoji-store";
-import { listConversationsForAccount, latestStatusIdInConversation } from "../conversation-store";
+import {
+  hideConversation,
+  latestStatusIdInConversation,
+  listConversationsForAccount,
+} from "../conversation-store";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -459,6 +463,26 @@ metaRoutes.post("/api/v1/conversations/:id/read", async (c) => {
   const marked = await markConversationRead(c.env.DB, user.value.id, conversationId, latest.value);
   if (marked.isErr()) {
     return jsonRepositoryError(c, marked.error.message);
+  }
+  return c.body(null, 200);
+});
+
+metaRoutes.delete("/api/v1/conversations/:id", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const conversationId = c.req.param("id");
+  const latest = await latestStatusIdInConversation(c.env.DB, user.value.id, conversationId);
+  if (latest.isErr()) {
+    return jsonRepositoryError(c, latest.error.message);
+  }
+  if (!latest.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const hidden = await hideConversation(c.env.DB, user.value.id, conversationId, latest.value);
+  if (hidden.isErr()) {
+    return jsonRepositoryError(c, hidden.error.message);
   }
   return c.body(null, 200);
 });

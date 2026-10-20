@@ -180,6 +180,7 @@ model accounts {
   account_list_members                                  account_list_members[]
   account_lists                                         account_lists[]       
   bookmarks                                             bookmarks[]
+  conversation_hides                                    conversation_hides[]
   conversation_reads                                    conversation_reads[]
   favourites                                            favourites[]
   filters                                               filters[]             
@@ -206,6 +207,16 @@ model bookmarks {
   accounts   accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([account_id, status_id])
+}
+
+model conversation_hides {
+  account_id      String
+  conversation_id String
+  hidden_status_id String
+  created_at      String @default("CURRENT_TIMESTAMP")
+  accounts        accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([account_id, conversation_id])
 }
 
 model conversation_reads {

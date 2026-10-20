@@ -17,6 +17,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- `GET /api/v1/media/:id` and `DELETE /api/v1/conversations/:id`
 - Remote tags indexed (`remote_status_tags`) with a cron backfill; exact tag paging
 - `include_filtered` on the v1 and grouped v2 notification lists
 - Canonical email + email domain blocks (enforced at sign-up)

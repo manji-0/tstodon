@@ -97,6 +97,11 @@ export type accounts = Prisma.accountsModel;
  */
 export type bookmarks = Prisma.bookmarksModel;
 /**
+ * Model conversation_hides
+ *
+ */
+export type conversation_hides = Prisma.conversation_hidesModel;
+/**
  * Model conversation_reads
  *
  */

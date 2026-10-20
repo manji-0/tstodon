@@ -407,6 +407,7 @@ export const ModelName = {
   domain_blocks: "domain_blocks",
   accounts: "accounts",
   bookmarks: "bookmarks",
+  conversation_hides: "conversation_hides",
   conversation_reads: "conversation_reads",
   favourites: "favourites",
   filter_statuses: "filter_statuses",
@@ -481,6 +482,7 @@ export type TypeMap<
       | "domain_blocks"
       | "accounts"
       | "bookmarks"
+      | "conversation_hides"
       | "conversation_reads"
       | "favourites"
       | "filter_statuses"
@@ -1731,6 +1733,82 @@ export type TypeMap<
         count: {
           args: Prisma.bookmarksCountArgs<ExtArgs>;
           result: runtime.Types.Utils.Optional<Prisma.BookmarksCountAggregateOutputType> | number;
+        };
+      };
+    };
+    conversation_hides: {
+      payload: Prisma.$conversation_hidesPayload<ExtArgs>;
+      fields: Prisma.conversation_hidesFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.conversation_hidesFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$conversation_hidesPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.conversation_hidesFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$conversation_hidesPayload>;
+        };
+        findFirst: {
+          args: Prisma.conversation_hidesFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$conversation_hidesPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.conversation_hidesFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$conversation_hidesPayload>;
+        };
+        findMany: {
+          args: Prisma.conversation_hidesFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$conversation_hidesPayload>[];
+        };
+        create: {
+          args: Prisma.conversation_hidesCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$conversation_hidesPayload>;
+        };
+        createMany: {
+          args: Prisma.conversation_hidesCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.conversation_hidesCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$conversation_hidesPayload>[];
+        };
+        delete: {
+          args: Prisma.conversation_hidesDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$conversation_hidesPayload>;
+        };
+        update: {
+          args: Prisma.conversation_hidesUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$conversation_hidesPayload>;
+        };
+        deleteMany: {
+          args: Prisma.conversation_hidesDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.conversation_hidesUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.conversation_hidesUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$conversation_hidesPayload>[];
+        };
+        upsert: {
+          args: Prisma.conversation_hidesUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$conversation_hidesPayload>;
+        };
+        aggregate: {
+          args: Prisma.Conversation_hidesAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateConversation_hides>;
+        };
+        groupBy: {
+          args: Prisma.conversation_hidesGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Conversation_hidesGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.conversation_hidesCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Conversation_hidesCountAggregateOutputType>
+            | number;
         };
       };
     };
@@ -4830,6 +4908,16 @@ export const BookmarksScalarFieldEnum = {
 export type BookmarksScalarFieldEnum =
   (typeof BookmarksScalarFieldEnum)[keyof typeof BookmarksScalarFieldEnum];
 
+export const Conversation_hidesScalarFieldEnum = {
+  account_id: "account_id",
+  conversation_id: "conversation_id",
+  hidden_status_id: "hidden_status_id",
+  created_at: "created_at",
+} as const;
+
+export type Conversation_hidesScalarFieldEnum =
+  (typeof Conversation_hidesScalarFieldEnum)[keyof typeof Conversation_hidesScalarFieldEnum];
+
 export const Conversation_readsScalarFieldEnum = {
   account_id: "account_id",
   conversation_id: "conversation_id",
@@ -5468,6 +5556,7 @@ export type GlobalOmitConfig = {
   domain_blocks?: Prisma.domain_blocksOmit;
   accounts?: Prisma.accountsOmit;
   bookmarks?: Prisma.bookmarksOmit;
+  conversation_hides?: Prisma.conversation_hidesOmit;
   conversation_reads?: Prisma.conversation_readsOmit;
   favourites?: Prisma.favouritesOmit;
   filter_statuses?: Prisma.filter_statusesOmit;

@@ -289,6 +289,7 @@ export type accountsWhereInput = {
   account_list_members?: Prisma.Account_list_membersListRelationFilter;
   account_lists?: Prisma.Account_listsListRelationFilter;
   bookmarks?: Prisma.BookmarksListRelationFilter;
+  conversation_hides?: Prisma.Conversation_hidesListRelationFilter;
   conversation_reads?: Prisma.Conversation_readsListRelationFilter;
   favourites?: Prisma.FavouritesListRelationFilter;
   filters?: Prisma.FiltersListRelationFilter;
@@ -325,6 +326,7 @@ export type accountsOrderByWithRelationInput = {
   account_list_members?: Prisma.account_list_membersOrderByRelationAggregateInput;
   account_lists?: Prisma.account_listsOrderByRelationAggregateInput;
   bookmarks?: Prisma.bookmarksOrderByRelationAggregateInput;
+  conversation_hides?: Prisma.conversation_hidesOrderByRelationAggregateInput;
   conversation_reads?: Prisma.conversation_readsOrderByRelationAggregateInput;
   favourites?: Prisma.favouritesOrderByRelationAggregateInput;
   filters?: Prisma.filtersOrderByRelationAggregateInput;
@@ -365,6 +367,7 @@ export type accountsWhereUniqueInput = Prisma.AtLeast<
     account_list_members?: Prisma.Account_list_membersListRelationFilter;
     account_lists?: Prisma.Account_listsListRelationFilter;
     bookmarks?: Prisma.BookmarksListRelationFilter;
+    conversation_hides?: Prisma.Conversation_hidesListRelationFilter;
     conversation_reads?: Prisma.Conversation_readsListRelationFilter;
     favourites?: Prisma.FavouritesListRelationFilter;
     filters?: Prisma.FiltersListRelationFilter;
@@ -449,6 +452,7 @@ export type accountsCreateInput = {
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -485,6 +489,7 @@ export type accountsUncheckedCreateInput = {
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -521,6 +526,7 @@ export type accountsUpdateInput = {
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -557,6 +563,7 @@ export type accountsUncheckedUpdateInput = {
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -765,6 +772,32 @@ export type accountsUpdateOneRequiredWithoutBookmarksNestedInput = {
       Prisma.accountsUpdateWithoutBookmarksInput
     >,
     Prisma.accountsUncheckedUpdateWithoutBookmarksInput
+  >;
+};
+
+export type accountsCreateNestedOneWithoutConversation_hidesInput = {
+  create?: Prisma.XOR<
+    Prisma.accountsCreateWithoutConversation_hidesInput,
+    Prisma.accountsUncheckedCreateWithoutConversation_hidesInput
+  >;
+  connectOrCreate?: Prisma.accountsCreateOrConnectWithoutConversation_hidesInput;
+  connect?: Prisma.accountsWhereUniqueInput;
+};
+
+export type accountsUpdateOneRequiredWithoutConversation_hidesNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.accountsCreateWithoutConversation_hidesInput,
+    Prisma.accountsUncheckedCreateWithoutConversation_hidesInput
+  >;
+  connectOrCreate?: Prisma.accountsCreateOrConnectWithoutConversation_hidesInput;
+  upsert?: Prisma.accountsUpsertWithoutConversation_hidesInput;
+  connect?: Prisma.accountsWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.accountsUpdateToOneWithWhereWithoutConversation_hidesInput,
+      Prisma.accountsUpdateWithoutConversation_hidesInput
+    >,
+    Prisma.accountsUncheckedUpdateWithoutConversation_hidesInput
   >;
 };
 
@@ -1207,6 +1240,7 @@ export type accountsCreateWithoutAccount_list_membersInput = {
   header_object_key?: string | null;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -1242,6 +1276,7 @@ export type accountsUncheckedCreateWithoutAccount_list_membersInput = {
   header_object_key?: string | null;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -1305,6 +1340,7 @@ export type accountsUpdateWithoutAccount_list_membersInput = {
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -1340,6 +1376,7 @@ export type accountsUncheckedUpdateWithoutAccount_list_membersInput = {
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -1375,6 +1412,7 @@ export type accountsCreateWithoutAccount_listsInput = {
   header_object_key?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -1410,6 +1448,7 @@ export type accountsUncheckedCreateWithoutAccount_listsInput = {
   header_object_key?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -1473,6 +1512,7 @@ export type accountsUpdateWithoutAccount_listsInput = {
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -1508,6 +1548,7 @@ export type accountsUncheckedUpdateWithoutAccount_listsInput = {
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -1543,6 +1584,7 @@ export type accountsCreateWithoutBookmarksInput = {
   header_object_key?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -1578,6 +1620,7 @@ export type accountsUncheckedCreateWithoutBookmarksInput = {
   header_object_key?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -1641,6 +1684,7 @@ export type accountsUpdateWithoutBookmarksInput = {
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -1676,6 +1720,179 @@ export type accountsUncheckedUpdateWithoutBookmarksInput = {
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
+  favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
+  filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
+  follows_follows_target_account_idToaccounts?: Prisma.followsUncheckedUpdateManyWithoutAccounts_follows_target_account_idToaccountsNestedInput;
+  follows_follows_follower_account_idToaccounts?: Prisma.followsUncheckedUpdateManyWithoutAccounts_follows_follower_account_idToaccountsNestedInput;
+  markers?: Prisma.markersUncheckedUpdateManyWithoutAccountsNestedInput;
+  media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutAccountsNestedInput;
+  notifications_notifications_from_account_idToaccounts?: Prisma.notificationsUncheckedUpdateManyWithoutAccounts_notifications_from_account_idToaccountsNestedInput;
+  notifications_notifications_account_idToaccounts?: Prisma.notificationsUncheckedUpdateManyWithoutAccounts_notifications_account_idToaccountsNestedInput;
+  outbound_activities?: Prisma.outbound_activitiesUncheckedUpdateManyWithoutAccountsNestedInput;
+  poll_votes?: Prisma.poll_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_follows?: Prisma.remote_followsUncheckedUpdateManyWithoutAccountsNestedInput;
+  reports_reports_target_account_idToaccounts?: Prisma.reportsUncheckedUpdateManyWithoutAccounts_reports_target_account_idToaccountsNestedInput;
+  reports_reports_account_idToaccounts?: Prisma.reportsUncheckedUpdateManyWithoutAccounts_reports_account_idToaccountsNestedInput;
+  status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
+};
+
+export type accountsCreateWithoutConversation_hidesInput = {
+  id: string;
+  username: string;
+  access_email: string;
+  display_name: string;
+  locked?: number;
+  default_post_visibility?: string;
+  default_quote_policy?: string;
+  public_key_pem: string;
+  private_key_jwk: string;
+  created_at?: string;
+  updated_at?: string;
+  bio_text?: string;
+  avatar_object_key?: string | null;
+  header_object_key?: string | null;
+  account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
+  account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
+  bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
+  favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
+  filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
+  follows_follows_target_account_idToaccounts?: Prisma.followsCreateNestedManyWithoutAccounts_follows_target_account_idToaccountsInput;
+  follows_follows_follower_account_idToaccounts?: Prisma.followsCreateNestedManyWithoutAccounts_follows_follower_account_idToaccountsInput;
+  markers?: Prisma.markersCreateNestedManyWithoutAccountsInput;
+  media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutAccountsInput;
+  notifications_notifications_from_account_idToaccounts?: Prisma.notificationsCreateNestedManyWithoutAccounts_notifications_from_account_idToaccountsInput;
+  notifications_notifications_account_idToaccounts?: Prisma.notificationsCreateNestedManyWithoutAccounts_notifications_account_idToaccountsInput;
+  outbound_activities?: Prisma.outbound_activitiesCreateNestedManyWithoutAccountsInput;
+  poll_votes?: Prisma.poll_votesCreateNestedManyWithoutAccountsInput;
+  remote_follows?: Prisma.remote_followsCreateNestedManyWithoutAccountsInput;
+  reports_reports_target_account_idToaccounts?: Prisma.reportsCreateNestedManyWithoutAccounts_reports_target_account_idToaccountsInput;
+  reports_reports_account_idToaccounts?: Prisma.reportsCreateNestedManyWithoutAccounts_reports_account_idToaccountsInput;
+  status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
+};
+
+export type accountsUncheckedCreateWithoutConversation_hidesInput = {
+  id: string;
+  username: string;
+  access_email: string;
+  display_name: string;
+  locked?: number;
+  default_post_visibility?: string;
+  default_quote_policy?: string;
+  public_key_pem: string;
+  private_key_jwk: string;
+  created_at?: string;
+  updated_at?: string;
+  bio_text?: string;
+  avatar_object_key?: string | null;
+  header_object_key?: string | null;
+  account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
+  account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
+  bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
+  favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
+  filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
+  follows_follows_target_account_idToaccounts?: Prisma.followsUncheckedCreateNestedManyWithoutAccounts_follows_target_account_idToaccountsInput;
+  follows_follows_follower_account_idToaccounts?: Prisma.followsUncheckedCreateNestedManyWithoutAccounts_follows_follower_account_idToaccountsInput;
+  markers?: Prisma.markersUncheckedCreateNestedManyWithoutAccountsInput;
+  media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutAccountsInput;
+  notifications_notifications_from_account_idToaccounts?: Prisma.notificationsUncheckedCreateNestedManyWithoutAccounts_notifications_from_account_idToaccountsInput;
+  notifications_notifications_account_idToaccounts?: Prisma.notificationsUncheckedCreateNestedManyWithoutAccounts_notifications_account_idToaccountsInput;
+  outbound_activities?: Prisma.outbound_activitiesUncheckedCreateNestedManyWithoutAccountsInput;
+  poll_votes?: Prisma.poll_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_follows?: Prisma.remote_followsUncheckedCreateNestedManyWithoutAccountsInput;
+  reports_reports_target_account_idToaccounts?: Prisma.reportsUncheckedCreateNestedManyWithoutAccounts_reports_target_account_idToaccountsInput;
+  reports_reports_account_idToaccounts?: Prisma.reportsUncheckedCreateNestedManyWithoutAccounts_reports_account_idToaccountsInput;
+  status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
+};
+
+export type accountsCreateOrConnectWithoutConversation_hidesInput = {
+  where: Prisma.accountsWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.accountsCreateWithoutConversation_hidesInput,
+    Prisma.accountsUncheckedCreateWithoutConversation_hidesInput
+  >;
+};
+
+export type accountsUpsertWithoutConversation_hidesInput = {
+  update: Prisma.XOR<
+    Prisma.accountsUpdateWithoutConversation_hidesInput,
+    Prisma.accountsUncheckedUpdateWithoutConversation_hidesInput
+  >;
+  create: Prisma.XOR<
+    Prisma.accountsCreateWithoutConversation_hidesInput,
+    Prisma.accountsUncheckedCreateWithoutConversation_hidesInput
+  >;
+  where?: Prisma.accountsWhereInput;
+};
+
+export type accountsUpdateToOneWithWhereWithoutConversation_hidesInput = {
+  where?: Prisma.accountsWhereInput;
+  data: Prisma.XOR<
+    Prisma.accountsUpdateWithoutConversation_hidesInput,
+    Prisma.accountsUncheckedUpdateWithoutConversation_hidesInput
+  >;
+};
+
+export type accountsUpdateWithoutConversation_hidesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  username?: Prisma.StringFieldUpdateOperationsInput | string;
+  access_email?: Prisma.StringFieldUpdateOperationsInput | string;
+  display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  locked?: Prisma.IntFieldUpdateOperationsInput | number;
+  default_post_visibility?: Prisma.StringFieldUpdateOperationsInput | string;
+  default_quote_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
+  private_key_jwk?: Prisma.StringFieldUpdateOperationsInput | string;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
+  account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
+  bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
+  favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
+  filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
+  follows_follows_target_account_idToaccounts?: Prisma.followsUpdateManyWithoutAccounts_follows_target_account_idToaccountsNestedInput;
+  follows_follows_follower_account_idToaccounts?: Prisma.followsUpdateManyWithoutAccounts_follows_follower_account_idToaccountsNestedInput;
+  markers?: Prisma.markersUpdateManyWithoutAccountsNestedInput;
+  media_attachments?: Prisma.media_attachmentsUpdateManyWithoutAccountsNestedInput;
+  notifications_notifications_from_account_idToaccounts?: Prisma.notificationsUpdateManyWithoutAccounts_notifications_from_account_idToaccountsNestedInput;
+  notifications_notifications_account_idToaccounts?: Prisma.notificationsUpdateManyWithoutAccounts_notifications_account_idToaccountsNestedInput;
+  outbound_activities?: Prisma.outbound_activitiesUpdateManyWithoutAccountsNestedInput;
+  poll_votes?: Prisma.poll_votesUpdateManyWithoutAccountsNestedInput;
+  remote_follows?: Prisma.remote_followsUpdateManyWithoutAccountsNestedInput;
+  reports_reports_target_account_idToaccounts?: Prisma.reportsUpdateManyWithoutAccounts_reports_target_account_idToaccountsNestedInput;
+  reports_reports_account_idToaccounts?: Prisma.reportsUpdateManyWithoutAccounts_reports_account_idToaccountsNestedInput;
+  status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
+};
+
+export type accountsUncheckedUpdateWithoutConversation_hidesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  username?: Prisma.StringFieldUpdateOperationsInput | string;
+  access_email?: Prisma.StringFieldUpdateOperationsInput | string;
+  display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  locked?: Prisma.IntFieldUpdateOperationsInput | number;
+  default_post_visibility?: Prisma.StringFieldUpdateOperationsInput | string;
+  default_quote_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
+  private_key_jwk?: Prisma.StringFieldUpdateOperationsInput | string;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
+  account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
+  bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -1712,6 +1929,7 @@ export type accountsCreateWithoutConversation_readsInput = {
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
   follows_follows_target_account_idToaccounts?: Prisma.followsCreateNestedManyWithoutAccounts_follows_target_account_idToaccountsInput;
@@ -1747,6 +1965,7 @@ export type accountsUncheckedCreateWithoutConversation_readsInput = {
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
   follows_follows_target_account_idToaccounts?: Prisma.followsUncheckedCreateNestedManyWithoutAccounts_follows_target_account_idToaccountsInput;
@@ -1810,6 +2029,7 @@ export type accountsUpdateWithoutConversation_readsInput = {
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
   follows_follows_target_account_idToaccounts?: Prisma.followsUpdateManyWithoutAccounts_follows_target_account_idToaccountsNestedInput;
@@ -1845,6 +2065,7 @@ export type accountsUncheckedUpdateWithoutConversation_readsInput = {
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
   follows_follows_target_account_idToaccounts?: Prisma.followsUncheckedUpdateManyWithoutAccounts_follows_target_account_idToaccountsNestedInput;
@@ -1880,6 +2101,7 @@ export type accountsCreateWithoutFavouritesInput = {
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
   follows_follows_target_account_idToaccounts?: Prisma.followsCreateNestedManyWithoutAccounts_follows_target_account_idToaccountsInput;
@@ -1915,6 +2137,7 @@ export type accountsUncheckedCreateWithoutFavouritesInput = {
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
   follows_follows_target_account_idToaccounts?: Prisma.followsUncheckedCreateNestedManyWithoutAccounts_follows_target_account_idToaccountsInput;
@@ -1978,6 +2201,7 @@ export type accountsUpdateWithoutFavouritesInput = {
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
   follows_follows_target_account_idToaccounts?: Prisma.followsUpdateManyWithoutAccounts_follows_target_account_idToaccountsNestedInput;
@@ -2013,6 +2237,7 @@ export type accountsUncheckedUpdateWithoutFavouritesInput = {
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
   follows_follows_target_account_idToaccounts?: Prisma.followsUncheckedUpdateManyWithoutAccounts_follows_target_account_idToaccountsNestedInput;
@@ -2048,6 +2273,7 @@ export type accountsCreateWithoutFiltersInput = {
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   follows_follows_target_account_idToaccounts?: Prisma.followsCreateNestedManyWithoutAccounts_follows_target_account_idToaccountsInput;
@@ -2083,6 +2309,7 @@ export type accountsUncheckedCreateWithoutFiltersInput = {
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   follows_follows_target_account_idToaccounts?: Prisma.followsUncheckedCreateNestedManyWithoutAccounts_follows_target_account_idToaccountsInput;
@@ -2146,6 +2373,7 @@ export type accountsUpdateWithoutFiltersInput = {
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   follows_follows_target_account_idToaccounts?: Prisma.followsUpdateManyWithoutAccounts_follows_target_account_idToaccountsNestedInput;
@@ -2181,6 +2409,7 @@ export type accountsUncheckedUpdateWithoutFiltersInput = {
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   follows_follows_target_account_idToaccounts?: Prisma.followsUncheckedUpdateManyWithoutAccounts_follows_target_account_idToaccountsNestedInput;
@@ -2216,6 +2445,7 @@ export type accountsCreateWithoutFollows_follows_target_account_idToaccountsInpu
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -2251,6 +2481,7 @@ export type accountsUncheckedCreateWithoutFollows_follows_target_account_idToacc
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -2294,6 +2525,7 @@ export type accountsCreateWithoutFollows_follows_follower_account_idToaccountsIn
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -2329,6 +2561,7 @@ export type accountsUncheckedCreateWithoutFollows_follows_follower_account_idToa
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -2392,6 +2625,7 @@ export type accountsUpdateWithoutFollows_follows_target_account_idToaccountsInpu
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -2427,6 +2661,7 @@ export type accountsUncheckedUpdateWithoutFollows_follows_target_account_idToacc
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -2483,6 +2718,7 @@ export type accountsUpdateWithoutFollows_follows_follower_account_idToaccountsIn
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -2518,6 +2754,7 @@ export type accountsUncheckedUpdateWithoutFollows_follows_follower_account_idToa
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -2553,6 +2790,7 @@ export type accountsCreateWithoutMarkersInput = {
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -2588,6 +2826,7 @@ export type accountsUncheckedCreateWithoutMarkersInput = {
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -2651,6 +2890,7 @@ export type accountsUpdateWithoutMarkersInput = {
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -2686,6 +2926,7 @@ export type accountsUncheckedUpdateWithoutMarkersInput = {
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -2721,6 +2962,7 @@ export type accountsCreateWithoutMedia_attachmentsInput = {
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -2756,6 +2998,7 @@ export type accountsUncheckedCreateWithoutMedia_attachmentsInput = {
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -2819,6 +3062,7 @@ export type accountsUpdateWithoutMedia_attachmentsInput = {
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -2854,6 +3098,7 @@ export type accountsUncheckedUpdateWithoutMedia_attachmentsInput = {
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -2889,6 +3134,7 @@ export type accountsCreateWithoutNotifications_notifications_from_account_idToac
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -2925,6 +3171,7 @@ export type accountsUncheckedCreateWithoutNotifications_notifications_from_accou
     account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
     account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
     bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+    conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
     conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
     favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
     filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -2969,6 +3216,7 @@ export type accountsCreateWithoutNotifications_notifications_account_idToaccount
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -3004,6 +3252,7 @@ export type accountsUncheckedCreateWithoutNotifications_notifications_account_id
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -3068,6 +3317,7 @@ export type accountsUpdateWithoutNotifications_notifications_from_account_idToac
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -3104,6 +3354,7 @@ export type accountsUncheckedUpdateWithoutNotifications_notifications_from_accou
     account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
     account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
     bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+    conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
     conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
     favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
     filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -3160,6 +3411,7 @@ export type accountsUpdateWithoutNotifications_notifications_account_idToaccount
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -3195,6 +3447,7 @@ export type accountsUncheckedUpdateWithoutNotifications_notifications_account_id
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -3230,6 +3483,7 @@ export type accountsCreateWithoutOutbound_activitiesInput = {
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -3265,6 +3519,7 @@ export type accountsUncheckedCreateWithoutOutbound_activitiesInput = {
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -3328,6 +3583,7 @@ export type accountsUpdateWithoutOutbound_activitiesInput = {
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -3363,6 +3619,7 @@ export type accountsUncheckedUpdateWithoutOutbound_activitiesInput = {
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -3398,6 +3655,7 @@ export type accountsCreateWithoutPoll_votesInput = {
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -3433,6 +3691,7 @@ export type accountsUncheckedCreateWithoutPoll_votesInput = {
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -3496,6 +3755,7 @@ export type accountsUpdateWithoutPoll_votesInput = {
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -3531,6 +3791,7 @@ export type accountsUncheckedUpdateWithoutPoll_votesInput = {
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -3566,6 +3827,7 @@ export type accountsCreateWithoutRemote_followsInput = {
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -3601,6 +3863,7 @@ export type accountsUncheckedCreateWithoutRemote_followsInput = {
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -3664,6 +3927,7 @@ export type accountsUpdateWithoutRemote_followsInput = {
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -3699,6 +3963,7 @@ export type accountsUncheckedUpdateWithoutRemote_followsInput = {
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -3734,6 +3999,7 @@ export type accountsCreateWithoutReports_reports_target_account_idToaccountsInpu
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -3769,6 +4035,7 @@ export type accountsUncheckedCreateWithoutReports_reports_target_account_idToacc
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -3812,6 +4079,7 @@ export type accountsCreateWithoutReports_reports_account_idToaccountsInput = {
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -3847,6 +4115,7 @@ export type accountsUncheckedCreateWithoutReports_reports_account_idToaccountsIn
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -3910,6 +4179,7 @@ export type accountsUpdateWithoutReports_reports_target_account_idToaccountsInpu
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -3945,6 +4215,7 @@ export type accountsUncheckedUpdateWithoutReports_reports_target_account_idToacc
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -4000,6 +4271,7 @@ export type accountsUpdateWithoutReports_reports_account_idToaccountsInput = {
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -4035,6 +4307,7 @@ export type accountsUncheckedUpdateWithoutReports_reports_account_idToaccountsIn
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -4070,6 +4343,7 @@ export type accountsCreateWithoutStatus_mentionsInput = {
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -4105,6 +4379,7 @@ export type accountsUncheckedCreateWithoutStatus_mentionsInput = {
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -4168,6 +4443,7 @@ export type accountsUpdateWithoutStatus_mentionsInput = {
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -4203,6 +4479,7 @@ export type accountsUncheckedUpdateWithoutStatus_mentionsInput = {
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -4238,6 +4515,7 @@ export type accountsCreateWithoutStatusesInput = {
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
@@ -4273,6 +4551,7 @@ export type accountsUncheckedCreateWithoutStatusesInput = {
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
   filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
@@ -4336,6 +4615,7 @@ export type accountsUpdateWithoutStatusesInput = {
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
@@ -4371,6 +4651,7 @@ export type accountsUncheckedUpdateWithoutStatusesInput = {
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
   filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -4396,6 +4677,7 @@ export type AccountsCountOutputType = {
   account_list_members: number;
   account_lists: number;
   bookmarks: number;
+  conversation_hides: number;
   conversation_reads: number;
   favourites: number;
   filters: number;
@@ -4420,6 +4702,7 @@ export type AccountsCountOutputTypeSelect<
   account_list_members?: boolean | AccountsCountOutputTypeCountAccount_list_membersArgs;
   account_lists?: boolean | AccountsCountOutputTypeCountAccount_listsArgs;
   bookmarks?: boolean | AccountsCountOutputTypeCountBookmarksArgs;
+  conversation_hides?: boolean | AccountsCountOutputTypeCountConversation_hidesArgs;
   conversation_reads?: boolean | AccountsCountOutputTypeCountConversation_readsArgs;
   favourites?: boolean | AccountsCountOutputTypeCountFavouritesArgs;
   filters?: boolean | AccountsCountOutputTypeCountFiltersArgs;
@@ -4487,6 +4770,15 @@ export type AccountsCountOutputTypeCountBookmarksArgs<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
   where?: Prisma.bookmarksWhereInput;
+};
+
+/**
+ * AccountsCountOutputType without action
+ */
+export type AccountsCountOutputTypeCountConversation_hidesArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  where?: Prisma.conversation_hidesWhereInput;
 };
 
 /**
@@ -4654,6 +4946,7 @@ export type accountsSelect<
     account_list_members?: boolean | Prisma.accounts$account_list_membersArgs<ExtArgs>;
     account_lists?: boolean | Prisma.accounts$account_listsArgs<ExtArgs>;
     bookmarks?: boolean | Prisma.accounts$bookmarksArgs<ExtArgs>;
+    conversation_hides?: boolean | Prisma.accounts$conversation_hidesArgs<ExtArgs>;
     conversation_reads?: boolean | Prisma.accounts$conversation_readsArgs<ExtArgs>;
     favourites?: boolean | Prisma.accounts$favouritesArgs<ExtArgs>;
     filters?: boolean | Prisma.accounts$filtersArgs<ExtArgs>;
@@ -4773,6 +5066,7 @@ export type accountsInclude<
   account_list_members?: boolean | Prisma.accounts$account_list_membersArgs<ExtArgs>;
   account_lists?: boolean | Prisma.accounts$account_listsArgs<ExtArgs>;
   bookmarks?: boolean | Prisma.accounts$bookmarksArgs<ExtArgs>;
+  conversation_hides?: boolean | Prisma.accounts$conversation_hidesArgs<ExtArgs>;
   conversation_reads?: boolean | Prisma.accounts$conversation_readsArgs<ExtArgs>;
   favourites?: boolean | Prisma.accounts$favouritesArgs<ExtArgs>;
   filters?: boolean | Prisma.accounts$filtersArgs<ExtArgs>;
@@ -4818,6 +5112,7 @@ export type $accountsPayload<
     account_list_members: Prisma.$account_list_membersPayload<ExtArgs>[];
     account_lists: Prisma.$account_listsPayload<ExtArgs>[];
     bookmarks: Prisma.$bookmarksPayload<ExtArgs>[];
+    conversation_hides: Prisma.$conversation_hidesPayload<ExtArgs>[];
     conversation_reads: Prisma.$conversation_readsPayload<ExtArgs>[];
     favourites: Prisma.$favouritesPayload<ExtArgs>[];
     filters: Prisma.$filtersPayload<ExtArgs>[];
@@ -5413,6 +5708,17 @@ export interface Prisma__accountsClient<
   ): Prisma.PrismaPromise<
     | runtime.Types.Result.GetResult<
         Prisma.$bookmarksPayload<ExtArgs>,
+        T,
+        "findMany",
+        GlobalOmitOptions
+      >
+    | Null
+  >;
+  conversation_hides<T extends Prisma.accounts$conversation_hidesArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.accounts$conversation_hidesArgs<ExtArgs>>,
+  ): Prisma.PrismaPromise<
+    | runtime.Types.Result.GetResult<
+        Prisma.$conversation_hidesPayload<ExtArgs>,
         T,
         "findMany",
         GlobalOmitOptions
@@ -6167,6 +6473,34 @@ export type accounts$bookmarksArgs<
   take?: number;
   skip?: number;
   distinct?: Prisma.BookmarksScalarFieldEnum | Prisma.BookmarksScalarFieldEnum[];
+};
+
+/**
+ * accounts.conversation_hides
+ */
+export type accounts$conversation_hidesArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the conversation_hides
+   */
+  select?: Prisma.conversation_hidesSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the conversation_hides
+   */
+  omit?: Prisma.conversation_hidesOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.conversation_hidesInclude<ExtArgs> | null;
+  where?: Prisma.conversation_hidesWhereInput;
+  orderBy?:
+    | Prisma.conversation_hidesOrderByWithRelationInput
+    | Prisma.conversation_hidesOrderByWithRelationInput[];
+  cursor?: Prisma.conversation_hidesWhereUniqueInput;
+  take?: number;
+  skip?: number;
+  distinct?: Prisma.Conversation_hidesScalarFieldEnum | Prisma.Conversation_hidesScalarFieldEnum[];
 };
 
 /**

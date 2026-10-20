@@ -80,6 +80,29 @@ mediaRoutes.get("/media/:id", async (c) => {
   });
 });
 
+/**
+ * `GET /api/v1/media/:id`: the attachment document for its owner. Mastodon
+ * scopes this to the uploading account, so someone else's id answers 404.
+ */
+mediaRoutes.get("/api/v1/media/:id", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const row = await findMediaById(c.env.DB, c.req.param("id") ?? "");
+  if (row.isErr()) {
+    return jsonRepositoryError(c, row.error.message);
+  }
+  if (!row.value || row.value.account_id !== user.value.id) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.json(mastodonMedia(identity.value, row.value));
+});
+
 const parseFocus = (raw: string): Readonly<{ x: number; y: number }> | undefined =>
   parseMediaFocus(raw);
 

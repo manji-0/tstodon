@@ -64,6 +64,7 @@ export const ModelName = {
   domain_blocks: "domain_blocks",
   accounts: "accounts",
   bookmarks: "bookmarks",
+  conversation_hides: "conversation_hides",
   conversation_reads: "conversation_reads",
   favourites: "favourites",
   filter_statuses: "filter_statuses",
@@ -308,6 +309,16 @@ export const BookmarksScalarFieldEnum = {
 
 export type BookmarksScalarFieldEnum =
   (typeof BookmarksScalarFieldEnum)[keyof typeof BookmarksScalarFieldEnum];
+
+export const Conversation_hidesScalarFieldEnum = {
+  account_id: "account_id",
+  conversation_id: "conversation_id",
+  hidden_status_id: "hidden_status_id",
+  created_at: "created_at",
+} as const;
+
+export type Conversation_hidesScalarFieldEnum =
+  (typeof Conversation_hidesScalarFieldEnum)[keyof typeof Conversation_hidesScalarFieldEnum];
 
 export const Conversation_readsScalarFieldEnum = {
   account_id: "account_id",

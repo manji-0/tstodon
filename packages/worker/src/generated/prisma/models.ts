@@ -23,6 +23,7 @@ export type * from "./models/account_flags";
 export type * from "./models/domain_blocks";
 export type * from "./models/accounts";
 export type * from "./models/bookmarks";
+export type * from "./models/conversation_hides";
 export type * from "./models/conversation_reads";
 export type * from "./models/favourites";
 export type * from "./models/filter_statuses";
