@@ -9,7 +9,7 @@
 5. Apply D1 migrations: `wrangler d1 migrations apply tstodon --remote`.
 6. Put the media bucket on a public hostname and set `MEDIA_PUBLIC_BASE_URL`.
 7. `pnpm run ci`
-8. `wrangler deploy`
+8. `pnpm run deploy` (`vp build .` then `wrangler deploy`, which deploys the Vite build output in `dist/`)
 9. Re-apply Terraform with `attach_queue_consumer = true` so the outbox Queue consumer points at the deployed Worker.
 
 Do not commit Access audience values as secrets in git beyond what ops needs, and never commit private JWKs for production. Confirm the Worker placement region still matches the D1 primary.

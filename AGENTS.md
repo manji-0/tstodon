@@ -36,13 +36,17 @@ Run commands from the repository root.
 ```sh
 pnpm install
 pnpm types:worker
+pnpm check
 pnpm typecheck
 pnpm test
 pnpm lint
 pnpm fmt:check
 pnpm dev
+pnpm build
 pnpm run ci
 ```
+
+The toolchain is Vite+ (`vp`): `vite.config.ts` holds the Vite, Vitest, Oxlint, and Oxfmt settings. Tests import from `vite-plus/test`, not `vitest`.
 
 `pnpm run ci` is the minimum validation gate before handing back implementation work (`pnpm ci` is pnpm's frozen install).
 

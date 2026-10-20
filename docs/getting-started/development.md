@@ -4,16 +4,24 @@
 
 ```sh
 pnpm types:worker
+pnpm check
 pnpm typecheck
 pnpm test
 pnpm lint
 pnpm fmt
 pnpm fmt:check
 pnpm dev
+pnpm build
 pnpm run ci
 ```
 
-`pnpm run ci` is the merge gate (`pnpm ci` is pnpm's frozen install). Lint uses oxlint with type-aware rules via oxlint-tsgolint; formatting uses oxfmt. TypeScript targets ES2025 with `erasableSyntaxOnly` and `verbatimModuleSyntax`.
+`pnpm run ci` is the merge gate (`pnpm ci` is pnpm's frozen install). The toolchain is [Vite+](https://viteplus.dev/) (`vp`), configured in `vite.config.ts`:
+
+- `pnpm check` (`vp check`) formats with Oxfmt, lints with Oxlint (type-aware rules via oxlint-tsgolint), and type-checks every package including tests. `pnpm typecheck` runs only the type check. Each package `tsconfig.json` is a standalone `noEmit` project; nothing is emitted by TypeScript.
+- `pnpm test` (`vp test run`) runs Vitest 5. Worker tests run in workerd through `@cloudflare/vitest-plugin`.
+- `pnpm dev` (`vp dev`) and `pnpm build` (`vp build .`) run the Worker through `@cloudflare/vite-plugin` (Vite + Rolldown). Static assets come from `assets/` (Vite's `publicDir`). `wrangler deploy` uses the build output in `dist/` via `.wrangler/deploy/config.json`, so run `pnpm build` first (`pnpm run deploy` does both; plain `pnpm deploy` is pnpm's own command).
+
+TypeScript targets ES2025 with `erasableSyntaxOnly` and `verbatimModuleSyntax`.
 
 ## HTTP routing
 

@@ -21,7 +21,13 @@ Run **two local tstodon Workers** and check federation discovery surfaces agains
 | `INSTANCE_DOMAIN`        | acct domain (`127.0.0.1:8791`)                                                                                                              |
 | `FEDERATION_ALLOW_HOSTS` | Comma hosts allowed to federate; a non-empty list is limited federation and also lifts the private-IP refusal for those hosts (`127.0.0.1`) |
 
-Configs: `e2e/a.wrangler.jsonc`, `e2e/b.wrangler.jsonc`.
+Configs: `e2e/a.wrangler.jsonc`, `e2e/b.wrangler.jsonc`. Each instance runs `vp dev` with `TSTODON_WORKER_CONFIG` pointing at its config and `TSTODON_PERSIST_TO` at its local state (`.wrangler/e2e-a`, `.wrangler/e2e-b`), which `vite.config.ts` turns into the Cloudflare plugin's `configPath` and `persistState`. The layout matches `wrangler --persist-to`, so the `wrangler d1` commands below and the e2e helpers read the same databases.
+
+To start one instance by hand:
+
+```sh
+TSTODON_WORKER_CONFIG=e2e/a.wrangler.jsonc TSTODON_PERSIST_TO=.wrangler/e2e-a pnpm exec vp dev --port 8791 --strictPort --host 127.0.0.1
+```
 
 ## Commands
 
@@ -30,7 +36,7 @@ Configs: `e2e/a.wrangler.jsonc`, `e2e/b.wrangler.jsonc`.
 pnpm exec wrangler d1 migrations apply tstodon-e2e-a --local --config e2e/a.wrangler.jsonc --persist-to .wrangler/e2e-a
 pnpm exec wrangler d1 migrations apply tstodon-e2e-b --local --config e2e/b.wrangler.jsonc --persist-to .wrangler/e2e-b
 
-# bring up A+B and run smoke
+# bring up A+B (one `vp dev` per instance) and run smoke
 process-compose up
 # or: process-compose up e2e-federation-smoke
 
