@@ -52,6 +52,7 @@ import {
 } from "../schemas";
 import { schemaResult } from "@tstodon/core";
 import {
+  deleteRemoteNotifications,
   favouriteStatus,
   followAccount,
   listFollowers,
@@ -402,6 +403,11 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         : undefined;
       if (target?.isOk() && target.value) {
         await deleteRemoteFollow(c.env.DB, signer.actor.actorUri, target.value.id);
+        await deleteRemoteNotifications(c.env.DB, {
+          actorUri: signer.actor.actorUri,
+          kinds: ["follow", "follow_request"],
+          accountId: target.value.id,
+        });
       }
       const statusUri =
         nested && (nested.type === "Like" || nested.type === "Announce")
@@ -410,9 +416,19 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       const statusId = statusUri ? parseLocalStatusId(identity.value, statusUri) : undefined;
       if (statusId && nested?.type === "Like") {
         await deleteRemoteFavourite(c.env.DB, signer.actor.actorUri, statusId);
+        await deleteRemoteNotifications(c.env.DB, {
+          actorUri: signer.actor.actorUri,
+          kinds: ["favourite"],
+          statusId,
+        });
       }
       if (statusId && nested?.type === "Announce") {
         await deleteRemoteAnnounce(c.env.DB, signer.actor.actorUri, statusId);
+        await deleteRemoteNotifications(c.env.DB, {
+          actorUri: signer.actor.actorUri,
+          kinds: ["reblog"],
+          statusId,
+        });
       }
     }
     if (activity.kind === "Like") {
@@ -428,7 +444,19 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       const objectUri = activity.object;
       // Remote note delete (object is remote URI we may have cached).
       if (!parseLocalStatusId(identity.value, objectUri)) {
-        await deleteRemoteStatusByObjectUri(c.env.DB, objectUri, signer.actor.actorUri);
+        const deleted = await deleteRemoteStatusByObjectUri(
+          c.env.DB,
+          objectUri,
+          signer.actor.actorUri,
+        );
+        // Its mention notifications go with it.
+        if (deleted.isOk() && deleted.value) {
+          await deleteRemoteNotifications(c.env.DB, {
+            actorUri: signer.actor.actorUri,
+            kinds: ["mention"],
+            statusId: deleted.value,
+          });
+        }
       }
     }
     if (activity.kind === "Create" || activity.kind === "Announce") {

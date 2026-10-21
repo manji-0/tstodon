@@ -293,6 +293,77 @@ describe("notifications from remote actors", () => {
     expect((await notifications(email)).map((entry) => entry.type)).toEqual(["mention"]);
   });
 
+  it("withdraws notifications when the activity is undone or the note deleted", async () => {
+    const email = "remote-notify-undo@example.com";
+    const account = await me(email);
+    const actorUrl = `https://example.com/users/${account.username}`;
+    const status = await post(email, "undo me");
+    const remote = await remoteActor("undoer");
+    const like = {
+      id: "https://remote.example/activities/undo-like",
+      type: "Like",
+      object: status.uri,
+    };
+    const announce = {
+      id: "https://remote.example/activities/undo-announce",
+      type: "Announce",
+      object: status.uri,
+    };
+    const follow = {
+      id: "https://remote.example/activities/undo-follow",
+      type: "Follow",
+      object: actorUrl,
+    };
+    const noteUri = "https://remote.example/notes/undo-mention";
+    for (const activity of [like, announce, follow]) {
+      expect(await remote.send(activity)).toBe(202);
+    }
+    expect(
+      await remote.send({
+        id: "https://remote.example/activities/create-undo-mention",
+        type: "Create",
+        object: {
+          id: noteUri,
+          type: "Note",
+          attributedTo: remote.actorUri,
+          content: "<p>hi</p>",
+          published: "2026-10-20T00:00:00.000Z",
+          to: [actorUrl],
+        },
+      }),
+    ).toBe(202);
+    expect((await notifications(email)).map((entry) => entry.type).toSorted()).toEqual([
+      "favourite",
+      "follow",
+      "mention",
+      "reblog",
+    ]);
+
+    const undo = (activity: Record<string, unknown>, n: string) =>
+      remote.send({
+        id: `https://remote.example/activities/undo-${n}`,
+        type: "Undo",
+        object: activity,
+      });
+    expect(await undo(like, "1")).toBe(202);
+    expect((await notifications(email)).map((entry) => entry.type).toSorted()).toEqual([
+      "follow",
+      "mention",
+      "reblog",
+    ]);
+    expect(await undo(announce, "2")).toBe(202);
+    expect(await undo(follow, "3")).toBe(202);
+    expect((await notifications(email)).map((entry) => entry.type)).toEqual(["mention"]);
+    expect(
+      await remote.send({
+        id: "https://remote.example/activities/delete-undo-mention",
+        type: "Delete",
+        object: noteUri,
+      }),
+    ).toBe(202);
+    expect(await notifications(email)).toEqual([]);
+  });
+
   it("removes a purged local sender's notifications", async () => {
     const author = "remote-notify-purge-author@example.com";
     const status = await post(author, "fave this");

@@ -100,6 +100,8 @@ export * from "./sql/deleteRemoteFavourite";
 
 export * from "./sql/deleteRemoteFollow";
 
+export * from "./sql/deleteRemoteNotifications";
+
 export * from "./sql/deleteRemoteStatusByObjectUri";
 
 export * from "./sql/deleteStatusMentions";

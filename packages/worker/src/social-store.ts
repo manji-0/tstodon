@@ -20,6 +20,7 @@ import {
   deleteFavourite as deleteFavouriteSql,
   deleteFollow as deleteFollowSql,
   deleteMute as deleteMuteSql,
+  deleteRemoteNotifications as deleteRemoteNotificationsSql,
   dismissNotification as dismissNotificationSql,
   dismissSuggestion as dismissSuggestionSql,
   findAccountDomainBlock as findAccountDomainBlockSql,
@@ -580,6 +581,35 @@ export const unbookmarkStatus = async (
   runD1(async () => {
     await runTyped(db, deleteBookmarkSql(accountId, statusId));
   });
+
+/**
+ * Withdraw what a remote actor's activity notified, when the activity is
+ * undone or its note deleted: its notifications of `kinds`, narrowed to one
+ * recipient and/or status when given. Held requests cascade with them.
+ */
+export const deleteRemoteNotifications = async (
+  db: D1Database,
+  input: Readonly<{
+    actorUri: string;
+    kinds: ReadonlyArray<string>;
+    accountId?: string;
+    statusId?: string;
+  }>,
+): Promise<Result<number, RepositoryError>> =>
+  runD1(
+    async () =>
+      (
+        await queryTyped(
+          db,
+          deleteRemoteNotificationsSql(
+            input.actorUri,
+            jsonStringArray(input.kinds),
+            input.accountId ?? "",
+            input.statusId ?? "",
+          ),
+        )
+      ).length,
+  );
 
 export const insertNotification = async (
   db: D1Database,
