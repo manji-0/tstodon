@@ -61,6 +61,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 - Poll edit accepts `hide_totals`
 - `filter_action` is client-applied and unknown actions read as `warn` (documented + tested)
 - `trends/links` supports `limit` + `offset` paging
+- Link timeline (`/api/v1/timelines/link?url=`) for trending links
 - Cron `RefreshLinkCards` job refreshes aged previews (20 per run)
 - Single notification reports `filtered` like the list
 - Link previews refresh after a week in the cache

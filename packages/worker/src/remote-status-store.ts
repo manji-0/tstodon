@@ -188,14 +188,15 @@ export const upsertRemoteStatus = async (
   return ok(written.value);
 };
 
-/** Store the link preview built for a remote status. */
+/** Store the link preview built for a remote status, with the link it was unfurled from. */
 export const setRemoteStatusCard = async (
   db: D1Database,
   statusId: string,
   cardJson: string,
+  cardUrl: string,
 ): Promise<Result<void, RepositoryError>> => {
   const written = await runD1(async () => {
-    await queryTyped(db, setRemoteStatusCardSql(statusId, cardJson));
+    await queryTyped(db, setRemoteStatusCardSql(statusId, cardJson, cardUrl));
   });
   return written.map(() => undefined);
 };
@@ -297,6 +298,42 @@ export const listTagRemoteStatuses = async (
          WHERE ${conditions.join(" AND ")} ${cursorWhere} ${order} LIMIT ?`,
       )
       .bind(...binds, ...(cursorId.length > 0 ? [cursorId] : []), limit)
+      .all();
+    const statuses: RemoteStatus[] = [];
+    for (const raw of results ?? []) {
+      const row = parseRemoteStatusRow(raw);
+      if (row.isErr()) {
+        continue;
+      }
+      const parsed = remoteStatusFromRow(row.value);
+      if (parsed.isOk()) {
+        statuses.push(parsed.value);
+      }
+    }
+    return statuses;
+  });
+
+/** Public remote statuses whose preview card was unfurled from `url` (the link timeline). */
+export const listLinkRemoteStatuses = async (
+  db: D1Database,
+  url: string,
+  limit: number,
+  cursor: StatusCursor = {},
+): Promise<Result<RemoteStatus[], RepositoryError>> =>
+  runD1(async () => {
+    const minId = cursor.minId ?? "";
+    const sinceId = cursor.sinceId ?? "";
+    const maxId = cursor.maxId ?? "";
+    const cursorId = minId || sinceId || maxId;
+    const cursorWhere =
+      cursorId.length > 0 ? (maxId && !minId && !sinceId ? "AND s.id < ?" : "AND s.id > ?") : "";
+    const order = minId.length > 0 ? "ORDER BY s.id ASC" : "ORDER BY s.id DESC";
+    const { results } = await db
+      .prepare(
+        `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
+         WHERE s.card_url = ? AND s.visibility = 'public' ${cursorWhere} ${order} LIMIT ?`,
+      )
+      .bind(url, ...(cursorId.length > 0 ? [cursorId] : []), limit)
       .all();
     const statuses: RemoteStatus[] = [];
     for (const raw of results ?? []) {

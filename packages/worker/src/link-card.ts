@@ -87,15 +87,21 @@ export const parseCardJson = (raw: string): LinkCard | undefined => {
   };
 };
 
+/** A link as cards key it: trailing punctuation dropped, then URL-normalized. */
+export const normalizeLinkUrl = (raw: string): string | undefined => {
+  try {
+    return new URL(raw.replace(/[),.;:!?]+$/, "")).toString();
+  } catch {
+    return undefined;
+  }
+};
+
 /** The first http(s) link in the text, without trailing punctuation. */
 export const extractFirstUrl = (text: string): string | undefined => {
   for (const match of text.matchAll(/https?:\/\/[^\s<>"']+/g)) {
-    const candidate = match[0].replace(/[),.;:!?]+$/, "");
-    try {
-      const url = new URL(candidate);
-      return url.toString();
-    } catch {
-      continue;
+    const url = normalizeLinkUrl(match[0]);
+    if (url) {
+      return url;
     }
   }
   return undefined;
@@ -370,7 +376,7 @@ export const processLinkCardJob = async (
   const cardJson = JSON.stringify(cardDocument(outcome.card));
   const stored =
     job.target === "Status"
-      ? await setStatusCard(env.DB, job.id, cardJson)
-      : await setRemoteStatusCard(env.DB, job.id, cardJson);
+      ? await setStatusCard(env.DB, job.id, cardJson, job.url)
+      : await setRemoteStatusCard(env.DB, job.id, cardJson, job.url);
   return stored.isErr() ? "retry" : "ok";
 };

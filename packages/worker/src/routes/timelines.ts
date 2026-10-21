@@ -18,16 +18,20 @@ import { findRemoteActorByUri } from "../remote-actor-store";
 import {
   listPublicRemoteStatuses,
   listRemoteStatusCards,
+  listLinkRemoteStatuses,
   listTagRemoteStatuses,
 } from "../remote-status-store";
 import {
   listDirectStatusesForAccount,
   listHomeStatuses,
   listPublicStatuses,
+  listLinkStatuses,
   listTagStatuses,
   type TagStatusFilters,
 } from "../status-store";
 import { isTruthy } from "../schemas";
+import { findTrendingLinkUrl } from "../trend-store";
+import { rejectedTrendTargets } from "../trend-review-store";
 import { filterMutedThreads } from "../status-mute-store";
 
 export const timelineRoutes = new Hono<{ Bindings: Env }>();
@@ -297,6 +301,62 @@ timelineRoutes.get("/api/v1/timelines/tag/:hashtag", async (c) => {
   const documents = mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit);
   writeMetric(c.env, "timeline.tag", [elapsedMs(startedAt), documents.length], ["ok"]);
   return c.json(documents);
+});
+
+/**
+ * Public statuses whose preview card is a trending link (`url`), like
+ * Mastodon's link timeline; a link that is not trending answers 404.
+ */
+timelineRoutes.get("/api/v1/timelines/link", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const auth = await authenticate(c.req.raw, c.env);
+  if (auth.isErr()) {
+    return jsonAuthError(c, auth.error);
+  }
+  const rejected = await rejectedTrendTargets(c.env.DB, "Link");
+  if (rejected.isErr()) {
+    return jsonRepositoryError(c, rejected.error.message);
+  }
+  const url = await findTrendingLinkUrl(c.env.DB, c.req.query("url") ?? "", rejected.value);
+  if (url.isErr()) {
+    return jsonRepositoryError(c, url.error.message);
+  }
+  if (!url.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
+  const limit = queryLimit(c.req.query("limit"));
+  const cursor = queryCursor(c);
+  const [local, remote] = await Promise.all([
+    listLinkStatuses(c.env.DB, url.value, limit, cursor),
+    listLinkRemoteStatuses(c.env.DB, url.value, limit, cursor),
+  ]);
+  if (local.isErr()) {
+    return jsonRepositoryError(c, local.error.message);
+  }
+  if (remote.isErr()) {
+    return jsonRepositoryError(c, remote.error.message);
+  }
+  const localDocuments = await mastodonStatuses(c.env, identity.value, local.value, viewerId);
+  const rendered = await remoteTimelineDocuments(c, identity.value, remote.value, viewerId);
+  const filteredLocal = await attachFilteredToStatuses(
+    c.env.DB,
+    viewerId,
+    "public",
+    local.value,
+    localDocuments,
+  );
+  const filteredRemote = await attachFilteredToRemoteStatuses(
+    c.env.DB,
+    viewerId,
+    "public",
+    rendered.statuses,
+    rendered.documents,
+  );
+  return c.json(mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit));
 });
 
 timelineRoutes.get("/api/v1/timelines/direct", async (c) => {

@@ -579,6 +579,7 @@ model remote_statuses {
   media_json    String        @default("[]")
   tags_indexed  Int           @default(0)
   card_json     String?
+  card_url      String?
   created_at    String        @default("CURRENT_TIMESTAMP")
   updated_at    String        @default("CURRENT_TIMESTAMP")
   remote_actors remote_actors @relation(fields: [actor_uri], references: [actor_uri], onDelete: Cascade, onUpdate: NoAction)
@@ -586,6 +587,7 @@ model remote_statuses {
 
   @@index([actor_uri, published_at(sort: Desc)], map: "idx_remote_statuses_actor_published")
   @@index([visibility, published_at(sort: Desc)], map: "idx_remote_statuses_visibility_published")
+  @@index([card_url, id], map: "idx_remote_statuses_card_url")
 }
 
 model canonical_email_blocks {

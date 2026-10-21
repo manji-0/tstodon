@@ -686,6 +686,7 @@ export const Remote_statusesScalarFieldEnum = {
   media_json: "media_json",
   tags_indexed: "tags_indexed",
   card_json: "card_json",
+  card_url: "card_url",
   created_at: "created_at",
   updated_at: "updated_at",
 } as const;

@@ -7,16 +7,18 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param id
  * @param cardJson
+ * @param cardUrl
  */
 export const setRemoteStatusCard = $runtime.makeTypedQueryFactory(
-  "UPDATE remote_statuses SET card_json = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1\nRETURNING id",
+  "UPDATE remote_statuses SET card_json = $2, card_url = $3, updated_at = CURRENT_TIMESTAMP\nWHERE id = $1\nRETURNING id",
 ) as (
   id: string,
   cardJson: string,
+  cardUrl: string,
 ) => $runtime.TypedSql<setRemoteStatusCard.Parameters, setRemoteStatusCard.Result>;
 
 export namespace setRemoteStatusCard {
-  export type Parameters = [id: string, cardJson: string];
+  export type Parameters = [id: string, cardJson: string, cardUrl: string];
   export type Result = {
     id: string | null;
   };

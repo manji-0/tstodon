@@ -330,14 +330,15 @@ export const findStatusUpdatedAt = async (
     return rows[0]?.updated_at;
   });
 
-/** Store the link preview built for a status. */
+/** Store the link preview built for a status, with the link it was unfurled from. */
 export const setStatusCard = async (
   db: D1Database,
   statusId: string,
   cardJson: string,
+  cardUrl: string,
 ): Promise<Result<void, RepositoryError>> => {
   const written = await runD1(async () => {
-    await queryTyped(db, updateStatusCardSql(statusId, cardJson));
+    await queryTyped(db, updateStatusCardSql(statusId, cardJson, cardUrl));
   });
   return written.map(() => undefined);
 };
@@ -729,6 +730,26 @@ export const listTagStatuses = async (
         ...binds,
         limit,
       )
+      .all();
+    return hydrateStatusRows(db, results ?? []);
+  });
+
+/** Public local notes whose preview card was unfurled from `url` (the link timeline). */
+export const listLinkStatuses = async (
+  db: D1Database,
+  url: string,
+  limit: number,
+  cursor: StatusCursor = {},
+): Promise<Result<LocalStatusValue[], RepositoryError>> =>
+  runD1(async () => {
+    const { where, order, binds } = cursorFragment(cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT ${statusSelect} FROM statuses
+         WHERE card_url = ? AND kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
+         ${where} ${order} LIMIT ?`,
+      )
+      .bind(url, ...binds, limit)
       .all();
     return hydrateStatusRows(db, results ?? []);
   });

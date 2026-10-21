@@ -7,16 +7,18 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param id
  * @param cardJson
+ * @param cardUrl
  */
 export const updateStatusCard = $runtime.makeTypedQueryFactory(
-  "UPDATE statuses SET card_json = $2 WHERE id = $1\nRETURNING id",
+  "UPDATE statuses SET card_json = $2, card_url = $3 WHERE id = $1\nRETURNING id",
 ) as (
   id: string,
   cardJson: string,
+  cardUrl: string,
 ) => $runtime.TypedSql<updateStatusCard.Parameters, updateStatusCard.Result>;
 
 export namespace updateStatusCard {
-  export type Parameters = [id: string, cardJson: string];
+  export type Parameters = [id: string, cardJson: string, cardUrl: string];
   export type Result = {
     id: string | null;
   };
