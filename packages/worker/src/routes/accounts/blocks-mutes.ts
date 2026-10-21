@@ -19,10 +19,10 @@ import {
   listBlockedAccounts,
   listMutedAccounts,
   muteAccount,
-  relationshipFlags,
   unblockAccount,
   unmuteAccount,
-} from "../../social-store";
+} from "../../block-mute-store";
+import { relationshipFlags } from "../../relationship-store";
 import { relationshipTarget } from "./endorsements";
 
 export const accountBlockMuteRoutes = new Hono<{ Bindings: Env }>();

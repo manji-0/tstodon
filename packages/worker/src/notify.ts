@@ -5,7 +5,8 @@ import { holdNotification } from "./notification-policy-store";
 import { notificationDisposition } from "./notification-policy";
 import { hostnameOf, isDomainBlocked } from "./domain-block-store";
 import { RemoteAccountId } from "./remote-account-id";
-import { findActiveMute, findBlock, insertNotification } from "./social-store";
+import { findActiveMute, findBlock } from "./block-mute-store";
+import { insertNotification } from "./notification-store";
 import { enqueuePushDeliveries } from "./push-delivery";
 import { publishToAccount } from "./stream-publish";
 

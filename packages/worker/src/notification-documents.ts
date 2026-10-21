@@ -1,6 +1,6 @@
 import type { InstanceIdentity } from "@tstodon/domain";
 import { accountDocumentsByIds } from "./account-documents";
-import type { NotificationRow } from "./social-store";
+import type { NotificationRow } from "./notification-store";
 import { statusDocumentsByIds } from "./status-documents";
 
 /**

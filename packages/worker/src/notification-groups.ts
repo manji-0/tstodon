@@ -1,4 +1,4 @@
-import type { NotificationRow } from "./social-store";
+import type { NotificationRow } from "./notification-store";
 
 /**
  * Notification kinds Mastodon groups server-side (4.3+). Types outside this set

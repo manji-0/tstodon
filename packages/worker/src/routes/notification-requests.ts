@@ -33,7 +33,7 @@ import {
   NotificationRequestIdsBodySchema,
   stringList,
 } from "../schemas";
-import { dismissNotification } from "../social-store";
+import { dismissNotification } from "../notification-store";
 import { publishToAccount } from "../stream-publish";
 
 /**

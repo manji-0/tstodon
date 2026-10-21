@@ -14,7 +14,7 @@ import {
   unfeatureTag as unfeatureTagSql,
   unfollowTag as unfollowTagSql,
 } from "./generated/prisma/sql";
-import { extractHashtags } from "./status-store";
+import { extractHashtags } from "./status-discovery-store";
 import { queryTyped, runTyped } from "./typed-sql";
 
 export type TagHistoryEntry = Readonly<{ day: string; uses: string; accounts: string }>;

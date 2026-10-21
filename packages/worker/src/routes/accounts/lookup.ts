@@ -27,7 +27,8 @@ import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "../../d1";
 import { RemoteAccountId } from "../../remote-account-id";
 import { parseInstanceIdentity } from "../../runtime-config";
-import { familiarFollowerIds, followingAccountIds, relationshipFlags } from "../../social-store";
+import { familiarFollowerIds, followingAccountIds } from "../../follow-store";
+import { relationshipFlags } from "../../relationship-store";
 import { isTruthy } from "../../schemas";
 
 export const accountLookupRoutes = new Hono<{ Bindings: Env }>();

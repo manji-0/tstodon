@@ -17,12 +17,13 @@ import { listStatusMentions } from "./mention-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { findRemoteStatusRefsByObjectUris } from "./remote-status-store";
-import { findStatusesByIds, listStatusCards, listStatusReplyUris } from "./status-store";
+import { findStatusesByIds, listStatusReplyUris } from "./status-store";
+import { listStatusCards } from "./status-card-store";
+import { followingAccountIds } from "./follow-store";
 import {
-  followingAccountIds,
   type StatusInteractionCounts,
   statusInteractionCountsByIds,
-} from "./social-store";
+} from "./status-interaction-store";
 import { findMediaByIds, type MediaRow } from "./media-store";
 import { type CustomEmoji, customEmojiJson, emojisInText, emojisInTexts } from "./emoji";
 import {

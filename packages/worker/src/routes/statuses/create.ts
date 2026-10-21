@@ -11,7 +11,7 @@ import type { Context } from "hono";
 import { findAccountById, findComposeDefaults } from "../../account-store";
 import { escapeHtml, mentionUsernames } from "../../html";
 import { findReplyTarget, type ReplyTarget } from "../../reply-target";
-import { findFollowKind } from "../../social-store";
+import { findFollowKind } from "../../follow-store";
 import {
   jsonAuthError,
   jsonRepositoryError,

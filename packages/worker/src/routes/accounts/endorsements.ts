@@ -18,13 +18,8 @@ import { mastodonRelationship } from "../../relationship-document";
 import { findRemoteActorByUri } from "../../remote-actor-store";
 import { RemoteAccountId } from "../../remote-account-id";
 import { parseInstanceIdentity } from "../../runtime-config";
-import {
-  endorseAccount,
-  listEndorsements,
-  relationshipFlags,
-  setAccountNote,
-  unendorseAccount,
-} from "../../social-store";
+import { endorseAccount, listEndorsements, unendorseAccount } from "../../endorsement-store";
+import { relationshipFlags, setAccountNote } from "../../relationship-store";
 
 export const accountEndorsementRoutes = new Hono<{ Bindings: Env }>();
 

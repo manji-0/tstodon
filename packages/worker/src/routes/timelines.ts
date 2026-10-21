@@ -24,14 +24,13 @@ import {
   listLinkRemoteStatuses,
   listTagRemoteStatuses,
 } from "../remote-status-store";
+import { listDirectStatusesForAccount } from "../direct-status-store";
+import { listHomeStatuses, listPublicStatuses } from "../status-timeline-store";
 import {
-  listDirectStatusesForAccount,
-  listHomeStatuses,
-  listPublicStatuses,
   listLinkStatuses,
   listTagStatuses,
   type TagStatusFilters,
-} from "../status-store";
+} from "../status-discovery-store";
 import { isTruthy } from "../schemas";
 import { findTrendingLinkUrl } from "../trend-store";
 import { rejectedTrendTargets } from "../trend-review-store";

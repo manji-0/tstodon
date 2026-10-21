@@ -14,7 +14,8 @@ import {
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteFollow } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
-import { findFollowKind, findNotificationById } from "./social-store";
+import { findFollowKind } from "./follow-store";
+import { findNotificationById } from "./notification-store";
 import { vapidKeys } from "./vapid";
 import { buildPushRequest } from "./web-push";
 

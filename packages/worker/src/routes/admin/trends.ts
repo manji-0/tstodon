@@ -12,7 +12,8 @@ import {
 } from "../../http";
 import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
-import { findStatusById, listTrendingStatuses, listTrendingTags } from "../../status-store";
+import { findStatusById } from "../../status-store";
+import { listTrendingStatuses, listTrendingTags } from "../../status-discovery-store";
 import { tagDailyHistory } from "../../tag-store";
 import { cardDocument, listCachedLinkCards } from "../../link-card";
 import { fallbackLinkCard, listTrendingLinks } from "../../trend-store";

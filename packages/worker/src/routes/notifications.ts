@@ -35,7 +35,7 @@ import {
   listNotifications,
   type NotificationFilters,
   type NotificationRow,
-} from "../social-store";
+} from "../notification-store";
 import { findStatusesByIds } from "../status-store";
 import { mutedThreadStatusIds } from "../status-mute-store";
 

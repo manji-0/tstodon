@@ -29,20 +29,21 @@ import {
   favouriteStatus,
   unbookmarkStatus,
   unfavouriteStatus,
-} from "../../social-store";
+} from "../../status-interaction-store";
 import { notifyAccount } from "../../notify";
 import {
   countPinnedStatuses,
+  isStatusPinned,
+  pinStatus,
+  unpinStatus,
+} from "../../status-pin-store";
+import {
   deleteReblogOf,
   findLocalReblog,
   findStatusById,
   insertLocalReblog,
-  isStatusPinned,
-  listBookmarkedStatuses,
-  listFavouritedStatuses,
-  pinStatus,
-  unpinStatus,
 } from "../../status-store";
+import { listBookmarkedStatuses, listFavouritedStatuses } from "../../status-timeline-store";
 import {
   muteStatusThread,
   resolveThreadRootStatusIds,

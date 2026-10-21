@@ -18,7 +18,8 @@ import {
   listUnindexedRemoteStatuses as listUnindexedRemoteStatusesSql,
   markRemoteStatusTagsIndexed as markRemoteStatusTagsIndexedSql,
 } from "./generated/prisma/sql";
-import type { StatusCursor, TagStatusFilters } from "./status-store";
+import type { StatusCursor } from "./status-timeline-store";
+import type { TagStatusFilters } from "./status-discovery-store";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   deleteRemoteStatusByObjectUri as deleteRemoteStatusByObjectUriSql,

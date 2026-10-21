@@ -1,4 +1,4 @@
-import type { RelationshipFlags } from "./social-store";
+import type { RelationshipFlags } from "./relationship-store";
 
 export const mastodonRelationship = (
   targetId: string,

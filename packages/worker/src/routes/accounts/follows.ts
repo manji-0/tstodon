@@ -17,12 +17,8 @@ import {
 } from "../../remote-actor-store";
 import { RemoteAccountId } from "../../remote-account-id";
 import { parseInstanceIdentity } from "../../runtime-config";
-import {
-  followAccount,
-  type FollowOptions,
-  relationshipFlags,
-  unfollowAccount,
-} from "../../social-store";
+import { followAccount, type FollowOptions, unfollowAccount } from "../../follow-store";
+import { relationshipFlags } from "../../relationship-store";
 import { notifyAccount } from "../../notify";
 import { FollowBodySchema, isTruthy, stringList } from "../../schemas";
 

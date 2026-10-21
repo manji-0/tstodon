@@ -15,8 +15,9 @@ import {
 import { mastodonAccountDocument } from "../../account-documents";
 import { mastodonStatuses } from "../../local-status-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
-import { listFollowers, listFollowing } from "../../social-store";
-import { listAccountStatusesFiltered, listPinnedStatuses } from "../../status-store";
+import { listFollowers, listFollowing } from "../../follow-store";
+import { listAccountStatusesFiltered } from "../../status-timeline-store";
+import { listPinnedStatuses } from "../../status-pin-store";
 import { queryFlag } from "./credentials";
 import { lookupAccountDocument } from "./lookup";
 

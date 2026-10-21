@@ -123,7 +123,7 @@ flowchart LR
 
 <!-- constrained-by ./d1-writes.md#timeline--status-document-reads -->
 
-**Shape:** list statuses (`listHomeStatuses` / `listPublicStatuses` / account timelines) then assemble Mastodon JSON for the page. Home timeline SQL already joins accepted `follows` (`status-store.ts`); local followers do **not** need ActivityPub inbox POST for Create visibility.
+**Shape:** list statuses (`listHomeStatuses` / `listPublicStatuses` / account timelines) then assemble Mastodon JSON for the page. Home timeline SQL already joins accepted `follows` (`status-timeline-store.ts`); local followers do **not** need ActivityPub inbox POST for Create visibility.
 
 **Amplifiers:**
 
@@ -391,7 +391,7 @@ Rollback for code PRs: revert store/delivery changes; D1 data from `INSERT OR IG
 - [`./d1-writes.md`](./d1-writes.md)
 - [`./tstodon-architecture.md`](./tstodon-architecture.md)
 - ADRs: [json_each](./adr-json-each-membership.md), [TypedSQL](./adr-typedsql-d1-execution.md), [migrations SoT](./adr-wrangler-migrations-sot.md), [variable timeline SQL](./adr-variable-timeline-sql.md)
-- Code: `local-status-documents.ts`, `delivery.ts`, `outbox-store.ts`, `status-store.ts`, `social-store.ts`, `poll-store.ts`, `list-store.ts`, `remote-actor-store.ts`, `remote-status-persist.ts`, `scheduled-handler.ts`, `queue-handler.ts`, `stream-hub.ts`, `http.ts`, `routes/statuses.ts`
+- Code: `local-status-documents.ts`, `delivery.ts`, `outbox-store.ts`, `status-store.ts`, `status-timeline-store.ts`, `follow-store.ts`, `poll-store.ts`, `list-store.ts`, `remote-actor-store.ts`, `remote-status-persist.ts`, `scheduled-handler.ts`, `queue-handler.ts`, `stream-hub.ts`, `http.ts`, `routes/statuses.ts`
 
 ## Key Decisions
 

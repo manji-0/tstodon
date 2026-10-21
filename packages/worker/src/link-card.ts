@@ -16,7 +16,7 @@ import {
 import { suspendedDomains } from "./admin-domain-block-store";
 import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 import { setRemoteStatusCard } from "./remote-status-store";
-import { setStatusCard } from "./status-store";
+import { setStatusCard } from "./status-card-store";
 import { queryTyped, runTyped } from "./typed-sql";
 
 /** A small `PreviewCard`: what a client needs to render a link preview. */

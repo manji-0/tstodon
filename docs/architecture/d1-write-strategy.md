@@ -266,7 +266,7 @@ Patches (at most home + notifications) are prepared with `d1PrepareTyped` and co
 
 ### 6. Favourites / bookmarks — single-statement OR IGNORE
 
-`favouriteStatus` / `bookmarkStatus` in `social-store.ts` run TypedSQL `insertFavouriteOrIgnore` / `insertBookmarkOrIgnore` (`INSERT OR IGNORE` on `(account_id, status_id)`). Same UPSERT-over-read-then-write pattern as markers/outbox targets; no multi-statement batch required.
+`favouriteStatus` / `bookmarkStatus` in `status-interaction-store.ts` run TypedSQL `insertFavouriteOrIgnore` / `insertBookmarkOrIgnore` (`INSERT OR IGNORE` on `(account_id, status_id)`). Same UPSERT-over-read-then-write pattern as markers/outbox targets; no multi-statement batch required.
 
 ### 7. List membership — chunked homogeneous writes
 
@@ -395,13 +395,13 @@ No further open questions in this document; capacity SLOs remain in Doc B.
 - [`./adr-wrangler-migrations-sot.md`](./adr-wrangler-migrations-sot.md)
 - [`./adr-variable-timeline-sql.md`](./adr-variable-timeline-sql.md)
 - [`./tstodon-architecture.md`](./tstodon-architecture.md)
-- Code: `packages/worker/src/d1.ts`, `typed-sql.ts`, `mention-store.ts`, `status-store.ts`, `outbox-store.ts`, `poll-store.ts`, `marker-store.ts`, `list-store.ts`, `social-store.ts`, `delivery.ts`, `routes/statuses.ts`
+- Code: `packages/worker/src/d1.ts`, `typed-sql.ts`, `mention-store.ts`, `status-store.ts`, `outbox-store.ts`, `poll-store.ts`, `marker-store.ts`, `list-store.ts`, `status-interaction-store.ts`, `delivery.ts`, `routes/statuses/`
 
 ## Key Decisions
 
 1. **`db.batch` is the write transaction** — multi-statement domain writes use `runD1Batch` / `runD1BatchChunked`; D1 has no interactive transactions.
 2. **TypedSQL is codegen-only; D1 helpers execute** — inherits adr-typedsql-d1-execution; stores must not grow a PrismaClient path.
-3. **UPSERT / conditional UPDATE beat read-then-write** — markers, outbox targets, poll expiry races; also favourites/bookmarks via store APIs `favouriteStatus` / `bookmarkStatus` (`social-store.ts`) backing onto TypedSQL `insertFavouriteOrIgnore` / `insertBookmarkOrIgnore`.
+3. **UPSERT / conditional UPDATE beat read-then-write** — markers, outbox targets, poll expiry races; also favourites/bookmarks via store APIs `favouriteStatus` / `bookmarkStatus` (`status-interaction-store.ts`) backing onto TypedSQL `insertFavouriteOrIgnore` / `insertBookmarkOrIgnore`.
 4. **Side effects stay outside each SQL batch; route sagas need their own ordering** — store helpers must not mix HTTP/queue/stream into `runD1Batch`; Create path composition is a tracked gap, not claimed compliant.
 5. **This design is the long-form SoT; `d1-writes.md` remains the short checklist** — explicit supersede relationship; checklist will be `constrained-by` this file after publish.
 6. **Variable membership is orthogonal but mandatory** — json_each ADR applies to any write or read that filters by id sets.

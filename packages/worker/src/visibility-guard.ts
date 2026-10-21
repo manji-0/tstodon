@@ -7,7 +7,7 @@ import {
 import { remoteStatusVisible } from "./remote-status-document";
 import { isAccountMentionedOnStatus } from "./mention-store";
 import { isAccountMentionedOnRemoteStatus } from "./remote-status-store";
-import { relationshipFlags } from "./social-store";
+import { relationshipFlags } from "./relationship-store";
 import { findStatusById } from "./status-store";
 
 const canViewDirectStatus = async (

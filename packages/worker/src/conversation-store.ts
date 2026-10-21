@@ -22,13 +22,8 @@ import {
   listRemoteDirectStatusesForAccount,
   listRemoteStatusMentions,
 } from "./remote-status-store";
-import {
-  CONTEXT_ANCESTOR_LIMIT,
-  findStatusById,
-  listDirectStatusesForAccount,
-  listStatusReplyUris,
-  resolveDirectConversationRoot,
-} from "./status-store";
+import { CONTEXT_ANCESTOR_LIMIT, findStatusById, listStatusReplyUris } from "./status-store";
+import { listDirectStatusesForAccount, resolveDirectConversationRoot } from "./direct-status-store";
 
 /** A direct status in a conversation: a local note or a cached remote one. */
 export type ConversationStatus =

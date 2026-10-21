@@ -25,9 +25,8 @@ import {
   authorizeFollowRequest,
   listPendingFollowRequesters,
   rejectFollowRequest,
-  relationshipFlags,
-  type RelationshipFlags,
-} from "../social-store";
+} from "../follow-store";
+import { relationshipFlags, type RelationshipFlags } from "../relationship-store";
 
 export const followRequestRoutes = new Hono<{ Bindings: Env }>();
 

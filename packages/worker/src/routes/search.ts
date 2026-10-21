@@ -13,7 +13,7 @@ import { resolveRemoteActor, resolveRemoteActorByHandle } from "../remote-actor-
 import { suspendedDomains } from "../admin-domain-block-store";
 import { searchRemoteActors } from "../remote-actor-store";
 import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
-import { searchStatuses } from "../status-store";
+import { searchStatuses } from "../status-timeline-store";
 import { isTagFeatured, isTagFollowed, tagDailyHistory } from "../tag-store";
 import type { Context } from "hono";
 

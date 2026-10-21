@@ -51,14 +51,9 @@ import {
   parseJsonText,
 } from "../schemas";
 import { schemaResult } from "@tstodon/core";
-import {
-  deleteRemoteNotifications,
-  favouriteStatus,
-  followAccount,
-  listFollowers,
-  listFollowing,
-  unfollowAccount,
-} from "../social-store";
+import { deleteRemoteNotifications } from "../notification-store";
+import { favouriteStatus } from "../status-interaction-store";
+import { followAccount, listFollowers, listFollowing, unfollowAccount } from "../follow-store";
 import { loadNoteMentions } from "../mention-resolve";
 import { loadNoteReply } from "../reply-target";
 import { notifyAccount, notifyFromRemote } from "../notify";

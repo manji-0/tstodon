@@ -67,13 +67,13 @@ import {
   thumbnailDescription,
   type Announcement,
 } from "../runtime-config";
-import { dismissSuggestion, listSuggestionExclusionIds } from "../social-store";
+import { dismissSuggestion, listSuggestionExclusionIds } from "../suggestion-store";
+import { countStatuses } from "../status-store";
 import {
-  countStatuses,
   listTrendingStatuses,
   listTrendingTags,
   listWeeklyStatusActivity,
-} from "../status-store";
+} from "../status-discovery-store";
 
 export const metaRoutes = new Hono<{ Bindings: Env }>();
 

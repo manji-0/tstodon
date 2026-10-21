@@ -14,7 +14,7 @@ import {
 } from "../../http";
 import { mastodonAccountDocument, mastodonRemoteAccount } from "../../account-documents";
 import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
-import { listStatusFavouritedBy, listStatusRebloggedBy } from "../../social-store";
+import { listStatusFavouritedBy, listStatusRebloggedBy } from "../../status-interaction-store";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { findRemoteActorByUri } from "../../remote-actor-store";
 import { findStatusById, findStatusesByIds } from "../../status-store";

@@ -11,7 +11,7 @@ import {
 } from "./notification-policy-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteFollow } from "./remote-actor-store";
-import { findFollowKind } from "./social-store";
+import { findFollowKind } from "./follow-store";
 import { findStatusById } from "./status-store";
 
 export type NotificationDisposition = NotificationPolicyAction;

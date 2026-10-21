@@ -11,15 +11,15 @@ import {
 } from "./remote-status-store";
 import {
   findStatusById,
-  listLocalRepliesToUris,
   listLocalRepliesToIds,
+  listLocalRepliesToUris,
   listStatusReplyUris,
 } from "./status-store";
 import { canViewRemoteStatus, canViewStatus } from "./visibility-guard";
 import { restrictedDomains } from "./admin-domain-block-store";
 import { listBlockedDomains } from "./domain-block-store";
 import { findRemoteActorsByUris } from "./remote-actor-store";
-import { listSuppressedAuthors } from "./social-store";
+import { listSuppressedAuthors } from "./block-mute-store";
 
 /** A status in a thread: a local one or a cached remote one. */
 export type ThreadStatus = ReplyTarget;

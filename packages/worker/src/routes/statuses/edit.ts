@@ -35,12 +35,10 @@ import { publishToAccount } from "../../stream-publish";
 import {
   deleteStatus,
   findStatusById,
-  findStatusUpdatedAt,
-  insertStatusEdit,
-  listStatusEdits,
   replaceStatusMedia,
   updateLocalNote,
 } from "../../status-store";
+import { findStatusUpdatedAt, insertStatusEdit, listStatusEdits } from "../../status-edit-store";
 import { canViewStatus } from "../../visibility-guard";
 import {
   isQuotePolicy,

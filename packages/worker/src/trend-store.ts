@@ -1,7 +1,7 @@
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import { cardDocument, listCachedLinkCards, normalizeLinkUrl } from "./link-card";
-import { listTrendingStatuses } from "./status-store";
+import { listTrendingStatuses } from "./status-discovery-store";
 
 /** Links are counted from the text of this many trending statuses. */
 const TREND_WINDOW = 100;
