@@ -6,18 +6,20 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
  * @param objectUri
+ * @param actorUri
  */
 export const deleteRemoteStatusByObjectUri = $runtime.makeTypedQueryFactory(
-  "DELETE FROM remote_statuses WHERE object_uri = $1\nRETURNING id",
+  "DELETE FROM remote_statuses WHERE object_uri = $1 AND actor_uri = $2\nRETURNING id",
 ) as (
   objectUri: string,
+  actorUri: string,
 ) => $runtime.TypedSql<
   deleteRemoteStatusByObjectUri.Parameters,
   deleteRemoteStatusByObjectUri.Result
 >;
 
 export namespace deleteRemoteStatusByObjectUri {
-  export type Parameters = [objectUri: string];
+  export type Parameters = [objectUri: string, actorUri: string];
   export type Result = {
     id: string | null;
   };

@@ -368,11 +368,16 @@ export const indexMissingRemoteTags = async (
   }
 };
 
+/** Delete a cached remote status, only when `actorUri` (the Delete's signer) wrote it. */
 export const deleteRemoteStatusByObjectUri = async (
   db: D1Database,
   objectUri: string,
-): Promise<Result<boolean, RepositoryError>> =>
+  actorUri: string,
+): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(db, deleteRemoteStatusByObjectUriSql(objectUri));
-    return rows.length > 0;
+    const rows = await queryTyped<{ id: string }>(
+      db,
+      deleteRemoteStatusByObjectUriSql(objectUri, actorUri),
+    );
+    return rows[0]?.id;
   });

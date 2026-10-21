@@ -428,7 +428,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       const objectUri = activity.object;
       // Remote note delete (object is remote URI we may have cached).
       if (!parseLocalStatusId(identity.value, objectUri)) {
-        await deleteRemoteStatusByObjectUri(c.env.DB, objectUri);
+        await deleteRemoteStatusByObjectUri(c.env.DB, objectUri, signer.actor.actorUri);
       }
     }
     if (activity.kind === "Create" || activity.kind === "Announce") {
