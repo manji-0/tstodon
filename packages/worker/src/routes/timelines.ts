@@ -17,6 +17,7 @@ import { parseInstanceIdentity } from "../runtime-config";
 import { findRemoteActorByUri } from "../remote-actor-store";
 import {
   listPublicRemoteStatuses,
+  listRemoteDirectStatusesForAccount,
   listRemoteStatusCards,
   listLinkRemoteStatuses,
   listTagRemoteStatuses,
@@ -61,6 +62,8 @@ const remoteTimelineDocuments = async (
   identity: InstanceIdentity,
   remote: ReadonlyArray<RemoteNote>,
   viewerId: string | undefined,
+  /** Direct notes already chosen for the viewer pass whatever their visibility. */
+  visible: (status: RemoteNote) => boolean = remoteStatusVisible,
 ): Promise<
   Readonly<{
     statuses: RemoteNote[];
@@ -83,7 +86,7 @@ const remoteTimelineDocuments = async (
   const documents: Record<string, unknown>[] = [];
   for (const status of remote) {
     const actor = await findRemoteActorByUri(c.env.DB, status.actorUri);
-    if (actor.isErr() || !actor.value || !remoteStatusVisible(status)) {
+    if (actor.isErr() || !actor.value || !visible(status)) {
       continue;
     }
     if (blocked.has(actor.value.domain.toLowerCase())) {
@@ -368,26 +371,42 @@ timelineRoutes.get("/api/v1/timelines/direct", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const statuses = await listDirectStatusesForAccount(
-    c.env.DB,
-    user.value.id,
-    queryLimit(c.req.query("limit")),
-    c.req.query("max_id"),
-  );
+  const limit = queryLimit(c.req.query("limit"));
+  const maxId = c.req.query("max_id");
+  const [statuses, remote] = await Promise.all([
+    listDirectStatusesForAccount(c.env.DB, user.value.id, limit, maxId),
+    listRemoteDirectStatusesForAccount(c.env.DB, user.value.id, limit, maxId),
+  ]);
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
+  }
+  if (remote.isErr()) {
+    return jsonRepositoryError(c, remote.error.message);
   }
   const visible = await filterMutedThreads(c.env.DB, user.value.id, statuses.value);
   if (visible.isErr()) {
     return jsonRepositoryError(c, visible.error.message);
   }
-  return c.json(
-    await attachFilteredToStatuses(
-      c.env.DB,
-      user.value.id,
-      "home",
-      visible.value,
-      await mastodonStatuses(c.env, identity.value, visible.value, user.value.id),
-    ),
+  const filteredLocal = await attachFilteredToStatuses(
+    c.env.DB,
+    user.value.id,
+    "home",
+    visible.value,
+    await mastodonStatuses(c.env, identity.value, visible.value, user.value.id),
   );
+  const rendered = await remoteTimelineDocuments(
+    c,
+    identity.value,
+    remote.value,
+    user.value.id,
+    () => true,
+  );
+  const filteredRemote = await attachFilteredToRemoteStatuses(
+    c.env.DB,
+    user.value.id,
+    "home",
+    rendered.statuses,
+    rendered.documents,
+  );
+  return c.json(mergeTimelineDocuments(filteredLocal, filteredRemote, {}, limit));
 });

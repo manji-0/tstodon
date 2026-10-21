@@ -101,6 +101,7 @@ export const ModelName = {
   canonical_email_blocks: "canonical_email_blocks",
   email_domain_blocks: "email_domain_blocks",
   reports: "reports",
+  remote_status_mentions: "remote_status_mentions",
   status_mentions: "status_mentions",
   link_cards: "link_cards",
   scheduled_statuses: "scheduled_statuses",
@@ -706,6 +707,7 @@ export const Remote_statusesScalarFieldEnum = {
   tags_indexed: "tags_indexed",
   card_json: "card_json",
   card_url: "card_url",
+  in_reply_to_uri: "in_reply_to_uri",
   created_at: "created_at",
   updated_at: "updated_at",
 } as const;
@@ -748,6 +750,14 @@ export const ReportsScalarFieldEnum = {
 
 export type ReportsScalarFieldEnum =
   (typeof ReportsScalarFieldEnum)[keyof typeof ReportsScalarFieldEnum];
+
+export const Remote_status_mentionsScalarFieldEnum = {
+  status_id: "status_id",
+  account_id: "account_id",
+} as const;
+
+export type Remote_status_mentionsScalarFieldEnum =
+  (typeof Remote_status_mentionsScalarFieldEnum)[keyof typeof Remote_status_mentionsScalarFieldEnum];
 
 export const Status_mentionsScalarFieldEnum = {
   status_id: "status_id",

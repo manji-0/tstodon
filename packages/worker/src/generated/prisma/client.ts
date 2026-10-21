@@ -307,6 +307,11 @@ export type email_domain_blocks = Prisma.email_domain_blocksModel;
  */
 export type reports = Prisma.reportsModel;
 /**
+ * Model remote_status_mentions
+ *
+ */
+export type remote_status_mentions = Prisma.remote_status_mentionsModel;
+/**
  * Model status_mentions
  *
  */

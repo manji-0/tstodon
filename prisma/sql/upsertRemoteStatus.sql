@@ -11,10 +11,11 @@
 -- @param {String} $11:mediaJson
 -- @param {String} $12:createdAt
 -- @param {String} $13:updatedAt
+-- @param {String} $14:inReplyToUri?
 INSERT INTO remote_statuses (
   id, actor_uri, object_uri, url, content_html, spoiler_text,
-  visibility, sensitive, language, published_at, media_json, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+  visibility, sensitive, language, published_at, media_json, created_at, updated_at, in_reply_to_uri
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 ON CONFLICT(object_uri) DO UPDATE SET
   content_html = excluded.content_html,
   spoiler_text = excluded.spoiler_text,

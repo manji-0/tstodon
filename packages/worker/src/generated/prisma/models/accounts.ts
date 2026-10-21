@@ -306,6 +306,7 @@ export type accountsWhereInput = {
   notification_request_groups?: Prisma.Notification_request_groupsListRelationFilter;
   scheduled_statuses?: Prisma.Scheduled_statusesListRelationFilter;
   status_mentions?: Prisma.Status_mentionsListRelationFilter;
+  remote_status_mentions?: Prisma.Remote_status_mentionsListRelationFilter;
   statuses?: Prisma.StatusesListRelationFilter;
 };
 
@@ -344,6 +345,7 @@ export type accountsOrderByWithRelationInput = {
   notification_request_groups?: Prisma.notification_request_groupsOrderByRelationAggregateInput;
   scheduled_statuses?: Prisma.scheduled_statusesOrderByRelationAggregateInput;
   status_mentions?: Prisma.status_mentionsOrderByRelationAggregateInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsOrderByRelationAggregateInput;
   statuses?: Prisma.statusesOrderByRelationAggregateInput;
 };
 
@@ -386,6 +388,7 @@ export type accountsWhereUniqueInput = Prisma.AtLeast<
     notification_request_groups?: Prisma.Notification_request_groupsListRelationFilter;
     scheduled_statuses?: Prisma.Scheduled_statusesListRelationFilter;
     status_mentions?: Prisma.Status_mentionsListRelationFilter;
+    remote_status_mentions?: Prisma.Remote_status_mentionsListRelationFilter;
     statuses?: Prisma.StatusesListRelationFilter;
   },
   "id" | "username" | "access_email"
@@ -472,6 +475,7 @@ export type accountsCreateInput = {
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -510,6 +514,7 @@ export type accountsUncheckedCreateInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -548,6 +553,7 @@ export type accountsUpdateInput = {
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -586,6 +592,7 @@ export type accountsUncheckedUpdateInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1150,6 +1157,32 @@ export type accountsUpdateOneRequiredWithoutReports_reports_account_idToaccounts
   >;
 };
 
+export type accountsCreateNestedOneWithoutRemote_status_mentionsInput = {
+  create?: Prisma.XOR<
+    Prisma.accountsCreateWithoutRemote_status_mentionsInput,
+    Prisma.accountsUncheckedCreateWithoutRemote_status_mentionsInput
+  >;
+  connectOrCreate?: Prisma.accountsCreateOrConnectWithoutRemote_status_mentionsInput;
+  connect?: Prisma.accountsWhereUniqueInput;
+};
+
+export type accountsUpdateOneRequiredWithoutRemote_status_mentionsNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.accountsCreateWithoutRemote_status_mentionsInput,
+    Prisma.accountsUncheckedCreateWithoutRemote_status_mentionsInput
+  >;
+  connectOrCreate?: Prisma.accountsCreateOrConnectWithoutRemote_status_mentionsInput;
+  upsert?: Prisma.accountsUpsertWithoutRemote_status_mentionsInput;
+  connect?: Prisma.accountsWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.accountsUpdateToOneWithWhereWithoutRemote_status_mentionsInput,
+      Prisma.accountsUpdateWithoutRemote_status_mentionsInput
+    >,
+    Prisma.accountsUncheckedUpdateWithoutRemote_status_mentionsInput
+  >;
+};
+
 export type accountsCreateNestedOneWithoutStatus_mentionsInput = {
   create?: Prisma.XOR<
     Prisma.accountsCreateWithoutStatus_mentionsInput,
@@ -1288,6 +1321,7 @@ export type accountsCreateWithoutAccount_list_membersInput = {
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -1325,6 +1359,7 @@ export type accountsUncheckedCreateWithoutAccount_list_membersInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -1390,6 +1425,7 @@ export type accountsUpdateWithoutAccount_list_membersInput = {
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1427,6 +1463,7 @@ export type accountsUncheckedUpdateWithoutAccount_list_membersInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1464,6 +1501,7 @@ export type accountsCreateWithoutAccount_listsInput = {
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -1501,6 +1539,7 @@ export type accountsUncheckedCreateWithoutAccount_listsInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -1566,6 +1605,7 @@ export type accountsUpdateWithoutAccount_listsInput = {
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1603,6 +1643,7 @@ export type accountsUncheckedUpdateWithoutAccount_listsInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1640,6 +1681,7 @@ export type accountsCreateWithoutBookmarksInput = {
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -1677,6 +1719,7 @@ export type accountsUncheckedCreateWithoutBookmarksInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -1742,6 +1785,7 @@ export type accountsUpdateWithoutBookmarksInput = {
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1779,6 +1823,7 @@ export type accountsUncheckedUpdateWithoutBookmarksInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1816,6 +1861,7 @@ export type accountsCreateWithoutConversation_hidesInput = {
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -1853,6 +1899,7 @@ export type accountsUncheckedCreateWithoutConversation_hidesInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -1918,6 +1965,7 @@ export type accountsUpdateWithoutConversation_hidesInput = {
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1955,6 +2003,7 @@ export type accountsUncheckedUpdateWithoutConversation_hidesInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1992,6 +2041,7 @@ export type accountsCreateWithoutConversation_readsInput = {
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2029,6 +2079,7 @@ export type accountsUncheckedCreateWithoutConversation_readsInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2094,6 +2145,7 @@ export type accountsUpdateWithoutConversation_readsInput = {
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2131,6 +2183,7 @@ export type accountsUncheckedUpdateWithoutConversation_readsInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2168,6 +2221,7 @@ export type accountsCreateWithoutFavouritesInput = {
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2205,6 +2259,7 @@ export type accountsUncheckedCreateWithoutFavouritesInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2270,6 +2325,7 @@ export type accountsUpdateWithoutFavouritesInput = {
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2307,6 +2363,7 @@ export type accountsUncheckedUpdateWithoutFavouritesInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2344,6 +2401,7 @@ export type accountsCreateWithoutFiltersInput = {
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2381,6 +2439,7 @@ export type accountsUncheckedCreateWithoutFiltersInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2446,6 +2505,7 @@ export type accountsUpdateWithoutFiltersInput = {
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2483,6 +2543,7 @@ export type accountsUncheckedUpdateWithoutFiltersInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2520,6 +2581,7 @@ export type accountsCreateWithoutFollows_follows_target_account_idToaccountsInpu
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2557,6 +2619,7 @@ export type accountsUncheckedCreateWithoutFollows_follows_target_account_idToacc
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2602,6 +2665,7 @@ export type accountsCreateWithoutFollows_follows_follower_account_idToaccountsIn
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2639,6 +2703,7 @@ export type accountsUncheckedCreateWithoutFollows_follows_follower_account_idToa
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2704,6 +2769,7 @@ export type accountsUpdateWithoutFollows_follows_target_account_idToaccountsInpu
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2741,6 +2807,7 @@ export type accountsUncheckedUpdateWithoutFollows_follows_target_account_idToacc
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2799,6 +2866,7 @@ export type accountsUpdateWithoutFollows_follows_follower_account_idToaccountsIn
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2836,6 +2904,7 @@ export type accountsUncheckedUpdateWithoutFollows_follows_follower_account_idToa
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2873,6 +2942,7 @@ export type accountsCreateWithoutMarkersInput = {
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2910,6 +2980,7 @@ export type accountsUncheckedCreateWithoutMarkersInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2975,6 +3046,7 @@ export type accountsUpdateWithoutMarkersInput = {
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3012,6 +3084,7 @@ export type accountsUncheckedUpdateWithoutMarkersInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3049,6 +3122,7 @@ export type accountsCreateWithoutMedia_attachmentsInput = {
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3086,6 +3160,7 @@ export type accountsUncheckedCreateWithoutMedia_attachmentsInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3151,6 +3226,7 @@ export type accountsUpdateWithoutMedia_attachmentsInput = {
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3188,6 +3264,7 @@ export type accountsUncheckedUpdateWithoutMedia_attachmentsInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3225,6 +3302,7 @@ export type accountsCreateWithoutNotifications_notifications_account_idToaccount
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3262,6 +3340,7 @@ export type accountsUncheckedCreateWithoutNotifications_notifications_account_id
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3328,6 +3407,7 @@ export type accountsUpdateWithoutNotifications_notifications_account_idToaccount
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3365,6 +3445,7 @@ export type accountsUncheckedUpdateWithoutNotifications_notifications_account_id
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3402,6 +3483,7 @@ export type accountsCreateWithoutOutbound_activitiesInput = {
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3439,6 +3521,7 @@ export type accountsUncheckedCreateWithoutOutbound_activitiesInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3504,6 +3587,7 @@ export type accountsUpdateWithoutOutbound_activitiesInput = {
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3541,6 +3625,7 @@ export type accountsUncheckedUpdateWithoutOutbound_activitiesInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3578,6 +3663,7 @@ export type accountsCreateWithoutPoll_votesInput = {
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3615,6 +3701,7 @@ export type accountsUncheckedCreateWithoutPoll_votesInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3680,6 +3767,7 @@ export type accountsUpdateWithoutPoll_votesInput = {
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3717,6 +3805,7 @@ export type accountsUncheckedUpdateWithoutPoll_votesInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3754,6 +3843,7 @@ export type accountsCreateWithoutRemote_followsInput = {
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3791,6 +3881,7 @@ export type accountsUncheckedCreateWithoutRemote_followsInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3856,6 +3947,7 @@ export type accountsUpdateWithoutRemote_followsInput = {
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3893,6 +3985,7 @@ export type accountsUncheckedUpdateWithoutRemote_followsInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3930,6 +4023,7 @@ export type accountsCreateWithoutReports_reports_target_account_idToaccountsInpu
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3967,6 +4061,7 @@ export type accountsUncheckedCreateWithoutReports_reports_target_account_idToacc
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4012,6 +4107,7 @@ export type accountsCreateWithoutReports_reports_account_idToaccountsInput = {
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4049,6 +4145,7 @@ export type accountsUncheckedCreateWithoutReports_reports_account_idToaccountsIn
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4114,6 +4211,7 @@ export type accountsUpdateWithoutReports_reports_target_account_idToaccountsInpu
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4151,6 +4249,7 @@ export type accountsUncheckedUpdateWithoutReports_reports_target_account_idToacc
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4208,6 +4307,7 @@ export type accountsUpdateWithoutReports_reports_account_idToaccountsInput = {
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4242,6 +4342,187 @@ export type accountsUncheckedUpdateWithoutReports_reports_account_idToaccountsIn
   poll_votes?: Prisma.poll_votesUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_follows?: Prisma.remote_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   reports_reports_target_account_idToaccounts?: Prisma.reportsUncheckedUpdateManyWithoutAccounts_reports_target_account_idToaccountsNestedInput;
+  notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
+  scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
+  status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
+};
+
+export type accountsCreateWithoutRemote_status_mentionsInput = {
+  id: string;
+  username: string;
+  access_email: string;
+  display_name: string;
+  locked?: number;
+  default_post_visibility?: string;
+  default_quote_policy?: string;
+  public_key_pem: string;
+  private_key_jwk: string;
+  created_at?: string;
+  updated_at?: string;
+  bio_text?: string;
+  avatar_object_key?: string | null;
+  header_object_key?: string | null;
+  account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
+  account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
+  bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
+  conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
+  favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
+  filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
+  follows_follows_target_account_idToaccounts?: Prisma.followsCreateNestedManyWithoutAccounts_follows_target_account_idToaccountsInput;
+  follows_follows_follower_account_idToaccounts?: Prisma.followsCreateNestedManyWithoutAccounts_follows_follower_account_idToaccountsInput;
+  markers?: Prisma.markersCreateNestedManyWithoutAccountsInput;
+  media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutAccountsInput;
+  notifications_notifications_account_idToaccounts?: Prisma.notificationsCreateNestedManyWithoutAccounts_notifications_account_idToaccountsInput;
+  outbound_activities?: Prisma.outbound_activitiesCreateNestedManyWithoutAccountsInput;
+  poll_votes?: Prisma.poll_votesCreateNestedManyWithoutAccountsInput;
+  remote_follows?: Prisma.remote_followsCreateNestedManyWithoutAccountsInput;
+  reports_reports_target_account_idToaccounts?: Prisma.reportsCreateNestedManyWithoutAccounts_reports_target_account_idToaccountsInput;
+  reports_reports_account_idToaccounts?: Prisma.reportsCreateNestedManyWithoutAccounts_reports_account_idToaccountsInput;
+  notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
+  scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
+  status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
+};
+
+export type accountsUncheckedCreateWithoutRemote_status_mentionsInput = {
+  id: string;
+  username: string;
+  access_email: string;
+  display_name: string;
+  locked?: number;
+  default_post_visibility?: string;
+  default_quote_policy?: string;
+  public_key_pem: string;
+  private_key_jwk: string;
+  created_at?: string;
+  updated_at?: string;
+  bio_text?: string;
+  avatar_object_key?: string | null;
+  header_object_key?: string | null;
+  account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
+  account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
+  bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
+  favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
+  filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
+  follows_follows_target_account_idToaccounts?: Prisma.followsUncheckedCreateNestedManyWithoutAccounts_follows_target_account_idToaccountsInput;
+  follows_follows_follower_account_idToaccounts?: Prisma.followsUncheckedCreateNestedManyWithoutAccounts_follows_follower_account_idToaccountsInput;
+  markers?: Prisma.markersUncheckedCreateNestedManyWithoutAccountsInput;
+  media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutAccountsInput;
+  notifications_notifications_account_idToaccounts?: Prisma.notificationsUncheckedCreateNestedManyWithoutAccounts_notifications_account_idToaccountsInput;
+  outbound_activities?: Prisma.outbound_activitiesUncheckedCreateNestedManyWithoutAccountsInput;
+  poll_votes?: Prisma.poll_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_follows?: Prisma.remote_followsUncheckedCreateNestedManyWithoutAccountsInput;
+  reports_reports_target_account_idToaccounts?: Prisma.reportsUncheckedCreateNestedManyWithoutAccounts_reports_target_account_idToaccountsInput;
+  reports_reports_account_idToaccounts?: Prisma.reportsUncheckedCreateNestedManyWithoutAccounts_reports_account_idToaccountsInput;
+  notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
+  scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
+  status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
+};
+
+export type accountsCreateOrConnectWithoutRemote_status_mentionsInput = {
+  where: Prisma.accountsWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.accountsCreateWithoutRemote_status_mentionsInput,
+    Prisma.accountsUncheckedCreateWithoutRemote_status_mentionsInput
+  >;
+};
+
+export type accountsUpsertWithoutRemote_status_mentionsInput = {
+  update: Prisma.XOR<
+    Prisma.accountsUpdateWithoutRemote_status_mentionsInput,
+    Prisma.accountsUncheckedUpdateWithoutRemote_status_mentionsInput
+  >;
+  create: Prisma.XOR<
+    Prisma.accountsCreateWithoutRemote_status_mentionsInput,
+    Prisma.accountsUncheckedCreateWithoutRemote_status_mentionsInput
+  >;
+  where?: Prisma.accountsWhereInput;
+};
+
+export type accountsUpdateToOneWithWhereWithoutRemote_status_mentionsInput = {
+  where?: Prisma.accountsWhereInput;
+  data: Prisma.XOR<
+    Prisma.accountsUpdateWithoutRemote_status_mentionsInput,
+    Prisma.accountsUncheckedUpdateWithoutRemote_status_mentionsInput
+  >;
+};
+
+export type accountsUpdateWithoutRemote_status_mentionsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  username?: Prisma.StringFieldUpdateOperationsInput | string;
+  access_email?: Prisma.StringFieldUpdateOperationsInput | string;
+  display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  locked?: Prisma.IntFieldUpdateOperationsInput | number;
+  default_post_visibility?: Prisma.StringFieldUpdateOperationsInput | string;
+  default_quote_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
+  private_key_jwk?: Prisma.StringFieldUpdateOperationsInput | string;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
+  account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
+  bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
+  conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
+  favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
+  filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
+  follows_follows_target_account_idToaccounts?: Prisma.followsUpdateManyWithoutAccounts_follows_target_account_idToaccountsNestedInput;
+  follows_follows_follower_account_idToaccounts?: Prisma.followsUpdateManyWithoutAccounts_follows_follower_account_idToaccountsNestedInput;
+  markers?: Prisma.markersUpdateManyWithoutAccountsNestedInput;
+  media_attachments?: Prisma.media_attachmentsUpdateManyWithoutAccountsNestedInput;
+  notifications_notifications_account_idToaccounts?: Prisma.notificationsUpdateManyWithoutAccounts_notifications_account_idToaccountsNestedInput;
+  outbound_activities?: Prisma.outbound_activitiesUpdateManyWithoutAccountsNestedInput;
+  poll_votes?: Prisma.poll_votesUpdateManyWithoutAccountsNestedInput;
+  remote_follows?: Prisma.remote_followsUpdateManyWithoutAccountsNestedInput;
+  reports_reports_target_account_idToaccounts?: Prisma.reportsUpdateManyWithoutAccounts_reports_target_account_idToaccountsNestedInput;
+  reports_reports_account_idToaccounts?: Prisma.reportsUpdateManyWithoutAccounts_reports_account_idToaccountsNestedInput;
+  notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
+  scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
+  status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
+};
+
+export type accountsUncheckedUpdateWithoutRemote_status_mentionsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  username?: Prisma.StringFieldUpdateOperationsInput | string;
+  access_email?: Prisma.StringFieldUpdateOperationsInput | string;
+  display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  locked?: Prisma.IntFieldUpdateOperationsInput | number;
+  default_post_visibility?: Prisma.StringFieldUpdateOperationsInput | string;
+  default_quote_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
+  private_key_jwk?: Prisma.StringFieldUpdateOperationsInput | string;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
+  account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
+  bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
+  favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
+  filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
+  follows_follows_target_account_idToaccounts?: Prisma.followsUncheckedUpdateManyWithoutAccounts_follows_target_account_idToaccountsNestedInput;
+  follows_follows_follower_account_idToaccounts?: Prisma.followsUncheckedUpdateManyWithoutAccounts_follows_follower_account_idToaccountsNestedInput;
+  markers?: Prisma.markersUncheckedUpdateManyWithoutAccountsNestedInput;
+  media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutAccountsNestedInput;
+  notifications_notifications_account_idToaccounts?: Prisma.notificationsUncheckedUpdateManyWithoutAccounts_notifications_account_idToaccountsNestedInput;
+  outbound_activities?: Prisma.outbound_activitiesUncheckedUpdateManyWithoutAccountsNestedInput;
+  poll_votes?: Prisma.poll_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_follows?: Prisma.remote_followsUncheckedUpdateManyWithoutAccountsNestedInput;
+  reports_reports_target_account_idToaccounts?: Prisma.reportsUncheckedUpdateManyWithoutAccounts_reports_target_account_idToaccountsNestedInput;
+  reports_reports_account_idToaccounts?: Prisma.reportsUncheckedUpdateManyWithoutAccounts_reports_account_idToaccountsNestedInput;
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -4282,6 +4563,7 @@ export type accountsCreateWithoutStatus_mentionsInput = {
   reports_reports_account_idToaccounts?: Prisma.reportsCreateNestedManyWithoutAccounts_reports_account_idToaccountsInput;
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4319,6 +4601,7 @@ export type accountsUncheckedCreateWithoutStatus_mentionsInput = {
   reports_reports_account_idToaccounts?: Prisma.reportsUncheckedCreateNestedManyWithoutAccounts_reports_account_idToaccountsInput;
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4384,6 +4667,7 @@ export type accountsUpdateWithoutStatus_mentionsInput = {
   reports_reports_account_idToaccounts?: Prisma.reportsUpdateManyWithoutAccounts_reports_account_idToaccountsNestedInput;
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4421,6 +4705,7 @@ export type accountsUncheckedUpdateWithoutStatus_mentionsInput = {
   reports_reports_account_idToaccounts?: Prisma.reportsUncheckedUpdateManyWithoutAccounts_reports_account_idToaccountsNestedInput;
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4458,6 +4743,7 @@ export type accountsCreateWithoutScheduled_statusesInput = {
   reports_reports_account_idToaccounts?: Prisma.reportsCreateNestedManyWithoutAccounts_reports_account_idToaccountsInput;
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4495,6 +4781,7 @@ export type accountsUncheckedCreateWithoutScheduled_statusesInput = {
   reports_reports_account_idToaccounts?: Prisma.reportsUncheckedCreateNestedManyWithoutAccounts_reports_account_idToaccountsInput;
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4560,6 +4847,7 @@ export type accountsUpdateWithoutScheduled_statusesInput = {
   reports_reports_account_idToaccounts?: Prisma.reportsUpdateManyWithoutAccounts_reports_account_idToaccountsNestedInput;
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4597,6 +4885,7 @@ export type accountsUncheckedUpdateWithoutScheduled_statusesInput = {
   reports_reports_account_idToaccounts?: Prisma.reportsUncheckedUpdateManyWithoutAccounts_reports_account_idToaccountsNestedInput;
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4634,6 +4923,7 @@ export type accountsCreateWithoutNotification_request_groupsInput = {
   reports_reports_account_idToaccounts?: Prisma.reportsCreateNestedManyWithoutAccounts_reports_account_idToaccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4671,6 +4961,7 @@ export type accountsUncheckedCreateWithoutNotification_request_groupsInput = {
   reports_reports_account_idToaccounts?: Prisma.reportsUncheckedCreateNestedManyWithoutAccounts_reports_account_idToaccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4736,6 +5027,7 @@ export type accountsUpdateWithoutNotification_request_groupsInput = {
   reports_reports_account_idToaccounts?: Prisma.reportsUpdateManyWithoutAccounts_reports_account_idToaccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4773,6 +5065,7 @@ export type accountsUncheckedUpdateWithoutNotification_request_groupsInput = {
   reports_reports_account_idToaccounts?: Prisma.reportsUncheckedUpdateManyWithoutAccounts_reports_account_idToaccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4811,6 +5104,7 @@ export type accountsCreateWithoutStatusesInput = {
   notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
 };
 
 export type accountsUncheckedCreateWithoutStatusesInput = {
@@ -4848,6 +5142,7 @@ export type accountsUncheckedCreateWithoutStatusesInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
 export type accountsCreateOrConnectWithoutStatusesInput = {
@@ -4913,6 +5208,7 @@ export type accountsUpdateWithoutStatusesInput = {
   notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
 };
 
 export type accountsUncheckedUpdateWithoutStatusesInput = {
@@ -4950,6 +5246,7 @@ export type accountsUncheckedUpdateWithoutStatusesInput = {
   notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
 /**
@@ -4977,6 +5274,7 @@ export type AccountsCountOutputType = {
   notification_request_groups: number;
   scheduled_statuses: number;
   status_mentions: number;
+  remote_status_mentions: number;
   statuses: number;
 };
 
@@ -5015,6 +5313,7 @@ export type AccountsCountOutputTypeSelect<
     | AccountsCountOutputTypeCountNotification_request_groupsArgs;
   scheduled_statuses?: boolean | AccountsCountOutputTypeCountScheduled_statusesArgs;
   status_mentions?: boolean | AccountsCountOutputTypeCountStatus_mentionsArgs;
+  remote_status_mentions?: boolean | AccountsCountOutputTypeCountRemote_status_mentionsArgs;
   statuses?: boolean | AccountsCountOutputTypeCountStatusesArgs;
 };
 
@@ -5213,6 +5512,15 @@ export type AccountsCountOutputTypeCountStatus_mentionsArgs<
 /**
  * AccountsCountOutputType without action
  */
+export type AccountsCountOutputTypeCountRemote_status_mentionsArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  where?: Prisma.remote_status_mentionsWhereInput;
+};
+
+/**
+ * AccountsCountOutputType without action
+ */
 export type AccountsCountOutputTypeCountStatusesArgs<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
@@ -5269,6 +5577,7 @@ export type accountsSelect<
       | Prisma.accounts$notification_request_groupsArgs<ExtArgs>;
     scheduled_statuses?: boolean | Prisma.accounts$scheduled_statusesArgs<ExtArgs>;
     status_mentions?: boolean | Prisma.accounts$status_mentionsArgs<ExtArgs>;
+    remote_status_mentions?: boolean | Prisma.accounts$remote_status_mentionsArgs<ExtArgs>;
     statuses?: boolean | Prisma.accounts$statusesArgs<ExtArgs>;
     _count?: boolean | Prisma.AccountsCountOutputTypeDefaultArgs<ExtArgs>;
   },
@@ -5388,6 +5697,7 @@ export type accountsInclude<
   notification_request_groups?: boolean | Prisma.accounts$notification_request_groupsArgs<ExtArgs>;
   scheduled_statuses?: boolean | Prisma.accounts$scheduled_statusesArgs<ExtArgs>;
   status_mentions?: boolean | Prisma.accounts$status_mentionsArgs<ExtArgs>;
+  remote_status_mentions?: boolean | Prisma.accounts$remote_status_mentionsArgs<ExtArgs>;
   statuses?: boolean | Prisma.accounts$statusesArgs<ExtArgs>;
   _count?: boolean | Prisma.AccountsCountOutputTypeDefaultArgs<ExtArgs>;
 };
@@ -5423,6 +5733,7 @@ export type $accountsPayload<
     notification_request_groups: Prisma.$notification_request_groupsPayload<ExtArgs>[];
     scheduled_statuses: Prisma.$scheduled_statusesPayload<ExtArgs>[];
     status_mentions: Prisma.$status_mentionsPayload<ExtArgs>[];
+    remote_status_mentions: Prisma.$remote_status_mentionsPayload<ExtArgs>[];
     statuses: Prisma.$statusesPayload<ExtArgs>[];
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
@@ -6214,6 +6525,17 @@ export interface Prisma__accountsClient<
   ): Prisma.PrismaPromise<
     | runtime.Types.Result.GetResult<
         Prisma.$status_mentionsPayload<ExtArgs>,
+        T,
+        "findMany",
+        GlobalOmitOptions
+      >
+    | Null
+  >;
+  remote_status_mentions<T extends Prisma.accounts$remote_status_mentionsArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.accounts$remote_status_mentionsArgs<ExtArgs>>,
+  ): Prisma.PrismaPromise<
+    | runtime.Types.Result.GetResult<
+        Prisma.$remote_status_mentionsPayload<ExtArgs>,
         T,
         "findMany",
         GlobalOmitOptions
@@ -7239,6 +7561,36 @@ export type accounts$status_mentionsArgs<
   take?: number;
   skip?: number;
   distinct?: Prisma.Status_mentionsScalarFieldEnum | Prisma.Status_mentionsScalarFieldEnum[];
+};
+
+/**
+ * accounts.remote_status_mentions
+ */
+export type accounts$remote_status_mentionsArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the remote_status_mentions
+   */
+  select?: Prisma.remote_status_mentionsSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the remote_status_mentions
+   */
+  omit?: Prisma.remote_status_mentionsOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.remote_status_mentionsInclude<ExtArgs> | null;
+  where?: Prisma.remote_status_mentionsWhereInput;
+  orderBy?:
+    | Prisma.remote_status_mentionsOrderByWithRelationInput
+    | Prisma.remote_status_mentionsOrderByWithRelationInput[];
+  cursor?: Prisma.remote_status_mentionsWhereUniqueInput;
+  take?: number;
+  skip?: number;
+  distinct?:
+    | Prisma.Remote_status_mentionsScalarFieldEnum
+    | Prisma.Remote_status_mentionsScalarFieldEnum[];
 };
 
 /**

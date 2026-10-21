@@ -1,5 +1,12 @@
-import { Visibility, type LocalStatus, type Visibility as VisibilityValue } from "@tstodon/domain";
+import {
+  Visibility,
+  type LocalStatus,
+  type RemoteStatus,
+  type Visibility as VisibilityValue,
+} from "@tstodon/domain";
+import { remoteStatusVisible } from "./mastodon";
 import { isAccountMentionedOnStatus } from "./mention-store";
+import { isAccountMentionedOnRemoteStatus } from "./remote-status-store";
 import { relationshipFlags } from "./social-store";
 import { findStatusById } from "./status-store";
 
@@ -64,4 +71,23 @@ export const canViewStatus = async (
     return canViewDirectStatus(db, status, viewerId);
   }
   return canViewRestricted(db, status.visibility, status.accountId, viewerId);
+};
+
+/**
+ * A cached remote status: public and unlisted ones are open, and a direct or
+ * followers-only one is shown to the local accounts it addresses.
+ */
+export const canViewRemoteStatus = async (
+  db: D1Database,
+  status: RemoteStatus,
+  viewerId: string | undefined,
+): Promise<boolean> => {
+  if (remoteStatusVisible(status)) {
+    return true;
+  }
+  if (!viewerId) {
+    return false;
+  }
+  const mentioned = await isAccountMentionedOnRemoteStatus(db, status.id, viewerId);
+  return mentioned.isOk() && mentioned.value;
 };

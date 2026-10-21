@@ -18,7 +18,11 @@ import { findAccountByUsername } from "./account-store";
 import { mediaRejectedDomains } from "./admin-domain-block-store";
 import { enqueueLinkCard } from "./link-card";
 import { notifyFromRemote } from "./notify";
-import { findRemoteStatusByObjectUri, upsertRemoteStatus } from "./remote-status-store";
+import {
+  findRemoteStatusByObjectUri,
+  recordRemoteStatusMentions,
+  upsertRemoteStatus,
+} from "./remote-status-store";
 import { isTruthy, NoteDocumentSchema, stringList } from "./schemas";
 
 const parseNoteDocument = schemaResult(NoteDocumentSchema);
@@ -104,25 +108,40 @@ const mentionedLocalUsernames = (identity: InstanceIdentity, raw: unknown): stri
   return [...usernames];
 };
 
-/** Notify each local account a newly stored remote note mentions. */
-const notifyMentions = async (
+/**
+ * Record the local accounts a newly stored remote note addresses, so it can
+ * reach their conversations, and notify them when asked.
+ */
+const recordMentions = async (
   env: Env,
   identity: InstanceIdentity,
   actor: RemoteActor,
   raw: unknown,
   statusId: string,
-): Promise<void> => {
+  notify: boolean,
+): Promise<Result<void, RepositoryError>> => {
+  const accountIds: string[] = [];
   for (const username of mentionedLocalUsernames(identity, raw)) {
     const account = await findAccountByUsername(env.DB, username);
     if (account.isOk() && account.value) {
+      accountIds.push(account.value.id);
+    }
+  }
+  const recorded = await recordRemoteStatusMentions(env.DB, statusId, accountIds);
+  if (recorded.isErr()) {
+    return err(recorded.error);
+  }
+  if (notify) {
+    for (const accountId of accountIds) {
       await notifyFromRemote(env, {
-        accountId: account.value.id,
+        accountId,
         actorUri: actor.actorUri,
         kind: "mention",
         statusId,
       });
     }
   }
+  return ok(undefined);
 };
 
 export const persistRemoteObject = async (
@@ -161,13 +180,25 @@ export const persistRemoteObject = async (
   const status = rejected.has(actor.domain.toLowerCase())
     ? { ...parsed.value, media: [] }
     : parsed.value;
-  const stored = await upsertRemoteStatus(env.DB, status);
-  if (stored.isOk()) {
-    // Preview cards are built off the request path like for local posts.
-    await enqueueLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);
-    if (options.notifyMentions) {
-      await notifyMentions(env, identity, actor, raw.value, stored.value.id);
-    }
+  const note = parseNoteDocument(raw.value);
+  const inReplyTo = note.isOk() ? (note.value.inReplyTo ?? undefined) : undefined;
+  const stored = await upsertRemoteStatus(env.DB, status, inReplyTo);
+  if (stored.isErr()) {
+    return stored;
   }
+  // Mention rows exist before the notifications that point at them.
+  const mentions = await recordMentions(
+    env,
+    identity,
+    actor,
+    raw.value,
+    stored.value.id,
+    options.notifyMentions === true,
+  );
+  if (mentions.isErr()) {
+    return err(mentions.error);
+  }
+  // Preview cards are built off the request path like for local posts.
+  await enqueueLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);
   return stored;
 };

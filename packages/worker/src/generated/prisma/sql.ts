@@ -210,6 +210,10 @@ export * from "./sql/findRemoteStatusById";
 
 export * from "./sql/findRemoteStatusByObjectUri";
 
+export * from "./sql/findRemoteStatusReplyTargetByObjectUri";
+
+export * from "./sql/findRemoteStatusReplyTargets";
+
 export * from "./sql/findRemoteStatusesByIds";
 
 export * from "./sql/findStatusById";
@@ -282,11 +286,15 @@ export * from "./sql/insertPoll";
 
 export * from "./sql/insertPollVoteOrIgnore";
 
+export * from "./sql/insertRemoteStatusMention";
+
 export * from "./sql/insertReport";
 
 export * from "./sql/insertStatusEdit";
 
 export * from "./sql/insertStatusMention";
+
+export * from "./sql/isAccountMentionedOnRemoteStatus";
 
 export * from "./sql/isAccountMentionedOnStatus";
 
@@ -377,6 +385,8 @@ export * from "./sql/listPublishedAnnouncements";
 export * from "./sql/listPushSubscriptions";
 
 export * from "./sql/listRemoteStatusCards";
+
+export * from "./sql/listRemoteStatusMentions";
 
 export * from "./sql/listRestrictedDomains";
 

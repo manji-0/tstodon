@@ -22,7 +22,17 @@ Tracked leftovers so e2e work can proceed without losing them.
 | WP-1 | Deliver notifications to push subscriptions | Queue job per notification; RFC 8291 `aes128gcm` + RFC 8292 VAPID; 404/410 drops the row |
 | WP-2 | Per-token subscriptions                     | Blocked on token identity: Access JWTs carry none, so subscriptions are per endpoint     |
 
+## Direct messages (open)
+
+| ID   | Item                                      | Notes                                                                                                      |
+| ---- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| DM-1 | Address remote accounts from a local post | `mentionUsernames` resolves local accounts only, so a local DM cannot reach (or list) a remote participant |
+| DM-2 | Reply to a remote status                  | `statuses.in_reply_to_id` references local statuses only, so a remote DM cannot be answered in thread      |
+| DM-3 | `in_reply_to_id` on remote statuses       | Stored as `in_reply_to_uri` for conversations; not yet rendered on the status document                     |
+
 ## Done recently (do not re-open)
+
+- Remote direct notes reach the addressed account's direct timeline and conversations (`remote_status_mentions`, replies grouped by `inReplyTo`), and open for it on `GET /api/v1/statuses/:id`
 
 - Remote Follow/Like/Announce and mentions in new remote notes notify the local target (`r_…` senders, deduplicated, block/mute/domain-block aware); remote accounts can be blocked and muted
 

@@ -1,5 +1,9 @@
 import { err, ok, type Result } from "neverthrow";
-import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
+import type {
+  InstanceIdentity,
+  LocalStatus as LocalStatusValue,
+  RemoteStatus,
+} from "@tstodon/domain";
 import type { RepositoryError } from "./d1";
 import { getConversationRead } from "./marker-store";
 import { nowIso } from "./clock";
@@ -9,56 +13,149 @@ import {
   getConversationHide as getConversationHideSql,
   upsertConversationHide as upsertConversationHideSql,
 } from "./generated/prisma/sql";
+import { parseLocalStatusId } from "./activitypub";
 import { listMentionedAccountIds } from "./mention-store";
+import { RemoteAccountId } from "./remote-account-id";
 import {
+  findRemoteStatusReplyTargetByObjectUri,
+  findRemoteStatusReplyTargets,
+  listRemoteDirectStatusesForAccount,
+  listRemoteStatusMentions,
+} from "./remote-status-store";
+import {
+  CONTEXT_ANCESTOR_LIMIT,
   findStatusById,
   listDirectStatusesForAccount,
   resolveDirectConversationRoot,
 } from "./status-store";
 
+/** A direct status in a conversation: a local note or a cached remote one. */
+export type ConversationStatus =
+  | Readonly<{ kind: "Local"; status: LocalStatusValue }>
+  | Readonly<{ kind: "Remote"; status: RemoteStatus }>;
+
 export type ConversationSummary = Readonly<{
   id: string;
   unread: boolean;
+  /** Local account ids and remote account ids (`r_…`). */
   accountIds: ReadonlyArray<string>;
-  lastStatus: LocalStatusValue;
+  lastStatus: ConversationStatus;
 }>;
+
+/**
+ * The conversation a remote direct note belongs to: its `inReplyTo` chain is
+ * followed through direct notes, remote or local, to the first one.
+ */
+const resolveRemoteConversationRoot = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  status: RemoteStatus,
+): Promise<Result<string, RepositoryError>> => {
+  const targets = await findRemoteStatusReplyTargets(db, [status.id]);
+  if (targets.isErr()) {
+    return err(targets.error);
+  }
+  let current = targets.value.get(status.id);
+  if (!current) {
+    return ok(status.id);
+  }
+  for (let depth = 0; depth < CONTEXT_ANCESTOR_LIMIT; depth += 1) {
+    const parentUri = current.inReplyToUri;
+    if (!parentUri) {
+      break;
+    }
+    const localId = parseLocalStatusId(identity, parentUri);
+    if (localId) {
+      const parent = await findStatusById(db, localId);
+      if (parent.isErr()) {
+        return err(parent.error);
+      }
+      if (
+        parent.value &&
+        parent.value.kind === "LocalNote" &&
+        parent.value.visibility.kind === "Direct"
+      ) {
+        return resolveDirectConversationRoot(db, parent.value);
+      }
+      break;
+    }
+    const parent = await findRemoteStatusReplyTargetByObjectUri(db, parentUri);
+    if (parent.isErr()) {
+      return err(parent.error);
+    }
+    if (!parent.value || !parent.value.direct) {
+      break;
+    }
+    current = parent.value;
+  }
+  return ok(current.id);
+};
 
 export const listConversationsForAccount = async (
   db: D1Database,
+  identity: InstanceIdentity,
   accountId: string,
   limit: number,
 ): Promise<Result<ConversationSummary[], RepositoryError>> => {
-  const statuses = await listDirectStatusesForAccount(
-    db,
-    accountId,
-    Math.max(limit * 10, 40),
-    undefined,
-  );
-  if (statuses.isErr()) {
-    return err(statuses.error);
+  const window = Math.max(limit * 10, 40);
+  const [locals, remotes] = await Promise.all([
+    listDirectStatusesForAccount(db, accountId, window, undefined),
+    listRemoteDirectStatusesForAccount(db, accountId, window, undefined),
+  ]);
+  if (locals.isErr()) {
+    return err(locals.error);
   }
-  const byRoot = new Map<string, LocalStatusValue[]>();
-  for (const status of statuses.value) {
+  if (remotes.isErr()) {
+    return err(remotes.error);
+  }
+  const remoteMentions = await listRemoteStatusMentions(
+    db,
+    remotes.value.map((status) => status.id),
+  );
+  if (remoteMentions.isErr()) {
+    return err(remoteMentions.error);
+  }
+  const byRoot = new Map<string, ConversationStatus[]>();
+  const place = (root: string, entry: ConversationStatus): void => {
+    const bucket = byRoot.get(root) ?? [];
+    bucket.push(entry);
+    byRoot.set(root, bucket);
+  };
+  for (const status of locals.value) {
     const root = await resolveDirectConversationRoot(db, status);
     if (root.isErr()) {
       return err(root.error);
     }
-    const bucket = byRoot.get(root.value) ?? [];
-    bucket.push(status);
-    byRoot.set(root.value, bucket);
+    place(root.value, { kind: "Local", status });
+  }
+  for (const status of remotes.value) {
+    const root = await resolveRemoteConversationRoot(db, identity, status);
+    if (root.isErr()) {
+      return err(root.error);
+    }
+    place(root.value, { kind: "Remote", status });
   }
 
   const summaries: ConversationSummary[] = [];
   for (const [conversationId, thread] of byRoot) {
-    const ordered = [...thread].toSorted((left, right) => right.id.localeCompare(left.id));
+    const ordered = [...thread].toSorted((left, right) =>
+      right.status.id.localeCompare(left.status.id),
+    );
     const lastStatus = ordered[0];
     if (!lastStatus) {
       continue;
     }
     const participantIds = new Set<string>();
-    for (const status of ordered) {
-      participantIds.add(status.accountId);
-      const mentions = await listMentionedAccountIds(db, status.id);
+    for (const entry of ordered) {
+      if (entry.kind === "Remote") {
+        participantIds.add(RemoteAccountId.encode(entry.status.actorUri));
+        for (const mentioned of remoteMentions.value.get(entry.status.id) ?? []) {
+          participantIds.add(mentioned);
+        }
+        continue;
+      }
+      participantIds.add(entry.status.accountId);
+      const mentions = await listMentionedAccountIds(db, entry.status.id);
       if (mentions.isErr()) {
         return err(mentions.error);
       }
@@ -70,7 +167,7 @@ export const listConversationsForAccount = async (
     if (hidden.isErr()) {
       return err(hidden.error);
     }
-    if (hidden.value !== undefined && lastStatus.id <= hidden.value) {
+    if (hidden.value !== undefined && lastStatus.status.id <= hidden.value) {
       // Removed from the list, and not revived by an older message.
       continue;
     }
@@ -79,7 +176,7 @@ export const listConversationsForAccount = async (
     if (read.isErr()) {
       return err(read.error);
     }
-    const unread = !read.value || lastStatus.id > read.value;
+    const unread = !read.value || lastStatus.status.id > read.value;
     summaries.push({
       id: conversationId,
       unread,
@@ -90,7 +187,9 @@ export const listConversationsForAccount = async (
 
   return ok(
     summaries
-      .toSorted((left, right) => right.lastStatus.id.localeCompare(left.lastStatus.id))
+      .toSorted((left, right) =>
+        right.lastStatus.status.id.localeCompare(left.lastStatus.status.id),
+      )
       .slice(0, limit),
   );
 };
@@ -126,20 +225,16 @@ export const hideConversation = async (
 
 export const latestStatusIdInConversation = async (
   db: D1Database,
+  identity: InstanceIdentity,
   accountId: string,
   conversationId: string,
 ): Promise<Result<string | undefined, RepositoryError>> => {
-  const root = await findStatusById(db, conversationId);
-  if (root.isErr()) {
-    return err(root.error);
-  }
-  if (!root.value) {
-    return ok(undefined);
-  }
-  const conversations = await listConversationsForAccount(db, accountId, 100);
+  // A conversation may be rooted at a local or a remote status, so only the
+  // viewer's own list decides whether it exists.
+  const conversations = await listConversationsForAccount(db, identity, accountId, 100);
   if (conversations.isErr()) {
     return err(conversations.error);
   }
   const match = conversations.value.find((conversation) => conversation.id === conversationId);
-  return ok(match?.lastStatus.id);
+  return ok(match?.lastStatus.status.id);
 };

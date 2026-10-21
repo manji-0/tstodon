@@ -214,6 +214,7 @@ model accounts {
   notification_request_groups                            notification_request_groups[]
   scheduled_statuses                                          scheduled_statuses[]
   status_mentions                                       status_mentions[]
+  remote_status_mentions                                remote_status_mentions[]
   statuses                                              statuses[]            
 }
 
@@ -596,10 +597,12 @@ model remote_statuses {
   tags_indexed  Int           @default(0)
   card_json     String?
   card_url      String?
+  in_reply_to_uri String?
   created_at    String        @default("CURRENT_TIMESTAMP")
   updated_at    String        @default("CURRENT_TIMESTAMP")
   remote_actors remote_actors @relation(fields: [actor_uri], references: [actor_uri], onDelete: Cascade, onUpdate: NoAction)
   remote_status_tags remote_status_tags[]
+  remote_status_mentions remote_status_mentions[]
 
   @@index([actor_uri, published_at(sort: Desc)], map: "idx_remote_statuses_actor_published")
   @@index([visibility, published_at(sort: Desc)], map: "idx_remote_statuses_visibility_published")
@@ -633,6 +636,16 @@ model reports {
   updated_at                                   String?
   accounts_reports_target_account_idToaccounts accounts @relation("reports_target_account_idToaccounts", fields: [target_account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   accounts_reports_account_idToaccounts        accounts @relation("reports_account_idToaccounts", fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model remote_status_mentions {
+  status_id       String
+  account_id      String
+  accounts        accounts        @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  remote_statuses remote_statuses @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([status_id, account_id])
+  @@index([account_id, status_id(sort: Desc)], map: "idx_remote_status_mentions_account")
 }
 
 model status_mentions {

@@ -20,6 +20,8 @@ import {
 } from "../announcement-store";
 import { customEmojiJson, emojisInText, type CustomEmoji } from "../emoji";
 import { loadCustomEmojis } from "../custom-emoji-store";
+import { accountDocumentsByIds } from "../account-documents";
+import { notificationStatusDocuments } from "../notification-documents";
 import {
   hideConversation,
   latestStatusIdInConversation,
@@ -41,7 +43,6 @@ import { rejectedTrendTargets } from "../trend-review-store";
 import {
   mastodonAccountDocument,
   mastodonAccountDocuments,
-  mastodonStatus,
   mastodonStatuses,
   mastodonTag,
 } from "../mastodon";
@@ -390,44 +391,54 @@ metaRoutes.get("/api/v1/conversations", async (c) => {
   }
   const conversations = await listConversationsForAccount(
     c.env.DB,
+    identity.value,
     user.value.id,
     queryLimit(c.req.query("limit"), 20),
   );
   if (conversations.isErr()) {
     return jsonRepositoryError(c, conversations.error.message);
   }
-  const documents = [];
-  for (const conversation of conversations.value) {
-    const accounts = [];
-    for (const accountId of conversation.accountIds) {
-      const account = await findAccountById(c.env.DB, accountId);
-      if (account.isOk() && account.value) {
-        accounts.push(await mastodonAccountDocument(c.env, identity.value, account.value));
-      }
-    }
-    const lastStatus = await mastodonStatus(
+  // Participants may be remote (`r_…`), and a last status may be a cached
+  // remote note; both render in bulk.
+  const [accounts, statuses] = await Promise.all([
+    accountDocumentsByIds(
       c.env,
       identity.value,
-      conversation.lastStatus,
+      conversations.value.flatMap((conversation) => conversation.accountIds),
+    ),
+    notificationStatusDocuments(
+      c.env,
+      identity.value,
+      conversations.value.map((conversation) => conversation.lastStatus.status.id),
       user.value.id,
-    );
-    documents.push({
+    ),
+  ]);
+  return c.json(
+    conversations.value.map((conversation) => ({
       id: conversation.id,
       unread: conversation.unread,
-      accounts,
-      last_status: lastStatus ?? null,
-    });
-  }
-  return c.json(documents);
+      accounts: conversation.accountIds.flatMap((id) => accounts.get(id) ?? []),
+      last_status: statuses.get(conversation.lastStatus.status.id) ?? null,
+    })),
+  );
 });
 
 metaRoutes.post("/api/v1/conversations/:id/read", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
   const conversationId = c.req.param("id");
-  const latest = await latestStatusIdInConversation(c.env.DB, user.value.id, conversationId);
+  const latest = await latestStatusIdInConversation(
+    c.env.DB,
+    identity.value,
+    user.value.id,
+    conversationId,
+  );
   if (latest.isErr()) {
     return jsonRepositoryError(c, latest.error.message);
   }
@@ -442,12 +453,21 @@ metaRoutes.post("/api/v1/conversations/:id/read", async (c) => {
 });
 
 metaRoutes.delete("/api/v1/conversations/:id", async (c) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
   const conversationId = c.req.param("id");
-  const latest = await latestStatusIdInConversation(c.env.DB, user.value.id, conversationId);
+  const latest = await latestStatusIdInConversation(
+    c.env.DB,
+    identity.value,
+    user.value.id,
+    conversationId,
+  );
   if (latest.isErr()) {
     return jsonRepositoryError(c, latest.error.message);
   }

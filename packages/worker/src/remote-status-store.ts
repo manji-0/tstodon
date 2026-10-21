@@ -25,6 +25,11 @@ import {
   findRemoteStatusById as findRemoteStatusByIdSql,
   findRemoteStatusesByIds as findRemoteStatusesByIdsSql,
   findRemoteStatusByObjectUri as findRemoteStatusByObjectUriSql,
+  findRemoteStatusReplyTargetByObjectUri as findRemoteStatusReplyTargetByObjectUriSql,
+  findRemoteStatusReplyTargets as findRemoteStatusReplyTargetsSql,
+  insertRemoteStatusMention as insertRemoteStatusMentionSql,
+  isAccountMentionedOnRemoteStatus as isAccountMentionedOnRemoteStatusSql,
+  listRemoteStatusMentions as listRemoteStatusMentionsSql,
   listPublicRemoteStatuses as listPublicRemoteStatusesSql,
   listRemoteStatusCards as listRemoteStatusCardsSql,
   setRemoteStatusCard as setRemoteStatusCardSql,
@@ -151,6 +156,8 @@ const replaceRemoteStatusTags = async (
 export const upsertRemoteStatus = async (
   db: D1Database,
   status: RemoteStatus,
+  /** The note's `inReplyTo`, kept to group direct conversations. */
+  inReplyToUri?: string,
 ): Promise<Result<RemoteStatus, RepositoryError>> => {
   const existing = await findRemoteStatusByObjectUri(db, status.objectUri);
   if (existing.isErr()) {
@@ -176,6 +183,7 @@ export const upsertRemoteStatus = async (
         JSON.stringify(persisted.media),
         nowIso(),
         nowIso(),
+        inReplyToUri ?? null,
       ),
     );
     // The row has to exist before its tags (the index holds a foreign key).
@@ -187,6 +195,166 @@ export const upsertRemoteStatus = async (
   }
   return ok(written.value);
 };
+
+/** Record the local accounts a cached remote note addresses. */
+export const recordRemoteStatusMentions = async (
+  db: D1Database,
+  statusId: string,
+  accountIds: ReadonlyArray<string>,
+): Promise<Result<void, RepositoryError>> => {
+  if (accountIds.length === 0) {
+    return ok(undefined);
+  }
+  const batched = await runD1Batch(
+    db,
+    accountIds.map((accountId) =>
+      d1PrepareTyped(db, insertRemoteStatusMentionSql(statusId, accountId)),
+    ),
+  );
+  return batched.isErr() ? err(batched.error) : ok(undefined);
+};
+
+export const isAccountMentionedOnRemoteStatus = async (
+  db: D1Database,
+  statusId: string,
+  accountId: string,
+): Promise<Result<boolean, RepositoryError>> => {
+  const rows = await runD1(async () =>
+    queryTyped(db, isAccountMentionedOnRemoteStatusSql(statusId, accountId)),
+  );
+  return rows.isErr() ? err(rows.error) : ok(rows.value.length > 0);
+};
+
+/** Local account ids each remote status addresses, keyed by status id. */
+export const listRemoteStatusMentions = async (
+  db: D1Database,
+  statusIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, ReadonlyArray<string>>, RepositoryError>> => {
+  const mentions = new Map<string, string[]>();
+  if (statusIds.length === 0) {
+    return ok(mentions);
+  }
+  const rows = await runD1(async () =>
+    queryTyped<{ status_id: string; account_id: string }>(
+      db,
+      listRemoteStatusMentionsSql(jsonStringArray([...new Set(statusIds)])),
+    ),
+  );
+  if (rows.isErr()) {
+    return err(rows.error);
+  }
+  for (const row of rows.value) {
+    const bucket = mentions.get(row.status_id) ?? [];
+    bucket.push(row.account_id);
+    mentions.set(row.status_id, bucket);
+  }
+  return ok(mentions);
+};
+
+/** What a conversation needs to walk up a remote reply chain. */
+export type RemoteReplyTarget = Readonly<{
+  id: string;
+  objectUri: string;
+  direct: boolean;
+  inReplyToUri: string | undefined;
+}>;
+
+type ReplyTargetRow = {
+  id: string;
+  object_uri: string;
+  visibility: string;
+  in_reply_to_uri: string | null;
+};
+
+const replyTargetFromRow = (row: ReplyTargetRow): RemoteReplyTarget => ({
+  id: row.id,
+  objectUri: row.object_uri,
+  direct: row.visibility === "direct",
+  inReplyToUri: row.in_reply_to_uri ?? undefined,
+});
+
+export const findRemoteStatusReplyTargets = async (
+  db: D1Database,
+  statusIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, RemoteReplyTarget>, RepositoryError>> => {
+  const targets = new Map<string, RemoteReplyTarget>();
+  if (statusIds.length === 0) {
+    return ok(targets);
+  }
+  const rows = await runD1(async () =>
+    queryTyped<ReplyTargetRow>(
+      db,
+      findRemoteStatusReplyTargetsSql(jsonStringArray([...new Set(statusIds)])),
+    ),
+  );
+  if (rows.isErr()) {
+    return err(rows.error);
+  }
+  for (const row of rows.value) {
+    targets.set(row.id, replyTargetFromRow(row));
+  }
+  return ok(targets);
+};
+
+export const findRemoteStatusReplyTargetByObjectUri = async (
+  db: D1Database,
+  objectUri: string,
+): Promise<Result<RemoteReplyTarget | undefined, RepositoryError>> => {
+  const rows = await runD1(async () =>
+    queryTyped<ReplyTargetRow>(db, findRemoteStatusReplyTargetByObjectUriSql(objectUri)),
+  );
+  if (rows.isErr()) {
+    return err(rows.error);
+  }
+  const row = rows.value[0];
+  return ok(row ? replyTargetFromRow(row) : undefined);
+};
+
+/**
+ * Remote direct notes that address the account, newest first, leaving out
+ * actors the account blocks or mutes.
+ */
+export const listRemoteDirectStatusesForAccount = async (
+  db: D1Database,
+  accountId: string,
+  limit: number,
+  maxId: string | undefined,
+): Promise<Result<RemoteStatus[], RepositoryError>> =>
+  runD1(async () => {
+    const binds: (string | number)[] = [accountId, accountId, accountId, nowIso()];
+    const before = maxId ? "AND s.id < ?" : "";
+    if (maxId) {
+      binds.push(maxId);
+    }
+    binds.push(limit);
+    const { results } = await db
+      .prepare(
+        `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
+         WHERE s.visibility = 'direct'
+           AND s.id IN (SELECT status_id FROM remote_status_mentions WHERE account_id = ?)
+           AND s.actor_uri NOT IN (SELECT target_actor_uri FROM blocks WHERE blocker_account_id = ?)
+           AND s.actor_uri NOT IN (
+             SELECT target_actor_uri FROM mutes
+             WHERE account_id = ? AND (expires_at IS NULL OR expires_at > ?)
+           )
+           ${before}
+         ORDER BY s.id DESC LIMIT ?`,
+      )
+      .bind(...binds)
+      .all();
+    const statuses: RemoteStatus[] = [];
+    for (const raw of results ?? []) {
+      const row = parseRemoteStatusRow(raw);
+      if (row.isErr()) {
+        continue;
+      }
+      const parsed = remoteStatusFromRow(row.value);
+      if (parsed.isOk()) {
+        statuses.push(parsed.value);
+      }
+    }
+    return statuses;
+  });
 
 /** Store the link preview built for a remote status, with the link it was unfurled from. */
 export const setRemoteStatusCard = async (

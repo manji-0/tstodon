@@ -40,7 +40,6 @@ import {
   mastodonRemoteStatus,
   mastodonStatus,
   mastodonStatuses,
-  remoteStatusVisible,
 } from "../mastodon";
 import { countPollVotes, findPollByStatusId, replacePollOptions } from "../poll-store";
 import { listStatusFavouritedBy, listStatusRebloggedBy } from "../social-store";
@@ -108,7 +107,7 @@ import {
   resolveThreadRootStatusIds,
   unmuteStatusThread,
 } from "../status-mute-store";
-import { canViewStatus } from "../visibility-guard";
+import { canViewRemoteStatus, canViewStatus } from "../visibility-guard";
 import { publishLocalNote } from "../local-status-publish";
 import {
   defaultQuotePolicy,
@@ -714,7 +713,7 @@ const visibleStatusDocument = async (
     if (remote.isErr()) {
       return err(remote.error);
     }
-    if (!remote.value || !remoteStatusVisible(remote.value)) {
+    if (!remote.value || !(await canViewRemoteStatus(env.DB, remote.value, viewerId))) {
       return ok(null);
     }
     const actor = await findRemoteActorByUri(env.DB, remote.value.actorUri);
@@ -770,7 +769,13 @@ statusRoutes.get("/api/v1/statuses", async (c) => {
       ),
     )
   ).flat();
-  const visibleRemotes = [...remotes.value.values()].filter(remoteStatusVisible);
+  const visibleRemotes = (
+    await Promise.all(
+      [...remotes.value.values()].map(async (status) =>
+        (await canViewRemoteStatus(c.env.DB, status, viewerId)) ? [status] : [],
+      ),
+    )
+  ).flat();
   const [localDocuments, actors] = await Promise.all([
     mastodonStatuses(c.env, identity.value, visibleLocals, viewerId),
     findRemoteActorsByUris(

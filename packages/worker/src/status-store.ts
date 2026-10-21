@@ -48,7 +48,7 @@ export type StatusRow = z.infer<typeof StatusRowSchema>;
 export const STATUS_SELECT = `id, account_id, kind, reblog_of_id, in_reply_to_id, content_text, COALESCE(content_html, '') AS content_html, visibility, sensitive, COALESCE(spoiler_text, '') AS spoiler_text, language, created_at, updated_at, poll_id`;
 const statusSelect = STATUS_SELECT;
 
-const CONTEXT_ANCESTOR_LIMIT = 40;
+export const CONTEXT_ANCESTOR_LIMIT = 40;
 
 /**
  * Mastodon's `GET /statuses/:id/context` bounds: anonymous callers get 40
