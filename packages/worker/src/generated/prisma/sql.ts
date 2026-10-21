@@ -90,6 +90,8 @@ export * from "./sql/deleteMute";
 
 export * from "./sql/deleteNotificationRequests";
 
+export * from "./sql/deletePushSubscription";
+
 export * from "./sql/deleteReblogOf";
 
 export * from "./sql/deleteRemoteAnnounce";
@@ -163,6 +165,8 @@ export * from "./sql/findFilterById";
 export * from "./sql/findFilterStatusById";
 
 export * from "./sql/findFollowKind";
+
+export * from "./sql/findLatestPushSubscription";
 
 export * from "./sql/findLinkCard";
 
@@ -368,6 +372,8 @@ export * from "./sql/listPublicRemoteStatuses";
 
 export * from "./sql/listPublishedAnnouncements";
 
+export * from "./sql/listPushSubscriptions";
+
 export * from "./sql/listRemoteStatusCards";
 
 export * from "./sql/listRestrictedDomains";
@@ -454,6 +460,8 @@ export * from "./sql/updateOutboxTarget";
 
 export * from "./sql/updatePollOptionsIfActive";
 
+export * from "./sql/updatePushSubscriptionData";
+
 export * from "./sql/updateStatusCard";
 
 export * from "./sql/updateStatusPollId";
@@ -489,6 +497,8 @@ export * from "./sql/upsertMarker";
 export * from "./sql/upsertMute";
 
 export * from "./sql/upsertNotificationPolicy";
+
+export * from "./sql/upsertPushSubscription";
 
 export * from "./sql/upsertRemoteActor";
 

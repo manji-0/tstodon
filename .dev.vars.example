@@ -7,3 +7,5 @@
 # CF_ACCESS_JWKS_JSON=
 # CF_ACCESS_LOCAL_PRIVATE_JWK=
 # RESEND_API_KEY=
+# VAPID_PRIVATE_JWK=   # P-256 private JWK for Web Push (see docs/reference/configuration.md#web-push)
+# VAPID_SUBJECT=mailto:admin@example.com

@@ -55,6 +55,7 @@ export const ModelName = {
   announcements: "announcements",
   account_moderation: "account_moderation",
   account_domain_blocks: "account_domain_blocks",
+  push_subscriptions: "push_subscriptions",
   status_idempotency: "status_idempotency",
   notification_policies: "notification_policies",
   notification_requests: "notification_requests",
@@ -202,6 +203,22 @@ export const Account_domain_blocksScalarFieldEnum = {
 
 export type Account_domain_blocksScalarFieldEnum =
   (typeof Account_domain_blocksScalarFieldEnum)[keyof typeof Account_domain_blocksScalarFieldEnum];
+
+export const Push_subscriptionsScalarFieldEnum = {
+  id: "id",
+  account_id: "account_id",
+  endpoint: "endpoint",
+  p256dh: "p256dh",
+  auth: "auth",
+  standard: "standard",
+  alerts_json: "alerts_json",
+  policy: "policy",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Push_subscriptionsScalarFieldEnum =
+  (typeof Push_subscriptionsScalarFieldEnum)[keyof typeof Push_subscriptionsScalarFieldEnum];
 
 export const Status_idempotencyScalarFieldEnum = {
   account_id: "account_id",

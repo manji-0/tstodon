@@ -42,6 +42,15 @@ export default defineConfig({
               compatibilityDate: "2026-08-22",
               bindings: {
                 TEST_MIGRATIONS: migrations,
+                // Test-only VAPID key pair (never used outside the test runner).
+                VAPID_PRIVATE_JWK: JSON.stringify({
+                  kty: "EC",
+                  crv: "P-256",
+                  x: "gNxME-8f4ciT4HFggx6WMgqEWqHYiTfqpbrQE-RpwEc",
+                  y: "QHnjJ6Kcnf9YbOBBZ6Wnzr154fTk8gmy7_0ZkjmJXHg",
+                  d: "447-B_gSeFow1mKFlPPSrLUKUsliq3AtIkbXvcoTBKY",
+                }),
+                VAPID_SUBJECT: "mailto:admin@example.com",
               },
             },
           }),

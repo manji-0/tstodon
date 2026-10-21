@@ -155,6 +155,56 @@ export const readOptionalBody = async <T>(
   return schemaResult(schema)(raw).mapErr(() => ({ kind: "ValidationError" as const }));
 };
 
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * Rails-style form keys (`subscription[keys][auth]`) folded into nested
+ * objects, so one schema reads both a form body and its JSON equivalent.
+ */
+export const nestFormKeys = (flat: Readonly<Record<string, unknown>>): Record<string, unknown> => {
+  const root: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(flat)) {
+    const path = key.match(/^([^[\]]+)((?:\[[^[\]]*\])*)$/);
+    if (!path?.[1]) {
+      root[key] = value;
+      continue;
+    }
+    const segments = [
+      path[1],
+      ...[...(path[2] ?? "").matchAll(/\[([^[\]]*)\]/g)].map((m) => m[1] ?? ""),
+    ];
+    let node = root;
+    for (const [index, segment] of segments.entries()) {
+      if (index === segments.length - 1) {
+        node[segment] = value;
+        break;
+      }
+      const next = node[segment];
+      if (isPlainRecord(next)) {
+        node = next;
+      } else {
+        const created: Record<string, unknown> = {};
+        node[segment] = created;
+        node = created;
+      }
+    }
+  }
+  return root;
+};
+
+/** {@link readBody} for bodies whose form encoding nests keys in brackets. */
+export const readNestedBody = async <T>(
+  c: Context<{ Bindings: Env }>,
+  schema: z.ZodType<T>,
+): Promise<Result<T, { kind: "ValidationError" }>> => {
+  const contentType = c.req.header("content-type") ?? "";
+  const raw = contentType.includes("application/json")
+    ? await c.req.json()
+    : nestFormKeys({ ...(await c.req.parseBody()) });
+  return schemaResult(schema)(raw).mapErr(() => ({ kind: "ValidationError" as const }));
+};
+
 export const readBody = async <T>(
   c: Context<{ Bindings: Env }>,
   schema: z.ZodType<T>,

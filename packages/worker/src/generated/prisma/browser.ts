@@ -52,6 +52,11 @@ export type account_moderation = Prisma.account_moderationModel;
  */
 export type account_domain_blocks = Prisma.account_domain_blocksModel;
 /**
+ * Model push_subscriptions
+ *
+ */
+export type push_subscriptions = Prisma.push_subscriptionsModel;
+/**
  * Model status_idempotency
  *
  */

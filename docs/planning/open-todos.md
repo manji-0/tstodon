@@ -15,7 +15,16 @@ Tracked leftovers so e2e work can proceed without losing them.
 | D1-4 | Timeline preload: `Promise.all` vs single `runD1Batch` | Defer until metrics show a success criterion           |
 | D1-5 | Hot-key Durable Object for write serialization         | Only with evidence beyond D1 primary                   |
 
+## Web Push (in progress)
+
+| ID   | Item                                        | Notes                                                                                    |
+| ---- | ------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| WP-1 | Deliver notifications to push subscriptions | Queue job per notification; RFC 8291 `aes128gcm` + RFC 8292 VAPID; 404/410 drops the row |
+| WP-2 | Per-token subscriptions                     | Blocked on token identity: Access JWTs carry none, so subscriptions are per endpoint     |
+
 ## Done recently (do not re-open)
+
+- Push subscriptions stored (`/api/v1/push/subscription`, per account + endpoint) and the VAPID key advertised
 
 - Toolchain on Vite+ (`vp check`/`test`/`dev`/`build`, Vitest 5 via `@cloudflare/vitest-plugin`, Worker built by `@cloudflare/vite-plugin`)
 - `FEDERATION_ALLOW_HOSTS` matches `host:port` peers by hostname (inbox gate and follower fan-out)

@@ -14,6 +14,7 @@ export type * from "./models/account_notes";
 export type * from "./models/announcements";
 export type * from "./models/account_moderation";
 export type * from "./models/account_domain_blocks";
+export type * from "./models/push_subscriptions";
 export type * from "./models/status_idempotency";
 export type * from "./models/notification_policies";
 export type * from "./models/notification_requests";

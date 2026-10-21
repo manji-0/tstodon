@@ -398,6 +398,7 @@ export const ModelName = {
   announcements: "announcements",
   account_moderation: "account_moderation",
   account_domain_blocks: "account_domain_blocks",
+  push_subscriptions: "push_subscriptions",
   status_idempotency: "status_idempotency",
   notification_policies: "notification_policies",
   notification_requests: "notification_requests",
@@ -480,6 +481,7 @@ export type TypeMap<
       | "announcements"
       | "account_moderation"
       | "account_domain_blocks"
+      | "push_subscriptions"
       | "status_idempotency"
       | "notification_policies"
       | "notification_requests"
@@ -1066,6 +1068,82 @@ export type TypeMap<
           args: Prisma.account_domain_blocksCountArgs<ExtArgs>;
           result:
             | runtime.Types.Utils.Optional<Prisma.Account_domain_blocksCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    push_subscriptions: {
+      payload: Prisma.$push_subscriptionsPayload<ExtArgs>;
+      fields: Prisma.push_subscriptionsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.push_subscriptionsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$push_subscriptionsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.push_subscriptionsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$push_subscriptionsPayload>;
+        };
+        findFirst: {
+          args: Prisma.push_subscriptionsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$push_subscriptionsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.push_subscriptionsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$push_subscriptionsPayload>;
+        };
+        findMany: {
+          args: Prisma.push_subscriptionsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$push_subscriptionsPayload>[];
+        };
+        create: {
+          args: Prisma.push_subscriptionsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$push_subscriptionsPayload>;
+        };
+        createMany: {
+          args: Prisma.push_subscriptionsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.push_subscriptionsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$push_subscriptionsPayload>[];
+        };
+        delete: {
+          args: Prisma.push_subscriptionsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$push_subscriptionsPayload>;
+        };
+        update: {
+          args: Prisma.push_subscriptionsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$push_subscriptionsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.push_subscriptionsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.push_subscriptionsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.push_subscriptionsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$push_subscriptionsPayload>[];
+        };
+        upsert: {
+          args: Prisma.push_subscriptionsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$push_subscriptionsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Push_subscriptionsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregatePush_subscriptions>;
+        };
+        groupBy: {
+          args: Prisma.push_subscriptionsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Push_subscriptionsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.push_subscriptionsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Push_subscriptionsCountAggregateOutputType>
             | number;
         };
       };
@@ -5340,6 +5418,22 @@ export const Account_domain_blocksScalarFieldEnum = {
 export type Account_domain_blocksScalarFieldEnum =
   (typeof Account_domain_blocksScalarFieldEnum)[keyof typeof Account_domain_blocksScalarFieldEnum];
 
+export const Push_subscriptionsScalarFieldEnum = {
+  id: "id",
+  account_id: "account_id",
+  endpoint: "endpoint",
+  p256dh: "p256dh",
+  auth: "auth",
+  standard: "standard",
+  alerts_json: "alerts_json",
+  policy: "policy",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Push_subscriptionsScalarFieldEnum =
+  (typeof Push_subscriptionsScalarFieldEnum)[keyof typeof Push_subscriptionsScalarFieldEnum];
+
 export const Status_idempotencyScalarFieldEnum = {
   account_id: "account_id",
   idempotency_key: "idempotency_key",
@@ -6174,6 +6268,7 @@ export type GlobalOmitConfig = {
   announcements?: Prisma.announcementsOmit;
   account_moderation?: Prisma.account_moderationOmit;
   account_domain_blocks?: Prisma.account_domain_blocksOmit;
+  push_subscriptions?: Prisma.push_subscriptionsOmit;
   status_idempotency?: Prisma.status_idempotencyOmit;
   notification_policies?: Prisma.notification_policiesOmit;
   notification_requests?: Prisma.notification_requestsOmit;

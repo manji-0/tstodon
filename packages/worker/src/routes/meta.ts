@@ -54,6 +54,7 @@ import {
   type MarkerTimeline,
 } from "../marker-store";
 import { authenticate } from "../auth";
+import { vapidPublicKey } from "../vapid";
 import { listPeerDomains } from "../remote-actor-store";
 import { listFeaturedTags, listFollowedTags, tagDailyHistory } from "../tag-store";
 import {
@@ -631,6 +632,7 @@ metaRoutes.get("/api/v2/instance", async (c) => {
           ? `${instance.publicOrigin}/terms-of-service`
           : null,
       },
+      vapid: { public_key: vapidPublicKey(c.env) },
       accounts: {
         max_featured_tags: InstanceLimits.account.maxFeaturedTags,
         max_pinned_statuses: InstanceLimits.account.maxPinnedStatuses,

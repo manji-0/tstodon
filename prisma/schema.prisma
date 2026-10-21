@@ -89,6 +89,22 @@ model account_domain_blocks {
   @@index([account_id, created_at(sort: Desc)], map: "idx_account_domain_blocks_account_created")
 }
 
+model push_subscriptions {
+  id          Int    @id @default(autoincrement())
+  account_id  String
+  endpoint    String
+  p256dh      String
+  auth        String
+  standard    Int    @default(0)
+  alerts_json String @default("{}")
+  policy      String @default("all")
+  created_at  String @default("CURRENT_TIMESTAMP")
+  updated_at  String @default("CURRENT_TIMESTAMP")
+
+  @@unique([account_id, endpoint])
+  @@index([account_id, updated_at(sort: Desc), id(sort: Desc)], map: "idx_push_subscriptions_account_updated")
+}
+
 model status_idempotency {
   account_id      String
   idempotency_key String

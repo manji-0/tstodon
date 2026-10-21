@@ -8,6 +8,7 @@ import {
   JsonWebKeySchema,
   OAuthTokenBodySchema,
 } from "../schemas";
+import { vapidPublicKey } from "../vapid";
 
 const parseJsonWebKey = schemaResult(JsonWebKeySchema);
 const parseAccessJwks = schemaResult(AccessJwksSchema);
@@ -31,7 +32,7 @@ appRoutes.post("/api/v1/apps", async (c) => {
     redirect_uri: redirect,
     client_id: "tstodon-local",
     client_secret: "tstodon-local",
-    vapid_key: null,
+    vapid_key: vapidPublicKey(c.env),
   });
 });
 
@@ -39,7 +40,7 @@ appRoutes.get("/api/v1/apps/verify_credentials", (c) =>
   c.json({
     name: "tstodon-local",
     website: null,
-    vapid_key: null,
+    vapid_key: vapidPublicKey(c.env),
   }),
 );
 
