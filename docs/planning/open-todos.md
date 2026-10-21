@@ -29,6 +29,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 | DM-1 | Address remote accounts from a local post | `mentionUsernames` resolves local accounts only, so a local DM cannot reach (or list) a remote participant |
 | DM-2 | Reply to a remote status                  | `statuses.in_reply_to_id` references local statuses only, so a remote DM cannot be answered in thread      |
 | DM-3 | `in_reply_to_id` on remote statuses       | Stored as `in_reply_to_uri` for conversations; not yet rendered on the status document                     |
+| DM-4 | Conversation mutes on remote replies      | `status_mutes` hides local thread members only; a remote reply into a muted thread still shows             |
 
 ## Done recently (do not re-open)
 

@@ -312,7 +312,8 @@ export const findRemoteStatusReplyTargetByObjectUri = async (
 
 /**
  * Remote direct notes that address the account, newest first, leaving out
- * actors the account blocks or mutes.
+ * actors the account blocks or mutes and domains it blocks or the instance
+ * limits or suspends — the same ones remote timelines drop.
  */
 export const listRemoteDirectStatusesForAccount = async (
   db: D1Database,
@@ -321,7 +322,7 @@ export const listRemoteDirectStatusesForAccount = async (
   maxId: string | undefined,
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
-    const binds: (string | number)[] = [accountId, accountId, accountId, nowIso()];
+    const binds: (string | number)[] = [accountId, accountId, accountId, nowIso(), accountId];
     const before = maxId ? "AND s.id < ?" : "";
     if (maxId) {
       binds.push(maxId);
@@ -336,6 +337,14 @@ export const listRemoteDirectStatusesForAccount = async (
            AND s.actor_uri NOT IN (
              SELECT target_actor_uri FROM mutes
              WHERE account_id = ? AND (expires_at IS NULL OR expires_at > ?)
+           )
+           AND s.actor_uri NOT IN (
+             SELECT actor_uri FROM remote_actors
+             WHERE lower(domain) IN (
+               SELECT lower(domain) FROM account_domain_blocks WHERE account_id = ?
+               UNION
+               SELECT lower(domain) FROM domain_blocks WHERE severity IN ('silence', 'suspend')
+             )
            )
            ${before}
          ORDER BY s.id DESC LIMIT ?`,

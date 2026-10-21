@@ -67,10 +67,11 @@ const sendDirect = async (
   to: string,
   extra: Record<string, unknown> = {},
 ): Promise<string> => {
-  const objectUri = `https://remote.example/notes/${slug}`;
+  const origin = new URL(remote.actorUri).origin;
+  const objectUri = `${origin}/notes/${slug}`;
   expect(
     await remote.send({
-      id: `https://remote.example/activities/create-${slug}`,
+      id: `${origin}/activities/create-${slug}`,
       type: "Create",
       object: {
         id: objectUri,
@@ -179,7 +180,7 @@ describe("remote direct messages", () => {
     ]);
   });
 
-  it("leaves out blocked and muted senders", async () => {
+  it("leaves out blocked and muted senders and blocked domains", async () => {
     const email = "remote-dm-blocker@example.com";
     const account = await me(email);
     const actorUrl = `https://example.com/users/${account.username}`;
@@ -202,6 +203,18 @@ describe("remote direct messages", () => {
         ).status,
       ).toBe(200);
     }
+
+    const elsewhere = await remoteActor("dm-blocked-domain", "blocked-dm.example");
+    await sendDirect(elsewhere, "dm-from-blocked-domain", actorUrl);
+    expect(
+      (
+        await json("/api/v1/domain_blocks", {
+          method: "POST",
+          headers: { "content-type": "application/json", ...(await accessAuthHeaders(email)) },
+          body: JSON.stringify({ domain: "blocked-dm.example" }),
+        })
+      ).status,
+    ).toBe(200);
 
     expect((await directTimeline(email)).map((status) => status.content)).toEqual([
       "<p>dm-from-kept</p>",
