@@ -11,6 +11,8 @@ import {
   type PushAlertKey,
   type PushSubscription,
 } from "./push-subscription-store";
+import { RemoteAccountId } from "./remote-account-id";
+import { findRemoteFollow } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
 import { findFollowKind, findNotificationById } from "./social-store";
 import { vapidKeys } from "./vapid";
@@ -76,11 +78,18 @@ const policyAdmits = async (
       return true;
     case "none":
       return false;
+    // Local accounts cannot follow remote ones here, so `followed` never admits a remote sender.
     case "followed": {
       const kind = await findFollowKind(db, subscription.accountId, senderId);
       return kind.isOk() ? kind.value === "Accepted" : undefined;
     }
     case "follower": {
+      // A remote sender follows through `remote_follows`, keyed by actor URI.
+      const actorUri = RemoteAccountId.decode(senderId);
+      if (actorUri.isOk()) {
+        const follow = await findRemoteFollow(db, subscription.accountId, actorUri.value);
+        return follow.isOk() ? follow.value?.requestKind === "Fulfilled" : undefined;
+      }
       const kind = await findFollowKind(db, senderId, subscription.accountId);
       return kind.isOk() ? kind.value === "Accepted" : undefined;
     }

@@ -5,6 +5,7 @@ import { importJWK, jwtVerify } from "jose";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
 import { processPushJob } from "./push-delivery";
+import { RemoteAccountId } from "./remote-account-id";
 import { base64UrlToBytes, bytesToBase64Url } from "./vapid";
 
 const json = async (
@@ -367,6 +368,59 @@ describe("push delivery", () => {
       const notificationId = await favouriteNotification(author, fan);
       expect(await job(notificationId, followedId)).toBe("retry");
       expect(captured.some((push) => push.url.endsWith("/followed"))).toBe(true);
+    });
+  });
+
+  it("lets a remote follower through the follower policy", async () => {
+    const author = "push-remote-follower@example.com";
+    const host = "push-remote.example";
+    const recipientId = await accountId(author);
+    const subscriptionId = await subscribe(
+      author,
+      `https://${host}/follower`,
+      await newSubscriber(),
+      { alerts: { favourite: true }, policy: "follower" },
+      true,
+    );
+    const actorUri = "https://remote.example/users/push-fan";
+    await env.DB.prepare(
+      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, display_name, fetched_at)
+       VALUES (?, 'push-fan', 'remote.example', ?, ?, 'pem', 'Push Fan', '2026-10-01T00:00:00.000Z')`,
+    )
+      .bind(actorUri, `${actorUri}/inbox`, `${actorUri}#main-key`)
+      .run();
+    const status = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await accessAuthHeaders(author)) },
+      body: JSON.stringify({ status: "for my remote fans" }),
+    });
+    const statusId = read(z.object({ id: z.string() }), status.body).id;
+    const notify = async (id: string) => {
+      await env.DB.prepare(
+        `INSERT INTO notifications (id, account_id, from_account_id, from_actor_uri, kind, status_id, created_at)
+         VALUES (?, ?, ?, ?, 'favourite', ?, '2026-10-21T00:00:00.000Z')`,
+      )
+        .bind(id, recipientId, RemoteAccountId.encode(actorUri), actorUri, statusId)
+        .run();
+      return processPushJob(env, {
+        kind: "DeliverPush",
+        accountId: recipientId,
+        notificationId: id,
+        subscriptionId,
+      });
+    };
+    await withPushService(host, 201, async (captured) => {
+      // Not a follower yet: nothing is sent.
+      expect(await notify("push-remote-1")).toBe("ok");
+      expect(captured).toHaveLength(0);
+      await env.DB.prepare(
+        `INSERT INTO remote_follows (id, remote_actor_uri, target_account_id, remote_request_kind, follow_kind, created_at)
+         VALUES ('push-remote-follow', ?, ?, 'Fulfilled', 'Accepted', '2026-10-21T00:00:00.000Z')`,
+      )
+        .bind(actorUri, recipientId)
+        .run();
+      expect(await notify("push-remote-2")).toBe("ok");
+      expect(captured.map((push) => push.url)).toEqual([`https://${host}/follower`]);
     });
   });
 });
