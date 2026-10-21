@@ -15,6 +15,7 @@ import { mastodonRemoteStatus, mastodonStatuses, remoteStatusVisible } from "../
 import { elapsedMs, writeMetric } from "../metrics";
 import { parseInstanceIdentity } from "../runtime-config";
 import { findRemoteActorByUri } from "../remote-actor-store";
+import { attachRemoteReplyRefs } from "../status-documents";
 import {
   listPublicRemoteStatuses,
   listRemoteDirectStatusesForAccount,
@@ -99,6 +100,7 @@ const remoteTimelineDocuments = async (
       mastodonRemoteStatus(identity, status, actor.value, card ? cardDocument(card) : null),
     );
   }
+  await attachRemoteReplyRefs(c.env.DB, identity, documents);
   return { statuses, documents, cards: cards.isOk() ? cards.value : new Map() };
 };
 

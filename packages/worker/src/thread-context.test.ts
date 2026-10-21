@@ -115,6 +115,45 @@ describe("thread context across local and remote statuses", () => {
       ancestors: [root.id, first.id],
       descendants: [second.id],
     });
+    // Every reply names its parent and the parent's author, remote or local.
+    const author = read(
+      z.object({ id: z.string() }),
+      (
+        await json("/api/v1/accounts/verify_credentials", {
+          headers: await accessAuthHeaders(email),
+        })
+      ).body,
+    );
+    const thread = read(
+      z.object({
+        descendants: z.array(
+          z.object({
+            id: z.string(),
+            in_reply_to_id: z.string().nullable(),
+            in_reply_to_account_id: z.string().nullable(),
+          }),
+        ),
+      }),
+      (await json(`/api/v1/statuses/${root.id}/context`)).body,
+    );
+    const carolId = RemoteAccountId.encode(carol.actorUri);
+    expect(
+      thread.descendants.map((status) => [
+        status.id,
+        status.in_reply_to_id,
+        status.in_reply_to_account_id,
+      ]),
+    ).toEqual([
+      [first.id, root.id, author.id],
+      [answer.id, first.id, carolId],
+      [second.id, answer.id, author.id],
+    ]);
+    const single = read(
+      z.object({ in_reply_to_id: z.string().nullable() }),
+      (await json(`/api/v1/statuses/${second.id}`)).body,
+    );
+    expect(single.in_reply_to_id).toBe(answer.id);
+
     // A remote status opens its own thread.
     expect(await context(second.id)).toEqual({
       ancestors: [root.id, first.id, answer.id],

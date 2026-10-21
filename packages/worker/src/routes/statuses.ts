@@ -19,7 +19,7 @@ import { escapeHtml, mentionUsernames, textToHtml } from "../html";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "../mention-store";
 import { loadNoteMentions, resolveRemoteMentions } from "../mention-resolve";
 import { findReplyTarget, loadNoteReply, type ReplyTarget } from "../reply-target";
-import { statusDocumentsByIds } from "../status-documents";
+import { attachRemoteReplyRefs, statusDocumentsByIds } from "../status-documents";
 import {
   listThreadAncestors,
   listThreadDescendants,
@@ -724,7 +724,12 @@ const visibleStatusDocument = async (
     if (actor.isErr()) {
       return err(actor.error);
     }
-    return ok(actor.value ? mastodonRemoteStatus(identity, remote.value, actor.value) : null);
+    if (!actor.value) {
+      return ok(null);
+    }
+    const document = mastodonRemoteStatus(identity, remote.value, actor.value);
+    await attachRemoteReplyRefs(env.DB, identity, [document]);
+    return ok(document);
   }
   if (!(await canViewStatus(env.DB, status.value, viewerId))) {
     return ok(null);
@@ -802,6 +807,7 @@ statusRoutes.get("/api/v1/statuses", async (c) => {
       documents.set(status.id, mastodonRemoteStatus(identity.value, status, actor));
     }
   }
+  await attachRemoteReplyRefs(c.env.DB, identity.value, [...documents.values()]);
   return c.json(ids.flatMap((id) => documents.get(id) ?? []));
 });
 
