@@ -3,30 +3,19 @@ import {
   AccountId,
   IsoInstant,
   LocalAccount,
-  type QuoteApprovalPolicy,
-  Registration,
   Username,
   Visibility,
 } from "@tstodon/domain";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
-import { markAccountPending } from "./account-flag-store";
-import { isRegistrationBlocked } from "./registration-block-store";
-import { type IdCursor, idCursorFragment } from "./id-cursor";
-import { nowInstant, nowIso } from "./clock";
-import { jsonStringArray, parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
-import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
-import { generateAccountKeys } from "./keys";
-import { newEntityId } from "./ids";
+import { nowIso } from "./clock";
+import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
+import { queryTyped, runTyped } from "./typed-sql";
 import { toRepositoryError } from "./d1";
 import { quotePolicyFromSql, quotePolicySql, visibilitySql } from "./sql-enums";
 import {
-  accountCounts as accountCountsSql,
   countAccounts as countAccountsSql,
-  countFollowersByAccountIdsJson as countFollowersByAccountIdsJsonSql,
-  countFollowingByAccountIdsJson as countFollowingByAccountIdsJsonSql,
-  countStatusesByAccountIdsJson as countStatusesByAccountIdsJsonSql,
   deleteAccount as deleteAccountSql,
   findAccountByEmail as findAccountByEmailSql,
   findAccountById as findAccountByIdSql,
@@ -40,6 +29,7 @@ import {
   setAccountLocked as setAccountLockedSql,
   updateAccountProfile as updateAccountProfileSql,
 } from "./generated/prisma/sql";
+import { type AdminAccountFilters } from "./account-admin-store";
 
 export const AccountRowSchema = z.object({
   id: z.string().min(1),
@@ -57,7 +47,8 @@ export const AccountRowSchema = z.object({
 
 export type AccountRow = z.infer<typeof AccountRowSchema>;
 
-const parseAccountRow = schemaResult(AccountRowSchema);
+export const parseAccountRow = schemaResult(AccountRowSchema);
+
 const parseLocalAccount = schemaResult(LocalAccount.schema);
 
 export const accountFromRow = (row: AccountRow): Result<LocalAccount, RepositoryError> => {
@@ -256,71 +247,6 @@ export const insertAccount = async (
     );
   });
 
-/** A sign-up block refuses the new account without touching existing ones. */
-export type ProvisionError = RepositoryError | Readonly<{ kind: "RegistrationBlocked" }>;
-
-export const provisionAccountFromEmail = async (
-  db: D1Database,
-  rawEmail: string,
-  options: Readonly<{ pending?: boolean }> = {},
-): Promise<Result<LocalAccount, ProvisionError>> => {
-  const existing = await findAccountByEmail(db, rawEmail);
-  if (existing.isErr()) {
-    return err(existing.error);
-  }
-  if (existing.value) {
-    return ok(existing.value);
-  }
-  const email = AccessEmail.parse(rawEmail);
-  if (email.isErr()) {
-    return err({ kind: "RepositoryError", message: "invalid email" });
-  }
-  const baseUsername = Username.deriveFromEmail(email.value, false);
-  if (baseUsername.isErr()) {
-    return err({ kind: "RepositoryError", message: "invalid username" });
-  }
-  const taken = await findAccountByUsername(db, baseUsername.value);
-  if (taken.isErr()) {
-    return err(taken.error);
-  }
-  const username = taken.value
-    ? Username.deriveFromEmail(email.value, true)
-    : ok(baseUsername.value);
-  if (username.isErr()) {
-    return err({ kind: "RepositoryError", message: "invalid username" });
-  }
-  const blocked = await isRegistrationBlocked(db, email.value);
-  if (blocked.isErr()) {
-    return err(blocked.error);
-  }
-  if (blocked.value) {
-    return err({ kind: "RegistrationBlocked" });
-  }
-  const keys = await generateAccountKeys();
-  const id = AccountId.parse(newEntityId());
-  if (id.isErr()) {
-    return err({ kind: "RepositoryError", message: "invalid id" });
-  }
-  const registering = Registration.register(
-    { kind: "IntentValidated", username: username.value, email: email.value },
-    id.value,
-    keys,
-  );
-  const account = LocalAccount.provision(registering, nowInstant());
-  const inserted = await insertAccount(db, account);
-  if (inserted.isErr()) {
-    return err(inserted.error);
-  }
-  if (options.pending) {
-    // Registrations that need approval start unsearchable until an admin acts.
-    const marked = await markAccountPending(db, account.id);
-    if (marked.isErr()) {
-      return err(marked.error);
-    }
-  }
-  return ok(account);
-};
-
 export const countAccounts = async (db: D1Database): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped<{ count: number | bigint }>(db, countAccountsSql());
@@ -372,151 +298,13 @@ export const deleteAccount = async (
     return rows.length > 0;
   });
 
-/**
- * Mastodon's admin account filters. `origin`/`status` are the translated form
- * (`local`/`active` by default); the text filters are case-insensitive
- * substrings. States this instance cannot hold (`remote`, `disabled`,
- * `byDomain`, `ip`, `staff`) match nothing rather than being ignored.
- */
-export type AdminAccountFilters = Readonly<{
-  origin: "local" | "remote";
-  status: "active" | "pending" | "disabled" | "silenced" | "suspended" | "sensitized";
-  username?: string | undefined;
-  displayName?: string | undefined;
-  email?: string | undefined;
-  byDomain?: string | undefined;
-  ip?: string | undefined;
-  staff?: boolean | undefined;
-  cursor?: IdCursor | undefined;
-  limit: number;
-  offset: number;
-}>;
-
-const STATUS_SQL: Readonly<Record<AdminAccountFilters["status"], string>> = {
+export const STATUS_SQL: Readonly<Record<AdminAccountFilters["status"], string>> = {
   active: `id NOT IN (SELECT account_id FROM account_moderation WHERE moderation = 'Suspended')`,
   pending: "id IN (SELECT account_id FROM account_flags WHERE pending <> 0)",
   disabled: "id IN (SELECT account_id FROM account_flags WHERE disabled <> 0)",
   silenced: `id IN (SELECT account_id FROM account_moderation WHERE moderation = 'Silenced')`,
   suspended: `id IN (SELECT account_id FROM account_moderation WHERE moderation = 'Suspended')`,
   sensitized: "id IN (SELECT account_id FROM account_flags WHERE sensitized <> 0)",
-};
-
-export const listAdminAccounts = async (
-  db: D1Database,
-  filters: AdminAccountFilters,
-): Promise<Result<LocalAccount[], RepositoryError>> =>
-  runD1(async () => {
-    const conditions = [STATUS_SQL[filters.status]];
-    const binds: Array<string | number> = [];
-    if (filters.origin === "remote") {
-      // Every account in this table is local.
-      conditions.push("0");
-    }
-    if (filters.username) {
-      conditions.push("username LIKE ?");
-      binds.push(`%${filters.username}%`);
-    }
-    if (filters.displayName) {
-      conditions.push("display_name LIKE ?");
-      binds.push(`%${filters.displayName}%`);
-    }
-    if (filters.email) {
-      conditions.push("access_email LIKE ?");
-      binds.push(`${filters.email.toLowerCase()}%`);
-    }
-    if (filters.byDomain || filters.ip || filters.staff) {
-      // No domain (local only), no recorded IPs, no staff accounts.
-      conditions.push("0");
-    }
-    // Mastodon pages this list by account id; `offset` stays as an
-    // undocumented fallback for callers that still use it.
-    const { where, order, binds: cursorBinds } = idCursorFragment(filters.cursor);
-    const pagination = filters.cursor === undefined ? "LIMIT ? OFFSET ?" : `LIMIT ?`;
-    const { results } = await db
-      .prepare(
-        `SELECT id, username, access_email, display_name, locked, default_post_visibility, default_quote_policy,
-                public_key_pem, private_key_jwk, created_at, COALESCE(bio_text, '') AS bio_text
-         FROM accounts
-         WHERE ${conditions.join(" AND ")} ${where}
-         ${order}
-         ${pagination}`,
-      )
-      .bind(
-        ...binds,
-        ...cursorBinds,
-        filters.limit,
-        ...(filters.cursor === undefined ? [filters.offset] : []),
-      )
-      .all();
-    const accounts: LocalAccount[] = [];
-    for (const raw of results ?? []) {
-      const row = parseAccountRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const account = accountFromRow(row.value);
-      if (account.isOk()) {
-        accounts.push(account.value);
-      }
-    }
-    return accounts;
-  });
-
-export type AccountCounts = Readonly<{ followers: number; following: number; statuses: number }>;
-
-export const accountCounts = async (
-  db: D1Database,
-  accountId: string,
-): Promise<Result<AccountCounts, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(db, accountCountsSql(accountId));
-    const row = rows[0];
-    return {
-      followers: Number(row?.followers ?? 0),
-      following: Number(row?.following ?? 0),
-      statuses: Number(row?.statuses ?? 0),
-    };
-  });
-
-export const accountCountsByIds = async (
-  db: D1Database,
-  accountIds: ReadonlyArray<string>,
-): Promise<Result<Map<string, AccountCounts>, RepositoryError>> => {
-  const unique = [...new Set(accountIds.filter((id) => id.length > 0))];
-  const counts = new Map<string, AccountCounts>();
-  for (const id of unique) {
-    counts.set(id, { followers: 0, following: 0, statuses: 0 });
-  }
-  if (unique.length === 0) {
-    return ok(counts);
-  }
-  const idsJson = jsonStringArray(unique);
-  const queried = await runD1Batch(db, [
-    d1PrepareTyped(db, countFollowersByAccountIdsJsonSql(idsJson)),
-    d1PrepareTyped(db, countFollowingByAccountIdsJsonSql(idsJson)),
-    d1PrepareTyped(db, countStatusesByAccountIdsJsonSql(idsJson)),
-  ]);
-  if (queried.isErr()) {
-    return err(queried.error);
-  }
-  const AccountCountRowSchema = z.object({ account_id: z.string(), count: z.number() });
-  const apply = (
-    result: D1Result | undefined,
-    key: "followers" | "following" | "statuses",
-  ): void => {
-    for (const row of parseRows(AccountCountRowSchema, result?.results)) {
-      const current = counts.get(row.account_id) ?? {
-        followers: 0,
-        following: 0,
-        statuses: 0,
-      };
-      counts.set(row.account_id, { ...current, [key]: row.count });
-    }
-  };
-  apply(queried.value[0], "followers");
-  apply(queried.value[1], "following");
-  apply(queried.value[2], "statuses");
-  return ok(counts);
 };
 
 export const findAccountByIdOrUsername = async (
@@ -532,71 +320,6 @@ export const findAccountByIdOrUsername = async (
   }
   return findAccountByUsername(db, idOrUsername);
 };
-
-/** The posting defaults a new status inherits when it omits them. */
-export type ComposeDefaults = Readonly<{
-  language: string | null;
-  sensitive: boolean;
-}>;
-
-export const findComposeDefaults = async (
-  db: D1Database,
-  accountId: string,
-): Promise<Result<ComposeDefaults, RepositoryError>> =>
-  runD1(async () => {
-    const row = await db
-      .prepare("SELECT default_language, default_sensitive FROM accounts WHERE id = ? LIMIT 1")
-      .bind(accountId)
-      .first<{ default_language: string | null; default_sensitive: number }>();
-    return {
-      language:
-        row?.default_language !== null &&
-        row?.default_language !== undefined &&
-        row.default_language.length > 0
-          ? row.default_language
-          : null,
-      sensitive: (row?.default_sensitive ?? 0) !== 0,
-    };
-  });
-
-/** Store the account-level defaults Mastodon exposes as `source`. */
-export const updateAccountDefaults = async (
-  db: D1Database,
-  accountId: string,
-  input: Readonly<{
-    visibility?: Visibility;
-    quotePolicy?: QuoteApprovalPolicy;
-    language?: string | null;
-    sensitive?: boolean;
-  }>,
-): Promise<Result<void, RepositoryError>> =>
-  runD1(async () => {
-    const assignments: string[] = [];
-    const binds: Array<string | null> = [];
-    if (input.visibility) {
-      assignments.push("default_post_visibility = ?");
-      binds.push(visibilitySql(input.visibility));
-    }
-    if (input.quotePolicy) {
-      assignments.push("default_quote_policy = ?");
-      binds.push(quotePolicySql(input.quotePolicy));
-    }
-    if (input.language !== undefined) {
-      assignments.push("default_language = ?");
-      binds.push(input.language);
-    }
-    if (assignments.length === 0) {
-      return;
-    }
-    if (input.sensitive !== undefined) {
-      assignments.push("default_sensitive = ?");
-      binds.push(input.sensitive ? "1" : "0");
-    }
-    await db
-      .prepare(`UPDATE accounts SET ${assignments.join(", ")}, updated_at = ? WHERE id = ?`)
-      .bind(...binds, nowIso(), accountId)
-      .run();
-  });
 
 export const updateAccountProfile = async (
   db: D1Database,

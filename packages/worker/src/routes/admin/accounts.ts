@@ -18,7 +18,8 @@ import {
   setAccountDisabled,
   setAccountSensitized,
 } from "../../account-flag-store";
-import { deleteAccount, findAccountById, listAdminAccounts } from "../../account-store";
+import { deleteAccount, findAccountById } from "../../account-store";
+import { listAdminAccounts } from "../../account-admin-store";
 import {
   jsonAuthError,
   jsonRepositoryError,

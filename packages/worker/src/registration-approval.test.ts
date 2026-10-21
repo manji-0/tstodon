@@ -4,7 +4,7 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
 import { pendingAccountIds } from "./account-flag-store";
-import { provisionAccountFromEmail } from "./account-store";
+import { provisionAccountFromEmail } from "./account-provision";
 import { registrationApprovalRequired } from "./runtime-config";
 import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 

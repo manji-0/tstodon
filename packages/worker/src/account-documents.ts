@@ -1,10 +1,7 @@
 import { InstanceIdentity, type LocalAccount, type RemoteActor, Visibility } from "@tstodon/domain";
-import {
-  accountCounts,
-  accountCountsByIds,
-  findAccountsByIds,
-  type ComposeDefaults,
-} from "./account-store";
+import { accountCounts, accountCountsByIds } from "./account-count-store";
+import { findAccountsByIds } from "./account-store";
+import type { ComposeDefaults } from "./account-defaults-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { type CustomEmoji, customEmojiJson, emojisInText } from "./emoji";

@@ -5,7 +5,8 @@ import {
   type LocalStatus,
   Visibility,
 } from "@tstodon/domain";
-import { type AccountCounts, accountCountsByIds, findAccountsByIds } from "./account-store";
+import { type AccountCounts, accountCountsByIds } from "./account-count-store";
+import { findAccountsByIds } from "./account-store";
 import { findPollsByStatusIds, type PollRecord } from "./poll-store";
 import {
   findQuotesByStatusIds,

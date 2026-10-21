@@ -2,7 +2,7 @@ import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { createLocalJWKSet, createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { disabledAccountIds } from "./account-flag-store";
-import { provisionAccountFromEmail } from "./account-store";
+import { provisionAccountFromEmail } from "./account-provision";
 import { registrationApprovalRequired } from "./runtime-config";
 import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
 import type { RepositoryError } from "./d1";

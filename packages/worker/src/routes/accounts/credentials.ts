@@ -1,13 +1,8 @@
 import { FediRole, QuoteApprovalPolicy, Visibility } from "@tstodon/domain";
 import { InstanceLimits, schemaResult, warmSchemas } from "@tstodon/core";
 import { type Context, Hono } from "hono";
-import {
-  findAccountById,
-  findComposeDefaults,
-  setAccountLocked,
-  updateAccountDefaults,
-  updateAccountProfile,
-} from "../../account-store";
+import { findAccountById, setAccountLocked, updateAccountProfile } from "../../account-store";
+import { findComposeDefaults, updateAccountDefaults } from "../../account-defaults-store";
 import {
   EMPTY_ACCOUNT_PROFILE,
   findAccountProfile,

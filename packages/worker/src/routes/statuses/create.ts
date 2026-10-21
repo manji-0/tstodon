@@ -7,7 +7,8 @@ import {
 } from "@tstodon/domain";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { findAccountById, findComposeDefaults } from "../../account-store";
+import { findAccountById } from "../../account-store";
+import { findComposeDefaults } from "../../account-defaults-store";
 import { escapeHtml, mentionUsernames } from "../../html";
 import { findReplyTarget, type ReplyTarget } from "../../reply-target";
 import { findFollowKind } from "../../follow-store";
