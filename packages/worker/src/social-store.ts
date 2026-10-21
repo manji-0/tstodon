@@ -542,6 +542,47 @@ export const SUPPRESSED_ACCOUNT_IDS_SQL = `(
       AND (expires_at IS NULL OR expires_at > ?)
 )`;
 
+/**
+ * Who a viewer does not see posts from: local account ids (blocks either
+ * way, active mutes) and remote actor URIs (their blocks and active mutes).
+ */
+export const listSuppressedAuthors = async (
+  db: D1Database,
+  viewerId: string,
+): Promise<
+  Result<
+    Readonly<{ accountIds: ReadonlySet<string>; actorUris: ReadonlySet<string> }>,
+    RepositoryError
+  >
+> => {
+  const now = nowIso();
+  const rows = await runD1(async () =>
+    Promise.all([
+      db
+        .prepare(`SELECT id FROM accounts WHERE id IN ${SUPPRESSED_ACCOUNT_IDS_SQL}`)
+        .bind(viewerId, viewerId, viewerId, now)
+        .all<{ id: string }>(),
+      db
+        .prepare(
+          `SELECT target_actor_uri AS uri FROM blocks WHERE blocker_account_id = ?
+           UNION
+           SELECT target_actor_uri FROM mutes
+           WHERE account_id = ? AND (expires_at IS NULL OR expires_at > ?)`,
+        )
+        .bind(viewerId, viewerId, now)
+        .all<{ uri: string }>(),
+    ]),
+  );
+  if (rows.isErr()) {
+    return err(rows.error);
+  }
+  const [accounts, actors] = rows.value;
+  return ok({
+    accountIds: new Set((accounts.results ?? []).map((row) => row.id)),
+    actorUris: new Set((actors.results ?? []).map((row) => row.uri)),
+  });
+};
+
 export const favouriteStatus = async (
   db: D1Database,
   accountId: string,

@@ -16,6 +16,10 @@ import {
   listStatusReplyUris,
 } from "./status-store";
 import { canViewRemoteStatus, canViewStatus } from "./visibility-guard";
+import { restrictedDomains } from "./admin-domain-block-store";
+import { listBlockedDomains } from "./domain-block-store";
+import { findRemoteActorsByUris } from "./remote-actor-store";
+import { listSuppressedAuthors } from "./social-store";
 
 /** A status in a thread: a local one or a cached remote one. */
 export type ThreadStatus = ReplyTarget;
@@ -167,22 +171,48 @@ export const listThreadDescendants = async (
   return ok(collected.toSorted((left, right) => left.status.id.localeCompare(right.status.id)));
 };
 
-/** Keep the thread statuses the viewer may see. */
+/**
+ * Keep the thread statuses the viewer may see, without authors they block or
+ * mute (or who block them), remote actors on domains they block, or domains
+ * the instance limits or suspends — as remote timelines leave them out.
+ */
 export const visibleThreadStatuses = async (
   db: D1Database,
   statuses: ReadonlyArray<ThreadStatus>,
   viewerId: string | undefined,
-): Promise<ThreadStatus[]> =>
-  (
+): Promise<ThreadStatus[]> => {
+  const suppressed = viewerId ? await listSuppressedAuthors(db, viewerId) : undefined;
+  const blockedDomains = new Set(await restrictedDomains(db));
+  if (viewerId) {
+    const own = await listBlockedDomains(db, viewerId);
+    for (const domain of own.isOk() ? own.value : []) {
+      blockedDomains.add(domain.toLowerCase());
+    }
+  }
+  const actors = await findRemoteActorsByUris(
+    db,
+    statuses.flatMap((node) => (node.kind === "Remote" ? [node.status.actorUri] : [])),
+  );
+  const hidden = (node: ThreadStatus): boolean => {
+    if (node.kind === "Local") {
+      return suppressed?.isOk() === true && suppressed.value.accountIds.has(node.status.accountId);
+    }
+    if (suppressed?.isOk() && suppressed.value.actorUris.has(node.status.actorUri)) {
+      return true;
+    }
+    const actor = actors.isOk() ? actors.value.get(node.status.actorUri) : undefined;
+    return !actor || blockedDomains.has(actor.domain.toLowerCase());
+  };
+  return (
     await Promise.all(
       statuses.map(async (node) =>
-        (
-          node.kind === "Local"
-            ? await canViewStatus(db, node.status, viewerId)
-            : await canViewRemoteStatus(db, node.status, viewerId)
-        )
+        !hidden(node) &&
+        (node.kind === "Local"
+          ? await canViewStatus(db, node.status, viewerId)
+          : await canViewRemoteStatus(db, node.status, viewerId))
           ? [node]
           : [],
       ),
     )
   ).flat();
+};

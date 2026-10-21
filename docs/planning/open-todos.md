@@ -31,6 +31,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 | DM-5 | Federate local status deletion                      | Deleting a local note sends no `Delete`, so remote copies stay                                                                                                                        |
 | DM-6 | Serve non-public notes to authorized signed fetches | `GET /users/:username/statuses/:id` answers 404 for followers-only and direct notes to everyone; Mastodon serves them to a signed fetch from an addressed actor                       |
 | DM-7 | Outbox paging and private self-boosts               | The outbox filters after its `LIMIT`, so a page can come back short; a self-boost of a followers-only note is listed (its object still 404s) and its `Announce` carries no addressing |
+| DM-8 | Context paging after filtering                      | `/context` caps each level before the visibility and block filters, so a count-limited thread can come back short (as the old local walk did)                                         |
 
 ## Done recently (do not re-open)
 

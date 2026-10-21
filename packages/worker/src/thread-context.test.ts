@@ -4,6 +4,7 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { RemoteAccountId } from "./remote-account-id";
 
 const json = async (
   path: string,
@@ -49,10 +50,11 @@ const receiveReply = async (
   inReplyTo: string,
   to: ReadonlyArray<string> = [PUBLIC],
 ): Promise<{ id: string; uri: string }> => {
-  const uri = `https://remote.example/notes/${slug}`;
+  const origin = new URL(remote.actorUri).origin;
+  const uri = `${origin}/notes/${slug}`;
   expect(
     await remote.send({
-      id: `https://remote.example/activities/create-${slug}`,
+      id: `${origin}/activities/create-${slug}`,
       type: "Create",
       object: {
         id: uri,
@@ -139,6 +141,46 @@ describe("thread context across local and remote statuses", () => {
     expect((await context(root.id, email)).descendants).toEqual([direct.id]);
     expect((await context(root.id)).descendants).toEqual([]);
     expect((await json(`/api/v1/statuses/${direct.id}/context`)).status).toBe(404);
+  });
+
+  it("leaves out replies from blocked, muted, and domain-blocked authors", async () => {
+    const email = "thread-context-blocker@example.com";
+    const headers = async () => ({
+      "content-type": "application/json",
+      ...(await accessAuthHeaders(email)),
+    });
+    const root = await post(email, "replies welcome");
+    const blocked = await remoteActor("thread-blocked");
+    const elsewhere = await remoteActor("thread-elsewhere", "blocked-thread.example");
+    const kept = await remoteActor("thread-kept");
+    const mutedLocal = "thread-context-muted@example.com";
+    const mutedAccount = read(
+      z.object({ id: z.string() }),
+      (
+        await json("/api/v1/accounts/verify_credentials", {
+          headers: await accessAuthHeaders(mutedLocal),
+        })
+      ).body,
+    );
+    await receiveReply(blocked, "thread-from-blocked", root.uri);
+    await receiveReply(elsewhere, "thread-from-blocked-domain", root.uri);
+    const keptReply = await receiveReply(kept, "thread-from-kept", root.uri);
+    await post(mutedLocal, "a local reply", root.id);
+
+    for (const [path, body] of [
+      [`/api/v1/accounts/${RemoteAccountId.encode(blocked.actorUri)}/block`, {}],
+      [`/api/v1/accounts/${mutedAccount.id}/mute`, {}],
+      ["/api/v1/domain_blocks", { domain: "blocked-thread.example" }],
+    ] as const) {
+      expect(
+        (await json(path, { method: "POST", headers: await headers(), body: JSON.stringify(body) }))
+          .status,
+      ).toBe(200);
+    }
+
+    expect((await context(root.id, email)).descendants).toEqual([keptReply.id]);
+    // Someone else still sees the whole thread.
+    expect((await context(root.id)).descendants).toHaveLength(4);
   });
 
   it("ends a forged reply loop", async () => {
