@@ -108,6 +108,8 @@ export * from "./sql/deleteStatusMentions";
 
 export * from "./sql/deleteStatusOwned";
 
+export * from "./sql/deleteStatusRemoteMentions";
+
 export * from "./sql/detachStatusMedia";
 
 export * from "./sql/dismissNotification";
@@ -197,6 +199,8 @@ export * from "./sql/findPollById";
 export * from "./sql/findPollByStatusId";
 
 export * from "./sql/findPollVoteTarget";
+
+export * from "./sql/findRemoteActorByHandle";
 
 export * from "./sql/findRemoteActorByPublicKeyId";
 
@@ -294,6 +298,8 @@ export * from "./sql/insertStatusEdit";
 
 export * from "./sql/insertStatusMention";
 
+export * from "./sql/insertStatusRemoteMention";
+
 export * from "./sql/isAccountMentionedOnRemoteStatus";
 
 export * from "./sql/isAccountMentionedOnStatus";
@@ -358,8 +364,6 @@ export * from "./sql/listMediaObjectKeysForAccount";
 
 export * from "./sql/listMediaRejectedDomains";
 
-export * from "./sql/listMentionedAccountIds";
-
 export * from "./sql/listNotifications";
 
 export * from "./sql/listNotifyingFollowerIds";
@@ -398,7 +402,11 @@ export * from "./sql/listStatusCards";
 
 export * from "./sql/listStatusEditSnapshots";
 
+export * from "./sql/listStatusMentionsByIds";
+
 export * from "./sql/listStatusMuteRoots";
+
+export * from "./sql/listStatusRemoteMentions";
 
 export * from "./sql/listStatusReplyLinks";
 

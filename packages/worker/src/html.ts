@@ -14,16 +14,58 @@ export const textToHtml = (text: string): string => {
   return `<p>${escaped}</p>`;
 };
 
-export const mentionUsernames = (text: string): ReadonlyArray<string> => {
-  const matches = text.matchAll(/@([a-z0-9_]+)/gi);
-  const names = new Set<string>();
-  for (const match of matches) {
+/**
+ * `@user` and `@user@domain` handles in post text. An `@` inside a word (an
+ * email address) does not start a mention; a username may carry `.` or `-`
+ * inside it (remote servers allow them), and the domain needs a dot and ends
+ * before trailing punctuation.
+ */
+const mentionHandles = (text: string): ReadonlyArray<{ username: string; domain?: string }> =>
+  [
+    ...text.matchAll(
+      /(?<![\w@])@([a-z0-9_](?:[a-z0-9_.-]*[a-z0-9_])?)(?:@([a-z0-9-]+(?:\.[a-z0-9-]+)+))?/gi,
+    ),
+  ].flatMap((match) => {
     const username = match[1];
-    if (username) {
-      names.add(username.toLowerCase());
+    if (!username) {
+      return [];
+    }
+    const domain = match[2];
+    return [
+      domain
+        ? { username: username.toLowerCase(), domain: domain.toLowerCase() }
+        : { username: username.toLowerCase() },
+    ];
+  });
+
+/** Local usernames a post mentions: bare `@user`, or a handle on this instance's domain. */
+export const mentionUsernames = (text: string, localDomain: string): ReadonlyArray<string> => {
+  const own = localDomain.toLowerCase();
+  return [
+    ...new Set(
+      mentionHandles(text).flatMap((handle) =>
+        handle.domain === undefined || handle.domain === own ? [handle.username] : [],
+      ),
+    ),
+  ];
+};
+
+/** `user@domain` handles a post mentions on other instances. */
+export const remoteMentionHandles = (
+  text: string,
+  localDomain: string,
+): ReadonlyArray<Readonly<{ username: string; domain: string }>> => {
+  const own = localDomain.toLowerCase();
+  const seen = new Map<string, { username: string; domain: string }>();
+  for (const handle of mentionHandles(text)) {
+    if (handle.domain !== undefined && handle.domain !== own) {
+      seen.set(`${handle.username}@${handle.domain}`, {
+        username: handle.username,
+        domain: handle.domain,
+      });
     }
   }
-  return [...names];
+  return [...seen.values()];
 };
 
 /** Decode the entities our own renderers produce (and the common ones). */

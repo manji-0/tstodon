@@ -530,6 +530,7 @@ model remote_actors {
   remote_statuses   remote_statuses[]
 
   @@index([domain, username], map: "idx_remote_actors_domain_username")
+  status_remote_mentions status_remote_mentions[]
 }
 
 model remote_announces {
@@ -648,6 +649,16 @@ model remote_status_mentions {
   @@index([account_id, status_id(sort: Desc)], map: "idx_remote_status_mentions_account")
 }
 
+model status_remote_mentions {
+  status_id     String
+  actor_uri     String
+  statuses      statuses      @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  remote_actors remote_actors @relation(fields: [actor_uri], references: [actor_uri], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([status_id, actor_uri])
+  @@index([actor_uri], map: "idx_status_remote_mentions_actor")
+}
+
 model status_mentions {
   status_id  String
   account_id String
@@ -754,6 +765,7 @@ model statuses {
   remote_announces                                 remote_announces[]
   remote_favourites                                remote_favourites[]
   status_mentions                                  status_mentions[]
+  status_remote_mentions                           status_remote_mentions[]
   statuses_statuses_in_reply_to_idTostatuses       statuses?           @relation("statuses_in_reply_to_idTostatuses", fields: [in_reply_to_id], references: [id], onUpdate: NoAction)
   other_statuses_statuses_in_reply_to_idTostatuses statuses[]          @relation("statuses_in_reply_to_idTostatuses")
   statuses_statuses_reblog_of_idTostatuses         statuses?           @relation("statuses_reblog_of_idTostatuses", fields: [reblog_of_id], references: [id], onUpdate: NoAction)

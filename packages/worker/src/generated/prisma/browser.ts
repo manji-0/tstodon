@@ -287,6 +287,11 @@ export type reports = Prisma.reportsModel;
  */
 export type remote_status_mentions = Prisma.remote_status_mentionsModel;
 /**
+ * Model status_remote_mentions
+ *
+ */
+export type status_remote_mentions = Prisma.status_remote_mentionsModel;
+/**
  * Model status_mentions
  *
  */

@@ -17,7 +17,8 @@ import { noteDocument } from "../activitypub";
 import { nowInstant, nowIso } from "../clock";
 import { enqueueLocalActivity } from "../delivery";
 import { escapeHtml, mentionUsernames, textToHtml } from "../html";
-import { replaceStatusMentions } from "../mention-store";
+import { replaceStatusMentions, replaceStatusRemoteMentions } from "../mention-store";
+import { loadNoteMentions, resolveRemoteMentions } from "../mention-resolve";
 import { findFollowKind } from "../social-store";
 import { quotedStatusUri } from "../quote-uri";
 import {
@@ -308,7 +309,7 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
       statusVisibility = Visibility.FollowersOnly;
     }
     if (statusVisibility.kind === "Direct" && targetAuthor.isOk() && targetAuthor.value) {
-      const mentioned = mentionUsernames(body.value.status ?? "").includes(
+      const mentioned = mentionUsernames(body.value.status ?? "", identity.value.domain).includes(
         targetAuthor.value.username.toLowerCase(),
       );
       if (!mentioned) {
@@ -1036,7 +1037,7 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     return jsonRepositoryError(c, attributeError);
   }
   const mentionedAccounts = await findAccountsByUsernames(c.env.DB, [
-    ...mentionUsernames(revised.text),
+    ...mentionUsernames(revised.text, identity.value.domain),
   ]);
   if (mentionedAccounts.isErr()) {
     return jsonRepositoryError(c, mentionedAccounts.error.message);
@@ -1049,12 +1050,22 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   if (mentions.isErr()) {
     return jsonRepositoryError(c, mentions.error.message);
   }
+  const remoteMentions = await resolveRemoteMentions(c.env, identity.value, revised.text);
+  const remoteSaved = await replaceStatusRemoteMentions(
+    c.env.DB,
+    existing.id,
+    remoteMentions.map((actor) => actor.actorUri),
+  );
+  if (remoteSaved.isErr()) {
+    return jsonRepositoryError(c, remoteSaved.error.message);
+  }
 
   const quoteUri = await quotedStatusUri(c.env, identity.value, existing.id);
   const actor = InstanceIdentity.actorUrl(identity.value, user.value.username);
-  // A direct note never left the instance, so its edit stays here too.
+  // An edit reaches the same audience as the note: a direct one only the
+  // remote accounts it mentions.
   const enqueued =
-    revised.visibility.kind === "Direct"
+    revised.visibility.kind === "Direct" && remoteMentions.length === 0
       ? ok(undefined)
       : await enqueueLocalActivity(c.env, user.value.id, "Update", {
           "@context": "https://www.w3.org/ns/activitystreams",
@@ -1062,7 +1073,13 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
           type: "Update",
           actor,
           published: updatedAt,
-          object: noteDocument(identity.value, user.value, revised, quoteUri),
+          object: noteDocument(
+            identity.value,
+            user.value,
+            revised,
+            quoteUri,
+            await loadNoteMentions(c.env.DB, identity.value, existing.id),
+          ),
         });
   if (enqueued.isErr()) {
     return jsonRepositoryError(

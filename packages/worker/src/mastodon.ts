@@ -21,7 +21,9 @@ import {
   quoteCountsByStatusIds,
   type QuotePolicy,
 } from "./quote-store";
+import { listStatusMentions } from "./mention-store";
 import { RemoteAccountId } from "./remote-account-id";
+import { findRemoteActorsByUris } from "./remote-actor-store";
 import { findStatusesByIds, listStatusCards } from "./status-store";
 import {
   followingAccountIds,
@@ -581,6 +583,59 @@ export const mastodonStatuses = async (
         cards.get(status.id) ?? null,
       ),
     );
+  }
+
+  // Mentions render as Mastodon's Mention entities, local and remote alike.
+  const mentionsResult = await listStatusMentions(env.DB, [...noteDocs.keys()]);
+  const mentions = mentionsResult.isOk()
+    ? mentionsResult.value
+    : new Map<string, { accountIds: ReadonlyArray<string>; actorUris: ReadonlyArray<string> }>();
+  const mentionedLocalIds = [...mentions.values()].flatMap((entry) => entry.accountIds);
+  const [mentionedLocals, mentionedActors] = await Promise.all([
+    findAccountsByIds(
+      env.DB,
+      mentionedLocalIds.filter((id) => !accounts.has(id)),
+    ),
+    findRemoteActorsByUris(
+      env.DB,
+      [...mentions.values()].flatMap((entry) => entry.actorUris),
+    ),
+  ]);
+  const mentionedAccount = (id: string): LocalAccount | undefined =>
+    accounts.get(id) ?? (mentionedLocals.isOk() ? mentionedLocals.value.get(id) : undefined);
+  for (const [statusId, entry] of mentions) {
+    const document = noteDocs.get(statusId);
+    if (!document) {
+      continue;
+    }
+    document.mentions = [
+      ...entry.accountIds.flatMap((id) => {
+        const account = mentionedAccount(id);
+        return account
+          ? [
+              {
+                id: account.id,
+                username: account.username,
+                url: InstanceIdentity.actorUrl(identity, account.username),
+                acct: account.username,
+              },
+            ]
+          : [];
+      }),
+      ...entry.actorUris.flatMap((actorUri) => {
+        const actor = mentionedActors.isOk() ? mentionedActors.value.get(actorUri) : undefined;
+        return actor
+          ? [
+              {
+                id: RemoteAccountId.encode(actor.actorUri),
+                username: actor.username,
+                url: actor.actorUri,
+                acct: `${actor.username}@${actor.domain}`,
+              },
+            ]
+          : [];
+      }),
+    ];
   }
 
   for (const status of allStatuses) {

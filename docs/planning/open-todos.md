@@ -24,15 +24,16 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Direct messages (open)
 
-| ID   | Item                                      | Notes                                                                                                      |
-| ---- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| DM-1 | Address remote accounts from a local post | `mentionUsernames` resolves local accounts only, so a local DM cannot reach (or list) a remote participant |
-| DM-2 | Reply to a remote status                  | `statuses.in_reply_to_id` references local statuses only, so a remote DM cannot be answered in thread      |
-| DM-3 | `in_reply_to_id` on remote statuses       | Stored as `in_reply_to_uri` for conversations; not yet rendered on the status document                     |
-| DM-4 | Conversation mutes on remote replies      | `status_mutes` hides local thread members only; a remote reply into a muted thread still shows             |
-| DM-5 | Federate local status deletion            | Deleting a local note sends no `Delete`, so remote copies stay                                             |
+| ID   | Item                                 | Notes                                                                                                 |
+| ---- | ------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| DM-2 | Reply to a remote status             | `statuses.in_reply_to_id` references local statuses only, so a remote DM cannot be answered in thread |
+| DM-3 | `in_reply_to_id` on remote statuses  | Stored as `in_reply_to_uri` for conversations; not yet rendered on the status document                |
+| DM-4 | Conversation mutes on remote replies | `status_mutes` hides local thread members only; a remote reply into a muted thread still shows        |
+| DM-5 | Federate local status deletion       | Deleting a local note sends no `Delete`, so remote copies stay                                        |
 
 ## Done recently (do not re-open)
+
+- Local notes mention remote accounts (`@user@domain`): Mention tags, Mastodon addressing, delivery by addressing (direct notes to mentioned inboxes only), `mentions` rendered
 
 - Remote direct notes reach the addressed account's direct timeline and conversations (`remote_status_mentions`, replies grouped by `inReplyTo`), and open for it on `GET /api/v1/statuses/:id`
 

@@ -61,6 +61,7 @@ export type * from "./models/canonical_email_blocks";
 export type * from "./models/email_domain_blocks";
 export type * from "./models/reports";
 export type * from "./models/remote_status_mentions";
+export type * from "./models/status_remote_mentions";
 export type * from "./models/status_mentions";
 export type * from "./models/link_cards";
 export type * from "./models/scheduled_statuses";

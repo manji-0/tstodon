@@ -28,7 +28,7 @@ import { processPushJob } from "./push-delivery";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { hostnameOf } from "./domain-block-store";
-import { listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
+import { findRemoteActorsByUris, listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import {
   allowListAdmits,
   federatesWithHost,
@@ -292,6 +292,64 @@ const processExpiredPolls = async (env: Env): Promise<void> => {
   }
 };
 
+const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
+
+const audienceOf = (value: unknown): string[] => {
+  if (typeof value !== "object" || value === null) {
+    return [];
+  }
+  return [Reflect.get(value, "to"), Reflect.get(value, "cc")].flatMap((field) =>
+    typeof field === "string"
+      ? [field]
+      : Array.isArray(field)
+        ? field.filter((entry): entry is string => typeof entry === "string")
+        : [],
+  );
+};
+
+/**
+ * Who an outbound activity goes to, read from its addressing (the object's
+ * `to`/`cc` and the activity's own): followers when it addresses the public
+ * or this instance's followers collection, and each remote actor it names.
+ * An activity without addressing (a boost) goes to followers.
+ */
+export const outboundAudience = (
+  payloadJson: string,
+  localHost: string,
+): Readonly<{ followers: boolean; actorUris: ReadonlyArray<string> }> => {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(payloadJson);
+  } catch {
+    return { followers: true, actorUris: [] };
+  }
+  const object =
+    typeof payload === "object" && payload !== null ? Reflect.get(payload, "object") : undefined;
+  const audience = [...audienceOf(payload), ...audienceOf(object)];
+  if (audience.length === 0) {
+    return { followers: true, actorUris: [] };
+  }
+  // `localHost` may carry a port, as the follower filter below compares hosts.
+  const isLocal = (uri: string): boolean => {
+    try {
+      return new URL(uri).host.toLowerCase() === localHost.toLowerCase();
+    } catch {
+      return false;
+    }
+  };
+  const followers = audience.some(
+    (uri) => uri === PUBLIC_COLLECTION || (uri.endsWith("/followers") && isLocal(uri)),
+  );
+  const actorUris = [
+    ...new Set(
+      audience.filter(
+        (uri) => uri !== PUBLIC_COLLECTION && !uri.endsWith("/followers") && !isLocal(uri),
+      ),
+    ),
+  ];
+  return { followers, actorUris };
+};
+
 /** `retry` asks the queue to redeliver the message. */
 export type OutboxJobOutcome = "ok" | "retry";
 
@@ -323,12 +381,18 @@ export const processOutboxJob = async (
         return "ok";
       }
       const identity = parseInstanceIdentity(env);
-      const remoteFollowers = await listAcceptedRemoteFollowerInboxes(
-        env.DB,
-        activity.value.account_id,
-      );
-      const candidateInboxes = remoteFollowers.isOk() ? remoteFollowers.value : [];
       const sameHost = identity.isOk() ? identity.value.domain : "";
+      const audience = outboundAudience(activity.value.payload_json, sameHost);
+      const remoteFollowers = audience.followers
+        ? await listAcceptedRemoteFollowerInboxes(env.DB, activity.value.account_id)
+        : ok([]);
+      const addressed = await findRemoteActorsByUris(env.DB, audience.actorUris);
+      const candidateInboxes = [
+        ...(remoteFollowers.isOk() ? remoteFollowers.value : []),
+        ...(addressed.isOk() ? [...addressed.value.values()] : []).map(
+          (actor) => actor.sharedInboxUri ?? actor.inboxUri,
+        ),
+      ];
       const suspended = await suspendedDomains(env.DB);
       const allowHosts = await federationAllowHosts(env);
       const remoteInboxes = [

@@ -72,28 +72,36 @@ export const activityPayloadFromJson = (
   };
 };
 
+/** An account a note mentions, as its `Mention` tag names it. */
+export type NoteMention = Readonly<{ href: string; name: string }>;
+
 export const noteDocument = (
   identity: InstanceIdentity,
   account: LocalAccount,
   note: LocalNote,
   quoteUri?: string,
+  mentions: ReadonlyArray<NoteMention> = [],
 ): Record<string, unknown> => {
   const actor = InstanceIdentity.actorUrl(identity, account.username);
   const id = `${actor}/statuses/${note.id}`;
+  const followers = `${actor}/followers`;
+  const mentioned = mentions.map((mention) => mention.href);
+  // Mastodon's addressing: mentioned accounts are `cc`, except that a direct
+  // note is addressed `to` them alone.
   const to =
     note.visibility.kind === "Public"
       ? ["https://www.w3.org/ns/activitystreams#Public"]
-      : note.visibility.kind === "Unlisted"
-        ? [`${actor}/followers`]
-        : note.visibility.kind === "FollowersOnly"
-          ? [`${actor}/followers`]
-          : [actor];
+      : note.visibility.kind === "Direct"
+        ? mentioned
+        : [followers];
   const cc =
     note.visibility.kind === "Public"
-      ? [`${actor}/followers`]
+      ? [followers, ...mentioned]
       : note.visibility.kind === "Unlisted"
-        ? ["https://www.w3.org/ns/activitystreams#Public"]
-        : [];
+        ? ["https://www.w3.org/ns/activitystreams#Public", ...mentioned]
+        : note.visibility.kind === "FollowersOnly"
+          ? mentioned
+          : [];
   const quotes = quoteUri !== undefined && quoteUri.length > 0;
   return {
     // FEP-044f names the `quote` property for a quote post.
@@ -117,5 +125,6 @@ export const noteDocument = (
     cc,
     sensitive: note.sensitive,
     summary: note.spoilerText.length > 0 ? note.spoilerText : null,
+    tag: mentions.map((mention) => ({ type: "Mention", href: mention.href, name: mention.name })),
   };
 };

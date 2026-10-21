@@ -1,11 +1,14 @@
 import { err, ok, type Result } from "neverthrow";
-import { runD1, runD1Batch, type RepositoryError } from "./d1";
+import { jsonStringArray, runD1, runD1Batch, type RepositoryError } from "./d1";
 import { d1PrepareTyped, queryTyped } from "./typed-sql";
 import {
   deleteStatusMentions as deleteStatusMentionsSql,
+  deleteStatusRemoteMentions as deleteStatusRemoteMentionsSql,
   insertStatusMention as insertStatusMentionSql,
+  insertStatusRemoteMention as insertStatusRemoteMentionSql,
+  listStatusMentionsByIds as listStatusMentionsByIdsSql,
+  listStatusRemoteMentions as listStatusRemoteMentionsSql,
   isAccountMentionedOnStatus as isAccountMentionedOnStatusSql,
-  listMentionedAccountIds as listMentionedAccountIdsSql,
 } from "./generated/prisma/sql";
 
 export const replaceStatusMentions = async (
@@ -40,14 +43,66 @@ export const isAccountMentionedOnStatus = async (
   return ok(queried.value.length > 0);
 };
 
-export const listMentionedAccountIds = async (
+/** Replace the remote actors a local note mentions. */
+export const replaceStatusRemoteMentions = async (
   db: D1Database,
   statusId: string,
-): Promise<Result<string[], RepositoryError>> =>
-  runD1(async () => {
-    const results = await queryTyped<{ account_id: string }>(
-      db,
-      listMentionedAccountIdsSql(statusId),
-    );
-    return results.map((row) => row.account_id);
-  });
+  actorUris: ReadonlyArray<string>,
+): Promise<Result<void, RepositoryError>> => {
+  const batched = await runD1Batch(db, [
+    d1PrepareTyped(db, deleteStatusRemoteMentionsSql(statusId)),
+    ...actorUris.map((actorUri) =>
+      d1PrepareTyped(db, insertStatusRemoteMentionSql(statusId, actorUri)),
+    ),
+  ]);
+  return batched.isErr() ? err(batched.error) : ok(undefined);
+};
+
+export type StatusMentions = Readonly<{
+  accountIds: ReadonlyArray<string>;
+  actorUris: ReadonlyArray<string>;
+}>;
+
+/** Local accounts and remote actors each local note mentions, keyed by status id. */
+export const listStatusMentions = async (
+  db: D1Database,
+  statusIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, StatusMentions>, RepositoryError>> => {
+  const mentions = new Map<string, { accountIds: string[]; actorUris: string[] }>();
+  const unique = [...new Set(statusIds)];
+  if (unique.length === 0) {
+    return ok(mentions);
+  }
+  const queried = await runD1(async () =>
+    Promise.all([
+      queryTyped<{ status_id: string; account_id: string }>(
+        db,
+        listStatusMentionsByIdsSql(jsonStringArray(unique)),
+      ),
+      queryTyped<{ status_id: string; actor_uri: string }>(
+        db,
+        listStatusRemoteMentionsSql(jsonStringArray(unique)),
+      ),
+    ]),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  const entry = (statusId: string) => {
+    const existing = mentions.get(statusId);
+    if (existing) {
+      return existing;
+    }
+    const created = { accountIds: [], actorUris: [] };
+    mentions.set(statusId, created);
+    return created;
+  };
+  const [locals, remotes] = queried.value;
+  for (const row of locals) {
+    entry(row.status_id).accountIds.push(row.account_id);
+  }
+  for (const row of remotes) {
+    entry(row.status_id).actorUris.push(row.actor_uri);
+  }
+  return ok(mentions);
+};

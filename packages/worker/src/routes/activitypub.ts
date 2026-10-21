@@ -59,6 +59,7 @@ import {
   listFollowing,
   unfollowAccount,
 } from "../social-store";
+import { loadNoteMentions } from "../mention-resolve";
 import { notifyAccount, notifyFromRemote } from "../notify";
 import { findStatusById, insertLocalReblog } from "../status-store";
 import { nowInstant } from "../clock";
@@ -119,6 +120,7 @@ activityPubRoutes.get("/users/:username/statuses/:id", async (c) => {
       account.value,
       status.value,
       await quotedStatusUri(c.env, identity.value, status.value.id),
+      await loadNoteMentions(c.env.DB, identity.value, status.value.id),
     ),
     200,
     jsonLd,

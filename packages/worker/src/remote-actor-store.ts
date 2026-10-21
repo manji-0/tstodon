@@ -12,6 +12,7 @@ import {
   deleteRemoteFollow as deleteRemoteFollowSql,
   findPendingRemoteFollowRequest as findPendingRemoteFollowRequestSql,
   findRemoteActorByPublicKeyId as findRemoteActorByPublicKeyIdSql,
+  findRemoteActorByHandle as findRemoteActorByHandleSql,
   findRemoteActorByUri as findRemoteActorByUriSql,
   findRemoteActorsByUris as findRemoteActorsByUrisSql,
   findRemoteFollow as findRemoteFollowSql,
@@ -62,6 +63,19 @@ const readRemoteActor = async (
   }
   return remoteActorFromRow(row.value);
 };
+
+/** A cached actor by its `user@domain` handle, compared without case. */
+export const findRemoteActorByHandle = async (
+  db: D1Database,
+  username: string,
+  domain: string,
+): Promise<Result<RemoteActor | undefined, RepositoryError>> =>
+  readRemoteActor(
+    await runD1(async () => {
+      const rows = await queryTyped(db, findRemoteActorByHandleSql(username, domain));
+      return rows[0];
+    }),
+  );
 
 export const findRemoteActorByUri = async (
   db: D1Database,

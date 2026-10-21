@@ -14,7 +14,8 @@ import { enqueueLocalActivity } from "./delivery";
 import { mentionUsernames, textToHtml } from "./html";
 import { newEntityId } from "./ids";
 import { findMediaById, parseMediaFocus, updateMediaMetadata } from "./media-store";
-import { replaceStatusMentions } from "./mention-store";
+import { replaceStatusMentions, replaceStatusRemoteMentions } from "./mention-store";
+import { loadNoteMentions, resolveRemoteMentions } from "./mention-resolve";
 import { noteDocument } from "./activitypub";
 import { notifyAccount } from "./notify";
 import { insertPoll } from "./poll-store";
@@ -182,7 +183,7 @@ export const publishLocalNote = async (
   if (attributeError !== undefined) {
     return err({ kind: "RepositoryError", message: attributeError });
   }
-  const mentionNames = mentionUsernames(note.text);
+  const mentionNames = mentionUsernames(note.text, identity.domain);
   const mentionedAccounts = await findAccountsByUsernames(env.DB, [...mentionNames]);
   if (mentionedAccounts.isErr()) {
     return err(mentionedAccounts.error);
@@ -195,6 +196,15 @@ export const publishLocalNote = async (
   );
   if (mentionsSaved.isErr()) {
     return err(mentionsSaved.error);
+  }
+  const remoteMentions = await resolveRemoteMentions(env, identity, note.text);
+  const remoteSaved = await replaceStatusRemoteMentions(
+    env.DB,
+    note.id,
+    remoteMentions.map((actor) => actor.actorUri),
+  );
+  if (remoteSaved.isErr()) {
+    return err(remoteSaved.error);
   }
   for (const mentioned of mentionedAccounts.value) {
     if (mentioned.id === user.id) {
@@ -225,16 +235,23 @@ export const publishLocalNote = async (
     });
   }
   const actor = InstanceIdentity.actorUrl(identity, user.username);
-  // A direct note is addressed to nobody remote, so followers never receive it.
+  // A direct note goes only to the remote accounts it mentions; with none,
+  // nothing leaves the instance.
   const enqueued =
-    note.visibility.kind === "Direct"
+    note.visibility.kind === "Direct" && remoteMentions.length === 0
       ? ok(undefined)
       : await enqueueLocalActivity(env, user.id, "Create", {
           "@context": "https://www.w3.org/ns/activitystreams",
           id: `${actor}/statuses/${note.id}/activity`,
           type: "Create",
           actor,
-          object: noteDocument(identity, user, note, input.quote?.uri),
+          object: noteDocument(
+            identity,
+            user,
+            note,
+            input.quote?.uri,
+            await loadNoteMentions(env.DB, identity, note.id),
+          ),
         });
   if (enqueued.isErr()) {
     return err(

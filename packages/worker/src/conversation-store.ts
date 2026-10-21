@@ -14,7 +14,7 @@ import {
   upsertConversationHide as upsertConversationHideSql,
 } from "./generated/prisma/sql";
 import { parseLocalStatusId } from "./activitypub";
-import { listMentionedAccountIds } from "./mention-store";
+import { listStatusMentions } from "./mention-store";
 import { RemoteAccountId } from "./remote-account-id";
 import {
   findRemoteStatusReplyTargetByObjectUri,
@@ -115,6 +115,13 @@ export const listConversationsForAccount = async (
   if (remoteMentions.isErr()) {
     return err(remoteMentions.error);
   }
+  const localMentions = await listStatusMentions(
+    db,
+    locals.value.map((status) => status.id),
+  );
+  if (localMentions.isErr()) {
+    return err(localMentions.error);
+  }
   const byRoot = new Map<string, ConversationStatus[]>();
   const place = (root: string, entry: ConversationStatus): void => {
     const bucket = byRoot.get(root) ?? [];
@@ -155,12 +162,12 @@ export const listConversationsForAccount = async (
         continue;
       }
       participantIds.add(entry.status.accountId);
-      const mentions = await listMentionedAccountIds(db, entry.status.id);
-      if (mentions.isErr()) {
-        return err(mentions.error);
-      }
-      for (const mentioned of mentions.value) {
+      const mentions = localMentions.value.get(entry.status.id);
+      for (const mentioned of mentions?.accountIds ?? []) {
         participantIds.add(mentioned);
+      }
+      for (const actorUri of mentions?.actorUris ?? []) {
+        participantIds.add(RemoteAccountId.encode(actorUri));
       }
     }
     const hidden = await conversationHiddenStatusId(db, accountId, conversationId);
