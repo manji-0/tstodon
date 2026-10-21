@@ -18,11 +18,8 @@ import { findAccountByUsername } from "./account-store";
 import { mediaRejectedDomains } from "./admin-domain-block-store";
 import { enqueueLinkCard } from "./link-card";
 import { notifyFromRemote } from "./notify";
-import {
-  findRemoteStatusByObjectUri,
-  recordRemoteStatusMentions,
-  upsertRemoteStatus,
-} from "./remote-status-store";
+import { findRemoteStatusByObjectUri, upsertRemoteStatus } from "./remote-status-store";
+import { recordRemoteStatusMentions } from "./mention-store";
 import { isTruthy, stringList } from "./form-values";
 import { NoteDocumentSchema } from "./activitypub-wire";
 

@@ -21,20 +21,10 @@ import {
   findRemoteStatusByObjectUri as findRemoteStatusByObjectUriSql,
   findRemoteStatusesByIds as findRemoteStatusesByIdsSql,
   findRemoteStatusRefsByObjectUris as findRemoteStatusRefsByObjectUrisSql,
-  findRemoteStatusReplyTargetByObjectUri as findRemoteStatusReplyTargetByObjectUriSql,
-  findRemoteStatusReplyTargets as findRemoteStatusReplyTargetsSql,
-  insertRemoteStatusMention as insertRemoteStatusMentionSql,
-  isAccountMentionedOnRemoteStatus as isAccountMentionedOnRemoteStatusSql,
-  listPublicRemoteStatuses as listPublicRemoteStatusesSql,
-  listRemoteStatusCards as listRemoteStatusCardsSql,
-  listRemoteStatusMentions as listRemoteStatusMentionsSql,
   listUnindexedRemoteStatuses as listUnindexedRemoteStatusesSql,
   markRemoteStatusTagsIndexed as markRemoteStatusTagsIndexedSql,
-  setRemoteStatusCard as setRemoteStatusCardSql,
   upsertRemoteStatus as upsertRemoteStatusSql,
 } from "./generated/prisma/sql";
-import type { StatusCursor } from "./status-timeline-store";
-import type { TagStatusFilters } from "./status-discovery-store";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 
 export const RemoteStatusRowSchema = z.object({
@@ -54,14 +44,16 @@ export const RemoteStatusRowSchema = z.object({
 
 export type RemoteStatusRow = z.infer<typeof RemoteStatusRowSchema>;
 
-const parseRemoteStatusRow = schemaResult(RemoteStatusRowSchema);
+export const parseRemoteStatusRow = schemaResult(RemoteStatusRowSchema);
 
 const mediaFromJson = (raw: string): ReadonlyArray<RemoteAttachment> => {
   const parsed = schemaResult(z.array(RemoteAttachmentSchema))(parseJsonText(raw).unwrapOr([]));
   return parsed.isOk() ? parsed.value : [];
 };
 
-const remoteStatusFromRow = (row: RemoteStatusRow): Result<RemoteStatus, RepositoryError> => {
+export const remoteStatusFromRow = (
+  row: RemoteStatusRow,
+): Result<RemoteStatus, RepositoryError> => {
   const id = StatusId.parse(row.id);
   const publishedAt = IsoInstant.parse(row.published_at);
   const visibility = Visibility.fromMastodon(row.visibility);
@@ -212,39 +204,6 @@ export const upsertRemoteStatus = async (
   return ok(written.value);
 };
 
-/** Cached remote notes answering any of these URIs, oldest first. */
-export const listRemoteRepliesToUris = async (
-  db: D1Database,
-  uris: ReadonlyArray<string>,
-  limit: number,
-): Promise<Result<RemoteStatus[], RepositoryError>> => {
-  if (uris.length === 0 || limit <= 0) {
-    return ok([]);
-  }
-  return runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
-         WHERE s.in_reply_to_uri IN (SELECT value FROM json_each(?))
-         ORDER BY s.id ASC LIMIT ?`,
-      )
-      .bind(jsonStringArray([...new Set(uris)]), limit)
-      .all();
-    const statuses: RemoteStatus[] = [];
-    for (const raw of results ?? []) {
-      const row = parseRemoteStatusRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const parsed = remoteStatusFromRow(row.value);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
-  });
-};
-
 /** Cached remote statuses' ids and authors, keyed by object URI. */
 export const findRemoteStatusRefsByObjectUris = async (
   db: D1Database,
@@ -268,336 +227,6 @@ export const findRemoteStatusRefsByObjectUris = async (
         new Map(rows.value.map((row) => [row.object_uri, { id: row.id, actorUri: row.actor_uri }])),
       );
 };
-
-/** Record the local accounts a cached remote note addresses. */
-export const recordRemoteStatusMentions = async (
-  db: D1Database,
-  statusId: string,
-  accountIds: ReadonlyArray<string>,
-): Promise<Result<void, RepositoryError>> => {
-  if (accountIds.length === 0) {
-    return ok(undefined);
-  }
-  const batched = await runD1Batch(
-    db,
-    accountIds.map((accountId) =>
-      d1PrepareTyped(db, insertRemoteStatusMentionSql(statusId, accountId)),
-    ),
-  );
-  return batched.isErr() ? err(batched.error) : ok(undefined);
-};
-
-export const isAccountMentionedOnRemoteStatus = async (
-  db: D1Database,
-  statusId: string,
-  accountId: string,
-): Promise<Result<boolean, RepositoryError>> => {
-  const rows = await runD1(async () =>
-    queryTyped(db, isAccountMentionedOnRemoteStatusSql(statusId, accountId)),
-  );
-  return rows.isErr() ? err(rows.error) : ok(rows.value.length > 0);
-};
-
-/** Local account ids each remote status addresses, keyed by status id. */
-export const listRemoteStatusMentions = async (
-  db: D1Database,
-  statusIds: ReadonlyArray<string>,
-): Promise<Result<ReadonlyMap<string, ReadonlyArray<string>>, RepositoryError>> => {
-  const mentions = new Map<string, string[]>();
-  if (statusIds.length === 0) {
-    return ok(mentions);
-  }
-  const rows = await runD1(async () =>
-    queryTyped<{ status_id: string; account_id: string }>(
-      db,
-      listRemoteStatusMentionsSql(jsonStringArray([...new Set(statusIds)])),
-    ),
-  );
-  if (rows.isErr()) {
-    return err(rows.error);
-  }
-  for (const row of rows.value) {
-    const bucket = mentions.get(row.status_id) ?? [];
-    bucket.push(row.account_id);
-    mentions.set(row.status_id, bucket);
-  }
-  return ok(mentions);
-};
-
-/** What a conversation needs to walk up a remote reply chain. */
-export type RemoteReplyTarget = Readonly<{
-  id: string;
-  objectUri: string;
-  direct: boolean;
-  inReplyToUri: string | undefined;
-}>;
-
-type ReplyTargetRow = {
-  id: string;
-  object_uri: string;
-  visibility: string;
-  in_reply_to_uri: string | null;
-};
-
-const replyTargetFromRow = (row: ReplyTargetRow): RemoteReplyTarget => ({
-  id: row.id,
-  objectUri: row.object_uri,
-  direct: row.visibility === "direct",
-  inReplyToUri: row.in_reply_to_uri ?? undefined,
-});
-
-export const findRemoteStatusReplyTargets = async (
-  db: D1Database,
-  statusIds: ReadonlyArray<string>,
-): Promise<Result<ReadonlyMap<string, RemoteReplyTarget>, RepositoryError>> => {
-  const targets = new Map<string, RemoteReplyTarget>();
-  if (statusIds.length === 0) {
-    return ok(targets);
-  }
-  const rows = await runD1(async () =>
-    queryTyped<ReplyTargetRow>(
-      db,
-      findRemoteStatusReplyTargetsSql(jsonStringArray([...new Set(statusIds)])),
-    ),
-  );
-  if (rows.isErr()) {
-    return err(rows.error);
-  }
-  for (const row of rows.value) {
-    targets.set(row.id, replyTargetFromRow(row));
-  }
-  return ok(targets);
-};
-
-export const findRemoteStatusReplyTargetByObjectUri = async (
-  db: D1Database,
-  objectUri: string,
-): Promise<Result<RemoteReplyTarget | undefined, RepositoryError>> => {
-  const rows = await runD1(async () =>
-    queryTyped<ReplyTargetRow>(db, findRemoteStatusReplyTargetByObjectUriSql(objectUri)),
-  );
-  if (rows.isErr()) {
-    return err(rows.error);
-  }
-  const row = rows.value[0];
-  return ok(row ? replyTargetFromRow(row) : undefined);
-};
-
-/**
- * Remote direct notes that address the account, newest first, leaving out
- * actors the account blocks or mutes and domains it blocks or the instance
- * limits or suspends — the same ones remote timelines drop.
- */
-export const listRemoteDirectStatusesForAccount = async (
-  db: D1Database,
-  accountId: string,
-  limit: number,
-  maxId: string | undefined,
-): Promise<Result<RemoteStatus[], RepositoryError>> =>
-  runD1(async () => {
-    const binds: (string | number)[] = [accountId, accountId, accountId, nowIso(), accountId];
-    const before = maxId ? "AND s.id < ?" : "";
-    if (maxId) {
-      binds.push(maxId);
-    }
-    binds.push(limit);
-    const { results } = await db
-      .prepare(
-        `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
-         WHERE s.visibility = 'direct'
-           AND s.id IN (SELECT status_id FROM remote_status_mentions WHERE account_id = ?)
-           AND s.actor_uri NOT IN (SELECT target_actor_uri FROM blocks WHERE blocker_account_id = ?)
-           AND s.actor_uri NOT IN (
-             SELECT target_actor_uri FROM mutes
-             WHERE account_id = ? AND (expires_at IS NULL OR expires_at > ?)
-           )
-           AND s.actor_uri NOT IN (
-             SELECT actor_uri FROM remote_actors
-             WHERE lower(domain) IN (
-               SELECT lower(domain) FROM account_domain_blocks WHERE account_id = ?
-               UNION
-               SELECT lower(domain) FROM domain_blocks WHERE severity IN ('silence', 'suspend')
-             )
-           )
-           ${before}
-         ORDER BY s.id DESC LIMIT ?`,
-      )
-      .bind(...binds)
-      .all();
-    const statuses: RemoteStatus[] = [];
-    for (const raw of results ?? []) {
-      const row = parseRemoteStatusRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const parsed = remoteStatusFromRow(row.value);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
-  });
-
-/** Store the link preview built for a remote status, with the link it was unfurled from. */
-export const setRemoteStatusCard = async (
-  db: D1Database,
-  statusId: string,
-  cardJson: string,
-  cardUrl: string,
-): Promise<Result<void, RepositoryError>> => {
-  const written = await runD1(async () => {
-    await queryTyped(db, setRemoteStatusCardSql(statusId, cardJson, cardUrl));
-  });
-  return written.map(() => undefined);
-};
-
-/** Link previews for the given remote statuses, keyed by status id. */
-export const listRemoteStatusCards = async (
-  db: D1Database,
-  statusIds: ReadonlyArray<string>,
-): Promise<Result<ReadonlyMap<string, string>, RepositoryError>> => {
-  const unique = [...new Set(statusIds.filter((id) => id.length > 0))];
-  if (unique.length === 0) {
-    return ok(new Map<string, string>());
-  }
-  const queried = await runD1(async () =>
-    queryTyped<{ id: string; card_json: string }>(
-      db,
-      listRemoteStatusCardsSql(jsonStringArray(unique)),
-    ),
-  );
-  if (queried.isErr()) {
-    return err(queried.error);
-  }
-  return ok(new Map(queried.value.map((row) => [row.id, row.card_json])));
-};
-
-export const listPublicRemoteStatuses = async (
-  db: D1Database,
-  limit: number,
-): Promise<Result<RemoteStatus[], RepositoryError>> =>
-  runD1(async () => {
-    const results = await queryTyped(db, listPublicRemoteStatusesSql(limit));
-    const statuses: RemoteStatus[] = [];
-    for (const raw of results) {
-      const row = parseRemoteStatusRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const parsed = remoteStatusFromRow(row.value);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
-  });
-
-/**
- * Remote statuses on a tag timeline. Tags are read from the stored HTML (the
- * same `#tag` extraction the local notes use), over a bounded window of recent
- * public statuses, because the remote rows carry no tag index.
- */
-const REMOTE_STATUS_SELECT = `s.id, s.actor_uri, s.object_uri, s.url, s.content_html, s.spoiler_text,
-       s.visibility, s.sensitive, s.language, s.published_at, s.media_json, s.card_json`;
-
-export const listTagRemoteStatuses = async (
-  db: D1Database,
-  tag: string,
-  limit: number,
-  cursor: StatusCursor = {},
-  filters: TagStatusFilters = { any: [], all: [], none: [], onlyMedia: false },
-): Promise<Result<RemoteStatus[], RepositoryError>> =>
-  runD1(async () => {
-    const conditions = [
-      "s.visibility = 'public'",
-      "EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = ?)",
-    ];
-    const binds: string[] = [tag.replace(/^#/, "").toLowerCase()];
-    if (filters.any.length > 0) {
-      conditions.push(
-        `EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag IN (${filters.any.map(() => "?").join(", ")}))`,
-      );
-      binds.push(...filters.any.map((value) => value.toLowerCase()));
-    }
-    for (const required of filters.all) {
-      conditions.push(
-        "EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = ?)",
-      );
-      binds.push(required.toLowerCase());
-    }
-    for (const denied of filters.none) {
-      conditions.push(
-        "NOT EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = ?)",
-      );
-      binds.push(denied.toLowerCase());
-    }
-    if (filters.onlyMedia) {
-      conditions.push("s.media_json NOT IN ('[]', '')");
-    }
-    // Mastodon's id cursors, newest first unless `min_id` pages upward.
-    const minId = cursor.minId ?? "";
-    const sinceId = cursor.sinceId ?? "";
-    const maxId = cursor.maxId ?? "";
-    const cursorId = minId || sinceId || maxId;
-    const cursorWhere =
-      cursorId.length > 0 ? (maxId && !minId && !sinceId ? "AND s.id < ?" : "AND s.id > ?") : "";
-    const order = minId.length > 0 ? "ORDER BY s.id ASC" : "ORDER BY s.id DESC";
-    const { results } = await db
-      .prepare(
-        `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
-         WHERE ${conditions.join(" AND ")} ${cursorWhere} ${order} LIMIT ?`,
-      )
-      .bind(...binds, ...(cursorId.length > 0 ? [cursorId] : []), limit)
-      .all();
-    const statuses: RemoteStatus[] = [];
-    for (const raw of results ?? []) {
-      const row = parseRemoteStatusRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const parsed = remoteStatusFromRow(row.value);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
-  });
-
-/** Public remote statuses whose preview card was unfurled from `url` (the link timeline). */
-export const listLinkRemoteStatuses = async (
-  db: D1Database,
-  url: string,
-  limit: number,
-  cursor: StatusCursor = {},
-): Promise<Result<RemoteStatus[], RepositoryError>> =>
-  runD1(async () => {
-    const minId = cursor.minId ?? "";
-    const sinceId = cursor.sinceId ?? "";
-    const maxId = cursor.maxId ?? "";
-    const cursorId = minId || sinceId || maxId;
-    const cursorWhere =
-      cursorId.length > 0 ? (maxId && !minId && !sinceId ? "AND s.id < ?" : "AND s.id > ?") : "";
-    const order = minId.length > 0 ? "ORDER BY s.id ASC" : "ORDER BY s.id DESC";
-    const { results } = await db
-      .prepare(
-        `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
-         WHERE s.card_url = ? AND s.visibility = 'public' ${cursorWhere} ${order} LIMIT ?`,
-      )
-      .bind(url, ...(cursorId.length > 0 ? [cursorId] : []), limit)
-      .all();
-    const statuses: RemoteStatus[] = [];
-    for (const raw of results ?? []) {
-      const row = parseRemoteStatusRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const parsed = remoteStatusFromRow(row.value);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
-  });
 
 /**
  * Cron path: index the tags of remote statuses written before the index

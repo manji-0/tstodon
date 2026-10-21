@@ -15,7 +15,7 @@ import {
 } from "./generated/prisma/sql";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
-import { setRemoteStatusCard } from "./remote-status-store";
+import { setRemoteStatusCard } from "./status-card-store";
 import { setStatusCard } from "./status-card-store";
 import { queryTyped, runTyped } from "./typed-sql";
 

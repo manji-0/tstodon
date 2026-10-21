@@ -19,9 +19,9 @@ import { RemoteAccountId } from "./remote-account-id";
 import {
   findRemoteStatusReplyTargetByObjectUri,
   findRemoteStatusReplyTargets,
-  listRemoteDirectStatusesForAccount,
-  listRemoteStatusMentions,
-} from "./remote-status-store";
+} from "./remote-reply-store";
+import { listRemoteDirectStatusesForAccount } from "./remote-status-timeline-store";
+import { listRemoteStatusMentions } from "./mention-store";
 import { CONTEXT_ANCESTOR_LIMIT, findStatusById, listStatusReplyUris } from "./status-store";
 import { listDirectStatusesForAccount, resolveDirectConversationRoot } from "./direct-status-store";
 

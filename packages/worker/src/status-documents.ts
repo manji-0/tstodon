@@ -4,11 +4,8 @@ import { mastodonRemoteStatus } from "./remote-status-document";
 import { mastodonStatuses } from "./local-status-documents";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteActorsByUris } from "./remote-actor-store";
-import {
-  findRemoteStatusesByIds,
-  findRemoteStatusRefsByObjectUris,
-  findRemoteStatusReplyTargets,
-} from "./remote-status-store";
+import { findRemoteStatusesByIds, findRemoteStatusRefsByObjectUris } from "./remote-status-store";
+import { findRemoteStatusReplyTargets } from "./remote-reply-store";
 import { findStatusesByIds } from "./status-store";
 
 /**

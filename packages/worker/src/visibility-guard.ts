@@ -6,7 +6,7 @@ import {
 } from "@tstodon/domain";
 import { remoteStatusVisible } from "./remote-status-document";
 import { isAccountMentionedOnStatus } from "./mention-store";
-import { isAccountMentionedOnRemoteStatus } from "./remote-status-store";
+import { isAccountMentionedOnRemoteStatus } from "./mention-store";
 import { relationshipFlags } from "./relationship-store";
 import { findStatusById } from "./status-store";
 

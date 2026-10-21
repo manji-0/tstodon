@@ -18,12 +18,12 @@ import { parseInstanceIdentity } from "../runtime-config";
 import { findRemoteActorByUri } from "../remote-actor-store";
 import { attachRemoteReplyRefs } from "../status-documents";
 import {
+  listLinkRemoteStatuses,
   listPublicRemoteStatuses,
   listRemoteDirectStatusesForAccount,
-  listRemoteStatusCards,
-  listLinkRemoteStatuses,
   listTagRemoteStatuses,
-} from "../remote-status-store";
+} from "../remote-status-timeline-store";
+import { listRemoteStatusCards } from "../status-card-store";
 import { listDirectStatusesForAccount } from "../direct-status-store";
 import { listHomeStatuses, listPublicStatuses } from "../status-timeline-store";
 import {

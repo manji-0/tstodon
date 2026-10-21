@@ -4,11 +4,8 @@ import { findAccountsByIds } from "./account-store";
 import { parseLocalStatusId } from "./activitypub";
 import type { RepositoryError } from "./d1";
 import type { ReplyTarget } from "./reply-target";
-import {
-  findRemoteStatusByObjectUri,
-  findRemoteStatusReplyTargets,
-  listRemoteRepliesToUris,
-} from "./remote-status-store";
+import { findRemoteStatusByObjectUri } from "./remote-status-store";
+import { findRemoteStatusReplyTargets, listRemoteRepliesToUris } from "./remote-reply-store";
 import {
   findStatusById,
   listLocalRepliesToIds,
