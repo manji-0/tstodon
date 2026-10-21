@@ -45,12 +45,15 @@ export type ConversationSummary = Readonly<{
 
 /**
  * The conversation a remote direct note belongs to: its `inReplyTo` chain is
- * followed through direct notes, remote or local, to the first one.
+ * followed through direct notes, remote or local, to the first one. The two
+ * walks hand off to each other and share one step budget, since a remote
+ * `inReplyTo` can be made to point back into the thread.
  */
 const resolveRemoteConversationRoot = async (
   db: D1Database,
   identity: InstanceIdentity,
   statusId: string,
+  budget: { steps: number },
 ): Promise<Result<string, RepositoryError>> => {
   const targets = await findRemoteStatusReplyTargets(db, [statusId]);
   if (targets.isErr()) {
@@ -60,7 +63,8 @@ const resolveRemoteConversationRoot = async (
   if (!current) {
     return ok(statusId);
   }
-  for (let depth = 0; depth < CONTEXT_ANCESTOR_LIMIT; depth += 1) {
+  while (budget.steps > 0) {
+    budget.steps -= 1;
     const parentUri = current.inReplyToUri;
     if (!parentUri) {
       break;
@@ -76,7 +80,7 @@ const resolveRemoteConversationRoot = async (
         parent.value.kind === "LocalNote" &&
         parent.value.visibility.kind === "Direct"
       ) {
-        return resolveDirectConversationRoot(db, parent.value);
+        return resolveLocalConversationRoot(db, identity, parent.value, budget);
       }
       break;
     }
@@ -100,11 +104,16 @@ const resolveLocalConversationRoot = async (
   db: D1Database,
   identity: InstanceIdentity,
   status: LocalStatusValue,
+  budget: { steps: number },
 ): Promise<Result<string, RepositoryError>> => {
   const root = await resolveDirectConversationRoot(db, status);
   if (root.isErr()) {
     return err(root.error);
   }
+  if (budget.steps <= 0) {
+    return ok(root.value);
+  }
+  budget.steps -= 1;
   const uris = await listStatusReplyUris(db, [root.value]);
   if (uris.isErr()) {
     return err(uris.error);
@@ -118,7 +127,7 @@ const resolveLocalConversationRoot = async (
     return err(parent.error);
   }
   return parent.value?.direct
-    ? resolveRemoteConversationRoot(db, identity, parent.value.id)
+    ? resolveRemoteConversationRoot(db, identity, parent.value.id, budget)
     : ok(root.value);
 };
 
@@ -160,14 +169,18 @@ export const listConversationsForAccount = async (
     byRoot.set(root, bucket);
   };
   for (const status of locals.value) {
-    const root = await resolveLocalConversationRoot(db, identity, status);
+    const root = await resolveLocalConversationRoot(db, identity, status, {
+      steps: CONTEXT_ANCESTOR_LIMIT,
+    });
     if (root.isErr()) {
       return err(root.error);
     }
     place(root.value, { kind: "Local", status });
   }
   for (const status of remotes.value) {
-    const root = await resolveRemoteConversationRoot(db, identity, status.id);
+    const root = await resolveRemoteConversationRoot(db, identity, status.id, {
+      steps: CONTEXT_ANCESTOR_LIMIT,
+    });
     if (root.isErr()) {
       return err(root.error);
     }

@@ -54,6 +54,7 @@ const receive = async (
   slug: string,
   audience: Readonly<{ to: string[]; cc?: string[] }>,
   viewerEmail: string,
+  extra: Record<string, unknown> = {},
 ): Promise<{ id: string; objectUri: string }> => {
   const objectUri = `https://remote.example/notes/${slug}`;
   expect(
@@ -70,6 +71,7 @@ const receive = async (
         tag: audience.to
           .filter((uri) => uri.startsWith("https://example.com/users/"))
           .map((href) => ({ type: "Mention", href })),
+        ...extra,
       },
     }),
   ).toBe(202);
@@ -123,6 +125,17 @@ describe("replies to remote statuses", () => {
       RemoteAccountId.encode(bob.actorUri),
     ]);
 
+    // Bob answers the reply: the thread stays one conversation.
+    const followUp = await receive(bob, "reply-dm-2", { to: [actorUrl] }, email, {
+      inReplyTo: status.uri,
+    });
+    const continued = read(
+      z.array(z.object({ id: z.string(), last_status: z.object({ id: z.string() }).nullable() })),
+      (await json("/api/v1/conversations", { headers: await accessAuthHeaders(email) })).body,
+    );
+    expect(continued.map((conversation) => conversation.id)).toEqual([incoming.id]);
+    expect(continued[0]?.last_status?.id).toBe(followUp.id);
+
     // Reading it back keeps the remote parent.
     const fetched = read(
       StatusSchema,
@@ -170,6 +183,29 @@ describe("replies to remote statuses", () => {
       (await json(new URL(answered.uri).pathname)).body,
     );
     expect(remoteObject.inReplyTo).toBe(incoming.objectUri);
+  });
+
+  it("stops walking a reply chain that loops back on itself", async () => {
+    const email = "remote-reply-loop@example.com";
+    const account = await me(email);
+    const actorUrl = `https://example.com/users/${account.username}`;
+    const eve = await remoteActor("reply-eve");
+    const incoming = await receive(eve, "reply-loop-1", { to: [actorUrl] }, email);
+    const answered = read(
+      StatusSchema,
+      (await reply(email, "@reply-eve@remote.example loop?", "direct", incoming.id)).body,
+    );
+    // A remote note claiming to answer the local reply that answers it.
+    await env.DB.prepare("UPDATE remote_statuses SET in_reply_to_uri = ? WHERE id = ?")
+      .bind(answered.uri, incoming.id)
+      .run();
+    const listed = await json("/api/v1/conversations", {
+      headers: await accessAuthHeaders(email),
+    });
+    // The shared step budget ends the walk; where a forged loop is cut may
+    // differ by starting note, so only termination is asserted.
+    expect(listed.status).toBe(200);
+    expect(Array.isArray(listed.body) && listed.body.length).toBeGreaterThan(0);
   });
 
   it("refuses to answer a remote direct message addressed to someone else", async () => {
