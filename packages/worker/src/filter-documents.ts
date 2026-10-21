@@ -1,6 +1,6 @@
-import { FilterContextSchema } from "./moderation-store";
+import { FilterContextSchema } from "./filter-store";
 import { parseJsonColumn } from "./json-column";
-import { filterKeywords, type FilterRow, type FilterStatus } from "./moderation-store";
+import { filterKeywords, type FilterRow, type FilterStatus } from "./filter-store";
 
 export const mastodonFilter = (row: FilterRow): Record<string, unknown> => {
   const context = parseJsonColumn(FilterContextSchema, row.context_json);

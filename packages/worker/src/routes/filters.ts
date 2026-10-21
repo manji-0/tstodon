@@ -23,7 +23,7 @@ import {
   listFilterStatuses,
   removeFilterStatusById,
   updateFilter,
-} from "../moderation-store";
+} from "../filter-store";
 import { isTruthy, stringList } from "../form-values";
 import { booleanish } from "../form-values";
 

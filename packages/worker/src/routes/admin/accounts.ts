@@ -31,11 +31,7 @@ import {
 } from "../../http";
 import { mastodonAccountDocument } from "../../account-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
-import {
-  findReportById,
-  listOpenReportIdsForTarget,
-  setReportResolved,
-} from "../../moderation-store";
+import { findReportById, listOpenReportIdsForTarget, setReportResolved } from "../../report-store";
 import { isTruthy } from "../../form-values";
 
 export const adminAccountRoutes = new Hono<{ Bindings: Env }>();

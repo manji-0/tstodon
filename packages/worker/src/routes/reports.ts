@@ -9,7 +9,7 @@ import {
   requireUser,
 } from "../http";
 import { instanceRules } from "../runtime-config";
-import { insertReport, ReportCategorySchema } from "../moderation-store";
+import { insertReport, ReportCategorySchema } from "../report-store";
 import { stringList } from "../form-values";
 import {
   FilterBodySchema,

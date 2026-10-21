@@ -13,14 +13,14 @@ import {
 } from "../../http";
 import { mastodonStatuses } from "../../local-status-documents";
 import { instanceRules, parseInstanceIdentity } from "../../runtime-config";
-import { ReportCategorySchema, type ReportRow } from "../../moderation-store";
+import { ReportCategorySchema, type ReportRow } from "../../report-store";
 import {
   findReportById,
   listReports,
   setReportAssigned,
   setReportResolved,
   updateReport,
-} from "../../moderation-store";
+} from "../../report-store";
 import { findStatusesByIds } from "../../status-store";
 import { schemaResult } from "@tstodon/core";
 import { adminAccountFor } from "./accounts";
