@@ -10,7 +10,6 @@ import {
 import {
   accountCounts,
   accountCountsByIds,
-  findAccountById,
   type ComposeDefaults,
   findAccountsByIds,
   type AccountCounts,
@@ -23,11 +22,10 @@ import {
   type QuotePolicy,
 } from "./quote-store";
 import { RemoteAccountId } from "./remote-account-id";
-import { findStatusById, findStatusesByIds, listStatusCards } from "./status-store";
+import { findStatusesByIds, listStatusCards } from "./status-store";
 import {
   followingAccountIds,
   statusInteractionCountsByIds,
-  type NotificationRow,
   type RelationshipFlags,
   type StatusInteractionCounts,
 } from "./social-store";
@@ -673,33 +671,6 @@ export const mastodonRelationship = (
   endorsed: flags.endorsed,
   note: flags.note,
 });
-
-export const mastodonNotification = async (
-  env: Env,
-  identity: InstanceIdentity,
-  row: NotificationRow,
-  viewerId: string,
-): Promise<Record<string, unknown> | undefined> => {
-  const from = await findAccountById(env.DB, row.from_account_id);
-  if (from.isErr() || !from.value) {
-    return undefined;
-  }
-  const account = await mastodonAccountDocument(env, identity, from.value);
-  let status: Record<string, unknown> | null = null;
-  if (row.status_id) {
-    const found = await findStatusById(env.DB, row.status_id);
-    if (found.isOk() && found.value) {
-      status = (await mastodonStatus(env, identity, found.value, viewerId)) ?? null;
-    }
-  }
-  return {
-    id: row.id,
-    type: row.kind,
-    created_at: row.created_at,
-    account,
-    status,
-  };
-};
 
 export const mastodonFilter = (row: FilterRow): Record<string, unknown> => {
   const context = parseJsonColumn(FilterContextSchema, row.context_json);

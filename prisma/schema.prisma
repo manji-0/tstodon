@@ -205,7 +205,6 @@ model accounts {
   follows_follows_follower_account_idToaccounts         follows[]              @relation("follows_follower_account_idToaccounts")
   markers                                               markers[]
   media_attachments                                     media_attachments[]
-  notifications_notifications_from_account_idToaccounts notifications[]        @relation("notifications_from_account_idToaccounts")
   notifications_notifications_account_idToaccounts      notifications[]        @relation("notifications_account_idToaccounts")
   outbound_activities                                   outbound_activities[] 
   poll_votes                                            poll_votes[]
@@ -456,10 +455,10 @@ model notifications {
   id                                               String @id
   account_id                                       String
   from_account_id                                  String
+  from_actor_uri                                   String?
   kind                                             String
   status_id                                        String?
   created_at                                       String   @default("CURRENT_TIMESTAMP")
-  accounts_notifications_from_account_idToaccounts accounts @relation("notifications_from_account_idToaccounts", fields: [from_account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   accounts_notifications_account_idToaccounts      accounts @relation("notifications_account_idToaccounts", fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([account_id, created_at(sort: Desc)], map: "idx_notifications_account_created_at")

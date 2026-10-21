@@ -265,7 +265,7 @@ export const listBlockedAccounts = async (
     const { results } = await db
       .prepare(
         `SELECT id, target_account_id, target_actor_uri, created_at FROM blocks
-         WHERE blocker_account_id = ? AND target_account_id IS NOT NULL ${where} ${order} LIMIT ?`,
+         WHERE blocker_account_id = ? ${where} ${order} LIMIT ?`,
       )
       .bind(blockerAccountId, ...binds, limit)
       .all();
@@ -275,18 +275,13 @@ export const listBlockedAccounts = async (
       target_actor_uri: string;
       created_at: string;
     }>;
-    return rows.flatMap((row) =>
-      row.target_account_id
-        ? [
-            {
-              id: row.id,
-              accountId: row.target_account_id,
-              targetActorUri: row.target_actor_uri,
-              createdAt: row.created_at,
-            },
-          ]
-        : [],
-    );
+    // Remote targets carry no local id; they are listed by their `r_…` id.
+    return rows.map((row) => ({
+      id: row.id,
+      accountId: row.target_account_id ?? RemoteAccountId.encode(row.target_actor_uri),
+      targetActorUri: row.target_actor_uri,
+      createdAt: row.created_at,
+    }));
   });
 
 export const listMutedAccounts = async (
@@ -300,7 +295,7 @@ export const listMutedAccounts = async (
     const { results } = await db
       .prepare(
         `SELECT id, target_account_id, target_actor_uri, notifications, expires_at, created_at FROM mutes
-         WHERE account_id = ? AND target_account_id IS NOT NULL
+         WHERE account_id = ?
            AND (expires_at IS NULL OR expires_at > ?) ${where} ${order} LIMIT ?`,
       )
       .bind(accountId, nowIso(), ...binds, limit)
@@ -313,20 +308,14 @@ export const listMutedAccounts = async (
       expires_at: string | null;
       created_at: string;
     }>;
-    return rows.flatMap((row) =>
-      row.target_account_id
-        ? [
-            {
-              id: row.id,
-              accountId: row.target_account_id,
-              targetActorUri: row.target_actor_uri,
-              notifications: row.notifications !== 0,
-              expiresAt: row.expires_at,
-              createdAt: row.created_at,
-            },
-          ]
-        : [],
-    );
+    return rows.map((row) => ({
+      id: row.id,
+      accountId: row.target_account_id ?? RemoteAccountId.encode(row.target_actor_uri),
+      targetActorUri: row.target_actor_uri,
+      notifications: row.notifications !== 0,
+      expiresAt: row.expires_at,
+      createdAt: row.created_at,
+    }));
   });
 
 export type RelationshipFlags = Readonly<{
@@ -357,9 +346,10 @@ export const relationshipFlags = async (
   const batched = await runD1Batch(db, [
     d1PrepareTyped(db, findFollowKindSql(viewerId, targetId)),
     d1PrepareTyped(db, findFollowKindSql(targetId, viewerId)),
-    d1PrepareTyped(db, findBlockSql(viewerId, targetId)),
+    // Blocks and mutes of a remote account are keyed by its actor URI.
+    d1PrepareTyped(db, findBlockSql(viewerId, targetActorUri.unwrapOr(targetId))),
     d1PrepareTyped(db, findBlockSql(targetId, viewerId)),
-    d1PrepareTyped(db, findActiveMuteSql(viewerId, targetId, nowIso())),
+    d1PrepareTyped(db, findActiveMuteSql(viewerId, targetActorUri.unwrapOr(targetId), nowIso())),
     d1PrepareTyped(db, findEndorsementSql(viewerId, targetId)),
     d1PrepareTyped(db, findAccountNoteSql(viewerId, targetId)),
     d1PrepareTyped(db, findAccountDomainBlockSql(viewerId, targetDomain ?? "")),
@@ -423,6 +413,29 @@ export const setAccountNote = async (
     );
   });
 };
+
+/** Does `accountId` block `target` (a local account id or a remote actor URI)? */
+export const findBlock = async (
+  db: D1Database,
+  accountId: string,
+  target: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => (await queryTyped(db, findBlockSql(accountId, target))).length > 0);
+
+/** The live mute of `target` by `accountId`, with whether it also mutes notifications. */
+export const findActiveMute = async (
+  db: D1Database,
+  accountId: string,
+  target: string,
+): Promise<Result<Readonly<{ notifications: boolean }> | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ notifications: number | bigint }>(
+      db,
+      findActiveMuteSql(accountId, target, nowIso()),
+    );
+    const row = rows[0];
+    return row ? { notifications: Number(row.notifications) !== 0 } : undefined;
+  });
 
 /** The follow kind between two local accounts, when any. */
 export const findFollowKind = async (
@@ -573,6 +586,8 @@ export const insertNotification = async (
   input: {
     accountId: string;
     fromAccountId: string;
+    /** The sender's actor URI when it is a remote account. */
+    fromActorUri?: string;
     kind: string;
     statusId?: string;
   },
@@ -585,6 +600,7 @@ export const insertNotification = async (
         id,
         input.accountId,
         input.fromAccountId,
+        input.fromActorUri ?? null,
         input.kind,
         input.statusId ?? null,
         nowIso(),

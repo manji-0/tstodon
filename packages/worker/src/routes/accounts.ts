@@ -65,6 +65,7 @@ import { federationAllowHosts } from "../runtime-config";
 import { ok, err, type Result } from "neverthrow";
 import type { RepositoryError } from "../d1";
 import { RemoteAccountId } from "../remote-account-id";
+import { accountDocumentsByIds } from "../account-documents";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
   blockAccount,
@@ -939,24 +940,21 @@ const blockOrUnblock = async (c: Context<{ Bindings: Env }>, block: boolean): Pr
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const target = await findAccountByIdOrUsername(c.env.DB, c.req.param("id") ?? "");
-  if (target.isErr()) {
-    return jsonRepositoryError(c, target.error.message);
-  }
-  if (!target.value) {
+  const targetId = c.req.param("id") ?? "";
+  const target = await relationshipTarget(c, identity.value, targetId);
+  if (!target) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  if (target.value.id === user.value.id) {
+  if (target.accountId === user.value.id) {
     return selfTargetError(c, block ? "block" : "unblock");
   }
-  const actorUri = InstanceIdentity.actorUrl(identity.value, target.value.username);
   const written = block
-    ? await blockAccount(c.env.DB, user.value.id, target.value.id, actorUri)
-    : await unblockAccount(c.env.DB, user.value.id, actorUri);
+    ? await blockAccount(c.env.DB, user.value.id, target.accountId, target.actorUri)
+    : await unblockAccount(c.env.DB, user.value.id, target.actorUri);
   if (written.isErr()) {
     return jsonRepositoryError(c, written.error.message);
   }
-  return respondWithRelationship(c, user.value.id, target.value.id);
+  return respondWithRelationship(c, user.value.id, target.accountId ?? targetId);
 };
 
 accountRoutes.post("/api/v1/accounts/:id/block", (c) => blockOrUnblock(c, true));
@@ -971,14 +969,12 @@ accountRoutes.post("/api/v1/accounts/:id/mute", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const target = await findAccountByIdOrUsername(c.env.DB, c.req.param("id") ?? "");
-  if (target.isErr()) {
-    return jsonRepositoryError(c, target.error.message);
-  }
-  if (!target.value) {
+  const targetId = c.req.param("id") ?? "";
+  const target = await relationshipTarget(c, identity.value, targetId);
+  if (!target) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  if (target.value.id === user.value.id) {
+  if (target.accountId === user.value.id) {
     return selfTargetError(c, "mute");
   }
   const body = await readBody(c, MuteBodySchema);
@@ -995,15 +991,14 @@ accountRoutes.post("/api/v1/accounts/:id/mute", async (c) => {
     Number.isFinite(duration) && duration > 0
       ? new Date(Date.now() + duration * 1000).toISOString()
       : null;
-  const actorUri = InstanceIdentity.actorUrl(identity.value, target.value.username);
-  const muted = await muteAccount(c.env.DB, user.value.id, target.value.id, actorUri, {
+  const muted = await muteAccount(c.env.DB, user.value.id, target.accountId, target.actorUri, {
     notifications,
     expiresAt,
   });
   if (muted.isErr()) {
     return jsonRepositoryError(c, muted.error.message);
   }
-  return respondWithRelationship(c, user.value.id, target.value.id);
+  return respondWithRelationship(c, user.value.id, target.accountId ?? targetId);
 });
 
 accountRoutes.post("/api/v1/accounts/:id/unmute", async (c) => {
@@ -1015,22 +1010,19 @@ accountRoutes.post("/api/v1/accounts/:id/unmute", async (c) => {
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const target = await findAccountByIdOrUsername(c.env.DB, c.req.param("id") ?? "");
-  if (target.isErr()) {
-    return jsonRepositoryError(c, target.error.message);
-  }
-  if (!target.value) {
+  const targetId = c.req.param("id") ?? "";
+  const target = await relationshipTarget(c, identity.value, targetId);
+  if (!target) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  if (target.value.id === user.value.id) {
+  if (target.accountId === user.value.id) {
     return selfTargetError(c, "unmute");
   }
-  const actorUri = InstanceIdentity.actorUrl(identity.value, target.value.username);
-  const unmuted = await unmuteAccount(c.env.DB, user.value.id, actorUri);
+  const unmuted = await unmuteAccount(c.env.DB, user.value.id, target.actorUri);
   if (unmuted.isErr()) {
     return jsonRepositoryError(c, unmuted.error.message);
   }
-  return respondWithRelationship(c, user.value.id, target.value.id);
+  return respondWithRelationship(c, user.value.id, target.accountId ?? targetId);
 });
 
 accountRoutes.get("/api/v1/blocks", async (c) => {
@@ -1047,13 +1039,12 @@ accountRoutes.get("/api/v1/blocks", async (c) => {
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
-  const documents = [];
-  for (const row of rows.value) {
-    const account = await findAccountById(c.env.DB, row.accountId);
-    if (account.isOk() && account.value) {
-      documents.push(await mastodonAccountDocument(c.env, identity.value, account.value));
-    }
-  }
+  const resolved = await accountDocumentsByIds(
+    c.env,
+    identity.value,
+    rows.value.map((row) => row.accountId),
+  );
+  const documents = rows.value.flatMap((row) => resolved.get(row.accountId) ?? []);
   setPaginationLinks(
     c,
     rows.value.map((row) => row.id),
@@ -1076,18 +1067,19 @@ accountRoutes.get("/api/v1/mutes", async (c) => {
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
-  const documents = [];
-  for (const row of rows.value) {
-    const account = await findAccountById(c.env.DB, row.accountId);
-    if (account.isOk() && account.value) {
-      documents.push(await mastodonAccountDocument(c.env, identity.value, account.value));
-    }
-  }
-  return c.json(documents);
+  const resolved = await accountDocumentsByIds(
+    c.env,
+    identity.value,
+    rows.value.map((row) => row.accountId),
+  );
+  return c.json(rows.value.flatMap((row) => resolved.get(row.accountId) ?? []));
 });
 
-/** Resolve an endorsement target to a local account id or a remote actor URI. */
-const endorsementTarget = async (
+/**
+ * Resolve a relationship target (block, mute, endorsement) to a local
+ * account id or a remote actor URI.
+ */
+const relationshipTarget = async (
   c: Context<{ Bindings: Env }>,
   identity: InstanceIdentity,
   targetId: string,
@@ -1116,7 +1108,7 @@ const setEndorsed = async (c: Context<{ Bindings: Env }>, endorse: boolean): Pro
     return jsonAuthError(c, user.error);
   }
   const targetId = c.req.param("id") ?? "";
-  const target = await endorsementTarget(c, identity.value, targetId);
+  const target = await relationshipTarget(c, identity.value, targetId);
   if (!target) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
@@ -1148,7 +1140,7 @@ accountRoutes.post("/api/v1/accounts/:id/note", async (c) => {
     return jsonAuthError(c, user.error);
   }
   const targetId = c.req.param("id") ?? "";
-  const target = await endorsementTarget(c, identity.value, targetId);
+  const target = await relationshipTarget(c, identity.value, targetId);
   if (!target) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }

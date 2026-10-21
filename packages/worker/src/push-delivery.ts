@@ -2,7 +2,7 @@ import { schemaResult } from "@tstodon/core";
 import type { OutboxJob } from "@tstodon/domain";
 import { z } from "zod";
 import { htmlToText } from "./html";
-import { mastodonNotification } from "./mastodon";
+import { mastodonNotification } from "./notification-documents";
 import { writeMetric } from "./metrics";
 import {
   deletePushSubscription,

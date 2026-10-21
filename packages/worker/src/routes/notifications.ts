@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import type { LocalStatus } from "@tstodon/domain";
 import { isTruthy } from "../schemas";
-import { findAccountById } from "../account-store";
 import {
   filteredAttribute,
   loadViewerFilters,
@@ -18,7 +17,12 @@ import {
   requireUser,
 } from "../http";
 import { getMarkers } from "../marker-store";
-import { mastodonAccountDocument, mastodonNotification, mastodonStatuses } from "../mastodon";
+import { accountDocumentsByIds } from "../account-documents";
+import {
+  mastodonNotification,
+  mastodonNotifications,
+  notificationStatusDocuments,
+} from "../notification-documents";
 import {
   DEFAULT_GROUPED_TYPES,
   groupNotifications,
@@ -91,15 +95,17 @@ notificationRoutes.get("/api/v1/notifications", async (c) => {
   // Notifications carry the same `filtered` attribute the search results do.
   const filters = await loadViewerFilters(c.env.DB, user.value.id);
   const notificationStatuses = await findStatusesByIds(c.env.DB, statusIds);
+  const visibleRows = rows.value.filter(
+    (row) => !(row.status_id && mutedStatuses.value.has(row.status_id)),
+  );
+  const rendered = await mastodonNotifications(c.env, identity.value, visibleRows, user.value.id);
   const documents: Record<string, unknown>[] = [];
-  for (const row of rows.value) {
-    if (row.status_id && mutedStatuses.value.has(row.status_id)) {
+  for (const row of visibleRows) {
+    const found = rendered.get(row.id);
+    if (!found) {
       continue;
     }
-    const document = await mastodonNotification(c.env, identity.value, row, user.value.id);
-    if (!document) {
-      continue;
-    }
+    const document = { ...found };
     const filtered = notificationFiltered(
       row,
       filters.isOk() ? filters.value : [],
@@ -272,31 +278,12 @@ const groupEnvelope = async (
   if (identity.isErr()) {
     return { accounts: [], statuses: [], notification_groups: [] };
   }
-  const accounts =
-    accountIds.length > 0
-      ? (
-          await Promise.all(
-            accountIds.map(async (id) => {
-              const account = await findAccountById(c.env.DB, id);
-              return account.isOk() && account.value
-                ? await mastodonAccountDocument(c.env, identity.value, account.value)
-                : undefined;
-            }),
-          )
-        ).flatMap((document) => (document ? [document] : []))
-      : [];
-  let statuses: Record<string, unknown>[] = [];
-  if (statusIds.length > 0) {
-    const found = await findStatusesByIds(c.env.DB, statusIds);
-    if (found.isOk()) {
-      statuses = await mastodonStatuses(
-        c.env,
-        identity.value,
-        [...found.value.values()],
-        accountId,
-      );
-    }
-  }
+  const [accountDocuments, statusDocuments] = await Promise.all([
+    accountDocumentsByIds(c.env, identity.value, accountIds),
+    notificationStatusDocuments(c.env, identity.value, statusIds, accountId),
+  ]);
+  const accounts = accountIds.flatMap((id) => accountDocuments.get(id) ?? []);
+  const statuses = statusIds.flatMap((id) => statusDocuments.get(id) ?? []);
   return {
     accounts,
     statuses,
@@ -398,14 +385,8 @@ notificationRoutes.get("/api/v2/notifications/:groupKey/accounts", async (c) => 
   if (!group) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const accounts: Record<string, unknown>[] = [];
-  for (const id of group.fromAccountIds) {
-    const account = await findAccountById(c.env.DB, id);
-    if (account.isOk() && account.value) {
-      accounts.push(await mastodonAccountDocument(c.env, identity.value, account.value));
-    }
-  }
-  return c.json(accounts);
+  const documents = await accountDocumentsByIds(c.env, identity.value, group.fromAccountIds);
+  return c.json(group.fromAccountIds.flatMap((id) => documents.get(id) ?? []));
 });
 
 notificationRoutes.post("/api/v2/notifications/:groupKey/dismiss", async (c) => {

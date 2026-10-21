@@ -7,3 +7,4 @@ INSERT INTO remote_announces (id, remote_actor_uri, status_id, activity_id, crea
 VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT(remote_actor_uri, status_id) DO UPDATE SET
   activity_id = excluded.activity_id
+RETURNING id, created_at

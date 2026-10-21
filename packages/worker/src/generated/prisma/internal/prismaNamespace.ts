@@ -5790,6 +5790,7 @@ export const NotificationsScalarFieldEnum = {
   id: "id",
   account_id: "account_id",
   from_account_id: "from_account_id",
+  from_actor_uri: "from_actor_uri",
   kind: "kind",
   status_id: "status_id",
   created_at: "created_at",

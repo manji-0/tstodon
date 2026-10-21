@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { schemaResult } from "@tstodon/core";
 import type { InstanceIdentity } from "@tstodon/domain";
-import { findAccountById } from "../account-store";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -12,7 +11,8 @@ import {
   readBody,
   requireUser,
 } from "../http";
-import { mastodonAccountDocument, mastodonStatus } from "../mastodon";
+import { accountDocumentsByIds } from "../account-documents";
+import { notificationStatusDocuments } from "../notification-documents";
 import {
   NotificationPolicyActionSchema,
   acceptNotificationRequests,
@@ -35,7 +35,6 @@ import {
 } from "../schemas";
 import { dismissNotification } from "../social-store";
 import { publishToAccount } from "../stream-publish";
-import { findStatusById } from "../status-store";
 
 /**
  * Notification policy and requests. Mounted ahead of `notificationRoutes` so
@@ -51,19 +50,18 @@ const requestDocument = async (
   accountId: string,
   request: NotificationRequest,
 ): Promise<Record<string, unknown>> => {
-  const account = await findAccountById(c.env.DB, request.fromAccountId);
-  const accountDocument =
-    account.isOk() && account.value
-      ? await mastodonAccountDocument(c.env, identity, account.value)
-      : null;
   // The status stored with the held notification is the exact one.
-  let lastStatus: Record<string, unknown> | null = null;
-  if (request.statusId) {
-    const status = await findStatusById(c.env.DB, request.statusId);
-    if (status.isOk() && status.value) {
-      lastStatus = (await mastodonStatus(c.env, identity, status.value, accountId)) ?? null;
-    }
-  }
+  const [accounts, statuses] = await Promise.all([
+    accountDocumentsByIds(c.env, identity, [request.fromAccountId]),
+    notificationStatusDocuments(
+      c.env,
+      identity,
+      request.statusId ? [request.statusId] : [],
+      accountId,
+    ),
+  ]);
+  const accountDocument = accounts.get(request.fromAccountId) ?? null;
+  const lastStatus = request.statusId ? (statuses.get(request.statusId) ?? null) : null;
   return {
     id: request.id,
     created_at: request.createdAt,

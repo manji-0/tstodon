@@ -29,6 +29,7 @@ import { resolveRemoteActor } from "../remote-actor-fetch";
 import {
   deleteRemoteFollow,
   listAcceptedRemoteFollowerUris,
+  findRemoteFollow,
   upsertRemoteFollow,
 } from "../remote-actor-store";
 import { persistRemoteObject } from "../remote-status-persist";
@@ -57,7 +58,7 @@ import {
   listFollowing,
   unfollowAccount,
 } from "../social-store";
-import { notifyAccount } from "../notify";
+import { notifyAccount, notifyFromRemote } from "../notify";
 import { findStatusById, insertLocalReblog } from "../status-store";
 import { nowInstant } from "../clock";
 import { newEntityId } from "../ids";
@@ -349,13 +350,22 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         ? await findAccountByUsername(c.env.DB, targetUsername)
         : undefined;
       if (target?.isOk() && target.value) {
-        await upsertRemoteFollow(
+        // A redelivered Follow keeps its row and must not notify again.
+        const existing = await findRemoteFollow(c.env.DB, target.value.id, signer.actor.actorUri);
+        const followed = await upsertRemoteFollow(
           c.env.DB,
           signer.actor.actorUri,
           target.value.id,
           target.value.locked,
           activity.id,
         );
+        if (followed.isOk() && existing.isOk() && !existing.value) {
+          await notifyFromRemote(c.env, {
+            accountId: target.value.id,
+            actorUri: signer.actor.actorUri,
+            kind: target.value.locked ? "follow_request" : "follow",
+          });
+        }
         // Unlocked accounts auto-accept: send Accept to the follower's inbox.
         if (!target.value.locked) {
           const acceptActor = InstanceIdentity.actorUrl(identity.value, target.value.username);
@@ -408,7 +418,10 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     if (activity.kind === "Like") {
       const statusId = parseLocalStatusId(identity.value, activity.object);
       if (statusId) {
-        await upsertRemoteFavourite(c.env.DB, signer.actor.actorUri, statusId);
+        const liked = await upsertRemoteFavourite(c.env.DB, signer.actor.actorUri, statusId);
+        if (liked.isOk() && liked.value) {
+          await notifyStatusAuthor(c.env, signer.actor.actorUri, statusId, "favourite");
+        }
       }
     }
     if (activity.kind === "Delete") {
@@ -425,7 +438,15 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       if (activity.kind === "Announce") {
         const statusId = parseLocalStatusId(identity.value, activity.object);
         if (statusId) {
-          await upsertRemoteAnnounce(c.env.DB, signer.actor.actorUri, statusId, activity.id);
+          const announced = await upsertRemoteAnnounce(
+            c.env.DB,
+            signer.actor.actorUri,
+            statusId,
+            activity.id,
+          );
+          if (announced.isOk() && announced.value) {
+            await notifyStatusAuthor(c.env, signer.actor.actorUri, statusId, "reblog");
+          }
         }
       }
     }
@@ -494,6 +515,19 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     }
   }
   return c.body(null, 202);
+};
+
+/** Tell a local status's author about a remote actor's Like or Announce of it. */
+const notifyStatusAuthor = async (
+  env: Env,
+  actorUri: string,
+  statusId: string,
+  kind: "favourite" | "reblog",
+): Promise<void> => {
+  const status = await findStatusById(env.DB, statusId);
+  if (status.isOk() && status.value?.kind === "LocalNote") {
+    await notifyFromRemote(env, { accountId: status.value.accountId, actorUri, kind, statusId });
+  }
 };
 
 activityPubRoutes.post("/users/:username/inbox", (c) => handleInbox(c));

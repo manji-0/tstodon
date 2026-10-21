@@ -24,3 +24,11 @@ WHERE n.account_id = $1
       WHERE account_id = $1 AND target_account_id IS NOT NULL AND notifications != 0
         AND (expires_at IS NULL OR expires_at > $3)
   )
+  -- Remote senders are blocked and muted by actor URI.
+  AND COALESCE(n.from_actor_uri, '') NOT IN (
+    SELECT target_actor_uri FROM blocks WHERE blocker_account_id = $1
+    UNION
+    SELECT target_actor_uri FROM mutes
+      WHERE account_id = $1 AND notifications != 0
+        AND (expires_at IS NULL OR expires_at > $3)
+  )

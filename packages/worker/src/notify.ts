@@ -3,7 +3,9 @@ import { err, ok } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import { holdNotification } from "./notification-policy-store";
 import { notificationDisposition } from "./notification-policy";
-import { insertNotification } from "./social-store";
+import { hostnameOf, isDomainBlocked } from "./domain-block-store";
+import { RemoteAccountId } from "./remote-account-id";
+import { findActiveMute, findBlock, insertNotification } from "./social-store";
 import { enqueuePushDeliveries } from "./push-delivery";
 import { publishToAccount } from "./stream-publish";
 
@@ -12,6 +14,8 @@ export const notifyAccount = async (
   input: {
     accountId: string;
     fromAccountId: string;
+    /** The sender's actor URI when it is a remote account. */
+    fromActorUri?: string;
     kind: string;
     statusId?: string;
   },
@@ -57,4 +61,39 @@ export const notifyAccount = async (
   });
   await enqueuePushDeliveries(env, input.accountId, inserted.value);
   return ok(undefined);
+};
+
+/**
+ * A notification from a remote actor. Its sender id is the actor's `r_…`
+ * account id; a recipient who blocks the actor, mutes its notifications, or
+ * blocks its domain gets none (blocks and mutes also hide earlier ones when
+ * the list is read).
+ */
+export const notifyFromRemote = async (
+  env: Env,
+  input: Readonly<{ accountId: string; actorUri: string; kind: string; statusId?: string }>,
+): Promise<Result<void, RepositoryError>> => {
+  const blocked = await findBlock(env.DB, input.accountId, input.actorUri);
+  if (blocked.isErr()) {
+    return err(blocked.error);
+  }
+  const muted = await findActiveMute(env.DB, input.accountId, input.actorUri);
+  if (muted.isErr()) {
+    return err(muted.error);
+  }
+  const domain = hostnameOf(input.actorUri);
+  const domainBlocked = domain ? await isDomainBlocked(env.DB, input.accountId, domain) : ok(false);
+  if (domainBlocked.isErr()) {
+    return err(domainBlocked.error);
+  }
+  if (blocked.value || muted.value?.notifications || domainBlocked.value) {
+    return ok(undefined);
+  }
+  return notifyAccount(env, {
+    accountId: input.accountId,
+    fromAccountId: RemoteAccountId.encode(input.actorUri),
+    fromActorUri: input.actorUri,
+    kind: input.kind,
+    ...(input.statusId ? { statusId: input.statusId } : {}),
+  });
 };

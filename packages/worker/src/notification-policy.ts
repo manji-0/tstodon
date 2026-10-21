@@ -6,8 +6,11 @@ import type { RepositoryError } from "./d1";
 import {
   findNotificationPolicy,
   isSenderAccepted,
+  type NotificationPolicy,
   type NotificationPolicyAction,
 } from "./notification-policy-store";
+import { RemoteAccountId } from "./remote-account-id";
+import { findRemoteFollow } from "./remote-actor-store";
 import { findFollowKind } from "./social-store";
 import { findStatusById } from "./status-store";
 
@@ -25,6 +28,35 @@ const mostRestrictive = (
     return "filter";
   }
   return "accept";
+};
+
+/**
+ * The policy for a remote sender (`r_…` id). Local accounts cannot follow
+ * remote ones here, so `for_not_following` always applies; `for_not_followers`
+ * reads the remote follow. `for_private_mentions` is not applied: its
+ * exemption is "the recipient follows the sender", which a remote sender can
+ * never meet, so the `drop` default would discard every remote direct message.
+ * `for_new_accounts` and `for_limited_accounts` need local account state.
+ */
+const remoteDisposition = async (
+  db: D1Database,
+  recipientId: string,
+  senderId: string,
+  policy: NotificationPolicy,
+): Promise<Result<NotificationDisposition, RepositoryError>> => {
+  const actorUri = RemoteAccountId.decode(senderId);
+  if (actorUri.isErr()) {
+    return ok("accept");
+  }
+  const follow = await findRemoteFollow(db, recipientId, actorUri.value);
+  if (follow.isErr()) {
+    return err(follow.error);
+  }
+  const actions: NotificationPolicyAction[] = [policy.forNotFollowing];
+  if (follow.value?.requestKind !== "Fulfilled") {
+    actions.push(policy.forNotFollowers);
+  }
+  return ok(mostRestrictive(actions));
 };
 
 /**
@@ -59,7 +91,7 @@ export const notificationDisposition = async (
     return err(sender.error);
   }
   if (!sender.value) {
-    return ok("accept");
+    return remoteDisposition(db, input.recipientId, input.senderId, policy.value);
   }
 
   const moderation = await getAccountModeration(db, input.senderId);

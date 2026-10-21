@@ -12,13 +12,18 @@ import {
   upsertRemoteFavourite as upsertRemoteFavouriteSql,
 } from "./generated/prisma/sql";
 
+/** Record a remote Like; `true` only when it is new (a redelivery answers `false`). */
 export const upsertRemoteFavourite = async (
   db: D1Database,
   remoteActorUri: string,
   statusId: string,
-): Promise<Result<void, RepositoryError>> =>
+): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(db, upsertRemoteFavouriteSql(newEntityId(), remoteActorUri, statusId, nowIso()));
+    const rows = await queryTyped<{ id: string | null }>(
+      db,
+      upsertRemoteFavouriteSql(newEntityId(), remoteActorUri, statusId, nowIso()),
+    );
+    return rows.length > 0;
   });
 
 export const deleteRemoteFavourite = async (
@@ -30,17 +35,21 @@ export const deleteRemoteFavourite = async (
     await runTyped(db, deleteRemoteFavouriteSql(remoteActorUri, statusId));
   });
 
+/** Record a remote Announce; `true` only when it is new (a redelivery answers `false`). */
 export const upsertRemoteAnnounce = async (
   db: D1Database,
   remoteActorUri: string,
   statusId: string,
   activityId: string,
-): Promise<Result<void, RepositoryError>> =>
+): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(
+    const now = nowIso();
+    const rows = await queryTyped<{ id: string | null; created_at: string }>(
       db,
-      upsertRemoteAnnounceSql(newEntityId(), remoteActorUri, statusId, activityId, nowIso()),
+      upsertRemoteAnnounceSql(newEntityId(), remoteActorUri, statusId, activityId, now),
     );
+    // The conflict path keeps the original row, so its `created_at` predates `now`.
+    return rows[0]?.created_at === now;
   });
 
 export const deleteRemoteAnnounce = async (
