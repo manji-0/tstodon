@@ -9,7 +9,7 @@ import { generateAccountKeys } from "./keys";
 import { parseInstanceIdentity } from "./runtime-config";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
-import { processOutboxJob } from "./delivery";
+import { processOutboxJob } from "./outbox-job";
 
 const auth = (email: string): Promise<Record<string, string>> => accessAuthHeaders(email);
 

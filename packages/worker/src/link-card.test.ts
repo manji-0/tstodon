@@ -10,7 +10,7 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
 import { cacheLinkCard, processLinkCardJob } from "./link-card";
-import { processOutboxJob } from "./delivery";
+import { processOutboxJob } from "./outbox-job";
 
 const auth = (email: string): Promise<Record<string, string>> => accessAuthHeaders(email);
 

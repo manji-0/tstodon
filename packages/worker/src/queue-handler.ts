@@ -1,5 +1,5 @@
 import { OutboxJob } from "@tstodon/domain";
-import { processOutboxJob } from "./delivery";
+import { processOutboxJob } from "./outbox-job";
 import { writeMetric } from "./metrics";
 
 /** Transient job failures are retried a few times before being dropped. */

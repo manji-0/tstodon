@@ -159,7 +159,7 @@ flowchart LR
 **Shape:**
 
 1. `enqueueLocalActivity` inserts activity + fan-out row (**batched**, Doc A) then queues `ExpandFollowers`. Insert/parse failures are **swallowed** today (Doc A operability gap).
-2. `processOutboxJob` (`delivery.ts`) **today** still loads local follower ids and builds same-host inbox URLs, then filters them away with `new URL(inbox).host !== sameHost`. **Decided:** **DELETE** that local-follower loop (PR3). Keep only:
+2. `processOutboxJob` (`outbox-job.ts`) **today** still loads local follower ids and builds same-host inbox URLs, then filters them away with `new URL(inbox).host !== sameHost`. **Decided:** **DELETE** that local-follower loop (PR3). Keep only:
    - **Remote** follower inboxes via `listAcceptedRemoteFollowerInboxes` (already coalesces `shared_inbox_uri ?? inbox_uri` into a `Set` — **in code**).
    - Local Create visibility for followers via **home-timeline SQL over `follows`**, not AP inbox POST.
    - `markOutboundExpanded`, then **per remote inbox**: `ensureOutboxTarget` + `startOutboxDeliveryWorkflow` (chunked batching = Doc A PR3).
