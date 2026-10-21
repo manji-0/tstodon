@@ -275,6 +275,76 @@ describe("notifications from remote actors", () => {
     expect(await notifications(other)).toEqual([]);
   });
 
+  it("notifies a mention in a new remote note, once", async () => {
+    const email = "remote-notify-mentioned@example.com";
+    const account = await me(email);
+    const actorUrl = `https://example.com/users/${account.username}`;
+    const remote = await remoteActor("mentioner");
+    const note = (n: number, extra: Record<string, unknown>) => ({
+      id: `https://remote.example/activities/create-${n}`,
+      type: "Create",
+      object: {
+        id: `https://remote.example/notes/${n}`,
+        type: "Note",
+        attributedTo: remote.actorUri,
+        content: `<p>note ${n}</p>`,
+        published: "2026-10-20T00:00:00.000Z",
+        ...extra,
+      },
+    });
+    // A direct message addressed to the local account, with a Mention tag.
+    const direct = note(1, {
+      to: [actorUrl],
+      tag: [{ type: "Mention", href: actorUrl, name: `@${account.username}@example.com` }],
+    });
+    expect(await remote.send(direct)).toBe(202);
+    expect(await remote.send(direct)).toBe(202);
+    // A public note that only names someone else, and one that names a status URL.
+    expect(
+      await remote.send(
+        note(2, {
+          to: ["https://www.w3.org/ns/activitystreams#Public"],
+          tag: [{ type: "Mention", href: "https://remote.example/users/someone" }],
+        }),
+      ),
+    ).toBe(202);
+    expect(
+      await remote.send(
+        note(3, {
+          to: ["https://www.w3.org/ns/activitystreams#Public"],
+          tag: [{ type: "Mention", href: `${actorUrl}/statuses/1` }],
+        }),
+      ),
+    ).toBe(202);
+
+    const listed = await notifications(email);
+    expect(listed.map((entry) => entry.type)).toEqual(["mention"]);
+    const mention = listed[0];
+    expect(mention?.account.id).toBe(RemoteAccountId.encode(remote.actorUri));
+    // The direct remote status renders for the account it mentions.
+    const stored = await env.DB.prepare("SELECT id FROM remote_statuses WHERE object_uri = ?")
+      .bind("https://remote.example/notes/1")
+      .first<{ id: string }>();
+    expect(mention?.status?.id).toBe(stored?.id);
+
+    // An Announce of a remote note does not count as a mention.
+    expect(
+      await remote.send({
+        id: "https://remote.example/activities/announce-note-4",
+        type: "Announce",
+        object: {
+          id: "https://remote.example/notes/4",
+          type: "Note",
+          attributedTo: remote.actorUri,
+          content: "<p>boosted</p>",
+          published: "2026-10-20T00:00:00.000Z",
+          to: [actorUrl],
+        },
+      }),
+    ).toBe(202);
+    expect((await notifications(email)).map((entry) => entry.type)).toEqual(["mention"]);
+  });
+
   it("removes a purged local sender's notifications", async () => {
     const author = "remote-notify-purge-author@example.com";
     const status = await post(author, "fave this");

@@ -24,7 +24,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
-- Remote Follow/Like/Announce notify the local target (`r_…` senders, deduplicated, block/mute/domain-block aware); remote accounts can be blocked and muted
+- Remote Follow/Like/Announce and mentions in new remote notes notify the local target (`r_…` senders, deduplicated, block/mute/domain-block aware); remote accounts can be blocked and muted
 
 - Web Push: subscriptions per account + endpoint, VAPID key advertised, notifications delivered (`aes128gcm`/`aesgcm`, VAPID ES256)
 

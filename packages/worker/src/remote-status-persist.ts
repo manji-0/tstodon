@@ -1,20 +1,23 @@
 import {
+  InstanceIdentity,
   IsoInstant,
   RemoteStatus,
   StatusId,
-  type InstanceIdentity,
   type RemoteActor,
   type RemoteStatus as RemoteStatusValue,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
+import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { fetchActivityJson } from "./federated-fetch";
 import { newEntityId } from "./ids";
-import { parseLocalStatusId } from "./activitypub";
+import { parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
+import { findAccountByUsername } from "./account-store";
 import { mediaRejectedDomains } from "./admin-domain-block-store";
 import { enqueueLinkCard } from "./link-card";
+import { notifyFromRemote } from "./notify";
 import { findRemoteStatusByObjectUri, upsertRemoteStatus } from "./remote-status-store";
 import { isTruthy, NoteDocumentSchema, stringList } from "./schemas";
 
@@ -72,12 +75,66 @@ const noteFromUnknown = (
   });
 };
 
+const MentionTagsSchema = z.object({
+  tag: z
+    .array(z.object({ type: z.string().optional(), href: z.string().optional() }).passthrough())
+    .optional(),
+});
+
+/**
+ * Local accounts a remote note addresses: its `Mention` tags plus its
+ * `to`/`cc` audience, kept to exact local actor URLs.
+ */
+const mentionedLocalUsernames = (identity: InstanceIdentity, raw: unknown): string[] => {
+  const tags = schemaResult(MentionTagsSchema)(raw);
+  const note = parseNoteDocument(raw);
+  const candidates = [
+    ...(tags.isOk() ? (tags.value.tag ?? []) : []).flatMap((entry) =>
+      entry.type === "Mention" && entry.href ? [entry.href] : [],
+    ),
+    ...(note.isOk() ? [...stringList(note.value.to), ...stringList(note.value.cc)] : []),
+  ];
+  const usernames = new Set<string>();
+  for (const uri of candidates) {
+    const username = parseLocalActorUsername(identity, uri);
+    if (username && InstanceIdentity.actorUrl(identity, username) === uri) {
+      usernames.add(username);
+    }
+  }
+  return [...usernames];
+};
+
+/** Notify each local account a newly stored remote note mentions. */
+const notifyMentions = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+  raw: unknown,
+  statusId: string,
+): Promise<void> => {
+  for (const username of mentionedLocalUsernames(identity, raw)) {
+    const account = await findAccountByUsername(env.DB, username);
+    if (account.isOk() && account.value) {
+      await notifyFromRemote(env, {
+        accountId: account.value.id,
+        actorUri: actor.actorUri,
+        kind: "mention",
+        statusId,
+      });
+    }
+  }
+};
+
 export const persistRemoteObject = async (
   env: Env,
   identity: InstanceIdentity,
   actor: RemoteActor,
   object: string | Readonly<{ id: string } & Record<string, unknown>>,
-  options: Readonly<{ allowHosts?: ReadonlySet<string> }> = {},
+  options: Readonly<{
+    allowHosts?: ReadonlySet<string>;
+    /** Notify the local accounts the note mentions, when it is newly stored (inbox `Create`). */
+    notifyMentions?: boolean;
+  }> = {},
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
   const objectUri = typeof object === "string" ? object : object.id;
   if (parseLocalStatusId(identity, objectUri)) {
@@ -108,6 +165,9 @@ export const persistRemoteObject = async (
   if (stored.isOk()) {
     // Preview cards are built off the request path like for local posts.
     await enqueueLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);
+    if (options.notifyMentions) {
+      await notifyMentions(env, identity, actor, raw.value, stored.value.id);
+    }
   }
   return stored;
 };

@@ -434,6 +434,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     if (activity.kind === "Create" || activity.kind === "Announce") {
       await persistRemoteObject(c.env, identity.value, signer.actor, activityJson.value.object, {
         allowHosts: await federationAllowHosts(c.env),
+        notifyMentions: activity.kind === "Create",
       });
       if (activity.kind === "Announce") {
         const statusId = parseLocalStatusId(identity.value, activity.object);
