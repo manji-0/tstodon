@@ -349,6 +349,7 @@ export type FavouritesScalarFieldEnum =
   (typeof FavouritesScalarFieldEnum)[keyof typeof FavouritesScalarFieldEnum];
 
 export const Filter_statusesScalarFieldEnum = {
+  id: "id",
   filter_id: "filter_id",
   status_id: "status_id",
   created_at: "created_at",

@@ -7,15 +7,16 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param filterId
  */
-export const listFilterStatusIds = $runtime.makeTypedQueryFactory(
-  "SELECT status_id FROM filter_statuses WHERE filter_id = $1 ORDER BY created_at",
+export const listFilterStatuses = $runtime.makeTypedQueryFactory(
+  "SELECT id, status_id FROM filter_statuses WHERE filter_id = $1 ORDER BY created_at, id",
 ) as (
   filterId: string,
-) => $runtime.TypedSql<listFilterStatusIds.Parameters, listFilterStatusIds.Result>;
+) => $runtime.TypedSql<listFilterStatuses.Parameters, listFilterStatuses.Result>;
 
-export namespace listFilterStatusIds {
+export namespace listFilterStatuses {
   export type Parameters = [filterId: string];
   export type Result = {
+    id: string | null;
     status_id: string;
   };
 }

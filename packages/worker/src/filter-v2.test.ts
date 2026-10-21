@@ -127,19 +127,40 @@ describe("v2 filters", () => {
       "beta",
     ]);
 
-    const renamed = await send(email, "PUT", `/api/v2/filters/${filter.id}/keywords/${beta.id}`, {
+    const fetchedKeyword = await send(email, "GET", `/api/v2/filters/keywords/${beta.id}`);
+    expect(fetchedKeyword.status).toBe(200);
+    expect(read(KeywordSchema, fetchedKeyword.body)).toEqual(beta);
+    expect(
+      (await send("filter-v2-intruder@example.com", "GET", `/api/v2/filters/keywords/${beta.id}`))
+        .status,
+    ).toBe(404);
+
+    const renamed = await send(email, "PUT", `/api/v2/filters/keywords/${beta.id}`, {
       keyword: "gamma",
     });
     expect(renamed.status).toBe(200);
     expect(read(KeywordSchema, renamed.body).keyword).toBe("gamma");
     expect(
-      (await send(email, "PUT", `/api/v2/filters/${filter.id}/keywords/unknown`, { keyword: "x" }))
-        .status,
+      (await send(email, "PUT", "/api/v2/filters/keywords/unknown", { keyword: "x" })).status,
+    ).toBe(404);
+    expect(
+      (
+        await send("filter-v2-intruder@example.com", "PUT", `/api/v2/filters/keywords/${beta.id}`, {
+          keyword: "hijack",
+        })
+      ).status,
     ).toBe(404);
 
     expect(
-      (await send(email, "DELETE", `/api/v2/filters/${filter.id}/keywords/${beta.id}`)).status,
-    ).toBe(200);
+      (
+        await send(
+          "filter-v2-intruder@example.com",
+          "DELETE",
+          `/api/v2/filters/keywords/${beta.id}`,
+        )
+      ).status,
+    ).toBe(404);
+    expect((await send(email, "DELETE", `/api/v2/filters/keywords/${beta.id}`)).status).toBe(200);
     const remaining = await send(email, "GET", `/api/v2/filters/${filter.id}/keywords`);
     expect(read(z.array(KeywordSchema), remaining.body).map((entry) => entry.keyword)).toEqual([
       "alpha",
@@ -147,10 +168,9 @@ describe("v2 filters", () => {
 
     // The last keyword cannot be removed.
     const last = read(z.array(KeywordSchema), remaining.body)[0];
-    expect(
-      (await send(email, "DELETE", `/api/v2/filters/${filter.id}/keywords/${last?.id ?? ""}`))
-        .status,
-    ).toBe(422);
+    expect((await send(email, "DELETE", `/api/v2/filters/keywords/${last?.id ?? ""}`)).status).toBe(
+      422,
+    );
   });
 
   it("narrows a filter to specific statuses", async () => {
@@ -166,36 +186,93 @@ describe("v2 filters", () => {
     });
     const statusId = read(z.object({ id: z.string().min(1) }), status.body).id;
 
+    const FilterStatusSchema = z.object({ id: z.string().min(1), status_id: z.string().min(1) });
     const added = await send(email, "POST", `/api/v2/filters/${filter.id}/statuses`, {
-      status_ids: [statusId],
+      status_id: statusId,
     });
     expect(added.status).toBe(200);
+    const entry = read(FilterStatusSchema, added.body);
+    expect(entry.status_id).toBe(statusId);
+    expect(entry.id).not.toBe(statusId);
+
+    // Adding the same status again answers the same entry.
+    const again = await send(email, "POST", `/api/v2/filters/${filter.id}/statuses`, {
+      status_id: statusId,
+    });
+    expect(read(FilterStatusSchema, again.body)).toEqual(entry);
+    expect((await send(email, "POST", `/api/v2/filters/${filter.id}/statuses`, {})).status).toBe(
+      400,
+    );
 
     const narrowed = await send(email, "GET", `/api/v2/filters/${filter.id}/statuses`);
     expect(narrowed.status).toBe(200);
-    expect(
-      read(z.array(z.object({ id: z.string().min(1) })), narrowed.body).map((entry) => entry.id),
-    ).toEqual([statusId]);
+    expect(read(z.array(FilterStatusSchema), narrowed.body)).toEqual([entry]);
 
-    // The filter document carries the narrowing too.
+    // The filter document carries the narrowing as FilterStatus entities too.
     const fetched = await send(email, "GET", `/api/v2/filters/${filter.id}`);
     expect(
-      read(
-        FilterSchema.extend({ statuses: z.array(z.object({ id: z.string().min(1) })) }),
-        fetched.body,
-      ).statuses.map((entry) => entry.id),
-    ).toEqual([statusId]);
+      read(FilterSchema.extend({ statuses: z.array(FilterStatusSchema) }), fetched.body).statuses,
+    ).toEqual([entry]);
 
-    const removed = await send(
-      email,
-      "DELETE",
-      `/api/v2/filters/${filter.id}/statuses/${statusId}`,
+    const single = await send(email, "GET", `/api/v2/filters/statuses/${entry.id}`);
+    expect(single.status).toBe(200);
+    expect(read(FilterStatusSchema, single.body)).toEqual(entry);
+    const intruder = "filter-v2-narrow-intruder@example.com";
+    expect((await send(intruder, "GET", `/api/v2/filters/statuses/${entry.id}`)).status).toBe(404);
+    expect((await send(intruder, "DELETE", `/api/v2/filters/statuses/${entry.id}`)).status).toBe(
+      404,
     );
-    expect(removed.status).toBe(200);
+
+    expect((await send(email, "DELETE", `/api/v2/filters/statuses/${entry.id}`)).status).toBe(200);
     const after = await send(email, "GET", `/api/v2/filters/${filter.id}/statuses`);
     expect(read(z.array(z.unknown()), after.body)).toHaveLength(0);
+    expect((await send(email, "DELETE", `/api/v2/filters/statuses/${entry.id}`)).status).toBe(404);
+  });
+
+  it("reads and updates a single v1 filter", async () => {
+    const email = "filter-v1-single@example.com";
+    const created = await send(email, "POST", "/api/v1/filters", {
+      phrase: "first",
+      context: ["home"],
+    });
+    const V1Schema = z.object({
+      id: z.string().min(1),
+      phrase: z.string(),
+      context: z.array(z.string()),
+      whole_word: z.boolean(),
+    });
+    const filter = read(V1Schema, created.body);
+
+    const fetched = await send(email, "GET", `/api/v1/filters/${filter.id}`);
+    expect(fetched.status).toBe(200);
+    expect(read(V1Schema, fetched.body).phrase).toBe("first");
+
+    const updated = await send(email, "PUT", `/api/v1/filters/${filter.id}`, {
+      phrase: "second",
+      context: ["public"],
+      whole_word: true,
+    });
+    expect(updated.status).toBe(200);
+    const after = read(V1Schema, updated.body);
+    expect(after.phrase).toBe("second");
+    expect(after.context).toEqual(["public"]);
+    expect(after.whole_word).toBe(true);
+
+    const v2 = await send(email, "GET", `/api/v2/filters/${filter.id}`);
+    expect(read(FilterSchema, v2.body).keywords.map((keyword) => keyword.keyword)).toEqual([
+      "second",
+    ]);
+
+    expect((await send(email, "PUT", `/api/v1/filters/${filter.id}`, {})).status).toBe(400);
     expect(
-      (await send(email, "DELETE", `/api/v2/filters/${filter.id}/statuses/${statusId}`)).status,
+      (await send("filter-v1-other@example.com", "GET", `/api/v1/filters/${filter.id}`)).status,
+    ).toBe(404);
+    expect(
+      (
+        await send("filter-v1-other@example.com", "PUT", `/api/v1/filters/${filter.id}`, {
+          phrase: "x",
+        })
+      ).status,
     ).toBe(404);
   });
 

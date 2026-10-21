@@ -244,9 +244,10 @@ model favourites {
 }
 
 model filter_statuses {
+  id         String? @unique(map: "idx_filter_statuses_id")
   filter_id  String
   status_id  String
-  created_at String @default("CURRENT_TIMESTAMP")
+  created_at String  @default("CURRENT_TIMESTAMP")
 
   @@id([filter_id, status_id])
 }

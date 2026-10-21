@@ -5,19 +5,24 @@
 import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
+ * @param id
  * @param filterId
  * @param statusId
  * @param createdAt
  */
 export const insertFilterStatus = $runtime.makeTypedQueryFactory(
-  "INSERT INTO filter_statuses (filter_id, status_id, created_at)\nVALUES ($1, $2, $3)\nON CONFLICT(filter_id, status_id) DO NOTHING",
+  "INSERT INTO filter_statuses (id, filter_id, status_id, created_at)\nVALUES ($1, $2, $3, $4)\nON CONFLICT(filter_id, status_id) DO UPDATE SET filter_id = excluded.filter_id\nRETURNING id, status_id",
 ) as (
+  id: string,
   filterId: string,
   statusId: string,
   createdAt: string,
 ) => $runtime.TypedSql<insertFilterStatus.Parameters, insertFilterStatus.Result>;
 
 export namespace insertFilterStatus {
-  export type Parameters = [filterId: string, statusId: string, createdAt: string];
-  export type Result = {};
+  export type Parameters = [id: string, filterId: string, statusId: string, createdAt: string];
+  export type Result = {
+    id: string | null;
+    status_id: string;
+  };
 }

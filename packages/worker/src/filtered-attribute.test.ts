@@ -153,7 +153,7 @@ describe("filtered attribute", () => {
     const narrowId = read(z.object({ id: z.string().min(1) }), narrowed.body).id;
     void narrowId;
     const addStatus = await post(viewerEmail, "POST", `/api/v2/filters/${filterId}/statuses`, {
-      status_ids: [statusId],
+      status_id: statusId,
     });
     expect(addStatus.status).toBe(200);
 
@@ -171,5 +171,28 @@ describe("filtered attribute", () => {
       .find((row) => row.status?.id === statusId)
       ?.filtered?.find((entry) => entry.filter.title === "finale");
     expect(narrowedFilter?.status_matches).toEqual([statusId]);
+    // The embedded filter lists its narrowing as FilterStatus entities.
+    const embedded = read(
+      z.array(
+        z.object({
+          status: z.object({ id: z.string() }).nullable(),
+          filtered: z
+            .array(
+              z.object({
+                filter: z.object({
+                  title: z.string(),
+                  statuses: z.array(z.object({ id: z.string(), status_id: z.string() })),
+                }),
+              }),
+            )
+            .optional(),
+        }),
+      ),
+      after.body,
+    )
+      .find((row) => row.status?.id === statusId)
+      ?.filtered?.find((entry) => entry.filter.title === "finale")?.filter.statuses;
+    expect(embedded?.map((entry) => entry.status_id)).toEqual([statusId]);
+    expect(embedded?.[0]?.id).not.toBe(statusId);
   });
 });

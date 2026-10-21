@@ -45,7 +45,7 @@ import { listStatusMuteRoots, resolveThreadRootStatusIds } from "./status-mute-s
 import { textToHtml } from "./html";
 import { cardDocument, parseCardJson } from "./link-card";
 import { FilterContextSchema, parseJsonColumn } from "./schemas";
-import { filterKeywords, type FilterRow } from "./moderation-store";
+import { filterKeywords, type FilterRow, type FilterStatus } from "./moderation-store";
 
 const mediaUrl = (identity: InstanceIdentity, objectKey: string): string =>
   `${identity.mediaPublicBaseUrl.replace(/\/$/, "")}/${objectKey}`;
@@ -714,9 +714,10 @@ export const mastodonFilter = (row: FilterRow): Record<string, unknown> => {
   };
 };
 
+/** Mastodon's v2 Filter; `statuses` are FilterStatus entities (`{ id, status_id }`). */
 export const mastodonFilterV2 = (
   row: FilterRow,
-  statuses: ReadonlyArray<Record<string, unknown>> = [],
+  statuses: ReadonlyArray<FilterStatus> = [],
 ): Record<string, unknown> => {
   const v1 = mastodonFilter(row);
   return {
@@ -725,7 +726,7 @@ export const mastodonFilterV2 = (
     context: v1.context,
     expires_at: row.expires_at,
     filter_action: row.irreversible === 1 ? "hide" : "warn",
-    statuses,
+    statuses: statuses.map((entry) => ({ id: entry.id, status_id: entry.status_id })),
     keywords: filterKeywords(row).map((keyword) => ({
       id: keyword.id,
       keyword: keyword.keyword,

@@ -262,8 +262,8 @@ export const NotificationRequestIdsBodySchema = z.object({
   "id[]": z.union([z.array(z.string()), z.string()]).optional(),
 });
 
-export const FilterStatusesBodySchema = z.object({
-  status_ids: z.union([z.array(z.string()), z.string()]).optional(),
+export const FilterStatusBodySchema = z.object({
+  status_id: z.string().trim().min(1),
 });
 
 export const ReportBodySchema = z.object({
@@ -574,7 +574,7 @@ warmSchemas([
   FollowBodySchema,
   ReblogBodySchema,
   FilterKeywordBodySchema,
-  FilterStatusesBodySchema,
+  FilterStatusBodySchema,
   NotificationPolicyBodySchema,
   NotificationRequestIdsBodySchema,
   ReportBodySchema,

@@ -76,7 +76,7 @@ export * from "./sql/deleteFavourite";
 
 export * from "./sql/deleteFilter";
 
-export * from "./sql/deleteFilterStatus";
+export * from "./sql/deleteFilterStatusById";
 
 export * from "./sql/deleteFollow";
 
@@ -159,6 +159,8 @@ export * from "./sql/findEmailDomainBlockById";
 export * from "./sql/findEndorsement";
 
 export * from "./sql/findFilterById";
+
+export * from "./sql/findFilterStatusById";
 
 export * from "./sql/findFollowKind";
 
@@ -320,7 +322,7 @@ export * from "./sql/listFamiliarFollowerIds";
 
 export * from "./sql/listFeaturedTags";
 
-export * from "./sql/listFilterStatusIds";
+export * from "./sql/listFilterStatuses";
 
 export * from "./sql/listFilters";
 

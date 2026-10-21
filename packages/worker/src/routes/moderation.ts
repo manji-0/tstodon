@@ -10,28 +10,28 @@ import {
   requireUser,
 } from "../http";
 import { newEntityId } from "../ids";
-import { authenticate } from "../auth";
-import { mastodonFilter, mastodonFilterV2, mastodonStatuses } from "../mastodon";
-import { instanceRules, parseInstanceIdentity } from "../runtime-config";
-import { findStatusesByIds } from "../status-store";
+import { mastodonFilter, mastodonFilterV2 } from "../mastodon";
+import { instanceRules } from "../runtime-config";
 import {
-  addFilterStatuses,
+  addFilterStatus,
   deleteFilter,
   filterKeywords,
   findFilterById,
+  findFilterStatusById,
   insertFilter,
   insertReport,
-  listFilterStatusIds,
+  listFilterStatuses,
   ReportCategorySchema,
   listFilters,
-  removeFilterStatus,
+  removeFilterStatusById,
   updateFilter,
   type FilterKeyword,
+  type FilterRow,
 } from "../moderation-store";
 import {
   FilterBodySchema,
   FilterKeywordBodySchema,
-  FilterStatusesBodySchema,
+  FilterStatusBodySchema,
   FilterV2BodySchema,
   isTruthy,
   ReportBodySchema,
@@ -77,6 +77,70 @@ moderationRoutes.post("/api/v1/filters", async (c) => {
     return jsonRepositoryError(c, row.error.message);
   }
   return c.json(mastodonFilter(row.value), 200);
+});
+
+moderationRoutes.get("/api/v1/filters/:id", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const row = await findFilterById(c.env.DB, user.value.id, c.req.param("id"));
+  if (row.isErr()) {
+    return jsonRepositoryError(c, row.error.message);
+  }
+  if (!row.value) {
+    return filterNotFound(c);
+  }
+  return c.json(mastodonFilter(row.value));
+});
+
+/** v1 update: the phrase replaces the filter's first keyword, the rest keep. */
+moderationRoutes.put("/api/v1/filters/:id", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const id = c.req.param("id");
+  const existing = await findFilterById(c.env.DB, user.value.id, id);
+  if (existing.isErr()) {
+    return jsonRepositoryError(c, existing.error.message);
+  }
+  if (!existing.value) {
+    return filterNotFound(c);
+  }
+  const body = await readBody(c, FilterBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  const phrase = body.value.phrase.trim();
+  const wholeWord =
+    body.value.whole_word === undefined
+      ? existing.value.whole_word === 1
+      : isTruthy(body.value.whole_word);
+  const [first, ...rest] = filterKeywords(existing.value);
+  const contexts = stringList(body.value.context);
+  const updated = await updateFilter(c.env.DB, user.value.id, id, {
+    phrase,
+    context: contexts.length > 0 ? contexts : storedContexts(existing.value),
+    wholeWord,
+    irreversible:
+      body.value.irreversible === undefined
+        ? existing.value.irreversible === 1
+        : isTruthy(body.value.irreversible),
+    expiresAt:
+      body.value.expires_in === undefined
+        ? existing.value.expires_at
+        : expiresAtFromBody(body.value.expires_in),
+    keywords: [{ id: first?.id ?? newEntityId(), keyword: phrase, whole_word: wholeWord }, ...rest],
+  });
+  if (updated.isErr()) {
+    return jsonRepositoryError(c, updated.error.message);
+  }
+  const row = await findFilterById(c.env.DB, user.value.id, id);
+  if (row.isErr() || !row.value) {
+    return filterNotFound(c);
+  }
+  return c.json(mastodonFilter(row.value));
 });
 
 moderationRoutes.delete("/api/v1/filters/:id", async (c) => {
@@ -146,13 +210,7 @@ moderationRoutes.get("/api/v2/filters", async (c) => {
   }
   const documents: Record<string, unknown>[] = [];
   for (const row of rows.value) {
-    const statusIds = await listFilterStatusIds(c.env.DB, row.id);
-    documents.push(
-      mastodonFilterV2(
-        row,
-        await filterStatusDocuments(c, statusIds.isOk() ? statusIds.value : []),
-      ),
-    );
+    documents.push(await filterDocumentV2(c, row));
   }
   return c.json(documents);
 });
@@ -198,6 +256,17 @@ const expiresAtFromBody = (raw: number | string | undefined): string | null => {
 const filterNotFound = (c: Context<{ Bindings: Env }>) =>
   c.json({ error: "Record not found", kind: "NotFound" }, 404);
 
+const storedContexts = (row: FilterRow): string[] => JSON.parse(row.context_json) as string[];
+
+/** The v2 Filter document, with the FilterStatus entries it is narrowed to. */
+const filterDocumentV2 = async (
+  c: Context<{ Bindings: Env }>,
+  row: FilterRow,
+): Promise<Record<string, unknown>> => {
+  const statuses = await listFilterStatuses(c.env.DB, row.id);
+  return mastodonFilterV2(row, statuses.isOk() ? statuses.value : []);
+};
+
 moderationRoutes.get("/api/v2/filters/:id", async (c) => {
   const user = await requireUser(c);
   if (user.isErr()) {
@@ -210,13 +279,7 @@ moderationRoutes.get("/api/v2/filters/:id", async (c) => {
   if (!row.value) {
     return filterNotFound(c);
   }
-  const statusIds = await listFilterStatusIds(c.env.DB, row.value.id);
-  return c.json(
-    mastodonFilterV2(
-      row.value,
-      await filterStatusDocuments(c, statusIds.isOk() ? statusIds.value : []),
-    ),
-  );
+  return c.json(await filterDocumentV2(c, row.value));
 });
 
 moderationRoutes.put("/api/v2/filters/:id", async (c) => {
@@ -263,13 +326,7 @@ moderationRoutes.put("/api/v2/filters/:id", async (c) => {
   if (row.isErr() || !row.value) {
     return filterNotFound(c);
   }
-  const statusIds = await listFilterStatusIds(c.env.DB, row.value.id);
-  return c.json(
-    mastodonFilterV2(
-      row.value,
-      await filterStatusDocuments(c, statusIds.isOk() ? statusIds.value : []),
-    ),
-  );
+  return c.json(await filterDocumentV2(c, row.value));
 });
 
 moderationRoutes.delete("/api/v2/filters/:id", async (c) => {
@@ -302,35 +359,21 @@ moderationRoutes.get("/api/v2/filters/:id/keywords", async (c) => {
   return c.json(filterKeywords(row.value));
 });
 
-const writeKeywords = async (
-  c: Context<{ Bindings: Env }>,
+/** Store a filter's keywords; the first one stands in as the v1 phrase. */
+const writeKeywords = (
+  db: D1Database,
+  accountId: string,
+  row: FilterRow,
   keywords: ReadonlyArray<FilterKeyword>,
-): Promise<Response> => {
-  const user = await requireUser(c);
-  if (user.isErr()) {
-    return jsonAuthError(c, user.error);
-  }
-  const id = c.req.param("id") ?? "";
-  const row = await findFilterById(c.env.DB, user.value.id, id);
-  if (row.isErr()) {
-    return jsonRepositoryError(c, row.error.message);
-  }
-  if (!row.value) {
-    return filterNotFound(c);
-  }
-  const updated = await updateFilter(c.env.DB, user.value.id, id, {
-    phrase: keywords[0]?.keyword ?? row.value.phrase,
-    context: JSON.parse(row.value.context_json) as string[],
-    wholeWord: keywords[0]?.whole_word ?? row.value.whole_word === 1,
-    irreversible: row.value.irreversible === 1,
-    expiresAt: row.value.expires_at,
+) =>
+  updateFilter(db, accountId, row.id, {
+    phrase: keywords[0]?.keyword ?? row.phrase,
+    context: storedContexts(row),
+    wholeWord: keywords[0]?.whole_word ?? row.whole_word === 1,
+    irreversible: row.irreversible === 1,
+    expiresAt: row.expires_at,
     keywords,
   });
-  if (updated.isErr()) {
-    return jsonRepositoryError(c, updated.error.message);
-  }
-  return c.json({});
-};
 
 moderationRoutes.post("/api/v2/filters/:id/keywords", async (c) => {
   const user = await requireUser(c);
@@ -361,29 +404,64 @@ moderationRoutes.post("/api/v2/filters/:id/keywords", async (c) => {
     keyword,
     whole_word: isTruthy(body.value.whole_word),
   };
-  const response = await writeKeywords(c, [...existing, appended]);
-  if (response.status !== 200) {
-    return response;
+  const written = await writeKeywords(c.env.DB, user.value.id, row.value, [...existing, appended]);
+  if (written.isErr()) {
+    return jsonRepositoryError(c, written.error.message);
   }
   return c.json(appended);
 });
 
-moderationRoutes.put("/api/v2/filters/:id/keywords/:keywordId", async (c) => {
+/** The viewer's filter holding keyword `keywordId`, with its keywords. */
+const findKeyword = async (
+  db: D1Database,
+  accountId: string,
+  keywordId: string,
+): Promise<
+  | Readonly<{ kind: "Found"; row: FilterRow; keywords: ReadonlyArray<FilterKeyword> }>
+  | Readonly<{ kind: "NotFound" }>
+  | Readonly<{ kind: "Failed"; message: string }>
+> => {
+  const rows = await listFilters(db, accountId);
+  if (rows.isErr()) {
+    return { kind: "Failed", message: rows.error.message };
+  }
+  for (const row of rows.value) {
+    const keywords = filterKeywords(row);
+    if (keywords.some((entry) => entry.id === keywordId)) {
+      return { kind: "Found", row, keywords };
+    }
+  }
+  return { kind: "NotFound" };
+};
+
+moderationRoutes.get("/api/v2/filters/keywords/:id", async (c) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const row = await findFilterById(c.env.DB, user.value.id, c.req.param("id"));
-  if (row.isErr()) {
-    return jsonRepositoryError(c, row.error.message);
+  const keywordId = c.req.param("id");
+  const found = await findKeyword(c.env.DB, user.value.id, keywordId);
+  if (found.kind === "Failed") {
+    return jsonRepositoryError(c, found.message);
   }
-  if (!row.value) {
-    return filterNotFound(c);
+  const keyword =
+    found.kind === "Found" ? found.keywords.find((entry) => entry.id === keywordId) : undefined;
+  return keyword ? c.json(keyword) : filterNotFound(c);
+});
+
+moderationRoutes.put("/api/v2/filters/keywords/:id", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
   }
-  const keywordId = c.req.param("keywordId") ?? "";
-  const existing = filterKeywords(row.value);
-  const current = existing.find((entry) => entry.id === keywordId);
-  if (!current) {
+  const keywordId = c.req.param("id");
+  const found = await findKeyword(c.env.DB, user.value.id, keywordId);
+  if (found.kind === "Failed") {
+    return jsonRepositoryError(c, found.message);
+  }
+  const current =
+    found.kind === "Found" ? found.keywords.find((entry) => entry.id === keywordId) : undefined;
+  if (found.kind !== "Found" || !current) {
     return filterNotFound(c);
   }
   const body = await readBody(c, FilterKeywordBodySchema);
@@ -400,17 +478,67 @@ moderationRoutes.put("/api/v2/filters/:id/keywords/:keywordId", async (c) => {
     whole_word:
       body.value.whole_word === undefined ? current.whole_word : isTruthy(body.value.whole_word),
   };
-  const response = await writeKeywords(
-    c,
-    existing.map((entry) => (entry.id === keywordId ? next : entry)),
+  const written = await writeKeywords(
+    c.env.DB,
+    user.value.id,
+    found.row,
+    found.keywords.map((entry) => (entry.id === keywordId ? next : entry)),
   );
-  if (response.status !== 200) {
-    return response;
+  if (written.isErr()) {
+    return jsonRepositoryError(c, written.error.message);
   }
   return c.json(next);
 });
 
-moderationRoutes.delete("/api/v2/filters/:id/keywords/:keywordId", async (c) => {
+moderationRoutes.delete("/api/v2/filters/keywords/:id", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const keywordId = c.req.param("id");
+  const found = await findKeyword(c.env.DB, user.value.id, keywordId);
+  if (found.kind === "Failed") {
+    return jsonRepositoryError(c, found.message);
+  }
+  if (found.kind === "NotFound") {
+    return filterNotFound(c);
+  }
+  const remaining = found.keywords.filter((entry) => entry.id !== keywordId);
+  if (remaining.length === 0) {
+    return c.json({ error: "a filter needs at least one keyword", kind: "ValidationError" }, 422);
+  }
+  const written = await writeKeywords(c.env.DB, user.value.id, found.row, remaining);
+  if (written.isErr()) {
+    return jsonRepositoryError(c, written.error.message);
+  }
+  return c.json({});
+});
+
+moderationRoutes.get("/api/v2/filters/statuses/:id", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const found = await findFilterStatusById(c.env.DB, user.value.id, c.req.param("id"));
+  if (found.isErr()) {
+    return jsonRepositoryError(c, found.error.message);
+  }
+  return found.value ? c.json(found.value) : filterNotFound(c);
+});
+
+moderationRoutes.delete("/api/v2/filters/statuses/:id", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const removed = await removeFilterStatusById(c.env.DB, user.value.id, c.req.param("id"));
+  if (removed.isErr()) {
+    return jsonRepositoryError(c, removed.error.message);
+  }
+  return removed.value ? c.json({}) : filterNotFound(c);
+});
+
+moderationRoutes.get("/api/v2/filters/:id/statuses", async (c) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -422,104 +550,35 @@ moderationRoutes.delete("/api/v2/filters/:id/keywords/:keywordId", async (c) => 
   if (!row.value) {
     return filterNotFound(c);
   }
-  const keywordId = c.req.param("keywordId") ?? "";
-  const existing = filterKeywords(row.value);
-  if (!existing.some((entry) => entry.id === keywordId)) {
-    return filterNotFound(c);
+  const statuses = await listFilterStatuses(c.env.DB, row.value.id);
+  if (statuses.isErr()) {
+    return jsonRepositoryError(c, statuses.error.message);
   }
-  const remaining = existing.filter((entry) => entry.id !== keywordId);
-  if (remaining.length === 0) {
-    return c.json({ error: "a filter needs at least one keyword", kind: "ValidationError" }, 422);
-  }
-  const response = await writeKeywords(c, remaining);
-  if (response.status !== 200) {
-    return response;
-  }
-  return c.json({});
+  return c.json(statuses.value);
 });
 
-const filterStatusDocuments = async (
-  c: Context<{ Bindings: Env }>,
-  statusIds: ReadonlyArray<string>,
-): Promise<Record<string, unknown>[]> => {
-  if (statusIds.length === 0) {
-    return [];
-  }
-  const identity = parseInstanceIdentity(c.env);
-  if (identity.isErr()) {
-    return [];
-  }
-  const found = await findStatusesByIds(c.env.DB, statusIds);
-  if (found.isErr()) {
-    return [];
-  }
-  const auth = await authenticate(c.req.raw, c.env);
-  const viewerId = auth.isOk() && auth.value.kind === "Account" ? auth.value.account.id : undefined;
-  return mastodonStatuses(c.env, identity.value, [...found.value.values()], viewerId);
-};
-
-moderationRoutes.get("/api/v2/filters/:id/statuses", async (c) => {
-  const user = await requireUser(c);
-  if (user.isErr()) {
-    return jsonAuthError(c, user.error);
-  }
-  const row = await findFilterById(c.env.DB, user.value.id, c.req.param("id") ?? "");
-  if (row.isErr()) {
-    return jsonRepositoryError(c, row.error.message);
-  }
-  if (!row.value) {
-    return filterNotFound(c);
-  }
-  const statusIds = await listFilterStatusIds(c.env.DB, row.value.id);
-  if (statusIds.isErr()) {
-    return jsonRepositoryError(c, statusIds.error.message);
-  }
-  return c.json(await filterStatusDocuments(c, statusIds.value));
-});
-
+/** Narrow a filter to `status_id`; adding the same status again answers the same entry. */
 moderationRoutes.post("/api/v2/filters/:id/statuses", async (c) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const row = await findFilterById(c.env.DB, user.value.id, c.req.param("id") ?? "");
+  const row = await findFilterById(c.env.DB, user.value.id, c.req.param("id"));
   if (row.isErr()) {
     return jsonRepositoryError(c, row.error.message);
   }
   if (!row.value) {
     return filterNotFound(c);
   }
-  const body = await readBody(c, FilterStatusesBodySchema);
+  const body = await readBody(c, FilterStatusBodySchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const added = await addFilterStatuses(c.env.DB, row.value.id, stringList(body.value.status_ids));
+  const added = await addFilterStatus(c.env.DB, row.value.id, body.value.status_id);
   if (added.isErr()) {
     return jsonRepositoryError(c, added.error.message);
   }
-  return c.json({});
-});
-
-moderationRoutes.delete("/api/v2/filters/:id/statuses/:statusId", async (c) => {
-  const user = await requireUser(c);
-  if (user.isErr()) {
-    return jsonAuthError(c, user.error);
-  }
-  const row = await findFilterById(c.env.DB, user.value.id, c.req.param("id") ?? "");
-  if (row.isErr()) {
-    return jsonRepositoryError(c, row.error.message);
-  }
-  if (!row.value) {
-    return filterNotFound(c);
-  }
-  const removed = await removeFilterStatus(c.env.DB, row.value.id, c.req.param("statusId") ?? "");
-  if (removed.isErr()) {
-    return jsonRepositoryError(c, removed.error.message);
-  }
-  if (!removed.value) {
-    return filterNotFound(c);
-  }
-  return c.json({});
+  return added.value ? c.json(added.value) : filterNotFound(c);
 });
 
 moderationRoutes.post("/api/v1/reports", async (c) => {

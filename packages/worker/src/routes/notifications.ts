@@ -18,12 +18,7 @@ import {
   requireUser,
 } from "../http";
 import { getMarkers } from "../marker-store";
-import {
-  mastodonAccountDocument,
-  mastodonFilterV2,
-  mastodonNotification,
-  mastodonStatuses,
-} from "../mastodon";
+import { mastodonAccountDocument, mastodonNotification, mastodonStatuses } from "../mastodon";
 import {
   DEFAULT_GROUPED_TYPES,
   groupNotifications,
@@ -57,7 +52,7 @@ const notificationFiltered = (
   const status = statuses.get(row.status_id);
   const text = status && status.kind === "LocalNote" ? status.text : "";
   const matches = matchFilters(filters, "notifications", text, row.status_id);
-  return filteredAttribute(matches, (filterRow) => mastodonFilterV2(filterRow));
+  return filteredAttribute(matches);
 };
 
 notificationRoutes.get("/api/v1/notifications", async (c) => {

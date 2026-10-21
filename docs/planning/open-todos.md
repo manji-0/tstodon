@@ -83,6 +83,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 - `filtered` attribute on search results and notifications (keyword + narrowed-status matching)
 - Filter narrowing: `/api/v2/filters/:id/statuses` + `statuses` on the v2 document
 - v2 filter verbs plus keyword sub-resources (`filters.keywords_json`)
+- Filter paths and entities match Mastodon: flat `filters/keywords/:id` and `filters/statuses/:id`, FilterStatus `{id, status_id}`, v1 `GET`/`PUT /api/v1/filters/:id`
 - Grouped notifications (`/api/v2/notifications` + group_key endpoints and unread count)
 - Poll `hide_totals` (counts null until expiry) and a vote now answers the Poll entity
 - `reject_media` enforced: remote attachments dropped on persist and cleared for existing rows

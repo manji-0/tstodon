@@ -9,10 +9,11 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import {
   deleteFilter as deleteFilterSql,
-  deleteFilterStatus as deleteFilterStatusSql,
+  deleteFilterStatusById as deleteFilterStatusByIdSql,
   findFilterById as findFilterByIdSql,
+  findFilterStatusById as findFilterStatusByIdSql,
   insertFilterStatus as insertFilterStatusSql,
-  listFilterStatusIds as listFilterStatusIdsSql,
+  listFilterStatuses as listFilterStatusesSql,
   insertFilter as insertFilterSql,
   insertReport as insertReportSql,
   listFilters as listFiltersSql,
@@ -182,37 +183,60 @@ export const updateFilter = async (
   });
 
 /** Status ids a filter is narrowed to. */
-export const listFilterStatusIds = async (
+/** Mastodon's FilterStatus: one status a filter is narrowed to, with its own id. */
+export type FilterStatus = Readonly<{ id: string; status_id: string }>;
+
+export const listFilterStatuses = async (
   db: D1Database,
   filterId: string,
-): Promise<Result<string[], RepositoryError>> =>
+): Promise<Result<FilterStatus[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ status_id: string }>(db, listFilterStatusIdsSql(filterId));
-    return rows.map((row) => row.status_id);
+    const rows = await queryTyped<{ id: string | null; status_id: string }>(
+      db,
+      listFilterStatusesSql(filterId),
+    );
+    return rows.flatMap((row) => (row.id ? [{ id: row.id, status_id: row.status_id }] : []));
   });
 
-export const addFilterStatuses = async (
-  db: D1Database,
-  filterId: string,
-  statusIds: ReadonlyArray<string>,
-): Promise<Result<void, RepositoryError>> => {
-  const written = await runD1(async () => {
-    for (const statusId of [...new Set(statusIds)].filter((id) => id.length > 0)) {
-      await runTyped(db, insertFilterStatusSql(filterId, statusId, nowIso()));
-    }
-  });
-  return written.map(() => undefined);
-};
-
-export const removeFilterStatus = async (
+/** Narrow a filter to a status; adding the same status again answers the existing entry. */
+export const addFilterStatus = async (
   db: D1Database,
   filterId: string,
   statusId: string,
+): Promise<Result<FilterStatus | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ id: string | null; status_id: string }>(
+      db,
+      insertFilterStatusSql(newEntityId(), filterId, statusId, nowIso()),
+    );
+    const row = rows[0];
+    return row?.id ? { id: row.id, status_id: row.status_id } : undefined;
+  });
+
+/** A FilterStatus by id, when it belongs to one of the account's filters. */
+export const findFilterStatusById = async (
+  db: D1Database,
+  accountId: string,
+  id: string,
+): Promise<Result<FilterStatus | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ id: string | null; status_id: string }>(
+      db,
+      findFilterStatusByIdSql(accountId, id),
+    );
+    const row = rows[0];
+    return row?.id ? { id: row.id, status_id: row.status_id } : undefined;
+  });
+
+export const removeFilterStatusById = async (
+  db: D1Database,
+  accountId: string,
+  id: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ status_id: string }>(
+    const rows = await queryTyped<{ id: string | null }>(
       db,
-      deleteFilterStatusSql(filterId, statusId),
+      deleteFilterStatusByIdSql(accountId, id),
     );
     return rows.length > 0;
   });

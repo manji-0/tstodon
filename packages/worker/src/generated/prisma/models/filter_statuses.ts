@@ -25,18 +25,21 @@ export type AggregateFilter_statuses = {
 };
 
 export type Filter_statusesMinAggregateOutputType = {
+  id: string | null;
   filter_id: string | null;
   status_id: string | null;
   created_at: string | null;
 };
 
 export type Filter_statusesMaxAggregateOutputType = {
+  id: string | null;
   filter_id: string | null;
   status_id: string | null;
   created_at: string | null;
 };
 
 export type Filter_statusesCountAggregateOutputType = {
+  id: number;
   filter_id: number;
   status_id: number;
   created_at: number;
@@ -44,18 +47,21 @@ export type Filter_statusesCountAggregateOutputType = {
 };
 
 export type Filter_statusesMinAggregateInputType = {
+  id?: true;
   filter_id?: true;
   status_id?: true;
   created_at?: true;
 };
 
 export type Filter_statusesMaxAggregateInputType = {
+  id?: true;
   filter_id?: true;
   status_id?: true;
   created_at?: true;
 };
 
 export type Filter_statusesCountAggregateInputType = {
+  id?: true;
   filter_id?: true;
   status_id?: true;
   created_at?: true;
@@ -140,6 +146,7 @@ export type filter_statusesGroupByArgs<
 };
 
 export type Filter_statusesGroupByOutputType = {
+  id: string | null;
   filter_id: string;
   status_id: string;
   created_at: string;
@@ -165,12 +172,14 @@ export type filter_statusesWhereInput = {
   AND?: Prisma.filter_statusesWhereInput | Prisma.filter_statusesWhereInput[];
   OR?: Prisma.filter_statusesWhereInput[];
   NOT?: Prisma.filter_statusesWhereInput | Prisma.filter_statusesWhereInput[];
+  id?: Prisma.StringNullableFilter<"filter_statuses"> | string | null;
   filter_id?: Prisma.StringFilter<"filter_statuses"> | string;
   status_id?: Prisma.StringFilter<"filter_statuses"> | string;
   created_at?: Prisma.StringFilter<"filter_statuses"> | string;
 };
 
 export type filter_statusesOrderByWithRelationInput = {
+  id?: Prisma.SortOrderInput | Prisma.SortOrder;
   filter_id?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
@@ -178,6 +187,7 @@ export type filter_statusesOrderByWithRelationInput = {
 
 export type filter_statusesWhereUniqueInput = Prisma.AtLeast<
   {
+    id?: string;
     filter_id_status_id?: Prisma.filter_statusesFilter_idStatus_idCompoundUniqueInput;
     AND?: Prisma.filter_statusesWhereInput | Prisma.filter_statusesWhereInput[];
     OR?: Prisma.filter_statusesWhereInput[];
@@ -186,10 +196,11 @@ export type filter_statusesWhereUniqueInput = Prisma.AtLeast<
     status_id?: Prisma.StringFilter<"filter_statuses"> | string;
     created_at?: Prisma.StringFilter<"filter_statuses"> | string;
   },
-  "filter_id_status_id"
+  "filter_id_status_id" | "id"
 >;
 
 export type filter_statusesOrderByWithAggregationInput = {
+  id?: Prisma.SortOrderInput | Prisma.SortOrder;
   filter_id?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
@@ -206,48 +217,56 @@ export type filter_statusesScalarWhereWithAggregatesInput = {
   NOT?:
     | Prisma.filter_statusesScalarWhereWithAggregatesInput
     | Prisma.filter_statusesScalarWhereWithAggregatesInput[];
+  id?: Prisma.StringNullableWithAggregatesFilter<"filter_statuses"> | string | null;
   filter_id?: Prisma.StringWithAggregatesFilter<"filter_statuses"> | string;
   status_id?: Prisma.StringWithAggregatesFilter<"filter_statuses"> | string;
   created_at?: Prisma.StringWithAggregatesFilter<"filter_statuses"> | string;
 };
 
 export type filter_statusesCreateInput = {
+  id?: string | null;
   filter_id: string;
   status_id: string;
   created_at?: string;
 };
 
 export type filter_statusesUncheckedCreateInput = {
+  id?: string | null;
   filter_id: string;
   status_id: string;
   created_at?: string;
 };
 
 export type filter_statusesUpdateInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   filter_id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type filter_statusesUncheckedUpdateInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   filter_id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type filter_statusesCreateManyInput = {
+  id?: string | null;
   filter_id: string;
   status_id: string;
   created_at?: string;
 };
 
 export type filter_statusesUpdateManyMutationInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   filter_id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type filter_statusesUncheckedUpdateManyInput = {
+  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   filter_id?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -259,18 +278,21 @@ export type filter_statusesFilter_idStatus_idCompoundUniqueInput = {
 };
 
 export type filter_statusesCountOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   filter_id?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
 export type filter_statusesMaxOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   filter_id?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
 export type filter_statusesMinOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   filter_id?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
@@ -280,6 +302,7 @@ export type filter_statusesSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     filter_id?: boolean;
     status_id?: boolean;
     created_at?: boolean;
@@ -291,6 +314,7 @@ export type filter_statusesSelectCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     filter_id?: boolean;
     status_id?: boolean;
     created_at?: boolean;
@@ -302,6 +326,7 @@ export type filter_statusesSelectUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     filter_id?: boolean;
     status_id?: boolean;
     created_at?: boolean;
@@ -310,6 +335,7 @@ export type filter_statusesSelectUpdateManyAndReturn<
 >;
 
 export type filter_statusesSelectScalar = {
+  id?: boolean;
   filter_id?: boolean;
   status_id?: boolean;
   created_at?: boolean;
@@ -318,7 +344,7 @@ export type filter_statusesSelectScalar = {
 export type filter_statusesOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "filter_id" | "status_id" | "created_at",
+  "id" | "filter_id" | "status_id" | "created_at",
   ExtArgs["result"]["filter_statuses"]
 >;
 
@@ -329,6 +355,7 @@ export type $filter_statusesPayload<
   objects: {};
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
+      id: string | null;
       filter_id: string;
       status_id: string;
       created_at: string;
@@ -474,8 +501,8 @@ export interface filter_statusesDelegate<
    * // Get first 10 Filter_statuses
    * const filter_statuses = await prisma.filter_statuses.findMany({ take: 10 })
    *
-   * // Only select the `filter_id`
-   * const filter_statusesWithFilter_idOnly = await prisma.filter_statuses.findMany({ select: { filter_id: true } })
+   * // Only select the `id`
+   * const filter_statusesWithIdOnly = await prisma.filter_statuses.findMany({ select: { id: true } })
    *
    */
   findMany<T extends filter_statusesFindManyArgs>(
@@ -542,9 +569,9 @@ export interface filter_statusesDelegate<
    *   ]
    * })
    *
-   * // Create many Filter_statuses and only return the `filter_id`
-   * const filter_statusesWithFilter_idOnly = await prisma.filter_statuses.createManyAndReturn({
-   *   select: { filter_id: true },
+   * // Create many Filter_statuses and only return the `id`
+   * const filter_statusesWithIdOnly = await prisma.filter_statuses.createManyAndReturn({
+   *   select: { id: true },
    *   data: [
    *     // ... provide data here
    *   ]
@@ -670,9 +697,9 @@ export interface filter_statusesDelegate<
    *   ]
    * })
    *
-   * // Update zero or more Filter_statuses and only return the `filter_id`
-   * const filter_statusesWithFilter_idOnly = await prisma.filter_statuses.updateManyAndReturn({
-   *   select: { filter_id: true },
+   * // Update zero or more Filter_statuses and only return the `id`
+   * const filter_statusesWithIdOnly = await prisma.filter_statuses.updateManyAndReturn({
+   *   select: { id: true },
    *   where: {
    *     // ... provide filter here
    *   },
@@ -904,6 +931,7 @@ export interface Prisma__filter_statusesClient<
  * Fields of the filter_statuses model
  */
 export interface filter_statusesFieldRefs {
+  readonly id: Prisma.FieldRef<"filter_statuses", "String">;
   readonly filter_id: Prisma.FieldRef<"filter_statuses", "String">;
   readonly status_id: Prisma.FieldRef<"filter_statuses", "String">;
   readonly created_at: Prisma.FieldRef<"filter_statuses", "String">;

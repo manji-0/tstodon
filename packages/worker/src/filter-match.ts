@@ -6,18 +6,20 @@ import { mastodonFilterV2 } from "./mastodon";
 import { FilterContextSchema, parseJsonColumn } from "./schemas";
 import {
   filterKeywords,
-  listFilterStatusIds,
+  listFilterStatuses,
   listFilters,
   type FilterRow,
+  type FilterStatus,
 } from "./moderation-store";
 
 export type FilterWithStatuses = Readonly<{
   row: FilterRow;
-  narrowedStatusIds: ReadonlyArray<string>;
+  statuses: ReadonlyArray<FilterStatus>;
 }>;
 
 export type FilterMatch = Readonly<{
   row: FilterRow;
+  statuses: ReadonlyArray<FilterStatus>;
   keywordMatches: ReadonlyArray<string>;
   statusMatches: ReadonlyArray<string>;
 }>;
@@ -33,11 +35,11 @@ export const loadViewerFilters = async (
   }
   const filters: FilterWithStatuses[] = [];
   for (const row of rows.value) {
-    const statusIds = await listFilterStatusIds(db, row.id);
-    if (statusIds.isErr()) {
-      return err(statusIds.error);
+    const statuses = await listFilterStatuses(db, row.id);
+    if (statuses.isErr()) {
+      return err(statuses.error);
     }
-    filters.push({ row, narrowedStatusIds: statusIds.value });
+    filters.push({ row, statuses: statuses.value });
   }
   return ok(filters);
 };
@@ -79,14 +81,16 @@ export const matchFilters = (
       continue;
     }
     const statusMatches =
-      statusId !== null && filter.narrowedStatusIds.includes(statusId) ? [statusId] : [];
+      statusId !== null && filter.statuses.some((entry) => entry.status_id === statusId)
+        ? [statusId]
+        : [];
     const keywordMatches = filterKeywords(filter.row)
       .filter((keyword) => keywordHits(keyword.keyword, keyword.whole_word, text))
       .map((keyword) => keyword.keyword);
     if (keywordMatches.length === 0 && statusMatches.length === 0) {
       continue;
     }
-    matches.push({ row: filter.row, keywordMatches, statusMatches });
+    matches.push({ row: filter.row, statuses: filter.statuses, keywordMatches, statusMatches });
   }
   return matches;
 };
@@ -94,10 +98,9 @@ export const matchFilters = (
 /** The `filtered` array Mastodon attaches to statuses and notifications. */
 export const filteredAttribute = (
   matches: ReadonlyArray<FilterMatch>,
-  filterDocument: (row: FilterRow) => Record<string, unknown>,
 ): ReadonlyArray<Record<string, unknown>> =>
   matches.map((match) => ({
-    filter: filterDocument(match.row),
+    filter: mastodonFilterV2(match.row, match.statuses),
     keyword_matches: [...match.keywordMatches],
     status_matches: [...match.statusMatches],
   }));
@@ -134,9 +137,7 @@ export const attachFilteredToStatuses = async <T extends Record<string, unknown>
       return document;
     }
     const matches = matchFilters(filters.value, context, text, id);
-    return matches.length > 0
-      ? { ...document, filtered: filteredAttribute(matches, (row) => mastodonFilterV2(row)) }
-      : document;
+    return matches.length > 0 ? { ...document, filtered: filteredAttribute(matches) } : document;
   });
 };
 
@@ -169,8 +170,6 @@ export const attachFilteredToRemoteStatuses = async <T extends Record<string, un
       return document;
     }
     const matches = matchFilters(filters.value, context, text, id);
-    return matches.length > 0
-      ? { ...document, filtered: filteredAttribute(matches, (row) => mastodonFilterV2(row)) }
-      : document;
+    return matches.length > 0 ? { ...document, filtered: filteredAttribute(matches) } : document;
   });
 };

@@ -7,7 +7,6 @@ import { filteredAttribute, loadViewerFilters, matchFilters } from "../filter-ma
 import { jsonAuthError, jsonRepositoryError, queryLimit } from "../http";
 import {
   mastodonAccountDocument,
-  mastodonFilterV2,
   mastodonRemoteAccount,
   mastodonStatuses,
   mastodonTag,
@@ -124,7 +123,7 @@ const search = async (c: Context<{ Bindings: Env }>) => {
         const text = status && status.kind === "LocalNote" ? status.text : renderedContent;
         const matches = matchFilters(filters.value, "public", text, id.length > 0 ? id : null);
         if (matches.length > 0) {
-          document.filtered = filteredAttribute(matches, (row) => mastodonFilterV2(row));
+          document.filtered = filteredAttribute(matches);
         }
       }
     }
