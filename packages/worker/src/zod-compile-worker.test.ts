@@ -34,6 +34,8 @@ describe("worker zod compile smoke", () => {
       private_key_jwk: "{}",
       created_at: "2026-01-01T00:00:00.000Z",
       bio_text: "",
+      avatar_object_key: null,
+      header_object_key: null,
     });
     expect(ok.isOk()).toBe(true);
 
@@ -49,6 +51,8 @@ describe("worker zod compile smoke", () => {
       private_key_jwk: "{}",
       created_at: "2026-01-01T00:00:00.000Z",
       bio_text: "",
+      avatar_object_key: null,
+      header_object_key: null,
     });
     expect(err.isErr()).toBe(true);
     if (err.isErr()) {

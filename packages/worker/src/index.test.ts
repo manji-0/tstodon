@@ -291,6 +291,75 @@ describe("worker http", () => {
     expect(mediaResponse.status).toBe(200);
     const media = read(MastodonMediaPreviewSchema, await mediaResponse.json());
     expect(media.id).toBeTruthy();
+    expect(media.url).toContain("/attachments/");
+    expect(media.url.endsWith(`/${media.id}`)).toBe(true);
+    expect(media.preview_url).toBe(media.url);
+
+    const mediaGet = await SELF.fetch(media.url, {
+      headers: { Origin: "https://other.example" },
+    });
+    expect(mediaGet.status).toBe(200);
+    expect([...new Uint8Array(await mediaGet.arrayBuffer())]).toEqual([137, 80, 78, 71]);
+    expect(mediaGet.headers.get("cache-control")).toContain("max-age=31536000");
+    expect(mediaGet.headers.get("access-control-allow-origin")).toBe("*");
+
+    const mediaOptions = await SELF.fetch(media.url, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://other.example",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+    expect(mediaOptions.status).toBe(204);
+    expect(mediaOptions.headers.get("access-control-allow-origin")).toBe("*");
+
+    const apiOptions = await SELF.fetch("https://example.com/api/v1/instance", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://example.com",
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "authorization",
+      },
+    });
+    expect(apiOptions.status).toBe(204);
+    expect(apiOptions.headers.get("access-control-allow-origin")).toBe("https://example.com");
+    expect(apiOptions.headers.get("access-control-allow-headers") ?? "").toMatch(/authorization/i);
+
+    const apiDenied = await SELF.fetch("https://example.com/api/v1/instance", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://evil.example",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+    expect(apiDenied.headers.get("access-control-allow-origin")).toBeNull();
+
+    const byId = await SELF.fetch(`https://example.com/media/${media.id}`);
+    expect(byId.status).toBe(200);
+    expect([...new Uint8Array(await byId.arrayBuffer())]).toEqual([137, 80, 78, 71]);
+
+    const avatarForm = new FormData();
+    avatarForm.set("display_name", "Alice Avatar");
+    avatarForm.set("avatar", new File(["avatar-bytes"], "avatar.png", { type: "image/png" }));
+    avatarForm.set("header", new File(["header-bytes"], "header.png", { type: "image/png" }));
+    const profileResponse = await SELF.fetch(
+      "https://example.com/api/v1/accounts/update_credentials",
+      {
+        method: "PATCH",
+        headers: await auth("alice@example.com"),
+        body: avatarForm,
+      },
+    );
+    expect(profileResponse.status).toBe(200);
+    const profile = read(MastodonAccountPreviewSchema, await profileResponse.json());
+    expect(profile.avatar).toContain("/avatars/");
+    expect(profile.header).toContain("/headers/");
+    const avatarGet = await SELF.fetch(profile.avatar!);
+    expect(avatarGet.status).toBe(200);
+    expect(await avatarGet.text()).toBe("avatar-bytes");
+    const headerGet = await SELF.fetch(profile.header!);
+    expect(headerGet.status).toBe(200);
+    expect(await headerGet.text()).toBe("header-bytes");
 
     const poll = await json("/api/v1/statuses", {
       method: "POST",
@@ -1146,6 +1215,55 @@ describe("worker http", () => {
     const trendStatuses = await json("/api/v1/trends/statuses");
     expect(trendStatuses.status).toBe(200);
     expect(read(MastodonStatusListPreviewSchema, trendStatuses.body).length).toBeGreaterThan(0);
+
+    const linked = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth("link-trend@example.com")) },
+      body: JSON.stringify({
+        status: "check https://news.example/story and https://news.example/story",
+      }),
+    });
+    expect(linked.status).toBe(200);
+
+    const trendLinks = await json("/api/v1/trends/links");
+    expect(trendLinks.status).toBe(200);
+    const links = read(
+      z.array(
+        z.object({ url: z.string().url(), history: z.array(z.object({ uses: z.string() })) }),
+      ),
+      trendLinks.body,
+    );
+    expect(links.some((link) => link.url === "https://news.example/story")).toBe(true);
+
+    const rules = await json("/api/v1/instance/rules");
+    expect(rules.status).toBe(200);
+    expect(
+      read(z.array(z.object({ id: z.string(), text: z.string() })), rules.body).length,
+    ).toBeGreaterThan(0);
+
+    const emojis = await json("/api/v1/custom_emojis");
+    expect(emojis.status).toBe(200);
+    expect(
+      read(z.array(z.object({ shortcode: z.string(), url: z.string().url() })), emojis.body).some(
+        (emoji) => emoji.shortcode === "tstodon",
+      ),
+    ).toBe(true);
+
+    const announcements = await json("/api/v1/announcements", {
+      headers: await auth("directory-user@example.com"),
+    });
+    expect(announcements.status).toBe(200);
+    expect(
+      read(z.array(z.object({ id: z.string(), content: z.string() })), announcements.body).some(
+        (row) => row.id === "1",
+      ),
+    ).toBe(true);
+
+    const suggestions = await json("/api/v1/suggestions", {
+      headers: await auth("directory-user@example.com"),
+    });
+    expect(suggestions.status).toBe(200);
+    expect(read(z.array(MastodonAccountPreviewSchema), suggestions.body).length).toBeGreaterThan(0);
   });
 });
 

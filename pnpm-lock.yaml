@@ -185,15 +185,27 @@ importers:
       '@cloudflare/vitest-plugin':
         specifier: 1.4.5
         version: 1.4.5(@types/node@24.13.6)(vitest@5.0.5)
+      '@tstodon/core':
+        specifier: workspace:*
+        version: link:packages/core
+      '@tstodon/domain':
+        specifier: workspace:*
+        version: link:packages/domain
       '@types/node':
         specifier: ^24.13.6
         version: 24.13.6
       jose:
         specifier: ^6.2.12
         version: 6.2.12
+      neverthrow:
+        specifier: ^8.2.0
+        version: 8.2.0
       prisma:
         specifier: 7.10.0
         version: 7.10.0(@types/react@19.3.0)(magicast@0.5.5)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
       typescript:
         specifier: ~7.0.2
         version: 7.0.2
@@ -206,6 +218,9 @@ importers:
       wrangler:
         specifier: ^4.151.2
         version: 4.151.2(@types/node@24.13.6)
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
 
   packages/core:
     dependencies:
@@ -4011,7 +4026,6 @@ snapshots:
       esbuild: 0.28.2
     optionalDependencies:
       fsevents: 2.3.3
-    optional: true
 
   typescript@7.0.2:
     optionalDependencies:

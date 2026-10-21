@@ -104,7 +104,10 @@ describe("account profiles", () => {
       body: form,
     });
     const account = read(AccountSchema, uploaded.body);
-    expect(await env.MEDIA.head(`avatars/${account.id}`)).not.toBeNull();
+    // Each upload gets its own key under avatars/<account id>/.
+    const avatarKey = new URL(account.avatar).pathname.slice(1);
+    expect(avatarKey.startsWith(`avatars/${account.id}/`)).toBe(true);
+    expect(await env.MEDIA.head(avatarKey)).not.toBeNull();
 
     const avatarDeleted = await json("/api/v1/profile/avatar", {
       method: "DELETE",
@@ -118,7 +121,7 @@ describe("account profiles", () => {
     expect(withoutAvatar.avatar).not.toContain("/avatars/");
     expect(withoutAvatar.header).toBe(account.header);
     // The stored object is gone too.
-    expect(await env.MEDIA.head(`avatars/${account.id}`)).toBeNull();
+    expect(await env.MEDIA.head(avatarKey)).toBeNull();
 
     const headerDeleted = await json("/api/v1/profile/header", {
       method: "DELETE",

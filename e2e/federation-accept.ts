@@ -12,43 +12,35 @@ import {
   B_DOMAIN,
   accountPrivateKeyJwk,
   authHeaders,
-  d1Json,
+  d1Rows,
+  expectParsed,
   fail,
-  getJson,
+  fetchApPerson,
+  fetchMastodonAccount,
   postSignedInbox,
   seedRemoteActor,
-  sleep,
   waitOk,
-} from "./lib.mjs";
+  waitRows,
+} from "./lib.js";
+import {
+  ApWireActivity,
+  acceptObjectId,
+  InboxActivityRow,
+  OutboundActivityRow,
+  OutboxDeliveryRow,
+  RemoteFollowRow,
+} from "./schemas.js";
 
-const waitRows = async (instance, sql, predicate, label, attempts = 40) => {
-  for (let i = 0; i < attempts; i += 1) {
-    const rows = d1Json(instance, sql);
-    if (predicate(rows)) {
-      return rows;
-    }
-    await sleep(500);
-  }
-  fail(label, d1Json(instance, sql));
-};
-
-const main = async () => {
+const main = async (): Promise<void> => {
   await waitOk(`${A}/.well-known/nodeinfo`, "instance A");
   await waitOk(`${B}/.well-known/nodeinfo`, "instance B");
 
   const aliceHeaders = await authHeaders("alice-ac@e2e.example");
   const bobHeaders = await authHeaders("bob-ac@e2e.example");
-  const alice = await getJson(`${A}/api/v1/accounts/verify_credentials`, {
-    headers: aliceHeaders,
-  });
-  const bob = await getJson(`${B}/api/v1/accounts/verify_credentials`, {
-    headers: bobHeaders,
-  });
-  if (alice.status !== 200 || bob.status !== 200) {
-    fail("provision", { alice, bob });
-  }
-  const aliceUser = alice.body.username;
-  const bobUser = bob.body.username;
+  const alice = await fetchMastodonAccount(A, aliceHeaders, "provision");
+  const bob = await fetchMastodonAccount(B, bobHeaders, "provision");
+  const aliceUser = alice.username;
+  const bobUser = bob.username;
   const aliceActor = `${A}/users/${aliceUser}`;
   const bobActor = `${B}/users/${bobUser}`;
   const bobKeyId = `${bobActor}#main-key`;
@@ -56,95 +48,108 @@ const main = async () => {
   const bobInbox = `${B}/inbox`;
   console.log(`ok users @${aliceUser}@${A_DOMAIN}, @${bobUser}@${B_DOMAIN}`);
 
-  const bobDoc = await getJson(bobActor, { headers: { Accept: "application/activity+json" } });
-  const aliceDoc = await getJson(aliceActor, {
-    headers: { Accept: "application/activity+json" },
-  });
-  seedRemoteActor("a", bobDoc.body);
-  seedRemoteActor("b", aliceDoc.body);
+  const bobDoc = await fetchApPerson(bobActor, "bob actor document");
+  const aliceDoc = await fetchApPerson(aliceActor, "alice actor document");
+  seedRemoteActor("a", bobDoc);
+  seedRemoteActor("b", aliceDoc);
 
   const bobKey = accountPrivateKeyJwk("b", bobUser);
   const followId = `${B}/activities/follow-ac-${Date.now()}`;
-  const follow = await postSignedInbox(aliceInbox, bobKey, bobKeyId, {
+  const followActivity = expectParsed("Follow activity", ApWireActivity.follow.parse, {
     "@context": "https://www.w3.org/ns/activitystreams",
     id: followId,
     type: "Follow",
     actor: bobActor,
     object: aliceActor,
   });
+  const follow = await postSignedInbox(aliceInbox, bobKey, bobKeyId, followActivity);
   if (follow.status !== 202) {
-    fail("Follow", follow);
+    return fail("Follow", follow);
   }
   await waitRows(
     "a",
     `SELECT follow_kind FROM remote_follows WHERE remote_actor_uri = '${bobActor}'`,
+    RemoteFollowRow.parseMany,
     (rows) => rows.some((r) => r.follow_kind === "Accepted"),
     "follow not Accepted",
+    40,
   );
   console.log("ok Follow Accepted in DB");
 
   const acceptRows = await waitRows(
     "a",
     `SELECT id, kind, payload_json FROM outbound_activities WHERE kind = 'Accept' ORDER BY created_at DESC LIMIT 5`,
+    OutboundActivityRow.parseMany,
     (rows) =>
       rows.some((r) => {
-        try {
-          const payload = JSON.parse(r.payload_json);
-          return payload?.type === "Accept" && payload?.object?.id === followId;
-        } catch {
-          return false;
-        }
+        const wire = ApWireActivity.accept.parse(JSON.parse(r.payload_json));
+        return wire.isOk() && acceptObjectId(wire.value) === followId;
       }),
     "Accept outbound activity missing on A",
+    40,
   );
   const acceptActivityRow = acceptRows.find((r) => {
-    try {
-      return JSON.parse(r.payload_json)?.object?.id === followId;
-    } catch {
-      return false;
-    }
+    const wire = ApWireActivity.accept.parse(JSON.parse(r.payload_json));
+    return wire.isOk() && acceptObjectId(wire.value) === followId;
   });
+  if (!acceptActivityRow) {
+    return fail("Accept outbound activity missing on A", acceptRows);
+  }
   console.log("ok Accept outbound on A", acceptActivityRow.id);
 
   await waitRows(
     "a",
     `SELECT inbox_url FROM outbox_deliveries WHERE activity_id = '${acceptActivityRow.id}'`,
-    (rows) => rows.some((r) => String(r.inbox_url).includes("8792")),
+    OutboxDeliveryRow.parseMany,
+    (rows) => rows.some((r) => r.inbox_url.includes("8792")),
     "Accept missing outbox target to B",
+    40,
   );
   console.log("ok Accept targeted to B");
 
-  // Host-drive Accept if workerd could not deliver over loopback.
-  let acceptOnB = d1Json(
+  const acceptOnB = d1Rows(
     "b",
     `SELECT activity_id, kind, payload_json FROM inbox_activities WHERE kind = 'Accept' ORDER BY rowid DESC LIMIT 10`,
+    InboxActivityRow.parseMany,
+    "inbox Accept poll",
   ).some((r) => {
-    try {
-      return JSON.parse(r.payload_json)?.object?.id === followId;
-    } catch {
+    if (typeof r.payload_json !== "string") {
       return false;
     }
+    const wire = ApWireActivity.accept.parse(JSON.parse(r.payload_json));
+    return wire.isOk() && acceptObjectId(wire.value) === followId;
   });
   if (!acceptOnB) {
     const aliceKey = accountPrivateKeyJwk("a", aliceUser);
-    const payload = JSON.parse(acceptActivityRow.payload_json);
-    payload.id = `${payload.id}-host-${Date.now()}`;
-    const delivered = await postSignedInbox(bobInbox, aliceKey, `${aliceActor}#main-key`, payload);
+    const payload = expectParsed(
+      "Accept wire payload",
+      ApWireActivity.accept.parse,
+      JSON.parse(acceptActivityRow.payload_json),
+    );
+    const hostAccept = { ...payload, id: `${payload.id}-host-${Date.now()}` };
+    const delivered = await postSignedInbox(
+      bobInbox,
+      aliceKey,
+      `${aliceActor}#main-key`,
+      hostAccept,
+    );
     if (delivered.status !== 202 && delivered.status !== 200) {
-      fail("host-driven Accept", delivered);
+      return fail("host-driven Accept", delivered);
     }
     await waitRows(
       "b",
       `SELECT payload_json FROM inbox_activities WHERE kind = 'Accept' ORDER BY rowid DESC LIMIT 10`,
+      InboxActivityRow.parseMany,
       (rows) =>
         rows.some((r) => {
-          try {
-            return JSON.parse(r.payload_json)?.object?.id === followId;
-          } catch {
+          if (typeof r.payload_json !== "string") {
             return false;
           }
+          const wire = ApWireActivity.accept.parse(JSON.parse(r.payload_json));
+          return wire.isOk() && acceptObjectId(wire.value) === followId;
         }),
       "Accept not in B inbox_activities",
+      40,
     );
     console.log("ok Accept on B (host-driven hop)");
   } else {
@@ -154,4 +159,4 @@ const main = async () => {
   console.log("PASS federation accept");
 };
 
-main().catch((error) => fail("unhandled", error));
+main().catch((error: unknown) => fail("unhandled", error));

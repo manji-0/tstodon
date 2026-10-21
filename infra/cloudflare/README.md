@@ -13,11 +13,12 @@ The Worker script, Durable Objects, Workflows, Images, and Analytics Engine stay
 
 ## Layout
 
-| File         | Contents                                                  |
-| ------------ | --------------------------------------------------------- |
-| `workers.tf` | D1, KV namespaces, R2 bucket, Queue (+ optional consumer) |
-| `access.tf`  | Access IdP, policies, applications                        |
-| `outputs.tf` | `wrangler_bindings` and `worker_vars`                     |
+| File                      | Contents                                                                          |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| `workers.tf`              | D1, KV namespaces, R2 bucket, Queue (+ optional consumer)                         |
+| `access.tf`               | Access IdP, policies, applications                                                |
+| `outputs.tf`              | `wrangler_bindings` and `worker_vars`                                             |
+| `media-cors.json.example` | Sample R2 CORS policy for the media custom domain (`wrangler r2 bucket cors set`) |
 
 ## Prerequisites
 

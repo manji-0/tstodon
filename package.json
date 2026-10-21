@@ -16,25 +16,30 @@
     "types:worker": "wrangler types --env-interface Env",
     "prisma:pull": "prisma db pull",
     "prisma:generate": "prisma generate --sql",
-    "e2e:federation": "node e2e/federation-smoke.mjs",
-    "e2e:federation:follow-create": "node e2e/federation-follow-create.mjs",
-    "e2e:federation:interactions": "node e2e/federation-interactions.mjs",
-    "e2e:federation:delete-shared-inbox": "node e2e/federation-delete-shared-inbox.mjs",
-    "e2e:federation:accept": "node e2e/federation-accept.mjs",
-    "e2e:federation:all": "node e2e/federation-smoke.mjs && node e2e/federation-follow-create.mjs && node e2e/federation-interactions.mjs && node e2e/federation-delete-shared-inbox.mjs && node e2e/federation-accept.mjs",
+    "e2e:federation": "tsx e2e/federation-smoke.ts",
+    "e2e:federation:follow-create": "tsx e2e/federation-follow-create.ts",
+    "e2e:federation:interactions": "tsx e2e/federation-interactions.ts",
+    "e2e:federation:delete-shared-inbox": "tsx e2e/federation-delete-shared-inbox.ts",
+    "e2e:federation:accept": "tsx e2e/federation-accept.ts",
+    "e2e:federation:all": "tsx e2e/federation-smoke.ts && tsx e2e/federation-follow-create.ts && tsx e2e/federation-interactions.ts && tsx e2e/federation-delete-shared-inbox.ts && tsx e2e/federation-accept.ts",
     "e2e:up": "process-compose up",
     "ci": "vp check && vp test run && vp build . && wrangler deploy --dry-run"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.64.0",
     "@cloudflare/vitest-plugin": "1.4.5",
+    "@tstodon/core": "workspace:*",
+    "@tstodon/domain": "workspace:*",
     "@types/node": "^24.13.6",
     "jose": "^6.2.12",
+    "neverthrow": "^8.2.0",
     "prisma": "7.10.0",
+    "tsx": "^4.23.15",
     "typescript": "~7.0.2",
     "vite-plus": "catalog:",
     "vitest": "catalog:",
-    "wrangler": "^4.151.2"
+    "wrangler": "^4.151.2",
+    "zod": "^4.6.5"
   },
   "engines": {
     "node": ">=24"

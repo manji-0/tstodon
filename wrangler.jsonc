@@ -47,6 +47,7 @@
     "INSTANCE_THUMBNAIL_DESCRIPTION": "tstodon instance thumbnail",
     "INSTANCE_THUMBNAIL_URL": "https://media.example.com/site/thumbnail.png",
     "MEDIA_PUBLIC_BASE_URL": "https://media.example.com",
+    "CORS_ALLOWED_ORIGINS": "",
     "EMAIL_FROM": "tstodon <noreply@example.com>",
     "CF_ACCESS_TEAM_DOMAIN": "https://tstodon.cloudflareaccess.com",
     "CF_ACCESS_AUD": "tstodon-local-aud",

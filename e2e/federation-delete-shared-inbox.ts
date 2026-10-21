@@ -8,44 +8,38 @@ import {
   A_DOMAIN,
   B_DOMAIN,
   accountPrivateKeyJwk,
+  asString,
   authHeaders,
-  d1Json,
+  d1Rows,
+  expectParsed,
   fail,
-  getJson,
+  fetchApPerson,
+  fetchMastodonAccount,
+  getJsonParsed,
   postSignedInbox,
   seedRemoteActor,
-  sleep,
   waitOk,
-} from "./lib.mjs";
+  waitRows,
+} from "./lib.js";
+import {
+  ApWireActivity,
+  MastodonStatus,
+  OutboundActivityRow,
+  OutboxDeliveryRow,
+  RemoteFollowRow,
+  RemoteStatusRow,
+} from "./schemas.js";
 
-const waitRows = async (instance, sql, predicate, label, attempts = 40) => {
-  for (let i = 0; i < attempts; i += 1) {
-    const rows = d1Json(instance, sql);
-    if (predicate(rows)) {
-      return rows;
-    }
-    await sleep(500);
-  }
-  fail(label, d1Json(instance, sql));
-};
-
-const main = async () => {
+const main = async (): Promise<void> => {
   await waitOk(`${A}/.well-known/nodeinfo`, "instance A");
   await waitOk(`${B}/.well-known/nodeinfo`, "instance B");
 
   const aliceHeaders = await authHeaders("alice-ds@e2e.example");
   const bobHeaders = await authHeaders("bob-ds@e2e.example");
-  const alice = await getJson(`${A}/api/v1/accounts/verify_credentials`, {
-    headers: aliceHeaders,
-  });
-  const bob = await getJson(`${B}/api/v1/accounts/verify_credentials`, {
-    headers: bobHeaders,
-  });
-  if (alice.status !== 200 || bob.status !== 200) {
-    fail("provision", { alice, bob });
-  }
-  const aliceUser = alice.body.username;
-  const bobUser = bob.body.username;
+  const alice = await fetchMastodonAccount(A, aliceHeaders, "provision");
+  const bob = await fetchMastodonAccount(B, bobHeaders, "provision");
+  const aliceUser = alice.username;
+  const bobUser = bob.username;
   const aliceActor = `${A}/users/${aliceUser}`;
   const bobActor = `${B}/users/${bobUser}`;
   const bobKeyId = `${bobActor}#main-key`;
@@ -54,47 +48,44 @@ const main = async () => {
   const bobSharedInbox = `${B}/inbox`;
   console.log(`ok users @${aliceUser}@${A_DOMAIN}, @${bobUser}@${B_DOMAIN}`);
 
-  const bobDoc = await getJson(bobActor, { headers: { Accept: "application/activity+json" } });
-  const aliceDoc = await getJson(aliceActor, {
-    headers: { Accept: "application/activity+json" },
-  });
-  if (bobDoc.status !== 200 || aliceDoc.status !== 200) {
-    fail("actor docs", { bobDoc, aliceDoc });
-  }
-  // Force shared-inbox preference for fan-out selection on A.
+  const bobDoc = await fetchApPerson(bobActor, "bob actor document");
+  const aliceDoc = await fetchApPerson(aliceActor, "alice actor document");
   seedRemoteActor("a", {
-    ...bobDoc.body,
+    ...bobDoc,
     endpoints: { sharedInbox: bobSharedInbox },
   });
-  seedRemoteActor("b", aliceDoc.body);
+  seedRemoteActor("b", aliceDoc);
   console.log("ok seeded remote_actors with sharedInbox on bob");
 
   const bobKey = accountPrivateKeyJwk("b", bobUser);
-  const follow = await postSignedInbox(aliceInbox, bobKey, bobKeyId, {
+  const followActivity = expectParsed("Follow activity", ApWireActivity.follow.parse, {
     "@context": "https://www.w3.org/ns/activitystreams",
     id: `${B}/activities/follow-ds-${Date.now()}`,
     type: "Follow",
     actor: bobActor,
     object: aliceActor,
   });
+  const follow = await postSignedInbox(aliceInbox, bobKey, bobKeyId, followActivity);
   if (follow.status !== 202) {
-    fail("Follow", follow);
+    return fail("Follow", follow);
   }
   await waitRows(
     "a",
     `SELECT follow_kind FROM remote_follows WHERE remote_actor_uri = '${bobActor}'`,
+    RemoteFollowRow.parseMany,
     (rows) => rows.some((r) => r.follow_kind === "Accepted"),
     "follow not Accepted",
+    40,
   );
 
   const statusText = `shared-inbox delete e2e ${Date.now()}`;
-  const created = await getJson(`${A}/api/v1/statuses`, {
+  const created = await getJsonParsed(`${A}/api/v1/statuses`, MastodonStatus.parse, "create", {
     method: "POST",
     headers: { ...aliceHeaders, "Content-Type": "application/json" },
     body: JSON.stringify({ status: statusText, visibility: "public" }),
   });
-  if (created.status !== 200 || !created.body?.id) {
-    fail("create", created);
+  if (created.status !== 200) {
+    return fail("create", created);
   }
   const statusId = created.body.id;
   const statusUri = `${aliceActor}/statuses/${statusId}`;
@@ -103,55 +94,78 @@ const main = async () => {
   const targets = await waitRows(
     "a",
     `SELECT inbox_url FROM outbox_deliveries WHERE inbox_url LIKE '%8792%' ORDER BY created_at DESC LIMIT 10`,
-    (rows) => rows.some((r) => String(r.inbox_url) === bobSharedInbox),
+    OutboxDeliveryRow.parseMany,
+    (rows) => rows.some((r) => r.inbox_url === bobSharedInbox),
     "ExpandFollowers did not select shared inbox",
+    40,
   );
   console.log(
     "ok shared-inbox fan-out target",
-    targets.find((r) => String(r.inbox_url) === bobSharedInbox)?.inbox_url,
+    targets.find((r) => r.inbox_url === bobSharedInbox)?.inbox_url,
   );
 
-  const delivery = d1Json(
+  const deliveries = d1Rows(
     "a",
     `SELECT activity_id, inbox_url FROM outbox_deliveries WHERE inbox_url = '${bobSharedInbox}' ORDER BY created_at DESC LIMIT 1`,
-  )[0];
-  const payloadRows = d1Json(
-    "a",
-    `SELECT payload_json FROM outbound_activities WHERE id = '${String(delivery.activity_id).replaceAll("'", "''")}' LIMIT 1`,
+    OutboxDeliveryRow.parseMany,
+    "shared-inbox delivery row",
   );
-  const createActivity = JSON.parse(payloadRows[0].payload_json);
-  createActivity.id = `${createActivity.id}-host-${Date.now()}`;
+  const delivery = deliveries[0];
+  if (!delivery?.activity_id) {
+    return fail("missing shared-inbox delivery row", deliveries);
+  }
+  const payloadRows = d1Rows(
+    "a",
+    `SELECT id, payload_json FROM outbound_activities WHERE id = '${asString(delivery.activity_id).replaceAll("'", "''")}' LIMIT 1`,
+    OutboundActivityRow.parseMany,
+    "Create payload row",
+  );
+  const payloadRow = payloadRows[0];
+  if (!payloadRow) {
+    return fail("missing Create payload", payloadRows);
+  }
+  const createActivity = expectParsed(
+    "Create wire",
+    ApWireActivity.create.parse,
+    JSON.parse(payloadRow.payload_json),
+  );
+  const hostCreate = { ...createActivity, id: `${createActivity.id}-host-${Date.now()}` };
   const aliceKey = accountPrivateKeyJwk("a", aliceUser);
-  const delivered = await postSignedInbox(bobSharedInbox, aliceKey, aliceKeyId, createActivity);
+  const delivered = await postSignedInbox(bobSharedInbox, aliceKey, aliceKeyId, hostCreate);
   if (delivered.status !== 202 && delivered.status !== 200) {
-    fail("Create to shared inbox", delivered);
+    return fail("Create to shared inbox", delivered);
   }
   await waitRows(
     "b",
     `SELECT object_uri, content_html FROM remote_statuses WHERE object_uri = '${statusUri}'`,
+    RemoteStatusRow.parseMany,
     (rows) => rows.length === 1,
     "Create not on B",
+    40,
   );
   console.log("ok Create on B via shared inbox");
 
-  const deleted = await postSignedInbox(bobSharedInbox, aliceKey, aliceKeyId, {
+  const deleteActivity = expectParsed("Delete activity", ApWireActivity.delete.parse, {
     "@context": "https://www.w3.org/ns/activitystreams",
     id: `${A}/activities/delete-${statusId}-${Date.now()}`,
     type: "Delete",
     actor: aliceActor,
     object: statusUri,
   });
+  const deleted = await postSignedInbox(bobSharedInbox, aliceKey, aliceKeyId, deleteActivity);
   if (deleted.status !== 202 && deleted.status !== 200) {
-    fail("Delete to B", deleted);
+    return fail("Delete to B", deleted);
   }
   await waitRows(
     "b",
     `SELECT object_uri FROM remote_statuses WHERE object_uri = '${statusUri}'`,
+    RemoteStatusRow.parseMany,
     (rows) => rows.length === 0,
     "Delete did not remove remote_statuses",
+    40,
   );
   console.log("ok Delete cleared remote_statuses on B");
   console.log("PASS federation delete + shared-inbox");
 };
 
-main().catch((error) => fail("unhandled", error));
+main().catch((error: unknown) => fail("unhandled", error));

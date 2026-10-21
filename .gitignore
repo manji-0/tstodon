@@ -10,6 +10,7 @@
 /node_modules
 /packages/*/dist
 /packages/*/node_modules
+/e2e/dist
 e2e/instances/.wrangler
 worker-configuration.d.ts
 .vitest/

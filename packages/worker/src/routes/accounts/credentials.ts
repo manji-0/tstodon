@@ -19,6 +19,8 @@ import {
 import { accountSource, mastodonAccountDocument } from "../../account-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { isTruthy } from "../../form-values";
+import { newEntityId } from "../../ids";
+import { avatarObjectKey, headerObjectKey } from "../../media-keys";
 import { z } from "zod";
 import { booleanish } from "../../form-values";
 
@@ -104,7 +106,10 @@ const storeProfileImage = async (
   if (bytes.byteLength > PROFILE_IMAGE_MAX_BYTES) {
     return { kind: "Err", message: `${kind} exceeds ${PROFILE_IMAGE_MAX_BYTES} bytes` };
   }
-  const objectKey = `${kind}s/${accountId}`;
+  // A fresh key per upload, so the immutable cache never serves the old image.
+  const blobId = newEntityId();
+  const objectKey =
+    kind === "avatar" ? avatarObjectKey(accountId, blobId) : headerObjectKey(accountId, blobId);
   await env.MEDIA.put(objectKey, bytes, { httpMetadata: { contentType } });
   return { kind: "Ok", objectKey, contentType };
 };
@@ -260,6 +265,13 @@ accountCredentialRoutes.patch("/api/v1/accounts/update_credentials", async (c) =
   });
   if (saved.isErr()) {
     return jsonRepositoryError(c, saved.error.message);
+  }
+  const replaced = [
+    uploaded.objectKey === null ? null : existingProfile.value.avatarObjectKey,
+    header.objectKey === null ? null : existingProfile.value.headerObjectKey,
+  ].filter((key): key is string => key !== null);
+  if (replaced.length > 0) {
+    await c.env.MEDIA.delete(replaced);
   }
   if (body.value.locked !== undefined) {
     const locked = await setAccountLocked(c.env.DB, user.value.id, isTruthy(body.value.locked));

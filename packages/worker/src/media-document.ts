@@ -1,7 +1,8 @@
 import { type InstanceIdentity } from "@tstodon/domain";
 
-export const mediaUrl = (identity: InstanceIdentity, objectKey: string): string =>
-  `${identity.mediaPublicBaseUrl.replace(/\/$/, "")}/${objectKey}`;
+import { mediaPublicUrl } from "./media-keys";
+
+export const mediaUrl = mediaPublicUrl;
 
 export const mastodonMedia = (
   identity: InstanceIdentity,

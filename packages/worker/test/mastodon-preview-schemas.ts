@@ -11,6 +11,8 @@ export const MastodonAccountPreviewSchema = z.object({
       highlighted: z.boolean(),
     })
     .optional(),
+  avatar: z.string().optional(),
+  header: z.string().optional(),
 });
 
 export const MastodonStatusPreviewSchema = z.object({
@@ -67,6 +69,8 @@ export const MastodonRelationshipListPreviewSchema = z.array(MastodonRelationshi
 
 export const MastodonMediaPreviewSchema = z.object({
   id: z.string().min(1),
+  url: z.string(),
+  preview_url: z.string().nullable(),
 });
 
 export const WebfingerPreviewSchema = z.object({

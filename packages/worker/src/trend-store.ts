@@ -41,25 +41,55 @@ export type TrendingLink = Readonly<{
   document: Record<string, unknown>;
 }>;
 
+const HISTORY_DAYS = 7;
+const SECONDS_PER_DAY = 24 * 60 * 60;
+
+/** Uses of one link, in total and per UTC day (epoch seconds) with the sharing accounts. */
+type LinkUsage = {
+  uses: number;
+  days: Map<number, { uses: number; accounts: Set<string> }>;
+};
+
 /** How often each link appears in the text of recent trending statuses. */
 const trendingLinkUses = async (
   db: D1Database,
-): Promise<Result<Map<string, number>, RepositoryError>> => {
+): Promise<Result<Map<string, LinkUsage>, RepositoryError>> => {
   const statuses = await listTrendingStatuses(db, TREND_WINDOW);
   if (statuses.isErr()) {
     return err(statuses.error);
   }
-  const counts = new Map<string, number>();
+  const counts = new Map<string, LinkUsage>();
   for (const status of statuses.value) {
     if (status.kind !== "LocalNote") {
       continue;
     }
+    const day = Math.floor(Date.parse(status.createdAt) / 1000 / SECONDS_PER_DAY) * SECONDS_PER_DAY;
     for (const match of status.text.matchAll(LINK_PATTERN)) {
       const url = match[0].replace(/[.,;:!?]+$/, "");
-      counts.set(url, (counts.get(url) ?? 0) + 1);
+      const usage = counts.get(url) ?? { uses: 0, days: new Map() };
+      usage.uses += 1;
+      const daily = usage.days.get(day) ?? { uses: 0, accounts: new Set<string>() };
+      daily.uses += 1;
+      daily.accounts.add(status.accountId);
+      usage.days.set(day, daily);
+      counts.set(url, usage);
     }
   }
   return ok(counts);
+};
+
+/** Mastodon's `Trends::Link` history: the last week, newest first, zero-filled. */
+const linkHistory = (usage: LinkUsage): ReadonlyArray<Record<string, string>> => {
+  const today = Math.floor(Date.now() / 1000 / SECONDS_PER_DAY) * SECONDS_PER_DAY;
+  return Array.from({ length: HISTORY_DAYS }, (_, offset) => {
+    const day = today - offset * SECONDS_PER_DAY;
+    const daily = usage.days.get(day);
+    return {
+      day: String(day),
+      uses: String(daily?.uses ?? 0),
+      accounts: String(daily?.accounts.size ?? 0),
+    };
+  });
 };
 
 /**
@@ -100,7 +130,7 @@ export const listTrendingLinks = async (
   const offset = options.offset ?? 0;
   const ranked = [...counts.value.entries()]
     .filter(([url]) => !options.excluded?.has(url))
-    .toSorted((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .toSorted((left, right) => right[1].uses - left[1].uses || left[0].localeCompare(right[0]))
     .slice(offset, offset + options.limit);
   // Prefer the unfurled card when the link has been previewed, so trends
   // report real titles, descriptions, and images.
@@ -109,11 +139,11 @@ export const listTrendingLinks = async (
     ranked.map(([url]) => url),
   );
   const links: TrendingLink[] = [];
-  for (const [url, uses] of ranked) {
+  for (const [url, usage] of ranked) {
     const preview = cached.get(url);
-    const document = preview ? cardDocument(preview) : fallbackLinkCard(url);
-    if (document) {
-      links.push({ url, uses, document });
+    const card = preview ? cardDocument(preview) : fallbackLinkCard(url);
+    if (card) {
+      links.push({ url, uses: usage.uses, document: { ...card, history: linkHistory(usage) } });
     }
   }
   return ok(links);

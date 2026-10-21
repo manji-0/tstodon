@@ -13,6 +13,8 @@ The project is early software. The [local core](docs/planning/local-core.md) cla
 - Cloudflare bindings for D1, R2, KV, Queues, Durable Objects, Workflows, Images, Analytics Engine, cron, and observability
 - Zod 4.6 discriminant domain models for status composition, follow requests, outbox delivery, inbox activities, notifications, and registration
 - Cloudflare Access JWT authentication that provisions D1 accounts from the verified email claim
+- Media (avatars, headers, attachments) stored in R2; public URLs via `MEDIA_PUBLIC_BASE_URL` (R2 custom domain in production, Worker object-key proxy locally)
+- CORS: media proxy allows `*`; `/api/*` reflects `INSTANCE_PUBLIC_ORIGIN` and optional `CORS_ALLOWED_ORIGINS` (R2 custom domains need a separate bucket CORS policy)
 
 ## Requirements
 
@@ -34,7 +36,7 @@ pnpm test
 pnpm dev
 ```
 
-Local routes that depend on D1, R2, or Access need matching local or remote bindings. Start with [Clone And Run](docs/getting-started/clone-and-run.md).
+Local routes that depend on D1, R2, or Access need matching local or remote bindings. Start with [Clone And Run](docs/getting-started/clone-and-run.md). For media URLs and CORS vars, see [Configuration](docs/reference/configuration.md#media-public-urls).
 
 Two-instance federation smoke (process-compose): [e2e federation](docs/getting-started/e2e-federation.md).
 
