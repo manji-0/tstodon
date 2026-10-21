@@ -1,6 +1,7 @@
 export { assertNever } from "./assert-never";
 export { brandedNonEmptyString } from "./branded-id";
 export { InstanceLimits, characterCount } from "./instance-limits";
+export { Languages } from "./languages";
 export {
   compileSchema,
   hasCompiledFastPath,

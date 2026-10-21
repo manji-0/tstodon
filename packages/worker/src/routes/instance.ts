@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { Languages } from "@tstodon/core";
 import { countAccounts } from "../account-store";
 import { listPublicDomainBlocks, publicDomainBlockDocument } from "../admin-domain-block-store";
 import { jsonRepositoryError } from "../http";
@@ -60,6 +61,11 @@ instanceRoutes.get("/api/v1/instance/terms_of_service/:date", (c) => {
   }
   return c.json(document);
 });
+
+/** ISO 639-1 languages a status can be tagged with. */
+instanceRoutes.get("/api/v1/instance/languages", (c) =>
+  c.json(Languages.map(([code, name]) => ({ code, name }))),
+);
 
 /**
  * No translation backend is configured, so there are no language pairs; the
