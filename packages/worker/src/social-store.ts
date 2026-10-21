@@ -21,6 +21,7 @@ import {
   deleteFollow as deleteFollowSql,
   deleteMute as deleteMuteSql,
   dismissNotification as dismissNotificationSql,
+  dismissSuggestion as dismissSuggestionSql,
   findAccountDomainBlock as findAccountDomainBlockSql,
   findAccountNote as findAccountNoteSql,
   findActiveMute as findActiveMuteSql,
@@ -733,7 +734,7 @@ export const countUnreadNotifications = async (
     return Number(rows[0]?.count ?? 0);
   });
 
-/** Account ids the viewer already follows, blocks, or has muted (suggestions skip these). */
+/** Account ids the viewer already follows, blocks, has muted, or dismissed (suggestions skip these). */
 export const listSuggestionExclusionIds = async (
   db: D1Database,
   viewerId: string,
@@ -744,6 +745,16 @@ export const listSuggestionExclusionIds = async (
       listSuggestionExclusionIdsSql(viewerId, nowIso()),
     );
     return new Set(rows.flatMap((row) => (row.id ? [row.id] : [])));
+  });
+
+/** Remove an account from the viewer's follow suggestions for good. */
+export const dismissSuggestion = async (
+  db: D1Database,
+  viewerId: string,
+  targetAccountId: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, dismissSuggestionSql(viewerId, targetAccountId, nowIso()));
   });
 
 export type StatusInteractionCounts = Readonly<{

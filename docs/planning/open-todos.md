@@ -119,7 +119,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 - Pinned statuses: pin/unpin, five-pin limit, `?pinned=true` account statuses
 - Status edit: PUT/PATCH `/statuses/:id`, `/history`, `/source`, `status_edits` snapshots, `edited_at`, Update activity
 - Instance rules served from `INSTANCE_RULES` (v1 rules endpoint + v2 instance)
-- Suggestions (v1/v2) and trends/links derived from local accounts and public notes
+- Suggestions (v1/v2, with per-viewer dismissal) and trends/links derived from local accounts and public notes
 - Notifications: clear, dismiss, unread_count (marker-aware, honoring blocks/mutes)
 - Path-safe remote account ids: `r_` + base64url actor URI; accounts/:id and follow request targets decode it
 - Blocks + mutes: endpoints, relationship flags, home/list/direct timeline suppression, notification gating; `d1PrepareTyped` expands repeated `$N`

@@ -9,3 +9,6 @@ UNION
 SELECT target_account_id FROM mutes
   WHERE account_id = $1 AND target_account_id IS NOT NULL
     AND (expires_at IS NULL OR expires_at > $2)
+UNION
+SELECT target_account_id FROM suggestion_dismissals
+  WHERE account_id = $1

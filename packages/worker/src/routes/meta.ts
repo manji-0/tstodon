@@ -40,6 +40,7 @@ import { listTrendingLinks } from "../trend-store";
 import { rejectedTrendTargets } from "../trend-review-store";
 import {
   mastodonAccountDocument,
+  mastodonAccountDocuments,
   mastodonStatus,
   mastodonStatuses,
   mastodonTag,
@@ -67,7 +68,7 @@ import {
   thumbnailDescription,
   type Announcement,
 } from "../runtime-config";
-import { listSuggestionExclusionIds } from "../social-store";
+import { dismissSuggestion, listSuggestionExclusionIds } from "../social-store";
 import {
   countStatuses,
   listTrendingStatuses,
@@ -276,11 +277,11 @@ const suggestedAccounts = async (
   const accounts = candidates.value
     .filter((account) => account.id !== user.value.id && !excluded.value.has(account.id))
     .slice(0, limit);
-  const documents = [];
-  for (const account of accounts) {
-    documents.push(await mastodonAccountDocument(c.env, identity.value, account));
-  }
-  return documents;
+  const documents = await mastodonAccountDocuments(c.env, identity.value, accounts);
+  return accounts.flatMap((account) => {
+    const document = documents.get(account.id);
+    return document ? [document] : [];
+  });
 };
 
 metaRoutes.get("/api/v1/suggestions", async (c) => {
@@ -294,6 +295,25 @@ metaRoutes.get("/api/v2/suggestions", async (c) => {
     return result;
   }
   return c.json(result.map((account) => ({ source: "global", account })));
+});
+
+metaRoutes.delete("/api/v1/suggestions/:account_id", async (c) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const target = await findAccountById(c.env.DB, c.req.param("account_id"));
+  if (target.isErr()) {
+    return jsonRepositoryError(c, target.error.message);
+  }
+  if (!target.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const dismissed = await dismissSuggestion(c.env.DB, user.value.id, target.value.id);
+  if (dismissed.isErr()) {
+    return jsonRepositoryError(c, dismissed.error.message);
+  }
+  return c.json({});
 });
 
 metaRoutes.get("/api/v1/trends/links", async (c) => {

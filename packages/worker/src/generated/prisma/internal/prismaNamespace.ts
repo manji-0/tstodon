@@ -448,6 +448,7 @@ export const ModelName = {
   scheduled_statuses: "scheduled_statuses",
   notification_request_groups: "notification_request_groups",
   domain_allows: "domain_allows",
+  suggestion_dismissals: "suggestion_dismissals",
   trend_reviews: "trend_reviews",
   status_quotes: "status_quotes",
   status_quote_policies: "status_quote_policies",
@@ -529,6 +530,7 @@ export type TypeMap<
       | "scheduled_statuses"
       | "notification_request_groups"
       | "domain_allows"
+      | "suggestion_dismissals"
       | "trend_reviews"
       | "status_quotes"
       | "status_quote_policies"
@@ -4842,6 +4844,82 @@ export type TypeMap<
         };
       };
     };
+    suggestion_dismissals: {
+      payload: Prisma.$suggestion_dismissalsPayload<ExtArgs>;
+      fields: Prisma.suggestion_dismissalsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.suggestion_dismissalsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$suggestion_dismissalsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.suggestion_dismissalsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$suggestion_dismissalsPayload>;
+        };
+        findFirst: {
+          args: Prisma.suggestion_dismissalsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$suggestion_dismissalsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.suggestion_dismissalsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$suggestion_dismissalsPayload>;
+        };
+        findMany: {
+          args: Prisma.suggestion_dismissalsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$suggestion_dismissalsPayload>[];
+        };
+        create: {
+          args: Prisma.suggestion_dismissalsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$suggestion_dismissalsPayload>;
+        };
+        createMany: {
+          args: Prisma.suggestion_dismissalsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.suggestion_dismissalsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$suggestion_dismissalsPayload>[];
+        };
+        delete: {
+          args: Prisma.suggestion_dismissalsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$suggestion_dismissalsPayload>;
+        };
+        update: {
+          args: Prisma.suggestion_dismissalsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$suggestion_dismissalsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.suggestion_dismissalsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.suggestion_dismissalsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.suggestion_dismissalsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$suggestion_dismissalsPayload>[];
+        };
+        upsert: {
+          args: Prisma.suggestion_dismissalsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$suggestion_dismissalsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Suggestion_dismissalsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateSuggestion_dismissals>;
+        };
+        groupBy: {
+          args: Prisma.suggestion_dismissalsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Suggestion_dismissalsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.suggestion_dismissalsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Suggestion_dismissalsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
     trend_reviews: {
       payload: Prisma.$trend_reviewsPayload<ExtArgs>;
       fields: Prisma.trend_reviewsFieldRefs;
@@ -5836,6 +5914,15 @@ export const Domain_allowsScalarFieldEnum = {
 export type Domain_allowsScalarFieldEnum =
   (typeof Domain_allowsScalarFieldEnum)[keyof typeof Domain_allowsScalarFieldEnum];
 
+export const Suggestion_dismissalsScalarFieldEnum = {
+  account_id: "account_id",
+  target_account_id: "target_account_id",
+  created_at: "created_at",
+} as const;
+
+export type Suggestion_dismissalsScalarFieldEnum =
+  (typeof Suggestion_dismissalsScalarFieldEnum)[keyof typeof Suggestion_dismissalsScalarFieldEnum];
+
 export const Trend_reviewsScalarFieldEnum = {
   kind: "kind",
   target: "target",
@@ -6135,6 +6222,7 @@ export type GlobalOmitConfig = {
   scheduled_statuses?: Prisma.scheduled_statusesOmit;
   notification_request_groups?: Prisma.notification_request_groupsOmit;
   domain_allows?: Prisma.domain_allowsOmit;
+  suggestion_dismissals?: Prisma.suggestion_dismissalsOmit;
   trend_reviews?: Prisma.trend_reviewsOmit;
   status_quotes?: Prisma.status_quotesOmit;
   status_quote_policies?: Prisma.status_quote_policiesOmit;

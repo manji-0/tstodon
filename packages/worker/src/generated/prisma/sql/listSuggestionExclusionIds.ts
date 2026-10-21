@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param now
  */
 export const listSuggestionExclusionIds = $runtime.makeTypedQueryFactory(
-  "SELECT target_account_id AS id FROM follows\nWHERE follower_account_id = $1 AND target_account_id IS NOT NULL\nUNION\nSELECT target_account_id FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id IS NOT NULL\nUNION\nSELECT target_account_id FROM mutes\nWHERE account_id = $1 AND target_account_id IS NOT NULL\nAND (expires_at IS NULL OR expires_at > $2)",
+  "SELECT target_account_id AS id FROM follows\nWHERE follower_account_id = $1 AND target_account_id IS NOT NULL\nUNION\nSELECT target_account_id FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id IS NOT NULL\nUNION\nSELECT target_account_id FROM mutes\nWHERE account_id = $1 AND target_account_id IS NOT NULL\nAND (expires_at IS NULL OR expires_at > $2)\nUNION\nSELECT target_account_id FROM suggestion_dismissals\nWHERE account_id = $1",
 ) as (
   viewerId: string,
   now: string,

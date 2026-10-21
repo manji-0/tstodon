@@ -81,6 +81,47 @@ describe("suggestions and trending links", () => {
     expect(grouped.map((item) => item.account.id)).toContain(otherId);
   });
 
+  it("stops suggesting an account the viewer dismissed", async () => {
+    await accountIdFor("sug-dismisser@example.com");
+    const dismissedId = await accountIdFor("sug-dismissed@example.com");
+    const keptId = await accountIdFor("sug-kept@example.com");
+    const suggestedIds = async (): Promise<string[]> => {
+      const response = await json("/api/v1/suggestions", {
+        headers: await auth("sug-dismisser@example.com"),
+      });
+      expect(response.status).toBe(200);
+      return read(z.array(MastodonAccountPreviewSchema), response.body).map(
+        (account) => account.id,
+      );
+    };
+    expect(await suggestedIds()).toContain(dismissedId);
+
+    const dismiss = async (id: string): Promise<number> =>
+      (
+        await json(`/api/v1/suggestions/${id}`, {
+          method: "DELETE",
+          headers: await auth("sug-dismisser@example.com"),
+        })
+      ).status;
+    expect(await dismiss(dismissedId)).toBe(200);
+    expect(await dismiss(dismissedId)).toBe(200);
+    expect(await dismiss("missing-account")).toBe(404);
+    expect((await json(`/api/v1/suggestions/${dismissedId}`, { method: "DELETE" })).status).toBe(
+      401,
+    );
+
+    const ids = await suggestedIds();
+    expect(ids).not.toContain(dismissedId);
+    expect(ids).toContain(keptId);
+
+    const others = await json("/api/v1/suggestions", {
+      headers: await auth("sug-bystander@example.com"),
+    });
+    expect(
+      read(z.array(MastodonAccountPreviewSchema), others.body).map((account) => account.id),
+    ).toContain(dismissedId);
+  });
+
   it("derives trending links from public notes", async () => {
     await postStatus(
       "link-a@example.com",

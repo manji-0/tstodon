@@ -662,6 +662,14 @@ model domain_allows {
   created_at String
 }
 
+model suggestion_dismissals {
+  account_id        String
+  target_account_id String
+  created_at        String @default("CURRENT_TIMESTAMP")
+
+  @@id([account_id, target_account_id])
+}
+
 model trend_reviews {
   kind        String
   target      String

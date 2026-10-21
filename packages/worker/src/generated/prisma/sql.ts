@@ -108,6 +108,8 @@ export * from "./sql/detachStatusMedia";
 
 export * from "./sql/dismissNotification";
 
+export * from "./sql/dismissSuggestion";
+
 export * from "./sql/emailDomainAccountHistory";
 
 export * from "./sql/featureTag";

@@ -302,6 +302,11 @@ export type notification_request_groups = Prisma.notification_request_groupsMode
  */
 export type domain_allows = Prisma.domain_allowsModel;
 /**
+ * Model suggestion_dismissals
+ *
+ */
+export type suggestion_dismissals = Prisma.suggestion_dismissalsModel;
+/**
  * Model trend_reviews
  *
  */
