@@ -107,7 +107,9 @@ activityPubRoutes.get("/users/:username/statuses/:id", async (c) => {
   if (
     !status.value ||
     status.value.kind !== "LocalNote" ||
-    status.value.accountId !== account.value.id
+    status.value.accountId !== account.value.id ||
+    // Followers-only and direct notes reach their audience by delivery only.
+    (status.value.visibility.kind !== "Public" && status.value.visibility.kind !== "Unlisted")
   ) {
     return c.json({ kind: "NotFound" }, 404);
   }
@@ -122,6 +124,30 @@ activityPubRoutes.get("/users/:username/statuses/:id", async (c) => {
     jsonLd,
   );
 });
+
+const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
+
+const addressesPublic = (value: unknown): boolean => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const audience = [Reflect.get(value, "to"), Reflect.get(value, "cc")].flatMap((field) =>
+    typeof field === "string" ? [field] : Array.isArray(field) ? field : [],
+  );
+  return audience.includes(PUBLIC_COLLECTION);
+};
+
+/**
+ * The outbox lists what anyone may read, as in Mastodon: boosts and the
+ * creation of public or unlisted notes. Follows, Accepts, and followers-only
+ * or direct notes stay out.
+ */
+const publicOutboxItem = (payload: Readonly<Record<string, unknown>>): boolean => {
+  if (payload.type === "Announce") {
+    return true;
+  }
+  return payload.type === "Create" && addressesPublic(payload.object);
+};
 
 const collection = (id: string, items: ReadonlyArray<string>) => ({
   "@context": "https://www.w3.org/ns/activitystreams",
@@ -155,7 +181,7 @@ activityPubRoutes.get("/users/:username/outbox", async (c) => {
   const items: unknown[] = [];
   for (const row of rows.value) {
     const payload = parseJsonColumn(JsonObjectSchema, row.payload_json);
-    if (payload.isOk()) {
+    if (payload.isOk() && publicOutboxItem(payload.value)) {
       items.push(payload.value);
     }
   }

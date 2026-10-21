@@ -225,13 +225,17 @@ export const publishLocalNote = async (
     });
   }
   const actor = InstanceIdentity.actorUrl(identity, user.username);
-  const enqueued = await enqueueLocalActivity(env, user.id, "Create", {
-    "@context": "https://www.w3.org/ns/activitystreams",
-    id: `${actor}/statuses/${note.id}/activity`,
-    type: "Create",
-    actor,
-    object: noteDocument(identity, user, note, input.quote?.uri),
-  });
+  // A direct note is addressed to nobody remote, so followers never receive it.
+  const enqueued =
+    note.visibility.kind === "Direct"
+      ? ok(undefined)
+      : await enqueueLocalActivity(env, user.id, "Create", {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          id: `${actor}/statuses/${note.id}/activity`,
+          type: "Create",
+          actor,
+          object: noteDocument(identity, user, note, input.quote?.uri),
+        });
   if (enqueued.isErr()) {
     return err(
       enqueued.error.kind === "RepositoryError"

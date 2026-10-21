@@ -1052,14 +1052,18 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
 
   const quoteUri = await quotedStatusUri(c.env, identity.value, existing.id);
   const actor = InstanceIdentity.actorUrl(identity.value, user.value.username);
-  const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Update", {
-    "@context": "https://www.w3.org/ns/activitystreams",
-    id: `${actor}/statuses/${existing.id}/updates/${newEntityId()}`,
-    type: "Update",
-    actor,
-    published: updatedAt,
-    object: noteDocument(identity.value, user.value, revised, quoteUri),
-  });
+  // A direct note never left the instance, so its edit stays here too.
+  const enqueued =
+    revised.visibility.kind === "Direct"
+      ? ok(undefined)
+      : await enqueueLocalActivity(c.env, user.value.id, "Update", {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          id: `${actor}/statuses/${existing.id}/updates/${newEntityId()}`,
+          type: "Update",
+          actor,
+          published: updatedAt,
+          object: noteDocument(identity.value, user.value, revised, quoteUri),
+        });
   if (enqueued.isErr()) {
     return jsonRepositoryError(
       c,
