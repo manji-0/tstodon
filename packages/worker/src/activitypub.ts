@@ -79,13 +79,23 @@ export const noteDocument = (
   identity: InstanceIdentity,
   account: LocalAccount,
   note: LocalNote,
-  quoteUri?: string,
-  mentions: ReadonlyArray<NoteMention> = [],
+  extras: Readonly<{
+    quoteUri?: string | undefined;
+    mentions?: ReadonlyArray<NoteMention>;
+    /** The parent's URI, and a remote parent author to address alongside the mentions. */
+    reply?: Readonly<{ inReplyTo: string; addressAuthor: string | undefined }> | undefined;
+  }> = {},
 ): Record<string, unknown> => {
+  const { quoteUri, mentions = [], reply } = extras;
   const actor = InstanceIdentity.actorUrl(identity, account.username);
   const id = `${actor}/statuses/${note.id}`;
   const followers = `${actor}/followers`;
-  const mentioned = mentions.map((mention) => mention.href);
+  const mentioned = [
+    ...new Set([
+      ...mentions.map((mention) => mention.href),
+      ...(reply?.addressAuthor ? [reply.addressAuthor] : []),
+    ]),
+  ];
   // Mastodon's addressing: mentioned accounts are `cc`, except that a direct
   // note is addressed `to` them alone.
   const to =
@@ -125,6 +135,7 @@ export const noteDocument = (
     cc,
     sensitive: note.sensitive,
     summary: note.spoilerText.length > 0 ? note.spoilerText : null,
+    inReplyTo: reply?.inReplyTo ?? null,
     tag: mentions.map((mention) => ({ type: "Mention", href: mention.href, name: mention.name })),
   };
 };

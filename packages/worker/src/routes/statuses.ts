@@ -7,7 +7,6 @@ import {
   reblogVisibility,
   type LocalStatus as LocalStatusValue,
   type QuoteApprovalPolicy,
-  type StatusIdValue,
 } from "@tstodon/domain";
 import { Hono } from "hono";
 import type { Context } from "hono";
@@ -19,6 +18,7 @@ import { enqueueLocalActivity } from "../delivery";
 import { escapeHtml, mentionUsernames, textToHtml } from "../html";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "../mention-store";
 import { loadNoteMentions, resolveRemoteMentions } from "../mention-resolve";
+import { findReplyTarget, loadNoteReply, type ReplyTarget } from "../reply-target";
 import { findFollowKind } from "../social-store";
 import { quotedStatusUri } from "../quote-uri";
 import {
@@ -368,24 +368,22 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
       ? (policyRaw as QuotePolicy)
       : quotePolicyName(user.value.defaultQuotePolicy)
     : "nobody";
-  let inReplyToId: StatusIdValue | null = null;
+  let replyTo: ReplyTarget | null = null;
   const replyRaw = body.value.in_reply_to_id?.trim() ?? "";
   if (replyRaw.length > 0) {
     const replyId = StatusId.parse(replyRaw);
     if (replyId.isErr()) {
       return c.json({ error: "Invalid in_reply_to_id", kind: "ValidationError" }, 422);
     }
-    const parent = await findStatusById(c.env.DB, replyId.value);
+    // A local status or a cached remote one the author may see.
+    const parent = await findReplyTarget(c.env.DB, replyId.value, user.value.id);
     if (parent.isErr()) {
       return jsonRepositoryError(c, parent.error.message);
     }
     if (!parent.value) {
       return c.json({ error: "Record not found", kind: "NotFound" }, 404);
     }
-    if (!(await canViewStatus(c.env.DB, parent.value, user.value.id))) {
-      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-    }
-    inReplyToId = replyId.value;
+    replyTo = parent.value;
   }
   // `scheduled_at` stores the validated post instead of publishing it; the
   // cron publisher replays the same params through `publishLocalNote`.
@@ -431,7 +429,7 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
                 hide_totals: isTruthy(pollRaw?.hide_totals),
               }
             : null,
-        in_reply_to_id: inReplyToId === null ? null : inReplyToId,
+        in_reply_to_id: replyTo === null ? null : replyTo.status.id,
         quote_policy: statusQuotePolicy,
       },
     });
@@ -454,7 +452,7 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   }
   const published = await publishLocalNote(c.env, identity.value, user.value, {
     draft: draft.value,
-    inReplyToId,
+    replyTo,
     quote: quotedStatus
       ? {
           quotedStatusId: quotedStatus.id,
@@ -1073,13 +1071,11 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
           type: "Update",
           actor,
           published: updatedAt,
-          object: noteDocument(
-            identity.value,
-            user.value,
-            revised,
+          object: noteDocument(identity.value, user.value, revised, {
             quoteUri,
-            await loadNoteMentions(c.env.DB, identity.value, existing.id),
-          ),
+            mentions: await loadNoteMentions(c.env.DB, identity.value, existing.id),
+            reply: await loadNoteReply(c.env.DB, identity.value, revised),
+          }),
         });
   if (enqueued.isErr()) {
     return jsonRepositoryError(

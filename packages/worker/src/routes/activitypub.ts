@@ -60,6 +60,7 @@ import {
   unfollowAccount,
 } from "../social-store";
 import { loadNoteMentions } from "../mention-resolve";
+import { loadNoteReply } from "../reply-target";
 import { notifyAccount, notifyFromRemote } from "../notify";
 import { findStatusById, insertLocalReblog } from "../status-store";
 import { nowInstant } from "../clock";
@@ -115,13 +116,11 @@ activityPubRoutes.get("/users/:username/statuses/:id", async (c) => {
     return c.json({ kind: "NotFound" }, 404);
   }
   return c.json(
-    noteDocument(
-      identity.value,
-      account.value,
-      status.value,
-      await quotedStatusUri(c.env, identity.value, status.value.id),
-      await loadNoteMentions(c.env.DB, identity.value, status.value.id),
-    ),
+    noteDocument(identity.value, account.value, status.value, {
+      quoteUri: await quotedStatusUri(c.env, identity.value, status.value.id),
+      mentions: await loadNoteMentions(c.env.DB, identity.value, status.value.id),
+      reply: await loadNoteReply(c.env.DB, identity.value, status.value),
+    }),
     200,
     jsonLd,
   );

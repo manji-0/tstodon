@@ -862,6 +862,7 @@ export const StatusesScalarFieldEnum = {
   ap_id: "ap_id",
   reblog_of_id: "reblog_of_id",
   in_reply_to_id: "in_reply_to_id",
+  in_reply_to_uri: "in_reply_to_uri",
   content_text: "content_text",
   visibility: "visibility",
   sensitive: "sensitive",

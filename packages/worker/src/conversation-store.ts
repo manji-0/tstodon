@@ -26,6 +26,7 @@ import {
   CONTEXT_ANCESTOR_LIMIT,
   findStatusById,
   listDirectStatusesForAccount,
+  listStatusReplyUris,
   resolveDirectConversationRoot,
 } from "./status-store";
 
@@ -49,15 +50,15 @@ export type ConversationSummary = Readonly<{
 const resolveRemoteConversationRoot = async (
   db: D1Database,
   identity: InstanceIdentity,
-  status: RemoteStatus,
+  statusId: string,
 ): Promise<Result<string, RepositoryError>> => {
-  const targets = await findRemoteStatusReplyTargets(db, [status.id]);
+  const targets = await findRemoteStatusReplyTargets(db, [statusId]);
   if (targets.isErr()) {
     return err(targets.error);
   }
-  let current = targets.value.get(status.id);
+  let current = targets.value.get(statusId);
   if (!current) {
-    return ok(status.id);
+    return ok(statusId);
   }
   for (let depth = 0; depth < CONTEXT_ANCESTOR_LIMIT; depth += 1) {
     const parentUri = current.inReplyToUri;
@@ -89,6 +90,36 @@ const resolveRemoteConversationRoot = async (
     current = parent.value;
   }
   return ok(current.id);
+};
+
+/**
+ * The conversation a local direct note belongs to: up its local reply chain,
+ * then on into a remote direct note when the first local one answers it.
+ */
+const resolveLocalConversationRoot = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  status: LocalStatusValue,
+): Promise<Result<string, RepositoryError>> => {
+  const root = await resolveDirectConversationRoot(db, status);
+  if (root.isErr()) {
+    return err(root.error);
+  }
+  const uris = await listStatusReplyUris(db, [root.value]);
+  if (uris.isErr()) {
+    return err(uris.error);
+  }
+  const parentUri = uris.value.get(root.value);
+  if (!parentUri) {
+    return ok(root.value);
+  }
+  const parent = await findRemoteStatusReplyTargetByObjectUri(db, parentUri);
+  if (parent.isErr()) {
+    return err(parent.error);
+  }
+  return parent.value?.direct
+    ? resolveRemoteConversationRoot(db, identity, parent.value.id)
+    : ok(root.value);
 };
 
 export const listConversationsForAccount = async (
@@ -129,14 +160,14 @@ export const listConversationsForAccount = async (
     byRoot.set(root, bucket);
   };
   for (const status of locals.value) {
-    const root = await resolveDirectConversationRoot(db, status);
+    const root = await resolveLocalConversationRoot(db, identity, status);
     if (root.isErr()) {
       return err(root.error);
     }
     place(root.value, { kind: "Local", status });
   }
   for (const status of remotes.value) {
-    const root = await resolveRemoteConversationRoot(db, identity, status);
+    const root = await resolveRemoteConversationRoot(db, identity, status.id);
     if (root.isErr()) {
       return err(root.error);
     }

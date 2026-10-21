@@ -25,6 +25,7 @@ import {
   findRemoteStatusById as findRemoteStatusByIdSql,
   findRemoteStatusesByIds as findRemoteStatusesByIdsSql,
   findRemoteStatusByObjectUri as findRemoteStatusByObjectUriSql,
+  findRemoteStatusRefsByObjectUris as findRemoteStatusRefsByObjectUrisSql,
   findRemoteStatusReplyTargetByObjectUri as findRemoteStatusReplyTargetByObjectUriSql,
   findRemoteStatusReplyTargets as findRemoteStatusReplyTargetsSql,
   insertRemoteStatusMention as insertRemoteStatusMentionSql,
@@ -194,6 +195,30 @@ export const upsertRemoteStatus = async (
     return err(written.error);
   }
   return ok(written.value);
+};
+
+/** Cached remote statuses' ids and authors, keyed by object URI. */
+export const findRemoteStatusRefsByObjectUris = async (
+  db: D1Database,
+  objectUris: ReadonlyArray<string>,
+): Promise<
+  Result<ReadonlyMap<string, Readonly<{ id: string; actorUri: string }>>, RepositoryError>
+> => {
+  const unique = [...new Set(objectUris)];
+  if (unique.length === 0) {
+    return ok(new Map());
+  }
+  const rows = await runD1(async () =>
+    queryTyped<{ id: string; object_uri: string; actor_uri: string }>(
+      db,
+      findRemoteStatusRefsByObjectUrisSql(jsonStringArray(unique)),
+    ),
+  );
+  return rows.isErr()
+    ? err(rows.error)
+    : ok(
+        new Map(rows.value.map((row) => [row.object_uri, { id: row.id, actorUri: row.actor_uri }])),
+      );
 };
 
 /** Record the local accounts a cached remote note addresses. */

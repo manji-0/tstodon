@@ -1,12 +1,10 @@
 import { SELF, env } from "cloudflare:test";
-import { OutboxJob } from "@tstodon/domain";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { deliveredCreate } from "../test/delivery-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
-import { processOutboxJob } from "./delivery";
-import { listOutboundActivities } from "./outbox-store";
 import { RemoteAccountId } from "./remote-account-id";
 
 const json = async (
@@ -48,42 +46,6 @@ const post = async (email: string, status: string, visibility: string) =>
       })
     ).body,
   );
-
-const ActivitySchema = z.object({
-  type: z.string(),
-  object: z.object({
-    id: z.string(),
-    to: z.array(z.string()),
-    cc: z.array(z.string()),
-    tag: z.array(z.object({ type: z.string(), href: z.string(), name: z.string() })),
-  }),
-});
-
-/** The queued Create of a note, expanded, with the inboxes it is delivered to. */
-const deliveredCreate = async (accountId: string, noteUri: string) => {
-  const activities = await listOutboundActivities(env.DB, accountId, 50);
-  const row = (activities.isOk() ? activities.value : []).find((candidate) => {
-    const parsed = schemaResult(ActivitySchema)(JSON.parse(candidate.payload_json));
-    return parsed.isOk() && parsed.value.type === "Create" && parsed.value.object.id === noteUri;
-  });
-  if (!row) {
-    return undefined;
-  }
-  const job = OutboxJob.parse({ kind: "ExpandFollowers", activityId: row.id });
-  if (job.isErr()) {
-    throw new Error("expand job rejected");
-  }
-  await processOutboxJob(env, job.value);
-  const { results } = await env.DB.prepare(
-    "SELECT inbox_url FROM outbox_deliveries WHERE activity_id = ? AND inbox_url IS NOT NULL ORDER BY inbox_url",
-  )
-    .bind(row.id)
-    .all<{ inbox_url: string }>();
-  return {
-    activity: read(ActivitySchema, JSON.parse(row.payload_json)),
-    inboxes: (results ?? []).map((target) => target.inbox_url),
-  };
-};
 
 describe("mentions of remote accounts in local notes", () => {
   it("addresses a direct note to the mentioned remote account only", async () => {

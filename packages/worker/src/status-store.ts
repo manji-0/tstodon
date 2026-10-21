@@ -29,6 +29,8 @@ import {
   findStatusById as findStatusByIdSql,
   findStatusUpdatedAt as findStatusUpdatedAtSql,
   insertLocalNote as insertLocalNoteSql,
+  listStatusReplyUris as listStatusReplyUrisSql,
+  setStatusReplyUri as setStatusReplyUriSql,
   findLocalReblog as findLocalReblogSql,
   insertLocalReblog as insertLocalReblogSql,
   insertStatusEdit as insertStatusEditSql,
@@ -185,6 +187,36 @@ export const findStatusesByIds = async (
     statuses.set(status.id, status);
   }
   return ok(statuses);
+};
+
+/** Record the remote status a local note replies to, by its object URI. */
+export const setStatusReplyUri = async (
+  db: D1Database,
+  statusId: string,
+  inReplyToUri: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, setStatusReplyUriSql(statusId, inReplyToUri));
+  });
+
+/** Remote parents' object URIs of local notes, keyed by status id; local replies are absent. */
+export const listStatusReplyUris = async (
+  db: D1Database,
+  statusIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, string>, RepositoryError>> => {
+  const unique = [...new Set(statusIds)];
+  if (unique.length === 0) {
+    return ok(new Map());
+  }
+  const rows = await runD1(async () =>
+    queryTyped<{ id: string; in_reply_to_uri: string }>(
+      db,
+      listStatusReplyUrisSql(jsonStringArray(unique)),
+    ),
+  );
+  return rows.isErr()
+    ? err(rows.error)
+    : ok(new Map(rows.value.map((row) => [row.id, row.in_reply_to_uri])));
 };
 
 export const insertLocalNote = async (

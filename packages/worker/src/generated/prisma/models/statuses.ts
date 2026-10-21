@@ -40,6 +40,7 @@ export type StatusesMinAggregateOutputType = {
   ap_id: string | null;
   reblog_of_id: string | null;
   in_reply_to_id: string | null;
+  in_reply_to_uri: string | null;
   content_text: string | null;
   visibility: string | null;
   sensitive: number | null;
@@ -58,6 +59,7 @@ export type StatusesMaxAggregateOutputType = {
   ap_id: string | null;
   reblog_of_id: string | null;
   in_reply_to_id: string | null;
+  in_reply_to_uri: string | null;
   content_text: string | null;
   visibility: string | null;
   sensitive: number | null;
@@ -76,6 +78,7 @@ export type StatusesCountAggregateOutputType = {
   ap_id: number;
   reblog_of_id: number;
   in_reply_to_id: number;
+  in_reply_to_uri: number;
   content_text: number;
   visibility: number;
   sensitive: number;
@@ -103,6 +106,7 @@ export type StatusesMinAggregateInputType = {
   ap_id?: true;
   reblog_of_id?: true;
   in_reply_to_id?: true;
+  in_reply_to_uri?: true;
   content_text?: true;
   visibility?: true;
   sensitive?: true;
@@ -121,6 +125,7 @@ export type StatusesMaxAggregateInputType = {
   ap_id?: true;
   reblog_of_id?: true;
   in_reply_to_id?: true;
+  in_reply_to_uri?: true;
   content_text?: true;
   visibility?: true;
   sensitive?: true;
@@ -139,6 +144,7 @@ export type StatusesCountAggregateInputType = {
   ap_id?: true;
   reblog_of_id?: true;
   in_reply_to_id?: true;
+  in_reply_to_uri?: true;
   content_text?: true;
   visibility?: true;
   sensitive?: true;
@@ -247,6 +253,7 @@ export type StatusesGroupByOutputType = {
   ap_id: string | null;
   reblog_of_id: string | null;
   in_reply_to_id: string | null;
+  in_reply_to_uri: string | null;
   content_text: string;
   visibility: string;
   sensitive: number;
@@ -285,6 +292,7 @@ export type statusesWhereInput = {
   ap_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
   reblog_of_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
   in_reply_to_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
+  in_reply_to_uri?: Prisma.StringNullableFilter<"statuses"> | string | null;
   content_text?: Prisma.StringFilter<"statuses"> | string;
   visibility?: Prisma.StringFilter<"statuses"> | string;
   sensitive?: Prisma.IntFilter<"statuses"> | number;
@@ -330,6 +338,7 @@ export type statusesOrderByWithRelationInput = {
   ap_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   reblog_of_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   in_reply_to_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  in_reply_to_uri?: Prisma.SortOrderInput | Prisma.SortOrder;
   content_text?: Prisma.SortOrder;
   visibility?: Prisma.SortOrder;
   sensitive?: Prisma.SortOrder;
@@ -367,6 +376,7 @@ export type statusesWhereUniqueInput = Prisma.AtLeast<
     kind?: Prisma.StringFilter<"statuses"> | string;
     reblog_of_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
     in_reply_to_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
+    in_reply_to_uri?: Prisma.StringNullableFilter<"statuses"> | string | null;
     content_text?: Prisma.StringFilter<"statuses"> | string;
     visibility?: Prisma.StringFilter<"statuses"> | string;
     sensitive?: Prisma.IntFilter<"statuses"> | number;
@@ -414,6 +424,7 @@ export type statusesOrderByWithAggregationInput = {
   ap_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   reblog_of_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   in_reply_to_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  in_reply_to_uri?: Prisma.SortOrderInput | Prisma.SortOrder;
   content_text?: Prisma.SortOrder;
   visibility?: Prisma.SortOrder;
   sensitive?: Prisma.SortOrder;
@@ -444,6 +455,7 @@ export type statusesScalarWhereWithAggregatesInput = {
   ap_id?: Prisma.StringNullableWithAggregatesFilter<"statuses"> | string | null;
   reblog_of_id?: Prisma.StringNullableWithAggregatesFilter<"statuses"> | string | null;
   in_reply_to_id?: Prisma.StringNullableWithAggregatesFilter<"statuses"> | string | null;
+  in_reply_to_uri?: Prisma.StringNullableWithAggregatesFilter<"statuses"> | string | null;
   content_text?: Prisma.StringWithAggregatesFilter<"statuses"> | string;
   visibility?: Prisma.StringWithAggregatesFilter<"statuses"> | string;
   sensitive?: Prisma.IntWithAggregatesFilter<"statuses"> | number;
@@ -459,6 +471,7 @@ export type statusesCreateInput = {
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -492,6 +505,7 @@ export type statusesUncheckedCreateInput = {
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -519,6 +533,7 @@ export type statusesUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -552,6 +567,7 @@ export type statusesUncheckedUpdateInput = {
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -582,6 +598,7 @@ export type statusesCreateManyInput = {
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -597,6 +614,7 @@ export type statusesUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -615,6 +633,7 @@ export type statusesUncheckedUpdateManyInput = {
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -653,6 +672,7 @@ export type statusesCountOrderByAggregateInput = {
   ap_id?: Prisma.SortOrder;
   reblog_of_id?: Prisma.SortOrder;
   in_reply_to_id?: Prisma.SortOrder;
+  in_reply_to_uri?: Prisma.SortOrder;
   content_text?: Prisma.SortOrder;
   visibility?: Prisma.SortOrder;
   sensitive?: Prisma.SortOrder;
@@ -675,6 +695,7 @@ export type statusesMaxOrderByAggregateInput = {
   ap_id?: Prisma.SortOrder;
   reblog_of_id?: Prisma.SortOrder;
   in_reply_to_id?: Prisma.SortOrder;
+  in_reply_to_uri?: Prisma.SortOrder;
   content_text?: Prisma.SortOrder;
   visibility?: Prisma.SortOrder;
   sensitive?: Prisma.SortOrder;
@@ -693,6 +714,7 @@ export type statusesMinOrderByAggregateInput = {
   ap_id?: Prisma.SortOrder;
   reblog_of_id?: Prisma.SortOrder;
   in_reply_to_id?: Prisma.SortOrder;
+  in_reply_to_uri?: Prisma.SortOrder;
   content_text?: Prisma.SortOrder;
   visibility?: Prisma.SortOrder;
   sensitive?: Prisma.SortOrder;
@@ -1292,6 +1314,7 @@ export type statusesCreateWithoutAccountsInput = {
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -1323,6 +1346,7 @@ export type statusesUncheckedCreateWithoutAccountsInput = {
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -1396,6 +1420,7 @@ export type statusesScalarWhereInput = {
   ap_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
   reblog_of_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
   in_reply_to_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
+  in_reply_to_uri?: Prisma.StringNullableFilter<"statuses"> | string | null;
   content_text?: Prisma.StringFilter<"statuses"> | string;
   visibility?: Prisma.StringFilter<"statuses"> | string;
   sensitive?: Prisma.IntFilter<"statuses"> | number;
@@ -1411,6 +1436,7 @@ export type statusesCreateWithoutBookmarksInput = {
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -1443,6 +1469,7 @@ export type statusesUncheckedCreateWithoutBookmarksInput = {
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -1497,6 +1524,7 @@ export type statusesUpdateWithoutBookmarksInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -1529,6 +1557,7 @@ export type statusesUncheckedUpdateWithoutBookmarksInput = {
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -1555,6 +1584,7 @@ export type statusesCreateWithoutFavouritesInput = {
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -1587,6 +1617,7 @@ export type statusesUncheckedCreateWithoutFavouritesInput = {
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -1641,6 +1672,7 @@ export type statusesUpdateWithoutFavouritesInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -1673,6 +1705,7 @@ export type statusesUncheckedUpdateWithoutFavouritesInput = {
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -1699,6 +1732,7 @@ export type statusesCreateWithoutMedia_attachmentsInput = {
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -1731,6 +1765,7 @@ export type statusesUncheckedCreateWithoutMedia_attachmentsInput = {
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -1785,6 +1820,7 @@ export type statusesUpdateWithoutMedia_attachmentsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -1817,6 +1853,7 @@ export type statusesUncheckedUpdateWithoutMedia_attachmentsInput = {
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -1843,6 +1880,7 @@ export type statusesCreateWithoutPollsInput = {
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -1875,6 +1913,7 @@ export type statusesUncheckedCreateWithoutPollsInput = {
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -1929,6 +1968,7 @@ export type statusesUpdateWithoutPollsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -1961,6 +2001,7 @@ export type statusesUncheckedUpdateWithoutPollsInput = {
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -1987,6 +2028,7 @@ export type statusesCreateWithoutRemote_announcesInput = {
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2019,6 +2061,7 @@ export type statusesUncheckedCreateWithoutRemote_announcesInput = {
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2073,6 +2116,7 @@ export type statusesUpdateWithoutRemote_announcesInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -2105,6 +2149,7 @@ export type statusesUncheckedUpdateWithoutRemote_announcesInput = {
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -2131,6 +2176,7 @@ export type statusesCreateWithoutRemote_favouritesInput = {
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2163,6 +2209,7 @@ export type statusesUncheckedCreateWithoutRemote_favouritesInput = {
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2217,6 +2264,7 @@ export type statusesUpdateWithoutRemote_favouritesInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -2249,6 +2297,7 @@ export type statusesUncheckedUpdateWithoutRemote_favouritesInput = {
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -2275,6 +2324,7 @@ export type statusesCreateWithoutStatus_remote_mentionsInput = {
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2307,6 +2357,7 @@ export type statusesUncheckedCreateWithoutStatus_remote_mentionsInput = {
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2361,6 +2412,7 @@ export type statusesUpdateWithoutStatus_remote_mentionsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -2393,6 +2445,7 @@ export type statusesUncheckedUpdateWithoutStatus_remote_mentionsInput = {
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -2419,6 +2472,7 @@ export type statusesCreateWithoutStatus_mentionsInput = {
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2451,6 +2505,7 @@ export type statusesUncheckedCreateWithoutStatus_mentionsInput = {
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2505,6 +2560,7 @@ export type statusesUpdateWithoutStatus_mentionsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -2537,6 +2593,7 @@ export type statusesUncheckedUpdateWithoutStatus_mentionsInput = {
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -2563,6 +2620,7 @@ export type statusesCreateWithoutStatus_quotesInput = {
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2595,6 +2653,7 @@ export type statusesUncheckedCreateWithoutStatus_quotesInput = {
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2649,6 +2708,7 @@ export type statusesUpdateWithoutStatus_quotesInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -2681,6 +2741,7 @@ export type statusesUncheckedUpdateWithoutStatus_quotesInput = {
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -2707,6 +2768,7 @@ export type statusesCreateWithoutStatus_quote_policiesInput = {
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2739,6 +2801,7 @@ export type statusesUncheckedCreateWithoutStatus_quote_policiesInput = {
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2793,6 +2856,7 @@ export type statusesUpdateWithoutStatus_quote_policiesInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -2825,6 +2889,7 @@ export type statusesUncheckedUpdateWithoutStatus_quote_policiesInput = {
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -2851,6 +2916,7 @@ export type statusesCreateWithoutOther_statuses_statuses_in_reply_to_idTostatuse
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2883,6 +2949,7 @@ export type statusesUncheckedCreateWithoutOther_statuses_statuses_in_reply_to_id
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2917,6 +2984,7 @@ export type statusesCreateWithoutStatuses_statuses_in_reply_to_idTostatusesInput
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2948,6 +3016,7 @@ export type statusesUncheckedCreateWithoutStatuses_statuses_in_reply_to_idTostat
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -2989,6 +3058,7 @@ export type statusesCreateWithoutOther_statuses_statuses_reblog_of_idTostatusesI
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -3021,6 +3091,7 @@ export type statusesUncheckedCreateWithoutOther_statuses_statuses_reblog_of_idTo
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -3055,6 +3126,7 @@ export type statusesCreateWithoutStatuses_statuses_reblog_of_idTostatusesInput =
   id: string;
   kind: string;
   ap_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -3086,6 +3158,7 @@ export type statusesUncheckedCreateWithoutStatuses_statuses_reblog_of_idTostatus
   kind: string;
   ap_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -3148,6 +3221,7 @@ export type statusesUpdateWithoutOther_statuses_statuses_in_reply_to_idTostatuse
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -3180,6 +3254,7 @@ export type statusesUncheckedUpdateWithoutOther_statuses_statuses_in_reply_to_id
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -3255,6 +3330,7 @@ export type statusesUpdateWithoutOther_statuses_statuses_reblog_of_idTostatusesI
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -3287,6 +3363,7 @@ export type statusesUncheckedUpdateWithoutOther_statuses_statuses_reblog_of_idTo
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -3343,6 +3420,7 @@ export type statusesCreateManyAccountsInput = {
   ap_id?: string | null;
   reblog_of_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -3358,6 +3436,7 @@ export type statusesUpdateWithoutAccountsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -3389,6 +3468,7 @@ export type statusesUncheckedUpdateWithoutAccountsInput = {
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -3418,6 +3498,7 @@ export type statusesUncheckedUpdateManyWithoutAccountsInput = {
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -3435,6 +3516,7 @@ export type statusesCreateManyStatuses_statuses_in_reply_to_idTostatusesInput = 
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -3452,6 +3534,7 @@ export type statusesCreateManyStatuses_statuses_reblog_of_idTostatusesInput = {
   kind: string;
   ap_id?: string | null;
   in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
   sensitive?: number;
@@ -3467,6 +3550,7 @@ export type statusesUpdateWithoutStatuses_statuses_in_reply_to_idTostatusesInput
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -3498,6 +3582,7 @@ export type statusesUncheckedUpdateWithoutStatuses_statuses_in_reply_to_idTostat
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -3527,6 +3612,7 @@ export type statusesUncheckedUpdateManyWithoutStatuses_statuses_in_reply_to_idTo
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -3542,6 +3628,7 @@ export type statusesUpdateWithoutStatuses_statuses_reblog_of_idTostatusesInput =
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -3573,6 +3660,7 @@ export type statusesUncheckedUpdateWithoutStatuses_statuses_reblog_of_idTostatus
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -3602,6 +3690,7 @@ export type statusesUncheckedUpdateManyWithoutStatuses_statuses_reblog_of_idTost
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
   sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
@@ -3750,6 +3839,7 @@ export type statusesSelect<
     ap_id?: boolean;
     reblog_of_id?: boolean;
     in_reply_to_id?: boolean;
+    in_reply_to_uri?: boolean;
     content_text?: boolean;
     visibility?: boolean;
     sensitive?: boolean;
@@ -3797,6 +3887,7 @@ export type statusesSelectCreateManyAndReturn<
     ap_id?: boolean;
     reblog_of_id?: boolean;
     in_reply_to_id?: boolean;
+    in_reply_to_uri?: boolean;
     content_text?: boolean;
     visibility?: boolean;
     sensitive?: boolean;
@@ -3827,6 +3918,7 @@ export type statusesSelectUpdateManyAndReturn<
     ap_id?: boolean;
     reblog_of_id?: boolean;
     in_reply_to_id?: boolean;
+    in_reply_to_uri?: boolean;
     content_text?: boolean;
     visibility?: boolean;
     sensitive?: boolean;
@@ -3854,6 +3946,7 @@ export type statusesSelectScalar = {
   ap_id?: boolean;
   reblog_of_id?: boolean;
   in_reply_to_id?: boolean;
+  in_reply_to_uri?: boolean;
   content_text?: boolean;
   visibility?: boolean;
   sensitive?: boolean;
@@ -3874,6 +3967,7 @@ export type statusesOmit<
   | "ap_id"
   | "reblog_of_id"
   | "in_reply_to_id"
+  | "in_reply_to_uri"
   | "content_text"
   | "visibility"
   | "sensitive"
@@ -3965,6 +4059,7 @@ export type $statusesPayload<
       ap_id: string | null;
       reblog_of_id: string | null;
       in_reply_to_id: string | null;
+      in_reply_to_uri: string | null;
       content_text: string;
       visibility: string;
       sensitive: number;
@@ -4741,6 +4836,7 @@ export interface statusesFieldRefs {
   readonly ap_id: Prisma.FieldRef<"statuses", "String">;
   readonly reblog_of_id: Prisma.FieldRef<"statuses", "String">;
   readonly in_reply_to_id: Prisma.FieldRef<"statuses", "String">;
+  readonly in_reply_to_uri: Prisma.FieldRef<"statuses", "String">;
   readonly content_text: Prisma.FieldRef<"statuses", "String">;
   readonly visibility: Prisma.FieldRef<"statuses", "String">;
   readonly sensitive: Prisma.FieldRef<"statuses", "Int">;

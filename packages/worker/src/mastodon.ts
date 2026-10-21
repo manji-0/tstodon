@@ -24,7 +24,8 @@ import {
 import { listStatusMentions } from "./mention-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteActorsByUris } from "./remote-actor-store";
-import { findStatusesByIds, listStatusCards } from "./status-store";
+import { findRemoteStatusRefsByObjectUris } from "./remote-status-store";
+import { findStatusesByIds, listStatusCards, listStatusReplyUris } from "./status-store";
 import {
   followingAccountIds,
   statusInteractionCountsByIds,
@@ -583,6 +584,20 @@ export const mastodonStatuses = async (
         cards.get(status.id) ?? null,
       ),
     );
+  }
+
+  // A reply to a cached remote status names it by URI; render its id and author.
+  const replyUris = await listStatusReplyUris(env.DB, [...noteDocs.keys()]);
+  if (replyUris.isOk() && replyUris.value.size > 0) {
+    const parents = await findRemoteStatusRefsByObjectUris(env.DB, [...replyUris.value.values()]);
+    for (const [statusId, uri] of replyUris.value) {
+      const parent = parents.isOk() ? parents.value.get(uri) : undefined;
+      const document = noteDocs.get(statusId);
+      if (parent && document) {
+        document.in_reply_to_id = parent.id;
+        document.in_reply_to_account_id = RemoteAccountId.encode(parent.actorUri);
+      }
+    }
   }
 
   // Mentions render as Mastodon's Mention entities, local and remote alike.

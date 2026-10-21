@@ -1,10 +1,5 @@
 import { InstanceLimits, characterCount } from "@tstodon/core";
-import type {
-  LocalAccount,
-  LocalNote,
-  StatusId as StatusIdValue,
-  ValidatedStatusDraft,
-} from "@tstodon/domain";
+import type { LocalAccount, LocalNote, ValidatedStatusDraft } from "@tstodon/domain";
 import { InstanceIdentity, LocalStatus, StatusId } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountsByUsernames } from "./account-store";
@@ -16,6 +11,7 @@ import { newEntityId } from "./ids";
 import { findMediaById, parseMediaFocus, updateMediaMetadata } from "./media-store";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "./mention-store";
 import { loadNoteMentions, resolveRemoteMentions } from "./mention-resolve";
+import { loadNoteReply, type ReplyTarget } from "./reply-target";
 import { noteDocument } from "./activitypub";
 import { notifyAccount } from "./notify";
 import { insertPoll } from "./poll-store";
@@ -24,7 +20,7 @@ import type { MediaAttribute } from "./schemas";
 import { notifyingFollowerIds } from "./social-store";
 import { mastodonStatus } from "./mastodon";
 import { insertStatusQuote, setStatusQuotePolicy, type QuotePolicy } from "./quote-store";
-import { insertLocalNote } from "./status-store";
+import { insertLocalNote, setStatusReplyUri } from "./status-store";
 import { publishToAccount } from "./stream-publish";
 
 /** Inline media metadata accepted on create (`media_attributes`). */
@@ -39,7 +35,8 @@ export type PublishPoll = Readonly<{
 
 export type PublishNoteInput = Readonly<{
   draft: ValidatedStatusDraft;
-  inReplyToId: StatusIdValue | null;
+  /** The status answered, local or cached remote. */
+  replyTo: ReplyTarget | null;
   mediaAttributes: ReadonlyArray<MediaAttribute>;
   poll: PublishPoll | null;
   /** The quoted status, with its URI and the `quote-inline` paragraph. */
@@ -127,11 +124,18 @@ export const publishLocalNote = async (
     input.draft,
     nowInstant(),
     input.quote ? `${input.quote.inlineHtml}${html}` : html,
-    input.inReplyToId,
+    input.replyTo?.kind === "Local" ? input.replyTo.status.id : null,
   );
   const inserted = await insertLocalNote(env.DB, note);
   if (inserted.isErr()) {
     return err(inserted.error);
+  }
+  // `in_reply_to_id` references local statuses only; a remote parent is kept by URI.
+  if (input.replyTo?.kind === "Remote") {
+    const linked = await setStatusReplyUri(env.DB, note.id, input.replyTo.status.objectUri);
+    if (linked.isErr()) {
+      return err(linked.error);
+    }
   }
   if (input.quote) {
     const quote = await insertStatusQuote(env.DB, note.id, input.quote.quotedStatusId);
@@ -245,13 +249,11 @@ export const publishLocalNote = async (
           id: `${actor}/statuses/${note.id}/activity`,
           type: "Create",
           actor,
-          object: noteDocument(
-            identity,
-            user,
-            note,
-            input.quote?.uri,
-            await loadNoteMentions(env.DB, identity, note.id),
-          ),
+          object: noteDocument(identity, user, note, {
+            quoteUri: input.quote?.uri,
+            mentions: await loadNoteMentions(env.DB, identity, note.id),
+            reply: await loadNoteReply(env.DB, identity, note),
+          }),
         });
   if (enqueued.isErr()) {
     return err(

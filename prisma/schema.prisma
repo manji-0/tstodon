@@ -749,6 +749,7 @@ model statuses {
   ap_id                                            String?             @unique(map: "sqlite_autoindex_statuses_2")
   reblog_of_id                                     String?
   in_reply_to_id                                   String?
+  in_reply_to_uri                                  String?
   content_text                                     String              @default("")
   visibility                                       String
   sensitive                                        Int                 @default(0)

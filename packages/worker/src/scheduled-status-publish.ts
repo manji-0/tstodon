@@ -3,6 +3,7 @@ import { nowIso } from "./clock";
 import { findAccountById } from "./account-store";
 import { getAccountModeration } from "./account-moderation-store";
 import { disabledAccountIds } from "./account-flag-store";
+import { findReplyTarget, type ReplyTarget } from "./reply-target";
 import { publishLocalNote } from "./local-status-publish";
 import { parseInstanceIdentity } from "./runtime-config";
 import {
@@ -10,7 +11,6 @@ import {
   listDueScheduledStatuses,
   type ScheduledStatusRow,
 } from "./scheduled-status-store";
-import { findStatusById } from "./status-store";
 
 /** How many due posts one cron run publishes. */
 const PUBLISH_BATCH = 20;
@@ -69,16 +69,18 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void
     await deleteScheduledStatus(env.DB, row.accountId, row.id);
     return;
   }
+  let replyTo: ReplyTarget | null = null;
   if (inReplyToId !== null) {
-    const parent = await findStatusById(env.DB, inReplyToId.value);
+    const parent = await findReplyTarget(env.DB, inReplyToId.value, account.value.id);
     if (parent.isErr() || !parent.value) {
       await deleteScheduledStatus(env.DB, row.accountId, row.id);
       return;
     }
+    replyTo = parent.value;
   }
   const published = await publishLocalNote(env, identity.value, account.value, {
     draft: draft.value,
-    inReplyToId: inReplyToId === null ? null : inReplyToId.value,
+    replyTo,
     mediaAttributes: row.params.media_attributes.map((attribute) => ({
       id: attribute.id,
       ...(attribute.description === undefined ? {} : { description: attribute.description }),

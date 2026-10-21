@@ -214,6 +214,8 @@ export * from "./sql/findRemoteStatusById";
 
 export * from "./sql/findRemoteStatusByObjectUri";
 
+export * from "./sql/findRemoteStatusRefsByObjectUris";
+
 export * from "./sql/findRemoteStatusReplyTargetByObjectUri";
 
 export * from "./sql/findRemoteStatusReplyTargets";
@@ -410,6 +412,8 @@ export * from "./sql/listStatusRemoteMentions";
 
 export * from "./sql/listStatusReplyLinks";
 
+export * from "./sql/listStatusReplyUris";
+
 export * from "./sql/listSuggestionExclusionIds";
 
 export * from "./sql/listSuspendedDomains";
@@ -449,6 +453,8 @@ export * from "./sql/setAccountLocked";
 export * from "./sql/setAnnouncementPublished";
 
 export * from "./sql/setRemoteStatusCard";
+
+export * from "./sql/setStatusReplyUri";
 
 export * from "./sql/unfeatureTag";
 
