@@ -5,7 +5,7 @@ import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import { nowIso } from "./clock";
 import { runD1, runD1BatchChunked, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
-import { parseRow, toRepositoryError } from "./schemas";
+import { parseRow, toRepositoryError } from "./d1";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import { hydrateStatusRows, STATUS_SELECT } from "./status-store";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";

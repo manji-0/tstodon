@@ -1,7 +1,7 @@
 import { err, ok, type Result } from "neverthrow";
 import { schemaResult } from "@tstodon/core";
 import type { InstanceIdentity } from "@tstodon/domain";
-import { RemoteWebfingerSchema } from "./schemas";
+import { RemoteWebfingerSchema } from "./activitypub-wire";
 
 export type FederatedFetchError =
   | Readonly<{ kind: "InvalidSignature" }>

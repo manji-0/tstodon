@@ -13,7 +13,7 @@ import {
   updateCustomEmojiAttributes as updateCustomEmojiAttributesSql,
 } from "./generated/prisma/sql";
 import { customEmojis as configuredCustomEmojis } from "./runtime-config";
-import { parseRow } from "./schemas";
+import { parseRow } from "./d1";
 import { queryTyped, runTyped } from "./typed-sql";
 
 export const CustomEmojiRowSchema = z.object({

@@ -1,20 +1,15 @@
-import { assertNever } from "@tstodon/core";
+import { assertNever, warmSchemas } from "@tstodon/core";
 import {
   ActivityId,
   OutboxDelivery,
   type OutboxDelivery as OutboxDeliveryValue,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import type { z } from "zod";
+import { z } from "zod";
 import { nowIso } from "./clock";
-import { runD1, runD1Batch, type RepositoryError } from "./d1";
+import { type RepositoryError, runD1, runD1Batch } from "./d1";
 import { newEntityId } from "./ids";
-import {
-  parseRow,
-  OutboundActivityRowSchema,
-  OutboxDeliveryRowSchema,
-  toRepositoryError,
-} from "./schemas";
+import { parseRow, toRepositoryError } from "./d1";
 import { d1PrepareTyped, queryTyped, runTyped, runTypedBatchChunked } from "./typed-sql";
 import {
   findOutboundActivity as findOutboundActivitySql,
@@ -27,6 +22,22 @@ import {
   updateOutboxFanout as updateOutboxFanoutSql,
   updateOutboxTarget as updateOutboxTargetSql,
 } from "./generated/prisma/sql";
+
+export const OutboundActivityRowSchema = z.object({
+  id: z.string().min(1),
+  account_id: z.string().min(1),
+  kind: z.string().min(1),
+  payload_json: z.string().min(1),
+  created_at: z.string().min(1),
+});
+
+export const OutboxDeliveryRowSchema = z.object({
+  kind: z.string().min(1),
+  reason_kind: z.string().nullable(),
+  attempt_count: z.number(),
+  http_status: z.number().nullable(),
+  inbox_url: z.string().nullable(),
+});
 
 export type OutboundActivityRow = z.infer<typeof OutboundActivityRowSchema>;
 
@@ -323,3 +334,6 @@ export const persistOutboxTarget = async (
     );
   });
 };
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([OutboundActivityRowSchema, OutboxDeliveryRowSchema]);

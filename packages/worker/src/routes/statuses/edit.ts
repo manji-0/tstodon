@@ -21,12 +21,8 @@ import {
 import { newEntityId } from "../../ids";
 import { mastodonStatus } from "../../local-status-documents";
 import { countPollVotes, findPollByStatusId, replacePollOptions } from "../../poll-store";
-import {
-  CreateStatusBodySchema,
-  isTruthy,
-  mediaAttributesFromForm,
-  stringList,
-} from "../../schemas";
+import { CreateStatusBodySchema, mediaAttributesFromForm } from "../../status-body-schema";
+import { isTruthy, stringList } from "../../form-values";
 import { schemaResult } from "@tstodon/core";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { ok } from "neverthrow";

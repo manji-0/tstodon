@@ -21,12 +21,8 @@ import {
 } from "../../http";
 import { mastodonMedia } from "../../media-document";
 import { mastodonStatus } from "../../local-status-documents";
-import {
-  CreateStatusBodySchema,
-  isTruthy,
-  mediaAttributesFromForm,
-  stringList,
-} from "../../schemas";
+import { CreateStatusBodySchema, mediaAttributesFromForm } from "../../status-body-schema";
+import { isTruthy, stringList } from "../../form-values";
 import { z } from "zod";
 import {
   completeStatusIdempotency,
@@ -36,7 +32,7 @@ import {
 } from "../../status-idempotency-store";
 import { characterCount, InstanceLimits } from "@tstodon/core";
 import { schemaResult } from "@tstodon/core";
-import type { MediaAttribute } from "../../schemas";
+import type { MediaAttribute } from "../../status-body-schema";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { findStatusById } from "../../status-store";
 import { enqueueLinkCard } from "../../link-card";

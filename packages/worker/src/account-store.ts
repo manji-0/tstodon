@@ -8,18 +8,18 @@ import {
   Username,
   Visibility,
 } from "@tstodon/domain";
-import { schemaResult } from "@tstodon/core";
+import { schemaResult, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
-import type { z } from "zod";
+import { z } from "zod";
 import { markAccountPending } from "./account-flag-store";
 import { isRegistrationBlocked } from "./registration-block-store";
-import { idCursorFragment, type IdCursor } from "./id-cursor";
+import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { nowInstant, nowIso } from "./clock";
-import { jsonStringArray, runD1, runD1Batch, type RepositoryError } from "./d1";
+import { jsonStringArray, type RepositoryError, runD1, runD1Batch } from "./d1";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import { generateAccountKeys } from "./keys";
 import { newEntityId } from "./ids";
-import { AccountRowSchema, toRepositoryError } from "./schemas";
+import { toRepositoryError } from "./d1";
 import { quotePolicyFromSql, quotePolicySql, visibilitySql } from "./sql-enums";
 import {
   accountCounts as accountCountsSql,
@@ -40,6 +40,20 @@ import {
   setAccountLocked as setAccountLockedSql,
   updateAccountProfile as updateAccountProfileSql,
 } from "./generated/prisma/sql";
+
+export const AccountRowSchema = z.object({
+  id: z.string().min(1),
+  username: z.string().min(1),
+  access_email: z.string().min(1),
+  display_name: z.string(),
+  locked: z.number(),
+  default_post_visibility: z.string(),
+  default_quote_policy: z.string(),
+  public_key_pem: z.string().min(1),
+  private_key_jwk: z.string().min(1),
+  created_at: z.string().min(1),
+  bio_text: z.string(),
+});
 
 export type AccountRow = z.infer<typeof AccountRowSchema>;
 
@@ -591,3 +605,6 @@ export const updateAccountProfile = async (
   runD1(async () => {
     await runTyped(db, updateAccountProfileSql(displayName, nowIso(), accountId));
   });
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([AccountRowSchema]);

@@ -1,42 +1,56 @@
 import {
   IsoInstant,
+  type RemoteAttachment,
   RemoteAttachmentSchema,
   RemoteStatus,
   StatusId,
   Visibility,
-  type RemoteAttachment,
 } from "@tstodon/domain";
-import { schemaResult } from "@tstodon/core";
+import { schemaResult, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { jsonStringArray, runD1, runD1Batch, type RepositoryError } from "./d1";
-import { parseJsonText, RemoteStatusRowSchema, toRepositoryError } from "./schemas";
+import { jsonStringArray, type RepositoryError, runD1, runD1Batch } from "./d1";
+import { parseJsonText } from "./json-column";
+import { toRepositoryError } from "./d1";
 import { visibilitySql } from "./sql-enums";
 import { htmlHashtags } from "./html";
 import {
-  listUnindexedRemoteStatuses as listUnindexedRemoteStatusesSql,
-  markRemoteStatusTagsIndexed as markRemoteStatusTagsIndexedSql,
-} from "./generated/prisma/sql";
-import type { StatusCursor } from "./status-timeline-store";
-import type { TagStatusFilters } from "./status-discovery-store";
-import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
-import {
   deleteRemoteStatusByObjectUri as deleteRemoteStatusByObjectUriSql,
   findRemoteStatusById as findRemoteStatusByIdSql,
-  findRemoteStatusesByIds as findRemoteStatusesByIdsSql,
   findRemoteStatusByObjectUri as findRemoteStatusByObjectUriSql,
+  findRemoteStatusesByIds as findRemoteStatusesByIdsSql,
   findRemoteStatusRefsByObjectUris as findRemoteStatusRefsByObjectUrisSql,
   findRemoteStatusReplyTargetByObjectUri as findRemoteStatusReplyTargetByObjectUriSql,
   findRemoteStatusReplyTargets as findRemoteStatusReplyTargetsSql,
   insertRemoteStatusMention as insertRemoteStatusMentionSql,
   isAccountMentionedOnRemoteStatus as isAccountMentionedOnRemoteStatusSql,
-  listRemoteStatusMentions as listRemoteStatusMentionsSql,
   listPublicRemoteStatuses as listPublicRemoteStatusesSql,
   listRemoteStatusCards as listRemoteStatusCardsSql,
+  listRemoteStatusMentions as listRemoteStatusMentionsSql,
+  listUnindexedRemoteStatuses as listUnindexedRemoteStatusesSql,
+  markRemoteStatusTagsIndexed as markRemoteStatusTagsIndexedSql,
   setRemoteStatusCard as setRemoteStatusCardSql,
   upsertRemoteStatus as upsertRemoteStatusSql,
 } from "./generated/prisma/sql";
+import type { StatusCursor } from "./status-timeline-store";
+import type { TagStatusFilters } from "./status-discovery-store";
+import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
+
+export const RemoteStatusRowSchema = z.object({
+  id: z.string().min(1),
+  actor_uri: z.string().min(1),
+  object_uri: z.string().min(1),
+  url: z.string().nullable(),
+  content_html: z.string(),
+  spoiler_text: z.string(),
+  visibility: z.string().min(1),
+  sensitive: z.number(),
+  language: z.string().nullable(),
+  published_at: z.string().min(1),
+  media_json: z.string(),
+  card_json: z.string().nullable(),
+});
 
 export type RemoteStatusRow = z.infer<typeof RemoteStatusRowSchema>;
 
@@ -617,3 +631,6 @@ export const deleteRemoteStatusByObjectUri = async (
     );
     return rows[0]?.id;
   });
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([RemoteStatusRowSchema]);

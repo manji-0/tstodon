@@ -1,6 +1,6 @@
 import { InstanceIdentity, type LocalAccount, type LocalNote } from "@tstodon/domain";
 import type { z } from "zod";
-import type { ActivityJsonSchema } from "./schemas";
+import type { ActivityJsonSchema } from "./activitypub-wire";
 
 export const actorDocument = (
   identity: InstanceIdentity,

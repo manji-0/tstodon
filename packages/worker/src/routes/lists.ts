@@ -27,7 +27,7 @@ import { mastodonStatuses } from "../local-status-documents";
 import { parseInstanceIdentity } from "../runtime-config";
 import { attachFilteredToStatuses } from "../filter-match";
 import { filterMutedThreads } from "../status-mute-store";
-import { isTruthy, stringList } from "../schemas";
+import { isTruthy, stringList } from "../form-values";
 import { warmSchemas } from "@tstodon/core";
 import { z } from "zod";
 

@@ -34,7 +34,7 @@ import {
   MastodonStatusPreviewSchema,
   NotePreviewSchema,
   WebfingerPreviewSchema,
-} from "./schemas";
+} from "../test/mastodon-preview-schemas";
 
 const auth = (
   email: string,

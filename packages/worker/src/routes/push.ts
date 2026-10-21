@@ -24,7 +24,7 @@ import {
   type PushSubscription,
 } from "../push-subscription-store";
 import { parseInstanceIdentity } from "../runtime-config";
-import { isTruthy } from "../schemas";
+import { isTruthy } from "../form-values";
 import { base64UrlToBytes, vapidPublicKey } from "../vapid";
 
 /**

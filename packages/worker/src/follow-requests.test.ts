@@ -11,7 +11,7 @@ import {
   listPendingRemoteFollowRequesters,
   upsertRemoteActor,
 } from "./remote-actor-store";
-import { MastodonAccountPreviewSchema } from "./schemas";
+import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 import { RemoteAccountId } from "./remote-account-id";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";

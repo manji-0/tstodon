@@ -1,3 +1,4 @@
+import { warmSchemas } from "@tstodon/core";
 import { InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import { Hono } from "hono";
 import { findAccountByIdOrUsername } from "../../account-store";
@@ -20,7 +21,16 @@ import { parseInstanceIdentity } from "../../runtime-config";
 import { followAccount, type FollowOptions, unfollowAccount } from "../../follow-store";
 import { relationshipFlags } from "../../relationship-store";
 import { notifyAccount } from "../../notify";
-import { FollowBodySchema, isTruthy, stringList } from "../../schemas";
+import { isTruthy, stringList } from "../../form-values";
+import { z } from "zod";
+import { booleanish } from "../../form-values";
+
+/** `POST /api/v1/accounts/:id/follow` — Mastodon's per-follow options. */
+export const FollowBodySchema = z.object({
+  reblogs: booleanish,
+  notify: booleanish,
+  languages: z.union([z.array(z.string()), z.string()]).optional(),
+});
 
 export const accountFollowRoutes = new Hono<{ Bindings: Env }>();
 
@@ -189,3 +199,6 @@ accountFollowRoutes.post("/api/v1/accounts/:id/remove_from_followers", async (c)
   }
   return c.json(mastodonRelationship(targetId, flags.value));
 });
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([FollowBodySchema]);

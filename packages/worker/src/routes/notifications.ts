@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { LocalStatus } from "@tstodon/domain";
-import { isTruthy } from "../schemas";
+import { isTruthy } from "../form-values";
 import {
   filteredAttribute,
   loadViewerFilters,

@@ -13,7 +13,7 @@ import {
 } from "./generated/prisma/sql";
 import { newEntityId } from "./ids";
 import type { Announcement } from "./runtime-config";
-import { parseRow } from "./schemas";
+import { parseRow } from "./d1";
 import { queryTyped, runTyped } from "./typed-sql";
 
 export const AnnouncementRowSchema = z.object({

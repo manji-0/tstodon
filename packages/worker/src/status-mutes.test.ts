@@ -3,7 +3,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { accessAuthHeaders } from "../test/access-jwt-fixture";
-import { MastodonAccountPreviewSchema, MastodonStatusPreviewSchema } from "./schemas";
+import {
+  MastodonAccountPreviewSchema,
+  MastodonStatusPreviewSchema,
+} from "../test/mastodon-preview-schemas";
 
 const auth = (email: string): Promise<Record<string, string>> => accessAuthHeaders(email);
 

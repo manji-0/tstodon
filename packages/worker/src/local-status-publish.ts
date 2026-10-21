@@ -16,7 +16,7 @@ import { noteDocument } from "./activitypub";
 import { notifyAccount } from "./notify";
 import { insertPoll } from "./poll-store";
 import { enqueueLinkCard } from "./link-card";
-import type { MediaAttribute } from "./schemas";
+import type { MediaAttribute } from "./status-body-schema";
 import { notifyingFollowerIds } from "./follow-store";
 import { mastodonStatus } from "./local-status-documents";
 import { insertStatusQuote, setStatusQuotePolicy, type QuotePolicy } from "./quote-store";

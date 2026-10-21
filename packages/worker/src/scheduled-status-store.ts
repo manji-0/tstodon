@@ -1,4 +1,4 @@
-import { parseJsonColumn } from "./schemas";
+import { parseJsonColumn } from "./json-column";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";

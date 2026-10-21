@@ -31,7 +31,7 @@ import {
   listTagStatuses,
   type TagStatusFilters,
 } from "../status-discovery-store";
-import { isTruthy } from "../schemas";
+import { isTruthy } from "../form-values";
 import { findTrendingLinkUrl } from "../trend-store";
 import { rejectedTrendTargets } from "../trend-review-store";
 import { filterMutedThreads } from "../status-mute-store";

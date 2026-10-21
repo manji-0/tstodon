@@ -1,7 +1,6 @@
 import { FediRole, QuoteApprovalPolicy, Visibility } from "@tstodon/domain";
-import { schemaResult } from "@tstodon/core";
-import { Hono } from "hono";
-import type { Context } from "hono";
+import { InstanceLimits, schemaResult, warmSchemas } from "@tstodon/core";
+import { type Context, Hono } from "hono";
 import {
   findAccountById,
   findComposeDefaults,
@@ -14,7 +13,6 @@ import {
   findAccountProfile,
   upsertAccountProfile,
 } from "../../account-profile-store";
-import { InstanceLimits } from "@tstodon/core";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -25,7 +23,32 @@ import {
 } from "../../http";
 import { accountSource, mastodonAccountDocument } from "../../account-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
-import { isTruthy, UpdateCredentialsBodySchema } from "../../schemas";
+import { isTruthy } from "../../form-values";
+import { z } from "zod";
+import { booleanish } from "../../form-values";
+
+export const UpdateCredentialsBodySchema = z.object({
+  display_name: z.string().optional(),
+  avatar: z.unknown().optional(),
+  header: z.unknown().optional(),
+  note: z.string().optional(),
+  bot: booleanish,
+  discoverable: booleanish,
+  indexable: booleanish,
+  hide_collections: booleanish,
+  locked: booleanish,
+  fields: z
+    .array(z.object({ name: z.string().optional(), value: z.string().optional() }))
+    .optional(),
+  source: z
+    .object({
+      privacy: z.string().optional(),
+      quote_policy: z.string().optional(),
+      sensitive: z.union([z.boolean(), z.string(), z.number()]).optional(),
+      language: z.string().optional(),
+    })
+    .optional(),
+});
 
 export const accountCredentialRoutes = new Hono<{ Bindings: Env }>();
 
@@ -315,3 +338,6 @@ const deleteProfileImage = async (
 
 accountCredentialRoutes.delete("/api/v1/profile/avatar", (c) => deleteProfileImage(c, "avatar"));
 accountCredentialRoutes.delete("/api/v1/profile/header", (c) => deleteProfileImage(c, "header"));
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([UpdateCredentialsBodySchema]);

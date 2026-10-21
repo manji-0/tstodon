@@ -5,8 +5,7 @@ import {
   StatusId,
   Visibility,
 } from "@tstodon/domain";
-import { Hono } from "hono";
-import type { Context } from "hono";
+import { type Context, Hono } from "hono";
 import { nowInstant } from "../../clock";
 import { enqueueLocalActivity } from "../../delivery";
 import {
@@ -21,8 +20,8 @@ import {
 } from "../../http";
 import { newEntityId } from "../../ids";
 import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
-import { ReblogBodySchema } from "../../schemas";
-import { InstanceLimits } from "@tstodon/core";
+
+import { InstanceLimits, warmSchemas } from "@tstodon/core";
 import { parseInstanceIdentity } from "../../runtime-config";
 import {
   bookmarkStatus,
@@ -50,6 +49,12 @@ import {
   unmuteStatusThread,
 } from "../../status-mute-store";
 import { canViewStatus } from "../../visibility-guard";
+import { z } from "zod";
+
+/** `POST /api/v1/statuses/:id/reblog` — `visibility` is the only parameter. */
+export const ReblogBodySchema = z.object({
+  visibility: z.string().optional(),
+});
 
 export const statusInteractionRoutes = new Hono<{ Bindings: Env }>();
 
@@ -424,3 +429,6 @@ statusInteractionRoutes.get("/api/v1/bookmarks", async (c) => {
  * that Mastodon would not translate (private mentions and followers-only posts)
  * are refused with 403 before that.
  */
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([ReblogBodySchema]);

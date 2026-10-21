@@ -7,7 +7,7 @@ import { registrationApprovalRequired } from "./runtime-config";
 import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
 import type { RepositoryError } from "./d1";
 import { getAccountModeration } from "./account-moderation-store";
-import { AccessJwksSchema, AccessJwtSchema, JoseErrorCodeSchema } from "./schemas";
+import { AccessJwksSchema, AccessJwtSchema, JoseErrorCodeSchema } from "./access-jwt-schema";
 
 const parseAccessJwks = schemaResult(AccessJwksSchema);
 const parseJoseErrorCode = schemaResult(JoseErrorCodeSchema);

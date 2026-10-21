@@ -4,7 +4,7 @@ import { type RepositoryError, runD1, runD1Batch } from "./d1";
 import { nowIso } from "./clock";
 import { hostnameOf } from "./domain-block-store";
 import { RemoteAccountId } from "./remote-account-id";
-import { parseJsonColumn } from "./schemas";
+import { parseJsonColumn } from "./json-column";
 import { d1PrepareTyped, runTyped } from "./typed-sql";
 import {
   deleteAccountNote as deleteAccountNoteSql,

@@ -5,7 +5,7 @@ import { type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
-import { parseJsonColumn } from "./schemas";
+import { parseJsonColumn } from "./json-column";
 import { queryTyped, runTyped } from "./typed-sql";
 import {
   authorizeFollowRequest as authorizeFollowRequestSql,

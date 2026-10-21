@@ -4,7 +4,7 @@ import { jsonStringArray, runD1, sqlInJsonEach, type RepositoryError } from "./d
 import { queryTyped, runTyped } from "./typed-sql";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
-import { parseRow } from "./schemas";
+import { parseRow } from "./d1";
 import {
   deleteMedia as deleteMediaSql,
   findMediaById as findMediaByIdSql,

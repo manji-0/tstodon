@@ -29,7 +29,7 @@ import { RemoteAccountId } from "../../remote-account-id";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { familiarFollowerIds, followingAccountIds } from "../../follow-store";
 import { relationshipFlags } from "../../relationship-store";
-import { isTruthy } from "../../schemas";
+import { isTruthy } from "../../form-values";
 
 export const accountLookupRoutes = new Hono<{ Bindings: Env }>();
 

@@ -23,7 +23,8 @@ import {
   recordRemoteStatusMentions,
   upsertRemoteStatus,
 } from "./remote-status-store";
-import { isTruthy, NoteDocumentSchema, stringList } from "./schemas";
+import { isTruthy, stringList } from "./form-values";
+import { NoteDocumentSchema } from "./activitypub-wire";
 
 const parseNoteDocument = schemaResult(NoteDocumentSchema);
 

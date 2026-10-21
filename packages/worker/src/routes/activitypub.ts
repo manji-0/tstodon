@@ -47,9 +47,8 @@ import {
   ActivityJsonSchema,
   JsonObjectSchema,
   NestedActivityObjectSchema,
-  parseJsonColumn,
-  parseJsonText,
-} from "../schemas";
+} from "../activitypub-wire";
+import { parseJsonColumn, parseJsonText } from "../json-column";
 import { schemaResult } from "@tstodon/core";
 import { deleteRemoteNotifications } from "../notification-store";
 import { favouriteStatus } from "../status-interaction-store";

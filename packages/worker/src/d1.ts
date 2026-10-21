@@ -1,4 +1,14 @@
 import { err, ok, type Result } from "neverthrow";
+import { schemaResult } from "@tstodon/core";
+import { type z } from "zod";
+
+export const toRepositoryError = (message: string): RepositoryError => ({
+  kind: "RepositoryError",
+  message,
+});
+
+export const parseRow = <T>(schema: z.ZodType<T>, value: unknown): Result<T, RepositoryError> =>
+  schemaResult(schema)(value).mapErr(() => toRepositoryError("invalid row"));
 
 export type RepositoryError = Readonly<{
   kind: "RepositoryError";

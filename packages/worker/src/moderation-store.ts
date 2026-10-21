@@ -1,10 +1,10 @@
-import { runD1, type RepositoryError } from "./d1";
-import { idCursorFragment, type IdCursor } from "./id-cursor";
+import { type RepositoryError, runD1 } from "./d1";
+import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { queryTyped, runTyped } from "./typed-sql";
 import { newEntityId } from "./ids";
-import { parseJsonColumn } from "./schemas";
+import { parseJsonColumn } from "./json-column";
 import { nowIso } from "./clock";
-import { schemaResult } from "@tstodon/core";
+import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import {
@@ -12,13 +12,15 @@ import {
   deleteFilterStatusById as deleteFilterStatusByIdSql,
   findFilterById as findFilterByIdSql,
   findFilterStatusById as findFilterStatusByIdSql,
-  insertFilterStatus as insertFilterStatusSql,
-  listFilterStatuses as listFilterStatusesSql,
   insertFilter as insertFilterSql,
+  insertFilterStatus as insertFilterStatusSql,
   insertReport as insertReportSql,
   listFilters as listFiltersSql,
+  listFilterStatuses as listFilterStatusesSql,
   updateFilter as updateFilterSql,
 } from "./generated/prisma/sql";
+
+export const FilterContextSchema = z.array(z.string());
 
 export type FilterRow = {
   id: string;
@@ -457,3 +459,6 @@ export const setReportResolved = async (
       .all();
     return (results?.length ?? 0) > 0;
   });
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([FilterContextSchema]);

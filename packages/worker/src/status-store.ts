@@ -1,3 +1,4 @@
+import { warmSchemas } from "@tstodon/core";
 import {
   AccountId,
   IsoInstant,
@@ -10,9 +11,9 @@ import {
   Visibility,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import type { z } from "zod";
+import { z } from "zod";
 import { jsonStringArray, type RepositoryError, runD1, runD1Batch, sqlInJsonEach } from "./d1";
-import { parseRow, StatusRowSchema, toRepositoryError } from "./schemas";
+import { parseRow, toRepositoryError } from "./d1";
 import { visibilitySql } from "./sql-enums";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
@@ -30,6 +31,23 @@ import {
   setStatusReplyUri as setStatusReplyUriSql,
   updateLocalNote as updateLocalNoteSql,
 } from "./generated/prisma/sql";
+
+export const StatusRowSchema = z.object({
+  id: z.string().min(1),
+  account_id: z.string().min(1),
+  kind: z.string().min(1),
+  reblog_of_id: z.string().nullable(),
+  in_reply_to_id: z.string().nullable(),
+  content_text: z.string(),
+  content_html: z.string(),
+  visibility: z.string(),
+  sensitive: z.number(),
+  spoiler_text: z.string(),
+  language: z.string().nullable(),
+  created_at: z.string().min(1),
+  updated_at: z.string().min(1),
+  poll_id: z.string().nullable(),
+});
 
 export type StatusRow = z.infer<typeof StatusRowSchema>;
 
@@ -416,3 +434,6 @@ export const listLocalRepliesToUris = async (
     return hydrateStatusRows(db, results ?? []);
   });
 };
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([StatusRowSchema]);

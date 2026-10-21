@@ -1,18 +1,18 @@
 import { FollowRequest, IsoInstant, RemoteActor } from "@tstodon/domain";
-import { schemaResult } from "@tstodon/core";
+import { schemaResult, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
-import type { z } from "zod";
+import { z } from "zod";
 import { nowIso } from "./clock";
-import { jsonStringArray, runD1, type RepositoryError } from "./d1";
+import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
-import { RemoteActorRowSchema, toRepositoryError } from "./schemas";
+import { toRepositoryError } from "./d1";
 import { queryTyped, runTyped } from "./typed-sql";
 import {
   authorizeRemoteFollowRequest as authorizeRemoteFollowRequestSql,
   deleteRemoteFollow as deleteRemoteFollowSql,
   findPendingRemoteFollowRequest as findPendingRemoteFollowRequestSql,
-  findRemoteActorByPublicKeyId as findRemoteActorByPublicKeyIdSql,
   findRemoteActorByHandle as findRemoteActorByHandleSql,
+  findRemoteActorByPublicKeyId as findRemoteActorByPublicKeyIdSql,
   findRemoteActorByUri as findRemoteActorByUriSql,
   findRemoteActorsByUris as findRemoteActorsByUrisSql,
   findRemoteFollow as findRemoteFollowSql,
@@ -25,6 +25,18 @@ import {
   upsertRemoteActor as upsertRemoteActorSql,
   upsertRemoteFollow as upsertRemoteFollowSql,
 } from "./generated/prisma/sql";
+
+export const RemoteActorRowSchema = z.object({
+  actor_uri: z.string().min(1),
+  username: z.string().min(1),
+  domain: z.string().min(1),
+  inbox_uri: z.string().min(1),
+  shared_inbox_uri: z.string().nullable(),
+  public_key_id: z.string().min(1),
+  public_key_pem: z.string().min(1),
+  display_name: z.string(),
+  fetched_at: z.string().min(1),
+});
 
 export type RemoteActorRow = z.infer<typeof RemoteActorRowSchema>;
 
@@ -332,3 +344,6 @@ export const searchRemoteActors = async (
     }
     return actors;
   });
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([RemoteActorRowSchema]);

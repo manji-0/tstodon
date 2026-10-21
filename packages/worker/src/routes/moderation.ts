@@ -1,7 +1,6 @@
-import { Hono } from "hono";
-import { schemaResult } from "@tstodon/core";
-import type { Context } from "hono";
-import type { z } from "zod";
+import { type Context, Hono } from "hono";
+import { schemaResult, warmSchemas } from "@tstodon/core";
+import { z } from "zod";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -15,28 +14,79 @@ import { instanceRules } from "../runtime-config";
 import {
   addFilterStatus,
   deleteFilter,
+  type FilterKeyword,
   filterKeywords,
+  type FilterRow,
   findFilterById,
   findFilterStatusById,
   insertFilter,
   insertReport,
-  listFilterStatuses,
-  ReportCategorySchema,
   listFilters,
+  listFilterStatuses,
   removeFilterStatusById,
+  ReportCategorySchema,
   updateFilter,
-  type FilterKeyword,
-  type FilterRow,
 } from "../moderation-store";
-import {
-  FilterBodySchema,
-  FilterKeywordBodySchema,
-  FilterStatusBodySchema,
-  FilterV2BodySchema,
-  isTruthy,
-  ReportBodySchema,
-  stringList,
-} from "../schemas";
+import { isTruthy, stringList } from "../form-values";
+import { booleanish } from "../form-values";
+
+export const FilterBodySchema = z.object({
+  phrase: z.string().trim().min(1),
+  context: z.union([z.array(z.string()), z.string()]).optional(),
+  whole_word: booleanish,
+  irreversible: booleanish,
+  expires_in: z.union([z.number(), z.string()]).optional(),
+});
+
+export const FilterV2BodySchema = z.object({
+  title: z.string().optional(),
+  phrase: z.string().optional(),
+  context: z.union([z.array(z.string()), z.string()]).optional(),
+  filter_action: z.string().optional(),
+  irreversible: booleanish,
+  expires_in: z.union([z.number(), z.string()]).optional(),
+  keywords_attributes: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        keyword: z.string().optional(),
+        whole_word: booleanish,
+        _destroy: booleanish,
+      }),
+    )
+    .optional(),
+  keywords: z
+    .array(
+      z.union([
+        z.string(),
+        z.object({
+          id: z.string().optional(),
+          keyword: z.string().optional(),
+          whole_word: booleanish,
+        }),
+      ]),
+    )
+    .optional(),
+});
+
+export const FilterKeywordBodySchema = z.object({
+  keyword: z.string().optional(),
+  whole_word: booleanish,
+});
+
+export const FilterStatusBodySchema = z.object({
+  status_id: z.string().trim().min(1),
+});
+
+export const ReportBodySchema = z.object({
+  account_id: z.string().min(1),
+  status_ids: z.union([z.array(z.string()), z.string()]).optional(),
+  comment: z.string().optional(),
+  category: z.string().optional(),
+  rule_ids: z
+    .union([z.array(z.union([z.string(), z.number()])), z.string(), z.number()])
+    .optional(),
+});
 
 export const moderationRoutes = new Hono<{ Bindings: Env }>();
 
@@ -644,3 +694,12 @@ moderationRoutes.post("/api/v1/reports", async (c) => {
     target_account: { id: body.value.account_id },
   });
 });
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([
+  FilterBodySchema,
+  FilterV2BodySchema,
+  FilterKeywordBodySchema,
+  FilterStatusBodySchema,
+  ReportBodySchema,
+]);

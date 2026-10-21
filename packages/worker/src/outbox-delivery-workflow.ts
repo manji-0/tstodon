@@ -7,7 +7,7 @@ import {
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { attemptInboxDelivery } from "./delivery";
 import { ensureOutboxTarget, persistOutboxTarget } from "./outbox-store";
-import { parseJsonText } from "./schemas";
+import { parseJsonText } from "./json-column";
 
 export type OutboxWorkflowParams = Readonly<{
   kind: "DeliverTarget";

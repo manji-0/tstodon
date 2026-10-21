@@ -35,7 +35,7 @@ import {
   listOpenReportIdsForTarget,
   setReportResolved,
 } from "../../moderation-store";
-import { isTruthy } from "../../schemas";
+import { isTruthy } from "../../form-values";
 
 export const adminAccountRoutes = new Hono<{ Bindings: Env }>();
 

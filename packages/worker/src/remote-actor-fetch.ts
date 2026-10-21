@@ -8,7 +8,7 @@ import {
   fetchWebfingerActorUri,
   type FederatedFetchOptions,
 } from "./federated-fetch";
-import { ActorDocumentSchema } from "./schemas";
+import { ActorDocumentSchema } from "./activitypub-wire";
 import {
   findRemoteActorByPublicKeyId,
   findRemoteActorByUri,

@@ -3,7 +3,7 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { runD1, runD1Batch, type RepositoryError } from "./d1";
-import { parseRow } from "./schemas";
+import { parseRow } from "./d1";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   getConversationRead as getConversationReadSql,

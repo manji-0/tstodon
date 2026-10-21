@@ -2,16 +2,10 @@ import { warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { jsonStringArray, runD1, runD1Batch, sqlInJsonEach, type RepositoryError } from "./d1";
+import { jsonStringArray, type RepositoryError, runD1, runD1Batch, sqlInJsonEach } from "./d1";
 import { newEntityId } from "./ids";
-import {
-  ExpiredPollTargetRowSchema,
-  parseJsonColumn,
-  parseRow,
-  PollOptionsSchema,
-  PollRowSchema,
-  toRepositoryError,
-} from "./schemas";
+import { parseJsonColumn } from "./json-column";
+import { parseRow, toRepositoryError } from "./d1";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   countPollVotes as countPollVotesSql,
@@ -27,6 +21,28 @@ import {
   updatePollOptionsIfActive as updatePollOptionsIfActiveSql,
   updateStatusPollId as updateStatusPollIdSql,
 } from "./generated/prisma/sql";
+
+export const PollOptionSchema = z.object({
+  title: z.string(),
+  votesCount: z.number().int().nonnegative(),
+});
+
+export const PollOptionsSchema = z.array(PollOptionSchema);
+
+export const PollRowSchema = z.object({
+  id: z.string().min(1),
+  status_id: z.string().min(1),
+  multiple: z.number(),
+  expires_at: z.string().min(1),
+  options_json: z.string().min(1),
+  hide_totals: z.number(),
+});
+
+export const ExpiredPollTargetRowSchema = z.object({
+  id: z.string().min(1),
+  status_id: z.string().min(1),
+  account_id: z.string().min(1),
+});
 
 export const PollVoteTargetRowSchema = z.object({
   options_json: z.string().min(1),
@@ -347,3 +363,6 @@ export const markPollExpiryNotified = async (
   runD1(async () => {
     await runTyped(db, markPollExpiryNotifiedSql(notifiedAt, pollId));
   });
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([PollOptionSchema, PollOptionsSchema, PollRowSchema, ExpiredPollTargetRowSchema]);

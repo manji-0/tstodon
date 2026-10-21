@@ -3,12 +3,10 @@ import { Activity, Visibility } from "@tstodon/domain";
 import { describe, expect, it } from "vite-plus/test";
 import { parseMarkerTimelines } from "./marker-store";
 import { PollVoteTargetRowSchema } from "./poll-store";
-import {
-  AccountRowSchema,
-  ActivityJsonSchema,
-  CreateStatusBodySchema,
-  PollOptionsSchema,
-} from "./schemas";
+import { AccountRowSchema } from "./account-store";
+import { ActivityJsonSchema } from "./activitypub-wire";
+import { CreateStatusBodySchema } from "./status-body-schema";
+import { PollOptionsSchema } from "./poll-store";
 
 describe("worker zod compile smoke", () => {
   it("module-init warmSchemas left compiled validators in the cache (no late compile)", () => {

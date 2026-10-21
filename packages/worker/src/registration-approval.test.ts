@@ -6,7 +6,7 @@ import { accessAuthHeaders } from "../test/access-jwt-fixture";
 import { pendingAccountIds } from "./account-flag-store";
 import { provisionAccountFromEmail } from "./account-store";
 import { registrationApprovalRequired } from "./runtime-config";
-import { MastodonAccountPreviewSchema } from "./schemas";
+import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (
   email: string,

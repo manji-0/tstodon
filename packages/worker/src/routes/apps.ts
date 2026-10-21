@@ -1,14 +1,20 @@
-import { SignJWT, importJWK } from "jose";
+import { importJWK, SignJWT } from "jose";
 import { Hono } from "hono";
-import { schemaResult } from "@tstodon/core";
+import { schemaResult, warmSchemas } from "@tstodon/core";
 import { jsonValidationError, readBody } from "../http";
-import {
-  AccessJwksSchema,
-  AppBodySchema,
-  JsonWebKeySchema,
-  OAuthTokenBodySchema,
-} from "../schemas";
+import { AccessJwksSchema, JsonWebKeySchema } from "../access-jwt-schema";
 import { vapidPublicKey } from "../vapid";
+import { z } from "zod";
+
+export const AppBodySchema = z.object({
+  client_name: z.string().optional(),
+  website: z.string().optional(),
+  redirect_uris: z.union([z.string(), z.array(z.string())]).optional(),
+});
+
+export const OAuthTokenBodySchema = z.object({
+  username: z.string().min(1),
+});
 
 const parseJsonWebKey = schemaResult(JsonWebKeySchema);
 const parseAccessJwks = schemaResult(AccessJwksSchema);
@@ -101,3 +107,6 @@ appRoutes.post("/oauth/token", async (c) => {
     return c.json({ error: "server_error", kind: "VerificationUnavailable" }, 503);
   }
 });
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([AppBodySchema, OAuthTokenBodySchema]);

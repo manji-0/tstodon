@@ -1,5 +1,22 @@
+import { warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
-import { parseJsonColumn, RsaPrivateJwkSchema } from "./schemas";
+import { parseJsonColumn } from "./json-column";
+import { z } from "zod";
+
+export const RsaPrivateJwkSchema = z.object({
+  kty: z.literal("RSA"),
+  n: z.string().min(1),
+  e: z.string().min(1),
+  d: z.string().min(1),
+  p: z.string().min(1),
+  q: z.string().min(1),
+  dp: z.string().min(1),
+  dq: z.string().min(1),
+  qi: z.string().min(1),
+  alg: z.string().optional(),
+  ext: z.boolean().optional(),
+  key_ops: z.array(z.string()).optional(),
+});
 
 const encoder = new TextEncoder();
 
@@ -197,3 +214,6 @@ export const verifyInboxRequest = async (
     encoder.encode(signingString),
   );
 };
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([RsaPrivateJwkSchema]);

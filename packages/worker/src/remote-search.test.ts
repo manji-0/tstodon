@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { generateAccountKeys } from "./keys";
-import { MastodonSearchPreviewSchema } from "./schemas";
+import { MastodonSearchPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const json = async (path: string): Promise<{ status: number; body: unknown }> => {
   const response = await SELF.fetch(`https://example.com${path}`);

@@ -1,6 +1,5 @@
-import { Hono } from "hono";
-import type { Context } from "hono";
-import { schemaResult } from "@tstodon/core";
+import { type Context, Hono } from "hono";
+import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { InstanceIdentity } from "@tstodon/domain";
 import {
   jsonAuthError,
@@ -14,27 +13,42 @@ import {
 import { accountDocumentsByIds } from "../account-documents";
 import { statusDocumentsByIds } from "../status-documents";
 import {
-  NotificationPolicyActionSchema,
   acceptNotificationRequests,
   countNotificationRequests,
   dismissNotificationRequests,
   findNotificationPolicy,
   findNotificationRequest,
   listNotificationRequests,
-  saveNotificationPolicy,
   type NotificationPolicy,
   type NotificationPolicyAction,
+  NotificationPolicyActionSchema,
   type NotificationRequest,
+  saveNotificationPolicy,
 } from "../notification-policy-store";
 import { parseInstanceIdentity } from "../runtime-config";
-import {
-  isTruthy,
-  NotificationPolicyBodySchema,
-  NotificationRequestIdsBodySchema,
-  stringList,
-} from "../schemas";
+import { isTruthy, stringList } from "../form-values";
 import { dismissNotification } from "../notification-store";
 import { publishToAccount } from "../stream-publish";
+import { z } from "zod";
+import { booleanish } from "../form-values";
+
+export const NotificationPolicyBodySchema = z.object({
+  for_not_following: z.string().optional(),
+  for_not_followers: z.string().optional(),
+  for_new_accounts: z.string().optional(),
+  for_private_mentions: z.string().optional(),
+  for_limited_accounts: z.string().optional(),
+  filter_not_following: booleanish,
+  filter_not_followers: booleanish,
+  filter_new_accounts: booleanish,
+  filter_private_mentions: booleanish,
+  filter_limited_accounts: booleanish,
+});
+
+export const NotificationRequestIdsBodySchema = z.object({
+  id: z.union([z.array(z.string()), z.string()]).optional(),
+  "id[]": z.union([z.array(z.string()), z.string()]).optional(),
+});
 
 /**
  * Notification policy and requests. Mounted ahead of `notificationRoutes` so
@@ -327,3 +341,6 @@ notificationRequestRoutes.post("/api/v1/notifications/requests/accept", (c) =>
 notificationRequestRoutes.post("/api/v1/notifications/requests/dismiss", (c) =>
   bulkRequests(c, false),
 );
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([NotificationPolicyBodySchema, NotificationRequestIdsBodySchema]);

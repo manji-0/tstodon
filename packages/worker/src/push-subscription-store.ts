@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Result } from "neverthrow";
 import { runD1, type RepositoryError } from "./d1";
 import { nowIso } from "./clock";
-import { parseJsonColumn } from "./schemas";
+import { parseJsonColumn } from "./json-column";
 import { queryTyped } from "./typed-sql";
 import {
   deletePushSubscription as deletePushSubscriptionSql,

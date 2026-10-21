@@ -1,3 +1,4 @@
+import { warmSchemas } from "@tstodon/core";
 import { Hono } from "hono";
 import {
   jsonAuthError,
@@ -8,7 +9,12 @@ import {
 } from "../http";
 import { pollJson } from "../poll-document";
 import { findPollById, votePoll } from "../poll-store";
-import { numberList, PollVoteBodySchema } from "../schemas";
+import { numberList } from "../form-values";
+import { z } from "zod";
+
+export const PollVoteBodySchema = z.object({
+  choices: z.union([z.array(z.union([z.number(), z.string()])), z.number(), z.string()]),
+});
 
 export const pollRoutes = new Hono<{ Bindings: Env }>();
 
@@ -52,3 +58,6 @@ pollRoutes.post("/api/v1/polls/:id/votes", async (c) => {
   // Mastodon answers a vote with the updated Poll entity, not the status.
   return c.json(pollJson(poll.value));
 });
+
+// Module-init compile so Workers startup `new Function` installs fast paths before requests.
+warmSchemas([PollVoteBodySchema]);
