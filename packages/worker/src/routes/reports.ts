@@ -11,12 +11,6 @@ import {
 import { instanceRules } from "../runtime-config";
 import { insertReport, ReportCategorySchema } from "../report-store";
 import { stringList } from "../form-values";
-import {
-  FilterBodySchema,
-  FilterKeywordBodySchema,
-  FilterStatusBodySchema,
-  FilterV2BodySchema,
-} from "./filters";
 
 export const reportRoutes = new Hono<{ Bindings: Env }>();
 
@@ -95,10 +89,4 @@ reportRoutes.post("/api/v1/reports", async (c) => {
 });
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
-warmSchemas([
-  FilterBodySchema,
-  FilterV2BodySchema,
-  FilterKeywordBodySchema,
-  FilterStatusBodySchema,
-  ReportBodySchema,
-]);
+warmSchemas([ReportBodySchema]);
