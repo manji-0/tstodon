@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { InstanceLimits, characterCount } from "@tstodon/core";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../http";
-import { mastodonMedia } from "../mastodon";
+import { mastodonMedia } from "../media-document";
 import {
   deleteMedia,
   findMediaById,

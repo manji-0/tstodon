@@ -4,7 +4,7 @@ import {
   type RemoteStatus,
   type Visibility as VisibilityValue,
 } from "@tstodon/domain";
-import { remoteStatusVisible } from "./mastodon";
+import { remoteStatusVisible } from "./remote-status-document";
 import { isAccountMentionedOnStatus } from "./mention-store";
 import { isAccountMentionedOnRemoteStatus } from "./remote-status-store";
 import { relationshipFlags } from "./social-store";

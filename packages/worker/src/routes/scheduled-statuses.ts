@@ -10,7 +10,7 @@ import {
   readBody,
   requireUser,
 } from "../http";
-import { mastodonMedia } from "../mastodon";
+import { mastodonMedia } from "../media-document";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
   MIN_SCHEDULE_OFFSET_MS,

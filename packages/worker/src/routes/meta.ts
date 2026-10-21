@@ -40,12 +40,9 @@ import {
 } from "../http";
 import { listTrendingLinks } from "../trend-store";
 import { rejectedTrendTargets } from "../trend-review-store";
-import {
-  mastodonAccountDocument,
-  mastodonAccountDocuments,
-  mastodonStatuses,
-  mastodonTag,
-} from "../mastodon";
+import { mastodonAccountDocument, mastodonAccountDocuments } from "../account-documents";
+import { mastodonStatuses } from "../local-status-documents";
+import { mastodonTag } from "../tag-documents";
 import {
   getMarkers,
   markConversationRead,

@@ -22,7 +22,8 @@ import {
   toMastodonList,
   updateList,
 } from "../list-store";
-import { mastodonAccountDocument, mastodonStatuses } from "../mastodon";
+import { mastodonAccountDocument } from "../account-documents";
+import { mastodonStatuses } from "../local-status-documents";
 import { parseInstanceIdentity } from "../runtime-config";
 import { attachFilteredToStatuses } from "../filter-match";
 import { filterMutedThreads } from "../status-mute-store";

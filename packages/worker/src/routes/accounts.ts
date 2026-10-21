@@ -48,10 +48,10 @@ import {
   accountSource,
   mastodonAccountDocument,
   mastodonAccountDocuments,
-  mastodonRelationship,
   mastodonRemoteAccount,
-  mastodonStatuses,
-} from "../mastodon";
+} from "../account-documents";
+import { mastodonRelationship } from "../relationship-document";
+import { mastodonStatuses } from "../local-status-documents";
 import {
   findRemoteActorByUri,
   findRemoteActorsByUris,

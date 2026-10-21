@@ -90,12 +90,9 @@ import {
   requireAdmin,
 } from "../http";
 import { newEntityId } from "../ids";
-import {
-  mastodonAccountDocument,
-  mastodonStatus,
-  mastodonStatuses,
-  mastodonTag,
-} from "../mastodon";
+import { mastodonAccountDocument } from "../account-documents";
+import { mastodonStatus, mastodonStatuses } from "../local-status-documents";
+import { mastodonTag } from "../tag-documents";
 import { instanceRules, parseInstanceIdentity } from "../runtime-config";
 import { ReportCategorySchema, type ReportRow } from "../moderation-store";
 import {

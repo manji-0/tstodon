@@ -11,7 +11,7 @@ import {
   readBody,
   requireUser,
 } from "../http";
-import { mastodonFeaturedTag, mastodonTag } from "../mastodon";
+import { mastodonFeaturedTag, mastodonTag } from "../tag-documents";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
   FEATURED_TAG_LIMIT,

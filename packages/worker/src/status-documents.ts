@@ -1,6 +1,7 @@
 import type { InstanceIdentity } from "@tstodon/domain";
 import { parseLocalStatusId } from "./activitypub";
-import { mastodonRemoteStatus, mastodonStatuses } from "./mastodon";
+import { mastodonRemoteStatus } from "./remote-status-document";
+import { mastodonStatuses } from "./local-status-documents";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import {

@@ -2,7 +2,7 @@ import { err, ok, type Result } from "neverthrow";
 import type { LocalStatus } from "@tstodon/domain";
 import type { RepositoryError } from "./d1";
 import { htmlToText } from "./html";
-import { mastodonFilterV2 } from "./mastodon";
+import { mastodonFilterV2 } from "./filter-documents";
 import { FilterContextSchema, parseJsonColumn } from "./schemas";
 import {
   filterKeywords,

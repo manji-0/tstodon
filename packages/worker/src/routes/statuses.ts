@@ -41,14 +41,10 @@ import {
   requireUser,
 } from "../http";
 import { newEntityId } from "../ids";
-import {
-  mastodonAccountDocument,
-  mastodonMedia,
-  mastodonRemoteAccount,
-  mastodonRemoteStatus,
-  mastodonStatus,
-  mastodonStatuses,
-} from "../mastodon";
+import { mastodonAccountDocument, mastodonRemoteAccount } from "../account-documents";
+import { mastodonMedia } from "../media-document";
+import { mastodonRemoteStatus } from "../remote-status-document";
+import { mastodonStatus, mastodonStatuses } from "../local-status-documents";
 import { countPollVotes, findPollByStatusId, replacePollOptions } from "../poll-store";
 import { listStatusFavouritedBy, listStatusRebloggedBy } from "../social-store";
 import {
@@ -187,7 +183,7 @@ const applyMediaAttributes = async (
 /** Queue the link preview for a status; the request never waits on it. */
 const queueLinkCard = async (env: Env, statusId: string, text: string): Promise<void> => {
   const queued = await enqueueLinkCard(env, "Status", statusId, text);
-  void queued;
+  queued;
 };
 
 /** The account-level default policy as its API name. */

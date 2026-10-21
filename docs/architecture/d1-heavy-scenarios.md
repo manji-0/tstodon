@@ -131,7 +131,7 @@ flowchart LR
 - `LocalReblog` needs the reblog target (and nested reblog) document.
 - Naive per-item `mastodonStatus` would be O(N) query storms.
 
-**In code today** (`packages/worker/src/mastodon.ts`):
+**In code today** (`packages/worker/src/local-status-documents.ts`):
 
 1. Seed map with page statuses.
 2. Up to **4 passes** of `findStatusesByIds` for missing reblog targets / reply parents (`sqlInJsonEach`).
@@ -286,7 +286,7 @@ Covered in depth in Doc A. Heavy-scenario note: under mention fan-out or poll at
 | Shared-inbox URI coalesce                   | **In code**                   | `listAcceptedRemoteFollowerInboxes` (`shared_inbox_uri ?? inbox_uri` → `Set`) |
 | `sqlInJsonEach` + `jsonStringArray`         | **In code**                   | account/status/media/count membership; `d1-sql.test.ts` regression            |
 | TypedSQL fixed statements                   | **In code**                   | `prisma/sql` + `queryTyped`/`runTyped`/`d1PrepareTyped`                       |
-| `mastodonStatuses` preload                  | **In code**                   | `mastodon.ts`                                                                 |
+| `mastodonStatuses` preload                  | **In code**                   | `local-status-documents.ts`                                                   |
 | Queue + Workflow fan-out                    | **In code**                   | `ExpandFollowers`, `DeliverTarget`, poll cron enqueue                         |
 | StreamHub DO                                | **In code**                   | per-account streaming, not general D1 hot-key locking                         |
 | Batch outbox target inserts                 | **Proposed**                  | Doc A PR3 (this doc does not re-own it)                                       |
@@ -391,7 +391,7 @@ Rollback for code PRs: revert store/delivery changes; D1 data from `INSERT OR IG
 - [`./d1-writes.md`](./d1-writes.md)
 - [`./tstodon-architecture.md`](./tstodon-architecture.md)
 - ADRs: [json_each](./adr-json-each-membership.md), [TypedSQL](./adr-typedsql-d1-execution.md), [migrations SoT](./adr-wrangler-migrations-sot.md), [variable timeline SQL](./adr-variable-timeline-sql.md)
-- Code: `mastodon.ts`, `delivery.ts`, `outbox-store.ts`, `status-store.ts`, `social-store.ts`, `poll-store.ts`, `list-store.ts`, `remote-actor-store.ts`, `remote-status-persist.ts`, `scheduled-handler.ts`, `queue-handler.ts`, `stream-hub.ts`, `http.ts`, `routes/statuses.ts`
+- Code: `local-status-documents.ts`, `delivery.ts`, `outbox-store.ts`, `status-store.ts`, `social-store.ts`, `poll-store.ts`, `list-store.ts`, `remote-actor-store.ts`, `remote-status-persist.ts`, `scheduled-handler.ts`, `queue-handler.ts`, `stream-hub.ts`, `http.ts`, `routes/statuses.ts`
 
 ## Key Decisions
 

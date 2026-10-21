@@ -6,7 +6,7 @@ import {
   readBody,
   requireUser,
 } from "../http";
-import { pollJson } from "../mastodon";
+import { pollJson } from "../poll-document";
 import { findPollById, votePoll } from "../poll-store";
 import { numberList, PollVoteBodySchema } from "../schemas";
 

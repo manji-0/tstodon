@@ -12,7 +12,7 @@ import { findAccountById } from "./account-store";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { signInboxRequest } from "./http-signature";
-import { mastodonStatuses } from "./mastodon";
+import { mastodonStatuses } from "./local-status-documents";
 import {
   ensureOutboxTarget,
   ensureOutboxTargets,

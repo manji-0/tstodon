@@ -10,7 +10,8 @@ import {
   queryCursor,
   requireUser,
 } from "../http";
-import { mastodonAccountDocument, mastodonRelationship, mastodonRemoteAccount } from "../mastodon";
+import { mastodonAccountDocument, mastodonRemoteAccount } from "../account-documents";
+import { mastodonRelationship } from "../relationship-document";
 import {
   authorizeRemoteFollowRequest,
   findPendingRemoteFollowRequest,

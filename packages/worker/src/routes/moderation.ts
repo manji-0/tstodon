@@ -10,7 +10,7 @@ import {
   requireUser,
 } from "../http";
 import { newEntityId } from "../ids";
-import { mastodonFilter, mastodonFilterV2 } from "../mastodon";
+import { mastodonFilter, mastodonFilterV2 } from "../filter-documents";
 import { instanceRules } from "../runtime-config";
 import {
   addFilterStatus,

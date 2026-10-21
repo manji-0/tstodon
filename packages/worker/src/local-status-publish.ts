@@ -18,7 +18,7 @@ import { insertPoll } from "./poll-store";
 import { enqueueLinkCard } from "./link-card";
 import type { MediaAttribute } from "./schemas";
 import { notifyingFollowerIds } from "./social-store";
-import { mastodonStatus } from "./mastodon";
+import { mastodonStatus } from "./local-status-documents";
 import { insertStatusQuote, setStatusQuotePolicy, type QuotePolicy } from "./quote-store";
 import { insertLocalNote, setStatusReplyUri } from "./status-store";
 import { publishToAccount } from "./stream-publish";

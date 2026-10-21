@@ -5,12 +5,9 @@ import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import { authenticate } from "../auth";
 import { filteredAttribute, loadViewerFilters, matchFilters } from "../filter-match";
 import { jsonAuthError, jsonRepositoryError, queryLimit } from "../http";
-import {
-  mastodonAccountDocument,
-  mastodonRemoteAccount,
-  mastodonStatuses,
-  mastodonTag,
-} from "../mastodon";
+import { mastodonAccountDocument, mastodonRemoteAccount } from "../account-documents";
+import { mastodonStatuses } from "../local-status-documents";
+import { mastodonTag } from "../tag-documents";
 import { elapsedMs, writeMetric } from "../metrics";
 import { resolveRemoteActor, resolveRemoteActorByHandle } from "../remote-actor-fetch";
 import { suspendedDomains } from "../admin-domain-block-store";

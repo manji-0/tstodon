@@ -1,19 +1,11 @@
 import {
   InstanceIdentity,
-  Visibility,
   type LocalAccount,
   type LocalNote,
   type LocalStatus,
-  type RemoteActor,
-  type RemoteStatus as RemoteStatusValue,
+  Visibility,
 } from "@tstodon/domain";
-import {
-  accountCounts,
-  accountCountsByIds,
-  type ComposeDefaults,
-  findAccountsByIds,
-  type AccountCounts,
-} from "./account-store";
+import { type AccountCounts, accountCountsByIds, findAccountsByIds } from "./account-store";
 import { findPollsByStatusIds, type PollRecord } from "./poll-store";
 import {
   findQuotesByStatusIds,
@@ -28,280 +20,24 @@ import { findRemoteStatusRefsByObjectUris } from "./remote-status-store";
 import { findStatusesByIds, listStatusCards, listStatusReplyUris } from "./status-store";
 import {
   followingAccountIds,
-  statusInteractionCountsByIds,
-  type RelationshipFlags,
   type StatusInteractionCounts,
+  statusInteractionCountsByIds,
 } from "./social-store";
 import { findMediaByIds, type MediaRow } from "./media-store";
-import { customEmojiJson, emojisInText, emojisInTexts, type CustomEmoji } from "./emoji";
+import { type CustomEmoji, customEmojiJson, emojisInText, emojisInTexts } from "./emoji";
 import {
-  EMPTY_ACCOUNT_PROFILE,
-  findAccountProfile,
-  listAccountProfiles,
   type AccountProfile,
+  EMPTY_ACCOUNT_PROFILE,
+  listAccountProfiles,
 } from "./account-profile-store";
 import { sensitizedAccountIds } from "./account-flag-store";
 import { loadCustomEmojis } from "./custom-emoji-store";
 import { listStatusMuteRoots, resolveThreadRootStatusIds } from "./status-mute-store";
-import { textToHtml } from "./html";
 import { cardDocument, parseCardJson } from "./link-card";
-import { FilterContextSchema, parseJsonColumn } from "./schemas";
-import { filterKeywords, type FilterRow, type FilterStatus } from "./moderation-store";
-
-const mediaUrl = (identity: InstanceIdentity, objectKey: string): string =>
-  `${identity.mediaPublicBaseUrl.replace(/\/$/, "")}/${objectKey}`;
-
-export const mastodonAccount = (
-  identity: InstanceIdentity,
-  account: LocalAccount,
-  counts: { followers: number; following: number; statuses: number },
-  emojis: ReadonlyArray<CustomEmoji> = [],
-  profile: AccountProfile = EMPTY_ACCOUNT_PROFILE,
-): Record<string, unknown> => {
-  const url = InstanceIdentity.actorUrl(identity, account.username);
-  return {
-    id: account.id,
-    username: account.username,
-    acct: `${account.username}`,
-    display_name: account.displayName,
-    locked: account.locked,
-    bot: profile.bot,
-    discoverable: profile.discoverable,
-    indexable: profile.indexable,
-    hide_collections: profile.hideCollections,
-    // This deployment has no HTML profile surface to point a crawler at.
-    noindex: false,
-    group: false,
-    created_at: account.createdAt,
-    note: textToHtml(profile.note),
-    url,
-    uri: url,
-    avatar: profile.avatarObjectKey
-      ? mediaUrl(identity, profile.avatarObjectKey)
-      : identity.thumbnailUrl,
-    avatar_static: profile.avatarObjectKey
-      ? mediaUrl(identity, profile.avatarObjectKey)
-      : identity.thumbnailUrl,
-    header: profile.headerObjectKey
-      ? mediaUrl(identity, profile.headerObjectKey)
-      : identity.thumbnailUrl,
-    header_static: profile.headerObjectKey
-      ? mediaUrl(identity, profile.headerObjectKey)
-      : identity.thumbnailUrl,
-    followers_count: counts.followers,
-    following_count: counts.following,
-    statuses_count: counts.statuses,
-    last_status_at: null,
-    emojis: emojis.map(customEmojiJson),
-    fields: profile.fields.map((field) => ({
-      name: field.name,
-      value: field.value,
-      verified_at: null,
-    })),
-  };
-};
-
-/**
- * Mastodon's `source` (CredentialAccount only): the settings behind the
- * rendered account, with the raw bio and fields.
- */
-export const accountSource = (
-  account: LocalAccount,
-  profile: AccountProfile = EMPTY_ACCOUNT_PROFILE,
-  defaults: ComposeDefaults = { language: null, sensitive: false },
-): Record<string, unknown> => ({
-  privacy: Visibility.toMastodon(account.defaultPostVisibility),
-  sensitive: defaults.sensitive,
-  language: defaults.language,
-  note: profile.note,
-  fields: profile.fields.map((field) => ({
-    name: field.name,
-    value: field.value,
-    verified_at: null,
-  })),
-  follow_requests_count: 0,
-  quote_policy: quotePolicyName(account.defaultQuotePolicy),
-  discoverable: profile.discoverable,
-  indexable: profile.indexable,
-  hide_collections: profile.hideCollections,
-  attribution_domains: [],
-});
-
-export const mastodonAccountDocument = async (
-  env: Env,
-  identity: InstanceIdentity,
-  account: LocalAccount,
-): Promise<Record<string, unknown>> => {
-  const [counts, profile] = await Promise.all([
-    accountCounts(env.DB, account.id),
-    findAccountProfile(env.DB, account.id),
-  ]);
-  return mastodonAccount(
-    identity,
-    account,
-    counts.isOk() ? counts.value : { followers: 0, following: 0, statuses: 0 },
-    emojisInText(account.displayName, await loadCustomEmojis(env, identity.mediaPublicBaseUrl)),
-    profile.isOk() ? profile.value : EMPTY_ACCOUNT_PROFILE,
-  );
-};
-
-/** {@link mastodonAccountDocument} for many accounts with one counts batch and one profile query. */
-export const mastodonAccountDocuments = async (
-  env: Env,
-  identity: InstanceIdentity,
-  accounts: ReadonlyArray<LocalAccount>,
-): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
-  const documents = new Map<string, Record<string, unknown>>();
-  if (accounts.length === 0) {
-    return documents;
-  }
-  const accountIds = accounts.map((account) => account.id);
-  const [counts, profiles, emojis] = await Promise.all([
-    accountCountsByIds(env.DB, accountIds),
-    listAccountProfiles(env.DB, accountIds),
-    loadCustomEmojis(env, identity.mediaPublicBaseUrl),
-  ]);
-  for (const account of accounts) {
-    documents.set(
-      account.id,
-      mastodonAccount(
-        identity,
-        account,
-        (counts.isOk() ? counts.value.get(account.id) : undefined) ?? {
-          followers: 0,
-          following: 0,
-          statuses: 0,
-        },
-        emojisInText(account.displayName, emojis),
-        (profiles.isOk() ? profiles.value.get(account.id) : undefined) ?? EMPTY_ACCOUNT_PROFILE,
-      ),
-    );
-  }
-  return documents;
-};
-
-export const mastodonRemoteAccount = (
-  identity: InstanceIdentity,
-  actor: RemoteActor,
-): Record<string, unknown> => {
-  const url = actor.actorUri;
-  return {
-    id: RemoteAccountId.encode(actor.actorUri),
-    username: actor.username,
-    acct: `${actor.username}@${actor.domain}`,
-    display_name: actor.displayName,
-    locked: false,
-    bot: false,
-    discoverable: true,
-    group: false,
-    created_at: actor.fetchedAt,
-    note: "",
-    url,
-    uri: url,
-    avatar: identity.thumbnailUrl,
-    avatar_static: identity.thumbnailUrl,
-    header: identity.thumbnailUrl,
-    header_static: identity.thumbnailUrl,
-    followers_count: 0,
-    following_count: 0,
-    statuses_count: 0,
-    last_status_at: null,
-    emojis: [],
-    fields: [],
-  };
-};
-
-export const mastodonRemoteStatus = (
-  identity: InstanceIdentity,
-  status: RemoteStatusValue,
-  actor: RemoteActor,
-  card: Record<string, unknown> | null = null,
-): Record<string, unknown> => {
-  const url = status.url ?? status.objectUri;
-  return {
-    id: status.id,
-    created_at: status.publishedAt,
-    in_reply_to_id: null,
-    in_reply_to_account_id: null,
-    sensitive: status.sensitive,
-    spoiler_text: status.spoilerText,
-    visibility: Visibility.toMastodon(status.visibility),
-    language: status.language.kind === "Present" ? status.language.value : null,
-    uri: status.objectUri,
-    url,
-    replies_count: 0,
-    reblogs_count: 0,
-    favourites_count: 0,
-    edited_at: null,
-    favourited: false,
-    reblogged: false,
-    muted: false,
-    bookmarked: false,
-    content: status.contentHtml,
-    reblog: null,
-    account: mastodonRemoteAccount(identity, actor),
-    media_attachments: status.media.map((attachment, index) => ({
-      id: `${status.id}-${index}`,
-      type: remoteMediaType(attachment.mediaType),
-      url: attachment.url,
-      preview_url: attachment.url,
-      remote_url: attachment.url,
-      text_url: attachment.url,
-      meta: {},
-      description: attachment.description.length > 0 ? attachment.description : null,
-      blurhash: null,
-    })),
-    mentions: [],
-    tags: [],
-    emojis: [],
-    card,
-    poll: null,
-    quote: null,
-    quotes_count: 0,
-    quote_approval: { automatic: [], manual: [], current_user: "unknown" },
-  };
-};
-
-const remoteMediaType = (mediaType: string): string => {
-  const type = mediaType.toLowerCase();
-  if (type.length === 0) {
-    return "unknown";
-  }
-  if (type.startsWith("video/")) {
-    return "video";
-  }
-  if (type.startsWith("audio/")) {
-    return "audio";
-  }
-  if (type.startsWith("image/")) {
-    return "image";
-  }
-  return "unknown";
-};
-
-export const remoteStatusVisible = (status: RemoteStatusValue): boolean =>
-  status.visibility.kind === "Public" || status.visibility.kind === "Unlisted";
-
-export const pollJson = (poll: PollRecord): Record<string, unknown> => {
-  const expired = Date.parse(poll.expiresAt) <= Date.now();
-  // A poll that hides totals keeps them secret until it ends.
-  const hidden = poll.hideTotals && !expired;
-  return {
-    id: poll.id,
-    expires_at: poll.expiresAt,
-    expired,
-    multiple: poll.multiple,
-    votes_count: hidden ? null : poll.options.reduce((sum, option) => sum + option.votesCount, 0),
-    voters_count: hidden || !poll.multiple ? null : poll.votedIndexes.length,
-    voted: poll.votedIndexes.length > 0,
-    own_votes: [...poll.votedIndexes],
-    options: poll.options.map((option) => ({
-      title: option.title,
-      votes_count: hidden ? null : option.votesCount,
-    })),
-    emojis: [],
-  };
-};
+import { mastodonAccount } from "./account-documents";
+import { mastodonMedia } from "./media-document";
+import { pollJson } from "./poll-document";
+import { quotePolicyName } from "./quote-policy-name";
 
 const mediaAttachmentsJson = (
   identity: InstanceIdentity,
@@ -367,18 +103,6 @@ const buildLocalNoteDocument = (
     quotes_count: 0,
     quote_approval: { automatic: [], manual: [], current_user: "unknown" },
   };
-};
-
-/** The account-level default policy as its API name. */
-const quotePolicyName = (policy: LocalAccount["defaultQuotePolicy"]): QuotePolicy => {
-  switch (policy.kind) {
-    case "Public":
-      return "public";
-    case "Followers":
-      return "followers";
-    default:
-      return "nobody";
-  }
 };
 
 export const mastodonStatus = async (
@@ -720,125 +444,3 @@ export const mastodonStatuses = async (
   }
   return documents;
 };
-
-export const mastodonRelationship = (
-  targetId: string,
-  flags: RelationshipFlags,
-): Record<string, unknown> => ({
-  id: targetId,
-  following: flags.following,
-  showing_reblogs: flags.showingReblogs,
-  notifying: flags.notifying,
-  languages: [...flags.languages],
-  followed_by: flags.followedBy,
-  blocking: flags.blocking,
-  blocked_by: flags.blockedBy,
-  muting: flags.muting,
-  muting_notifications: flags.mutingNotifications,
-  muting_expires_at: flags.mutingExpiresAt,
-  requested: flags.requested,
-  domain_blocking: flags.domainBlocking,
-  endorsed: flags.endorsed,
-  note: flags.note,
-});
-
-export const mastodonFilter = (row: FilterRow): Record<string, unknown> => {
-  const context = parseJsonColumn(FilterContextSchema, row.context_json);
-  const contexts = context.isOk() ? context.value : ["home"];
-  return {
-    id: row.id,
-    phrase: row.phrase,
-    context: contexts,
-    whole_word: row.whole_word === 1,
-    irreversible: row.irreversible === 1,
-    expires_at: row.expires_at,
-  };
-};
-
-/** Mastodon's v2 Filter; `statuses` are FilterStatus entities (`{ id, status_id }`). */
-export const mastodonFilterV2 = (
-  row: FilterRow,
-  statuses: ReadonlyArray<FilterStatus> = [],
-): Record<string, unknown> => {
-  const v1 = mastodonFilter(row);
-  return {
-    id: row.id,
-    title: row.phrase,
-    context: v1.context,
-    expires_at: row.expires_at,
-    filter_action: row.irreversible === 1 ? "hide" : "warn",
-    statuses: statuses.map((entry) => ({ id: entry.id, status_id: entry.status_id })),
-    keywords: filterKeywords(row).map((keyword) => ({
-      id: keyword.id,
-      keyword: keyword.keyword,
-      whole_word: keyword.whole_word,
-    })),
-  };
-};
-
-export const mastodonMedia = (
-  identity: InstanceIdentity,
-  row: {
-    id: string;
-    object_key: string;
-    content_type: string;
-    description?: string | null;
-    focus_x?: number | null;
-    focus_y?: number | null;
-  },
-): Record<string, unknown> => {
-  const url = mediaUrl(identity, row.object_key);
-  const focus =
-    row.focus_x !== null &&
-    row.focus_x !== undefined &&
-    row.focus_y !== null &&
-    row.focus_y !== undefined
-      ? { x: row.focus_x, y: row.focus_y }
-      : undefined;
-  return {
-    id: row.id,
-    type: row.content_type.startsWith("video/") ? "video" : "image",
-    url,
-    preview_url: url,
-    remote_url: null,
-    text_url: url,
-    meta: focus ? { focus } : {},
-    description: row.description ?? null,
-    blurhash: null,
-  };
-};
-
-export const mastodonTag = (
-  identity: InstanceIdentity,
-  name: string,
-  options: {
-    history?: ReadonlyArray<{ day: string; uses: string; accounts: string }>;
-    following?: boolean;
-    featuring?: boolean;
-  } = {},
-): Record<string, unknown> => ({
-  id: name,
-  name,
-  url: `https://${identity.domain}/tags/${name}`,
-  history: options.history ?? [],
-  following: options.following ?? false,
-  featuring: options.featuring ?? false,
-});
-
-export const mastodonFeaturedTag = (
-  identity: InstanceIdentity,
-  username: string,
-  name: string,
-  statusesCount: number,
-  lastStatusAt: string | null,
-): Record<string, unknown> => ({
-  id: name,
-  name,
-  url: `${identity.publicOrigin.replace(/\/$/, "")}/@${username}/tagged/${name}`,
-  statuses_count: statusesCount,
-  last_status_at: lastStatusAt,
-});
-
-export const unauthorized = () => ({
-  error: "This method requires an authenticated user",
-});
