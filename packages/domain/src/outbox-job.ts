@@ -26,6 +26,14 @@ const ProcessLinkCardSchema = z.object({
   url: z.url(),
 });
 
+/** Send one delivered notification to one of the recipient's push subscriptions. */
+const DeliverPushSchema = z.object({
+  kind: z.literal("DeliverPush"),
+  accountId: z.string().min(1),
+  notificationId: z.string().min(1),
+  subscriptionId: z.number().int().positive(),
+});
+
 export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ExpandFollowersSchema,
   DeliverTargetSchema,
@@ -34,6 +42,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   BackfillRemoteTagsSchema,
   PublishScheduledStatusesSchema,
   ProcessLinkCardSchema,
+  DeliverPushSchema,
 ]);
 
 export type OutboxJob = z.infer<typeof OutboxJobSchema>;

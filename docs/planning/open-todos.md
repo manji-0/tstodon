@@ -15,7 +15,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 | D1-4 | Timeline preload: `Promise.all` vs single `runD1Batch` | Defer until metrics show a success criterion           |
 | D1-5 | Hot-key Durable Object for write serialization         | Only with evidence beyond D1 primary                   |
 
-## Web Push (in progress)
+## Web Push (open)
 
 | ID   | Item                                        | Notes                                                                                    |
 | ---- | ------------------------------------------- | ---------------------------------------------------------------------------------------- |
@@ -24,7 +24,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
-- Push subscriptions stored (`/api/v1/push/subscription`, per account + endpoint) and the VAPID key advertised
+- Web Push: subscriptions per account + endpoint, VAPID key advertised, notifications delivered (`aes128gcm`/`aesgcm`, VAPID ES256)
 
 - Toolchain on Vite+ (`vp check`/`test`/`dev`/`build`, Vitest 5 via `@cloudflare/vitest-plugin`, Worker built by `@cloudflare/vite-plugin`)
 - `FEDERATION_ALLOW_HOSTS` matches `host:port` peers by hostname (inbox gate and follower fan-out)

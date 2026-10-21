@@ -24,6 +24,7 @@ import { listExpiredUnnotifiedPolls, markPollExpiryNotified } from "./poll-store
 import { elapsedMs, writeMetric } from "./metrics";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
+import { processPushJob } from "./push-delivery";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { hostnameOf } from "./domain-block-store";
@@ -313,6 +314,8 @@ export const processOutboxJob = async (
       return "ok";
     case "ProcessLinkCard":
       return processLinkCardJob(env, job);
+    case "DeliverPush":
+      return processPushJob(env, job);
     case "ExpandFollowers": {
       const startedAt = Date.now();
       const activity = await findOutboundActivity(env.DB, job.activityId);

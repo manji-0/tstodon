@@ -4,6 +4,7 @@ import type { RepositoryError } from "./d1";
 import { holdNotification } from "./notification-policy-store";
 import { notificationDisposition } from "./notification-policy";
 import { insertNotification } from "./social-store";
+import { enqueuePushDeliveries } from "./push-delivery";
 import { publishToAccount } from "./stream-publish";
 
 export const notifyAccount = async (
@@ -54,5 +55,6 @@ export const notifyAccount = async (
       status_id: input.statusId ?? null,
     },
   });
+  await enqueuePushDeliveries(env, input.accountId, inserted.value);
   return ok(undefined);
 };
