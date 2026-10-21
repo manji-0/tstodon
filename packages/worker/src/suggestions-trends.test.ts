@@ -120,6 +120,15 @@ describe("suggestions and trending links", () => {
     expect(
       read(z.array(MastodonAccountPreviewSchema), others.body).map((account) => account.id),
     ).toContain(dismissedId);
+
+    // The dismissal goes away with the dismissed account.
+    await env.DB.prepare("DELETE FROM accounts WHERE id = ?").bind(dismissedId).run();
+    const left = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM suggestion_dismissals WHERE target_account_id = ?",
+    )
+      .bind(dismissedId)
+      .first<{ n: number }>();
+    expect(left?.n).toBe(0);
   });
 
   it("derives trending links from public notes", async () => {
