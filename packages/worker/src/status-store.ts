@@ -786,78 +786,49 @@ export const listLinkStatuses = async (
     return hydrateStatusRows(db, results ?? []);
   });
 
-export const listStatusAncestors = async (
+/** Local notes answering any of these local statuses, oldest first. */
+export const listLocalRepliesToIds = async (
   db: D1Database,
-  statusId: string,
-  depth: number = ContextLimits.anonymous.depth,
+  statusIds: ReadonlyArray<string>,
+  limit: number,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> => {
-  const chain: LocalStatusValue[] = [];
-  let currentId: string | undefined = statusId;
-  for (let step = 0; step < depth; step += 1) {
-    const current = await findStatusById(db, currentId);
-    if (current.isErr()) {
-      return err(current.error);
-    }
-    if (!current.value || current.value.kind !== "LocalNote" || !current.value.inReplyToId) {
-      break;
-    }
-    const parent = await findStatusById(db, current.value.inReplyToId);
-    if (parent.isErr()) {
-      return err(parent.error);
-    }
-    if (!parent.value) {
-      break;
-    }
-    chain.push(parent.value);
-    currentId = parent.value.id;
+  if (statusIds.length === 0 || limit <= 0) {
+    return ok([]);
   }
-  return ok(chain.reverse());
+  return runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT ${statusSelect} FROM statuses
+         WHERE kind = 'LocalNote' AND in_reply_to_id ${sqlInJsonEach()}
+         ORDER BY id ASC LIMIT ?`,
+      )
+      .bind(jsonStringArray([...new Set(statusIds)]), limit)
+      .all();
+    return hydrateStatusRows(db, results ?? []);
+  });
 };
 
-/**
- * Replies below a status, breadth-first, ordered by id (chronological).
- * Mastodon bounds this by depth: 20 for anonymous callers, effectively
- * unbounded (but count-limited) for authenticated ones.
- */
-export const listStatusDescendants = async (
+/** Local notes answering any of these remote URIs, oldest first. */
+export const listLocalRepliesToUris = async (
   db: D1Database,
-  statusId: string,
-  limit: number = ContextLimits.anonymous.descendants,
-  depth: number = ContextLimits.anonymous.depth,
-): Promise<Result<LocalStatusValue[], RepositoryError>> =>
-  runD1(async () => {
-    const collected: LocalStatusValue[] = [];
-    const seen = new Set<string>([statusId]);
-    let frontier = [statusId];
-    for (let level = 0; level < depth && frontier.length > 0; level += 1) {
-      if (collected.length >= limit) {
-        break;
-      }
-      const { results } = await db
-        .prepare(
-          `SELECT ${statusSelect} FROM statuses
-           WHERE kind = 'LocalNote' AND in_reply_to_id ${sqlInJsonEach()}
-           ORDER BY id ASC LIMIT ?`,
-        )
-        .bind(jsonStringArray(frontier), limit - collected.length)
-        .all();
-      const children = await hydrateStatusRows(db, results ?? []);
-      const next: string[] = [];
-      for (const child of children) {
-        if (seen.has(child.id)) {
-          continue;
-        }
-        seen.add(child.id);
-        collected.push(child);
-        next.push(child.id);
-        if (collected.length >= limit) {
-          break;
-        }
-      }
-      frontier = next;
-    }
-    return collected.toSorted((left, right) => left.id.localeCompare(right.id));
+  uris: ReadonlyArray<string>,
+  limit: number,
+): Promise<Result<LocalStatusValue[], RepositoryError>> => {
+  if (uris.length === 0 || limit <= 0) {
+    return ok([]);
+  }
+  return runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT ${statusSelect} FROM statuses
+         WHERE kind = 'LocalNote' AND in_reply_to_uri ${sqlInJsonEach()}
+         ORDER BY id ASC LIMIT ?`,
+      )
+      .bind(jsonStringArray([...new Set(uris)]), limit)
+      .all();
+    return hydrateStatusRows(db, results ?? []);
   });
+};
 
 export const extractHashtags = (text: string): string[] => {
   const tags = new Set<string>();

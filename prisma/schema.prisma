@@ -608,6 +608,7 @@ model remote_statuses {
   @@index([actor_uri, published_at(sort: Desc)], map: "idx_remote_statuses_actor_published")
   @@index([visibility, published_at(sort: Desc)], map: "idx_remote_statuses_visibility_published")
   @@index([card_url, id], map: "idx_remote_statuses_card_url")
+  @@index([in_reply_to_uri], map: "idx_remote_statuses_in_reply_to_uri")
 }
 
 model canonical_email_blocks {
@@ -775,4 +776,5 @@ model statuses {
 
   @@index([visibility, created_at(sort: Desc)], map: "idx_statuses_visibility_created_at")
   @@index([account_id, created_at(sort: Desc)], map: "idx_statuses_account_created_at")
+  @@index([in_reply_to_uri], map: "idx_statuses_in_reply_to_uri")
 }

@@ -197,6 +197,39 @@ export const upsertRemoteStatus = async (
   return ok(written.value);
 };
 
+/** Cached remote notes answering any of these URIs, oldest first. */
+export const listRemoteRepliesToUris = async (
+  db: D1Database,
+  uris: ReadonlyArray<string>,
+  limit: number,
+): Promise<Result<RemoteStatus[], RepositoryError>> => {
+  if (uris.length === 0 || limit <= 0) {
+    return ok([]);
+  }
+  return runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
+         WHERE s.in_reply_to_uri IN (SELECT value FROM json_each(?))
+         ORDER BY s.id ASC LIMIT ?`,
+      )
+      .bind(jsonStringArray([...new Set(uris)]), limit)
+      .all();
+    const statuses: RemoteStatus[] = [];
+    for (const raw of results ?? []) {
+      const row = parseRemoteStatusRow(raw);
+      if (row.isErr()) {
+        continue;
+      }
+      const parsed = remoteStatusFromRow(row.value);
+      if (parsed.isOk()) {
+        statuses.push(parsed.value);
+      }
+    }
+    return statuses;
+  });
+};
+
 /** Cached remote statuses' ids and authors, keyed by object URI. */
 export const findRemoteStatusRefsByObjectUris = async (
   db: D1Database,

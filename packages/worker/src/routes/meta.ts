@@ -21,7 +21,7 @@ import {
 import { customEmojiJson, emojisInText, type CustomEmoji } from "../emoji";
 import { loadCustomEmojis } from "../custom-emoji-store";
 import { accountDocumentsByIds } from "../account-documents";
-import { notificationStatusDocuments } from "../notification-documents";
+import { statusDocumentsByIds } from "../status-documents";
 import {
   hideConversation,
   latestStatusIdInConversation,
@@ -406,7 +406,7 @@ metaRoutes.get("/api/v1/conversations", async (c) => {
       identity.value,
       conversations.value.flatMap((conversation) => conversation.accountIds),
     ),
-    notificationStatusDocuments(
+    statusDocumentsByIds(
       c.env,
       identity.value,
       conversations.value.map((conversation) => conversation.lastStatus.status.id),

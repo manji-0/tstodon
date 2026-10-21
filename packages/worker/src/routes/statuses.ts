@@ -19,6 +19,13 @@ import { escapeHtml, mentionUsernames, textToHtml } from "../html";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "../mention-store";
 import { loadNoteMentions, resolveRemoteMentions } from "../mention-resolve";
 import { findReplyTarget, loadNoteReply, type ReplyTarget } from "../reply-target";
+import { statusDocumentsByIds } from "../status-documents";
+import {
+  listThreadAncestors,
+  listThreadDescendants,
+  visibleThreadStatuses,
+  type ThreadStatus,
+} from "../thread-context";
 import { findFollowKind } from "../social-store";
 import { quotedStatusUri } from "../quote-uri";
 import {
@@ -88,8 +95,6 @@ import {
   isStatusPinned,
   listBookmarkedStatuses,
   listFavouritedStatuses,
-  listStatusAncestors,
-  listStatusDescendants,
   listStatusEdits,
   pinStatus,
   replaceStatusMedia,
@@ -1279,45 +1284,57 @@ statusRoutes.get("/api/v1/statuses/:id/context", async (c) => {
     return jsonAuthError(c, auth.error);
   }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
-  const status = await findStatusById(c.env.DB, c.req.param("id"));
-  if (status.isErr()) {
-    return jsonRepositoryError(c, status.error.message);
+  // The thread of a local status or a cached remote one, across both.
+  const local = await findStatusById(c.env.DB, c.req.param("id"));
+  if (local.isErr()) {
+    return jsonRepositoryError(c, local.error.message);
   }
-  if (!status.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  let start: ThreadStatus | undefined;
+  if (local.value) {
+    start = (await canViewStatus(c.env.DB, local.value, viewerId))
+      ? { kind: "Local", status: local.value }
+      : undefined;
+  } else {
+    const remote = await findRemoteStatusById(c.env.DB, c.req.param("id"));
+    if (remote.isErr()) {
+      return jsonRepositoryError(c, remote.error.message);
+    }
+    start =
+      remote.value && (await canViewRemoteStatus(c.env.DB, remote.value, viewerId))
+        ? { kind: "Remote", status: remote.value }
+        : undefined;
   }
-  if (!(await canViewStatus(c.env.DB, status.value, viewerId))) {
+  if (!start) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const limits = viewerId ? ContextLimits.authenticated : ContextLimits.anonymous;
-  const ancestors = await listStatusAncestors(c.env.DB, status.value.id, limits.depth);
+  const ancestors = await listThreadAncestors(c.env.DB, identity.value, start, limits.depth);
   if (ancestors.isErr()) {
     return jsonRepositoryError(c, ancestors.error.message);
   }
-  const descendants = await listStatusDescendants(
+  const descendants = await listThreadDescendants(
     c.env.DB,
-    status.value.id,
+    identity.value,
+    start,
     limits.descendants,
     limits.depth,
   );
   if (descendants.isErr()) {
     return jsonRepositoryError(c, descendants.error.message);
   }
-  const visibleAncestors = [];
-  for (const candidate of ancestors.value) {
-    if (await canViewStatus(c.env.DB, candidate, viewerId)) {
-      visibleAncestors.push(candidate);
-    }
-  }
-  const visibleDescendants = [];
-  for (const candidate of descendants.value) {
-    if (await canViewStatus(c.env.DB, candidate, viewerId)) {
-      visibleDescendants.push(candidate);
-    }
-  }
+  const visibleAncestors = await visibleThreadStatuses(c.env.DB, ancestors.value, viewerId);
+  const visibleDescendants = await visibleThreadStatuses(c.env.DB, descendants.value, viewerId);
+  const documents = await statusDocumentsByIds(
+    c.env,
+    identity.value,
+    [...visibleAncestors, ...visibleDescendants].map((node) => node.status.id),
+    viewerId,
+  );
+  const render = (nodes: ReadonlyArray<ThreadStatus>) =>
+    nodes.flatMap((node) => documents.get(node.status.id) ?? []);
   return c.json({
-    ancestors: await mastodonStatuses(c.env, identity.value, visibleAncestors, viewerId),
-    descendants: await mastodonStatuses(c.env, identity.value, visibleDescendants, viewerId),
+    ancestors: render(visibleAncestors),
+    descendants: render(visibleDescendants),
   });
 });
 

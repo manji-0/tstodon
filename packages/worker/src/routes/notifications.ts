@@ -18,11 +18,8 @@ import {
 } from "../http";
 import { getMarkers } from "../marker-store";
 import { accountDocumentsByIds } from "../account-documents";
-import {
-  mastodonNotification,
-  mastodonNotifications,
-  notificationStatusDocuments,
-} from "../notification-documents";
+import { mastodonNotification, mastodonNotifications } from "../notification-documents";
+import { statusDocumentsByIds } from "../status-documents";
 import {
   DEFAULT_GROUPED_TYPES,
   groupNotifications,
@@ -280,7 +277,7 @@ const groupEnvelope = async (
   }
   const [accountDocuments, statusDocuments] = await Promise.all([
     accountDocumentsByIds(c.env, identity.value, accountIds),
-    notificationStatusDocuments(c.env, identity.value, statusIds, accountId),
+    statusDocumentsByIds(c.env, identity.value, statusIds, accountId),
   ]);
   const accounts = accountIds.flatMap((id) => accountDocuments.get(id) ?? []);
   const statuses = statusIds.flatMap((id) => statusDocuments.get(id) ?? []);

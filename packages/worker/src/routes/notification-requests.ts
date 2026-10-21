@@ -12,7 +12,7 @@ import {
   requireUser,
 } from "../http";
 import { accountDocumentsByIds } from "../account-documents";
-import { notificationStatusDocuments } from "../notification-documents";
+import { statusDocumentsByIds } from "../status-documents";
 import {
   NotificationPolicyActionSchema,
   acceptNotificationRequests,
@@ -53,12 +53,7 @@ const requestDocument = async (
   // The status stored with the held notification is the exact one.
   const [accounts, statuses] = await Promise.all([
     accountDocumentsByIds(c.env, identity, [request.fromAccountId]),
-    notificationStatusDocuments(
-      c.env,
-      identity,
-      request.statusId ? [request.statusId] : [],
-      accountId,
-    ),
+    statusDocumentsByIds(c.env, identity, request.statusId ? [request.statusId] : [], accountId),
   ]);
   const accountDocument = accounts.get(request.fromAccountId) ?? null;
   const lastStatus = request.statusId ? (statuses.get(request.statusId) ?? null) : null;

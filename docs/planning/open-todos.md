@@ -26,7 +26,6 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 | ID   | Item                                                | Notes                                                                                                                                                                                 |
 | ---- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| DM-2 | Thread context across remote parents                | `GET /api/v1/statuses/:id/context` walks local `in_reply_to_id` only, so a reply to a remote status shows no remote ancestors                                                         |
 | DM-3 | `in_reply_to_id` on remote statuses                 | Stored as `in_reply_to_uri` for conversations; not yet rendered on the status document                                                                                                |
 | DM-4 | Conversation mutes on remote replies                | `status_mutes` hides local thread members only; a remote reply into a muted thread still shows                                                                                        |
 | DM-5 | Federate local status deletion                      | Deleting a local note sends no `Delete`, so remote copies stay                                                                                                                        |
@@ -34,6 +33,8 @@ Tracked leftovers so e2e work can proceed without losing them.
 | DM-7 | Outbox paging and private self-boosts               | The outbox filters after its `LIMIT`, so a page can come back short; a self-boost of a followers-only note is listed (its object still 404s) and its `Announce` carries no addressing |
 
 ## Done recently (do not re-open)
+
+- Thread context spans local and cached remote statuses (either id; remote replies to local notes included)
 
 - Local notes reply to cached remote statuses (`statuses.in_reply_to_uri`): rendered parent, `inReplyTo` on every federated note, direct replies grouped into the remote conversation
 
