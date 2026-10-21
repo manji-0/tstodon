@@ -1,3 +1,4 @@
+import { assertNever } from "@tstodon/core";
 import {
   ActivityId,
   DeliveryAttemptOutcome,
@@ -448,5 +449,7 @@ export const processOutboxJob = async (
       await startOutboxDeliveryWorkflow(env, job);
       return "ok";
     }
+    default:
+      return assertNever(job);
   }
 };

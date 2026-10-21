@@ -1,3 +1,4 @@
+import { assertNever } from "@tstodon/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { findAccountById, findAccountByIdOrUsername } from "../../account-store";
@@ -39,6 +40,8 @@ accountProfileRoutes.get("/api/v1/accounts/:id", async (c) => {
       return c.json({ error: "This account is suspended", kind: "AccountSuspended" }, 410);
     case "NotFound":
       return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    default:
+      return assertNever(found.value);
   }
 });
 

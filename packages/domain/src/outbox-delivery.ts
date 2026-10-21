@@ -69,6 +69,8 @@ export const OutboxDelivery = {
         }
         return { kind: "Queued", attemptCount: nextAttempt };
       }
+      default:
+        return assertNever(outcome);
     }
   },
   retryDelay: (attempt: number): "+1 minute" | "+5 minutes" | "+15 minutes" | "+60 minutes" => {

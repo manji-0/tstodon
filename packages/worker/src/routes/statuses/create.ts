@@ -1,7 +1,6 @@
 import {
   InstanceIdentity,
   type LocalStatus,
-  type QuoteApprovalPolicy,
   StatusComposition,
   StatusId,
   Visibility,
@@ -44,6 +43,7 @@ import {
 } from "../../media-store";
 import { canViewStatus } from "../../visibility-guard";
 import { publishLocalNote } from "../../local-status-publish";
+import { quotePolicyName } from "../../quote-policy-name";
 import {
   defaultQuotePolicy,
   findStatusQuotePolicy,
@@ -113,18 +113,6 @@ export const applyMediaAttributes = async (
 export const queueLinkCard = async (env: Env, statusId: string, text: string): Promise<void> => {
   const queued = await enqueueLinkCard(env, "Status", statusId, text);
   queued;
-};
-
-/** The account-level default policy as its API name. */
-const quotePolicyName = (policy: QuoteApprovalPolicy): QuotePolicy => {
-  switch (policy.kind) {
-    case "Public":
-      return "public";
-    case "Followers":
-      return "followers";
-    default:
-      return "nobody";
-  }
 };
 
 /** Public and unlisted statuses can be quoted by anyone their policy allows. */

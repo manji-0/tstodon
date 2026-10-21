@@ -1,4 +1,4 @@
-import { schemaResult } from "@tstodon/core";
+import { assertNever, schemaResult } from "@tstodon/core";
 import type { OutboxJob } from "@tstodon/domain";
 import { z } from "zod";
 import { htmlToText } from "./html";
@@ -94,6 +94,8 @@ const policyAdmits = async (
       const kind = await findFollowKind(db, senderId, subscription.accountId);
       return kind.isOk() ? kind.value === "Accepted" : undefined;
     }
+    default:
+      return assertNever(subscription.policy);
   }
 };
 
