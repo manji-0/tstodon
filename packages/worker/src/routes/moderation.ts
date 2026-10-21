@@ -1,6 +1,7 @@
 import { type Context, Hono } from "hono";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import { z } from "zod";
+import { parseJsonColumn } from "../json-column";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -306,7 +307,8 @@ const expiresAtFromBody = (raw: number | string | undefined): string | null => {
 const filterNotFound = (c: Context<{ Bindings: Env }>) =>
   c.json({ error: "Record not found", kind: "NotFound" }, 404);
 
-const storedContexts = (row: FilterRow): string[] => JSON.parse(row.context_json) as string[];
+const storedContexts = (row: Pick<FilterRow, "context_json">): string[] =>
+  parseJsonColumn(z.array(z.string()), row.context_json).unwrapOr([]);
 
 /** The v2 Filter document, with the FilterStatus entries it is narrowed to. */
 const filterDocumentV2 = async (
@@ -359,7 +361,7 @@ moderationRoutes.put("/api/v2/filters/:id", async (c) => {
   const action = body.value.filter_action;
   const updated = await updateFilter(c.env.DB, user.value.id, id, {
     phrase,
-    context: contexts.length > 0 ? contexts : (JSON.parse(existing.value.context_json) as string[]),
+    context: contexts.length > 0 ? contexts : storedContexts(existing.value),
     wholeWord: keywords[0]?.whole_word ?? existing.value.whole_word === 1,
     irreversible:
       action === undefined ? existing.value.irreversible === 1 : filterActionOf(action) === "hide",

@@ -289,14 +289,13 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     return c.json({ error: draft.error.kind, kind: draft.error.kind }, 422);
   }
   const policyRaw = (body.value.quote_approval_policy ?? "").trim().toLowerCase();
-  if (policyRaw.length > 0 && !isQuotePolicy(policyRaw)) {
+  const requestedPolicy = isQuotePolicy(policyRaw) ? policyRaw : undefined;
+  if (policyRaw.length > 0 && requestedPolicy === undefined) {
     return c.json({ error: "Invalid quote_approval_policy", kind: "ValidationError" }, 422);
   }
   // Direct and followers-only posts are never quotable by anyone else.
   const statusQuotePolicy: QuotePolicy = visibilityIsPublic(draft.value.visibility)
-    ? policyRaw.length > 0
-      ? (policyRaw as QuotePolicy)
-      : quotePolicyName(user.value.defaultQuotePolicy)
+    ? (requestedPolicy ?? quotePolicyName(user.value.defaultQuotePolicy))
     : "nobody";
   let replyTo: ReplyTarget | null = null;
   const replyRaw = body.value.in_reply_to_id?.trim() ?? "";

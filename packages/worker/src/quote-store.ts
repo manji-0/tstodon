@@ -30,7 +30,7 @@ export const defaultQuotePolicy = (visibility: string): QuotePolicy => {
 };
 
 export const isQuotePolicy = (raw: string): raw is QuotePolicy =>
-  (QuotePolicySchema as ReadonlyArray<string>).includes(raw);
+  QuotePolicySchema.some((policy) => policy === raw);
 
 const toRow = (row: {
   id: string;

@@ -36,12 +36,7 @@ import {
 } from "../../status-store";
 import { findStatusUpdatedAt, insertStatusEdit, listStatusEdits } from "../../status-edit-store";
 import { canViewStatus } from "../../visibility-guard";
-import {
-  isQuotePolicy,
-  listAcceptedQuoteEdges,
-  type QuotePolicy,
-  setStatusQuotePolicy,
-} from "../../quote-store";
+import { isQuotePolicy, listAcceptedQuoteEdges, setStatusQuotePolicy } from "../../quote-store";
 import { applyMediaAttributes, queueLinkCard, visibilityIsPublic } from "./create";
 
 export const statusEditRoutes = new Hono<{ Bindings: Env }>();
@@ -241,7 +236,7 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     const stored = await setStatusQuotePolicy(
       c.env.DB,
       existing.id,
-      visibilityIsPublic(revised.visibility) ? (policyEdit as QuotePolicy) : "nobody",
+      visibilityIsPublic(revised.visibility) ? policyEdit : "nobody",
     );
     if (stored.isErr()) {
       return jsonRepositoryError(c, stored.error.message);

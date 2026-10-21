@@ -132,7 +132,9 @@ accountCredentialRoutes.patch("/api/v1/accounts/update_credentials", async (c) =
   }
   // `source[privacy]` and `source[quote_policy]` arrive as flat form keys or
   // nested in a JSON `source` object.
-  const flat = (rawBody ?? {}) as Record<string, unknown>;
+  const flat: Record<string, unknown> = schemaResult(z.record(z.string(), z.unknown()))(
+    rawBody,
+  ).unwrapOr({});
   const sourceKey = (key: "privacy" | "quote_policy"): string | undefined => {
     const flatValue = flat[`source[${key}]`];
     if (typeof flatValue === "string" && flatValue.trim().length > 0) {
