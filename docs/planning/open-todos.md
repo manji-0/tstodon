@@ -24,12 +24,14 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Direct messages (open)
 
-| ID   | Item                                 | Notes                                                                                                 |
-| ---- | ------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| DM-2 | Reply to a remote status             | `statuses.in_reply_to_id` references local statuses only, so a remote DM cannot be answered in thread |
-| DM-3 | `in_reply_to_id` on remote statuses  | Stored as `in_reply_to_uri` for conversations; not yet rendered on the status document                |
-| DM-4 | Conversation mutes on remote replies | `status_mutes` hides local thread members only; a remote reply into a muted thread still shows        |
-| DM-5 | Federate local status deletion       | Deleting a local note sends no `Delete`, so remote copies stay                                        |
+| ID   | Item                                                | Notes                                                                                                                                                                                 |
+| ---- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DM-2 | Reply to a remote status                            | `statuses.in_reply_to_id` references local statuses only, so a remote DM cannot be answered in thread                                                                                 |
+| DM-3 | `in_reply_to_id` on remote statuses                 | Stored as `in_reply_to_uri` for conversations; not yet rendered on the status document                                                                                                |
+| DM-4 | Conversation mutes on remote replies                | `status_mutes` hides local thread members only; a remote reply into a muted thread still shows                                                                                        |
+| DM-5 | Federate local status deletion                      | Deleting a local note sends no `Delete`, so remote copies stay                                                                                                                        |
+| DM-6 | Serve non-public notes to authorized signed fetches | `GET /users/:username/statuses/:id` answers 404 for followers-only and direct notes to everyone; Mastodon serves them to a signed fetch from an addressed actor                       |
+| DM-7 | Outbox paging and private self-boosts               | The outbox filters after its `LIMIT`, so a page can come back short; a self-boost of a followers-only note is listed (its object still 404s) and its `Announce` carries no addressing |
 
 ## Done recently (do not re-open)
 
