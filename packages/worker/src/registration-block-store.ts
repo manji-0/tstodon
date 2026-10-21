@@ -1,6 +1,7 @@
+import { z } from "zod";
 import { ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { parseRows, runD1, type RepositoryError } from "./d1";
 import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { newEntityId } from "./ids";
 import { queryTyped, runTyped } from "./typed-sql";
@@ -41,21 +42,27 @@ export const canonicalEmailHash = async (email: string): Promise<string> => {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 };
 
-const canonicalFromRow = (row: {
-  id: string;
-  canonical_email_hash: string;
-  created_at: string;
-}): CanonicalEmailBlock => ({
+const CanonicalEmailBlockRowSchema = z.object({
+  id: z.string(),
+  canonical_email_hash: z.string(),
+  created_at: z.string(),
+});
+
+const canonicalFromRow = (
+  row: z.infer<typeof CanonicalEmailBlockRowSchema>,
+): CanonicalEmailBlock => ({
   id: row.id,
   canonicalEmailHash: row.canonical_email_hash,
   createdAt: row.created_at,
 });
 
-const domainFromRow = (row: {
-  id: string;
-  domain: string;
-  created_at: string;
-}): EmailDomainBlock => ({
+const EmailDomainBlockRowSchema = z.object({
+  id: z.string(),
+  domain: z.string(),
+  created_at: z.string(),
+});
+
+const domainFromRow = (row: z.infer<typeof EmailDomainBlockRowSchema>): EmailDomainBlock => ({
   id: row.id,
   domain: row.domain,
   createdAt: row.created_at,
@@ -75,7 +82,7 @@ export const listCanonicalEmailBlocks = async (
       )
       .bind(...binds, limit)
       .all();
-    return (results ?? []).map((row) => canonicalFromRow(row as never));
+    return parseRows(CanonicalEmailBlockRowSchema, results).map(canonicalFromRow);
   });
 
 export const findCanonicalEmailBlockById = async (
@@ -145,7 +152,7 @@ export const listEmailDomainBlocks = async (
       )
       .bind(...binds, limit)
       .all();
-    return (results ?? []).map((row) => domainFromRow(row as never));
+    return parseRows(EmailDomainBlockRowSchema, results).map(domainFromRow);
   });
 
 export const findEmailDomainBlockById = async (

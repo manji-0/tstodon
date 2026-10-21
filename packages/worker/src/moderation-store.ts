@@ -1,4 +1,4 @@
-import { type RepositoryError, runD1 } from "./d1";
+import { parseRows, type RepositoryError, runD1 } from "./d1";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { queryTyped, runTyped } from "./typed-sql";
 import { newEntityId } from "./ids";
@@ -268,20 +268,22 @@ export type ReportRow = Readonly<{
   updatedAt: string | null;
 }>;
 
-const reportFromRow = (row: {
-  id: string;
-  account_id: string;
-  target_account_id: string;
-  status_ids_json: string;
-  comment: string;
-  category: string;
-  rule_ids_json: string;
-  assigned_account_id: string | null;
-  action_taken_at: string | null;
-  action_taken_by_account_id: string | null;
-  created_at: string;
-  updated_at: string | null;
-}): ReportRow => ({
+const ReportRowSchema = z.object({
+  id: z.string(),
+  account_id: z.string(),
+  target_account_id: z.string(),
+  status_ids_json: z.string(),
+  comment: z.string(),
+  category: z.string(),
+  rule_ids_json: z.string(),
+  assigned_account_id: z.string().nullable(),
+  action_taken_at: z.string().nullable(),
+  action_taken_by_account_id: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string().nullable(),
+});
+
+const reportFromRow = (row: z.infer<typeof ReportRowSchema>): ReportRow => ({
   id: row.id,
   accountId: row.account_id,
   targetAccountId: row.target_account_id,
@@ -366,7 +368,7 @@ export const listReports = async (
       )
       .bind(...binds, ...cursorBinds, filters.limit)
       .all();
-    return (results ?? []).map((row) => reportFromRow(row as never));
+    return parseRows(ReportRowSchema, results).map(reportFromRow);
   });
 
 export const findReportById = async (
@@ -378,8 +380,7 @@ export const findReportById = async (
       .prepare(`SELECT ${REPORT_SELECT} FROM reports WHERE id = ? LIMIT 1`)
       .bind(id)
       .all();
-    const row = rows.results?.[0];
-    return row ? reportFromRow(row as never) : undefined;
+    return parseRows(ReportRowSchema, rows.results).map(reportFromRow)[0];
   });
 
 /** Update a report's category and the rules it is tied to. */

@@ -1,5 +1,13 @@
 import { err, ok, type Result } from "neverthrow";
-import { jsonStringArray, type RepositoryError, runD1, runD1Batch, sqlInJsonEach } from "./d1";
+import { z } from "zod";
+import {
+  jsonStringArray,
+  parseRows,
+  type RepositoryError,
+  runD1,
+  runD1Batch,
+  sqlInJsonEach,
+} from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
@@ -153,10 +161,13 @@ export const statusInteractionCountsByIds = async (
   if (batched.isErr()) {
     return err(batched.error);
   }
-  const countRows = (index: number): Array<{ status_id: string; count: number }> =>
-    (batched.value[index]?.results ?? []) as Array<{ status_id: string; count: number }>;
-  const idRows = (index: number): Array<{ status_id: string }> =>
-    (batched.value[index]?.results ?? []) as Array<{ status_id: string }>;
+  const countRows = (index: number) =>
+    parseRows(
+      z.object({ status_id: z.string(), count: z.number() }),
+      batched.value[index]?.results,
+    );
+  const idRows = (index: number) =>
+    parseRows(z.object({ status_id: z.string() }), batched.value[index]?.results);
 
   for (const row of countRows(0)) {
     bump(row.status_id, {

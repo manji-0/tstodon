@@ -15,7 +15,7 @@ import { markAccountPending } from "./account-flag-store";
 import { isRegistrationBlocked } from "./registration-block-store";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { nowInstant, nowIso } from "./clock";
-import { jsonStringArray, type RepositoryError, runD1, runD1Batch } from "./d1";
+import { jsonStringArray, parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import { generateAccountKeys } from "./keys";
 import { newEntityId } from "./ids";
@@ -499,11 +499,12 @@ export const accountCountsByIds = async (
   if (queried.isErr()) {
     return err(queried.error);
   }
+  const AccountCountRowSchema = z.object({ account_id: z.string(), count: z.number() });
   const apply = (
     result: D1Result | undefined,
     key: "followers" | "following" | "statuses",
   ): void => {
-    for (const row of (result?.results ?? []) as Array<{ account_id: string; count: number }>) {
+    for (const row of parseRows(AccountCountRowSchema, result?.results)) {
       const current = counts.get(row.account_id) ?? {
         followers: 0,
         following: 0,

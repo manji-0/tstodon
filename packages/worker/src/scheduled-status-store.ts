@@ -2,7 +2,7 @@ import { parseJsonColumn } from "./json-column";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { parseRows, runD1, type RepositoryError } from "./d1";
 import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { newEntityId } from "./ids";
 
@@ -46,13 +46,17 @@ export type ScheduledStatusRow = Readonly<{
 /** Mastodon requires a scheduled post to be at least five minutes away. */
 export const MIN_SCHEDULE_OFFSET_MS = 5 * 60 * 1000;
 
-const rowFromRow = (row: {
-  id: string;
-  account_id: string;
-  params_json: string;
-  scheduled_at: string;
-  created_at: string;
-}): ScheduledStatusRow | undefined => {
+const ScheduledStatusRowSchema = z.object({
+  id: z.string(),
+  account_id: z.string(),
+  params_json: z.string(),
+  scheduled_at: z.string(),
+  created_at: z.string(),
+});
+
+const rowFromRow = (
+  row: z.infer<typeof ScheduledStatusRowSchema>,
+): ScheduledStatusRow | undefined => {
   const params = parseJsonColumn(ScheduledStatusParamsSchema, row.params_json);
   if (params.isErr()) {
     return undefined;
@@ -110,8 +114,8 @@ export const listScheduledStatuses = async (
       )
       .bind(accountId, ...binds, limit)
       .all();
-    return (rows.results ?? []).flatMap((row) => {
-      const parsed = rowFromRow(row as never);
+    return parseRows(ScheduledStatusRowSchema, rows.results).flatMap((row) => {
+      const parsed = rowFromRow(row);
       return parsed ? [parsed] : [];
     });
   });
@@ -126,8 +130,8 @@ export const findScheduledStatus = async (
       .prepare(`SELECT ${SELECT} FROM scheduled_statuses WHERE account_id = ? AND id = ? LIMIT 1`)
       .bind(accountId, id)
       .all();
-    const row = rows.results?.[0];
-    return row ? rowFromRow(row as never) : undefined;
+    const row = parseRows(ScheduledStatusRowSchema, rows.results)[0];
+    return row ? rowFromRow(row) : undefined;
   });
 
 export const updateScheduledStatusAt = async (
@@ -172,8 +176,8 @@ export const listDueScheduledStatuses = async (
       )
       .bind(now, limit)
       .all();
-    return (rows.results ?? []).flatMap((row) => {
-      const parsed = rowFromRow(row as never);
+    return parseRows(ScheduledStatusRowSchema, rows.results).flatMap((row) => {
+      const parsed = rowFromRow(row);
       return parsed ? [parsed] : [];
     });
   });

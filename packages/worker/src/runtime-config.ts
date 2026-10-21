@@ -5,6 +5,20 @@ import { z } from "zod";
 import { domainAllowHosts } from "./domain-allow-store";
 import type { CustomEmoji } from "./emoji";
 
+/**
+ * An optional string variable that `wrangler.jsonc` may leave out, so it is
+ * absent from the generated `Env`; anything but a string reads as empty.
+ */
+const optionalEnvString = (env: Env, name: string): string => {
+  const value: unknown = Reflect.get(env, name);
+  return typeof value === "string" ? value : "";
+};
+
+/** A D1 binding; some callers (tests, tools) pass an `Env` without one. */
+const D1BindingSchema = z.custom<D1Database>(
+  (value) => typeof value === "object" && value !== null && "prepare" in value,
+);
+
 const envSchema = z.object({
   INSTANCE_DOMAIN: z.string().trim().min(1),
   INSTANCE_PUBLIC_ORIGIN: z.string().trim().optional(),
@@ -56,7 +70,7 @@ const parseJsonArray = <T>(schema: z.ZodType<T[]>, raw: string): ReadonlyArray<T
 };
 
 export const instanceRules = (env: Env): ReadonlyArray<InstanceRule> =>
-  parseInstanceRules(`${(env as { INSTANCE_RULES?: string }).INSTANCE_RULES ?? ""}`);
+  parseInstanceRules(optionalEnvString(env, "INSTANCE_RULES"));
 
 const instanceRulesSchema = z.array(
   z.union([
@@ -88,7 +102,7 @@ const customEmojiSchema = z.object({
 });
 
 export const customEmojis = (env: Env): ReadonlyArray<CustomEmoji> =>
-  parseCustomEmojis(`${(env as { CUSTOM_EMOJIS?: string }).CUSTOM_EMOJIS ?? ""}`);
+  parseCustomEmojis(optionalEnvString(env, "CUSTOM_EMOJIS"));
 
 /**
  * Parse `CUSTOM_EMOJIS`: a JSON array of `{ shortcode, url, static_url?,
@@ -130,7 +144,7 @@ export type Announcement = Readonly<{
 }>;
 
 export const announcements = (env: Env): ReadonlyArray<Announcement> =>
-  parseAnnouncements(`${(env as { ANNOUNCEMENTS?: string }).ANNOUNCEMENTS ?? ""}`);
+  parseAnnouncements(optionalEnvString(env, "ANNOUNCEMENTS"));
 
 /**
  * Parse `ANNOUNCEMENTS`: a JSON array of Mastodon announcement objects
@@ -168,8 +182,7 @@ export const activeAnnouncements = (
 
 /** Optional description of the instance thumbnail (`INSTANCE_THUMBNAIL_DESCRIPTION`). */
 export const thumbnailDescription = (env: Env): string | undefined => {
-  const raw =
-    `${(env as { INSTANCE_THUMBNAIL_DESCRIPTION?: string }).INSTANCE_THUMBNAIL_DESCRIPTION ?? ""}`.trim();
+  const raw = optionalEnvString(env, "INSTANCE_THUMBNAIL_DESCRIPTION").trim();
   return raw.length > 0 ? raw : undefined;
 };
 
@@ -189,7 +202,7 @@ const toPolicyDocument = (raw: z.infer<typeof policyDocumentSchema>): PolicyDocu
 export const extendedDescription = (env: Env): PolicyDocument | undefined => {
   const parsed = parseJsonValue(
     policyDocumentSchema,
-    `${(env as { INSTANCE_EXTENDED_DESCRIPTION?: string }).INSTANCE_EXTENDED_DESCRIPTION ?? ""}`,
+    optionalEnvString(env, "INSTANCE_EXTENDED_DESCRIPTION"),
   );
   return parsed ? toPolicyDocument(parsed) : undefined;
 };
@@ -198,7 +211,7 @@ export const extendedDescription = (env: Env): PolicyDocument | undefined => {
 export const privacyPolicy = (env: Env): PolicyDocument | undefined => {
   const parsed = parseJsonValue(
     policyDocumentSchema,
-    `${(env as { INSTANCE_PRIVACY_POLICY?: string }).INSTANCE_PRIVACY_POLICY ?? ""}`,
+    optionalEnvString(env, "INSTANCE_PRIVACY_POLICY"),
   );
   return parsed ? toPolicyDocument(parsed) : undefined;
 };
@@ -214,13 +227,13 @@ export type TermsOfService = Readonly<{ content: string; effectiveDate: string }
 export const termsOfService = (env: Env): TermsOfService | undefined => {
   const parsed = parseJsonValue(
     termsOfServiceSchema,
-    `${(env as { INSTANCE_TERMS_OF_SERVICE?: string }).INSTANCE_TERMS_OF_SERVICE ?? ""}`,
+    optionalEnvString(env, "INSTANCE_TERMS_OF_SERVICE"),
   );
   return parsed ? { content: parsed.content, effectiveDate: parsed.effective_date } : undefined;
 };
 
 const envFederationAllowHosts = (env: Env): ReadonlySet<string> => {
-  const raw = `${(env as { FEDERATION_ALLOW_HOSTS?: string }).FEDERATION_ALLOW_HOSTS ?? ""}`;
+  const raw = optionalEnvString(env, "FEDERATION_ALLOW_HOSTS");
   return new Set(
     raw
       .split(",")
@@ -238,11 +251,11 @@ const envFederationAllowHosts = (env: Env): ReadonlySet<string> => {
  */
 export const federationAllowHosts = async (env: Env): Promise<ReadonlySet<string>> => {
   const configured = envFederationAllowHosts(env);
-  const db = (env as { DB?: D1Database }).DB;
-  if (!db) {
+  const db = schemaResult(D1BindingSchema)(Reflect.get(env, "DB"));
+  if (db.isErr()) {
     return configured;
   }
-  const stored = await domainAllowHosts(db);
+  const stored = await domainAllowHosts(db.value);
   if (stored.isErr() || stored.value.size === 0) {
     return configured;
   }

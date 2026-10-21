@@ -1,6 +1,6 @@
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
-import { type RepositoryError, runD1, runD1Batch } from "./d1";
+import { parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
 import { nowIso } from "./clock";
 import { hostnameOf } from "./domain-block-store";
 import { RemoteAccountId } from "./remote-account-id";
@@ -56,24 +56,30 @@ export const relationshipFlags = async (
   if (batched.isErr()) {
     return err(batched.error);
   }
-  const outgoing = batched.value[0]?.results?.[0] as
-    | { kind: string; reblogs: number; notify: number; languages_json: string }
-    | undefined;
-  const incoming = batched.value[1]?.results?.[0] as { kind: string } | undefined;
+  const first = <T>(schema: z.ZodType<T>, index: number): T | undefined =>
+    parseRows(schema, batched.value[index]?.results)[0];
+  const outgoing = first(
+    z.object({
+      kind: z.string(),
+      reblogs: z.number(),
+      notify: z.number(),
+      languages_json: z.string(),
+    }),
+    0,
+  );
+  const incoming = first(z.object({ kind: z.string() }), 1);
   const blocking = (batched.value[2]?.results?.length ?? 0) > 0;
   const blockedBy = (batched.value[3]?.results?.length ?? 0) > 0;
-  const mute = batched.value[4]?.results?.[0] as
-    | { notifications: number; expires_at: string | null }
-    | undefined;
+  const mute = first(z.object({ notifications: z.number(), expires_at: z.string().nullable() }), 4);
   const endorsed = (batched.value[5]?.results?.length ?? 0) > 0;
-  const note = (batched.value[6]?.results?.[0] as { note: string } | undefined)?.note ?? "";
+  const note = first(z.object({ note: z.string() }), 6)?.note ?? "";
   const domainBlocking = (batched.value[7]?.results?.length ?? 0) > 0;
   return ok({
     following: outgoing?.kind === "Accepted",
     showingReblogs: outgoing ? outgoing.reblogs !== 0 : true,
     notifying: outgoing ? outgoing.notify !== 0 : false,
     languages: outgoing
-      ? (parseJsonColumn(z.array(z.string()), outgoing.languages_json).unwrapOr([]) as string[])
+      ? parseJsonColumn(z.array(z.string()), outgoing.languages_json).unwrapOr([])
       : [],
     followedBy: incoming?.kind === "Accepted",
     requested: outgoing?.kind === "Pending",

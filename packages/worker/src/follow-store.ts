@@ -1,7 +1,7 @@
 import { FollowRequest, LocalFollow } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { z } from "zod";
-import { type RepositoryError, runD1 } from "./d1";
+import { parseRows, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
@@ -66,11 +66,7 @@ export const followAccount = async (
           (options.notify ?? (row ? row.notify !== 0 : false)) ? 1 : 0,
           JSON.stringify(
             options.languages ??
-              (row
-                ? (parseJsonColumn(z.array(z.string()), row.languages_json).unwrapOr(
-                    [],
-                  ) as string[])
-                : []),
+              (row ? parseJsonColumn(z.array(z.string()), row.languages_json).unwrapOr([]) : []),
           ),
         ),
       );
@@ -114,7 +110,10 @@ export const listPendingFollowRequesters = async (
       )
       .bind(targetAccountId, ...binds, limit)
       .all();
-    const rows = (results ?? []) as Array<{ follower_account_id: string; created_at: string }>;
+    const rows = parseRows(
+      z.object({ follower_account_id: z.string(), created_at: z.string() }),
+      results,
+    );
     return rows.map((row) => ({
       followerAccountId: row.follower_account_id,
       createdAt: row.created_at,

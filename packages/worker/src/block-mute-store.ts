@@ -1,5 +1,6 @@
 import { err, ok, type Result } from "neverthrow";
-import { type RepositoryError, runD1 } from "./d1";
+import { z } from "zod";
+import { parseRows, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
@@ -106,12 +107,15 @@ export const listBlockedAccounts = async (
       )
       .bind(blockerAccountId, ...binds, limit)
       .all();
-    const rows = (results ?? []) as Array<{
-      id: string;
-      target_account_id: string | null;
-      target_actor_uri: string;
-      created_at: string;
-    }>;
+    const rows = parseRows(
+      z.object({
+        id: z.string(),
+        target_account_id: z.string().nullable(),
+        target_actor_uri: z.string(),
+        created_at: z.string(),
+      }),
+      results,
+    );
     // Remote targets carry no local id; they are listed by their `r_…` id.
     return rows.map((row) => ({
       id: row.id,
@@ -137,14 +141,17 @@ export const listMutedAccounts = async (
       )
       .bind(accountId, nowIso(), ...binds, limit)
       .all();
-    const rows = (results ?? []) as Array<{
-      id: string;
-      target_account_id: string | null;
-      target_actor_uri: string;
-      notifications: number;
-      expires_at: string | null;
-      created_at: string;
-    }>;
+    const rows = parseRows(
+      z.object({
+        id: z.string(),
+        target_account_id: z.string().nullable(),
+        target_actor_uri: z.string(),
+        notifications: z.number(),
+        expires_at: z.string().nullable(),
+        created_at: z.string(),
+      }),
+      results,
+    );
     return rows.map((row) => ({
       id: row.id,
       accountId: row.target_account_id ?? RemoteAccountId.encode(row.target_actor_uri),

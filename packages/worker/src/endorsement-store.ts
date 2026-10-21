@@ -1,5 +1,6 @@
 import type { Result } from "neverthrow";
-import { type RepositoryError, runD1 } from "./d1";
+import { z } from "zod";
+import { parseRows, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
@@ -55,11 +56,14 @@ export const listEndorsements = async (
       )
       .bind(viewerId, ...binds, limit)
       .all();
-    const rows = (results ?? []) as Array<{
-      id: string;
-      target_account_id: string | null;
-      target_actor_uri: string;
-    }>;
+    const rows = parseRows(
+      z.object({
+        id: z.string(),
+        target_account_id: z.string().nullable(),
+        target_actor_uri: z.string(),
+      }),
+      results,
+    );
     return rows.map((row) => ({
       id: row.id,
       accountId: row.target_account_id,

@@ -10,6 +10,16 @@ export const toRepositoryError = (message: string): RepositoryError => ({
 export const parseRow = <T>(schema: z.ZodType<T>, value: unknown): Result<T, RepositoryError> =>
   schemaResult(schema)(value).mapErr(() => toRepositoryError("invalid row"));
 
+/**
+ * Rows that match the schema, in order. A row that does not match (a column
+ * renamed under the code, a corrupt value) is left out rather than trusted.
+ */
+export const parseRows = <T>(schema: z.ZodType<T>, rows: ReadonlyArray<unknown> | undefined): T[] =>
+  (rows ?? []).flatMap((row) => {
+    const parsed = schemaResult(schema)(row);
+    return parsed.isOk() ? [parsed.value] : [];
+  });
+
 export type RepositoryError = Readonly<{
   kind: "RepositoryError";
   message: string;
