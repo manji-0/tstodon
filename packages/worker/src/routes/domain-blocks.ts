@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 import { z } from "zod";
 import {
   blockDomain,
@@ -9,11 +9,9 @@ import {
 import { jsonAuthError, jsonRepositoryError, readBody, requireUser } from "../http";
 import { parseInstanceIdentity } from "../runtime-config";
 
-export const domainBlockRoutes = new Hono<{ Bindings: Env }>();
-
 const DomainBodySchema = z.object({ domain: z.string().min(1) });
 
-domainBlockRoutes.get("/api/v1/domain_blocks", async (c) => {
+export const getV1DomainBlocks = async (c: Context<{ Bindings: Env }, "/api/v1/domain_blocks">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -23,9 +21,11 @@ domainBlockRoutes.get("/api/v1/domain_blocks", async (c) => {
     return jsonRepositoryError(c, domains.error.message);
   }
   return c.json(domains.value);
-});
+};
 
-domainBlockRoutes.post("/api/v1/domain_blocks", async (c) => {
+export const postV1DomainBlocks = async (
+  c: Context<{ Bindings: Env }, "/api/v1/domain_blocks">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -50,9 +50,11 @@ domainBlockRoutes.post("/api/v1/domain_blocks", async (c) => {
     return jsonRepositoryError(c, blocked.error.message);
   }
   return c.json({});
-});
+};
 
-domainBlockRoutes.delete("/api/v1/domain_blocks", async (c) => {
+export const deleteV1DomainBlocks = async (
+  c: Context<{ Bindings: Env }, "/api/v1/domain_blocks">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -77,4 +79,4 @@ domainBlockRoutes.delete("/api/v1/domain_blocks", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json({});
-});
+};

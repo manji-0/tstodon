@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { defineScheduled } from "void";
-import { handleScheduled } from "../../src/scheduled-handler";
+import { handleScheduled } from "#src/scheduled-handler";
 
 export const cron = ["17 * * * *", "17 */6 * * *"];
 

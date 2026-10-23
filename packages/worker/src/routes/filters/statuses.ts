@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 import { warmSchemas } from "@tstodon/core";
 import { z } from "zod";
 import {
@@ -17,13 +17,13 @@ import {
 } from "../../filter-store";
 import { filterNotFound } from "./shared";
 
-export const filterStatusRoutes = new Hono<{ Bindings: Env }>();
-
 export const FilterStatusBodySchema = z.object({
   status_id: z.string().trim().min(1),
 });
 
-filterStatusRoutes.get("/api/v2/filters/statuses/:id", async (c) => {
+export const getV2FiltersStatusesById = async (
+  c: Context<{ Bindings: Env }, "/api/v2/filters/statuses/:id">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -33,9 +33,11 @@ filterStatusRoutes.get("/api/v2/filters/statuses/:id", async (c) => {
     return jsonRepositoryError(c, found.error.message);
   }
   return found.value ? c.json(found.value) : filterNotFound(c);
-});
+};
 
-filterStatusRoutes.delete("/api/v2/filters/statuses/:id", async (c) => {
+export const deleteV2FiltersStatusesById = async (
+  c: Context<{ Bindings: Env }, "/api/v2/filters/statuses/:id">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -45,9 +47,11 @@ filterStatusRoutes.delete("/api/v2/filters/statuses/:id", async (c) => {
     return jsonRepositoryError(c, removed.error.message);
   }
   return removed.value ? c.json({}) : filterNotFound(c);
-});
+};
 
-filterStatusRoutes.get("/api/v2/filters/:id/statuses", async (c) => {
+export const getV2FiltersByIdStatuses = async (
+  c: Context<{ Bindings: Env }, "/api/v2/filters/:id/statuses">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -64,10 +68,12 @@ filterStatusRoutes.get("/api/v2/filters/:id/statuses", async (c) => {
     return jsonRepositoryError(c, statuses.error.message);
   }
   return c.json(statuses.value);
-});
+};
 
 /** Narrow a filter to `status_id`; adding the same status again answers the same entry. */
-filterStatusRoutes.post("/api/v2/filters/:id/statuses", async (c) => {
+export const postV2FiltersByIdStatuses = async (
+  c: Context<{ Bindings: Env }, "/api/v2/filters/:id/statuses">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -88,7 +94,7 @@ filterStatusRoutes.post("/api/v2/filters/:id/statuses", async (c) => {
     return jsonRepositoryError(c, added.error.message);
   }
   return added.value ? c.json(added.value) : filterNotFound(c);
-});
+};
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([FilterStatusBodySchema]);

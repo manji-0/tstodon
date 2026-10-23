@@ -1,6 +1,6 @@
+import type { Context } from "hono";
 import { warmSchemas } from "@tstodon/core";
 import { InstanceIdentity, RemoteActor } from "@tstodon/domain";
-import { Hono } from "hono";
 import { findAccountByIdOrUsername } from "../../account-store";
 import { enqueueTargetedActivity } from "../../delivery";
 import {
@@ -32,9 +32,9 @@ export const FollowBodySchema = z.object({
   languages: z.union([z.array(z.string()), z.string()]).optional(),
 });
 
-export const accountFollowRoutes = new Hono<{ Bindings: Env }>();
-
-accountFollowRoutes.post("/api/v1/accounts/:id/follow", async (c) => {
+export const postV1AccountsByIdFollow = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/follow">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -101,9 +101,11 @@ accountFollowRoutes.post("/api/v1/accounts/:id/follow", async (c) => {
     return jsonRepositoryError(c, flags.error.message);
   }
   return c.json(mastodonRelationship(target.value.id, flags.value));
-});
+};
 
-accountFollowRoutes.post("/api/v1/accounts/:id/unfollow", async (c) => {
+export const postV1AccountsByIdUnfollow = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/unfollow">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -124,9 +126,11 @@ accountFollowRoutes.post("/api/v1/accounts/:id/unfollow", async (c) => {
     return jsonRepositoryError(c, flags.error.message);
   }
   return c.json(mastodonRelationship(target.value.id, flags.value));
-});
+};
 
-accountFollowRoutes.post("/api/v1/accounts/:id/remove_from_followers", async (c) => {
+export const postV1AccountsByIdRemoveFromFollowers = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/remove_from_followers">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -198,7 +202,7 @@ accountFollowRoutes.post("/api/v1/accounts/:id/remove_from_followers", async (c)
     return jsonRepositoryError(c, flags.error.message);
   }
   return c.json(mastodonRelationship(targetId, flags.value));
-});
+};
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([FollowBodySchema]);

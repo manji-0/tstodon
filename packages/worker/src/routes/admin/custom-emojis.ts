@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 import {
   adminCustomEmojiJson,
   deleteCustomEmoji,
@@ -17,8 +17,6 @@ import { newEntityId } from "../../ids";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { parseBool, validation } from "./shared";
 
-export const adminCustomEmojiRoutes = new Hono<{ Bindings: Env }>();
-
 const optionalCategory = (value: unknown): string | null | undefined => {
   if (value === undefined) {
     return undefined;
@@ -33,7 +31,9 @@ const optionalCategory = (value: unknown): string | null | undefined => {
 const fileFrom = (value: unknown): File | undefined =>
   typeof File !== "undefined" && value instanceof File && value.size > 0 ? value : undefined;
 
-adminCustomEmojiRoutes.get("/api/v1/admin/custom_emojis", async (c) => {
+export const getV1AdminCustomEmojis = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/custom_emojis">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -49,9 +49,11 @@ adminCustomEmojiRoutes.get("/api/v1/admin/custom_emojis", async (c) => {
   return c.json(
     rows.value.map((row) => adminCustomEmojiJson(row, identity.value.mediaPublicBaseUrl)),
   );
-});
+};
 
-adminCustomEmojiRoutes.post("/api/v1/admin/custom_emojis", async (c) => {
+export const postV1AdminCustomEmojis = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/custom_emojis">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -100,9 +102,11 @@ adminCustomEmojiRoutes.post("/api/v1/admin/custom_emojis", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(adminCustomEmojiJson(row.value, identity.value.mediaPublicBaseUrl));
-});
+};
 
-adminCustomEmojiRoutes.patch("/api/v1/admin/custom_emojis/:id", async (c) => {
+export const patchV1AdminCustomEmojisById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/custom_emojis/:id">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -165,9 +169,11 @@ adminCustomEmojiRoutes.patch("/api/v1/admin/custom_emojis/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(adminCustomEmojiJson(latest.value, identity.value.mediaPublicBaseUrl));
-});
+};
 
-adminCustomEmojiRoutes.delete("/api/v1/admin/custom_emojis/:id", async (c) => {
+export const deleteV1AdminCustomEmojisById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/custom_emojis/:id">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -182,4 +188,4 @@ adminCustomEmojiRoutes.delete("/api/v1/admin/custom_emojis/:id", async (c) => {
   }
   await c.env.MEDIA.delete(objectKey.value);
   return c.json({});
-});
+};

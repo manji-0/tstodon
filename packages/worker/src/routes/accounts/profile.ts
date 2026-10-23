@@ -1,5 +1,4 @@
 import { assertNever } from "@tstodon/core";
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { findAccountById, findAccountByIdOrUsername } from "../../account-store";
 import { findAccountProfile } from "../../account-profile-store";
@@ -22,9 +21,7 @@ import { listPinnedStatuses } from "../../status-pin-store";
 import { queryFlag } from "./credentials";
 import { lookupAccountDocument } from "./lookup";
 
-export const accountProfileRoutes = new Hono<{ Bindings: Env }>();
-
-accountProfileRoutes.get("/api/v1/accounts/:id", async (c) => {
+export const getV1AccountsById = async (c: Context<{ Bindings: Env }, "/api/v1/accounts/:id">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -43,9 +40,11 @@ accountProfileRoutes.get("/api/v1/accounts/:id", async (c) => {
     default:
       return assertNever(found.value);
   }
-});
+};
 
-accountProfileRoutes.get("/api/v1/accounts/:id/statuses", async (c) => {
+export const getV1AccountsByIdStatuses = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/statuses">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -89,7 +88,7 @@ accountProfileRoutes.get("/api/v1/accounts/:id/statuses", async (c) => {
       await mastodonStatuses(c.env, identity.value, statuses.value, viewerId),
     ),
   );
-});
+};
 
 /** True unless the account hides its collections from this viewer. */
 const showsCollections = async (
@@ -146,5 +145,9 @@ const accountList = async (c: Context<{ Bindings: Env }>, kind: "followers" | "f
   return c.json(documents);
 };
 
-accountProfileRoutes.get("/api/v1/accounts/:id/followers", (c) => accountList(c, "followers"));
-accountProfileRoutes.get("/api/v1/accounts/:id/following", (c) => accountList(c, "following"));
+export const getV1AccountsByIdFollowers = (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/followers">,
+) => accountList(c, "followers");
+export const getV1AccountsByIdFollowing = (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/following">,
+) => accountList(c, "following");

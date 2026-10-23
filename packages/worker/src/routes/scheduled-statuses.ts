@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
 import { findMediaByIds } from "../media-store";
@@ -20,8 +19,6 @@ import {
   scheduledStatusDocument,
   updateScheduledStatusAt,
 } from "../scheduled-status-store";
-
-export const scheduledStatusRoutes = new Hono<{ Bindings: Env }>();
 
 /** `PUT /api/v1/scheduled_statuses/:id` — reschedule only. */
 const RescheduleBodySchema = z.object({ scheduled_at: z.string().optional() });
@@ -57,7 +54,9 @@ const scheduledDocument = async (
 const notFound = (c: Context<{ Bindings: Env }>) =>
   c.json({ error: "Record not found", kind: "NotFound" }, 404);
 
-scheduledStatusRoutes.get("/api/v1/scheduled_statuses", async (c) => {
+export const getV1ScheduledStatuses = async (
+  c: Context<{ Bindings: Env }, "/api/v1/scheduled_statuses">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -80,9 +79,11 @@ scheduledStatusRoutes.get("/api/v1/scheduled_statuses", async (c) => {
     }
   }
   return c.json(documents);
-});
+};
 
-scheduledStatusRoutes.get("/api/v1/scheduled_statuses/:id", async (c) => {
+export const getV1ScheduledStatusesById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/scheduled_statuses/:id">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -96,9 +97,11 @@ scheduledStatusRoutes.get("/api/v1/scheduled_statuses/:id", async (c) => {
   }
   const document = await scheduledDocument(c, row.value);
   return document ? c.json(document) : notFound(c);
-});
+};
 
-scheduledStatusRoutes.put("/api/v1/scheduled_statuses/:id", async (c) => {
+export const putV1ScheduledStatusesById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/scheduled_statuses/:id">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -141,9 +144,11 @@ scheduledStatusRoutes.put("/api/v1/scheduled_statuses/:id", async (c) => {
   }
   const document = await scheduledDocument(c, row.value);
   return document ? c.json(document) : notFound(c);
-});
+};
 
-scheduledStatusRoutes.delete("/api/v1/scheduled_statuses/:id", async (c) => {
+export const deleteV1ScheduledStatusesById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/scheduled_statuses/:id">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -156,4 +161,4 @@ scheduledStatusRoutes.delete("/api/v1/scheduled_statuses/:id", async (c) => {
     return notFound(c);
   }
   return c.body(null, 200);
-});
+};

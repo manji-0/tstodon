@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
@@ -33,7 +32,6 @@ import { base64UrlToBytes, vapidPublicKey } from "../vapid";
  * holds one per push endpoint and these routes address its most recently
  * created or updated subscription.
  */
-export const pushRoutes = new Hono<{ Bindings: Env }>();
 
 const booleanish = z.union([z.boolean(), z.string(), z.number()]);
 
@@ -109,7 +107,9 @@ const subscriptionDocument = (env: Env, subscription: PushSubscription) => ({
   server_key: vapidPublicKey(env),
 });
 
-pushRoutes.post("/api/v1/push/subscription", async (c) => {
+export const postV1PushSubscription = async (
+  c: Context<{ Bindings: Env }, "/api/v1/push/subscription">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -154,9 +154,11 @@ pushRoutes.post("/api/v1/push/subscription", async (c) => {
     return jsonRepositoryError(c, stored.error.message);
   }
   return stored.value ? c.json(subscriptionDocument(c.env, stored.value)) : notFound(c);
-});
+};
 
-pushRoutes.get("/api/v1/push/subscription", async (c) => {
+export const getV1PushSubscription = async (
+  c: Context<{ Bindings: Env }, "/api/v1/push/subscription">,
+) => {
   const session = await requireSession(c);
   if (session.isErr()) {
     return jsonAuthError(c, session.error);
@@ -166,10 +168,12 @@ pushRoutes.get("/api/v1/push/subscription", async (c) => {
     return jsonRepositoryError(c, found.error.message);
   }
   return found.value ? c.json(subscriptionDocument(c.env, found.value)) : notFound(c);
-});
+};
 
 /** Only the alerts and policy change; as in Mastodon, alerts left out turn off. */
-pushRoutes.put("/api/v1/push/subscription", async (c) => {
+export const putV1PushSubscription = async (
+  c: Context<{ Bindings: Env }, "/api/v1/push/subscription">,
+) => {
   const session = await requireSession(c);
   if (session.isErr()) {
     return jsonAuthError(c, session.error);
@@ -201,10 +205,12 @@ pushRoutes.put("/api/v1/push/subscription", async (c) => {
     return jsonRepositoryError(c, updated.error.message);
   }
   return updated.value ? c.json(subscriptionDocument(c.env, updated.value)) : notFound(c);
-});
+};
 
 /** Removes the most recent subscription; succeeds when there is none. */
-pushRoutes.delete("/api/v1/push/subscription", async (c) => {
+export const deleteV1PushSubscription = async (
+  c: Context<{ Bindings: Env }, "/api/v1/push/subscription">,
+) => {
   const session = await requireSession(c);
   if (session.isErr()) {
     return jsonAuthError(c, session.error);
@@ -220,4 +226,4 @@ pushRoutes.delete("/api/v1/push/subscription", async (c) => {
     }
   }
   return c.json({});
-});
+};

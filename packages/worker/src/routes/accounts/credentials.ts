@@ -1,6 +1,6 @@
 import { FediRole, QuoteApprovalPolicy, Visibility } from "@tstodon/domain";
 import { InstanceLimits, schemaResult, warmSchemas } from "@tstodon/core";
-import { type Context, Hono } from "hono";
+import { type Context } from "hono";
 import { findAccountById, setAccountLocked, updateAccountProfile } from "../../account-store";
 import { findComposeDefaults, updateAccountDefaults } from "../../account-defaults-store";
 import {
@@ -47,12 +47,12 @@ export const UpdateCredentialsBodySchema = z.object({
     .optional(),
 });
 
-export const accountCredentialRoutes = new Hono<{ Bindings: Env }>();
-
 /** Mastodon boolean query params: `true`/`1` are on, anything else is off. */
 export const queryFlag = (value: string | undefined): boolean => value === "true" || value === "1";
 
-accountCredentialRoutes.get("/api/v1/accounts/verify_credentials", async (c) => {
+export const getV1AccountsVerifyCredentials = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/verify_credentials">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -75,7 +75,7 @@ accountCredentialRoutes.get("/api/v1/accounts/verify_credentials", async (c) => 
       defaults.isOk() ? defaults.value : { language: null, sensitive: false },
     ),
   });
-});
+};
 
 /** Avatar and header uploads: image types only, up to the advertised size cap. */
 const PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
@@ -114,7 +114,9 @@ const storeProfileImage = async (
   return { kind: "Ok", objectKey, contentType };
 };
 
-accountCredentialRoutes.patch("/api/v1/accounts/update_credentials", async (c) => {
+export const patchV1AccountsUpdateCredentials = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/update_credentials">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -296,7 +298,7 @@ accountCredentialRoutes.patch("/api/v1/accounts/update_credentials", async (c) =
       defaultsAfter.isOk() ? defaultsAfter.value : { language: null, sensitive: false },
     ),
   });
-});
+};
 
 /** `DELETE /api/v1/profile/avatar|header`: drop the image and answer the credential account. */
 const deleteProfileImage = async (
@@ -345,8 +347,10 @@ const deleteProfileImage = async (
   });
 };
 
-accountCredentialRoutes.delete("/api/v1/profile/avatar", (c) => deleteProfileImage(c, "avatar"));
-accountCredentialRoutes.delete("/api/v1/profile/header", (c) => deleteProfileImage(c, "header"));
+export const deleteV1ProfileAvatar = (c: Context<{ Bindings: Env }, "/api/v1/profile/avatar">) =>
+  deleteProfileImage(c, "avatar");
+export const deleteV1ProfileHeader = (c: Context<{ Bindings: Env }, "/api/v1/profile/header">) =>
+  deleteProfileImage(c, "header");
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([UpdateCredentialsBodySchema]);

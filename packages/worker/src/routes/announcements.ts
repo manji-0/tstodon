@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { err, ok, type Result } from "neverthrow";
 import {
@@ -24,8 +23,6 @@ import {
   announcements,
   parseInstanceIdentity,
 } from "../runtime-config";
-
-export const announcementRoutes = new Hono<{ Bindings: Env }>();
 
 const announcementDocument = (
   announcement: Announcement,
@@ -84,7 +81,9 @@ const publicAnnouncements = async (env: Env): Promise<Result<Announcement[], str
   return ok([...stored.value.map(announcementFromRow), ...activeAnnouncements(announcements(env))]);
 };
 
-announcementRoutes.get("/api/v1/announcements", async (c) => {
+export const getV1Announcements = async (
+  c: Context<{ Bindings: Env }, "/api/v1/announcements">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -117,9 +116,11 @@ announcementRoutes.get("/api/v1/announcements", async (c) => {
       ),
     ),
   );
-});
+};
 
-announcementRoutes.post("/api/v1/announcements/:id/dismiss", async (c) => {
+export const postV1AnnouncementsByIdDismiss = async (
+  c: Context<{ Bindings: Env }, "/api/v1/announcements/:id/dismiss">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -133,7 +134,7 @@ announcementRoutes.post("/api/v1/announcements/:id/dismiss", async (c) => {
     return jsonRepositoryError(c, dismissed.error.message);
   }
   return c.json({});
-});
+};
 
 const putAnnouncementReaction = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
   const identity = parseInstanceIdentity(c.env);
@@ -183,9 +184,9 @@ const deleteAnnouncementReactionRoute = async (
   return c.json({});
 };
 
-announcementRoutes.put("/api/v1/announcements/:id/reactions/:name", (c) =>
-  putAnnouncementReaction(c),
-);
-announcementRoutes.delete("/api/v1/announcements/:id/reactions/:name", (c) =>
-  deleteAnnouncementReactionRoute(c),
-);
+export const putV1AnnouncementsByIdReactionsByName = (
+  c: Context<{ Bindings: Env }, "/api/v1/announcements/:id/reactions/:name">,
+) => putAnnouncementReaction(c);
+export const deleteV1AnnouncementsByIdReactionsByName = (
+  c: Context<{ Bindings: Env }, "/api/v1/announcements/:id/reactions/:name">,
+) => deleteAnnouncementReactionRoute(c);

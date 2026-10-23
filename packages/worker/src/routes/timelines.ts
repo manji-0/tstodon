@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import type { Context } from "hono";
 import type {
   InstanceIdentity,
@@ -35,8 +34,6 @@ import { isTruthy } from "../form-values";
 import { findTrendingLinkUrl } from "../trend-store";
 import { rejectedTrendTargets } from "../trend-review-store";
 import { filterMutedThreads } from "../status-mute-store";
-
-export const timelineRoutes = new Hono<{ Bindings: Env }>();
 
 /**
  * `local`/`remote` on a timeline (both documented): `local=true` keeps local
@@ -121,7 +118,9 @@ const mergeTimelineDocuments = (
     .slice(0, limit);
 };
 
-timelineRoutes.get("/api/v1/timelines/public", async (c) => {
+export const getV1TimelinesPublic = async (
+  c: Context<{ Bindings: Env }, "/api/v1/timelines/public">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -172,9 +171,11 @@ timelineRoutes.get("/api/v1/timelines/public", async (c) => {
     remoteDocuments,
   );
   return c.json(mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit));
-});
+};
 
-timelineRoutes.get("/api/v1/timelines/home", async (c) => {
+export const getV1TimelinesHome = async (
+  c: Context<{ Bindings: Env }, "/api/v1/timelines/home">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -205,7 +206,7 @@ timelineRoutes.get("/api/v1/timelines/home", async (c) => {
       await mastodonStatuses(c.env, identity.value, visible.value, user.value.id),
     ),
   );
-});
+};
 
 /**
  * Mastodon's `any[]`/`all[]`/`none[]` on a tag timeline. Both the `name[]` and
@@ -239,7 +240,9 @@ const tagStatusFilters = (c: Context<{ Bindings: Env }>): TagStatusFilters => {
   return { any, all, none, onlyMedia: isTruthy(c.req.query("only_media")) };
 };
 
-timelineRoutes.get("/api/v1/timelines/tag/:hashtag", async (c) => {
+export const getV1TimelinesTagByHashtag = async (
+  c: Context<{ Bindings: Env }, "/api/v1/timelines/tag/:hashtag">,
+) => {
   const startedAt = Date.now();
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -306,13 +309,15 @@ timelineRoutes.get("/api/v1/timelines/tag/:hashtag", async (c) => {
   const documents = mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit);
   writeMetric(c.env, "timeline.tag", [elapsedMs(startedAt), documents.length], ["ok"]);
   return c.json(documents);
-});
+};
 
 /**
  * Public statuses whose preview card is a trending link (`url`), like
  * Mastodon's link timeline; a link that is not trending answers 404.
  */
-timelineRoutes.get("/api/v1/timelines/link", async (c) => {
+export const getV1TimelinesLink = async (
+  c: Context<{ Bindings: Env }, "/api/v1/timelines/link">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -362,9 +367,11 @@ timelineRoutes.get("/api/v1/timelines/link", async (c) => {
     rendered.documents,
   );
   return c.json(mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit));
-});
+};
 
-timelineRoutes.get("/api/v1/timelines/direct", async (c) => {
+export const getV1TimelinesDirect = async (
+  c: Context<{ Bindings: Env }, "/api/v1/timelines/direct">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -411,4 +418,4 @@ timelineRoutes.get("/api/v1/timelines/direct", async (c) => {
     rendered.documents,
   );
   return c.json(mergeTimelineDocuments(filteredLocal, filteredRemote, {}, limit));
-});
+};

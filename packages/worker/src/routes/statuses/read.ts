@@ -1,5 +1,5 @@
+import type { Context } from "hono";
 import { type InstanceIdentity, type LocalStatus as LocalStatusValue } from "@tstodon/domain";
-import { Hono } from "hono";
 import { authenticate } from "../../auth";
 import { attachRemoteReplyRefs, statusDocumentsByIds } from "../../status-documents";
 import {
@@ -18,8 +18,6 @@ import { findRemoteActorByUri, findRemoteActorsByUris } from "../../remote-actor
 import { findRemoteStatusById, findRemoteStatusesByIds } from "../../remote-status-store";
 import { ContextLimits, findStatusById, findStatusesByIds } from "../../status-store";
 import { canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
-
-export const statusReadRoutes = new Hono<{ Bindings: Env }>();
 
 const visibleStatusDocument = async (
   env: Env,
@@ -59,7 +57,7 @@ const visibleStatusDocument = async (
 /** Mastodon caps `GET /api/v1/statuses?id[]=` at 20 ids. */
 const MULTIPLE_STATUSES_LIMIT = 20;
 
-statusReadRoutes.get("/api/v1/statuses", async (c) => {
+export const getV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/statuses">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -128,9 +126,9 @@ statusReadRoutes.get("/api/v1/statuses", async (c) => {
   }
   await attachRemoteReplyRefs(c.env.DB, identity.value, [...documents.values()]);
   return c.json(ids.flatMap((id) => documents.get(id) ?? []));
-});
+};
 
-statusReadRoutes.get("/api/v1/statuses/:id", async (c) => {
+export const getV1StatusesById = async (c: Context<{ Bindings: Env }, "/api/v1/statuses/:id">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -148,9 +146,11 @@ statusReadRoutes.get("/api/v1/statuses/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(document.value);
-});
+};
 
-statusReadRoutes.get("/api/v1/statuses/:id/context", async (c) => {
+export const getV1StatusesByIdContext = async (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/context">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -212,9 +212,11 @@ statusReadRoutes.get("/api/v1/statuses/:id/context", async (c) => {
     ancestors: render(visibleAncestors),
     descendants: render(visibleDescendants),
   });
-});
+};
 
-statusReadRoutes.post("/api/v1/statuses/:id/translate", async (c) => {
+export const postV1StatusesByIdTranslate = async (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/translate">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -241,4 +243,4 @@ statusReadRoutes.post("/api/v1/statuses/:id/translate", async (c) => {
     return c.json({ error: "This action is not allowed", kind: "Forbidden" }, 403);
   }
   return c.json({ error: "Service Unavailable", kind: "TranslationUnavailable" }, 503);
-});
+};

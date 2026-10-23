@@ -1,12 +1,12 @@
+import type { Context } from "hono";
 import { InstanceIdentity } from "@tstodon/domain";
-import { Hono } from "hono";
 import { countAccounts, findAccountByUsername } from "../account-store";
 import { jsonRepositoryError } from "../http";
 import { parseInstanceIdentity } from "../runtime-config";
 
-export const discoveryRoutes = new Hono<{ Bindings: Env }>();
-
-discoveryRoutes.get("/.well-known/webfinger", async (c) => {
+export const getWellKnownWebfinger = async (
+  c: Context<{ Bindings: Env }, "/.well-known/webfinger">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -40,9 +40,9 @@ discoveryRoutes.get("/.well-known/webfinger", async (c) => {
       },
     ],
   });
-});
+};
 
-discoveryRoutes.get("/.well-known/nodeinfo", (c) => {
+export const getWellKnownNodeinfo = (c: Context<{ Bindings: Env }, "/.well-known/nodeinfo">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -55,9 +55,9 @@ discoveryRoutes.get("/.well-known/nodeinfo", (c) => {
       },
     ],
   });
-});
+};
 
-discoveryRoutes.get("/nodeinfo/2.0", async (c) => {
+export const getNodeinfo20 = async (c: Context<{ Bindings: Env }, "/nodeinfo/2.0">) => {
   const users = await countAccounts(c.env.DB);
   return c.json({
     version: "2.0",
@@ -68,4 +68,4 @@ discoveryRoutes.get("/nodeinfo/2.0", async (c) => {
     usage: { users: { total: users.isOk() ? users.value : 0 } },
     metadata: {},
   });
-});
+};

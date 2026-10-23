@@ -1,9 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "tstodon",
-  // Void generates the deployed entry (`.void/entry.ts`) from `packages/worker/app`
-  // and replaces `main`; this one serves `wrangler types` and the workerd test pool.
-  "main": "packages/worker/src/index.ts",
+  // Void generates the Worker entry (`.void/entry.ts`) from `packages/worker/app`
+  // and replaces `main`; this one only lets `wrangler types` type the class bindings.
+  "main": "packages/worker/src/entry-classes.ts",
   "compatibility_date": "2026-09-20",
   "compatibility_flags": ["nodejs_compat"],
   "placement": {

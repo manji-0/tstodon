@@ -7,7 +7,7 @@
     "build": "vp build .",
     "preview": "vp preview",
     "deploy": "vp build . && wrangler deploy",
-    "test": "vp test run",
+    "test": "vp build . && vp test run",
     "check": "vp check",
     "typecheck": "vp check --no-fmt --no-lint",
     "lint": "vp lint .",
@@ -23,7 +23,7 @@
     "e2e:federation:accept": "tsx e2e/federation-accept.ts",
     "e2e:federation:all": "tsx e2e/federation-smoke.ts && tsx e2e/federation-follow-create.ts && tsx e2e/federation-interactions.ts && tsx e2e/federation-delete-shared-inbox.ts && tsx e2e/federation-accept.ts",
     "e2e:up": "process-compose up",
-    "ci": "vp check && vp test run && vp build . && wrangler deploy --dry-run"
+    "ci": "vp check && vp build . && vp test run && wrangler deploy --dry-run"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.64.0",

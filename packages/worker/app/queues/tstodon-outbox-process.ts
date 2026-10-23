@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { defineQueue } from "void";
-import { handleQueue } from "../../src/queue-handler";
+import { handleQueue } from "#src/queue-handler";
 
 export const maxBatchSize = 10;
 export const maxBatchTimeout = 0;

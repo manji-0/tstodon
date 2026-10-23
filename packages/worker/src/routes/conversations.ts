@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 import { accountDocumentsByIds } from "../account-documents";
 import { statusDocumentsByIds } from "../status-documents";
 import {
@@ -10,9 +10,9 @@ import { jsonAuthError, jsonRepositoryError, queryLimit, requireUser } from "../
 import { markConversationRead } from "../marker-store";
 import { parseInstanceIdentity } from "../runtime-config";
 
-export const conversationRoutes = new Hono<{ Bindings: Env }>();
-
-conversationRoutes.get("/api/v1/conversations", async (c) => {
+export const getV1Conversations = async (
+  c: Context<{ Bindings: Env }, "/api/v1/conversations">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -53,9 +53,11 @@ conversationRoutes.get("/api/v1/conversations", async (c) => {
       last_status: statuses.get(conversation.lastStatus.status.id) ?? null,
     })),
   );
-});
+};
 
-conversationRoutes.post("/api/v1/conversations/:id/read", async (c) => {
+export const postV1ConversationsByIdRead = async (
+  c: Context<{ Bindings: Env }, "/api/v1/conversations/:id/read">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -82,9 +84,11 @@ conversationRoutes.post("/api/v1/conversations/:id/read", async (c) => {
     return jsonRepositoryError(c, marked.error.message);
   }
   return c.body(null, 200);
-});
+};
 
-conversationRoutes.delete("/api/v1/conversations/:id", async (c) => {
+export const deleteV1ConversationsById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/conversations/:id">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -111,4 +115,4 @@ conversationRoutes.delete("/api/v1/conversations/:id", async (c) => {
     return jsonRepositoryError(c, hidden.error.message);
   }
   return c.body(null, 200);
-});
+};

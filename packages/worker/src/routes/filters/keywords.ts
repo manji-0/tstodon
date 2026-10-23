@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 import { warmSchemas } from "@tstodon/core";
 import { z } from "zod";
 import {
@@ -21,14 +21,14 @@ import { isTruthy } from "../../form-values";
 import { booleanish } from "../../form-values";
 import { filterNotFound, storedContexts } from "./shared";
 
-export const filterKeywordRoutes = new Hono<{ Bindings: Env }>();
-
 export const FilterKeywordBodySchema = z.object({
   keyword: z.string().optional(),
   whole_word: booleanish,
 });
 
-filterKeywordRoutes.get("/api/v2/filters/:id/keywords", async (c) => {
+export const getV2FiltersByIdKeywords = async (
+  c: Context<{ Bindings: Env }, "/api/v2/filters/:id/keywords">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -41,7 +41,7 @@ filterKeywordRoutes.get("/api/v2/filters/:id/keywords", async (c) => {
     return filterNotFound(c);
   }
   return c.json(filterKeywords(row.value));
-});
+};
 
 /** Store a filter's keywords; the first one stands in as the v1 phrase. */
 const writeKeywords = (
@@ -59,7 +59,9 @@ const writeKeywords = (
     keywords,
   });
 
-filterKeywordRoutes.post("/api/v2/filters/:id/keywords", async (c) => {
+export const postV2FiltersByIdKeywords = async (
+  c: Context<{ Bindings: Env }, "/api/v2/filters/:id/keywords">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -93,7 +95,7 @@ filterKeywordRoutes.post("/api/v2/filters/:id/keywords", async (c) => {
     return jsonRepositoryError(c, written.error.message);
   }
   return c.json(appended);
-});
+};
 
 /** The viewer's filter holding keyword `keywordId`, with its keywords. */
 const findKeyword = async (
@@ -118,7 +120,9 @@ const findKeyword = async (
   return { kind: "NotFound" };
 };
 
-filterKeywordRoutes.get("/api/v2/filters/keywords/:id", async (c) => {
+export const getV2FiltersKeywordsById = async (
+  c: Context<{ Bindings: Env }, "/api/v2/filters/keywords/:id">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -131,9 +135,11 @@ filterKeywordRoutes.get("/api/v2/filters/keywords/:id", async (c) => {
   const keyword =
     found.kind === "Found" ? found.keywords.find((entry) => entry.id === keywordId) : undefined;
   return keyword ? c.json(keyword) : filterNotFound(c);
-});
+};
 
-filterKeywordRoutes.put("/api/v2/filters/keywords/:id", async (c) => {
+export const putV2FiltersKeywordsById = async (
+  c: Context<{ Bindings: Env }, "/api/v2/filters/keywords/:id">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -172,9 +178,11 @@ filterKeywordRoutes.put("/api/v2/filters/keywords/:id", async (c) => {
     return jsonRepositoryError(c, written.error.message);
   }
   return c.json(next);
-});
+};
 
-filterKeywordRoutes.delete("/api/v2/filters/keywords/:id", async (c) => {
+export const deleteV2FiltersKeywordsById = async (
+  c: Context<{ Bindings: Env }, "/api/v2/filters/keywords/:id">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -196,7 +204,7 @@ filterKeywordRoutes.delete("/api/v2/filters/keywords/:id", async (c) => {
     return jsonRepositoryError(c, written.error.message);
   }
   return c.json({});
-});
+};
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([FilterKeywordBodySchema]);

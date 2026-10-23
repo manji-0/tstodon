@@ -1,5 +1,5 @@
+import type { Context } from "hono";
 import { importJWK, SignJWT } from "jose";
-import { Hono } from "hono";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import { jsonValidationError, readBody } from "../http";
 import { AccessJwksSchema, JsonWebKeySchema } from "../access-jwt-schema";
@@ -19,9 +19,7 @@ export const OAuthTokenBodySchema = z.object({
 const parseJsonWebKey = schemaResult(JsonWebKeySchema);
 const parseAccessJwks = schemaResult(AccessJwksSchema);
 
-export const appRoutes = new Hono<{ Bindings: Env }>();
-
-appRoutes.post("/api/v1/apps", async (c) => {
+export const postV1Apps = async (c: Context<{ Bindings: Env }, "/api/v1/apps">) => {
   const body = await readBody(c, AppBodySchema);
   if (body.isErr()) {
     return jsonValidationError(c);
@@ -40,17 +38,18 @@ appRoutes.post("/api/v1/apps", async (c) => {
     client_secret: "tstodon-local",
     vapid_key: vapidPublicKey(c.env),
   });
-});
+};
 
-appRoutes.get("/api/v1/apps/verify_credentials", (c) =>
+export const getV1AppsVerifyCredentials = (
+  c: Context<{ Bindings: Env }, "/api/v1/apps/verify_credentials">,
+) =>
   c.json({
     name: "tstodon-local",
     website: null,
     vapid_key: vapidPublicKey(c.env),
-  }),
-);
+  });
 
-appRoutes.post("/oauth/token", async (c) => {
+export const postOauthToken = async (c: Context<{ Bindings: Env }, "/oauth/token">) => {
   const body = await readBody(c, OAuthTokenBodySchema);
   if (body.isErr()) {
     return jsonValidationError(c);
@@ -106,7 +105,7 @@ appRoutes.post("/oauth/token", async (c) => {
   } catch {
     return c.json({ error: "server_error", kind: "VerificationUnavailable" }, 503);
   }
-});
+};
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([AppBodySchema, OAuthTokenBodySchema]);

@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
 import type { InstanceIdentity } from "@tstodon/domain";
@@ -30,8 +29,6 @@ import {
   unfeatureTag,
   unfollowTag,
 } from "../tag-store";
-
-export const tagRoutes = new Hono<{ Bindings: Env }>();
 
 const FeaturedTagBodySchema = z.object({ name: z.string().min(1) });
 
@@ -114,7 +111,7 @@ const buildFeaturedTagDocuments = async (
   return { kind: "Ok", documents };
 };
 
-tagRoutes.get("/api/v1/tags/:name", async (c) => {
+export const getV1TagsByName = async (c: Context<{ Bindings: Env }, "/api/v1/tags/:name">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -132,7 +129,7 @@ tagRoutes.get("/api/v1/tags/:name", async (c) => {
     return jsonRepositoryError(c, built.message);
   }
   return c.json(built.document);
-});
+};
 
 const setTagFollowed = async (
   c: Context<{ Bindings: Env }>,
@@ -163,8 +160,11 @@ const setTagFollowed = async (
   return c.json(built.document);
 };
 
-tagRoutes.post("/api/v1/tags/:id/follow", (c) => setTagFollowed(c, true));
-tagRoutes.post("/api/v1/tags/:id/unfollow", (c) => setTagFollowed(c, false));
+export const postV1TagsByIdFollow = (c: Context<{ Bindings: Env }, "/api/v1/tags/:id/follow">) =>
+  setTagFollowed(c, true);
+export const postV1TagsByIdUnfollow = (
+  c: Context<{ Bindings: Env }, "/api/v1/tags/:id/unfollow">,
+) => setTagFollowed(c, false);
 
 const setTagFeatured = async (
   c: Context<{ Bindings: Env }>,
@@ -225,10 +225,13 @@ const setTagFeatured = async (
   return c.json(built.document);
 };
 
-tagRoutes.post("/api/v1/tags/:id/feature", (c) => setTagFeatured(c, true));
-tagRoutes.post("/api/v1/tags/:id/unfeature", (c) => setTagFeatured(c, false));
+export const postV1TagsByIdFeature = (c: Context<{ Bindings: Env }, "/api/v1/tags/:id/feature">) =>
+  setTagFeatured(c, true);
+export const postV1TagsByIdUnfeature = (
+  c: Context<{ Bindings: Env }, "/api/v1/tags/:id/unfeature">,
+) => setTagFeatured(c, false);
 
-tagRoutes.get("/api/v1/followed_tags", async (c) => {
+export const getV1FollowedTags = async (c: Context<{ Bindings: Env }, "/api/v1/followed_tags">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -250,9 +253,9 @@ tagRoutes.get("/api/v1/followed_tags", async (c) => {
     documents.push(built.document);
   }
   return c.json(documents);
-});
+};
 
-tagRoutes.get("/api/v1/featured_tags", async (c) => {
+export const getV1FeaturedTags = async (c: Context<{ Bindings: Env }, "/api/v1/featured_tags">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -271,9 +274,11 @@ tagRoutes.get("/api/v1/featured_tags", async (c) => {
     return jsonRepositoryError(c, built.message);
   }
   return c.json(built.documents);
-});
+};
 
-tagRoutes.post("/api/v1/featured_tags", async (c) => {
+export const postV1FeaturedTags = async (
+  c: Context<{ Bindings: Env }, "/api/v1/featured_tags">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -324,9 +329,11 @@ tagRoutes.post("/api/v1/featured_tags", async (c) => {
     return jsonRepositoryError(c, built.message);
   }
   return c.json(built.document);
-});
+};
 
-tagRoutes.delete("/api/v1/featured_tags/:id", async (c) => {
+export const deleteV1FeaturedTagsById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/featured_tags/:id">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -343,9 +350,11 @@ tagRoutes.delete("/api/v1/featured_tags/:id", async (c) => {
     return tagNotFound(c);
   }
   return c.json({});
-});
+};
 
-tagRoutes.get("/api/v1/featured_tags/suggestions", async (c) => {
+export const getV1FeaturedTagsSuggestions = async (
+  c: Context<{ Bindings: Env }, "/api/v1/featured_tags/suggestions">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -361,9 +370,11 @@ tagRoutes.get("/api/v1/featured_tags/suggestions", async (c) => {
   return c.json(
     suggestions.value.map((name) => mastodonTag(identity.value, name, { history: [] })),
   );
-});
+};
 
-tagRoutes.get("/api/v1/accounts/:id/featured_tags", async (c) => {
+export const getV1AccountsByIdFeaturedTags = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/featured_tags">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -385,4 +396,4 @@ tagRoutes.get("/api/v1/accounts/:id/featured_tags", async (c) => {
     return jsonRepositoryError(c, built.message);
   }
   return c.json(built.documents);
-});
+};

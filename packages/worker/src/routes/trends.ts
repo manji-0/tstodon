@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import type { Context } from "hono";
 import type { InstanceIdentity } from "@tstodon/domain";
 import { jsonRepositoryError, queryLimit, queryOffset, queryTrendsLimit } from "../http";
@@ -11,9 +10,7 @@ import { listFeaturedTags, listFollowedTags, tagDailyHistory } from "../tag-stor
 import { parseInstanceIdentity } from "../runtime-config";
 import { listTrendingStatuses, listTrendingTags } from "../status-discovery-store";
 
-export const trendRoutes = new Hono<{ Bindings: Env }>();
-
-trendRoutes.get("/api/v1/trends/links", async (c) => {
+export const getV1TrendsLinks = async (c: Context<{ Bindings: Env }, "/api/v1/trends/links">) => {
   const rejected = await rejectedTrendTargets(c.env.DB, "Link");
   if (rejected.isErr()) {
     return jsonRepositoryError(c, rejected.error.message);
@@ -27,7 +24,7 @@ trendRoutes.get("/api/v1/trends/links", async (c) => {
     return jsonRepositoryError(c, links.error.message);
   }
   return c.json(links.value.map((link) => link.document));
-});
+};
 
 /** Trending tags as Tag documents with a real seven-day history. */
 const trendingTagDocuments = async (
@@ -81,10 +78,12 @@ const trendingTagsResponse = async (c: Context<{ Bindings: Env }>): Promise<Resp
   );
 };
 
-trendRoutes.get("/api/v1/trends", trendingTagsResponse);
-trendRoutes.get("/api/v1/trends/tags", trendingTagsResponse);
+export const getV1Trends = trendingTagsResponse;
+export const getV1TrendsTags = trendingTagsResponse;
 
-trendRoutes.get("/api/v1/trends/statuses", async (c) => {
+export const getV1TrendsStatuses = async (
+  c: Context<{ Bindings: Env }, "/api/v1/trends/statuses">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -96,4 +95,4 @@ trendRoutes.get("/api/v1/trends/statuses", async (c) => {
     return jsonRepositoryError(c, statuses.error.message);
   }
   return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, undefined));
-});
+};

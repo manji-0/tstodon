@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import { z } from "zod";
 import {
@@ -12,8 +12,6 @@ import { instanceRules } from "../runtime-config";
 import { insertReport, ReportCategorySchema } from "../report-store";
 import { stringList } from "../form-values";
 
-export const reportRoutes = new Hono<{ Bindings: Env }>();
-
 export const ReportBodySchema = z.object({
   account_id: z.string().min(1),
   status_ids: z.union([z.array(z.string()), z.string()]).optional(),
@@ -24,7 +22,7 @@ export const ReportBodySchema = z.object({
     .optional(),
 });
 
-reportRoutes.post("/api/v1/reports", async (c) => {
+export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/reports">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -86,7 +84,7 @@ reportRoutes.post("/api/v1/reports", async (c) => {
     rule_ids: requestedRules,
     target_account: { id: body.value.account_id },
   });
-});
+};
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([ReportBodySchema]);

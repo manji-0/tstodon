@@ -1,4 +1,4 @@
-import { type Context, Hono } from "hono";
+import { type Context } from "hono";
 import { warmSchemas } from "@tstodon/core";
 import { z } from "zod";
 import {
@@ -24,8 +24,6 @@ import {
 import { isTruthy, stringList } from "../../form-values";
 import { booleanish } from "../../form-values";
 import { expiresAtFromBody, filterNotFound, storedContexts } from "./shared";
-
-export const filterV2Routes = new Hono<{ Bindings: Env }>();
 
 export const FilterV2BodySchema = z.object({
   title: z.string().optional(),
@@ -65,7 +63,7 @@ export const FilterV2BodySchema = z.object({
  */
 const filterActionOf = (value: unknown): "warn" | "hide" => (value === "hide" ? "hide" : "warn");
 
-filterV2Routes.post("/api/v2/filters", async (c) => {
+export const postV2Filters = async (c: Context<{ Bindings: Env }, "/api/v2/filters">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -97,9 +95,9 @@ filterV2Routes.post("/api/v2/filters", async (c) => {
     return jsonRepositoryError(c, created.error.message);
   }
   return c.json(mastodonFilterV2(created.value), 200);
-});
+};
 
-filterV2Routes.get("/api/v2/filters", async (c) => {
+export const getV2Filters = async (c: Context<{ Bindings: Env }, "/api/v2/filters">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -113,7 +111,7 @@ filterV2Routes.get("/api/v2/filters", async (c) => {
     documents.push(await filterDocumentV2(c, row));
   }
   return c.json(documents);
-});
+};
 
 /** Keywords from either `keywords_attributes[]` or `keywords[]`, in order. */
 const keywordsFromBody = (
@@ -155,7 +153,7 @@ const filterDocumentV2 = async (
   return mastodonFilterV2(row, statuses.isOk() ? statuses.value : []);
 };
 
-filterV2Routes.get("/api/v2/filters/:id", async (c) => {
+export const getV2FiltersById = async (c: Context<{ Bindings: Env }, "/api/v2/filters/:id">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -168,9 +166,9 @@ filterV2Routes.get("/api/v2/filters/:id", async (c) => {
     return filterNotFound(c);
   }
   return c.json(await filterDocumentV2(c, row.value));
-});
+};
 
-filterV2Routes.put("/api/v2/filters/:id", async (c) => {
+export const putV2FiltersById = async (c: Context<{ Bindings: Env }, "/api/v2/filters/:id">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -215,9 +213,9 @@ filterV2Routes.put("/api/v2/filters/:id", async (c) => {
     return filterNotFound(c);
   }
   return c.json(await filterDocumentV2(c, row.value));
-});
+};
 
-filterV2Routes.delete("/api/v2/filters/:id", async (c) => {
+export const deleteV2FiltersById = async (c: Context<{ Bindings: Env }, "/api/v2/filters/:id">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -230,7 +228,7 @@ filterV2Routes.delete("/api/v2/filters/:id", async (c) => {
     return filterNotFound(c);
   }
   return c.json({});
-});
+};
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([FilterV2BodySchema]);

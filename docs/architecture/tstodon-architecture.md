@@ -33,7 +33,7 @@ Domain state is expressed as Zod 4.6 discriminated unions with a unified `kind` 
 
 <!-- constrained-by ../getting-started/development.md#http-routing -->
 
-Hono matches paths and methods. Handlers parse unknown input with Zod, call domain companions, and map `Result` error `kind`s to status codes.
+Void file routes (`packages/worker/app/routes/`) match paths and methods on Hono. Handlers parse unknown input with Zod, call domain companions, and map `Result` error `kind`s to status codes.
 
 Do not encode domain state machines as Hono middleware. A follow request's `Pending | Accepted | None` graph belongs in `@tstodon/domain`, not in a route table.
 

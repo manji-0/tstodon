@@ -5,7 +5,7 @@ import {
   StatusId,
   Visibility,
 } from "@tstodon/domain";
-import { type Context, Hono } from "hono";
+import { type Context } from "hono";
 import { nowInstant } from "../../clock";
 import { enqueueLocalActivity } from "../../delivery";
 import {
@@ -55,8 +55,6 @@ import { z } from "zod";
 export const ReblogBodySchema = z.object({
   visibility: z.string().optional(),
 });
-
-export const statusInteractionRoutes = new Hono<{ Bindings: Env }>();
 
 const STATUS_PIN_LIMIT = InstanceLimits.account.maxPinnedStatuses;
 
@@ -123,8 +121,11 @@ const setStatusPinned = async (c: Context<{ Bindings: Env }>, pin: boolean): Pro
   return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
 };
 
-statusInteractionRoutes.post("/api/v1/statuses/:id/pin", (c) => setStatusPinned(c, true));
-statusInteractionRoutes.post("/api/v1/statuses/:id/unpin", (c) => setStatusPinned(c, false));
+export const postV1StatusesByIdPin = (c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/pin">) =>
+  setStatusPinned(c, true);
+export const postV1StatusesByIdUnpin = (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/unpin">,
+) => setStatusPinned(c, false);
 
 const setStatusMuted = async (c: Context<{ Bindings: Env }>, mute: boolean): Promise<Response> => {
   const identity = parseInstanceIdentity(c.env);
@@ -166,10 +167,16 @@ const setStatusMuted = async (c: Context<{ Bindings: Env }>, mute: boolean): Pro
   return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
 };
 
-statusInteractionRoutes.post("/api/v1/statuses/:id/mute", (c) => setStatusMuted(c, true));
-statusInteractionRoutes.post("/api/v1/statuses/:id/unmute", (c) => setStatusMuted(c, false));
+export const postV1StatusesByIdMute = (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/mute">,
+) => setStatusMuted(c, true);
+export const postV1StatusesByIdUnmute = (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/unmute">,
+) => setStatusMuted(c, false);
 
-statusInteractionRoutes.post("/api/v1/statuses/:id/favourite", async (c) => {
+export const postV1StatusesByIdFavourite = async (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/favourite">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -199,9 +206,11 @@ statusInteractionRoutes.post("/api/v1/statuses/:id/favourite", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
-});
+};
 
-statusInteractionRoutes.post("/api/v1/statuses/:id/unfavourite", async (c) => {
+export const postV1StatusesByIdUnfavourite = async (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/unfavourite">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -216,9 +225,11 @@ statusInteractionRoutes.post("/api/v1/statuses/:id/unfavourite", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
-});
+};
 
-statusInteractionRoutes.post("/api/v1/statuses/:id/reblog", async (c) => {
+export const postV1StatusesByIdReblog = async (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/reblog">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -326,9 +337,11 @@ statusInteractionRoutes.post("/api/v1/statuses/:id/reblog", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
-});
+};
 
-statusInteractionRoutes.post("/api/v1/statuses/:id/unreblog", async (c) => {
+export const postV1StatusesByIdUnreblog = async (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/unreblog">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -343,9 +356,11 @@ statusInteractionRoutes.post("/api/v1/statuses/:id/unreblog", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
-});
+};
 
-statusInteractionRoutes.post("/api/v1/statuses/:id/bookmark", async (c) => {
+export const postV1StatusesByIdBookmark = async (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/bookmark">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -360,9 +375,11 @@ statusInteractionRoutes.post("/api/v1/statuses/:id/bookmark", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
-});
+};
 
-statusInteractionRoutes.post("/api/v1/statuses/:id/unbookmark", async (c) => {
+export const postV1StatusesByIdUnbookmark = async (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/unbookmark">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -377,9 +394,9 @@ statusInteractionRoutes.post("/api/v1/statuses/:id/unbookmark", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
-});
+};
 
-statusInteractionRoutes.get("/api/v1/favourites", async (c) => {
+export const getV1Favourites = async (c: Context<{ Bindings: Env }, "/api/v1/favourites">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -399,9 +416,9 @@ statusInteractionRoutes.get("/api/v1/favourites", async (c) => {
     limit,
   );
   return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, user.value.id));
-});
+};
 
-statusInteractionRoutes.get("/api/v1/bookmarks", async (c) => {
+export const getV1Bookmarks = async (c: Context<{ Bindings: Env }, "/api/v1/bookmarks">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -421,7 +438,7 @@ statusInteractionRoutes.get("/api/v1/bookmarks", async (c) => {
     limit,
   );
   return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, user.value.id));
-});
+};
 
 /**
  * Translation has no backend in this deployment, so an eligible status answers

@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 import { findAccountById } from "../account-store";
 import {
   jsonAuthError,
@@ -31,8 +31,6 @@ import { isTruthy, stringList } from "../form-values";
 import { warmSchemas } from "@tstodon/core";
 import { z } from "zod";
 
-export const listRoutes = new Hono<{ Bindings: Env }>();
-
 const booleanish = z.union([z.boolean(), z.string(), z.number()]).optional();
 
 const CreateListBodySchema = z.object({
@@ -53,7 +51,7 @@ const ListAccountsBodySchema = z.object({
 
 warmSchemas([CreateListBodySchema, UpdateListBodySchema, ListAccountsBodySchema]);
 
-listRoutes.get("/api/v1/lists", async (c) => {
+export const getV1Lists = async (c: Context<{ Bindings: Env }, "/api/v1/lists">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -63,9 +61,9 @@ listRoutes.get("/api/v1/lists", async (c) => {
     return jsonRepositoryError(c, lists.error.message);
   }
   return c.json(lists.value.map(toMastodonList));
-});
+};
 
-listRoutes.post("/api/v1/lists", async (c) => {
+export const postV1Lists = async (c: Context<{ Bindings: Env }, "/api/v1/lists">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -83,9 +81,9 @@ listRoutes.post("/api/v1/lists", async (c) => {
     return jsonRepositoryError(c, created.error.message);
   }
   return c.json(toMastodonList(created.value));
-});
+};
 
-listRoutes.get("/api/v1/lists/:id", async (c) => {
+export const getV1ListsById = async (c: Context<{ Bindings: Env }, "/api/v1/lists/:id">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -98,9 +96,9 @@ listRoutes.get("/api/v1/lists/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(toMastodonList(list.value));
-});
+};
 
-listRoutes.put("/api/v1/lists/:id", async (c) => {
+export const putV1ListsById = async (c: Context<{ Bindings: Env }, "/api/v1/lists/:id">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -121,9 +119,9 @@ listRoutes.put("/api/v1/lists/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(toMastodonList(updated.value));
-});
+};
 
-listRoutes.delete("/api/v1/lists/:id", async (c) => {
+export const deleteV1ListsById = async (c: Context<{ Bindings: Env }, "/api/v1/lists/:id">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -136,9 +134,11 @@ listRoutes.delete("/api/v1/lists/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.body(null, 200);
-});
+};
 
-listRoutes.get("/api/v1/lists/:id/accounts", async (c) => {
+export const getV1ListsByIdAccounts = async (
+  c: Context<{ Bindings: Env }, "/api/v1/lists/:id/accounts">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -166,9 +166,11 @@ listRoutes.get("/api/v1/lists/:id/accounts", async (c) => {
     }
   }
   return c.json(documents);
-});
+};
 
-listRoutes.post("/api/v1/lists/:id/accounts", async (c) => {
+export const postV1ListsByIdAccounts = async (
+  c: Context<{ Bindings: Env }, "/api/v1/lists/:id/accounts">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -197,9 +199,11 @@ listRoutes.post("/api/v1/lists/:id/accounts", async (c) => {
     return jsonRepositoryError(c, added.error.message);
   }
   return c.body(null, 200);
-});
+};
 
-listRoutes.delete("/api/v1/lists/:id/accounts", async (c) => {
+export const deleteV1ListsByIdAccounts = async (
+  c: Context<{ Bindings: Env }, "/api/v1/lists/:id/accounts">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -224,9 +228,11 @@ listRoutes.delete("/api/v1/lists/:id/accounts", async (c) => {
     return jsonRepositoryError(c, removed.error.message);
   }
   return c.body(null, 200);
-});
+};
 
-listRoutes.get("/api/v1/accounts/:id/lists", async (c) => {
+export const getV1AccountsByIdLists = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/lists">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -236,9 +242,11 @@ listRoutes.get("/api/v1/accounts/:id/lists", async (c) => {
     return jsonRepositoryError(c, lists.error.message);
   }
   return c.json(lists.value.map(toMastodonList));
-});
+};
 
-listRoutes.get("/api/v1/timelines/list/:id", async (c) => {
+export const getV1TimelinesListById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/timelines/list/:id">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -277,4 +285,4 @@ listRoutes.get("/api/v1/timelines/list/:id", async (c) => {
       await mastodonStatuses(c.env, identity.value, visible.value, user.value.id),
     ),
   );
-});
+};

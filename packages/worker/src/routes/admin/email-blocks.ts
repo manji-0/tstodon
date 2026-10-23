@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 import { z } from "zod";
 import { normalizeDomain } from "../../domain-block-store";
 import {
@@ -25,8 +25,6 @@ import {
   requireAdmin,
 } from "../../http";
 
-export const adminEmailBlockRoutes = new Hono<{ Bindings: Env }>();
-
 const CanonicalEmailBlockBodySchema = z.object({
   email: z.string().optional(),
   canonical_email_hash: z.string().optional(),
@@ -36,7 +34,9 @@ const CanonicalEmailTestBodySchema = z.object({ email: z.string().optional() });
 
 const EmailDomainBlockBodySchema = z.object({ domain: z.string().optional() });
 
-adminEmailBlockRoutes.get("/api/v1/admin/canonical_email_blocks", async (c) => {
+export const getV1AdminCanonicalEmailBlocks = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/canonical_email_blocks">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -52,9 +52,11 @@ adminEmailBlockRoutes.get("/api/v1/admin/canonical_email_blocks", async (c) => {
   return c.json(
     blocks.value.map((block) => ({ id: block.id, canonical_email_hash: block.canonicalEmailHash })),
   );
-});
+};
 
-adminEmailBlockRoutes.get("/api/v1/admin/canonical_email_blocks/:id", async (c) => {
+export const getV1AdminCanonicalEmailBlocksById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/canonical_email_blocks/:id">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -67,10 +69,12 @@ adminEmailBlockRoutes.get("/api/v1/admin/canonical_email_blocks/:id", async (c) 
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json({ id: block.value.id, canonical_email_hash: block.value.canonicalEmailHash });
-});
+};
 
 /** `POST /test` answers the block an email would hit, without creating one. */
-adminEmailBlockRoutes.post("/api/v1/admin/canonical_email_blocks/test", async (c) => {
+export const postV1AdminCanonicalEmailBlocksTest = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/canonical_email_blocks/test">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -91,9 +95,11 @@ adminEmailBlockRoutes.post("/api/v1/admin/canonical_email_blocks/test", async (c
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json({ id: block.value.id, canonical_email_hash: block.value.canonicalEmailHash });
-});
+};
 
-adminEmailBlockRoutes.post("/api/v1/admin/canonical_email_blocks", async (c) => {
+export const postV1AdminCanonicalEmailBlocks = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/canonical_email_blocks">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -124,9 +130,11 @@ adminEmailBlockRoutes.post("/api/v1/admin/canonical_email_blocks", async (c) => 
     );
   }
   return c.json({ id: blocked.value.id, canonical_email_hash: blocked.value.canonicalEmailHash });
-});
+};
 
-adminEmailBlockRoutes.delete("/api/v1/admin/canonical_email_blocks/:id", async (c) => {
+export const deleteV1AdminCanonicalEmailBlocksById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/canonical_email_blocks/:id">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -139,7 +147,7 @@ adminEmailBlockRoutes.delete("/api/v1/admin/canonical_email_blocks/:id", async (
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json({});
-});
+};
 
 const emailDomainBlockDocument = async (
   env: Env,
@@ -154,7 +162,9 @@ const emailDomainBlockDocument = async (
   };
 };
 
-adminEmailBlockRoutes.get("/api/v1/admin/email_domain_blocks", async (c) => {
+export const getV1AdminEmailDomainBlocks = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/email_domain_blocks">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -172,9 +182,11 @@ adminEmailBlockRoutes.get("/api/v1/admin/email_domain_blocks", async (c) => {
     documents.push(await emailDomainBlockDocument(c.env, block));
   }
   return c.json(documents);
-});
+};
 
-adminEmailBlockRoutes.get("/api/v1/admin/email_domain_blocks/:id", async (c) => {
+export const getV1AdminEmailDomainBlocksById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/email_domain_blocks/:id">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -187,9 +199,11 @@ adminEmailBlockRoutes.get("/api/v1/admin/email_domain_blocks/:id", async (c) => 
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(await emailDomainBlockDocument(c.env, block.value));
-});
+};
 
-adminEmailBlockRoutes.post("/api/v1/admin/email_domain_blocks", async (c) => {
+export const postV1AdminEmailDomainBlocks = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/email_domain_blocks">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -210,9 +224,11 @@ adminEmailBlockRoutes.post("/api/v1/admin/email_domain_blocks", async (c) => {
     );
   }
   return c.json(await emailDomainBlockDocument(c.env, blocked.value));
-});
+};
 
-adminEmailBlockRoutes.delete("/api/v1/admin/email_domain_blocks/:id", async (c) => {
+export const deleteV1AdminEmailDomainBlocksById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/email_domain_blocks/:id">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -225,4 +241,4 @@ adminEmailBlockRoutes.delete("/api/v1/admin/email_domain_blocks/:id", async (c) 
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json({});
-});
+};

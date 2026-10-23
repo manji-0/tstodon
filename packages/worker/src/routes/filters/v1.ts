@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 import { warmSchemas } from "@tstodon/core";
 import { z } from "zod";
 import {
@@ -22,8 +22,6 @@ import { isTruthy, stringList } from "../../form-values";
 import { booleanish } from "../../form-values";
 import { expiresAtFromBody, filterNotFound, storedContexts } from "./shared";
 
-export const filterV1Routes = new Hono<{ Bindings: Env }>();
-
 export const FilterBodySchema = z.object({
   phrase: z.string().trim().min(1),
   context: z.union([z.array(z.string()), z.string()]).optional(),
@@ -32,7 +30,7 @@ export const FilterBodySchema = z.object({
   expires_in: z.union([z.number(), z.string()]).optional(),
 });
 
-filterV1Routes.get("/api/v1/filters", async (c) => {
+export const getV1Filters = async (c: Context<{ Bindings: Env }, "/api/v1/filters">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -42,9 +40,9 @@ filterV1Routes.get("/api/v1/filters", async (c) => {
     return jsonRepositoryError(c, rows.error.message);
   }
   return c.json(rows.value.map(mastodonFilter));
-});
+};
 
-filterV1Routes.post("/api/v1/filters", async (c) => {
+export const postV1Filters = async (c: Context<{ Bindings: Env }, "/api/v1/filters">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -69,9 +67,9 @@ filterV1Routes.post("/api/v1/filters", async (c) => {
     return jsonRepositoryError(c, row.error.message);
   }
   return c.json(mastodonFilter(row.value), 200);
-});
+};
 
-filterV1Routes.get("/api/v1/filters/:id", async (c) => {
+export const getV1FiltersById = async (c: Context<{ Bindings: Env }, "/api/v1/filters/:id">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -84,10 +82,10 @@ filterV1Routes.get("/api/v1/filters/:id", async (c) => {
     return filterNotFound(c);
   }
   return c.json(mastodonFilter(row.value));
-});
+};
 
 /** v1 update: the phrase replaces the filter's first keyword, the rest keep. */
-filterV1Routes.put("/api/v1/filters/:id", async (c) => {
+export const putV1FiltersById = async (c: Context<{ Bindings: Env }, "/api/v1/filters/:id">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -133,9 +131,9 @@ filterV1Routes.put("/api/v1/filters/:id", async (c) => {
     return filterNotFound(c);
   }
   return c.json(mastodonFilter(row.value));
-});
+};
 
-filterV1Routes.delete("/api/v1/filters/:id", async (c) => {
+export const deleteV1FiltersById = async (c: Context<{ Bindings: Env }, "/api/v1/filters/:id">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -148,7 +146,7 @@ filterV1Routes.delete("/api/v1/filters/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.body(null, 200);
-});
+};
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([FilterBodySchema]);

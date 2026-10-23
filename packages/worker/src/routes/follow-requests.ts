@@ -1,5 +1,4 @@
 import { InstanceIdentity, RemoteActor } from "@tstodon/domain";
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { findAccountById } from "../account-store";
 import { enqueueTargetedActivity } from "../delivery";
@@ -27,8 +26,6 @@ import {
   rejectFollowRequest,
 } from "../follow-store";
 import { relationshipFlags, type RelationshipFlags } from "../relationship-store";
-
-export const followRequestRoutes = new Hono<{ Bindings: Env }>();
 
 const notFound = (c: Context<{ Bindings: Env }>) =>
   c.json({ error: "Record not found", kind: "NotFound" }, 404);
@@ -76,7 +73,9 @@ const remoteRequester = async (c: Context<{ Bindings: Env }>, id: string) => {
   return { kind: "remote" as const, actor: actor.value, actorUri: actorUri.value };
 };
 
-followRequestRoutes.get("/api/v1/follow_requests", async (c) => {
+export const getV1FollowRequests = async (
+  c: Context<{ Bindings: Env }, "/api/v1/follow_requests">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -119,9 +118,11 @@ followRequestRoutes.get("/api/v1/follow_requests", async (c) => {
   }
   entries.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   return c.json(entries.map((entry) => entry.document));
-});
+};
 
-followRequestRoutes.post("/api/v1/follow_requests/:id/authorize", async (c) => {
+export const postV1FollowRequestsByIdAuthorize = async (
+  c: Context<{ Bindings: Env }, "/api/v1/follow_requests/:id/authorize">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -196,9 +197,11 @@ followRequestRoutes.post("/api/v1/follow_requests/:id/authorize", async (c) => {
     );
   }
   return c.json(mastodonRelationship(id, remoteFollowerFlags(true)));
-});
+};
 
-followRequestRoutes.post("/api/v1/follow_requests/:id/reject", async (c) => {
+export const postV1FollowRequestsByIdReject = async (
+  c: Context<{ Bindings: Env }, "/api/v1/follow_requests/:id/reject">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -273,4 +276,4 @@ followRequestRoutes.post("/api/v1/follow_requests/:id/reject", async (c) => {
     );
   }
   return c.json(mastodonRelationship(id, remoteFollowerFlags(false)));
-});
+};

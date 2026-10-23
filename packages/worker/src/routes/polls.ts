@@ -1,5 +1,5 @@
+import type { Context } from "hono";
 import { warmSchemas } from "@tstodon/core";
-import { Hono } from "hono";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -16,9 +16,7 @@ export const PollVoteBodySchema = z.object({
   choices: z.union([z.array(z.union([z.number(), z.string()])), z.number(), z.string()]),
 });
 
-export const pollRoutes = new Hono<{ Bindings: Env }>();
-
-pollRoutes.get("/api/v1/polls/:id", async (c) => {
+export const getV1PollsById = async (c: Context<{ Bindings: Env }, "/api/v1/polls/:id">) => {
   const user = await requireUser(c);
   const viewerId = user.isOk() ? user.value.id : undefined;
   if (user.isErr() && user.error.kind !== "MissingToken") {
@@ -32,9 +30,11 @@ pollRoutes.get("/api/v1/polls/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(pollJson(poll.value));
-});
+};
 
-pollRoutes.post("/api/v1/polls/:id/votes", async (c) => {
+export const postV1PollsByIdVotes = async (
+  c: Context<{ Bindings: Env }, "/api/v1/polls/:id/votes">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -57,7 +57,7 @@ pollRoutes.post("/api/v1/polls/:id/votes", async (c) => {
   }
   // Mastodon answers a vote with the updated Poll entity, not the status.
   return c.json(pollJson(poll.value));
-});
+};
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([PollVoteBodySchema]);

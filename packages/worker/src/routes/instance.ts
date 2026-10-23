@@ -1,4 +1,4 @@
-import { type Context, Hono } from "hono";
+import { type Context } from "hono";
 import { InstanceLimits, Languages } from "@tstodon/core";
 import { countAccounts } from "../account-store";
 import { listPublicDomainBlocks, publicDomainBlockDocument } from "../admin-domain-block-store";
@@ -18,25 +18,27 @@ import { vapidPublicKey } from "../vapid";
 import { listPeerDomains } from "../remote-actor-store";
 import { listWeeklyStatusActivity } from "../status-discovery-store";
 
-export const instanceRoutes = new Hono<{ Bindings: Env }>();
-
 /** `INSTANCE_EXTENDED_DESCRIPTION`, when configured. */
-instanceRoutes.get("/api/v1/instance/extended_description", (c) => {
+export const getV1InstanceExtendedDescription = (
+  c: Context<{ Bindings: Env }, "/api/v1/instance/extended_description">,
+) => {
   const document = extendedDescription(c.env);
   if (!document) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json({ updated_at: document.updatedAt, content: document.content });
-});
+};
 
 /** `INSTANCE_PRIVACY_POLICY`, when configured. */
-instanceRoutes.get("/api/v1/instance/privacy_policy", (c) => {
+export const getV1InstancePrivacyPolicy = (
+  c: Context<{ Bindings: Env }, "/api/v1/instance/privacy_policy">,
+) => {
   const document = privacyPolicy(c.env);
   if (!document) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json({ updated_at: document.updatedAt, content: document.content });
-});
+};
 
 const termsOfServiceDocument = (env: Env): Record<string, unknown> | undefined => {
   const terms = termsOfService(env);
@@ -52,36 +54,44 @@ const termsOfServiceDocument = (env: Env): Record<string, unknown> | undefined =
 };
 
 /** `INSTANCE_TERMS_OF_SERVICE`, when configured. */
-instanceRoutes.get("/api/v1/instance/terms_of_service", (c) => {
+export const getV1InstanceTermsOfService = (
+  c: Context<{ Bindings: Env }, "/api/v1/instance/terms_of_service">,
+) => {
   const document = termsOfServiceDocument(c.env);
   if (!document) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(document);
-});
+};
 
 /** The same document, requested for a specific effective date. */
-instanceRoutes.get("/api/v1/instance/terms_of_service/:date", (c) => {
+export const getV1InstanceTermsOfServiceByDate = (
+  c: Context<{ Bindings: Env }, "/api/v1/instance/terms_of_service/:date">,
+) => {
   const document = termsOfServiceDocument(c.env);
   if (!document || document.effective_date !== c.req.param("date")) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(document);
-});
+};
 
 /** ISO 639-1 languages a status can be tagged with. */
-instanceRoutes.get("/api/v1/instance/languages", (c) =>
-  c.json(Languages.map(([code, name]) => ({ code, name }))),
-);
+export const getV1InstanceLanguages = (
+  c: Context<{ Bindings: Env }, "/api/v1/instance/languages">,
+) => c.json(Languages.map(([code, name]) => ({ code, name })));
 
 /**
  * No translation backend is configured, so there are no language pairs; the
  * v2 instance document reports `translation.enabled: false` to match.
  */
-instanceRoutes.get("/api/v1/instance/translation_languages", (c) => c.json({}));
+export const getV1InstanceTranslationLanguages = (
+  c: Context<{ Bindings: Env }, "/api/v1/instance/translation_languages">,
+) => c.json({});
 
 /** Public list of moderated servers (`noop` entries stay private, obfuscated ones hash the name). */
-instanceRoutes.get("/api/v1/instance/domain_blocks", async (c) => {
+export const getV1InstanceDomainBlocks = async (
+  c: Context<{ Bindings: Env }, "/api/v1/instance/domain_blocks">,
+) => {
   const blocks = await listPublicDomainBlocks(c.env.DB);
   if (blocks.isErr()) {
     return jsonRepositoryError(c, blocks.error.message);
@@ -91,9 +101,9 @@ instanceRoutes.get("/api/v1/instance/domain_blocks", async (c) => {
     documents.push(await publicDomainBlockDocument(block));
   }
   return c.json(documents);
-});
+};
 
-instanceRoutes.get("/api/v1/instance", async (c) => {
+export const getV1Instance = async (c: Context<{ Bindings: Env }, "/api/v1/instance">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -132,9 +142,10 @@ instanceRoutes.get("/api/v1/instance", async (c) => {
       domain_count: 1,
     },
   });
-});
+};
 
-instanceRoutes.get("/api/v1/instance/rules", (c) => c.json(instanceRules(c.env)));
+export const getV1InstanceRules = (c: Context<{ Bindings: Env }, "/api/v1/instance/rules">) =>
+  c.json(instanceRules(c.env));
 
 /** Mastodon requires a user token for peers and activity under limited federation. */
 const requireUserWhenLimited = async (
@@ -150,7 +161,9 @@ const requireUserWhenLimited = async (
   return undefined;
 };
 
-instanceRoutes.get("/api/v1/instance/peers", async (c) => {
+export const getV1InstancePeers = async (
+  c: Context<{ Bindings: Env }, "/api/v1/instance/peers">,
+) => {
   const denied = await requireUserWhenLimited(c);
   if (denied) {
     return denied;
@@ -160,9 +173,11 @@ instanceRoutes.get("/api/v1/instance/peers", async (c) => {
     return jsonRepositoryError(c, peers.error.message);
   }
   return c.json(peers.value);
-});
+};
 
-instanceRoutes.get("/api/v1/instance/activity", async (c) => {
+export const getV1InstanceActivity = async (
+  c: Context<{ Bindings: Env }, "/api/v1/instance/activity">,
+) => {
   const denied = await requireUserWhenLimited(c);
   if (denied) {
     return denied;
@@ -179,9 +194,9 @@ instanceRoutes.get("/api/v1/instance/activity", async (c) => {
       registrations: String(row.registrations),
     })),
   );
-});
+};
 
-instanceRoutes.get("/api/v2/instance", async (c) => {
+export const getV2Instance = async (c: Context<{ Bindings: Env }, "/api/v2/instance">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -256,4 +271,4 @@ instanceRoutes.get("/api/v2/instance", async (c) => {
     // implements (grouped notifications plus the notification policy/requests).
     api_versions: { mastodon: 7 },
   });
-});
+};

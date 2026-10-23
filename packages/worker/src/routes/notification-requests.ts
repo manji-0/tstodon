@@ -1,4 +1,4 @@
-import { type Context, Hono } from "hono";
+import { type Context } from "hono";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { InstanceIdentity } from "@tstodon/domain";
 import {
@@ -55,7 +55,6 @@ export const NotificationRequestIdsBodySchema = z.object({
  * `/policy`, `/requests`, and `/requests/merged` win over the `:id` and
  * `:groupKey` routes registered there.
  */
-export const notificationRequestRoutes = new Hono<{ Bindings: Env }>();
 
 /** Mastodon's NotificationRequest document for one held-back sender. */
 const requestDocument = async (
@@ -100,7 +99,9 @@ const policyDocument = async (
   };
 };
 
-notificationRequestRoutes.get("/api/v2/notifications/policy", async (c) => {
+export const getV2NotificationsPolicy = async (
+  c: Context<{ Bindings: Env }, "/api/v2/notifications/policy">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -110,9 +111,11 @@ notificationRequestRoutes.get("/api/v2/notifications/policy", async (c) => {
     return jsonRepositoryError(c, policy.error.message);
   }
   return c.json(await policyDocument(c.env, user.value.id, policy.value));
-});
+};
 
-notificationRequestRoutes.patch("/api/v2/notifications/policy", async (c) => {
+export const patchV2NotificationsPolicy = async (
+  c: Context<{ Bindings: Env }, "/api/v2/notifications/policy">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -172,9 +175,11 @@ notificationRequestRoutes.patch("/api/v2/notifications/policy", async (c) => {
     return jsonRepositoryError(c, saved.error.message);
   }
   return c.json(await policyDocument(c.env, user.value.id, policy));
-});
+};
 
-notificationRequestRoutes.get("/api/v1/notifications/requests", async (c) => {
+export const getV1NotificationsRequests = async (
+  c: Context<{ Bindings: Env }, "/api/v1/notifications/requests">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -198,13 +203,15 @@ notificationRequestRoutes.get("/api/v1/notifications/requests", async (c) => {
     documents.push(await requestDocument(c, identity.value, user.value.id, request));
   }
   return c.json(documents);
-});
+};
 
-notificationRequestRoutes.get("/api/v1/notifications/requests/merged", (c) =>
-  c.json({ merged: false }),
-);
+export const getV1NotificationsRequestsMerged = (
+  c: Context<{ Bindings: Env }, "/api/v1/notifications/requests/merged">,
+) => c.json({ merged: false });
 
-notificationRequestRoutes.get("/api/v1/notifications/requests/:id", async (c) => {
+export const getV1NotificationsRequestsById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/notifications/requests/:id">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -221,7 +228,7 @@ notificationRequestRoutes.get("/api/v1/notifications/requests/:id", async (c) =>
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(await requestDocument(c, identity.value, user.value.id, request.value));
-});
+};
 
 const resolveRequest = async (
   c: Context<{ Bindings: Env }>,
@@ -279,12 +286,12 @@ const acceptOrDismiss = async (c: Context<{ Bindings: Env }>, accept: boolean) =
   return c.json({});
 };
 
-notificationRequestRoutes.post("/api/v1/notifications/requests/:id/accept", (c) =>
-  acceptOrDismiss(c, true),
-);
-notificationRequestRoutes.post("/api/v1/notifications/requests/:id/dismiss", (c) =>
-  acceptOrDismiss(c, false),
-);
+export const postV1NotificationsRequestsByIdAccept = (
+  c: Context<{ Bindings: Env }, "/api/v1/notifications/requests/:id/accept">,
+) => acceptOrDismiss(c, true);
+export const postV1NotificationsRequestsByIdDismiss = (
+  c: Context<{ Bindings: Env }, "/api/v1/notifications/requests/:id/dismiss">,
+) => acceptOrDismiss(c, false);
 
 const bulkRequests = async (c: Context<{ Bindings: Env }>, accept: boolean): Promise<Response> => {
   const user = await requireUser(c);
@@ -335,12 +342,12 @@ const bulkRequests = async (c: Context<{ Bindings: Env }>, accept: boolean): Pro
   return c.json({});
 };
 
-notificationRequestRoutes.post("/api/v1/notifications/requests/accept", (c) =>
-  bulkRequests(c, true),
-);
-notificationRequestRoutes.post("/api/v1/notifications/requests/dismiss", (c) =>
-  bulkRequests(c, false),
-);
+export const postV1NotificationsRequestsAccept = (
+  c: Context<{ Bindings: Env }, "/api/v1/notifications/requests/accept">,
+) => bulkRequests(c, true);
+export const postV1NotificationsRequestsDismiss = (
+  c: Context<{ Bindings: Env }, "/api/v1/notifications/requests/dismiss">,
+) => bulkRequests(c, false);
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([NotificationPolicyBodySchema, NotificationRequestIdsBodySchema]);

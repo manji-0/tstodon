@@ -15,7 +15,7 @@ This is the planning source for `tstodon`'s current slice: a local-only Mastodon
 
 <!-- derived-from #principles -->
 <!-- constrained-by ../getting-started/development.md#http-routing -->
-<!-- dagayn: implemented-by packages/worker/src/app.ts::app -->
+<!-- dagayn: implemented-by packages/worker/app/routes -->
 
 Labels:
 

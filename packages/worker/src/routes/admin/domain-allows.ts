@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 import { z } from "zod";
 import { normalizeDomain } from "../../domain-block-store";
 import {
@@ -18,8 +18,6 @@ import {
   requireAdmin,
 } from "../../http";
 
-export const adminDomainAllowRoutes = new Hono<{ Bindings: Env }>();
-
 const domainAllowDocument = (row: DomainAllowRow): Record<string, unknown> => ({
   id: row.id,
   domain: row.domain,
@@ -31,7 +29,9 @@ const DomainAllowBodySchema = z.object({ domain: z.string().optional() });
 /** A bare hostname: at least two labels, no scheme, path, or port. */
 const HOSTNAME_PATTERN = /^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/;
 
-adminDomainAllowRoutes.get("/api/v1/admin/domain_allows", async (c) => {
+export const getV1AdminDomainAllows = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/domain_allows">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -45,9 +45,11 @@ adminDomainAllowRoutes.get("/api/v1/admin/domain_allows", async (c) => {
     return jsonRepositoryError(c, allows.error.message);
   }
   return c.json(allows.value.map(domainAllowDocument));
-});
+};
 
-adminDomainAllowRoutes.get("/api/v1/admin/domain_allows/:id", async (c) => {
+export const getV1AdminDomainAllowsById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/domain_allows/:id">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -60,9 +62,11 @@ adminDomainAllowRoutes.get("/api/v1/admin/domain_allows/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(domainAllowDocument(allow.value));
-});
+};
 
-adminDomainAllowRoutes.post("/api/v1/admin/domain_allows", async (c) => {
+export const postV1AdminDomainAllows = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/domain_allows">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -81,9 +85,11 @@ adminDomainAllowRoutes.post("/api/v1/admin/domain_allows", async (c) => {
     return jsonRepositoryError(c, saved.error.message);
   }
   return c.json(domainAllowDocument(saved.value));
-});
+};
 
-adminDomainAllowRoutes.delete("/api/v1/admin/domain_allows/:id", async (c) => {
+export const deleteV1AdminDomainAllowsById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/domain_allows/:id">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -96,4 +102,4 @@ adminDomainAllowRoutes.delete("/api/v1/admin/domain_allows/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json({});
-});
+};

@@ -69,7 +69,9 @@ export default defineConfig({
         extends: false,
         plugins: [
           cloudflareTest({
-            wrangler: { configPath: "./wrangler.jsonc" },
+            // The build output: tests run the Worker Void generates, so run
+            // `vp build .` first (`pnpm test` does).
+            wrangler: { configPath: "./dist/ssr/wrangler.json" },
             miniflare: {
               compatibilityDate: "2026-08-22",
               bindings: {

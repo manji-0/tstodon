@@ -1,10 +1,7 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 
-export const healthRoutes = new Hono<{ Bindings: Env }>();
-
-healthRoutes.get("/healthz", (c) =>
+export const getHealthz = (c: Context<{ Bindings: Env }, "/healthz">) =>
   c.json({
     kind: "Ok",
     service: "tstodon",
-  }),
-);
+  });

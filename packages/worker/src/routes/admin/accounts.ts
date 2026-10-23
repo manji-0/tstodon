@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
 import type { InstanceIdentity, LocalAccount } from "@tstodon/domain";
@@ -33,8 +32,6 @@ import { mastodonAccountDocument } from "../../account-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { findReportById, listOpenReportIdsForTarget, setReportResolved } from "../../report-store";
 import { isTruthy } from "../../form-values";
-
-export const adminAccountRoutes = new Hono<{ Bindings: Env }>();
 
 const adminAccountFilters = (
   c: Context<{ Bindings: Env }>,
@@ -96,7 +93,9 @@ const adminAccountDocument = async (
   invite_request: null,
 });
 
-adminAccountRoutes.get("/api/v1/admin/accounts/:id", async (c) => {
+export const getV1AdminAccountsById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -110,9 +109,11 @@ adminAccountRoutes.get("/api/v1/admin/accounts/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(document);
-});
+};
 
-adminAccountRoutes.get("/api/v1/admin/accounts", async (c) => {
+export const getV1AdminAccounts = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -175,7 +176,7 @@ adminAccountRoutes.get("/api/v1/admin/accounts", async (c) => {
     );
   }
   return c.json(documents);
-});
+};
 
 const setAccountModerationRoute = async (
   c: Context<{ Bindings: Env }>,
@@ -216,23 +217,25 @@ const setAccountModerationRoute = async (
   );
 };
 
-adminAccountRoutes.post("/api/v1/admin/accounts/:id/silence", (c) =>
-  setAccountModerationRoute(c, "Silenced"),
-);
-adminAccountRoutes.post("/api/v1/admin/accounts/:id/unsilence", (c) =>
-  setAccountModerationRoute(c, null),
-);
-adminAccountRoutes.post("/api/v1/admin/accounts/:id/suspend", (c) =>
-  setAccountModerationRoute(c, "Suspended"),
-);
-adminAccountRoutes.post("/api/v1/admin/accounts/:id/unsuspend", (c) =>
-  setAccountModerationRoute(c, null),
-);
+export const postV1AdminAccountsByIdSilence = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/silence">,
+) => setAccountModerationRoute(c, "Silenced");
+export const postV1AdminAccountsByIdUnsilence = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/unsilence">,
+) => setAccountModerationRoute(c, null);
+export const postV1AdminAccountsByIdSuspend = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/suspend">,
+) => setAccountModerationRoute(c, "Suspended");
+export const postV1AdminAccountsByIdUnsuspend = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/unsuspend">,
+) => setAccountModerationRoute(c, null);
 /**
  * `POST /:id/enable` restores a disabled login (Mastodon's `user.enable!`); it
  * does not lift a silence or a suspension — `/unsilence` and `/unsuspend` do.
  */
-adminAccountRoutes.post("/api/v1/admin/accounts/:id/enable", async (c) => {
+export const postV1AdminAccountsByIdEnable = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/enable">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -266,7 +269,7 @@ adminAccountRoutes.post("/api/v1/admin/accounts/:id/enable", async (c) => {
       false,
     ),
   );
-});
+};
 
 /** An `Admin::Account` for an id, with its moderation and flag state. */
 export const adminAccountFor = async (
@@ -410,7 +413,9 @@ const AccountActionBodySchema = z.object({
  * documents (`none`, `sensitive`, `disable`, `silence`, `suspend`). The report
  * resolution and warning text around it are not part of this instance yet.
  */
-adminAccountRoutes.post("/api/v1/admin/accounts/:id/action", async (c) => {
+export const postV1AdminAccountsByIdAction = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/action">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -483,15 +488,25 @@ adminAccountRoutes.post("/api/v1/admin/accounts/:id/action", async (c) => {
     }
   }
   return c.json({});
-});
+};
 
-adminAccountRoutes.post("/api/v1/admin/accounts/:id/approve", (c) => approveOrReject(c, true));
-adminAccountRoutes.post("/api/v1/admin/accounts/:id/reject", (c) => approveOrReject(c, false));
+export const postV1AdminAccountsByIdApprove = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/approve">,
+) => approveOrReject(c, true);
+export const postV1AdminAccountsByIdReject = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/reject">,
+) => approveOrReject(c, false);
 
-adminAccountRoutes.post("/api/v1/admin/accounts/:id/sensitize", (c) => setSensitized(c, true));
-adminAccountRoutes.post("/api/v1/admin/accounts/:id/unsensitize", (c) => setSensitized(c, false));
+export const postV1AdminAccountsByIdSensitize = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/sensitize">,
+) => setSensitized(c, true);
+export const postV1AdminAccountsByIdUnsensitize = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/unsensitize">,
+) => setSensitized(c, false);
 
-adminAccountRoutes.delete("/api/v1/admin/accounts/:id", async (c) => {
+export const deleteV1AdminAccountsById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -520,6 +535,6 @@ adminAccountRoutes.delete("/api/v1/admin/accounts/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json({});
-});
+};
 
 /** The review fields Mastodon's Admin::Tag serializer adds to a tag. */

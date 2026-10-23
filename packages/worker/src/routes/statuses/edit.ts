@@ -1,5 +1,4 @@
 import { InstanceIdentity, LocalStatus, StatusComposition, Visibility } from "@tstodon/domain";
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { findAccountsByUsernames } from "../../account-store";
 import { authenticate } from "../../auth";
@@ -39,9 +38,9 @@ import { canViewStatus } from "../../visibility-guard";
 import { isQuotePolicy, listAcceptedQuoteEdges, setStatusQuotePolicy } from "../../quote-store";
 import { applyMediaAttributes, queueLinkCard, visibilityIsPublic } from "./create";
 
-export const statusEditRoutes = new Hono<{ Bindings: Env }>();
-
-statusEditRoutes.delete("/api/v1/statuses/:id", async (c) => {
+export const deleteV1StatusesById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -69,7 +68,7 @@ statusEditRoutes.delete("/api/v1/statuses/:id", async (c) => {
   // media attachments and the poll are already part of the rendered document.
   const sourceText = existing.value.kind === "LocalNote" ? existing.value.text : "";
   return c.json({ ...(document ?? {}), text: sourceText });
-});
+};
 
 const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
   const identity = parseInstanceIdentity(c.env);
@@ -320,10 +319,14 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   return c.json(document ?? {});
 };
 
-statusEditRoutes.put("/api/v1/statuses/:id", (c) => updateStatus(c));
-statusEditRoutes.patch("/api/v1/statuses/:id", (c) => updateStatus(c));
+export const putV1StatusesById = (c: Context<{ Bindings: Env }, "/api/v1/statuses/:id">) =>
+  updateStatus(c);
+export const patchV1StatusesById = (c: Context<{ Bindings: Env }, "/api/v1/statuses/:id">) =>
+  updateStatus(c);
 
-statusEditRoutes.get("/api/v1/statuses/:id/history", async (c) => {
+export const getV1StatusesByIdHistory = async (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/history">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -358,9 +361,11 @@ statusEditRoutes.get("/api/v1/statuses/:id/history", async (c) => {
   const revisions = [...snapshots.value].reverse();
   const revisionAt = updatedAt.isOk() && updatedAt.value ? updatedAt.value : status.value.createdAt;
   return c.json([...revisions, { ...current, created_at: revisionAt }]);
-});
+};
 
-statusEditRoutes.get("/api/v1/statuses/:id/source", async (c) => {
+export const getV1StatusesByIdSource = async (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/source">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -377,4 +382,4 @@ statusEditRoutes.get("/api/v1/statuses/:id/source", async (c) => {
     text: status.value.text,
     spoiler_text: status.value.spoilerText,
   });
-});
+};

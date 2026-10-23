@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
 import {
@@ -24,8 +23,6 @@ import {
 } from "../../block-mute-store";
 import { relationshipFlags } from "../../relationship-store";
 import { relationshipTarget } from "./endorsements";
-
-export const accountBlockMuteRoutes = new Hono<{ Bindings: Env }>();
 
 const MuteBodySchema = z.object({
   notifications: z.union([z.boolean(), z.string(), z.null()]).optional(),
@@ -74,10 +71,16 @@ const blockOrUnblock = async (c: Context<{ Bindings: Env }>, block: boolean): Pr
   return respondWithRelationship(c, user.value.id, target.accountId ?? targetId);
 };
 
-accountBlockMuteRoutes.post("/api/v1/accounts/:id/block", (c) => blockOrUnblock(c, true));
-accountBlockMuteRoutes.post("/api/v1/accounts/:id/unblock", (c) => blockOrUnblock(c, false));
+export const postV1AccountsByIdBlock = (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/block">,
+) => blockOrUnblock(c, true);
+export const postV1AccountsByIdUnblock = (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/unblock">,
+) => blockOrUnblock(c, false);
 
-accountBlockMuteRoutes.post("/api/v1/accounts/:id/mute", async (c) => {
+export const postV1AccountsByIdMute = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/mute">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -116,9 +119,11 @@ accountBlockMuteRoutes.post("/api/v1/accounts/:id/mute", async (c) => {
     return jsonRepositoryError(c, muted.error.message);
   }
   return respondWithRelationship(c, user.value.id, target.accountId ?? targetId);
-});
+};
 
-accountBlockMuteRoutes.post("/api/v1/accounts/:id/unmute", async (c) => {
+export const postV1AccountsByIdUnmute = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/unmute">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -140,9 +145,9 @@ accountBlockMuteRoutes.post("/api/v1/accounts/:id/unmute", async (c) => {
     return jsonRepositoryError(c, unmuted.error.message);
   }
   return respondWithRelationship(c, user.value.id, target.accountId ?? targetId);
-});
+};
 
-accountBlockMuteRoutes.get("/api/v1/blocks", async (c) => {
+export const getV1Blocks = async (c: Context<{ Bindings: Env }, "/api/v1/blocks">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -168,9 +173,9 @@ accountBlockMuteRoutes.get("/api/v1/blocks", async (c) => {
     limit,
   );
   return c.json(documents);
-});
+};
 
-accountBlockMuteRoutes.get("/api/v1/mutes", async (c) => {
+export const getV1Mutes = async (c: Context<{ Bindings: Env }, "/api/v1/mutes">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -190,7 +195,7 @@ accountBlockMuteRoutes.get("/api/v1/mutes", async (c) => {
     rows.value.map((row) => row.accountId),
   );
   return c.json(rows.value.flatMap((row) => resolved.get(row.accountId) ?? []));
-});
+};
 
 /**
  * Resolve a relationship target (block, mute, endorsement) to a local

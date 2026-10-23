@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -14,9 +14,7 @@ import {
   upsertMarkers,
 } from "../marker-store";
 
-export const markerRoutes = new Hono<{ Bindings: Env }>();
-
-markerRoutes.get("/api/v1/markers", async (c) => {
+export const getV1Markers = async (c: Context<{ Bindings: Env }, "/api/v1/markers">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -34,9 +32,9 @@ markerRoutes.get("/api/v1/markers", async (c) => {
     return jsonRepositoryError(c, markers.error.message);
   }
   return c.json(markers.value);
-});
+};
 
-markerRoutes.post("/api/v1/markers", async (c) => {
+export const postV1Markers = async (c: Context<{ Bindings: Env }, "/api/v1/markers">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -60,4 +58,4 @@ markerRoutes.post("/api/v1/markers", async (c) => {
     return jsonRepositoryError(c, markers.error.message);
   }
   return c.json(markers.value);
-});
+};

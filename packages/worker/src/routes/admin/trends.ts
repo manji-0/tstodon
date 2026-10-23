@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import { mastodonTag } from "../../tag-documents";
 import type { Context } from "hono";
 import type { InstanceIdentity } from "@tstodon/domain";
@@ -19,8 +18,6 @@ import { cardDocument, listCachedLinkCards } from "../../link-card";
 import { fallbackLinkCard, listTrendingLinks } from "../../trend-store";
 import { listTrendReviews, setTrendReview, type TrendState } from "../../trend-review-store";
 import { StatusId } from "@tstodon/domain";
-
-export const adminTrendRoutes = new Hono<{ Bindings: Env }>();
 
 const adminTagFields = (state: TrendState | undefined): Record<string, unknown> => ({
   trendable: state !== "Rejected",
@@ -43,7 +40,9 @@ const adminTagDocument = async (
 const notFound = (c: Context<{ Bindings: Env }>) =>
   c.json({ error: "Record not found", kind: "NotFound" }, 404);
 
-adminTrendRoutes.get("/api/v1/admin/trends/tags", async (c) => {
+export const getV1AdminTrendsTags = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/trends/tags">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -67,7 +66,7 @@ adminTrendRoutes.get("/api/v1/admin/trends/tags", async (c) => {
     documents.push(await adminTagDocument(c, identity.value, tag.name, states.value.get(tag.name)));
   }
   return c.json(documents);
-});
+};
 
 const reviewTag = (state: TrendState) => async (c: Context<{ Bindings: Env }>) => {
   const identity = parseInstanceIdentity(c.env);
@@ -89,10 +88,12 @@ const reviewTag = (state: TrendState) => async (c: Context<{ Bindings: Env }>) =
   return c.json(await adminTagDocument(c, identity.value, name, state));
 };
 
-adminTrendRoutes.post("/api/v1/admin/trends/tags/:id/approve", reviewTag("Approved"));
-adminTrendRoutes.post("/api/v1/admin/trends/tags/:id/reject", reviewTag("Rejected"));
+export const postV1AdminTrendsTagsByIdApprove = reviewTag("Approved");
+export const postV1AdminTrendsTagsByIdReject = reviewTag("Rejected");
 
-adminTrendRoutes.get("/api/v1/admin/trends/links", async (c) => {
+export const getV1AdminTrendsLinks = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/trends/links">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -105,7 +106,7 @@ adminTrendRoutes.get("/api/v1/admin/trends/links", async (c) => {
     return jsonRepositoryError(c, links.error.message);
   }
   return c.json(links.value.map((link) => link.document));
-});
+};
 
 const reviewLink = (state: TrendState) => async (c: Context<{ Bindings: Env }>) => {
   const admin = await requireAdmin(c);
@@ -132,10 +133,12 @@ const reviewLink = (state: TrendState) => async (c: Context<{ Bindings: Env }>) 
   return c.json(preview ? cardDocument(preview) : (fallbackLinkCard(url) ?? {}));
 };
 
-adminTrendRoutes.post("/api/v1/admin/trends/links/:id/approve", reviewLink("Approved"));
-adminTrendRoutes.post("/api/v1/admin/trends/links/:id/reject", reviewLink("Rejected"));
+export const postV1AdminTrendsLinksByIdApprove = reviewLink("Approved");
+export const postV1AdminTrendsLinksByIdReject = reviewLink("Rejected");
 
-adminTrendRoutes.get("/api/v1/admin/trends/statuses", async (c) => {
+export const getV1AdminTrendsStatuses = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/trends/statuses">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -153,7 +156,7 @@ adminTrendRoutes.get("/api/v1/admin/trends/statuses", async (c) => {
     return jsonRepositoryError(c, statuses.error.message);
   }
   return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, undefined));
-});
+};
 
 const reviewStatus = (state: TrendState) => async (c: Context<{ Bindings: Env }>) => {
   const identity = parseInstanceIdentity(c.env);
@@ -185,5 +188,5 @@ const reviewStatus = (state: TrendState) => async (c: Context<{ Bindings: Env }>
   );
 };
 
-adminTrendRoutes.post("/api/v1/admin/trends/statuses/:id/approve", reviewStatus("Approved"));
-adminTrendRoutes.post("/api/v1/admin/trends/statuses/:id/reject", reviewStatus("Rejected"));
+export const postV1AdminTrendsStatusesByIdApprove = reviewStatus("Approved");
+export const postV1AdminTrendsStatusesByIdReject = reviewStatus("Rejected");

@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import type { Context } from "hono";
 import type { LocalStatus } from "@tstodon/domain";
 import { isTruthy } from "../form-values";
@@ -39,8 +38,6 @@ import {
 import { findStatusesByIds } from "../status-store";
 import { mutedThreadStatusIds } from "../status-mute-store";
 
-export const notificationRoutes = new Hono<{ Bindings: Env }>();
-
 /** Filters matching this notification, for the `filtered` attribute. */
 const notificationFiltered = (
   row: NotificationRow,
@@ -56,7 +53,9 @@ const notificationFiltered = (
   return filteredAttribute(matches);
 };
 
-notificationRoutes.get("/api/v1/notifications", async (c) => {
+export const getV1Notifications = async (
+  c: Context<{ Bindings: Env }, "/api/v1/notifications">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -120,9 +119,11 @@ notificationRoutes.get("/api/v1/notifications", async (c) => {
     limit,
   );
   return c.json(documents);
-});
+};
 
-notificationRoutes.get("/api/v1/notifications/unread_count", async (c) => {
+export const getV1NotificationsUnreadCount = async (
+  c: Context<{ Bindings: Env }, "/api/v1/notifications/unread_count">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -137,9 +138,11 @@ notificationRoutes.get("/api/v1/notifications/unread_count", async (c) => {
     return jsonRepositoryError(c, count.error.message);
   }
   return c.json({ count: count.value });
-});
+};
 
-notificationRoutes.get("/api/v1/notifications/:id", async (c) => {
+export const getV1NotificationsById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/notifications/:id">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -170,9 +173,11 @@ notificationRoutes.get("/api/v1/notifications/:id", async (c) => {
     statuses?.isOk() ? statuses.value : new Map(),
   );
   return c.json(filtered.length > 0 ? { ...document, filtered } : document);
-});
+};
 
-notificationRoutes.post("/api/v1/notifications/clear", async (c) => {
+export const postV1NotificationsClear = async (
+  c: Context<{ Bindings: Env }, "/api/v1/notifications/clear">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -182,9 +187,11 @@ notificationRoutes.post("/api/v1/notifications/clear", async (c) => {
     return jsonRepositoryError(c, cleared.error.message);
   }
   return c.json({});
-});
+};
 
-notificationRoutes.post("/api/v1/notifications/:id/dismiss", async (c) => {
+export const postV1NotificationsByIdDismiss = async (
+  c: Context<{ Bindings: Env }, "/api/v1/notifications/:id/dismiss">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -197,7 +204,7 @@ notificationRoutes.post("/api/v1/notifications/:id/dismiss", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json({});
-});
+};
 
 /** Shared query handling for the grouped (`v2`) endpoints. */
 const groupedQuery = (
@@ -305,7 +312,9 @@ const groupEnvelope = async (
 /** Mastodon caps a grouped page at 80 groups; keep the row window bounded too. */
 const NOTIFICATION_GROUP_ROW_CAP = 200;
 
-notificationRoutes.get("/api/v2/notifications/unread_count", async (c) => {
+export const getV2NotificationsUnreadCount = async (
+  c: Context<{ Bindings: Env }, "/api/v2/notifications/unread_count">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -330,9 +339,11 @@ notificationRoutes.get("/api/v2/notifications/unread_count", async (c) => {
     unreadKeys.add(notificationGroupKey(row, groupedTypes));
   }
   return c.json({ count: unreadKeys.size });
-});
+};
 
-notificationRoutes.get("/api/v2/notifications", async (c) => {
+export const getV2Notifications = async (
+  c: Context<{ Bindings: Env }, "/api/v2/notifications">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -344,9 +355,11 @@ notificationRoutes.get("/api/v2/notifications", async (c) => {
   return c.json(
     await groupEnvelope(c, user.value.id, page.groups, page.accountIds, page.statusIds, true),
   );
-});
+};
 
-notificationRoutes.get("/api/v2/notifications/:groupKey", async (c) => {
+export const getV2NotificationsByGroupKey = async (
+  c: Context<{ Bindings: Env }, "/api/v2/notifications/:groupKey">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -363,9 +376,11 @@ notificationRoutes.get("/api/v2/notifications/:groupKey", async (c) => {
   return c.json(
     await groupEnvelope(c, user.value.id, [group], page.accountIds, page.statusIds, false),
   );
-});
+};
 
-notificationRoutes.get("/api/v2/notifications/:groupKey/accounts", async (c) => {
+export const getV2NotificationsByGroupKeyAccounts = async (
+  c: Context<{ Bindings: Env }, "/api/v2/notifications/:groupKey/accounts">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -384,9 +399,11 @@ notificationRoutes.get("/api/v2/notifications/:groupKey/accounts", async (c) => 
   }
   const documents = await accountDocumentsByIds(c.env, identity.value, group.fromAccountIds);
   return c.json(group.fromAccountIds.flatMap((id) => documents.get(id) ?? []));
-});
+};
 
-notificationRoutes.post("/api/v2/notifications/:groupKey/dismiss", async (c) => {
+export const postV2NotificationsByGroupKeyDismiss = async (
+  c: Context<{ Bindings: Env }, "/api/v2/notifications/:groupKey/dismiss">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -407,4 +424,4 @@ notificationRoutes.post("/api/v2/notifications/:groupKey/dismiss", async (c) => 
     }
   }
   return c.json({});
-});
+};

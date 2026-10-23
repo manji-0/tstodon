@@ -5,7 +5,6 @@ import {
   StatusId,
   Visibility,
 } from "@tstodon/domain";
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { findAccountById } from "../../account-store";
 import { findComposeDefaults } from "../../account-defaults-store";
@@ -56,8 +55,6 @@ import {
   MIN_SCHEDULE_OFFSET_MS,
   scheduledStatusDocument,
 } from "../../scheduled-status-store";
-
-export const statusCreateRoutes = new Hono<{ Bindings: Env }>();
 
 /** Apply `media_attributes` to media already attached to this status. */
 export const applyMediaAttributes = async (
@@ -420,7 +417,7 @@ const statusDocumentById = async (
  * instead of posting again. A key still in flight answers 409, and a failed
  * create releases the key for a retry.
  */
-statusCreateRoutes.post("/api/v1/statuses", async (c) => {
+export const postV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/statuses">) => {
   const key = (c.req.header("Idempotency-Key") ?? "").trim();
   if (key.length === 0) {
     return createStatus(c);
@@ -473,7 +470,7 @@ statusCreateRoutes.post("/api/v1/statuses", async (c) => {
     await releaseStatusIdempotency(c.env.DB, accountId, key);
   }
   return response;
-});
+};
 
 /**
  * Who favourited or boosted a status (Mastodon's `favourited_by` and

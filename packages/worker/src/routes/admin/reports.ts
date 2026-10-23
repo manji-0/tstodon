@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
 import type { InstanceIdentity } from "@tstodon/domain";
@@ -24,8 +23,6 @@ import {
 import { findStatusesByIds } from "../../status-store";
 import { schemaResult } from "@tstodon/core";
 import { adminAccountFor } from "./accounts";
-
-export const adminReportRoutes = new Hono<{ Bindings: Env }>();
 
 const adminReportDocument = async (
   c: Context<{ Bindings: Env }>,
@@ -78,7 +75,7 @@ const reportResolvedFilter = (c: Context<{ Bindings: Env }>): boolean | undefine
   return undefined;
 };
 
-adminReportRoutes.get("/api/v1/admin/reports", async (c) => {
+export const getV1AdminReports = async (c: Context<{ Bindings: Env }, "/api/v1/admin/reports">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -102,9 +99,11 @@ adminReportRoutes.get("/api/v1/admin/reports", async (c) => {
     documents.push(await adminReportDocument(c, identity.value, report));
   }
   return c.json(documents);
-});
+};
 
-adminReportRoutes.get("/api/v1/admin/reports/:id", async (c) => {
+export const getV1AdminReportsById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/reports/:id">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -121,7 +120,7 @@ adminReportRoutes.get("/api/v1/admin/reports/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(await adminReportDocument(c, identity.value, report.value));
-});
+};
 
 const ReportUpdateBodySchema = z.object({
   category: z.string().optional(),
@@ -148,7 +147,9 @@ const reportRuleIds = (body: z.infer<typeof ReportUpdateBodySchema>, raw: unknow
  * the configured rules it broke. Rules are the `INSTANCE_RULES` entries with
  * their 1-based ids, so an id this instance does not have is refused.
  */
-adminReportRoutes.put("/api/v1/admin/reports/:id", async (c) => {
+export const putV1AdminReportsById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/reports/:id">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -220,7 +221,7 @@ adminReportRoutes.put("/api/v1/admin/reports/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(await adminReportDocument(c, identity.value, updated.value));
-});
+};
 
 /** Assign (`assign_to_self`) or unassign (`unassign`) a report. */
 const assignReport = async (c: Context<{ Bindings: Env }>, assigned: boolean) => {
@@ -247,8 +248,12 @@ const assignReport = async (c: Context<{ Bindings: Env }>, assigned: boolean) =>
   return c.json(await adminReportDocument(c, identity.value, report.value));
 };
 
-adminReportRoutes.post("/api/v1/admin/reports/:id/assign_to_self", (c) => assignReport(c, true));
-adminReportRoutes.post("/api/v1/admin/reports/:id/unassign", (c) => assignReport(c, false));
+export const postV1AdminReportsByIdAssignToSelf = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/reports/:id/assign_to_self">,
+) => assignReport(c, true);
+export const postV1AdminReportsByIdUnassign = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/reports/:id/unassign">,
+) => assignReport(c, false);
 
 /** Resolve (`resolve`) or reopen (`reopen`) a report. */
 const resolveReport = async (c: Context<{ Bindings: Env }>, resolved: boolean) => {
@@ -275,7 +280,11 @@ const resolveReport = async (c: Context<{ Bindings: Env }>, resolved: boolean) =
   return c.json(await adminReportDocument(c, identity.value, report.value));
 };
 
-adminReportRoutes.post("/api/v1/admin/reports/:id/resolve", (c) => resolveReport(c, true));
-adminReportRoutes.post("/api/v1/admin/reports/:id/reopen", (c) => resolveReport(c, false));
+export const postV1AdminReportsByIdResolve = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/reports/:id/resolve">,
+) => resolveReport(c, true);
+export const postV1AdminReportsByIdReopen = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/reports/:id/reopen">,
+) => resolveReport(c, false);
 
 /** Canonical email blocks: a hash of the mailbox, so respellings stay blocked. */

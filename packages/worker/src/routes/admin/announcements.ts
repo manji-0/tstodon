@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
 import {
@@ -20,8 +19,6 @@ import {
   requireAdmin,
 } from "../../http";
 import { parseBool, validation } from "./shared";
-
-export const adminAnnouncementRoutes = new Hono<{ Bindings: Env }>();
 
 const AnnouncementBodySchema = z.object({
   text: z.string().optional(),
@@ -87,7 +84,9 @@ const adminAnnouncementDocument = (row: AnnouncementRow): Record<string, unknown
   reactions: [],
 });
 
-adminAnnouncementRoutes.get("/api/v1/admin/announcements", async (c) => {
+export const getV1AdminAnnouncements = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/announcements">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -97,9 +96,11 @@ adminAnnouncementRoutes.get("/api/v1/admin/announcements", async (c) => {
     return jsonRepositoryError(c, rows.error.message);
   }
   return c.json(rows.value.map(adminAnnouncementDocument));
-});
+};
 
-adminAnnouncementRoutes.post("/api/v1/admin/announcements", async (c) => {
+export const postV1AdminAnnouncements = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/announcements">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -137,9 +138,11 @@ adminAnnouncementRoutes.post("/api/v1/admin/announcements", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(adminAnnouncementDocument(row.value));
-});
+};
 
-adminAnnouncementRoutes.put("/api/v1/admin/announcements/:id", async (c) => {
+export const putV1AdminAnnouncementsById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/announcements/:id">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -187,9 +190,11 @@ adminAnnouncementRoutes.put("/api/v1/admin/announcements/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(adminAnnouncementDocument(row.value));
-});
+};
 
-adminAnnouncementRoutes.delete("/api/v1/admin/announcements/:id", async (c) => {
+export const deleteV1AdminAnnouncementsById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/announcements/:id">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -202,7 +207,7 @@ adminAnnouncementRoutes.delete("/api/v1/admin/announcements/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json({});
-});
+};
 
 const setAnnouncementPublication = async (
   c: Context<{ Bindings: Env }>,
@@ -227,12 +232,12 @@ const setAnnouncementPublication = async (
   return c.json(adminAnnouncementDocument(row.value));
 };
 
-adminAnnouncementRoutes.post("/api/v1/admin/announcements/:id/publish", (c) =>
-  setAnnouncementPublication(c, true),
-);
-adminAnnouncementRoutes.post("/api/v1/admin/announcements/:id/unpublish", (c) =>
-  setAnnouncementPublication(c, false),
-);
+export const postV1AdminAnnouncementsByIdPublish = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/announcements/:id/publish">,
+) => setAnnouncementPublication(c, true);
+export const postV1AdminAnnouncementsByIdUnpublish = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/announcements/:id/unpublish">,
+) => setAnnouncementPublication(c, false);
 
 /**
  * Mastodon translates the admin account query parameters into a single

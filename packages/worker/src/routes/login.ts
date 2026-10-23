@@ -1,8 +1,6 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 
-export const loginRoutes = new Hono<{ Bindings: Env }>();
-
-loginRoutes.get("/login", (c) =>
+export const getLogin = (c: Context<{ Bindings: Env }, "/login">) =>
   c.html(`<!doctype html>
 <html lang="en">
   <head>
@@ -24,5 +22,4 @@ loginRoutes.get("/login", (c) =>
       </p>
     </main>
   </body>
-</html>`),
-);
+</html>`);

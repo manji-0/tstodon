@@ -1,5 +1,5 @@
+import type { Context } from "hono";
 import { type InstanceIdentity, Visibility } from "@tstodon/domain";
-import { Hono } from "hono";
 import {
   findAccountById,
   findAccountByIdOrUsername,
@@ -31,9 +31,9 @@ import { familiarFollowerIds, followingAccountIds } from "../../follow-store";
 import { relationshipFlags } from "../../relationship-store";
 import { isTruthy } from "../../form-values";
 
-export const accountLookupRoutes = new Hono<{ Bindings: Env }>();
-
-accountLookupRoutes.get("/api/v1/accounts/lookup", async (c) => {
+export const getV1AccountsLookup = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/lookup">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -47,9 +47,11 @@ accountLookupRoutes.get("/api/v1/accounts/lookup", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(await mastodonAccountDocument(c.env, identity.value, account.value));
-});
+};
 
-accountLookupRoutes.get("/api/v1/accounts/relationships", async (c) => {
+export const getV1AccountsRelationships = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/relationships">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -66,7 +68,7 @@ accountLookupRoutes.get("/api/v1/accounts/relationships", async (c) => {
     }
   }
   return c.json(relationships);
-});
+};
 
 /** Mastodon caps familiar followers per requested account. */
 const FAMILIAR_FOLLOWERS_LIMIT = 3;
@@ -84,7 +86,7 @@ const FAMILIAR_FOLLOWERS_LIMIT = 3;
  * (`posting:default:visibility` is what an omitted visibility uses) plus
  * Mastodon's reading defaults, which are client-side settings we do not store.
  */
-accountLookupRoutes.get("/api/v1/preferences", async (c) => {
+export const getV1Preferences = async (c: Context<{ Bindings: Env }, "/api/v1/preferences">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -97,9 +99,11 @@ accountLookupRoutes.get("/api/v1/preferences", async (c) => {
     "reading:expand:spoilers": false,
     "reading:autoplay:gifs": false,
   });
-});
+};
 
-accountLookupRoutes.get("/api/v1/accounts/search", async (c) => {
+export const getV1AccountsSearch = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/search">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -208,9 +212,11 @@ accountLookupRoutes.get("/api/v1/accounts/search", async (c) => {
     }
   }
   return c.json(documents.slice(0, limit));
-});
+};
 
-accountLookupRoutes.get("/api/v1/accounts/familiar_followers", async (c) => {
+export const getV1AccountsFamiliarFollowers = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/familiar_followers">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -252,7 +258,7 @@ accountLookupRoutes.get("/api/v1/accounts/familiar_followers", async (c) => {
     groups.push({ id: requestedId, accounts });
   }
   return c.json(groups);
-});
+};
 
 type AccountLookup =
   | Readonly<{ kind: "Found"; document: Record<string, unknown> }>
@@ -295,7 +301,7 @@ export const lookupAccountDocument = async (
 /** Mastodon caps `GET /api/v1/accounts?id[]=` at 40 ids. */
 const MULTIPLE_ACCOUNTS_LIMIT = 40;
 
-accountLookupRoutes.get("/api/v1/accounts", async (c) => {
+export const getV1Accounts = async (c: Context<{ Bindings: Env }, "/api/v1/accounts">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -346,4 +352,4 @@ accountLookupRoutes.get("/api/v1/accounts", async (c) => {
       return actor ? [mastodonRemoteAccount(identity.value, actor)] : [];
     }),
   );
-});
+};

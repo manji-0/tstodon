@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import type { InstanceIdentity } from "@tstodon/domain";
 import { searchAccounts } from "../account-store";
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
@@ -16,8 +15,6 @@ import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import { searchStatuses } from "../status-timeline-store";
 import { isTagFeatured, isTagFollowed, tagDailyHistory } from "../tag-store";
 import type { Context } from "hono";
-
-export const searchRoutes = new Hono<{ Bindings: Env }>();
 
 const resolveSearchAccount = async (
   env: Env,
@@ -153,5 +150,5 @@ const search = async (c: Context<{ Bindings: Env }>) => {
   });
 };
 
-searchRoutes.get("/api/v1/search", (c) => search(c));
-searchRoutes.get("/api/v2/search", (c) => search(c));
+export const getV1Search = (c: Context<{ Bindings: Env }, "/api/v1/search">) => search(c);
+export const getV2Search = (c: Context<{ Bindings: Env }, "/api/v2/search">) => search(c);

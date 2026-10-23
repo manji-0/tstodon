@@ -1,12 +1,9 @@
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { findAccountById, listDirectoryAccounts } from "../account-store";
 import { jsonAuthError, jsonRepositoryError, queryAccountsLimit, requireUser } from "../http";
 import { mastodonAccountDocuments } from "../account-documents";
 import { parseInstanceIdentity } from "../runtime-config";
 import { dismissSuggestion, listSuggestionExclusionIds } from "../suggestion-store";
-
-export const suggestionRoutes = new Hono<{ Bindings: Env }>();
 
 const suggestedAccounts = async (
   c: Context<{ Bindings: Env }>,
@@ -43,20 +40,22 @@ const suggestedAccounts = async (
   });
 };
 
-suggestionRoutes.get("/api/v1/suggestions", async (c) => {
+export const getV1Suggestions = async (c: Context<{ Bindings: Env }, "/api/v1/suggestions">) => {
   const result = await suggestedAccounts(c);
   return Array.isArray(result) ? c.json(result) : result;
-});
+};
 
-suggestionRoutes.get("/api/v2/suggestions", async (c) => {
+export const getV2Suggestions = async (c: Context<{ Bindings: Env }, "/api/v2/suggestions">) => {
   const result = await suggestedAccounts(c);
   if (!Array.isArray(result)) {
     return result;
   }
   return c.json(result.map((account) => ({ source: "global", account })));
-});
+};
 
-suggestionRoutes.delete("/api/v1/suggestions/:account_id", async (c) => {
+export const deleteV1SuggestionsByAccountId = async (
+  c: Context<{ Bindings: Env }, "/api/v1/suggestions/:account_id">,
+) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -73,4 +72,4 @@ suggestionRoutes.delete("/api/v1/suggestions/:account_id", async (c) => {
     return jsonRepositoryError(c, dismissed.error.message);
   }
   return c.json({});
-});
+};

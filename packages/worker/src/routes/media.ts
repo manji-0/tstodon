@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import { InstanceLimits, characterCount } from "@tstodon/core";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../http";
 import { mastodonMedia } from "../media-document";
@@ -13,8 +12,6 @@ import { attachmentObjectKey, parseMediaObjectKey } from "../media-keys";
 import { parseInstanceIdentity } from "../runtime-config";
 import { newEntityId } from "../ids";
 import type { Context } from "hono";
-
-export const mediaRoutes = new Hono<{ Bindings: Env }>();
 
 const CACHE_CONTROL = "public, max-age=31536000, immutable";
 
@@ -90,11 +87,11 @@ const serveR2Object = async (
   return response;
 };
 
-mediaRoutes.post("/api/v1/media", (c) => uploadMedia(c));
-mediaRoutes.post("/api/v2/media", (c) => uploadMedia(c));
+export const postV1Media = (c: Context<{ Bindings: Env }, "/api/v1/media">) => uploadMedia(c);
+export const postV2Media = (c: Context<{ Bindings: Env }, "/api/v2/media">) => uploadMedia(c);
 
 /** Attachment-id convenience lookup (local-core); production clients use MEDIA_PUBLIC_BASE_URL. */
-mediaRoutes.get("/media/:id", async (c) => {
+export const getMediaById = async (c: Context<{ Bindings: Env }, "/media/:id">) => {
   const row = await findMediaById(c.env.DB, c.req.param("id"));
   if (row.isErr()) {
     return jsonRepositoryError(c, row.error.message);
@@ -103,7 +100,7 @@ mediaRoutes.get("/media/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return serveR2Object(c, row.value.object_key, row.value.content_type);
-});
+};
 
 /**
  * Object-key proxy for local-core when MEDIA_PUBLIC_BASE_URL is the Worker origin.
@@ -117,15 +114,21 @@ const serveObjectKeyPath = async (c: Context<{ Bindings: Env }>) => {
   return serveR2Object(c, key, "application/octet-stream");
 };
 
-mediaRoutes.get("/attachments/:accountId/:blobId", (c) => serveObjectKeyPath(c));
-mediaRoutes.get("/avatars/:accountId/:blobId", (c) => serveObjectKeyPath(c));
-mediaRoutes.get("/headers/:accountId/:blobId", (c) => serveObjectKeyPath(c));
+export const getAttachmentsByAccountIdByBlobId = (
+  c: Context<{ Bindings: Env }, "/attachments/:accountId/:blobId">,
+) => serveObjectKeyPath(c);
+export const getAvatarsByAccountIdByBlobId = (
+  c: Context<{ Bindings: Env }, "/avatars/:accountId/:blobId">,
+) => serveObjectKeyPath(c);
+export const getHeadersByAccountIdByBlobId = (
+  c: Context<{ Bindings: Env }, "/headers/:accountId/:blobId">,
+) => serveObjectKeyPath(c);
 
 /**
  * `GET /api/v1/media/:id`: the attachment document for its owner. Mastodon
  * scopes this to the uploading account, so someone else's id answers 404.
  */
-mediaRoutes.get("/api/v1/media/:id", async (c) => {
+export const getV1MediaById = async (c: Context<{ Bindings: Env }, "/api/v1/media/:id">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -142,12 +145,12 @@ mediaRoutes.get("/api/v1/media/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(mastodonMedia(identity.value, row.value));
-});
+};
 
 const parseFocus = (raw: string): Readonly<{ x: number; y: number }> | undefined =>
   parseMediaFocus(raw);
 
-mediaRoutes.put("/api/v1/media/:id", async (c) => {
+export const putV1MediaById = async (c: Context<{ Bindings: Env }, "/api/v1/media/:id">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -212,9 +215,9 @@ mediaRoutes.put("/api/v1/media/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(mastodonMedia(identity.value, latest.value));
-});
+};
 
-mediaRoutes.delete("/api/v1/media/:id", async (c) => {
+export const deleteV1MediaById = async (c: Context<{ Bindings: Env }, "/api/v1/media/:id">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
@@ -238,4 +241,4 @@ mediaRoutes.delete("/api/v1/media/:id", async (c) => {
     await c.env.MEDIA.delete(removed.value);
   }
   return c.json({});
-});
+};

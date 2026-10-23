@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 import { z } from "zod";
 import {
   clearRemoteMediaForDomain,
@@ -24,8 +24,6 @@ import {
 import { parseInstanceIdentity } from "../../runtime-config";
 import { parseBool, validation } from "./shared";
 
-export const adminDomainBlockRoutes = new Hono<{ Bindings: Env }>();
-
 const AdminDomainBlockBodySchema = z.object({
   domain: z.string().min(1).optional(),
   severity: DomainBlockSeveritySchema.optional(),
@@ -47,7 +45,9 @@ const optionalComment = (value: string | null | undefined): string | null | unde
   return trimmed.length > 0 ? trimmed : null;
 };
 
-adminDomainBlockRoutes.get("/api/v1/admin/domain_blocks", async (c) => {
+export const getV1AdminDomainBlocks = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/domain_blocks">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -62,9 +62,11 @@ adminDomainBlockRoutes.get("/api/v1/admin/domain_blocks", async (c) => {
     return jsonRepositoryError(c, blocks.error.message);
   }
   return c.json(blocks.value.map(domainBlockDocument));
-});
+};
 
-adminDomainBlockRoutes.get("/api/v1/admin/domain_blocks/:id", async (c) => {
+export const getV1AdminDomainBlocksById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/domain_blocks/:id">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -77,9 +79,11 @@ adminDomainBlockRoutes.get("/api/v1/admin/domain_blocks/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(domainBlockDocument(block.value));
-});
+};
 
-adminDomainBlockRoutes.post("/api/v1/admin/domain_blocks", async (c) => {
+export const postV1AdminDomainBlocks = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/domain_blocks">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -126,9 +130,11 @@ adminDomainBlockRoutes.post("/api/v1/admin/domain_blocks", async (c) => {
     await clearRemoteMediaForDomain(c.env.DB, block.value.domain);
   }
   return c.json(domainBlockDocument(block.value));
-});
+};
 
-adminDomainBlockRoutes.put("/api/v1/admin/domain_blocks/:id", async (c) => {
+export const putV1AdminDomainBlocksById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/domain_blocks/:id">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -175,9 +181,11 @@ adminDomainBlockRoutes.put("/api/v1/admin/domain_blocks/:id", async (c) => {
     await clearRemoteMediaForDomain(c.env.DB, block.value.domain);
   }
   return c.json(domainBlockDocument(block.value));
-});
+};
 
-adminDomainBlockRoutes.delete("/api/v1/admin/domain_blocks/:id", async (c) => {
+export const deleteV1AdminDomainBlocksById = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/domain_blocks/:id">,
+) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
@@ -190,4 +198,4 @@ adminDomainBlockRoutes.delete("/api/v1/admin/domain_blocks/:id", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json({});
-});
+};

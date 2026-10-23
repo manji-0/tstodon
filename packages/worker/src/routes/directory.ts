@@ -1,12 +1,10 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 import { listDirectoryAccounts } from "../account-store";
 import { jsonRepositoryError, queryAccountsLimit } from "../http";
 import { mastodonAccountDocument } from "../account-documents";
 import { parseInstanceIdentity } from "../runtime-config";
 
-export const directoryRoutes = new Hono<{ Bindings: Env }>();
-
-directoryRoutes.get("/api/v1/directory", async (c) => {
+export const getV1Directory = async (c: Context<{ Bindings: Env }, "/api/v1/directory">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -24,4 +22,4 @@ directoryRoutes.get("/api/v1/directory", async (c) => {
     documents.push(await mastodonAccountDocument(c.env, identity.value, account));
   }
   return c.json(documents);
-});
+};

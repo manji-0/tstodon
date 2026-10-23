@@ -1,5 +1,4 @@
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { findAccountById } from "../../account-store";
 import { authenticate } from "../../auth";
@@ -20,8 +19,6 @@ import { findRemoteActorByUri } from "../../remote-actor-store";
 import { findStatusById, findStatusesByIds } from "../../status-store";
 import { canViewStatus } from "../../visibility-guard";
 import { listQuotingStatusIds, revokeStatusQuote } from "../../quote-store";
-
-export const statusEngagementRoutes = new Hono<{ Bindings: Env }>();
 
 const statusEngagementAccounts = async (
   c: Context<{ Bindings: Env }>,
@@ -75,15 +72,17 @@ const statusEngagementAccounts = async (
   return c.json(documents);
 };
 
-statusEngagementRoutes.get("/api/v1/statuses/:id/favourited_by", (c) =>
-  statusEngagementAccounts(c, "favourited_by"),
-);
-statusEngagementRoutes.get("/api/v1/statuses/:id/reblogged_by", (c) =>
-  statusEngagementAccounts(c, "reblogged_by"),
-);
+export const getV1StatusesByIdFavouritedBy = (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/favourited_by">,
+) => statusEngagementAccounts(c, "favourited_by");
+export const getV1StatusesByIdRebloggedBy = (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/reblogged_by">,
+) => statusEngagementAccounts(c, "reblogged_by");
 
 /** Quotes of a status: accepted local quotes the viewer may see, newest first. */
-statusEngagementRoutes.get("/api/v1/statuses/:id/quotes", async (c) => {
+export const getV1StatusesByIdQuotes = async (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/quotes">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -118,10 +117,12 @@ statusEngagementRoutes.get("/api/v1/statuses/:id/quotes", async (c) => {
   }
   setPaginationLinks(c, quotingIds.value, limit, { prev: "since_id" });
   return c.json(await mastodonStatuses(c.env, identity.value, visible, viewerId));
-});
+};
 
 /** The quoted author withdraws a quote; the quoting status stays, unattached. */
-statusEngagementRoutes.post("/api/v1/statuses/:id/quotes/:quoting_status_id/revoke", async (c) => {
+export const postV1StatusesByIdQuotesByQuotingStatusIdRevoke = async (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/quotes/:quoting_status_id/revoke">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -155,6 +156,6 @@ statusEngagementRoutes.post("/api/v1/statuses/:id/quotes/:quoting_status_id/revo
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json((await mastodonStatus(c.env, identity.value, quoting.value, user.value.id)) ?? {});
-});
+};
 
 /** Renders a local or remote status the viewer may see, or `null` when it is hidden or gone. */

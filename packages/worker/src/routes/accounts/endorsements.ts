@@ -1,5 +1,4 @@
 import { InstanceIdentity } from "@tstodon/domain";
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
 import { findAccountById, findAccountByIdOrUsername } from "../../account-store";
@@ -20,8 +19,6 @@ import { RemoteAccountId } from "../../remote-account-id";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { endorseAccount, listEndorsements, unendorseAccount } from "../../endorsement-store";
 import { relationshipFlags, setAccountNote } from "../../relationship-store";
-
-export const accountEndorsementRoutes = new Hono<{ Bindings: Env }>();
 
 export const relationshipTarget = async (
   c: Context<{ Bindings: Env }>,
@@ -69,12 +66,18 @@ const setEndorsed = async (c: Context<{ Bindings: Env }>, endorse: boolean): Pro
   return c.json(mastodonRelationship(targetId, flags.value));
 };
 
-accountEndorsementRoutes.post("/api/v1/accounts/:id/endorse", (c) => setEndorsed(c, true));
-accountEndorsementRoutes.post("/api/v1/accounts/:id/unendorse", (c) => setEndorsed(c, false));
+export const postV1AccountsByIdEndorse = (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/endorse">,
+) => setEndorsed(c, true);
+export const postV1AccountsByIdUnendorse = (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/unendorse">,
+) => setEndorsed(c, false);
 
 const AccountNoteBodySchema = z.object({ comment: z.string() });
 
-accountEndorsementRoutes.post("/api/v1/accounts/:id/note", async (c) => {
+export const postV1AccountsByIdNote = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/note">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -106,7 +109,7 @@ accountEndorsementRoutes.post("/api/v1/accounts/:id/note", async (c) => {
     return jsonRepositoryError(c, flags.error.message);
   }
   return c.json(mastodonRelationship(targetId, flags.value));
-});
+};
 
 const endorsementDocuments = async (
   c: Context<{ Bindings: Env }>,
@@ -140,7 +143,7 @@ const endorsementDocuments = async (
   return c.json(documents);
 };
 
-accountEndorsementRoutes.get("/api/v1/endorsements", async (c) => {
+export const getV1Endorsements = async (c: Context<{ Bindings: Env }, "/api/v1/endorsements">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -150,9 +153,11 @@ accountEndorsementRoutes.get("/api/v1/endorsements", async (c) => {
     return jsonAuthError(c, user.error);
   }
   return endorsementDocuments(c, identity.value, user.value.id);
-});
+};
 
-accountEndorsementRoutes.get("/api/v1/accounts/:id/endorsements", async (c) => {
+export const getV1AccountsByIdEndorsements = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/endorsements">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -165,4 +170,4 @@ accountEndorsementRoutes.get("/api/v1/accounts/:id/endorsements", async (c) => {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return endorsementDocuments(c, identity.value, account.value.id);
-});
+};

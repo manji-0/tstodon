@@ -10,7 +10,6 @@ import {
   type LocalAccount,
   type RemoteActor as RemoteActorValue,
 } from "@tstodon/domain";
-import { Hono } from "hono";
 import type { Context } from "hono";
 import { findAccountById, findAccountByUsername } from "../account-store";
 import {
@@ -63,13 +62,11 @@ import { newEntityId } from "../ids";
 const parseNestedActivityObject = schemaResult(NestedActivityObjectSchema);
 const parseActivityJson = schemaResult(ActivityJsonSchema);
 
-export const activityPubRoutes = new Hono<{ Bindings: Env }>();
-
 const jsonLd = {
   "content-type": "application/activity+json",
 };
 
-activityPubRoutes.get("/users/:username", async (c) => {
+export const getUsersByUsername = async (c: Context<{ Bindings: Env }, "/users/:username">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -82,9 +79,11 @@ activityPubRoutes.get("/users/:username", async (c) => {
     return c.json({ kind: "NotFound" }, 404);
   }
   return c.json(actorDocument(identity.value, account.value), 200, jsonLd);
-});
+};
 
-activityPubRoutes.get("/users/:username/statuses/:id", async (c) => {
+export const getUsersByUsernameStatusesById = async (
+  c: Context<{ Bindings: Env }, "/users/:username/statuses/:id">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -118,7 +117,7 @@ activityPubRoutes.get("/users/:username/statuses/:id", async (c) => {
     200,
     jsonLd,
   );
-});
+};
 
 const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -152,7 +151,9 @@ const collection = (id: string, items: ReadonlyArray<string>) => ({
   orderedItems: items,
 });
 
-activityPubRoutes.get("/users/:username/outbox", async (c) => {
+export const getUsersByUsernameOutbox = async (
+  c: Context<{ Bindings: Env }, "/users/:username/outbox">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -191,9 +192,11 @@ activityPubRoutes.get("/users/:username/outbox", async (c) => {
     200,
     jsonLd,
   );
-});
+};
 
-activityPubRoutes.get("/users/:username/followers", async (c) => {
+export const getUsersByUsernameFollowers = async (
+  c: Context<{ Bindings: Env }, "/users/:username/followers">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -227,9 +230,11 @@ activityPubRoutes.get("/users/:username/followers", async (c) => {
   items.push(...remote.value);
   const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
   return c.json(collection(`${actor}/followers`, items), 200, jsonLd);
-});
+};
 
-activityPubRoutes.get("/users/:username/following", async (c) => {
+export const getUsersByUsernameFollowing = async (
+  c: Context<{ Bindings: Env }, "/users/:username/following">,
+) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -254,7 +259,7 @@ activityPubRoutes.get("/users/:username/following", async (c) => {
   }
   const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
   return c.json(collection(`${actor}/following`, items), 200, jsonLd);
-});
+};
 
 const objectUriOf = (value: string | Readonly<{ id: string }>): string =>
   typeof value === "string" ? value : value.id;
@@ -580,5 +585,6 @@ const notifyStatusAuthor = async (
   }
 };
 
-activityPubRoutes.post("/users/:username/inbox", (c) => handleInbox(c));
-activityPubRoutes.post("/inbox", (c) => handleInbox(c));
+export const postUsersByUsernameInbox = (c: Context<{ Bindings: Env }, "/users/:username/inbox">) =>
+  handleInbox(c);
+export const postInbox = (c: Context<{ Bindings: Env }, "/inbox">) => handleInbox(c);
