@@ -23,7 +23,7 @@ import { jsonRepositoryError, queryLimit } from "../http";
 import { verifyInboxRequest, parseSignatureHeader } from "../http-signature";
 import { suspendedDomains } from "../admin-domain-block-store";
 import { inboxActivityExists, insertInboxActivity } from "../inbox-store";
-import { listOutboundActivities } from "../outbox-store";
+import { listPublicOutboxActivities } from "../outbox-store";
 import { resolveRemoteActor } from "../remote-actor-fetch";
 import {
   deleteRemoteFollow,
@@ -119,30 +119,6 @@ export const getUsersByUsernameStatusesById = async (
   );
 };
 
-const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
-
-const addressesPublic = (value: unknown): boolean => {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const audience = [Reflect.get(value, "to"), Reflect.get(value, "cc")].flatMap((field) =>
-    typeof field === "string" ? [field] : Array.isArray(field) ? field : [],
-  );
-  return audience.includes(PUBLIC_COLLECTION);
-};
-
-/**
- * The outbox lists what anyone may read, as in Mastodon: boosts and the
- * creation of public or unlisted notes. Follows, Accepts, and followers-only
- * or direct notes stay out.
- */
-const publicOutboxItem = (payload: Readonly<Record<string, unknown>>): boolean => {
-  if (payload.type === "Announce") {
-    return true;
-  }
-  return payload.type === "Create" && addressesPublic(payload.object);
-};
-
 const collection = (id: string, items: ReadonlyArray<string>) => ({
   "@context": "https://www.w3.org/ns/activitystreams",
   id,
@@ -165,7 +141,9 @@ export const getUsersByUsernameOutbox = async (
   if (!account.value) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  const rows = await listOutboundActivities(
+  // What anyone may read, as in Mastodon: public or unlisted notes and boosts.
+  // The query filters before its LIMIT, so a page is not cut short.
+  const rows = await listPublicOutboxActivities(
     c.env.DB,
     account.value.id,
     queryLimit(c.req.query("limit"), 20),
@@ -174,13 +152,10 @@ export const getUsersByUsernameOutbox = async (
     return jsonRepositoryError(c, rows.error.message);
   }
   const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
-  const items: unknown[] = [];
-  for (const row of rows.value) {
+  const items = rows.value.flatMap((row) => {
     const payload = parseJsonColumn(JsonObjectSchema, row.payload_json);
-    if (payload.isOk() && publicOutboxItem(payload.value)) {
-      items.push(payload.value);
-    }
-  }
+    return payload.isOk() ? [payload.value] : [];
+  });
   return c.json(
     {
       "@context": "https://www.w3.org/ns/activitystreams",

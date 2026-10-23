@@ -1,5 +1,6 @@
 import {
-  InstanceIdentity,
+  type InstanceIdentity,
+  type LocalAccount,
   LocalStatus,
   reblogVisibility,
   StatusId,
@@ -7,7 +8,10 @@ import {
 } from "@tstodon/domain";
 import { type Context } from "hono";
 import { nowInstant } from "../../clock";
+import { findAccountById } from "../../account-store";
+import { announceActivity, undoAnnounceActivity } from "../../activitypub";
 import { enqueueLocalActivity } from "../../delivery";
+import { reachesRemoteInboxes } from "../../outbox-job";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -316,12 +320,19 @@ export const postV1StatusesByIdReblog = async (
       statusId: target.id,
     });
   }
-  const actor = InstanceIdentity.actorUrl(identity.value, user.value.username);
-  const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Announce", {
-    type: "Announce",
-    actor,
-    object: `${actor}/statuses/${target.id}`,
-  });
+  const noteAuthor = await findAccountById(c.env.DB, target.accountId);
+  if (noteAuthor.isErr()) {
+    return jsonRepositoryError(c, noteAuthor.error.message);
+  }
+  if (!noteAuthor.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const enqueued = await enqueueLocalActivity(
+    c.env,
+    user.value.id,
+    "Announce",
+    announceActivity(identity.value, user.value, reblog, noteAuthor.value),
+  );
   if (enqueued.isErr()) {
     return jsonRepositoryError(
       c,
@@ -339,6 +350,31 @@ export const postV1StatusesByIdReblog = async (
   return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
 };
 
+/** The `Undo` of the viewer's boost of `statusId`, or undefined when there is none. */
+const undoAnnounceFor = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  booster: LocalAccount,
+  statusId: string,
+): Promise<Record<string, unknown> | undefined> => {
+  const reblogId = await findLocalReblog(db, booster.id, statusId);
+  if (reblogId.isErr() || !reblogId.value) {
+    return undefined;
+  }
+  const [reblog, note] = await Promise.all([
+    findStatusById(db, reblogId.value),
+    findStatusById(db, statusId),
+  ]);
+  if (reblog.isErr() || reblog.value?.kind !== "LocalReblog" || note.isErr() || !note.value) {
+    return undefined;
+  }
+  const author = await findAccountById(db, note.value.accountId);
+  if (author.isErr() || !author.value) {
+    return undefined;
+  }
+  return undoAnnounceActivity(announceActivity(identity, booster, reblog.value, author.value));
+};
+
 export const postV1StatusesByIdUnreblog = async (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/unreblog">,
 ) => {
@@ -350,7 +386,15 @@ export const postV1StatusesByIdUnreblog = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
+  // The Undo carries the Announce it withdraws, so build it while the boost exists.
+  const undo = await undoAnnounceFor(c.env.DB, identity.value, user.value, c.req.param("id"));
   await deleteReblogOf(c.env.DB, user.value.id, c.req.param("id"));
+  if (undo && reachesRemoteInboxes(undo, identity.value.domain)) {
+    const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Undo", undo);
+    if (enqueued.isErr()) {
+      console.error(JSON.stringify({ kind: "UnreblogNotFederated", statusId: c.req.param("id") }));
+    }
+  }
   const latest = await findStatusById(c.env.DB, c.req.param("id"));
   if (latest.isErr() || !latest.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);

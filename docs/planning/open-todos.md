@@ -23,12 +23,11 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Direct messages (open)
 
-| ID   | Item                                                | Notes                                                                                                                                                                                 |
-| ---- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| DM-4 | Conversation mutes on remote replies                | `status_mutes` hides local thread members only; a remote reply into a muted thread still shows                                                                                        |
-| DM-6 | Serve non-public notes to authorized signed fetches | `GET /users/:username/statuses/:id` answers 404 for followers-only and direct notes to everyone; Mastodon serves them to a signed fetch from an addressed actor                       |
-| DM-7 | Outbox paging and private self-boosts               | The outbox filters after its `LIMIT`, so a page can come back short; a self-boost of a followers-only note is listed (its object still 404s) and its `Announce` carries no addressing |
-| DM-8 | Context paging after filtering                      | `/context` caps each level before the visibility and block filters, so a count-limited thread can come back short (as the old local walk did)                                         |
+| ID   | Item                                                | Notes                                                                                                                                                                                                                                                       |
+| ---- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DM-4 | Conversation mutes on remote replies                | `status_mutes` hides local thread members only; a remote reply into a muted thread still shows                                                                                                                                                              |
+| DM-6 | Serve non-public notes to authorized signed fetches | `GET /users/:username/statuses/:id` answers 404 for followers-only and direct notes to everyone; Mastodon serves them to a signed fetch from an addressed actor                                                                                             |
+| DM-8 | Context paging after filtering                      | `/context` caps each level before the visibility and block filters, so a count-limited thread can come back short. Mastodon does the same (`ancestor_ids(limit)` / `descendant_ids(limit, depth)` before filtering), so this stays unless parity is dropped |
 
 ## Done recently (do not re-open)
 
@@ -162,6 +161,8 @@ Tracked leftovers so e2e work can proceed without losing them.
 - Analytics indexes: `outbox.expand`, `outbox.enqueue`, `search`, `timeline.tag`
 - WP-1: notifications are pushed to Web Push subscriptions (`DeliverPush` queue job, RFC 8291/8292)
 - DM-5: deleting a local note federates a `Delete` with a `Tombstone`, addressed like the note
+- DM-7: the AP outbox filters to public Creates and Announces in SQL, before its `LIMIT`; boosts federate a Mastodon-shaped `Announce` (`id`, `published`, visibility-based `to`/`cc`, the note's own URI) and unreblog federates its `Undo`
+- Query indexes (`0065_query_indexes.sql`): boost/favourite counts, favourited_by/reblogged_by, thread descendants, status media, status-delete cascades, the outbox, delivery fan-out rows, remote-actor handles, and per-account cascades no longer scan their tables
 - Batched account documents on account lists (followers, following, follow requests, endorsements, list members, favourited/reblogged by, search, familiar followers), remote actors on timelines, notification requests, and tag histories (one status scan for every tag on a page)
 
 ## Active track

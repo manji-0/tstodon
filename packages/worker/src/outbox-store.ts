@@ -19,6 +19,7 @@ import {
   insertOutboxDeliveryFanout as insertOutboxDeliveryFanoutSql,
   insertOutboxTargetOrIgnore as insertOutboxTargetOrIgnoreSql,
   listOutboundActivities as listOutboundActivitiesSql,
+  listPublicOutboxActivities as listPublicOutboxActivitiesSql,
   updateOutboxFanout as updateOutboxFanoutSql,
   updateOutboxTarget as updateOutboxTargetSql,
 } from "./generated/prisma/sql";
@@ -180,6 +181,20 @@ export const findOutboundActivity = async (
   }
   return ok(row.value);
 };
+
+/** The account's Creates and Announces addressed to Public, newest first (the AP outbox). */
+export const listPublicOutboxActivities = async (
+  db: D1Database,
+  accountId: string,
+  limit: number,
+): Promise<Result<OutboundActivityRow[], RepositoryError>> =>
+  runD1(async () => {
+    const results = await queryTyped(db, listPublicOutboxActivitiesSql(accountId, limit));
+    return results.flatMap((raw) => {
+      const row = parseRow(OutboundActivityRowSchema, raw);
+      return row.isOk() ? [row.value] : [];
+    });
+  });
 
 export const listOutboundActivities = async (
   db: D1Database,

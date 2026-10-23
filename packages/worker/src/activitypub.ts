@@ -1,4 +1,9 @@
-import { InstanceIdentity, type LocalAccount, type LocalNote } from "@tstodon/domain";
+import {
+  InstanceIdentity,
+  type LocalAccount,
+  type LocalNote,
+  type LocalReblog,
+} from "@tstodon/domain";
 import type { z } from "zod";
 import type { ActivityJsonSchema } from "./activitypub-wire";
 
@@ -90,6 +95,52 @@ export const noteDeleteActivity = (
     object: { id, type: "Tombstone", atomUri: id },
   };
 };
+
+const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
+
+/**
+ * The `Announce` for a local boost, as Mastodon sends it: addressed by the
+ * boost's visibility, with the boosted note's author in `cc`.
+ */
+export const announceActivity = (
+  identity: InstanceIdentity,
+  booster: LocalAccount,
+  reblog: LocalReblog,
+  noteAuthor: LocalAccount,
+): Record<string, unknown> => {
+  const actor = InstanceIdentity.actorUrl(identity, booster.username);
+  const followers = `${actor}/followers`;
+  const author = InstanceIdentity.actorUrl(identity, noteAuthor.username);
+  const [to, cc] =
+    reblog.visibility.kind === "Public"
+      ? [[PUBLIC_COLLECTION], [author, followers]]
+      : reblog.visibility.kind === "Unlisted"
+        ? [[followers], [PUBLIC_COLLECTION, author]]
+        : [[followers], [author]];
+  return {
+    "@context": "https://www.w3.org/ns/activitystreams",
+    id: `${actor}/statuses/${reblog.id}/activity`,
+    type: "Announce",
+    actor,
+    published: reblog.createdAt,
+    to,
+    cc,
+    object: `${author}/statuses/${reblog.reblogOfId}`,
+  };
+};
+
+/** Withdraws an {@link announceActivity}, reaching the same audience. */
+export const undoAnnounceActivity = (
+  announce: Readonly<Record<string, unknown>>,
+): Record<string, unknown> => ({
+  "@context": "https://www.w3.org/ns/activitystreams",
+  id: `${String(announce.id)}/undo`,
+  type: "Undo",
+  actor: announce.actor,
+  to: announce.to,
+  cc: announce.cc,
+  object: { ...announce, "@context": undefined },
+});
 
 /** An account a note mentions, as its `Mention` tag names it. */
 export type NoteMention = Readonly<{ href: string; name: string }>;
