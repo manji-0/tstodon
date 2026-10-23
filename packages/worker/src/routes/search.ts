@@ -4,7 +4,11 @@ import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import { authenticate } from "../auth";
 import { filteredAttribute, loadViewerFilters, matchFilters } from "../filter-match";
 import { jsonAuthError, jsonRepositoryError, queryLimit } from "../http";
-import { mastodonAccountDocument, mastodonRemoteAccount } from "../account-documents";
+import {
+  documentsInOrder,
+  mastodonAccountDocuments,
+  mastodonRemoteAccount,
+} from "../account-documents";
 import { mastodonStatuses } from "../local-status-documents";
 import { mastodonTag } from "../tag-documents";
 import { elapsedMs, writeMetric } from "../metrics";
@@ -66,9 +70,13 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     if (accounts.isErr()) {
       return jsonRepositoryError(c, accounts.error.message);
     }
-    for (const account of accounts.value) {
-      accountDocs.push(await mastodonAccountDocument(c.env, identity.value, account));
-    }
+    const rendered = await mastodonAccountDocuments(c.env, identity.value, accounts.value);
+    accountDocs.push(
+      ...documentsInOrder(
+        accounts.value.map((account) => account.id),
+        rendered,
+      ),
+    );
     const seen = new Set(accountDocs.map((document) => String(document.id)));
     const remoteActors = await searchRemoteActors(c.env.DB, query.replace(/^@/, ""), limit);
     if (remoteActors.isErr()) {

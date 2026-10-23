@@ -13,7 +13,7 @@ import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { findStatusById } from "../../status-store";
 import { listTrendingStatuses, listTrendingTags } from "../../status-discovery-store";
-import { tagDailyHistory } from "../../tag-store";
+import { tagDailyHistories, tagDailyHistory } from "../../tag-store";
 import { cardDocument, listCachedLinkCards } from "../../link-card";
 import { fallbackLinkCard, listTrendingLinks } from "../../trend-store";
 import { listTrendReviews, setTrendReview, type TrendState } from "../../trend-review-store";
@@ -61,11 +61,18 @@ export const getV1AdminTrendsTags = async (
   if (tags.isErr()) {
     return jsonRepositoryError(c, tags.error.message);
   }
-  const documents = [];
-  for (const tag of tags.value) {
-    documents.push(await adminTagDocument(c, identity.value, tag.name, states.value.get(tag.name)));
-  }
-  return c.json(documents);
+  const histories = await tagDailyHistories(
+    c.env.DB,
+    tags.value.map((tag) => tag.name),
+  );
+  return c.json(
+    tags.value.map((tag) => ({
+      ...mastodonTag(identity.value, tag.name, {
+        history: (histories.isOk() ? histories.value.get(tag.name) : undefined) ?? [],
+      }),
+      ...adminTagFields(states.value.get(tag.name)),
+    })),
+  );
 };
 
 const reviewTag = (state: TrendState) => async (c: Context<{ Bindings: Env }>) => {

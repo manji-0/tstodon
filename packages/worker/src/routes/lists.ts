@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { findAccountById } from "../account-store";
+import { findAccountsByIds } from "../account-store";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -22,7 +22,7 @@ import {
   toMastodonList,
   updateList,
 } from "../list-store";
-import { mastodonAccountDocument } from "../account-documents";
+import { accountDocumentsByIds, documentsInOrder } from "../account-documents";
 import { mastodonStatuses } from "../local-status-documents";
 import { parseInstanceIdentity } from "../runtime-config";
 import { attachFilteredToStatuses } from "../filter-match";
@@ -158,14 +158,8 @@ export const getV1ListsByIdAccounts = async (
   if (memberIds.isErr()) {
     return jsonRepositoryError(c, memberIds.error.message);
   }
-  const documents = [];
-  for (const memberId of memberIds.value) {
-    const account = await findAccountById(c.env.DB, memberId);
-    if (account.isOk() && account.value) {
-      documents.push(await mastodonAccountDocument(c.env, identity.value, account.value));
-    }
-  }
-  return c.json(documents);
+  const byId = await accountDocumentsByIds(c.env, identity.value, memberIds.value);
+  return c.json(documentsInOrder(memberIds.value, byId));
 };
 
 export const postV1ListsByIdAccounts = async (
@@ -187,13 +181,11 @@ export const postV1ListsByIdAccounts = async (
     return jsonValidationError(c);
   }
   const accountIds = stringList(body.value.account_ids);
-  const existing: string[] = [];
-  for (const accountId of accountIds) {
-    const account = await findAccountById(c.env.DB, accountId);
-    if (account.isOk() && account.value) {
-      existing.push(account.value.id);
-    }
+  const found = await findAccountsByIds(c.env.DB, accountIds);
+  if (found.isErr()) {
+    return jsonRepositoryError(c, found.error.message);
   }
+  const existing = accountIds.filter((accountId) => found.value.has(accountId));
   const added = await addListMembers(c.env.DB, list.value.id, existing);
   if (added.isErr()) {
     return jsonRepositoryError(c, added.error.message);

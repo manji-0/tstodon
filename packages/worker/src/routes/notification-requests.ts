@@ -57,27 +57,35 @@ export const NotificationRequestIdsBodySchema = z.object({
  */
 
 /** Mastodon's NotificationRequest document for one held-back sender. */
-const requestDocument = async (
+/** Request documents for a page, with one account batch and one status batch. */
+const requestDocuments = async (
   c: Context<{ Bindings: Env }>,
   identity: InstanceIdentity,
   accountId: string,
-  request: NotificationRequest,
-): Promise<Record<string, unknown>> => {
+  requests: ReadonlyArray<NotificationRequest>,
+): Promise<Record<string, unknown>[]> => {
   // The status stored with the held notification is the exact one.
   const [accounts, statuses] = await Promise.all([
-    accountDocumentsByIds(c.env, identity, [request.fromAccountId]),
-    statusDocumentsByIds(c.env, identity, request.statusId ? [request.statusId] : [], accountId),
+    accountDocumentsByIds(
+      c.env,
+      identity,
+      requests.map((request) => request.fromAccountId),
+    ),
+    statusDocumentsByIds(
+      c.env,
+      identity,
+      requests.flatMap((request) => (request.statusId ? [request.statusId] : [])),
+      accountId,
+    ),
   ]);
-  const accountDocument = accounts.get(request.fromAccountId) ?? null;
-  const lastStatus = request.statusId ? (statuses.get(request.statusId) ?? null) : null;
-  return {
+  return requests.map((request) => ({
     id: request.id,
     created_at: request.createdAt,
     updated_at: request.updatedAt,
     notifications_count: String(request.notificationsCount),
-    account: accountDocument,
-    last_status: lastStatus,
-  };
+    account: accounts.get(request.fromAccountId) ?? null,
+    last_status: request.statusId ? (statuses.get(request.statusId) ?? null) : null,
+  }));
 };
 
 const policyDocument = async (
@@ -198,11 +206,7 @@ export const getV1NotificationsRequests = async (
   if (requests.isErr()) {
     return jsonRepositoryError(c, requests.error.message);
   }
-  const documents: Record<string, unknown>[] = [];
-  for (const request of requests.value) {
-    documents.push(await requestDocument(c, identity.value, user.value.id, request));
-  }
-  return c.json(documents);
+  return c.json(await requestDocuments(c, identity.value, user.value.id, requests.value));
 };
 
 export const getV1NotificationsRequestsMerged = (
@@ -227,7 +231,8 @@ export const getV1NotificationsRequestsById = async (
   if (!request.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.json(await requestDocument(c, identity.value, user.value.id, request.value));
+  const [document] = await requestDocuments(c, identity.value, user.value.id, [request.value]);
+  return c.json(document);
 };
 
 const resolveRequest = async (

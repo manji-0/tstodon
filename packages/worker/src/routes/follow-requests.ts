@@ -9,12 +9,13 @@ import {
   queryCursor,
   requireUser,
 } from "../http";
-import { mastodonAccountDocument, mastodonRemoteAccount } from "../account-documents";
+import { accountDocumentsByIds, mastodonRemoteAccount } from "../account-documents";
 import { mastodonRelationship } from "../relationship-document";
 import {
   authorizeRemoteFollowRequest,
   findPendingRemoteFollowRequest,
   findRemoteActorByUri,
+  findRemoteActorsByUris,
   listPendingRemoteFollowRequesters,
   rejectRemoteFollowRequest,
 } from "../remote-actor-store";
@@ -97,22 +98,30 @@ export const getV1FollowRequests = async (
   }
 
   type Entry = Readonly<{ createdAt: string; document: Record<string, unknown> }>;
+  const [localDocuments, actors] = await Promise.all([
+    accountDocumentsByIds(
+      c.env,
+      identity.value,
+      local.value.map((requester) => requester.followerAccountId),
+    ),
+    findRemoteActorsByUris(
+      c.env.DB,
+      remote.value.map((requester) => requester.remoteActorUri),
+    ),
+  ]);
   const entries: Entry[] = [];
   for (const requester of local.value) {
-    const account = await findAccountById(c.env.DB, requester.followerAccountId);
-    if (account.isOk() && account.value) {
-      entries.push({
-        createdAt: requester.createdAt,
-        document: await mastodonAccountDocument(c.env, identity.value, account.value),
-      });
+    const document = localDocuments.get(requester.followerAccountId);
+    if (document) {
+      entries.push({ createdAt: requester.createdAt, document });
     }
   }
   for (const requester of remote.value) {
-    const actor = await findRemoteActorByUri(c.env.DB, requester.remoteActorUri);
-    if (actor.isOk() && actor.value) {
+    const actor = actors.isOk() ? actors.value.get(requester.remoteActorUri) : undefined;
+    if (actor) {
       entries.push({
         createdAt: requester.createdAt,
-        document: mastodonRemoteAccount(identity.value, actor.value),
+        document: mastodonRemoteAccount(identity.value, actor),
       });
     }
   }

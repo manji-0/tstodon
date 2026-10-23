@@ -135,6 +135,16 @@ export const accountSource = (
   attribution_domains: [],
 });
 
+/** The documents for `ids` in that order, skipping ids that did not resolve. */
+export const documentsInOrder = (
+  ids: ReadonlyArray<string>,
+  documents: ReadonlyMap<string, Record<string, unknown>>,
+): Record<string, unknown>[] =>
+  ids.flatMap((id) => {
+    const document = documents.get(id);
+    return document ? [document] : [];
+  });
+
 export const mastodonAccountDocument = async (
   env: Env,
   identity: InstanceIdentity,

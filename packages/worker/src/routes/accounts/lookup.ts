@@ -1,7 +1,6 @@
 import type { Context } from "hono";
 import { type InstanceIdentity, Visibility } from "@tstodon/domain";
 import {
-  findAccountById,
   findAccountByIdOrUsername,
   findAccountByUsername,
   findAccountsByIds,
@@ -10,6 +9,8 @@ import {
 import { getAccountModeration, listAccountModerations } from "../../account-moderation-store";
 import { jsonAuthError, jsonRepositoryError, queryAccountsLimit, requireUser } from "../../http";
 import {
+  accountDocumentsByIds,
+  documentsInOrder,
   mastodonAccountDocument,
   mastodonAccountDocuments,
   mastodonRemoteAccount,
@@ -189,11 +190,13 @@ export const getV1AccountsSearch = async (
     if (local.isErr()) {
       return jsonRepositoryError(c, local.error.message);
     }
-    for (const account of local.value) {
-      if (!followed(account.id)) {
-        continue;
+    const candidates = local.value.filter((account) => followed(account.id));
+    const rendered = await mastodonAccountDocuments(c.env, identity.value, candidates);
+    for (const account of candidates) {
+      const document = rendered.get(account.id);
+      if (document) {
+        push(document);
       }
-      push(await mastodonAccountDocument(c.env, identity.value, account));
       if (documents.length >= limit) {
         break;
       }
@@ -248,12 +251,8 @@ export const getV1AccountsFamiliarFollowers = async (
       if (followerIds.isErr()) {
         return jsonRepositoryError(c, followerIds.error.message);
       }
-      for (const followerId of followerIds.value) {
-        const follower = await findAccountById(c.env.DB, followerId);
-        if (follower.isOk() && follower.value) {
-          accounts.push(await mastodonAccountDocument(c.env, identity.value, follower.value));
-        }
-      }
+      const byId = await accountDocumentsByIds(c.env, identity.value, followerIds.value);
+      accounts.push(...documentsInOrder(followerIds.value, byId));
     }
     groups.push({ id: requestedId, accounts });
   }

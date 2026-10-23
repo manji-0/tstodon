@@ -1,6 +1,5 @@
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import type { Context } from "hono";
-import { findAccountById } from "../../account-store";
 import { authenticate } from "../../auth";
 import {
   jsonAuthError,
@@ -11,11 +10,11 @@ import {
   requireUser,
   setPaginationLinks,
 } from "../../http";
-import { mastodonAccountDocument, mastodonRemoteAccount } from "../../account-documents";
+import { accountDocumentsByIds, mastodonRemoteAccount } from "../../account-documents";
 import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
 import { listStatusFavouritedBy, listStatusRebloggedBy } from "../../status-interaction-store";
 import { parseInstanceIdentity } from "../../runtime-config";
-import { findRemoteActorByUri } from "../../remote-actor-store";
+import { findRemoteActorsByUris } from "../../remote-actor-store";
 import { findStatusById, findStatusesByIds } from "../../status-store";
 import { canViewStatus } from "../../visibility-guard";
 import { listQuotingStatusIds, revokeStatusQuote } from "../../quote-store";
@@ -48,20 +47,25 @@ const statusEngagementAccounts = async (
   if (engaged.isErr()) {
     return jsonRepositoryError(c, engaged.error.message);
   }
-  const documents = [];
-  for (const booster of engaged.value) {
+  const [locals, actors] = await Promise.all([
+    accountDocumentsByIds(
+      c.env,
+      identity.value,
+      engaged.value.flatMap((booster) => (booster.kind === "Local" ? [booster.accountId] : [])),
+    ),
+    findRemoteActorsByUris(
+      c.env.DB,
+      engaged.value.flatMap((booster) => (booster.kind === "Local" ? [] : [booster.actorUri])),
+    ),
+  ]);
+  const documents = engaged.value.flatMap((booster): Record<string, unknown>[] => {
     if (booster.kind === "Local") {
-      const account = await findAccountById(c.env.DB, booster.accountId);
-      if (account.isOk() && account.value) {
-        documents.push(await mastodonAccountDocument(c.env, identity.value, account.value));
-      }
-      continue;
+      const local = locals.get(booster.accountId);
+      return local ? [local] : [];
     }
-    const actor = await findRemoteActorByUri(c.env.DB, booster.actorUri);
-    if (actor.isOk() && actor.value) {
-      documents.push(mastodonRemoteAccount(identity.value, actor.value));
-    }
-  }
+    const actor = actors.isOk() ? actors.value.get(booster.actorUri) : undefined;
+    return actor ? [mastodonRemoteAccount(identity.value, actor)] : [];
+  });
   // The documents are accounts; the engagement row ids live in the header.
   setPaginationLinks(
     c,

@@ -6,7 +6,7 @@ import { rejectedTrendTargets } from "../trend-review-store";
 import { mastodonStatuses } from "../local-status-documents";
 import { mastodonTag } from "../tag-documents";
 import { authenticate } from "../auth";
-import { listFeaturedTags, listFollowedTags, tagDailyHistory } from "../tag-store";
+import { listFeaturedTags, listFollowedTags, tagDailyHistories } from "../tag-store";
 import { parseInstanceIdentity } from "../runtime-config";
 import { listTrendingStatuses, listTrendingTags } from "../status-discovery-store";
 
@@ -40,17 +40,14 @@ const trendingTagDocuments = async (
   const featured = new Set(
     viewerId ? (await listFeaturedTags(c.env.DB, viewerId)).unwrapOr([]) : [],
   );
-  const documents: Record<string, unknown>[] = [];
-  for (const name of names) {
-    documents.push(
-      mastodonTag(identity, name, {
-        history: (await tagDailyHistory(c.env.DB, name)).unwrapOr([]),
-        following: followed.has(name),
-        featuring: featured.has(name),
-      }),
-    );
-  }
-  return documents;
+  const histories = await tagDailyHistories(c.env.DB, names);
+  return names.map((name) =>
+    mastodonTag(identity, name, {
+      history: (histories.isOk() ? histories.value.get(name) : undefined) ?? [],
+      following: followed.has(name),
+      featuring: featured.has(name),
+    }),
+  );
 };
 
 const trendingTagsResponse = async (c: Context<{ Bindings: Env }>): Promise<Response> => {

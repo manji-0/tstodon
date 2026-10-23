@@ -1,7 +1,7 @@
 import { InstanceIdentity } from "@tstodon/domain";
 import type { Context } from "hono";
 import { z } from "zod";
-import { findAccountById, findAccountByIdOrUsername } from "../../account-store";
+import { findAccountByIdOrUsername } from "../../account-store";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -12,9 +12,9 @@ import {
   requireUser,
   setPaginationLinks,
 } from "../../http";
-import { mastodonAccountDocument, mastodonRemoteAccount } from "../../account-documents";
+import { accountDocumentsByIds, mastodonRemoteAccount } from "../../account-documents";
 import { mastodonRelationship } from "../../relationship-document";
-import { findRemoteActorByUri } from "../../remote-actor-store";
+import { findRemoteActorsByUris } from "../../remote-actor-store";
 import { RemoteAccountId } from "../../remote-account-id";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { endorseAccount, listEndorsements, unendorseAccount } from "../../endorsement-store";
@@ -121,20 +121,26 @@ const endorsementDocuments = async (
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
-  const documents: Record<string, unknown>[] = [];
-  for (const row of rows.value) {
-    if (row.accountId) {
-      const account = await findAccountById(c.env.DB, row.accountId);
-      if (account.isOk() && account.value) {
-        documents.push(await mastodonAccountDocument(c.env, identity, account.value));
-        continue;
-      }
+  // A local endorsement renders the account; anything else falls back to the stored actor.
+  const [locals, actors] = await Promise.all([
+    accountDocumentsByIds(
+      c.env,
+      identity,
+      rows.value.flatMap((row) => (row.accountId ? [row.accountId] : [])),
+    ),
+    findRemoteActorsByUris(
+      c.env.DB,
+      rows.value.map((row) => row.actorUri),
+    ),
+  ]);
+  const documents = rows.value.flatMap((row) => {
+    const local = row.accountId ? locals.get(row.accountId) : undefined;
+    if (local) {
+      return [local];
     }
-    const actor = await findRemoteActorByUri(c.env.DB, row.actorUri);
-    if (actor.isOk() && actor.value) {
-      documents.push(mastodonRemoteAccount(identity, actor.value));
-    }
-  }
+    const actor = actors.isOk() ? actors.value.get(row.actorUri) : undefined;
+    return actor ? [mastodonRemoteAccount(identity, actor)] : [];
+  });
   setPaginationLinks(
     c,
     rows.value.map((row) => row.id),

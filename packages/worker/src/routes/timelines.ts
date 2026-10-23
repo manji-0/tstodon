@@ -14,7 +14,7 @@ import { mastodonRemoteStatus, remoteStatusVisible } from "../remote-status-docu
 import { mastodonStatuses } from "../local-status-documents";
 import { elapsedMs, writeMetric } from "../metrics";
 import { parseInstanceIdentity } from "../runtime-config";
-import { findRemoteActorByUri } from "../remote-actor-store";
+import { findRemoteActorsByUris } from "../remote-actor-store";
 import { attachRemoteReplyRefs } from "../status-documents";
 import {
   listLinkRemoteStatuses,
@@ -80,22 +80,24 @@ const remoteTimelineDocuments = async (
     c.env.DB,
     remote.map((status) => status.id),
   );
+  const actors = await findRemoteActorsByUris(
+    c.env.DB,
+    remote.map((status) => status.actorUri),
+  );
   const statuses: RemoteNote[] = [];
   const documents: Record<string, unknown>[] = [];
   for (const status of remote) {
-    const actor = await findRemoteActorByUri(c.env.DB, status.actorUri);
-    if (actor.isErr() || !actor.value || !visible(status)) {
+    const actor = actors.isOk() ? actors.value.get(status.actorUri) : undefined;
+    if (!actor || !visible(status)) {
       continue;
     }
-    if (blocked.has(actor.value.domain.toLowerCase())) {
+    if (blocked.has(actor.domain.toLowerCase())) {
       continue;
     }
     const rawCard = cards.isOk() ? cards.value.get(status.id) : undefined;
     const card = rawCard ? parseCardJson(rawCard) : undefined;
     statuses.push(status);
-    documents.push(
-      mastodonRemoteStatus(identity, status, actor.value, card ? cardDocument(card) : null),
-    );
+    documents.push(mastodonRemoteStatus(identity, status, actor, card ? cardDocument(card) : null));
   }
   await attachRemoteReplyRefs(c.env.DB, identity, documents);
   return { statuses, documents, cards: cards.isOk() ? cards.value : new Map() };

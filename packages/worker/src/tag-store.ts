@@ -130,12 +130,20 @@ export const accountTagUses = async (
     return { count: Number(row?.count ?? 0), lastStatusAt: row?.last_status_at ?? null };
   });
 
-/** One entry per UTC day for the last week, newest first, zero-filled. */
-export const tagDailyHistory = async (
+/**
+ * Each tag's history: one entry per UTC day for the last week, newest first,
+ * zero-filled. All tags share one scan of the week's recent public statuses.
+ */
+export const tagDailyHistories = async (
   db: D1Database,
-  tag: string,
-): Promise<Result<TagHistoryEntry[], RepositoryError>> =>
+  tags: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, TagHistoryEntry[]>, RepositoryError>> =>
   runD1(async () => {
+    const wanted = new Set(tags);
+    const histories = new Map<string, TagHistoryEntry[]>();
+    if (wanted.size === 0) {
+      return histories;
+    }
     const since = new Date(Date.now() - TAG_HISTORY_DAYS * SECONDS_PER_DAY * 1000).toISOString();
     const { results } = await db
       .prepare(
@@ -145,34 +153,51 @@ export const tagDailyHistory = async (
       )
       .bind(since)
       .all<{ content_text: string; created_at: string; account_id: string }>();
-    const uses = new Map<string, number>();
-    const accounts = new Map<string, Set<string>>();
+    // Keyed by tag, then by UTC day (epoch seconds).
+    const uses = new Map<string, Map<string, number>>();
+    const accounts = new Map<string, Map<string, Set<string>>>();
     for (const row of results ?? []) {
-      if (!extractHashtags(row.content_text).includes(tag)) {
-        continue;
-      }
       const day = Math.floor(Date.parse(row.created_at) / 1000 / SECONDS_PER_DAY) * SECONDS_PER_DAY;
       if (!Number.isFinite(day)) {
         continue;
       }
       const key = String(day);
-      uses.set(key, (uses.get(key) ?? 0) + 1);
-      const seen = accounts.get(key) ?? new Set<string>();
-      seen.add(row.account_id);
-      accounts.set(key, seen);
+      for (const tag of new Set(extractHashtags(row.content_text))) {
+        if (!wanted.has(tag)) {
+          continue;
+        }
+        const tagUses = uses.get(tag) ?? new Map<string, number>();
+        tagUses.set(key, (tagUses.get(key) ?? 0) + 1);
+        uses.set(tag, tagUses);
+        const tagAccounts = accounts.get(tag) ?? new Map<string, Set<string>>();
+        const seen = tagAccounts.get(key) ?? new Set<string>();
+        seen.add(row.account_id);
+        tagAccounts.set(key, seen);
+        accounts.set(tag, tagAccounts);
+      }
     }
     const today = Math.floor(Date.now() / 1000 / SECONDS_PER_DAY) * SECONDS_PER_DAY;
-    const entries: TagHistoryEntry[] = [];
-    for (let offset = 0; offset < TAG_HISTORY_DAYS; offset += 1) {
-      const key = String(today - offset * SECONDS_PER_DAY);
-      entries.push({
-        day: key,
-        uses: String(uses.get(key) ?? 0),
-        accounts: String(accounts.get(key)?.size ?? 0),
-      });
+    for (const tag of wanted) {
+      const entries: TagHistoryEntry[] = [];
+      for (let offset = 0; offset < TAG_HISTORY_DAYS; offset += 1) {
+        const key = String(today - offset * SECONDS_PER_DAY);
+        entries.push({
+          day: key,
+          uses: String(uses.get(tag)?.get(key) ?? 0),
+          accounts: String(accounts.get(tag)?.get(key)?.size ?? 0),
+        });
+      }
+      histories.set(tag, entries);
     }
-    return entries;
+    return histories;
   });
+
+/** {@link tagDailyHistories} for a single tag. */
+export const tagDailyHistory = async (
+  db: D1Database,
+  tag: string,
+): Promise<Result<TagHistoryEntry[], RepositoryError>> =>
+  (await tagDailyHistories(db, [tag])).map((histories) => histories.get(tag) ?? []);
 
 /** Tags the account has used publicly but has not featured yet. */
 export const featuredTagSuggestions = async (

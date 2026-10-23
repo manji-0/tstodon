@@ -1,6 +1,6 @@
 import { assertNever } from "@tstodon/core";
 import type { Context } from "hono";
-import { findAccountById, findAccountByIdOrUsername } from "../../account-store";
+import { findAccountByIdOrUsername } from "../../account-store";
 import { findAccountProfile } from "../../account-profile-store";
 import { authenticate } from "../../auth";
 import { attachFilteredToStatuses } from "../../filter-match";
@@ -12,7 +12,7 @@ import {
   queryLimit,
   setPaginationLinks,
 } from "../../http";
-import { mastodonAccountDocument } from "../../account-documents";
+import { accountDocumentsByIds, documentsInOrder } from "../../account-documents";
 import { mastodonStatuses } from "../../local-status-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { listFollowers, listFollowing } from "../../follow-store";
@@ -128,13 +128,15 @@ const accountList = async (c: Context<{ Bindings: Env }>, kind: "followers" | "f
   if (edges.isErr()) {
     return jsonRepositoryError(c, edges.error.message);
   }
-  const documents = [];
-  for (const edge of edges.value) {
-    const found = await findAccountById(c.env.DB, edge.accountId);
-    if (found.isOk() && found.value) {
-      documents.push(await mastodonAccountDocument(c.env, identity.value, found.value));
-    }
-  }
+  const byId = await accountDocumentsByIds(
+    c.env,
+    identity.value,
+    edges.value.map((edge) => edge.accountId),
+  );
+  const documents = documentsInOrder(
+    edges.value.map((edge) => edge.accountId),
+    byId,
+  );
   // Follow row ids are not in the documents, so the Link header carries them.
   setPaginationLinks(
     c,

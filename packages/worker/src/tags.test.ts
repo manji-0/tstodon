@@ -159,6 +159,33 @@ describe("tags", () => {
     expect(overflow.status).toBe(422);
   });
 
+  it("lists followed tags with each tag's own history and featuring flag", async () => {
+    const email = "tag-many@example.com";
+    // A status counts once per tag, however often the tag repeats in it.
+    await postStatus(email, "#manyalpha #manyalpha and #manybeta");
+    await postStatus(email, "again #manyalpha");
+    for (const name of ["manyalpha", "manybeta", "manygamma"]) {
+      expect((await post(`/api/v1/tags/${name}/follow`, email)).status).toBe(200);
+    }
+    const featured = await json("/api/v1/featured_tags", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(email)) },
+      body: JSON.stringify({ name: "manybeta" }),
+    });
+    expect(featured.status).toBe(200);
+
+    const list = await json("/api/v1/followed_tags", { headers: await auth(email) });
+    expect(list.status).toBe(200);
+    const tags = read(z.array(TagSchema.extend({ featuring: z.boolean() })), list.body);
+    const today = (name: string) => tags.find((tag) => tag.name === name)?.history[0];
+    expect(today("manyalpha")).toMatchObject({ uses: "2", accounts: "1" });
+    expect(today("manybeta")).toMatchObject({ uses: "1", accounts: "1" });
+    expect(today("manygamma")).toMatchObject({ uses: "0", accounts: "0" });
+    expect(tags.find((tag) => tag.name === "manybeta")?.featuring).toBe(true);
+    expect(tags.find((tag) => tag.name === "manyalpha")?.featuring).toBe(false);
+    expect(tags.every((tag) => tag.following && tag.history.length === 7)).toBe(true);
+  });
+
   it("requires authentication to follow a tag", async () => {
     expect((await json("/api/v1/tags/anything/follow", { method: "POST" })).status).toBe(401);
     expect((await post("/api/v1/tags/anything/follow", "tag-auth@example.com")).status).toBe(200);

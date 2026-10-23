@@ -25,6 +25,7 @@ import {
   listFeaturedTags,
   listFollowedTags,
   normalizeTag,
+  tagDailyHistories,
   tagDailyHistory,
   unfeatureTag,
   unfollowTag,
@@ -244,15 +245,23 @@ export const getV1FollowedTags = async (c: Context<{ Bindings: Env }, "/api/v1/f
   if (tags.isErr()) {
     return jsonRepositoryError(c, tags.error.message);
   }
-  const documents: Record<string, unknown>[] = [];
-  for (const name of tags.value) {
-    const built = await buildTagDocument(c.env, identity.value, name, user.value.id, true);
-    if (built.kind === "Err") {
-      return jsonRepositoryError(c, built.message);
-    }
-    documents.push(built.document);
+  const [histories, featured] = await Promise.all([
+    tagDailyHistories(c.env.DB, tags.value),
+    listFeaturedTags(c.env.DB, user.value.id),
+  ]);
+  if (histories.isErr()) {
+    return jsonRepositoryError(c, histories.error.message);
   }
-  return c.json(documents);
+  const featuring = new Set(featured.unwrapOr([]));
+  return c.json(
+    tags.value.map((name) =>
+      mastodonTag(identity.value, name, {
+        history: histories.value.get(name) ?? [],
+        following: true,
+        featuring: featuring.has(name),
+      }),
+    ),
+  );
 };
 
 export const getV1FeaturedTags = async (c: Context<{ Bindings: Env }, "/api/v1/featured_tags">) => {
