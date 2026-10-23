@@ -2,6 +2,8 @@ packages:
   - packages/*
 
 allowBuilds:
+  # void ships better-sqlite3 for `void db`; tstodon manages D1 with wrangler.
+  better-sqlite3: false
   "@prisma/engines": true
   esbuild: true
   msgpackr-extract: true

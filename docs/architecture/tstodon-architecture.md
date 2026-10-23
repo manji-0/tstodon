@@ -17,7 +17,7 @@ Domain state is expressed as Zod 4.6 discriminated unions with a unified `kind` 
 
 - Port cfwdon's Rust code line-for-line.
 - Claim behavioral Mastodon compatibility from route stubs.
-- Put Queue, cron, Workflow, or Durable Object traffic through Hono.
+- Put Queue, cron, Workflow, or Durable Object traffic through HTTP routes.
 - Implement a first-party OAuth authorization server while Cloudflare Access is the authentication boundary.
 
 ## Workspace
@@ -27,7 +27,7 @@ Domain state is expressed as Zod 4.6 discriminated unions with a unified `kind` 
 - `packages/domain`
   Pure Zod discriminant models and transitions.
 - `packages/worker`
-  Cloudflare Worker runtime. Hono for HTTP. Entrypoint handlers for queue, cron, Workflows, and Durable Objects.
+  Cloudflare Worker runtime, built by Void. Void file routes (`app/routes/`) and Hono for HTTP. `app/crons/` and `app/queues/` for cron and queue handlers; Workflow and Durable Object classes exported from the generated entry.
 
 ## HTTP Routing
 
@@ -75,7 +75,7 @@ Protected user-facing API routes authenticate with a Cloudflare Access JWT from 
 
 The HTTP surface is classified in [Local Core](../planning/local-core.md): implemented local behavior, intentional placeholders, and out-of-scope work. Do not infer Mastodon compatibility from placeholder routes.
 
-Queue, cron, Workflow, and Durable Object traffic stay on the Worker entrypoint. Hono only matches HTTP.
+Queue, cron, Workflow, and Durable Object traffic stay on the Worker entrypoint that Void generates. HTTP routes only match HTTP.
 
 Queue `OUTBOX_PROCESS_QUEUE` owns `ExpandFollowers` fan-out and `ProcessExpiredPolls`. Workflow `OUTBOX_DELIVERY_WORKFLOW` owns per-inbox POST retries. `DeliverTarget` on the queue only starts that workflow (legacy or replay). `StreamHub` receives write-time `update` / `notification` / `status.update` events per account.
 

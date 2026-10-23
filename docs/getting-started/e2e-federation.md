@@ -21,12 +21,12 @@ Run **two local tstodon Workers** and check federation discovery surfaces agains
 | `INSTANCE_DOMAIN`        | acct domain (`127.0.0.1:8791`)                                                                                                              |
 | `FEDERATION_ALLOW_HOSTS` | Comma hosts allowed to federate; a non-empty list is limited federation and also lifts the private-IP refusal for those hosts (`127.0.0.1`) |
 
-Configs: `e2e/a.wrangler.jsonc`, `e2e/b.wrangler.jsonc`. Each instance runs `vp dev` with `TSTODON_WORKER_CONFIG` pointing at its config and `TSTODON_PERSIST_TO` at its local state (`.wrangler/e2e-a`, `.wrangler/e2e-b`), which `vite.config.ts` turns into the Cloudflare plugin's `configPath` and `persistState`. The layout matches `wrangler --persist-to`, so the `wrangler d1` commands below and the e2e helpers read the same databases.
+Configs: `e2e/a.wrangler.jsonc`, `e2e/b.wrangler.jsonc`. Each instance runs `vp dev` with `CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH` pointing at its config (read by the Cloudflare plugin that Void wraps), `TSTODON_PERSIST_TO` at its local state (`.wrangler/e2e-a`, `.wrangler/e2e-b`), which `vite.config.ts` passes to `voidPlugin({ persistTo })`, and `VOID_INSPECTOR_PORT=false` so the two instances do not race for the inspector port. The layout matches `wrangler --persist-to`, so the `wrangler d1` commands below and the e2e helpers read the same databases. Like the root config, the instance configs leave cron triggers and the queue consumer to `packages/worker/app`, and their producer targets the queue named by `packages/worker/app/queues/` (`tstodon-outbox-process`).
 
 To start one instance by hand:
 
 ```sh
-TSTODON_WORKER_CONFIG=e2e/a.wrangler.jsonc TSTODON_PERSIST_TO=.wrangler/e2e-a pnpm exec vp dev --port 8791 --strictPort --host 127.0.0.1
+CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH=e2e/a.wrangler.jsonc VOID_INSPECTOR_PORT=false TSTODON_PERSIST_TO=.wrangler/e2e-a pnpm exec vp dev --port 8791 --strictPort --host 127.0.0.1
 ```
 
 ## Commands

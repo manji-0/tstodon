@@ -5,11 +5,19 @@ import { writeMetric } from "./metrics";
 /** Transient job failures are retried a few times before being dropped. */
 const MAX_JOB_ATTEMPTS = 3;
 
-export const handleQueue = async (
-  batch: MessageBatch<unknown>,
-  env: Env,
-  ctx: ExecutionContext,
-): Promise<void> => {
+/** The part of a queue batch the handler uses: Workers' `MessageBatch` and Void's `QueueBatch` both fit. */
+export type OutboxBatch = Readonly<{
+  messages: ReadonlyArray<
+    Readonly<{
+      body: unknown;
+      attempts: number;
+      ack: () => void;
+      retry: () => void;
+    }>
+  >;
+}>;
+
+export const handleQueue = async (batch: OutboxBatch, env: Env): Promise<void> => {
   for (const message of batch.messages) {
     const parsed = OutboxJob.parse(message.body);
     if (parsed.isErr()) {
@@ -33,5 +41,4 @@ export const handleQueue = async (
     }
     message.ack();
   }
-  ctx.waitUntil(Promise.resolve());
 };

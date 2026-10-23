@@ -48,7 +48,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 - Web Push: subscriptions per account + endpoint, VAPID key advertised, notifications delivered (`aes128gcm`/`aesgcm`, VAPID ES256)
 
-- Toolchain on Vite+ (`vp check`/`test`/`dev`/`build`, Vitest 5 via `@cloudflare/vitest-plugin`, Worker built by `@cloudflare/vite-plugin`)
+- Toolchain on Vite+ (`vp check`/`test`/`dev`/`build`, Vitest 5 via `@cloudflare/vitest-plugin`, Worker built by Void (`voidPlugin()`, wrapping `@cloudflare/vite-plugin`))
 - `FEDERATION_ALLOW_HOSTS` matches `host:port` peers by hostname (inbox gate and follower fan-out)
 - Link-card test no longer asserts an empty card right after posting (queue race)
 - `GET /api/v1/accounts?id[]=` and `GET /api/v1/statuses?id[]=` batch lookups

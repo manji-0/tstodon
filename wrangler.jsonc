@@ -1,6 +1,8 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "tstodon",
+  // Void generates the deployed entry (`.void/entry.ts`) from `packages/worker/app`
+  // and replaces `main`; this one serves `wrangler types` and the workerd test pool.
   "main": "packages/worker/src/index.ts",
   "compatibility_date": "2026-09-20",
   "compatibility_flags": ["nodejs_compat"],
@@ -24,9 +26,6 @@
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "none",
     "run_worker_first": true,
-  },
-  "triggers": {
-    "crons": ["17 * * * *", "17 */6 * * *"],
   },
   "vars": {
     "INSTANCE_DOMAIN": "example.com",
@@ -80,20 +79,13 @@
       "id": "00000000000000000000000000000002",
     },
   ],
+  // Cron triggers and the queue consumer come from `packages/worker/app/crons`
+  // and `packages/worker/app/queues`.
   "queues": {
     "producers": [
       {
         "binding": "OUTBOX_PROCESS_QUEUE",
         "queue": "tstodon-outbox-process",
-      },
-    ],
-    "consumers": [
-      {
-        "queue": "tstodon-outbox-process",
-        "max_batch_size": 10,
-        "max_batch_timeout": 0,
-        "max_retries": 3,
-        "max_concurrency": 1,
       },
     ],
   },

@@ -26,9 +26,6 @@
     "not_found_handling": "none",
     "run_worker_first": true,
   },
-  "triggers": {
-    "crons": ["17 * * * *", "17 */6 * * *"],
-  },
   "vars": {
     "INSTANCE_DOMAIN": "127.0.0.1:8792",
     "INSTANCE_PUBLIC_ORIGIN": "http://127.0.0.1:8792",
@@ -76,16 +73,7 @@
     "producers": [
       {
         "binding": "OUTBOX_PROCESS_QUEUE",
-        "queue": "tstodon-e2e-b-outbox",
-      },
-    ],
-    "consumers": [
-      {
-        "queue": "tstodon-e2e-b-outbox",
-        "max_batch_size": 10,
-        "max_batch_timeout": 0,
-        "max_retries": 3,
-        "max_concurrency": 1,
+        "queue": "tstodon-outbox-process",
       },
     ],
   },

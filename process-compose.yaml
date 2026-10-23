@@ -4,7 +4,8 @@ processes:
   tstodon-a:
     command: pnpm exec vp dev --port 8791 --strictPort --host 127.0.0.1
     environment:
-      - TSTODON_WORKER_CONFIG=e2e/a.wrangler.jsonc
+      - CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH=e2e/a.wrangler.jsonc
+      - VOID_INSPECTOR_PORT=false
       - TSTODON_PERSIST_TO=.wrangler/e2e-a
     availability:
       restart: "always"
@@ -20,7 +21,8 @@ processes:
   tstodon-b:
     command: pnpm exec vp dev --port 8792 --strictPort --host 127.0.0.1
     environment:
-      - TSTODON_WORKER_CONFIG=e2e/b.wrangler.jsonc
+      - CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH=e2e/b.wrangler.jsonc
+      - VOID_INSPECTOR_PORT=false
       - TSTODON_PERSIST_TO=.wrangler/e2e-b
     availability:
       restart: "always"

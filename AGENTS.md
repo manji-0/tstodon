@@ -8,15 +8,15 @@ This file tells AI coding agents how to work in this repository without losing p
 
 - `packages/core` for Result/schema helpers, branded IDs, and `Sensitive`.
 - `packages/domain` for Zod 4.6 `kind`-discriminated domain models.
-- `packages/worker` for the Worker runtime. Hono owns HTTP. Queue, cron, Workflows, and Durable Objects stay on the Worker entrypoint.
+- `packages/worker` for the Worker runtime, built and served by [Void](https://void.cloud) (`voidPlugin()` in `vite.config.ts`). Void reads its conventions from `packages/worker/app` (`void.json` `sourceDir`): `routes/`, `crons/`, `queues/`. Shared code stays in `packages/worker/src`.
 
 Operational docs live under `docs/`.
 
 ## HTTP vs everything else
 
-Use Hono for HTTP route matching and middleware. Do not invent a parallel HTTP router.
+Void generates the Worker entry (`.void/entry.ts`) and routes HTTP through Hono. `packages/worker/app/routes/[...].ts` forwards every path without its own route file to the Hono app in `packages/worker/src/app.ts`; endpoints move into `app/routes/` files one group at a time. Use Hono (inside Void routes or the Hono app) for HTTP matching and middleware. Do not invent a parallel HTTP router.
 
-Do not send Queue, scheduled, Workflow, or Durable Object traffic through Hono. Those handlers live next to `export default` in `packages/worker/src/index.ts`.
+Do not send Queue, scheduled, Workflow, or Durable Object traffic through HTTP routes. Cron jobs live in `packages/worker/app/crons/`, queue consumers in `packages/worker/app/queues/` (the file name is the queue name). Workflow and Durable Object classes are exported from `packages/worker/src/entry-classes.ts`, which the `tstodon:export-entry-classes` plugin in `vite.config.ts` appends to Void's entry. `packages/worker/src/index.ts` wires the same handlers for `wrangler types` and the workerd test pool; keep it in step.
 
 Hono handlers are a boundary: parse with Zod, call domain companions, map `Result` error `kind`s to HTTP. Domain transitions stay pure.
 

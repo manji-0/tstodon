@@ -1,0 +1,7 @@
+{
+  "$schema": "./node_modules/void/schema.json",
+  "sourceDir": "packages/worker/app",
+  "inference": {
+    "bindings": { "db": true, "kv": false, "storage": false, "ai": false }
+  }
+}
