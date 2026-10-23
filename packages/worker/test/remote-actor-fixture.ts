@@ -1,13 +1,15 @@
 import { SELF, env } from "cloudflare:test";
 import { expect } from "vite-plus/test";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
-import { signInboxRequest } from "../src/http-signature";
+import { signFetchRequest, signInboxRequest } from "../src/http-signature";
 import { generateAccountKeys } from "../src/keys";
 import { upsertRemoteActor } from "../src/remote-actor-store";
 
 export type Remote = Readonly<{
   actorUri: string;
   send: (activity: Record<string, unknown>) => Promise<number>;
+  /** A GET signed with this actor's key (authorized fetch). */
+  fetch: (path: string) => Promise<Response>;
 }>;
 
 /** A cached remote actor that can sign inbox deliveries. */
@@ -37,6 +39,14 @@ export const remoteActor = async (
   expect((await upsertRemoteActor(env.DB, actor.value)).isOk()).toBe(true);
   return {
     actorUri,
+    fetch: async (path) => {
+      const url = new URL(path, "https://example.com");
+      const headers = await signFetchRequest(url, keys.privateKeyJwk, `${actorUri}#main-key`);
+      if (headers.isErr()) {
+        throw new Error(headers.error.message);
+      }
+      return SELF.fetch(url, { headers: headers.value });
+    },
     send: async (activity) => {
       const body = JSON.stringify({
         "@context": "https://www.w3.org/ns/activitystreams",

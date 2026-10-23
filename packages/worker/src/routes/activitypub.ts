@@ -11,7 +11,7 @@ import {
   type RemoteActor as RemoteActorValue,
 } from "@tstodon/domain";
 import type { Context } from "hono";
-import { findAccountById, findAccountByUsername } from "../account-store";
+import { findAccountByUsername, findAccountsByIds } from "../account-store";
 import {
   activityPayloadFromJson,
   actorDocument,
@@ -22,6 +22,7 @@ import {
 import { jsonRepositoryError, queryLimit } from "../http";
 import { verifyInboxRequest, parseSignatureHeader } from "../http-signature";
 import { suspendedDomains } from "../admin-domain-block-store";
+import { signedFetchActor } from "../signed-fetch";
 import { inboxActivityExists, insertInboxActivity } from "../inbox-store";
 import { listPublicOutboxActivities } from "../outbox-store";
 import { resolveRemoteActor } from "../remote-actor-fetch";
@@ -102,21 +103,50 @@ export const getUsersByUsernameStatusesById = async (
   if (
     !status.value ||
     status.value.kind !== "LocalNote" ||
-    status.value.accountId !== account.value.id ||
-    // Followers-only and direct notes reach their audience by delivery only.
-    (status.value.visibility.kind !== "Public" && status.value.visibility.kind !== "Unlisted")
+    status.value.accountId !== account.value.id
   ) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  return c.json(
-    noteDocument(identity.value, account.value, status.value, {
-      quoteUri: await quotedStatusUri(c.env, identity.value, status.value.id),
-      mentions: await loadNoteMentions(c.env.DB, identity.value, status.value.id),
-      reply: await loadNoteReply(c.env.DB, identity.value, status.value),
-    }),
-    200,
-    jsonLd,
+  const note = noteDocument(identity.value, account.value, status.value, {
+    quoteUri: await quotedStatusUri(c.env, identity.value, status.value.id),
+    mentions: await loadNoteMentions(c.env.DB, identity.value, status.value.id),
+    reply: await loadNoteReply(c.env.DB, identity.value, status.value),
+  });
+  const visibility = status.value.visibility.kind;
+  if (visibility !== "Public" && visibility !== "Unlisted") {
+    // Followers-only and direct notes go to a signed fetch from an actor they
+    // address (Mastodon's authorized fetch), and never into a shared cache.
+    const signer = await signedFetchActor(c.env, identity.value, c.req.raw);
+    if (!signer || !(await noteAddresses(c.env.DB, note, account.value, signer.actorUri))) {
+      return c.json({ kind: "NotFound" }, 404);
+    }
+    c.header("Cache-Control", "private");
+    c.header("Vary", "Signature");
+  }
+  return c.json(note, 200, jsonLd);
+};
+
+/**
+ * Does the note's audience include this remote actor: named in `to`/`cc`, or an
+ * accepted follower when the author's followers collection is addressed?
+ */
+const noteAddresses = async (
+  db: D1Database,
+  note: Readonly<Record<string, unknown>>,
+  author: LocalAccount,
+  actorUri: string,
+): Promise<boolean> => {
+  const audience = [note.to, note.cc].flatMap((field) =>
+    Array.isArray(field) ? field.filter((uri) => typeof uri === "string") : [],
   );
+  if (audience.includes(actorUri)) {
+    return true;
+  }
+  if (!audience.includes(`${String(note.attributedTo)}/followers`)) {
+    return false;
+  }
+  const follow = await findRemoteFollow(db, author.id, actorUri);
+  return follow.isOk() && follow.value?.requestKind === "Fulfilled";
 };
 
 const collection = (id: string, items: ReadonlyArray<string>) => ({
@@ -187,13 +217,14 @@ export const getUsersByUsernameFollowers = async (
   if (ids.isErr()) {
     return jsonRepositoryError(c, ids.error.message);
   }
-  const items: string[] = [];
-  for (const edge of ids.value) {
-    const follower = await findAccountById(c.env.DB, edge.accountId);
-    if (follower.isOk() && follower.value) {
-      items.push(InstanceIdentity.actorUrl(identity.value, follower.value.username));
-    }
-  }
+  const followers = await findAccountsByIds(
+    c.env.DB,
+    ids.value.map((edge) => edge.accountId),
+  );
+  const items = ids.value.flatMap((edge) => {
+    const follower = followers.isOk() ? followers.value.get(edge.accountId) : undefined;
+    return follower ? [InstanceIdentity.actorUrl(identity.value, follower.username)] : [];
+  });
   const remote = await listAcceptedRemoteFollowerUris(
     c.env.DB,
     account.value.id,
@@ -225,13 +256,14 @@ export const getUsersByUsernameFollowing = async (
   if (ids.isErr()) {
     return jsonRepositoryError(c, ids.error.message);
   }
-  const items: string[] = [];
-  for (const edge of ids.value) {
-    const target = await findAccountById(c.env.DB, edge.accountId);
-    if (target.isOk() && target.value) {
-      items.push(InstanceIdentity.actorUrl(identity.value, target.value.username));
-    }
-  }
+  const targets = await findAccountsByIds(
+    c.env.DB,
+    ids.value.map((edge) => edge.accountId),
+  );
+  const items = ids.value.flatMap((edge) => {
+    const target = targets.isOk() ? targets.value.get(edge.accountId) : undefined;
+    return target ? [InstanceIdentity.actorUrl(identity.value, target.username)] : [];
+  });
   const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
   return c.json(collection(`${actor}/following`, items), 200, jsonLd);
 };
