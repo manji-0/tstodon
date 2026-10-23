@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { cacheLinkCard, processLinkCardJob } from "./link-card";
 
 const json = async (
@@ -35,7 +35,7 @@ const postStatus = async (
 ): Promise<string> => {
   const response = await json("/api/v1/statuses", {
     method: "POST",
-    headers: { "content-type": "application/json", ...(await accessAuthHeaders(email)) },
+    headers: { "content-type": "application/json", ...(await authHeaders(email)) },
     body: JSON.stringify({ status, visibility }),
   });
   expect(response.status).toBe(200);
@@ -117,7 +117,7 @@ describe("link timeline", () => {
     expect(page).not.toContain(ids[2]);
 
     const authed = await json(`/api/v1/timelines/link?url=${encodeURIComponent(url)}`, {
-      headers: await accessAuthHeaders("link-tl-viewer@example.com"),
+      headers: await authHeaders("link-tl-viewer@example.com"),
     });
     expect(authed.status).toBe(200);
   });
@@ -134,7 +134,7 @@ describe("link timeline", () => {
 
     const rejected = await json(`/api/v1/admin/trends/links/${encodeURIComponent(url)}/reject`, {
       method: "POST",
-      headers: await accessAuthHeaders("link-admin@example.com", { admin: true }),
+      headers: await authHeaders("link-admin@example.com", { admin: true }),
     });
     expect(rejected.status).toBe(200);
     expect((await linkTimeline(url)).status).toBe(404);

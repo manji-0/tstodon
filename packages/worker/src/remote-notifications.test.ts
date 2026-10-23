@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 
@@ -35,14 +35,13 @@ const NotificationSchema = z.object({
 const notifications = async (email: string) =>
   read(
     z.array(NotificationSchema),
-    (await json("/api/v1/notifications", { headers: await accessAuthHeaders(email) })).body,
+    (await json("/api/v1/notifications", { headers: await authHeaders(email) })).body,
   );
 
 const me = async (email: string) =>
   read(
     z.object({ id: z.string(), username: z.string() }),
-    (await json("/api/v1/accounts/verify_credentials", { headers: await accessAuthHeaders(email) }))
-      .body,
+    (await json("/api/v1/accounts/verify_credentials", { headers: await authHeaders(email) })).body,
   );
 
 const post = async (email: string, status: string) =>
@@ -51,7 +50,7 @@ const post = async (email: string, status: string) =>
     (
       await json("/api/v1/statuses", {
         method: "POST",
-        headers: { "content-type": "application/json", ...(await accessAuthHeaders(email)) },
+        headers: { "content-type": "application/json", ...(await authHeaders(email)) },
         body: JSON.stringify({ status }),
       })
     ).body,
@@ -89,7 +88,7 @@ describe("notifications from remote actors", () => {
 
     // The grouped v2 list resolves the remote account too.
     const grouped = await json("/api/v2/notifications", {
-      headers: await accessAuthHeaders(email),
+      headers: await authHeaders(email),
     });
     const page = read(
       z.object({
@@ -115,7 +114,7 @@ describe("notifications from remote actors", () => {
       (
         await json("/api/v1/accounts/update_credentials", {
           method: "PATCH",
-          headers: { "content-type": "application/json", ...(await accessAuthHeaders(locked)) },
+          headers: { "content-type": "application/json", ...(await authHeaders(locked)) },
           body: JSON.stringify({ locked: true }),
         })
       ).status,
@@ -153,7 +152,7 @@ describe("notifications from remote actors", () => {
       (
         await json(`/api/v1/accounts/${pestId}/block`, {
           method: "POST",
-          headers: await accessAuthHeaders(email),
+          headers: await authHeaders(email),
         })
       ).status,
     ).toBe(200);
@@ -173,13 +172,13 @@ describe("notifications from remote actors", () => {
     expect(stored?.n).toBe(0);
 
     // The remote block is listed, reported in the relationship, and can be lifted.
-    const blocks = await json("/api/v1/blocks", { headers: await accessAuthHeaders(email) });
+    const blocks = await json("/api/v1/blocks", { headers: await authHeaders(email) });
     expect(
       read(z.array(z.object({ id: z.string() })), blocks.body).map((account) => account.id),
     ).toEqual([pestId]);
     const unblocked = await json(`/api/v1/accounts/${pestId}/unblock`, {
       method: "POST",
-      headers: await accessAuthHeaders(email),
+      headers: await authHeaders(email),
     });
     expect(read(z.object({ id: z.string(), blocking: z.boolean() }), unblocked.body)).toEqual({
       id: pestId,
@@ -190,12 +189,12 @@ describe("notifications from remote actors", () => {
     // Muting notifications hides them the same way; a plain mute does not.
     const muted = await json(`/api/v1/accounts/${pestId}/mute`, {
       method: "POST",
-      headers: { "content-type": "application/json", ...(await accessAuthHeaders(email)) },
+      headers: { "content-type": "application/json", ...(await authHeaders(email)) },
       body: JSON.stringify({ notifications: true }),
     });
     expect(read(z.object({ muting: z.boolean() }), muted.body).muting).toBe(true);
     expect(await notifications(email)).toEqual([]);
-    const mutes = await json("/api/v1/mutes", { headers: await accessAuthHeaders(email) });
+    const mutes = await json("/api/v1/mutes", { headers: await authHeaders(email) });
     expect(
       read(z.array(z.object({ id: z.string() })), mutes.body).map((account) => account.id),
     ).toEqual([pestId]);
@@ -207,7 +206,7 @@ describe("notifications from remote actors", () => {
       (
         await json("/api/v1/domain_blocks", {
           method: "POST",
-          headers: { "content-type": "application/json", ...(await accessAuthHeaders(other)) },
+          headers: { "content-type": "application/json", ...(await authHeaders(other)) },
           body: JSON.stringify({ domain: "remote.example" }),
         })
       ).status,
@@ -372,7 +371,7 @@ describe("notifications from remote actors", () => {
       (
         await json(`/api/v1/statuses/${status.id}/favourite`, {
           method: "POST",
-          headers: await accessAuthHeaders("remote-notify-purge-fan@example.com"),
+          headers: await authHeaders("remote-notify-purge-fan@example.com"),
         })
       ).status,
     ).toBe(200);

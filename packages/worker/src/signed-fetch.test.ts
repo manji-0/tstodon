@@ -2,7 +2,7 @@ import { schemaResult } from "@tstodon/core";
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 
 const json = async (path: string, init?: RequestInit) => {
@@ -23,7 +23,7 @@ const account = async (email: string) =>
     z.object({ id: z.string(), username: z.string() }),
     (
       await json("/api/v1/accounts/verify_credentials", {
-        headers: await accessAuthHeaders(email),
+        headers: await authHeaders(email),
       })
     ).body,
   );
@@ -32,7 +32,7 @@ const account = async (email: string) =>
 const post = async (email: string, status: string, visibility: string): Promise<string> => {
   const created = await json("/api/v1/statuses", {
     method: "POST",
-    headers: { "content-type": "application/json", ...(await accessAuthHeaders(email)) },
+    headers: { "content-type": "application/json", ...(await authHeaders(email)) },
     body: JSON.stringify({ status, visibility }),
   });
   expect(created.status).toBe(200);

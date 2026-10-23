@@ -39,45 +39,55 @@ Object keys: `attachments/{accountId}/{mediaId}`, `avatars/{accountId}/{blobId}`
 
 <!-- constrained-by ../operations/cloudflare-deploy.md -->
 
-| Surface                                                                       | Behavior                                                                                                                                                                                     |
-| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Worker media proxy (`/media/*`, `/attachments/*`, `/avatars/*`, `/headers/*`) | `Access-Control-Allow-Origin: *` (GET/HEAD/OPTIONS; no credentials)                                                                                                                          |
-| Worker `/api/*`                                                               | Reflect `Origin` only when it matches `INSTANCE_PUBLIC_ORIGIN` or an entry in `CORS_ALLOWED_ORIGINS` (comma-separated). Allows `Authorization`, `Content-Type`, `Cf-Access-Jwt-Assertion`.   |
-| Production R2 custom domain                                                   | Apply a bucket CORS policy (see [`infra/cloudflare/media-cors.json.example`](../../infra/cloudflare/media-cors.json.example) and deploy checklist). Worker CORS does not cover R2 hostnames. |
+| Surface                                                                       | Behavior                                                                                                                                                                                                            |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Worker media proxy (`/media/*`, `/attachments/*`, `/avatars/*`, `/headers/*`) | `Access-Control-Allow-Origin: *` (GET/HEAD/OPTIONS; no credentials)                                                                                                                                                 |
+| Worker `/api/*`                                                               | Reflect `Origin` only when it matches `INSTANCE_PUBLIC_ORIGIN` or an entry in `CORS_ALLOWED_ORIGINS` (comma-separated). Allows `Authorization`, `Content-Type`. Also applies to `/oauth/token` and `/oauth/revoke`. |
+| Production R2 custom domain                                                   | Apply a bucket CORS policy (see [`infra/cloudflare/media-cors.json.example`](../../infra/cloudflare/media-cors.json.example) and deploy checklist). Worker CORS does not cover R2 hostnames.                        |
 
 `CORS_ALLOWED_ORIGINS` is optional. Empty ⇒ API CORS still allows the instance public origin. Trailing slashes are normalized.
 
-## Cloudflare Access authentication vars
+## Authentication
 
-<!-- constrained-by ../planning/local-core.md#authentication -->
+Sign-in is Void's [Better Auth](https://www.better-auth.com/) integration, configured in `packages/worker/app/auth.ts` and mounted at `/api/auth/*`. It is **passkey-only** (no passwords, no social providers) and carries the Better Auth **admin** plugin. Mastodon clients never use those sessions directly: the Worker is its own OAuth 2 authorization server and turns a signed-in session into an access token.
 
-Production authentication is **Cloudflare Access**. WorkOS is the **Access identity provider** (OIDC/SAML in Zero Trust), not a direct Worker dependency.
+| Surface                                                    | Purpose                                                                                             |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `GET /auth/sign_up`                                        | Choose a username and create a passkey; creates the Better Auth user and the local account together |
+| `GET /auth/sign_in`                                        | Sign in with a passkey (or see who is signed in and sign out); `GET /login` redirects here          |
+| `POST /api/v1/apps`, `GET /api/v1/apps/verify_credentials` | Register a client (`client_name`, `redirect_uris`, `scopes`); the secret is shown once              |
+| `GET`/`POST /oauth/authorize`                              | Consent page (needs a session); `code` flow, optional PKCE (`S256`), `urn:ietf:wg:oauth:2.0:oob`    |
+| `POST /oauth/token`                                        | `authorization_code` and `client_credentials` grants; client auth by body or HTTP Basic             |
+| `POST /oauth/revoke`                                       | RFC 7009 revocation                                                                                 |
+| `GET /.well-known/oauth-authorization-server`              | RFC 8414 metadata                                                                                   |
 
-| Var                           | Purpose                                                                              |
-| ----------------------------- | ------------------------------------------------------------------------------------ |
-| `CF_ACCESS_TEAM_DOMAIN`       | Team domain, e.g. `https://<team>.cloudflareaccess.com` (issuer)                     |
-| `CF_ACCESS_AUD`               | Access application audience (AUD) tag                                                |
-| `CF_ACCESS_ADMIN_GROUPS`      | Comma-separated Access/IdP group names that map to `{ kind: "Admin" }`               |
-| `CF_ACCESS_JWKS_URL`          | Optional JWKS URL override (empty ⇒ `${CF_ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs`) |
-| `CF_ACCESS_JWKS_JSON`         | Optional inline JWKS JSON for local/tests                                            |
-| `CF_ACCESS_LOCAL_PRIVATE_JWK` | Optional local-only private JWK so `/oauth/token` can mint Access-shaped JWTs        |
+API requests authenticate with `Authorization: Bearer <access token>` (streaming also takes `?access_token=`). Client secrets, codes, and tokens are stored as SHA-256 digests (`oauth_applications`, `oauth_authorization_codes`, `oauth_access_tokens`). A token needs a scope for the request: `read` for `GET`/`HEAD`, `write` otherwise, `push` for `/api/v1/push/subscription`, and `admin:read` / `admin:write` under `/api/v*/admin`; a granular scope (`read:statuses`) counts toward its family and `follow` toward `read`/`write`. Anything else is `403` with `kind: "InsufficientScope"`. Suspended and disabled accounts are refused at every token use.
 
-The Worker verifies Access JWTs with `jose` from either:
+| Var                     | Purpose                                                                                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BETTER_AUTH_SECRET`    | **Secret**, required in production: signs Better Auth cookies. Void falls back to a fixed dev secret only on `localhost` / `127.0.0.1`; without it any other host fails every request |
+| `REGISTRATIONS_OPEN`    | Whether `/auth/sign_up` creates accounts (default on; `false` closes sign-up). Reported as `registrations.enabled`                                                                    |
+| `REGISTRATION_APPROVAL` | New accounts wait for admin approval (see [Instance vars](#instance-vars))                                                                                                            |
+| `ADMIN_USERNAMES`       | Comma-separated usernames that sign up with the Better Auth role `admin`                                                                                                              |
 
-1. `Cf-Access-Jwt-Assertion`
-2. `Authorization: Bearer <Access JWT>` (interim Mastodon API client path)
+An account is an instance admin when its Better Auth user's `role` includes `admin`. Bootstrap the first admin with `ADMIN_USERNAMES`, or promote an existing account in D1:
 
-Claims used: `email` (required for account provisioning), plus `groups` and/or `custom.groups` for admin mapping via `CF_ACCESS_ADMIN_GROUPS`. Missing email ⇒ `InvalidToken`.
+```sh
+pnpm -C packages/worker exec wrangler d1 execute tstodon --remote --command \
+  "UPDATE \"user\" SET role = 'admin' WHERE id = (SELECT auth_user_id FROM accounts WHERE username = 'alice')"
+```
 
-Do not commit production AUD values, private JWKs, or Access secrets. Local `wrangler.jsonc` may contain the test fixture JWKS/private JWK under `packages/worker/test/access-jwt-fixture.ts`.
+After that, admins can manage roles and bans through the Better Auth admin endpoints (`/api/auth/admin/*`). A passkey account has no email; Better Auth's required `email` is synthesized as `username@INSTANCE_DOMAIN`, so the email-domain and canonical-email sign-up blocks only match that form.
+
+```sh
+openssl rand -base64 32 | pnpm -C packages/worker exec wrangler secret put BETTER_AUTH_SECRET
+```
 
 ## Local development authentication
 
-<!-- derived-from #cloudflare-access-authentication-vars -->
+<!-- derived-from #authentication -->
 
-Tests mint Access-shaped JWTs with the fixture RSA keypair (`packages/worker/test/access-jwt-fixture.ts`) and present them as Bearer tokens (or `Cf-Access-Jwt-Assertion`). Admin tests include the configured admin group claim. There is no `DEV_BEARER_SECRET` shortcut.
-
-`GET /login` explains that Access handles sign-in. `/oauth/token` mints a short-lived Access JWT only when `CF_ACCESS_LOCAL_PRIVATE_JWK` is set (local fixture).
+`pnpm dev` serves on `localhost`, where Void supplies a dev `BETTER_AUTH_SECRET`; a browser with a platform authenticator (or the Chrome DevTools WebAuthn emulator) can sign up at `/auth/sign_up`. Worker tests seed a Better Auth user, its account, and an OAuth token directly in D1 (`packages/worker/test/auth-fixture.ts`, `authHeaders(email, { admin })`), and `src/oauth.test.ts` drives the real passkey and OAuth endpoints with a software authenticator (`packages/worker/test/soft-passkey.ts`). The e2e scenarios sign up through the same software authenticator. The test runner's `BETTER_AUTH_SECRET` is injected through `miniflare.bindings` in the root `vite.config.ts`.
 
 ## Web Push
 
@@ -93,11 +103,3 @@ The test runner injects its own fixture key through `miniflare.bindings` in the 
 ## Limited federation
 
 `FEDERATION_ALLOW_HOSTS` is a comma-separated list of the only hosts allowed to federate. A non-empty list (or a runtime `domain_allows` row, managed at `/api/v1/admin/domain_allows`) turns on limited federation: outbound fetches and delivery, inbound inbox activities, and link unfurling refuse any other host, `GET /api/v1/instance/peers` and `/api/v1/instance/activity` require a user token, and `/api/v2/instance` reports `limited_federation: true`. Listed hosts also keep the private-IP exemption used by local e2e setups (`127.0.0.1`).
-
-## Federation path policy (ops)
-
-<!-- constrained-by ../operations/cloudflare-deploy.md -->
-
-Access application policies must **bypass** public federation and discovery paths so remote servers can reach the instance without an Access login. At minimum allow unauthenticated access to `/.well-known/*`, `/nodeinfo/*`, `/users/*`, and ActivityPub inbox/outbox surfaces. Require Access for `/api/*` (and any private UI).
-
-Automate this with Terraform under [`infra/cloudflare`](../../infra/cloudflare/README.md): it creates D1 / KV / R2 / Queue plus the WorkOS OIDC IdP, an Allow app for `/api*`, and Bypass apps for federation/health paths, then outputs `wrangler_bindings` and `CF_ACCESS_*` Worker vars.

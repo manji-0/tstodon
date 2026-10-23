@@ -2,13 +2,13 @@ import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { canonicalEmailHash } from "./registration-block-store";
 
 const auth = (
   email: string,
   options?: Readonly<{ admin?: boolean }>,
-): Promise<Record<string, string>> => accessAuthHeaders(email, options);
+): Promise<Record<string, string>> => authHeaders(email, options);
 
 const json = async (
   path: string,
@@ -81,11 +81,8 @@ describe("canonical email blocks", () => {
     expect(tested.status).toBe(200);
     expect(read(BlockSchema, tested.body).id).toBe(block.id);
 
-    // Signing up with any spelling is refused with 403.
-    const refused = await json("/api/v1/accounts/verify_credentials", {
-      headers: await auth("casey.block@example.com"),
-    });
-    expect(refused.status).toBe(403);
+    // Provisioning an account for any spelling is refused.
+    await expect(signedInAccount("casey.block@example.com")).rejects.toThrow("RegistrationBlocked");
 
     // The list includes the block; deleting it lets the address in.
     const list = await adminJson(admin, "/api/v1/admin/canonical_email_blocks");
@@ -132,10 +129,9 @@ describe("email domain blocks", () => {
     expect(duplicate.status).toBe(422);
 
     // A new address on that domain is refused; the existing account still works.
-    const refused = await json("/api/v1/accounts/verify_credentials", {
-      headers: await auth("edb-new@blocked-domain.example"),
-    });
-    expect(refused.status).toBe(403);
+    await expect(signedInAccount("edb-new@blocked-domain.example")).rejects.toThrow(
+      "RegistrationBlocked",
+    );
     expect(
       (
         await json("/api/v1/accounts/verify_credentials", {

@@ -14,15 +14,10 @@ import { findOutboxFanout, findOutboxTarget, listOutboundActivities } from "./ou
 import { listExpiredUnnotifiedPolls } from "./poll-store";
 import { publishToAccount } from "./stream-publish";
 import { signInboxRequest, verifyInboxRequest } from "./http-signature";
-import {
-  accessAuthHeaders,
-  signAccessJwt,
-  LOCAL_ACCESS_TEAM_DOMAIN,
-} from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import {
   ActorPreviewSchema,
   MastodonAccountPreviewSchema,
-  MastodonAppPreviewSchema,
   MastodonContextPreviewSchema,
   MastodonFilterPreviewSchema,
   MastodonMediaPreviewSchema,
@@ -39,8 +34,8 @@ import {
 
 const auth = (
   email: string,
-  options?: Readonly<{ admin?: boolean; via?: "bearer" | "assertion" }>,
-): Promise<Record<string, string>> => accessAuthHeaders(email, options);
+  options?: Readonly<{ admin?: boolean }>,
+): Promise<Record<string, string>> => authHeaders(email, options);
 
 const json = async (
   path: string,
@@ -71,7 +66,7 @@ describe("worker http", () => {
     });
   });
 
-  it("maps Access groups onto admin checks", async () => {
+  it("maps the Better Auth admin role onto admin checks", async () => {
     const member = await json("/api/v1/accounts/verify_credentials", {
       headers: await auth("role-user@example.com"),
     });
@@ -90,20 +85,10 @@ describe("worker http", () => {
       highlighted: true,
     });
 
-    const assertion = await json("/api/v1/accounts/verify_credentials", {
-      headers: await auth("assertion-user@example.com", { via: "assertion" }),
+    const unknown = await json("/api/v1/accounts/verify_credentials", {
+      headers: { Authorization: "Bearer not-a-token" },
     });
-    expect(assertion.status).toBe(200);
-
-    const wrongAud = await signAccessJwt({
-      email: "role-user@example.com",
-      audience: "wrong-aud",
-      issuer: LOCAL_ACCESS_TEAM_DOMAIN,
-    });
-    const malformed = await json("/api/v1/accounts/verify_credentials", {
-      headers: { Authorization: `Bearer ${wrongAud}` },
-    });
-    expect(malformed.status).toBe(401);
+    expect(unknown.status).toBe(401);
 
     const forbidden = await requireAdmin(
       new Request("https://example.com/api/v1/accounts/verify_credentials", {
@@ -125,12 +110,13 @@ describe("worker http", () => {
     expect(allowed.isOk()).toBe(true);
   });
 
-  it("explains that Cloudflare Access handles login", async () => {
-    const response = await SELF.fetch("https://example.com/login");
-    expect(response.status).toBe(200);
-    const body = await response.text();
-    expect(body).toContain("Cloudflare Access");
-    expect(body).toContain("WorkOS");
+  it("sends the old login URL to passkey sign-in", async () => {
+    const response = await SELF.fetch("https://example.com/login", { redirect: "manual" });
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("/auth/sign_in");
+    const page = await SELF.fetch("https://example.com/auth/sign_in");
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain("Sign in with a passkey");
   });
 
   it("serves Mastodon instance metadata", async () => {
@@ -141,19 +127,6 @@ describe("worker http", () => {
       kind: "MastodonInstance",
       uri: "example.com",
       title: "tstodon",
-    });
-  });
-
-  it("registers a local app", async () => {
-    const { status, body } = await json("/api/v1/apps", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ client_name: "tstodon-test" }),
-    });
-    expect(status).toBe(200);
-    expect(read(MastodonAppPreviewSchema, body)).toMatchObject({
-      name: "tstodon-test",
-      client_id: "tstodon-local",
     });
   });
 

@@ -9,10 +9,10 @@ import { parseInstanceIdentity } from "./runtime-config";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
 import { findRemoteStatusByObjectUri } from "./remote-status-store";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 
 const auth = (email: string): Promise<Record<string, string>> =>
-  accessAuthHeaders(email, { admin: true });
+  authHeaders(email, { admin: true });
 
 const json = async (
   path: string,

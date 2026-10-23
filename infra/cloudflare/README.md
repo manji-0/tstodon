@@ -1,13 +1,12 @@
 # Cloudflare infra for tstodon
 
 <!-- constrained-by ../../docs/reference/configuration.md#cloudflare-bindings -->
-<!-- constrained-by ../../docs/reference/configuration.md#cloudflare-access-authentication-vars -->
 <!-- constrained-by ../../docs/operations/cloudflare-deploy.md -->
 
-Terraform / OpenTofu skeleton for:
-
-1. **Worker data plane** — D1, KV, R2, Queue (IDs/names for `packages/worker/wrangler.jsonc`)
-2. **Cloudflare Access** — WorkOS OIDC IdP, `/api*` Allow, federation/health Bypass
+Terraform / OpenTofu skeleton for the **Worker data plane**: D1, KV, R2, and the
+Queue (IDs/names for `packages/worker/wrangler.jsonc`). Sign-in is the Worker's
+own (Better Auth passkeys and Mastodon OAuth), so there is no Access or IdP
+configuration here.
 
 The Worker script, Durable Objects, Workflows, Images, and Analytics Engine stay with `wrangler deploy`.
 
@@ -16,8 +15,7 @@ The Worker script, Durable Objects, Workflows, Images, and Analytics Engine stay
 | File                      | Contents                                                                          |
 | ------------------------- | --------------------------------------------------------------------------------- |
 | `workers.tf`              | D1, KV namespaces, R2 bucket, Queue (+ optional consumer)                         |
-| `access.tf`               | Access IdP, policies, applications                                                |
-| `outputs.tf`              | `wrangler_bindings` and `worker_vars`                                             |
+| `outputs.tf`              | `wrangler_bindings`                                                               |
 | `media-cors.json.example` | Sample R2 CORS policy for the media custom domain (`wrangler r2 bucket cors set`) |
 
 ## Prerequisites
@@ -29,14 +27,6 @@ API token permissions (account-scoped), as needed:
 - Workers Scripts Edit (queue consumer attach)
 - Cloudflare R2 Edit
 - Workers Queues Edit
-- Access: Apps and Policies Edit
-- Access: Organizations, Identity Providers, and Groups Edit
-
-WorkOS OIDC redirect URI when Access is enabled:
-
-```text
-https://<team-name>.cloudflareaccess.com/cdn-cgi/access/callback
-```
 
 ## Usage
 
@@ -53,12 +43,11 @@ tofu apply
 
 ### Suggested apply order
 
-1. Apply with `enable_access = false` (or Access enabled if ready) to create D1 / KV / R2 / Queue.
+1. Apply to create D1 / KV / R2 / Queue.
 2. Copy `tofu output -json wrangler_bindings` into production `packages/worker/wrangler.jsonc`.
 3. Skipped: `pnpm run deploy` applies remote D1 migrations.
 4. `pnpm run deploy` (`void deploy --backend cloudflare`)
 5. Re-apply with `attach_queue_consumer = true` so the Queue consumer points at the Worker.
-6. Apply Access (`enable_access = true`) and copy `tofu output -json worker_vars` into Worker vars. Clear local fixture JWKS/private JWK.
 
 ## Outputs to wire
 
@@ -69,7 +58,6 @@ tofu apply
 | `wrangler_bindings.kv_app_cache_id`           | `kv_namespaces` `APP_CACHE`        |
 | `wrangler_bindings.r2_media_bucket_name`      | `r2_buckets[].bucket_name`         |
 | `wrangler_bindings.outbox_process_queue_name` | `queues.producers/consumers`       |
-| `worker_vars`                                 | `CF_ACCESS_*` production vars      |
 
 ## Feature flags
 
@@ -77,10 +65,8 @@ tofu apply
 | -------------------------------------------------------- | ------- | --------------------------- |
 | `create_d1` / `create_kv` / `create_r2` / `create_queue` | `true`  | Toggle data-plane resources |
 | `attach_queue_consumer`                                  | `false` | Attach after Worker exists  |
-| `enable_access`                                          | `true`  | Toggle Access resources     |
 
 ## Out of scope
 
-- Creating the WorkOS OIDC client itself
 - Durable Object / Workflow / Analytics Engine provisioning
 - Automatically rewriting `wrangler.jsonc`

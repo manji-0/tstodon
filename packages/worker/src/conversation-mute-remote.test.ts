@@ -2,7 +2,7 @@ import { schemaResult } from "@tstodon/core";
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 
 const json = async (path: string, init?: RequestInit) => {
@@ -19,7 +19,7 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
 };
 
 const get = async <T>(email: string, path: string, schema: z.ZodType<T>): Promise<T> =>
-  read(schema, (await json(path, { headers: await accessAuthHeaders(email) })).body);
+  read(schema, (await json(path, { headers: await authHeaders(email) })).body);
 
 const me = (email: string) =>
   get(
@@ -34,14 +34,14 @@ const post = async (email: string, status: string) =>
     (
       await json("/api/v1/statuses", {
         method: "POST",
-        headers: { "content-type": "application/json", ...(await accessAuthHeaders(email)) },
+        headers: { "content-type": "application/json", ...(await authHeaders(email)) },
         body: JSON.stringify({ status }),
       })
     ).body,
   );
 
 const act = async (email: string, path: string) =>
-  (await json(path, { method: "POST", headers: await accessAuthHeaders(email) })).status;
+  (await json(path, { method: "POST", headers: await authHeaders(email) })).status;
 
 /** What every notification surface reports for `email`. */
 const surfaces = async (email: string) => ({

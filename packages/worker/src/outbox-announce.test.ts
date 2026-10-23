@@ -2,7 +2,7 @@ import { schemaResult } from "@tstodon/core";
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 import { listOutboundActivities } from "./outbox-store";
 
@@ -28,7 +28,7 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
 
 const headers = async (email: string) => ({
   "content-type": "application/json",
-  ...(await accessAuthHeaders(email)),
+  ...(await authHeaders(email)),
 });
 
 const account = async (email: string) =>

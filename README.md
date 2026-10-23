@@ -1,6 +1,6 @@
 # tstodon
 
-`tstodon` is a TypeScript Mastodon-compatible server for Cloudflare Workers. It takes the same platform split as [`cfwdon`](https://github.com/manji-0/cfwdon): Workers for the request path, D1 for relational state, R2 for media, Queues and Workflows for delivery, Durable Objects for streaming, and Cloudflare Access (WorkOS as the IdP) as the authentication boundary.
+`tstodon` is a TypeScript Mastodon-compatible server for Cloudflare Workers. It takes the same platform split as [`cfwdon`](https://github.com/manji-0/cfwdon): Workers for the request path, D1 for relational state, R2 for media, Queues and Workflows for delivery, Durable Objects for streaming. Sign-in is passkeys through Void's Better Auth, and Mastodon clients get tokens from the Worker's own OAuth 2 server.
 
 The TypeScript domain is modeled with [Zod 4.6](https://zod.dev) `z.discriminatedUnion` values. States, errors, ActivityPub activities, and queue jobs are all `kind`-discriminated unions rather than optional-field bags.
 
@@ -12,7 +12,7 @@ The project is early software. The [local core](docs/planning/local-core.md) cla
 - Hono for HTTP routing (Mastodon API, WebFinger, NodeInfo, ActivityPub, static assets)
 - Cloudflare bindings for D1, R2, KV, Queues, Durable Objects, Workflows, Images, Analytics Engine, cron, and observability
 - Zod 4.6 discriminant domain models for status composition, follow requests, outbox delivery, inbox activities, notifications, and registration
-- Cloudflare Access JWT authentication that provisions D1 accounts from the verified email claim
+- Passkey sign-up and sign-in (Better Auth, with its admin plugin for roles) and a Mastodon-compatible OAuth 2 server (`/api/v1/apps`, `/oauth/authorize`, `/oauth/token`, PKCE, scopes)
 - Media (avatars, headers, attachments) stored in R2; public URLs via `MEDIA_PUBLIC_BASE_URL` (R2 custom domain in production, Worker object-key proxy locally)
 - CORS: media proxy allows `*`; `/api/*` reflects `INSTANCE_PUBLIC_ORIGIN` and optional `CORS_ALLOWED_ORIGINS` (R2 custom domains need a separate bucket CORS policy)
 
@@ -36,7 +36,7 @@ pnpm test
 pnpm dev
 ```
 
-Local routes that depend on D1, R2, or Access need matching local or remote bindings. Start with [Clone And Run](docs/getting-started/clone-and-run.md). For media URLs and CORS vars, see [Configuration](docs/reference/configuration.md#media-public-urls).
+Local routes that depend on D1 or R2 need matching local or remote bindings. Start with [Clone And Run](docs/getting-started/clone-and-run.md). For media URLs and CORS vars, see [Configuration](docs/reference/configuration.md#media-public-urls).
 
 Two-instance federation smoke (process-compose): [e2e federation](docs/getting-started/e2e-federation.md).
 

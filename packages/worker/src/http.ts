@@ -105,6 +105,9 @@ export const jsonAuthError = (c: Context<{ Bindings: Env }>, error: AuthError) =
   if (error.kind === "Forbidden") {
     return c.json({ error: "This action is not allowed", kind: error.kind }, 403);
   }
+  if (error.kind === "InsufficientScope") {
+    return c.json({ error: "This action is outside the authorized scopes", kind: error.kind }, 403);
+  }
   if (error.kind === "VerificationUnavailable") {
     c.header("Retry-After", "5");
     return c.json({ error: "verification_unavailable", kind: error.kind }, 503);

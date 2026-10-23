@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { listOutboundActivities } from "./outbox-store";
 
@@ -31,7 +31,7 @@ const post = async (email: string, status: string, visibility: string) =>
     (
       await json("/api/v1/statuses", {
         method: "POST",
-        headers: { "content-type": "application/json", ...(await accessAuthHeaders(email)) },
+        headers: { "content-type": "application/json", ...(await authHeaders(email)) },
         body: JSON.stringify({ status, visibility }),
       })
     ).body,
@@ -44,7 +44,7 @@ describe("non-public notes on the federation surface", () => {
       z.object({ id: z.string(), username: z.string() }),
       (
         await json("/api/v1/accounts/verify_credentials", {
-          headers: await accessAuthHeaders(email),
+          headers: await authHeaders(email),
         })
       ).body,
     );

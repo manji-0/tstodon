@@ -8,11 +8,11 @@ import { persistRemoteObject } from "./remote-status-persist";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { cacheLinkCard, processLinkCardJob } from "./link-card";
 import { processOutboxJob } from "./outbox-job";
 
-const auth = (email: string): Promise<Record<string, string>> => accessAuthHeaders(email);
+const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
 const json = async (
   path: string,

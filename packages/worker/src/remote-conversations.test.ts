@@ -2,7 +2,7 @@ import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 
@@ -28,8 +28,7 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
 const me = async (email: string) =>
   read(
     z.object({ id: z.string(), username: z.string() }),
-    (await json("/api/v1/accounts/verify_credentials", { headers: await accessAuthHeaders(email) }))
-      .body,
+    (await json("/api/v1/accounts/verify_credentials", { headers: await authHeaders(email) })).body,
   );
 
 const ConversationSchema = z.object({
@@ -42,13 +41,13 @@ const ConversationSchema = z.object({
 const conversations = async (email: string) =>
   read(
     z.array(ConversationSchema),
-    (await json("/api/v1/conversations", { headers: await accessAuthHeaders(email) })).body,
+    (await json("/api/v1/conversations", { headers: await authHeaders(email) })).body,
   );
 
 const directTimeline = async (email: string) =>
   read(
     z.array(z.object({ id: z.string(), content: z.string() })),
-    (await json("/api/v1/timelines/direct", { headers: await accessAuthHeaders(email) })).body,
+    (await json("/api/v1/timelines/direct", { headers: await authHeaders(email) })).body,
   );
 
 /** Id of the status in the account's direct timeline whose content includes the text. */
@@ -118,13 +117,12 @@ describe("remote direct messages", () => {
     // The addressed account can open the status; another local account cannot.
     const replyId = thread?.last_status?.id ?? "";
     expect(
-      (await json(`/api/v1/statuses/${replyId}`, { headers: await accessAuthHeaders(email) }))
-        .status,
+      (await json(`/api/v1/statuses/${replyId}`, { headers: await authHeaders(email) })).status,
     ).toBe(200);
     expect(
       (
         await json(`/api/v1/statuses/${replyId}`, {
-          headers: await accessAuthHeaders("remote-dm-bystander@example.com"),
+          headers: await authHeaders("remote-dm-bystander@example.com"),
         })
       ).status,
     ).toBe(404);
@@ -135,7 +133,7 @@ describe("remote direct messages", () => {
       (
         await json(`/api/v1/conversations/${rootId}/read`, {
           method: "POST",
-          headers: await accessAuthHeaders(email),
+          headers: await authHeaders(email),
         })
       ).status,
     ).toBe(200);
@@ -146,7 +144,7 @@ describe("remote direct messages", () => {
       (
         await json(`/api/v1/conversations/${rootId}`, {
           method: "DELETE",
-          headers: await accessAuthHeaders(email),
+          headers: await authHeaders(email),
         })
       ).status,
     ).toBe(200);
@@ -165,7 +163,7 @@ describe("remote direct messages", () => {
       (
         await json("/api/v1/statuses", {
           method: "POST",
-          headers: { "content-type": "application/json", ...(await accessAuthHeaders(email)) },
+          headers: { "content-type": "application/json", ...(await authHeaders(email)) },
           body: JSON.stringify({ status: "hello privately", visibility: "direct" }),
         })
       ).body,
@@ -198,7 +196,7 @@ describe("remote direct messages", () => {
         (
           await json(`/api/v1/accounts/${RemoteAccountId.encode(remote.actorUri)}/${action}`, {
             method: "POST",
-            headers: await accessAuthHeaders(email),
+            headers: await authHeaders(email),
           })
         ).status,
       ).toBe(200);
@@ -210,7 +208,7 @@ describe("remote direct messages", () => {
       (
         await json("/api/v1/domain_blocks", {
           method: "POST",
-          headers: { "content-type": "application/json", ...(await accessAuthHeaders(email)) },
+          headers: { "content-type": "application/json", ...(await authHeaders(email)) },
           body: JSON.stringify({ domain: "blocked-dm.example" }),
         })
       ).status,

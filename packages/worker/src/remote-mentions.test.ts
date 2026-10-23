@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { deliveredCreate } from "../test/delivery-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
@@ -29,8 +29,7 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
 const me = async (email: string) =>
   read(
     z.object({ id: z.string(), username: z.string() }),
-    (await json("/api/v1/accounts/verify_credentials", { headers: await accessAuthHeaders(email) }))
-      .body,
+    (await json("/api/v1/accounts/verify_credentials", { headers: await authHeaders(email) })).body,
   );
 
 const MentionSchema = z.object({ id: z.string(), username: z.string(), acct: z.string() });
@@ -41,7 +40,7 @@ const post = async (email: string, status: string, visibility: string) =>
     (
       await json("/api/v1/statuses", {
         method: "POST",
-        headers: { "content-type": "application/json", ...(await accessAuthHeaders(email)) },
+        headers: { "content-type": "application/json", ...(await authHeaders(email)) },
         body: JSON.stringify({ status, visibility }),
       })
     ).body,
@@ -88,7 +87,7 @@ describe("mentions of remote accounts in local notes", () => {
     // The remote account is a participant of the author's conversation.
     const conversations = read(
       z.array(z.object({ id: z.string(), accounts: z.array(z.object({ id: z.string() })) })),
-      (await json("/api/v1/conversations", { headers: await accessAuthHeaders(email) })).body,
+      (await json("/api/v1/conversations", { headers: await authHeaders(email) })).body,
     );
     expect(
       conversations

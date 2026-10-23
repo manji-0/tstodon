@@ -14,9 +14,9 @@ import {
 import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 import { RemoteAccountId } from "./remote-account-id";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 
-const auth = (email: string): Promise<Record<string, string>> => accessAuthHeaders(email);
+const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
 const json = async (
   path: string,

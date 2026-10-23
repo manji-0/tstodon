@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
 import { nowIso } from "./clock";
 import { generateAccountKeys } from "./keys";
@@ -10,7 +10,7 @@ import { parseInstanceIdentity } from "./runtime-config";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
 
-const auth = (email: string): Promise<Record<string, string>> => accessAuthHeaders(email);
+const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
 const json = async (
   path: string,
@@ -77,7 +77,7 @@ const createFilter = async (email: string, context: string, keyword: string): Pr
 
 describe("filtered on timelines", () => {
   it("marks remote statuses from their stored HTML", async () => {
-    const viewerEmail = "timeline-filtered-remote-viewer@example.com";
+    const viewerEmail = "tl-filtered-remote-viewer@example.com";
     const keys = await generateAccountKeys();
     const fetchedAt = IsoInstant.parse(nowIso());
     if (fetchedAt.isErr()) {

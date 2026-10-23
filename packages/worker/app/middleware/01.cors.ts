@@ -6,7 +6,8 @@ import { apiCors, mediaCors } from "#src/cors";
 const MEDIA_PREFIXES = ["/media", "/attachments", "/avatars", "/headers"];
 const media = mediaCors();
 
-// Browser Mastodon clients: allowlisted Origin + Authorization / Access JWT headers.
+// Browser Mastodon clients: allowlisted Origin + Authorization header, for the
+// API and for redeeming and revoking OAuth tokens.
 const api = apiCors();
 
 const under = (path: string, prefix: string): boolean =>
@@ -17,7 +18,7 @@ export default (c: Context<{ Bindings: Env }>, next: Next) => {
   if (MEDIA_PREFIXES.some((prefix) => under(path, prefix))) {
     return media(c, next);
   }
-  if (under(path, "/api")) {
+  if (under(path, "/api") || path === "/oauth/token" || path === "/oauth/revoke") {
     return api(c, next);
   }
   return next();

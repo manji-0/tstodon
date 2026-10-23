@@ -2,7 +2,7 @@ import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { bytesToBase64Url } from "./vapid";
 
 const json = async (
@@ -63,7 +63,7 @@ const subscribe = async (
     method: "POST",
     headers: {
       "content-type": "application/x-www-form-urlencoded",
-      ...(await accessAuthHeaders(email, options)),
+      ...(await authHeaders(email, options)),
     },
     body: form(fields),
   });
@@ -93,7 +93,7 @@ describe("push subscriptions", () => {
 
   it("creates, reads, updates, and deletes a subscription", async () => {
     const email = "push-crud@example.com";
-    const headers = await accessAuthHeaders(email);
+    const headers = await authHeaders(email);
     expect((await json("/api/v1/push/subscription", { headers })).status).toBe(404);
 
     const keys = await subscriberKeys();
@@ -186,7 +186,7 @@ describe("push subscriptions", () => {
       (
         await json("/api/v1/push/subscription", {
           method: "POST",
-          headers: { "content-type": "application/json", ...(await accessAuthHeaders(email)) },
+          headers: { "content-type": "application/json", ...(await authHeaders(email)) },
           body: JSON.stringify({
             subscription: { endpoint: "https://push.example/device/b", keys: second },
             data: { alerts: { poll: true } },
@@ -197,7 +197,7 @@ describe("push subscriptions", () => {
     expect(two.id).not.toBe(one.id);
     expect(two.alerts.poll).toBe(true);
     const latest = await json("/api/v1/push/subscription", {
-      headers: await accessAuthHeaders(email),
+      headers: await authHeaders(email),
     });
     expect(read(SubscriptionSchema, latest.body).endpoint).toBe("https://push.example/device/b");
   });

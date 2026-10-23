@@ -11,7 +11,7 @@ const splitOrigins = (raw: string | undefined): string[] =>
     .map(normalizeOrigin)
     .filter((value) => value.length > 0);
 
-/** Origins allowed to call `/api/*` from a browser (Bearer / Access JWT). */
+/** Origins allowed to call `/api/*` and the OAuth token endpoints from a browser. */
 export const apiCorsAllowedOrigins = (env: Env): ReadonlySet<string> => {
   const origins = new Set(
     splitOrigins((env as { CORS_ALLOWED_ORIGINS?: string }).CORS_ALLOWED_ORIGINS),
@@ -47,7 +47,7 @@ export const apiCors = (): MiddlewareHandler =>
     origin: (origin: string, c: Context<{ Bindings: Env }>) =>
       resolveApiCorsOrigin(c.env, origin) ?? undefined,
     allowMethods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Authorization", "Content-Type", "Cf-Access-Jwt-Assertion"],
+    allowHeaders: ["Authorization", "Content-Type"],
     exposeHeaders: ["Link", "X-Request-Id"],
     maxAge: 86400,
     credentials: false,

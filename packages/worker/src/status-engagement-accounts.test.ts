@@ -2,14 +2,14 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
 import { nowIso } from "./clock";
 import { generateAccountKeys } from "./keys";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { upsertRemoteAnnounce, upsertRemoteFavourite } from "./remote-interaction-store";
 
-const auth = (email: string): Promise<Record<string, string>> => accessAuthHeaders(email);
+const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
 const json = async (
   path: string,

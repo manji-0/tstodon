@@ -351,13 +351,13 @@ None required for the write strategy itself. Schema continues to land via Wrangl
 
 ## Security & Privacy Considerations
 
-| Topic               | Notes                                                                                                                                      |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| SQL injection       | Parameterized `prepare`/`bind` only; TypedSQL factories and `db.prepare` branches must not string-concatenate user text into SQL           |
-| `json_each` payload | `jsonStringArray` JSON-encodes values; still treat contents as data, not identifiers for dynamic SQL                                       |
-| Batch atomicity     | Failed batches roll back SQL; ensure authz checks happen **before** building statements so unauthorized callers never enqueue side effects |
-| Route saga ordering | Authz-before-write is necessary but not sufficient when notify runs before related rows exist (Create mentions)                            |
-| Secrets             | Private keys and Access material stay out of D1 write payloads except intentional account key columns already in schema                    |
+| Topic               | Notes                                                                                                                                          |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| SQL injection       | Parameterized `prepare`/`bind` only; TypedSQL factories and `db.prepare` branches must not string-concatenate user text into SQL               |
+| `json_each` payload | `jsonStringArray` JSON-encodes values; still treat contents as data, not identifiers for dynamic SQL                                           |
+| Batch atomicity     | Failed batches roll back SQL; ensure authz checks happen **before** building statements so unauthorized callers never enqueue side effects     |
+| Route saga ordering | Authz-before-write is necessary but not sufficient when notify runs before related rows exist (Create mentions)                                |
+| Secrets             | Private keys stay out of D1 write payloads except intentional account key columns; OAuth secrets and tokens are stored only as SHA-256 digests |
 
 ## Observability
 

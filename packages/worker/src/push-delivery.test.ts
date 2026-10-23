@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { importJWK, jwtVerify } from "jose";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { processPushJob } from "./push-delivery";
 import { RemoteAccountId } from "./remote-account-id";
 import { base64UrlToBytes, bytesToBase64Url } from "./vapid";
@@ -177,7 +177,7 @@ const subscribe = async (
 ): Promise<number> => {
   const response = await json("/api/v1/push/subscription", {
     method: "POST",
-    headers: { "content-type": "application/json", ...(await accessAuthHeaders(email)) },
+    headers: { "content-type": "application/json", ...(await authHeaders(email)) },
     body: JSON.stringify({
       subscription: {
         endpoint,
@@ -197,25 +197,24 @@ const subscribe = async (
 const accountId = async (email: string): Promise<string> =>
   read(
     z.object({ id: z.string() }),
-    (await json("/api/v1/accounts/verify_credentials", { headers: await accessAuthHeaders(email) }))
-      .body,
+    (await json("/api/v1/accounts/verify_credentials", { headers: await authHeaders(email) })).body,
   ).id;
 
 /** `fan` favourites a fresh post by `author`; answers the author's notification id. */
 const favouriteNotification = async (author: string, fan: string): Promise<string> => {
   const posted = await json("/api/v1/statuses", {
     method: "POST",
-    headers: { "content-type": "application/json", ...(await accessAuthHeaders(author)) },
+    headers: { "content-type": "application/json", ...(await authHeaders(author)) },
     body: JSON.stringify({ status: "push me <b>please</b>" }),
   });
   const statusId = read(z.object({ id: z.string() }), posted.body).id;
   const faved = await json(`/api/v1/statuses/${statusId}/favourite`, {
     method: "POST",
-    headers: await accessAuthHeaders(fan),
+    headers: await authHeaders(fan),
   });
   expect(faved.status).toBe(200);
   const listed = await json("/api/v1/notifications?types[]=favourite", {
-    headers: await accessAuthHeaders(author),
+    headers: await authHeaders(author),
   });
   const notification = read(
     z.array(
@@ -361,7 +360,7 @@ describe("push delivery", () => {
     // Once the author follows the fan, the `followed` policy lets it through.
     const follow = await json(`/api/v1/accounts/${await accountId(fan)}/follow`, {
       method: "POST",
-      headers: await accessAuthHeaders(author),
+      headers: await authHeaders(author),
     });
     expect(follow.status).toBe(200);
     await withPushService(host, 503, async (captured) => {
@@ -391,7 +390,7 @@ describe("push delivery", () => {
       .run();
     const status = await json("/api/v1/statuses", {
       method: "POST",
-      headers: { "content-type": "application/json", ...(await accessAuthHeaders(author)) },
+      headers: { "content-type": "application/json", ...(await authHeaders(author)) },
       body: JSON.stringify({ status: "for my remote fans" }),
     });
     const statusId = read(z.object({ id: z.string() }), status.body).id;

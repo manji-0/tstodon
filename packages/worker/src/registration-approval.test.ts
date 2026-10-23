@@ -2,16 +2,15 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { pendingAccountIds } from "./account-flag-store";
-import { provisionAccountFromEmail } from "./account-provision";
 import { registrationApprovalRequired } from "./runtime-config";
 import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (
   email: string,
   options?: Readonly<{ admin?: boolean }>,
-): Promise<Record<string, string>> => accessAuthHeaders(email, options);
+): Promise<Record<string, string>> => authHeaders(email, options);
 
 const json = async (
   path: string,
@@ -76,9 +75,7 @@ describe("registration approval", () => {
 
   it("keeps an unapproved account out of search, the directory, and trends until approved", async () => {
     const email = "approval-pending@example.com";
-    const provisioned = await provisionAccountFromEmail(env.DB, email, { pending: true });
-    expect(provisioned.isOk()).toBe(true);
-    const account = provisioned._unsafeUnwrap();
+    const account = await signedInAccount(email, { pending: true });
     const username = account.username;
     const id = account.id;
 
@@ -109,9 +106,7 @@ describe("registration approval", () => {
 
   it("rejects a pending account by deleting it", async () => {
     const email = "approval-reject@example.com";
-    const provisioned = await provisionAccountFromEmail(env.DB, email, { pending: true });
-    expect(provisioned.isOk()).toBe(true);
-    const id = provisioned._unsafeUnwrap().id;
+    const id = (await signedInAccount(email, { pending: true })).id;
 
     const rejected = await json(`/api/v1/admin/accounts/${id}/reject`, {
       method: "POST",

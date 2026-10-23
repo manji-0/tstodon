@@ -17,6 +17,7 @@ import { quotePolicyFromSql, quotePolicySql, visibilitySql } from "./sql-enums";
 import {
   countAccounts as countAccountsSql,
   deleteAccount as deleteAccountSql,
+  findAccountByAuthUserId as findAccountByAuthUserIdSql,
   findAccountByEmail as findAccountByEmailSql,
   findAccountById as findAccountByIdSql,
   findAccountByUsername as findAccountByUsernameSql,
@@ -188,6 +189,26 @@ export const findAccountByEmail = async (
   const queried = await runD1(async () => {
     return queryTyped(db, findAccountByEmailSql(email.toLowerCase()));
   });
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  const raw = queried.value[0];
+  if (!raw) {
+    return ok(undefined);
+  }
+  const row = parseAccountRow(raw);
+  if (row.isErr()) {
+    return err(toRepositoryError("invalid account row"));
+  }
+  return accountFromRow(row.value);
+};
+
+/** The local account the Better Auth user `authUserId` signs in as. */
+export const findAccountByAuthUserId = async (
+  db: D1Database,
+  authUserId: string,
+): Promise<Result<LocalAccount | undefined, RepositoryError>> => {
+  const queried = await runD1(async () => queryTyped(db, findAccountByAuthUserIdSql(authUserId)));
   if (queried.isErr()) {
     return err(queried.error);
   }

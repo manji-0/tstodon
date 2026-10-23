@@ -2,7 +2,7 @@ import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 
 const json = async (
@@ -30,8 +30,7 @@ const IdListSchema = z.array(IdSchema);
 const verify = async (email: string): Promise<string> =>
   read(
     IdSchema,
-    (await json("/api/v1/accounts/verify_credentials", { headers: await accessAuthHeaders(email) }))
-      .body,
+    (await json("/api/v1/accounts/verify_credentials", { headers: await authHeaders(email) })).body,
   ).id;
 
 const post = async (email: string, status: string, visibility: string): Promise<string> =>
@@ -40,7 +39,7 @@ const post = async (email: string, status: string, visibility: string): Promise<
     (
       await json("/api/v1/statuses", {
         method: "POST",
-        headers: { "content-type": "application/json", ...(await accessAuthHeaders(email)) },
+        headers: { "content-type": "application/json", ...(await authHeaders(email)) },
         body: JSON.stringify({ status, visibility }),
       })
     ).body,
@@ -68,7 +67,7 @@ describe("multiple lookups", () => {
     expect(anonymous.status).toBe(200);
     expect(read(IdListSchema, anonymous.body).map((status) => status.id)).toEqual([open]);
 
-    const author = await json(path, { headers: await accessAuthHeaders(email) });
+    const author = await json(path, { headers: await authHeaders(email) });
     expect(read(IdListSchema, author.body).map((status) => status.id)).toEqual([hidden, open]);
   });
 
@@ -109,7 +108,7 @@ describe("multiple lookups", () => {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        ...(await accessAuthHeaders("multi-admin@example.com", { admin: true })),
+        ...(await authHeaders("multi-admin@example.com", { admin: true })),
       },
       body: JSON.stringify({ type: "suspend" }),
     });

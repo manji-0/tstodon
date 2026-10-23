@@ -17,9 +17,9 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Web Push (open)
 
-| ID   | Item                    | Notes                                                                                |
-| ---- | ----------------------- | ------------------------------------------------------------------------------------ |
-| WP-2 | Per-token subscriptions | Blocked on token identity: Access JWTs carry none, so subscriptions are per endpoint |
+| ID   | Item                    | Notes                                                                                                    |
+| ---- | ----------------------- | -------------------------------------------------------------------------------------------------------- |
+| WP-2 | Per-token subscriptions | Unblocked: OAuth tokens now have ids (`oauth_access_tokens`); subscriptions are still keyed per endpoint |
 
 ## Direct messages (open)
 
@@ -28,6 +28,8 @@ Tracked leftovers so e2e work can proceed without losing them.
 | DM-8 | Context paging after filtering | `/context` caps each level before the visibility and block filters, so a count-limited thread can come back short. Mastodon does the same (`ancestor_ids(limit)` / `descendant_ids(limit, depth)` before filtering), so this stays unless parity is dropped |
 
 ## Done recently (do not re-open)
+
+- Cloudflare Access replaced by Void Better Auth (passkey-only sign-up/sign-in, admin plugin roles) and a first-party Mastodon OAuth 2 server (apps, consent, `authorization_code` + PKCE, `client_credentials`, revoke, RFC 8414 metadata, coarse scope enforcement)
 
 - Remote statuses render `in_reply_to_id` / `in_reply_to_account_id` from their stored `inReplyTo`
 

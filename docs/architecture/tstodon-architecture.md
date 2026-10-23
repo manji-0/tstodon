@@ -2,7 +2,7 @@
 
 ## Summary
 
-`tstodon` is a TypeScript implementation of a Mastodon-compatible server designed for Cloudflare Workers. It follows the same platform mapping as cfwdon: D1 for relational state, R2 for media bodies, Queues and Workflows for outbound delivery, Durable Objects for streaming hubs, KV for short-lived caches, and Cloudflare Access (with WorkOS as the IdP) for protected API authentication.
+`tstodon` is a TypeScript implementation of a Mastodon-compatible server designed for Cloudflare Workers. It follows the same platform mapping as cfwdon: D1 for relational state, R2 for media bodies, Queues and Workflows for outbound delivery, Durable Objects for streaming hubs, KV for short-lived caches, and Void's Better Auth (passkeys) behind a first-party Mastodon OAuth 2 server for API authentication.
 
 Domain state is expressed as Zod 4.6 discriminated unions with a unified `kind` discriminant. HTTP routing is Hono. Those two layers stay separate.
 
@@ -18,7 +18,6 @@ Domain state is expressed as Zod 4.6 discriminated unions with a unified `kind` 
 - Port cfwdon's Rust code line-for-line.
 - Claim behavioral Mastodon compatibility from route stubs.
 - Put Queue, cron, Workflow, or Durable Object traffic through HTTP routes.
-- Implement a first-party OAuth authorization server while Cloudflare Access is the authentication boundary.
 
 ## Workspace
 
@@ -55,7 +54,7 @@ Do not encode domain state machines as Hono middleware. A follow request's `Pend
 | Maintenance                              | Cron triggers                                                                                                                                                                                                                                                                                                                 |
 | Request metrics                          | Analytics Engine                                                                                                                                                                                                                                                                                                              |
 | Static UI                                | Workers Assets                                                                                                                                                                                                                                                                                                                |
-| Authn                                    | Cloudflare Access JWT vars                                                                                                                                                                                                                                                                                                    |
+| Authn                                    | Void Better Auth (passkey, admin plugin) + D1 OAuth tables                                                                                                                                                                                                                                                                    |
 
 Workers AI and Vectorize are the intended search/moderation path, but they are not bound yet because Workers AI is remote-billed even in local dev.
 
@@ -65,9 +64,9 @@ Variants are objects with `kind` and `z.literal` discriminators. Nested unions r
 
 ## Authentication Model
 
-<!-- derived-from ../reference/configuration.md#cloudflare-access-authentication-vars -->
+<!-- derived-from ../reference/configuration.md#authentication -->
 
-Protected user-facing API routes authenticate with a Cloudflare Access JWT from `Cf-Access-Jwt-Assertion` or `Authorization: Bearer <Access JWT>`. The Worker verifies the token against the Access JWKS (`CF_ACCESS_TEAM_DOMAIN` / optional `CF_ACCESS_JWKS_JSON`), provisions a local account from the `email` claim, and maps `CF_ACCESS_ADMIN_GROUPS` onto `{ kind: "Admin" }` via JWT `groups` / `custom.groups`. WorkOS is the Access identity provider in Zero Trust, not a direct Worker call. Local tests mint Access-shaped JWTs with the fixture keypair. Public discovery routes stay unauthenticated. ActivityPub inbox routes require a valid HTTP Signature; local actors use the stored account key and remote actors use a cached (or freshly fetched) `RemoteActor` key. Unsigned or unverifiable requests are `InvalidSignature`.
+People sign in with a passkey through Void's Better Auth (`/api/auth/*`, configured in `packages/worker/app/auth.ts`); signing up creates the Better Auth user and the local account together. Mastodon clients register at `/api/v1/apps` and get bearer tokens from the Worker's own OAuth 2 server (`/oauth/authorize` consent on the Better Auth session, `/oauth/token`, PKCE, scopes), stored as digests in D1. Protected API routes resolve the bearer token to its account and scopes; the Better Auth admin plugin's `admin` role maps onto `{ kind: "Admin" }`. Public discovery routes stay unauthenticated. ActivityPub inbox routes require a valid HTTP Signature; local actors use the stored account key and remote actors use a cached (or freshly fetched) `RemoteActor` key. Unsigned or unverifiable requests are `InvalidSignature`.
 
 ## Implemented Surface
 

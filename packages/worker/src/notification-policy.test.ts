@@ -2,11 +2,11 @@ import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (email: string, admin = false): Promise<Record<string, string>> =>
-  accessAuthHeaders(email, { admin });
+  authHeaders(email, { admin });
 
 const json = async (
   path: string,

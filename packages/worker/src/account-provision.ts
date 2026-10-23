@@ -3,45 +3,65 @@ import { err, ok, type Result } from "neverthrow";
 import { markAccountPending } from "./account-flag-store";
 import { isRegistrationBlocked } from "./registration-block-store";
 import { nowInstant } from "./clock";
-import type { RepositoryError } from "./d1";
+import { runD1, type RepositoryError } from "./d1";
 import { generateAccountKeys } from "./keys";
 import { newEntityId } from "./ids";
-import { findAccountByEmail, findAccountByUsername, insertAccount } from "./account-store";
+import { findAccountByUsername, insertAccount } from "./account-store";
+import { setAccountAuthUser } from "./generated/prisma/sql";
+import { runTyped } from "./typed-sql";
 
-/** A sign-up block refuses the new account without touching existing ones. */
-export type ProvisionError = RepositoryError | Readonly<{ kind: "RegistrationBlocked" }>;
+/** Mastodon caps local usernames at 30 characters. */
+export const MAX_USERNAME_LENGTH = 30;
 
-export const provisionAccountFromEmail = async (
+export type ProvisionError =
+  | RepositoryError
+  | Readonly<{ kind: "InvalidUsername" }>
+  | Readonly<{ kind: "UsernameTaken" }>
+  /** A sign-up block refuses the new account without touching existing ones. */
+  | Readonly<{ kind: "RegistrationBlocked" }>;
+
+/** A sign-up username: valid characters, within the length cap. */
+export const signupUsername = (raw: string): Result<Username, ProvisionError> => {
+  const username = Username.parse(raw);
+  if (username.isErr() || username.value.length > MAX_USERNAME_LENGTH) {
+    return err({ kind: "InvalidUsername" });
+  }
+  return ok(username.value);
+};
+
+/**
+ * Create the local account `username` for the Better Auth user `authUserId`.
+ * `email` is the sign-in identity the account records (Better Auth's, which
+ * for passkey sign-ups is synthesized from the username).
+ */
+export const provisionLocalAccount = async (
   db: D1Database,
-  rawEmail: string,
-  options: Readonly<{ pending?: boolean }> = {},
+  input: Readonly<{
+    username: string;
+    email: string;
+    authUserId: string;
+    /** With `REGISTRATION_APPROVAL` a brand-new account waits for an admin. */
+    pending: boolean;
+  }>,
 ): Promise<Result<LocalAccount, ProvisionError>> => {
-  const existing = await findAccountByEmail(db, rawEmail);
-  if (existing.isErr()) {
-    return err(existing.error);
+  const username = signupUsername(input.username);
+  if (username.isErr()) {
+    return err(username.error);
   }
-  if (existing.value) {
-    return ok(existing.value);
-  }
-  const email = AccessEmail.parse(rawEmail);
+  const email = AccessEmail.parse(input.email);
   if (email.isErr()) {
     return err({ kind: "RepositoryError", message: "invalid email" });
   }
-  const baseUsername = Username.deriveFromEmail(email.value, false);
-  if (baseUsername.isErr()) {
-    return err({ kind: "RepositoryError", message: "invalid username" });
-  }
-  const taken = await findAccountByUsername(db, baseUsername.value);
+  const [taken, blocked] = await Promise.all([
+    findAccountByUsername(db, username.value),
+    isRegistrationBlocked(db, email.value),
+  ]);
   if (taken.isErr()) {
     return err(taken.error);
   }
-  const username = taken.value
-    ? Username.deriveFromEmail(email.value, true)
-    : ok(baseUsername.value);
-  if (username.isErr()) {
-    return err({ kind: "RepositoryError", message: "invalid username" });
+  if (taken.value) {
+    return err({ kind: "UsernameTaken" });
   }
-  const blocked = await isRegistrationBlocked(db, email.value);
   if (blocked.isErr()) {
     return err(blocked.error);
   }
@@ -61,9 +81,15 @@ export const provisionAccountFromEmail = async (
   const account = LocalAccount.provision(registering, nowInstant());
   const inserted = await insertAccount(db, account);
   if (inserted.isErr()) {
-    return err(inserted.error);
+    // The unique index settles a race between two sign-ups for one name.
+    const raced = await findAccountByUsername(db, username.value);
+    return err(raced.isOk() && raced.value ? { kind: "UsernameTaken" } : inserted.error);
   }
-  if (options.pending) {
+  const linked = await runD1(() => runTyped(db, setAccountAuthUser(account.id, input.authUserId)));
+  if (linked.isErr()) {
+    return err(linked.error);
+  }
+  if (input.pending) {
     // Registrations that need approval start unsearchable until an admin acts.
     const marked = await markAccountPending(db, account.id);
     if (marked.isErr()) {

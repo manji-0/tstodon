@@ -1,207 +1,127 @@
-import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
-import { createLocalJWKSet, createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
-import { disabledAccountIds } from "./account-flag-store";
-import { provisionAccountFromEmail } from "./account-provision";
-import { registrationApprovalRequired } from "./runtime-config";
+import { z } from "zod";
 import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
-import type { RepositoryError } from "./d1";
-import { getAccountModeration } from "./account-moderation-store";
-import { AccessJwksSchema, AccessJwtSchema, JoseErrorCodeSchema } from "./access-jwt-schema";
-
-const parseAccessJwks = schemaResult(AccessJwksSchema);
-const parseJoseErrorCode = schemaResult(JoseErrorCodeSchema);
-const parseAccessJwt = schemaResult(AccessJwtSchema);
+import { accountFromRow, AccountRowSchema } from "./account-store";
+import { parseRow, runD1, type RepositoryError } from "./d1";
+import { findAccessTokenAccount } from "./generated/prisma/sql";
+import { requiredScope, scopeAllows } from "./oauth-scope";
+import { sha256Hex } from "./oauth-store";
+import { queryTyped } from "./typed-sql";
 
 export type AuthError =
   | Readonly<{ kind: "MissingToken" }>
   | Readonly<{ kind: "InvalidToken" }>
   | Readonly<{ kind: "VerificationUnavailable" }>
   | Readonly<{ kind: "Forbidden" }>
+  | Readonly<{ kind: "InsufficientScope" }>
   | RepositoryError;
+
+/** The OAuth access token a request presented. */
+export type AccessToken = Readonly<{
+  id: string;
+  applicationId: string;
+  scopes: ReadonlyArray<string>;
+}>;
 
 export type AuthContext =
   | Readonly<{ kind: "Anonymous" }>
-  | Readonly<{ kind: "Account"; account: LocalAccount; role: FediRoleValue }>;
+  /** A client_credentials token: the app, acting for no one. */
+  | Readonly<{ kind: "Application"; token: AccessToken }>
+  | Readonly<{ kind: "Account"; account: LocalAccount; role: FediRoleValue; token: AccessToken }>;
 
 export type AuthenticatedSession = Readonly<{
   account: LocalAccount;
   role: FediRoleValue;
+  token: AccessToken;
 }>;
 
-const bearerToken = (request: Request): string | undefined => {
+export const bearerToken = (request: Request): string | undefined => {
   const header = request.headers.get("Authorization");
-  if (!header || !header.toLowerCase().startsWith("bearer ")) {
-    return undefined;
+  if (header && header.toLowerCase().startsWith("bearer ")) {
+    const token = header.slice("bearer ".length).trim();
+    return token.length > 0 ? token : undefined;
   }
-  return header.slice("bearer ".length).trim();
+  // A browser WebSocket cannot set headers, so streaming clients pass the
+  // token as `access_token`, as Mastodon's streaming server accepts.
+  const url = new URL(request.url);
+  if (url.pathname.startsWith("/api/v1/streaming")) {
+    const token = url.searchParams.get("access_token")?.trim();
+    return token && token.length > 0 ? token : undefined;
+  }
+  return undefined;
 };
 
-const accessTokenFromRequest = (request: Request): string | undefined => {
-  const assertion = request.headers.get("Cf-Access-Jwt-Assertion")?.trim();
-  if (assertion && assertion.length > 0) {
-    return assertion;
-  }
-  return bearerToken(request);
-};
+const TokenRowSchema = z.object({
+  token_id: z.string(),
+  application_id: z.string(),
+  scopes: z.string(),
+  account_id: z.string().nullable(),
+  auth_role: z.string().nullable(),
+  moderation: z.string().nullable(),
+  disabled: z.number(),
+});
 
-const jwksByKey = new Map<string, JWTVerifyGetKey>();
+/** Better Auth's admin plugin stores roles comma-separated. */
+const roleFromAuthUser = (role: string | null): FediRoleValue =>
+  (role ?? "")
+    .split(",")
+    .map((name) => name.trim())
+    .includes("admin")
+    ? FediRole.Admin
+    : FediRole.User;
 
-const parseAdminGroups = (raw: string): ReadonlySet<string> =>
-  new Set(
-    raw
-      .split(",")
-      .map((value) => value.trim().toLowerCase())
-      .filter((value) => value.length > 0),
-  );
-
-const groupsFromClaims = (claims: {
-  groups?: ReadonlyArray<string> | undefined;
-  custom?: Readonly<Record<string, unknown>> | undefined;
-}): ReadonlyArray<string> => {
-  const fromTop = claims.groups ?? [];
-  const customGroups = claims.custom?.groups;
-  const fromCustom = Array.isArray(customGroups)
-    ? customGroups.filter((value): value is string => typeof value === "string")
-    : [];
-  return [...fromTop, ...fromCustom];
-};
-
-const roleFromAccessClaims = (
-  claims: {
-    groups?: ReadonlyArray<string> | undefined;
-    custom?: Readonly<Record<string, unknown>> | undefined;
-  },
-  adminGroups: ReadonlySet<string>,
-): FediRoleValue => {
-  if (adminGroups.size === 0) {
-    return FediRole.User;
-  }
-  for (const group of groupsFromClaims(claims)) {
-    if (adminGroups.has(group.trim().toLowerCase())) {
-      return FediRole.Admin;
-    }
-  }
-  return FediRole.User;
-};
-
-const accessJwks = (env: Env): Result<JWTVerifyGetKey, AuthError> => {
-  const inline = `${env.CF_ACCESS_JWKS_JSON ?? ""}`;
-  if (inline.length > 0) {
-    const cacheKey = `json:${inline}`;
-    const cached = jwksByKey.get(cacheKey);
-    if (cached) {
-      return ok(cached);
-    }
-    try {
-      const raw: unknown = JSON.parse(inline);
-      const parsed = parseAccessJwks(raw);
-      if (parsed.isErr()) {
-        return err({ kind: "VerificationUnavailable" });
-      }
-      // Re-parse so jose receives a JSONWebKeySet without exactOptionalPropertyTypes friction.
-      const jwks = createLocalJWKSet(JSON.parse(inline));
-      jwksByKey.set(cacheKey, jwks);
-      return ok(jwks);
-    } catch {
-      return err({ kind: "VerificationUnavailable" });
-    }
-  }
-
-  const override = `${env.CF_ACCESS_JWKS_URL ?? ""}`.trim();
-  const teamDomain = `${env.CF_ACCESS_TEAM_DOMAIN}`.replace(/\/$/, "");
-  const url =
-    override.length > 0
-      ? override
-      : teamDomain.length > 0
-        ? `${teamDomain}/cdn-cgi/access/certs`
-        : "";
-  if (url.length === 0) {
-    return err({ kind: "InvalidToken" });
-  }
-  const cached = jwksByKey.get(url);
-  if (cached) {
-    return ok(cached);
-  }
-  const jwks = createRemoteJWKSet(new URL(url));
-  jwksByKey.set(url, jwks);
-  return ok(jwks);
-};
-
-const authErrorFromJose = (cause: unknown): AuthError => {
-  const parsed = parseJoseErrorCode(cause);
-  if (parsed.isOk() && parsed.value.code === "ERR_JWKS_TIMEOUT") {
-    return { kind: "VerificationUnavailable" };
-  }
-  return { kind: "InvalidToken" };
-};
-
-const identityFromAccessToken = async (
-  token: string,
-  env: Env,
-): Promise<Result<{ email: string; role: FediRoleValue }, AuthError>> => {
-  const teamDomain = `${env.CF_ACCESS_TEAM_DOMAIN}`.replace(/\/$/, "");
-  const audience = `${env.CF_ACCESS_AUD}`.trim();
-  if (teamDomain.length === 0 || audience.length === 0) {
-    return err({ kind: "InvalidToken" });
-  }
-  const jwks = accessJwks(env);
-  if (jwks.isErr()) {
-    return err(jwks.error);
-  }
-  try {
-    const verified = await jwtVerify(token, jwks.value, {
-      issuer: teamDomain,
-      audience,
-      clockTolerance: 5,
-    });
-    const claims = parseAccessJwt(verified.payload);
-    if (claims.isErr() || !claims.value.email) {
-      return err({ kind: "InvalidToken" });
-    }
-    return ok({
-      email: claims.value.email,
-      role: roleFromAccessClaims(claims.value, parseAdminGroups(`${env.CF_ACCESS_ADMIN_GROUPS}`)),
-    });
-  } catch (cause) {
-    return err(authErrorFromJose(cause));
-  }
-};
-
+/**
+ * Who a request acts as, from its `Authorization: Bearer` OAuth token. The
+ * token must carry a scope for the request's method and path; suspended and
+ * disabled accounts are refused.
+ */
 export const authenticate = async (
   request: Request,
   env: Env,
 ): Promise<Result<AuthContext, AuthError>> => {
-  const token = accessTokenFromRequest(request);
-  if (!token) {
+  const presented = bearerToken(request);
+  if (!presented) {
     return ok({ kind: "Anonymous" });
   }
-  const identity = await identityFromAccessToken(token, env);
-  if (identity.isErr()) {
-    return err(identity.error);
+  const rows = await runD1(async () =>
+    queryTyped(env.DB, findAccessTokenAccount(await sha256Hex(presented))),
+  );
+  if (rows.isErr()) {
+    return err(rows.error);
   }
-  const account = await provisionAccountFromEmail(env.DB, identity.value.email, {
-    // With `REGISTRATION_APPROVAL` a brand-new account waits for an admin.
-    pending: registrationApprovalRequired(env),
-  });
-  if (account.isErr()) {
-    return err(
-      account.error.kind === "RegistrationBlocked" ? { kind: "Forbidden" } : account.error,
-    );
+  const raw = rows.value[0];
+  if (raw === undefined) {
+    return err({ kind: "InvalidToken" });
   }
-  const moderation = await getAccountModeration(env.DB, account.value.id);
-  if (moderation.isOk() && moderation.value === "Suspended") {
-    return err({ kind: "Forbidden" });
+  const row = parseRow(TokenRowSchema, raw);
+  if (row.isErr()) {
+    return err(row.error);
   }
-  const disabled = await disabledAccountIds(env.DB, [account.value.id]);
-  if (disabled.isOk() && disabled.value.has(account.value.id)) {
+  const token: AccessToken = {
+    id: row.value.token_id,
+    applicationId: row.value.application_id,
+    scopes: row.value.scopes.split(" ").filter((scope) => scope.length > 0),
+  };
+  const path = new URL(request.url).pathname;
+  if (!scopeAllows(token.scopes, requiredScope(request.method, path), path)) {
+    return err({ kind: "InsufficientScope" });
+  }
+  if (row.value.account_id === null) {
+    return ok({ kind: "Application", token });
+  }
+  const accountRow = parseRow(AccountRowSchema, raw).andThen(accountFromRow);
+  if (accountRow.isErr()) {
+    return err(accountRow.error);
+  }
+  if (row.value.moderation === "Suspended" || row.value.disabled !== 0) {
     // Mastodon's `disable` action blocks the login while the profile stays.
     return err({ kind: "Forbidden" });
   }
   return ok({
     kind: "Account",
-    account: account.value,
-    role: identity.value.role,
+    account: accountRow.value,
+    role: roleFromAuthUser(row.value.auth_role),
+    token,
   });
 };
 
@@ -214,9 +134,10 @@ export const requireSession = async (
     return err(auth.error);
   }
   if (auth.value.kind !== "Account") {
+    // An app-only token, like no token, has no user to act for.
     return err({ kind: "MissingToken" });
   }
-  return ok({ account: auth.value.account, role: auth.value.role });
+  return ok({ account: auth.value.account, role: auth.value.role, token: auth.value.token });
 };
 
 export const requireAccount = async (

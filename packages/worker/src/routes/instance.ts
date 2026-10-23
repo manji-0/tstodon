@@ -10,6 +10,7 @@ import {
   parseInstanceIdentity,
   privacyPolicy,
   registrationApprovalRequired,
+  registrationsOpen,
   termsOfService,
   thumbnailDescription,
 } from "../runtime-config";
@@ -126,8 +127,8 @@ export const getV1Instance = async (c: Context<{ Bindings: Env }, "/api/v1/insta
     email: instance.contactEmail,
     version: "0.1.0 (compatible; tstodon)",
     languages: instance.languages,
-    registrations: false,
-    approval_required: true,
+    registrations: registrationsOpen(c.env),
+    approval_required: registrationApprovalRequired(c.env),
     invites_enabled: false,
     configuration: {
       urls: {
@@ -257,8 +258,8 @@ export const getV2Instance = async (c: Context<{ Bindings: Env }, "/api/v2/insta
       limited_federation: await isLimitedFederation(c.env),
     },
     registrations: {
-      // No self-service registration: accounts come from Cloudflare Access.
-      enabled: false,
+      // Self-service sign-up with a passkey at `/auth/sign_up`.
+      enabled: registrationsOpen(c.env),
       approval_required: registrationApprovalRequired(c.env),
       reason_required: false,
       message: null,

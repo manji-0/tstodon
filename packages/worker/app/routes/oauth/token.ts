@@ -1,1 +1,1 @@
-export { postOauthToken as POST } from "#src/routes/apps";
+export { postOauthToken as POST } from "#src/routes/oauth";

@@ -18,6 +18,8 @@ export * from "./sql/clearRemoteMediaForDomain";
 
 export * from "./sql/completeStatusIdempotency";
 
+export * from "./sql/consumeOauthAuthorizationCode";
+
 export * from "./sql/countAccountTagUses";
 
 export * from "./sql/countAccounts";
@@ -72,6 +74,8 @@ export * from "./sql/deleteEmailDomainBlock";
 
 export * from "./sql/deleteEndorsement";
 
+export * from "./sql/deleteExpiredOauthAuthorizationCodes";
+
 export * from "./sql/deleteFavourite";
 
 export * from "./sql/deleteFilter";
@@ -89,6 +93,8 @@ export * from "./sql/deleteMedia";
 export * from "./sql/deleteMute";
 
 export * from "./sql/deleteNotificationRequests";
+
+export * from "./sql/deleteOauthAccessToken";
 
 export * from "./sql/deletePushSubscription";
 
@@ -119,6 +125,10 @@ export * from "./sql/dismissSuggestion";
 export * from "./sql/emailDomainAccountHistory";
 
 export * from "./sql/featureTag";
+
+export * from "./sql/findAccessTokenAccount";
+
+export * from "./sql/findAccountByAuthUserId";
 
 export * from "./sql/findAccountByEmail";
 
@@ -185,6 +195,10 @@ export * from "./sql/findNotificationById";
 export * from "./sql/findNotificationOwned";
 
 export * from "./sql/findNotificationPolicy";
+
+export * from "./sql/findOauthApplicationByClientId";
+
+export * from "./sql/findOauthApplicationById";
 
 export * from "./sql/findOutboundActivity";
 
@@ -281,6 +295,12 @@ export * from "./sql/insertNotification";
 export * from "./sql/insertNotificationAcceptance";
 
 export * from "./sql/insertNotificationRequest";
+
+export * from "./sql/insertOauthAccessToken";
+
+export * from "./sql/insertOauthApplication";
+
+export * from "./sql/insertOauthAuthorizationCode";
 
 export * from "./sql/insertOutboundActivity";
 
@@ -449,6 +469,8 @@ export * from "./sql/searchAccounts";
 export * from "./sql/searchRemoteActors";
 
 export * from "./sql/setAccountApproved";
+
+export * from "./sql/setAccountAuthUser";
 
 export * from "./sql/setAccountLocked";
 

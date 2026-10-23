@@ -279,10 +279,10 @@ None: every route listed above is implemented.
 ## Authentication
 
 <!-- derived-from ../reference/configuration.md#local-development-authentication -->
-<!-- constrained-by ../reference/configuration.md#cloudflare-access-authentication-vars -->
+<!-- constrained-by ../reference/configuration.md#authentication -->
 <!-- dagayn: implemented-by packages/worker/src/auth.ts::authenticate -->
 
-Protected API routes accept a Cloudflare Access JWT via `Cf-Access-Jwt-Assertion` or `Authorization: Bearer <Access JWT>`. Local tests mint Access-shaped JWTs with `packages/worker/test/access-jwt-fixture.ts` (admin via the configured Access group claim). Production verifies against the Access JWKS using `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`. Role is `{ kind: "Admin" }` when JWT groups intersect `CF_ACCESS_ADMIN_GROUPS`, otherwise `{ kind: "User" }`. The Worker provisions a local account from the `email` claim. WorkOS is the Access IdP in Zero Trust only. `GET /login` explains Access sign-in. `requireAdmin` maps non-admin sessions to `kind: Forbidden`.
+Protected API routes take an OAuth bearer token (`Authorization: Bearer …`) that this Worker issued through `/oauth/authorize` and `/oauth/token`; people sign in with a passkey through Void's Better Auth (`/auth/sign_up`, `/auth/sign_in`). `authenticate` resolves the token, its scopes, and the account in one D1 query and checks the request against the scopes. Role is `{ kind: "Admin" }` when the linked Better Auth user's role includes `admin` (admin plugin), otherwise `{ kind: "User" }`. Worker tests seed users, accounts, and tokens with `packages/worker/test/auth-fixture.ts`. `requireAdmin` maps non-admin sessions to `kind: Forbidden`; a token without the needed scope is `kind: InsufficientScope`.
 
 ## Federation
 

@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { deliveredCreate } from "../test/delivery-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
@@ -29,8 +29,7 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
 const me = async (email: string) =>
   read(
     z.object({ id: z.string(), username: z.string() }),
-    (await json("/api/v1/accounts/verify_credentials", { headers: await accessAuthHeaders(email) }))
-      .body,
+    (await json("/api/v1/accounts/verify_credentials", { headers: await authHeaders(email) })).body,
   );
 
 const StatusSchema = z.object({
@@ -44,7 +43,7 @@ const StatusSchema = z.object({
 const reply = async (email: string, status: string, visibility: string, inReplyToId: string) =>
   json("/api/v1/statuses", {
     method: "POST",
-    headers: { "content-type": "application/json", ...(await accessAuthHeaders(email)) },
+    headers: { "content-type": "application/json", ...(await authHeaders(email)) },
     body: JSON.stringify({ status, visibility, in_reply_to_id: inReplyToId }),
   });
 
@@ -83,8 +82,7 @@ const receive = async (
     throw new Error(`remote note ${slug} was not stored`);
   }
   expect(
-    (await json(`/api/v1/statuses/${id}`, { headers: await accessAuthHeaders(viewerEmail) }))
-      .status,
+    (await json(`/api/v1/statuses/${id}`, { headers: await authHeaders(viewerEmail) })).status,
   ).toBe(200);
   return { id, objectUri };
 };
@@ -117,7 +115,7 @@ describe("replies to remote statuses", () => {
           last_status: z.object({ id: z.string() }).nullable(),
         }),
       ),
-      (await json("/api/v1/conversations", { headers: await accessAuthHeaders(email) })).body,
+      (await json("/api/v1/conversations", { headers: await authHeaders(email) })).body,
     );
     expect(conversations.map((conversation) => conversation.id)).toEqual([incoming.id]);
     expect(conversations[0]?.last_status?.id).toBe(status.id);
@@ -131,7 +129,7 @@ describe("replies to remote statuses", () => {
     });
     const continued = read(
       z.array(z.object({ id: z.string(), last_status: z.object({ id: z.string() }).nullable() })),
-      (await json("/api/v1/conversations", { headers: await accessAuthHeaders(email) })).body,
+      (await json("/api/v1/conversations", { headers: await authHeaders(email) })).body,
     );
     expect(continued.map((conversation) => conversation.id)).toEqual([incoming.id]);
     expect(continued[0]?.last_status?.id).toBe(followUp.id);
@@ -139,8 +137,7 @@ describe("replies to remote statuses", () => {
     // Reading it back keeps the remote parent.
     const fetched = read(
       StatusSchema,
-      (await json(`/api/v1/statuses/${status.id}`, { headers: await accessAuthHeaders(email) }))
-        .body,
+      (await json(`/api/v1/statuses/${status.id}`, { headers: await authHeaders(email) })).body,
     );
     expect(fetched.in_reply_to_id).toBe(incoming.id);
   });
@@ -200,7 +197,7 @@ describe("replies to remote statuses", () => {
       .bind(answered.uri, incoming.id)
       .run();
     const listed = await json("/api/v1/conversations", {
-      headers: await accessAuthHeaders(email),
+      headers: await authHeaders(email),
     });
     // The shared step budget ends the walk; where a forged loop is cut may
     // differ by starting note, so only termination is asserted.

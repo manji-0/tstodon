@@ -2,10 +2,10 @@ import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 
 const auth = (email: string, options?: { admin?: boolean }): Promise<Record<string, string>> =>
-  accessAuthHeaders(email, options);
+  authHeaders(email, options);
 
 const json = async (
   path: string,

@@ -40,8 +40,8 @@ const main = async (): Promise<void> => {
   await waitOk(`${A}/.well-known/nodeinfo`, "instance A");
   await waitOk(`${B}/.well-known/nodeinfo`, "instance B");
 
-  const aliceHeaders = await authHeaders("alice-fc@e2e.example");
-  const bobHeaders = await authHeaders("bob-fc@e2e.example");
+  const aliceHeaders = await authHeaders(A, "alice-fc@e2e.example");
+  const bobHeaders = await authHeaders(B, "bob-fc@e2e.example");
 
   const alice = await fetchMastodonAccount(A, aliceHeaders, "provision users");
   const bob = await fetchMastodonAccount(B, bobHeaders, "provision users");

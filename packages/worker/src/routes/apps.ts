@@ -1,111 +1,109 @@
 import type { Context } from "hono";
-import { importJWK, SignJWT } from "jose";
-import { schemaResult, warmSchemas } from "@tstodon/core";
-import { jsonValidationError, readBody } from "../http";
-import { AccessJwksSchema, JsonWebKeySchema } from "../access-jwt-schema";
+import { warmSchemas } from "@tstodon/core";
+import { authenticate } from "../auth";
+import { jsonAuthError, readBody } from "../http";
+import {
+  findOauthApplicationById,
+  registerOauthApplication,
+  type OauthApplication,
+} from "../oauth-store";
+import { DEFAULT_SCOPES, parseScopes } from "../oauth-scope";
 import { vapidPublicKey } from "../vapid";
+import { OOB_REDIRECT_URI } from "./oauth";
 import { z } from "zod";
 
 export const AppBodySchema = z.object({
-  client_name: z.string().optional(),
-  website: z.string().optional(),
-  redirect_uris: z.union([z.string(), z.array(z.string())]).optional(),
+  client_name: z.string().trim().min(1).max(60),
+  website: z.string().trim().optional(),
+  // A string may carry several URIs, one per line; Mastodon 4.3 also takes an array.
+  redirect_uris: z.union([z.string(), z.array(z.string())]),
+  scopes: z.string().optional(),
 });
 
-export const OAuthTokenBodySchema = z.object({
-  username: z.string().min(1),
-});
+/** `urn:ietf:wg:oauth:2.0:oob`, or an absolute URI with no fragment. */
+const validRedirectUri = (uri: string): boolean => {
+  if (uri === OOB_REDIRECT_URI) {
+    return true;
+  }
+  try {
+    const parsed = new URL(uri);
+    return parsed.hash === "" && parsed.protocol !== "javascript:" && parsed.protocol !== "data:";
+  } catch {
+    return false;
+  }
+};
 
-const parseJsonWebKey = schemaResult(JsonWebKeySchema);
-const parseAccessJwks = schemaResult(AccessJwksSchema);
+const validationFailed = (c: Context<{ Bindings: Env }>, message: string) =>
+  c.json({ error: `Validation failed: ${message}` }, 422);
+
+const appDocument = (env: Env, app: OauthApplication) => ({
+  id: app.id,
+  name: app.name,
+  website: app.website,
+  scopes: app.scopes,
+  redirect_uri: app.redirectUris.join("\n"),
+  redirect_uris: app.redirectUris,
+  vapid_key: vapidPublicKey(env),
+});
 
 export const postV1Apps = async (c: Context<{ Bindings: Env }, "/api/v1/apps">) => {
   const body = await readBody(c, AppBodySchema);
   if (body.isErr()) {
-    return jsonValidationError(c);
+    return validationFailed(c, "client_name and redirect_uris are required");
   }
-  const name = body.value.client_name ?? "tstodon";
-  const website = body.value.website ?? null;
-  const redirect = Array.isArray(body.value.redirect_uris)
-    ? String(body.value.redirect_uris[0] ?? "urn:ietf:wg:oauth:2.0:oob")
-    : (body.value.redirect_uris ?? "urn:ietf:wg:oauth:2.0:oob");
-  return c.json({
-    id: "1",
-    name,
+  const redirectUris = [
+    ...new Set(
+      (Array.isArray(body.value.redirect_uris)
+        ? body.value.redirect_uris
+        : body.value.redirect_uris.split("\n")
+      )
+        .map((uri) => uri.trim())
+        .filter((uri) => uri.length > 0),
+    ),
+  ];
+  if (redirectUris.length === 0 || !redirectUris.every(validRedirectUri)) {
+    return validationFailed(c, "Redirect URI must be an absolute URI.");
+  }
+  const scopes = parseScopes(body.value.scopes, DEFAULT_SCOPES);
+  if (!scopes) {
+    return validationFailed(c, "Scopes are not valid");
+  }
+  const website = body.value.website && body.value.website.length > 0 ? body.value.website : null;
+  const registered = await registerOauthApplication(c.env.DB, {
+    name: body.value.client_name,
     website,
-    redirect_uri: redirect,
-    client_id: "tstodon-local",
-    client_secret: "tstodon-local",
-    vapid_key: vapidPublicKey(c.env),
+    redirectUris,
+    scopes,
+  });
+  if (registered.isErr()) {
+    return c.json({ error: registered.error.message, kind: registered.error.kind }, 500);
+  }
+  const { application, clientSecret } = registered.value;
+  return c.json({
+    ...appDocument(c.env, application),
+    client_id: application.clientId,
+    client_secret: clientSecret,
+    client_secret_expires_at: 0,
   });
 };
 
-export const getV1AppsVerifyCredentials = (
+/** The app behind the presented token, user or app-only. */
+export const getV1AppsVerifyCredentials = async (
   c: Context<{ Bindings: Env }, "/api/v1/apps/verify_credentials">,
-) =>
-  c.json({
-    name: "tstodon-local",
-    website: null,
-    vapid_key: vapidPublicKey(c.env),
-  });
-
-export const postOauthToken = async (c: Context<{ Bindings: Env }, "/oauth/token">) => {
-  const body = await readBody(c, OAuthTokenBodySchema);
-  if (body.isErr()) {
-    return jsonValidationError(c);
+) => {
+  const auth = await authenticate(c.req.raw, c.env);
+  if (auth.isErr()) {
+    return jsonAuthError(c, auth.error);
   }
-  const privateJwkRaw = `${c.env.CF_ACCESS_LOCAL_PRIVATE_JWK ?? ""}`.trim();
-  const teamDomain = `${c.env.CF_ACCESS_TEAM_DOMAIN}`.replace(/\/$/, "");
-  const audience = `${c.env.CF_ACCESS_AUD}`.trim();
-  if (privateJwkRaw.length === 0 || teamDomain.length === 0 || audience.length === 0) {
-    return c.json({ error: "unsupported_grant_type", kind: "InvalidToken" }, 400);
+  if (auth.value.kind === "Anonymous") {
+    return jsonAuthError(c, { kind: "MissingToken" });
   }
-  const username = body.value.username.trim();
-  if (username.length === 0) {
-    return c.json({ error: "invalid_grant", kind: "InvalidToken" }, 400);
+  const app = await findOauthApplicationById(c.env.DB, auth.value.token.applicationId);
+  if (app.isErr() || !app.value) {
+    return jsonAuthError(c, { kind: "InvalidToken" });
   }
-  const email = username.includes("@") ? username : `${username}@${c.env.INSTANCE_DOMAIN}`;
-  try {
-    const privateJwk = parseJsonWebKey(JSON.parse(privateJwkRaw));
-    if (privateJwk.isErr()) {
-      return c.json({ error: "server_error", kind: "VerificationUnavailable" }, 503);
-    }
-    // Re-parse so jose receives a JWK without exactOptionalPropertyTypes friction.
-    const key = await importJWK(JSON.parse(privateJwkRaw), "RS256");
-    const jwksJson = `${c.env.CF_ACCESS_JWKS_JSON ?? ""}`;
-    let kid = "tstodon-local-access";
-    if (jwksJson.length > 0) {
-      const parsed = parseAccessJwks(JSON.parse(jwksJson));
-      if (parsed.isOk()) {
-        const firstKid = parsed.value.keys[0]?.kid;
-        if (typeof firstKid === "string" && firstKid.length > 0) {
-          kid = firstKid;
-        }
-      }
-    }
-    const accessToken = await new SignJWT({
-      email,
-      type: "app",
-      groups: [],
-      custom: { groups: [] },
-    })
-      .setProtectedHeader({ alg: "RS256", kid, typ: "JWT" })
-      .setIssuer(teamDomain)
-      .setAudience(audience)
-      .setSubject(email)
-      .setIssuedAt()
-      .setExpirationTime("2h")
-      .sign(key);
-    return c.json({
-      access_token: accessToken,
-      token_type: "Bearer",
-      scope: "read write follow push",
-      created_at: Math.floor(Date.now() / 1000),
-    });
-  } catch {
-    return c.json({ error: "server_error", kind: "VerificationUnavailable" }, 503);
-  }
+  return c.json(appDocument(c.env, app.value));
 };
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
-warmSchemas([AppBodySchema, OAuthTokenBodySchema]);
+warmSchemas([AppBodySchema]);

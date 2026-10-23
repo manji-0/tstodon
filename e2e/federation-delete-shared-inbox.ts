@@ -34,8 +34,8 @@ const main = async (): Promise<void> => {
   await waitOk(`${A}/.well-known/nodeinfo`, "instance A");
   await waitOk(`${B}/.well-known/nodeinfo`, "instance B");
 
-  const aliceHeaders = await authHeaders("alice-ds@e2e.example");
-  const bobHeaders = await authHeaders("bob-ds@e2e.example");
+  const aliceHeaders = await authHeaders(A, "alice-ds@e2e.example");
+  const bobHeaders = await authHeaders(B, "bob-ds@e2e.example");
   const alice = await fetchMastodonAccount(A, aliceHeaders, "provision");
   const bob = await fetchMastodonAccount(B, bobHeaders, "provision");
   const aliceUser = alice.username;

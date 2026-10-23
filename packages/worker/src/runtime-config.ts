@@ -292,6 +292,15 @@ export const registrationApprovalRequired = (
   return ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
 };
 
+/**
+ * `REGISTRATIONS_OPEN`: whether `/auth/sign_up` creates accounts. On unless
+ * set to a false value.
+ */
+export const registrationsOpen = (env: Readonly<{ REGISTRATIONS_OPEN?: string }>): boolean => {
+  const raw = (env.REGISTRATIONS_OPEN ?? "").trim().toLowerCase();
+  return !["0", "false", "no", "off"].includes(raw);
+};
+
 export const parseInstanceIdentity = (env: Env): Result<InstanceIdentity, ValidationError> =>
   parseEnv(env).andThen((vars) => {
     const publicOrigin =

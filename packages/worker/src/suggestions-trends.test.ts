@@ -1,12 +1,12 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { schemaResult } from "@tstodon/core";
 import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 import { cacheLinkCard } from "./link-card";
 
-const auth = (email: string): Promise<Record<string, string>> => accessAuthHeaders(email);
+const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
 const json = async (
   path: string,

@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { accessAuthHeaders } from "../test/access-jwt-fixture";
+import { authHeaders } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 
@@ -33,7 +33,7 @@ const post = async (email: string, status: string, inReplyToId?: string) =>
     (
       await json("/api/v1/statuses", {
         method: "POST",
-        headers: { "content-type": "application/json", ...(await accessAuthHeaders(email)) },
+        headers: { "content-type": "application/json", ...(await authHeaders(email)) },
         body: JSON.stringify({
           status,
           visibility: "public",
@@ -88,7 +88,7 @@ const ContextSchema = z.object({
 const context = async (id: string, email?: string) => {
   const response = await json(
     `/api/v1/statuses/${id}/context`,
-    email ? { headers: await accessAuthHeaders(email) } : undefined,
+    email ? { headers: await authHeaders(email) } : undefined,
   );
   expect(response.status).toBe(200);
   const parsed = read(ContextSchema, response.body);
@@ -120,7 +120,7 @@ describe("thread context across local and remote statuses", () => {
       z.object({ id: z.string() }),
       (
         await json("/api/v1/accounts/verify_credentials", {
-          headers: await accessAuthHeaders(email),
+          headers: await authHeaders(email),
         })
       ).body,
     );
@@ -167,7 +167,7 @@ describe("thread context across local and remote statuses", () => {
       z.object({ username: z.string() }),
       (
         await json("/api/v1/accounts/verify_credentials", {
-          headers: await accessAuthHeaders(email),
+          headers: await authHeaders(email),
         })
       ).body,
     );
@@ -186,7 +186,7 @@ describe("thread context across local and remote statuses", () => {
     const email = "thread-context-blocker@example.com";
     const headers = async () => ({
       "content-type": "application/json",
-      ...(await accessAuthHeaders(email)),
+      ...(await authHeaders(email)),
     });
     const root = await post(email, "replies welcome");
     const blocked = await remoteActor("thread-blocked");
@@ -197,7 +197,7 @@ describe("thread context across local and remote statuses", () => {
       z.object({ id: z.string() }),
       (
         await json("/api/v1/accounts/verify_credentials", {
-          headers: await accessAuthHeaders(mutedLocal),
+          headers: await authHeaders(mutedLocal),
         })
       ).body,
     );

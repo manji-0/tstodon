@@ -39,6 +39,9 @@ export default defineConfig({
                   d: "447-B_gSeFow1mKFlPPSrLUKUsliq3AtIkbXvcoTBKY",
                 }),
                 VAPID_SUBJECT: "mailto:admin@example.com",
+                // Test-only Better Auth signing secret (example.com is not a
+                // local host, so Void's dev fallback does not apply).
+                BETTER_AUTH_SECRET: "tstodon-test-only-better-auth-secret-0123456789",
               },
             },
           }),
