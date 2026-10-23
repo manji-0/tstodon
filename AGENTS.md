@@ -16,7 +16,7 @@ Operational docs live under `docs/`.
 
 Void generates the Worker entry (`.void/entry.ts`) and owns HTTP routing (on Hono). Each path is a file under `packages/worker/app/routes/` (`[id]` for params) that re-exports its handlers as `GET` / `POST` / ... from `#src/routes/*`; the handlers are plain Hono handlers typed `Context<{ Bindings: Env }, "/the/path">`. Request-wide middleware lives in `packages/worker/app/middleware/` (numeric prefix = order). `app/routes/[...].ts` answers requests no route matched. Void skips dot directories, so `/.well-known/*` is served by `app/middleware/02.well-known.ts`. Do not invent a parallel HTTP router.
 
-Do not send Queue, scheduled, Workflow, or Durable Object traffic through HTTP routes. Cron jobs live in `packages/worker/app/crons/`, queue consumers in `packages/worker/app/queues/` (the file name is the queue name). Workflow and Durable Object classes are exported from `packages/worker/src/entry-classes.ts`, which the `tstodon:export-entry-classes` plugin in `vite.config.ts` appends to Void's entry. Worker tests run against the Void build in `dist/` (`pnpm test` builds first).
+Do not send Queue, scheduled, Workflow, or Durable Object traffic through HTTP routes. Cron jobs live in `packages/worker/app/crons/`, queue consumers in `packages/worker/app/queues/` (the file name is the queue name). Workflow and Durable Object classes are exported from `packages/worker/src/entry-classes.ts`, which the `tstodon:export-entry-classes` plugin in `void-plugins.ts` appends to Void's entry. Worker tests run against the Void build in `dist/` (`pnpm test` builds first).
 
 Hono handlers are a boundary: parse with Zod, call domain companions, map `Result` error `kind`s to HTTP. Domain transitions stay pure.
 

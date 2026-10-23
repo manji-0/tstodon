@@ -1,7 +1,8 @@
 import path from "node:path";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 import { voidPlugin } from "void";
-import { defineConfig, type Plugin } from "vite-plus";
+import { defineConfig } from "vite-plus";
+import { exportEntryClasses, queueConsumerConcurrency } from "./void-plugins";
 
 const migrations = await readD1Migrations(path.join(import.meta.dirname, "migrations"));
 
@@ -9,39 +10,6 @@ const migrations = await readD1Migrations(path.join(import.meta.dirname, "migrat
 // instance, each with its own Worker config (`CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH`,
 // read by the Cloudflare plugin Void wraps), local state, and Vite cache.
 const persistTo = process.env["TSTODON_PERSIST_TO"];
-
-const entryClassesFile = path.join(import.meta.dirname, "packages/worker/src/entry-classes.ts");
-
-/**
- * Void generates the Worker entry (`.void/entry.ts`) and only exports its own
- * Durable Object classes from it. The Workflow and Durable Object classes that
- * `wrangler.jsonc` binds have to be exported from the same module, so append
- * them to the generated entry. A Worker build that never saw that entry fails,
- * so a Void upgrade that moves it cannot ship a Worker without the classes.
- */
-const exportEntryClasses = (): Plugin => {
-  let injected = false;
-  return {
-    name: "tstodon:export-entry-classes",
-    enforce: "post",
-    transform(code, id) {
-      if (!id.split("?")[0]?.endsWith("/.void/entry.ts")) {
-        return null;
-      }
-      injected = true;
-      return { code: `${code}\nexport * from ${JSON.stringify(entryClassesFile)};\n`, map: null };
-    },
-    buildEnd(error) {
-      const workerBuild =
-        this.environment.mode === "build" && this.environment.config.consumer === "server";
-      if (!error && workerBuild && !injected) {
-        this.error(
-          "Void's generated .void/entry.ts was not built; Workflow and DO classes are missing",
-        );
-      }
-    },
-  };
-};
 
 export default defineConfig({
   // Workers static assets come from Vite's public directory (the client build).
@@ -51,6 +19,7 @@ export default defineConfig({
     // Keep local state where `wrangler ... --local` reads and writes it.
     voidPlugin({ persistTo: persistTo ?? ".wrangler/state" }),
     exportEntryClasses(),
+    queueConsumerConcurrency(),
   ],
   test: {
     // The root `voidPlugin()` dev plugins must not reach the test projects:

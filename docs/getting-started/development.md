@@ -54,8 +54,8 @@ Void serves HTTP from file routes in `packages/worker/app/routes/` (`void.json` 
 Queue consumers, cron, Workflows, and Durable Objects are not HTTP routes:
 
 - Cron jobs: `packages/worker/app/crons/*.ts` export `cron` (one expression or an array) and a `defineScheduled` default.
-- Queue consumers: `packages/worker/app/queues/<queue-name>.ts` export a `defineQueue` default plus `maxBatchSize` / `maxBatchTimeout` / `maxRetries`. The file name is the Cloudflare queue name. Void has no `max_concurrency` option; production sets it on the Terraform-managed consumer (see [Cloudflare deploy](../operations/cloudflare-deploy.md)).
-- Workflow and Durable Object classes: export them from `packages/worker/src/entry-classes.ts`. Void's generated entry only exports Void's own classes, so the `tstodon:export-entry-classes` plugin in `vite.config.ts` appends this module to it.
+- Queue consumers: `packages/worker/app/queues/<queue-name>.ts` export a `defineQueue` default plus `maxBatchSize` / `maxBatchTimeout` / `maxRetries`. The file name is the Cloudflare queue name. Void has no `max_concurrency` option, so the queue file also exports `maxConcurrency`, and the `tstodon:queue-consumer-concurrency` plugin (`void-plugins.ts`) writes it onto the consumer in the built `wrangler.json`.
+- Workflow and Durable Object classes: export them from `packages/worker/src/entry-classes.ts`. Void's generated entry only exports Void's own classes, so the `tstodon:export-entry-classes` plugin (`void-plugins.ts`) appends this module to it.
 
 `wrangler.jsonc` `main` points at `packages/worker/src/entry-classes.ts` only so `wrangler types` can type the class bindings; Void replaces it in dev and build. Worker tests run in workerd against the build output (`dist/ssr/wrangler.json`), so they exercise Void's routing; `pnpm test` runs `vp build .` first.
 

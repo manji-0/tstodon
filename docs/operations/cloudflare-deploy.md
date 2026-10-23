@@ -21,6 +21,6 @@
 9. Set optional Worker var `CORS_ALLOWED_ORIGINS` for extra browser API origins (comma-separated). `/api*` always allows `INSTANCE_PUBLIC_ORIGIN`.
 10. `pnpm run ci`
 11. `pnpm run deploy` (`vp build .` then `wrangler deploy`, which deploys the Void build output in `dist/`: the generated entry, cron triggers from `packages/worker/app/crons`, and the queue consumer from `packages/worker/app/queues`). Deploy with Wrangler rather than `void deploy`: the bindings carry real resource IDs from `wrangler.jsonc`, and the Workflow and `StreamHub` classes are exported through `vite.config.ts`.
-12. Re-apply Terraform with `attach_queue_consumer = true` so the outbox Queue consumer points at the deployed Worker. Re-apply after every deploy as well: Void cannot express `max_concurrency`, so `wrangler deploy` writes the consumer without it, and Terraform restores `queue_consumer_max_concurrency` (default `1`).
+12. Re-apply Terraform with `attach_queue_consumer = true` so the outbox Queue consumer points at the deployed Worker. Keep `queue_consumer_max_concurrency` (default `1`) equal to `maxConcurrency` in `packages/worker/app/queues/tstodon-outbox-process.ts`; `wrangler deploy` writes that value too.
 
 Do not commit Access audience values as secrets in git beyond what ops needs, and never commit private JWKs for production. Confirm the Worker placement region still matches the D1 primary.
