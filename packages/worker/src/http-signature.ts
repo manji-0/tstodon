@@ -46,20 +46,16 @@ export type SignatureError = Readonly<{
   message: string;
 }>;
 
-export const signInboxRequest = async (
+/** Sign `headers` (with their `values`) for `method url`; returns the Signature header. */
+const signRequest = async (
+  method: string,
   url: URL,
   privateKeyJwk: string,
   keyId: string,
-  body: string,
-): Promise<Result<Headers, SignatureError>> => {
-  const digest = await sha256DigestHeader(body);
-  const date = new Date().toUTCString();
-  const headers = ["(request-target)", "host", "date", "digest"];
-  const signingString = buildSigningString("post", url.pathname + url.search, headers, {
-    host: url.host,
-    date,
-    digest,
-  });
+  headers: ReadonlyArray<string>,
+  values: Record<string, string>,
+): Promise<Result<string, SignatureError>> => {
+  const signingString = buildSigningString(method, url.pathname + url.search, headers, values);
   const parsed = parseJsonColumn(RsaPrivateJwkSchema, privateKeyJwk);
   if (parsed.isErr()) {
     return err({ kind: "InvalidSignature", message: parsed.error.message });
@@ -101,15 +97,63 @@ export const signInboxRequest = async (
   for (const byte of bytes) {
     binary += String.fromCharCode(byte);
   }
-  const signatureHeader = `keyId="${keyId}",algorithm="rsa-sha256",headers="${headers.join(" ")}",signature="${btoa(binary)}"`;
   return ok(
-    new Headers({
-      Host: url.host,
-      Date: date,
-      Digest: digest,
-      Signature: signatureHeader,
-      "Content-Type": "application/activity+json",
-    }),
+    `keyId="${keyId}",algorithm="rsa-sha256",headers="${headers.join(" ")}",signature="${btoa(binary)}"`,
+  );
+};
+
+/** Headers for a signed delivery POST: `(request-target) host date digest`. */
+export const signInboxRequest = async (
+  url: URL,
+  privateKeyJwk: string,
+  keyId: string,
+  body: string,
+): Promise<Result<Headers, SignatureError>> => {
+  const digest = await sha256DigestHeader(body);
+  const date = new Date().toUTCString();
+  const signature = await signRequest(
+    "post",
+    url,
+    privateKeyJwk,
+    keyId,
+    ["(request-target)", "host", "date", "digest"],
+    { host: url.host, date, digest },
+  );
+  return signature.map(
+    (value) =>
+      new Headers({
+        Host: url.host,
+        Date: date,
+        Digest: digest,
+        Signature: value,
+        "Content-Type": "application/activity+json",
+      }),
+  );
+};
+
+/** Headers for a signed fetch GET (authorized fetch): `(request-target) host date`. */
+export const signFetchRequest = async (
+  url: URL,
+  privateKeyJwk: string,
+  keyId: string,
+): Promise<Result<Headers, SignatureError>> => {
+  const date = new Date().toUTCString();
+  const signature = await signRequest(
+    "get",
+    url,
+    privateKeyJwk,
+    keyId,
+    ["(request-target)", "host", "date"],
+    { host: url.host, date },
+  );
+  return signature.map(
+    (value) =>
+      new Headers({
+        Host: url.host,
+        Date: date,
+        Signature: value,
+        Accept: "application/activity+json",
+      }),
   );
 };
 
@@ -170,30 +214,22 @@ const bytesFromB64 = (value: string): Uint8Array => {
   return bytes;
 };
 
-export const verifyInboxRequest = async (
+const verifySignature = async (
   request: Request,
+  parsed: ParsedSignature,
   publicKeyPem: string,
-  body: string,
+  digest: string,
 ): Promise<boolean> => {
-  const header = request.headers.get("Signature");
-  if (!header) {
-    return false;
-  }
-  const parsed = parseSignatureHeader(header);
-  if (!parsed) {
-    return false;
-  }
   const url = new URL(request.url);
-  const digest = request.headers.get("Digest");
-  const expectedDigest = await sha256DigestHeader(body);
-  if (digest !== expectedDigest) {
-    return false;
-  }
-  const headerValues: Record<string, string> = {
-    host: request.headers.get("Host") ?? url.host,
-    date: request.headers.get("Date") ?? "",
-    digest: digest ?? "",
-  };
+  // Every header the signer listed counts (Mastodon also signs `content-type`
+  // on deliveries and `accept` on fetches), read from the request as sent.
+  const headerValues: Record<string, string> = Object.fromEntries(
+    parsed.headers
+      .filter((name) => !name.startsWith("("))
+      .map((name) => [name, request.headers.get(name) ?? ""]),
+  );
+  headerValues.host = request.headers.get("Host") ?? url.host;
+  headerValues.digest = digest;
   const signingString = buildSigningString(
     request.method,
     url.pathname + url.search,
@@ -214,6 +250,39 @@ export const verifyInboxRequest = async (
     encoder.encode(signingString),
   );
 };
+
+export const verifyInboxRequest = async (
+  request: Request,
+  publicKeyPem: string,
+  body: string,
+): Promise<boolean> => {
+  const header = request.headers.get("Signature");
+  if (!header) {
+    return false;
+  }
+  const parsed = parseSignatureHeader(header);
+  if (!parsed) {
+    return false;
+  }
+  const digest = request.headers.get("Digest");
+  const expectedDigest = await sha256DigestHeader(body);
+  if (digest !== expectedDigest) {
+    return false;
+  }
+  return verifySignature(request, parsed, publicKeyPem, digest);
+};
+
+/**
+ * A signed fetch (a GET with no body): the signature must cover
+ * `(request-target)`, so it cannot be replayed against another resource.
+ */
+export const verifySignedFetch = async (
+  request: Request,
+  parsed: ParsedSignature,
+  publicKeyPem: string,
+): Promise<boolean> =>
+  parsed.headers.includes("(request-target)") &&
+  verifySignature(request, parsed, publicKeyPem, request.headers.get("Digest") ?? "");
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([RsaPrivateJwkSchema]);
