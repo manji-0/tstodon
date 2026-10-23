@@ -72,6 +72,25 @@ export const activityPayloadFromJson = (
   };
 };
 
+/**
+ * The `Delete` for a local note, as Mastodon sends it: a `Tombstone` object,
+ * addressed like the note so it reaches the same followers and mentions.
+ */
+export const noteDeleteActivity = (
+  note: Readonly<Record<string, unknown>>,
+): Record<string, unknown> => {
+  const id = typeof note.id === "string" ? note.id : "";
+  return {
+    "@context": "https://www.w3.org/ns/activitystreams",
+    id: `${id}#delete`,
+    type: "Delete",
+    actor: note.attributedTo,
+    to: note.to,
+    cc: note.cc,
+    object: { id, type: "Tombstone", atomUri: id },
+  };
+};
+
 /** An account a note mentions, as its `Mention` tag names it. */
 export type NoteMention = Readonly<{ href: string; name: string }>;
 

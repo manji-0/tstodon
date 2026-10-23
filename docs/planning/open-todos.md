@@ -17,17 +17,15 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Web Push (open)
 
-| ID   | Item                                        | Notes                                                                                    |
-| ---- | ------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| WP-1 | Deliver notifications to push subscriptions | Queue job per notification; RFC 8291 `aes128gcm` + RFC 8292 VAPID; 404/410 drops the row |
-| WP-2 | Per-token subscriptions                     | Blocked on token identity: Access JWTs carry none, so subscriptions are per endpoint     |
+| ID   | Item                    | Notes                                                                                |
+| ---- | ----------------------- | ------------------------------------------------------------------------------------ |
+| WP-2 | Per-token subscriptions | Blocked on token identity: Access JWTs carry none, so subscriptions are per endpoint |
 
 ## Direct messages (open)
 
 | ID   | Item                                                | Notes                                                                                                                                                                                 |
 | ---- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | DM-4 | Conversation mutes on remote replies                | `status_mutes` hides local thread members only; a remote reply into a muted thread still shows                                                                                        |
-| DM-5 | Federate local status deletion                      | Deleting a local note sends no `Delete`, so remote copies stay                                                                                                                        |
 | DM-6 | Serve non-public notes to authorized signed fetches | `GET /users/:username/statuses/:id` answers 404 for followers-only and direct notes to everyone; Mastodon serves them to a signed fetch from an addressed actor                       |
 | DM-7 | Outbox paging and private self-boosts               | The outbox filters after its `LIMIT`, so a page can come back short; a self-boost of a followers-only note is listed (its object still 404s) and its `Announce` carries no addressing |
 | DM-8 | Context paging after filtering                      | `/context` caps each level before the visibility and block filters, so a count-limited thread can come back short (as the old local walk did)                                         |
@@ -162,6 +160,9 @@ Tracked leftovers so e2e work can proceed without losing them.
 - Create saga mentions-before-notify; `enqueueLocalActivity` Result
 - Expired-poll bulk `mastodonStatuses`
 - Analytics indexes: `outbox.expand`, `outbox.enqueue`, `search`, `timeline.tag`
+- WP-1: notifications are pushed to Web Push subscriptions (`DeliverPush` queue job, RFC 8291/8292)
+- DM-5: deleting a local note federates a `Delete` with a `Tombstone`, addressed like the note
+- Batched account documents on account lists (followers, following, follow requests, endorsements, list members, favourited/reblogged by, search, familiar followers), remote actors on timelines, notification requests, and tag histories (one status scan for every tag on a page)
 
 ## Active track
 

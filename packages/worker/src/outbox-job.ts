@@ -137,6 +137,12 @@ export const outboundAudience = (
   return { followers, actorUris };
 };
 
+/** Would {@link outboundAudience} find any remote recipient for this activity? */
+export const reachesRemoteInboxes = (activity: unknown, localHost: string): boolean => {
+  const audience = outboundAudience(JSON.stringify(activity), localHost);
+  return audience.followers || audience.actorUris.length > 0;
+};
+
 /** `retry` asks the queue to redeliver the message. */
 export type OutboxJobOutcome = "ok" | "retry";
 

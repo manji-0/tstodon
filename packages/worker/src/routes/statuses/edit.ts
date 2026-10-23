@@ -2,9 +2,10 @@ import { InstanceIdentity, LocalStatus, StatusComposition, Visibility } from "@t
 import type { Context } from "hono";
 import { findAccountsByUsernames } from "../../account-store";
 import { authenticate } from "../../auth";
-import { noteDocument } from "../../activitypub";
+import { noteDeleteActivity, noteDocument } from "../../activitypub";
 import { nowIso } from "../../clock";
 import { enqueueLocalActivity } from "../../delivery";
+import { reachesRemoteInboxes } from "../../outbox-job";
 import { mentionUsernames, textToHtml } from "../../html";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "../../mention-store";
 import { loadNoteMentions, resolveRemoteMentions } from "../../mention-resolve";
@@ -57,12 +58,31 @@ export const deleteV1StatusesById = async (
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const document = await mastodonStatus(c.env, identity.value, existing.value, user.value.id);
+  // The note's addressing comes from its mentions, which are deleted with it.
+  const tombstone =
+    existing.value.kind === "LocalNote" && existing.value.accountId === user.value.id
+      ? noteDeleteActivity(
+          noteDocument(identity.value, user.value, existing.value, {
+            mentions: await loadNoteMentions(c.env.DB, identity.value, existing.value.id),
+            reply: await loadNoteReply(c.env.DB, identity.value, existing.value),
+          }),
+        )
+      : undefined;
   const deleted = await deleteStatus(c.env.DB, c.req.param("id"), user.value.id);
   if (deleted.isErr()) {
     return jsonRepositoryError(c, deleted.error.message);
   }
   if (!deleted.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  if (tombstone && reachesRemoteInboxes(tombstone, identity.value.domain)) {
+    // The status is gone either way; a failed enqueue only leaves remote copies.
+    const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Delete", tombstone);
+    if (enqueued.isErr()) {
+      console.error(
+        JSON.stringify({ kind: "StatusDeleteNotFederated", statusId: existing.value.id }),
+      );
+    }
   }
   // Mastodon returns the raw source text so a client can delete and redraft;
   // media attachments and the poll are already part of the rendered document.
