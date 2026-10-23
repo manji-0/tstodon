@@ -99,7 +99,8 @@ const main = async (): Promise<void> => {
 
   await waitRows(
     "a",
-    `SELECT inbox_url FROM outbox_deliveries WHERE activity_id = '${acceptActivityRow.id}'`,
+    // Per-inbox target rows only: the activity's fan-out row has no inbox_url.
+    `SELECT inbox_url FROM outbox_deliveries WHERE activity_id = '${acceptActivityRow.id}' AND inbox_url IS NOT NULL`,
     OutboxDeliveryRow.parseMany,
     (rows) => rows.some((r) => r.inbox_url.includes("8792")),
     "Accept missing outbox target to B",
