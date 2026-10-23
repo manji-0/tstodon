@@ -6,7 +6,7 @@
 
 Terraform / OpenTofu skeleton for:
 
-1. **Worker data plane** — D1, KV, R2, Queue (IDs/names for `wrangler.jsonc`)
+1. **Worker data plane** — D1, KV, R2, Queue (IDs/names for `packages/worker/wrangler.jsonc`)
 2. **Cloudflare Access** — WorkOS OIDC IdP, `/api*` Allow, federation/health Bypass
 
 The Worker script, Durable Objects, Workflows, Images, and Analytics Engine stay with `wrangler deploy`.
@@ -54,9 +54,9 @@ tofu apply
 ### Suggested apply order
 
 1. Apply with `enable_access = false` (or Access enabled if ready) to create D1 / KV / R2 / Queue.
-2. Copy `tofu output -json wrangler_bindings` into production `wrangler.jsonc`.
-3. `wrangler d1 migrations apply tstodon --remote`
-4. `wrangler deploy`
+2. Copy `tofu output -json wrangler_bindings` into production `packages/worker/wrangler.jsonc`.
+3. Skipped: `pnpm run deploy` applies remote D1 migrations.
+4. `pnpm run deploy` (`void deploy --backend cloudflare`)
 5. Re-apply with `attach_queue_consumer = true` so the Queue consumer points at the Worker.
 6. Apply Access (`enable_access = true`) and copy `tofu output -json worker_vars` into Worker vars. Clear local fixture JWKS/private JWK.
 

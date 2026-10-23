@@ -9,7 +9,7 @@ pnpm install
 pnpm types:worker
 ```
 
-`pnpm types:worker` generates `worker-configuration.d.ts` from `wrangler.jsonc`. Do not hand-write `Env`.
+`pnpm types:worker` generates `packages/worker/worker-configuration.d.ts` from `packages/worker/wrangler.jsonc`. Do not hand-write `Env`.
 
 ## Verify
 

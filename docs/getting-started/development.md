@@ -15,12 +15,13 @@ pnpm build
 pnpm run ci
 ```
 
-`pnpm run ci` is the merge gate (`pnpm ci` is pnpm's frozen install). The toolchain is [Vite+](https://viteplus.dev/) (`vp`), configured in `vite.config.ts`:
+`pnpm run ci` is the merge gate (`pnpm ci` is pnpm's frozen install). The toolchain is [Vite+](https://viteplus.dev/) (`vp`). The root `vite.config.ts` holds the lint, format, and test settings; `packages/worker` is the Void app, with its own `vite.config.ts`, `void.json`, and `wrangler.jsonc`:
 
 - `pnpm check` (`vp check`) formats with Oxfmt, lints with Oxlint (type-aware rules via oxlint-tsgolint), and type-checks every package including tests. `pnpm typecheck` runs only the type check. Each package `tsconfig.json` is a standalone `noEmit` project; nothing is emitted by TypeScript.
-- `pnpm test` (`vp build . && vp test run`) runs Vitest 5. Worker tests run in workerd through `@cloudflare/vitest-plugin`, against the Void build in `dist/`.
-- `pnpm dev` (`vp dev`) and `pnpm build` (`vp build .`) run the Worker through [Void](https://void.cloud) (`voidPlugin()`), which wraps `@cloudflare/vite-plugin` (Vite + Rolldown) and generates the Worker entry in `.void/` (gitignored). Bindings, vars, and resource IDs still come from `wrangler.jsonc`; Void adds `main`, cron `triggers`, and the queue consumer from `packages/worker/app`. Static assets come from `assets/` (Vite's `publicDir`). `wrangler deploy` uses the build output in `dist/` via `.wrangler/deploy/config.json`, so run `pnpm build` first (`pnpm run deploy` does both; plain `pnpm deploy` is pnpm's own command).
-- Local state (D1, KV, R2, Durable Objects, Workflows) lives in `.wrangler/state`, the same place `wrangler ... --local` uses.
+- `pnpm test` (`vp -C packages/worker build && vp test run`) runs Vitest 5. Worker tests run in workerd through `@cloudflare/vitest-plugin`, against the Void build in `packages/worker/dist/`.
+- `pnpm dev` and `pnpm build` (`vp -C packages/worker dev|build`) run the Worker through [Void](https://void.cloud) (`voidPlugin()`), which wraps `@cloudflare/vite-plugin` (Vite + Rolldown) and generates the Worker entry in `packages/worker/.void/` (gitignored). Bindings, vars, and resource IDs still come from `packages/worker/wrangler.jsonc`; Void adds `main`, cron `triggers`, and the queue consumer from `packages/worker/app`. Static assets come from `packages/worker/assets/` (Vite's `publicDir`).
+- `pnpm run deploy` runs `void deploy --backend cloudflare` in `packages/worker` (see [Cloudflare deploy](../operations/cloudflare-deploy.md)); plain `pnpm deploy` is pnpm's own command.
+- Local state (D1, KV, R2, Durable Objects, Workflows) lives in `packages/worker/.wrangler/state`, wrangler's default for `packages/worker/wrangler.jsonc`. Apply D1 migrations to it with `pnpm db:migrate:local`. Void's own dev-time migration runner is disabled in `packages/worker/vite.config.ts`: it migrates a separate `.void/` database, not the `DB` binding.
 
 TypeScript targets ES2025 with `erasableSyntaxOnly` and `verbatimModuleSyntax`.
 
@@ -54,10 +55,10 @@ Void serves HTTP from file routes in `packages/worker/app/routes/` (`void.json` 
 Queue consumers, cron, Workflows, and Durable Objects are not HTTP routes:
 
 - Cron jobs: `packages/worker/app/crons/*.ts` export `cron` (one expression or an array) and a `defineScheduled` default.
-- Queue consumers: `packages/worker/app/queues/<queue-name>.ts` export a `defineQueue` default plus `maxBatchSize` / `maxBatchTimeout` / `maxRetries`. The file name is the Cloudflare queue name. Void has no `max_concurrency` option, so the queue file also exports `maxConcurrency`, and the `tstodon:queue-consumer-concurrency` plugin (`void-plugins.ts`) writes it onto the consumer in the built `wrangler.json`.
-- Workflow and Durable Object classes: export them from `packages/worker/src/entry-classes.ts`. Void's generated entry only exports Void's own classes, so the `tstodon:export-entry-classes` plugin (`void-plugins.ts`) appends this module to it.
+- Queue consumers: `packages/worker/app/queues/<queue-name>.ts` export a `defineQueue` default plus `maxBatchSize` / `maxBatchTimeout` / `maxRetries`. The file name is the Cloudflare queue name. Void has no `max_concurrency` option, so the queue file also exports `maxConcurrency`, and the `tstodon:queue-consumer-concurrency` plugin (`packages/worker/void-plugins.ts`) writes it onto the consumer in the built `wrangler.json`.
+- Workflow and Durable Object classes: export them from `packages/worker/src/entry-classes.ts`. Void's generated entry only exports Void's own classes, so the `tstodon:export-entry-classes` plugin (`packages/worker/void-plugins.ts`) appends this module to it.
 
-`wrangler.jsonc` `main` points at `packages/worker/src/entry-classes.ts` only so `wrangler types` can type the class bindings; Void replaces it in dev and build. Worker tests run in workerd against the build output (`dist/ssr/wrangler.json`), so they exercise Void's routing; `pnpm test` runs `vp build .` first.
+`packages/worker/wrangler.jsonc` `main` points at `src/entry-classes.ts` only so `wrangler types` can type the class bindings; Void replaces it in dev and build. Worker tests run in workerd against the build output (`packages/worker/dist/ssr/wrangler.json`), so they exercise Void's routing; `pnpm test` builds first.
 
 ### Triggering cron locally
 
@@ -76,12 +77,12 @@ Put new state in `packages/domain` as a `z.discriminatedUnion("kind", ...)` plus
 
 ## Generated types
 
-Re-run `pnpm types:worker` after changing bindings in `wrangler.jsonc`.
+Re-run `pnpm types:worker` after changing bindings in `packages/worker/wrangler.jsonc`. It writes `packages/worker/worker-configuration.d.ts`.
 
 After editing `prisma/sql/*.sql` or applying D1 migrations, regenerate TypedSQL:
 
 ```sh
-pnpm exec wrangler d1 migrations apply tstodon --local
+pnpm db:migrate:local
 pnpm prisma:generate
 ```
 

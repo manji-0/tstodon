@@ -1,9 +1,9 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "tstodon",
-  // Void generates the Worker entry (`.void/entry.ts`) from `packages/worker/app`
+  // Void generates the Worker entry (`.void/entry.ts`) from `app/`
   // and replaces `main`; this one only lets `wrangler types` type the class bindings.
-  "main": "packages/worker/src/entry-classes.ts",
+  "main": "src/entry-classes.ts",
   "compatibility_date": "2026-09-20",
   "compatibility_flags": ["nodejs_compat"],
   "placement": {
@@ -60,7 +60,7 @@
       "binding": "DB",
       "database_name": "tstodon",
       "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "./migrations",
+      "migrations_dir": "./app/db/migrations",
     },
   ],
   "r2_buckets": [
@@ -79,8 +79,7 @@
       "id": "00000000000000000000000000000002",
     },
   ],
-  // Cron triggers and the queue consumer come from `packages/worker/app/crons`
-  // and `packages/worker/app/queues`.
+  // Cron triggers and the queue consumer come from `app/crons` and `app/queues`.
   "queues": {
     "producers": [
       {
@@ -119,4 +118,5 @@
       "new_sqlite_classes": ["StreamHub"],
     },
   ],
+  "account_id": "00000000000000000000000000000000",
 }

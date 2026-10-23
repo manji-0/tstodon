@@ -20,7 +20,7 @@
     },
   },
   "assets": {
-    "directory": "../assets",
+    "directory": "../packages/worker/assets",
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "none",
@@ -50,7 +50,7 @@
       "binding": "DB",
       "database_name": "tstodon-e2e-a",
       "database_id": "00000000-0000-0000-0000-0000000000a1",
-      "migrations_dir": "../migrations",
+      "migrations_dir": "../packages/worker/app/db/migrations",
     },
   ],
   "r2_buckets": [

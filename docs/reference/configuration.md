@@ -4,7 +4,7 @@
 
 <!-- constrained-by ../architecture/tstodon-architecture.md#cloudflare-mapping -->
 
-Configured in `wrangler.jsonc`:
+Configured in `packages/worker/wrangler.jsonc`:
 
 - `DB` — D1
 - `MEDIA` — R2
@@ -16,7 +16,7 @@ Configured in `wrangler.jsonc`:
 - `METRICS` — Analytics Engine
 - `ASSETS` — static assets
 
-Placeholder resource IDs in `wrangler.jsonc` are local-only. Create real D1 / KV / R2 / Queue resources with [`infra/cloudflare`](../../infra/cloudflare/README.md) before deploying (`tofu output -json wrangler_bindings`).
+Placeholder resource IDs in `packages/worker/wrangler.jsonc` are local-only. Create real D1 / KV / R2 / Queue resources with [`infra/cloudflare`](../../infra/cloudflare/README.md) before deploying (`tofu output -json wrangler_bindings`).
 
 ## Instance vars
 
@@ -88,7 +88,7 @@ node -e 'const {generateKeyPairSync}=require("crypto");console.log(JSON.stringif
   | pnpm exec wrangler secret put VAPID_PRIVATE_JWK
 ```
 
-The test runner injects its own fixture key through `miniflare.bindings` in `vite.config.ts`; it is never used outside tests.
+The test runner injects its own fixture key through `miniflare.bindings` in the root `vite.config.ts`; it is never used outside tests.
 
 ## Limited federation
 

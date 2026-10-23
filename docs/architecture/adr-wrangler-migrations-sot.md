@@ -10,7 +10,7 @@ Accepted
 
 ## Context
 
-The Worker already applies ordered SQL under `migrations/` via Wrangler (local, CI vitest pool, remote deploy). Prisma TypedSQL needs a schema for generate/introspect and can also run its own migrate tooling.
+The Worker already applies ordered SQL under `packages/worker/app/db/migrations/` via Wrangler (local, CI vitest pool, remote deploy). Prisma TypedSQL needs a schema for generate/introspect and can also run its own migrate tooling.
 
 Running two appliers against one D1 database splits history (`d1_migrations` vs Prisma migrate tables), invites drift, and fights the existing vitest/miniflare setup that loads Wrangler migrations.
 
@@ -18,7 +18,7 @@ Prisma’s own D1 guidance favors Wrangler apply plus optional `prisma migrate d
 
 ## Decision
 
-1. **Author and apply** schema changes only through Wrangler: edit `migrations/*.sql`, then `wrangler d1 migrations apply tstodon --local` / `--remote`.
+1. **Author and apply** schema changes only through Wrangler: edit `packages/worker/app/db/migrations/*.sql`, then apply with `pnpm db:migrate:local` locally; `pnpm run deploy` (`void deploy --backend cloudflare`) validates the set and applies it remotely with `wrangler d1 migrations apply --remote`. Void lives with this decision: the directory is Void's `db/migrations` convention (under `void.json` `sourceDir`), and its deploy gate refuses a migration that drops a table unless the file carries a `-- void:allow-destructive` line.
 2. **Refresh Prisma** with `pnpm prisma:pull` (optional) and always `pnpm prisma:generate` after SQL or `prisma/sql` changes.
 3. Do **not** use `prisma migrate deploy` / `migrate dev` against this D1 database.
 4. Optional later: use `prisma migrate diff` only to **draft** Wrangler migration SQL; still apply via Wrangler.
@@ -33,6 +33,6 @@ Prisma’s own D1 guidance favors Wrangler apply plus optional `prisma migrate d
 
 ## Consequences
 
-- Reviewers treat `migrations/` as the deployable schema; `prisma/schema.prisma` is derived.
+- Reviewers treat `packages/worker/app/db/migrations/` as the deployable schema; `prisma/schema.prisma` is derived.
 - CI/typecheck relies on committed generated client so clones need not have a local D1 before `tsc` (generate still requires local D1 when editing SQL).
 - New tables/indexes land in Wrangler SQL first, then regenerate TypedSQL.

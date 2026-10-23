@@ -1,3 +1,5 @@
+-- void:allow-destructive
+-- (Void gate: the DROP TABLEs belong to a SQLite table rebuild; rows are copied first.)
 -- Suggestion dismissals go away with either account, like every other
 -- per-account row (0055 created the table without foreign keys).
 

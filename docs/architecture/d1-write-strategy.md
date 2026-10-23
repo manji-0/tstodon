@@ -96,7 +96,7 @@ flowchart TB
   end
 
   subgraph schema [Schema SoT]
-    Mig[migrations/*.sql via Wrangler]
+    Mig[app/db/migrations/*.sql via Wrangler]
     Pull[prisma:pull / prisma:generate]
     Mig --> Pull --> Typed
   end
@@ -115,7 +115,7 @@ flowchart TB
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
 | [adr-json-each-membership.md](./adr-json-each-membership.md)       | Variable-length id/username sets bind via `json_each(?)`, never growing `IN (?,?,…)`                         |
 | [adr-typedsql-d1-execution.md](./adr-typedsql-d1-execution.md)     | Generate with Prisma; execute only via `queryTyped` / `runTyped` / `d1PrepareTyped`; no runtime PrismaClient |
-| [adr-wrangler-migrations-sot.md](./adr-wrangler-migrations-sot.md) | Author/apply schema only through Wrangler `migrations/`; regenerate TypedSQL after                           |
+| [adr-wrangler-migrations-sot.md](./adr-wrangler-migrations-sot.md) | Author/apply schema only through Wrangler `packages/worker/app/db/migrations/`; regenerate TypedSQL after    |
 | [adr-variable-timeline-sql.md](./adr-variable-timeline-sql.md)     | Shape-varying timeline/search/context SQL stays on `db.prepare`; still must not grow bind lists              |
 
 ## Proposed Design

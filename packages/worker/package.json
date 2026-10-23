@@ -17,5 +17,11 @@
     "jose": "^6.2.12",
     "neverthrow": "^8.2.0",
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.64.0",
+    "vite-plus": "catalog:",
+    "void": "0.10.13",
+    "wrangler": "^4.151.2"
   }
 }

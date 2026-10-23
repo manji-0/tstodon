@@ -23,17 +23,17 @@ Design decisions:
 
 ## Migrations
 
-Wrangler D1 migrations under `migrations/` are the applied schema history. After changing migrations:
+Wrangler D1 migrations under `packages/worker/app/db/migrations/` are the applied schema history. After changing migrations:
 
 ```sh
-pnpm exec wrangler d1 migrations apply tstodon --local
+pnpm db:migrate:local
 pnpm prisma:pull    # optional schema refresh
 pnpm prisma:generate
 ```
 
 ## Generate
 
-TypedSQL needs a local D1 sqlite file (created by the wrangler apply above). `prisma.config.ts` resolves it from `.wrangler/state/...` or `PRISMA_D1_URL`.
+TypedSQL needs a local D1 sqlite file (created by the wrangler apply above). `prisma.config.ts` resolves it from `packages/worker/.wrangler/state/...` or `PRISMA_D1_URL`.
 
 ```sh
 pnpm prisma:generate   # prisma generate --sql

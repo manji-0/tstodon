@@ -1,29 +1,14 @@
 import path from "node:path";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
-import { voidPlugin } from "void";
 import { defineConfig } from "vite-plus";
-import { exportEntryClasses, queueConsumerConcurrency } from "./void-plugins";
 
-const migrations = await readD1Migrations(path.join(import.meta.dirname, "migrations"));
-
-// The two-instance e2e harness (`process-compose.yaml`) runs one `vp dev` per
-// instance, each with its own Worker config (`CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH`,
-// read by the Cloudflare plugin Void wraps), local state, and Vite cache.
-const persistTo = process.env["TSTODON_PERSIST_TO"];
+const migrations = await readD1Migrations(
+  path.join(import.meta.dirname, "packages/worker/app/db/migrations"),
+);
 
 export default defineConfig({
-  // Workers static assets come from Vite's public directory (the client build).
-  publicDir: "assets",
-  ...(persistTo ? { cacheDir: path.join(persistTo, "vite") } : {}),
-  plugins: [
-    // Keep local state where `wrangler ... --local` reads and writes it.
-    voidPlugin({ persistTo: persistTo ?? ".wrangler/state" }),
-    exportEntryClasses(),
-    queueConsumerConcurrency(),
-  ],
   test: {
-    // The root `voidPlugin()` dev plugins must not reach the test projects:
-    // each project gets its own Vite server and ignores the root config.
+    // Each project gets its own Vite server and ignores the root config.
     sharedViteServer: false,
     projects: [
       {
@@ -38,9 +23,9 @@ export default defineConfig({
         extends: false,
         plugins: [
           cloudflareTest({
-            // The build output: tests run the Worker Void generates, so run
-            // `vp build .` first (`pnpm test` does).
-            wrangler: { configPath: "./dist/ssr/wrangler.json" },
+            // The build output: tests run the Worker Void generates, so build
+            // `packages/worker` first (`pnpm test` does).
+            wrangler: { configPath: "./packages/worker/dist/ssr/wrangler.json" },
             miniflare: {
               compatibilityDate: "2026-08-22",
               bindings: {
@@ -84,8 +69,10 @@ export default defineConfig({
       "packages/*/dist/**",
       ".wrangler/**",
       ".void/**",
+      "packages/worker/.void/**",
+      "packages/worker/.wrangler/**",
       "pnpm-lock.yaml",
-      "worker-configuration.d.ts",
+      "**/worker-configuration.d.ts",
     ],
   },
   lint: {
@@ -99,8 +86,10 @@ export default defineConfig({
       "packages/*/dist/**",
       ".wrangler/**",
       ".void/**",
+      "packages/worker/.void/**",
+      "packages/worker/.wrangler/**",
       "e2e/instances/.wrangler/**",
-      "worker-configuration.d.ts",
+      "**/worker-configuration.d.ts",
     ],
     rules: {
       "typescript/consistent-type-definitions": ["error", "type"],

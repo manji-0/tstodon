@@ -42,13 +42,14 @@ jobs:
       - name: Check (format, lint, types)
         run: vp check
 
-      # Worker tests run against the Void build output in dist/.
+      # Worker tests run against the Void build output in packages/worker/dist/.
       - name: Build
-        run: vp build .
+        run: vp -C packages/worker build
 
       - name: Test
         run: vp test run
 
       - name: Wrangler dry-run
         if: github.event_name != 'pull_request'
+        working-directory: packages/worker
         run: vp exec wrangler deploy --dry-run

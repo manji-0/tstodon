@@ -1,3 +1,5 @@
+-- void:allow-destructive
+-- (Void gate: the DROP TABLEs belong to a SQLite table rebuild; rows are copied first.)
 -- Remote actors can send notifications: `from_account_id` may now be a
 -- remote account id (`r_…`), so it loses its foreign key to `accounts`, and
 -- `from_actor_uri` records the actor URI so blocks and mutes keyed by URI can

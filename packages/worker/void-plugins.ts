@@ -5,8 +5,8 @@ import type { Plugin } from "vite-plus";
 import { z } from "zod";
 
 const root = import.meta.dirname;
-const entryClassesFile = path.join(root, "packages/worker/src/entry-classes.ts");
-const queuesDir = path.join(root, "packages/worker/app/queues");
+const entryClassesFile = path.join(root, "src/entry-classes.ts");
+const queuesDir = path.join(root, "app/queues");
 
 /**
  * Void generates the Worker entry (`.void/entry.ts`) and only exports its own
