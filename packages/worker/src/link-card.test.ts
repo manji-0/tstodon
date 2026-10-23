@@ -237,12 +237,25 @@ describe("link cards", () => {
     await withFetchStub(stub, () => unfurl(first.id, url));
     expect((await statusCard(first.id))?.title).toBe("First Title");
 
-    // Age the cache past its TTL, then change what the origin serves.
-    const aged = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
-    await env.DB.prepare("UPDATE link_cards SET fetched_at = ? WHERE url = ?")
-      .bind(aged, url)
-      .run();
+    // Change what the origin serves, then age the cache past its TTL. The
+    // post's own queued unfurl may still land after the aging and refresh
+    // the row, so age it again until it stays aged.
     title = "Second Title";
+    const aged = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    for (let stable = 0; stable < 3;) {
+      const row = await env.DB.prepare("SELECT fetched_at FROM link_cards WHERE url = ?")
+        .bind(url)
+        .first<{ fetched_at: string }>();
+      if (row?.fetched_at === aged) {
+        stable += 1;
+      } else {
+        stable = 0;
+        await env.DB.prepare("UPDATE link_cards SET fetched_at = ? WHERE url = ?")
+          .bind(aged, url)
+          .run();
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
     const second = await postStatus(email, `ttl link again ${url}`);
     await withFetchStub(stub, () => unfurl(second.id, url));
     expect((await statusCard(second.id))?.title).toBe("Second Title");

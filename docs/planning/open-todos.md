@@ -23,7 +23,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
-- Cloudflare Access replaced by Void Better Auth (passkey-only sign-up/sign-in, admin plugin roles) and a first-party Mastodon OAuth 2 server (apps, consent, `authorization_code` + PKCE, `client_credentials`, revoke, RFC 8414 metadata, coarse scope enforcement)
+- Cloudflare Access replaced by Void Better Auth (passkey-only sign-up/sign-in, admin plugin roles) and a first-party Mastodon OAuth 2 server (apps, consent, `authorization_code` + PKCE, `client_credentials`, revoke, RFC 8414 metadata) with Mastodon's per-endpoint granular scope enforcement
 
 - Remote statuses render `in_reply_to_id` / `in_reply_to_account_id` from their stored `inReplyTo`
 
