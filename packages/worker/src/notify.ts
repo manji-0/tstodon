@@ -8,6 +8,8 @@ import { RemoteAccountId } from "./remote-account-id";
 import { findActiveMute, findBlock } from "./block-mute-store";
 import { insertNotification } from "./notification-store";
 import { enqueuePushDeliveries } from "./push-delivery";
+import { parseInstanceIdentity } from "./runtime-config";
+import { mutedThreadStatusIds } from "./status-mute-store";
 import { publishToAccount } from "./stream-publish";
 
 export const notifyAccount = async (
@@ -34,6 +36,22 @@ export const notifyAccount = async (
   }
   if (disposition.value === "drop") {
     return ok(undefined);
+  }
+  // As Mastodon's NotifyService: nothing about a status in a conversation the
+  // recipient muted, so the list, groups, unread count, and push all agree.
+  if (input.statusId) {
+    const identity = parseInstanceIdentity(env);
+    if (identity.isOk()) {
+      const muted = await mutedThreadStatusIds(env.DB, identity.value, input.accountId, [
+        input.statusId,
+      ]);
+      if (muted.isErr()) {
+        return err(muted.error);
+      }
+      if (muted.value.has(input.statusId)) {
+        return ok(undefined);
+      }
+    }
   }
   const inserted = await insertNotification(env.DB, input);
   if (inserted.isErr()) {

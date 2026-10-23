@@ -33,7 +33,7 @@ import {
 import { isTruthy } from "../form-values";
 import { findTrendingLinkUrl } from "../trend-store";
 import { rejectedTrendTargets } from "../trend-review-store";
-import { filterMutedThreads } from "../status-mute-store";
+import { filterMutedThreads, mutedThreadStatusIds } from "../status-mute-store";
 
 /**
  * `local`/`remote` on a timeline (both documented): `local=true` keeps local
@@ -405,10 +405,20 @@ export const getV1TimelinesDirect = async (
     visible.value,
     await mastodonStatuses(c.env, identity.value, visible.value, user.value.id),
   );
+  // Remote replies into a muted conversation stay out, as local ones do.
+  const mutedRemote = await mutedThreadStatusIds(
+    c.env.DB,
+    identity.value,
+    user.value.id,
+    remote.value.map((status) => status.id),
+  );
+  if (mutedRemote.isErr()) {
+    return jsonRepositoryError(c, mutedRemote.error.message);
+  }
   const rendered = await remoteTimelineDocuments(
     c,
     identity.value,
-    remote.value,
+    remote.value.filter((status) => !mutedRemote.value.has(status.id)),
     user.value.id,
     () => true,
   );

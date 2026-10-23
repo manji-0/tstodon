@@ -7,7 +7,14 @@ import {
   muteStatus as muteStatusSql,
   unmuteStatus as unmuteStatusSql,
 } from "./generated/prisma/sql";
-import type { LocalStatus, LocalStatus as LocalStatusValue } from "@tstodon/domain";
+import type {
+  InstanceIdentity,
+  LocalStatus,
+  LocalStatus as LocalStatusValue,
+} from "@tstodon/domain";
+import { parseLocalStatusId } from "./activitypub";
+import { findRemoteStatusReplyTargets } from "./remote-reply-store";
+import { findRemoteStatusRefsByObjectUris } from "./remote-status-store";
 import { findStatusesByIds } from "./status-store";
 import { queryTyped, runTyped } from "./typed-sql";
 
@@ -114,12 +121,65 @@ export const unmuteStatusThread = async (
     return rows.length > 0;
   });
 
+/** How far up a remote reply chain to look for the local status it belongs under. */
+const REMOTE_THREAD_DEPTH = 20;
+
 /**
- * Of the given status ids, the ones whose conversation root the viewer muted.
- * Used to suppress notifications that reference a muted thread.
+ * For remote statuses, the local status their reply chain reaches (walking
+ * remote parents by URI), keyed by remote id. Chains that never reach a local
+ * status are left out: only local threads can be muted.
+ */
+const remoteLocalAncestors = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  remoteIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, string>, RepositoryError>> => {
+  const reached = new Map<string, string>();
+  // origin remote id -> the remote status reached so far on its chain
+  let current = new Map(remoteIds.map((id) => [id, id]));
+  const seen = new Set(remoteIds);
+  for (let hop = 0; hop < REMOTE_THREAD_DEPTH && current.size > 0; hop += 1) {
+    const targets = await findRemoteStatusReplyTargets(db, [...new Set(current.values())]);
+    if (targets.isErr()) {
+      return err(targets.error);
+    }
+    const parentUris = new Map<string, string>();
+    for (const [origin, remoteId] of current) {
+      const uri = targets.value.get(remoteId)?.inReplyToUri;
+      if (!uri) {
+        continue;
+      }
+      const localId = parseLocalStatusId(identity, uri);
+      if (localId) {
+        reached.set(origin, localId);
+      } else {
+        parentUris.set(origin, uri);
+      }
+    }
+    const refs = await findRemoteStatusRefsByObjectUris(db, [...parentUris.values()]);
+    if (refs.isErr()) {
+      return err(refs.error);
+    }
+    const next = new Map<string, string>();
+    for (const [origin, uri] of parentUris) {
+      const parentId = refs.value.get(uri)?.id;
+      if (parentId && !seen.has(parentId)) {
+        seen.add(parentId);
+        next.set(origin, parentId);
+      }
+    }
+    current = next;
+  }
+  return ok(reached);
+};
+
+/**
+ * Of the given status ids — local, or cached remote ones replying into a local
+ * thread — the ones whose conversation root the viewer muted.
  */
 export const mutedThreadStatusIds = async (
   db: D1Database,
+  identity: InstanceIdentity,
   accountId: string,
   statusIds: ReadonlyArray<string>,
 ): Promise<Result<ReadonlySet<string>, RepositoryError>> => {
@@ -134,16 +194,33 @@ export const mutedThreadStatusIds = async (
   if (loaded.isErr()) {
     return err(loaded.error);
   }
-  const statuses = [...loaded.value.values()];
-  const roots = await resolveThreadRootStatusIds(db, statuses);
+  // Ids that are not local statuses are remote ones; map each to the local
+  // status its chain reaches, which then resolves to a root like any other.
+  const ancestors = await remoteLocalAncestors(
+    db,
+    identity,
+    statusIds.filter((id) => !loaded.value.has(id)),
+  );
+  if (ancestors.isErr()) {
+    return err(ancestors.error);
+  }
+  const ancestorStatuses = await findStatusesByIds(db, [...new Set(ancestors.value.values())]);
+  if (ancestorStatuses.isErr()) {
+    return err(ancestorStatuses.error);
+  }
+  const roots = await resolveThreadRootStatusIds(db, [
+    ...loaded.value.values(),
+    ...ancestorStatuses.value.values(),
+  ]);
   if (roots.isErr()) {
     return err(roots.error);
   }
   const muted = new Set<string>();
-  for (const status of statuses) {
-    const root = roots.value.get(status.id);
+  for (const statusId of statusIds) {
+    const localId = loaded.value.has(statusId) ? statusId : ancestors.value.get(statusId);
+    const root = localId === undefined ? undefined : roots.value.get(localId);
     if (root !== undefined && mutedRoots.value.has(root)) {
-      muted.add(status.id);
+      muted.add(statusId);
     }
   }
   return ok(muted);

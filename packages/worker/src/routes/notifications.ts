@@ -84,7 +84,13 @@ export const getV1Notifications = async (
   const statusIds = rows.value
     .map((row) => row.status_id)
     .filter((id): id is string => typeof id === "string" && id.length > 0);
-  const mutedStatuses = await mutedThreadStatusIds(c.env.DB, user.value.id, statusIds);
+  // Also hides notifications created before the thread was muted.
+  const mutedStatuses = await mutedThreadStatusIds(
+    c.env.DB,
+    identity.value,
+    user.value.id,
+    statusIds,
+  );
   if (mutedStatuses.isErr()) {
     return jsonRepositoryError(c, mutedStatuses.error.message);
   }
