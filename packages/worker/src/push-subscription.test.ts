@@ -1,8 +1,10 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
+import { sha256Hex } from "./oauth-store";
+import { listPushSubscriptions } from "./push-subscription-store";
 import { bytesToBase64Url } from "./vapid";
 
 const json = async (
@@ -54,17 +56,11 @@ const subscriberKeys = async (): Promise<{ p256dh: string; auth: string }> => {
 
 const form = (fields: Record<string, string>): URLSearchParams => new URLSearchParams(fields);
 
-const subscribe = async (
-  email: string,
-  fields: Record<string, string>,
-  options: { admin?: boolean } = {},
-) =>
+/** Subscribe with the access token in `headers` (each token holds one subscription). */
+const subscribe = async (headers: Record<string, string>, fields: Record<string, string>) =>
   json("/api/v1/push/subscription", {
     method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded",
-      ...(await authHeaders(email, options)),
-    },
+    headers: { "content-type": "application/x-www-form-urlencoded", ...headers },
     body: form(fields),
   });
 
@@ -97,7 +93,7 @@ describe("push subscriptions", () => {
     expect((await json("/api/v1/push/subscription", { headers })).status).toBe(404);
 
     const keys = await subscriberKeys();
-    const created = await subscribe(email, {
+    const created = await subscribe(headers, {
       "subscription[endpoint]": "https://push.example/send/one",
       "subscription[keys][p256dh]": keys.p256dh,
       "subscription[keys][auth]": keys.auth,
@@ -122,15 +118,15 @@ describe("push subscriptions", () => {
     const fetched = await json("/api/v1/push/subscription", { headers });
     expect(read(SubscriptionSchema, fetched.body)).toEqual(subscription);
 
-    // The same endpoint replaces the subscription it already has.
-    const again = await subscribe(email, {
+    // A new POST with the same token replaces its subscription, as in Mastodon.
+    const again = await subscribe(headers, {
       "subscription[endpoint]": "https://push.example/send/one",
       "subscription[keys][p256dh]": keys.p256dh,
       "subscription[keys][auth]": keys.auth,
       "data[alerts][reblog]": "true",
     });
     const replaced = read(SubscriptionSchema, again.body);
-    expect(replaced.id).toBe(subscription.id);
+    expect(replaced.id).not.toBe(subscription.id);
     expect(replaced.alerts.reblog).toBe(true);
     expect(replaced.alerts.mention).toBe(false);
     expect(replaced.policy).toBe("all");
@@ -167,14 +163,16 @@ describe("push subscriptions", () => {
     ).toBe(404);
   });
 
-  it("keeps one subscription per endpoint and reports the latest", async () => {
+  it("keeps one subscription per access token", async () => {
     const email = "push-devices@example.com";
+    const phone = await authHeaders(email);
+    const laptop = await authHeaders(email);
     const first = await subscriberKeys();
     const second = await subscriberKeys();
     const one = read(
       SubscriptionSchema,
       (
-        await subscribe(email, {
+        await subscribe(phone, {
           "subscription[endpoint]": "https://push.example/device/a",
           "subscription[keys][p256dh]": first.p256dh,
           "subscription[keys][auth]": first.auth,
@@ -186,7 +184,7 @@ describe("push subscriptions", () => {
       (
         await json("/api/v1/push/subscription", {
           method: "POST",
-          headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+          headers: { "content-type": "application/json", ...laptop },
           body: JSON.stringify({
             subscription: { endpoint: "https://push.example/device/b", keys: second },
             data: { alerts: { poll: true } },
@@ -196,29 +194,52 @@ describe("push subscriptions", () => {
     );
     expect(two.id).not.toBe(one.id);
     expect(two.alerts.poll).toBe(true);
-    const latest = await json("/api/v1/push/subscription", {
-      headers: await authHeaders(email),
-    });
-    expect(read(SubscriptionSchema, latest.body).endpoint).toBe("https://push.example/device/b");
+
+    // Each token reads its own subscription, and a token without one has none.
+    const read1 = await json("/api/v1/push/subscription", { headers: phone });
+    expect(read(SubscriptionSchema, read1.body).endpoint).toBe("https://push.example/device/a");
+    const read2 = await json("/api/v1/push/subscription", { headers: laptop });
+    expect(read(SubscriptionSchema, read2.body).endpoint).toBe("https://push.example/device/b");
+    const other = await authHeaders(email);
+    expect((await json("/api/v1/push/subscription", { headers: other })).status).toBe(404);
+
+    // Notifications go to every device of the account.
+    const accountId = read(
+      z.object({ id: z.string() }),
+      (await json("/api/v1/accounts/verify_credentials", { headers: phone })).body,
+    ).id;
+    const all = await listPushSubscriptions(env.DB, accountId);
+    expect(all.isOk() && all.value.map((row) => row.endpoint)).toEqual([
+      "https://push.example/device/a",
+      "https://push.example/device/b",
+    ]);
+
+    // Deleting through one token leaves the other's.
+    await json("/api/v1/push/subscription", { method: "DELETE", headers: phone });
+    expect((await json("/api/v1/push/subscription", { headers: laptop })).status).toBe(200);
+
+    // Revoking a token removes its subscription.
+    const laptopToken = (laptop.Authorization ?? "").replace("Bearer ", "");
+    await env.DB.prepare("DELETE FROM oauth_access_tokens WHERE token_hash = ?")
+      .bind(await sha256Hex(laptopToken))
+      .run();
+    const left = await listPushSubscriptions(env.DB, accountId);
+    expect(left.isOk() && left.value).toEqual([]);
   });
 
   it("lets an admin subscribe to admin alerts", async () => {
     const keys = await subscriberKeys();
-    const created = await subscribe(
-      "push-admin@example.com",
-      {
-        "subscription[endpoint]": "https://push.example/admin",
-        "subscription[keys][p256dh]": keys.p256dh,
-        "subscription[keys][auth]": keys.auth,
-        "data[alerts][admin.report]": "true",
-      },
-      { admin: true },
-    );
+    const created = await subscribe(await authHeaders("push-admin@example.com", { admin: true }), {
+      "subscription[endpoint]": "https://push.example/admin",
+      "subscription[keys][p256dh]": keys.p256dh,
+      "subscription[keys][auth]": keys.auth,
+      "data[alerts][admin.report]": "true",
+    });
     expect(read(SubscriptionSchema, created.body).alerts["admin.report"]).toBe(true);
   });
 
   it("rejects bad endpoints, keys, and policies", async () => {
-    const email = "push-invalid@example.com";
+    const client = await authHeaders("push-invalid@example.com");
     const keys = await subscriberKeys();
     const base = {
       "subscription[endpoint]": "https://push.example/ok",
@@ -226,25 +247,25 @@ describe("push subscriptions", () => {
       "subscription[keys][auth]": keys.auth,
     };
     expect(
-      (await subscribe(email, { ...base, "subscription[endpoint]": "http://push.example/plain" }))
+      (await subscribe(client, { ...base, "subscription[endpoint]": "http://push.example/plain" }))
         .status,
     ).toBe(422);
     expect(
-      (await subscribe(email, { ...base, "subscription[endpoint]": "https://127.0.0.1/push" }))
+      (await subscribe(client, { ...base, "subscription[endpoint]": "https://127.0.0.1/push" }))
         .status,
     ).toBe(422);
     expect(
-      (await subscribe(email, { ...base, "subscription[endpoint]": "not a url" })).status,
+      (await subscribe(client, { ...base, "subscription[endpoint]": "not a url" })).status,
     ).toBe(422);
     expect(
-      (await subscribe(email, { ...base, "subscription[keys][auth]": "c2hvcnQ" })).status,
+      (await subscribe(client, { ...base, "subscription[keys][auth]": "c2hvcnQ" })).status,
     ).toBe(422);
     expect(
-      (await subscribe(email, { ...base, "subscription[keys][p256dh]": keys.auth })).status,
+      (await subscribe(client, { ...base, "subscription[keys][p256dh]": keys.auth })).status,
     ).toBe(422);
-    expect((await subscribe(email, { ...base, "data[policy]": "everyone" })).status).toBe(422);
+    expect((await subscribe(client, { ...base, "data[policy]": "everyone" })).status).toBe(422);
     expect(
-      (await subscribe(email, { "subscription[endpoint]": "https://push.example/ok" })).status,
+      (await subscribe(client, { "subscription[endpoint]": "https://push.example/ok" })).status,
     ).toBe(400);
     expect(
       (

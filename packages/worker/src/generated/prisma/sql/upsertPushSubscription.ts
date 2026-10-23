@@ -5,6 +5,7 @@
 import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
+ * @param accessTokenId
  * @param accountId
  * @param endpoint
  * @param p256dh
@@ -15,8 +16,9 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param now
  */
 export const upsertPushSubscription = $runtime.makeTypedQueryFactory(
-  "INSERT INTO push_subscriptions\n(account_id, endpoint, p256dh, auth, standard, alerts_json, policy, created_at, updated_at)\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)\nON CONFLICT (account_id, endpoint) DO UPDATE SET\np256dh = excluded.p256dh,\nauth = excluded.auth,\nstandard = excluded.standard,\nalerts_json = excluded.alerts_json,\npolicy = excluded.policy,\nupdated_at = excluded.updated_at\nRETURNING id, account_id, endpoint, p256dh, auth, standard, alerts_json, policy",
+  "INSERT OR REPLACE INTO push_subscriptions\n(access_token_id, account_id, endpoint, p256dh, auth, standard, alerts_json, policy, created_at, updated_at)\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)\nRETURNING id, account_id, endpoint, p256dh, auth, standard, alerts_json, policy",
 ) as (
+  accessTokenId: string,
   accountId: string,
   endpoint: string,
   p256dh: string,
@@ -29,6 +31,7 @@ export const upsertPushSubscription = $runtime.makeTypedQueryFactory(
 
 export namespace upsertPushSubscription {
   export type Parameters = [
+    accessTokenId: string,
     accountId: string,
     endpoint: string,
     p256dh: string,
@@ -39,7 +42,7 @@ export namespace upsertPushSubscription {
     now: string,
   ];
   export type Result = {
-    id: number;
+    id: number | null;
     account_id: string;
     endpoint: string;
     p256dh: string;

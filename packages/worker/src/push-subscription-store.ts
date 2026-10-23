@@ -7,7 +7,7 @@ import { parseJsonColumn } from "./json-column";
 import { queryTyped } from "./typed-sql";
 import {
   deletePushSubscription as deletePushSubscriptionSql,
-  findLatestPushSubscription as findLatestPushSubscriptionSql,
+  findTokenPushSubscription as findTokenPushSubscriptionSql,
   listPushSubscriptions as listPushSubscriptionsSql,
   updatePushSubscriptionData as updatePushSubscriptionDataSql,
   upsertPushSubscription as upsertPushSubscriptionSql,
@@ -111,10 +111,14 @@ const subscriptionsFrom = (rows: ReadonlyArray<unknown>): PushSubscription[] =>
     return subscription ? [subscription] : [];
   });
 
-/** Create the account's subscription for `endpoint`, or replace the one it has. */
+/**
+ * Subscribe the access token: a token holds one subscription, and a new one
+ * replaces it (with a new id), as Mastodon's `POST` does.
+ */
 export const upsertPushSubscription = async (
   db: D1Database,
   input: Readonly<{
+    accessTokenId: string;
     accountId: string;
     endpoint: string;
     p256dh: string;
@@ -128,6 +132,7 @@ export const upsertPushSubscription = async (
     const rows = await queryTyped(
       db,
       upsertPushSubscriptionSql(
+        input.accessTokenId,
         input.accountId,
         input.endpoint,
         input.p256dh,
@@ -141,14 +146,14 @@ export const upsertPushSubscription = async (
     return subscriptionsFrom(rows)[0];
   });
 
-/** The account's most recently created or updated subscription. */
-export const findLatestPushSubscription = async (
+/** The access token's subscription. */
+export const findTokenPushSubscription = async (
   db: D1Database,
-  accountId: string,
+  accessTokenId: string,
 ): Promise<Result<PushSubscription | undefined, RepositoryError>> =>
   runD1(
     async () =>
-      subscriptionsFrom(await queryTyped(db, findLatestPushSubscriptionSql(accountId)))[0],
+      subscriptionsFrom(await queryTyped(db, findTokenPushSubscriptionSql(accessTokenId)))[0],
   );
 
 export const listPushSubscriptions = async (
@@ -159,8 +164,7 @@ export const listPushSubscriptions = async (
 
 export const updatePushSubscriptionData = async (
   db: D1Database,
-  accountId: string,
-  id: number,
+  accessTokenId: string,
   alerts: PushAlerts,
   policy: PushPolicy,
 ): Promise<Result<PushSubscription | undefined, RepositoryError>> =>
@@ -169,7 +173,7 @@ export const updatePushSubscriptionData = async (
       subscriptionsFrom(
         await queryTyped(
           db,
-          updatePushSubscriptionDataSql(accountId, id, JSON.stringify(alerts), policy, nowIso()),
+          updatePushSubscriptionDataSql(accessTokenId, JSON.stringify(alerts), policy, nowIso()),
         ),
       )[0],
   );

@@ -184,8 +184,6 @@ export * from "./sql/findFilterStatusById";
 
 export * from "./sql/findFollowKind";
 
-export * from "./sql/findLatestPushSubscription";
-
 export * from "./sql/findLinkCard";
 
 export * from "./sql/findListForAccount";
@@ -249,6 +247,8 @@ export * from "./sql/findStatusById";
 export * from "./sql/findStatusIdempotency";
 
 export * from "./sql/findStatusUpdatedAt";
+
+export * from "./sql/findTokenPushSubscription";
 
 export * from "./sql/followTag";
 

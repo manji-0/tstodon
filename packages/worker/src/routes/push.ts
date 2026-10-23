@@ -12,7 +12,7 @@ import {
 } from "../http";
 import {
   deletePushSubscription,
-  findLatestPushSubscription,
+  findTokenPushSubscription,
   noAlerts,
   PUSH_ALERT_KEYS,
   PushPolicySchema,
@@ -27,10 +27,10 @@ import { isTruthy } from "../form-values";
 import { base64UrlToBytes, vapidPublicKey } from "../vapid";
 
 /**
- * Web Push subscriptions (`/api/v1/push/subscription`). Mastodon keeps one per
- * access token; tstodon tokens have no identity of their own, so the account
- * holds one per push endpoint and these routes address its most recently
- * created or updated subscription.
+ * Web Push subscriptions (`/api/v1/push/subscription`). As in Mastodon, each
+ * OAuth access token holds at most one: `POST` replaces it, `GET` / `PUT` /
+ * `DELETE` address it, and revoking the token removes it. Notifications go to
+ * every subscription of the account.
  */
 
 const booleanish = z.union([z.boolean(), z.string(), z.number()]);
@@ -142,6 +142,7 @@ export const postV1PushSubscription = async (
     return unprocessable(c, "Validation failed: Policy is not included in the list");
   }
   const stored = await upsertPushSubscription(c.env.DB, {
+    accessTokenId: session.value.token.id,
     accountId: session.value.account.id,
     endpoint: url.toString(),
     p256dh: keys.p256dh,
@@ -163,7 +164,7 @@ export const getV1PushSubscription = async (
   if (session.isErr()) {
     return jsonAuthError(c, session.error);
   }
-  const found = await findLatestPushSubscription(c.env.DB, session.value.account.id);
+  const found = await findTokenPushSubscription(c.env.DB, session.value.token.id);
   if (found.isErr()) {
     return jsonRepositoryError(c, found.error.message);
   }
@@ -186,18 +187,9 @@ export const putV1PushSubscription = async (
   if (!policy) {
     return unprocessable(c, "Validation failed: Policy is not included in the list");
   }
-  const accountId = session.value.account.id;
-  const current = await findLatestPushSubscription(c.env.DB, accountId);
-  if (current.isErr()) {
-    return jsonRepositoryError(c, current.error.message);
-  }
-  if (!current.value) {
-    return notFound(c);
-  }
   const updated = await updatePushSubscriptionData(
     c.env.DB,
-    accountId,
-    current.value.id,
+    session.value.token.id,
     alertsFrom(body.value.data?.alerts, session.value.role),
     policy,
   );
@@ -207,7 +199,7 @@ export const putV1PushSubscription = async (
   return updated.value ? c.json(subscriptionDocument(c.env, updated.value)) : notFound(c);
 };
 
-/** Removes the most recent subscription; succeeds when there is none. */
+/** Removes the token's subscription; succeeds when there is none. */
 export const deleteV1PushSubscription = async (
   c: Context<{ Bindings: Env }, "/api/v1/push/subscription">,
 ) => {
@@ -215,7 +207,7 @@ export const deleteV1PushSubscription = async (
   if (session.isErr()) {
     return jsonAuthError(c, session.error);
   }
-  const current = await findLatestPushSubscription(c.env.DB, session.value.account.id);
+  const current = await findTokenPushSubscription(c.env.DB, session.value.token.id);
   if (current.isErr()) {
     return jsonRepositoryError(c, current.error.message);
   }

@@ -15,12 +15,6 @@ Tracked leftovers so e2e work can proceed without losing them.
 | D1-4 | Timeline preload: `Promise.all` vs single `runD1Batch` | Defer until metrics show a success criterion           |
 | D1-5 | Hot-key Durable Object for write serialization         | Only with evidence beyond D1 primary                   |
 
-## Web Push (open)
-
-| ID   | Item                    | Notes                                                                                                    |
-| ---- | ----------------------- | -------------------------------------------------------------------------------------------------------- |
-| WP-2 | Per-token subscriptions | Unblocked: OAuth tokens now have ids (`oauth_access_tokens`); subscriptions are still keyed per endpoint |
-
 ## Direct messages (open)
 
 | ID   | Item                           | Notes                                                                                                                                                                                                                                                       |
@@ -43,7 +37,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 - Remote Follow/Like/Announce and mentions in new remote notes notify the local target (`r_…` senders, deduplicated, block/mute/domain-block aware); remote accounts can be blocked and muted
 
-- Web Push: subscriptions per account + endpoint, VAPID key advertised, notifications delivered (`aes128gcm`/`aesgcm`, VAPID ES256)
+- Web Push: subscriptions per OAuth access token (WP-2; replaced by the token's next `POST`, removed with the token), VAPID key advertised, notifications delivered (`aes128gcm`/`aesgcm`, VAPID ES256)
 
 - Toolchain on Vite+ (`vp check`/`test`/`dev`/`build`, Vitest 5 via `@cloudflare/vitest-plugin`, Worker built by Void (`voidPlugin()`, wrapping `@cloudflare/vite-plugin`))
 - `FEDERATION_ALLOW_HOSTS` matches `host:port` peers by hostname (inbox gate and follower fan-out)

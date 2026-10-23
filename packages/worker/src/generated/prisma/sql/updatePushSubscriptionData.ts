@@ -5,32 +5,24 @@
 import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
- * @param accountId
- * @param id
+ * @param accessTokenId
  * @param alertsJson
  * @param policy
  * @param now
  */
 export const updatePushSubscriptionData = $runtime.makeTypedQueryFactory(
-  "UPDATE push_subscriptions\nSET alerts_json = $3, policy = $4, updated_at = $5\nWHERE account_id = $1 AND id = $2\nRETURNING id, account_id, endpoint, p256dh, auth, standard, alerts_json, policy",
+  "UPDATE push_subscriptions\nSET alerts_json = $2, policy = $3, updated_at = $4\nWHERE access_token_id = $1\nRETURNING id, account_id, endpoint, p256dh, auth, standard, alerts_json, policy",
 ) as (
-  accountId: string,
-  id: number,
+  accessTokenId: string,
   alertsJson: string,
   policy: string,
   now: string,
 ) => $runtime.TypedSql<updatePushSubscriptionData.Parameters, updatePushSubscriptionData.Result>;
 
 export namespace updatePushSubscriptionData {
-  export type Parameters = [
-    accountId: string,
-    id: number,
-    alertsJson: string,
-    policy: string,
-    now: string,
-  ];
+  export type Parameters = [accessTokenId: string, alertsJson: string, policy: string, now: string];
   export type Result = {
-    id: number;
+    id: number | null;
     account_id: string;
     endpoint: string;
     p256dh: string;

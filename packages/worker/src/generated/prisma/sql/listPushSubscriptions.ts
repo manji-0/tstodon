@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  */
 export const listPushSubscriptions = $runtime.makeTypedQueryFactory(
-  "SELECT id, account_id, endpoint, p256dh, auth, standard, alerts_json, policy\nFROM push_subscriptions\nWHERE account_id = $1\nORDER BY updated_at DESC, id DESC",
+  "SELECT id, account_id, endpoint, p256dh, auth, standard, alerts_json, policy\nFROM push_subscriptions\nWHERE account_id = $1\nORDER BY id",
 ) as (
   accountId: string,
 ) => $runtime.TypedSql<listPushSubscriptions.Parameters, listPushSubscriptions.Result>;

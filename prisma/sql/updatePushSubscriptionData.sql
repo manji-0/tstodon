@@ -1,9 +1,8 @@
--- @param {String} $1:accountId
--- @param {Int} $2:id
--- @param {String} $3:alertsJson
--- @param {String} $4:policy
--- @param {String} $5:now
+-- @param {String} $1:accessTokenId
+-- @param {String} $2:alertsJson
+-- @param {String} $3:policy
+-- @param {String} $4:now
 UPDATE push_subscriptions
-  SET alerts_json = $3, policy = $4, updated_at = $5
-  WHERE account_id = $1 AND id = $2
+  SET alerts_json = $2, policy = $3, updated_at = $4
+  WHERE access_token_id = $1
 RETURNING id, account_id, endpoint, p256dh, auth, standard, alerts_json, policy
