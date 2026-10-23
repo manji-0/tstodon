@@ -282,7 +282,7 @@ None: every route listed above is implemented.
 <!-- constrained-by ../reference/configuration.md#authentication -->
 <!-- dagayn: implemented-by packages/worker/src/auth.ts::authenticate -->
 
-Protected API routes take an OAuth bearer token (`Authorization: Bearer …`) that this Worker issued through `/oauth/authorize` and `/oauth/token`; people sign in with a passkey through Void's Better Auth (`/auth/sign_up`, `/auth/sign_in`). `authenticate` resolves the token, its scopes, and the account in one D1 query and checks the request against the scopes. Role is `{ kind: "Admin" }` when the linked Better Auth user's role includes `admin` (admin plugin), otherwise `{ kind: "User" }`. Worker tests seed users, accounts, and tokens with `packages/worker/test/auth-fixture.ts`. `requireAdmin` maps non-admin sessions to `kind: Forbidden`; a token without the needed scope is `kind: InsufficientScope`.
+Protected API routes take an OAuth bearer token (`Authorization: Bearer …`) that this Worker issued through `/oauth/authorize` and `/oauth/token`; people sign up by confirming an emailed link and then creating a passkey, and sign in with that passkey through Void's Better Auth (`/auth/sign_up`, `/auth/sign_in`). `authenticate` resolves the token, its scopes, and the account in one D1 query and checks the request against the scopes. Role is `{ kind: "Admin" }` when the linked Better Auth user's role includes `admin` (admin plugin), otherwise `{ kind: "User" }`. Worker tests seed users, accounts, and tokens with `packages/worker/test/auth-fixture.ts`. `requireAdmin` maps non-admin sessions to `kind: Forbidden`; a token without the needed scope is `kind: InsufficientScope`.
 
 ## Federation
 

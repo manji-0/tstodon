@@ -70,7 +70,7 @@ export const signedInAccount = async (
   const now = Date.now();
   await env.DB.prepare(
     `INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt, role)
-     VALUES (?, ?, ?, 0, ?, ?, ?)`,
+     VALUES (?, ?, ?, 1, ?, ?, ?)`,
   )
     .bind(userId, email.value, email.value, now, now, role)
     .run();

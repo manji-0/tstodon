@@ -38,6 +38,7 @@
     "INSTANCE_THUMBNAIL_URL": "http://127.0.0.1:8792/site/thumbnail.png",
     "MEDIA_PUBLIC_BASE_URL": "http://127.0.0.1:8792",
     "EMAIL_FROM": "tstodon <noreply@example.com>",
+    "EMAIL_TRANSPORT": "capture",
   },
   "d1_databases": [
     {
@@ -51,6 +52,11 @@
     {
       "binding": "MEDIA",
       "bucket_name": "tstodon-e2e-b-media",
+    },
+  ],
+  "send_email": [
+    {
+      "name": "EMAIL",
     },
   ],
   "kv_namespaces": [

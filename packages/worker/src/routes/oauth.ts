@@ -11,10 +11,13 @@ import {
   errorPage,
   signInPage,
   signUpPage,
+  signUpPasskeyPage,
+  signUpSentPage,
   safeReturnTo,
   type ConsentRequest,
 } from "../auth-pages";
 import { readOptionalBody } from "../http";
+import { checkSignupLink, requestSignup, signupErrorMessage } from "../passkey-signup";
 import {
   authenticateOauthClient,
   consumeAuthorizationCode,
@@ -436,9 +439,62 @@ export const getAuthSignIn = async (c: Context<{ Bindings: Env }, "/auth/sign_in
 };
 
 export const getAuthSignUp = (c: Context<{ Bindings: Env }, "/auth/sign_up">) =>
-  c.html(signUpPage(instanceName(c.env), returnTo(c), registrationsOpen(c.env)));
+  c.html(signUpPage(instanceName(c.env), registrationsOpen(c.env)));
+
+const SignUpBodySchema = z.object({
+  username: z.string().trim().default(""),
+  email: z.string().trim().default(""),
+});
+
+/** Step one of sign-up: mail a confirmation link for the username and address. */
+export const postAuthSignUp = async (c: Context<{ Bindings: Env }, "/auth/sign_up">) => {
+  const body = await readOptionalBody(c, SignUpBodySchema);
+  const form = body.isOk() ? body.value : { username: "", email: "" };
+  const requested = await requestSignup(c.env, form.username, form.email);
+  if (requested.isErr()) {
+    const status =
+      requested.error.kind === "RepositoryError" || requested.error.kind === "MailError"
+        ? 500
+        : 422;
+    return c.html(
+      signUpPage(
+        instanceName(c.env),
+        registrationsOpen(c.env),
+        form,
+        signupErrorMessage(requested.error),
+      ),
+      status,
+    );
+  }
+  return c.html(signUpSentPage(instanceName(c.env), requested.value.email));
+};
+
+const TokenQuerySchema = z.object({ token: z.string().optional() });
+const parseTokenQuery = schemaResult(TokenQuerySchema);
+
+/** Step two, from the emailed link: the passkey page, if the link is still good. */
+export const getAuthSignUpVerify = async (
+  c: Context<{ Bindings: Env }, "/auth/sign_up/verify">,
+) => {
+  const query = parseTokenQuery(c.req.query());
+  const token = query.isOk() ? query.value.token : undefined;
+  const intent = await checkSignupLink(c.env, token);
+  if (intent.isErr() || token === undefined) {
+    return refuse(
+      c,
+      signupErrorMessage(intent.isErr() ? intent.error : { kind: "InvalidSignupLink" }),
+    );
+  }
+  return c.html(signUpPasskeyPage(instanceName(c.env), intent.value.username, token));
+};
 
 /** The old Access explainer URL now leads to sign-in. */
 export const getLogin = (c: Context<{ Bindings: Env }, "/login">) => c.redirect("/auth/sign_in");
 
-warmSchemas([AuthorizeParamsSchema, TokenParamsSchema, ReturnToQuerySchema]);
+warmSchemas([
+  AuthorizeParamsSchema,
+  TokenParamsSchema,
+  ReturnToQuerySchema,
+  SignUpBodySchema,
+  TokenQuerySchema,
+]);

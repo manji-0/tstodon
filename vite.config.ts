@@ -42,6 +42,8 @@ export default defineConfig({
                 // Test-only Better Auth signing secret (example.com is not a
                 // local host, so Void's dev fallback does not apply).
                 BETTER_AUTH_SECRET: "tstodon-test-only-better-auth-secret-0123456789",
+                // Sign-up mail lands in APP_CACHE, where tests read the link.
+                EMAIL_TRANSPORT: "capture",
               },
             },
           }),

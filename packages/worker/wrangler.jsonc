@@ -50,6 +50,7 @@
     "MEDIA_PUBLIC_BASE_URL": "https://media.example.com",
     "CORS_ALLOWED_ORIGINS": "",
     "EMAIL_FROM": "tstodon <noreply@example.com>",
+    "EMAIL_TRANSPORT": "send_email",
   },
   "d1_databases": [
     {
@@ -63,6 +64,11 @@
     {
       "binding": "MEDIA",
       "bucket_name": "tstodon-media",
+    },
+  ],
+  "send_email": [
+    {
+      "name": "EMAIL",
     },
   ],
   "kv_namespaces": [

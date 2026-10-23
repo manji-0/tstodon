@@ -53,29 +53,58 @@ const WEBAUTHN_HELPERS = `
         catch { return response.statusText; }
       };`;
 
-export const signUpPage = (instanceName: string, returnTo: string, open: boolean): string =>
+export type SignUpForm = Readonly<{ username: string; email: string }>;
+
+/** Step one: username and email; the server mails a confirmation link. */
+export const signUpPage = (
+  instanceName: string,
+  open: boolean,
+  form: SignUpForm = { username: "", email: "" },
+  error?: string,
+): string =>
   page(
     `Sign up · ${instanceName}`,
     open
       ? `      <h1>Create an account on ${escapeHtml(instanceName)}</h1>
-      <p class="muted">Your account signs in with a passkey; there is no password.</p>
-      <form id="form" data-return-to="${escapeHtml(returnTo)}">
+      <p class="muted">We email you a link to confirm the address; the link lets you create the passkey you sign in with. There is no password.</p>
+      <form method="post" action="/auth/sign_up">
         <label for="username">Username</label>
-        <input id="username" name="username" required maxlength="30" pattern="[A-Za-z0-9_]+" autocomplete="username webauthn" />
-        <button type="submit">Create passkey and sign up</button>
+        <input id="username" name="username" required maxlength="30" pattern="[A-Za-z0-9_]+" autocomplete="username" value="${escapeHtml(form.username)}" />
+        <label for="email">Email address</label>
+        <input id="email" name="email" type="email" required autocomplete="email" value="${escapeHtml(form.email)}" />
+        <button type="submit">Send confirmation email</button>
       </form>
-      <p id="error" class="error" role="alert"></p>
-      <p><a href="/auth/sign_in?return_to=${encodeURIComponent(returnTo)}">Already have an account? Sign in</a></p>`
+      <p class="error" role="alert">${error === undefined ? "" : escapeHtml(error)}</p>
+      <p><a href="/auth/sign_in">Already have an account? Sign in</a></p>`
       : `      <h1>Sign-ups are closed</h1>
       <p>${escapeHtml(instanceName)} is not accepting new accounts.</p>`,
-    open
-      ? `${WEBAUTHN_HELPERS}
+  );
+
+export const signUpSentPage = (instanceName: string, email: string): string =>
+  page(
+    `Check your email · ${instanceName}`,
+    `      <h1>Check your email</h1>
+      <p>We sent a link to <strong>${escapeHtml(email)}</strong>. Open it within an hour to confirm the address and create your passkey.</p>
+      <p class="muted">No email? Check spam, or <a href="/auth/sign_up">start again</a>.</p>`,
+  );
+
+/** Step two, from the emailed link: create the passkey. */
+export const signUpPasskeyPage = (instanceName: string, username: string, token: string): string =>
+  page(
+    `Create your passkey · ${instanceName}`,
+    `      <h1>Create your passkey</h1>
+      <p>Your email address is confirmed. Create a passkey for <strong>@${escapeHtml(username)}</strong> on ${escapeHtml(instanceName)}.</p>
+      <form id="form" data-token="${escapeHtml(token)}" data-username="${escapeHtml(username)}">
+        <button type="submit">Create passkey</button>
+      </form>
+      <p id="error" class="error" role="alert"></p>`,
+    `${WEBAUTHN_HELPERS}
       document.getElementById("form").addEventListener("submit", async (event) => {
         event.preventDefault();
         show("");
-        const username = document.getElementById("username").value.trim().toLowerCase();
+        const { token, username } = event.target.dataset;
         try {
-          const query = new URLSearchParams({ context: username, name: username });
+          const query = new URLSearchParams({ context: token, name: username });
           const optionsResponse = await fetch("/api/auth/passkey/generate-register-options?" + query);
           if (!optionsResponse.ok) return show(await failure(optionsResponse));
           const options = await optionsResponse.json();
@@ -105,12 +134,11 @@ export const signUpPage = (instanceName: string, returnTo: string, open: boolean
             body: JSON.stringify({ response, createSession: true }),
           });
           if (!verified.ok) return show(await failure(verified));
-          location.assign(event.target.dataset.returnTo);
+          location.assign("/auth/sign_in");
         } catch (error) {
           show(error instanceof Error ? error.message : String(error));
         }
-      });`
-      : "",
+      });`,
   );
 
 export const signInPage = (
@@ -126,7 +154,7 @@ export const signInPage = (
         <button type="submit">Sign in with a passkey</button>
       </form>
       <p id="error" class="error" role="alert"></p>
-      <p><a href="/auth/sign_up?return_to=${encodeURIComponent(returnTo)}">Create an account</a></p>`
+      <p><a href="/auth/sign_up">Create an account</a></p>`
       : `      <h1>Signed in</h1>
       <p>You are signed in to ${escapeHtml(instanceName)} as <strong>@${escapeHtml(signedInAs)}</strong>.
       Use a Mastodon app to read and post.</p>

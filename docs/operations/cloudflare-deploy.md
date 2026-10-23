@@ -4,7 +4,7 @@
 
 1. Provision Cloudflare resources with [`infra/cloudflare`](../../infra/cloudflare/README.md) (`tofu apply`): D1, KV, R2, Queue.
 2. Copy `tofu output -json wrangler_bindings` into production `packages/worker/wrangler.jsonc`, and pin the account there (`account_id`) or export `CLOUDFLARE_ACCOUNT_ID` (replace placeholder D1 / KV / R2 / queue identifiers).
-3. Put the Better Auth signing secret, once: `openssl rand -base64 32 | wrangler secret put BETTER_AUTH_SECRET` (see [Authentication](../reference/configuration.md#authentication)). Without it every request fails. Set `ADMIN_USERNAMES` to the username you will sign up with first, and `REGISTRATIONS_OPEN` / `REGISTRATION_APPROVAL` as wanted.
+3. Put the Better Auth signing secret, once: `openssl rand -base64 32 | wrangler secret put BETTER_AUTH_SECRET` (see [Authentication](../reference/configuration.md#authentication)). Without it every request fails. Set `ADMIN_USERNAMES` to the username you will sign up with first, and `REGISTRATIONS_OPEN` / `REGISTRATION_APPROVAL` as wanted. Sign-up mails a confirmation link: onboard the `EMAIL_FROM` domain for sending in Cloudflare Email Service (the `EMAIL` send_email binding) and keep `EMAIL_TRANSPORT=send_email`.
 4. Serve the Worker directly on its hostname: sign-in and OAuth are the Worker's own, so no Cloudflare Access application should sit in front of `/api*`, `/oauth/*`, or `/auth/*`.
 5. Put the Web Push key as a secret, once: `wrangler secret put VAPID_PRIVATE_JWK` (see [Web Push](../reference/configuration.md#web-push)); optionally set `VAPID_SUBJECT`.
 6. Authenticate wrangler (`wrangler login`, or `CLOUDFLARE_API_TOKEN` with Workers Scripts:Edit plus read on the bound resources). The deploy step below applies remote D1 migrations itself.

@@ -120,6 +120,31 @@ export const waitOk = async (url: string, label: string): Promise<void> => {
   fail(`${label} not ready`, url);
 };
 
+/** The captured confirmation email for `email` on an e2e instance (`EMAIL_TRANSPORT=capture`). */
+const mailboxText = (instance: E2eInstance, email: string): string => {
+  const config = instance === "a" ? "e2e/a.wrangler.jsonc" : "e2e/b.wrangler.jsonc";
+  const persist = instance === "a" ? ".wrangler/e2e-a" : ".wrangler/e2e-b";
+  return execFileSync(
+    "pnpm",
+    [
+      "exec",
+      "wrangler",
+      "kv",
+      "key",
+      "get",
+      `mailbox:${email.toLowerCase()}`,
+      "--binding",
+      "APP_CACHE",
+      "--local",
+      "--config",
+      config,
+      "--persist-to",
+      persist,
+    ],
+    { cwd: root, encoding: "utf8" },
+  );
+};
+
 /** A cookie-keeping client for one instance: what a browser does during sign-up. */
 const browserFor = (origin: string) => {
   const cookies = new Map<string, string>();
@@ -151,7 +176,7 @@ const IssuedToken = z.object({ access_token: z.string() });
 const OOB = "urn:ietf:wg:oauth:2.0:oob";
 
 /**
- * Sign up on `origin` with a software passkey, authorize an app through the
+ * Sign up on `origin` (confirm the email link, then a software passkey), authorize an app through the
  * consent page, and return its bearer token. The username is the email's
  * local part, sanitized as account usernames are.
  */
@@ -164,8 +189,22 @@ export const authHeaders = async (
     .replaceAll("-", "_")
     .replace(/[^a-z0-9_]/g, "");
   const browser = browserFor(origin);
+  const requested = await browser("/auth/sign_up", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ username, email }).toString(),
+  });
+  if (!requested.ok) {
+    return fail(`sign-up request for ${username} on ${origin}`, await requested.text());
+  }
+  // The e2e instances capture mail in APP_CACHE instead of sending it.
+  const mail = mailboxText(origin === A ? "a" : "b", email);
+  const linkToken = /\/auth\/sign_up\/verify\?token=([\w-]+)/.exec(mail)?.[1];
+  if (!linkToken) {
+    return fail(`sign-up link for ${username} on ${origin}`, mail);
+  }
   const options = await browser(
-    `/api/auth/passkey/generate-register-options?${new URLSearchParams({ context: username, name: username }).toString()}`,
+    `/api/auth/passkey/generate-register-options?${new URLSearchParams({ context: linkToken, name: username }).toString()}`,
   );
   if (!options.ok) {
     return fail(`sign-up options for ${username} on ${origin}`, await options.text());

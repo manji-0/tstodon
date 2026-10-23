@@ -1,8 +1,9 @@
 import { schemaResult } from "@tstodon/core";
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { softPasskey, type SoftPasskey } from "../test/soft-passkey";
+import { mailboxKey } from "./mailer";
 import { pkceS256 } from "./oauth-store";
 
 const ORIGIN = "https://example.com";
@@ -64,11 +65,38 @@ const RegistrationOptionsSchema = z.object({
   rp: z.object({ id: z.string().optional() }),
 });
 
-const signUp = async (username: string): Promise<{ fetcher: Browser; passkey: SoftPasskey }> => {
-  const fetcher = browser();
-  const options = await fetcher(
-    `/api/auth/passkey/generate-register-options?${new URLSearchParams({ context: username, name: username }).toString()}`,
+const MailSchema = z.object({ to: z.string(), subject: z.string(), text: z.string() });
+
+/** Step one: submit the form; the captured email's link token. */
+const requestSignupLink = async (
+  fetcher: Browser,
+  username: string,
+  email: string,
+): Promise<string> => {
+  const sent = await postForm(fetcher, "/auth/sign_up", { username, email });
+  expect(sent.status).toBe(200);
+  expect(await sent.text()).toContain("Check your email");
+  const mail = read(MailSchema, JSON.parse((await env.APP_CACHE.get(mailboxKey(email))) ?? "null"));
+  const link = /https:\/\/example\.com\/auth\/sign_up\/verify\?token=([\w-]+)/.exec(mail.text);
+  expect(link).not.toBeNull();
+  return link?.[1] ?? "";
+};
+
+const registrationOptions = (fetcher: Browser, context: string) =>
+  fetcher(
+    `/api/auth/passkey/generate-register-options?${new URLSearchParams({ context }).toString()}`,
   );
+
+const signUp = async (
+  username: string,
+  email = `${username}@mail.example`,
+): Promise<{ fetcher: Browser; passkey: SoftPasskey; token: string }> => {
+  const fetcher = browser();
+  const token = await requestSignupLink(fetcher, username, email);
+  const page = await fetcher(`/auth/sign_up/verify?${new URLSearchParams({ token }).toString()}`);
+  expect(page.status).toBe(200);
+  expect(await page.text()).toContain(`@${username}`);
+  const options = await registrationOptions(fetcher, token);
   expect(options.status).toBe(200);
   const passkey = await softPasskey(ORIGIN);
   const response = await passkey.register(read(RegistrationOptionsSchema, await options.json()));
@@ -77,7 +105,7 @@ const signUp = async (username: string): Promise<{ fetcher: Browser; passkey: So
     createSession: true,
   });
   expect(verified.status).toBe(200);
-  return { fetcher, passkey };
+  return { fetcher, passkey, token };
 };
 
 const registerApp = async (scopes = "read write follow push") => {
@@ -210,15 +238,58 @@ describe("passkey sign-up and Mastodon OAuth", () => {
     expect(await page.text()).toContain("@passkey_bob");
   });
 
-  it("refuses taken and malformed usernames", async () => {
-    await signUp("passkey_carol");
+  it("creates a passkey only from a confirmed email link, once", async () => {
     const fetcher = browser();
-    for (const username of ["passkey_carol", "not-valid", "x".repeat(31)]) {
-      const response = await fetcher(
-        `/api/auth/passkey/generate-register-options?${new URLSearchParams({ context: username }).toString()}`,
-      );
-      expect(response.status).toBe(400);
+    // Without the emailed token there is no passkey step.
+    expect((await registrationOptions(fetcher, "passkey_hank")).status).toBe(400);
+    expect((await registrationOptions(fetcher, "not-a-token")).status).toBe(400);
+    expect((await fetcher("/auth/sign_up/verify?token=not-a-token")).status).toBe(400);
+
+    const { token } = await signUp("passkey_hank", "Hank@Mail.Example");
+    const row = await env.DB.prepare(
+      `SELECT u.email, u.emailVerified AS verified, a.access_email
+       FROM accounts a JOIN "user" u ON u.id = a.auth_user_id WHERE a.username = ?`,
+    )
+      .bind("passkey_hank")
+      .first();
+    expect(row).toEqual({
+      email: "hank@mail.example",
+      verified: 1,
+      access_email: "hank@mail.example",
+    });
+    // The link is spent.
+    expect((await registrationOptions(browser(), token)).status).toBe(400);
+  });
+
+  it("refuses taken, malformed, and blocked sign-ups at the form", async () => {
+    await signUp("passkey_carol", "carol@mail.example");
+    await env.APP_CACHE.delete(mailboxKey("carol@mail.example"));
+    const fetcher = browser();
+    for (const [username, email] of [
+      ["passkey_carol", "carol2@mail.example"],
+      ["passkey_carol2", "carol@mail.example"],
+      ["not-valid", "x@mail.example"],
+      ["x".repeat(31), "y@mail.example"],
+      ["passkey_carol3", "not-an-email"],
+    ] as const) {
+      const response = await postForm(fetcher, "/auth/sign_up", { username, email });
+      expect(response.status).toBe(422);
+      expect(await env.APP_CACHE.get(mailboxKey(email))).toBeNull();
     }
+  });
+
+  it("sends one link a minute per address", async () => {
+    const fetcher = browser();
+    const first = await requestSignupLink(fetcher, "passkey_ivy", "ivy@mail.example");
+    await env.APP_CACHE.delete(mailboxKey("ivy@mail.example"));
+    const again = await postForm(fetcher, "/auth/sign_up", {
+      username: "passkey_ivy",
+      email: "ivy@mail.example",
+    });
+    expect(again.status).toBe(200);
+    expect(await env.APP_CACHE.get(mailboxKey("ivy@mail.example"))).toBeNull();
+    // The first link still works.
+    expect((await registrationOptions(fetcher, first)).status).toBe(200);
   });
 
   it("enforces scopes and revokes tokens", async () => {

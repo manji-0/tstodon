@@ -53,32 +53,34 @@ export default defineAuth(({ defaults, env }) => ({
     passkey({
       registration: {
         requireSession: false,
-        // The passkey `context` is the username the sign-up page asks for.
+        // The passkey `context` is the token from the emailed sign-up link,
+        // so a passkey can only be created for a confirmed address.
         resolveUser: async ({ context }) => {
-          const { checkSignup, signupErrorMessage } = await signup();
-          const username = await checkSignup(await workerEnv(env), context);
-          if (username.isErr()) {
-            throw new APIError("BAD_REQUEST", { message: signupErrorMessage(username.error) });
+          const { checkSignupLink, signupErrorMessage } = await signup();
+          const intent = await checkSignupLink(await workerEnv(env), context);
+          if (intent.isErr()) {
+            throw new APIError("BAD_REQUEST", { message: signupErrorMessage(intent.error) });
           }
-          return { id: `signup:${username.value}`, name: username.value };
+          return { id: `signup:${intent.value.username}`, name: intent.value.username };
         },
         afterVerification: async ({ ctx, context }) => {
-          const { checkSignup, createSignupAccount, signupEmail, signupErrorMessage, signupRole } =
+          const { consumeSignupLink, createSignupAccount, signupErrorMessage, signupRole } =
             await signup();
           const worker = await workerEnv(env);
-          const username = await checkSignup(worker, context);
-          if (username.isErr()) {
-            throw new APIError("BAD_REQUEST", { message: signupErrorMessage(username.error) });
+          const intent = await consumeSignupLink(worker, context);
+          if (intent.isErr()) {
+            throw new APIError("BAD_REQUEST", { message: signupErrorMessage(intent.error) });
           }
           const user = await ctx.context.internalAdapter.createUser(
             {
-              email: signupEmail(worker, username.value),
-              name: username.value,
-              role: signupRole(worker, username.value),
+              email: intent.value.email,
+              emailVerified: true,
+              name: intent.value.username,
+              role: signupRole(worker, intent.value.username),
             },
             { method: "passkey" },
           );
-          const account = await createSignupAccount(worker, username.value, user.id);
+          const account = await createSignupAccount(worker, intent.value, user.id);
           if (account.isErr()) {
             await ctx.context.internalAdapter.deleteUser(user.id);
             throw new APIError("BAD_REQUEST", { message: signupErrorMessage(account.error) });

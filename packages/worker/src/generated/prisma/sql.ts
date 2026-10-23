@@ -20,6 +20,8 @@ export * from "./sql/completeStatusIdempotency";
 
 export * from "./sql/consumeOauthAuthorizationCode";
 
+export * from "./sql/consumeSignupIntent";
+
 export * from "./sql/countAccountTagUses";
 
 export * from "./sql/countAccounts";
@@ -109,6 +111,8 @@ export * from "./sql/deleteRemoteFollow";
 export * from "./sql/deleteRemoteNotifications";
 
 export * from "./sql/deleteRemoteStatusByObjectUri";
+
+export * from "./sql/deleteSignupIntentsByEmail";
 
 export * from "./sql/deleteStatusMentions";
 
@@ -214,6 +218,8 @@ export * from "./sql/findPollByStatusId";
 
 export * from "./sql/findPollVoteTarget";
 
+export * from "./sql/findRecentSignupIntent";
+
 export * from "./sql/findRemoteActorByHandle";
 
 export * from "./sql/findRemoteActorByPublicKeyId";
@@ -235,6 +241,8 @@ export * from "./sql/findRemoteStatusReplyTargetByObjectUri";
 export * from "./sql/findRemoteStatusReplyTargets";
 
 export * from "./sql/findRemoteStatusesByIds";
+
+export * from "./sql/findSignupIntent";
 
 export * from "./sql/findStatusById";
 
@@ -315,6 +323,8 @@ export * from "./sql/insertPollVoteOrIgnore";
 export * from "./sql/insertRemoteStatusMention";
 
 export * from "./sql/insertReport";
+
+export * from "./sql/insertSignupIntent";
 
 export * from "./sql/insertStatusEdit";
 

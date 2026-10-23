@@ -77,7 +77,7 @@ pnpm -C packages/worker exec wrangler d1 execute tstodon --remote --command \
   "UPDATE \"user\" SET role = 'admin' WHERE id = (SELECT auth_user_id FROM accounts WHERE username = 'alice')"
 ```
 
-After that, admins can manage roles and bans through the Better Auth admin endpoints (`/api/auth/admin/*`). A passkey account has no email; Better Auth's required `email` is synthesized as `username@INSTANCE_DOMAIN`, so the email-domain and canonical-email sign-up blocks only match that form.
+After that, admins can manage roles and bans through the Better Auth admin endpoints (`/api/auth/admin/*`). The passkey step only accepts a live link token as its `context`, so no passkey (and no account) exists without a confirmed address. Username, email, and the email-domain / canonical-email sign-up blocks are checked at both steps. Intents live in `signup_intents` (token stored as a SHA-256 digest).
 
 ```sh
 openssl rand -base64 32 | pnpm -C packages/worker exec wrangler secret put BETTER_AUTH_SECRET
@@ -87,7 +87,7 @@ openssl rand -base64 32 | pnpm -C packages/worker exec wrangler secret put BETTE
 
 <!-- derived-from #authentication -->
 
-`pnpm dev` serves on `localhost`, where Void supplies a dev `BETTER_AUTH_SECRET`; a browser with a platform authenticator (or the Chrome DevTools WebAuthn emulator) can sign up at `/auth/sign_up`. Worker tests seed a Better Auth user, its account, and an OAuth token directly in D1 (`packages/worker/test/auth-fixture.ts`, `authHeaders(email, { admin })`), and `src/oauth.test.ts` drives the real passkey and OAuth endpoints with a software authenticator (`packages/worker/test/soft-passkey.ts`). The e2e scenarios sign up through the same software authenticator. The test runner's `BETTER_AUTH_SECRET` is injected through `miniflare.bindings` in the root `vite.config.ts`.
+`pnpm dev` serves on `localhost`, where Void supplies a dev `BETTER_AUTH_SECRET`; a browser with a platform authenticator (or the Chrome DevTools WebAuthn emulator) can sign up at `/auth/sign_up`. Local `send_email` does not deliver; set `EMAIL_TRANSPORT=capture` and read the link with `wrangler kv key get --binding APP_CACHE --local "mailbox:<address>"`. Worker tests seed a Better Auth user, its account, and an OAuth token directly in D1 (`packages/worker/test/auth-fixture.ts`, `authHeaders(email, { admin })`), and `src/oauth.test.ts` drives the real sign-up (captured confirmation mail, then passkey) and OAuth endpoints with a software authenticator (`packages/worker/test/soft-passkey.ts`). The e2e instances run with `EMAIL_TRANSPORT=capture` and sign up the same way. The test runner's `BETTER_AUTH_SECRET` and `EMAIL_TRANSPORT=capture` are injected through `miniflare.bindings` in the root `vite.config.ts`.
 
 ## Web Push
 
