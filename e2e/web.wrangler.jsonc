@@ -1,0 +1,111 @@
+// Browser e2e instance (e2e/web) — local origin http://localhost:8793. Passkeys need a
+// host name (WebAuthn rejects IP addresses as the relying party), hence localhost.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tstodon-e2e-web",
+  "main": "../packages/worker/src/entry-classes.ts",
+  "compatibility_date": "2026-09-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "placement": {
+    "region": "aws:ap-southeast-1",
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+    },
+  },
+  "assets": {
+    "directory": "../packages/worker/assets",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none",
+    "run_worker_first": true,
+  },
+  "vars": {
+    "INSTANCE_DOMAIN": "localhost:8793",
+    "INSTANCE_PUBLIC_ORIGIN": "http://localhost:8793",
+    "FEDERATION_ALLOW_HOSTS": "localhost",
+    "INSTANCE_NAME": "tstodon-e2e-web",
+    "INSTANCE_DESCRIPTION": "Cloudflare Workers + D1 + R2 + Queues based Mastodon-compatible server",
+    "SOURCE_URL": "https://github.com/YOUR_ORG/tstodon",
+    "INSTANCE_LANGUAGES": "ja,en",
+    "CONTACT_EMAIL": "admin@example.com",
+    "INSTANCE_THUMBNAIL_URL": "http://localhost:8793/badge.png",
+    "MEDIA_PUBLIC_BASE_URL": "http://localhost:8793",
+    "EMAIL_FROM": "tstodon <noreply@example.com>",
+    "EMAIL_TRANSPORT": "capture",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tstodon-e2e-web",
+      "database_id": "00000000-0000-0000-0000-0000000000a1",
+      "migrations_dir": "../packages/worker/app/db/migrations",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "tstodon-e2e-web-media",
+    },
+  ],
+  "send_email": [
+    {
+      "name": "EMAIL",
+    },
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "REMOTE_DNS_CACHE",
+      "id": "000000000000000000000000000000a1",
+    },
+    {
+      "binding": "APP_CACHE",
+      "id": "000000000000000000000000000000a2",
+    },
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "OUTBOX_PROCESS_QUEUE",
+        "queue": "tstodon-outbox-process",
+      },
+    ],
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "STREAM_HUB",
+        "class_name": "StreamHub",
+      },
+    ],
+  },
+  "workflows": [
+    {
+      "name": "tstodon-outbox-delivery",
+      "binding": "OUTBOX_DELIVERY_WORKFLOW",
+      "class_name": "OutboxDeliveryWorkflow",
+    },
+  ],
+  "analytics_engine_datasets": [
+    {
+      "binding": "METRICS",
+      "dataset": "tstodon_e2e_a_metrics",
+    },
+  ],
+  "images": {
+    "binding": "IMAGES",
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["StreamHub"],
+    },
+  ],
+}

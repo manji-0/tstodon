@@ -13,6 +13,7 @@ pnpm fmt:check
 pnpm dev
 pnpm build
 pnpm web:build
+pnpm e2e:web
 pnpm run ci
 ```
 
@@ -22,6 +23,7 @@ pnpm run ci
 - `pnpm test` (`vp -C packages/worker build && vp test run`) runs Vitest 5. Worker tests run in workerd through `@cloudflare/vitest-plugin`, against the Void build in `packages/worker/dist/`.
 - `pnpm dev` and `pnpm build` (`vp -C packages/worker dev|build`) run the Worker through [Void](https://void.cloud) (`voidPlugin()`), which wraps `@cloudflare/vite-plugin` (Vite + Rolldown) and generates the Worker entry in `packages/worker/.void/` (gitignored). Bindings, vars, and resource IDs still come from `packages/worker/wrangler.jsonc`; Void adds `main`, cron `triggers`, and the queue consumer from `packages/worker/app`. Static assets come from `packages/worker/assets/` (Vite's `publicDir`).
 - `pnpm web:build` builds Mastodon's web UI from a pinned release into `packages/worker/assets/` (see [Web UI](../reference/configuration.md#web-ui)); without it the web app's paths serve the static placeholder page.
+- `pnpm e2e:web` runs the Playwright scenarios against Mastodon's web UI on a fresh local instance (see [Browser e2e](e2e-web.md)).
 - `pnpm run deploy` builds the web UI, then runs `void deploy --backend cloudflare` in `packages/worker` (see [Cloudflare deploy](../operations/cloudflare-deploy.md)); plain `pnpm deploy` is pnpm's own command.
 - Local state (D1, KV, R2, Durable Objects, Workflows) lives in `packages/worker/.wrangler/state`, wrangler's default for `packages/worker/wrangler.jsonc`. Apply D1 migrations to it with `pnpm db:migrate:local`. Void's own dev-time migration runner is disabled in `packages/worker/vite.config.ts`: it migrates a separate `.void/` database, not the `DB` binding.
 

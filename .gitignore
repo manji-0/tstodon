@@ -17,6 +17,7 @@ worker-configuration.d.ts
 .void/
 # Mastodon web UI build output (pnpm web:build)
 /.cache
+/.wrangler/e2e-web
 /packages/worker/assets/packs
 /packages/worker/assets/emoji
 /packages/worker/assets/sounds

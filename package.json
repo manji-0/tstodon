@@ -24,11 +24,13 @@
     "e2e:federation:delete-shared-inbox": "tsx e2e/federation-delete-shared-inbox.ts",
     "e2e:federation:accept": "tsx e2e/federation-accept.ts",
     "e2e:federation:all": "tsx e2e/federation-smoke.ts && tsx e2e/federation-follow-create.ts && tsx e2e/federation-interactions.ts && tsx e2e/federation-delete-shared-inbox.ts && tsx e2e/federation-accept.ts",
+    "e2e:web": "playwright test -c e2e/web/playwright.config.ts",
     "e2e:up": "process-compose up",
     "ci": "vp check && vp -C packages/worker build && vp test run && pnpm -C packages/worker exec wrangler deploy --dry-run"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.4.5",
+    "@playwright/test": "1.56.1",
     "@tstodon/core": "workspace:*",
     "@tstodon/domain": "workspace:*",
     "@types/node": "^24.13.6",

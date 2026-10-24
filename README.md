@@ -49,6 +49,7 @@ Two-instance federation smoke (process-compose): [e2e federation](docs/getting-s
 - [Local Core](docs/planning/local-core.md)
 - [Clone And Run](docs/getting-started/clone-and-run.md)
 - [Development Workflow](docs/getting-started/development.md)
+- [Browser e2e (Playwright)](docs/getting-started/e2e-web.md)
 - [Configuration Reference](docs/reference/configuration.md)
 - [Cloudflare Deploy Checklist](docs/operations/cloudflare-deploy.md)
 
