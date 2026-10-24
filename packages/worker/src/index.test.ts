@@ -899,8 +899,14 @@ describe("worker http", () => {
       });
     });
     await publishToAccount(env, preview.id, event.value);
-    const payload = JSON.parse(await received);
-    expect(payload).toMatchObject({ kind: "notification" });
+    // Mastodon's streaming message: the payload is itself a JSON string.
+    const message = read(
+      z.object({ stream: z.array(z.string()), event: z.string(), payload: z.string() }),
+      JSON.parse(await received),
+    );
+    expect(message.stream).toContain("user");
+    expect(message.event).toBe("notification");
+    expect(JSON.parse(message.payload)).toMatchObject({ type: "follow" });
     socket.close();
   });
 

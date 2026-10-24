@@ -20,7 +20,11 @@ import {
 } from "../../http";
 import { mastodonMedia } from "../../media-document";
 import { mastodonStatus } from "../../local-status-documents";
-import { CreateStatusBodySchema, mediaAttributesFromForm } from "../../status-body-schema";
+import {
+  CreateStatusBodySchema,
+  mediaAttributesFromForm,
+  withoutNullFields,
+} from "../../status-body-schema";
 import { isTruthy, stringList } from "../../form-values";
 import { z } from "zod";
 import {
@@ -127,7 +131,7 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     return jsonAuthError(c, user.error);
   }
   const rawBody = await readUnknownBody(c);
-  const body = schemaResult(CreateStatusBodySchema)(rawBody).mapErr(() => ({
+  const body = schemaResult(CreateStatusBodySchema)(withoutNullFields(rawBody)).mapErr(() => ({
     kind: "ValidationError" as const,
   }));
   if (body.isErr()) {

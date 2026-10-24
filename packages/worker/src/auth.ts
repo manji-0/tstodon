@@ -42,10 +42,13 @@ export const bearerToken = (request: Request): string | undefined => {
     return token.length > 0 ? token : undefined;
   }
   // A browser WebSocket cannot set headers, so streaming clients pass the
-  // token as `access_token`, as Mastodon's streaming server accepts.
+  // token as `access_token` or as the WebSocket subprotocol, both of which
+  // Mastodon's streaming server accepts.
   const url = new URL(request.url);
   if (url.pathname.startsWith("/api/v1/streaming")) {
-    const token = url.searchParams.get("access_token")?.trim();
+    const token =
+      url.searchParams.get("access_token")?.trim() ||
+      request.headers.get("Sec-WebSocket-Protocol")?.trim();
     return token && token.length > 0 ? token : undefined;
   }
   return undefined;
@@ -59,6 +62,8 @@ const TokenRowSchema = z.object({
   auth_role: z.string().nullable(),
   moderation: z.string().nullable(),
   disabled: z.number(),
+  web_session_id: z.string().nullable(),
+  web_session_expires_at: z.number().nullable(),
 });
 
 /** Better Auth's admin plugin stores roles comma-separated. */
@@ -96,6 +101,10 @@ export const authenticate = async (
   const row = parseRow(TokenRowSchema, raw);
   if (row.isErr()) {
     return err(row.error);
+  }
+  if (row.value.web_session_id !== null && (row.value.web_session_expires_at ?? 0) <= Date.now()) {
+    // The web app's token lives only as long as its Better Auth session.
+    return err({ kind: "InvalidToken" });
   }
   const token: AccessToken = {
     id: row.value.token_id,

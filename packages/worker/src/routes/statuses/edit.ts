@@ -21,7 +21,11 @@ import {
 import { newEntityId } from "../../ids";
 import { mastodonStatus } from "../../local-status-documents";
 import { countPollVotes, findPollByStatusId, replacePollOptions } from "../../poll-store";
-import { CreateStatusBodySchema, mediaAttributesFromForm } from "../../status-body-schema";
+import {
+  CreateStatusBodySchema,
+  mediaAttributesFromForm,
+  withoutNullFields,
+} from "../../status-body-schema";
 import { isTruthy, stringList } from "../../form-values";
 import { schemaResult } from "@tstodon/core";
 import { parseInstanceIdentity } from "../../runtime-config";
@@ -108,7 +112,7 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const rawBody = await readUnknownBody(c);
-  const body = schemaResult(CreateStatusBodySchema)(rawBody).mapErr(() => ({
+  const body = schemaResult(CreateStatusBodySchema)(withoutNullFields(rawBody)).mapErr(() => ({
     kind: "ValidationError" as const,
   }));
   if (body.isErr()) {

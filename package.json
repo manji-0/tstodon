@@ -5,8 +5,9 @@
   "scripts": {
     "dev": "vp -C packages/worker dev",
     "build": "vp -C packages/worker build",
+    "web:build": "node scripts/build-mastodon-web.mjs",
     "preview": "vp -C packages/worker preview",
-    "deploy": "pnpm -C packages/worker exec void deploy --backend cloudflare",
+    "deploy": "node scripts/build-mastodon-web.mjs && pnpm -C packages/worker exec void deploy --backend cloudflare",
     "test": "vp -C packages/worker build && vp test run",
     "check": "vp check",
     "typecheck": "vp check --no-fmt --no-lint",

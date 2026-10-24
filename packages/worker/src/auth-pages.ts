@@ -32,9 +32,7 @@ ${body}
 
 /** A same-site path to continue to after sign-in; anything else goes home. */
 export const safeReturnTo = (raw: string | undefined): string =>
-  raw && raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("\\")
-    ? raw
-    : "/auth/sign_in";
+  raw && raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("\\") ? raw : "/";
 
 /** base64url <-> ArrayBuffer and the WebAuthn JSON forms simplewebauthn expects. */
 const WEBAUTHN_HELPERS = `
@@ -134,7 +132,7 @@ export const signUpPasskeyPage = (instanceName: string, username: string, token:
             body: JSON.stringify({ response, createSession: true }),
           });
           if (!verified.ok) return show(await failure(verified));
-          location.assign("/auth/sign_in");
+          location.assign("/");
         } catch (error) {
           show(error instanceof Error ? error.message : String(error));
         }

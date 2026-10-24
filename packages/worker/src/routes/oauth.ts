@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { getUser } from "void/auth";
+import { getSession, getUser } from "void/auth";
 import { z } from "zod";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import { findAccountByAuthUserId } from "../account-store";
@@ -16,7 +16,10 @@ import {
   safeReturnTo,
   type ConsentRequest,
 } from "../auth-pages";
+import { runD1 } from "../d1";
+import { deleteAuthSession } from "../generated/prisma/sql";
 import { readOptionalBody } from "../http";
+import { runTyped } from "../typed-sql";
 import { checkSignupLink, requestSignup, signupErrorMessage } from "../passkey-signup";
 import {
   authenticateOauthClient,
@@ -486,6 +489,31 @@ export const getAuthSignUpVerify = async (
     );
   }
   return c.html(signUpPasskeyPage(instanceName(c.env), intent.value.username, token));
+};
+
+/**
+ * `DELETE /auth/sign_out`, as the Mastodon web UI calls it: end the Better
+ * Auth session (its web app token goes with it) and say where to go next.
+ * Cross-site callers cannot send this (a DELETE needs a CORS preflight).
+ */
+export const deleteAuthSignOut = async (c: Context<{ Bindings: Env }, "/auth/sign_out">) => {
+  const state = getSession();
+  if (state) {
+    const removed = await runD1(() => runTyped(c.env.DB, deleteAuthSession(state.session.id)));
+    if (removed.isErr()) {
+      return c.json({ error: removed.error.message, kind: removed.error.kind }, 500);
+    }
+  }
+  for (const name of ["better-auth.session_token", "__Secure-better-auth.session_token"]) {
+    c.header(
+      "Set-Cookie",
+      `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${name.startsWith("__Secure-") ? "; Secure" : ""}`,
+      { append: true },
+    );
+  }
+  return (c.req.header("Accept") ?? "").includes("application/json")
+    ? c.json({ redirect_to: "/" })
+    : c.redirect("/");
 };
 
 /** The old Access explainer URL now leads to sign-in. */

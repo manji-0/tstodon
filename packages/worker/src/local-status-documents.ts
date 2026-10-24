@@ -104,6 +104,8 @@ const buildLocalNoteDocument = (
     quote: null,
     quotes_count: 0,
     quote_approval: { automatic: [], manual: [], current_user: "unknown" },
+    // Mastodon 4.7 collections; none are kept here.
+    tagged_collections: [],
   };
 };
 

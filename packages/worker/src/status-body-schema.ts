@@ -32,6 +32,16 @@ export const CreateStatusBodySchema = z.object({
     .optional(),
 });
 
+/**
+ * A JSON body with its `null` fields removed. Mastodon (Rails) treats a null
+ * parameter as absent, and its web UI sends `"in_reply_to_id": null`,
+ * `"poll": null`, and so on for whatever the post does not use.
+ */
+export const withoutNullFields = (raw: unknown): unknown =>
+  typeof raw === "object" && raw !== null && !Array.isArray(raw)
+    ? Object.fromEntries(Object.entries(raw).filter(([, value]) => value !== null))
+    : raw;
+
 const MEDIA_ATTRIBUTE_KEY = /^media_attributes\[(\d+)\]\[(id|description|focus)\]$/;
 
 /**

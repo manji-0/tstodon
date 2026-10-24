@@ -18,6 +18,8 @@ Void generates the Worker entry (`.void/entry.ts`) and owns HTTP routing (on Hon
 
 Do not send Queue, scheduled, Workflow, or Durable Object traffic through HTTP routes. Cron jobs live in `packages/worker/app/crons/`, queue consumers in `packages/worker/app/queues/` (the file name is the queue name). Workflow and Durable Object classes are exported from `packages/worker/src/entry-classes.ts`, which the `tstodon:export-entry-classes` plugin in `packages/worker/void-plugins.ts` appends to Void's entry. Worker tests run against the Void build in `packages/worker/dist/` (`pnpm test` builds first).
 
+The browser UI is Mastodon's own web app: `pnpm web:build` builds it from a pinned Mastodon release into `packages/worker/assets/` (gitignored output), and `src/web-app.ts` (middleware `03.web-app.ts`) renders its HTML shell and initial state. Do not hand-edit the built assets.
+
 Hono handlers are a boundary: parse with Zod, call domain companions, map `Result` error `kind`s to HTTP. Domain transitions stay pure.
 
 ## Zod discriminant conventions
@@ -43,6 +45,7 @@ pnpm lint
 pnpm fmt:check
 pnpm dev
 pnpm build
+pnpm web:build
 pnpm db:migrate:local
 pnpm run ci
 pnpm run deploy

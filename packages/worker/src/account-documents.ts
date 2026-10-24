@@ -96,6 +96,14 @@ export const mastodonAccount = (
     header_static: profile.headerObjectKey
       ? mediaUrl(identity, profile.headerObjectKey)
       : identity.thumbnailUrl,
+    // Mastodon 4.6+ fields: alt text for the images, profile tab visibility,
+    // and featuring policy (featuring accounts is not offered here).
+    avatar_description: "",
+    header_description: "",
+    show_media: true,
+    show_media_replies: true,
+    show_featured: true,
+    feature_approval: { automatic: [], manual: [], current_user: "denied" },
     followers_count: counts.followers,
     following_count: counts.following,
     statuses_count: counts.statuses,
@@ -220,6 +228,14 @@ export const mastodonRemoteAccount = (
     avatar_static: identity.thumbnailUrl,
     header: identity.thumbnailUrl,
     header_static: identity.thumbnailUrl,
+    // Mastodon 4.6+ fields: alt text for the images, profile tab visibility,
+    // and featuring policy (featuring accounts is not offered here).
+    avatar_description: "",
+    header_description: "",
+    show_media: true,
+    show_media_replies: true,
+    show_featured: true,
+    feature_approval: { automatic: [], manual: [], current_user: "denied" },
     followers_count: 0,
     following_count: 0,
     statuses_count: 0,

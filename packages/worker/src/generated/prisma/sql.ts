@@ -62,6 +62,8 @@ export * from "./sql/deleteAnnouncementById";
 
 export * from "./sql/deleteAnnouncementReaction";
 
+export * from "./sql/deleteAuthSession";
+
 export * from "./sql/deleteBlock";
 
 export * from "./sql/deleteBookmark";
@@ -127,6 +129,10 @@ export * from "./sql/dismissNotification";
 export * from "./sql/dismissSuggestion";
 
 export * from "./sql/emailDomainAccountHistory";
+
+export * from "./sql/ensureWebAccessToken";
+
+export * from "./sql/ensureWebApplication";
 
 export * from "./sql/featureTag";
 
@@ -249,6 +255,8 @@ export * from "./sql/findStatusIdempotency";
 export * from "./sql/findStatusUpdatedAt";
 
 export * from "./sql/findTokenPushSubscription";
+
+export * from "./sql/findWebSettings";
 
 export * from "./sql/followTag";
 
@@ -569,3 +577,5 @@ export * from "./sql/upsertRemoteFavourite";
 export * from "./sql/upsertRemoteFollow";
 
 export * from "./sql/upsertRemoteStatus";
+
+export * from "./sql/upsertWebSettings";

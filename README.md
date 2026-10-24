@@ -12,6 +12,7 @@ The project is early software. The [local core](docs/planning/local-core.md) cla
 - Hono for HTTP routing (Mastodon API, WebFinger, NodeInfo, ActivityPub, static assets)
 - Cloudflare bindings for D1, R2, KV, Queues, Durable Objects, Workflows, Images, Analytics Engine, cron, and observability
 - Zod 4.6 discriminant domain models for status composition, follow requests, outbox delivery, inbox activities, notifications, and registration
+- Mastodon's own web UI (built from a pinned Mastodon release by `pnpm web:build`), served from Workers Assets with the Worker rendering its shell and initial state
 - Email-confirmed passkey sign-up and passkey sign-in (Better Auth, with its admin plugin for roles) and a Mastodon-compatible OAuth 2 server (`/api/v1/apps`, `/oauth/authorize`, `/oauth/token`, PKCE, scopes)
 - Media (avatars, headers, attachments) stored in R2; public URLs via `MEDIA_PUBLIC_BASE_URL` (R2 custom domain in production, Worker object-key proxy locally)
 - CORS: media proxy allows `*`; `/api/*` reflects `INSTANCE_PUBLIC_ORIGIN` and optional `CORS_ALLOWED_ORIGINS` (R2 custom domains need a separate bucket CORS policy)

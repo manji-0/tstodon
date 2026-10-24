@@ -124,6 +124,7 @@ const SCOPE_RULES: ReadonlyArray<ScopeRule> = [
   rule("/api/v1/polls/:id", "read:statuses", NONE),
   rule("/api/v1/preferences", "read:accounts", NONE),
   rule("/api/v1/profile/(?:avatar|header)", NONE, "write:accounts"),
+  rule("/api/v1/profile", "read:accounts", "write:accounts"),
   rule("/api/v1/push/subscription", "push", "push"),
   rule("/api/v1/reports", NONE, "write:reports"),
   rule("/api/v1/scheduled_statuses(?:/.*)?", "read:statuses", "write:statuses"),
@@ -146,6 +147,8 @@ const SCOPE_RULES: ReadonlyArray<ScopeRule> = [
   rule("/api/v1/tags/:name", "read:follows", NONE),
   rule("/api/v1/timelines/list/:id", "read:lists", NONE),
   rule("/api/v1/timelines(?:/.*)?", "read:statuses", NONE),
+  // The web UI's settings blob (not part of Mastodon's public API).
+  rule("/api/web/settings", NONE, "write:accounts"),
 ];
 
 export type ScopeRequirement =

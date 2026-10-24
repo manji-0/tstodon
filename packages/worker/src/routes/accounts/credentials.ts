@@ -1,4 +1,11 @@
-import { FediRole, QuoteApprovalPolicy, Visibility } from "@tstodon/domain";
+import {
+  FediRole,
+  QuoteApprovalPolicy,
+  Visibility,
+  type FediRole as FediRoleValue,
+  type InstanceIdentity,
+  type LocalAccount,
+} from "@tstodon/domain";
 import { InstanceLimits, schemaResult, warmSchemas } from "@tstodon/core";
 import { type Context } from "hono";
 import { findAccountById, setAccountLocked, updateAccountProfile } from "../../account-store";
@@ -21,6 +28,7 @@ import { parseInstanceIdentity } from "../../runtime-config";
 import { isTruthy } from "../../form-values";
 import { newEntityId } from "../../ids";
 import { avatarObjectKey, headerObjectKey } from "../../media-keys";
+import { buildFeaturedTagDocuments } from "../tags";
 import { z } from "zod";
 import { booleanish } from "../../form-values";
 
@@ -61,20 +69,37 @@ export const getV1AccountsVerifyCredentials = async (
   if (session.isErr()) {
     return jsonAuthError(c, session.error);
   }
-  const [document, profile, defaults] = await Promise.all([
-    mastodonAccountDocument(c.env, identity.value, session.value.account),
-    findAccountProfile(c.env.DB, session.value.account.id),
-    findComposeDefaults(c.env.DB, session.value.account.id),
-  ]);
-  return c.json({
-    ...document,
-    role: FediRole.toMastodon(session.value.role),
-    source: accountSource(
+  return c.json(
+    await credentialAccountDocument(
+      c.env,
+      identity.value,
       session.value.account,
+      session.value.role,
+    ),
+  );
+};
+
+/** The signed-in account as `verify_credentials` (and the web app's initial state) show it. */
+export const credentialAccountDocument = async (
+  env: Env,
+  identity: InstanceIdentity,
+  account: LocalAccount,
+  role: FediRoleValue,
+): Promise<Record<string, unknown>> => {
+  const [document, profile, defaults] = await Promise.all([
+    mastodonAccountDocument(env, identity, account),
+    findAccountProfile(env.DB, account.id),
+    findComposeDefaults(env.DB, account.id),
+  ]);
+  return {
+    ...document,
+    role: FediRole.toMastodon(role),
+    source: accountSource(
+      account,
       profile.isOk() ? profile.value : EMPTY_ACCOUNT_PROFILE,
       defaults.isOk() ? defaults.value : { language: null, sensitive: false },
     ),
-  });
+  };
 };
 
 /** Avatar and header uploads: image types only, up to the advertised size cap. */
@@ -354,3 +379,93 @@ export const deleteV1ProfileHeader = (c: Context<{ Bindings: Env }, "/api/v1/pro
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([UpdateCredentialsBodySchema]);
+
+const ProfileSourceSchema = z.object({
+  id: z.string(),
+  display_name: z.string(),
+  avatar: z.string(),
+  avatar_static: z.string(),
+  header: z.string(),
+  header_static: z.string(),
+  locked: z.boolean(),
+  bot: z.boolean(),
+  discoverable: z.boolean().nullable().optional(),
+  indexable: z.boolean(),
+  hide_collections: z.boolean().nullable().optional(),
+  note: z.string(),
+  fields: z.array(z.unknown()),
+  source: z.object({ note: z.string(), fields: z.array(z.unknown()) }),
+});
+
+/**
+ * Mastodon 4.6's profile-editing document (`REST::ProfileSerializer`): the
+ * plain-text note and fields alongside their rendered forms.
+ */
+const profileDocument = async (
+  env: Env,
+  identity: InstanceIdentity,
+  account: LocalAccount,
+  role: FediRoleValue,
+): Promise<Record<string, unknown> | undefined> => {
+  const [credential, featured] = await Promise.all([
+    credentialAccountDocument(env, identity, account, role),
+    buildFeaturedTagDocuments(env, identity, account.id, account.username),
+  ]);
+  const parsed = schemaResult(ProfileSourceSchema)(credential);
+  if (parsed.isErr()) {
+    return undefined;
+  }
+  const doc = parsed.value;
+  return {
+    id: doc.id,
+    display_name: doc.display_name,
+    note: doc.source.note,
+    fields: doc.source.fields,
+    formatted_note: doc.note,
+    formatted_fields: doc.fields,
+    avatar: doc.avatar,
+    avatar_static: doc.avatar_static,
+    avatar_description: "",
+    header: doc.header,
+    header_static: doc.header_static,
+    header_description: "",
+    locked: doc.locked,
+    bot: doc.bot,
+    hide_collections: doc.hide_collections ?? false,
+    discoverable: doc.discoverable ?? false,
+    indexable: doc.indexable,
+    show_media: true,
+    show_media_replies: true,
+    show_featured: true,
+    attribution_domains: [],
+    featured_tags: featured.kind === "Ok" ? featured.documents : [],
+  };
+};
+
+/** `GET /api/v1/profile` (Mastodon 4.6): the signed-in account's editable profile. */
+export const getV1Profile = async (c: Context<{ Bindings: Env }>) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const session = await requireSession(c);
+  if (session.isErr()) {
+    return jsonAuthError(c, session.error);
+  }
+  const document = await profileDocument(
+    c.env,
+    identity.value,
+    session.value.account,
+    session.value.role,
+  );
+  return document ? c.json(document) : jsonRepositoryError(c, "profile could not be rendered");
+};
+
+/**
+ * `PATCH /api/v1/profile` takes `update_credentials`' fields; it answers with
+ * the profile document instead of the account.
+ */
+export const patchV1Profile = async (c: Context<{ Bindings: Env }, "/api/v1/profile">) => {
+  const updated = await patchV1AccountsUpdateCredentials(c);
+  return updated.status === 200 ? getV1Profile(c) : updated;
+};

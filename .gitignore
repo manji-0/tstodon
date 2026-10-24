@@ -15,3 +15,13 @@ e2e/instances/.wrangler
 worker-configuration.d.ts
 .vitest/
 .void/
+# Mastodon web UI build output (pnpm web:build)
+/.cache
+/packages/worker/assets/packs
+/packages/worker/assets/emoji
+/packages/worker/assets/sounds
+/packages/worker/assets/sw.js
+/packages/worker/assets/badge.png
+/packages/worker/assets/loading.*
+/packages/worker/assets/oops.*
+/packages/worker/assets/web-push-icon_*.png

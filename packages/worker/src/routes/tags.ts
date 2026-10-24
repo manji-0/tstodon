@@ -88,7 +88,7 @@ const buildFeaturedTagDocument = async (
   };
 };
 
-const buildFeaturedTagDocuments = async (
+export const buildFeaturedTagDocuments = async (
   env: Env,
   identity: InstanceIdentity,
   accountId: string,
