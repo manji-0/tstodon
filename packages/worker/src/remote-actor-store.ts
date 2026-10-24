@@ -35,12 +35,25 @@ export const RemoteActorRowSchema = z.object({
   public_key_id: z.string().min(1),
   public_key_pem: z.string().min(1),
   display_name: z.string(),
+  profile_json: z.string().default("{}"),
   fetched_at: z.string().min(1),
 });
 
 export type RemoteActorRow = z.infer<typeof RemoteActorRowSchema>;
 
 const parseRemoteActorRow = schemaResult(RemoteActorRowSchema);
+
+const parseProfile = schemaResult(RemoteActor.profileSchema);
+
+/** The stored profile; a row from before profiles (`{}`) reads as empty. */
+const profileFromJson = (raw: string) => {
+  try {
+    const parsed = parseProfile(JSON.parse(raw));
+    return parsed.isOk() ? parsed.value : RemoteActor.emptyProfile;
+  } catch {
+    return RemoteActor.emptyProfile;
+  }
+};
 
 const remoteActorFromRow = (row: RemoteActorRow): Result<RemoteActor, RepositoryError> => {
   const fetchedAt = IsoInstant.parse(row.fetched_at);
@@ -55,6 +68,7 @@ const remoteActorFromRow = (row: RemoteActorRow): Result<RemoteActor, Repository
     publicKeyId: row.public_key_id,
     publicKeyPem: row.public_key_pem,
     displayName: row.display_name,
+    profile: profileFromJson(row.profile_json),
     fetchedAt: fetchedAt.value,
     ...(row.shared_inbox_uri ? { sharedInboxUri: row.shared_inbox_uri } : {}),
   }).mapErr(() => toRepositoryError("invalid remote actor row"));
@@ -157,6 +171,7 @@ export const upsertRemoteActor = async (
         actor.fetchedAt,
         now,
         now,
+        JSON.stringify(actor.profile),
       ),
     );
     return actor;

@@ -16,9 +16,10 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param fetchedAt
  * @param createdAt
  * @param updatedAt
+ * @param profileJson
  */
 export const upsertRemoteActor = $runtime.makeTypedQueryFactory(
-  "INSERT INTO remote_actors (\nactor_uri, username, domain, inbox_uri, shared_inbox_uri,\npublic_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)\nON CONFLICT(actor_uri) DO UPDATE SET\nusername = excluded.username,\ndomain = excluded.domain,\ninbox_uri = excluded.inbox_uri,\nshared_inbox_uri = excluded.shared_inbox_uri,\npublic_key_id = excluded.public_key_id,\npublic_key_pem = excluded.public_key_pem,\ndisplay_name = excluded.display_name,\nfetched_at = excluded.fetched_at,\nupdated_at = excluded.updated_at",
+  "INSERT INTO remote_actors (\nactor_uri, username, domain, inbox_uri, shared_inbox_uri,\npublic_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at, profile_json\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)\nON CONFLICT(actor_uri) DO UPDATE SET\nusername = excluded.username,\ndomain = excluded.domain,\ninbox_uri = excluded.inbox_uri,\nshared_inbox_uri = excluded.shared_inbox_uri,\npublic_key_id = excluded.public_key_id,\npublic_key_pem = excluded.public_key_pem,\ndisplay_name = excluded.display_name,\nprofile_json = excluded.profile_json,\nfetched_at = excluded.fetched_at,\nupdated_at = excluded.updated_at",
 ) as (
   actorUri: string,
   username: string,
@@ -31,6 +32,7 @@ export const upsertRemoteActor = $runtime.makeTypedQueryFactory(
   fetchedAt: string,
   createdAt: string,
   updatedAt: string,
+  profileJson: string,
 ) => $runtime.TypedSql<upsertRemoteActor.Parameters, upsertRemoteActor.Result>;
 
 export namespace upsertRemoteActor {
@@ -46,6 +48,7 @@ export namespace upsertRemoteActor {
     fetchedAt: string,
     createdAt: string,
     updatedAt: string,
+    profileJson: string,
   ];
   export type Result = {};
 }

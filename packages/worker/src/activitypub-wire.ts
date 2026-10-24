@@ -38,6 +38,13 @@ export const ActorDocumentSchema = z
         sharedInbox: z.string().min(1).optional(),
       })
       .optional(),
+    type: z.string().optional(),
+    summary: z.string().nullable().optional(),
+    url: z.unknown().optional(),
+    icon: z.unknown().optional(),
+    image: z.unknown().optional(),
+    manuallyApprovesFollowers: z.boolean().nullable().optional(),
+    published: z.string().nullable().optional(),
   })
   .passthrough();
 

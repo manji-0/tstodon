@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { isBlockedFederatedHost, parseFederatedUrl } from "./federated-fetch";
+import { isBlockedFederatedHost, parseFederatedUrl, webfingerScheme } from "./federated-fetch";
 
 describe("isBlockedFederatedHost", () => {
   it("blocks loopback by default", () => {
@@ -39,5 +39,15 @@ describe("parseFederatedUrl", () => {
   it("rejects non-http schemes and invalid urls", () => {
     expect(parseFederatedUrl("ftp://peer.example/x").isErr()).toBe(true);
     expect(parseFederatedUrl("not a url").isErr()).toBe(true);
+  });
+});
+
+describe("webfingerScheme", () => {
+  it("uses plain HTTP only for an allow-listed loopback host", () => {
+    expect(webfingerScheme("peer.example")).toBe("https");
+    expect(webfingerScheme("peer.example", new Set(["peer.example"]))).toBe("https");
+    expect(webfingerScheme("127.0.0.1")).toBe("https");
+    expect(webfingerScheme("127.0.0.1", new Set(["127.0.0.1"]))).toBe("http");
+    expect(webfingerScheme("LOCALHOST", new Set(["localhost"]))).toBe("http");
   });
 });

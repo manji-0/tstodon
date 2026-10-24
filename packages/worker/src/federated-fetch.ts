@@ -72,6 +72,21 @@ export const isFederatedHostRefused = (
   );
 };
 
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+/**
+ * WebFinger is fetched over HTTPS, except from a loopback host the operator
+ * named in `FEDERATION_ALLOW_HOSTS`: local test servers (the e2e suites) speak
+ * plain HTTP, and only an explicit allow-list entry exempts them at all.
+ */
+export const webfingerScheme = (
+  hostname: string,
+  allowHosts: ReadonlySet<string> = new Set(),
+): "http" | "https" => {
+  const host = hostname.toLowerCase();
+  return LOOPBACK_HOSTS.has(host) && allowHosts.has(host) ? "http" : "https";
+};
+
 export const parseFederatedUrl = (value: string): Result<URL, FederatedFetchError> => {
   try {
     const url = new URL(value);
@@ -105,7 +120,9 @@ export const fetchActivityJson = async (
           'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
         "User-Agent": `tstodon (${identity.publicOrigin})`,
       },
-      redirect: "error",
+      // Redirects are refused (a 3xx is not `ok` below). Workers' fetch
+      // rejects `redirect: "error"` outright, so it must be "manual".
+      redirect: "manual",
       signal: AbortSignal.timeout(5000),
     });
     if (response.status >= 500) {
@@ -134,8 +151,9 @@ export const fetchWebfingerActorUri = async (
   const user = trimmed.slice(0, atIndex);
   const domain = trimmed.slice(atIndex + 1);
   const resource = `acct:${user}@${domain}`;
+  const host = domain.replace(/:\d+$/, "");
   const url = parseFederatedUrl(
-    `https://${domain}/.well-known/webfinger?resource=${encodeURIComponent(resource)}`,
+    `${webfingerScheme(host, options.allowHosts)}://${domain}/.well-known/webfinger?resource=${encodeURIComponent(resource)}`,
   );
   if (url.isErr()) {
     return err(url.error);
@@ -150,7 +168,9 @@ export const fetchWebfingerActorUri = async (
         Accept: "application/jrd+json, application/json",
         "User-Agent": `tstodon (${identity.publicOrigin})`,
       },
-      redirect: "error",
+      // Redirects are refused (a 3xx is not `ok` below). Workers' fetch
+      // rejects `redirect: "error"` outright, so it must be "manual".
+      redirect: "manual",
       signal: AbortSignal.timeout(5000),
     });
     if (response.status >= 500) {

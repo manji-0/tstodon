@@ -112,6 +112,20 @@ describe("media metadata", () => {
     ).toBe(404);
   });
 
+  it("reads alt text and focus from a JSON body, as the web UI sends them", async () => {
+    const email = "media-json@example.com";
+    const media = await upload(email);
+    const updated = await json(`/api/v1/media/${media.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth(email)) },
+      body: JSON.stringify({ description: "Alt text from JSON", focus: "0.00,0.00" }),
+    });
+    expect(updated.status).toBe(200);
+    const edited = read(MediaSchema, updated.body);
+    expect(edited.description).toBe("Alt text from JSON");
+    expect(edited.meta.focus).toEqual({ x: 0, y: 0 });
+  });
+
   it("deletes unattached media", async () => {
     const email = "media-deleter@example.com";
     const media = await upload(email);

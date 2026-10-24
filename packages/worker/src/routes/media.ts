@@ -1,5 +1,11 @@
 import { InstanceLimits, characterCount } from "@tstodon/core";
-import { jsonAuthError, jsonRepositoryError, requireUser } from "../http";
+import {
+  jsonAuthError,
+  jsonRepositoryError,
+  jsonValidationError,
+  readOptionalBody,
+  requireUser,
+} from "../http";
 import { mastodonMedia } from "../media-document";
 import {
   deleteMedia,
@@ -12,6 +18,7 @@ import { attachmentObjectKey, parseMediaObjectKey } from "../media-keys";
 import { parseInstanceIdentity } from "../runtime-config";
 import { newEntityId } from "../ids";
 import type { Context } from "hono";
+import { z } from "zod";
 
 const CACHE_CONTROL = "public, max-age=31536000, immutable";
 
@@ -150,6 +157,11 @@ export const getV1MediaById = async (c: Context<{ Bindings: Env }, "/api/v1/medi
 const parseFocus = (raw: string): Readonly<{ x: number; y: number }> | undefined =>
   parseMediaFocus(raw);
 
+const MediaUpdateBodySchema = z.object({
+  description: z.string().nullish(),
+  focus: z.string().nullish(),
+});
+
 export const putV1MediaById = async (c: Context<{ Bindings: Env }, "/api/v1/media/:id">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -171,9 +183,13 @@ export const putV1MediaById = async (c: Context<{ Bindings: Env }, "/api/v1/medi
     return c.json({ error: "media is already attached to a status", kind: "MediaAttached" }, 422);
   }
 
-  const body = await c.req.parseBody();
-  const descriptionRaw = typeof body.description === "string" ? body.description : undefined;
-  const focusRaw = typeof body.focus === "string" ? body.focus : undefined;
+  // The web UI sends JSON; other clients send a form.
+  const body = await readOptionalBody(c, MediaUpdateBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  const descriptionRaw = body.value.description ?? undefined;
+  const focusRaw = body.value.focus ?? undefined;
   let focusX = row.value.focus_x;
   let focusY = row.value.focus_y;
   if (focusRaw !== undefined) {

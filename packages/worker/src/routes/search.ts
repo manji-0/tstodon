@@ -62,7 +62,7 @@ const search = async (c: Context<{ Bindings: Env }>) => {
   const resolveRaw = c.req.query("resolve");
   const resolve = resolveRaw === "true" || resolveRaw === "1";
   if (query.length === 0) {
-    return c.json({ accounts: [], statuses: [], hashtags: [] });
+    return c.json({ accounts: [], statuses: [], hashtags: [], collections: [] });
   }
   const accountDocs: Record<string, unknown>[] = [];
   if (type !== "statuses" && type !== "hashtags") {
@@ -153,6 +153,9 @@ const search = async (c: Context<{ Bindings: Env }>) => {
   );
   return c.json({
     accounts: accountDocs,
+    // Mastodon 4.7 also searches collections, which are not kept here; its
+    // web UI expects the key.
+    collections: [],
     statuses: statusDocs,
     hashtags,
   });

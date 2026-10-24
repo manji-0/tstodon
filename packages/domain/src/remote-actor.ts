@@ -3,6 +3,32 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import { IsoInstant } from "./iso-instant";
 
+/**
+ * What a remote actor shows on its profile. `note` is plain text: the actor's
+ * HTML `summary` is reduced to its text, never rendered as markup.
+ */
+const RemoteActorProfileSchema = z.object({
+  note: z.string(),
+  avatarUrl: z.url().nullable(),
+  headerUrl: z.url().nullable(),
+  profileUrl: z.url().nullable(),
+  locked: z.boolean(),
+  bot: z.boolean(),
+  publishedAt: IsoInstant.schema.nullable(),
+});
+
+export type RemoteActorProfile = z.infer<typeof RemoteActorProfileSchema>;
+
+const EMPTY_PROFILE: RemoteActorProfile = {
+  note: "",
+  avatarUrl: null,
+  headerUrl: null,
+  profileUrl: null,
+  locked: false,
+  bot: false,
+  publishedAt: null,
+};
+
 const RemoteActorSchema = z.object({
   kind: z.literal("RemoteActor"),
   actorUri: z.url(),
@@ -13,6 +39,7 @@ const RemoteActorSchema = z.object({
   publicKeyId: z.string().min(1),
   publicKeyPem: z.string().min(1),
   displayName: z.string(),
+  profile: RemoteActorProfileSchema,
   fetchedAt: IsoInstant.schema,
 });
 
@@ -24,6 +51,8 @@ const parseRemoteActor = schemaResult(RemoteActorSchema);
 
 export const RemoteActor = {
   schema: RemoteActorSchema,
+  profileSchema: RemoteActorProfileSchema,
+  emptyProfile: EMPTY_PROFILE,
   parse: parseRemoteActor,
   fromFetched: (input: {
     actorUri: string;
@@ -34,6 +63,7 @@ export const RemoteActor = {
     publicKeyId: string;
     publicKeyPem: string;
     displayName: string;
+    profile?: RemoteActorProfile | undefined;
     fetchedAt: z.infer<typeof IsoInstant.schema>;
   }): Result<RemoteActor, RemoteActorParseError> => {
     const parsed = parseRemoteActor({
@@ -45,6 +75,7 @@ export const RemoteActor = {
       publicKeyId: input.publicKeyId,
       publicKeyPem: input.publicKeyPem,
       displayName: input.displayName,
+      profile: input.profile ?? EMPTY_PROFILE,
       fetchedAt: input.fetchedAt,
       ...(input.sharedInboxUri ? { sharedInboxUri: input.sharedInboxUri } : {}),
     });

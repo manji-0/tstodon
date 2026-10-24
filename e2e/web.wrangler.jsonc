@@ -30,7 +30,7 @@
   "vars": {
     "INSTANCE_DOMAIN": "localhost:8793",
     "INSTANCE_PUBLIC_ORIGIN": "http://localhost:8793",
-    "FEDERATION_ALLOW_HOSTS": "localhost",
+    "FEDERATION_ALLOW_HOSTS": "localhost,127.0.0.1",
     "INSTANCE_NAME": "tstodon-e2e-web",
     "INSTANCE_DESCRIPTION": "Cloudflare Workers + D1 + R2 + Queues based Mastodon-compatible server",
     "SOURCE_URL": "https://github.com/YOUR_ORG/tstodon",

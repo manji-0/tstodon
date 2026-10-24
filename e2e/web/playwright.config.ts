@@ -25,13 +25,22 @@ export default defineConfig({
     screenshot: "only-on-failure",
     launchOptions: { args: ["--no-proxy-server"] },
   },
-  webServer: {
-    command: "node e2e/web/serve.mjs",
-    cwd: "../..",
-    url: "http://localhost:8793/healthz",
-    timeout: 180_000,
-    reuseExistingServer: false,
-    stdout: "ignore",
-    stderr: "pipe",
-  },
+  webServer: [
+    {
+      command: "node e2e/web/serve.mjs",
+      cwd: "../..",
+      url: "http://localhost:8793/healthz",
+      timeout: 180_000,
+      reuseExistingServer: false,
+      stdout: "ignore",
+      stderr: "pipe",
+    },
+    {
+      // The stand-in remote server the remote-account scenario looks up.
+      command: "node e2e/web/remote-server.mjs",
+      cwd: "../..",
+      url: "http://127.0.0.1:8794/health",
+      reuseExistingServer: false,
+    },
+  ],
 });

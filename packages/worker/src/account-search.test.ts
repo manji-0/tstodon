@@ -134,6 +134,93 @@ describe("account search", () => {
     }
   });
 
+  it("resolves a remote address through fetch options Workers accepts", async () => {
+    const original = globalThis.fetch;
+    const actor = "https://resolvable.example/users/far_away";
+    const { publicKey } = await crypto.subtle
+      .generateKey(
+        {
+          name: "RSASSA-PKCS1-v1_5",
+          modulusLength: 2048,
+          publicExponent: new Uint8Array([1, 0, 1]),
+          hash: "SHA-256",
+        },
+        true,
+        ["sign", "verify"],
+      )
+      .then((pair) => ("publicKey" in pair ? pair : { publicKey: undefined }));
+    if (!publicKey) {
+      throw new Error("no key pair");
+    }
+    const spki = await crypto.subtle.exportKey("spki", publicKey);
+    if (!(spki instanceof ArrayBuffer)) {
+      throw new Error("no spki");
+    }
+    const pem = `-----BEGIN PUBLIC KEY-----\n${btoa(String.fromCharCode(...new Uint8Array(spki)))}\n-----END PUBLIC KEY-----\n`;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      // Workers' fetch throws on `redirect: "error"`; mirror that here.
+      if (init?.redirect === "error") {
+        throw new TypeError("Invalid redirect value");
+      }
+      const href =
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (href.startsWith("https://resolvable.example/.well-known/webfinger")) {
+        return Response.json({
+          subject: "acct:far_away@resolvable.example",
+          links: [{ rel: "self", type: "application/activity+json", href: actor }],
+        });
+      }
+      if (href === actor) {
+        return Response.json({
+          "@context": ["https://www.w3.org/ns/activitystreams"],
+          id: actor,
+          type: "Person",
+          preferredUsername: "far_away",
+          name: "Far Away",
+          summary: "<p>Lives far &amp; away.</p><p>Second <b>line</b><script>x()</script></p>",
+          url: "https://resolvable.example/@far_away",
+          icon: { type: "Image", url: "https://resolvable.example/avatar.png" },
+          manuallyApprovesFollowers: true,
+          published: "2026-01-02T03:04:05.000Z",
+          inbox: `${actor}/inbox`,
+          outbox: `${actor}/outbox`,
+          publicKey: { id: `${actor}#main-key`, owner: actor, publicKeyPem: pem },
+        });
+      }
+      return original(input as RequestInfo, init);
+    }) as typeof fetch;
+    try {
+      const results = await search(
+        "account-search-remote-resolver@example.com",
+        "q=%40far_away%40resolvable.example&resolve=true",
+      );
+      expect(results.map((account) => account.acct)).toEqual(["far_away@resolvable.example"]);
+      const raw = await json("/api/v1/accounts/search?q=%40far_away%40resolvable.example", {
+        headers: await auth("account-search-remote-resolver@example.com"),
+      });
+      const [profile] = read(
+        z.array(
+          z.object({
+            note: z.string(),
+            avatar: z.string(),
+            url: z.string(),
+            locked: z.boolean(),
+            created_at: z.string(),
+          }),
+        ),
+        raw.body,
+      );
+      // The bio is reduced to text, so the remote markup (and script) never renders.
+      expect(profile?.note).toBe("<p>Lives far &amp; away.<br><br>Second linex()</p>");
+      expect(profile?.avatar).toBe("https://resolvable.example/avatar.png");
+      expect(profile?.url).toBe("https://resolvable.example/@far_away");
+      expect(profile?.locked).toBe(true);
+      expect(profile?.created_at).toBe("2026-01-02T03:04:05.000Z");
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
   it("does not resolve without resolve=true", async () => {
     let calls = 0;
     const original = globalThis.fetch;
