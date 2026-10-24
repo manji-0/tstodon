@@ -5,6 +5,7 @@ import {
   Visibility,
 } from "@tstodon/domain";
 import { mastodonRemoteAccount } from "./account-documents";
+import { httpUrl, sanitizeRemoteHtml } from "./sanitize-html";
 
 export const mastodonRemoteStatus = (
   identity: InstanceIdentity,
@@ -12,7 +13,7 @@ export const mastodonRemoteStatus = (
   actor: RemoteActor,
   card: Record<string, unknown> | null = null,
 ): Record<string, unknown> => {
-  const url = status.url ?? status.objectUri;
+  const url = httpUrl(status.url) ?? httpUrl(status.objectUri) ?? null;
   return {
     id: status.id,
     created_at: status.publishedAt,
@@ -32,20 +33,27 @@ export const mastodonRemoteStatus = (
     reblogged: false,
     muted: false,
     bookmarked: false,
-    content: status.contentHtml,
+    content: sanitizeRemoteHtml(status.contentHtml),
     reblog: null,
     account: mastodonRemoteAccount(identity, actor),
-    media_attachments: status.media.map((attachment, index) => ({
-      id: `${status.id}-${index}`,
-      type: remoteMediaType(attachment.mediaType),
-      url: attachment.url,
-      preview_url: attachment.url,
-      remote_url: attachment.url,
-      text_url: attachment.url,
-      meta: {},
-      description: attachment.description.length > 0 ? attachment.description : null,
-      blurhash: null,
-    })),
+    // Ids follow the stored order; an attachment that is not an http(s) URL is left out.
+    media_attachments: status.media.flatMap((attachment, index) =>
+      httpUrl(attachment.url) === undefined
+        ? []
+        : [
+            {
+              id: `${status.id}-${index}`,
+              type: remoteMediaType(attachment.mediaType),
+              url: attachment.url,
+              preview_url: attachment.url,
+              remote_url: attachment.url,
+              text_url: attachment.url,
+              meta: {},
+              description: attachment.description.length > 0 ? attachment.description : null,
+              blurhash: null,
+            },
+          ],
+    ),
     mentions: [],
     tags: [],
     emojis: [],
