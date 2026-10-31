@@ -1,17 +1,1 @@
-{
-  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.17.1/.schema/devbox.schema.json",
-  "packages": ["nodejs@24", "pnpm@latest", "wrangler@latest", "process-compose@latest"],
-  "shell": {
-    "scripts": {
-      "fmt": ["pnpm fmt"],
-      "lint": ["pnpm lint"],
-      "check": ["pnpm check"],
-      "typecheck": ["pnpm typecheck"],
-      "test": ["pnpm test"],
-      "ci": ["pnpm run ci"],
-      "worker:dev": ["pnpm dev"],
-      "e2e:up": ["pnpm e2e:up"],
-      "e2e:federation": ["pnpm e2e:federation"]
-    }
-  }
-}
+ewogICIkc2NoZW1hIjogImh0dHBzOi8vcmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbS9qZXRpZnktY29tL2RldmJveC8wLjE3LjEvLnNjaGVtYS9kZXZib3guc2NoZW1hLmpzb24iLAogICJwYWNrYWdlcyI6IFsibm9kZWpzQDI2IiwgInBucG1AbGF0ZXN0IiwgIndyYW5nbGVyQGxhdGVzdCIsICJwcm9jZXNzLWNvbXBvc2VAbGF0ZXN0Il0sCiAgInNoZWxsIjogewogICAgInNjcmlwdHMiOiB7CiAgICAgICJmbXQiOiBbInBucG0gZm10Il0sCiAgICAgICJsaW50IjogWyJwbnBtIGxpbnQiXSwKICAgICAgImNoZWNrIjogWyJwbnBtIGNoZWNrIl0sCiAgICAgICJ0eXBlY2hlY2siOiBbInBucG0gdHlwZWNoZWNrIl0sCiAgICAgICJ0ZXN0IjogWyJwbnBtIHRlc3QiXSwKICAgICAgImNpIjogWyJwbnBtIHJ1biBjaSJdLAogICAgICAid29ya2VyOmRldiI6IFsicG5wbSBkZXYiXSwKICAgICAgImUyZTp1cCI6IFsicG5wbSBlMmU6dXAiXSwKICAgICAgImUyZTpmZWRlcmF0aW9uIjogWyJwbnBtIGUyZTpmZWRlcmF0aW9uIl0KICAgIH0KICB9Cn0K
