@@ -19,7 +19,7 @@ The project is early software. The [local core](docs/planning/local-core.md) cla
 
 ## Requirements
 
-- Node.js 24+
+- Node.js 26+
 - `pnpm`
 - Cloudflare account access for Workers, D1, and R2 operations
 - `wrangler` authentication for deploys and remote resource changes
