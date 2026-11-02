@@ -23,6 +23,8 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Inbox `Update`: a remote edit of a cached note (author-checked, `edited_at` rendered, newer edit wins, new mentions notified once) and a remote actor profile refresh. Follow-ups: edit history (`/history`) and streaming `status.update` for remote statuses, `update` notifications for reblogs once local reblogs of remote statuses exist
+
 - Cloudflare Access replaced by Void Better Auth (passkey-only sign-up/sign-in, admin plugin roles) and a first-party Mastodon OAuth 2 server (apps, consent, `authorization_code` + PKCE, `client_credentials`, revoke, RFC 8414 metadata) with Mastodon's per-endpoint granular scope enforcement
 
 - Remote statuses render `in_reply_to_id` / `in_reply_to_account_id` from their stored `inReplyTo`

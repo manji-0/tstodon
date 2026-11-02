@@ -32,6 +32,7 @@ import {
   findRemoteFollow,
   upsertRemoteFollow,
 } from "../remote-actor-store";
+import { applyRemoteUpdate } from "../remote-update";
 import { persistRemoteObject } from "../remote-status-persist";
 import { deleteRemoteStatusByObjectUri } from "../remote-status-store";
 import {
@@ -491,6 +492,11 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
           });
         }
       }
+    }
+    if (activity.kind === "Update") {
+      await applyRemoteUpdate(c.env, identity.value, signer.actor, activityJson.value.object, {
+        allowHosts: await federationAllowHosts(c.env),
+      });
     }
     if (activity.kind === "Create" || activity.kind === "Announce") {
       await persistRemoteObject(c.env, identity.value, signer.actor, activityJson.value.object, {

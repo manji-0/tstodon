@@ -70,6 +70,7 @@ export const NoteDocumentSchema = z
     attributedTo: z.string().min(1),
     content: z.string(),
     published: z.string().min(1),
+    updated: z.string().nullable().optional(),
     url: z.string().optional(),
     to: z.union([z.string(), z.array(z.string())]).optional(),
     cc: z.union([z.string(), z.array(z.string())]).optional(),

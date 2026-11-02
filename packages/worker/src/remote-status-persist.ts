@@ -23,9 +23,9 @@ import { recordRemoteStatusMentions } from "./mention-store";
 import { isTruthy, stringList } from "./form-values";
 import { NoteDocumentSchema } from "./activitypub-wire";
 
-const parseNoteDocument = schemaResult(NoteDocumentSchema);
+export const parseNoteDocument = schemaResult(NoteDocumentSchema);
 
-const noteFromUnknown = (
+export const noteFromUnknown = (
   raw: unknown,
   actorUri: string,
 ): Result<RemoteStatusValue, { kind: "InvalidObject" } | RepositoryError> => {
@@ -110,6 +110,21 @@ const mentionedLocalUsernames = (identity: InstanceIdentity, raw: unknown): stri
  * Record the local accounts a newly stored remote note addresses, so it can
  * reach their conversations, and notify them when asked.
  */
+export const mentionedLocalAccountIds = async (
+  env: Env,
+  identity: InstanceIdentity,
+  raw: unknown,
+): Promise<string[]> => {
+  const accountIds: string[] = [];
+  for (const username of mentionedLocalUsernames(identity, raw)) {
+    const account = await findAccountByUsername(env.DB, username);
+    if (account.isOk() && account.value) {
+      accountIds.push(account.value.id);
+    }
+  }
+  return accountIds;
+};
+
 const recordMentions = async (
   env: Env,
   identity: InstanceIdentity,
@@ -118,13 +133,7 @@ const recordMentions = async (
   statusId: string,
   notify: boolean,
 ): Promise<Result<void, RepositoryError>> => {
-  const accountIds: string[] = [];
-  for (const username of mentionedLocalUsernames(identity, raw)) {
-    const account = await findAccountByUsername(env.DB, username);
-    if (account.isOk() && account.value) {
-      accountIds.push(account.value.id);
-    }
-  }
+  const accountIds = await mentionedLocalAccountIds(env, identity, raw);
   const recorded = await recordRemoteStatusMentions(env.DB, statusId, accountIds);
   if (recorded.isErr()) {
     return err(recorded.error);
@@ -140,6 +149,16 @@ const recordMentions = async (
     }
   }
   return ok(undefined);
+};
+
+/** An admin block with `reject_media` keeps the post but not its attachments. */
+export const applyMediaPolicy = async (
+  env: Env,
+  actor: RemoteActor,
+  status: RemoteStatusValue,
+): Promise<RemoteStatusValue> => {
+  const rejected = await mediaRejectedDomains(env.DB);
+  return rejected.has(actor.domain.toLowerCase()) ? { ...status, media: [] } : status;
 };
 
 export const persistRemoteObject = async (
@@ -173,11 +192,7 @@ export const persistRemoteObject = async (
   if (parsed.isErr()) {
     return parsed.error.kind === "RepositoryError" ? err(parsed.error) : ok(undefined);
   }
-  // An admin block with `reject_media` keeps the post but not its attachments.
-  const rejected = await mediaRejectedDomains(env.DB);
-  const status = rejected.has(actor.domain.toLowerCase())
-    ? { ...parsed.value, media: [] }
-    : parsed.value;
+  const status = await applyMediaPolicy(env, actor, parsed.value);
   const note = parseNoteDocument(raw.value);
   const inReplyTo = note.isOk() ? (note.value.inReplyTo ?? undefined) : undefined;
   const stored = await upsertRemoteStatus(env.DB, status, inReplyTo);

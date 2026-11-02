@@ -96,9 +96,9 @@ const actorProfile = (
   };
 };
 
-const remoteActorFromDocument = (
+/** An actor document that describes `actorUri` and holds that actor's own key. */
+export const remoteActorFromDocument = (
   raw: unknown,
-  keyId: string,
   actorUri: string,
 ): Result<RemoteActor, RemoteActorResolveError> => {
   const document = parseActorDocument(raw);
@@ -106,13 +106,6 @@ const remoteActorFromDocument = (
     return err({ kind: "InvalidSignature" });
   }
   if (document.value.id !== actorUri || document.value.publicKey.owner !== actorUri) {
-    return err({ kind: "InvalidSignature" });
-  }
-  if (
-    document.value.publicKey.id !== keyId &&
-    document.value.id !== keyId &&
-    `${document.value.id}#main-key` !== keyId
-  ) {
     return err({ kind: "InvalidSignature" });
   }
   let parsedUri: URL;
@@ -170,9 +163,16 @@ export const resolveRemoteActor = async (
   if (fetched.isErr()) {
     return err(fetched.error);
   }
-  const actor = remoteActorFromDocument(fetched.value, keyId, actorUri);
+  const actor = remoteActorFromDocument(fetched.value, actorUri);
   if (actor.isErr()) {
     return err(actor.error);
+  }
+  if (
+    actor.value.publicKeyId !== keyId &&
+    actor.value.actorUri !== keyId &&
+    `${actor.value.actorUri}#main-key` !== keyId
+  ) {
+    return err({ kind: "InvalidSignature" });
   }
   const stored = await upsertRemoteActor(db, actor.value);
   if (stored.isErr()) {

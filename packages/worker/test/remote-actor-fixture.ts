@@ -7,6 +7,7 @@ import { upsertRemoteActor } from "../src/remote-actor-store";
 
 export type Remote = Readonly<{
   actorUri: string;
+  publicKeyPem: string;
   send: (activity: Record<string, unknown>) => Promise<number>;
   /** A GET signed with this actor's key (authorized fetch). */
   fetch: (path: string) => Promise<Response>;
@@ -39,6 +40,7 @@ export const remoteActor = async (
   expect((await upsertRemoteActor(env.DB, actor.value)).isOk()).toBe(true);
   return {
     actorUri,
+    publicKeyPem: keys.publicKeyPem,
     fetch: async (path) => {
       const url = new URL(path, "https://example.com");
       const headers = await signFetchRequest(url, keys.privateKeyJwk, `${actorUri}#main-key`);
