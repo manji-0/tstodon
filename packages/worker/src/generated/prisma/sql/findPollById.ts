@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param pollId
  */
 export const findPollById = $runtime.makeTypedQueryFactory(
-  "SELECT id, status_id, multiple, expires_at, options_json, hide_totals FROM polls WHERE id = $1",
+  "SELECT id, status_id, multiple, expires_at, options_json, hide_totals,\n(SELECT COUNT(*) FROM (\nSELECT account_id FROM poll_votes WHERE poll_id = polls.id\nUNION\nSELECT actor_uri FROM remote_poll_votes WHERE poll_id = polls.id\n)) AS voters_count\nFROM polls WHERE id = $1",
 ) as (pollId: string) => $runtime.TypedSql<findPollById.Parameters, findPollById.Result>;
 
 export namespace findPollById {
@@ -20,5 +20,6 @@ export namespace findPollById {
     expires_at: string;
     options_json: string;
     hide_totals: number;
+    voters_count: null | null;
   };
 }

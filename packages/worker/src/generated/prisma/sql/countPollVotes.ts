@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param pollId
  */
 export const countPollVotes = $runtime.makeTypedQueryFactory(
-  "SELECT COUNT(*) AS count FROM poll_votes WHERE poll_id = $1",
+  "SELECT\n(SELECT COUNT(*) FROM poll_votes WHERE poll_id = $1)\n+ (SELECT COUNT(*) FROM remote_poll_votes WHERE poll_id = $1) AS count",
 ) as (pollId: string) => $runtime.TypedSql<countPollVotes.Parameters, countPollVotes.Result>;
 
 export namespace countPollVotes {

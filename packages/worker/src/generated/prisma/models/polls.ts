@@ -221,6 +221,7 @@ export type pollsWhereInput = {
   options_json?: Prisma.StringFilter<"polls"> | string;
   expiry_notified_at?: Prisma.StringNullableFilter<"polls"> | string | null;
   poll_votes?: Prisma.Poll_votesListRelationFilter;
+  remote_poll_votes?: Prisma.Remote_poll_votesListRelationFilter;
   statuses?: Prisma.XOR<Prisma.StatusesScalarRelationFilter, Prisma.statusesWhereInput>;
 };
 
@@ -232,6 +233,7 @@ export type pollsOrderByWithRelationInput = {
   options_json?: Prisma.SortOrder;
   expiry_notified_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   poll_votes?: Prisma.poll_votesOrderByRelationAggregateInput;
+  remote_poll_votes?: Prisma.remote_poll_votesOrderByRelationAggregateInput;
   statuses?: Prisma.statusesOrderByWithRelationInput;
 };
 
@@ -247,6 +249,7 @@ export type pollsWhereUniqueInput = Prisma.AtLeast<
     options_json?: Prisma.StringFilter<"polls"> | string;
     expiry_notified_at?: Prisma.StringNullableFilter<"polls"> | string | null;
     poll_votes?: Prisma.Poll_votesListRelationFilter;
+    remote_poll_votes?: Prisma.Remote_poll_votesListRelationFilter;
     statuses?: Prisma.XOR<Prisma.StatusesScalarRelationFilter, Prisma.statusesWhereInput>;
   },
   "id" | "status_id"
@@ -285,6 +288,7 @@ export type pollsCreateInput = {
   options_json: string;
   expiry_notified_at?: string | null;
   poll_votes?: Prisma.poll_votesCreateNestedManyWithoutPollsInput;
+  remote_poll_votes?: Prisma.remote_poll_votesCreateNestedManyWithoutPollsInput;
   statuses: Prisma.statusesCreateNestedOneWithoutPollsInput;
 };
 
@@ -296,6 +300,7 @@ export type pollsUncheckedCreateInput = {
   options_json: string;
   expiry_notified_at?: string | null;
   poll_votes?: Prisma.poll_votesUncheckedCreateNestedManyWithoutPollsInput;
+  remote_poll_votes?: Prisma.remote_poll_votesUncheckedCreateNestedManyWithoutPollsInput;
 };
 
 export type pollsUpdateInput = {
@@ -305,6 +310,7 @@ export type pollsUpdateInput = {
   options_json?: Prisma.StringFieldUpdateOperationsInput | string;
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   poll_votes?: Prisma.poll_votesUpdateManyWithoutPollsNestedInput;
+  remote_poll_votes?: Prisma.remote_poll_votesUpdateManyWithoutPollsNestedInput;
   statuses?: Prisma.statusesUpdateOneRequiredWithoutPollsNestedInput;
 };
 
@@ -316,6 +322,7 @@ export type pollsUncheckedUpdateInput = {
   options_json?: Prisma.StringFieldUpdateOperationsInput | string;
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   poll_votes?: Prisma.poll_votesUncheckedUpdateManyWithoutPollsNestedInput;
+  remote_poll_votes?: Prisma.remote_poll_votesUncheckedUpdateManyWithoutPollsNestedInput;
 };
 
 export type pollsCreateManyInput = {
@@ -415,6 +422,32 @@ export type pollsUpdateOneRequiredWithoutPoll_votesNestedInput = {
   >;
 };
 
+export type pollsCreateNestedOneWithoutRemote_poll_votesInput = {
+  create?: Prisma.XOR<
+    Prisma.pollsCreateWithoutRemote_poll_votesInput,
+    Prisma.pollsUncheckedCreateWithoutRemote_poll_votesInput
+  >;
+  connectOrCreate?: Prisma.pollsCreateOrConnectWithoutRemote_poll_votesInput;
+  connect?: Prisma.pollsWhereUniqueInput;
+};
+
+export type pollsUpdateOneRequiredWithoutRemote_poll_votesNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.pollsCreateWithoutRemote_poll_votesInput,
+    Prisma.pollsUncheckedCreateWithoutRemote_poll_votesInput
+  >;
+  connectOrCreate?: Prisma.pollsCreateOrConnectWithoutRemote_poll_votesInput;
+  upsert?: Prisma.pollsUpsertWithoutRemote_poll_votesInput;
+  connect?: Prisma.pollsWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.pollsUpdateToOneWithWhereWithoutRemote_poll_votesInput,
+      Prisma.pollsUpdateWithoutRemote_poll_votesInput
+    >,
+    Prisma.pollsUncheckedUpdateWithoutRemote_poll_votesInput
+  >;
+};
+
 export type pollsCreateNestedOneWithoutStatusesInput = {
   create?: Prisma.XOR<
     Prisma.pollsCreateWithoutStatusesInput,
@@ -477,6 +510,7 @@ export type pollsCreateWithoutPoll_votesInput = {
   expires_at: string;
   options_json: string;
   expiry_notified_at?: string | null;
+  remote_poll_votes?: Prisma.remote_poll_votesCreateNestedManyWithoutPollsInput;
   statuses: Prisma.statusesCreateNestedOneWithoutPollsInput;
 };
 
@@ -487,6 +521,7 @@ export type pollsUncheckedCreateWithoutPoll_votesInput = {
   expires_at: string;
   options_json: string;
   expiry_notified_at?: string | null;
+  remote_poll_votes?: Prisma.remote_poll_votesUncheckedCreateNestedManyWithoutPollsInput;
 };
 
 export type pollsCreateOrConnectWithoutPoll_votesInput = {
@@ -523,6 +558,7 @@ export type pollsUpdateWithoutPoll_votesInput = {
   expires_at?: Prisma.StringFieldUpdateOperationsInput | string;
   options_json?: Prisma.StringFieldUpdateOperationsInput | string;
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  remote_poll_votes?: Prisma.remote_poll_votesUpdateManyWithoutPollsNestedInput;
   statuses?: Prisma.statusesUpdateOneRequiredWithoutPollsNestedInput;
 };
 
@@ -533,6 +569,75 @@ export type pollsUncheckedUpdateWithoutPoll_votesInput = {
   expires_at?: Prisma.StringFieldUpdateOperationsInput | string;
   options_json?: Prisma.StringFieldUpdateOperationsInput | string;
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  remote_poll_votes?: Prisma.remote_poll_votesUncheckedUpdateManyWithoutPollsNestedInput;
+};
+
+export type pollsCreateWithoutRemote_poll_votesInput = {
+  id: string;
+  multiple?: number;
+  expires_at: string;
+  options_json: string;
+  expiry_notified_at?: string | null;
+  poll_votes?: Prisma.poll_votesCreateNestedManyWithoutPollsInput;
+  statuses: Prisma.statusesCreateNestedOneWithoutPollsInput;
+};
+
+export type pollsUncheckedCreateWithoutRemote_poll_votesInput = {
+  id: string;
+  status_id: string;
+  multiple?: number;
+  expires_at: string;
+  options_json: string;
+  expiry_notified_at?: string | null;
+  poll_votes?: Prisma.poll_votesUncheckedCreateNestedManyWithoutPollsInput;
+};
+
+export type pollsCreateOrConnectWithoutRemote_poll_votesInput = {
+  where: Prisma.pollsWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.pollsCreateWithoutRemote_poll_votesInput,
+    Prisma.pollsUncheckedCreateWithoutRemote_poll_votesInput
+  >;
+};
+
+export type pollsUpsertWithoutRemote_poll_votesInput = {
+  update: Prisma.XOR<
+    Prisma.pollsUpdateWithoutRemote_poll_votesInput,
+    Prisma.pollsUncheckedUpdateWithoutRemote_poll_votesInput
+  >;
+  create: Prisma.XOR<
+    Prisma.pollsCreateWithoutRemote_poll_votesInput,
+    Prisma.pollsUncheckedCreateWithoutRemote_poll_votesInput
+  >;
+  where?: Prisma.pollsWhereInput;
+};
+
+export type pollsUpdateToOneWithWhereWithoutRemote_poll_votesInput = {
+  where?: Prisma.pollsWhereInput;
+  data: Prisma.XOR<
+    Prisma.pollsUpdateWithoutRemote_poll_votesInput,
+    Prisma.pollsUncheckedUpdateWithoutRemote_poll_votesInput
+  >;
+};
+
+export type pollsUpdateWithoutRemote_poll_votesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  multiple?: Prisma.IntFieldUpdateOperationsInput | number;
+  expires_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  options_json?: Prisma.StringFieldUpdateOperationsInput | string;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  poll_votes?: Prisma.poll_votesUpdateManyWithoutPollsNestedInput;
+  statuses?: Prisma.statusesUpdateOneRequiredWithoutPollsNestedInput;
+};
+
+export type pollsUncheckedUpdateWithoutRemote_poll_votesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  multiple?: Prisma.IntFieldUpdateOperationsInput | number;
+  expires_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  options_json?: Prisma.StringFieldUpdateOperationsInput | string;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  poll_votes?: Prisma.poll_votesUncheckedUpdateManyWithoutPollsNestedInput;
 };
 
 export type pollsCreateWithoutStatusesInput = {
@@ -542,6 +647,7 @@ export type pollsCreateWithoutStatusesInput = {
   options_json: string;
   expiry_notified_at?: string | null;
   poll_votes?: Prisma.poll_votesCreateNestedManyWithoutPollsInput;
+  remote_poll_votes?: Prisma.remote_poll_votesCreateNestedManyWithoutPollsInput;
 };
 
 export type pollsUncheckedCreateWithoutStatusesInput = {
@@ -551,6 +657,7 @@ export type pollsUncheckedCreateWithoutStatusesInput = {
   options_json: string;
   expiry_notified_at?: string | null;
   poll_votes?: Prisma.poll_votesUncheckedCreateNestedManyWithoutPollsInput;
+  remote_poll_votes?: Prisma.remote_poll_votesUncheckedCreateNestedManyWithoutPollsInput;
 };
 
 export type pollsCreateOrConnectWithoutStatusesInput = {
@@ -588,6 +695,7 @@ export type pollsUpdateWithoutStatusesInput = {
   options_json?: Prisma.StringFieldUpdateOperationsInput | string;
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   poll_votes?: Prisma.poll_votesUpdateManyWithoutPollsNestedInput;
+  remote_poll_votes?: Prisma.remote_poll_votesUpdateManyWithoutPollsNestedInput;
 };
 
 export type pollsUncheckedUpdateWithoutStatusesInput = {
@@ -597,6 +705,7 @@ export type pollsUncheckedUpdateWithoutStatusesInput = {
   options_json?: Prisma.StringFieldUpdateOperationsInput | string;
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   poll_votes?: Prisma.poll_votesUncheckedUpdateManyWithoutPollsNestedInput;
+  remote_poll_votes?: Prisma.remote_poll_votesUncheckedUpdateManyWithoutPollsNestedInput;
 };
 
 /**
@@ -605,12 +714,14 @@ export type pollsUncheckedUpdateWithoutStatusesInput = {
 
 export type PollsCountOutputType = {
   poll_votes: number;
+  remote_poll_votes: number;
 };
 
 export type PollsCountOutputTypeSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
   poll_votes?: boolean | PollsCountOutputTypeCountPoll_votesArgs;
+  remote_poll_votes?: boolean | PollsCountOutputTypeCountRemote_poll_votesArgs;
 };
 
 /**
@@ -634,6 +745,15 @@ export type PollsCountOutputTypeCountPoll_votesArgs<
   where?: Prisma.poll_votesWhereInput;
 };
 
+/**
+ * PollsCountOutputType without action
+ */
+export type PollsCountOutputTypeCountRemote_poll_votesArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  where?: Prisma.remote_poll_votesWhereInput;
+};
+
 export type pollsSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
@@ -645,6 +765,7 @@ export type pollsSelect<
     options_json?: boolean;
     expiry_notified_at?: boolean;
     poll_votes?: boolean | Prisma.polls$poll_votesArgs<ExtArgs>;
+    remote_poll_votes?: boolean | Prisma.polls$remote_poll_votesArgs<ExtArgs>;
     statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
     _count?: boolean | Prisma.PollsCountOutputTypeDefaultArgs<ExtArgs>;
   },
@@ -700,6 +821,7 @@ export type pollsInclude<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
   poll_votes?: boolean | Prisma.polls$poll_votesArgs<ExtArgs>;
+  remote_poll_votes?: boolean | Prisma.polls$remote_poll_votesArgs<ExtArgs>;
   statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
   _count?: boolean | Prisma.PollsCountOutputTypeDefaultArgs<ExtArgs>;
 };
@@ -720,6 +842,7 @@ export type $pollsPayload<
   name: "polls";
   objects: {
     poll_votes: Prisma.$poll_votesPayload<ExtArgs>[];
+    remote_poll_votes: Prisma.$remote_poll_votesPayload<ExtArgs>[];
     statuses: Prisma.$statusesPayload<ExtArgs>;
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
@@ -1251,6 +1374,17 @@ export interface Prisma__pollsClient<
       >
     | Null
   >;
+  remote_poll_votes<T extends Prisma.polls$remote_poll_votesArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.polls$remote_poll_votesArgs<ExtArgs>>,
+  ): Prisma.PrismaPromise<
+    | runtime.Types.Result.GetResult<
+        Prisma.$remote_poll_votesPayload<ExtArgs>,
+        T,
+        "findMany",
+        GlobalOmitOptions
+      >
+    | Null
+  >;
   statuses<T extends Prisma.statusesDefaultArgs<ExtArgs> = {}>(
     args?: Prisma.Subset<T, Prisma.statusesDefaultArgs<ExtArgs>>,
   ): Prisma.Prisma__statusesClient<
@@ -1751,6 +1885,34 @@ export type polls$poll_votesArgs<
   take?: number;
   skip?: number;
   distinct?: Prisma.Poll_votesScalarFieldEnum | Prisma.Poll_votesScalarFieldEnum[];
+};
+
+/**
+ * polls.remote_poll_votes
+ */
+export type polls$remote_poll_votesArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the remote_poll_votes
+   */
+  select?: Prisma.remote_poll_votesSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the remote_poll_votes
+   */
+  omit?: Prisma.remote_poll_votesOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.remote_poll_votesInclude<ExtArgs> | null;
+  where?: Prisma.remote_poll_votesWhereInput;
+  orderBy?:
+    | Prisma.remote_poll_votesOrderByWithRelationInput
+    | Prisma.remote_poll_votesOrderByWithRelationInput[];
+  cursor?: Prisma.remote_poll_votesWhereUniqueInput;
+  take?: number;
+  skip?: number;
+  distinct?: Prisma.Remote_poll_votesScalarFieldEnum | Prisma.Remote_poll_votesScalarFieldEnum[];
 };
 
 /**

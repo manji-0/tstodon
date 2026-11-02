@@ -257,6 +257,11 @@ export type outbox_deliveries = Prisma.outbox_deliveriesModel;
  */
 export type poll_votes = Prisma.poll_votesModel;
 /**
+ * Model remote_poll_votes
+ *
+ */
+export type remote_poll_votes = Prisma.remote_poll_votesModel;
+/**
  * Model polls
  *
  */

@@ -91,6 +91,7 @@ export const ModelName = {
   outbound_activities: "outbound_activities",
   outbox_deliveries: "outbox_deliveries",
   poll_votes: "poll_votes",
+  remote_poll_votes: "remote_poll_votes",
   polls: "polls",
   remote_actors: "remote_actors",
   remote_announces: "remote_announces",
@@ -622,6 +623,17 @@ export const Poll_votesScalarFieldEnum = {
 
 export type Poll_votesScalarFieldEnum =
   (typeof Poll_votesScalarFieldEnum)[keyof typeof Poll_votesScalarFieldEnum];
+
+export const Remote_poll_votesScalarFieldEnum = {
+  poll_id: "poll_id",
+  actor_uri: "actor_uri",
+  option_index: "option_index",
+  object_uri: "object_uri",
+  created_at: "created_at",
+} as const;
+
+export type Remote_poll_votesScalarFieldEnum =
+  (typeof Remote_poll_votesScalarFieldEnum)[keyof typeof Remote_poll_votesScalarFieldEnum];
 
 export const PollsScalarFieldEnum = {
   id: "id",

@@ -14,8 +14,10 @@ import {
   findPollVoteTarget as findPollVoteTargetSql,
   insertPoll as insertPollSql,
   insertPollVoteOrIgnore as insertPollVoteOrIgnoreSql,
+  insertRemotePollVoteOrIgnore as insertRemotePollVoteOrIgnoreSql,
   listExpiredUnnotifiedPolls as listExpiredUnnotifiedPollsSql,
   listPollVotesForAccount as listPollVotesForAccountSql,
+  listRemotePollVotesForActor as listRemotePollVotesForActorSql,
   markPollExpiryNotified as markPollExpiryNotifiedSql,
   replacePollOptions as replacePollOptionsSql,
   updatePollOptionsIfActive as updatePollOptionsIfActiveSql,
@@ -36,6 +38,7 @@ export const PollRowSchema = z.object({
   expires_at: z.string().min(1),
   options_json: z.string().min(1),
   hide_totals: z.number(),
+  voters_count: z.number(),
 });
 
 export const ExpiredPollTargetRowSchema = z.object({
@@ -60,6 +63,8 @@ export type PollRecord = Readonly<{
   expiresAt: string;
   hideTotals: boolean;
   options: ReadonlyArray<PollOption>;
+  /** Distinct accounts that voted, local and remote. */
+  votersCount: number;
   votedIndexes: ReadonlyArray<number>;
 }>;
 
@@ -120,6 +125,7 @@ const pollFromRow = async (
     expiresAt: row.expires_at,
     hideTotals: row.hide_totals === 1,
     options: options.value,
+    votersCount: row.voters_count,
     votedIndexes: votes.value.map((vote) => vote.option_index),
   });
 };
@@ -157,6 +163,13 @@ export const findPollByStatusId = async (
   });
   return loadPoll(queried, db, viewerId);
 };
+
+/** The poll a note federates with its `Question`, or undefined for a plain note. */
+export const loadNotePoll = async (
+  db: D1Database,
+  statusId: string,
+): Promise<PollRecord | undefined> =>
+  (await findPollByStatusId(db, statusId, undefined)).unwrapOr(undefined);
 
 /** Total votes cast on a poll, across all accounts and options. */
 export const countPollVotes = async (
@@ -207,7 +220,12 @@ export const findPollsByStatusIds = async (
   const queried = await runD1(() =>
     db
       .prepare(
-        `SELECT id, status_id, multiple, expires_at, options_json, hide_totals
+        `SELECT id, status_id, multiple, expires_at, options_json, hide_totals,
+           (SELECT COUNT(*) FROM (
+             SELECT account_id FROM poll_votes WHERE poll_id = polls.id
+             UNION
+             SELECT actor_uri FROM remote_poll_votes WHERE poll_id = polls.id
+           )) AS voters_count
          FROM polls WHERE status_id ${sqlInJsonEach()}`,
       )
       .bind(jsonStringArray(unique))
@@ -258,6 +276,7 @@ export const findPollsByStatusIds = async (
       expiresAt: row.expires_at,
       hideTotals: row.hide_totals === 1,
       options: options.value,
+      votersCount: row.voters_count,
       votedIndexes: votesByPoll.get(row.id) ?? [],
     });
   }
@@ -326,6 +345,62 @@ export const votePoll = async (
     return err(toRepositoryError("poll expired"));
   }
   return ok(undefined);
+};
+
+/** What became of a vote a remote account cast on a local poll. */
+export type RemotePollVoteOutcome = Readonly<{
+  kind: "Recorded" | "Expired" | "UnknownOption" | "Duplicate" | "AlreadyVoted";
+}>;
+
+/**
+ * Count a remote account's vote for the option titled `title`. As for a local
+ * voter, a single-choice poll takes one option per account and a multiple-choice
+ * poll one vote per option; Mastodon sends one `Create` per chosen option.
+ */
+export const recordRemotePollVote = async (
+  db: D1Database,
+  poll: PollRecord,
+  vote: Readonly<{ actorUri: string; objectUri: string; title: string }>,
+): Promise<Result<RemotePollVoteOutcome, RepositoryError>> => {
+  if (Date.parse(poll.expiresAt) <= Date.now()) {
+    return ok({ kind: "Expired" });
+  }
+  const choice = poll.options.findIndex((option) => option.title === vote.title);
+  const chosen = poll.options[choice];
+  if (!chosen) {
+    return ok({ kind: "UnknownOption" });
+  }
+  const earlier = await runD1(async () =>
+    queryTyped<{ option_index: number }>(
+      db,
+      listRemotePollVotesForActorSql(poll.id, vote.actorUri),
+    ),
+  );
+  if (earlier.isErr()) {
+    return err(earlier.error);
+  }
+  if (earlier.value.some((row) => row.option_index === choice)) {
+    return ok({ kind: "Duplicate" });
+  }
+  if (!poll.multiple && earlier.value.length > 0) {
+    return ok({ kind: "AlreadyVoted" });
+  }
+  const next = poll.options.map((option, index) =>
+    index === choice ? { title: chosen.title, votesCount: chosen.votesCount + 1 } : option,
+  );
+  const now = nowIso();
+  const batched = await runD1Batch(db, [
+    d1PrepareTyped(
+      db,
+      insertRemotePollVoteOrIgnoreSql(poll.id, vote.actorUri, choice, vote.objectUri, now),
+    ),
+    d1PrepareTyped(db, updatePollOptionsIfActiveSql(JSON.stringify(next), poll.id, now)),
+  ]);
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  const updated = batched.value[1];
+  return ok({ kind: (updated?.meta.changes ?? 0) === 0 ? "Expired" : "Recorded" });
 };
 
 export type ExpiredPollTarget = Readonly<{

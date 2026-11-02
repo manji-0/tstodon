@@ -50,6 +50,7 @@ export type * from "./models/notifications";
 export type * from "./models/outbound_activities";
 export type * from "./models/outbox_deliveries";
 export type * from "./models/poll_votes";
+export type * from "./models/remote_poll_votes";
 export type * from "./models/polls";
 export type * from "./models/remote_actors";
 export type * from "./models/remote_announces";

@@ -96,8 +96,7 @@ describe("poll hide_totals", () => {
     const visible = read(PollSchema, fetched.body);
     expect(visible.votes_count).toBe(1);
     expect(visible.options[1]?.votes_count).toBe(1);
-    // Single-choice polls report no voter count.
-    expect(visible.voters_count).toBeNull();
+    expect(visible.voters_count).toBe(1);
   });
 
   it("updates hide_totals when the poll is edited", async () => {

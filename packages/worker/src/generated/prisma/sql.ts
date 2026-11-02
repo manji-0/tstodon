@@ -330,6 +330,8 @@ export * from "./sql/insertPoll";
 
 export * from "./sql/insertPollVoteOrIgnore";
 
+export * from "./sql/insertRemotePollVoteOrIgnore";
+
 export * from "./sql/insertRemoteStatusMention";
 
 export * from "./sql/insertReport";
@@ -431,6 +433,8 @@ export * from "./sql/listPublicRemoteStatuses";
 export * from "./sql/listPublishedAnnouncements";
 
 export * from "./sql/listPushSubscriptions";
+
+export * from "./sql/listRemotePollVotesForActor";
 
 export * from "./sql/listRemoteStatusCards";
 

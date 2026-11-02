@@ -434,6 +434,7 @@ export const ModelName = {
   outbound_activities: "outbound_activities",
   outbox_deliveries: "outbox_deliveries",
   poll_votes: "poll_votes",
+  remote_poll_votes: "remote_poll_votes",
   polls: "polls",
   remote_actors: "remote_actors",
   remote_announces: "remote_announces",
@@ -519,6 +520,7 @@ export type TypeMap<
       | "outbound_activities"
       | "outbox_deliveries"
       | "poll_votes"
+      | "remote_poll_votes"
       | "polls"
       | "remote_actors"
       | "remote_announces"
@@ -3792,6 +3794,82 @@ export type TypeMap<
         };
       };
     };
+    remote_poll_votes: {
+      payload: Prisma.$remote_poll_votesPayload<ExtArgs>;
+      fields: Prisma.remote_poll_votesFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.remote_poll_votesFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_poll_votesPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.remote_poll_votesFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_poll_votesPayload>;
+        };
+        findFirst: {
+          args: Prisma.remote_poll_votesFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_poll_votesPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.remote_poll_votesFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_poll_votesPayload>;
+        };
+        findMany: {
+          args: Prisma.remote_poll_votesFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_poll_votesPayload>[];
+        };
+        create: {
+          args: Prisma.remote_poll_votesCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_poll_votesPayload>;
+        };
+        createMany: {
+          args: Prisma.remote_poll_votesCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.remote_poll_votesCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_poll_votesPayload>[];
+        };
+        delete: {
+          args: Prisma.remote_poll_votesDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_poll_votesPayload>;
+        };
+        update: {
+          args: Prisma.remote_poll_votesUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_poll_votesPayload>;
+        };
+        deleteMany: {
+          args: Prisma.remote_poll_votesDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.remote_poll_votesUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.remote_poll_votesUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_poll_votesPayload>[];
+        };
+        upsert: {
+          args: Prisma.remote_poll_votesUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_poll_votesPayload>;
+        };
+        aggregate: {
+          args: Prisma.Remote_poll_votesAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateRemote_poll_votes>;
+        };
+        groupBy: {
+          args: Prisma.remote_poll_votesGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Remote_poll_votesGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.remote_poll_votesCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Remote_poll_votesCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
     polls: {
       payload: Prisma.$pollsPayload<ExtArgs>;
       fields: Prisma.pollsFieldRefs;
@@ -5991,6 +6069,17 @@ export const Poll_votesScalarFieldEnum = {
 export type Poll_votesScalarFieldEnum =
   (typeof Poll_votesScalarFieldEnum)[keyof typeof Poll_votesScalarFieldEnum];
 
+export const Remote_poll_votesScalarFieldEnum = {
+  poll_id: "poll_id",
+  actor_uri: "actor_uri",
+  option_index: "option_index",
+  object_uri: "object_uri",
+  created_at: "created_at",
+} as const;
+
+export type Remote_poll_votesScalarFieldEnum =
+  (typeof Remote_poll_votesScalarFieldEnum)[keyof typeof Remote_poll_votesScalarFieldEnum];
+
 export const PollsScalarFieldEnum = {
   id: "id",
   status_id: "status_id",
@@ -6481,6 +6570,7 @@ export type GlobalOmitConfig = {
   outbound_activities?: Prisma.outbound_activitiesOmit;
   outbox_deliveries?: Prisma.outbox_deliveriesOmit;
   poll_votes?: Prisma.poll_votesOmit;
+  remote_poll_votes?: Prisma.remote_poll_votesOmit;
   polls?: Prisma.pollsOmit;
   remote_actors?: Prisma.remote_actorsOmit;
   remote_announces?: Prisma.remote_announcesOmit;

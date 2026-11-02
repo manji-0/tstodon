@@ -499,6 +499,17 @@ model poll_votes {
   @@id([poll_id, account_id, option_index])
 }
 
+model remote_poll_votes {
+  poll_id      String
+  actor_uri    String
+  option_index Int
+  object_uri   String
+  created_at   String @default("CURRENT_TIMESTAMP")
+  polls        polls  @relation(fields: [poll_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([poll_id, actor_uri, option_index])
+}
+
 model polls {
   id                 String @id
   status_id          String       @unique(map: "sqlite_autoindex_polls_2")
@@ -507,7 +518,8 @@ model polls {
   options_json       String
   expiry_notified_at String?
   poll_votes         poll_votes[]
-  statuses           statuses     @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  remote_poll_votes  remote_poll_votes[]
+  statuses          statuses     @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([expires_at], map: "idx_polls_expires_at", where: raw("expiry_notified_at IS NULL"))
 }

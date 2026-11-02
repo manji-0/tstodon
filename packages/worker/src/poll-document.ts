@@ -11,7 +11,7 @@ export const pollJson = (poll: PollRecord): Record<string, unknown> => {
     expired,
     multiple: poll.multiple,
     votes_count: hidden ? null : poll.options.reduce((sum, option) => sum + option.votesCount, 0),
-    voters_count: hidden || !poll.multiple ? null : poll.votedIndexes.length,
+    voters_count: hidden ? null : poll.votersCount,
     voted: poll.votedIndexes.length > 0,
     own_votes: [...poll.votedIndexes],
     options: poll.options.map((option) => ({
