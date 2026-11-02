@@ -33,7 +33,7 @@
     "@playwright/test": "1.56.1",
     "@tstodon/core": "workspace:*",
     "@tstodon/domain": "workspace:*",
-    "@types/node": "^24.13.6",
+    "@types/node": "^26.6.6",
     "jose": "^6.2.12",
     "neverthrow": "^8.2.0",
     "prisma": "7.10.0",
@@ -45,7 +45,7 @@
     "zod": "^4.6.5"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "packageManager": "pnpm@12.4.2"
 }

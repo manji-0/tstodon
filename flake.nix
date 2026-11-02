@@ -18,7 +18,7 @@
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
           packages = [
-            pkgs.nodejs_24
+            pkgs.nodejs_26
             pkgs.pnpm
             pkgs.wrangler
             pkgs.process-compose
