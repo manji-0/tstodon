@@ -91,3 +91,7 @@ pnpm prisma:generate
 ```
 
 See [Prisma TypedSQL conventions](../architecture/prisma-typedsql.md).
+
+## Claude Code cloud sessions
+
+`scripts/cloud-setup.sh` is the setup script for Claude Code cloud environments. Paste its contents into the environment's **Setup script** (session title bar → environment menu → Edit). It installs Nix with flakes enabled, the [pstack](https://github.com/michael-denyer/pstack-claude) plugin, and the [kamae-ts](https://github.com/iwasa-kosui/kamae-ts) `kamae` / `kamae-review` skills. It is idempotent.
