@@ -23,6 +23,7 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## Done recently (do not re-open)
 
+- Remote polls, read-only: a remote `Question` (`oneOf` single, `anyOf` multiple choice, option counts, `endTime`/`closed`, `votersCount`) is stored in `remote_statuses.poll_json` and rendered as the Mastodon Poll entity (id `remote-<status id>`, also served by `GET /api/v1/polls/:id`); an author `Update(Question)` refreshes counts without setting `edited_at`. Follow-ups: voting on a remote poll (federate `Create(Note{name, inReplyTo})`; `POST /api/v1/polls/:id/votes` answers 422 until then), poll custom emoji, and expiry notifications for remote polls.
 - Inbox `Update`: a remote edit of a cached note (author-checked, `edited_at` rendered, newer edit wins, new mentions notified once) and a remote actor profile refresh. Follow-ups: edit history (`/history`) and streaming `status.update` for remote statuses, `update` notifications for reblogs once local reblogs of remote statuses exist
 
 - Cloudflare Access replaced by Void Better Auth (passkey-only sign-up/sign-in, admin plugin roles) and a first-party Mastodon OAuth 2 server (apps, consent, `authorization_code` + PKCE, `client_credentials`, revoke, RFC 8414 metadata) with Mastodon's per-endpoint granular scope enforcement

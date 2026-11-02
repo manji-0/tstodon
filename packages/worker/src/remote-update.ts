@@ -1,4 +1,10 @@
-import { IsoInstant, type InstanceIdentity, type RemoteActor } from "@tstodon/domain";
+import {
+  IsoInstant,
+  RemotePoll,
+  type InstanceIdentity,
+  type RemoteActor,
+  type RemoteStatusValue,
+} from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -43,7 +49,7 @@ export const classifyUpdateObject = (raw: unknown): UpdateTarget => {
   if (object.isErr()) {
     return { kind: "Unsupported" };
   }
-  if (object.value.type === "Note") {
+  if (object.value.type === "Note" || object.value.type === "Question") {
     return { kind: "NoteUpdate", objectUri: object.value.id, raw };
   }
   if (ACTOR_TYPES.has(object.value.type)) {
@@ -51,6 +57,17 @@ export const classifyUpdateObject = (raw: unknown): UpdateTarget => {
   }
   return { kind: "Unsupported" };
 };
+
+/**
+ * Whether the author changed what the post says. Vote counts, which a
+ * `Question` refreshes as people vote, are not an edit, as on Mastodon.
+ */
+const contentChanged = (before: RemoteStatusValue, after: RemoteStatusValue): boolean =>
+  before.contentHtml !== after.contentHtml ||
+  before.spoilerText !== after.spoilerText ||
+  before.sensitive !== after.sensitive ||
+  JSON.stringify(before.media) !== JSON.stringify(after.media) ||
+  !RemotePoll.sameQuestion(before.poll, after.poll);
 
 const isNewer = (candidate: string, than: string): boolean =>
   Date.parse(candidate) > Date.parse(than);
@@ -87,19 +104,24 @@ const applyNoteUpdate = async (
   if (editedAt.isErr()) {
     return ok(undefined);
   }
-  // A late or replayed Update must not roll back a newer edit.
-  const previous = cached.value.editedAt;
-  if (previous.kind === "Edited" && !isNewer(editedAt.value, previous.at)) {
-    return ok(undefined);
-  }
-  const status = await applyMediaPolicy(env, signer, {
+  const refreshed = await applyMediaPolicy(env, signer, {
     ...parsed.value,
     id: cached.value.id,
     publishedAt: cached.value.publishedAt,
     visibility: cached.value.visibility,
     language: cached.value.language,
-    editedAt: { kind: "Edited", at: editedAt.value },
+    editedAt: cached.value.editedAt,
   });
+  const edited = contentChanged(cached.value, refreshed);
+  // A late or replayed edit must not roll back a newer one. A count-only
+  // refresh is not an edit and is always applied.
+  const previous = cached.value.editedAt;
+  if (edited && previous.kind === "Edited" && !isNewer(editedAt.value, previous.at)) {
+    return ok(undefined);
+  }
+  const status: RemoteStatusValue = edited
+    ? { ...refreshed, editedAt: { kind: "Edited", at: editedAt.value } }
+    : refreshed;
   const stored = await upsertRemoteStatus(env.DB, status, note.value.inReplyTo ?? undefined);
   if (stored.isErr()) {
     return err(stored.error);

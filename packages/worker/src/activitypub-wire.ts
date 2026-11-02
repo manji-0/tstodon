@@ -63,10 +63,23 @@ export const RemoteWebfingerSchema = z
   })
   .passthrough();
 
+const PollOptionDocumentSchema = z
+  .object({
+    name: z.string(),
+    replies: z.object({ totalItems: z.number().int().nonnegative() }).partial().optional(),
+  })
+  .passthrough();
+
+/** A `Note`, or a `Question` (a note with poll options). */
 export const NoteDocumentSchema = z
   .object({
     id: z.string().min(1),
-    type: z.literal("Note"),
+    type: z.union([z.literal("Note"), z.literal("Question")]),
+    oneOf: z.array(PollOptionDocumentSchema).optional(),
+    anyOf: z.array(PollOptionDocumentSchema).optional(),
+    endTime: z.string().nullable().optional(),
+    closed: z.union([z.string(), z.boolean()]).nullable().optional(),
+    votersCount: z.number().int().nonnegative().nullable().optional(),
     attributedTo: z.string().min(1),
     content: z.string(),
     published: z.string().min(1),

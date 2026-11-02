@@ -5,6 +5,7 @@ import {
   Visibility,
 } from "@tstodon/domain";
 import { mastodonRemoteAccount } from "./account-documents";
+import { remotePollJson } from "./poll-document";
 import { httpUrl, sanitizeRemoteHtml } from "./sanitize-html";
 
 export const mastodonRemoteStatus = (
@@ -58,7 +59,7 @@ export const mastodonRemoteStatus = (
     tags: [],
     emojis: [],
     card,
-    poll: null,
+    poll: status.poll.kind === "NoPoll" ? null : remotePollJson(status.id, status.poll),
     quote: null,
     quotes_count: 0,
     quote_approval: { automatic: [], manual: [], current_user: "unknown" },

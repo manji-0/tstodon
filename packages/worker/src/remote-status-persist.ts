@@ -22,6 +22,7 @@ import { findRemoteStatusByObjectUri, upsertRemoteStatus } from "./remote-status
 import { recordRemoteStatusMentions } from "./mention-store";
 import { isTruthy, stringList } from "./form-values";
 import { NoteDocumentSchema } from "./activitypub-wire";
+import { remotePollFromDocument } from "./remote-poll-parse";
 
 export const parseNoteDocument = schemaResult(NoteDocumentSchema);
 
@@ -73,6 +74,7 @@ export const noteFromUnknown = (
     sensitive: isTruthy(document.value.sensitive),
     language: { kind: "None" },
     publishedAt: publishedAt.value,
+    poll: remotePollFromDocument(document.value),
     ...(document.value.url ? { url: document.value.url } : {}),
   });
 };

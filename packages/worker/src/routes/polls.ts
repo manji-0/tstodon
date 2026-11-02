@@ -7,7 +7,9 @@ import {
   readBody,
   requireUser,
 } from "../http";
-import { pollJson } from "../poll-document";
+import { pollJson, remotePollJson, statusIdOfRemotePoll } from "../poll-document";
+import { findRemoteStatusById } from "../remote-status-store";
+import { canViewRemoteStatus } from "../visibility-guard";
 import { findPollById, votePoll } from "../poll-store";
 import { numberList } from "../form-values";
 import { z } from "zod";
@@ -21,6 +23,21 @@ export const getV1PollsById = async (c: Context<{ Bindings: Env }, "/api/v1/poll
   const viewerId = user.isOk() ? user.value.id : undefined;
   if (user.isErr() && user.error.kind !== "MissingToken") {
     return jsonAuthError(c, user.error);
+  }
+  const remoteStatusId = statusIdOfRemotePoll(c.req.param("id"));
+  if (remoteStatusId !== undefined) {
+    const remote = await findRemoteStatusById(c.env.DB, remoteStatusId);
+    if (remote.isErr()) {
+      return jsonRepositoryError(c, remote.error.message);
+    }
+    if (
+      !remote.value ||
+      remote.value.poll.kind === "NoPoll" ||
+      !(await canViewRemoteStatus(c.env.DB, remote.value, viewerId))
+    ) {
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    }
+    return c.json(remotePollJson(remote.value.id, remote.value.poll));
   }
   const poll = await findPollById(c.env.DB, c.req.param("id"), viewerId);
   if (poll.isErr()) {
@@ -38,6 +55,10 @@ export const postV1PollsByIdVotes = async (
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
+  }
+  if (statusIdOfRemotePoll(c.req.param("id")) !== undefined) {
+    // Federating a vote is not implemented; answer instead of looking for a local poll.
+    return c.json({ error: "Voting on remote polls is not supported", kind: "RemotePoll" }, 422);
   }
   const body = await readBody(c, PollVoteBodySchema);
   if (body.isErr()) {
