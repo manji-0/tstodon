@@ -38,6 +38,7 @@ export const RemoteStatusRowSchema = z.object({
   sensitive: z.number(),
   language: z.string().nullable(),
   published_at: z.string().min(1),
+  edited_at: z.string().nullable(),
   media_json: z.string(),
   card_json: z.string().nullable(),
 });
@@ -56,8 +57,9 @@ export const remoteStatusFromRow = (
 ): Result<RemoteStatus, RepositoryError> => {
   const id = StatusId.parse(row.id);
   const publishedAt = IsoInstant.parse(row.published_at);
+  const editedAt = IsoInstant.parse(row.edited_at ?? "").unwrapOr(undefined);
   const visibility = Visibility.fromMastodon(row.visibility);
-  if (id.isErr() || publishedAt.isErr() || visibility.isErr()) {
+  if (id.isErr() || publishedAt.isErr() || (row.edited_at && !editedAt) || visibility.isErr()) {
     return err(toRepositoryError("invalid remote status row"));
   }
   return RemoteStatus.fromFetched({
@@ -73,6 +75,7 @@ export const remoteStatusFromRow = (
         ? { kind: "Present", value: row.language }
         : { kind: "None" },
     publishedAt: publishedAt.value,
+    editedAt,
     media: mediaFromJson(row.media_json),
     ...(row.url ? { url: row.url } : {}),
   }).mapErr(() => toRepositoryError("invalid remote status row"));
@@ -192,6 +195,7 @@ export const upsertRemoteStatus = async (
         nowIso(),
         nowIso(),
         inReplyToUri ?? null,
+        persisted.editedAt.kind === "Edited" ? persisted.editedAt.at : null,
       ),
     );
     // The row has to exist before its tags (the index holds a foreign key).

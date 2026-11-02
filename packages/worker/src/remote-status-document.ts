@@ -28,7 +28,7 @@ export const mastodonRemoteStatus = (
     replies_count: 0,
     reblogs_count: 0,
     favourites_count: 0,
-    edited_at: null,
+    edited_at: status.editedAt.kind === "Edited" ? status.editedAt.at : null,
     favourited: false,
     reblogged: false,
     muted: false,
