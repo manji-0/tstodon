@@ -103,6 +103,21 @@ export const NoteDocumentSchema = z
   })
   .passthrough();
 
+/**
+ * A poll vote as Mastodon sends it: a `Note` named for the chosen option,
+ * answering the poll's note, with no content of its own.
+ */
+export const PollVoteDocumentSchema = z
+  .object({
+    id: z.string().min(1),
+    type: z.literal("Note"),
+    attributedTo: z.string().min(1),
+    name: z.string().min(1),
+    inReplyTo: z.string().min(1),
+    content: z.string().nullable().optional(),
+  })
+  .passthrough();
+
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([
   JsonObjectSchema,
@@ -111,4 +126,5 @@ warmSchemas([
   ActorPublicKeySchema,
   ActorDocumentSchema,
   NoteDocumentSchema,
+  PollVoteDocumentSchema,
 ]);

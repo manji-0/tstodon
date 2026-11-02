@@ -37,6 +37,7 @@ import {
 import { RemoteDeleteTarget } from "../remote-delete";
 import { applyRemoteUpdate } from "../remote-update";
 import { persistRemoteObject } from "../remote-status-persist";
+import { handleRemotePollVote } from "../remote-poll-vote";
 import { deleteRemoteStatusByObjectUri } from "../remote-status-store";
 import {
   deleteRemoteAnnounce,
@@ -59,6 +60,7 @@ import { favouriteStatus } from "../status-interaction-store";
 import { followAccount, listFollowers, listFollowing, unfollowAccount } from "../follow-store";
 import { loadNoteMentions } from "../mention-resolve";
 import { loadNoteReply } from "../reply-target";
+import { loadNotePoll } from "../poll-store";
 import { notifyAccount, notifyFromRemote } from "../notify";
 import { findStatusById, insertLocalReblog } from "../status-store";
 import { nowInstant } from "../clock";
@@ -115,6 +117,7 @@ export const getUsersByUsernameStatusesById = async (
     quoteUri: await quotedStatusUri(c.env, identity.value, status.value.id),
     mentions: await loadNoteMentions(c.env.DB, identity.value, status.value.id),
     reply: await loadNoteReply(c.env.DB, identity.value, status.value),
+    poll: await loadNotePoll(c.env.DB, status.value.id),
   });
   const visibility = status.value.visibility.kind;
   if (visibility !== "Public" && visibility !== "Unlisted") {
@@ -517,7 +520,11 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         allowHosts: await federationAllowHosts(c.env),
       });
     }
-    if (activity.kind === "Create" || activity.kind === "Announce") {
+    const pollVote =
+      activity.kind === "Create"
+        ? await handleRemotePollVote(c.env, identity.value, signer.actor, activityJson.value.object)
+        : undefined;
+    if (pollVote?.kind === "NotAVote" || activity.kind === "Announce") {
       await persistRemoteObject(c.env, identity.value, signer.actor, activityJson.value.object, {
         allowHosts: await federationAllowHosts(c.env),
         notifyMentions: activity.kind === "Create",
