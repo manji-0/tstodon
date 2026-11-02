@@ -30,6 +30,11 @@ const RemoteNoteSchema = z.object({
     z.object({ kind: z.literal("Present"), value: z.string().min(1) }),
   ]),
   publishedAt: IsoInstant.schema,
+  /** When the author last edited the note, from the `Update` that carried the edit. */
+  editedAt: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("Never") }),
+    z.object({ kind: z.literal("Edited"), at: IsoInstant.schema }),
+  ]),
   media: z.array(RemoteAttachmentSchema),
 });
 
@@ -96,6 +101,7 @@ export const RemoteStatus = {
     sensitive: boolean;
     language: StatusLanguage;
     publishedAt: z.infer<typeof IsoInstant.schema>;
+    editedAt?: z.infer<typeof IsoInstant.schema> | undefined;
   }): Result<RemoteStatus, RemoteStatusParseError> => {
     const parsed = parseRemoteStatus({
       kind: "RemoteNote",
@@ -108,6 +114,7 @@ export const RemoteStatus = {
       sensitive: input.sensitive,
       language: input.language,
       publishedAt: input.publishedAt,
+      editedAt: input.editedAt ? { kind: "Edited", at: input.editedAt } : { kind: "Never" },
       // Mastodon carries at most four attachments on a status.
       media: (input.media ?? []).slice(0, 4),
       ...(input.url ? { url: input.url } : {}),

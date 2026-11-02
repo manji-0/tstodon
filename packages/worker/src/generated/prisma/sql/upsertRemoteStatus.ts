@@ -19,9 +19,10 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param createdAt
  * @param updatedAt
  * @param inReplyToUri
+ * @param editedAt
  */
 export const upsertRemoteStatus = $runtime.makeTypedQueryFactory(
-  "INSERT INTO remote_statuses (\nid, actor_uri, object_uri, url, content_html, spoiler_text,\nvisibility, sensitive, language, published_at, media_json, created_at, updated_at, in_reply_to_uri\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)\nON CONFLICT(object_uri) DO UPDATE SET\ncontent_html = excluded.content_html,\nspoiler_text = excluded.spoiler_text,\nvisibility = excluded.visibility,\nsensitive = excluded.sensitive,\nlanguage = excluded.language,\npublished_at = excluded.published_at,\nurl = excluded.url,\nmedia_json = excluded.media_json,\nupdated_at = excluded.updated_at",
+  "INSERT INTO remote_statuses (\nid, actor_uri, object_uri, url, content_html, spoiler_text,\nvisibility, sensitive, language, published_at, media_json, created_at, updated_at, in_reply_to_uri, edited_at\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)\nON CONFLICT(object_uri) DO UPDATE SET\ncard_json = CASE WHEN content_html = excluded.content_html THEN card_json ELSE NULL END,\ncard_url = CASE WHEN content_html = excluded.content_html THEN card_url ELSE NULL END,\ncontent_html = excluded.content_html,\nspoiler_text = excluded.spoiler_text,\nvisibility = excluded.visibility,\nsensitive = excluded.sensitive,\nlanguage = excluded.language,\npublished_at = excluded.published_at,\nurl = excluded.url,\nmedia_json = excluded.media_json,\nedited_at = coalesce(excluded.edited_at, edited_at),\nupdated_at = excluded.updated_at",
 ) as (
   id: string,
   actorUri: string,
@@ -37,6 +38,7 @@ export const upsertRemoteStatus = $runtime.makeTypedQueryFactory(
   createdAt: string,
   updatedAt: string,
   inReplyToUri: string | null,
+  editedAt: string | null,
 ) => $runtime.TypedSql<upsertRemoteStatus.Parameters, upsertRemoteStatus.Result>;
 
 export namespace upsertRemoteStatus {
@@ -55,6 +57,7 @@ export namespace upsertRemoteStatus {
     createdAt: string,
     updatedAt: string,
     inReplyToUri: string | null,
+    editedAt: string | null,
   ];
   export type Result = {};
 }
