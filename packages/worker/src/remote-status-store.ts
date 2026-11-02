@@ -1,5 +1,6 @@
 import {
   IsoInstant,
+  RemotePoll,
   type RemoteAttachment,
   RemoteAttachmentSchema,
   RemoteStatus,
@@ -41,6 +42,7 @@ export const RemoteStatusRowSchema = z.object({
   edited_at: z.string().nullable(),
   media_json: z.string(),
   card_json: z.string().nullable(),
+  poll_json: z.string().nullable(),
 });
 
 export type RemoteStatusRow = z.infer<typeof RemoteStatusRowSchema>;
@@ -50,6 +52,15 @@ export const parseRemoteStatusRow = schemaResult(RemoteStatusRowSchema);
 const mediaFromJson = (raw: string): ReadonlyArray<RemoteAttachment> => {
   const parsed = schemaResult(z.array(RemoteAttachmentSchema))(parseJsonText(raw).unwrapOr([]));
   return parsed.isOk() ? parsed.value : [];
+};
+
+/** A missing or unreadable poll column reads as no poll; the note itself still shows. */
+const pollFromJson = (raw: string | null): RemotePoll => {
+  if (raw === null) {
+    return RemotePoll.none;
+  }
+  const parsed = RemotePoll.parse(parseJsonText(raw).unwrapOr(null));
+  return parsed.isOk() ? parsed.value : RemotePoll.none;
 };
 
 export const remoteStatusFromRow = (
@@ -77,6 +88,7 @@ export const remoteStatusFromRow = (
     publishedAt: publishedAt.value,
     editedAt,
     media: mediaFromJson(row.media_json),
+    poll: pollFromJson(row.poll_json),
     ...(row.url ? { url: row.url } : {}),
   }).mapErr(() => toRepositoryError("invalid remote status row"));
 };
@@ -196,6 +208,7 @@ export const upsertRemoteStatus = async (
         nowIso(),
         inReplyToUri ?? null,
         persisted.editedAt.kind === "Edited" ? persisted.editedAt.at : null,
+        persisted.poll.kind === "NoPoll" ? null : JSON.stringify(persisted.poll),
       ),
     );
     // The row has to exist before its tags (the index holds a foreign key).

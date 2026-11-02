@@ -2,6 +2,7 @@ import { schemaResult } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { IsoInstant } from "./iso-instant";
+import { RemotePoll, RemotePollSchema } from "./remote-poll";
 import { StatusId } from "./status-id";
 import { Visibility } from "./visibility";
 import type { StatusLanguage } from "./status-quote-target";
@@ -36,6 +37,7 @@ const RemoteNoteSchema = z.object({
     z.object({ kind: z.literal("Edited"), at: IsoInstant.schema }),
   ]),
   media: z.array(RemoteAttachmentSchema),
+  poll: RemotePollSchema,
 });
 
 export const RemoteStatusSchema = z.discriminatedUnion("kind", [RemoteNoteSchema]);
@@ -102,6 +104,7 @@ export const RemoteStatus = {
     language: StatusLanguage;
     publishedAt: z.infer<typeof IsoInstant.schema>;
     editedAt?: z.infer<typeof IsoInstant.schema> | undefined;
+    poll?: RemotePoll | undefined;
   }): Result<RemoteStatus, RemoteStatusParseError> => {
     const parsed = parseRemoteStatus({
       kind: "RemoteNote",
@@ -117,6 +120,7 @@ export const RemoteStatus = {
       editedAt: input.editedAt ? { kind: "Edited", at: input.editedAt } : { kind: "Never" },
       // Mastodon carries at most four attachments on a status.
       media: (input.media ?? []).slice(0, 4),
+      poll: input.poll ?? RemotePoll.none,
       ...(input.url ? { url: input.url } : {}),
     });
     return parsed.mapErr((): RemoteStatusParseError => ({ kind: "InvalidObject" }));

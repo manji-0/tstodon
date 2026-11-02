@@ -6078,6 +6078,7 @@ export const Remote_statusesScalarFieldEnum = {
   card_url: "card_url",
   in_reply_to_uri: "in_reply_to_uri",
   edited_at: "edited_at",
+  poll_json: "poll_json",
   created_at: "created_at",
   updated_at: "updated_at",
 } as const;

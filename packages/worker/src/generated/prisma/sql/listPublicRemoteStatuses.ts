@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param limit
  */
 export const listPublicRemoteStatuses = $runtime.makeTypedQueryFactory(
-  "SELECT id, actor_uri, object_uri, url, content_html, spoiler_text, visibility, sensitive, language, published_at, edited_at, media_json, card_json\nFROM remote_statuses\nWHERE visibility = 'public'\nORDER BY published_at DESC LIMIT $1",
+  "SELECT id, actor_uri, object_uri, url, content_html, spoiler_text, visibility, sensitive, language, published_at, edited_at, media_json, card_json, poll_json\nFROM remote_statuses\nWHERE visibility = 'public'\nORDER BY published_at DESC LIMIT $1",
 ) as (
   limit: number,
 ) => $runtime.TypedSql<listPublicRemoteStatuses.Parameters, listPublicRemoteStatuses.Result>;
@@ -29,5 +29,6 @@ export namespace listPublicRemoteStatuses {
     edited_at: string | null;
     media_json: string;
     card_json: string | null;
+    poll_json: string | null;
   };
 }

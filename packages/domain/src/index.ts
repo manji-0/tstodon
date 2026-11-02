@@ -35,6 +35,12 @@ export {
   type RemoteActorProfile,
 } from "./remote-actor";
 export {
+  RemotePoll,
+  RemotePollSchema,
+  type RemotePoll as RemotePollValue,
+  type RemotePollOption,
+} from "./remote-poll";
+export {
   RemoteAttachmentSchema,
   RemoteStatus,
   type RemoteNote,
