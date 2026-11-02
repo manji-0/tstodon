@@ -346,3 +346,8 @@ export type status_quote_policies = Prisma.status_quote_policiesModel;
  *
  */
 export type statuses = Prisma.statusesModel;
+/**
+ * Model remote_poll_own_votes
+ *
+ */
+export type remote_poll_own_votes = Prisma.remote_poll_own_votesModel;

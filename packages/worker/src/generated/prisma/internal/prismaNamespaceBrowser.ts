@@ -114,6 +114,7 @@ export const ModelName = {
   status_quotes: "status_quotes",
   status_quote_policies: "status_quote_policies",
   statuses: "statuses",
+  remote_poll_own_votes: "remote_poll_own_votes",
 } as const;
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName];
@@ -890,6 +891,18 @@ export const StatusesScalarFieldEnum = {
 
 export type StatusesScalarFieldEnum =
   (typeof StatusesScalarFieldEnum)[keyof typeof StatusesScalarFieldEnum];
+
+export const Remote_poll_own_votesScalarFieldEnum = {
+  status_id: "status_id",
+  account_id: "account_id",
+  choice_index: "choice_index",
+  activity_id: "activity_id",
+  optimistic: "optimistic",
+  created_at: "created_at",
+} as const;
+
+export type Remote_poll_own_votesScalarFieldEnum =
+  (typeof Remote_poll_own_votesScalarFieldEnum)[keyof typeof Remote_poll_own_votesScalarFieldEnum];
 
 export const SortOrder = {
   asc: "asc",
