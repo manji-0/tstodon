@@ -6,6 +6,7 @@ import {
 } from "@tstodon/domain";
 import type { z } from "zod";
 import type { ActivityJsonSchema } from "./activitypub-wire";
+import type { PollRecord } from "./poll-store";
 
 export const actorDocument = (
   identity: InstanceIdentity,
@@ -145,6 +146,27 @@ export const undoAnnounceActivity = (
 /** An account a note mentions, as its `Mention` tag names it. */
 export type NoteMention = Readonly<{ href: string; name: string }>;
 
+/**
+ * The poll fields of a `Question`, as Mastodon reads them: `oneOf` or `anyOf`
+ * options with their vote counts, `endTime`, `closed` once over, and `votersCount`.
+ * A poll that hides its totals keeps them out of the document until it ends.
+ */
+const questionFields = (poll: PollRecord): Record<string, unknown> => {
+  const closed = Date.parse(poll.expiresAt) <= Date.now();
+  const hidden = poll.hideTotals && !closed;
+  const options = poll.options.map((option) => ({
+    type: "Note",
+    name: option.title,
+    replies: { type: "Collection", totalItems: hidden ? 0 : option.votesCount },
+  }));
+  return {
+    [poll.multiple ? "anyOf" : "oneOf"]: options,
+    endTime: poll.expiresAt,
+    ...(closed ? { closed: poll.expiresAt } : {}),
+    ...(hidden ? {} : { votersCount: poll.votersCount }),
+  };
+};
+
 export const noteDocument = (
   identity: InstanceIdentity,
   account: LocalAccount,
@@ -154,9 +176,11 @@ export const noteDocument = (
     mentions?: ReadonlyArray<NoteMention>;
     /** The parent's URI, and a remote parent author to address alongside the mentions. */
     reply?: Readonly<{ inReplyTo: string; addressAuthor: string | undefined }> | undefined;
+    /** A note with a poll federates as a `Question`. */
+    poll?: PollRecord | undefined;
   }> = {},
 ): Record<string, unknown> => {
-  const { quoteUri, mentions = [], reply } = extras;
+  const { quoteUri, mentions = [], reply, poll } = extras;
   const actor = InstanceIdentity.actorUrl(identity, account.username);
   const id = `${actor}/statuses/${note.id}`;
   const followers = `${actor}/followers`;
@@ -183,21 +207,26 @@ export const noteDocument = (
           ? mentioned
           : [];
   const quotes = quoteUri !== undefined && quoteUri.length > 0;
-  return {
+  const terms = {
     // FEP-044f names the `quote` property for a quote post.
-    "@context": quotes
-      ? [
-          "https://www.w3.org/ns/activitystreams",
-          {
-            quote: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
-            quote_uri: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
-            _misskey_quote: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
-          },
-        ]
-      : "https://www.w3.org/ns/activitystreams",
+    ...(quotes
+      ? {
+          quote: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
+          quote_uri: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
+          _misskey_quote: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
+        }
+      : {}),
+    ...(poll ? { toot: "http://joinmastodon.org/ns#", votersCount: "toot:votersCount" } : {}),
+  };
+  return {
+    "@context":
+      Object.keys(terms).length > 0
+        ? ["https://www.w3.org/ns/activitystreams", terms]
+        : "https://www.w3.org/ns/activitystreams",
     ...(quotes ? { quote: quoteUri, quote_uri: quoteUri, _misskey_quote: quoteUri } : {}),
+    ...(poll ? questionFields(poll) : {}),
     id,
-    type: "Note",
+    type: poll ? "Question" : "Note",
     attributedTo: actor,
     content: note.contentHtml,
     published: note.createdAt,

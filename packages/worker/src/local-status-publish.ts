@@ -14,7 +14,7 @@ import { loadNoteMentions, resolveRemoteMentions } from "./mention-resolve";
 import { loadNoteReply, type ReplyTarget } from "./reply-target";
 import { noteDocument } from "./activitypub";
 import { notifyAccount } from "./notify";
-import { insertPoll } from "./poll-store";
+import { insertPoll, loadNotePoll } from "./poll-store";
 import { enqueueLinkCard } from "./link-card";
 import type { MediaAttribute } from "./status-body-schema";
 import { notifyingFollowerIds } from "./follow-store";
@@ -253,6 +253,7 @@ export const publishLocalNote = async (
             quoteUri: input.quote?.uri,
             mentions: await loadNoteMentions(env.DB, identity, note.id),
             reply: await loadNoteReply(env.DB, identity, note),
+            poll: await loadNotePoll(env.DB, note.id),
           }),
         });
   if (enqueued.isErr()) {

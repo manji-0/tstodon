@@ -20,7 +20,12 @@ import {
 } from "../../http";
 import { newEntityId } from "../../ids";
 import { mastodonStatus } from "../../local-status-documents";
-import { countPollVotes, findPollByStatusId, replacePollOptions } from "../../poll-store";
+import {
+  countPollVotes,
+  findPollByStatusId,
+  loadNotePoll,
+  replacePollOptions,
+} from "../../poll-store";
 import {
   CreateStatusBodySchema,
   mediaAttributesFromForm,
@@ -319,6 +324,7 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
             quoteUri,
             mentions: await loadNoteMentions(c.env.DB, identity.value, existing.id),
             reply: await loadNoteReply(c.env.DB, identity.value, revised),
+            poll: await loadNotePoll(c.env.DB, existing.id),
           }),
         });
   if (enqueued.isErr()) {
