@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { authHeaders } from "../test/auth-fixture";
+import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -169,21 +169,207 @@ describe("remote polls", () => {
     expect((await json("/api/v1/polls/remote-999999999")).status).toBe(404);
   });
 
-  it("answers a vote on a remote poll with a 4xx", async () => {
-    const author = await remoteActor("poll-vote");
-    const id = await create(author, question(author, "vote"));
-    const headers = {
-      ...(await authHeaders("remote-poll-voter@example.com")),
-      "content-type": "application/json",
+  describe("voting", () => {
+    const vote = async (email: string, id: string, choices: ReadonlyArray<number>) =>
+      json(`/api/v1/polls/remote-${id}/votes`, {
+        method: "POST",
+        headers: { ...(await authHeaders(email)), "content-type": "application/json" },
+        body: JSON.stringify({ choices }),
+      });
+
+    const statusAs = async (email: string, id: string) =>
+      read(
+        StatusSchema,
+        (await json(`/api/v1/statuses/${id}`, { headers: await authHeaders(email) })).body,
+      );
+
+    const queuedVotes = async (email: string) => {
+      const voter = await signedInAccount(email);
+      const rows = await env.DB.prepare(
+        `SELECT a.payload_json, d.inbox_url FROM outbound_activities a
+         JOIN outbox_deliveries d ON d.activity_id = a.id AND d.inbox_url IS NOT NULL
+         WHERE a.account_id = ? AND a.kind = 'Create' ORDER BY a.rowid`,
+      )
+        .bind(voter.id)
+        .all<{ payload_json: string; inbox_url: string }>();
+      return rows.results.map((row) => ({
+        inbox: row.inbox_url,
+        activity: JSON.parse(row.payload_json) as Record<string, any>,
+      }));
     };
 
-    const voted = await json(`/api/v1/polls/remote-${id}/votes`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ choices: [0] }),
+    it("counts the vote, marks it as the viewer's, and federates a Create to the author", async () => {
+      const author = await remoteActor("poll-vote");
+      const id = await create(author, question(author, "vote"));
+      const email = "remote-poll-voter@example.com";
+
+      const voted = await vote(email, id, [1]);
+      expect(voted.status).toBe(200);
+      const poll = read(PollSchema, voted.body);
+      expect(poll).toMatchObject({
+        id: `remote-${id}`,
+        voted: true,
+        own_votes: [1],
+        votes_count: 5,
+        voters_count: 5,
+        options: [
+          { title: "cats", votes_count: 3 },
+          { title: "dogs", votes_count: 2 },
+        ],
+      });
+
+      const viewer = await signedInAccount(email);
+      const queued = await queuedVotes(email);
+      expect(queued).toHaveLength(1);
+      expect(queued[0]?.inbox).toBe(`${author.actorUri}/inbox`);
+      expect(queued[0]?.activity).toMatchObject({
+        type: "Create",
+        actor: `https://example.com/users/${viewer.username}`,
+        to: [author.actorUri],
+        object: {
+          type: "Note",
+          name: "dogs",
+          inReplyTo: "https://remote.example/questions/vote",
+          attributedTo: `https://example.com/users/${viewer.username}`,
+          to: [author.actorUri],
+        },
+      });
+
+      const fetched = read(
+        PollSchema,
+        (await json(`/api/v1/polls/remote-${id}`, { headers: await authHeaders(email) })).body,
+      );
+      expect(fetched).toMatchObject({ voted: true, own_votes: [1], votes_count: 5 });
+      const asViewer = await statusAs(email, id);
+      expect(asViewer.poll).toMatchObject({ voted: true, own_votes: [1] });
+      const anonymous = await status(id);
+      expect(anonymous.poll).toMatchObject({ voted: false, own_votes: [], votes_count: 5 });
     });
-    expect(voted.status).toBe(422);
-    expect((await status(id)).poll?.votes_count).toBe(4);
+
+    it("federates one Create per choice of a multiple-choice poll", async () => {
+      const author = await remoteActor("poll-vote-multi");
+      const id = await create(
+        author,
+        question(author, "vote-multi", {
+          oneOf: undefined,
+          anyOf: choices(["a", "b", "c"], [2, 0, 1]),
+          votersCount: 3,
+        }),
+      );
+      const email = "remote-poll-multi@example.com";
+
+      const voted = read(PollSchema, (await vote(email, id, [0, 2])).body);
+      expect(voted).toMatchObject({
+        voted: true,
+        own_votes: [0, 2],
+        votes_count: 5,
+        voters_count: 4,
+      });
+      expect(voted.options.map((option) => option.votes_count)).toEqual([3, 0, 2]);
+
+      const queued = await queuedVotes(email);
+      expect(queued.map((entry) => entry.activity.object.name)).toEqual(["a", "c"]);
+      expect(new Set(queued.map((entry) => entry.activity.object.id)).size).toBe(2);
+      expect(queued.every((entry) => entry.inbox === `${author.actorUri}/inbox`)).toBe(true);
+    });
+
+    it("refuses a second vote", async () => {
+      const author = await remoteActor("poll-vote-twice");
+      const id = await create(author, question(author, "vote-twice"));
+      const email = "remote-poll-twice@example.com";
+
+      expect((await vote(email, id, [0])).status).toBe(200);
+      expect((await vote(email, id, [1])).status).toBe(422);
+      expect(await queuedVotes(email)).toHaveLength(1);
+    });
+
+    it("refuses an expired poll, an out-of-range choice, and too many choices", async () => {
+      const author = await remoteActor("poll-vote-refused");
+      const email = "remote-poll-refused@example.com";
+      const expired = await create(
+        author,
+        question(author, "vote-expired", { endTime: "2020-01-01T00:00:00Z" }),
+      );
+      const open = await create(author, question(author, "vote-open"));
+
+      expect((await vote(email, expired, [0])).status).toBe(422);
+      expect((await vote(email, open, [2])).status).toBe(422);
+      expect((await vote(email, open, [-1])).status).toBe(422);
+      expect((await vote(email, open, [0, 1])).status).toBe(422);
+      expect((await vote(email, open, [])).status).toBe(422);
+      expect(await queuedVotes(email)).toHaveLength(0);
+      expect((await statusAs(email, open)).poll).toMatchObject({ voted: false, votes_count: 4 });
+    });
+
+    it("answers 404 for a poll that is not there", async () => {
+      expect((await vote("remote-poll-missing@example.com", "999999999", [0])).status).toBe(404);
+    });
+
+    it("refuses a poll on a suspended domain", async () => {
+      const author = await remoteActor("poll-vote-suspended", "suspended-poll.example");
+      const id = await create(
+        author,
+        question(author, "vote-suspended", {
+          id: "https://suspended-poll.example/questions/vote-suspended",
+        }),
+      );
+      const admin = { ...(await authHeaders("remote-poll-admin@example.com", { admin: true })) };
+      expect(
+        (
+          await json("/api/v1/admin/domain_blocks", {
+            method: "POST",
+            headers: { ...admin, "content-type": "application/json" },
+            body: JSON.stringify({ domain: "suspended-poll.example", severity: "suspend" }),
+          })
+        ).status,
+      ).toBe(200);
+
+      expect((await vote("remote-poll-suspended@example.com", id, [0])).status).toBe(422);
+    });
+
+    it("refuses a poll on a domain the voter blocked", async () => {
+      const author = await remoteActor("poll-vote-blocked", "blocked-poll.example");
+      const id = await create(
+        author,
+        question(author, "vote-blocked", {
+          id: "https://blocked-poll.example/questions/vote-blocked",
+        }),
+      );
+      const email = "remote-poll-blocker@example.com";
+      expect(
+        (
+          await json("/api/v1/domain_blocks", {
+            method: "POST",
+            headers: { ...(await authHeaders(email)), "content-type": "application/json" },
+            body: JSON.stringify({ domain: "blocked-poll.example" }),
+          })
+        ).status,
+      ).toBe(200);
+
+      expect((await vote(email, id, [0])).status).toBe(422);
+    });
+
+    it("keeps the vote when the author's next Update replaces the counts", async () => {
+      const author = await remoteActor("poll-vote-update");
+      const id = await create(author, question(author, "vote-update"));
+      const email = "remote-poll-update@example.com";
+      expect((await vote(email, id, [0])).status).toBe(200);
+
+      expect(
+        await update(
+          author,
+          "vote-update",
+          question(author, "vote-update", {
+            oneOf: choices(["cats", "dogs"], [4, 1]),
+            votersCount: 5,
+          }),
+        ),
+      ).toBe(202);
+
+      const { poll } = await statusAs(email, id);
+      expect(poll).toMatchObject({ voted: true, own_votes: [0], votes_count: 5, voters_count: 5 });
+      expect(poll?.options.map((option) => option.votes_count)).toEqual([4, 1]);
+    });
   });
 
   it("refreshes counts from an Update without marking the status edited", async () => {

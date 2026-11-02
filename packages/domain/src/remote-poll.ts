@@ -1,5 +1,6 @@
 import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
+import { err, ok, type Result } from "neverthrow";
 import { IsoInstant } from "./iso-instant";
 
 const RemotePollOptionSchema = z.object({
@@ -42,10 +43,37 @@ const question = (poll: RemotePoll): string =>
     ? ""
     : JSON.stringify([poll.kind, poll.ends, poll.options.map((option) => option.title)]);
 
+export type RemotePollChoiceError = Readonly<{
+  kind: "Expired" | "NoChoice" | "TooManyChoices" | "OutOfRange";
+}>;
+
+const selectChoices = (
+  poll: Exclude<RemotePoll, { kind: "NoPoll" }>,
+  requested: ReadonlyArray<number>,
+  nowMs: number,
+): Result<ReadonlyArray<number>, RemotePollChoiceError> => {
+  if (poll.ends.kind === "At" && Date.parse(poll.ends.at) <= nowMs) {
+    return err({ kind: "Expired" });
+  }
+  const choices = [...new Set(requested)];
+  if (choices.length === 0) {
+    return err({ kind: "NoChoice" });
+  }
+  if (choices.some((choice) => choice < 0 || choice >= poll.options.length)) {
+    return err({ kind: "OutOfRange" });
+  }
+  if (poll.kind === "SingleChoicePoll" && choices.length > 1) {
+    return err({ kind: "TooManyChoices" });
+  }
+  return ok(choices);
+};
+
 export const RemotePoll = {
   schema: RemotePollSchema,
   parse: parseRemotePoll,
   none: { kind: "NoPoll" } as const satisfies RemotePoll,
   /** Whether the question itself is the same; vote counts and the voter total are not part of it. */
+  /** The distinct option indexes a vote may cast, or why the poll refuses them. */
+  selectChoices,
   sameQuestion: (a: RemotePoll, b: RemotePoll): boolean => question(a) === question(b),
 } as const;

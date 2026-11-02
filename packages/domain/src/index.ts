@@ -38,6 +38,7 @@ export {
   RemotePoll,
   RemotePollSchema,
   type RemotePoll as RemotePollValue,
+  type RemotePollChoiceError,
   type RemotePollOption,
 } from "./remote-poll";
 export {

@@ -8,6 +8,8 @@ import {
   requireUser,
 } from "../http";
 import { pollJson, remotePollJson, statusIdOfRemotePoll } from "../poll-document";
+import { findRemotePollVotes } from "../remote-poll-vote-store";
+import { voteOnRemotePoll } from "../remote-poll-own-vote";
 import { findRemoteStatusById } from "../remote-status-store";
 import { canViewRemoteStatus } from "../visibility-guard";
 import { findPollById, votePoll } from "../poll-store";
@@ -17,6 +19,15 @@ import { z } from "zod";
 export const PollVoteBodySchema = z.object({
   choices: z.union([z.array(z.union([z.number(), z.string()])), z.number(), z.string()]),
 });
+
+const REMOTE_VOTE_REFUSALS = {
+  DomainBlocked: "The poll's server is blocked",
+  AlreadyVoted: "You have already voted on this poll",
+  Expired: "The poll has ended",
+  NoChoice: "Choose at least one option",
+  TooManyChoices: "This poll takes a single choice",
+  OutOfRange: "That option does not exist",
+} as const;
 
 export const getV1PollsById = async (c: Context<{ Bindings: Env }, "/api/v1/polls/:id">) => {
   const user = await requireUser(c);
@@ -37,7 +48,8 @@ export const getV1PollsById = async (c: Context<{ Bindings: Env }, "/api/v1/poll
     ) {
       return c.json({ error: "Record not found", kind: "NotFound" }, 404);
     }
-    return c.json(remotePollJson(remote.value.id, remote.value.poll));
+    const votes = await findRemotePollVotes(c.env.DB, viewerId, [remote.value]);
+    return c.json(remotePollJson(remote.value.id, remote.value.poll, votes.get(remote.value.id)));
   }
   const poll = await findPollById(c.env.DB, c.req.param("id"), viewerId);
   if (poll.isErr()) {
@@ -56,15 +68,25 @@ export const postV1PollsByIdVotes = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  if (statusIdOfRemotePoll(c.req.param("id")) !== undefined) {
-    // Federating a vote is not implemented; answer instead of looking for a local poll.
-    return c.json({ error: "Voting on remote polls is not supported", kind: "RemotePoll" }, 422);
-  }
   const body = await readBody(c, PollVoteBodySchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
   const indexes = numberList(body.value.choices);
+  const remoteStatusId = statusIdOfRemotePoll(c.req.param("id"));
+  if (remoteStatusId !== undefined) {
+    const voted = await voteOnRemotePoll(c.env, user.value, remoteStatusId, indexes);
+    if (voted.isOk()) {
+      return c.json(voted.value);
+    }
+    const failure = voted.error;
+    if (failure.kind === "Failed") {
+      return jsonRepositoryError(c, failure.message);
+    }
+    return failure.kind === "NotFound"
+      ? c.json({ error: "Record not found", kind: "NotFound" }, 404)
+      : c.json({ error: REMOTE_VOTE_REFUSALS[failure.kind], kind: failure.kind }, 422);
+  }
   const voted = await votePoll(c.env.DB, c.req.param("id"), user.value.id, indexes);
   if (voted.isErr()) {
     if (voted.error.message === "poll expired") {
