@@ -6,8 +6,10 @@ import { nowIso } from "./clock";
 import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
 import { toRepositoryError } from "./d1";
-import { queryTyped, runTyped } from "./typed-sql";
+import { queryTyped, runTyped, runTypedBatch } from "./typed-sql";
+import { RemoteAccountId } from "./remote-account-id";
 import {
+  deleteRemoteActor as deleteRemoteActorSql,
   authorizeRemoteFollowRequest as authorizeRemoteFollowRequestSql,
   deleteRemoteFollow as deleteRemoteFollowSql,
   findPendingRemoteFollowRequest as findPendingRemoteFollowRequestSql,
@@ -20,6 +22,14 @@ import {
   listAcceptedRemoteFollowerUris as listAcceptedRemoteFollowerUrisSql,
   listPeerDomains as listPeerDomainsSql,
   listPendingRemoteFollowRequesters as listPendingRemoteFollowRequestersSql,
+  purgeRemoteActorBlocks as purgeRemoteActorBlocksSql,
+  purgeRemoteActorEndorsements as purgeRemoteActorEndorsementsSql,
+  purgeRemoteActorMutes as purgeRemoteActorMutesSql,
+  purgeRemoteActorNotes as purgeRemoteActorNotesSql,
+  purgeRemoteActorNotificationDismissals as purgeRemoteActorNotificationDismissalsSql,
+  purgeRemoteActorNotifications as purgeRemoteActorNotificationsSql,
+  purgeRemoteActorRequestAcceptances as purgeRemoteActorRequestAcceptancesSql,
+  purgeRemoteActorRequestGroups as purgeRemoteActorRequestGroupsSql,
   rejectRemoteFollowRequest as rejectRemoteFollowRequestSql,
   searchRemoteActors as searchRemoteActorsSql,
   upsertRemoteActor as upsertRemoteActorSql,
@@ -359,6 +369,37 @@ export const searchRemoteActors = async (
     }
     return actors;
   });
+
+/**
+ * Forget a remote actor that deleted its account, and everything cached for it.
+ *
+ * Deleting the `remote_actors` row cascades to its statuses (and their tags and
+ * mentions), follows and follow requests, favourites, announces, and the
+ * mentions local notes made of it. Rows keyed by actor URI or `r_…` id without
+ * a foreign key (notifications, blocks, mutes, endorsements, notes) go in the
+ * same batch. Resolves to false when the actor was not cached.
+ */
+export const purgeRemoteActor = async (
+  db: D1Database,
+  actorUri: string,
+): Promise<Result<boolean, RepositoryError>> => {
+  const remoteAccountId = RemoteAccountId.encode(actorUri);
+  const batched = await runTypedBatch(db, [
+    purgeRemoteActorNotificationDismissalsSql(actorUri),
+    purgeRemoteActorNotificationsSql(actorUri),
+    purgeRemoteActorRequestGroupsSql(remoteAccountId),
+    purgeRemoteActorRequestAcceptancesSql(remoteAccountId),
+    purgeRemoteActorBlocksSql(actorUri),
+    purgeRemoteActorMutesSql(actorUri),
+    purgeRemoteActorEndorsementsSql(actorUri),
+    purgeRemoteActorNotesSql(actorUri),
+    deleteRemoteActorSql(actorUri),
+  ]);
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  return ok((batched.value.at(-1)?.results ?? []).length > 0);
+};
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([RemoteActorRowSchema]);

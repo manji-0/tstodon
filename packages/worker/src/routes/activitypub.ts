@@ -29,9 +29,12 @@ import { resolveRemoteActor } from "../remote-actor-fetch";
 import {
   deleteRemoteFollow,
   listAcceptedRemoteFollowerUris,
+  findRemoteActorByUri,
   findRemoteFollow,
+  purgeRemoteActor,
   upsertRemoteFollow,
 } from "../remote-actor-store";
+import { RemoteDeleteTarget } from "../remote-delete";
 import { applyRemoteUpdate } from "../remote-update";
 import { persistRemoteObject } from "../remote-status-persist";
 import { deleteRemoteStatusByObjectUri } from "../remote-status-store";
@@ -302,6 +305,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   const payload = activityPayloadFromJson(activityJson.value);
   const actorUri = String(payload.actor);
   const actorUsername = parseLocalActorUsername(identity.value, actorUri);
+  const deleteTarget = RemoteDeleteTarget.of(actorUri, String(payload.object));
   let signer:
     | { kind: "Local"; account: LocalAccount }
     | { kind: "Remote"; actor: RemoteActorValue };
@@ -315,6 +319,17 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     }
     signer = { kind: "Local", account: actorAccount.value };
   } else {
+    // A repeated account Delete from an actor already purged: there is nothing
+    // to remove and its key can no longer be fetched.
+    if (payload.kind === "Delete" && deleteTarget.kind === "ActorDelete") {
+      const cached = await findRemoteActorByUri(c.env.DB, actorUri);
+      if (cached.isErr()) {
+        return jsonRepositoryError(c, cached.error.message);
+      }
+      if (!cached.value) {
+        return c.body(null, 202);
+      }
+    }
     const allowHosts = await federationAllowHosts(c.env);
     const remote = await resolveRemoteActor(c.env.DB, identity.value, signature.keyId, actorUri, {
       allowHosts,
@@ -475,12 +490,16 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       }
     }
     if (activity.kind === "Delete") {
-      const objectUri = activity.object;
-      // Remote note delete (object is remote URI we may have cached).
-      if (!parseLocalStatusId(identity.value, objectUri)) {
+      if (deleteTarget.kind === "ActorDelete") {
+        const purged = await purgeRemoteActor(c.env.DB, deleteTarget.actorUri);
+        if (purged.isErr()) {
+          return jsonRepositoryError(c, purged.error.message);
+        }
+      } else if (!parseLocalStatusId(identity.value, deleteTarget.objectUri)) {
+        // Remote note delete (object is remote URI we may have cached).
         const deleted = await deleteRemoteStatusByObjectUri(
           c.env.DB,
-          objectUri,
+          deleteTarget.objectUri,
           signer.actor.actorUri,
         );
         // Its mention notifications go with it.
