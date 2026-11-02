@@ -1,0 +1,118 @@
+import type { RemoteStatus } from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
+import { nowIso } from "./clock";
+import { jsonStringArray, type RepositoryError, runD1, runD1Batch } from "./d1";
+import {
+  insertRemotePollOwnVote as insertRemotePollOwnVoteSql,
+  listRemotePollVotes as listRemotePollVotesSql,
+  settleRemotePollOwnVotes as settleRemotePollOwnVotesSql,
+} from "./generated/prisma/sql";
+import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
+
+/**
+ * What local accounts have voted on one remote poll: the viewer's own
+ * choices, and the votes still added on top of the author's cached counts
+ * because the author has not reported them back yet.
+ */
+export type RemotePollVotes = Readonly<{
+  ownChoices: ReadonlyArray<number>;
+  pendingByChoice: ReadonlyMap<number, number>;
+  pendingVoters: number;
+}>;
+
+export const NO_REMOTE_POLL_VOTES: RemotePollVotes = {
+  ownChoices: [],
+  pendingByChoice: new Map(),
+  pendingVoters: 0,
+};
+
+type VoteRow = Readonly<{
+  status_id: string;
+  account_id: string;
+  choice_index: number;
+  optimistic: number;
+}>;
+
+const votesByStatus = (
+  rows: ReadonlyArray<VoteRow>,
+  viewerId: string,
+): ReadonlyMap<string, RemotePollVotes> => {
+  const grouped = new Map<string, VoteRow[]>();
+  for (const row of rows) {
+    grouped.set(row.status_id, [...(grouped.get(row.status_id) ?? []), row]);
+  }
+  return new Map(
+    [...grouped].map(([statusId, votes]): [string, RemotePollVotes] => {
+      const pending = votes.filter((vote) => vote.optimistic === 1);
+      const pendingByChoice = new Map<number, number>();
+      for (const vote of pending) {
+        pendingByChoice.set(vote.choice_index, (pendingByChoice.get(vote.choice_index) ?? 0) + 1);
+      }
+      return [
+        statusId,
+        {
+          ownChoices: votes
+            .filter((vote) => vote.account_id === viewerId)
+            .map((vote) => vote.choice_index),
+          pendingByChoice,
+          pendingVoters: new Set(pending.map((vote) => vote.account_id)).size,
+        },
+      ];
+    }),
+  );
+};
+
+/**
+ * The votes behind a page of remote statuses, in one query. Statuses without
+ * a poll are not asked about, and statuses nobody voted on are absent from
+ * the result. A failed lookup reads as no votes: the status still renders.
+ */
+export const findRemotePollVotes = async (
+  db: D1Database,
+  viewerId: string | undefined,
+  statuses: ReadonlyArray<Pick<RemoteStatus, "id" | "poll">>,
+): Promise<ReadonlyMap<string, RemotePollVotes>> => {
+  const ids = statuses.flatMap((status) => (status.poll.kind === "NoPoll" ? [] : [status.id]));
+  if (ids.length === 0) {
+    return new Map();
+  }
+  const rows = await runD1(async () =>
+    queryTyped<VoteRow>(db, listRemotePollVotesSql(viewerId ?? "", jsonStringArray(ids))),
+  );
+  return rows.isOk() ? votesByStatus(rows.value, viewerId ?? "") : new Map();
+};
+
+/**
+ * Record the viewer's votes, one per choice. Returns the choices that were
+ * new: a vote already stored (a double submit) is not federated twice.
+ */
+export const recordRemotePollVotes = async (
+  db: D1Database,
+  statusId: string,
+  accountId: string,
+  votes: ReadonlyArray<Readonly<{ choice: number; activityId: string }>>,
+): Promise<Result<ReadonlyArray<number>, RepositoryError>> => {
+  const createdAt = nowIso();
+  const batched = await runD1Batch(
+    db,
+    votes.map((vote) =>
+      d1PrepareTyped(
+        db,
+        insertRemotePollOwnVoteSql(statusId, accountId, vote.choice, vote.activityId, createdAt),
+      ),
+    ),
+  );
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  return ok(
+    votes.flatMap((vote, index) =>
+      (batched.value[index]?.meta.changes ?? 0) > 0 ? [vote.choice] : [],
+    ),
+  );
+};
+
+/** The author reported fresh counts, which now include the votes added locally. */
+export const settleRemotePollVotes = async (db: D1Database, statusId: string): Promise<void> => {
+  await runTyped(db, settleRemotePollOwnVotesSql(statusId));
+};

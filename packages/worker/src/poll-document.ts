@@ -1,5 +1,6 @@
 import type { RemotePollValue } from "@tstodon/domain";
 import type { PollRecord } from "./poll-store";
+import { NO_REMOTE_POLL_VOTES, type RemotePollVotes } from "./remote-poll-vote-store";
 
 export const pollJson = (poll: PollRecord): Record<string, unknown> => {
   const expired = Date.parse(poll.expiresAt) <= Date.now();
@@ -31,13 +32,21 @@ export const remotePollId = (statusId: string): string => `${REMOTE_POLL_PREFIX}
 export const statusIdOfRemotePoll = (pollId: string): string | undefined =>
   pollId.startsWith(REMOTE_POLL_PREFIX) ? pollId.slice(REMOTE_POLL_PREFIX.length) : undefined;
 
-/** The Poll entity of a cached remote poll. Nobody here has voted on it. */
+/**
+ * The Poll entity of a cached remote poll. Votes cast from this server are
+ * added to the author's counts until the author reports a fresh tally.
+ */
 export const remotePollJson = (
   statusId: string,
   poll: Exclude<RemotePollValue, { kind: "NoPoll" }>,
+  votes: RemotePollVotes = NO_REMOTE_POLL_VOTES,
 ): Record<string, unknown> => {
   const expiresAt = poll.ends.kind === "At" ? poll.ends.at : null;
-  const votesCount = poll.options.reduce((sum, option) => sum + option.votesCount, 0);
+  const options = poll.options.map((option, index) => ({
+    title: option.title,
+    votes_count: option.votesCount + (votes.pendingByChoice.get(index) ?? 0),
+  }));
+  const votesCount = options.reduce((sum, option) => sum + option.votes_count, 0);
   return {
     id: remotePollId(statusId),
     expires_at: expiresAt,
@@ -47,16 +56,13 @@ export const remotePollJson = (
     // Without a reported total, one vote per voter makes the vote total the voter total.
     voters_count:
       poll.voters.kind === "Reported"
-        ? poll.voters.count
+        ? poll.voters.count + votes.pendingVoters
         : poll.kind === "SingleChoicePoll"
           ? votesCount
           : null,
-    voted: false,
-    own_votes: [],
-    options: poll.options.map((option) => ({
-      title: option.title,
-      votes_count: option.votesCount,
-    })),
+    voted: votes.ownChoices.length > 0,
+    own_votes: [...votes.ownChoices],
+    options,
     emojis: [],
   };
 };

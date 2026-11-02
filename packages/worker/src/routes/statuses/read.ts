@@ -9,6 +9,7 @@ import {
   visibleThreadStatuses,
 } from "../../thread-context";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../../http";
+import { findRemotePollVotes } from "../../remote-poll-vote-store";
 import { mastodonRemoteStatus } from "../../remote-status-document";
 import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
@@ -44,7 +45,14 @@ const visibleStatusDocument = async (
     if (!actor.value) {
       return ok(null);
     }
-    const document = mastodonRemoteStatus(identity, remote.value, actor.value);
+    const pollVotes = await findRemotePollVotes(env.DB, viewerId, [remote.value]);
+    const document = mastodonRemoteStatus(
+      identity,
+      remote.value,
+      actor.value,
+      null,
+      pollVotes.get(remote.value.id),
+    );
     await attachRemoteReplyRefs(env.DB, identity, [document]);
     return ok(document);
   }
@@ -118,10 +126,14 @@ export const getV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/statu
       documents.set(document.id, document);
     }
   }
+  const pollVotes = await findRemotePollVotes(c.env.DB, viewerId, visibleRemotes);
   for (const status of visibleRemotes) {
     const actor = actors.value.get(status.actorUri);
     if (actor) {
-      documents.set(status.id, mastodonRemoteStatus(identity.value, status, actor));
+      documents.set(
+        status.id,
+        mastodonRemoteStatus(identity.value, status, actor, null, pollVotes.get(status.id)),
+      );
     }
   }
   await attachRemoteReplyRefs(c.env.DB, identity.value, [...documents.values()]);

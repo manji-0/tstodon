@@ -4,6 +4,7 @@ import { mastodonRemoteStatus } from "./remote-status-document";
 import { mastodonStatuses } from "./local-status-documents";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteActorsByUris } from "./remote-actor-store";
+import { findRemotePollVotes } from "./remote-poll-vote-store";
 import { findRemoteStatusesByIds, findRemoteStatusRefsByObjectUris } from "./remote-status-store";
 import { findRemoteStatusReplyTargets } from "./remote-reply-store";
 import { findStatusesByIds } from "./status-store";
@@ -107,11 +108,15 @@ export const statusDocumentsByIds = async (
       env.DB,
       statuses.map((status) => status.actorUri),
     );
+    const pollVotes = await findRemotePollVotes(env.DB, viewerId, statuses);
     if (actors.isOk()) {
       for (const status of statuses) {
         const actor = actors.value.get(status.actorUri);
         if (actor) {
-          documents.set(status.id, mastodonRemoteStatus(identity, status, actor));
+          documents.set(
+            status.id,
+            mastodonRemoteStatus(identity, status, actor, null, pollVotes.get(status.id)),
+          );
         }
       }
     }

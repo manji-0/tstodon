@@ -10,6 +10,7 @@ import { listBlockedDomains } from "../domain-block-store";
 import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "../filter-match";
 import { cardDocument, parseCardJson } from "../link-card";
 import { jsonAuthError, jsonRepositoryError, queryCursor, queryLimit, requireUser } from "../http";
+import { findRemotePollVotes } from "../remote-poll-vote-store";
 import { mastodonRemoteStatus, remoteStatusVisible } from "../remote-status-document";
 import { mastodonStatuses } from "../local-status-documents";
 import { elapsedMs, writeMetric } from "../metrics";
@@ -84,6 +85,7 @@ const remoteTimelineDocuments = async (
     c.env.DB,
     remote.map((status) => status.actorUri),
   );
+  const pollVotes = await findRemotePollVotes(c.env.DB, viewerId, remote);
   const statuses: RemoteNote[] = [];
   const documents: Record<string, unknown>[] = [];
   for (const status of remote) {
@@ -97,7 +99,15 @@ const remoteTimelineDocuments = async (
     const rawCard = cards.isOk() ? cards.value.get(status.id) : undefined;
     const card = rawCard ? parseCardJson(rawCard) : undefined;
     statuses.push(status);
-    documents.push(mastodonRemoteStatus(identity, status, actor, card ? cardDocument(card) : null));
+    documents.push(
+      mastodonRemoteStatus(
+        identity,
+        status,
+        actor,
+        card ? cardDocument(card) : null,
+        pollVotes.get(status.id),
+      ),
+    );
   }
   await attachRemoteReplyRefs(c.env.DB, identity, documents);
   return { statuses, documents, cards: cards.isOk() ? cards.value : new Map() };

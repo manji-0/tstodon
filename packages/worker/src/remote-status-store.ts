@@ -26,6 +26,7 @@ import {
   markRemoteStatusTagsIndexed as markRemoteStatusTagsIndexedSql,
   upsertRemoteStatus as upsertRemoteStatusSql,
 } from "./generated/prisma/sql";
+import { settleRemotePollVotes } from "./remote-poll-vote-store";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 
 export const RemoteStatusRowSchema = z.object({
@@ -213,6 +214,14 @@ export const upsertRemoteStatus = async (
     );
     // The row has to exist before its tags (the index holds a foreign key).
     await replaceRemoteStatusTags(db, persisted.id, htmlHashtags(persisted.contentHtml));
+    // A changed tally is the author's count of every vote it has seen, ours included.
+    if (
+      existing.value &&
+      persisted.poll.kind !== "NoPoll" &&
+      JSON.stringify(existing.value.poll) !== JSON.stringify(persisted.poll)
+    ) {
+      await settleRemotePollVotes(db, persisted.id);
+    }
     return persisted;
   });
   if (written.isErr()) {

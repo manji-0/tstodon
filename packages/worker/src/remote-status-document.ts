@@ -6,6 +6,7 @@ import {
 } from "@tstodon/domain";
 import { mastodonRemoteAccount } from "./account-documents";
 import { remotePollJson } from "./poll-document";
+import { NO_REMOTE_POLL_VOTES, type RemotePollVotes } from "./remote-poll-vote-store";
 import { httpUrl, sanitizeRemoteHtml } from "./sanitize-html";
 
 export const mastodonRemoteStatus = (
@@ -13,6 +14,7 @@ export const mastodonRemoteStatus = (
   status: RemoteStatusValue,
   actor: RemoteActor,
   card: Record<string, unknown> | null = null,
+  pollVotes: RemotePollVotes = NO_REMOTE_POLL_VOTES,
 ): Record<string, unknown> => {
   const url = httpUrl(status.url) ?? httpUrl(status.objectUri) ?? null;
   return {
@@ -59,7 +61,7 @@ export const mastodonRemoteStatus = (
     tags: [],
     emojis: [],
     card,
-    poll: status.poll.kind === "NoPoll" ? null : remotePollJson(status.id, status.poll),
+    poll: status.poll.kind === "NoPoll" ? null : remotePollJson(status.id, status.poll, pollVotes),
     quote: null,
     quotes_count: 0,
     quote_approval: { automatic: [], manual: [], current_user: "unknown" },
