@@ -24,7 +24,7 @@ The project is early software. The [local core](docs/planning/local-core.md) cla
 - Cloudflare account access for Workers, D1, and R2 operations
 - `wrangler` authentication for deploys and remote resource changes
 
-Optional: `devbox shell` installs Node, pnpm, and wrangler from [devbox.json](devbox.json).
+Optional: `nix develop` (or `direnv allow` with [nix-direnv](https://github.com/nix-community/nix-direnv)) provides Node 26, pnpm, wrangler, and process-compose from [flake.nix](flake.nix).
 
 ## Quick Start
 

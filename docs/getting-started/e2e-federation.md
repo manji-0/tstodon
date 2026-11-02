@@ -10,7 +10,7 @@ Run **two local tstodon Workers** and check federation discovery surfaces agains
 ## Prerequisites
 
 - Node 26+, pnpm
-- [process-compose](https://github.com/F1bonacc1/process-compose) (add via `devbox` or install locally)
+- [process-compose](https://github.com/F1bonacc1/process-compose) (included in `nix develop`, or install locally)
 - `pnpm install` at repo root
 
 ## Local federation knobs
