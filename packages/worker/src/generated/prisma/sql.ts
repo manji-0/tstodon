@@ -104,6 +104,8 @@ export * from "./sql/deletePushSubscription";
 
 export * from "./sql/deleteReblogOf";
 
+export * from "./sql/deleteRemoteActor";
+
 export * from "./sql/deleteRemoteAnnounce";
 
 export * from "./sql/deleteRemoteFavourite";
@@ -469,6 +471,22 @@ export * from "./sql/muteStatus";
 export * from "./sql/pinStatus";
 
 export * from "./sql/pruneStatusIdempotency";
+
+export * from "./sql/purgeRemoteActorBlocks";
+
+export * from "./sql/purgeRemoteActorEndorsements";
+
+export * from "./sql/purgeRemoteActorMutes";
+
+export * from "./sql/purgeRemoteActorNotes";
+
+export * from "./sql/purgeRemoteActorNotificationDismissals";
+
+export * from "./sql/purgeRemoteActorNotifications";
+
+export * from "./sql/purgeRemoteActorRequestAcceptances";
+
+export * from "./sql/purgeRemoteActorRequestGroups";
 
 export * from "./sql/rejectFollowRequest";
 
