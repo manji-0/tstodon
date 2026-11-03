@@ -43,6 +43,8 @@ export type StreamRefusal =
   | StreamChannelError
   | Readonly<{ kind: "NeedsAccount" }>
   | Readonly<{ kind: "NotListOwner" }>
+  | Readonly<{ kind: "SocketFull" }>
+  | Readonly<{ kind: "HubFull" }>
   | Readonly<{ kind: "Unavailable" }>;
 
 /** May this viewer subscribe? `user*` is the account's own; a list only its owner's. */
@@ -74,18 +76,25 @@ const authorizeStreamChannel = async (
 /** Mastodon's streaming error: the message and the HTTP status it stands for. */
 export const streamRefusalError = (
   refusal: StreamRefusal,
-): Readonly<{ error: string; status: 400 | 401 | 503 }> => {
+): Readonly<{ error: string; status: 400 | 401 | 429 | 503 }> => {
   switch (refusal.kind) {
     case "UnknownStream":
       return { error: "Unknown stream type", status: 400 };
     case "MissingTag":
       return { error: "Missing tag name parameter", status: 400 };
+    case "InvalidTag":
+      return { error: "Invalid tag name parameter", status: 400 };
     case "MissingList":
       return { error: "Missing list name parameter", status: 400 };
-    case "NeedsAccount":
-      return { error: "Missing access token", status: 401 };
+    case "InvalidList":
     case "NotListOwner":
       return { error: "Not authorized to stream this list", status: 401 };
+    case "SocketFull":
+      return { error: "Too many streams on this connection", status: 429 };
+    case "HubFull":
+      return { error: "Too many distinct streams open for this viewer", status: 429 };
+    case "NeedsAccount":
+      return { error: "Missing access token", status: 401 };
     case "Unavailable":
       return { error: "Stream unavailable", status: 503 };
   }

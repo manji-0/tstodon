@@ -12,16 +12,28 @@ const PublicChannelSchema = z.object({
   onlyMedia: z.boolean(),
 });
 
+/** The longest hashtag (in UTF-16 units) a stream may name, as Mastodon caps tag names. */
+export const STREAM_TAG_MAX_LENGTH = 100;
+
+/** The longest list id a stream may name; entity ids are far shorter. */
+export const STREAM_LIST_ID_MAX_LENGTH = 64;
+
+/**
+ * Mastodon's hashtag name: letters, digits, and underscores, with at least
+ * one letter. Nothing else (no `%`, spaces, or punctuation) reaches a query.
+ */
+const HASHTAG_NAME = /^[\p{L}\p{M}\p{N}_]*\p{L}[\p{L}\p{M}\p{N}_]*$/u;
+
 const HashtagChannelSchema = z.object({
   kind: z.literal("Hashtag"),
   /** As the client spelled it; Mastodon echoes it back in `stream`. */
-  tag: z.string().min(1),
+  tag: z.string().max(STREAM_TAG_MAX_LENGTH).regex(HASHTAG_NAME),
   localOnly: z.boolean(),
 });
 
 const ListChannelSchema = z.object({
   kind: z.literal("List"),
-  listId: z.string().min(1),
+  listId: z.string().min(1).max(STREAM_LIST_ID_MAX_LENGTH),
 });
 
 /**
@@ -62,7 +74,9 @@ const isPublicStream = (stream: string): stream is keyof typeof PUBLIC_STREAMS =
 export type StreamChannelError =
   | Readonly<{ kind: "UnknownStream" }>
   | Readonly<{ kind: "MissingTag" }>
-  | Readonly<{ kind: "MissingList" }>;
+  | Readonly<{ kind: "InvalidTag" }>
+  | Readonly<{ kind: "MissingList" }>
+  | Readonly<{ kind: "InvalidList" }>;
 
 /**
  * The `stream` array Mastodon tags an event with: the stream name, then the
@@ -103,12 +117,24 @@ const fromWire = (
     case "user:notification":
       return ok({ kind: "UserNotification" });
     case "hashtag":
-    case "hashtag:local":
-      return tag.length > 0
-        ? ok({ kind: "Hashtag", tag, localOnly: input.stream === "hashtag:local" })
-        : err({ kind: "MissingTag" });
-    case "list":
-      return list.length > 0 ? ok({ kind: "List", listId: list }) : err({ kind: "MissingList" });
+    case "hashtag:local": {
+      if (tag.length === 0) {
+        return err({ kind: "MissingTag" });
+      }
+      const channel = HashtagChannelSchema.safeParse({
+        kind: "Hashtag",
+        tag,
+        localOnly: input.stream === "hashtag:local",
+      });
+      return channel.success ? ok(channel.data) : err({ kind: "InvalidTag" });
+    }
+    case "list": {
+      if (list.length === 0) {
+        return err({ kind: "MissingList" });
+      }
+      const channel = ListChannelSchema.safeParse({ kind: "List", listId: list });
+      return channel.success ? ok(channel.data) : err({ kind: "InvalidList" });
+    }
     default:
       return isPublicStream(input.stream)
         ? ok({ kind: "Public", ...PUBLIC_STREAMS[input.stream] })

@@ -83,6 +83,8 @@ export {
   StreamChannel,
   type StreamChannel as StreamChannelValue,
   type StreamChannelError,
+  STREAM_LIST_ID_MAX_LENGTH,
+  STREAM_TAG_MAX_LENGTH,
   StreamDelivery,
   type StreamDelivery as StreamDeliveryValue,
 } from "./stream-channel";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { StreamChannel } from "./stream-channel";
+import { STREAM_LIST_ID_MAX_LENGTH, STREAM_TAG_MAX_LENGTH, StreamChannel } from "./stream-channel";
 
 const nameOf = (input: Parameters<typeof StreamChannel.fromWire>[0]) =>
   StreamChannel.fromWire(input).map(StreamChannel.streamName);
@@ -47,5 +47,37 @@ describe("StreamChannel", () => {
     const local = StreamChannel.fromWire({ stream: "hashtag:local", tag: "cats" })._unsafeUnwrap();
     expect(StreamChannel.key(upper)).toBe(StreamChannel.key(lower));
     expect(StreamChannel.key(local)).not.toBe(StreamChannel.key(lower));
+  });
+
+  it("accepts only hashtag names: letters, digits, and underscores with a letter", () => {
+    for (const tag of ["cats", "Cats_2026", "日本語", "café", "a".repeat(STREAM_TAG_MAX_LENGTH)]) {
+      expect(StreamChannel.fromWire({ stream: "hashtag", tag }).isOk()).toBe(true);
+    }
+    for (const tag of [
+      "_",
+      "%",
+      "a%b",
+      "a b",
+      "a-b",
+      "2026",
+      "a".repeat(STREAM_TAG_MAX_LENGTH + 1),
+    ]) {
+      expect(StreamChannel.fromWire({ stream: "hashtag", tag })._unsafeUnwrapErr()).toEqual({
+        kind: "InvalidTag",
+      });
+    }
+  });
+
+  it("refuses list ids no list could have", () => {
+    expect(
+      StreamChannel.fromWire({
+        stream: "list",
+        list: "1".repeat(STREAM_LIST_ID_MAX_LENGTH + 1),
+      })._unsafeUnwrapErr(),
+    ).toEqual({ kind: "InvalidList" });
+  });
+
+  it("parses back only channels the wire parser could produce", () => {
+    expect(StreamChannel.parse({ kind: "Hashtag", tag: "%", localOnly: false }).isErr()).toBe(true);
   });
 });
