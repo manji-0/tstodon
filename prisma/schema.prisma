@@ -216,7 +216,8 @@ model accounts {
   status_mentions                                       status_mentions[]
   remote_status_mentions                                remote_status_mentions[]
   remote_poll_own_votes                                 remote_poll_own_votes[]
-  statuses                                              statuses[]            
+  outbound_follows                                      outbound_follows[]
+  statuses                                              statuses[]
 }
 
 model bookmarks {
@@ -542,6 +543,7 @@ model remote_actors {
   remote_favourites remote_favourites[]
   remote_follows    remote_follows[]
   remote_statuses   remote_statuses[]
+  outbound_follows  outbound_follows[]
 
   @@index([domain, username], map: "idx_remote_actors_domain_username")
   status_remote_mentions status_remote_mentions[]
@@ -807,4 +809,21 @@ model remote_poll_own_votes {
   remote_statuses remote_statuses @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([status_id, account_id, choice_index])
+}
+
+model outbound_follows {
+  id                 String        @id
+  account_id         String
+  actor_uri          String
+  follow_activity_id String        @unique(map: "sqlite_autoindex_outbound_follows_2")
+  state              String
+  reblogs            Int           @default(1)
+  notify             Int           @default(0)
+  languages_json     String        @default("[]")
+  created_at         String        @default("CURRENT_TIMESTAMP")
+  accounts           accounts      @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  remote_actors      remote_actors @relation(fields: [actor_uri], references: [actor_uri], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([account_id, actor_uri], map: "sqlite_autoindex_outbound_follows_3")
+  @@index([actor_uri, state], map: "idx_outbound_follows_actor")
 }

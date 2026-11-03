@@ -351,3 +351,8 @@ export type statuses = Prisma.statusesModel;
  *
  */
 export type remote_poll_own_votes = Prisma.remote_poll_own_votesModel;
+/**
+ * Model outbound_follows
+ *
+ */
+export type outbound_follows = Prisma.outbound_followsModel;

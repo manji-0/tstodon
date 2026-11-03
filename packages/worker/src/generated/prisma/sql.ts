@@ -2,6 +2,8 @@
 /* eslint-disable */
 // biome-ignore-all lint: generated file
 // @ts-nocheck
+export * from "./sql/acceptOutboundFollow";
+
 export * from "./sql/accountCounts";
 
 export * from "./sql/attachMediaToStatus";
@@ -101,6 +103,8 @@ export * from "./sql/deleteMute";
 export * from "./sql/deleteNotificationRequests";
 
 export * from "./sql/deleteOauthAccessToken";
+
+export * from "./sql/deleteOutboundFollow";
 
 export * from "./sql/deletePushSubscription";
 
@@ -214,6 +218,8 @@ export * from "./sql/findOauthApplicationById";
 
 export * from "./sql/findOutboundActivity";
 
+export * from "./sql/findOutboundFollow";
+
 export * from "./sql/findOutboxFanout";
 
 export * from "./sql/findOutboxTarget";
@@ -323,6 +329,8 @@ export * from "./sql/insertOauthApplication";
 export * from "./sql/insertOauthAuthorizationCode";
 
 export * from "./sql/insertOutboundActivity";
+
+export * from "./sql/insertOutboundFollow";
 
 export * from "./sql/insertOutboxDeliveryFanout";
 
@@ -500,6 +508,8 @@ export * from "./sql/purgeRemoteActorRequestGroups";
 
 export * from "./sql/rejectFollowRequest";
 
+export * from "./sql/rejectOutboundFollow";
+
 export * from "./sql/rejectRemoteFollowRequest";
 
 export * from "./sql/releasePollUpdate";
@@ -553,6 +563,8 @@ export * from "./sql/updateList";
 export * from "./sql/updateLocalNote";
 
 export * from "./sql/updateMediaMetadata";
+
+export * from "./sql/updateOutboundFollowOptions";
 
 export * from "./sql/updateOutboxFanout";
 

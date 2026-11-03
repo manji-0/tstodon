@@ -74,4 +74,5 @@ export type * from "./models/status_quotes";
 export type * from "./models/status_quote_policies";
 export type * from "./models/statuses";
 export type * from "./models/remote_poll_own_votes";
+export type * from "./models/outbound_follows";
 export type * from "./commonInputTypes";

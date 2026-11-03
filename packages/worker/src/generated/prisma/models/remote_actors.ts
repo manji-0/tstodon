@@ -236,6 +236,7 @@ export type remote_actorsWhereInput = {
   remote_favourites?: Prisma.Remote_favouritesListRelationFilter;
   remote_follows?: Prisma.Remote_followsListRelationFilter;
   remote_statuses?: Prisma.Remote_statusesListRelationFilter;
+  outbound_follows?: Prisma.Outbound_followsListRelationFilter;
   status_remote_mentions?: Prisma.Status_remote_mentionsListRelationFilter;
 };
 
@@ -255,6 +256,7 @@ export type remote_actorsOrderByWithRelationInput = {
   remote_favourites?: Prisma.remote_favouritesOrderByRelationAggregateInput;
   remote_follows?: Prisma.remote_followsOrderByRelationAggregateInput;
   remote_statuses?: Prisma.remote_statusesOrderByRelationAggregateInput;
+  outbound_follows?: Prisma.outbound_followsOrderByRelationAggregateInput;
   status_remote_mentions?: Prisma.status_remote_mentionsOrderByRelationAggregateInput;
 };
 
@@ -278,6 +280,7 @@ export type remote_actorsWhereUniqueInput = Prisma.AtLeast<
     remote_favourites?: Prisma.Remote_favouritesListRelationFilter;
     remote_follows?: Prisma.Remote_followsListRelationFilter;
     remote_statuses?: Prisma.Remote_statusesListRelationFilter;
+    outbound_follows?: Prisma.Outbound_followsListRelationFilter;
     status_remote_mentions?: Prisma.Status_remote_mentionsListRelationFilter;
   },
   "actor_uri" | "public_key_id"
@@ -337,6 +340,7 @@ export type remote_actorsCreateInput = {
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutRemote_actorsInput;
   remote_follows?: Prisma.remote_followsCreateNestedManyWithoutRemote_actorsInput;
   remote_statuses?: Prisma.remote_statusesCreateNestedManyWithoutRemote_actorsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutRemote_actorsInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutRemote_actorsInput;
 };
 
@@ -356,6 +360,7 @@ export type remote_actorsUncheckedCreateInput = {
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutRemote_actorsInput;
   remote_follows?: Prisma.remote_followsUncheckedCreateNestedManyWithoutRemote_actorsInput;
   remote_statuses?: Prisma.remote_statusesUncheckedCreateNestedManyWithoutRemote_actorsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutRemote_actorsInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutRemote_actorsInput;
 };
 
@@ -375,6 +380,7 @@ export type remote_actorsUpdateInput = {
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutRemote_actorsNestedInput;
   remote_follows?: Prisma.remote_followsUpdateManyWithoutRemote_actorsNestedInput;
   remote_statuses?: Prisma.remote_statusesUpdateManyWithoutRemote_actorsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutRemote_actorsNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutRemote_actorsNestedInput;
 };
 
@@ -394,6 +400,7 @@ export type remote_actorsUncheckedUpdateInput = {
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   remote_follows?: Prisma.remote_followsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   remote_statuses?: Prisma.remote_statusesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
 };
 
@@ -616,6 +623,32 @@ export type remote_actorsUpdateOneRequiredWithoutStatus_remote_mentionsNestedInp
   >;
 };
 
+export type remote_actorsCreateNestedOneWithoutOutbound_followsInput = {
+  create?: Prisma.XOR<
+    Prisma.remote_actorsCreateWithoutOutbound_followsInput,
+    Prisma.remote_actorsUncheckedCreateWithoutOutbound_followsInput
+  >;
+  connectOrCreate?: Prisma.remote_actorsCreateOrConnectWithoutOutbound_followsInput;
+  connect?: Prisma.remote_actorsWhereUniqueInput;
+};
+
+export type remote_actorsUpdateOneRequiredWithoutOutbound_followsNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.remote_actorsCreateWithoutOutbound_followsInput,
+    Prisma.remote_actorsUncheckedCreateWithoutOutbound_followsInput
+  >;
+  connectOrCreate?: Prisma.remote_actorsCreateOrConnectWithoutOutbound_followsInput;
+  upsert?: Prisma.remote_actorsUpsertWithoutOutbound_followsInput;
+  connect?: Prisma.remote_actorsWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.remote_actorsUpdateToOneWithWhereWithoutOutbound_followsInput,
+      Prisma.remote_actorsUpdateWithoutOutbound_followsInput
+    >,
+    Prisma.remote_actorsUncheckedUpdateWithoutOutbound_followsInput
+  >;
+};
+
 export type remote_actorsCreateWithoutRemote_announcesInput = {
   actor_uri: string;
   username: string;
@@ -631,6 +664,7 @@ export type remote_actorsCreateWithoutRemote_announcesInput = {
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutRemote_actorsInput;
   remote_follows?: Prisma.remote_followsCreateNestedManyWithoutRemote_actorsInput;
   remote_statuses?: Prisma.remote_statusesCreateNestedManyWithoutRemote_actorsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutRemote_actorsInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutRemote_actorsInput;
 };
 
@@ -649,6 +683,7 @@ export type remote_actorsUncheckedCreateWithoutRemote_announcesInput = {
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutRemote_actorsInput;
   remote_follows?: Prisma.remote_followsUncheckedCreateNestedManyWithoutRemote_actorsInput;
   remote_statuses?: Prisma.remote_statusesUncheckedCreateNestedManyWithoutRemote_actorsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutRemote_actorsInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutRemote_actorsInput;
 };
 
@@ -695,6 +730,7 @@ export type remote_actorsUpdateWithoutRemote_announcesInput = {
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutRemote_actorsNestedInput;
   remote_follows?: Prisma.remote_followsUpdateManyWithoutRemote_actorsNestedInput;
   remote_statuses?: Prisma.remote_statusesUpdateManyWithoutRemote_actorsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutRemote_actorsNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutRemote_actorsNestedInput;
 };
 
@@ -713,6 +749,7 @@ export type remote_actorsUncheckedUpdateWithoutRemote_announcesInput = {
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   remote_follows?: Prisma.remote_followsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   remote_statuses?: Prisma.remote_statusesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
 };
 
@@ -731,6 +768,7 @@ export type remote_actorsCreateWithoutRemote_favouritesInput = {
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutRemote_actorsInput;
   remote_follows?: Prisma.remote_followsCreateNestedManyWithoutRemote_actorsInput;
   remote_statuses?: Prisma.remote_statusesCreateNestedManyWithoutRemote_actorsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutRemote_actorsInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutRemote_actorsInput;
 };
 
@@ -749,6 +787,7 @@ export type remote_actorsUncheckedCreateWithoutRemote_favouritesInput = {
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutRemote_actorsInput;
   remote_follows?: Prisma.remote_followsUncheckedCreateNestedManyWithoutRemote_actorsInput;
   remote_statuses?: Prisma.remote_statusesUncheckedCreateNestedManyWithoutRemote_actorsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutRemote_actorsInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutRemote_actorsInput;
 };
 
@@ -795,6 +834,7 @@ export type remote_actorsUpdateWithoutRemote_favouritesInput = {
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutRemote_actorsNestedInput;
   remote_follows?: Prisma.remote_followsUpdateManyWithoutRemote_actorsNestedInput;
   remote_statuses?: Prisma.remote_statusesUpdateManyWithoutRemote_actorsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutRemote_actorsNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutRemote_actorsNestedInput;
 };
 
@@ -813,6 +853,7 @@ export type remote_actorsUncheckedUpdateWithoutRemote_favouritesInput = {
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   remote_follows?: Prisma.remote_followsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   remote_statuses?: Prisma.remote_statusesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
 };
 
@@ -831,6 +872,7 @@ export type remote_actorsCreateWithoutRemote_followsInput = {
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutRemote_actorsInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutRemote_actorsInput;
   remote_statuses?: Prisma.remote_statusesCreateNestedManyWithoutRemote_actorsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutRemote_actorsInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutRemote_actorsInput;
 };
 
@@ -849,6 +891,7 @@ export type remote_actorsUncheckedCreateWithoutRemote_followsInput = {
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutRemote_actorsInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutRemote_actorsInput;
   remote_statuses?: Prisma.remote_statusesUncheckedCreateNestedManyWithoutRemote_actorsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutRemote_actorsInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutRemote_actorsInput;
 };
 
@@ -895,6 +938,7 @@ export type remote_actorsUpdateWithoutRemote_followsInput = {
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutRemote_actorsNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutRemote_actorsNestedInput;
   remote_statuses?: Prisma.remote_statusesUpdateManyWithoutRemote_actorsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutRemote_actorsNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutRemote_actorsNestedInput;
 };
 
@@ -913,6 +957,7 @@ export type remote_actorsUncheckedUpdateWithoutRemote_followsInput = {
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   remote_statuses?: Prisma.remote_statusesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
 };
 
@@ -931,6 +976,7 @@ export type remote_actorsCreateWithoutRemote_statusesInput = {
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutRemote_actorsInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutRemote_actorsInput;
   remote_follows?: Prisma.remote_followsCreateNestedManyWithoutRemote_actorsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutRemote_actorsInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutRemote_actorsInput;
 };
 
@@ -949,6 +995,7 @@ export type remote_actorsUncheckedCreateWithoutRemote_statusesInput = {
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutRemote_actorsInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutRemote_actorsInput;
   remote_follows?: Prisma.remote_followsUncheckedCreateNestedManyWithoutRemote_actorsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutRemote_actorsInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutRemote_actorsInput;
 };
 
@@ -995,6 +1042,7 @@ export type remote_actorsUpdateWithoutRemote_statusesInput = {
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutRemote_actorsNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutRemote_actorsNestedInput;
   remote_follows?: Prisma.remote_followsUpdateManyWithoutRemote_actorsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutRemote_actorsNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutRemote_actorsNestedInput;
 };
 
@@ -1013,6 +1061,7 @@ export type remote_actorsUncheckedUpdateWithoutRemote_statusesInput = {
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   remote_follows?: Prisma.remote_followsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
 };
 
@@ -1032,6 +1081,7 @@ export type remote_actorsCreateWithoutStatus_remote_mentionsInput = {
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutRemote_actorsInput;
   remote_follows?: Prisma.remote_followsCreateNestedManyWithoutRemote_actorsInput;
   remote_statuses?: Prisma.remote_statusesCreateNestedManyWithoutRemote_actorsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutRemote_actorsInput;
 };
 
 export type remote_actorsUncheckedCreateWithoutStatus_remote_mentionsInput = {
@@ -1050,6 +1100,7 @@ export type remote_actorsUncheckedCreateWithoutStatus_remote_mentionsInput = {
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutRemote_actorsInput;
   remote_follows?: Prisma.remote_followsUncheckedCreateNestedManyWithoutRemote_actorsInput;
   remote_statuses?: Prisma.remote_statusesUncheckedCreateNestedManyWithoutRemote_actorsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutRemote_actorsInput;
 };
 
 export type remote_actorsCreateOrConnectWithoutStatus_remote_mentionsInput = {
@@ -1096,6 +1147,7 @@ export type remote_actorsUpdateWithoutStatus_remote_mentionsInput = {
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutRemote_actorsNestedInput;
   remote_follows?: Prisma.remote_followsUpdateManyWithoutRemote_actorsNestedInput;
   remote_statuses?: Prisma.remote_statusesUpdateManyWithoutRemote_actorsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutRemote_actorsNestedInput;
 };
 
 export type remote_actorsUncheckedUpdateWithoutStatus_remote_mentionsInput = {
@@ -1114,6 +1166,111 @@ export type remote_actorsUncheckedUpdateWithoutStatus_remote_mentionsInput = {
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   remote_follows?: Prisma.remote_followsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
   remote_statuses?: Prisma.remote_statusesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
+};
+
+export type remote_actorsCreateWithoutOutbound_followsInput = {
+  actor_uri: string;
+  username: string;
+  domain: string;
+  inbox_uri: string;
+  shared_inbox_uri?: string | null;
+  public_key_id: string;
+  public_key_pem: string;
+  display_name?: string;
+  fetched_at: string;
+  created_at?: string;
+  updated_at?: string;
+  remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutRemote_actorsInput;
+  remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutRemote_actorsInput;
+  remote_follows?: Prisma.remote_followsCreateNestedManyWithoutRemote_actorsInput;
+  remote_statuses?: Prisma.remote_statusesCreateNestedManyWithoutRemote_actorsInput;
+  status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutRemote_actorsInput;
+};
+
+export type remote_actorsUncheckedCreateWithoutOutbound_followsInput = {
+  actor_uri: string;
+  username: string;
+  domain: string;
+  inbox_uri: string;
+  shared_inbox_uri?: string | null;
+  public_key_id: string;
+  public_key_pem: string;
+  display_name?: string;
+  fetched_at: string;
+  created_at?: string;
+  updated_at?: string;
+  remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutRemote_actorsInput;
+  remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutRemote_actorsInput;
+  remote_follows?: Prisma.remote_followsUncheckedCreateNestedManyWithoutRemote_actorsInput;
+  remote_statuses?: Prisma.remote_statusesUncheckedCreateNestedManyWithoutRemote_actorsInput;
+  status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutRemote_actorsInput;
+};
+
+export type remote_actorsCreateOrConnectWithoutOutbound_followsInput = {
+  where: Prisma.remote_actorsWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.remote_actorsCreateWithoutOutbound_followsInput,
+    Prisma.remote_actorsUncheckedCreateWithoutOutbound_followsInput
+  >;
+};
+
+export type remote_actorsUpsertWithoutOutbound_followsInput = {
+  update: Prisma.XOR<
+    Prisma.remote_actorsUpdateWithoutOutbound_followsInput,
+    Prisma.remote_actorsUncheckedUpdateWithoutOutbound_followsInput
+  >;
+  create: Prisma.XOR<
+    Prisma.remote_actorsCreateWithoutOutbound_followsInput,
+    Prisma.remote_actorsUncheckedCreateWithoutOutbound_followsInput
+  >;
+  where?: Prisma.remote_actorsWhereInput;
+};
+
+export type remote_actorsUpdateToOneWithWhereWithoutOutbound_followsInput = {
+  where?: Prisma.remote_actorsWhereInput;
+  data: Prisma.XOR<
+    Prisma.remote_actorsUpdateWithoutOutbound_followsInput,
+    Prisma.remote_actorsUncheckedUpdateWithoutOutbound_followsInput
+  >;
+};
+
+export type remote_actorsUpdateWithoutOutbound_followsInput = {
+  actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
+  username?: Prisma.StringFieldUpdateOperationsInput | string;
+  domain?: Prisma.StringFieldUpdateOperationsInput | string;
+  inbox_uri?: Prisma.StringFieldUpdateOperationsInput | string;
+  shared_inbox_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
+  display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  remote_announces?: Prisma.remote_announcesUpdateManyWithoutRemote_actorsNestedInput;
+  remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutRemote_actorsNestedInput;
+  remote_follows?: Prisma.remote_followsUpdateManyWithoutRemote_actorsNestedInput;
+  remote_statuses?: Prisma.remote_statusesUpdateManyWithoutRemote_actorsNestedInput;
+  status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutRemote_actorsNestedInput;
+};
+
+export type remote_actorsUncheckedUpdateWithoutOutbound_followsInput = {
+  actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
+  username?: Prisma.StringFieldUpdateOperationsInput | string;
+  domain?: Prisma.StringFieldUpdateOperationsInput | string;
+  inbox_uri?: Prisma.StringFieldUpdateOperationsInput | string;
+  shared_inbox_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
+  display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
+  remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
+  remote_follows?: Prisma.remote_followsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
+  remote_statuses?: Prisma.remote_statusesUncheckedUpdateManyWithoutRemote_actorsNestedInput;
+  status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutRemote_actorsNestedInput;
 };
 
 /**
@@ -1125,6 +1282,7 @@ export type Remote_actorsCountOutputType = {
   remote_favourites: number;
   remote_follows: number;
   remote_statuses: number;
+  outbound_follows: number;
   status_remote_mentions: number;
 };
 
@@ -1135,6 +1293,7 @@ export type Remote_actorsCountOutputTypeSelect<
   remote_favourites?: boolean | Remote_actorsCountOutputTypeCountRemote_favouritesArgs;
   remote_follows?: boolean | Remote_actorsCountOutputTypeCountRemote_followsArgs;
   remote_statuses?: boolean | Remote_actorsCountOutputTypeCountRemote_statusesArgs;
+  outbound_follows?: boolean | Remote_actorsCountOutputTypeCountOutbound_followsArgs;
   status_remote_mentions?: boolean | Remote_actorsCountOutputTypeCountStatus_remote_mentionsArgs;
 };
 
@@ -1189,6 +1348,15 @@ export type Remote_actorsCountOutputTypeCountRemote_statusesArgs<
 /**
  * Remote_actorsCountOutputType without action
  */
+export type Remote_actorsCountOutputTypeCountOutbound_followsArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  where?: Prisma.outbound_followsWhereInput;
+};
+
+/**
+ * Remote_actorsCountOutputType without action
+ */
 export type Remote_actorsCountOutputTypeCountStatus_remote_mentionsArgs<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
@@ -1214,6 +1382,7 @@ export type remote_actorsSelect<
     remote_favourites?: boolean | Prisma.remote_actors$remote_favouritesArgs<ExtArgs>;
     remote_follows?: boolean | Prisma.remote_actors$remote_followsArgs<ExtArgs>;
     remote_statuses?: boolean | Prisma.remote_actors$remote_statusesArgs<ExtArgs>;
+    outbound_follows?: boolean | Prisma.remote_actors$outbound_followsArgs<ExtArgs>;
     status_remote_mentions?: boolean | Prisma.remote_actors$status_remote_mentionsArgs<ExtArgs>;
     _count?: boolean | Prisma.Remote_actorsCountOutputTypeDefaultArgs<ExtArgs>;
   },
@@ -1295,6 +1464,7 @@ export type remote_actorsInclude<
   remote_favourites?: boolean | Prisma.remote_actors$remote_favouritesArgs<ExtArgs>;
   remote_follows?: boolean | Prisma.remote_actors$remote_followsArgs<ExtArgs>;
   remote_statuses?: boolean | Prisma.remote_actors$remote_statusesArgs<ExtArgs>;
+  outbound_follows?: boolean | Prisma.remote_actors$outbound_followsArgs<ExtArgs>;
   status_remote_mentions?: boolean | Prisma.remote_actors$status_remote_mentionsArgs<ExtArgs>;
   _count?: boolean | Prisma.Remote_actorsCountOutputTypeDefaultArgs<ExtArgs>;
 };
@@ -1314,6 +1484,7 @@ export type $remote_actorsPayload<
     remote_favourites: Prisma.$remote_favouritesPayload<ExtArgs>[];
     remote_follows: Prisma.$remote_followsPayload<ExtArgs>[];
     remote_statuses: Prisma.$remote_statusesPayload<ExtArgs>[];
+    outbound_follows: Prisma.$outbound_followsPayload<ExtArgs>[];
     status_remote_mentions: Prisma.$status_remote_mentionsPayload<ExtArgs>[];
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
@@ -1912,6 +2083,17 @@ export interface Prisma__remote_actorsClient<
       >
     | Null
   >;
+  outbound_follows<T extends Prisma.remote_actors$outbound_followsArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.remote_actors$outbound_followsArgs<ExtArgs>>,
+  ): Prisma.PrismaPromise<
+    | runtime.Types.Result.GetResult<
+        Prisma.$outbound_followsPayload<ExtArgs>,
+        T,
+        "findMany",
+        GlobalOmitOptions
+      >
+    | Null
+  >;
   status_remote_mentions<T extends Prisma.remote_actors$status_remote_mentionsArgs<ExtArgs> = {}>(
     args?: Prisma.Subset<T, Prisma.remote_actors$status_remote_mentionsArgs<ExtArgs>>,
   ): Prisma.PrismaPromise<
@@ -2504,6 +2686,34 @@ export type remote_actors$remote_statusesArgs<
   take?: number;
   skip?: number;
   distinct?: Prisma.Remote_statusesScalarFieldEnum | Prisma.Remote_statusesScalarFieldEnum[];
+};
+
+/**
+ * remote_actors.outbound_follows
+ */
+export type remote_actors$outbound_followsArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the outbound_follows
+   */
+  select?: Prisma.outbound_followsSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the outbound_follows
+   */
+  omit?: Prisma.outbound_followsOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.outbound_followsInclude<ExtArgs> | null;
+  where?: Prisma.outbound_followsWhereInput;
+  orderBy?:
+    | Prisma.outbound_followsOrderByWithRelationInput
+    | Prisma.outbound_followsOrderByWithRelationInput[];
+  cursor?: Prisma.outbound_followsWhereUniqueInput;
+  take?: number;
+  skip?: number;
+  distinct?: Prisma.Outbound_followsScalarFieldEnum | Prisma.Outbound_followsScalarFieldEnum[];
 };
 
 /**

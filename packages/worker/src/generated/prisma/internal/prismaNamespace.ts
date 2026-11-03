@@ -458,6 +458,7 @@ export const ModelName = {
   status_quote_policies: "status_quote_policies",
   statuses: "statuses",
   remote_poll_own_votes: "remote_poll_own_votes",
+  outbound_follows: "outbound_follows",
 } as const;
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName];
@@ -544,7 +545,8 @@ export type TypeMap<
       | "status_quotes"
       | "status_quote_policies"
       | "statuses"
-      | "remote_poll_own_votes";
+      | "remote_poll_own_votes"
+      | "outbound_follows";
     txIsolationLevel: TransactionIsolationLevel;
   };
   model: {
@@ -5612,6 +5614,82 @@ export type TypeMap<
         };
       };
     };
+    outbound_follows: {
+      payload: Prisma.$outbound_followsPayload<ExtArgs>;
+      fields: Prisma.outbound_followsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.outbound_followsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbound_followsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.outbound_followsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbound_followsPayload>;
+        };
+        findFirst: {
+          args: Prisma.outbound_followsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbound_followsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.outbound_followsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbound_followsPayload>;
+        };
+        findMany: {
+          args: Prisma.outbound_followsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbound_followsPayload>[];
+        };
+        create: {
+          args: Prisma.outbound_followsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbound_followsPayload>;
+        };
+        createMany: {
+          args: Prisma.outbound_followsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.outbound_followsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbound_followsPayload>[];
+        };
+        delete: {
+          args: Prisma.outbound_followsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbound_followsPayload>;
+        };
+        update: {
+          args: Prisma.outbound_followsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbound_followsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.outbound_followsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.outbound_followsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.outbound_followsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbound_followsPayload>[];
+        };
+        upsert: {
+          args: Prisma.outbound_followsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbound_followsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Outbound_followsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateOutbound_follows>;
+        };
+        groupBy: {
+          args: Prisma.outbound_followsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Outbound_followsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.outbound_followsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Outbound_followsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
   };
 } & {
   other: {
@@ -6427,6 +6505,21 @@ export const Remote_poll_own_votesScalarFieldEnum = {
 export type Remote_poll_own_votesScalarFieldEnum =
   (typeof Remote_poll_own_votesScalarFieldEnum)[keyof typeof Remote_poll_own_votesScalarFieldEnum];
 
+export const Outbound_followsScalarFieldEnum = {
+  id: "id",
+  account_id: "account_id",
+  actor_uri: "actor_uri",
+  follow_activity_id: "follow_activity_id",
+  state: "state",
+  reblogs: "reblogs",
+  notify: "notify",
+  languages_json: "languages_json",
+  created_at: "created_at",
+} as const;
+
+export type Outbound_followsScalarFieldEnum =
+  (typeof Outbound_followsScalarFieldEnum)[keyof typeof Outbound_followsScalarFieldEnum];
+
 export const SortOrder = {
   asc: "asc",
   desc: "desc",
@@ -6685,6 +6778,7 @@ export type GlobalOmitConfig = {
   status_quote_policies?: Prisma.status_quote_policiesOmit;
   statuses?: Prisma.statusesOmit;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesOmit;
+  outbound_follows?: Prisma.outbound_followsOmit;
 };
 
 /* Types for Logging */

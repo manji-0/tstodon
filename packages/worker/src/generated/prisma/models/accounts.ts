@@ -308,6 +308,7 @@ export type accountsWhereInput = {
   status_mentions?: Prisma.Status_mentionsListRelationFilter;
   remote_status_mentions?: Prisma.Remote_status_mentionsListRelationFilter;
   remote_poll_own_votes?: Prisma.Remote_poll_own_votesListRelationFilter;
+  outbound_follows?: Prisma.Outbound_followsListRelationFilter;
   statuses?: Prisma.StatusesListRelationFilter;
 };
 
@@ -348,6 +349,7 @@ export type accountsOrderByWithRelationInput = {
   status_mentions?: Prisma.status_mentionsOrderByRelationAggregateInput;
   remote_status_mentions?: Prisma.remote_status_mentionsOrderByRelationAggregateInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesOrderByRelationAggregateInput;
+  outbound_follows?: Prisma.outbound_followsOrderByRelationAggregateInput;
   statuses?: Prisma.statusesOrderByRelationAggregateInput;
 };
 
@@ -392,6 +394,7 @@ export type accountsWhereUniqueInput = Prisma.AtLeast<
     status_mentions?: Prisma.Status_mentionsListRelationFilter;
     remote_status_mentions?: Prisma.Remote_status_mentionsListRelationFilter;
     remote_poll_own_votes?: Prisma.Remote_poll_own_votesListRelationFilter;
+    outbound_follows?: Prisma.Outbound_followsListRelationFilter;
     statuses?: Prisma.StatusesListRelationFilter;
   },
   "id" | "username" | "access_email"
@@ -480,6 +483,7 @@ export type accountsCreateInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -520,6 +524,7 @@ export type accountsUncheckedCreateInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -560,6 +565,7 @@ export type accountsUpdateInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -600,6 +606,7 @@ export type accountsUncheckedUpdateInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1320,6 +1327,32 @@ export type accountsUpdateOneRequiredWithoutRemote_poll_own_votesNestedInput = {
   >;
 };
 
+export type accountsCreateNestedOneWithoutOutbound_followsInput = {
+  create?: Prisma.XOR<
+    Prisma.accountsCreateWithoutOutbound_followsInput,
+    Prisma.accountsUncheckedCreateWithoutOutbound_followsInput
+  >;
+  connectOrCreate?: Prisma.accountsCreateOrConnectWithoutOutbound_followsInput;
+  connect?: Prisma.accountsWhereUniqueInput;
+};
+
+export type accountsUpdateOneRequiredWithoutOutbound_followsNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.accountsCreateWithoutOutbound_followsInput,
+    Prisma.accountsUncheckedCreateWithoutOutbound_followsInput
+  >;
+  connectOrCreate?: Prisma.accountsCreateOrConnectWithoutOutbound_followsInput;
+  upsert?: Prisma.accountsUpsertWithoutOutbound_followsInput;
+  connect?: Prisma.accountsWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.accountsUpdateToOneWithWhereWithoutOutbound_followsInput,
+      Prisma.accountsUpdateWithoutOutbound_followsInput
+    >,
+    Prisma.accountsUncheckedUpdateWithoutOutbound_followsInput
+  >;
+};
+
 export type accountsCreateWithoutAccount_list_membersInput = {
   id: string;
   username: string;
@@ -1356,6 +1389,7 @@ export type accountsCreateWithoutAccount_list_membersInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -1395,6 +1429,7 @@ export type accountsUncheckedCreateWithoutAccount_list_membersInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -1462,6 +1497,7 @@ export type accountsUpdateWithoutAccount_list_membersInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1501,6 +1537,7 @@ export type accountsUncheckedUpdateWithoutAccount_list_membersInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1540,6 +1577,7 @@ export type accountsCreateWithoutAccount_listsInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -1579,6 +1617,7 @@ export type accountsUncheckedCreateWithoutAccount_listsInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -1646,6 +1685,7 @@ export type accountsUpdateWithoutAccount_listsInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1685,6 +1725,7 @@ export type accountsUncheckedUpdateWithoutAccount_listsInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1724,6 +1765,7 @@ export type accountsCreateWithoutBookmarksInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -1763,6 +1805,7 @@ export type accountsUncheckedCreateWithoutBookmarksInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -1830,6 +1873,7 @@ export type accountsUpdateWithoutBookmarksInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1869,6 +1913,7 @@ export type accountsUncheckedUpdateWithoutBookmarksInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -1908,6 +1953,7 @@ export type accountsCreateWithoutConversation_hidesInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -1947,6 +1993,7 @@ export type accountsUncheckedCreateWithoutConversation_hidesInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2014,6 +2061,7 @@ export type accountsUpdateWithoutConversation_hidesInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2053,6 +2101,7 @@ export type accountsUncheckedUpdateWithoutConversation_hidesInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2092,6 +2141,7 @@ export type accountsCreateWithoutConversation_readsInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2131,6 +2181,7 @@ export type accountsUncheckedCreateWithoutConversation_readsInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2198,6 +2249,7 @@ export type accountsUpdateWithoutConversation_readsInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2237,6 +2289,7 @@ export type accountsUncheckedUpdateWithoutConversation_readsInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2276,6 +2329,7 @@ export type accountsCreateWithoutFavouritesInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2315,6 +2369,7 @@ export type accountsUncheckedCreateWithoutFavouritesInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2382,6 +2437,7 @@ export type accountsUpdateWithoutFavouritesInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2421,6 +2477,7 @@ export type accountsUncheckedUpdateWithoutFavouritesInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2460,6 +2517,7 @@ export type accountsCreateWithoutFiltersInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2499,6 +2557,7 @@ export type accountsUncheckedCreateWithoutFiltersInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2566,6 +2625,7 @@ export type accountsUpdateWithoutFiltersInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2605,6 +2665,7 @@ export type accountsUncheckedUpdateWithoutFiltersInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2644,6 +2705,7 @@ export type accountsCreateWithoutFollows_follows_target_account_idToaccountsInpu
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2683,6 +2745,7 @@ export type accountsUncheckedCreateWithoutFollows_follows_target_account_idToacc
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2730,6 +2793,7 @@ export type accountsCreateWithoutFollows_follows_follower_account_idToaccountsIn
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2769,6 +2833,7 @@ export type accountsUncheckedCreateWithoutFollows_follows_follower_account_idToa
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -2836,6 +2901,7 @@ export type accountsUpdateWithoutFollows_follows_target_account_idToaccountsInpu
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2875,6 +2941,7 @@ export type accountsUncheckedUpdateWithoutFollows_follows_target_account_idToacc
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2935,6 +3002,7 @@ export type accountsUpdateWithoutFollows_follows_follower_account_idToaccountsIn
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -2974,6 +3042,7 @@ export type accountsUncheckedUpdateWithoutFollows_follows_follower_account_idToa
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3013,6 +3082,7 @@ export type accountsCreateWithoutMarkersInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3052,6 +3122,7 @@ export type accountsUncheckedCreateWithoutMarkersInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3119,6 +3190,7 @@ export type accountsUpdateWithoutMarkersInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3158,6 +3230,7 @@ export type accountsUncheckedUpdateWithoutMarkersInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3197,6 +3270,7 @@ export type accountsCreateWithoutMedia_attachmentsInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3236,6 +3310,7 @@ export type accountsUncheckedCreateWithoutMedia_attachmentsInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3303,6 +3378,7 @@ export type accountsUpdateWithoutMedia_attachmentsInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3342,6 +3418,7 @@ export type accountsUncheckedUpdateWithoutMedia_attachmentsInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3381,6 +3458,7 @@ export type accountsCreateWithoutNotifications_notifications_account_idToaccount
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3420,6 +3498,7 @@ export type accountsUncheckedCreateWithoutNotifications_notifications_account_id
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3488,6 +3567,7 @@ export type accountsUpdateWithoutNotifications_notifications_account_idToaccount
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3527,6 +3607,7 @@ export type accountsUncheckedUpdateWithoutNotifications_notifications_account_id
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3566,6 +3647,7 @@ export type accountsCreateWithoutOutbound_activitiesInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3605,6 +3687,7 @@ export type accountsUncheckedCreateWithoutOutbound_activitiesInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3672,6 +3755,7 @@ export type accountsUpdateWithoutOutbound_activitiesInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3711,6 +3795,7 @@ export type accountsUncheckedUpdateWithoutOutbound_activitiesInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3750,6 +3835,7 @@ export type accountsCreateWithoutPoll_votesInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3789,6 +3875,7 @@ export type accountsUncheckedCreateWithoutPoll_votesInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3856,6 +3943,7 @@ export type accountsUpdateWithoutPoll_votesInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3895,6 +3983,7 @@ export type accountsUncheckedUpdateWithoutPoll_votesInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -3934,6 +4023,7 @@ export type accountsCreateWithoutRemote_followsInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -3973,6 +4063,7 @@ export type accountsUncheckedCreateWithoutRemote_followsInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4040,6 +4131,7 @@ export type accountsUpdateWithoutRemote_followsInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4079,6 +4171,7 @@ export type accountsUncheckedUpdateWithoutRemote_followsInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4118,6 +4211,7 @@ export type accountsCreateWithoutReports_reports_target_account_idToaccountsInpu
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4157,6 +4251,7 @@ export type accountsUncheckedCreateWithoutReports_reports_target_account_idToacc
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4204,6 +4299,7 @@ export type accountsCreateWithoutReports_reports_account_idToaccountsInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4243,6 +4339,7 @@ export type accountsUncheckedCreateWithoutReports_reports_account_idToaccountsIn
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4310,6 +4407,7 @@ export type accountsUpdateWithoutReports_reports_target_account_idToaccountsInpu
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4349,6 +4447,7 @@ export type accountsUncheckedUpdateWithoutReports_reports_target_account_idToacc
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4408,6 +4507,7 @@ export type accountsUpdateWithoutReports_reports_account_idToaccountsInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4447,6 +4547,7 @@ export type accountsUncheckedUpdateWithoutReports_reports_account_idToaccountsIn
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4486,6 +4587,7 @@ export type accountsCreateWithoutRemote_status_mentionsInput = {
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4525,6 +4627,7 @@ export type accountsUncheckedCreateWithoutRemote_status_mentionsInput = {
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4592,6 +4695,7 @@ export type accountsUpdateWithoutRemote_status_mentionsInput = {
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4631,6 +4735,7 @@ export type accountsUncheckedUpdateWithoutRemote_status_mentionsInput = {
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4670,6 +4775,7 @@ export type accountsCreateWithoutStatus_mentionsInput = {
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4709,6 +4815,7 @@ export type accountsUncheckedCreateWithoutStatus_mentionsInput = {
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4776,6 +4883,7 @@ export type accountsUpdateWithoutStatus_mentionsInput = {
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4815,6 +4923,7 @@ export type accountsUncheckedUpdateWithoutStatus_mentionsInput = {
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4854,6 +4963,7 @@ export type accountsCreateWithoutScheduled_statusesInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4893,6 +5003,7 @@ export type accountsUncheckedCreateWithoutScheduled_statusesInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -4960,6 +5071,7 @@ export type accountsUpdateWithoutScheduled_statusesInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -4999,6 +5111,7 @@ export type accountsUncheckedUpdateWithoutScheduled_statusesInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -5038,6 +5151,7 @@ export type accountsCreateWithoutNotification_request_groupsInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -5077,6 +5191,7 @@ export type accountsUncheckedCreateWithoutNotification_request_groupsInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -5144,6 +5259,7 @@ export type accountsUpdateWithoutNotification_request_groupsInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -5183,6 +5299,7 @@ export type accountsUncheckedUpdateWithoutNotification_request_groupsInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -5223,6 +5340,7 @@ export type accountsCreateWithoutStatusesInput = {
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
 };
 
 export type accountsUncheckedCreateWithoutStatusesInput = {
@@ -5262,6 +5380,7 @@ export type accountsUncheckedCreateWithoutStatusesInput = {
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
 export type accountsCreateOrConnectWithoutStatusesInput = {
@@ -5329,6 +5448,7 @@ export type accountsUpdateWithoutStatusesInput = {
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
 };
 
 export type accountsUncheckedUpdateWithoutStatusesInput = {
@@ -5368,6 +5488,7 @@ export type accountsUncheckedUpdateWithoutStatusesInput = {
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
 export type accountsCreateWithoutRemote_poll_own_votesInput = {
@@ -5406,6 +5527,7 @@ export type accountsCreateWithoutRemote_poll_own_votesInput = {
   scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
 };
 
@@ -5445,6 +5567,7 @@ export type accountsUncheckedCreateWithoutRemote_poll_own_votesInput = {
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedCreateNestedManyWithoutAccountsInput;
   statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
 };
 
@@ -5512,6 +5635,7 @@ export type accountsUpdateWithoutRemote_poll_own_votesInput = {
   scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -5551,6 +5675,195 @@ export type accountsUncheckedUpdateWithoutRemote_poll_own_votesInput = {
   scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
   remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  outbound_follows?: Prisma.outbound_followsUncheckedUpdateManyWithoutAccountsNestedInput;
+  statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
+};
+
+export type accountsCreateWithoutOutbound_followsInput = {
+  id: string;
+  username: string;
+  access_email: string;
+  display_name: string;
+  locked?: number;
+  default_post_visibility?: string;
+  default_quote_policy?: string;
+  public_key_pem: string;
+  private_key_jwk: string;
+  created_at?: string;
+  updated_at?: string;
+  bio_text?: string;
+  avatar_object_key?: string | null;
+  header_object_key?: string | null;
+  account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
+  account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
+  bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
+  conversation_reads?: Prisma.conversation_readsCreateNestedManyWithoutAccountsInput;
+  favourites?: Prisma.favouritesCreateNestedManyWithoutAccountsInput;
+  filters?: Prisma.filtersCreateNestedManyWithoutAccountsInput;
+  follows_follows_target_account_idToaccounts?: Prisma.followsCreateNestedManyWithoutAccounts_follows_target_account_idToaccountsInput;
+  follows_follows_follower_account_idToaccounts?: Prisma.followsCreateNestedManyWithoutAccounts_follows_follower_account_idToaccountsInput;
+  markers?: Prisma.markersCreateNestedManyWithoutAccountsInput;
+  media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutAccountsInput;
+  notifications_notifications_account_idToaccounts?: Prisma.notificationsCreateNestedManyWithoutAccounts_notifications_account_idToaccountsInput;
+  outbound_activities?: Prisma.outbound_activitiesCreateNestedManyWithoutAccountsInput;
+  poll_votes?: Prisma.poll_votesCreateNestedManyWithoutAccountsInput;
+  remote_follows?: Prisma.remote_followsCreateNestedManyWithoutAccountsInput;
+  reports_reports_target_account_idToaccounts?: Prisma.reportsCreateNestedManyWithoutAccounts_reports_target_account_idToaccountsInput;
+  reports_reports_account_idToaccounts?: Prisma.reportsCreateNestedManyWithoutAccounts_reports_account_idToaccountsInput;
+  notification_request_groups?: Prisma.notification_request_groupsCreateNestedManyWithoutAccountsInput;
+  scheduled_statuses?: Prisma.scheduled_statusesCreateNestedManyWithoutAccountsInput;
+  status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsCreateNestedManyWithoutAccountsInput;
+  remote_poll_own_votes?: Prisma.remote_poll_own_votesCreateNestedManyWithoutAccountsInput;
+  statuses?: Prisma.statusesCreateNestedManyWithoutAccountsInput;
+};
+
+export type accountsUncheckedCreateWithoutOutbound_followsInput = {
+  id: string;
+  username: string;
+  access_email: string;
+  display_name: string;
+  locked?: number;
+  default_post_visibility?: string;
+  default_quote_policy?: string;
+  public_key_pem: string;
+  private_key_jwk: string;
+  created_at?: string;
+  updated_at?: string;
+  bio_text?: string;
+  avatar_object_key?: string | null;
+  header_object_key?: string | null;
+  account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
+  account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
+  bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
+  conversation_reads?: Prisma.conversation_readsUncheckedCreateNestedManyWithoutAccountsInput;
+  favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutAccountsInput;
+  filters?: Prisma.filtersUncheckedCreateNestedManyWithoutAccountsInput;
+  follows_follows_target_account_idToaccounts?: Prisma.followsUncheckedCreateNestedManyWithoutAccounts_follows_target_account_idToaccountsInput;
+  follows_follows_follower_account_idToaccounts?: Prisma.followsUncheckedCreateNestedManyWithoutAccounts_follows_follower_account_idToaccountsInput;
+  markers?: Prisma.markersUncheckedCreateNestedManyWithoutAccountsInput;
+  media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutAccountsInput;
+  notifications_notifications_account_idToaccounts?: Prisma.notificationsUncheckedCreateNestedManyWithoutAccounts_notifications_account_idToaccountsInput;
+  outbound_activities?: Prisma.outbound_activitiesUncheckedCreateNestedManyWithoutAccountsInput;
+  poll_votes?: Prisma.poll_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_follows?: Prisma.remote_followsUncheckedCreateNestedManyWithoutAccountsInput;
+  reports_reports_target_account_idToaccounts?: Prisma.reportsUncheckedCreateNestedManyWithoutAccounts_reports_target_account_idToaccountsInput;
+  reports_reports_account_idToaccounts?: Prisma.reportsUncheckedCreateNestedManyWithoutAccounts_reports_account_idToaccountsInput;
+  notification_request_groups?: Prisma.notification_request_groupsUncheckedCreateNestedManyWithoutAccountsInput;
+  scheduled_statuses?: Prisma.scheduled_statusesUncheckedCreateNestedManyWithoutAccountsInput;
+  status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedCreateNestedManyWithoutAccountsInput;
+  remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedCreateNestedManyWithoutAccountsInput;
+  statuses?: Prisma.statusesUncheckedCreateNestedManyWithoutAccountsInput;
+};
+
+export type accountsCreateOrConnectWithoutOutbound_followsInput = {
+  where: Prisma.accountsWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.accountsCreateWithoutOutbound_followsInput,
+    Prisma.accountsUncheckedCreateWithoutOutbound_followsInput
+  >;
+};
+
+export type accountsUpsertWithoutOutbound_followsInput = {
+  update: Prisma.XOR<
+    Prisma.accountsUpdateWithoutOutbound_followsInput,
+    Prisma.accountsUncheckedUpdateWithoutOutbound_followsInput
+  >;
+  create: Prisma.XOR<
+    Prisma.accountsCreateWithoutOutbound_followsInput,
+    Prisma.accountsUncheckedCreateWithoutOutbound_followsInput
+  >;
+  where?: Prisma.accountsWhereInput;
+};
+
+export type accountsUpdateToOneWithWhereWithoutOutbound_followsInput = {
+  where?: Prisma.accountsWhereInput;
+  data: Prisma.XOR<
+    Prisma.accountsUpdateWithoutOutbound_followsInput,
+    Prisma.accountsUncheckedUpdateWithoutOutbound_followsInput
+  >;
+};
+
+export type accountsUpdateWithoutOutbound_followsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  username?: Prisma.StringFieldUpdateOperationsInput | string;
+  access_email?: Prisma.StringFieldUpdateOperationsInput | string;
+  display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  locked?: Prisma.IntFieldUpdateOperationsInput | number;
+  default_post_visibility?: Prisma.StringFieldUpdateOperationsInput | string;
+  default_quote_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
+  private_key_jwk?: Prisma.StringFieldUpdateOperationsInput | string;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
+  account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
+  bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
+  conversation_reads?: Prisma.conversation_readsUpdateManyWithoutAccountsNestedInput;
+  favourites?: Prisma.favouritesUpdateManyWithoutAccountsNestedInput;
+  filters?: Prisma.filtersUpdateManyWithoutAccountsNestedInput;
+  follows_follows_target_account_idToaccounts?: Prisma.followsUpdateManyWithoutAccounts_follows_target_account_idToaccountsNestedInput;
+  follows_follows_follower_account_idToaccounts?: Prisma.followsUpdateManyWithoutAccounts_follows_follower_account_idToaccountsNestedInput;
+  markers?: Prisma.markersUpdateManyWithoutAccountsNestedInput;
+  media_attachments?: Prisma.media_attachmentsUpdateManyWithoutAccountsNestedInput;
+  notifications_notifications_account_idToaccounts?: Prisma.notificationsUpdateManyWithoutAccounts_notifications_account_idToaccountsNestedInput;
+  outbound_activities?: Prisma.outbound_activitiesUpdateManyWithoutAccountsNestedInput;
+  poll_votes?: Prisma.poll_votesUpdateManyWithoutAccountsNestedInput;
+  remote_follows?: Prisma.remote_followsUpdateManyWithoutAccountsNestedInput;
+  reports_reports_target_account_idToaccounts?: Prisma.reportsUpdateManyWithoutAccounts_reports_target_account_idToaccountsNestedInput;
+  reports_reports_account_idToaccounts?: Prisma.reportsUpdateManyWithoutAccounts_reports_account_idToaccountsNestedInput;
+  notification_request_groups?: Prisma.notification_request_groupsUpdateManyWithoutAccountsNestedInput;
+  scheduled_statuses?: Prisma.scheduled_statusesUpdateManyWithoutAccountsNestedInput;
+  status_mentions?: Prisma.status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUpdateManyWithoutAccountsNestedInput;
+  remote_poll_own_votes?: Prisma.remote_poll_own_votesUpdateManyWithoutAccountsNestedInput;
+  statuses?: Prisma.statusesUpdateManyWithoutAccountsNestedInput;
+};
+
+export type accountsUncheckedUpdateWithoutOutbound_followsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  username?: Prisma.StringFieldUpdateOperationsInput | string;
+  access_email?: Prisma.StringFieldUpdateOperationsInput | string;
+  display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  locked?: Prisma.IntFieldUpdateOperationsInput | number;
+  default_post_visibility?: Prisma.StringFieldUpdateOperationsInput | string;
+  default_quote_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
+  private_key_jwk?: Prisma.StringFieldUpdateOperationsInput | string;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
+  account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
+  bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
+  conversation_reads?: Prisma.conversation_readsUncheckedUpdateManyWithoutAccountsNestedInput;
+  favourites?: Prisma.favouritesUncheckedUpdateManyWithoutAccountsNestedInput;
+  filters?: Prisma.filtersUncheckedUpdateManyWithoutAccountsNestedInput;
+  follows_follows_target_account_idToaccounts?: Prisma.followsUncheckedUpdateManyWithoutAccounts_follows_target_account_idToaccountsNestedInput;
+  follows_follows_follower_account_idToaccounts?: Prisma.followsUncheckedUpdateManyWithoutAccounts_follows_follower_account_idToaccountsNestedInput;
+  markers?: Prisma.markersUncheckedUpdateManyWithoutAccountsNestedInput;
+  media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutAccountsNestedInput;
+  notifications_notifications_account_idToaccounts?: Prisma.notificationsUncheckedUpdateManyWithoutAccounts_notifications_account_idToaccountsNestedInput;
+  outbound_activities?: Prisma.outbound_activitiesUncheckedUpdateManyWithoutAccountsNestedInput;
+  poll_votes?: Prisma.poll_votesUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_follows?: Prisma.remote_followsUncheckedUpdateManyWithoutAccountsNestedInput;
+  reports_reports_target_account_idToaccounts?: Prisma.reportsUncheckedUpdateManyWithoutAccounts_reports_target_account_idToaccountsNestedInput;
+  reports_reports_account_idToaccounts?: Prisma.reportsUncheckedUpdateManyWithoutAccounts_reports_account_idToaccountsNestedInput;
+  notification_request_groups?: Prisma.notification_request_groupsUncheckedUpdateManyWithoutAccountsNestedInput;
+  scheduled_statuses?: Prisma.scheduled_statusesUncheckedUpdateManyWithoutAccountsNestedInput;
+  status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_status_mentions?: Prisma.remote_status_mentionsUncheckedUpdateManyWithoutAccountsNestedInput;
+  remote_poll_own_votes?: Prisma.remote_poll_own_votesUncheckedUpdateManyWithoutAccountsNestedInput;
   statuses?: Prisma.statusesUncheckedUpdateManyWithoutAccountsNestedInput;
 };
 
@@ -5581,6 +5894,7 @@ export type AccountsCountOutputType = {
   status_mentions: number;
   remote_status_mentions: number;
   remote_poll_own_votes: number;
+  outbound_follows: number;
   statuses: number;
 };
 
@@ -5621,6 +5935,7 @@ export type AccountsCountOutputTypeSelect<
   status_mentions?: boolean | AccountsCountOutputTypeCountStatus_mentionsArgs;
   remote_status_mentions?: boolean | AccountsCountOutputTypeCountRemote_status_mentionsArgs;
   remote_poll_own_votes?: boolean | AccountsCountOutputTypeCountRemote_poll_own_votesArgs;
+  outbound_follows?: boolean | AccountsCountOutputTypeCountOutbound_followsArgs;
   statuses?: boolean | AccountsCountOutputTypeCountStatusesArgs;
 };
 
@@ -5837,6 +6152,15 @@ export type AccountsCountOutputTypeCountRemote_poll_own_votesArgs<
 /**
  * AccountsCountOutputType without action
  */
+export type AccountsCountOutputTypeCountOutbound_followsArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  where?: Prisma.outbound_followsWhereInput;
+};
+
+/**
+ * AccountsCountOutputType without action
+ */
 export type AccountsCountOutputTypeCountStatusesArgs<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
@@ -5895,6 +6219,7 @@ export type accountsSelect<
     status_mentions?: boolean | Prisma.accounts$status_mentionsArgs<ExtArgs>;
     remote_status_mentions?: boolean | Prisma.accounts$remote_status_mentionsArgs<ExtArgs>;
     remote_poll_own_votes?: boolean | Prisma.accounts$remote_poll_own_votesArgs<ExtArgs>;
+    outbound_follows?: boolean | Prisma.accounts$outbound_followsArgs<ExtArgs>;
     statuses?: boolean | Prisma.accounts$statusesArgs<ExtArgs>;
     _count?: boolean | Prisma.AccountsCountOutputTypeDefaultArgs<ExtArgs>;
   },
@@ -6016,6 +6341,7 @@ export type accountsInclude<
   status_mentions?: boolean | Prisma.accounts$status_mentionsArgs<ExtArgs>;
   remote_status_mentions?: boolean | Prisma.accounts$remote_status_mentionsArgs<ExtArgs>;
   remote_poll_own_votes?: boolean | Prisma.accounts$remote_poll_own_votesArgs<ExtArgs>;
+  outbound_follows?: boolean | Prisma.accounts$outbound_followsArgs<ExtArgs>;
   statuses?: boolean | Prisma.accounts$statusesArgs<ExtArgs>;
   _count?: boolean | Prisma.AccountsCountOutputTypeDefaultArgs<ExtArgs>;
 };
@@ -6053,6 +6379,7 @@ export type $accountsPayload<
     status_mentions: Prisma.$status_mentionsPayload<ExtArgs>[];
     remote_status_mentions: Prisma.$remote_status_mentionsPayload<ExtArgs>[];
     remote_poll_own_votes: Prisma.$remote_poll_own_votesPayload<ExtArgs>[];
+    outbound_follows: Prisma.$outbound_followsPayload<ExtArgs>[];
     statuses: Prisma.$statusesPayload<ExtArgs>[];
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
@@ -6866,6 +7193,17 @@ export interface Prisma__accountsClient<
   ): Prisma.PrismaPromise<
     | runtime.Types.Result.GetResult<
         Prisma.$remote_poll_own_votesPayload<ExtArgs>,
+        T,
+        "findMany",
+        GlobalOmitOptions
+      >
+    | Null
+  >;
+  outbound_follows<T extends Prisma.accounts$outbound_followsArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.accounts$outbound_followsArgs<ExtArgs>>,
+  ): Prisma.PrismaPromise<
+    | runtime.Types.Result.GetResult<
+        Prisma.$outbound_followsPayload<ExtArgs>,
         T,
         "findMany",
         GlobalOmitOptions
@@ -7951,6 +8289,34 @@ export type accounts$remote_poll_own_votesArgs<
   distinct?:
     | Prisma.Remote_poll_own_votesScalarFieldEnum
     | Prisma.Remote_poll_own_votesScalarFieldEnum[];
+};
+
+/**
+ * accounts.outbound_follows
+ */
+export type accounts$outbound_followsArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the outbound_follows
+   */
+  select?: Prisma.outbound_followsSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the outbound_follows
+   */
+  omit?: Prisma.outbound_followsOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.outbound_followsInclude<ExtArgs> | null;
+  where?: Prisma.outbound_followsWhereInput;
+  orderBy?:
+    | Prisma.outbound_followsOrderByWithRelationInput
+    | Prisma.outbound_followsOrderByWithRelationInput[];
+  cursor?: Prisma.outbound_followsWhereUniqueInput;
+  take?: number;
+  skip?: number;
+  distinct?: Prisma.Outbound_followsScalarFieldEnum | Prisma.Outbound_followsScalarFieldEnum[];
 };
 
 /**

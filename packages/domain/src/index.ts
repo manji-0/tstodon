@@ -28,6 +28,11 @@ export {
   type OutboxDelivery as OutboxDeliveryValue,
 } from "./outbox-delivery";
 export { OutboxJob, type OutboxJob as OutboxJobValue } from "./outbox-job";
+export {
+  OutboundFollow,
+  type OutboundFollow as OutboundFollowValue,
+  type OutboundFollowState,
+} from "./outbound-follow";
 export { QuoteApprovalPolicy } from "./quote-approval-policy";
 export {
   RemoteActor,
