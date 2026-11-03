@@ -270,7 +270,7 @@ describe("remote votes on a local poll", () => {
 type QueueSend = Readonly<{ message: unknown; options: unknown }>;
 
 /** The Worker's env with a queue that records what is sent to it. */
-const recordingEnv = (fail = false) => {
+const recordingEnv = (fail = false, vars: Readonly<Record<string, string>> = {}) => {
   const sent: QueueSend[] = [];
   const queue = {
     send: async (message: unknown, options?: unknown) => {
@@ -281,7 +281,12 @@ const recordingEnv = (fail = false) => {
     },
   };
   const proxied = new Proxy(env, {
-    get: (target, key) => (key === "OUTBOX_PROCESS_QUEUE" ? queue : Reflect.get(target, key)),
+    get: (target, key) =>
+      key === "OUTBOX_PROCESS_QUEUE"
+        ? queue
+        : typeof key === "string" && key in vars
+          ? vars[key]
+          : Reflect.get(target, key),
   });
   return { env: proxied, sent };
 };
@@ -327,6 +332,19 @@ const queuedAt = async (poll: LocalPoll): Promise<string | null | undefined> =>
   )?.update_queued_at;
 
 describe("Update of the Question after votes", () => {
+  it("waits POLL_UPDATE_DELAY_SECONDS when the instance sets it", async () => {
+    const poll = await createPoll("short-delay-author@example.com");
+    const recording = recordingEnv(false, { POLL_UPDATE_DELAY_SECONDS: "5" });
+    await handleVote(recording, await remoteActor("short-delay-voter"), poll, "cats");
+
+    expect(recording.sent).toEqual([
+      {
+        message: { kind: "DistributePollUpdate", pollId: poll.pollId },
+        options: { delaySeconds: 5 },
+      },
+    ]);
+  });
+
   it("queues one delayed job for a burst of votes", async () => {
     const poll = await createPoll("burst-author@example.com");
     const recording = recordingEnv();

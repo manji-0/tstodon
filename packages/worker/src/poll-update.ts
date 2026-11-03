@@ -16,6 +16,17 @@ import { findStatusById } from "./status-store";
 export const POLL_UPDATE_DELAY_SECONDS = 180;
 
 /**
+ * The debounce before a poll's `Update`: the `POLL_UPDATE_DELAY_SECONDS` var
+ * when it is a whole number of seconds (local e2e instances shorten it), else 180.
+ */
+export const pollUpdateDelaySeconds = (
+  env: Readonly<{ POLL_UPDATE_DELAY_SECONDS?: string }>,
+): number => {
+  const raw = (env.POLL_UPDATE_DELAY_SECONDS ?? "").trim();
+  return /^\d+$/.test(raw) ? Number(raw) : POLL_UPDATE_DELAY_SECONDS;
+};
+
+/**
  * Queue the `Update(Question)` that tells a poll's audience the new counts,
  * unless one is already queued. The job reads the counts when it runs, so
  * every vote cast before then is in it. A poll that hides its totals has
@@ -32,7 +43,7 @@ export const schedulePollUpdate = async (env: Env, poll: PollRecord): Promise<vo
   try {
     await env.OUTBOX_PROCESS_QUEUE.send(
       { kind: "DistributePollUpdate", pollId: poll.id },
-      { delaySeconds: POLL_UPDATE_DELAY_SECONDS },
+      { delaySeconds: pollUpdateDelaySeconds(env) },
     );
   } catch {
     await releasePollUpdate(env.DB, poll.id);
