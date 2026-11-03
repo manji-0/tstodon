@@ -11,6 +11,8 @@ import { RemoteAccountId } from "./remote-account-id";
 import {
   deleteRemoteActor as deleteRemoteActorSql,
   authorizeRemoteFollowRequest as authorizeRemoteFollowRequestSql,
+  claimRemoteOutboxBackfill as claimRemoteOutboxBackfillSql,
+  releaseRemoteOutboxBackfill as releaseRemoteOutboxBackfillSql,
   deleteRemoteFollow as deleteRemoteFollowSql,
   findPendingRemoteFollowRequest as findPendingRemoteFollowRequestSql,
   findRemoteActorByHandle as findRemoteActorByHandleSql,
@@ -209,6 +211,36 @@ export const setRemoteActorMovedTo = async (
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await runTyped(db, setRemoteActorMovedToSql(actorUri, movedTo));
+  });
+
+/**
+ * Mark `actorUri`'s outbox as being backfilled now, unless it was within
+ * `ttlMs`. One UPDATE decides, so concurrent profile views claim it once.
+ * Resolves to the claim's timestamp, or undefined when another holds it.
+ */
+export const claimRemoteOutboxBackfill = async (
+  db: D1Database,
+  actorUri: string,
+  ttlMs: number,
+): Promise<Result<string | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const now = Date.now();
+    const claimedAt = new Date(now).toISOString();
+    const rows = await queryTyped<{ actor_uri: string }>(
+      db,
+      claimRemoteOutboxBackfillSql(claimedAt, actorUri, new Date(now - ttlMs).toISOString()),
+    );
+    return rows.length > 0 ? claimedAt : undefined;
+  });
+
+/** Give up a claim whose job could not be queued, so the next view tries again. */
+export const releaseRemoteOutboxBackfill = async (
+  db: D1Database,
+  actorUri: string,
+  claimedAt: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, releaseRemoteOutboxBackfillSql(actorUri, claimedAt));
   });
 
 export const upsertRemoteFollow = async (

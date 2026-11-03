@@ -14,6 +14,8 @@ export * from "./sql/authorizeRemoteFollowRequest";
 
 export * from "./sql/claimPollUpdate";
 
+export * from "./sql/claimRemoteOutboxBackfill";
+
 export * from "./sql/clearAccountSensitized";
 
 export * from "./sql/clearNotifications";
@@ -529,6 +531,8 @@ export * from "./sql/rejectOutboundFollow";
 export * from "./sql/rejectRemoteFollowRequest";
 
 export * from "./sql/releasePollUpdate";
+
+export * from "./sql/releaseRemoteOutboxBackfill";
 
 export * from "./sql/releaseStatusIdempotency";
 

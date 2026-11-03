@@ -17,6 +17,7 @@ import { processDistributePollUpdateJob } from "./poll-update";
 import { processPushJob } from "./push-delivery";
 import { processFanOutHomeJob } from "./home-fan-out";
 import { processMoveFollowsJob } from "./remote-move";
+import { processBackfillRemoteOutboxJob } from "./remote-outbox-backfill";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { findRemoteActorsByUris, listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
@@ -176,6 +177,8 @@ export const processOutboxJob = async (
       return processMoveFollowsJob(env, job);
     case "FanOutHome":
       return processFanOutHomeJob(env, job);
+    case "BackfillRemoteOutbox":
+      return processBackfillRemoteOutboxJob(env, job);
     case "ExpandFollowers": {
       const startedAt = Date.now();
       const activity = await findOutboundActivity(env.DB, job.activityId);

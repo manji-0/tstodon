@@ -53,6 +53,12 @@ const MoveFollowsSchema = z.object({
   afterId: z.string(),
 });
 
+/** Store the recent public notes and boosts in a remote actor's outbox, and its pinned notes. */
+const BackfillRemoteOutboxSchema = z.object({
+  kind: z.literal("BackfillRemoteOutbox"),
+  actorUri: z.url(),
+});
+
 /** Whose followers have a home timeline entry: a local account's or a remote actor's. */
 const HomeEntryAuthorSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("LocalAccount"), accountId: AccountId.schema }),
@@ -86,6 +92,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   DeliverPushSchema,
   MoveFollowsSchema,
   FanOutHomeSchema,
+  BackfillRemoteOutboxSchema,
 ]);
 
 export type OutboxJob = z.infer<typeof OutboxJobSchema>;

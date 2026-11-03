@@ -24,6 +24,7 @@ import type { InstanceIdentity } from "@tstodon/domain";
 import { suspendedDomains } from "../../admin-domain-block-store";
 import { RemoteAccountId } from "../../remote-account-id";
 import { findRemoteActorByUri } from "../../remote-actor-store";
+import { requestRemoteOutboxBackfill } from "../../remote-outbox-backfill";
 import { relationshipFlags } from "../../relationship-store";
 import { remoteAccountTimelineDocuments } from "../../timeline-documents";
 import { listPinnedStatuses } from "../../status-pin-store";
@@ -55,6 +56,8 @@ export const getV1AccountsById = async (c: Context<{ Bindings: Env }, "/api/v1/a
  * A cached remote actor's statuses. As in Mastodon, the list is empty when the
  * viewer blocks the actor or its domain, or the instance suspends that domain,
  * and pinned statuses are empty because featured collections are not fetched.
+ * A view queues a backfill of the actor's outbox when it has not run lately;
+ * this response shows what is cached already.
  */
 const remoteAccountStatuses = async (
   c: Context<{ Bindings: Env }>,
@@ -83,6 +86,9 @@ const remoteAccountStatuses = async (
     blocks?.blocking === true ||
     blocks?.domainBlocking === true ||
     (await suspendedDomains(c.env.DB)).has(actor.value.domain.toLowerCase());
+  if (!hidden) {
+    await requestRemoteOutboxBackfill(c.env, actor.value.actorUri);
+  }
   if (hidden || c.req.query("pinned") === "true") {
     return c.json([]);
   }

@@ -226,8 +226,8 @@ export const homeTimelineDocuments = async (
  * A remote actor's profile timeline: its cached notes and boosts, newest
  * first, as the viewer may see them, with `filtered` on the notes. As in
  * Mastodon, `exclude_reblogs`, `only_media`, and `tagged` leave boosts out.
- * Only what this instance has received is there; the actor's outbox is not
- * fetched.
+ * Only what this instance has received or backfilled from the actor's outbox
+ * is there.
  */
 export const remoteAccountTimelineDocuments = async (
   env: Env,
