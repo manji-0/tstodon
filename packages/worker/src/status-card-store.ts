@@ -1,6 +1,9 @@
 import { err, ok, type Result } from "neverthrow";
 import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
 import { queryTyped } from "./typed-sql";
+
+/** `IfMissing` leaves a status alone when it already has a card for the same link. */
+export type CardWrite = "Always" | "IfMissing";
 import {
   listRemoteStatusCards as listRemoteStatusCardsSql,
   listStatusCards as listStatusCardsSql,
@@ -14,9 +17,13 @@ export const setRemoteStatusCard = async (
   statusId: string,
   cardJson: string,
   cardUrl: string,
+  write: CardWrite = "Always",
 ): Promise<Result<void, RepositoryError>> => {
   const written = await runD1(async () => {
-    await queryTyped(db, setRemoteStatusCardSql(statusId, cardJson, cardUrl));
+    await queryTyped(
+      db,
+      setRemoteStatusCardSql(statusId, cardJson, cardUrl, write === "IfMissing" ? 1 : 0),
+    );
   });
   return written.map(() => undefined);
 };
@@ -48,9 +55,13 @@ export const setStatusCard = async (
   statusId: string,
   cardJson: string,
   cardUrl: string,
+  write: CardWrite = "Always",
 ): Promise<Result<void, RepositoryError>> => {
   const written = await runD1(async () => {
-    await queryTyped(db, updateStatusCardSql(statusId, cardJson, cardUrl));
+    await queryTyped(
+      db,
+      updateStatusCardSql(statusId, cardJson, cardUrl, write === "IfMissing" ? 1 : 0),
+    );
   });
   return written.map(() => undefined);
 };

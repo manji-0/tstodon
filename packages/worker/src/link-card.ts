@@ -178,6 +178,8 @@ const cachedCard = async (
 export type LinkCardOutcome =
   | Readonly<{ kind: "Built"; card: LinkCard }>
   | Readonly<{ kind: "Cached"; card: LinkCard }>
+  /** A refresh failed and the aged preview stands in; it must not replace a newer card. */
+  | Readonly<{ kind: "Stale"; card: LinkCard }>
   | Readonly<{ kind: "Skipped" }>
   | Readonly<{ kind: "Transient" }>;
 
@@ -227,26 +229,26 @@ export const resolveLinkCard = async (
     });
   } catch {
     // Timeouts and network errors are worth another attempt.
-    return stale ? { kind: "Cached", card: stale } : { kind: "Transient" };
+    return stale ? { kind: "Stale", card: stale } : { kind: "Transient" };
   }
   if (response.status >= 500) {
-    return stale ? { kind: "Cached", card: stale } : { kind: "Transient" };
+    return stale ? { kind: "Stale", card: stale } : { kind: "Transient" };
   }
   const contentType = response.headers.get("content-type") ?? "";
   if (!response.ok || !contentType.includes("html")) {
-    return stale ? { kind: "Cached", card: stale } : { kind: "Skipped" };
+    return stale ? { kind: "Stale", card: stale } : { kind: "Skipped" };
   }
   let html: string;
   try {
     html = (await response.text()).slice(0, MAX_HTML_CHARS);
   } catch {
-    return stale ? { kind: "Cached", card: stale } : { kind: "Transient" };
+    return stale ? { kind: "Stale", card: stale } : { kind: "Transient" };
   }
   const card = parseLinkCard(html, url);
   // The card is cached so the same link is never unfurled twice.
   const stored = await cacheLinkCard(env.DB, url, card);
   if (stored.isErr()) {
-    return stale ? { kind: "Cached", card: stale } : { kind: "Transient" };
+    return stale ? { kind: "Stale", card: stale } : { kind: "Transient" };
   }
   return { kind: "Built", card };
 };
@@ -262,7 +264,9 @@ export const buildLinkCard = async (
   }> = {},
 ): Promise<LinkCard | undefined> => {
   const outcome = await resolveLinkCard(env, identity, url, options);
-  return outcome.kind === "Built" || outcome.kind === "Cached" ? outcome.card : undefined;
+  return outcome.kind === "Built" || outcome.kind === "Cached" || outcome.kind === "Stale"
+    ? outcome.card
+    : undefined;
 };
 
 /** URLs whose cached preview has aged out, oldest first. */
@@ -374,9 +378,12 @@ export const processLinkCardJob = async (
     return "ok";
   }
   const cardJson = JSON.stringify(cardDocument(outcome.card));
+  // A stand-in from a failed refresh can finish after a successful one for
+  // the same status; it only fills a status that has no card for this link.
+  const write = outcome.kind === "Stale" ? "IfMissing" : "Always";
   const stored =
     job.target === "Status"
-      ? await setStatusCard(env.DB, job.id, cardJson, job.url)
-      : await setRemoteStatusCard(env.DB, job.id, cardJson, job.url);
+      ? await setStatusCard(env.DB, job.id, cardJson, job.url, write)
+      : await setRemoteStatusCard(env.DB, job.id, cardJson, job.url, write);
   return stored.isErr() ? "retry" : "ok";
 };

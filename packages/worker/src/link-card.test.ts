@@ -267,6 +267,64 @@ describe("link cards", () => {
     expect((await statusCard(third.id))?.title).toBe("Second Title");
   });
 
+  it("does not let a failed refresh that finishes late replace a newer card", async () => {
+    const email = "card-race@example.com";
+    const url = "https://race.example/story";
+    const status = await postStatus(email, `race link ${url}`);
+    await withFetchStub(
+      (target) =>
+        target.hostname === "race.example"
+          ? new Response(`<meta property="og:title" content="Old Title" />`, {
+              headers: { "content-type": "text/html" },
+            })
+          : undefined,
+      () => unfurl(status.id, url),
+    );
+    await env.DB.prepare("UPDATE link_cards SET fetched_at = ? WHERE url = ?")
+      .bind(new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(), url)
+      .run();
+
+    // The first refresh hangs and then fails; a second one succeeds meanwhile.
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let hung: () => void = () => {};
+    const hanging = new Promise<void>((resolve) => {
+      hung = resolve;
+    });
+    let calls = 0;
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const href =
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (new URL(href).hostname !== "race.example") {
+        return original(input as RequestInfo, init);
+      }
+      calls += 1;
+      if (calls === 1) {
+        hung();
+        await released;
+        throw new Error("network down");
+      }
+      return new Response(`<meta property="og:title" content="New Title" />`, {
+        headers: { "content-type": "text/html" },
+      });
+    }) as typeof fetch;
+    try {
+      const slow = unfurl(status.id, url);
+      await hanging;
+      await unfurl(status.id, url);
+      expect((await statusCard(status.id))?.title).toBe("New Title");
+      release();
+      await slow;
+    } finally {
+      globalThis.fetch = original;
+    }
+
+    expect((await statusCard(status.id))?.title).toBe("New Title");
+  });
+
   it("refreshes stale previews from cron and keeps the card when it fails", async () => {
     const url = "https://cron.example/story";
     const seeded = await cacheLinkCard(env.DB, url, {
