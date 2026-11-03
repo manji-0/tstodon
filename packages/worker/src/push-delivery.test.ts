@@ -342,12 +342,12 @@ describe("push delivery", () => {
 
     await withPushService(host, 410, async (captured) => {
       const notificationId = await favouriteNotification(author, fan);
-      const before = captured.length;
       // Favourite alerts are off on this one, and the author does not follow the fan.
+      // Only `/gone` may be pushed: the notification's own queued jobs can reach it
+      // while this runs, so the total count is not asserted.
       expect(await job(notificationId, offId)).toBe("ok");
       expect(await job(notificationId, followedId)).toBe("ok");
       expect(captured.filter((push) => !push.url.endsWith("/gone"))).toHaveLength(0);
-      expect(captured.length).toBe(before);
 
       // A 410 from the push service removes the subscription.
       expect(await job(notificationId, goneId)).toBe("ok");
