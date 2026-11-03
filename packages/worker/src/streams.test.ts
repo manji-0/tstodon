@@ -81,6 +81,15 @@ describe("streaming subscriptions", () => {
       event: "notification",
       payload: onUser.payload,
     });
+    // The web UI imports the payload as a Notification entity, sender and all.
+    expect(JSON.parse(onUser.payload)).toMatchObject({
+      id: expect.any(String),
+      type: "follow",
+      created_at: expect.any(String),
+      group_key: expect.stringMatching(/^follow-/),
+      account: { acct: "st_notify_follower" },
+      status: null,
+    });
 
     const own = await post(target, "not a notification");
     expect(await all.next()).toMatchObject({ stream: ["user"], event: "update" });

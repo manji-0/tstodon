@@ -6,7 +6,9 @@ import { notificationDisposition } from "./notification-policy";
 import { hostnameOf, isDomainBlocked } from "./domain-block-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { findActiveMute, findBlock } from "./block-mute-store";
-import { insertNotification } from "./notification-store";
+import { mastodonNotification } from "./notification-documents";
+import { DEFAULT_GROUPED_TYPES, notificationGroupKey } from "./notification-groups";
+import { findNotificationById, insertNotification } from "./notification-store";
 import { enqueuePushDeliveries } from "./push-delivery";
 import { parseInstanceIdentity } from "./runtime-config";
 import { mutedThreadStatusIds } from "./status-mute-store";
@@ -72,16 +74,36 @@ export const notifyAccount = async (
     }
     return ok(undefined);
   }
-  await publishToAccount(env, input.accountId, {
-    kind: "notification",
-    payload: {
-      type: input.kind,
-      account_id: input.fromAccountId,
-      status_id: input.statusId ?? null,
-    },
-  });
+  const streamed = await streamedNotification(env, input.accountId, inserted.value);
+  if (streamed) {
+    await publishToAccount(env, input.accountId, { kind: "notification", payload: streamed });
+  }
   await enqueuePushDeliveries(env, input.accountId, inserted.value);
   return ok(undefined);
+};
+
+/**
+ * The Notification entity the streaming API sends, as `GET
+ * /api/v1/notifications/:id` renders it, with the `group_key` the web UI
+ * files it under.
+ */
+const streamedNotification = async (
+  env: Env,
+  recipientId: string,
+  notificationId: string,
+): Promise<Record<string, unknown> | undefined> => {
+  const identity = parseInstanceIdentity(env);
+  const row = await findNotificationById(env.DB, recipientId, notificationId);
+  if (identity.isErr() || row.isErr() || !row.value) {
+    return undefined;
+  }
+  const document = await mastodonNotification(env, identity.value, row.value, recipientId);
+  return document
+    ? {
+        ...document,
+        group_key: notificationGroupKey(row.value, new Set(DEFAULT_GROUPED_TYPES)),
+      }
+    : undefined;
 };
 
 /**
