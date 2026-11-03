@@ -9,18 +9,23 @@ import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import { parseInstanceIdentity } from "./runtime-config";
 import { ANONYMOUS_HUB } from "./stream-access";
+import { MAX_HUB_TAGGED_CHANNELS } from "./stream-hub";
 import { publishToHub } from "./stream-publish";
 import { type HubChannels, listPublicStreamSubscriptions } from "./stream-subscription-store";
 import { publicTimelineDocuments, tagTimelineDocuments } from "./timeline-documents";
 
 type FanOutPublic = Extract<OutboxJobValue, { kind: "FanOutPublic" }>;
 
-/**
- * Hubs told per pass. Each costs one timeline query per public or hashtag
- * subscription it holds that may carry the entry, so a page stays well
- * inside a queue invocation's subrequest budget; a full page queues the next.
- */
+/** Hubs read per pass; a full page queues the next. */
 const PUBLIC_FAN_OUT_PAGE_SIZE = 20;
+
+/**
+ * Timeline passes per page: each channel that may carry the entry costs one
+ * (several D1 queries), so a page stops before the hub that would go over
+ * and queues the rest. A hub alone stays under it (six public streams and
+ * `MAX_HUB_TAGGED_CHANNELS` hashtags), so every page makes progress.
+ */
+const PUBLIC_FAN_OUT_PASS_BUDGET = 6 + MAX_HUB_TAGGED_CHANNELS;
 
 /**
  * Queue telling the public and hashtag streams about a public status, as
@@ -134,7 +139,13 @@ const fanOutPublicPage = async (
   if (page.isErr()) {
     return err(page.error);
   }
-  for (const hub of page.value.hubs) {
+  let passes = 0;
+  for (const [index, hub] of page.value.hubs.entries()) {
+    const cost = job.event === "delete" ? 0 : hub.channels.length;
+    if (passes > 0 && passes + cost > PUBLIC_FAN_OUT_PASS_BUDGET) {
+      return ok(page.value.hubs[index - 1]?.hub);
+    }
+    passes += cost;
     const delivery = await hubDelivery(env, identity, job, hub);
     if (delivery.isErr()) {
       return err(delivery.error);
