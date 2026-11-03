@@ -18,7 +18,27 @@ import type { RepositoryError } from "../../d1";
 import { findRemoteActorByUri, findRemoteActorsByUris } from "../../remote-actor-store";
 import { findRemoteStatusById, findRemoteStatusesByIds } from "../../remote-status-store";
 import { ContextLimits, findStatusById, findStatusesByIds } from "../../status-store";
-import { canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
+import { canViewRemoteBoost, canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
+import { findRemoteBoostById } from "../../remote-boost-store";
+import { remoteBoostDocuments } from "../../remote-boost-documents";
+
+/** A remote actor's boost, fetched by its id as Mastodon allows for reblogs. */
+const visibleRemoteBoostDocument = async (
+  env: Env,
+  identity: InstanceIdentity,
+  id: string,
+  viewerId: string | undefined,
+): Promise<Result<Record<string, unknown> | null, RepositoryError>> => {
+  const boost = await findRemoteBoostById(env.DB, id);
+  if (boost.isErr()) {
+    return err(boost.error);
+  }
+  if (!boost.value || !(await canViewRemoteBoost(env.DB, boost.value, viewerId))) {
+    return ok(null);
+  }
+  const documents = await remoteBoostDocuments(env, identity, [boost.value], viewerId);
+  return documents.map((rendered) => rendered[0] ?? null);
+};
 
 const visibleStatusDocument = async (
   env: Env,
@@ -35,7 +55,10 @@ const visibleStatusDocument = async (
     if (remote.isErr()) {
       return err(remote.error);
     }
-    if (!remote.value || !(await canViewRemoteStatus(env.DB, remote.value, viewerId))) {
+    if (!remote.value) {
+      return visibleRemoteBoostDocument(env, identity, id, viewerId);
+    }
+    if (!(await canViewRemoteStatus(env.DB, remote.value, viewerId))) {
       return ok(null);
     }
     const actor = await findRemoteActorByUri(env.DB, remote.value.actorUri);

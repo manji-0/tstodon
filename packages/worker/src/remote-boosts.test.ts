@@ -141,6 +141,42 @@ describe("remote boosts on the home timeline", () => {
     });
     expect(entry?.id).not.toBe(entry?.reblog?.id);
     expect(await home(other)).toEqual([]);
+
+    const fetched = await json(`/api/v1/statuses/${entry?.id ?? ""}`, {
+      headers: await authHeaders(other),
+    });
+    expect(fetched.status).toBe(200);
+    expect(read(EntrySchema, fetched.body)).toMatchObject({
+      id: entry?.id,
+      account: { id: accountId(booster) },
+      reblog: { id: entry?.reblog?.id },
+    });
+  });
+
+  it("serves a followers-only boost by id to the booster's followers only", async () => {
+    const booster = await remoteActor("boost-private-booster", "booster.example");
+    const author = await remoteActor("boost-private-author");
+    const follower = "boost-private-follower@example.com";
+    const other = "boost-private-other@example.com";
+    await signedInAccount(other);
+    await acceptedFollow(follower, booster, "private");
+    const noteUri = await note(author, "boost-private");
+    expect(
+      await booster.send({
+        id: announceId(booster, "private"),
+        type: "Announce",
+        object: noteUri,
+        to: [`${booster.actorUri}/followers`],
+        cc: [],
+      }),
+    ).toBe(202);
+
+    const [entry] = await home(follower);
+    expect(entry?.reblog?.uri).toBe(noteUri);
+    const path = `/api/v1/statuses/${entry?.id ?? ""}`;
+    expect((await json(path, { headers: await authHeaders(follower) })).status).toBe(200);
+    expect((await json(path, { headers: await authHeaders(other) })).status).toBe(404);
+    expect((await json(path)).status).toBe(404);
   });
 
   it("fetches another actor's note the boost names and stores it under its author", async () => {
@@ -313,5 +349,9 @@ describe("remote boosts on the home timeline", () => {
       }),
     ).toBe(202);
     expect(await home(follower)).toEqual([]);
+    const fetched = await json(`/api/v1/statuses/${boosted[0]?.id ?? ""}`, {
+      headers: await authHeaders(follower),
+    });
+    expect(fetched.status).toBe(404);
   });
 });

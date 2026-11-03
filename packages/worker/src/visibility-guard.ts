@@ -2,9 +2,11 @@ import {
   OutboundFollow,
   Visibility,
   type LocalStatus,
+  type RemoteBoostValue as RemoteBoost,
   type RemoteStatus,
   type Visibility as VisibilityValue,
 } from "@tstodon/domain";
+import { findRemoteStatusById } from "./remote-status-store";
 import { remoteStatusVisible } from "./remote-status-document";
 import { isAccountMentionedOnStatus } from "./mention-store";
 import { isAccountMentionedOnRemoteStatus } from "./mention-store";
@@ -99,4 +101,31 @@ export const canViewRemoteStatus = async (
   }
   const mentioned = await isAccountMentionedOnRemoteStatus(db, status.id, viewerId);
   return mentioned.isOk() && mentioned.value;
+};
+
+/**
+ * A remote boost: a followers-only one is shown to the booster's accepted
+ * local followers, and the boosted status must be visible to the viewer too.
+ */
+export const canViewRemoteBoost = async (
+  db: D1Database,
+  boost: RemoteBoost,
+  viewerId: string | undefined,
+): Promise<boolean> => {
+  if (boost.visibility.kind === "FollowersOnly") {
+    const follow = viewerId ? await findOutboundFollow(db, viewerId, boost.actorUri) : undefined;
+    if (!follow?.isOk() || !OutboundFollow.relationship(follow.value).following) {
+      return false;
+    }
+  }
+  if (boost.target.kind === "LocalStatus") {
+    const local = await findStatusById(db, boost.target.statusId);
+    return local.isOk() && local.value !== undefined
+      ? canViewStatus(db, local.value, viewerId)
+      : false;
+  }
+  const remote = await findRemoteStatusById(db, boost.target.statusId);
+  return remote.isOk() && remote.value !== undefined
+    ? canViewRemoteStatus(db, remote.value, viewerId)
+    : false;
 };
