@@ -26,6 +26,16 @@ import { remotePollFromDocument } from "./remote-poll-parse";
 
 export const parseNoteDocument = schemaResult(NoteDocumentSchema);
 
+/** The note's language: the first `contentMap` key that is a language tag, as Mastodon reads it. */
+const noteLanguage = (
+  contentMap: Readonly<Record<string, unknown>> | undefined,
+): RemoteStatusValue["language"] => {
+  const tag = Object.keys(contentMap ?? {})
+    .map((key) => key.trim().toLowerCase())
+    .find((key) => /^[a-z]{2,3}(-[a-z0-9]+)?$/.test(key));
+  return tag ? { kind: "Present", value: tag } : { kind: "None" };
+};
+
 export const noteFromUnknown = (
   raw: unknown,
   actorUri: string,
@@ -72,7 +82,7 @@ export const noteFromUnknown = (
       stringList(document.value.cc),
     ),
     sensitive: isTruthy(document.value.sensitive),
-    language: { kind: "None" },
+    language: noteLanguage(document.value.contentMap),
     publishedAt: publishedAt.value,
     poll: remotePollFromDocument(document.value),
     ...(document.value.url ? { url: document.value.url } : {}),

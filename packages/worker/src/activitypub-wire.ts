@@ -82,6 +82,8 @@ export const NoteDocumentSchema = z
     votersCount: z.number().int().nonnegative().nullable().optional(),
     attributedTo: z.string().min(1),
     content: z.string(),
+    /** The content per language; Mastodon sends one entry, keyed by the post's language. */
+    contentMap: z.record(z.string(), z.unknown()).optional(),
     published: z.string().min(1),
     updated: z.string().nullable().optional(),
     url: z.string().optional(),
