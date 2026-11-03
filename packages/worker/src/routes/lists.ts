@@ -13,9 +13,10 @@ import {
   createList,
   deleteList,
   findListForAccount,
+  ListMember,
   ListRepliesPolicySchema,
-  listListMemberIds,
-  listListsContainingAccount,
+  listListMembers,
+  listListsContainingMember,
   listListsForAccount,
   listListTimelineStatuses,
   removeListMembers,
@@ -28,6 +29,8 @@ import { parseInstanceIdentity } from "../runtime-config";
 import { attachFilteredToStatuses } from "../filter-match";
 import { filterMutedThreads } from "../status-mute-store";
 import { isTruthy, stringList } from "../form-values";
+import { findOutboundFollow } from "../outbound-follow-store";
+import { OutboundFollow } from "@tstodon/domain";
 import { warmSchemas } from "@tstodon/core";
 import { z } from "zod";
 
@@ -154,12 +157,13 @@ export const getV1ListsByIdAccounts = async (
   if (!list.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const memberIds = await listListMemberIds(c.env.DB, list.value.id);
-  if (memberIds.isErr()) {
-    return jsonRepositoryError(c, memberIds.error.message);
+  const members = await listListMembers(c.env.DB, list.value.id);
+  if (members.isErr()) {
+    return jsonRepositoryError(c, members.error.message);
   }
-  const byId = await accountDocumentsByIds(c.env, identity.value, memberIds.value);
-  return c.json(documentsInOrder(memberIds.value, byId));
+  const memberIds = members.value.map(ListMember.accountId);
+  const byId = await accountDocumentsByIds(c.env, identity.value, memberIds);
+  return c.json(documentsInOrder(memberIds, byId));
 };
 
 export const postV1ListsByIdAccounts = async (
@@ -180,12 +184,34 @@ export const postV1ListsByIdAccounts = async (
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const accountIds = stringList(body.value.account_ids);
-  const found = await findAccountsByIds(c.env.DB, accountIds);
+  const members = stringList(body.value.account_ids).map(ListMember.fromAccountId);
+  const found = await findAccountsByIds(
+    c.env.DB,
+    members.flatMap((member) => (member.kind === "LocalAccount" ? [member.accountId] : [])),
+  );
   if (found.isErr()) {
     return jsonRepositoryError(c, found.error.message);
   }
-  const existing = accountIds.filter((accountId) => found.value.has(accountId));
+  // As in Mastodon, a remote account goes on a list only while it is followed,
+  // and one that is not refuses the whole request.
+  for (const member of members) {
+    if (member.kind !== "RemoteActor") {
+      continue;
+    }
+    const follow = await findOutboundFollow(c.env.DB, user.value.id, member.actorUri);
+    if (follow.isErr()) {
+      return jsonRepositoryError(c, follow.error.message);
+    }
+    if (!OutboundFollow.relationship(follow.value).following) {
+      return c.json(
+        { error: "Validation failed: Account has not been followed", kind: "NotFollowed" },
+        422,
+      );
+    }
+  }
+  const existing = members.filter(
+    (member) => member.kind === "RemoteActor" || found.value.has(member.accountId),
+  );
   const added = await addListMembers(c.env.DB, list.value.id, existing);
   if (added.isErr()) {
     return jsonRepositoryError(c, added.error.message);
@@ -214,7 +240,7 @@ export const deleteV1ListsByIdAccounts = async (
   const removed = await removeListMembers(
     c.env.DB,
     list.value.id,
-    stringList(body.value.account_ids),
+    stringList(body.value.account_ids).map(ListMember.fromAccountId),
   );
   if (removed.isErr()) {
     return jsonRepositoryError(c, removed.error.message);
@@ -229,7 +255,11 @@ export const getV1AccountsByIdLists = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const lists = await listListsContainingAccount(c.env.DB, user.value.id, c.req.param("id"));
+  const lists = await listListsContainingMember(
+    c.env.DB,
+    user.value.id,
+    ListMember.fromAccountId(c.req.param("id")),
+  );
   if (lists.isErr()) {
     return jsonRepositoryError(c, lists.error.message);
   }

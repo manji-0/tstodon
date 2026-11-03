@@ -235,6 +235,7 @@ export type account_listsWhereInput = {
   created_at?: Prisma.StringFilter<"account_lists"> | string;
   updated_at?: Prisma.StringFilter<"account_lists"> | string;
   account_list_members?: Prisma.Account_list_membersListRelationFilter;
+  account_list_remote_members?: Prisma.Account_list_remote_membersListRelationFilter;
   accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
 };
 
@@ -247,6 +248,7 @@ export type account_listsOrderByWithRelationInput = {
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   account_list_members?: Prisma.account_list_membersOrderByRelationAggregateInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersOrderByRelationAggregateInput;
   accounts?: Prisma.accountsOrderByWithRelationInput;
 };
 
@@ -263,6 +265,7 @@ export type account_listsWhereUniqueInput = Prisma.AtLeast<
     created_at?: Prisma.StringFilter<"account_lists"> | string;
     updated_at?: Prisma.StringFilter<"account_lists"> | string;
     account_list_members?: Prisma.Account_list_membersListRelationFilter;
+    account_list_remote_members?: Prisma.Account_list_remote_membersListRelationFilter;
     accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
   },
   "id"
@@ -308,6 +311,7 @@ export type account_listsCreateInput = {
   created_at: string;
   updated_at: string;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccount_listsInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersCreateNestedManyWithoutAccount_listsInput;
   accounts: Prisma.accountsCreateNestedOneWithoutAccount_listsInput;
 };
 
@@ -320,6 +324,7 @@ export type account_listsUncheckedCreateInput = {
   created_at: string;
   updated_at: string;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccount_listsInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersUncheckedCreateNestedManyWithoutAccount_listsInput;
 };
 
 export type account_listsUpdateInput = {
@@ -330,6 +335,7 @@ export type account_listsUpdateInput = {
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccount_listsNestedInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersUpdateManyWithoutAccount_listsNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutAccount_listsNestedInput;
 };
 
@@ -342,6 +348,7 @@ export type account_listsUncheckedUpdateInput = {
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccount_listsNestedInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersUncheckedUpdateManyWithoutAccount_listsNestedInput;
 };
 
 export type account_listsCreateManyInput = {
@@ -460,6 +467,32 @@ export type IntFieldUpdateOperationsInput = {
   divide?: number;
 };
 
+export type account_listsCreateNestedOneWithoutAccount_list_remote_membersInput = {
+  create?: Prisma.XOR<
+    Prisma.account_listsCreateWithoutAccount_list_remote_membersInput,
+    Prisma.account_listsUncheckedCreateWithoutAccount_list_remote_membersInput
+  >;
+  connectOrCreate?: Prisma.account_listsCreateOrConnectWithoutAccount_list_remote_membersInput;
+  connect?: Prisma.account_listsWhereUniqueInput;
+};
+
+export type account_listsUpdateOneRequiredWithoutAccount_list_remote_membersNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.account_listsCreateWithoutAccount_list_remote_membersInput,
+    Prisma.account_listsUncheckedCreateWithoutAccount_list_remote_membersInput
+  >;
+  connectOrCreate?: Prisma.account_listsCreateOrConnectWithoutAccount_list_remote_membersInput;
+  upsert?: Prisma.account_listsUpsertWithoutAccount_list_remote_membersInput;
+  connect?: Prisma.account_listsWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.account_listsUpdateToOneWithWhereWithoutAccount_list_remote_membersInput,
+      Prisma.account_listsUpdateWithoutAccount_list_remote_membersInput
+    >,
+    Prisma.account_listsUncheckedUpdateWithoutAccount_list_remote_membersInput
+  >;
+};
+
 export type account_listsCreateNestedManyWithoutAccountsInput = {
   create?:
     | Prisma.XOR<
@@ -553,6 +586,7 @@ export type account_listsCreateWithoutAccount_list_membersInput = {
   exclusive?: number;
   created_at: string;
   updated_at: string;
+  account_list_remote_members?: Prisma.account_list_remote_membersCreateNestedManyWithoutAccount_listsInput;
   accounts: Prisma.accountsCreateNestedOneWithoutAccount_listsInput;
 };
 
@@ -564,6 +598,7 @@ export type account_listsUncheckedCreateWithoutAccount_list_membersInput = {
   exclusive?: number;
   created_at: string;
   updated_at: string;
+  account_list_remote_members?: Prisma.account_list_remote_membersUncheckedCreateNestedManyWithoutAccount_listsInput;
 };
 
 export type account_listsCreateOrConnectWithoutAccount_list_membersInput = {
@@ -601,6 +636,7 @@ export type account_listsUpdateWithoutAccount_list_membersInput = {
   exclusive?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_list_remote_members?: Prisma.account_list_remote_membersUpdateManyWithoutAccount_listsNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutAccount_listsNestedInput;
 };
 
@@ -612,6 +648,79 @@ export type account_listsUncheckedUpdateWithoutAccount_list_membersInput = {
   exclusive?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_list_remote_members?: Prisma.account_list_remote_membersUncheckedUpdateManyWithoutAccount_listsNestedInput;
+};
+
+export type account_listsCreateWithoutAccount_list_remote_membersInput = {
+  id: string;
+  title: string;
+  replies_policy?: string;
+  exclusive?: number;
+  created_at: string;
+  updated_at: string;
+  account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccount_listsInput;
+  accounts: Prisma.accountsCreateNestedOneWithoutAccount_listsInput;
+};
+
+export type account_listsUncheckedCreateWithoutAccount_list_remote_membersInput = {
+  id: string;
+  account_id: string;
+  title: string;
+  replies_policy?: string;
+  exclusive?: number;
+  created_at: string;
+  updated_at: string;
+  account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccount_listsInput;
+};
+
+export type account_listsCreateOrConnectWithoutAccount_list_remote_membersInput = {
+  where: Prisma.account_listsWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.account_listsCreateWithoutAccount_list_remote_membersInput,
+    Prisma.account_listsUncheckedCreateWithoutAccount_list_remote_membersInput
+  >;
+};
+
+export type account_listsUpsertWithoutAccount_list_remote_membersInput = {
+  update: Prisma.XOR<
+    Prisma.account_listsUpdateWithoutAccount_list_remote_membersInput,
+    Prisma.account_listsUncheckedUpdateWithoutAccount_list_remote_membersInput
+  >;
+  create: Prisma.XOR<
+    Prisma.account_listsCreateWithoutAccount_list_remote_membersInput,
+    Prisma.account_listsUncheckedCreateWithoutAccount_list_remote_membersInput
+  >;
+  where?: Prisma.account_listsWhereInput;
+};
+
+export type account_listsUpdateToOneWithWhereWithoutAccount_list_remote_membersInput = {
+  where?: Prisma.account_listsWhereInput;
+  data: Prisma.XOR<
+    Prisma.account_listsUpdateWithoutAccount_list_remote_membersInput,
+    Prisma.account_listsUncheckedUpdateWithoutAccount_list_remote_membersInput
+  >;
+};
+
+export type account_listsUpdateWithoutAccount_list_remote_membersInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  title?: Prisma.StringFieldUpdateOperationsInput | string;
+  replies_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  exclusive?: Prisma.IntFieldUpdateOperationsInput | number;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccount_listsNestedInput;
+  accounts?: Prisma.accountsUpdateOneRequiredWithoutAccount_listsNestedInput;
+};
+
+export type account_listsUncheckedUpdateWithoutAccount_list_remote_membersInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  title?: Prisma.StringFieldUpdateOperationsInput | string;
+  replies_policy?: Prisma.StringFieldUpdateOperationsInput | string;
+  exclusive?: Prisma.IntFieldUpdateOperationsInput | number;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccount_listsNestedInput;
 };
 
 export type account_listsCreateWithoutAccountsInput = {
@@ -622,6 +731,7 @@ export type account_listsCreateWithoutAccountsInput = {
   created_at: string;
   updated_at: string;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccount_listsInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersCreateNestedManyWithoutAccount_listsInput;
 };
 
 export type account_listsUncheckedCreateWithoutAccountsInput = {
@@ -632,6 +742,7 @@ export type account_listsUncheckedCreateWithoutAccountsInput = {
   created_at: string;
   updated_at: string;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccount_listsInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersUncheckedCreateNestedManyWithoutAccount_listsInput;
 };
 
 export type account_listsCreateOrConnectWithoutAccountsInput = {
@@ -704,6 +815,7 @@ export type account_listsUpdateWithoutAccountsInput = {
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccount_listsNestedInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersUpdateManyWithoutAccount_listsNestedInput;
 };
 
 export type account_listsUncheckedUpdateWithoutAccountsInput = {
@@ -714,6 +826,7 @@ export type account_listsUncheckedUpdateWithoutAccountsInput = {
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccount_listsNestedInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersUncheckedUpdateManyWithoutAccount_listsNestedInput;
 };
 
 export type account_listsUncheckedUpdateManyWithoutAccountsInput = {
@@ -731,12 +844,16 @@ export type account_listsUncheckedUpdateManyWithoutAccountsInput = {
 
 export type Account_listsCountOutputType = {
   account_list_members: number;
+  account_list_remote_members: number;
 };
 
 export type Account_listsCountOutputTypeSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
   account_list_members?: boolean | Account_listsCountOutputTypeCountAccount_list_membersArgs;
+  account_list_remote_members?:
+    | boolean
+    | Account_listsCountOutputTypeCountAccount_list_remote_membersArgs;
 };
 
 /**
@@ -760,6 +877,15 @@ export type Account_listsCountOutputTypeCountAccount_list_membersArgs<
   where?: Prisma.account_list_membersWhereInput;
 };
 
+/**
+ * Account_listsCountOutputType without action
+ */
+export type Account_listsCountOutputTypeCountAccount_list_remote_membersArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  where?: Prisma.account_list_remote_membersWhereInput;
+};
+
 export type account_listsSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
@@ -772,6 +898,9 @@ export type account_listsSelect<
     created_at?: boolean;
     updated_at?: boolean;
     account_list_members?: boolean | Prisma.account_lists$account_list_membersArgs<ExtArgs>;
+    account_list_remote_members?:
+      | boolean
+      | Prisma.account_lists$account_list_remote_membersArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     _count?: boolean | Prisma.Account_listsCountOutputTypeDefaultArgs<ExtArgs>;
   },
@@ -830,6 +959,9 @@ export type account_listsInclude<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
   account_list_members?: boolean | Prisma.account_lists$account_list_membersArgs<ExtArgs>;
+  account_list_remote_members?:
+    | boolean
+    | Prisma.account_lists$account_list_remote_membersArgs<ExtArgs>;
   accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   _count?: boolean | Prisma.Account_listsCountOutputTypeDefaultArgs<ExtArgs>;
 };
@@ -850,6 +982,7 @@ export type $account_listsPayload<
   name: "account_lists";
   objects: {
     account_list_members: Prisma.$account_list_membersPayload<ExtArgs>[];
+    account_list_remote_members: Prisma.$account_list_remote_membersPayload<ExtArgs>[];
     accounts: Prisma.$accountsPayload<ExtArgs>;
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
@@ -1411,6 +1544,19 @@ export interface Prisma__account_listsClient<
       >
     | Null
   >;
+  account_list_remote_members<
+    T extends Prisma.account_lists$account_list_remote_membersArgs<ExtArgs> = {},
+  >(
+    args?: Prisma.Subset<T, Prisma.account_lists$account_list_remote_membersArgs<ExtArgs>>,
+  ): Prisma.PrismaPromise<
+    | runtime.Types.Result.GetResult<
+        Prisma.$account_list_remote_membersPayload<ExtArgs>,
+        T,
+        "findMany",
+        GlobalOmitOptions
+      >
+    | Null
+  >;
   accounts<T extends Prisma.accountsDefaultArgs<ExtArgs> = {}>(
     args?: Prisma.Subset<T, Prisma.accountsDefaultArgs<ExtArgs>>,
   ): Prisma.Prisma__accountsClient<
@@ -1928,6 +2074,36 @@ export type account_lists$account_list_membersArgs<
   distinct?:
     | Prisma.Account_list_membersScalarFieldEnum
     | Prisma.Account_list_membersScalarFieldEnum[];
+};
+
+/**
+ * account_lists.account_list_remote_members
+ */
+export type account_lists$account_list_remote_membersArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the account_list_remote_members
+   */
+  select?: Prisma.account_list_remote_membersSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the account_list_remote_members
+   */
+  omit?: Prisma.account_list_remote_membersOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.account_list_remote_membersInclude<ExtArgs> | null;
+  where?: Prisma.account_list_remote_membersWhereInput;
+  orderBy?:
+    | Prisma.account_list_remote_membersOrderByWithRelationInput
+    | Prisma.account_list_remote_membersOrderByWithRelationInput[];
+  cursor?: Prisma.account_list_remote_membersWhereUniqueInput;
+  take?: number;
+  skip?: number;
+  distinct?:
+    | Prisma.Account_list_remote_membersScalarFieldEnum
+    | Prisma.Account_list_remote_membersScalarFieldEnum[];
 };
 
 /**

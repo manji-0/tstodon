@@ -9,6 +9,7 @@
  */
 export type * from "./models/account_list_members";
 export type * from "./models/account_lists";
+export type * from "./models/account_list_remote_members";
 export type * from "./models/endorsements";
 export type * from "./models/account_notes";
 export type * from "./models/announcements";

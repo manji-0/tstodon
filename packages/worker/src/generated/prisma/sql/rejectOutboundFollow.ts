@@ -20,6 +20,6 @@ export const rejectOutboundFollow = $runtime.makeTypedQueryFactory(
 export namespace rejectOutboundFollow {
   export type Parameters = [actorUri: string, followActivityId: string, accountId: string];
   export type Result = {
-    id: string | null;
+    id: string;
   };
 }

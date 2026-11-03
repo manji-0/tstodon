@@ -50,6 +50,7 @@ export const AnyNull = runtime.AnyNull;
 export const ModelName = {
   account_list_members: "account_list_members",
   account_lists: "account_lists",
+  account_list_remote_members: "account_list_remote_members",
   endorsements: "endorsements",
   account_notes: "account_notes",
   announcements: "announcements",
@@ -153,6 +154,15 @@ export const Account_listsScalarFieldEnum = {
 
 export type Account_listsScalarFieldEnum =
   (typeof Account_listsScalarFieldEnum)[keyof typeof Account_listsScalarFieldEnum];
+
+export const Account_list_remote_membersScalarFieldEnum = {
+  list_id: "list_id",
+  outbound_follow_id: "outbound_follow_id",
+  created_at: "created_at",
+} as const;
+
+export type Account_list_remote_membersScalarFieldEnum =
+  (typeof Account_list_remote_membersScalarFieldEnum)[keyof typeof Account_list_remote_membersScalarFieldEnum];
 
 export const EndorsementsScalarFieldEnum = {
   id: "id",

@@ -393,6 +393,7 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 export const ModelName = {
   account_list_members: "account_list_members",
   account_lists: "account_lists",
+  account_list_remote_members: "account_list_remote_members",
   endorsements: "endorsements",
   account_notes: "account_notes",
   announcements: "announcements",
@@ -482,6 +483,7 @@ export type TypeMap<
     modelProps:
       | "account_list_members"
       | "account_lists"
+      | "account_list_remote_members"
       | "endorsements"
       | "account_notes"
       | "announcements"
@@ -700,6 +702,82 @@ export type TypeMap<
           args: Prisma.account_listsCountArgs<ExtArgs>;
           result:
             | runtime.Types.Utils.Optional<Prisma.Account_listsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    account_list_remote_members: {
+      payload: Prisma.$account_list_remote_membersPayload<ExtArgs>;
+      fields: Prisma.account_list_remote_membersFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.account_list_remote_membersFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_list_remote_membersPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.account_list_remote_membersFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_list_remote_membersPayload>;
+        };
+        findFirst: {
+          args: Prisma.account_list_remote_membersFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_list_remote_membersPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.account_list_remote_membersFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_list_remote_membersPayload>;
+        };
+        findMany: {
+          args: Prisma.account_list_remote_membersFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_list_remote_membersPayload>[];
+        };
+        create: {
+          args: Prisma.account_list_remote_membersCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_list_remote_membersPayload>;
+        };
+        createMany: {
+          args: Prisma.account_list_remote_membersCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.account_list_remote_membersCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_list_remote_membersPayload>[];
+        };
+        delete: {
+          args: Prisma.account_list_remote_membersDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_list_remote_membersPayload>;
+        };
+        update: {
+          args: Prisma.account_list_remote_membersUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_list_remote_membersPayload>;
+        };
+        deleteMany: {
+          args: Prisma.account_list_remote_membersDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.account_list_remote_membersUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.account_list_remote_membersUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_list_remote_membersPayload>[];
+        };
+        upsert: {
+          args: Prisma.account_list_remote_membersUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_list_remote_membersPayload>;
+        };
+        aggregate: {
+          args: Prisma.Account_list_remote_membersAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAccount_list_remote_members>;
+        };
+        groupBy: {
+          args: Prisma.account_list_remote_membersGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Account_list_remote_membersGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.account_list_remote_membersCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Account_list_remote_membersCountAggregateOutputType>
             | number;
         };
       };
@@ -5830,6 +5908,15 @@ export const Account_listsScalarFieldEnum = {
 export type Account_listsScalarFieldEnum =
   (typeof Account_listsScalarFieldEnum)[keyof typeof Account_listsScalarFieldEnum];
 
+export const Account_list_remote_membersScalarFieldEnum = {
+  list_id: "list_id",
+  outbound_follow_id: "outbound_follow_id",
+  created_at: "created_at",
+} as const;
+
+export type Account_list_remote_membersScalarFieldEnum =
+  (typeof Account_list_remote_membersScalarFieldEnum)[keyof typeof Account_list_remote_membersScalarFieldEnum];
+
 export const EndorsementsScalarFieldEnum = {
   id: "id",
   account_id: "account_id",
@@ -6807,6 +6894,7 @@ export type PrismaClientOptions =
 export type GlobalOmitConfig = {
   account_list_members?: Prisma.account_list_membersOmit;
   account_lists?: Prisma.account_listsOmit;
+  account_list_remote_members?: Prisma.account_list_remote_membersOmit;
   endorsements?: Prisma.endorsementsOmit;
   account_notes?: Prisma.account_notesOmit;
   announcements?: Prisma.announcementsOmit;

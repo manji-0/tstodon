@@ -96,6 +96,8 @@ export * from "./sql/deleteList";
 
 export * from "./sql/deleteListMember";
 
+export * from "./sql/deleteListRemoteMember";
+
 export * from "./sql/deleteMedia";
 
 export * from "./sql/deleteMute";
@@ -314,6 +316,8 @@ export * from "./sql/insertInboxActivity";
 
 export * from "./sql/insertListMember";
 
+export * from "./sql/insertListRemoteMember";
+
 export * from "./sql/insertLocalNote";
 
 export * from "./sql/insertLocalReblog";
@@ -416,9 +420,11 @@ export * from "./sql/listHomeFanOutAccounts";
 
 export * from "./sql/listLinkCards";
 
-export * from "./sql/listListMemberIds";
+export * from "./sql/listListMembers";
 
 export * from "./sql/listListsContainingAccount";
+
+export * from "./sql/listListsContainingRemoteActor";
 
 export * from "./sql/listListsForAccount";
 

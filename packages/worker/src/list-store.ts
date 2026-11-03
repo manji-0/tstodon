@@ -9,14 +9,18 @@ import { parseRow, toRepositoryError } from "./d1";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import { hydrateStatusRows, STATUS_SELECT } from "./status-store";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
+import { RemoteAccountId } from "./remote-account-id";
 import {
   createList as createListSql,
   deleteList as deleteListSql,
   deleteListMember as deleteListMemberSql,
+  deleteListRemoteMember as deleteListRemoteMemberSql,
   findListForAccount as findListForAccountSql,
   insertListMember as insertListMemberSql,
-  listListMemberIds as listListMemberIdsSql,
+  insertListRemoteMember as insertListRemoteMemberSql,
+  listListMembers as listListMembersSql,
   listListsContainingAccount as listListsContainingAccountSql,
+  listListsContainingRemoteActor as listListsContainingRemoteActorSql,
   listListsForAccount as listListsForAccountSql,
   updateList as updateListSql,
 } from "./generated/prisma/sql";
@@ -38,7 +42,48 @@ const ListRowSchema = z.object({
   updated_at: z.string().min(1),
 });
 
-warmSchemas([ListRepliesPolicySchema, ListRowSchema]);
+const ListMemberSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("LocalAccount"), accountId: z.string().min(1) }),
+  /** A remote actor is on a list through the owner's accepted follow of it. */
+  z.object({ kind: z.literal("RemoteActor"), actorUri: z.string().min(1) }),
+]);
+export type ListMember = z.infer<typeof ListMemberSchema>;
+
+const ListMemberRowSchema = z.object({
+  kind: z.union([z.literal("LocalAccount"), z.literal("RemoteActor")]),
+  member: z.string().min(1),
+});
+
+warmSchemas([ListRepliesPolicySchema, ListRowSchema, ListMemberSchema, ListMemberRowSchema]);
+
+export const ListMember = {
+  schema: ListMemberSchema,
+  /** The member a Mastodon account id names: an `r_…` id is a remote actor. */
+  fromAccountId: (id: string): ListMember => {
+    const actorUri = RemoteAccountId.decode(id);
+    return actorUri.isOk()
+      ? { kind: "RemoteActor", actorUri: actorUri.value }
+      : { kind: "LocalAccount", accountId: id };
+  },
+  accountId: (member: ListMember): string =>
+    member.kind === "LocalAccount" ? member.accountId : RemoteAccountId.encode(member.actorUri),
+} as const;
+
+const memberFromRow = (raw: unknown): ListMember | undefined => {
+  const row = parseRow(ListMemberRowSchema, raw);
+  if (row.isErr()) {
+    return undefined;
+  }
+  return row.value.kind === "LocalAccount"
+    ? { kind: "LocalAccount", accountId: row.value.member }
+    : { kind: "RemoteActor", actorUri: row.value.member };
+};
+
+const listsFromRows = (rows: ReadonlyArray<unknown>): AccountList[] =>
+  rows.flatMap((raw) => {
+    const row = parseRow(ListRowSchema, raw);
+    return row.isOk() ? [listFromRow(row.value)] : [];
+  });
 
 export type AccountList = Readonly<{
   id: string;
@@ -74,13 +119,7 @@ export const listListsForAccount = async (
   db: D1Database,
   accountId: string,
 ): Promise<Result<AccountList[], RepositoryError>> =>
-  runD1(async () => {
-    const results = await queryTyped(db, listListsForAccountSql(accountId));
-    return results.flatMap((raw) => {
-      const row = parseRow(ListRowSchema, raw);
-      return row.isOk() ? [listFromRow(row.value)] : [];
-    });
-  });
+  runD1(async () => listsFromRows(await queryTyped(db, listListsForAccountSql(accountId))));
 
 export const findListForAccount = async (
   db: D1Database,
@@ -175,32 +214,41 @@ export const deleteList = async (
     return rows.length > 0;
   });
 
-export const listListMemberIds = async (
+/** The list's local and remote members, in the order they were added. */
+export const listListMembers = async (
   db: D1Database,
   listId: string,
-): Promise<Result<string[], RepositoryError>> =>
-  runD1(async () => {
-    const results = await queryTyped<{ member_account_id: string }>(
-      db,
-      listListMemberIdsSql(listId),
-    );
-    return results.map((row) => row.member_account_id);
-  });
+): Promise<Result<ListMember[], RepositoryError>> =>
+  runD1(async () =>
+    (await queryTyped(db, listListMembersSql(listId))).flatMap((raw) => memberFromRow(raw) ?? []),
+  );
 
+const insertMemberSql = (listId: string, member: ListMember, now: string) =>
+  member.kind === "LocalAccount"
+    ? insertListMemberSql(listId, member.accountId, now)
+    : insertListRemoteMemberSql(listId, member.actorUri, now);
+
+const deleteMemberSql = (listId: string, member: ListMember) =>
+  member.kind === "LocalAccount"
+    ? deleteListMemberSql(listId, member.accountId)
+    : deleteListRemoteMemberSql(listId, member.actorUri);
+
+/**
+ * Add members to the list. A remote actor goes in only while the list's owner
+ * follows it (accepted); otherwise its insert adds nothing.
+ */
 export const addListMembers = async (
   db: D1Database,
   listId: string,
-  memberAccountIds: ReadonlyArray<string>,
+  members: ReadonlyArray<ListMember>,
 ): Promise<Result<void, RepositoryError>> => {
-  if (memberAccountIds.length === 0) {
+  if (members.length === 0) {
     return ok(undefined);
   }
   const now = nowIso();
   const batched = await runD1BatchChunked(
     db,
-    memberAccountIds.map((memberId) =>
-      d1PrepareTyped(db, insertListMemberSql(listId, memberId, now)),
-    ),
+    members.map((member) => d1PrepareTyped(db, insertMemberSql(listId, member, now))),
   );
   if (batched.isErr()) {
     return err(batched.error);
@@ -211,14 +259,14 @@ export const addListMembers = async (
 export const removeListMembers = async (
   db: D1Database,
   listId: string,
-  memberAccountIds: ReadonlyArray<string>,
+  members: ReadonlyArray<ListMember>,
 ): Promise<Result<void, RepositoryError>> => {
-  if (memberAccountIds.length === 0) {
+  if (members.length === 0) {
     return ok(undefined);
   }
   const batched = await runD1BatchChunked(
     db,
-    memberAccountIds.map((memberId) => d1PrepareTyped(db, deleteListMemberSql(listId, memberId))),
+    members.map((member) => d1PrepareTyped(db, deleteMemberSql(listId, member))),
   );
   if (batched.isErr()) {
     return err(batched.error);
@@ -226,21 +274,21 @@ export const removeListMembers = async (
   return ok(undefined);
 };
 
-export const listListsContainingAccount = async (
+export const listListsContainingMember = async (
   db: D1Database,
   ownerAccountId: string,
-  memberAccountId: string,
+  member: ListMember,
 ): Promise<Result<AccountList[], RepositoryError>> =>
-  runD1(async () => {
-    const results = await queryTyped(
-      db,
-      listListsContainingAccountSql(ownerAccountId, memberAccountId),
-    );
-    return results.flatMap((raw) => {
-      const row = parseRow(ListRowSchema, raw);
-      return row.isOk() ? [listFromRow(row.value)] : [];
-    });
-  });
+  runD1(async () =>
+    listsFromRows(
+      await queryTyped(
+        db,
+        member.kind === "LocalAccount"
+          ? listListsContainingAccountSql(ownerAccountId, member.accountId)
+          : listListsContainingRemoteActorSql(ownerAccountId, member.actorUri),
+      ),
+    ),
+  );
 
 export const listListTimelineStatuses = async (
   db: D1Database,

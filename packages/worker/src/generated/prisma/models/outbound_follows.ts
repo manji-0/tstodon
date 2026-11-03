@@ -259,6 +259,7 @@ export type outbound_followsWhereInput = {
     Prisma.Remote_actorsScalarRelationFilter,
     Prisma.remote_actorsWhereInput
   >;
+  account_list_remote_members?: Prisma.Account_list_remote_membersListRelationFilter;
 };
 
 export type outbound_followsOrderByWithRelationInput = {
@@ -273,6 +274,7 @@ export type outbound_followsOrderByWithRelationInput = {
   created_at?: Prisma.SortOrder;
   accounts?: Prisma.accountsOrderByWithRelationInput;
   remote_actors?: Prisma.remote_actorsOrderByWithRelationInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersOrderByRelationAggregateInput;
 };
 
 export type outbound_followsWhereUniqueInput = Prisma.AtLeast<
@@ -295,6 +297,7 @@ export type outbound_followsWhereUniqueInput = Prisma.AtLeast<
       Prisma.Remote_actorsScalarRelationFilter,
       Prisma.remote_actorsWhereInput
     >;
+    account_list_remote_members?: Prisma.Account_list_remote_membersListRelationFilter;
   },
   "id" | "follow_activity_id" | "account_id_actor_uri"
 >;
@@ -345,6 +348,7 @@ export type outbound_followsCreateInput = {
   created_at?: string;
   accounts: Prisma.accountsCreateNestedOneWithoutOutbound_followsInput;
   remote_actors: Prisma.remote_actorsCreateNestedOneWithoutOutbound_followsInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersCreateNestedManyWithoutOutbound_followsInput;
 };
 
 export type outbound_followsUncheckedCreateInput = {
@@ -357,6 +361,7 @@ export type outbound_followsUncheckedCreateInput = {
   notify?: number;
   languages_json?: string;
   created_at?: string;
+  account_list_remote_members?: Prisma.account_list_remote_membersUncheckedCreateNestedManyWithoutOutbound_followsInput;
 };
 
 export type outbound_followsUpdateInput = {
@@ -369,6 +374,7 @@ export type outbound_followsUpdateInput = {
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutOutbound_followsNestedInput;
   remote_actors?: Prisma.remote_actorsUpdateOneRequiredWithoutOutbound_followsNestedInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersUpdateManyWithoutOutbound_followsNestedInput;
 };
 
 export type outbound_followsUncheckedUpdateInput = {
@@ -381,6 +387,7 @@ export type outbound_followsUncheckedUpdateInput = {
   notify?: Prisma.IntFieldUpdateOperationsInput | number;
   languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_list_remote_members?: Prisma.account_list_remote_membersUncheckedUpdateManyWithoutOutbound_followsNestedInput;
 };
 
 export type outbound_followsCreateManyInput = {
@@ -415,6 +422,11 @@ export type outbound_followsUncheckedUpdateManyInput = {
   notify?: Prisma.IntFieldUpdateOperationsInput | number;
   languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+};
+
+export type Outbound_followsScalarRelationFilter = {
+  is?: Prisma.outbound_followsWhereInput;
+  isNot?: Prisma.outbound_followsWhereInput;
 };
 
 export type Outbound_followsListRelationFilter = {
@@ -476,6 +488,32 @@ export type outbound_followsMinOrderByAggregateInput = {
 export type outbound_followsSumOrderByAggregateInput = {
   reblogs?: Prisma.SortOrder;
   notify?: Prisma.SortOrder;
+};
+
+export type outbound_followsCreateNestedOneWithoutAccount_list_remote_membersInput = {
+  create?: Prisma.XOR<
+    Prisma.outbound_followsCreateWithoutAccount_list_remote_membersInput,
+    Prisma.outbound_followsUncheckedCreateWithoutAccount_list_remote_membersInput
+  >;
+  connectOrCreate?: Prisma.outbound_followsCreateOrConnectWithoutAccount_list_remote_membersInput;
+  connect?: Prisma.outbound_followsWhereUniqueInput;
+};
+
+export type outbound_followsUpdateOneRequiredWithoutAccount_list_remote_membersNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.outbound_followsCreateWithoutAccount_list_remote_membersInput,
+    Prisma.outbound_followsUncheckedCreateWithoutAccount_list_remote_membersInput
+  >;
+  connectOrCreate?: Prisma.outbound_followsCreateOrConnectWithoutAccount_list_remote_membersInput;
+  upsert?: Prisma.outbound_followsUpsertWithoutAccount_list_remote_membersInput;
+  connect?: Prisma.outbound_followsWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.outbound_followsUpdateToOneWithWhereWithoutAccount_list_remote_membersInput,
+      Prisma.outbound_followsUpdateWithoutAccount_list_remote_membersInput
+    >,
+    Prisma.outbound_followsUncheckedUpdateWithoutAccount_list_remote_membersInput
+  >;
 };
 
 export type outbound_followsCreateNestedManyWithoutAccountsInput = {
@@ -650,6 +688,82 @@ export type outbound_followsUncheckedUpdateManyWithoutRemote_actorsNestedInput =
   deleteMany?: Prisma.outbound_followsScalarWhereInput | Prisma.outbound_followsScalarWhereInput[];
 };
 
+export type outbound_followsCreateWithoutAccount_list_remote_membersInput = {
+  id: string;
+  follow_activity_id: string;
+  state: string;
+  reblogs?: number;
+  notify?: number;
+  languages_json?: string;
+  created_at?: string;
+  accounts: Prisma.accountsCreateNestedOneWithoutOutbound_followsInput;
+  remote_actors: Prisma.remote_actorsCreateNestedOneWithoutOutbound_followsInput;
+};
+
+export type outbound_followsUncheckedCreateWithoutAccount_list_remote_membersInput = {
+  id: string;
+  account_id: string;
+  actor_uri: string;
+  follow_activity_id: string;
+  state: string;
+  reblogs?: number;
+  notify?: number;
+  languages_json?: string;
+  created_at?: string;
+};
+
+export type outbound_followsCreateOrConnectWithoutAccount_list_remote_membersInput = {
+  where: Prisma.outbound_followsWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.outbound_followsCreateWithoutAccount_list_remote_membersInput,
+    Prisma.outbound_followsUncheckedCreateWithoutAccount_list_remote_membersInput
+  >;
+};
+
+export type outbound_followsUpsertWithoutAccount_list_remote_membersInput = {
+  update: Prisma.XOR<
+    Prisma.outbound_followsUpdateWithoutAccount_list_remote_membersInput,
+    Prisma.outbound_followsUncheckedUpdateWithoutAccount_list_remote_membersInput
+  >;
+  create: Prisma.XOR<
+    Prisma.outbound_followsCreateWithoutAccount_list_remote_membersInput,
+    Prisma.outbound_followsUncheckedCreateWithoutAccount_list_remote_membersInput
+  >;
+  where?: Prisma.outbound_followsWhereInput;
+};
+
+export type outbound_followsUpdateToOneWithWhereWithoutAccount_list_remote_membersInput = {
+  where?: Prisma.outbound_followsWhereInput;
+  data: Prisma.XOR<
+    Prisma.outbound_followsUpdateWithoutAccount_list_remote_membersInput,
+    Prisma.outbound_followsUncheckedUpdateWithoutAccount_list_remote_membersInput
+  >;
+};
+
+export type outbound_followsUpdateWithoutAccount_list_remote_membersInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  follow_activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  state?: Prisma.StringFieldUpdateOperationsInput | string;
+  reblogs?: Prisma.IntFieldUpdateOperationsInput | number;
+  notify?: Prisma.IntFieldUpdateOperationsInput | number;
+  languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  accounts?: Prisma.accountsUpdateOneRequiredWithoutOutbound_followsNestedInput;
+  remote_actors?: Prisma.remote_actorsUpdateOneRequiredWithoutOutbound_followsNestedInput;
+};
+
+export type outbound_followsUncheckedUpdateWithoutAccount_list_remote_membersInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
+  follow_activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  state?: Prisma.StringFieldUpdateOperationsInput | string;
+  reblogs?: Prisma.IntFieldUpdateOperationsInput | number;
+  notify?: Prisma.IntFieldUpdateOperationsInput | number;
+  languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+};
+
 export type outbound_followsCreateWithoutAccountsInput = {
   id: string;
   follow_activity_id: string;
@@ -659,6 +773,7 @@ export type outbound_followsCreateWithoutAccountsInput = {
   languages_json?: string;
   created_at?: string;
   remote_actors: Prisma.remote_actorsCreateNestedOneWithoutOutbound_followsInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersCreateNestedManyWithoutOutbound_followsInput;
 };
 
 export type outbound_followsUncheckedCreateWithoutAccountsInput = {
@@ -670,6 +785,7 @@ export type outbound_followsUncheckedCreateWithoutAccountsInput = {
   notify?: number;
   languages_json?: string;
   created_at?: string;
+  account_list_remote_members?: Prisma.account_list_remote_membersUncheckedCreateNestedManyWithoutOutbound_followsInput;
 };
 
 export type outbound_followsCreateOrConnectWithoutAccountsInput = {
@@ -738,6 +854,7 @@ export type outbound_followsCreateWithoutRemote_actorsInput = {
   languages_json?: string;
   created_at?: string;
   accounts: Prisma.accountsCreateNestedOneWithoutOutbound_followsInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersCreateNestedManyWithoutOutbound_followsInput;
 };
 
 export type outbound_followsUncheckedCreateWithoutRemote_actorsInput = {
@@ -749,6 +866,7 @@ export type outbound_followsUncheckedCreateWithoutRemote_actorsInput = {
   notify?: number;
   languages_json?: string;
   created_at?: string;
+  account_list_remote_members?: Prisma.account_list_remote_membersUncheckedCreateNestedManyWithoutOutbound_followsInput;
 };
 
 export type outbound_followsCreateOrConnectWithoutRemote_actorsInput = {
@@ -813,6 +931,7 @@ export type outbound_followsUpdateWithoutAccountsInput = {
   languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_actors?: Prisma.remote_actorsUpdateOneRequiredWithoutOutbound_followsNestedInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersUpdateManyWithoutOutbound_followsNestedInput;
 };
 
 export type outbound_followsUncheckedUpdateWithoutAccountsInput = {
@@ -824,6 +943,7 @@ export type outbound_followsUncheckedUpdateWithoutAccountsInput = {
   notify?: Prisma.IntFieldUpdateOperationsInput | number;
   languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_list_remote_members?: Prisma.account_list_remote_membersUncheckedUpdateManyWithoutOutbound_followsNestedInput;
 };
 
 export type outbound_followsUncheckedUpdateManyWithoutAccountsInput = {
@@ -857,6 +977,7 @@ export type outbound_followsUpdateWithoutRemote_actorsInput = {
   languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutOutbound_followsNestedInput;
+  account_list_remote_members?: Prisma.account_list_remote_membersUpdateManyWithoutOutbound_followsNestedInput;
 };
 
 export type outbound_followsUncheckedUpdateWithoutRemote_actorsInput = {
@@ -868,6 +989,7 @@ export type outbound_followsUncheckedUpdateWithoutRemote_actorsInput = {
   notify?: Prisma.IntFieldUpdateOperationsInput | number;
   languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_list_remote_members?: Prisma.account_list_remote_membersUncheckedUpdateManyWithoutOutbound_followsNestedInput;
 };
 
 export type outbound_followsUncheckedUpdateManyWithoutRemote_actorsInput = {
@@ -879,6 +1001,43 @@ export type outbound_followsUncheckedUpdateManyWithoutRemote_actorsInput = {
   notify?: Prisma.IntFieldUpdateOperationsInput | number;
   languages_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+};
+
+/**
+ * Count Type Outbound_followsCountOutputType
+ */
+
+export type Outbound_followsCountOutputType = {
+  account_list_remote_members: number;
+};
+
+export type Outbound_followsCountOutputTypeSelect<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  account_list_remote_members?:
+    | boolean
+    | Outbound_followsCountOutputTypeCountAccount_list_remote_membersArgs;
+};
+
+/**
+ * Outbound_followsCountOutputType without action
+ */
+export type Outbound_followsCountOutputTypeDefaultArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the Outbound_followsCountOutputType
+   */
+  select?: Prisma.Outbound_followsCountOutputTypeSelect<ExtArgs> | null;
+};
+
+/**
+ * Outbound_followsCountOutputType without action
+ */
+export type Outbound_followsCountOutputTypeCountAccount_list_remote_membersArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  where?: Prisma.account_list_remote_membersWhereInput;
 };
 
 export type outbound_followsSelect<
@@ -896,6 +1055,10 @@ export type outbound_followsSelect<
     created_at?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     remote_actors?: boolean | Prisma.remote_actorsDefaultArgs<ExtArgs>;
+    account_list_remote_members?:
+      | boolean
+      | Prisma.outbound_follows$account_list_remote_membersArgs<ExtArgs>;
+    _count?: boolean | Prisma.Outbound_followsCountOutputTypeDefaultArgs<ExtArgs>;
   },
   ExtArgs["result"]["outbound_follows"]
 >;
@@ -969,6 +1132,10 @@ export type outbound_followsInclude<
 > = {
   accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   remote_actors?: boolean | Prisma.remote_actorsDefaultArgs<ExtArgs>;
+  account_list_remote_members?:
+    | boolean
+    | Prisma.outbound_follows$account_list_remote_membersArgs<ExtArgs>;
+  _count?: boolean | Prisma.Outbound_followsCountOutputTypeDefaultArgs<ExtArgs>;
 };
 export type outbound_followsIncludeCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
@@ -990,6 +1157,7 @@ export type $outbound_followsPayload<
   objects: {
     accounts: Prisma.$accountsPayload<ExtArgs>;
     remote_actors: Prisma.$remote_actorsPayload<ExtArgs>;
+    account_list_remote_members: Prisma.$account_list_remote_membersPayload<ExtArgs>[];
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
@@ -1571,6 +1739,19 @@ export interface Prisma__outbound_followsClient<
     ExtArgs,
     GlobalOmitOptions
   >;
+  account_list_remote_members<
+    T extends Prisma.outbound_follows$account_list_remote_membersArgs<ExtArgs> = {},
+  >(
+    args?: Prisma.Subset<T, Prisma.outbound_follows$account_list_remote_membersArgs<ExtArgs>>,
+  ): Prisma.PrismaPromise<
+    | runtime.Types.Result.GetResult<
+        Prisma.$account_list_remote_membersPayload<ExtArgs>,
+        T,
+        "findMany",
+        GlobalOmitOptions
+      >
+    | Null
+  >;
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -2052,6 +2233,36 @@ export type outbound_followsDeleteManyArgs<
    * Limit how many outbound_follows to delete.
    */
   limit?: number;
+};
+
+/**
+ * outbound_follows.account_list_remote_members
+ */
+export type outbound_follows$account_list_remote_membersArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the account_list_remote_members
+   */
+  select?: Prisma.account_list_remote_membersSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the account_list_remote_members
+   */
+  omit?: Prisma.account_list_remote_membersOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.account_list_remote_membersInclude<ExtArgs> | null;
+  where?: Prisma.account_list_remote_membersWhereInput;
+  orderBy?:
+    | Prisma.account_list_remote_membersOrderByWithRelationInput
+    | Prisma.account_list_remote_membersOrderByWithRelationInput[];
+  cursor?: Prisma.account_list_remote_membersWhereUniqueInput;
+  take?: number;
+  skip?: number;
+  distinct?:
+    | Prisma.Account_list_remote_membersScalarFieldEnum
+    | Prisma.Account_list_remote_membersScalarFieldEnum[];
 };
 
 /**
