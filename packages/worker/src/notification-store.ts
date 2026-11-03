@@ -52,6 +52,8 @@ export const insertNotification = async (
     fromActorUri?: string;
     kind: string;
     statusId?: string;
+    /** The account a `move` notification points at: where the sender moved to. */
+    targetAccountId?: string;
   },
 ): Promise<Result<string, RepositoryError>> => {
   const id = newEntityId();
@@ -66,6 +68,7 @@ export const insertNotification = async (
         input.kind,
         input.statusId ?? null,
         nowIso(),
+        input.targetAccountId ?? null,
       ),
     );
   });
@@ -81,6 +84,7 @@ export type NotificationRow = {
   from_account_id: string;
   kind: string;
   status_id: string | null;
+  target_account_id: string | null;
   created_at: string;
 };
 
@@ -142,6 +146,7 @@ export const listNotifications = async (
       from_account_id: row.from_account_id,
       kind: row.kind,
       status_id: row.status_id,
+      target_account_id: row.target_account_id,
       created_at: row.created_at,
     }));
   });
@@ -169,6 +174,7 @@ export const findNotificationById = async (
       from_account_id: row.from_account_id,
       kind: row.kind,
       status_id: row.status_id,
+      target_account_id: row.target_account_id,
       created_at: row.created_at,
     };
   });

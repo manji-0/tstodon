@@ -18,7 +18,11 @@ export const mastodonNotifications = async (
     accountDocumentsByIds(
       env,
       identity,
-      rows.map((row) => row.from_account_id),
+      rows.flatMap((row) =>
+        row.target_account_id
+          ? [row.from_account_id, row.target_account_id]
+          : [row.from_account_id],
+      ),
     ),
     statusDocumentsByIds(
       env,
@@ -33,12 +37,18 @@ export const mastodonNotifications = async (
     if (!account) {
       continue;
     }
+    const target = row.target_account_id ? accounts.get(row.target_account_id) : undefined;
+    // A `move` without its new account to show is left out, as one whose sender is gone.
+    if (row.kind === "move" && !target) {
+      continue;
+    }
     documents.set(row.id, {
       id: row.id,
       type: row.kind,
       created_at: row.created_at,
       account,
       status: row.status_id ? (statuses.get(row.status_id) ?? null) : null,
+      ...(target ? { target } : {}),
     });
   }
   return documents;

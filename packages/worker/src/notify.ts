@@ -21,6 +21,8 @@ export const notifyAccount = async (
     fromActorUri?: string;
     kind: string;
     statusId?: string;
+    /** The account a `move` notification points at: where the sender moved to. */
+    targetAccountId?: string;
   },
 ): Promise<Result<void, RepositoryError>> => {
   // The recipient's notification policy decides whether this is delivered,
@@ -90,7 +92,13 @@ export const notifyAccount = async (
  */
 export const notifyFromRemote = async (
   env: Env,
-  input: Readonly<{ accountId: string; actorUri: string; kind: string; statusId?: string }>,
+  input: Readonly<{
+    accountId: string;
+    actorUri: string;
+    kind: string;
+    statusId?: string;
+    targetAccountId?: string;
+  }>,
 ): Promise<Result<void, RepositoryError>> => {
   const blocked = await findBlock(env.DB, input.accountId, input.actorUri);
   if (blocked.isErr()) {
@@ -114,5 +122,6 @@ export const notifyFromRemote = async (
     fromActorUri: input.actorUri,
     kind: input.kind,
     ...(input.statusId ? { statusId: input.statusId } : {}),
+    ...(input.targetAccountId ? { targetAccountId: input.targetAccountId } : {}),
   });
 };
