@@ -24,13 +24,17 @@ export const replaceRemoteActorPins = async (
     ])
   ).map(() => undefined);
 
-/** The public and unlisted notes `actorUri` pinned, in its order. */
+/**
+ * The public and unlisted notes `actorUri` pinned, in its order; none when the
+ * viewer blocks its domain or the instance suspends it.
+ */
 export const listRemoteActorPinnedStatuses = async (
   db: D1Database,
   actorUri: string,
+  viewerId: string | undefined,
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, listRemoteActorPinnedStatusesSql(actorUri));
+    const rows = await queryTyped(db, listRemoteActorPinnedStatusesSql(actorUri, viewerId ?? ""));
     return rows.flatMap((raw) => {
       const row = parseRemoteStatusRow(raw);
       const status = row.isOk() ? remoteStatusFromRow(row.value) : undefined;

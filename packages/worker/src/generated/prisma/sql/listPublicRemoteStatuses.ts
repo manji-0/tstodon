@@ -10,15 +10,21 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param onlyMedia
  * @param viewerId
  * @param now
+ * @param before
+ * @param after
+ * @param ascending
  */
 export const listPublicRemoteStatuses = $runtime.makeTypedQueryFactory(
-  "SELECT id, actor_uri, object_uri, url, content_html, spoiler_text, visibility, sensitive, language, published_at, edited_at, media_json, card_json, poll_json\nFROM remote_statuses\nWHERE visibility = 'public'\nAND ($2 = '' OR id = $2)\nAND ($3 = 0 OR media_json NOT IN ('[]', ''))\nAND actor_uri NOT IN (\nSELECT target_actor_uri FROM blocks WHERE blocker_account_id = $4\nUNION\nSELECT target_actor_uri FROM mutes WHERE account_id = $4 AND (expires_at IS NULL OR expires_at > $5)\n)\nORDER BY published_at DESC LIMIT $1",
+  "SELECT id, actor_uri, object_uri, url, content_html, spoiler_text, visibility, sensitive, language, published_at, edited_at, media_json, card_json, poll_json\nFROM remote_statuses\nWHERE visibility = 'public'\nAND ($2 = '' OR id = $2)\nAND ($3 = 0 OR media_json NOT IN ('[]', ''))\nAND ($6 = '' OR id < $6)\nAND ($7 = '' OR id > $7)\nAND actor_uri NOT IN (\nSELECT target_actor_uri FROM blocks WHERE blocker_account_id = $4\nUNION\nSELECT target_actor_uri FROM mutes WHERE account_id = $4 AND (expires_at IS NULL OR expires_at > $5)\n)\nAND actor_uri NOT IN (\nSELECT actor_uri FROM remote_actors\nWHERE lower(domain) IN (\nSELECT lower(domain) FROM account_domain_blocks WHERE account_id = $4\nUNION\nSELECT lower(domain) FROM domain_blocks WHERE severity IN ('silence', 'suspend')\n)\n)\nORDER BY CASE WHEN $8 = 1 THEN id END ASC, id DESC LIMIT $1",
 ) as (
   limit: number,
   onlyId: string,
   onlyMedia: number,
   viewerId: string,
   now: string,
+  before: string,
+  after: string,
+  ascending: number,
 ) => $runtime.TypedSql<listPublicRemoteStatuses.Parameters, listPublicRemoteStatuses.Result>;
 
 export namespace listPublicRemoteStatuses {
@@ -28,6 +34,9 @@ export namespace listPublicRemoteStatuses {
     onlyMedia: number,
     viewerId: string,
     now: string,
+    before: string,
+    after: string,
+    ascending: number,
   ];
   export type Result = {
     id: string | null;

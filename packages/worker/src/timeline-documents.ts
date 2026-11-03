@@ -1,8 +1,6 @@
 import type { InstanceIdentity, LocalStatus, RemoteNote } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { restrictedDomains, suspendedDomains } from "./admin-domain-block-store";
 import type { RepositoryError } from "./d1";
-import { listBlockedDomains } from "./domain-block-store";
 import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "./filter-match";
 import type { FollowedFeed } from "./followed-feed";
 import type { IdCursor } from "./id-cursor";
@@ -32,8 +30,9 @@ import {
 } from "./status-timeline-store";
 
 /**
- * Remote statuses rendered for a timeline: the visible ones whose actor is not
- * on a blocked domain, with their preview card. The retained statuses come back
+ * Remote statuses rendered for a timeline: the visible ones, with their preview
+ * card. The queries already leave out blocked, muted, and domain-hidden actors
+ * before their `LIMIT`, so a page is never cut short here. The retained statuses come back
  * alongside their documents so `filtered` can be attached to the same rows.
  */
 export const remoteTimelineDocuments = async (
@@ -43,8 +42,6 @@ export const remoteTimelineDocuments = async (
   viewerId: string | undefined,
   /** Direct notes already chosen for the viewer pass whatever their visibility. */
   visible: (status: RemoteNote) => boolean = remoteStatusVisible,
-  /** Instance domain blocks that hide statuses; followers still see silenced ones. */
-  hiddenDomains: (db: D1Database) => Promise<ReadonlySet<string>> = restrictedDomains,
 ): Promise<
   Readonly<{
     statuses: RemoteNote[];
@@ -52,13 +49,6 @@ export const remoteTimelineDocuments = async (
     cards: ReadonlyMap<string, string>;
   }>
 > => {
-  const blockedDomains = viewerId ? await listBlockedDomains(env.DB, viewerId) : undefined;
-  const blocked = new Set(
-    (blockedDomains?.isOk() ? blockedDomains.value : []).map((domain) => domain.toLowerCase()),
-  );
-  for (const domain of await hiddenDomains(env.DB)) {
-    blocked.add(domain);
-  }
   const cards = await listRemoteStatusCards(
     env.DB,
     remote.map((status) => status.id),
@@ -73,9 +63,6 @@ export const remoteTimelineDocuments = async (
   for (const status of remote) {
     const actor = actors.isOk() ? actors.value.get(status.actorUri) : undefined;
     if (!actor || !visible(status)) {
-      continue;
-    }
-    if (blocked.has(actor.domain.toLowerCase())) {
       continue;
     }
     const rawCard = cards.isOk() ? cards.value.get(status.id) : undefined;
@@ -187,10 +174,7 @@ export const publicTimelineDocuments = (
       ? listPublicStatuses(env.DB, viewerId, limit, cursor, options.onlyMedia)
       : undefined,
     options.scopes.remote
-      ? listPublicRemoteStatuses(env.DB, viewerId, limit, {
-          onlyId: cursor.onlyId,
-          onlyMedia: options.onlyMedia,
-        })
+      ? listPublicRemoteStatuses(env.DB, viewerId, limit, cursor, options.onlyMedia)
       : undefined,
     limit,
     cursor,
@@ -266,7 +250,6 @@ const followedRemoteDocuments = async (
     remote.value.filter((status) => !mutedRemote.value.has(status.id)),
     viewerId,
     () => true,
-    suspendedDomains,
   );
   const filteredRemote = await attachFilteredToRemoteStatuses(
     env.DB,
@@ -351,18 +334,11 @@ export const remoteAccountPinnedDocuments = async (
   actorUri: string,
   viewerId: string | undefined,
 ): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
-  const pinned = await listRemoteActorPinnedStatuses(env.DB, actorUri);
+  const pinned = await listRemoteActorPinnedStatuses(env.DB, actorUri, viewerId);
   if (pinned.isErr()) {
     return err(pinned.error);
   }
-  const rendered = await remoteTimelineDocuments(
-    env,
-    identity,
-    pinned.value,
-    viewerId,
-    () => true,
-    suspendedDomains,
-  );
+  const rendered = await remoteTimelineDocuments(env, identity, pinned.value, viewerId, () => true);
   return ok([
     ...(await attachFilteredToRemoteStatuses(
       env.DB,
@@ -407,14 +383,7 @@ export const remoteAccountTimelineDocuments = async (
     return err(boostDocuments.error);
   }
   // The query already keeps the notes the viewer may see.
-  const rendered = await remoteTimelineDocuments(
-    env,
-    identity,
-    notes.value,
-    viewerId,
-    () => true,
-    suspendedDomains,
-  );
+  const rendered = await remoteTimelineDocuments(env, identity, notes.value, viewerId, () => true);
   const filteredNotes = await attachFilteredToRemoteStatuses(
     env.DB,
     viewerId,

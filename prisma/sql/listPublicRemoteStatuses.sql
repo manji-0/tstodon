@@ -3,15 +3,29 @@
 -- @param {Int} $3:onlyMedia
 -- @param {String} $4:viewerId
 -- @param {String} $5:now
--- Leaves out the actors the viewer blocks or mutes (none for '').
+-- @param {String} $6:before
+-- @param {String} $7:after
+-- @param {Int} $8:ascending
+-- Newest id first (oldest first when $8 = 1), between the exclusive bounds $7 and $6 ('' leaves a side open).
+-- Leaves out the actors the viewer blocks or mutes and the domains it blocks or the instance silences or suspends (nothing for a viewer of '').
 SELECT id, actor_uri, object_uri, url, content_html, spoiler_text, visibility, sensitive, language, published_at, edited_at, media_json, card_json, poll_json
 FROM remote_statuses
 WHERE visibility = 'public'
   AND ($2 = '' OR id = $2)
   AND ($3 = 0 OR media_json NOT IN ('[]', ''))
+  AND ($6 = '' OR id < $6)
+  AND ($7 = '' OR id > $7)
   AND actor_uri NOT IN (
     SELECT target_actor_uri FROM blocks WHERE blocker_account_id = $4
     UNION
     SELECT target_actor_uri FROM mutes WHERE account_id = $4 AND (expires_at IS NULL OR expires_at > $5)
   )
-ORDER BY published_at DESC LIMIT $1
+  AND actor_uri NOT IN (
+    SELECT actor_uri FROM remote_actors
+    WHERE lower(domain) IN (
+      SELECT lower(domain) FROM account_domain_blocks WHERE account_id = $4
+      UNION
+      SELECT lower(domain) FROM domain_blocks WHERE severity IN ('silence', 'suspend')
+    )
+  )
+ORDER BY CASE WHEN $8 = 1 THEN id END ASC, id DESC LIMIT $1

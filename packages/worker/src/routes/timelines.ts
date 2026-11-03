@@ -177,7 +177,7 @@ export const getV1TimelinesLink = async (
   const cursor = queryCursor(c);
   const [local, remote] = await Promise.all([
     listLinkStatuses(c.env.DB, url.value, limit, cursor),
-    listLinkRemoteStatuses(c.env.DB, url.value, limit, cursor),
+    listLinkRemoteStatuses(c.env.DB, viewerId, url.value, limit, cursor),
   ]);
   if (local.isErr()) {
     return jsonRepositoryError(c, local.error.message);

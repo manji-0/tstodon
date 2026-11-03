@@ -7,7 +7,8 @@ import { listPublicRemoteStatuses as listPublicRemoteStatusesSql } from "./gener
 import type { AccountStatusFilters, StatusCursor } from "./status-timeline-store";
 import type { TagStatusFilters } from "./status-discovery-store";
 import { queryTyped } from "./typed-sql";
-import { idCursorFragment } from "./id-cursor";
+import { idCursorBounds, idCursorFragment, type IdCursor } from "./id-cursor";
+import { DOMAIN_RESTRICTED_ACTORS_SQL, DOMAIN_SUSPENDED_ACTORS_SQL } from "./domain-hidden-actors";
 import { feedFollowSql, feedRepliesSql, type FollowedFeed } from "./followed-feed";
 import { parseRemoteStatusRow, remoteStatusFromRow } from "./remote-status-store";
 
@@ -39,14 +40,7 @@ export const listRemoteDirectStatusesForAccount = async (
              SELECT target_actor_uri FROM mutes
              WHERE account_id = ? AND (expires_at IS NULL OR expires_at > ?)
            )
-           AND s.actor_uri NOT IN (
-             SELECT actor_uri FROM remote_actors
-             WHERE lower(domain) IN (
-               SELECT lower(domain) FROM account_domain_blocks WHERE account_id = ?
-               UNION
-               SELECT lower(domain) FROM domain_blocks WHERE severity IN ('silence', 'suspend')
-             )
-           )
+           AND s.actor_uri NOT IN ${DOMAIN_RESTRICTED_ACTORS_SQL}
            ${before}
          ORDER BY s.id DESC LIMIT ?`,
       )
@@ -104,14 +98,7 @@ export const listFollowedRemoteStatuses = async (
                SELECT target_actor_uri FROM mutes
                WHERE account_id = ? AND (expires_at IS NULL OR expires_at > ?)
              )
-             AND s.actor_uri NOT IN (
-               SELECT actor_uri FROM remote_actors
-               WHERE lower(domain) IN (
-                 SELECT lower(domain) FROM account_domain_blocks WHERE account_id = ?
-                 UNION
-                 SELECT lower(domain) FROM domain_blocks WHERE severity = 'suspend'
-               )
-             )
+             AND s.actor_uri NOT IN ${DOMAIN_SUSPENDED_ACTORS_SQL}
          ) s WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )
       .bind(
@@ -175,6 +162,7 @@ export const listActorRemoteStatuses = async (
              AND (? = '' OR EXISTS (
                SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = ?
              ))
+             AND s.actor_uri NOT IN ${DOMAIN_SUSPENDED_ACTORS_SQL}
          ) s WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )
       .bind(
@@ -185,6 +173,7 @@ export const listActorRemoteStatuses = async (
         filters.onlyMedia ? 1 : 0,
         tagged,
         tagged,
+        viewer,
         ...binds,
         filters.limit,
       )
@@ -204,24 +193,31 @@ export const listActorRemoteStatuses = async (
   });
 
 /**
- * Public remote statuses, newest published first; `onlyId` asks for one entry
- * and `onlyMedia` keeps the ones with attachments.
+ * Public remote statuses, newest id first, paged by the id cursor; `onlyId`
+ * asks for one entry and `onlyMedia` keeps the ones with attachments. Actors
+ * the viewer blocks or mutes and domains it blocks or the instance limits or
+ * suspends stay out before the limit.
  */
 export const listPublicRemoteStatuses = async (
   db: D1Database,
   viewerId: string | undefined,
   limit: number,
-  options: Readonly<{ onlyId?: string | undefined; onlyMedia: boolean }>,
+  cursor: IdCursor,
+  onlyMedia: boolean,
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
+    const { onlyId, before, after, ascending } = idCursorBounds(cursor);
     const results = await queryTyped(
       db,
       listPublicRemoteStatusesSql(
         limit,
-        options.onlyId ?? "",
-        options.onlyMedia ? 1 : 0,
+        onlyId,
+        onlyMedia ? 1 : 0,
         viewerId ?? "",
         nowIso(),
+        before,
+        after,
+        ascending ? 1 : 0,
       ),
     );
     const statuses: RemoteStatus[] = [];
@@ -258,10 +254,11 @@ export const listTagRemoteStatuses = async (
     const conditions = [
       "s.visibility = 'public'",
       `s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}`,
+      `s.actor_uri NOT IN ${DOMAIN_RESTRICTED_ACTORS_SQL}`,
       "EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = ?)",
     ];
     const viewer = viewerId ?? "";
-    const binds: string[] = [viewer, viewer, nowIso(), tag.replace(/^#/, "").toLowerCase()];
+    const binds: string[] = [viewer, viewer, nowIso(), viewer, tag.replace(/^#/, "").toLowerCase()];
     if (filters.any.length > 0) {
       conditions.push(
         `EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag IN (${filters.any.map(() => "?").join(", ")}))`,
@@ -305,9 +302,13 @@ export const listTagRemoteStatuses = async (
     return statuses;
   });
 
-/** Public remote statuses whose preview card was unfurled from `url` (the link timeline). */
+/**
+ * Public remote statuses whose preview card was unfurled from `url` (the link
+ * timeline), without the domains the viewer blocks or the instance limits or suspends.
+ */
 export const listLinkRemoteStatuses = async (
   db: D1Database,
+  viewerId: string | undefined,
   url: string,
   limit: number,
   cursor: StatusCursor = {},
@@ -323,9 +324,11 @@ export const listLinkRemoteStatuses = async (
     const { results } = await db
       .prepare(
         `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
-         WHERE s.card_url = ? AND s.visibility = 'public' ${cursorWhere} ${order} LIMIT ?`,
+         WHERE s.card_url = ? AND s.visibility = 'public'
+           AND s.actor_uri NOT IN ${DOMAIN_RESTRICTED_ACTORS_SQL}
+           ${cursorWhere} ${order} LIMIT ?`,
       )
-      .bind(url, ...(cursorId.length > 0 ? [cursorId] : []), limit)
+      .bind(url, viewerId ?? "", ...(cursorId.length > 0 ? [cursorId] : []), limit)
       .all();
     const statuses: RemoteStatus[] = [];
     for (const raw of results ?? []) {

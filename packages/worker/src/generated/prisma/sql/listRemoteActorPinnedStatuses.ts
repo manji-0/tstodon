@@ -6,18 +6,20 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
  * @param actorUri
+ * @param viewerId
  */
 export const listRemoteActorPinnedStatuses = $runtime.makeTypedQueryFactory(
-  "SELECT s.id, s.actor_uri, s.object_uri, s.url, s.content_html, s.spoiler_text, s.visibility, s.sensitive, s.language, s.published_at, s.edited_at, s.media_json, s.card_json, s.poll_json\nFROM remote_actor_pins p\nJOIN remote_statuses s ON s.id = p.status_id\nWHERE p.actor_uri = $1 AND s.visibility IN ('public', 'unlisted')\nORDER BY p.position ASC",
+  "SELECT s.id, s.actor_uri, s.object_uri, s.url, s.content_html, s.spoiler_text, s.visibility, s.sensitive, s.language, s.published_at, s.edited_at, s.media_json, s.card_json, s.poll_json\nFROM remote_actor_pins p\nJOIN remote_statuses s ON s.id = p.status_id\nWHERE p.actor_uri = $1 AND s.visibility IN ('public', 'unlisted')\nAND s.actor_uri NOT IN (\nSELECT actor_uri FROM remote_actors\nWHERE lower(domain) IN (\nSELECT lower(domain) FROM account_domain_blocks WHERE account_id = $2\nUNION\nSELECT lower(domain) FROM domain_blocks WHERE severity = 'suspend'\n)\n)\nORDER BY p.position ASC",
 ) as (
   actorUri: string,
+  viewerId: string,
 ) => $runtime.TypedSql<
   listRemoteActorPinnedStatuses.Parameters,
   listRemoteActorPinnedStatuses.Result
 >;
 
 export namespace listRemoteActorPinnedStatuses {
-  export type Parameters = [actorUri: string];
+  export type Parameters = [actorUri: string, viewerId: string];
   export type Result = {
     id: string | null;
     actor_uri: string;

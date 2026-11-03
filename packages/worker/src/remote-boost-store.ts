@@ -12,6 +12,7 @@ import {
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { feedFollowSql, type FollowedFeed } from "./followed-feed";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
+import { DOMAIN_SUSPENDED_ACTORS_SQL } from "./domain-hidden-actors";
 import { visibilitySql } from "./sql-enums";
 import { queryTyped } from "./typed-sql";
 
@@ -96,16 +97,6 @@ export const findRemoteBoostById = async (
     return rows[0] === undefined ? undefined : remoteBoostFromRow(rows[0]);
   });
 
-/** Remote actors on a domain the viewer blocks or the instance suspends. Binds: (viewerId). */
-const DOMAIN_HIDDEN_ACTORS_SQL = `(
-  SELECT actor_uri FROM remote_actors
-  WHERE lower(domain) IN (
-    SELECT lower(domain) FROM account_domain_blocks WHERE account_id = ?
-    UNION
-    SELECT lower(domain) FROM domain_blocks WHERE severity = 'suspend'
-  )
-)`;
-
 /** Actor URIs (local or remote) the viewer blocks or mutes. Binds: (viewerId, viewerId, now). */
 const HIDDEN_ACTOR_URIS_SQL = `(
   SELECT target_actor_uri FROM blocks WHERE blocker_account_id = ?
@@ -147,8 +138,8 @@ export const listFollowedRemoteBoosts = async (
              AND (ls.id IS NULL OR ls.account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL})
              AND b.actor_uri NOT IN ${HIDDEN_ACTOR_URIS_SQL}
              AND COALESCE(rs.actor_uri, '') NOT IN ${HIDDEN_ACTOR_URIS_SQL}
-             AND b.actor_uri NOT IN ${DOMAIN_HIDDEN_ACTORS_SQL}
-             AND COALESCE(rs.actor_uri, '') NOT IN ${DOMAIN_HIDDEN_ACTORS_SQL}
+             AND b.actor_uri NOT IN ${DOMAIN_SUSPENDED_ACTORS_SQL}
+             AND COALESCE(rs.actor_uri, '') NOT IN ${DOMAIN_SUSPENDED_ACTORS_SQL}
          ) WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )
       .bind(
@@ -207,7 +198,7 @@ export const listActorRemoteBoosts = async (
              AND COALESCE(ls.visibility, rs.visibility) IN ('public', 'unlisted')
              AND (ls.id IS NULL OR ls.account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL})
              AND COALESCE(rs.actor_uri, '') NOT IN ${HIDDEN_ACTOR_URIS_SQL}
-             AND COALESCE(rs.actor_uri, '') NOT IN ${DOMAIN_HIDDEN_ACTORS_SQL}
+             AND COALESCE(rs.actor_uri, '') NOT IN ${DOMAIN_SUSPENDED_ACTORS_SQL}
          ) WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )
       .bind(
