@@ -116,6 +116,8 @@ export * from "./sql/deleteReblogOf";
 
 export * from "./sql/deleteRemoteActor";
 
+export * from "./sql/deleteRemoteActorPins";
+
 export * from "./sql/deleteRemoteAnnounce";
 
 export * from "./sql/deleteRemoteBoostByActivity";
@@ -350,6 +352,8 @@ export * from "./sql/insertPoll";
 
 export * from "./sql/insertPollVoteOrIgnore";
 
+export * from "./sql/insertRemoteActorPin";
+
 export * from "./sql/insertRemoteBoost";
 
 export * from "./sql/insertRemotePollOwnVote";
@@ -463,6 +467,8 @@ export * from "./sql/listPublicRemoteStatuses";
 export * from "./sql/listPublishedAnnouncements";
 
 export * from "./sql/listPushSubscriptions";
+
+export * from "./sql/listRemoteActorPinnedStatuses";
 
 export * from "./sql/listRemotePollVotes";
 

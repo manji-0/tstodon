@@ -11,6 +11,7 @@ import { z } from "zod";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { stringList } from "./form-values";
+import { replaceRemoteActorPins } from "./remote-actor-pin-store";
 import { recordRemoteBoost } from "./remote-boost";
 import { remoteActorFromDocument } from "./remote-actor-fetch";
 import {
@@ -74,17 +75,18 @@ const pageItems = (page: z.infer<typeof CollectionPageSchema>): ReadonlyArray<un
 
 /**
  * The first items of a collection: its own, or its `first` page's, which may
- * be embedded or a link. Only one page is read.
+ * be embedded or a link. Only one page is read. Undefined when the collection
+ * could not be read, as opposed to an empty one.
  */
 const collectionItems = async (
   identity: InstanceIdentity,
   collectionUri: string,
   options: FederatedFetchOptions,
-): Promise<ReadonlyArray<unknown>> => {
+): Promise<ReadonlyArray<unknown> | undefined> => {
   const raw = await fetchActivityJson(identity, collectionUri, options);
   const collection = raw.isOk() ? parseCollection(raw.value) : undefined;
   if (!collection || collection.isErr()) {
-    return [];
+    return undefined;
   }
   const own = pageItems(collection.value);
   const first = collection.value.first;
@@ -96,7 +98,7 @@ const collectionItems = async (
   }
   const page = await fetchActivityJson(identity, first, options);
   const parsed = page.isOk() ? parseCollectionPage(page.value) : undefined;
-  return parsed?.isOk() ? pageItems(parsed.value).slice(0, OUTBOX_BACKFILL_ITEM_LIMIT) : [];
+  return parsed?.isOk() ? pageItems(parsed.value).slice(0, OUTBOX_BACKFILL_ITEM_LIMIT) : undefined;
 };
 
 const ObjectReferenceSchema = z.union([
@@ -224,12 +226,54 @@ export const processBackfillRemoteOutboxJob = async (
     blockedHosts: suspended,
   };
   const actor = await withCollections(env, identity.value, cached.value, options);
-  if (actor.outboxUri) {
-    for (const item of await collectionItems(identity.value, actor.outboxUri, options)) {
-      await backfillOutboxItem(env, identity.value, actor, item, options);
-    }
+  const outbox = actor.outboxUri
+    ? await collectionItems(identity.value, actor.outboxUri, options)
+    : undefined;
+  for (const item of outbox ?? []) {
+    await backfillOutboxItem(env, identity.value, actor, item, options);
+  }
+  const featured = actor.featuredUri
+    ? await collectionItems(identity.value, actor.featuredUri, options)
+    : undefined;
+  if (featured) {
+    await backfillPins(env, identity.value, actor, featured, options);
   }
   return "ok";
+};
+
+const parseObjectReference = schemaResult(ObjectReferenceSchema);
+
+/**
+ * Store the actor's pinned notes from its `featured` items (notes or their
+ * URIs, from the actor's host) and make them its pins, in order.
+ */
+const backfillPins = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+  items: ReadonlyArray<unknown>,
+  options: FederatedFetchOptions,
+): Promise<void> => {
+  const actorHost = urlHost(actor.actorUri);
+  const statusIds: string[] = [];
+  for (const raw of items) {
+    const item = parseObjectReference(raw);
+    if (item.isErr()) {
+      continue;
+    }
+    const uri = typeof item.value === "string" ? item.value : item.value.id;
+    if (urlHost(uri) !== actorHost) {
+      continue;
+    }
+    const stored = await persistRemoteObject(env, identity, actor, item.value, {
+      ...options,
+      idClock: "Published",
+    });
+    if (stored.isOk() && stored.value?.actorUri === actor.actorUri) {
+      statusIds.push(stored.value.id);
+    }
+  }
+  await replaceRemoteActorPins(env.DB, actor.actorUri, statusIds);
 };
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.

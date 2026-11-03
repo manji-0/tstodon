@@ -100,15 +100,27 @@ const announceItem = (remote: Remote, slug: string, object: string, published: s
 
 const outboxUri = (remote: Remote): string => `${remote.actorUri}/outbox`;
 
+const featuredUri = (remote: Remote): string => `${remote.actorUri}/collections/featured`;
+
 /**
  * The documents a remote server serves for `remote`: its actor document
- * (with an outbox), the outbox, and its first page holding `items`.
+ * (with an outbox), the outbox, and its first page holding `items`; with
+ * `featured`, a featured collection embedding those items, as Mastodon's does.
  */
 const outboxDocuments = (
   remote: Remote,
   items: ReadonlyArray<unknown>,
+  featured?: ReadonlyArray<unknown>,
 ): ReadonlyMap<string, unknown> =>
   new Map<string, unknown>([
+    ...(featured
+      ? [
+          [
+            featuredUri(remote),
+            { id: featuredUri(remote), type: "OrderedCollection", orderedItems: featured },
+          ] as const,
+        ]
+      : []),
     [
       remote.actorUri,
       {
@@ -117,6 +129,7 @@ const outboxDocuments = (
         preferredUsername: new URL(remote.actorUri).pathname.split("/").at(-1),
         inbox: `${remote.actorUri}/inbox`,
         outbox: outboxUri(remote),
+        ...(featured ? { featured: featuredUri(remote) } : {}),
         publicKey: {
           id: `${remote.actorUri}#main-key`,
           owner: remote.actorUri,
@@ -390,5 +403,28 @@ describe("backfilling a remote outbox", () => {
       (await json("/api/v1/notifications", { headers: await authHeaders(email) })).body,
     );
     expect(notifications).toEqual([]);
+  });
+});
+
+describe("backfilling a remote actor's pinned notes", () => {
+  it("serves its featured notes for pinned=true, replacing them on each backfill", async () => {
+    const remote = await remoteActor("backfill-pins", "backfill.example");
+    const other = await remoteActor("backfill-pins-other", "backfill.example");
+    const first = noteDocument(remote, "pins-first", "2023-05-01T00:00:00.000Z");
+    const second = noteDocument(remote, "pins-second", "2024-05-01T00:00:00.000Z");
+    const foreign = noteDocument(other, "pins-foreign", "2024-05-02T00:00:00.000Z");
+    const documents = new Map([
+      ...outboxDocuments(remote, [], [first, second.id, foreign]),
+      [second.id, second],
+    ]);
+
+    await serving(documents, () => runBackfill(remote));
+
+    expect(await profileUris(remote, "?pinned=true")).toEqual([first.id, second.id]);
+    expect(await profileUris(remote)).toEqual([second.id, first.id]);
+
+    await serving(outboxDocuments(remote, [], [second.id]), () => runBackfill(remote));
+
+    expect(await profileUris(remote, "?pinned=true")).toEqual([second.id]);
   });
 });

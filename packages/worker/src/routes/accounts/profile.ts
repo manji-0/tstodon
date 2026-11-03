@@ -26,7 +26,10 @@ import { RemoteAccountId } from "../../remote-account-id";
 import { findRemoteActorByUri } from "../../remote-actor-store";
 import { requestRemoteOutboxBackfill } from "../../remote-outbox-backfill";
 import { relationshipFlags } from "../../relationship-store";
-import { remoteAccountTimelineDocuments } from "../../timeline-documents";
+import {
+  remoteAccountPinnedDocuments,
+  remoteAccountTimelineDocuments,
+} from "../../timeline-documents";
 import { listPinnedStatuses } from "../../status-pin-store";
 import { queryFlag } from "./credentials";
 import { lookupAccountDocument } from "./lookup";
@@ -54,10 +57,10 @@ export const getV1AccountsById = async (c: Context<{ Bindings: Env }, "/api/v1/a
 
 /**
  * A cached remote actor's statuses. As in Mastodon, the list is empty when the
- * viewer blocks the actor or its domain, or the instance suspends that domain,
- * and pinned statuses are empty because featured collections are not fetched.
- * A view queues a backfill of the actor's outbox when it has not run lately;
- * this response shows what is cached already.
+ * viewer blocks the actor or its domain, or the instance suspends that domain.
+ * `pinned=true` lists the notes of its `featured` collection. A view queues a
+ * backfill of the actor's outbox and pins when it has not run lately; this
+ * response shows what is cached already.
  */
 const remoteAccountStatuses = async (
   c: Context<{ Bindings: Env }>,
@@ -86,19 +89,20 @@ const remoteAccountStatuses = async (
     blocks?.blocking === true ||
     blocks?.domainBlocking === true ||
     (await suspendedDomains(c.env.DB)).has(actor.value.domain.toLowerCase());
-  if (!hidden) {
-    await requestRemoteOutboxBackfill(c.env, actor.value.actorUri);
-  }
-  if (hidden || c.req.query("pinned") === "true") {
+  if (hidden) {
     return c.json([]);
   }
-  const documents = await remoteAccountTimelineDocuments(
-    c.env,
-    identity,
-    actor.value.actorUri,
-    viewerId,
-    filters,
-  );
+  await requestRemoteOutboxBackfill(c.env, actor.value.actorUri);
+  const documents =
+    c.req.query("pinned") === "true"
+      ? await remoteAccountPinnedDocuments(c.env, identity, actor.value.actorUri, viewerId)
+      : await remoteAccountTimelineDocuments(
+          c.env,
+          identity,
+          actor.value.actorUri,
+          viewerId,
+          filters,
+        );
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }

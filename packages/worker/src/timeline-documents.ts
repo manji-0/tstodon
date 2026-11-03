@@ -9,6 +9,7 @@ import type { IdCursor } from "./id-cursor";
 import { cardDocument, parseCardJson } from "./link-card";
 import { type AccountList, listListTimelineStatuses } from "./list-store";
 import { mastodonStatuses } from "./local-status-documents";
+import { listRemoteActorPinnedStatuses } from "./remote-actor-pin-store";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { listActorRemoteBoosts, listFollowedRemoteBoosts } from "./remote-boost-store";
 import { remoteBoostDocuments } from "./remote-boost-documents";
@@ -221,6 +222,39 @@ export const homeTimelineDocuments = async (
     limit,
     cursor,
   );
+
+/**
+ * The notes a remote actor pinned, in its order, as `pinned=true` on its
+ * profile shows them: public and unlisted, with `filtered` on them.
+ */
+export const remoteAccountPinnedDocuments = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actorUri: string,
+  viewerId: string | undefined,
+): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+  const pinned = await listRemoteActorPinnedStatuses(env.DB, actorUri);
+  if (pinned.isErr()) {
+    return err(pinned.error);
+  }
+  const rendered = await remoteTimelineDocuments(
+    env,
+    identity,
+    pinned.value,
+    viewerId,
+    () => true,
+    suspendedDomains,
+  );
+  return ok([
+    ...(await attachFilteredToRemoteStatuses(
+      env.DB,
+      viewerId,
+      "public",
+      rendered.statuses,
+      rendered.documents,
+    )),
+  ]);
+};
 
 /**
  * A remote actor's profile timeline: its cached notes and boosts, newest
