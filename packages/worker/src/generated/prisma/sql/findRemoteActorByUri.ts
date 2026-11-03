@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param actorUri
  */
 export const findRemoteActorByUri = $runtime.makeTypedQueryFactory(
-  "SELECT actor_uri, username, domain, inbox_uri, shared_inbox_uri, public_key_id, public_key_pem, display_name, profile_json, moved_to, fetched_at\nFROM remote_actors WHERE actor_uri = $1",
+  "SELECT actor_uri, username, domain, inbox_uri, shared_inbox_uri, public_key_id, public_key_pem, display_name, profile_json, moved_to, outbox_uri, featured_uri, fetched_at\nFROM remote_actors WHERE actor_uri = $1",
 ) as (
   actorUri: string,
 ) => $runtime.TypedSql<findRemoteActorByUri.Parameters, findRemoteActorByUri.Result>;
@@ -26,6 +26,8 @@ export namespace findRemoteActorByUri {
     display_name: string;
     profile_json: string;
     moved_to: string | null;
+    outbox_uri: string | null;
+    featured_uri: string | null;
     fetched_at: string;
   };
 }

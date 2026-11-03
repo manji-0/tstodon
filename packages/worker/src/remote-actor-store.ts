@@ -48,6 +48,8 @@ export const RemoteActorRowSchema = z.object({
   display_name: z.string(),
   profile_json: z.string().default("{}"),
   moved_to: z.string().nullable().default(null),
+  outbox_uri: z.string().nullable().default(null),
+  featured_uri: z.string().nullable().default(null),
   fetched_at: z.string().min(1),
 });
 
@@ -84,6 +86,8 @@ const remoteActorFromRow = (row: RemoteActorRow): Result<RemoteActor, Repository
     fetchedAt: fetchedAt.value,
     ...(row.shared_inbox_uri ? { sharedInboxUri: row.shared_inbox_uri } : {}),
     ...(row.moved_to ? { movedTo: row.moved_to } : {}),
+    ...(row.outbox_uri ? { outboxUri: row.outbox_uri } : {}),
+    ...(row.featured_uri ? { featuredUri: row.featured_uri } : {}),
   }).mapErr(() => toRepositoryError("invalid remote actor row"));
 };
 
@@ -185,6 +189,8 @@ export const upsertRemoteActor = async (
         now,
         now,
         JSON.stringify(actor.profile),
+        actor.outboxUri ?? null,
+        actor.featuredUri ?? null,
       ),
     );
     return actor;

@@ -31,6 +31,8 @@ export const ActorDocumentSchema = z
     id: z.string().min(1),
     preferredUsername: z.string().min(1),
     inbox: z.string().min(1),
+    outbox: z.string().min(1).optional(),
+    featured: z.string().min(1).optional(),
     publicKey: ActorPublicKeySchema,
     name: z.string().optional(),
     endpoints: z

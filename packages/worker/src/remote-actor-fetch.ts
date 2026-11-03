@@ -141,6 +141,8 @@ export const remoteActorFromDocument = (
     ...(document.value.endpoints?.sharedInbox
       ? { sharedInboxUri: document.value.endpoints.sharedInbox }
       : {}),
+    outboxUri: linkUrl(document.value.outbox) ?? undefined,
+    featuredUri: linkUrl(document.value.featured) ?? undefined,
   });
   if (actor.isErr()) {
     return err({ kind: "InvalidSignature" });

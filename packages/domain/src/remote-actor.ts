@@ -42,6 +42,10 @@ const RemoteActorSchema = z.object({
   profile: RemoteActorProfileSchema,
   /** The actor this one moved to, once a verified `Move` said so. */
   movedTo: z.url().optional(),
+  /** Its `outbox` collection, from which a profile's history is backfilled. */
+  outboxUri: z.url().optional(),
+  /** Its `featured` collection: the notes it pinned. */
+  featuredUri: z.url().optional(),
   fetchedAt: IsoInstant.schema,
 });
 
@@ -67,6 +71,8 @@ export const RemoteActor = {
     displayName: string;
     profile?: RemoteActorProfile | undefined;
     movedTo?: string | undefined;
+    outboxUri?: string | undefined;
+    featuredUri?: string | undefined;
     fetchedAt: z.infer<typeof IsoInstant.schema>;
   }): Result<RemoteActor, RemoteActorParseError> => {
     const parsed = parseRemoteActor({
@@ -82,6 +88,8 @@ export const RemoteActor = {
       fetchedAt: input.fetchedAt,
       ...(input.sharedInboxUri ? { sharedInboxUri: input.sharedInboxUri } : {}),
       ...(input.movedTo ? { movedTo: input.movedTo } : {}),
+      ...(input.outboxUri ? { outboxUri: input.outboxUri } : {}),
+      ...(input.featuredUri ? { featuredUri: input.featuredUri } : {}),
     });
     return parsed.mapErr((): RemoteActorParseError => ({ kind: "InvalidActor" }));
   },
