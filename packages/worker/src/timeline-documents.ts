@@ -10,15 +10,18 @@ import { cardDocument, parseCardJson } from "./link-card";
 import { type AccountList, listListTimelineStatuses } from "./list-store";
 import { mastodonStatuses } from "./local-status-documents";
 import { findRemoteActorsByUris } from "./remote-actor-store";
-import { listFollowedRemoteBoosts } from "./remote-boost-store";
+import { listActorRemoteBoosts, listFollowedRemoteBoosts } from "./remote-boost-store";
 import { remoteBoostDocuments } from "./remote-boost-documents";
 import { findRemotePollVotes } from "./remote-poll-vote-store";
 import { mastodonRemoteStatus, remoteStatusVisible } from "./remote-status-document";
-import { listFollowedRemoteStatuses } from "./remote-status-timeline-store";
+import {
+  listActorRemoteStatuses,
+  listFollowedRemoteStatuses,
+} from "./remote-status-timeline-store";
 import { listRemoteStatusCards } from "./status-card-store";
 import { attachRemoteReplyRefs } from "./status-documents";
 import { filterMutedThreads, mutedThreadStatusIds } from "./status-mute-store";
-import { listHomeStatuses } from "./status-timeline-store";
+import { type AccountStatusFilters, listHomeStatuses } from "./status-timeline-store";
 
 /**
  * Remote statuses rendered for a timeline: the visible ones whose actor is not
@@ -218,6 +221,64 @@ export const homeTimelineDocuments = async (
     limit,
     cursor,
   );
+
+/**
+ * A remote actor's profile timeline: its cached notes and boosts, newest
+ * first, as the viewer may see them, with `filtered` on the notes. As in
+ * Mastodon, `exclude_reblogs`, `only_media`, and `tagged` leave boosts out.
+ * Only what this instance has received is there; the actor's outbox is not
+ * fetched.
+ */
+export const remoteAccountTimelineDocuments = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actorUri: string,
+  viewerId: string | undefined,
+  filters: AccountStatusFilters,
+): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+  const withBoosts =
+    !filters.excludeReblogs && !filters.onlyMedia && (filters.tagged ?? "").length === 0;
+  const [notes, boosts] = await Promise.all([
+    listActorRemoteStatuses(env.DB, actorUri, viewerId, filters),
+    withBoosts
+      ? listActorRemoteBoosts(env.DB, actorUri, viewerId, filters.limit, filters.cursor)
+      : Promise.resolve(ok([])),
+  ]);
+  if (notes.isErr()) {
+    return err(notes.error);
+  }
+  if (boosts.isErr()) {
+    return err(boosts.error);
+  }
+  const boostDocuments = await remoteBoostDocuments(env, identity, boosts.value, viewerId);
+  if (boostDocuments.isErr()) {
+    return err(boostDocuments.error);
+  }
+  // The query already keeps the notes the viewer may see.
+  const rendered = await remoteTimelineDocuments(
+    env,
+    identity,
+    notes.value,
+    viewerId,
+    () => true,
+    suspendedDomains,
+  );
+  const filteredNotes = await attachFilteredToRemoteStatuses(
+    env.DB,
+    viewerId,
+    "public",
+    rendered.statuses,
+    rendered.documents,
+  );
+  return ok(
+    mergeTimelineDocuments(
+      filteredNotes,
+      boostDocuments.value,
+      filters.cursor ?? {},
+      filters.limit,
+    ),
+  );
+};
 
 /**
  * One of the viewer's lists as a timeline, under home's rules: its local

@@ -3,7 +3,7 @@ import type { Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { type RepositoryError, runD1 } from "./d1";
 import { listPublicRemoteStatuses as listPublicRemoteStatusesSql } from "./generated/prisma/sql";
-import type { StatusCursor } from "./status-timeline-store";
+import type { AccountStatusFilters, StatusCursor } from "./status-timeline-store";
 import type { TagStatusFilters } from "./status-discovery-store";
 import { queryTyped } from "./typed-sql";
 import { idCursorFragment } from "./id-cursor";
@@ -123,6 +123,69 @@ export const listFollowedRemoteStatuses = async (
         accountId,
         ...binds,
         limit,
+      )
+      .all();
+    const statuses: RemoteStatus[] = [];
+    for (const raw of results ?? []) {
+      const row = parseRemoteStatusRow(raw);
+      if (row.isErr()) {
+        continue;
+      }
+      const parsed = remoteStatusFromRow(row.value);
+      if (parsed.isOk()) {
+        statuses.push(parsed.value);
+      }
+    }
+    return statuses;
+  });
+
+/**
+ * A remote actor's cached notes on its profile, newest first, as the viewer
+ * may see them: public and unlisted ones for everyone, followers-only ones
+ * for its accepted followers, and any note that mentions the viewer.
+ * `exclude_replies`, `only_media`, and `tagged` narrow them as for a local
+ * account.
+ */
+export const listActorRemoteStatuses = async (
+  db: D1Database,
+  actorUri: string,
+  viewerId: string | undefined,
+  filters: AccountStatusFilters,
+): Promise<Result<RemoteStatus[], RepositoryError>> =>
+  runD1(async () => {
+    const viewer = viewerId ?? "";
+    const tagged = filters.tagged?.replace(/^#/, "").toLowerCase() ?? "";
+    const { where, order, binds } = idCursorFragment(filters.cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT ${REMOTE_STATUS_SELECT} FROM (
+           SELECT s.* FROM remote_statuses s
+           WHERE s.actor_uri = ?
+             AND (
+               s.visibility IN ('public', 'unlisted')
+               OR (s.visibility = 'private' AND EXISTS (
+                 SELECT 1 FROM outbound_follows f
+                 WHERE f.account_id = ? AND f.actor_uri = s.actor_uri AND f.state = 'Accepted'
+               ))
+               OR s.id IN (SELECT status_id FROM remote_status_mentions WHERE account_id = ?)
+             )
+             AND (? = 0 OR s.in_reply_to_uri IS NULL)
+             AND (? = 0 OR s.media_json NOT IN ('[]', ''))
+             AND (? = '' OR EXISTS (
+               SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = ?
+             ))
+         ) s WHERE 1 = 1 ${where} ${order} LIMIT ?`,
+      )
+      .bind(
+        actorUri,
+        viewer,
+        viewer,
+        filters.excludeReplies ? 1 : 0,
+        filters.onlyMedia ? 1 : 0,
+        tagged,
+        tagged,
+        ...binds,
+        filters.limit,
       )
       .all();
     const statuses: RemoteStatus[] = [];

@@ -174,5 +174,60 @@ export const listFollowedRemoteBoosts = async (
     return (results ?? []).flatMap((raw) => remoteBoostFromRow(raw) ?? []);
   });
 
+/**
+ * A remote actor's boosts on its profile, newest first, as the viewer may see
+ * them: a followers-only boost only by the actor's accepted followers. The
+ * boosted status must be public or unlisted, and a block or mute of its
+ * author, or a domain block or suspension of that author's domain, hides it.
+ */
+export const listActorRemoteBoosts = async (
+  db: D1Database,
+  actorUri: string,
+  viewerId: string | undefined,
+  limit: number,
+  cursor: IdCursor = {},
+): Promise<Result<RemoteBoostValue[], RepositoryError>> =>
+  runD1(async () => {
+    const viewer = viewerId ?? "";
+    const now = nowIso();
+    const { where, order, binds } = idCursorFragment(cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT * FROM (
+           SELECT b.id, b.actor_uri, b.activity_id, b.local_status_id, b.remote_status_id,
+                  b.visibility, b.published_at
+           FROM remote_boosts b
+           LEFT JOIN statuses ls ON ls.id = b.local_status_id
+           LEFT JOIN remote_statuses rs ON rs.id = b.remote_status_id
+           WHERE b.actor_uri = ?
+             AND (b.visibility IN ('public', 'unlisted') OR EXISTS (
+               SELECT 1 FROM outbound_follows f
+               WHERE f.account_id = ? AND f.actor_uri = b.actor_uri AND f.state = 'Accepted'
+             ))
+             AND COALESCE(ls.visibility, rs.visibility) IN ('public', 'unlisted')
+             AND (ls.id IS NULL OR ls.account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL})
+             AND COALESCE(rs.actor_uri, '') NOT IN ${HIDDEN_ACTOR_URIS_SQL}
+             AND COALESCE(rs.actor_uri, '') NOT IN ${DOMAIN_HIDDEN_ACTORS_SQL}
+         ) WHERE 1 = 1 ${where} ${order} LIMIT ?`,
+      )
+      .bind(
+        actorUri,
+        viewer,
+        // `SUPPRESSED_ACCOUNT_IDS_SQL` takes the viewer three times and its clock.
+        viewer,
+        viewer,
+        viewer,
+        now,
+        viewer,
+        viewer,
+        now,
+        viewer,
+        ...binds,
+        limit,
+      )
+      .all();
+    return (results ?? []).flatMap((raw) => remoteBoostFromRow(raw) ?? []);
+  });
+
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([RemoteBoostRowSchema]);

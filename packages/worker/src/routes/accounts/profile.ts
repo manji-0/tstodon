@@ -16,7 +16,16 @@ import { accountDocumentsByIds, documentsInOrder } from "../../account-documents
 import { mastodonStatuses } from "../../local-status-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { listFollowers, listFollowing } from "../../follow-store";
-import { listAccountStatusesFiltered } from "../../status-timeline-store";
+import {
+  type AccountStatusFilters,
+  listAccountStatusesFiltered,
+} from "../../status-timeline-store";
+import type { InstanceIdentity } from "@tstodon/domain";
+import { suspendedDomains } from "../../admin-domain-block-store";
+import { RemoteAccountId } from "../../remote-account-id";
+import { findRemoteActorByUri } from "../../remote-actor-store";
+import { relationshipFlags } from "../../relationship-store";
+import { remoteAccountTimelineDocuments } from "../../timeline-documents";
 import { listPinnedStatuses } from "../../status-pin-store";
 import { queryFlag } from "./credentials";
 import { lookupAccountDocument } from "./lookup";
@@ -42,6 +51,54 @@ export const getV1AccountsById = async (c: Context<{ Bindings: Env }, "/api/v1/a
   }
 };
 
+/**
+ * A cached remote actor's statuses. As in Mastodon, the list is empty when the
+ * viewer blocks the actor or its domain, or the instance suspends that domain,
+ * and pinned statuses are empty because featured collections are not fetched.
+ */
+const remoteAccountStatuses = async (
+  c: Context<{ Bindings: Env }>,
+  identity: InstanceIdentity,
+  viewerId: string | undefined,
+  id: string,
+  filters: AccountStatusFilters,
+) => {
+  const actorUri = RemoteAccountId.decode(id);
+  if (actorUri.isErr()) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const actor = await findRemoteActorByUri(c.env.DB, actorUri.value);
+  if (actor.isErr()) {
+    return jsonRepositoryError(c, actor.error.message);
+  }
+  if (!actor.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const flags = viewerId ? await relationshipFlags(c.env.DB, viewerId, id) : undefined;
+  if (flags !== undefined && flags.isErr()) {
+    return jsonRepositoryError(c, flags.error.message);
+  }
+  const blocks = flags?.unwrapOr(undefined);
+  const hidden =
+    blocks?.blocking === true ||
+    blocks?.domainBlocking === true ||
+    (await suspendedDomains(c.env.DB)).has(actor.value.domain.toLowerCase());
+  if (hidden || c.req.query("pinned") === "true") {
+    return c.json([]);
+  }
+  const documents = await remoteAccountTimelineDocuments(
+    c.env,
+    identity,
+    actor.value.actorUri,
+    viewerId,
+    filters,
+  );
+  if (documents.isErr()) {
+    return jsonRepositoryError(c, documents.error.message);
+  }
+  return c.json(documents.value);
+};
+
 export const getV1AccountsByIdStatuses = async (
   c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/statuses">,
 ) => {
@@ -54,28 +111,26 @@ export const getV1AccountsByIdStatuses = async (
     return jsonAuthError(c, auth.error);
   }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
-  const account = await findAccountByIdOrUsername(c.env.DB, c.req.param("id") ?? "");
+  const id = c.req.param("id") ?? "";
+  const filters: AccountStatusFilters = {
+    limit: queryLimit(c.req.query("limit")),
+    excludeReplies: queryFlag(c.req.query("exclude_replies")),
+    excludeReblogs: queryFlag(c.req.query("exclude_reblogs")),
+    onlyMedia: queryFlag(c.req.query("only_media")),
+    tagged: c.req.query("tagged"),
+    cursor: queryCursor(c),
+  };
+  const account = await findAccountByIdOrUsername(c.env.DB, id);
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
   }
   if (!account.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    return remoteAccountStatuses(c, identity.value, viewerId, id, filters);
   }
   const statuses =
     c.req.query("pinned") === "true"
       ? await listPinnedStatuses(c.env.DB, account.value.id)
-      : await listAccountStatusesFiltered(c.env.DB, account.value.id, {
-          limit: queryLimit(c.req.query("limit")),
-          excludeReplies: queryFlag(c.req.query("exclude_replies")),
-          excludeReblogs: queryFlag(c.req.query("exclude_reblogs")),
-          onlyMedia: queryFlag(c.req.query("only_media")),
-          tagged: c.req.query("tagged"),
-          cursor: {
-            maxId: c.req.query("max_id"),
-            sinceId: c.req.query("since_id"),
-            minId: c.req.query("min_id"),
-          },
-        });
+      : await listAccountStatusesFiltered(c.env.DB, account.value.id, filters);
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
