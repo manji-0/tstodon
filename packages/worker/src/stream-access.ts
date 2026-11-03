@@ -14,7 +14,7 @@ import { findListForAccount } from "./list-store";
  * anonymous sockets, as `GET /api/v1/timelines/public` and the tag timeline
  * are; the others need the account.
  */
-export const StreamViewerSchema = z.discriminatedUnion("kind", [
+const StreamViewerSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("Account"), accountId: AccountId.schema }),
   unitKind("Anonymous"),
 ]);
@@ -22,7 +22,7 @@ export const StreamViewerSchema = z.discriminatedUnion("kind", [
 export type StreamViewer = z.infer<typeof StreamViewerSchema>;
 
 /** A socket's owner and the streams it is subscribed to, kept on the socket across hibernation. */
-export const SocketStateSchema = z.object({
+const SocketStateSchema = z.object({
   viewer: StreamViewerSchema,
   channels: z.array(StreamChannel.schema),
 });
@@ -46,7 +46,7 @@ export type StreamRefusal =
   | Readonly<{ kind: "Unavailable" }>;
 
 /** May this viewer subscribe? `user*` is the account's own; a list only its owner's. */
-export const authorizeStreamChannel = async (
+const authorizeStreamChannel = async (
   env: Env,
   viewer: StreamViewer,
   channel: StreamChannelValue,

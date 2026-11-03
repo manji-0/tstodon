@@ -20,7 +20,7 @@ type FanOutPublic = Extract<OutboxJobValue, { kind: "FanOutPublic" }>;
  * subscription it holds that may carry the entry, so a page stays well
  * inside a queue invocation's subrequest budget; a full page queues the next.
  */
-export const PUBLIC_FAN_OUT_PAGE_SIZE = 20;
+const PUBLIC_FAN_OUT_PAGE_SIZE = 20;
 
 /**
  * Queue telling the public and hashtag streams about a public status, as
@@ -119,7 +119,7 @@ const hubDelivery = async (
  * rendered for its viewer. Redoing a page only sends the events again.
  * Resolves to the cursor of the next page, or `undefined` when this was the last.
  */
-export const fanOutPublicPage = async (
+const fanOutPublicPage = async (
   env: Env,
   identity: InstanceIdentity,
   job: FanOutPublic,
