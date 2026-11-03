@@ -114,6 +114,8 @@ export * from "./sql/deleteRemoteActor";
 
 export * from "./sql/deleteRemoteAnnounce";
 
+export * from "./sql/deleteRemoteBoostByActivity";
+
 export * from "./sql/deleteRemoteFavourite";
 
 export * from "./sql/deleteRemoteFollow";
@@ -242,6 +244,8 @@ export * from "./sql/findRemoteActorByUri";
 
 export * from "./sql/findRemoteActorsByUris";
 
+export * from "./sql/findRemoteBoostById";
+
 export * from "./sql/findRemoteFollow";
 
 export * from "./sql/findRemoteStatusById";
@@ -339,6 +343,8 @@ export * from "./sql/insertOutboxTargetOrIgnore";
 export * from "./sql/insertPoll";
 
 export * from "./sql/insertPollVoteOrIgnore";
+
+export * from "./sql/insertRemoteBoost";
 
 export * from "./sql/insertRemotePollOwnVote";
 

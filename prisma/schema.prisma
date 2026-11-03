@@ -546,6 +546,7 @@ model remote_actors {
   remote_follows    remote_follows[]
   remote_statuses   remote_statuses[]
   outbound_follows  outbound_follows[]
+  remote_boosts     remote_boosts[]
 
   @@index([domain, username], map: "idx_remote_actors_domain_username")
   status_remote_mentions status_remote_mentions[]
@@ -625,6 +626,7 @@ model remote_statuses {
   remote_status_tags remote_status_tags[]
   remote_status_mentions remote_status_mentions[]
   remote_poll_own_votes remote_poll_own_votes[]
+  remote_boosts remote_boosts[]
 
   @@index([actor_uri, published_at(sort: Desc)], map: "idx_remote_statuses_actor_published")
   @@index([visibility, published_at(sort: Desc)], map: "idx_remote_statuses_visibility_published")
@@ -786,6 +788,7 @@ model statuses {
   media_attachments                                media_attachments[]
   polls                                            polls?
   remote_announces                                 remote_announces[]
+  remote_boosts                                    remote_boosts[]
   remote_favourites                                remote_favourites[]
   status_mentions                                  status_mentions[]
   status_remote_mentions                           status_remote_mentions[]
@@ -828,4 +831,24 @@ model outbound_follows {
 
   @@unique([account_id, actor_uri], map: "sqlite_autoindex_outbound_follows_3")
   @@index([actor_uri, state], map: "idx_outbound_follows_actor")
+}
+
+model remote_boosts {
+  id               String           @id
+  actor_uri        String
+  activity_id      String           @unique(map: "sqlite_autoindex_remote_boosts_2")
+  local_status_id  String?
+  remote_status_id String?
+  visibility       String
+  published_at     String
+  created_at       String           @default("CURRENT_TIMESTAMP")
+  remote_actors    remote_actors    @relation(fields: [actor_uri], references: [actor_uri], onDelete: Cascade, onUpdate: NoAction)
+  statuses         statuses?        @relation(fields: [local_status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  remote_statuses  remote_statuses? @relation(fields: [remote_status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([actor_uri, local_status_id], map: "sqlite_autoindex_remote_boosts_3")
+  @@unique([actor_uri, remote_status_id], map: "sqlite_autoindex_remote_boosts_4")
+  @@index([actor_uri, id], map: "idx_remote_boosts_actor_id")
+  @@index([local_status_id], map: "idx_remote_boosts_local_status")
+  @@index([remote_status_id], map: "idx_remote_boosts_remote_status")
 }

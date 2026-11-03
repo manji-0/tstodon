@@ -40,6 +40,12 @@ export {
   type RemoteActorProfile,
 } from "./remote-actor";
 export {
+  RemoteBoost,
+  type RemoteBoost as RemoteBoostValue,
+  type RemoteBoostError,
+  type RemoteBoostTarget,
+} from "./remote-boost";
+export {
   RemotePoll,
   RemotePollSchema,
   type RemotePoll as RemotePollValue,

@@ -116,6 +116,7 @@ export const ModelName = {
   statuses: "statuses",
   remote_poll_own_votes: "remote_poll_own_votes",
   outbound_follows: "outbound_follows",
+  remote_boosts: "remote_boosts",
 } as const;
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName];
@@ -922,6 +923,20 @@ export const Outbound_followsScalarFieldEnum = {
 
 export type Outbound_followsScalarFieldEnum =
   (typeof Outbound_followsScalarFieldEnum)[keyof typeof Outbound_followsScalarFieldEnum];
+
+export const Remote_boostsScalarFieldEnum = {
+  id: "id",
+  actor_uri: "actor_uri",
+  activity_id: "activity_id",
+  local_status_id: "local_status_id",
+  remote_status_id: "remote_status_id",
+  visibility: "visibility",
+  published_at: "published_at",
+  created_at: "created_at",
+} as const;
+
+export type Remote_boostsScalarFieldEnum =
+  (typeof Remote_boostsScalarFieldEnum)[keyof typeof Remote_boostsScalarFieldEnum];
 
 export const SortOrder = {
   asc: "asc",

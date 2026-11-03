@@ -315,6 +315,7 @@ export type statusesWhereInput = {
   media_attachments?: Prisma.Media_attachmentsListRelationFilter;
   polls?: Prisma.XOR<Prisma.PollsNullableScalarRelationFilter, Prisma.pollsWhereInput> | null;
   remote_announces?: Prisma.Remote_announcesListRelationFilter;
+  remote_boosts?: Prisma.Remote_boostsListRelationFilter;
   remote_favourites?: Prisma.Remote_favouritesListRelationFilter;
   status_mentions?: Prisma.Status_mentionsListRelationFilter;
   status_remote_mentions?: Prisma.Status_remote_mentionsListRelationFilter;
@@ -355,6 +356,7 @@ export type statusesOrderByWithRelationInput = {
   media_attachments?: Prisma.media_attachmentsOrderByRelationAggregateInput;
   polls?: Prisma.pollsOrderByWithRelationInput;
   remote_announces?: Prisma.remote_announcesOrderByRelationAggregateInput;
+  remote_boosts?: Prisma.remote_boostsOrderByRelationAggregateInput;
   remote_favourites?: Prisma.remote_favouritesOrderByRelationAggregateInput;
   status_mentions?: Prisma.status_mentionsOrderByRelationAggregateInput;
   status_remote_mentions?: Prisma.status_remote_mentionsOrderByRelationAggregateInput;
@@ -399,6 +401,7 @@ export type statusesWhereUniqueInput = Prisma.AtLeast<
     media_attachments?: Prisma.Media_attachmentsListRelationFilter;
     polls?: Prisma.XOR<Prisma.PollsNullableScalarRelationFilter, Prisma.pollsWhereInput> | null;
     remote_announces?: Prisma.Remote_announcesListRelationFilter;
+    remote_boosts?: Prisma.Remote_boostsListRelationFilter;
     remote_favourites?: Prisma.Remote_favouritesListRelationFilter;
     status_mentions?: Prisma.Status_mentionsListRelationFilter;
     status_remote_mentions?: Prisma.Status_remote_mentionsListRelationFilter;
@@ -488,6 +491,7 @@ export type statusesCreateInput = {
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
@@ -522,6 +526,7 @@ export type statusesUncheckedCreateInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -550,6 +555,7 @@ export type statusesUpdateInput = {
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
@@ -584,6 +590,7 @@ export type statusesUncheckedUpdateInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -1310,6 +1317,34 @@ export type statusesUncheckedUpdateManyWithoutStatuses_statuses_reblog_of_idTost
     deleteMany?: Prisma.statusesScalarWhereInput | Prisma.statusesScalarWhereInput[];
   };
 
+export type statusesCreateNestedOneWithoutRemote_boostsInput = {
+  create?: Prisma.XOR<
+    Prisma.statusesCreateWithoutRemote_boostsInput,
+    Prisma.statusesUncheckedCreateWithoutRemote_boostsInput
+  >;
+  connectOrCreate?: Prisma.statusesCreateOrConnectWithoutRemote_boostsInput;
+  connect?: Prisma.statusesWhereUniqueInput;
+};
+
+export type statusesUpdateOneWithoutRemote_boostsNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.statusesCreateWithoutRemote_boostsInput,
+    Prisma.statusesUncheckedCreateWithoutRemote_boostsInput
+  >;
+  connectOrCreate?: Prisma.statusesCreateOrConnectWithoutRemote_boostsInput;
+  upsert?: Prisma.statusesUpsertWithoutRemote_boostsInput;
+  disconnect?: Prisma.statusesWhereInput | boolean;
+  delete?: Prisma.statusesWhereInput | boolean;
+  connect?: Prisma.statusesWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.statusesUpdateToOneWithWhereWithoutRemote_boostsInput,
+      Prisma.statusesUpdateWithoutRemote_boostsInput
+    >,
+    Prisma.statusesUncheckedUpdateWithoutRemote_boostsInput
+  >;
+};
+
 export type statusesCreateWithoutAccountsInput = {
   id: string;
   kind: string;
@@ -1331,6 +1366,7 @@ export type statusesCreateWithoutAccountsInput = {
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
@@ -1363,6 +1399,7 @@ export type statusesUncheckedCreateWithoutAccountsInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -1452,6 +1489,7 @@ export type statusesCreateWithoutBookmarksInput = {
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
@@ -1485,6 +1523,7 @@ export type statusesUncheckedCreateWithoutBookmarksInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -1540,6 +1579,7 @@ export type statusesUpdateWithoutBookmarksInput = {
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
@@ -1573,6 +1613,7 @@ export type statusesUncheckedUpdateWithoutBookmarksInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -1600,6 +1641,7 @@ export type statusesCreateWithoutFavouritesInput = {
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
@@ -1633,6 +1675,7 @@ export type statusesUncheckedCreateWithoutFavouritesInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -1688,6 +1731,7 @@ export type statusesUpdateWithoutFavouritesInput = {
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
@@ -1721,6 +1765,7 @@ export type statusesUncheckedUpdateWithoutFavouritesInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -1748,6 +1793,7 @@ export type statusesCreateWithoutMedia_attachmentsInput = {
   favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
@@ -1781,6 +1827,7 @@ export type statusesUncheckedCreateWithoutMedia_attachmentsInput = {
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -1836,6 +1883,7 @@ export type statusesUpdateWithoutMedia_attachmentsInput = {
   favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
@@ -1869,6 +1917,7 @@ export type statusesUncheckedUpdateWithoutMedia_attachmentsInput = {
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -1896,6 +1945,7 @@ export type statusesCreateWithoutPollsInput = {
   favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
@@ -1929,6 +1979,7 @@ export type statusesUncheckedCreateWithoutPollsInput = {
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -1984,6 +2035,7 @@ export type statusesUpdateWithoutPollsInput = {
   favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
@@ -2017,6 +2069,7 @@ export type statusesUncheckedUpdateWithoutPollsInput = {
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -2044,6 +2097,7 @@ export type statusesCreateWithoutRemote_announcesInput = {
   favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
@@ -2077,6 +2131,7 @@ export type statusesUncheckedCreateWithoutRemote_announcesInput = {
   favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -2132,6 +2187,7 @@ export type statusesUpdateWithoutRemote_announcesInput = {
   favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
@@ -2165,6 +2221,7 @@ export type statusesUncheckedUpdateWithoutRemote_announcesInput = {
   favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -2193,6 +2250,7 @@ export type statusesCreateWithoutRemote_favouritesInput = {
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
   statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesInput;
@@ -2226,6 +2284,7 @@ export type statusesUncheckedCreateWithoutRemote_favouritesInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
@@ -2281,6 +2340,7 @@ export type statusesUpdateWithoutRemote_favouritesInput = {
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
   statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesNestedInput;
@@ -2314,6 +2374,7 @@ export type statusesUncheckedUpdateWithoutRemote_favouritesInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
@@ -2341,6 +2402,7 @@ export type statusesCreateWithoutStatus_remote_mentionsInput = {
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
   statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesInput;
@@ -2374,6 +2436,7 @@ export type statusesUncheckedCreateWithoutStatus_remote_mentionsInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
@@ -2429,6 +2492,7 @@ export type statusesUpdateWithoutStatus_remote_mentionsInput = {
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
   statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesNestedInput;
@@ -2462,6 +2526,7 @@ export type statusesUncheckedUpdateWithoutStatus_remote_mentionsInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
@@ -2489,6 +2554,7 @@ export type statusesCreateWithoutStatus_mentionsInput = {
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
   statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesInput;
@@ -2522,6 +2588,7 @@ export type statusesUncheckedCreateWithoutStatus_mentionsInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
@@ -2577,6 +2644,7 @@ export type statusesUpdateWithoutStatus_mentionsInput = {
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
   statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesNestedInput;
@@ -2610,6 +2678,7 @@ export type statusesUncheckedUpdateWithoutStatus_mentionsInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
@@ -2636,6 +2705,7 @@ export type statusesCreateWithoutStatus_quotesInput = {
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
@@ -2669,6 +2739,7 @@ export type statusesUncheckedCreateWithoutStatus_quotesInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -2724,6 +2795,7 @@ export type statusesUpdateWithoutStatus_quotesInput = {
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
@@ -2757,6 +2829,7 @@ export type statusesUncheckedUpdateWithoutStatus_quotesInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -2784,6 +2857,7 @@ export type statusesCreateWithoutStatus_quote_policiesInput = {
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
@@ -2817,6 +2891,7 @@ export type statusesUncheckedCreateWithoutStatus_quote_policiesInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -2872,6 +2947,7 @@ export type statusesUpdateWithoutStatus_quote_policiesInput = {
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
@@ -2905,6 +2981,7 @@ export type statusesUncheckedUpdateWithoutStatus_quote_policiesInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -2933,6 +3010,7 @@ export type statusesCreateWithoutOther_statuses_statuses_in_reply_to_idTostatuse
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
@@ -2966,6 +3044,7 @@ export type statusesUncheckedCreateWithoutOther_statuses_statuses_in_reply_to_id
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -3001,6 +3080,7 @@ export type statusesCreateWithoutStatuses_statuses_in_reply_to_idTostatusesInput
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
@@ -3033,6 +3113,7 @@ export type statusesUncheckedCreateWithoutStatuses_statuses_in_reply_to_idTostat
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -3075,6 +3156,7 @@ export type statusesCreateWithoutOther_statuses_statuses_reblog_of_idTostatusesI
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
@@ -3108,6 +3190,7 @@ export type statusesUncheckedCreateWithoutOther_statuses_statuses_reblog_of_idTo
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -3143,6 +3226,7 @@ export type statusesCreateWithoutStatuses_statuses_reblog_of_idTostatusesInput =
   media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
@@ -3175,6 +3259,7 @@ export type statusesUncheckedCreateWithoutStatuses_statuses_reblog_of_idTostatus
   media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
   polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
   remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
   status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
@@ -3238,6 +3323,7 @@ export type statusesUpdateWithoutOther_statuses_statuses_in_reply_to_idTostatuse
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
@@ -3271,6 +3357,7 @@ export type statusesUncheckedUpdateWithoutOther_statuses_statuses_in_reply_to_id
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -3347,6 +3434,7 @@ export type statusesUpdateWithoutOther_statuses_statuses_reblog_of_idTostatusesI
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
@@ -3380,6 +3468,7 @@ export type statusesUncheckedUpdateWithoutOther_statuses_statuses_reblog_of_idTo
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -3412,6 +3501,158 @@ export type statusesUpdateManyWithWhereWithoutStatuses_statuses_reblog_of_idTost
     Prisma.statusesUpdateManyMutationInput,
     Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesInput
   >;
+};
+
+export type statusesCreateWithoutRemote_boostsInput = {
+  id: string;
+  kind: string;
+  ap_id?: string | null;
+  in_reply_to_uri?: string | null;
+  content_text?: string;
+  visibility: string;
+  sensitive?: number;
+  created_at?: string;
+  updated_at?: string;
+  spoiler_text?: string;
+  language?: string | null;
+  content_html?: string;
+  poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
+  bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
+  favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
+  media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
+  polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
+  remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
+  status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
+  status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
+  statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
+  statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
+};
+
+export type statusesUncheckedCreateWithoutRemote_boostsInput = {
+  id: string;
+  account_id: string;
+  kind: string;
+  ap_id?: string | null;
+  reblog_of_id?: string | null;
+  in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
+  content_text?: string;
+  visibility: string;
+  sensitive?: number;
+  created_at?: string;
+  updated_at?: string;
+  spoiler_text?: string;
+  language?: string | null;
+  content_html?: string;
+  poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
+  bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
+  favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
+  media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
+  polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
+  remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
+  status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
+  status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUncheckedCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+};
+
+export type statusesCreateOrConnectWithoutRemote_boostsInput = {
+  where: Prisma.statusesWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.statusesCreateWithoutRemote_boostsInput,
+    Prisma.statusesUncheckedCreateWithoutRemote_boostsInput
+  >;
+};
+
+export type statusesUpsertWithoutRemote_boostsInput = {
+  update: Prisma.XOR<
+    Prisma.statusesUpdateWithoutRemote_boostsInput,
+    Prisma.statusesUncheckedUpdateWithoutRemote_boostsInput
+  >;
+  create: Prisma.XOR<
+    Prisma.statusesCreateWithoutRemote_boostsInput,
+    Prisma.statusesUncheckedCreateWithoutRemote_boostsInput
+  >;
+  where?: Prisma.statusesWhereInput;
+};
+
+export type statusesUpdateToOneWithWhereWithoutRemote_boostsInput = {
+  where?: Prisma.statusesWhereInput;
+  data: Prisma.XOR<
+    Prisma.statusesUpdateWithoutRemote_boostsInput,
+    Prisma.statusesUncheckedUpdateWithoutRemote_boostsInput
+  >;
+};
+
+export type statusesUpdateWithoutRemote_boostsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  visibility?: Prisma.StringFieldUpdateOperationsInput | string;
+  sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  spoiler_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_html?: Prisma.StringFieldUpdateOperationsInput | string;
+  poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
+  bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
+  favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
+  media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
+  polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
+  remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
+  status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
+  status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
+  statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesNestedInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
+  statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
+};
+
+export type statusesUncheckedUpdateWithoutRemote_boostsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  visibility?: Prisma.StringFieldUpdateOperationsInput | string;
+  sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  spoiler_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_html?: Prisma.StringFieldUpdateOperationsInput | string;
+  poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
+  bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
+  favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
+  media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
+  polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
+  remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
+  status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
+  status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
 };
 
 export type statusesCreateManyAccountsInput = {
@@ -3453,6 +3694,7 @@ export type statusesUpdateWithoutAccountsInput = {
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
@@ -3485,6 +3727,7 @@ export type statusesUncheckedUpdateWithoutAccountsInput = {
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -3567,6 +3810,7 @@ export type statusesUpdateWithoutStatuses_statuses_in_reply_to_idTostatusesInput
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
@@ -3599,6 +3843,7 @@ export type statusesUncheckedUpdateWithoutStatuses_statuses_in_reply_to_idTostat
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -3645,6 +3890,7 @@ export type statusesUpdateWithoutStatuses_statuses_reblog_of_idTostatusesInput =
   media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
@@ -3677,6 +3923,7 @@ export type statusesUncheckedUpdateWithoutStatuses_statuses_reblog_of_idTostatus
   media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
   polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
   remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
   remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
   status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
@@ -3711,6 +3958,7 @@ export type StatusesCountOutputType = {
   favourites: number;
   media_attachments: number;
   remote_announces: number;
+  remote_boosts: number;
   remote_favourites: number;
   status_mentions: number;
   status_remote_mentions: number;
@@ -3725,6 +3973,7 @@ export type StatusesCountOutputTypeSelect<
   favourites?: boolean | StatusesCountOutputTypeCountFavouritesArgs;
   media_attachments?: boolean | StatusesCountOutputTypeCountMedia_attachmentsArgs;
   remote_announces?: boolean | StatusesCountOutputTypeCountRemote_announcesArgs;
+  remote_boosts?: boolean | StatusesCountOutputTypeCountRemote_boostsArgs;
   remote_favourites?: boolean | StatusesCountOutputTypeCountRemote_favouritesArgs;
   status_mentions?: boolean | StatusesCountOutputTypeCountStatus_mentionsArgs;
   status_remote_mentions?: boolean | StatusesCountOutputTypeCountStatus_remote_mentionsArgs;
@@ -3782,6 +4031,15 @@ export type StatusesCountOutputTypeCountRemote_announcesArgs<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
   where?: Prisma.remote_announcesWhereInput;
+};
+
+/**
+ * StatusesCountOutputType without action
+ */
+export type StatusesCountOutputTypeCountRemote_boostsArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  where?: Prisma.remote_boostsWhereInput;
 };
 
 /**
@@ -3856,6 +4114,7 @@ export type statusesSelect<
     media_attachments?: boolean | Prisma.statuses$media_attachmentsArgs<ExtArgs>;
     polls?: boolean | Prisma.statuses$pollsArgs<ExtArgs>;
     remote_announces?: boolean | Prisma.statuses$remote_announcesArgs<ExtArgs>;
+    remote_boosts?: boolean | Prisma.statuses$remote_boostsArgs<ExtArgs>;
     remote_favourites?: boolean | Prisma.statuses$remote_favouritesArgs<ExtArgs>;
     status_mentions?: boolean | Prisma.statuses$status_mentionsArgs<ExtArgs>;
     status_remote_mentions?: boolean | Prisma.statuses$status_remote_mentionsArgs<ExtArgs>;
@@ -3989,6 +4248,7 @@ export type statusesInclude<
   media_attachments?: boolean | Prisma.statuses$media_attachmentsArgs<ExtArgs>;
   polls?: boolean | Prisma.statuses$pollsArgs<ExtArgs>;
   remote_announces?: boolean | Prisma.statuses$remote_announcesArgs<ExtArgs>;
+  remote_boosts?: boolean | Prisma.statuses$remote_boostsArgs<ExtArgs>;
   remote_favourites?: boolean | Prisma.statuses$remote_favouritesArgs<ExtArgs>;
   status_mentions?: boolean | Prisma.statuses$status_mentionsArgs<ExtArgs>;
   status_remote_mentions?: boolean | Prisma.statuses$status_remote_mentionsArgs<ExtArgs>;
@@ -4042,6 +4302,7 @@ export type $statusesPayload<
     media_attachments: Prisma.$media_attachmentsPayload<ExtArgs>[];
     polls: Prisma.$pollsPayload<ExtArgs> | null;
     remote_announces: Prisma.$remote_announcesPayload<ExtArgs>[];
+    remote_boosts: Prisma.$remote_boostsPayload<ExtArgs>[];
     remote_favourites: Prisma.$remote_favouritesPayload<ExtArgs>[];
     status_mentions: Prisma.$status_mentionsPayload<ExtArgs>[];
     status_remote_mentions: Prisma.$status_remote_mentionsPayload<ExtArgs>[];
@@ -4681,6 +4942,17 @@ export interface Prisma__statusesClient<
   ): Prisma.PrismaPromise<
     | runtime.Types.Result.GetResult<
         Prisma.$remote_announcesPayload<ExtArgs>,
+        T,
+        "findMany",
+        GlobalOmitOptions
+      >
+    | Null
+  >;
+  remote_boosts<T extends Prisma.statuses$remote_boostsArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.statuses$remote_boostsArgs<ExtArgs>>,
+  ): Prisma.PrismaPromise<
+    | runtime.Types.Result.GetResult<
+        Prisma.$remote_boostsPayload<ExtArgs>,
         T,
         "findMany",
         GlobalOmitOptions
@@ -5440,6 +5712,34 @@ export type statuses$remote_announcesArgs<
   take?: number;
   skip?: number;
   distinct?: Prisma.Remote_announcesScalarFieldEnum | Prisma.Remote_announcesScalarFieldEnum[];
+};
+
+/**
+ * statuses.remote_boosts
+ */
+export type statuses$remote_boostsArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the remote_boosts
+   */
+  select?: Prisma.remote_boostsSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the remote_boosts
+   */
+  omit?: Prisma.remote_boostsOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.remote_boostsInclude<ExtArgs> | null;
+  where?: Prisma.remote_boostsWhereInput;
+  orderBy?:
+    | Prisma.remote_boostsOrderByWithRelationInput
+    | Prisma.remote_boostsOrderByWithRelationInput[];
+  cursor?: Prisma.remote_boostsWhereUniqueInput;
+  take?: number;
+  skip?: number;
+  distinct?: Prisma.Remote_boostsScalarFieldEnum | Prisma.Remote_boostsScalarFieldEnum[];
 };
 
 /**
