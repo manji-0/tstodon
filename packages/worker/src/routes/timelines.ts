@@ -25,6 +25,8 @@ import {
   listTagRemoteStatuses,
 } from "../remote-status-timeline-store";
 import { listRemoteStatusCards } from "../status-card-store";
+import { listHomeRemoteBoosts } from "../remote-boost-store";
+import { remoteBoostDocuments } from "../remote-boost-documents";
 import { listDirectStatusesForAccount } from "../direct-status-store";
 import { listHomeStatuses, listPublicStatuses } from "../status-timeline-store";
 import {
@@ -201,15 +203,28 @@ export const getV1TimelinesHome = async (
   }
   const limit = queryLimit(c.req.query("limit"));
   const cursor = queryCursor(c);
-  const [statuses, remote] = await Promise.all([
+  const [statuses, remote, boosts] = await Promise.all([
     listHomeStatuses(c.env.DB, user.value.id, limit, cursor),
     listHomeRemoteStatuses(c.env.DB, user.value.id, limit, cursor),
+    listHomeRemoteBoosts(c.env.DB, user.value.id, limit, cursor),
   ]);
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
   if (remote.isErr()) {
     return jsonRepositoryError(c, remote.error.message);
+  }
+  if (boosts.isErr()) {
+    return jsonRepositoryError(c, boosts.error.message);
+  }
+  const boostDocuments = await remoteBoostDocuments(
+    c.env,
+    identity.value,
+    boosts.value,
+    user.value.id,
+  );
+  if (boostDocuments.isErr()) {
+    return jsonRepositoryError(c, boostDocuments.error.message);
   }
   const visible = await filterMutedThreads(c.env.DB, user.value.id, statuses.value);
   if (visible.isErr()) {
@@ -247,7 +262,14 @@ export const getV1TimelinesHome = async (
     rendered.statuses,
     rendered.documents,
   );
-  return c.json(mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit));
+  return c.json(
+    mergeTimelineDocuments(
+      filteredLocal,
+      [...filteredRemote, ...boostDocuments.value],
+      cursor,
+      limit,
+    ),
+  );
 };
 
 /**

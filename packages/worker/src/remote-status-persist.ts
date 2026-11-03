@@ -12,6 +12,7 @@ import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { fetchActivityJson } from "./federated-fetch";
+import { resolveRemoteActor } from "./remote-actor-fetch";
 import { newEntityId } from "./ids";
 import { parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
 import { findAccountByUsername } from "./account-store";
@@ -173,39 +174,129 @@ export const applyMediaPolicy = async (
   return rejected.has(actor.domain.toLowerCase()) ? { ...status, media: [] } : status;
 };
 
+type PersistOptions = Readonly<{
+  allowHosts?: ReadonlySet<string>;
+  blockedHosts?: ReadonlySet<string>;
+  /** Notify the local accounts the note mentions, when it is newly stored (inbox `Create`). */
+  notifyMentions?: boolean;
+}>;
+
+type ObjectReference = string | Readonly<{ id: string } & Record<string, unknown>>;
+
+/** The cached remote status for `objectUri`, or `Local` for one of this instance's own. */
+const cachedRemoteStatus = async (
+  env: Env,
+  identity: InstanceIdentity,
+  objectUri: string,
+): Promise<Result<Readonly<{ kind: "Local" }> | RemoteStatusValue | undefined, RepositoryError>> =>
+  parseLocalStatusId(identity, objectUri)
+    ? ok({ kind: "Local" })
+    : findRemoteStatusByObjectUri(env.DB, objectUri);
+
 export const persistRemoteObject = async (
   env: Env,
   identity: InstanceIdentity,
   actor: RemoteActor,
-  object: string | Readonly<{ id: string } & Record<string, unknown>>,
-  options: Readonly<{
-    allowHosts?: ReadonlySet<string>;
-    /** Notify the local accounts the note mentions, when it is newly stored (inbox `Create`). */
-    notifyMentions?: boolean;
-  }> = {},
+  object: ObjectReference,
+  options: PersistOptions = {},
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
-  const objectUri = typeof object === "string" ? object : object.id;
-  if (parseLocalStatusId(identity, objectUri)) {
-    return ok(undefined);
-  }
-  const cached = await findRemoteStatusByObjectUri(env.DB, objectUri);
+  const cached = await cachedRemoteStatus(
+    env,
+    identity,
+    typeof object === "string" ? object : object.id,
+  );
   if (cached.isErr()) {
     return err(cached.error);
   }
   if (cached.value) {
-    return ok(cached.value);
+    return ok(cached.value.kind === "Local" ? undefined : cached.value);
   }
   const raw =
     typeof object === "string" ? await fetchActivityJson(identity, object, options) : ok(object);
   if (raw.isErr()) {
     return ok(undefined);
   }
-  const parsed = noteFromUnknown(raw.value, actor.actorUri);
+  return storeRemoteNote(env, identity, actor, raw.value, options);
+};
+
+/**
+ * The status an `Announce` shares, cached. The booster's own note may come
+ * embedded. Another actor's note is fetched from its URI, must name that URI
+ * as its id and come from its author's host, and is stored under its author,
+ * whose actor is resolved first, as Mastodon does.
+ */
+export const persistAnnouncedObject = async (
+  env: Env,
+  identity: InstanceIdentity,
+  announcer: RemoteActor,
+  object: ObjectReference,
+  options: PersistOptions = {},
+): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
+  const objectUri = typeof object === "string" ? object : object.id;
+  const cached = await cachedRemoteStatus(env, identity, objectUri);
+  if (cached.isErr()) {
+    return err(cached.error);
+  }
+  if (cached.value) {
+    return ok(cached.value.kind === "Local" ? undefined : cached.value);
+  }
+  if (typeof object !== "string") {
+    const embedded = parseNoteDocument(object);
+    if (embedded.isOk() && embedded.value.attributedTo === announcer.actorUri) {
+      return storeRemoteNote(env, identity, announcer, object, options);
+    }
+  }
+  const raw = await fetchActivityJson(identity, objectUri, options);
+  if (raw.isErr()) {
+    return ok(undefined);
+  }
+  const note = parseNoteDocument(raw.value);
+  if (note.isErr() || note.value.id !== objectUri) {
+    return ok(undefined);
+  }
+  const authorUri = note.value.attributedTo;
+  if (authorUri === announcer.actorUri) {
+    return storeRemoteNote(env, identity, announcer, raw.value, options);
+  }
+  const authorHost = urlHost(authorUri);
+  if (authorHost === undefined || authorHost !== urlHost(objectUri)) {
+    return ok(undefined);
+  }
+  const author = await resolveRemoteActor(
+    env.DB,
+    identity,
+    `${authorUri}#main-key`,
+    authorUri,
+    options,
+  );
+  if (author.isErr()) {
+    return author.error.kind === "RepositoryError" ? err(author.error) : ok(undefined);
+  }
+  return storeRemoteNote(env, identity, author.value, raw.value, options);
+};
+
+const urlHost = (href: string): string | undefined => {
+  try {
+    return new URL(href).host.toLowerCase();
+  } catch {
+    return undefined;
+  }
+};
+
+/** Store a note document `actor` wrote, with its mentions and a queued preview card. */
+const storeRemoteNote = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+  raw: unknown,
+  options: PersistOptions,
+): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
+  const parsed = noteFromUnknown(raw, actor.actorUri);
   if (parsed.isErr()) {
     return parsed.error.kind === "RepositoryError" ? err(parsed.error) : ok(undefined);
   }
   const status = await applyMediaPolicy(env, actor, parsed.value);
-  const note = parseNoteDocument(raw.value);
+  const note = parseNoteDocument(raw);
   const inReplyTo = note.isOk() ? (note.value.inReplyTo ?? undefined) : undefined;
   const stored = await upsertRemoteStatus(env.DB, status, inReplyTo);
   if (stored.isErr()) {
@@ -216,7 +307,7 @@ export const persistRemoteObject = async (
     env,
     identity,
     actor,
-    raw.value,
+    raw,
     stored.value.id,
     options.notifyMentions === true,
   );

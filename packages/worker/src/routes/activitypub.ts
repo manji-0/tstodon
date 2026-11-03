@@ -36,7 +36,9 @@ import {
 } from "../remote-actor-store";
 import { RemoteDeleteTarget } from "../remote-delete";
 import { applyRemoteUpdate } from "../remote-update";
-import { persistRemoteObject } from "../remote-status-persist";
+import { persistAnnouncedObject, persistRemoteObject } from "../remote-status-persist";
+import { recordRemoteBoost } from "../remote-boost";
+import { deleteRemoteBoostByActivity } from "../remote-boost-store";
 import { handleRemotePollVote } from "../remote-poll-vote";
 import { deleteRemoteStatusByObjectUri } from "../remote-status-store";
 import {
@@ -511,6 +513,15 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
           statusId,
         });
       }
+      // The boost row is keyed by the Announce id, whether the Undo embeds it or names it.
+      const undone = await deleteRemoteBoostByActivity(
+        c.env.DB,
+        objectUriOf(activityJson.value.object),
+        signer.actor.actorUri,
+      );
+      if (undone.isErr()) {
+        return jsonRepositoryError(c, undone.error.message);
+      }
       if (statusId && nested?.type === "Announce") {
         await deleteRemoteAnnounce(c.env.DB, signer.actor.actorUri, statusId);
         await deleteRemoteNotifications(c.env.DB, {
@@ -561,23 +572,44 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       activity.kind === "Create"
         ? await handleRemotePollVote(c.env, identity.value, signer.actor, activityJson.value.object)
         : undefined;
-    if (pollVote?.kind === "NotAVote" || activity.kind === "Announce") {
+    if (pollVote?.kind === "NotAVote") {
       await persistRemoteObject(c.env, identity.value, signer.actor, activityJson.value.object, {
         allowHosts: await federationAllowHosts(c.env),
-        notifyMentions: activity.kind === "Create",
+        notifyMentions: true,
       });
-      if (activity.kind === "Announce") {
-        const statusId = parseLocalStatusId(identity.value, activity.object);
-        if (statusId) {
-          const announced = await upsertRemoteAnnounce(
-            c.env.DB,
-            signer.actor.actorUri,
-            statusId,
-            activity.id,
-          );
-          if (announced.isOk() && announced.value) {
-            await notifyStatusAuthor(c.env, signer.actor.actorUri, statusId, "reblog");
-          }
+    }
+    if (activity.kind === "Announce") {
+      const announced = await persistAnnouncedObject(
+        c.env,
+        identity.value,
+        signer.actor,
+        activityJson.value.object,
+        { allowHosts: await federationAllowHosts(c.env), blockedHosts: suspended },
+      );
+      if (announced.isErr()) {
+        return jsonRepositoryError(c, announced.error.message);
+      }
+      const boosted = await recordRemoteBoost(
+        c.env.DB,
+        identity.value,
+        signer.actor.actorUri,
+        activity,
+        activityJson.value,
+        announced.value,
+      );
+      if (boosted.isErr()) {
+        return jsonRepositoryError(c, boosted.error.message);
+      }
+      const statusId = parseLocalStatusId(identity.value, activity.object);
+      if (statusId) {
+        const counted = await upsertRemoteAnnounce(
+          c.env.DB,
+          signer.actor.actorUri,
+          statusId,
+          activity.id,
+        );
+        if (counted.isOk() && counted.value) {
+          await notifyStatusAuthor(c.env, signer.actor.actorUri, statusId, "reblog");
         }
       }
     }
