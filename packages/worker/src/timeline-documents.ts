@@ -1,7 +1,6 @@
 import type { InstanceIdentity, LocalStatus, RemoteNote } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { restrictedDomains, suspendedDomains } from "./admin-domain-block-store";
-import { listSuppressedAuthors } from "./block-mute-store";
 import type { RepositoryError } from "./d1";
 import { listBlockedDomains } from "./domain-block-store";
 import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "./filter-match";
@@ -122,7 +121,9 @@ export type TimelineScopes = Readonly<{ local: boolean; remote: boolean }>;
 /**
  * Local and remote statuses of a public surface (the public or a tag
  * timeline), rendered for the viewer with `filtered` under the `public`
- * context, newest first.
+ * context, newest first. The queries already leave out the authors the
+ * viewer blocks or mutes (and local ones who block the viewer), as
+ * Mastodon's public feeds do, so a page is never cut short by them.
  */
 const publicSurfaceDocuments = async (
   env: Env,
@@ -143,28 +144,16 @@ const publicSurfaceDocuments = async (
   if (remoteStatuses.isErr()) {
     return err(remoteStatuses.error);
   }
-  // As in Mastodon's public feeds, authors the viewer blocks or mutes (and
-  // local ones who block the viewer) stay out.
-  const suppressed = viewerId ? await listSuppressedAuthors(env.DB, viewerId) : ok(undefined);
-  if (suppressed.isErr()) {
-    return err(suppressed.error);
-  }
-  const visibleLocal = localStatuses.value.filter(
-    (status) => !suppressed.value?.accountIds.has(status.accountId),
-  );
-  const visibleRemote = remoteStatuses.value.filter(
-    (status) => !suppressed.value?.actorUris.has(status.actorUri),
-  );
   const rendered =
-    visibleRemote.length === 0
+    remoteStatuses.value.length === 0
       ? { statuses: [], documents: [] }
-      : await remoteTimelineDocuments(env, identity, visibleRemote, viewerId);
+      : await remoteTimelineDocuments(env, identity, remoteStatuses.value, viewerId);
   const filteredLocal = await attachFilteredToStatuses(
     env.DB,
     viewerId,
     "public",
-    visibleLocal,
-    await mastodonStatuses(env, identity, visibleLocal, viewerId),
+    localStatuses.value,
+    await mastodonStatuses(env, identity, localStatuses.value, viewerId),
   );
   const filteredRemote = await attachFilteredToRemoteStatuses(
     env.DB,
@@ -194,9 +183,11 @@ export const publicTimelineDocuments = (
     env,
     identity,
     viewerId,
-    options.scopes.local ? listPublicStatuses(env.DB, limit, cursor, options.onlyMedia) : undefined,
+    options.scopes.local
+      ? listPublicStatuses(env.DB, viewerId, limit, cursor, options.onlyMedia)
+      : undefined,
     options.scopes.remote
-      ? listPublicRemoteStatuses(env.DB, limit, {
+      ? listPublicRemoteStatuses(env.DB, viewerId, limit, {
           onlyId: cursor.onlyId,
           onlyMedia: options.onlyMedia,
         })
@@ -222,9 +213,11 @@ export const tagTimelineDocuments = (
     env,
     identity,
     viewerId,
-    options.scopes.local ? listTagStatuses(env.DB, tag, limit, cursor, options.filters) : undefined,
+    options.scopes.local
+      ? listTagStatuses(env.DB, viewerId, tag, limit, cursor, options.filters)
+      : undefined,
     options.scopes.remote
-      ? listTagRemoteStatuses(env.DB, tag, limit, cursor, options.filters)
+      ? listTagRemoteStatuses(env.DB, viewerId, tag, limit, cursor, options.filters)
       : undefined,
     limit,
     cursor,

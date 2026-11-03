@@ -1,5 +1,6 @@
 import { type RemoteStatus } from "@tstodon/domain";
 import type { Result } from "neverthrow";
+import { SUPPRESSED_ACTOR_URIS_SQL } from "./block-mute-store";
 import { nowIso } from "./clock";
 import { type RepositoryError, runD1 } from "./d1";
 import { listPublicRemoteStatuses as listPublicRemoteStatusesSql } from "./generated/prisma/sql";
@@ -208,13 +209,20 @@ export const listActorRemoteStatuses = async (
  */
 export const listPublicRemoteStatuses = async (
   db: D1Database,
+  viewerId: string | undefined,
   limit: number,
   options: Readonly<{ onlyId?: string | undefined; onlyMedia: boolean }>,
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
     const results = await queryTyped(
       db,
-      listPublicRemoteStatusesSql(limit, options.onlyId ?? "", options.onlyMedia ? 1 : 0),
+      listPublicRemoteStatusesSql(
+        limit,
+        options.onlyId ?? "",
+        options.onlyMedia ? 1 : 0,
+        viewerId ?? "",
+        nowIso(),
+      ),
     );
     const statuses: RemoteStatus[] = [];
     for (const raw of results) {
@@ -240,6 +248,7 @@ export const REMOTE_STATUS_SELECT = `s.id, s.actor_uri, s.object_uri, s.url, s.c
 
 export const listTagRemoteStatuses = async (
   db: D1Database,
+  viewerId: string | undefined,
   tag: string,
   limit: number,
   cursor: StatusCursor = {},
@@ -248,9 +257,11 @@ export const listTagRemoteStatuses = async (
   runD1(async () => {
     const conditions = [
       "s.visibility = 'public'",
+      `s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}`,
       "EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = ?)",
     ];
-    const binds: string[] = [tag.replace(/^#/, "").toLowerCase()];
+    const viewer = viewerId ?? "";
+    const binds: string[] = [viewer, viewer, nowIso(), tag.replace(/^#/, "").toLowerCase()];
     if (filters.any.length > 0) {
       conditions.push(
         `EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag IN (${filters.any.map(() => "?").join(", ")}))`,

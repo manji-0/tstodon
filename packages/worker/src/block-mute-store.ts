@@ -203,6 +203,17 @@ export const SUPPRESSED_ACCOUNT_IDS_SQL = `(
 )`;
 
 /**
+ * SQL fragment selecting the remote actor URIs a viewer must not see: the
+ * actors it blocks and its active mutes. Bind order: (viewerId, viewerId, nowIso).
+ */
+export const SUPPRESSED_ACTOR_URIS_SQL = `(
+  SELECT target_actor_uri FROM blocks WHERE blocker_account_id = ?
+  UNION
+  SELECT target_actor_uri FROM mutes
+    WHERE account_id = ? AND (expires_at IS NULL OR expires_at > ?)
+)`;
+
+/**
  * Who a viewer does not see posts from: local account ids (blocks either
  * way, active mutes) and remote actor URIs (their blocks and active mutes).
  */
@@ -223,12 +234,7 @@ export const listSuppressedAuthors = async (
         .bind(viewerId, viewerId, viewerId, now)
         .all<{ id: string }>(),
       db
-        .prepare(
-          `SELECT target_actor_uri AS uri FROM blocks WHERE blocker_account_id = ?
-           UNION
-           SELECT target_actor_uri FROM mutes
-           WHERE account_id = ? AND (expires_at IS NULL OR expires_at > ?)`,
-        )
+        .prepare(`SELECT target_actor_uri AS uri FROM ${SUPPRESSED_ACTOR_URIS_SQL}`)
         .bind(viewerId, viewerId, now)
         .all<{ uri: string }>(),
     ]),

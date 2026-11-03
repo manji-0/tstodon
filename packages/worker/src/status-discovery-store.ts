@@ -1,12 +1,14 @@
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { type RepositoryError, runD1 } from "./d1";
+import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import { hydrateStatusRows, statusSelect } from "./status-store";
 import {
   cursorFragment,
   MODERATED_ACCOUNTS_SQL,
   SEARCHABLE_ACCOUNTS_SQL,
   type StatusCursor,
+  suppressedBinds,
   WITH_MEDIA_SQL,
 } from "./status-timeline-store";
 
@@ -43,8 +45,10 @@ export const matchesTagFilters = (
   return !filters.none.some(has);
 };
 
+/** Public local notes tagged `tag`, without the authors `viewerId` must not see. */
 export const listTagStatuses = async (
   db: D1Database,
+  viewerId: string | undefined,
   tag: string,
   limit: number,
   cursor: StatusCursor = {},
@@ -76,12 +80,14 @@ export const listTagStatuses = async (
     const onlyMedia = filters.onlyMedia ? ` ${WITH_MEDIA_SQL}` : "";
     const sql = `SELECT ${statusSelect} FROM statuses
          WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
+           AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
            AND (content_text LIKE ? ${ESCAPE} OR content_text LIKE ? ${ESCAPE})
            ${contains(filters.any)}${containsAll(filters.all)}${excludes(filters.none)}${onlyMedia}
          ${where} ${order} LIMIT ?`;
     const { results } = await db
       .prepare(sql)
       .bind(
+        ...suppressedBinds(viewerId),
         ...patterns([tag]),
         ...patterns(filters.any),
         ...patterns(filters.all),

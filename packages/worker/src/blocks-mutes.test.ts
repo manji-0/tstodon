@@ -137,6 +137,31 @@ describe("blocks and mutes", () => {
     }
   });
 
+  it("fills a public or tag page past blocked and muted authors", async () => {
+    const bId = await accountIdFor("blk-page-b@example.com");
+    const cId = await accountIdFor("blk-page-c@example.com");
+    const older = [
+      await postStatus("blk-page-d@example.com", "older one #blkpage"),
+      await postStatus("blk-page-d@example.com", "older two #blkpage"),
+    ];
+    await postStatus("blk-page-b@example.com", "newer from b #blkpage");
+    await postStatus("blk-page-c@example.com", "newer from c #blkpage");
+    expect((await action("blk-page-a@example.com", bId, "block")).status).toBe(200);
+    expect((await action("blk-page-a@example.com", cId, "mute")).status).toBe(200);
+
+    for (const path of [
+      "/api/v1/timelines/tag/blkpage?limit=2",
+      "/api/v1/timelines/public?local=true&limit=2",
+    ]) {
+      const response = await json(path, { headers: await auth("blk-page-a@example.com") });
+      expect(response.status).toBe(200);
+      const ids = read(z.array(MastodonStatusPreviewSchema), response.body).map(
+        (status) => status.id,
+      );
+      expect(ids).toEqual([older[1]?.id, older[0]?.id]);
+    }
+  });
+
   it("mutes timeline content and gates notifications separately", async () => {
     await accountIdFor("mute-a@example.com");
     const bId = await accountIdFor("mute-b@example.com");

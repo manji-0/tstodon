@@ -23,8 +23,10 @@ export const cursorFragment = idCursorFragment;
 /** Media-only timelines keep statuses with an attachment, as `only_media` asks. */
 export const WITH_MEDIA_SQL = `AND id IN (SELECT status_id FROM media_attachments WHERE status_id IS NOT NULL)`;
 
+/** Public local statuses, without the authors `viewerId` must not see. */
 export const listPublicStatuses = async (
   db: D1Database,
+  viewerId: string | undefined,
   limit: number,
   cursor: StatusCursor = {},
   onlyMedia = false,
@@ -34,12 +36,19 @@ export const listPublicStatuses = async (
     const media = onlyMedia ? WITH_MEDIA_SQL : "";
     const { results } = await db
       .prepare(
-        `SELECT ${statusSelect} FROM statuses WHERE visibility = 'public' ${MODERATED_ACCOUNTS_SQL} ${media} ${where} ${order} LIMIT ?`,
+        `SELECT ${statusSelect} FROM statuses WHERE visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
+         AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL} ${media} ${where} ${order} LIMIT ?`,
       )
-      .bind(...binds, limit)
+      .bind(...suppressedBinds(viewerId), ...binds, limit)
       .all();
     return hydrateStatusRows(db, results ?? []);
   });
+
+/** `SUPPRESSED_ACCOUNT_IDS_SQL`'s binds; an anonymous viewer suppresses nobody. */
+export const suppressedBinds = (viewerId: string | undefined): string[] => {
+  const viewer = viewerId ?? "";
+  return [viewer, viewer, viewer, nowIso()];
+};
 
 export const listHomeStatuses = async (
   db: D1Database,
