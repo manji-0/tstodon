@@ -10,6 +10,8 @@ import {
   WITH_MEDIA_SQL,
 } from "./status-timeline-store";
 
+const ESCAPE = "ESCAPE '\\'";
+
 /** Additional tag constraints on a tag timeline (`any[]`/`all[]`/`none[]`). */
 export type TagStatusFilters = Readonly<{
   any: ReadonlyArray<string>;
@@ -50,36 +52,37 @@ export const listTagStatuses = async (
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
     const { where, order, binds } = cursorFragment(cursor);
-    // Hashtags are matched case-insensitively, like the primary one.
+    // Hashtags are matched case-insensitively, like the primary one, and
+    // literally: a `_` in a tag is not a LIKE wildcard.
+    const like = (value: string): string => `%#${value.replace(/[\\%_]/g, "\\$&")}%`;
     const patterns = (tags: ReadonlyArray<string>): string[] =>
-      tags.flatMap((value) => [`%#${value}%`, `%#${value.toLowerCase()}%`]);
+      tags.flatMap((value) => [like(value), like(value.toLowerCase())]);
     const contains = (tags: ReadonlyArray<string>): string =>
       tags.length === 0
         ? ""
         : ` AND (${patterns(tags)
-            .map(() => "content_text LIKE ?")
+            .map(() => `content_text LIKE ? ${ESCAPE}`)
             .join(" OR ")})`;
     const containsAll = (tags: ReadonlyArray<string>): string =>
       tags.length === 0
         ? ""
-        : ` AND (${tags.map(() => "content_text LIKE ? AND content_text LIKE ?").join(" AND ")})`;
+        : ` AND (${tags.map(() => `content_text LIKE ? ${ESCAPE} AND content_text LIKE ? ${ESCAPE}`).join(" AND ")})`;
     const excludes = (tags: ReadonlyArray<string>): string =>
       tags.length === 0
         ? ""
         : ` AND ${patterns(tags)
-            .map(() => "content_text NOT LIKE ?")
+            .map(() => `content_text NOT LIKE ? ${ESCAPE}`)
             .join(" AND ")}`;
     const onlyMedia = filters.onlyMedia ? ` ${WITH_MEDIA_SQL}` : "";
     const sql = `SELECT ${statusSelect} FROM statuses
          WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
-           AND (content_text LIKE ? OR content_text LIKE ?)
+           AND (content_text LIKE ? ${ESCAPE} OR content_text LIKE ? ${ESCAPE})
            ${contains(filters.any)}${containsAll(filters.all)}${excludes(filters.none)}${onlyMedia}
          ${where} ${order} LIMIT ?`;
     const { results } = await db
       .prepare(sql)
       .bind(
-        `%#${tag}%`,
-        `%#${tag.toLowerCase()}%`,
+        ...patterns([tag]),
         ...patterns(filters.any),
         ...patterns(filters.all),
         ...patterns(filters.none),

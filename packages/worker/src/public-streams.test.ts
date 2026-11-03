@@ -195,6 +195,27 @@ describe("public streams", () => {
     cats.close();
   });
 
+  it("match a hashtag with an underscore literally, on the stream and the tag timeline", async () => {
+    const author = "ps-underscore-author@example.com";
+    const viewer = await openStream({ email: "ps-underscore-viewer@example.com" });
+    await viewer.subscribe({ stream: "hashtag", tag: "ps_under" });
+
+    const lookalike = await post(author, "a lookalike #psxunder");
+    const id = await post(author, "the real one #ps_under");
+
+    const heard = await viewer.next();
+    expect(heard.stream).toEqual(["hashtag", "ps_under"]);
+    expect(statusOf(heard).id).toBe(id);
+    const timeline = await json(author, "/api/v1/timelines/tag/ps_under");
+    expect(timeline.status).toBe(200);
+    const ids = schemaResult(z.array(StatusSchema))(timeline.body)
+      ._unsafeUnwrap()
+      .map((status) => status.id);
+    expect(ids).toContain(id);
+    expect(ids).not.toContain(lookalike);
+    viewer.close();
+  });
+
   it("carry a remote public note delivered live to public:remote, not a backfilled one", async () => {
     const actor = await remoteActor("ps-remote-actor");
     const remote = await openStream({
