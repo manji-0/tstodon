@@ -180,12 +180,12 @@ describe("remote actor deleting its account", () => {
       ).toBe(0);
     }
 
-    // Local counts come from local follows only and stay put.
+    // The deleted actor no longer counts as a follower; the one that stays does.
     const after = read(
       z.object({ followers_count: z.number(), following_count: z.number() }),
       await (await call(`/api/v1/accounts/${user.id}`)).json(),
     );
-    expect(after).toEqual(before);
+    expect(after).toEqual({ ...before, followers_count: before.followers_count - 1 });
   });
 
   it("acknowledges a repeated Delete from an actor that is already gone", async () => {
