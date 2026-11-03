@@ -3,6 +3,8 @@ export type IdCursor = Readonly<{
   maxId?: string | undefined;
   sinceId?: string | undefined;
   minId?: string | undefined;
+  /** Not a Mastodon cursor: the one entry with this id, for asking whether a timeline holds it. */
+  onlyId?: string | undefined;
 }>;
 
 /**
@@ -13,6 +15,10 @@ export type IdCursor = Readonly<{
 export const idCursorFragment = (
   cursor: IdCursor = {},
 ): Readonly<{ where: string; order: string; binds: string[] }> => {
+  const onlyId = cursor.onlyId ?? "";
+  if (onlyId.length > 0) {
+    return { where: "AND id = ?", order: "", binds: [onlyId] };
+  }
   const minId = cursor.minId ?? "";
   if (minId.length > 0) {
     return { where: "AND id > ?", order: "ORDER BY id ASC", binds: [minId] };
