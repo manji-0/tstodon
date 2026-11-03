@@ -10,6 +10,8 @@ export * from "./sql/authorizeFollowRequest";
 
 export * from "./sql/authorizeRemoteFollowRequest";
 
+export * from "./sql/claimPollUpdate";
+
 export * from "./sql/clearAccountSensitized";
 
 export * from "./sql/clearNotifications";
@@ -499,6 +501,8 @@ export * from "./sql/purgeRemoteActorRequestGroups";
 export * from "./sql/rejectFollowRequest";
 
 export * from "./sql/rejectRemoteFollowRequest";
+
+export * from "./sql/releasePollUpdate";
 
 export * from "./sql/releaseStatusIdempotency";
 
