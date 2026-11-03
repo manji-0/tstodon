@@ -6,6 +6,7 @@ import { listPublicRemoteStatuses as listPublicRemoteStatusesSql } from "./gener
 import type { StatusCursor } from "./status-timeline-store";
 import type { TagStatusFilters } from "./status-discovery-store";
 import { queryTyped } from "./typed-sql";
+import { idCursorFragment } from "./id-cursor";
 import { parseRemoteStatusRow, remoteStatusFromRow } from "./remote-status-store";
 
 /**
@@ -48,6 +49,65 @@ export const listRemoteDirectStatusesForAccount = async (
          ORDER BY s.id DESC LIMIT ?`,
       )
       .bind(...binds)
+      .all();
+    const statuses: RemoteStatus[] = [];
+    for (const raw of results ?? []) {
+      const row = parseRemoteStatusRow(raw);
+      if (row.isErr()) {
+        continue;
+      }
+      const parsed = remoteStatusFromRow(row.value);
+      if (parsed.isOk()) {
+        statuses.push(parsed.value);
+      }
+    }
+    return statuses;
+  });
+
+/**
+ * Remote statuses on the account's home timeline: the public, unlisted, and
+ * followers-only notes of actors it follows (accepted), newest first. A
+ * follow with `languages[]` keeps statuses in those languages only (and ones
+ * without a language). Actors the account blocks or mutes, domains it blocks,
+ * and suspended domains stay out; silenced ones are still shown to followers,
+ * as in Mastodon.
+ */
+export const listHomeRemoteStatuses = async (
+  db: D1Database,
+  accountId: string,
+  limit: number,
+  cursor: StatusCursor = {},
+): Promise<Result<RemoteStatus[], RepositoryError>> =>
+  runD1(async () => {
+    const { where, order, binds } = idCursorFragment(cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT ${REMOTE_STATUS_SELECT} FROM (
+           SELECT s.* FROM remote_statuses s
+           JOIN outbound_follows f
+             ON f.actor_uri = s.actor_uri AND f.account_id = ? AND f.state = 'Accepted'
+           WHERE s.visibility <> 'direct'
+             AND NOT (
+               f.languages_json <> '[]'
+               AND COALESCE(s.language, '') <> ''
+               AND s.language NOT IN (SELECT value FROM json_each(f.languages_json))
+             )
+             AND s.actor_uri NOT IN (SELECT target_actor_uri FROM blocks WHERE blocker_account_id = ?)
+             AND s.actor_uri NOT IN (
+               SELECT target_actor_uri FROM mutes
+               WHERE account_id = ? AND (expires_at IS NULL OR expires_at > ?)
+             )
+             AND s.actor_uri NOT IN (
+               SELECT actor_uri FROM remote_actors
+               WHERE lower(domain) IN (
+                 SELECT lower(domain) FROM account_domain_blocks WHERE account_id = ?
+                 UNION
+                 SELECT lower(domain) FROM domain_blocks WHERE severity = 'suspend'
+               )
+             )
+         ) s WHERE 1 = 1 ${where} ${order} LIMIT ?`,
+      )
+      .bind(accountId, accountId, accountId, nowIso(), accountId, ...binds, limit)
       .all();
     const statuses: RemoteStatus[] = [];
     for (const raw of results ?? []) {

@@ -5,7 +5,7 @@ import type {
   RemoteNote,
 } from "@tstodon/domain";
 import { authenticate } from "../auth";
-import { restrictedDomains } from "../admin-domain-block-store";
+import { restrictedDomains, suspendedDomains } from "../admin-domain-block-store";
 import { listBlockedDomains } from "../domain-block-store";
 import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "../filter-match";
 import { cardDocument, parseCardJson } from "../link-card";
@@ -18,6 +18,7 @@ import { parseInstanceIdentity } from "../runtime-config";
 import { findRemoteActorsByUris } from "../remote-actor-store";
 import { attachRemoteReplyRefs } from "../status-documents";
 import {
+  listHomeRemoteStatuses,
   listLinkRemoteStatuses,
   listPublicRemoteStatuses,
   listRemoteDirectStatusesForAccount,
@@ -63,6 +64,8 @@ const remoteTimelineDocuments = async (
   viewerId: string | undefined,
   /** Direct notes already chosen for the viewer pass whatever their visibility. */
   visible: (status: RemoteNote) => boolean = remoteStatusVisible,
+  /** Instance domain blocks that hide statuses; followers still see silenced ones. */
+  hiddenDomains: (db: D1Database) => Promise<ReadonlySet<string>> = restrictedDomains,
 ): Promise<
   Readonly<{
     statuses: RemoteNote[];
@@ -74,7 +77,7 @@ const remoteTimelineDocuments = async (
   const blocked = new Set(
     (blockedDomains?.isOk() ? blockedDomains.value : []).map((domain) => domain.toLowerCase()),
   );
-  for (const domain of await restrictedDomains(c.env.DB)) {
+  for (const domain of await hiddenDomains(c.env.DB)) {
     blocked.add(domain);
   }
   const cards = await listRemoteStatusCards(
@@ -196,28 +199,55 @@ export const getV1TimelinesHome = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const statuses = await listHomeStatuses(
-    c.env.DB,
-    user.value.id,
-    queryLimit(c.req.query("limit")),
-    queryCursor(c),
-  );
+  const limit = queryLimit(c.req.query("limit"));
+  const cursor = queryCursor(c);
+  const [statuses, remote] = await Promise.all([
+    listHomeStatuses(c.env.DB, user.value.id, limit, cursor),
+    listHomeRemoteStatuses(c.env.DB, user.value.id, limit, cursor),
+  ]);
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
+  }
+  if (remote.isErr()) {
+    return jsonRepositoryError(c, remote.error.message);
   }
   const visible = await filterMutedThreads(c.env.DB, user.value.id, statuses.value);
   if (visible.isErr()) {
     return jsonRepositoryError(c, visible.error.message);
   }
-  return c.json(
-    await attachFilteredToStatuses(
-      c.env.DB,
-      user.value.id,
-      "home",
-      visible.value,
-      await mastodonStatuses(c.env, identity.value, visible.value, user.value.id),
-    ),
+  const filteredLocal = await attachFilteredToStatuses(
+    c.env.DB,
+    user.value.id,
+    "home",
+    visible.value,
+    await mastodonStatuses(c.env, identity.value, visible.value, user.value.id),
   );
+  const mutedRemote = await mutedThreadStatusIds(
+    c.env.DB,
+    identity.value,
+    user.value.id,
+    remote.value.map((status) => status.id),
+  );
+  if (mutedRemote.isErr()) {
+    return jsonRepositoryError(c, mutedRemote.error.message);
+  }
+  // The query already keeps followed actors' notes the viewer may see.
+  const rendered = await remoteTimelineDocuments(
+    c,
+    identity.value,
+    remote.value.filter((status) => !mutedRemote.value.has(status.id)),
+    user.value.id,
+    () => true,
+    suspendedDomains,
+  );
+  const filteredRemote = await attachFilteredToRemoteStatuses(
+    c.env.DB,
+    user.value.id,
+    "home",
+    rendered.statuses,
+    rendered.documents,
+  );
+  return c.json(mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit));
 };
 
 /**

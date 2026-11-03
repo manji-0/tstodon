@@ -1,4 +1,5 @@
 import {
+  OutboundFollow,
   Visibility,
   type LocalStatus,
   type RemoteStatus,
@@ -7,6 +8,7 @@ import {
 import { remoteStatusVisible } from "./remote-status-document";
 import { isAccountMentionedOnStatus } from "./mention-store";
 import { isAccountMentionedOnRemoteStatus } from "./mention-store";
+import { findOutboundFollow } from "./outbound-follow-store";
 import { relationshipFlags } from "./relationship-store";
 import { findStatusById } from "./status-store";
 
@@ -74,8 +76,9 @@ export const canViewStatus = async (
 };
 
 /**
- * A cached remote status: public and unlisted ones are open, and a direct or
- * followers-only one is shown to the local accounts it addresses.
+ * A cached remote status: public and unlisted ones are open, a followers-only
+ * one is shown to the author's accepted local followers, and a direct or
+ * followers-only one to the local accounts it addresses.
  */
 export const canViewRemoteStatus = async (
   db: D1Database,
@@ -87,6 +90,12 @@ export const canViewRemoteStatus = async (
   }
   if (!viewerId) {
     return false;
+  }
+  if (status.visibility.kind === "FollowersOnly") {
+    const follow = await findOutboundFollow(db, viewerId, status.actorUri);
+    if (follow.isOk() && OutboundFollow.relationship(follow.value).following) {
+      return true;
+    }
   }
   const mentioned = await isAccountMentionedOnRemoteStatus(db, status.id, viewerId);
   return mentioned.isOk() && mentioned.value;
