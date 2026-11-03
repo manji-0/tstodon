@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param idsJson
  */
 export const countFollowingByAccountIdsJson = $runtime.makeTypedQueryFactory(
-  "SELECT follower_account_id AS account_id, COUNT(*) AS count\nFROM follows\nWHERE kind = 'Accepted' AND follower_account_id IN (SELECT value FROM json_each($1))\nGROUP BY follower_account_id",
+  "SELECT account_id, COUNT(*) AS count\nFROM (\nSELECT follower_account_id AS account_id FROM follows\nWHERE kind = 'Accepted' AND follower_account_id IN (SELECT value FROM json_each($1))\nUNION ALL\nSELECT account_id FROM outbound_follows\nWHERE state = 'Accepted' AND account_id IN (SELECT value FROM json_each($1))\n)\nGROUP BY account_id",
 ) as (
   idsJson: string,
 ) => $runtime.TypedSql<

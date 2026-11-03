@@ -1,6 +1,7 @@
 import type { Context } from "hono";
-import { warmSchemas } from "@tstodon/core";
-import { InstanceIdentity, RemoteActor } from "@tstodon/domain";
+import { ok } from "neverthrow";
+import { assertNever, warmSchemas } from "@tstodon/core";
+import { InstanceIdentity, type LocalAccount, RemoteActor } from "@tstodon/domain";
 import { findAccountByIdOrUsername } from "../../account-store";
 import { enqueueTargetedActivity } from "../../delivery";
 import {
@@ -21,6 +22,7 @@ import { parseInstanceIdentity } from "../../runtime-config";
 import { followAccount, type FollowOptions, unfollowAccount } from "../../follow-store";
 import { relationshipFlags } from "../../relationship-store";
 import { notifyAccount } from "../../notify";
+import { followRemoteActor, unfollowRemoteActor } from "../../outbound-follow";
 import { isTruthy, stringList } from "../../form-values";
 import { z } from "zod";
 import { booleanish } from "../../form-values";
@@ -32,27 +34,17 @@ export const FollowBodySchema = z.object({
   languages: z.union([z.array(z.string()), z.string()]).optional(),
 });
 
-export const postV1AccountsByIdFollow = async (
-  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/follow">,
-) => {
-  const user = await requireUser(c);
-  if (user.isErr()) {
-    return jsonAuthError(c, user.error);
-  }
-  const target = await findAccountByIdOrUsername(c.env.DB, c.req.param("id") ?? "");
-  if (target.isErr()) {
-    return jsonRepositoryError(c, target.error.message);
-  }
-  if (!target.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  if (target.value.id === user.value.id) {
-    return c.json({ error: "Cannot follow yourself", kind: "InvalidFollow" }, 400);
-  }
-  // Mastodon's follow options: `reblogs`, `notify`, and `languages[]`.
+/**
+ * Mastodon's follow options: `reblogs`, `notify`, and `languages[]`. They
+ * arrive as form data; query parameters are accepted too. `undefined` when
+ * the body does not parse.
+ */
+const requestedFollowOptions = async (
+  c: Context<{ Bindings: Env }>,
+): Promise<FollowOptions | undefined> => {
   const followBody = await readOptionalBody(c, FollowBodySchema);
   if (followBody.isErr()) {
-    return jsonValidationError(c);
+    return undefined;
   }
   const languageValues = [
     ...(c.req.queries("languages[]") ?? []),
@@ -61,10 +53,9 @@ export const postV1AccountsByIdFollow = async (
   ]
     .map((language) => language.trim().toLowerCase())
     .filter((language) => /^[a-z]{2,3}(-[a-z0-9]+)?$/.test(language));
-  // The options arrive as form data; query parameters are accepted too.
   const reblogsRaw = followBody.value.reblogs ?? c.req.query("reblogs");
   const notifyRaw = followBody.value.notify ?? c.req.query("notify");
-  const followOptions: FollowOptions = {
+  return {
     ...(reblogsRaw === undefined ? {} : { reblogs: isTruthy(reblogsRaw) }),
     ...(notifyRaw === undefined ? {} : { notify: isTruthy(notifyRaw) }),
     ...(c.req.queries("languages[]") === undefined &&
@@ -73,6 +64,80 @@ export const postV1AccountsByIdFollow = async (
       ? {}
       : { languages: [...new Set(languageValues)] }),
   };
+};
+
+/** The cached remote actor an `r_…` account id names, when there is one. */
+const remoteTarget = async (db: D1Database, id: string) => {
+  const actorUri = RemoteAccountId.decode(id);
+  return actorUri.isErr() ? ok(undefined) : findRemoteActorByUri(db, actorUri.value);
+};
+
+const followRemote = async (
+  c: Context<{ Bindings: Env }>,
+  follower: LocalAccount,
+  targetId: string,
+) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const actor = await remoteTarget(c.env.DB, targetId);
+  if (actor.isErr()) {
+    return jsonRepositoryError(c, actor.error.message);
+  }
+  if (!actor.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const options = await requestedFollowOptions(c);
+  if (!options) {
+    return jsonValidationError(c);
+  }
+  const followed = await followRemoteActor(c.env, identity.value, follower, actor.value, options);
+  if (followed.isErr()) {
+    switch (followed.error.kind) {
+      case "RepositoryError":
+        return jsonRepositoryError(c, followed.error.message);
+      case "Blocked":
+      case "DomainBlocked":
+        return c.json({ error: "This action is not allowed", kind: followed.error.kind }, 403);
+      case "NotFederated":
+        return c.json(
+          { error: "This instance does not federate with that domain", kind: "Forbidden" },
+          403,
+        );
+      default:
+        return assertNever(followed.error);
+    }
+  }
+  const flags = await relationshipFlags(c.env.DB, follower.id, targetId);
+  if (flags.isErr()) {
+    return jsonRepositoryError(c, flags.error.message);
+  }
+  return c.json(mastodonRelationship(targetId, flags.value));
+};
+
+export const postV1AccountsByIdFollow = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/follow">,
+) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const targetId = c.req.param("id") ?? "";
+  const target = await findAccountByIdOrUsername(c.env.DB, targetId);
+  if (target.isErr()) {
+    return jsonRepositoryError(c, target.error.message);
+  }
+  if (!target.value) {
+    return followRemote(c, user.value, targetId);
+  }
+  if (target.value.id === user.value.id) {
+    return c.json({ error: "Cannot follow yourself", kind: "InvalidFollow" }, 400);
+  }
+  const followOptions = await requestedFollowOptions(c);
+  if (!followOptions) {
+    return jsonValidationError(c);
+  }
   const prior = await relationshipFlags(c.env.DB, user.value.id, target.value.id);
   const followed = await followAccount(
     c.env.DB,
@@ -103,6 +168,33 @@ export const postV1AccountsByIdFollow = async (
   return c.json(mastodonRelationship(target.value.id, flags.value));
 };
 
+const unfollowRemote = async (
+  c: Context<{ Bindings: Env }>,
+  follower: LocalAccount,
+  targetId: string,
+) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const actor = await remoteTarget(c.env.DB, targetId);
+  if (actor.isErr()) {
+    return jsonRepositoryError(c, actor.error.message);
+  }
+  if (!actor.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const unfollowed = await unfollowRemoteActor(c.env, identity.value, follower, actor.value);
+  if (unfollowed.isErr()) {
+    return jsonRepositoryError(c, unfollowed.error.message);
+  }
+  const flags = await relationshipFlags(c.env.DB, follower.id, targetId);
+  if (flags.isErr()) {
+    return jsonRepositoryError(c, flags.error.message);
+  }
+  return c.json(mastodonRelationship(targetId, flags.value));
+};
+
 export const postV1AccountsByIdUnfollow = async (
   c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/unfollow">,
 ) => {
@@ -110,12 +202,13 @@ export const postV1AccountsByIdUnfollow = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const target = await findAccountByIdOrUsername(c.env.DB, c.req.param("id") ?? "");
+  const targetId = c.req.param("id") ?? "";
+  const target = await findAccountByIdOrUsername(c.env.DB, targetId);
   if (target.isErr()) {
     return jsonRepositoryError(c, target.error.message);
   }
   if (!target.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    return unfollowRemote(c, user.value, targetId);
   }
   const unfollowed = await unfollowAccount(c.env.DB, user.value.id, target.value.id);
   if (unfollowed.isErr()) {

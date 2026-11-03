@@ -6,6 +6,7 @@ import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { parseJsonColumn } from "./json-column";
+import { RemoteAccountId } from "./remote-account-id";
 import { queryTyped, runTyped } from "./typed-sql";
 import {
   authorizeFollowRequest as authorizeFollowRequestSql,
@@ -236,6 +237,10 @@ export const followingAccountIds = async (
     return new Set(rows.map((row) => row.target_account_id));
   });
 
+/**
+ * Accepted follows of local accounts and of remote actors (as `r_…` ids), one
+ * list ordered by follow row id.
+ */
 export const listFollowing = async (
   db: D1Database,
   accountId: string,
@@ -246,10 +251,26 @@ export const listFollowing = async (
     const { where, order, binds } = idCursorFragment(cursor);
     const { results } = await db
       .prepare(
-        `SELECT id, target_account_id FROM follows
-         WHERE follower_account_id = ? AND kind = 'Accepted' ${where} ${order} LIMIT ?`,
+        `SELECT id, account_id, actor_uri FROM (
+           SELECT id, target_account_id AS account_id, NULL AS actor_uri FROM follows
+           WHERE follower_account_id = ? AND kind = 'Accepted'
+           UNION ALL
+           SELECT id, NULL, actor_uri FROM outbound_follows
+           WHERE account_id = ? AND state = 'Accepted'
+         ) WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )
-      .bind(accountId, ...binds, limit)
-      .all<{ id: string; target_account_id: string }>();
-    return (results ?? []).map((row) => ({ id: row.id, accountId: row.target_account_id }));
+      .bind(accountId, accountId, ...binds, limit)
+      .all();
+    return parseRows(
+      z.object({
+        id: z.string(),
+        account_id: z.string().nullable(),
+        actor_uri: z.string().nullable(),
+      }),
+      results,
+    ).flatMap((row) => {
+      const target =
+        row.account_id ?? (row.actor_uri ? RemoteAccountId.encode(row.actor_uri) : undefined);
+      return target ? [{ id: row.id, accountId: target }] : [];
+    });
   });

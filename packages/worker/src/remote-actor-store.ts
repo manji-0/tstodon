@@ -374,7 +374,7 @@ export const searchRemoteActors = async (
  * Forget a remote actor that deleted its account, and everything cached for it.
  *
  * Deleting the `remote_actors` row cascades to its statuses (and their tags and
- * mentions), follows and follow requests, favourites, announces, and the
+ * mentions), follows and follow requests both ways, favourites, announces, and the
  * mentions local notes made of it. Rows keyed by actor URI or `r_…` id without
  * a foreign key (notifications, blocks, mutes, endorsements, notes) go in the
  * same batch. Resolves to false when the actor was not cached.

@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  */
 export const accountCounts = $runtime.makeTypedQueryFactory(
-  "SELECT\n(SELECT COUNT(*) FROM follows WHERE target_account_id = $1 AND kind = 'Accepted') AS followers,\n(SELECT COUNT(*) FROM follows WHERE follower_account_id = $1 AND kind = 'Accepted') AS following,\n(SELECT COUNT(*) FROM statuses WHERE account_id = $1) AS statuses",
+  "SELECT\n(SELECT COUNT(*) FROM follows WHERE target_account_id = $1 AND kind = 'Accepted') AS followers,\n(SELECT COUNT(*) FROM follows WHERE follower_account_id = $1 AND kind = 'Accepted')\n+ (SELECT COUNT(*) FROM outbound_follows WHERE account_id = $1 AND state = 'Accepted') AS following,\n(SELECT COUNT(*) FROM statuses WHERE account_id = $1) AS statuses",
 ) as (accountId: string) => $runtime.TypedSql<accountCounts.Parameters, accountCounts.Result>;
 
 export namespace accountCounts {

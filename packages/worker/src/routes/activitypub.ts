@@ -65,6 +65,9 @@ import { notifyAccount, notifyFromRemote } from "../notify";
 import { findStatusById, insertLocalReblog } from "../status-store";
 import { nowInstant } from "../clock";
 import { newEntityId } from "../ids";
+import { outboundFollowAnswer } from "../outbound-follow";
+import { acceptOutboundFollow, rejectOutboundFollow } from "../outbound-follow-store";
+import { RemoteAccountId } from "../remote-account-id";
 
 const parseNestedActivityObject = schemaResult(NestedActivityObjectSchema);
 const parseActivityJson = schemaResult(ActivityJsonSchema);
@@ -268,6 +271,10 @@ export const getUsersByUsernameFollowing = async (
     ids.value.map((edge) => edge.accountId),
   );
   const items = ids.value.flatMap((edge) => {
+    const remote = RemoteAccountId.decode(edge.accountId);
+    if (remote.isOk()) {
+      return [remote.value];
+    }
     const target = targets.isOk() ? targets.value.get(edge.accountId) : undefined;
     return target ? [InstanceIdentity.actorUrl(identity.value, target.username)] : [];
   });
@@ -397,6 +404,26 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   }
   const activity = received.activity;
   if (signer.kind === "Remote") {
+    // The actor answers a local account's `Follow` of it.
+    if (activity.kind === "Accept" || activity.kind === "Reject") {
+      const answer = await outboundFollowAnswer(
+        c.env.DB,
+        identity.value,
+        signer.actor,
+        activity.object,
+        activityJson.value.object,
+      );
+      if (answer.isErr()) {
+        return jsonRepositoryError(c, answer.error.message);
+      }
+      const answered =
+        activity.kind === "Accept"
+          ? await acceptOutboundFollow(c.env.DB, answer.value)
+          : await rejectOutboundFollow(c.env.DB, answer.value);
+      if (answered.isErr()) {
+        return jsonRepositoryError(c, answered.error.message);
+      }
+    }
     if (activity.kind === "Follow") {
       const targetUsername = parseLocalActorUsername(identity.value, activity.object);
       const target = targetUsername

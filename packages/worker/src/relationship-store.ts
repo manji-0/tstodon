@@ -3,7 +3,9 @@ import { z } from "zod";
 import { parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
 import { nowIso } from "./clock";
 import { hostnameOf } from "./domain-block-store";
+import { OutboundFollow } from "@tstodon/domain";
 import { RemoteAccountId } from "./remote-account-id";
+import { outboundFollowFromRow } from "./outbound-follow-store";
 import { parseJsonColumn } from "./json-column";
 import { d1PrepareTyped, runTyped } from "./typed-sql";
 import {
@@ -14,6 +16,7 @@ import {
   findBlock as findBlockSql,
   findEndorsement as findEndorsementSql,
   findFollowKind as findFollowKindSql,
+  findOutboundFollow as findOutboundFollowSql,
   upsertAccountNote as upsertAccountNoteSql,
 } from "./generated/prisma/sql";
 
@@ -35,6 +38,17 @@ export type RelationshipFlags = Readonly<{
   languages: ReadonlyArray<string>;
 }>;
 
+/** The viewer's follow of a remote actor, in the shape of a local follow's flags. */
+const remoteOutgoing = (follow: OutboundFollow | undefined) =>
+  follow
+    ? {
+        ...OutboundFollow.relationship(follow),
+        reblogs: follow.reblogs,
+        notify: follow.notify,
+        languages: follow.languages,
+      }
+    : undefined;
+
 export const relationshipFlags = async (
   db: D1Database,
   viewerId: string,
@@ -52,13 +66,14 @@ export const relationshipFlags = async (
     d1PrepareTyped(db, findEndorsementSql(viewerId, targetId)),
     d1PrepareTyped(db, findAccountNoteSql(viewerId, targetId)),
     d1PrepareTyped(db, findAccountDomainBlockSql(viewerId, targetDomain ?? "")),
+    d1PrepareTyped(db, findOutboundFollowSql(viewerId, targetActorUri.unwrapOr(""))),
   ]);
   if (batched.isErr()) {
     return err(batched.error);
   }
   const first = <T>(schema: z.ZodType<T>, index: number): T | undefined =>
     parseRows(schema, batched.value[index]?.results)[0];
-  const outgoing = first(
+  const local = first(
     z.object({
       kind: z.string(),
       reblogs: z.number(),
@@ -67,6 +82,15 @@ export const relationshipFlags = async (
     }),
     0,
   );
+  const outgoing = local
+    ? {
+        following: local.kind === "Accepted",
+        requested: local.kind === "Pending",
+        reblogs: local.reblogs !== 0,
+        notify: local.notify !== 0,
+        languages: parseJsonColumn(z.array(z.string()), local.languages_json).unwrapOr([]),
+      }
+    : remoteOutgoing(outboundFollowFromRow(batched.value[8]?.results?.[0]));
   const incoming = first(z.object({ kind: z.string() }), 1);
   const blocking = (batched.value[2]?.results?.length ?? 0) > 0;
   const blockedBy = (batched.value[3]?.results?.length ?? 0) > 0;
@@ -75,14 +99,12 @@ export const relationshipFlags = async (
   const note = first(z.object({ note: z.string() }), 6)?.note ?? "";
   const domainBlocking = (batched.value[7]?.results?.length ?? 0) > 0;
   return ok({
-    following: outgoing?.kind === "Accepted",
-    showingReblogs: outgoing ? outgoing.reblogs !== 0 : true,
-    notifying: outgoing ? outgoing.notify !== 0 : false,
-    languages: outgoing
-      ? parseJsonColumn(z.array(z.string()), outgoing.languages_json).unwrapOr([])
-      : [],
+    following: outgoing?.following ?? false,
+    showingReblogs: outgoing?.reblogs ?? true,
+    notifying: outgoing?.notify ?? false,
+    languages: outgoing?.languages ?? [],
     followedBy: incoming?.kind === "Accepted",
-    requested: outgoing?.kind === "Pending",
+    requested: outgoing?.requested ?? false,
     blocking,
     blockedBy,
     muting: mute !== undefined,
