@@ -307,6 +307,20 @@ describe("backfilling a remote outbox", () => {
     expect(await storedCount(remote)).toBe(2);
   });
 
+  it("reads a Create's audience from its note when the activity has none", async () => {
+    const remote = await remoteActor("backfill-note-audience", "backfill.example");
+    const published = "2024-03-03T00:00:00.000Z";
+    const documents = new Map(
+      outboxDocuments(remote, [
+        createItem(remote, "note-audience", published, undefined, { to: undefined, cc: undefined }),
+      ]),
+    );
+
+    await serving(documents, () => runBackfill(remote));
+
+    expect(await profileUris(remote)).toEqual([noteUri(remote, "note-audience")]);
+  });
+
   it("ignores notes attributed to someone else, from another host, or not public", async () => {
     const remote = await remoteActor("backfill-foreign", "backfill.example");
     const other = await remoteActor("backfill-foreign-other", "backfill.example");

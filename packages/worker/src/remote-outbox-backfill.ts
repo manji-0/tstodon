@@ -101,12 +101,12 @@ const collectionItems = async (
   return parsed?.isOk() ? pageItems(parsed.value).slice(0, OUTBOX_BACKFILL_ITEM_LIMIT) : undefined;
 };
 
+const AudienceSchema = z.union([z.string(), z.array(z.string())]).optional();
+
 const ObjectReferenceSchema = z.union([
   z.string().min(1),
-  z.object({ id: z.string().min(1) }).passthrough(),
+  z.object({ id: z.string().min(1), to: AudienceSchema, cc: AudienceSchema }).passthrough(),
 ]);
-
-const AudienceSchema = z.union([z.string(), z.array(z.string())]).optional();
 
 const OutboxItemSchema = z.object({
   type: z.union([z.literal("Create"), z.literal("Announce")]),
@@ -146,9 +146,13 @@ const backfillOutboxItem = async (
     return;
   }
   const actorHost = urlHost(actor.actorUri);
+  const object = item.value.object;
+  // A `Create` is as visible as its note, as Mastodon reads it; servers
+  // (tstodon among them) may address only the note.
+  const audience = item.value.type === "Create" && typeof object !== "string" ? object : item.value;
   const visibility = RemoteStatus.visibilityFromAudience(
-    stringList(item.value.to),
-    stringList(item.value.cc),
+    stringList(audience.to),
+    stringList(audience.cc),
   );
   if (
     urlHost(item.value.id) !== actorHost ||
@@ -156,7 +160,6 @@ const backfillOutboxItem = async (
   ) {
     return;
   }
-  const object = item.value.object;
   const objectUri = typeof object === "string" ? object : object.id;
   const fromActorHost = urlHost(objectUri) === actorHost;
   const persist = { ...options, idClock: "Published" } as const;
