@@ -291,7 +291,17 @@ export const lookupAccountDocument = async (
       return err(actor.error);
     }
     if (actor.value) {
-      return ok({ kind: "Found", document: mastodonRemoteAccount(identity, actor.value) });
+      const moved = actor.value.movedTo
+        ? await findRemoteActorByUri(env.DB, actor.value.movedTo)
+        : undefined;
+      return ok({
+        kind: "Found",
+        document: mastodonRemoteAccount(
+          identity,
+          actor.value,
+          moved?.isOk() ? moved.value : undefined,
+        ),
+      });
     }
   }
   return ok({ kind: "NotFound" });

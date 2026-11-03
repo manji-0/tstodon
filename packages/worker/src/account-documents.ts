@@ -49,10 +49,21 @@ export const accountDocumentsByIds = async (
     }
   }
   if (actors.isOk()) {
+    const moved = await findRemoteActorsByUris(
+      env.DB,
+      [...actors.value.values()].flatMap((actor) => (actor.movedTo ? [actor.movedTo] : [])),
+    );
     for (const [actorUri, id] of remote) {
       const actor = actors.value.get(actorUri);
       if (actor) {
-        documents.set(id, mastodonRemoteAccount(identity, actor));
+        documents.set(
+          id,
+          mastodonRemoteAccount(
+            identity,
+            actor,
+            actor.movedTo && moved.isOk() ? moved.value.get(actor.movedTo) : undefined,
+          ),
+        );
       }
     }
   }
@@ -206,12 +217,18 @@ export const mastodonAccountDocuments = async (
   return documents;
 };
 
+/**
+ * A remote actor as a Mastodon account. `moved` is the actor it moved to, when
+ * it has moved and that actor is cached: Mastodon renders it as `moved`.
+ */
 export const mastodonRemoteAccount = (
   identity: InstanceIdentity,
   actor: RemoteActor,
+  moved?: RemoteActor,
 ): Record<string, unknown> => {
   const { profile } = actor;
   return {
+    ...(moved ? { moved: mastodonRemoteAccount(identity, moved) } : {}),
     id: RemoteAccountId.encode(actor.actorUri),
     username: actor.username,
     acct: `${actor.username}@${actor.domain}`,

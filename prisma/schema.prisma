@@ -536,6 +536,7 @@ model remote_actors {
   public_key_id     String              @unique(map: "sqlite_autoindex_remote_actors_2")
   public_key_pem    String
   display_name      String              @default("")
+  moved_to          String?
   fetched_at        String
   created_at        String              @default("CURRENT_TIMESTAMP")
   updated_at        String              @default("CURRENT_TIMESTAMP")

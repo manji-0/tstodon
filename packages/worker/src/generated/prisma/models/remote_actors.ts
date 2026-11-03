@@ -33,6 +33,7 @@ export type Remote_actorsMinAggregateOutputType = {
   public_key_id: string | null;
   public_key_pem: string | null;
   display_name: string | null;
+  moved_to: string | null;
   fetched_at: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -47,6 +48,7 @@ export type Remote_actorsMaxAggregateOutputType = {
   public_key_id: string | null;
   public_key_pem: string | null;
   display_name: string | null;
+  moved_to: string | null;
   fetched_at: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -61,6 +63,7 @@ export type Remote_actorsCountAggregateOutputType = {
   public_key_id: number;
   public_key_pem: number;
   display_name: number;
+  moved_to: number;
   fetched_at: number;
   created_at: number;
   updated_at: number;
@@ -76,6 +79,7 @@ export type Remote_actorsMinAggregateInputType = {
   public_key_id?: true;
   public_key_pem?: true;
   display_name?: true;
+  moved_to?: true;
   fetched_at?: true;
   created_at?: true;
   updated_at?: true;
@@ -90,6 +94,7 @@ export type Remote_actorsMaxAggregateInputType = {
   public_key_id?: true;
   public_key_pem?: true;
   display_name?: true;
+  moved_to?: true;
   fetched_at?: true;
   created_at?: true;
   updated_at?: true;
@@ -104,6 +109,7 @@ export type Remote_actorsCountAggregateInputType = {
   public_key_id?: true;
   public_key_pem?: true;
   display_name?: true;
+  moved_to?: true;
   fetched_at?: true;
   created_at?: true;
   updated_at?: true;
@@ -196,6 +202,7 @@ export type Remote_actorsGroupByOutputType = {
   public_key_id: string;
   public_key_pem: string;
   display_name: string;
+  moved_to: string | null;
   fetched_at: string;
   created_at: string;
   updated_at: string;
@@ -229,6 +236,7 @@ export type remote_actorsWhereInput = {
   public_key_id?: Prisma.StringFilter<"remote_actors"> | string;
   public_key_pem?: Prisma.StringFilter<"remote_actors"> | string;
   display_name?: Prisma.StringFilter<"remote_actors"> | string;
+  moved_to?: Prisma.StringNullableFilter<"remote_actors"> | string | null;
   fetched_at?: Prisma.StringFilter<"remote_actors"> | string;
   created_at?: Prisma.StringFilter<"remote_actors"> | string;
   updated_at?: Prisma.StringFilter<"remote_actors"> | string;
@@ -249,6 +257,7 @@ export type remote_actorsOrderByWithRelationInput = {
   public_key_id?: Prisma.SortOrder;
   public_key_pem?: Prisma.SortOrder;
   display_name?: Prisma.SortOrder;
+  moved_to?: Prisma.SortOrderInput | Prisma.SortOrder;
   fetched_at?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
@@ -273,6 +282,7 @@ export type remote_actorsWhereUniqueInput = Prisma.AtLeast<
     shared_inbox_uri?: Prisma.StringNullableFilter<"remote_actors"> | string | null;
     public_key_pem?: Prisma.StringFilter<"remote_actors"> | string;
     display_name?: Prisma.StringFilter<"remote_actors"> | string;
+    moved_to?: Prisma.StringNullableFilter<"remote_actors"> | string | null;
     fetched_at?: Prisma.StringFilter<"remote_actors"> | string;
     created_at?: Prisma.StringFilter<"remote_actors"> | string;
     updated_at?: Prisma.StringFilter<"remote_actors"> | string;
@@ -295,6 +305,7 @@ export type remote_actorsOrderByWithAggregationInput = {
   public_key_id?: Prisma.SortOrder;
   public_key_pem?: Prisma.SortOrder;
   display_name?: Prisma.SortOrder;
+  moved_to?: Prisma.SortOrderInput | Prisma.SortOrder;
   fetched_at?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
@@ -319,6 +330,7 @@ export type remote_actorsScalarWhereWithAggregatesInput = {
   public_key_id?: Prisma.StringWithAggregatesFilter<"remote_actors"> | string;
   public_key_pem?: Prisma.StringWithAggregatesFilter<"remote_actors"> | string;
   display_name?: Prisma.StringWithAggregatesFilter<"remote_actors"> | string;
+  moved_to?: Prisma.StringNullableWithAggregatesFilter<"remote_actors"> | string | null;
   fetched_at?: Prisma.StringWithAggregatesFilter<"remote_actors"> | string;
   created_at?: Prisma.StringWithAggregatesFilter<"remote_actors"> | string;
   updated_at?: Prisma.StringWithAggregatesFilter<"remote_actors"> | string;
@@ -333,6 +345,7 @@ export type remote_actorsCreateInput = {
   public_key_id: string;
   public_key_pem: string;
   display_name?: string;
+  moved_to?: string | null;
   fetched_at: string;
   created_at?: string;
   updated_at?: string;
@@ -353,6 +366,7 @@ export type remote_actorsUncheckedCreateInput = {
   public_key_id: string;
   public_key_pem: string;
   display_name?: string;
+  moved_to?: string | null;
   fetched_at: string;
   created_at?: string;
   updated_at?: string;
@@ -373,6 +387,7 @@ export type remote_actorsUpdateInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -393,6 +408,7 @@ export type remote_actorsUncheckedUpdateInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -413,6 +429,7 @@ export type remote_actorsCreateManyInput = {
   public_key_id: string;
   public_key_pem: string;
   display_name?: string;
+  moved_to?: string | null;
   fetched_at: string;
   created_at?: string;
   updated_at?: string;
@@ -427,6 +444,7 @@ export type remote_actorsUpdateManyMutationInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -441,6 +459,7 @@ export type remote_actorsUncheckedUpdateManyInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -455,6 +474,7 @@ export type remote_actorsCountOrderByAggregateInput = {
   public_key_id?: Prisma.SortOrder;
   public_key_pem?: Prisma.SortOrder;
   display_name?: Prisma.SortOrder;
+  moved_to?: Prisma.SortOrder;
   fetched_at?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
@@ -469,6 +489,7 @@ export type remote_actorsMaxOrderByAggregateInput = {
   public_key_id?: Prisma.SortOrder;
   public_key_pem?: Prisma.SortOrder;
   display_name?: Prisma.SortOrder;
+  moved_to?: Prisma.SortOrder;
   fetched_at?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
@@ -483,6 +504,7 @@ export type remote_actorsMinOrderByAggregateInput = {
   public_key_id?: Prisma.SortOrder;
   public_key_pem?: Prisma.SortOrder;
   display_name?: Prisma.SortOrder;
+  moved_to?: Prisma.SortOrder;
   fetched_at?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
@@ -658,6 +680,7 @@ export type remote_actorsCreateWithoutRemote_announcesInput = {
   public_key_id: string;
   public_key_pem: string;
   display_name?: string;
+  moved_to?: string | null;
   fetched_at: string;
   created_at?: string;
   updated_at?: string;
@@ -677,6 +700,7 @@ export type remote_actorsUncheckedCreateWithoutRemote_announcesInput = {
   public_key_id: string;
   public_key_pem: string;
   display_name?: string;
+  moved_to?: string | null;
   fetched_at: string;
   created_at?: string;
   updated_at?: string;
@@ -724,6 +748,7 @@ export type remote_actorsUpdateWithoutRemote_announcesInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -743,6 +768,7 @@ export type remote_actorsUncheckedUpdateWithoutRemote_announcesInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -762,6 +788,7 @@ export type remote_actorsCreateWithoutRemote_favouritesInput = {
   public_key_id: string;
   public_key_pem: string;
   display_name?: string;
+  moved_to?: string | null;
   fetched_at: string;
   created_at?: string;
   updated_at?: string;
@@ -781,6 +808,7 @@ export type remote_actorsUncheckedCreateWithoutRemote_favouritesInput = {
   public_key_id: string;
   public_key_pem: string;
   display_name?: string;
+  moved_to?: string | null;
   fetched_at: string;
   created_at?: string;
   updated_at?: string;
@@ -828,6 +856,7 @@ export type remote_actorsUpdateWithoutRemote_favouritesInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -847,6 +876,7 @@ export type remote_actorsUncheckedUpdateWithoutRemote_favouritesInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -866,6 +896,7 @@ export type remote_actorsCreateWithoutRemote_followsInput = {
   public_key_id: string;
   public_key_pem: string;
   display_name?: string;
+  moved_to?: string | null;
   fetched_at: string;
   created_at?: string;
   updated_at?: string;
@@ -885,6 +916,7 @@ export type remote_actorsUncheckedCreateWithoutRemote_followsInput = {
   public_key_id: string;
   public_key_pem: string;
   display_name?: string;
+  moved_to?: string | null;
   fetched_at: string;
   created_at?: string;
   updated_at?: string;
@@ -932,6 +964,7 @@ export type remote_actorsUpdateWithoutRemote_followsInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -951,6 +984,7 @@ export type remote_actorsUncheckedUpdateWithoutRemote_followsInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -970,6 +1004,7 @@ export type remote_actorsCreateWithoutRemote_statusesInput = {
   public_key_id: string;
   public_key_pem: string;
   display_name?: string;
+  moved_to?: string | null;
   fetched_at: string;
   created_at?: string;
   updated_at?: string;
@@ -989,6 +1024,7 @@ export type remote_actorsUncheckedCreateWithoutRemote_statusesInput = {
   public_key_id: string;
   public_key_pem: string;
   display_name?: string;
+  moved_to?: string | null;
   fetched_at: string;
   created_at?: string;
   updated_at?: string;
@@ -1036,6 +1072,7 @@ export type remote_actorsUpdateWithoutRemote_statusesInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -1055,6 +1092,7 @@ export type remote_actorsUncheckedUpdateWithoutRemote_statusesInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -1074,6 +1112,7 @@ export type remote_actorsCreateWithoutStatus_remote_mentionsInput = {
   public_key_id: string;
   public_key_pem: string;
   display_name?: string;
+  moved_to?: string | null;
   fetched_at: string;
   created_at?: string;
   updated_at?: string;
@@ -1093,6 +1132,7 @@ export type remote_actorsUncheckedCreateWithoutStatus_remote_mentionsInput = {
   public_key_id: string;
   public_key_pem: string;
   display_name?: string;
+  moved_to?: string | null;
   fetched_at: string;
   created_at?: string;
   updated_at?: string;
@@ -1140,6 +1180,7 @@ export type remote_actorsUpdateWithoutStatus_remote_mentionsInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -1159,6 +1200,7 @@ export type remote_actorsUncheckedUpdateWithoutStatus_remote_mentionsInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -1178,6 +1220,7 @@ export type remote_actorsCreateWithoutOutbound_followsInput = {
   public_key_id: string;
   public_key_pem: string;
   display_name?: string;
+  moved_to?: string | null;
   fetched_at: string;
   created_at?: string;
   updated_at?: string;
@@ -1197,6 +1240,7 @@ export type remote_actorsUncheckedCreateWithoutOutbound_followsInput = {
   public_key_id: string;
   public_key_pem: string;
   display_name?: string;
+  moved_to?: string | null;
   fetched_at: string;
   created_at?: string;
   updated_at?: string;
@@ -1244,6 +1288,7 @@ export type remote_actorsUpdateWithoutOutbound_followsInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -1263,6 +1308,7 @@ export type remote_actorsUncheckedUpdateWithoutOutbound_followsInput = {
   public_key_id?: Prisma.StringFieldUpdateOperationsInput | string;
   public_key_pem?: Prisma.StringFieldUpdateOperationsInput | string;
   display_name?: Prisma.StringFieldUpdateOperationsInput | string;
+  moved_to?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   fetched_at?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -1375,6 +1421,7 @@ export type remote_actorsSelect<
     public_key_id?: boolean;
     public_key_pem?: boolean;
     display_name?: boolean;
+    moved_to?: boolean;
     fetched_at?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
@@ -1401,6 +1448,7 @@ export type remote_actorsSelectCreateManyAndReturn<
     public_key_id?: boolean;
     public_key_pem?: boolean;
     display_name?: boolean;
+    moved_to?: boolean;
     fetched_at?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
@@ -1420,6 +1468,7 @@ export type remote_actorsSelectUpdateManyAndReturn<
     public_key_id?: boolean;
     public_key_pem?: boolean;
     display_name?: boolean;
+    moved_to?: boolean;
     fetched_at?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
@@ -1436,6 +1485,7 @@ export type remote_actorsSelectScalar = {
   public_key_id?: boolean;
   public_key_pem?: boolean;
   display_name?: boolean;
+  moved_to?: boolean;
   fetched_at?: boolean;
   created_at?: boolean;
   updated_at?: boolean;
@@ -1452,6 +1502,7 @@ export type remote_actorsOmit<
   | "public_key_id"
   | "public_key_pem"
   | "display_name"
+  | "moved_to"
   | "fetched_at"
   | "created_at"
   | "updated_at",
@@ -1497,6 +1548,7 @@ export type $remote_actorsPayload<
       public_key_id: string;
       public_key_pem: string;
       display_name: string;
+      moved_to: string | null;
       fetched_at: string;
       created_at: string;
       updated_at: string;
@@ -2144,6 +2196,7 @@ export interface remote_actorsFieldRefs {
   readonly public_key_id: Prisma.FieldRef<"remote_actors", "String">;
   readonly public_key_pem: Prisma.FieldRef<"remote_actors", "String">;
   readonly display_name: Prisma.FieldRef<"remote_actors", "String">;
+  readonly moved_to: Prisma.FieldRef<"remote_actors", "String">;
   readonly fetched_at: Prisma.FieldRef<"remote_actors", "String">;
   readonly created_at: Prisma.FieldRef<"remote_actors", "String">;
   readonly updated_at: Prisma.FieldRef<"remote_actors", "String">;

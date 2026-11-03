@@ -32,6 +32,7 @@ import {
   purgeRemoteActorRequestGroups as purgeRemoteActorRequestGroupsSql,
   rejectRemoteFollowRequest as rejectRemoteFollowRequestSql,
   searchRemoteActors as searchRemoteActorsSql,
+  setRemoteActorMovedTo as setRemoteActorMovedToSql,
   upsertRemoteActor as upsertRemoteActorSql,
   upsertRemoteFollow as upsertRemoteFollowSql,
 } from "./generated/prisma/sql";
@@ -46,6 +47,7 @@ export const RemoteActorRowSchema = z.object({
   public_key_pem: z.string().min(1),
   display_name: z.string(),
   profile_json: z.string().default("{}"),
+  moved_to: z.string().nullable().default(null),
   fetched_at: z.string().min(1),
 });
 
@@ -81,6 +83,7 @@ const remoteActorFromRow = (row: RemoteActorRow): Result<RemoteActor, Repository
     profile: profileFromJson(row.profile_json),
     fetchedAt: fetchedAt.value,
     ...(row.shared_inbox_uri ? { sharedInboxUri: row.shared_inbox_uri } : {}),
+    ...(row.moved_to ? { movedTo: row.moved_to } : {}),
   }).mapErr(() => toRepositoryError("invalid remote actor row"));
 };
 
@@ -191,6 +194,16 @@ export const upsertRemoteActor = async (
   }
   return ok(written.value);
 };
+
+/** Record that `actorUri` moved to `movedTo`; the caller has verified the move. */
+export const setRemoteActorMovedTo = async (
+  db: D1Database,
+  actorUri: string,
+  movedTo: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, setRemoteActorMovedToSql(actorUri, movedTo));
+  });
 
 export const upsertRemoteFollow = async (
   db: D1Database,

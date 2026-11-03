@@ -534,6 +534,8 @@ export * from "./sql/setAccountLocked";
 
 export * from "./sql/setAnnouncementPublished";
 
+export * from "./sql/setRemoteActorMovedTo";
+
 export * from "./sql/setRemoteStatusCard";
 
 export * from "./sql/setStatusReplyUri";

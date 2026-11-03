@@ -6257,6 +6257,7 @@ export const Remote_actorsScalarFieldEnum = {
   public_key_id: "public_key_id",
   public_key_pem: "public_key_pem",
   display_name: "display_name",
+  moved_to: "moved_to",
   fetched_at: "fetched_at",
   created_at: "created_at",
   updated_at: "updated_at",

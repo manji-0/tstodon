@@ -45,6 +45,8 @@ export const ActorDocumentSchema = z
     image: z.unknown().optional(),
     manuallyApprovesFollowers: z.boolean().nullable().optional(),
     published: z.string().nullable().optional(),
+    /** The accounts this one says it is also: a list, or a single URI. */
+    alsoKnownAs: z.union([z.string(), z.array(z.string())]).optional(),
   })
   .passthrough();
 

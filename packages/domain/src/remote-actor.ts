@@ -40,6 +40,8 @@ const RemoteActorSchema = z.object({
   publicKeyPem: z.string().min(1),
   displayName: z.string(),
   profile: RemoteActorProfileSchema,
+  /** The actor this one moved to, once a verified `Move` said so. */
+  movedTo: z.url().optional(),
   fetchedAt: IsoInstant.schema,
 });
 
@@ -64,6 +66,7 @@ export const RemoteActor = {
     publicKeyPem: string;
     displayName: string;
     profile?: RemoteActorProfile | undefined;
+    movedTo?: string | undefined;
     fetchedAt: z.infer<typeof IsoInstant.schema>;
   }): Result<RemoteActor, RemoteActorParseError> => {
     const parsed = parseRemoteActor({
@@ -78,6 +81,7 @@ export const RemoteActor = {
       profile: input.profile ?? EMPTY_PROFILE,
       fetchedAt: input.fetchedAt,
       ...(input.sharedInboxUri ? { sharedInboxUri: input.sharedInboxUri } : {}),
+      ...(input.movedTo ? { movedTo: input.movedTo } : {}),
     });
     return parsed.mapErr((): RemoteActorParseError => ({ kind: "InvalidActor" }));
   },
