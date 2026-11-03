@@ -28,7 +28,6 @@ import { listPublicOutboxActivities } from "../outbox-store";
 import { resolveRemoteActor } from "../remote-actor-fetch";
 import {
   deleteRemoteFollow,
-  listAcceptedRemoteFollowerUris,
   findRemoteActorByUri,
   findRemoteFollow,
   purgeRemoteActor,
@@ -237,18 +236,13 @@ export const getUsersByUsernameFollowers = async (
     ids.value.map((edge) => edge.accountId),
   );
   const items = ids.value.flatMap((edge) => {
+    const remote = RemoteAccountId.decode(edge.accountId);
+    if (remote.isOk()) {
+      return [remote.value];
+    }
     const follower = followers.isOk() ? followers.value.get(edge.accountId) : undefined;
     return follower ? [InstanceIdentity.actorUrl(identity.value, follower.username)] : [];
   });
-  const remote = await listAcceptedRemoteFollowerUris(
-    c.env.DB,
-    account.value.id,
-    queryLimit(c.req.query("limit")),
-  );
-  if (remote.isErr()) {
-    return jsonRepositoryError(c, remote.error.message);
-  }
-  items.push(...remote.value);
   const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
   return c.json(collection(`${actor}/followers`, items), 200, jsonLd);
 };

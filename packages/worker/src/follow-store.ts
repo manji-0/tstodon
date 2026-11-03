@@ -193,6 +193,24 @@ export const listAcceptedFollowerIds = async (
 /** One follow edge: its row id is the cursor, the account is the document. */
 export type FollowEdge = Readonly<{ id: string; accountId: string }>;
 
+const FollowEdgeRowSchema = z.object({
+  id: z.string(),
+  account_id: z.string().nullable(),
+  actor_uri: z.string().nullable(),
+});
+
+/** A local account edge keeps its id; a remote actor edge becomes its `r_…` id. */
+const followEdges = (results: ReadonlyArray<unknown> | undefined): FollowEdge[] =>
+  parseRows(FollowEdgeRowSchema, results).flatMap((row) => {
+    const target =
+      row.account_id ?? (row.actor_uri ? RemoteAccountId.encode(row.actor_uri) : undefined);
+    return target ? [{ id: row.id, accountId: target }] : [];
+  });
+
+/**
+ * Accepted followers, local accounts and remote actors (as `r_…` ids), one
+ * list ordered by follow row id.
+ */
 export const listFollowers = async (
   db: D1Database,
   accountId: string,
@@ -203,12 +221,17 @@ export const listFollowers = async (
     const { where, order, binds } = idCursorFragment(cursor);
     const { results } = await db
       .prepare(
-        `SELECT id, follower_account_id FROM follows
-         WHERE target_account_id = ? AND kind = 'Accepted' ${where} ${order} LIMIT ?`,
+        `SELECT id, account_id, actor_uri FROM (
+           SELECT id, follower_account_id AS account_id, NULL AS actor_uri FROM follows
+           WHERE target_account_id = ? AND kind = 'Accepted'
+           UNION ALL
+           SELECT id, NULL, remote_actor_uri FROM remote_follows
+           WHERE target_account_id = ? AND follow_kind = 'Accepted'
+         ) WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )
-      .bind(accountId, ...binds, limit)
-      .all<{ id: string; follower_account_id: string }>();
-    return (results ?? []).map((row) => ({ id: row.id, accountId: row.follower_account_id }));
+      .bind(accountId, accountId, ...binds, limit)
+      .all();
+    return followEdges(results);
   });
 
 /** Local followers who asked for a notification on every new status. */
@@ -261,16 +284,5 @@ export const listFollowing = async (
       )
       .bind(accountId, accountId, ...binds, limit)
       .all();
-    return parseRows(
-      z.object({
-        id: z.string(),
-        account_id: z.string().nullable(),
-        actor_uri: z.string().nullable(),
-      }),
-      results,
-    ).flatMap((row) => {
-      const target =
-        row.account_id ?? (row.actor_uri ? RemoteAccountId.encode(row.actor_uri) : undefined);
-      return target ? [{ id: row.id, accountId: target }] : [];
-    });
+    return followEdges(results);
   });
