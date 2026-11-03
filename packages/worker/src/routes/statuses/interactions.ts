@@ -11,6 +11,8 @@ import { nowInstant } from "../../clock";
 import { findAccountById } from "../../account-store";
 import { announceActivity, undoAnnounceActivity } from "../../activitypub";
 import { enqueueLocalActivity } from "../../delivery";
+import { enqueueHomeFanOut } from "../../home-fan-out";
+import { publishToAccount } from "../../stream-publish";
 import { reachesRemoteInboxes } from "../../outbox-job";
 import {
   jsonAuthError,
@@ -347,7 +349,16 @@ export const postV1StatusesByIdReblog = async (
   if (latest.isErr() || !latest.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
+  const document = await mastodonStatus(c.env, identity.value, latest.value, user.value.id);
+  if (document) {
+    await publishToAccount(c.env, user.value.id, { kind: "update", payload: document });
+  }
+  await enqueueHomeFanOut(c.env, {
+    event: "update",
+    entryId: reblog.id,
+    author: { kind: "LocalAccount", accountId: user.value.id },
+  });
+  return c.json(document);
 };
 
 /** The `Undo` of the viewer's boost of `statusId`, or undefined when there is none. */
@@ -388,7 +399,18 @@ export const postV1StatusesByIdUnreblog = async (
   }
   // The Undo carries the Announce it withdraws, so build it while the boost exists.
   const undo = await undoAnnounceFor(c.env.DB, identity.value, user.value, c.req.param("id"));
+  const reblogId = (await findLocalReblog(c.env.DB, user.value.id, c.req.param("id"))).andThen(
+    (id) => StatusId.parse(id ?? ""),
+  );
   await deleteReblogOf(c.env.DB, user.value.id, c.req.param("id"));
+  if (reblogId.isOk()) {
+    await publishToAccount(c.env, user.value.id, { kind: "delete", statusId: reblogId.value });
+    await enqueueHomeFanOut(c.env, {
+      event: "delete",
+      entryId: reblogId.value,
+      author: { kind: "LocalAccount", accountId: user.value.id },
+    });
+  }
   if (undo && reachesRemoteInboxes(undo, identity.value.domain)) {
     const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Undo", undo);
     if (enqueued.isErr()) {

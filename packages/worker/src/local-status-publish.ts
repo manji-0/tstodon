@@ -21,6 +21,7 @@ import { notifyingFollowerIds } from "./follow-store";
 import { mastodonStatus } from "./local-status-documents";
 import { insertStatusQuote, setStatusQuotePolicy, type QuotePolicy } from "./quote-store";
 import { insertLocalNote, setStatusReplyUri } from "./status-store";
+import { enqueueHomeFanOut } from "./home-fan-out";
 import { publishToAccount } from "./stream-publish";
 
 /** Inline media metadata accepted on create (`media_attributes`). */
@@ -271,5 +272,10 @@ export const publishLocalNote = async (
   }
   const document = (await mastodonStatus(env, identity, note, user.id)) ?? {};
   await publishToAccount(env, user.id, { kind: "update", payload: document });
+  await enqueueHomeFanOut(env, {
+    event: "update",
+    entryId: note.id,
+    author: { kind: "LocalAccount", accountId: user.id },
+  });
   return ok(note);
 };

@@ -412,6 +412,8 @@ export * from "./sql/listFollowedTags";
 
 export * from "./sql/listFollowingAccountIds";
 
+export * from "./sql/listHomeFanOutAccounts";
+
 export * from "./sql/listLinkCards";
 
 export * from "./sql/listListMemberIds";
