@@ -432,6 +432,8 @@ export * from "./sql/listLinkCards";
 
 export * from "./sql/listListMembers";
 
+export * from "./sql/listListStreamSubscriptions";
+
 export * from "./sql/listListsContainingAccount";
 
 export * from "./sql/listListsContainingRemoteActor";

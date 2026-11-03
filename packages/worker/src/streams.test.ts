@@ -12,7 +12,8 @@ const json = async (email: string, path: string, init: RequestInit = {}) => {
     ...init,
     headers: { "content-type": "application/json", ...(await authHeaders(email)) },
   });
-  return { status: response.status, body: await response.json() };
+  const text = await response.text();
+  return { status: response.status, body: text.length > 0 ? JSON.parse(text) : undefined };
 };
 
 const idOf = (body: unknown): string => {
@@ -87,6 +88,34 @@ describe("streaming subscriptions", () => {
     const barrier = await socket.unsubscribe({ stream: "user" });
     await post(email, "after unsubscribing");
     expect(await socket.heardNothing(barrier)).toBe(true);
+    socket.close();
+  });
+
+  it("carry a list member's posts to the list's stream, and not a non-member's", async () => {
+    const owner = "st-listed-owner@example.com";
+    const member = "st-listed-member@example.com";
+    const outsider = "st-listed-outsider@example.com";
+    await follow(owner, member);
+    await follow(owner, outsider);
+    const listId = await createList(owner, "friends");
+    const added = await json(owner, `/api/v1/lists/${listId}/accounts`, {
+      method: "POST",
+      body: JSON.stringify({ account_ids: [(await signedInAccount(member)).id] }),
+    });
+    expect(added.status).toBe(200);
+    const socket = await openStream({ email: owner });
+    await socket.subscribe({ stream: "list", list: listId });
+
+    await post(outsider, "not on the list");
+    const id = await post(member, "on the list");
+    const heard = await socket.next();
+    expect(heard).toMatchObject({ stream: ["list", listId], event: "update" });
+    expect(idOf(JSON.parse(heard.payload))).toBe(id);
+    expect(await socket.heardNothing({ kind: "List", listId })).toBe(true);
+
+    const deleted = await json(member, `/api/v1/statuses/${id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+    expect(await socket.next()).toEqual({ stream: ["list", listId], event: "delete", payload: id });
     socket.close();
   });
 

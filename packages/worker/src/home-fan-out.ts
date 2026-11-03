@@ -7,24 +7,27 @@ import {
 import { err, ok, type Result } from "neverthrow";
 import { type RepositoryError, runD1 } from "./d1";
 import { listHomeFanOutAccounts } from "./generated/prisma/sql";
+import { findListForAccount } from "./list-store";
 import { parseInstanceIdentity } from "./runtime-config";
-import { publishToAccount } from "./stream-publish";
-import { homeTimelineDocuments } from "./timeline-documents";
+import { publishToAccount, publishToHub } from "./stream-publish";
+import { listListStreamSubscriptions } from "./stream-subscription-store";
+import { homeTimelineDocuments, listTimelineDocuments } from "./timeline-documents";
 import { queryTyped } from "./typed-sql";
 
 type FanOutHome = Extract<OutboxJobValue, { kind: "FanOutHome" }>;
 
 /**
  * Followers told per pass. Each one costs a home timeline query for the entry,
- * so a page stays well inside a queue invocation's subrequest budget; a full
- * page queues a `FanOutHome` job for the next.
+ * and each list stream a follower has open a list timeline query, so a page
+ * stays well inside a queue invocation's subrequest budget; a full page
+ * queues a `FanOutHome` job for the next.
  */
 export const HOME_FAN_OUT_PAGE_SIZE = 20;
 
 /**
  * Queue telling the author's local followers about a home timeline entry, as
  * Mastodon's `FanOutOnWriteService` and `RemoveStatusService` do for the
- * `user` stream. Best effort: the entry is stored either way, and a follower
+ * `user` and `list` streams. Best effort: the entry is stored either way, and a follower
  * who misses the event still sees the entry on the next home timeline fetch.
  */
 export const enqueueHomeFanOut = async (
@@ -69,8 +72,40 @@ const followerEvent = async (
 };
 
 /**
+ * The event a follower's list stream hears, or nothing when the list (the
+ * follower's own, by the subscription's rules) does not hold the entry.
+ */
+const listEvent = async (
+  env: Env,
+  identity: InstanceIdentity,
+  job: FanOutHome,
+  accountId: string,
+  listId: string,
+): Promise<Result<StreamEventValue | undefined, RepositoryError>> => {
+  if (job.event === "delete") {
+    return ok({ kind: "delete", statusId: job.entryId });
+  }
+  const list = await findListForAccount(env.DB, accountId, listId);
+  if (list.isErr()) {
+    return err(list.error);
+  }
+  if (!list.value) {
+    return ok(undefined);
+  }
+  const documents = await listTimelineDocuments(env, identity, accountId, list.value, 1, {
+    onlyId: job.entryId,
+  });
+  if (documents.isErr()) {
+    return err(documents.error);
+  }
+  const [document] = documents.value;
+  return ok(document ? { kind: job.event, payload: document } : undefined);
+};
+
+/**
  * Tell one page of the author's local followers about the entry, each with
- * the document rendered for it. Redoing a page only sends the events again,
+ * the document rendered for it, on its home and on each list stream it has
+ * open whose list holds the entry. Redoing a page only sends the events again,
  * which clients take as the same status. Resolves to the cursor of the next
  * page, or `undefined` when this was the last.
  */
@@ -104,6 +139,29 @@ export const fanOutHomePage = async (
         await publishToAccount(env, accountId, event.value);
       } catch {
         console.error(JSON.stringify({ kind: "HomeFanOutNotPublished", accountId }));
+      }
+    }
+  }
+  const lists = await listListStreamSubscriptions(
+    env.DB,
+    page.value.map((row) => row.account_id),
+  );
+  if (lists.isErr()) {
+    return err(lists.error);
+  }
+  for (const { hub: accountId, listId } of lists.value) {
+    const event = await listEvent(env, identity, job, accountId, listId);
+    if (event.isErr()) {
+      return err(event.error);
+    }
+    if (event.value) {
+      try {
+        await publishToHub(env, accountId, {
+          channels: [{ kind: "List", listId }],
+          event: event.value,
+        });
+      } catch {
+        console.error(JSON.stringify({ kind: "ListFanOutNotPublished", accountId }));
       }
     }
   }

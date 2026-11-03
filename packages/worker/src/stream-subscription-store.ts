@@ -5,6 +5,7 @@ import { parseRows, type RepositoryError, runD1 } from "./d1";
 import {
   deleteHubStreamSubscriptions,
   insertStreamSubscription,
+  listListStreamSubscriptions as listListStreamSubscriptionsSql,
   listPublicStreamSubscriptions as listPublicStreamSubscriptionsSql,
 } from "./generated/prisma/sql";
 import { queryTyped, runTypedBatch } from "./typed-sql";
@@ -50,6 +51,27 @@ export const replaceHubSubscriptions = async (
     ...rows.map((row) => insertStreamSubscription(hub, row.stream, row.param)),
   ]);
   return written.isErr() ? err(written.error) : ok(undefined);
+};
+
+const ListRowSchema = z.object({ hub: z.string(), param: z.string() });
+
+/** The list subscriptions held by any of `hubs`. */
+export const listListStreamSubscriptions = async (
+  db: D1Database,
+  hubs: ReadonlyArray<string>,
+): Promise<Result<Readonly<{ hub: string; listId: string }>[], RepositoryError>> => {
+  if (hubs.length === 0) {
+    return ok([]);
+  }
+  const rows = await runD1(() =>
+    queryTyped(db, listListStreamSubscriptionsSql(JSON.stringify(hubs))),
+  );
+  if (rows.isErr()) {
+    return err(rows.error);
+  }
+  return ok(
+    parseRows(ListRowSchema, rows.value).map((row) => ({ hub: row.hub, listId: row.param })),
+  );
 };
 
 const HubRowSchema = z.object({ hub: z.string(), stream: z.string(), param: z.string() });
