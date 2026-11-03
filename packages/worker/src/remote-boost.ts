@@ -16,7 +16,7 @@ import { parseLocalStatusId } from "./activitypub";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { stringList } from "./form-values";
-import { newEntityId } from "./ids";
+import { entityIdAt, type IdClock, newEntityId } from "./ids";
 import { insertRemoteBoost } from "./remote-boost-store";
 import { findStatusById } from "./status-store";
 
@@ -63,6 +63,7 @@ const announcedTarget = async (
  * Keep a remote actor's `Announce` as a boost on its followers' home
  * timelines. `remote` is the announced remote note once cached; a local note
  * is looked up by its URI. Resolves to the boost when it is newly recorded.
+ * `idClock` says which instant the boost sorts at on timelines.
  */
 export const recordRemoteBoost = async (
   db: D1Database,
@@ -71,6 +72,7 @@ export const recordRemoteBoost = async (
   announce: Readonly<{ id: ActivityId; object: string }>,
   rawAnnounce: unknown,
   remote: RemoteStatusValue | undefined,
+  idClock: IdClock = "Received",
 ): Promise<Result<RemoteBoostValue | undefined, RepositoryError>> => {
   const target = await announcedTarget(db, identity, announce.object, remote);
   if (target.isErr() || !target.value) {
@@ -80,8 +82,13 @@ export const recordRemoteBoost = async (
   const publishedAt = IsoInstant.parse(envelope.published ?? "").orElse(() =>
     IsoInstant.parse(nowIso()),
   );
-  const id = StatusId.parse(newEntityId());
-  if (publishedAt.isErr() || id.isErr()) {
+  if (publishedAt.isErr()) {
+    return ok(undefined);
+  }
+  const id = StatusId.parse(
+    idClock === "Published" ? entityIdAt(Date.parse(publishedAt.value)) : newEntityId(),
+  );
+  if (id.isErr()) {
     return ok(undefined);
   }
   const boost = RemoteBoost.fromAnnounce({

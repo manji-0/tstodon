@@ -13,7 +13,7 @@ import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { fetchActivityJson } from "./federated-fetch";
 import { resolveRemoteActor } from "./remote-actor-fetch";
-import { newEntityId } from "./ids";
+import { entityIdAt, type IdClock, newEntityId } from "./ids";
 import { parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
 import { findAccountByUsername } from "./account-store";
 import { mediaRejectedDomains } from "./admin-domain-block-store";
@@ -40,6 +40,7 @@ const noteLanguage = (
 export const noteFromUnknown = (
   raw: unknown,
   actorUri: string,
+  idClock: IdClock = "Received",
 ): Result<RemoteStatusValue, { kind: "InvalidObject" } | RepositoryError> => {
   const document = parseNoteDocument(raw);
   if (document.isErr()) {
@@ -54,7 +55,9 @@ export const noteFromUnknown = (
   if (publishedAt.isErr()) {
     return err({ kind: "InvalidObject" });
   }
-  const id = StatusId.parse(newEntityId());
+  const id = StatusId.parse(
+    idClock === "Published" ? entityIdAt(Date.parse(publishedAt.value)) : newEntityId(),
+  );
   if (id.isErr()) {
     return err({ kind: "InvalidObject" });
   }
@@ -179,6 +182,8 @@ type PersistOptions = Readonly<{
   blockedHosts?: ReadonlySet<string>;
   /** Notify the local accounts the note mentions, when it is newly stored (inbox `Create`). */
   notifyMentions?: boolean;
+  /** Which instant a newly stored note's id sorts at; `Received` by default. */
+  idClock?: IdClock;
 }>;
 
 type ObjectReference = string | Readonly<{ id: string } & Record<string, unknown>>;
@@ -291,7 +296,7 @@ const storeRemoteNote = async (
   raw: unknown,
   options: PersistOptions,
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
-  const parsed = noteFromUnknown(raw, actor.actorUri);
+  const parsed = noteFromUnknown(raw, actor.actorUri, options.idClock);
   if (parsed.isErr()) {
     return parsed.error.kind === "RepositoryError" ? err(parsed.error) : ok(undefined);
   }
