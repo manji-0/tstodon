@@ -253,7 +253,7 @@ Blocks and mutes are stored per viewer keyed by the target actor URI (`blocks`, 
 
 None: every route listed above is implemented.
 
-`OutboxDeliveryWorkflow` retries signed inbox POSTs per remote target. Cron enqueues `ProcessExpiredPolls`, which marks expired polls and pushes `status.update` onto the author's `StreamHub`. Status creates and notifications also publish onto per-account hubs.
+`OutboxDeliveryWorkflow` retries signed inbox POSTs per remote target. Cron enqueues `ProcessExpiredPolls`, which marks expired polls and pushes `status.update` onto the author's `StreamHub`. Status creates and notifications also publish onto per-account hubs. `GET /api/v1/streaming` serves the `user`, `user:notification`, `public` (`:local`, `:remote`, `:media`), `hashtag` (`:local`), and `list` streams over WebSocket: one socket subscribes with `?stream=` and `subscribe` / `unsubscribe` messages, each event is tagged with its stream, and sockets without a token may take public and hashtag streams. The home fan-out (`FanOutHome`) feeds `user` and `list`, and `FanOutPublic` feeds `public` and `hashtag` through the hubs listed in `stream_subscriptions`; both ask the timeline functions for the one entry, so a stream carries what its timeline holds for the viewer.
 
 ### Out of scope
 
