@@ -467,3 +467,167 @@ export const seedRemoteActor = (instance: E2eInstance, actor: ActorDocument): vo
       updated_at = excluded.updated_at`;
   d1Json(instance, sql);
 };
+
+/** Call a Mastodon client API endpoint as a signed-in user; fail on a non-2xx answer. */
+export const api = async <T>(
+  origin: string,
+  headers: Record<string, string>,
+  path: string,
+  parse: (raw: unknown) => Result<T, ValidationError>,
+  label: string,
+  init: { method?: string; body?: unknown } = {},
+): Promise<T> => {
+  const method = init.method ?? "GET";
+  const result = await getJson(
+    `${origin}${path}`,
+    init.body === undefined
+      ? { method, headers }
+      : {
+          method,
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify(init.body),
+        },
+  );
+  if (result.status < 200 || result.status >= 300) {
+    return fail(`${label} (HTTP ${result.status})`, result.body);
+  }
+  return expectParsed(label, parse, result.body);
+};
+
+const StreamMessage = z.object({
+  event: z.string(),
+  payload: z.string().optional(),
+  stream: z.array(z.string()).optional(),
+});
+const StreamedStatus = z.object({ uri: z.string() }).passthrough();
+
+/** A streaming API socket that keeps the URIs of the statuses it was sent as `update`. */
+export const openStream = async (
+  origin: string,
+  headers: Record<string, string>,
+  query: Record<string, string>,
+): Promise<{ updated: Set<string>; close: () => void }> => {
+  const token = (headers["Authorization"] ?? "").replace(/^Bearer /, "");
+  const url = new URL("/api/v1/streaming", origin.replace(/^http/, "ws"));
+  url.search = new URLSearchParams({ ...query, access_token: token }).toString();
+  const socket = new WebSocket(url);
+  const updated = new Set<string>();
+  socket.addEventListener("message", (event) => {
+    const message = schemaResult(StreamMessage)(JSON.parse(String(event.data)));
+    if (message.isErr() || message.value.event !== "update" || !message.value.payload) {
+      return;
+    }
+    const status = schemaResult(StreamedStatus)(JSON.parse(message.value.payload));
+    if (status.isOk()) {
+      updated.add(status.value.uri);
+    }
+  });
+  await new Promise<void>((resolve, reject) => {
+    socket.addEventListener("open", () => resolve(), { once: true });
+    socket.addEventListener("error", () => reject(new Error(`stream ${url.search}`)), {
+      once: true,
+    });
+  });
+  return { updated, close: () => socket.close() };
+};
+
+/** A signed-up user of one instance, with what other instances call it. */
+export type E2eUser = Readonly<{
+  origin: string;
+  headers: Record<string, string>;
+  id: string;
+  username: string;
+  acct: string;
+  uri: string;
+}>;
+
+const runSuffix = Date.now().toString(36).slice(-6);
+
+/** Sign up a fresh user on `origin`; the name gets a per-run suffix so reruns need no reset. */
+export const signUp = async (origin: string, name: string): Promise<E2eUser> => {
+  const headers = await authHeaders(origin, `${name}-${runSuffix}@e2e.example`);
+  const account = await api(
+    origin,
+    headers,
+    "/api/v1/accounts/verify_credentials",
+    MastodonAccount.parse,
+    `${name} on ${origin}`,
+  );
+  const id = asString(account["id"]);
+  const domain = origin === A ? A_DOMAIN : B_DOMAIN;
+  return {
+    origin,
+    headers,
+    id,
+    username: account.username,
+    acct: `@${account.username}@${domain}`,
+    uri: `${origin}/users/${account.username}`,
+  };
+};
+
+const ResolvedAccounts = z.object({
+  accounts: z.array(z.object({ id: z.string().min(1), uri: z.string().min(1) }).passthrough()),
+});
+const FollowState = z.array(z.object({ following: z.boolean() }).passthrough());
+
+/**
+ * `follower` resolves `followed` on the other instance through search and
+ * follows it; returns once the follower's instance has the Accept. The answer
+ * is the followed account's id on the follower's instance.
+ */
+export const followRemote = async (
+  follower: E2eUser,
+  followed: E2eUser,
+): Promise<{ id: string }> => {
+  const query = new URLSearchParams({ q: followed.acct, resolve: "true", type: "accounts" });
+  const found = await api(
+    follower.origin,
+    follower.headers,
+    `/api/v2/search?${query.toString()}`,
+    schemaResult(ResolvedAccounts),
+    `resolve ${followed.acct}`,
+  );
+  const remote = found.accounts.find((account) => account.uri === followed.uri);
+  if (!remote) {
+    return fail(`search did not resolve ${followed.acct}`, found);
+  }
+  await api(
+    follower.origin,
+    follower.headers,
+    `/api/v1/accounts/${remote.id}/follow`,
+    schemaResult(z.unknown()),
+    `follow ${followed.acct}`,
+    { method: "POST", body: {} },
+  );
+  await waitFor(`${followed.acct} accepts the follow`, async () => {
+    const [state] = await api(
+      follower.origin,
+      follower.headers,
+      `/api/v1/accounts/relationships?id[]=${encodeURIComponent(remote.id)}`,
+      schemaResult(FollowState),
+      "relationship",
+    );
+    return state?.following === true ? state : undefined;
+  });
+  return { id: remote.id };
+};
+
+/** Poll `probe` until it returns a value, or fail once `timeoutMs` has passed. */
+export const waitFor = async <T>(
+  label: string,
+  probe: () => Promise<T | undefined>,
+  timeoutMs = 30_000,
+  intervalMs = 500,
+): Promise<T> => {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = await probe();
+    if (value !== undefined) {
+      return value;
+    }
+    if (Date.now() > deadline) {
+      return fail(`${label} (timed out after ${timeoutMs} ms)`);
+    }
+    await sleep(intervalMs);
+  }
+};

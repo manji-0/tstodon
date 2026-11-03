@@ -351,3 +351,84 @@ export const RemoteAnnounceRow = {
   parse: schemaResult(RemoteAnnounceRowSchema),
   parseMany: schemaResult(z.array(RemoteAnnounceRowSchema)),
 } as const;
+
+/** Mastodon API poll, as the client API serves it. */
+const ApiPollSchema = z
+  .object({
+    id: z.string().min(1),
+    votes_count: z.number(),
+    voted: z.boolean().optional(),
+    options: z.array(z.object({ title: z.string(), votes_count: z.number().nullable() })),
+  })
+  .passthrough();
+
+export type ApiPoll = z.infer<typeof ApiPollSchema>;
+
+export const ApiPoll = {
+  schema: ApiPollSchema,
+  parse: schemaResult(ApiPollSchema),
+} as const;
+
+const ApiStatusFields = {
+  id: z.string().min(1),
+  uri: z.string().min(1),
+  content: z.string(),
+  edited_at: z.string().nullable().optional(),
+  account: z
+    .object({ id: z.string().min(1), acct: z.string().min(1), uri: z.string().min(1) })
+    .passthrough(),
+  poll: ApiPollSchema.nullable().optional(),
+};
+
+/** Mastodon API status with the reblogged status, when it is a boost. */
+const ApiStatusSchema = z
+  .object({
+    ...ApiStatusFields,
+    reblog: z.object(ApiStatusFields).passthrough().nullable().optional(),
+  })
+  .passthrough();
+
+export type ApiStatus = z.infer<typeof ApiStatusSchema>;
+
+export const ApiStatus = {
+  schema: ApiStatusSchema,
+  parse: schemaResult(ApiStatusSchema),
+  parseMany: schemaResult(z.array(ApiStatusSchema)),
+} as const;
+
+const ApiAccountSchema = z
+  .object({
+    id: z.string().min(1),
+    acct: z.string().min(1),
+    uri: z.string().min(1),
+    followers_count: z.number(),
+    following_count: z.number(),
+  })
+  .passthrough();
+
+export type ApiAccount = z.infer<typeof ApiAccountSchema>;
+
+export const ApiAccount = {
+  schema: ApiAccountSchema,
+  parse: schemaResult(ApiAccountSchema),
+  parseMany: schemaResult(z.array(ApiAccountSchema)),
+} as const;
+
+const SearchResultSchema = z.object({ accounts: z.array(ApiAccountSchema) }).passthrough();
+
+export const SearchResult = {
+  schema: SearchResultSchema,
+  parse: schemaResult(SearchResultSchema),
+} as const;
+
+const RelationshipSchema = z
+  .object({ id: z.string().min(1), following: z.boolean(), requested: z.boolean() })
+  .passthrough();
+
+export type Relationship = z.infer<typeof RelationshipSchema>;
+
+export const Relationship = {
+  schema: RelationshipSchema,
+  parse: schemaResult(RelationshipSchema),
+  parseMany: schemaResult(z.array(RelationshipSchema)),
+} as const;

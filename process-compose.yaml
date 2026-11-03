@@ -84,3 +84,23 @@ processes:
         condition: process_healthy
     availability:
       restart: "no"
+
+  e2e-federation-remote-follow:
+    command: pnpm exec tsx e2e/federation-remote-follow.ts
+    depends_on:
+      tstodon-a:
+        condition: process_healthy
+      tstodon-b:
+        condition: process_healthy
+    availability:
+      restart: "no"
+
+  e2e-federation-remote-updates:
+    command: pnpm exec tsx e2e/federation-remote-updates.ts
+    depends_on:
+      tstodon-a:
+        condition: process_healthy
+      tstodon-b:
+        condition: process_healthy
+    availability:
+      restart: "no"
