@@ -12,6 +12,7 @@ import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { enqueueHomeFanOut } from "./home-fan-out";
+import { enqueuePublicFanOut } from "./public-fan-out";
 import { enqueueLinkCard } from "./link-card";
 import { isAccountMentionedOnRemoteStatus, recordRemoteStatusMentions } from "./mention-store";
 import { notifyFromRemote } from "./notify";
@@ -154,6 +155,9 @@ const applyNoteUpdate = async (
       entryId: stored.value.id,
       author: { kind: "RemoteActor", actorUri: signer.actorUri },
     });
+    if (stored.value.visibility.kind === "Public") {
+      await enqueuePublicFanOut(env, { event: "status.update", entryId: stored.value.id });
+    }
   }
   return ok(undefined);
 };

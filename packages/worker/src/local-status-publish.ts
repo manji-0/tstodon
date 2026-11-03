@@ -22,6 +22,7 @@ import { mastodonStatus } from "./local-status-documents";
 import { insertStatusQuote, setStatusQuotePolicy, type QuotePolicy } from "./quote-store";
 import { insertLocalNote, setStatusReplyUri } from "./status-store";
 import { enqueueHomeFanOut } from "./home-fan-out";
+import { enqueuePublicFanOut } from "./public-fan-out";
 import { publishToAccount } from "./stream-publish";
 
 /** Inline media metadata accepted on create (`media_attributes`). */
@@ -277,5 +278,8 @@ export const publishLocalNote = async (
     entryId: note.id,
     author: { kind: "LocalAccount", accountId: user.id },
   });
+  if (note.visibility.kind === "Public") {
+    await enqueuePublicFanOut(env, { event: "update", entryId: note.id });
+  }
   return ok(note);
 };

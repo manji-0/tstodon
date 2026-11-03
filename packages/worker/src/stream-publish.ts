@@ -7,7 +7,7 @@ export const publishToHub = async (
   delivery: StreamDeliveryValue,
 ): Promise<void> => {
   const stub = env.STREAM_HUB.get(env.STREAM_HUB.idFromName(hub));
-  await stub.publish(delivery);
+  await stub.publish(hub, delivery);
 };
 
 /**

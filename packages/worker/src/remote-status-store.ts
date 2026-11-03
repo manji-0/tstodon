@@ -278,13 +278,14 @@ export const deleteRemoteStatusByObjectUri = async (
   db: D1Database,
   objectUri: string,
   actorUri: string,
-): Promise<Result<string | undefined, RepositoryError>> =>
+): Promise<Result<Readonly<{ id: string; public: boolean }> | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
+    const rows = await queryTyped<{ id: string; visibility: string }>(
       db,
       deleteRemoteStatusByObjectUriSql(objectUri, actorUri),
     );
-    return rows[0]?.id;
+    const row = rows[0];
+    return row ? { id: row.id, public: row.visibility === "public" } : undefined;
   });
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.

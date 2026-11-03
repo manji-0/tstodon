@@ -37,6 +37,7 @@ import { parseInstanceIdentity } from "../../runtime-config";
 import { ok } from "neverthrow";
 import { notifyAccount } from "../../notify";
 import { enqueueHomeFanOut } from "../../home-fan-out";
+import { enqueuePublicFanOut } from "../../public-fan-out";
 import { publishToAccount } from "../../stream-publish";
 import {
   deleteStatus,
@@ -91,6 +92,9 @@ export const deleteV1StatusesById = async (
     entryId: existing.value.id,
     author: { kind: "LocalAccount", accountId: user.value.id },
   });
+  if (existing.value.kind === "LocalNote" && existing.value.visibility.kind === "Public") {
+    await enqueuePublicFanOut(c.env, { event: "delete", entryId: existing.value.id });
+  }
   if (tombstone && reachesRemoteInboxes(tombstone, identity.value.domain)) {
     // The status is gone either way; a failed enqueue only leaves remote copies.
     const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Delete", tombstone);
@@ -358,6 +362,9 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     entryId: existing.id,
     author: { kind: "LocalAccount", accountId: user.value.id },
   });
+  if (revised.visibility.kind === "Public") {
+    await enqueuePublicFanOut(c.env, { event: "status.update", entryId: existing.id });
+  }
   return c.json(document ?? {});
 };
 

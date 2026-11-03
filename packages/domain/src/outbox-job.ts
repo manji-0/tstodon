@@ -80,6 +80,20 @@ const FanOutHomeSchema = z.object({
   afterAccountId: z.string(),
 });
 
+/**
+ * Tell the next page of stream hubs (those after `afterHub`, empty for the
+ * first page) with public or hashtag subscriptions about a public status by
+ * its id. `update` and `status.update` reach the subscriptions whose
+ * timeline holds the status for the hub's viewer; `delete` reaches every
+ * public and hashtag subscription, since the status and its tags are gone.
+ */
+const FanOutPublicSchema = z.object({
+  kind: z.literal("FanOutPublic"),
+  event: z.union([z.literal("update"), z.literal("status.update"), z.literal("delete")]),
+  entryId: StatusId.schema,
+  afterHub: z.string(),
+});
+
 export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ExpandFollowersSchema,
   DeliverTargetSchema,
@@ -92,6 +106,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   DeliverPushSchema,
   MoveFollowsSchema,
   FanOutHomeSchema,
+  FanOutPublicSchema,
   BackfillRemoteOutboxSchema,
 ]);
 

@@ -1,0 +1,93 @@
+import { StreamChannel, type StreamChannelValue } from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
+import { z } from "zod";
+import { parseRows, type RepositoryError, runD1 } from "./d1";
+import {
+  deleteHubStreamSubscriptions,
+  insertStreamSubscription,
+  listPublicStreamSubscriptions as listPublicStreamSubscriptionsSql,
+} from "./generated/prisma/sql";
+import { queryTyped, runTypedBatch } from "./typed-sql";
+
+/** A subscription as `stream_subscriptions` keeps it. */
+type SubscriptionRow = Readonly<{ stream: string; param: string }>;
+
+/**
+ * The row a fan-out finds a channel by. `user*` streams have none: they go
+ * to the account's own hub, which needs no lookup.
+ */
+export const subscriptionRow = (channel: StreamChannelValue): SubscriptionRow | undefined => {
+  switch (channel.kind) {
+    case "User":
+    case "UserNotification":
+      return undefined;
+    case "Public":
+      return { stream: StreamChannel.streamName(channel)[0] ?? "", param: "" };
+    case "Hashtag":
+      return {
+        stream: channel.localOnly ? "hashtag:local" : "hashtag",
+        param: channel.tag.toLowerCase(),
+      };
+    case "List":
+      return { stream: "list", param: channel.listId };
+  }
+};
+
+const channelOfRow = (row: SubscriptionRow): StreamChannelValue | undefined => {
+  const channel = StreamChannel.fromWire({ stream: row.stream, tag: row.param, list: row.param });
+  return channel.isOk() ? channel.value : undefined;
+};
+
+/** Make the hub's rows exactly the given channels' rows. */
+export const replaceHubSubscriptions = async (
+  db: D1Database,
+  hub: string,
+  channels: ReadonlyArray<StreamChannelValue>,
+): Promise<Result<void, RepositoryError>> => {
+  const rows = channels.flatMap((channel) => subscriptionRow(channel) ?? []);
+  const written = await runTypedBatch(db, [
+    deleteHubStreamSubscriptions(hub),
+    ...rows.map((row) => insertStreamSubscription(hub, row.stream, row.param)),
+  ]);
+  return written.isErr() ? err(written.error) : ok(undefined);
+};
+
+const HubRowSchema = z.object({ hub: z.string(), stream: z.string(), param: z.string() });
+
+/** One hub's channels that a fan-out should consider for an entry. */
+export type HubChannels = Readonly<{ hub: string; channels: StreamChannelValue[] }>;
+
+/**
+ * The public and hashtag channels of the next `limit` hubs after `afterHub`
+ * that may want the entry, and the cursor of the page after, if any. With
+ * `anyTag`, every hashtag channel counts (for a `delete`, whose tags are gone
+ * with the status).
+ */
+export const listPublicStreamSubscriptions = async (
+  db: D1Database,
+  input: Readonly<{ entryId: string; afterHub: string; limit: number; anyTag: boolean }>,
+): Promise<
+  Result<Readonly<{ hubs: HubChannels[]; next: string | undefined }>, RepositoryError>
+> => {
+  const rows = await runD1(() =>
+    queryTyped(
+      db,
+      listPublicStreamSubscriptionsSql(
+        input.entryId,
+        input.afterHub,
+        input.limit,
+        input.anyTag ? 1 : 0,
+      ),
+    ),
+  );
+  if (rows.isErr()) {
+    return err(rows.error);
+  }
+  const hubs = new Map<string, StreamChannelValue[]>();
+  for (const row of parseRows(HubRowSchema, rows.value)) {
+    const channel = channelOfRow(row);
+    hubs.set(row.hub, [...(hubs.get(row.hub) ?? []), ...(channel ? [channel] : [])]);
+  }
+  const page = [...hubs].map(([hub, channels]) => ({ hub, channels }));
+  return ok({ hubs: page, next: page.length >= input.limit ? page.at(-1)?.hub : undefined });
+};

@@ -16,6 +16,7 @@ import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
 import { processDistributePollUpdateJob } from "./poll-update";
 import { processPushJob } from "./push-delivery";
 import { processFanOutHomeJob } from "./home-fan-out";
+import { processFanOutPublicJob } from "./public-fan-out";
 import { processMoveFollowsJob } from "./remote-move";
 import { processBackfillRemoteOutboxJob } from "./remote-outbox-backfill";
 import { indexMissingRemoteTags } from "./remote-status-store";
@@ -177,6 +178,8 @@ export const processOutboxJob = async (
       return processMoveFollowsJob(env, job);
     case "FanOutHome":
       return processFanOutHomeJob(env, job);
+    case "FanOutPublic":
+      return processFanOutPublicJob(env, job);
     case "BackfillRemoteOutbox":
       return processBackfillRemoteOutboxJob(env, job);
     case "ExpandFollowers": {

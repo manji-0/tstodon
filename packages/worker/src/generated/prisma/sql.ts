@@ -94,6 +94,8 @@ export * from "./sql/deleteFilterStatusById";
 
 export * from "./sql/deleteFollow";
 
+export * from "./sql/deleteHubStreamSubscriptions";
+
 export * from "./sql/deleteList";
 
 export * from "./sql/deleteListMember";
@@ -372,6 +374,8 @@ export * from "./sql/insertStatusMention";
 
 export * from "./sql/insertStatusRemoteMention";
 
+export * from "./sql/insertStreamSubscription";
+
 export * from "./sql/isAccountMentionedOnRemoteStatus";
 
 export * from "./sql/isAccountMentionedOnStatus";
@@ -463,6 +467,8 @@ export * from "./sql/listPublicDomainBlocks";
 export * from "./sql/listPublicOutboxActivities";
 
 export * from "./sql/listPublicRemoteStatuses";
+
+export * from "./sql/listPublicStreamSubscriptions";
 
 export * from "./sql/listPublishedAnnouncements";
 

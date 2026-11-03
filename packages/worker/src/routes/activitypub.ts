@@ -38,6 +38,7 @@ import { RemoteDeleteTarget } from "../remote-delete";
 import { applyRemoteUpdate } from "../remote-update";
 import { persistAnnouncedObject, persistRemoteObject } from "../remote-status-persist";
 import { enqueueHomeFanOut } from "../home-fan-out";
+import { enqueuePublicFanOut } from "../public-fan-out";
 import { recordRemoteBoost } from "../remote-boost";
 import { deleteRemoteBoostByActivity } from "../remote-boost-store";
 import { handleRemotePollVote } from "../remote-poll-vote";
@@ -565,13 +566,16 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         if (deleted.isOk() && deleted.value) {
           await enqueueHomeFanOut(c.env, {
             event: "delete",
-            entryId: deleted.value,
+            entryId: deleted.value.id,
             author: { kind: "RemoteActor", actorUri: signer.actor.actorUri },
           });
+          if (deleted.value.public) {
+            await enqueuePublicFanOut(c.env, { event: "delete", entryId: deleted.value.id });
+          }
           await deleteRemoteNotifications(c.env.DB, {
             actorUri: signer.actor.actorUri,
             kinds: ["mention"],
-            statusId: deleted.value,
+            statusId: deleted.value.id,
           });
         }
       }
@@ -601,6 +605,9 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
           entryId: created.value.id,
           author: { kind: "RemoteActor", actorUri: signer.actor.actorUri },
         });
+        if (created.value.visibility.kind === "Public") {
+          await enqueuePublicFanOut(c.env, { event: "update", entryId: created.value.id });
+        }
       }
     }
     if (activity.kind === "Announce") {
