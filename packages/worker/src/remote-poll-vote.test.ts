@@ -407,6 +407,17 @@ describe("Update of the Question after votes", () => {
     expect(working.sent).toHaveLength(1);
   });
 
+  it("takes over a claim whose job was lost", async () => {
+    const poll = await createPoll("stale-author@example.com");
+    await env.DB.prepare("UPDATE polls SET update_queued_at = ? WHERE id = ?")
+      .bind(new Date(Date.now() - 60 * 60 * 1000).toISOString(), poll.pollId)
+      .run();
+    const recording = recordingEnv();
+
+    await handleVote(recording, await remoteActor("stale-a"), poll, "cats");
+    expect(recording.sent).toHaveLength(1);
+  });
+
   it("drops a job for a poll that no longer exists", async () => {
     const job = OutboxJob.parse({ kind: "DistributePollUpdate", pollId: "no-such-poll" });
     expect(job.isOk()).toBe(true);

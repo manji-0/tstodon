@@ -445,12 +445,26 @@ export const markPollExpiryNotified = async (
  * Take the poll's single `Update` slot. True when this caller took it and must
  * queue the job; false when a job is already queued for the poll.
  */
+/**
+ * A claim older than this is taken over: its job was lost (dropped after its
+ * retries, or the release failed), and keeping it would stop every later Update.
+ */
+const POLL_UPDATE_CLAIM_TTL_MS = 10 * 60 * 1000;
+
 export const claimPollUpdate = async (
   db: D1Database,
   pollId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string | null }>(db, claimPollUpdateSql(nowIso(), pollId));
+    const now = Date.now();
+    const rows = await queryTyped<{ id: string | null }>(
+      db,
+      claimPollUpdateSql(
+        new Date(now).toISOString(),
+        pollId,
+        new Date(now - POLL_UPDATE_CLAIM_TTL_MS).toISOString(),
+      ),
+    );
     return rows.length > 0;
   });
 

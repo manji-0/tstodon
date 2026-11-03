@@ -7,16 +7,18 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param queuedAt
  * @param pollId
+ * @param staleBefore
  */
 export const claimPollUpdate = $runtime.makeTypedQueryFactory(
-  "UPDATE polls SET update_queued_at = $1\nWHERE id = $2 AND update_queued_at IS NULL\nRETURNING id",
+  "UPDATE polls SET update_queued_at = $1\nWHERE id = $2 AND (update_queued_at IS NULL OR update_queued_at < $3)\nRETURNING id",
 ) as (
   queuedAt: string,
   pollId: string,
+  staleBefore: string,
 ) => $runtime.TypedSql<claimPollUpdate.Parameters, claimPollUpdate.Result>;
 
 export namespace claimPollUpdate {
-  export type Parameters = [queuedAt: string, pollId: string];
+  export type Parameters = [queuedAt: string, pollId: string, staleBefore: string];
   export type Result = {
     id: string | null;
   };
