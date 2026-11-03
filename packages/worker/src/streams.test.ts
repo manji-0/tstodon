@@ -1,9 +1,11 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
+import { STREAM_TAG_MAX_LENGTH } from "@tstodon/domain";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { openStream } from "../test/stream-fixture";
+import { MAX_HUB_TAGGED_CHANNELS, MAX_SOCKET_CHANNELS } from "./stream-hub";
 
 const ORIGIN = "https://example.com";
 
@@ -49,6 +51,20 @@ const createList = async (email: string, title: string): Promise<string> => {
   });
   expect(created.status).toBe(200);
   return idOf(created.body);
+};
+
+const rows = async (hub: string): Promise<number> =>
+  (
+    await env.DB.prepare("SELECT COUNT(*) AS n FROM stream_subscriptions WHERE hub = ?")
+      .bind(hub)
+      .first<{ n: number }>()
+  )?.n ?? 0;
+
+const eventually = async (hub: string, expected: number): Promise<void> => {
+  for (let attempt = 0; attempt < 100 && (await rows(hub)) !== expected; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  expect(await rows(hub)).toBe(expected);
 };
 
 describe("streaming subscriptions", () => {
@@ -156,5 +172,68 @@ describe("streaming subscriptions", () => {
     });
     expect(refused.status).toBe(401);
     anonymous.close();
+  });
+
+  it("refuse hashtag names that are not hashtags, on connect and on subscribe", async () => {
+    for (const tag of ["_", "%25", "a".repeat(STREAM_TAG_MAX_LENGTH + 1)]) {
+      const upgrade = await SELF.fetch(`${ORIGIN}/api/v1/streaming?stream=hashtag&tag=${tag}`, {
+        headers: { Upgrade: "websocket" },
+      });
+      expect(upgrade.status).toBe(400);
+      expect(await upgrade.json()).toEqual({ error: "Invalid tag name parameter", status: 400 });
+    }
+    const socket = await openStream({ email: "st-bad-tag@example.com" });
+    socket.send({ type: "subscribe", stream: "hashtag", tag: "_" });
+    expect(await socket.nextError()).toEqual({ error: "Invalid tag name parameter", status: 400 });
+    expect(await rows(socket.account?.id ?? "")).toBe(0);
+    socket.close();
+  });
+
+  it("hold the longest hashtags up to the per-socket and per-hub caps, and refuse past them", async () => {
+    const email = "st-caps@example.com";
+    const tagAt = (index: number): string =>
+      `${"日".repeat(STREAM_TAG_MAX_LENGTH - 2)}${String(index).padStart(2, "0")}`;
+    expect(MAX_SOCKET_CHANNELS).toBe(MAX_HUB_TAGGED_CHANNELS);
+    const full = await openStream({ email });
+    const hub = full.account?.id ?? "";
+    for (let index = 0; index < MAX_SOCKET_CHANNELS; index += 1) {
+      await full.subscribe({ stream: "hashtag", tag: tagAt(index) });
+    }
+    expect(await rows(hub)).toBe(MAX_SOCKET_CHANNELS);
+    expect(
+      await full.heardNothing({ kind: "Hashtag", tag: tagAt(0).toLowerCase(), localOnly: false }),
+    ).toBe(true);
+
+    full.send({ type: "subscribe", stream: "hashtag", tag: tagAt(MAX_SOCKET_CHANNELS) });
+    expect(await full.nextError()).toEqual({
+      error: "Too many streams on this connection",
+      status: 429,
+    });
+    expect(await rows(hub)).toBe(MAX_SOCKET_CHANNELS);
+
+    const second = await openStream({ email });
+    second.send({ type: "subscribe", stream: "hashtag", tag: tagAt(MAX_SOCKET_CHANNELS) });
+    expect(await second.nextError()).toEqual({
+      error: "Too many distinct streams open for this viewer",
+      status: 429,
+    });
+    expect(await rows(hub)).toBe(MAX_HUB_TAGGED_CHANNELS);
+    await second.subscribe({ stream: "hashtag", tag: tagAt(0) });
+    await second.subscribe({ stream: "public" });
+    expect(await rows(hub)).toBe(MAX_HUB_TAGGED_CHANNELS + 1);
+
+    full.close();
+    second.close();
+    await eventually(hub, 0);
+  });
+
+  it("leave no row behind for a socket closed while its subscribe is pending", async () => {
+    const socket = await openStream({ email: "st-close-pending@example.com" });
+    const hub = socket.account?.id ?? "";
+    socket.send({ type: "subscribe", stream: "hashtag", tag: "closedearly" });
+    socket.send({ type: "subscribe", stream: "public" });
+    socket.close();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await eventually(hub, 0);
   });
 });

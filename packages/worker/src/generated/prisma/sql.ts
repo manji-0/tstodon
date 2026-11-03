@@ -94,8 +94,6 @@ export * from "./sql/deleteFilterStatusById";
 
 export * from "./sql/deleteFollow";
 
-export * from "./sql/deleteHubStreamSubscriptions";
-
 export * from "./sql/deleteList";
 
 export * from "./sql/deleteListMember";
@@ -139,6 +137,8 @@ export * from "./sql/deleteStatusMentions";
 export * from "./sql/deleteStatusOwned";
 
 export * from "./sql/deleteStatusRemoteMentions";
+
+export * from "./sql/deleteStreamSubscription";
 
 export * from "./sql/detachStatusMedia";
 

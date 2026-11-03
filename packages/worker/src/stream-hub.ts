@@ -6,7 +6,7 @@ import {
   type StreamEventValue,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
-import { ok, type Result } from "neverthrow";
+import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import type { RepositoryError } from "./d1";
 import {
@@ -14,9 +14,30 @@ import {
   parseSocketState,
   requestStreamChannel,
   type SocketState,
+  type StreamRefusal,
   streamRefusalError,
 } from "./stream-access";
-import { replaceHubSubscriptions, subscriptionRow } from "./stream-subscription-store";
+import {
+  deleteSubscriptionRow,
+  insertSubscriptionRow,
+  subscriptionRow,
+} from "./stream-subscription-store";
+
+/**
+ * Streams one socket may hold. Mastodon's web UI multiplexes every column
+ * over one socket, so this is the column count it allows; it also keeps the
+ * attachment (at most 32 hashtags of the longest name) well under workerd's
+ * 16 KiB attachment limit.
+ */
+export const MAX_SOCKET_CHANNELS = 32;
+
+/**
+ * Distinct hashtag and list streams one hub's sockets may hold together.
+ * Each is a `stream_subscriptions` row and, for a hashtag, a timeline pass
+ * when a status carries it; public streams (six at most) are not counted.
+ * Every anonymous socket shares one hub, so they share this budget.
+ */
+export const MAX_HUB_TAGGED_CHANNELS = 32;
 
 /** The header the streaming route hands a new socket's state to its hub in. */
 export const SOCKET_STATE_HEADER = "x-tstodon-stream-socket";
@@ -64,20 +85,17 @@ const parseJson = (text: string): unknown => {
  * so they survive hibernation, and hears only events for those streams.
  *
  * The hub mirrors its sockets' public, hashtag, and list subscriptions into
- * `stream_subscriptions`, where fan-outs look for whom to tell. Rows are
- * written before a subscription takes effect and removed after it ends, so
- * they always cover the live ones; a row left behind (a hub evicted without
- * close events) is removed the first time a fan-out finds nobody behind it.
+ * `stream_subscriptions`, one row per distinct channel, where fan-outs look
+ * for whom to tell. A row is inserted before the first socket takes its
+ * channel and deleted after the last one lets go, so the rows always cover
+ * the live subscriptions; a row left behind (a hub evicted without close
+ * events) is deleted the first time a fan-out finds nobody behind it.
+ * Every change runs one at a time, in arrival order, so a socket's
+ * `subscribe` then `unsubscribe` land in that order and a close during a
+ * pending subscribe still cleans its row.
  */
 export class StreamHub extends DurableObject<Env> {
-  /** Subscriptions whose rows are being written, not yet on their socket. */
-  private readonly adding: StreamChannelValue[] = [];
-
-  /** Row writes run one at a time, each from the state current when it runs. */
-  private syncing: Promise<unknown> = Promise.resolve();
-
-  /** The channel keys the rows were last written from, to skip writes that change nothing. */
-  private synced: string | undefined;
+  private queue: Promise<unknown> = Promise.resolve();
 
   /** Deliver to this hub, which `publishToHub` names as `hub`. */
   async publish(hub: string, raw: unknown): Promise<void> {
@@ -86,22 +104,21 @@ export class StreamHub extends DurableObject<Env> {
       return;
     }
     const wanted = new Set(delivery.value.channels.map(StreamChannel.key));
-    const reached = new Set<string>();
     for (const socket of this.openSockets()) {
       for (const channel of this.stateOf(socket)?.channels ?? []) {
-        const key = StreamChannel.key(channel);
-        if (wanted.has(key)) {
-          reached.add(key);
+        if (wanted.has(StreamChannel.key(channel))) {
           socket.send(mastodonStreamMessage(channel, delivery.value.event));
         }
       }
     }
-    const unheard = delivery.value.channels.some(
-      (channel) => subscriptionRow(channel) && !reached.has(StreamChannel.key(channel)),
-    );
-    if (unheard) {
-      await this.syncSubscriptions(hub);
-    }
+    await this.serially(async () => {
+      const held = this.heldKeys();
+      for (const channel of delivery.value.channels) {
+        if (!held.has(StreamChannel.key(channel))) {
+          await this.dropRow(hub, channel);
+        }
+      }
+    });
   }
 
   override async fetch(request: Request): Promise<Response> {
@@ -112,19 +129,26 @@ export class StreamHub extends DurableObject<Env> {
     if (state.isErr()) {
       return new Response("Missing socket state", { status: 400 });
     }
-    const pair = new WebSocketPair();
-    const written = await this.subscribeWithRows(
-      hubName(state.value.viewer),
-      state.value.channels,
-      () => {
-        this.ctx.acceptWebSocket(pair[1]);
-        pair[1].serializeAttachment(state.value);
-      },
-    );
-    if (written.isErr()) {
-      return Response.json(streamRefusalError({ kind: "Unavailable" }), { status: 503 });
-    }
-    return new Response(null, { status: 101, webSocket: pair[0] });
+    const hub = hubName(state.value.viewer);
+    return this.serially(async () => {
+      const refusal = this.admit([], state.value.channels);
+      if (refusal) {
+        const error = streamRefusalError(refusal);
+        return Response.json(error, { status: error.status });
+      }
+      const pair = new WebSocketPair();
+      if (!attach(pair[1], state.value)) {
+        const error = streamRefusalError({ kind: "SocketFull" });
+        return Response.json(error, { status: error.status });
+      }
+      const written = await this.addRows(hub, state.value.channels);
+      if (written.isErr()) {
+        const error = streamRefusalError({ kind: "Unavailable" });
+        return Response.json(error, { status: error.status });
+      }
+      this.ctx.acceptWebSocket(pair[1]);
+      return new Response(null, { status: 101, webSocket: pair[0] });
+    });
   }
 
   /** `subscribe` / `unsubscribe` messages change which streams the socket hears. */
@@ -132,8 +156,7 @@ export class StreamHub extends DurableObject<Env> {
     const command = parseStreamCommand(
       typeof message === "string" ? parseJson(message) : undefined,
     );
-    const state = this.stateOf(socket);
-    if (command.isErr() || !state) {
+    if (command.isErr()) {
       socket.send(JSON.stringify({ error: "Invalid message", status: 400 }));
       return;
     }
@@ -142,114 +165,167 @@ export class StreamHub extends DurableObject<Env> {
       tag: command.value.tag,
       list: command.value.list === undefined ? undefined : String(command.value.list),
     };
-    if (command.value.type === "unsubscribe") {
-      const channel = StreamChannel.fromWire(wire);
-      if (channel.isErr()) {
-        socket.send(JSON.stringify(streamRefusalError(channel.error)));
-        return;
-      }
-      const target = StreamChannel.key(channel.value);
-      socket.serializeAttachment({
-        ...state,
-        channels: state.channels.filter((held) => StreamChannel.key(held) !== target),
-      } satisfies SocketState);
-      if (subscriptionRow(channel.value)) {
-        await this.syncSubscriptions(hubName(state.viewer));
-      }
-      return;
-    }
-    const channel = await requestStreamChannel(this.env, state.viewer, wire);
-    if (channel.isErr()) {
-      socket.send(JSON.stringify(streamRefusalError(channel.error)));
-      return;
-    }
-    const written = await this.subscribeWithRows(hubName(state.viewer), [channel.value], () => {
-      // Read again: other messages may have changed the socket while this one waited.
-      const current = this.stateOf(socket);
-      const target = StreamChannel.key(channel.value);
-      if (current && !current.channels.some((held) => StreamChannel.key(held) === target)) {
-        socket.serializeAttachment({
-          ...current,
-          channels: [...current.channels, channel.value],
-        } satisfies SocketState);
-      }
-    });
-    if (written.isErr()) {
-      socket.send(JSON.stringify(streamRefusalError({ kind: "Unavailable" })));
+    const refused = await this.serially(() =>
+      command.value.type === "subscribe"
+        ? this.subscribe(socket, wire)
+        : this.unsubscribe(socket, wire),
+    );
+    if (refused.isErr() && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(streamRefusalError(refused.error)));
     }
   }
 
   override async webSocketClose(socket: WebSocket): Promise<void> {
-    await this.syncAfterClose(socket);
+    await this.dropAfterClose(socket);
   }
 
   override async webSocketError(socket: WebSocket): Promise<void> {
-    await this.syncAfterClose(socket);
+    await this.dropAfterClose(socket);
   }
 
-  private async syncAfterClose(socket: WebSocket): Promise<void> {
+  private async subscribe(
+    socket: WebSocket,
+    wire: Parameters<typeof StreamChannel.fromWire>[0],
+  ): Promise<Result<void, StreamRefusal>> {
     const state = this.stateOf(socket);
-    if (state?.channels.some((channel) => subscriptionRow(channel))) {
-      await this.syncSubscriptions(hubName(state.viewer));
-    }
-  }
-
-  /**
-   * Write rows for channels about to be subscribed, then `attach` them to
-   * their socket. They count as pending until attached, in the same turn, so
-   * no row write in between drops them. Sockets on `user*` streams alone
-   * never touch D1.
-   */
-  private async subscribeWithRows(
-    hub: string,
-    channels: ReadonlyArray<StreamChannelValue>,
-    attach: () => void,
-  ): Promise<Result<void, RepositoryError>> {
-    if (!channels.some((channel) => subscriptionRow(channel))) {
-      attach();
+    if (!state) {
       return ok(undefined);
     }
-    this.adding.push(...channels);
-    try {
-      const written = await this.syncSubscriptions(hub);
-      if (written.isOk()) {
-        attach();
+    const channel = await requestStreamChannel(this.env, state.viewer, wire);
+    if (channel.isErr()) {
+      return err(channel.error);
+    }
+    if (socket.readyState !== WebSocket.OPEN) {
+      return ok(undefined);
+    }
+    const target = StreamChannel.key(channel.value);
+    if (state.channels.some((held) => StreamChannel.key(held) === target)) {
+      return ok(undefined);
+    }
+    const refusal = this.admit(state.channels, [channel.value]);
+    if (refusal) {
+      return err(refusal);
+    }
+    const hub = hubName(state.viewer);
+    const written = await this.addRows(hub, [channel.value]);
+    if (written.isErr()) {
+      return err({ kind: "Unavailable" });
+    }
+    // The socket may have closed while the row was written; its close
+    // handler did not know about this channel, so let go of it here.
+    if (socket.readyState !== WebSocket.OPEN) {
+      await this.dropRowIfUnheld(hub, channel.value);
+      return ok(undefined);
+    }
+    if (!attach(socket, { ...state, channels: [...state.channels, channel.value] })) {
+      await this.dropRowIfUnheld(hub, channel.value);
+      return err({ kind: "SocketFull" });
+    }
+    return ok(undefined);
+  }
+
+  private async unsubscribe(
+    socket: WebSocket,
+    wire: Parameters<typeof StreamChannel.fromWire>[0],
+  ): Promise<Result<void, StreamRefusal>> {
+    const channel = StreamChannel.fromWire(wire);
+    if (channel.isErr()) {
+      return err(channel.error);
+    }
+    const state = this.stateOf(socket);
+    if (!state) {
+      return ok(undefined);
+    }
+    const target = StreamChannel.key(channel.value);
+    if (!state.channels.some((held) => StreamChannel.key(held) === target)) {
+      return ok(undefined);
+    }
+    attach(socket, {
+      ...state,
+      channels: state.channels.filter((held) => StreamChannel.key(held) !== target),
+    });
+    await this.dropRowIfUnheld(hubName(state.viewer), channel.value);
+    return ok(undefined);
+  }
+
+  /** A closed socket's attachment goes with it, so read its channels before waiting. */
+  private async dropAfterClose(socket: WebSocket): Promise<void> {
+    const state = this.stateOf(socket);
+    if (!state) {
+      return;
+    }
+    await this.serially(async () => {
+      for (const channel of state.channels) {
+        await this.dropRowIfUnheld(hubName(state.viewer), channel);
       }
-      return written;
-    } finally {
-      for (const channel of channels) {
-        const index = this.adding.indexOf(channel);
-        if (index >= 0) {
-          this.adding.splice(index, 1);
+    });
+  }
+
+  /** Why `adding` may not join a socket already holding `holding`, if it may not. */
+  private admit(
+    holding: ReadonlyArray<StreamChannelValue>,
+    adding: ReadonlyArray<StreamChannelValue>,
+  ): StreamRefusal | undefined {
+    if (holding.length + adding.length > MAX_SOCKET_CHANNELS) {
+      return { kind: "SocketFull" };
+    }
+    const tagged = new Set(
+      this.openSockets()
+        .flatMap((socket) => this.stateOf(socket)?.channels ?? [])
+        .filter(isTagged)
+        .map(StreamChannel.key),
+    );
+    for (const channel of adding.filter(isTagged)) {
+      tagged.add(StreamChannel.key(channel));
+    }
+    return tagged.size > MAX_HUB_TAGGED_CHANNELS ? { kind: "HubFull" } : undefined;
+  }
+
+  /** Insert the rows of `channels` no open socket holds yet. */
+  private async addRows(
+    hub: string,
+    channels: ReadonlyArray<StreamChannelValue>,
+  ): Promise<Result<void, RepositoryError>> {
+    const held = this.heldKeys();
+    for (const channel of channels) {
+      const row = subscriptionRow(channel);
+      if (row && !held.has(StreamChannel.key(channel))) {
+        const written = await insertSubscriptionRow(this.env.DB, hub, row);
+        if (written.isErr()) {
+          return written;
         }
       }
     }
+    return ok(undefined);
   }
 
-  /** Make the hub's `stream_subscriptions` rows match its open sockets (and pending subscriptions). */
-  private syncSubscriptions(hub: string): Promise<Result<void, RepositoryError>> {
-    const run = this.syncing.then(async (): Promise<Result<void, RepositoryError>> => {
-      const channels = new Map<string, StreamChannelValue>();
-      for (const channel of [
-        ...this.openSockets().flatMap((socket) => this.stateOf(socket)?.channels ?? []),
-        ...this.adding,
-      ]) {
-        if (subscriptionRow(channel)) {
-          channels.set(StreamChannel.key(channel), channel);
-        }
-      }
-      const signature = JSON.stringify([...channels.keys()].toSorted());
-      if (signature === this.synced) {
-        return ok(undefined);
-      }
-      const written = await replaceHubSubscriptions(this.env.DB, hub, [...channels.values()]);
-      if (written.isOk()) {
-        this.synced = signature;
-      }
-      return written;
-    });
-    this.syncing = run.catch(() => undefined);
+  private async dropRowIfUnheld(hub: string, channel: StreamChannelValue): Promise<void> {
+    if (!this.heldKeys().has(StreamChannel.key(channel))) {
+      await this.dropRow(hub, channel);
+    }
+  }
+
+  /** Best effort: a row that stays is dropped by the next fan-out that finds nobody behind it. */
+  private async dropRow(hub: string, channel: StreamChannelValue): Promise<void> {
+    const row = subscriptionRow(channel);
+    if (row) {
+      await deleteSubscriptionRow(this.env.DB, hub, row);
+    }
+  }
+
+  /** Run `work` after every change queued before it. */
+  private serially<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(work);
+    this.queue = run.catch(() => undefined);
     return run;
+  }
+
+  private heldKeys(): Set<string> {
+    return new Set(
+      this.openSockets()
+        .flatMap((socket) => this.stateOf(socket)?.channels ?? [])
+        .map(StreamChannel.key),
+    );
   }
 
   private openSockets(): WebSocket[] {
@@ -261,3 +337,16 @@ export class StreamHub extends DurableObject<Env> {
     return state.isOk() ? state.value : undefined;
   }
 }
+
+const isTagged = (channel: StreamChannelValue): boolean =>
+  channel.kind === "Hashtag" || channel.kind === "List";
+
+/** Store `state` on the socket; false when it is over workerd's attachment limit. */
+const attach = (socket: WebSocket, state: SocketState): boolean => {
+  try {
+    socket.serializeAttachment(state);
+    return true;
+  } catch {
+    return false;
+  }
+};

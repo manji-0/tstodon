@@ -3,15 +3,15 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { parseRows, type RepositoryError, runD1 } from "./d1";
 import {
-  deleteHubStreamSubscriptions,
+  deleteStreamSubscription,
   insertStreamSubscription,
   listListStreamSubscriptions as listListStreamSubscriptionsSql,
   listPublicStreamSubscriptions as listPublicStreamSubscriptionsSql,
 } from "./generated/prisma/sql";
-import { queryTyped, runTypedBatch } from "./typed-sql";
+import { queryTyped, runTyped } from "./typed-sql";
 
 /** A subscription as `stream_subscriptions` keeps it. */
-type SubscriptionRow = Readonly<{ stream: string; param: string }>;
+export type SubscriptionRow = Readonly<{ stream: string; param: string }>;
 
 /**
  * The row a fan-out finds a channel by. `user*` streams have none: they go
@@ -39,19 +39,25 @@ const channelOfRow = (row: SubscriptionRow): StreamChannelValue | undefined => {
   return channel.isOk() ? channel.value : undefined;
 };
 
-/** Make the hub's rows exactly the given channels' rows. */
-export const replaceHubSubscriptions = async (
+/** Record that `hub` holds `channel`, which must have a row. */
+export const insertSubscriptionRow = async (
   db: D1Database,
   hub: string,
-  channels: ReadonlyArray<StreamChannelValue>,
-): Promise<Result<void, RepositoryError>> => {
-  const rows = channels.flatMap((channel) => subscriptionRow(channel) ?? []);
-  const written = await runTypedBatch(db, [
-    deleteHubStreamSubscriptions(hub),
-    ...rows.map((row) => insertStreamSubscription(hub, row.stream, row.param)),
-  ]);
-  return written.isErr() ? err(written.error) : ok(undefined);
-};
+  row: SubscriptionRow,
+): Promise<Result<void, RepositoryError>> =>
+  (await runD1(() => runTyped(db, insertStreamSubscription(hub, row.stream, row.param)))).map(
+    () => undefined,
+  );
+
+/** Record that `hub` no longer holds the channel `row` stands for. */
+export const deleteSubscriptionRow = async (
+  db: D1Database,
+  hub: string,
+  row: SubscriptionRow,
+): Promise<Result<void, RepositoryError>> =>
+  (await runD1(() => runTyped(db, deleteStreamSubscription(hub, row.stream, row.param)))).map(
+    () => undefined,
+  );
 
 const ListRowSchema = z.object({ hub: z.string(), param: z.string() });
 
