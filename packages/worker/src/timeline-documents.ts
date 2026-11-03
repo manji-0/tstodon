@@ -1,18 +1,20 @@
-import type { InstanceIdentity, RemoteNote } from "@tstodon/domain";
+import type { InstanceIdentity, LocalStatus, RemoteNote } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { restrictedDomains, suspendedDomains } from "./admin-domain-block-store";
 import type { RepositoryError } from "./d1";
 import { listBlockedDomains } from "./domain-block-store";
 import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "./filter-match";
+import type { FollowedFeed } from "./followed-feed";
 import type { IdCursor } from "./id-cursor";
 import { cardDocument, parseCardJson } from "./link-card";
+import { type AccountList, listListTimelineStatuses } from "./list-store";
 import { mastodonStatuses } from "./local-status-documents";
 import { findRemoteActorsByUris } from "./remote-actor-store";
-import { listHomeRemoteBoosts } from "./remote-boost-store";
+import { listFollowedRemoteBoosts } from "./remote-boost-store";
 import { remoteBoostDocuments } from "./remote-boost-documents";
 import { findRemotePollVotes } from "./remote-poll-vote-store";
 import { mastodonRemoteStatus, remoteStatusVisible } from "./remote-status-document";
-import { listHomeRemoteStatuses } from "./remote-status-timeline-store";
+import { listFollowedRemoteStatuses } from "./remote-status-timeline-store";
 import { listRemoteStatusCards } from "./status-card-store";
 import { attachRemoteReplyRefs } from "./status-documents";
 import { filterMutedThreads, mutedThreadStatusIds } from "./status-mute-store";
@@ -100,29 +102,22 @@ export const mergeTimelineDocuments = (
 };
 
 /**
- * The viewer's home timeline as Mastodon statuses rendered for the viewer:
- * its own and followed accounts' statuses and boosts, followed remote actors'
- * notes and boosts, without what the viewer blocks or mutes (accounts, domains,
- * conversations), with `filtered` on what its filters match. This is the one definition of
- * what home holds: `GET /api/v1/timelines/home` pages it, and the streaming
- * fan-out asks it for one entry (`onlyId`) to decide whether a follower
- * hears about that entry.
+ * Followed remote actors' notes and boosts on one of the viewer's feeds (home
+ * or a list), rendered for the viewer: without the conversations it muted,
+ * with `filtered` on the notes its filters match.
  */
-export const homeTimelineDocuments = async (
+const followedRemoteDocuments = async (
   env: Env,
   identity: InstanceIdentity,
   viewerId: string,
+  feed: FollowedFeed,
   limit: number,
   cursor: IdCursor,
 ): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
-  const [statuses, remote, boosts] = await Promise.all([
-    listHomeStatuses(env.DB, viewerId, limit, cursor),
-    listHomeRemoteStatuses(env.DB, viewerId, limit, cursor),
-    listHomeRemoteBoosts(env.DB, viewerId, limit, cursor),
+  const [remote, boosts] = await Promise.all([
+    listFollowedRemoteStatuses(env.DB, viewerId, feed, limit, cursor),
+    listFollowedRemoteBoosts(env.DB, viewerId, feed, limit, cursor),
   ]);
-  if (statuses.isErr()) {
-    return err(statuses.error);
-  }
   if (remote.isErr()) {
     return err(remote.error);
   }
@@ -133,17 +128,6 @@ export const homeTimelineDocuments = async (
   if (boostDocuments.isErr()) {
     return err(boostDocuments.error);
   }
-  const visible = await filterMutedThreads(env.DB, viewerId, statuses.value);
-  if (visible.isErr()) {
-    return err(visible.error);
-  }
-  const filteredLocal = await attachFilteredToStatuses(
-    env.DB,
-    viewerId,
-    "home",
-    visible.value,
-    await mastodonStatuses(env, identity, visible.value, viewerId),
-  );
   const mutedRemote = await mutedThreadStatusIds(
     env.DB,
     identity,
@@ -169,12 +153,97 @@ export const homeTimelineDocuments = async (
     rendered.statuses,
     rendered.documents,
   );
-  return ok(
-    mergeTimelineDocuments(
-      filteredLocal,
-      [...filteredRemote, ...boostDocuments.value],
-      cursor,
-      limit,
-    ),
-  );
+  return ok([...filteredRemote, ...boostDocuments.value]);
 };
+
+/**
+ * One feed's local statuses and followed remote actors' entries, merged and
+ * rendered for the viewer: muted conversations left out, `filtered` attached.
+ */
+const feedDocuments = async (
+  env: Env,
+  identity: InstanceIdentity,
+  viewerId: string,
+  feed: FollowedFeed,
+  local: Promise<Result<LocalStatus[], RepositoryError>>,
+  limit: number,
+  cursor: IdCursor,
+): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+  const [statuses, remote] = await Promise.all([
+    local,
+    followedRemoteDocuments(env, identity, viewerId, feed, limit, cursor),
+  ]);
+  if (statuses.isErr()) {
+    return err(statuses.error);
+  }
+  if (remote.isErr()) {
+    return err(remote.error);
+  }
+  const visible = await filterMutedThreads(env.DB, viewerId, statuses.value);
+  if (visible.isErr()) {
+    return err(visible.error);
+  }
+  const filteredLocal = await attachFilteredToStatuses(
+    env.DB,
+    viewerId,
+    "home",
+    visible.value,
+    await mastodonStatuses(env, identity, visible.value, viewerId),
+  );
+  return ok(mergeTimelineDocuments(filteredLocal, remote.value, cursor, limit));
+};
+
+/**
+ * The viewer's home timeline as Mastodon statuses rendered for the viewer:
+ * its own and followed accounts' statuses and boosts, followed remote actors'
+ * notes and boosts, without what the viewer blocks or mutes (accounts, domains,
+ * conversations), with `filtered` on what its filters match. This is the one definition of
+ * what home holds: `GET /api/v1/timelines/home` pages it, and the streaming
+ * fan-out asks it for one entry (`onlyId`) to decide whether a follower
+ * hears about that entry.
+ */
+export const homeTimelineDocuments = async (
+  env: Env,
+  identity: InstanceIdentity,
+  viewerId: string,
+  limit: number,
+  cursor: IdCursor,
+): Promise<Result<Record<string, unknown>[], RepositoryError>> =>
+  feedDocuments(
+    env,
+    identity,
+    viewerId,
+    { kind: "Home" },
+    listHomeStatuses(env.DB, viewerId, limit, cursor),
+    limit,
+    cursor,
+  );
+
+/**
+ * One of the viewer's lists as a timeline, under home's rules: its local
+ * members' statuses (by the list's `replies_policy`) and the notes and boosts
+ * of its remote members, which the viewer follows.
+ */
+export const listTimelineDocuments = async (
+  env: Env,
+  identity: InstanceIdentity,
+  viewerId: string,
+  list: AccountList,
+  limit: number,
+  cursor: IdCursor,
+): Promise<Result<Record<string, unknown>[], RepositoryError>> =>
+  feedDocuments(
+    env,
+    identity,
+    viewerId,
+    { kind: "List", listId: list.id, repliesPolicy: list.repliesPolicy },
+    listListTimelineStatuses(env.DB, {
+      listId: list.id,
+      ownerAccountId: viewerId,
+      repliesPolicy: list.repliesPolicy,
+      limit,
+      cursor,
+    }),
+    limit,
+    cursor,
+  );

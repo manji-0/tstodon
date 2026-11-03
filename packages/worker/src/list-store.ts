@@ -10,6 +10,7 @@ import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import { hydrateStatusRows, STATUS_SELECT } from "./status-store";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import { RemoteAccountId } from "./remote-account-id";
+import { type IdCursor, idCursorFragment } from "./id-cursor";
 import {
   createList as createListSql,
   deleteList as deleteListSql,
@@ -297,7 +298,7 @@ export const listListTimelineStatuses = async (
     ownerAccountId: string;
     repliesPolicy: ListRepliesPolicy;
     limit: number;
-    maxId: string | undefined;
+    cursor: IdCursor;
   }>,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
@@ -322,11 +323,8 @@ export const listListTimelineStatuses = async (
     if (input.repliesPolicy === "followed") {
       binds.push(input.ownerAccountId);
     }
-    const maxFilter = input.maxId ? `AND id < ?` : "";
-    if (input.maxId) {
-      binds.push(input.maxId);
-    }
-    binds.push(input.limit);
+    const { where, order, binds: cursorBinds } = idCursorFragment(input.cursor);
+    binds.push(...cursorBinds, input.limit);
     const { results } = await db
       .prepare(
         `SELECT ${STATUS_SELECT} FROM statuses
@@ -335,8 +333,7 @@ export const listListTimelineStatuses = async (
            AND account_id IN (SELECT member_account_id FROM account_list_members WHERE list_id = ?)
            AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
            ${replyFilter}
-           ${maxFilter}
-         ORDER BY id DESC
+           ${where} ${order}
          LIMIT ?`,
       )
       .bind(...binds)

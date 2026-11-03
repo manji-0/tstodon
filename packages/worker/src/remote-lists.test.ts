@@ -68,6 +68,127 @@ const listsContaining = async (email: string, id: string): Promise<string[]> =>
     (await get(email, `/api/v1/accounts/${id}/lists`)).body,
   ).map((list) => list.id);
 
+const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
+
+/** A note by `author`, delivered to (and cached by) this instance. */
+const note = async (
+  author: Remote,
+  slug: string,
+  extra: Record<string, unknown> = {},
+): Promise<string> => {
+  const noteUri = `${new URL(author.actorUri).origin}/notes/${slug}`;
+  expect(
+    await author.send({
+      id: `${noteUri}/activity`,
+      type: "Create",
+      object: {
+        id: noteUri,
+        type: "Note",
+        attributedTo: author.actorUri,
+        content: `<p>${slug}</p>`,
+        published: "2026-10-20T00:00:00.000Z",
+        to: [PUBLIC],
+        cc: [`${author.actorUri}/followers`],
+        ...extra,
+      },
+    }),
+  ).toBe(202);
+  return noteUri;
+};
+
+const boost = async (booster: Remote, objectUri: string, slug: string): Promise<string> => {
+  const announceId = `${booster.actorUri}/statuses/${slug}/activity`;
+  expect(
+    await booster.send({
+      id: announceId,
+      type: "Announce",
+      object: objectUri,
+      published: "2026-10-21T00:00:00.000Z",
+      to: [PUBLIC],
+      cc: [`${booster.actorUri}/followers`],
+    }),
+  ).toBe(202);
+  return announceId;
+};
+
+const EntrySchema = z.object({
+  id: z.string(),
+  uri: z.string(),
+  reblog: z.object({ uri: z.string() }).nullable(),
+});
+
+const timeline = async (email: string, path: string) =>
+  read(z.array(EntrySchema), (await get(email, path)).body);
+
+/** Each entry as the URI a reader sees, a boost as `boost:` and the boosted URI. */
+const uris = async (email: string, path: string): Promise<string[]> =>
+  (await timeline(email, path)).map((entry) =>
+    entry.reblog ? `boost:${entry.reblog.uri}` : entry.uri,
+  );
+
+const addMembers = async (email: string, listId: string, ids: string[]) =>
+  expect(
+    (await send(email, `/api/v1/lists/${listId}/accounts`, "POST", { account_ids: ids })).status,
+  ).toBe(200);
+
+describe("a list timeline with remote members", () => {
+  it("shows the remote members' notes and boosts, paged by id", async () => {
+    const member = await remoteActor("list-feed-member", "member.example");
+    const outsider = await remoteActor("list-feed-outsider", "outsider.example");
+    const owner = "list-feed-owner@example.com";
+    await acceptedFollow(owner, member, "list-feed-member");
+    await acceptedFollow(owner, outsider, "list-feed-outsider");
+    const listId = await createList(owner, "Feed");
+    await addMembers(owner, listId, [accountId(member)]);
+
+    const first = await note(member, "list-feed-first");
+    const followersOnly = await note(member, "list-feed-followers", {
+      to: [`${member.actorUri}/followers`],
+      cc: [],
+    });
+    const outsiderNote = await note(outsider, "list-feed-outside");
+    await boost(member, outsiderNote, "list-feed-boost");
+    await note(outsider, "list-feed-outside-other");
+
+    const path = `/api/v1/timelines/list/${listId}`;
+    expect(await uris(owner, path)).toEqual([`boost:${outsiderNote}`, followersOnly, first]);
+
+    const entries = await timeline(owner, path);
+    const newest = entries[0]?.id ?? "";
+    const oldest = entries[2]?.id ?? "";
+    expect(await uris(owner, `${path}?max_id=${newest}`)).toEqual([followersOnly, first]);
+    expect(await uris(owner, `${path}?limit=1&min_id=${oldest}`)).toEqual([followersOnly]);
+    expect(await uris(owner, `${path}?since_id=${oldest}`)).toEqual([
+      `boost:${outsiderNote}`,
+      followersOnly,
+    ]);
+  });
+
+  it("applies home's blocks and the list's replies policy to remote members", async () => {
+    const member = await remoteActor("list-rules-member", "rules.example");
+    const blocked = await remoteActor("list-rules-blocked", "blocked.example");
+    const owner = "list-rules-owner@example.com";
+    await acceptedFollow(owner, member, "list-rules-member");
+    await acceptedFollow(owner, blocked, "list-rules-blocked");
+    const listId = await createList(owner, "Rules");
+    await addMembers(owner, listId, [accountId(member), accountId(blocked)]);
+    const root = await note(member, "list-rules-root");
+    const reply = await note(member, "list-rules-reply", { inReplyTo: root });
+    await note(blocked, "list-rules-blocked-note");
+    expect((await send(owner, `/api/v1/accounts/${accountId(blocked)}/block`, "POST")).status).toBe(
+      200,
+    );
+
+    const path = `/api/v1/timelines/list/${listId}`;
+    expect(await uris(owner, path)).toEqual([reply, root]);
+
+    expect(
+      (await send(owner, `/api/v1/lists/${listId}`, "PUT", { replies_policy: "none" })).status,
+    ).toBe(200);
+    expect(await uris(owner, path)).toEqual([root]);
+  });
+});
+
 describe("remote accounts on lists", () => {
   it("adds a followed remote account next to a local one and removes it again", async () => {
     const remote = await remoteActor("list-member-remote");

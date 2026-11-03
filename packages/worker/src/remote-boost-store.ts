@@ -10,6 +10,7 @@ import {
   insertRemoteBoost as insertRemoteBoostSql,
 } from "./generated/prisma/sql";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
+import { feedFollowSql, type FollowedFeed } from "./followed-feed";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import { visibilitySql } from "./sql-enums";
 import { queryTyped } from "./typed-sql";
@@ -114,20 +115,23 @@ const HIDDEN_ACTOR_URIS_SQL = `(
 )`;
 
 /**
- * Boosts on the account's home timeline: those of remote actors it follows
- * (accepted, with reblogs shown), newest first. The boosted status must be a
- * public or unlisted one; a block or mute of the booster or of the original
- * author hides the boost, as does a domain block or suspension of either.
+ * Boosts on one of the account's followed feeds (home or a list): those of
+ * remote actors it follows (accepted, with reblogs shown) on that feed, newest
+ * first. The boosted status must be a public or unlisted one; a block or mute
+ * of the booster or of the original author hides the boost, as does a domain
+ * block or suspension of either.
  */
-export const listHomeRemoteBoosts = async (
+export const listFollowedRemoteBoosts = async (
   db: D1Database,
   accountId: string,
+  feed: FollowedFeed,
   limit: number,
   cursor: IdCursor = {},
 ): Promise<Result<RemoteBoostValue[], RepositoryError>> =>
   runD1(async () => {
     const now = nowIso();
     const { where, order, binds } = idCursorFragment(cursor);
+    const follows = feedFollowSql(feed);
     const { results } = await db
       .prepare(
         `SELECT * FROM (
@@ -136,7 +140,7 @@ export const listHomeRemoteBoosts = async (
            FROM remote_boosts b
            JOIN outbound_follows f
              ON f.actor_uri = b.actor_uri AND f.account_id = ? AND f.state = 'Accepted'
-                AND f.reblogs <> 0
+                AND f.reblogs <> 0 ${follows.sql}
            LEFT JOIN statuses ls ON ls.id = b.local_status_id
            LEFT JOIN remote_statuses rs ON rs.id = b.remote_status_id
            WHERE COALESCE(ls.visibility, rs.visibility) IN ('public', 'unlisted')
@@ -149,6 +153,7 @@ export const listHomeRemoteBoosts = async (
       )
       .bind(
         accountId,
+        ...follows.binds,
         // `SUPPRESSED_ACCOUNT_IDS_SQL` takes the viewer three times and its clock.
         accountId,
         accountId,

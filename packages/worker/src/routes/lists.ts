@@ -4,6 +4,7 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
+  queryCursor,
   queryLimit,
   readBody,
   requireUser,
@@ -18,16 +19,13 @@ import {
   listListMembers,
   listListsContainingMember,
   listListsForAccount,
-  listListTimelineStatuses,
   removeListMembers,
   toMastodonList,
   updateList,
 } from "../list-store";
 import { accountDocumentsByIds, documentsInOrder } from "../account-documents";
-import { mastodonStatuses } from "../local-status-documents";
 import { parseInstanceIdentity } from "../runtime-config";
-import { attachFilteredToStatuses } from "../filter-match";
-import { filterMutedThreads } from "../status-mute-store";
+import { listTimelineDocuments } from "../timeline-documents";
 import { isTruthy, stringList } from "../form-values";
 import { findOutboundFollow } from "../outbound-follow-store";
 import { OutboundFollow } from "@tstodon/domain";
@@ -284,27 +282,16 @@ export const getV1TimelinesListById = async (
   if (!list.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const statuses = await listListTimelineStatuses(c.env.DB, {
-    listId: list.value.id,
-    ownerAccountId: user.value.id,
-    repliesPolicy: list.value.repliesPolicy,
-    limit: queryLimit(c.req.query("limit")),
-    maxId: c.req.query("max_id"),
-  });
-  if (statuses.isErr()) {
-    return jsonRepositoryError(c, statuses.error.message);
-  }
-  const visible = await filterMutedThreads(c.env.DB, user.value.id, statuses.value);
-  if (visible.isErr()) {
-    return jsonRepositoryError(c, visible.error.message);
-  }
-  return c.json(
-    await attachFilteredToStatuses(
-      c.env.DB,
-      user.value.id,
-      "home",
-      visible.value,
-      await mastodonStatuses(c.env, identity.value, visible.value, user.value.id),
-    ),
+  const documents = await listTimelineDocuments(
+    c.env,
+    identity.value,
+    user.value.id,
+    list.value,
+    queryLimit(c.req.query("limit")),
+    queryCursor(c),
   );
+  if (documents.isErr()) {
+    return jsonRepositoryError(c, documents.error.message);
+  }
+  return c.json(documents.value);
 };

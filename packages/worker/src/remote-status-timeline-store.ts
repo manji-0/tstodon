@@ -7,6 +7,7 @@ import type { StatusCursor } from "./status-timeline-store";
 import type { TagStatusFilters } from "./status-discovery-store";
 import { queryTyped } from "./typed-sql";
 import { idCursorFragment } from "./id-cursor";
+import { feedFollowSql, feedRepliesSql, type FollowedFeed } from "./followed-feed";
 import { parseRemoteStatusRow, remoteStatusFromRow } from "./remote-status-store";
 
 /**
@@ -65,28 +66,33 @@ export const listRemoteDirectStatusesForAccount = async (
   });
 
 /**
- * Remote statuses on the account's home timeline: the public, unlisted, and
- * followers-only notes of actors it follows (accepted), newest first. A
- * follow with `languages[]` keeps statuses in those languages only (and ones
- * without a language). Actors the account blocks or mutes, domains it blocks,
- * and suspended domains stay out; silenced ones are still shown to followers,
- * as in Mastodon.
+ * Remote statuses on one of the account's followed feeds (home or a list): the
+ * public, unlisted, and followers-only notes of actors it follows (accepted)
+ * on that feed, newest first. A follow with `languages[]` keeps statuses in
+ * those languages only (and ones without a language). Actors the account
+ * blocks or mutes, domains it blocks, and suspended domains stay out; silenced
+ * ones are still shown to followers, as in Mastodon.
  */
-export const listHomeRemoteStatuses = async (
+export const listFollowedRemoteStatuses = async (
   db: D1Database,
   accountId: string,
+  feed: FollowedFeed,
   limit: number,
   cursor: StatusCursor = {},
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
     const { where, order, binds } = idCursorFragment(cursor);
+    const follows = feedFollowSql(feed);
+    const replies = feedRepliesSql(feed, accountId);
     const { results } = await db
       .prepare(
         `SELECT ${REMOTE_STATUS_SELECT} FROM (
            SELECT s.* FROM remote_statuses s
            JOIN outbound_follows f
              ON f.actor_uri = s.actor_uri AND f.account_id = ? AND f.state = 'Accepted'
+                ${follows.sql}
            WHERE s.visibility <> 'direct'
+             ${replies.sql}
              AND NOT (
                f.languages_json <> '[]'
                AND COALESCE(s.language, '') <> ''
@@ -107,7 +113,17 @@ export const listHomeRemoteStatuses = async (
              )
          ) s WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )
-      .bind(accountId, accountId, accountId, nowIso(), accountId, ...binds, limit)
+      .bind(
+        accountId,
+        ...follows.binds,
+        ...replies.binds,
+        accountId,
+        accountId,
+        nowIso(),
+        accountId,
+        ...binds,
+        limit,
+      )
       .all();
     const statuses: RemoteStatus[] = [];
     for (const raw of results ?? []) {
