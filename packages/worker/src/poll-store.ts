@@ -8,6 +8,7 @@ import { parseJsonColumn } from "./json-column";
 import { parseRow, toRepositoryError } from "./d1";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
+  claimPollUpdate as claimPollUpdateSql,
   countPollVotes as countPollVotesSql,
   findPollById as findPollByIdSql,
   findPollByStatusId as findPollByStatusIdSql,
@@ -19,6 +20,7 @@ import {
   listPollVotesForAccount as listPollVotesForAccountSql,
   listRemotePollVotesForActor as listRemotePollVotesForActorSql,
   markPollExpiryNotified as markPollExpiryNotifiedSql,
+  releasePollUpdate as releasePollUpdateSql,
   replacePollOptions as replacePollOptionsSql,
   updatePollOptionsIfActive as updatePollOptionsIfActiveSql,
   updateStatusPollId as updateStatusPollIdSql,
@@ -438,6 +440,24 @@ export const markPollExpiryNotified = async (
   runD1(async () => {
     await runTyped(db, markPollExpiryNotifiedSql(notifiedAt, pollId));
   });
+
+/**
+ * Take the poll's single `Update` slot. True when this caller took it and must
+ * queue the job; false when a job is already queued for the poll.
+ */
+export const claimPollUpdate = async (
+  db: D1Database,
+  pollId: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ id: string | null }>(db, claimPollUpdateSql(nowIso(), pollId));
+    return rows.length > 0;
+  });
+
+/** Free the poll's `Update` slot so the next vote queues a fresh job. */
+export const releasePollUpdate = async (db: D1Database, pollId: string): Promise<void> => {
+  await runTyped(db, releasePollUpdateSql(pollId));
+};
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([PollOptionSchema, PollOptionsSchema, PollRowSchema, ExpiredPollTargetRowSchema]);

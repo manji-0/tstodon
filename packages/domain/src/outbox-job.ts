@@ -26,6 +26,12 @@ const ProcessLinkCardSchema = z.object({
   url: z.url(),
 });
 
+/** Federate one `Update(Question)` with the poll's current counts (debounced). */
+const DistributePollUpdateSchema = z.object({
+  kind: z.literal("DistributePollUpdate"),
+  pollId: z.string().min(1),
+});
+
 /** Send one delivered notification to one of the recipient's push subscriptions. */
 const DeliverPushSchema = z.object({
   kind: z.literal("DeliverPush"),
@@ -42,6 +48,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   BackfillRemoteTagsSchema,
   PublishScheduledStatusesSchema,
   ProcessLinkCardSchema,
+  DistributePollUpdateSchema,
   DeliverPushSchema,
 ]);
 

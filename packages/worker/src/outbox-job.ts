@@ -13,6 +13,7 @@ import { listExpiredUnnotifiedPolls, markPollExpiryNotified } from "./poll-store
 import { elapsedMs, writeMetric } from "./metrics";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
+import { processDistributePollUpdateJob } from "./poll-update";
 import { processPushJob } from "./push-delivery";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
@@ -165,6 +166,8 @@ export const processOutboxJob = async (
       return "ok";
     case "ProcessLinkCard":
       return processLinkCardJob(env, job);
+    case "DistributePollUpdate":
+      return processDistributePollUpdateJob(env, job);
     case "DeliverPush":
       return processPushJob(env, job);
     case "ExpandFollowers": {

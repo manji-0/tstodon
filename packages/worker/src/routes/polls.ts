@@ -13,6 +13,7 @@ import { voteOnRemotePoll } from "../remote-poll-own-vote";
 import { findRemoteStatusById } from "../remote-status-store";
 import { canViewRemoteStatus } from "../visibility-guard";
 import { findPollById, votePoll } from "../poll-store";
+import { schedulePollUpdate } from "../poll-update";
 import { numberList } from "../form-values";
 import { z } from "zod";
 
@@ -98,6 +99,7 @@ export const postV1PollsByIdVotes = async (
   if (poll.isErr() || !poll.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
+  await schedulePollUpdate(c.env, poll.value);
   // Mastodon answers a vote with the updated Poll entity, not the status.
   return c.json(pollJson(poll.value));
 };

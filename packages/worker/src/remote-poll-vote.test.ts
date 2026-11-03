@@ -2,6 +2,11 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
+import { OutboxJob } from "@tstodon/domain";
+import { findRemoteActorsByUris } from "./remote-actor-store";
+import { handleRemotePollVote } from "./remote-poll-vote";
+import { processOutboxJob } from "./outbox-job";
+import { parseInstanceIdentity } from "./runtime-config";
 import { authHeaders } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 
@@ -260,28 +265,174 @@ describe("remote votes on a local poll", () => {
 
     expect((await pollState(poll)).votes_count).toBe(1);
   });
+});
 
-  it("federates an Update of the Question after a vote", async () => {
-    const poll = await createPoll("update-author@example.com");
-    const voter = await remoteActor("update-voter");
+type QueueSend = Readonly<{ message: unknown; options: unknown }>;
+
+/** The Worker's env with a queue that records what is sent to it. */
+const recordingEnv = (fail = false) => {
+  const sent: QueueSend[] = [];
+  const queue = {
+    send: async (message: unknown, options?: unknown) => {
+      if (fail) {
+        throw new Error("queue unavailable");
+      }
+      sent.push({ message, options });
+    },
+  };
+  const proxied = new Proxy(env, {
+    get: (target, key) => (key === "OUTBOX_PROCESS_QUEUE" ? queue : Reflect.get(target, key)),
+  });
+  return { env: proxied, sent };
+};
+
+/** A remote vote handled in-process, so the queue send can be observed. */
+const handleVote = async (
+  recording: Readonly<{ env: Env }>,
+  voter: Remote,
+  poll: LocalPoll,
+  title: string,
+): Promise<void> => {
+  voteSeq += 1;
+  const identity = parseInstanceIdentity(env);
+  const actors = await findRemoteActorsByUris(env.DB, [voter.actorUri]);
+  const actor = actors.isOk() ? actors.value.get(voter.actorUri) : undefined;
+  if (identity.isErr() || !actor) {
+    throw new Error("vote fixture rejected");
+  }
+  const outcome = await handleRemotePollVote(recording.env, identity.value, actor, {
+    id: `https://remote.example/votes/direct-${voteSeq}`,
+    type: "Note",
+    attributedTo: voter.actorUri,
+    to: [actorUrl(poll)],
+    inReplyTo: poll.statusUri,
+    name: title,
+  });
+  expect(outcome.kind).toBe("Recorded");
+};
+
+const runUpdateJob = async (poll: LocalPoll): Promise<void> => {
+  const job = OutboxJob.parse({ kind: "DistributePollUpdate", pollId: poll.pollId });
+  if (job.isErr()) {
+    throw new Error("job rejected");
+  }
+  expect(await processOutboxJob(env, job.value)).toBe("ok");
+};
+
+const queuedAt = async (poll: LocalPoll): Promise<string | null | undefined> =>
+  (
+    await env.DB.prepare("SELECT update_queued_at FROM polls WHERE id = ?")
+      .bind(poll.pollId)
+      .first<{ update_queued_at: string | null }>()
+  )?.update_queued_at;
+
+describe("Update of the Question after votes", () => {
+  it("queues one delayed job for a burst of votes", async () => {
+    const poll = await createPoll("burst-author@example.com");
+    const recording = recordingEnv();
+    for (const [name, title] of [
+      ["burst-a", "cats"],
+      ["burst-b", "dogs"],
+      ["burst-c", "dogs"],
+    ] as const) {
+      await handleVote(recording, await remoteActor(name), poll, title);
+    }
+
+    expect(recording.sent).toEqual([
+      {
+        message: { kind: "DistributePollUpdate", pollId: poll.pollId },
+        options: { delaySeconds: 180 },
+      },
+    ]);
     expect(await updates(poll)).toHaveLength(0);
+    expect((await pollState(poll)).votes_count).toBe(3);
+  });
 
-    expect(await castVote(voter, poll, "birds")).toBe(202);
+  it("federates one Update with every vote counted, then lets the next vote queue again", async () => {
+    const poll = await createPoll("job-author@example.com");
+    const recording = recordingEnv();
+    await handleVote(recording, await remoteActor("job-a"), poll, "cats");
+    await handleVote(recording, await remoteActor("job-b"), poll, "dogs");
+    await handleVote(recording, await remoteActor("job-c"), poll, "dogs");
+    expect(await queuedAt(poll)).toEqual(expect.any(String));
 
-    const [update] = await updates(poll);
-    expect(update).toMatchObject({
+    await runUpdateJob(poll);
+
+    expect(await queuedAt(poll)).toBeNull();
+    const federated = await updates(poll);
+    expect(federated).toHaveLength(1);
+    expect(federated[0]).toMatchObject({
       type: "Update",
       actor: actorUrl(poll),
       object: {
         id: poll.statusUri,
         type: "Question",
-        votersCount: 1,
+        votersCount: 3,
         oneOf: [
-          { name: "cats", replies: { totalItems: 0 } },
-          { name: "dogs", replies: { totalItems: 0 } },
-          { name: "birds", replies: { totalItems: 1 } },
+          { name: "cats", replies: { totalItems: 1 } },
+          { name: "dogs", replies: { totalItems: 2 } },
+          { name: "birds", replies: { totalItems: 0 } },
         ],
       },
+    });
+
+    await handleVote(recording, await remoteActor("job-d"), poll, "birds");
+    expect(recording.sent).toHaveLength(2);
+    expect(await updates(poll)).toHaveLength(1);
+    await runUpdateJob(poll);
+    expect(await updates(poll)).toHaveLength(2);
+  });
+
+  it("queues nothing for a poll that hides its totals", async () => {
+    const poll = await createPoll("hidden-author@example.com", { hide_totals: true });
+    const recording = recordingEnv();
+
+    await handleVote(recording, await remoteActor("hidden-a"), poll, "cats");
+    expect(recording.sent).toHaveLength(0);
+    expect(await queuedAt(poll)).toBeNull();
+
+    await runUpdateJob(poll);
+    expect(await updates(poll)).toHaveLength(0);
+  });
+
+  it("frees the slot when the queue refuses the job", async () => {
+    const poll = await createPoll("refused-author@example.com");
+    const refusing = recordingEnv(true);
+    const working = recordingEnv();
+
+    await handleVote(refusing, await remoteActor("refused-a"), poll, "cats");
+    expect(await queuedAt(poll)).toBeNull();
+
+    await handleVote(working, await remoteActor("refused-b"), poll, "dogs");
+    expect(working.sent).toHaveLength(1);
+  });
+
+  it("drops a job for a poll that no longer exists", async () => {
+    const job = OutboxJob.parse({ kind: "DistributePollUpdate", pollId: "no-such-poll" });
+    expect(job.isOk()).toBe(true);
+    if (job.isOk()) {
+      expect(await processOutboxJob(env, job.value)).toBe("ok");
+    }
+  });
+
+  it("queues a job for a vote cast by a local account", async () => {
+    const poll = await createPoll("local-author@example.com");
+    expect(await queuedAt(poll)).toBeNull();
+
+    const voted = await json(`/api/v1/polls/${poll.pollId}/votes`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(await authHeaders("local-voter@example.com")),
+      },
+      body: JSON.stringify({ choices: [1] }),
+    });
+
+    expect(voted.status).toBe(200);
+    expect(await queuedAt(poll)).toEqual(expect.any(String));
+    await runUpdateJob(poll);
+    expect((await updates(poll))[0]).toMatchObject({
+      object: { votersCount: 1, oneOf: [{}, { replies: { totalItems: 1 } }, {}] },
     });
   });
 });
