@@ -102,8 +102,8 @@ export const mergeTimelineDocuments = (
 /**
  * The viewer's home timeline as Mastodon statuses rendered for the viewer:
  * its own and followed accounts' statuses and boosts, followed remote actors'
- * notes and boosts, without what the viewer blocks, mutes (accounts, domains,
- * conversations) or has filtered out to hide. This is the one definition of
+ * notes and boosts, without what the viewer blocks or mutes (accounts, domains,
+ * conversations), with `filtered` on what its filters match. This is the one definition of
  * what home holds: `GET /api/v1/timelines/home` pages it, and the streaming
  * fan-out asks it for one entry (`onlyId`) to decide whether a follower
  * hears about that entry.
