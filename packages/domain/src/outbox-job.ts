@@ -40,6 +40,17 @@ const DeliverPushSchema = z.object({
   subscriptionId: z.number().int().positive(),
 });
 
+/**
+ * Move the next page of local follows of a remote actor that moved: those
+ * after `afterId` (empty for the first page), to the account it moved to.
+ */
+const MoveFollowsSchema = z.object({
+  kind: z.literal("MoveFollows"),
+  fromActorUri: z.url(),
+  toActorUri: z.url(),
+  afterId: z.string(),
+});
+
 export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ExpandFollowersSchema,
   DeliverTargetSchema,
@@ -50,6 +61,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ProcessLinkCardSchema,
   DistributePollUpdateSchema,
   DeliverPushSchema,
+  MoveFollowsSchema,
 ]);
 
 export type OutboxJob = z.infer<typeof OutboxJobSchema>;

@@ -426,6 +426,8 @@ export * from "./sql/listNotifyingFollowerIds";
 
 export * from "./sql/listOutboundActivities";
 
+export * from "./sql/listOutboundFollowsByActor";
+
 export * from "./sql/listPeerDomains";
 
 export * from "./sql/listPendingAccountIds";

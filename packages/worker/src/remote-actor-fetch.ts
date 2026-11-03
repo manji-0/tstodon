@@ -96,6 +96,16 @@ const actorProfile = (
   };
 };
 
+/** The accounts an actor document says it is also (`alsoKnownAs`), as a list. */
+export const actorAliases = (raw: unknown): ReadonlyArray<string> => {
+  const document = parseActorDocument(raw);
+  if (document.isErr()) {
+    return [];
+  }
+  const aliases = document.value.alsoKnownAs;
+  return aliases === undefined ? [] : typeof aliases === "string" ? [aliases] : aliases;
+};
+
 /** An actor document that describes `actorUri` and holds that actor's own key. */
 export const remoteActorFromDocument = (
   raw: unknown,

@@ -57,6 +57,14 @@ const AnnounceSchema = z.object({
   object: z.string().min(1),
 });
 
+/** `object` is the account that moved; its `target` is read from the raw activity. */
+const MoveSchema = z.object({
+  kind: z.literal("Move"),
+  id: ActivityId.schema,
+  actor: z.string().min(1),
+  object: z.string().min(1),
+});
+
 const RelationshipActivitySchema = z.discriminatedUnion("kind", [
   FollowSchema,
   UndoSchema,
@@ -69,6 +77,7 @@ export const ActivitySchema = z.discriminatedUnion("kind", [
   UpdateSchema,
   DeleteSchema,
   RelationshipActivitySchema,
+  MoveSchema,
   LikeSchema,
   AnnounceSchema,
 ]);

@@ -12,6 +12,7 @@ import {
   deleteOutboundFollow as deleteOutboundFollowSql,
   findOutboundFollow as findOutboundFollowSql,
   insertOutboundFollow as insertOutboundFollowSql,
+  listOutboundFollowsByActor as listOutboundFollowsByActorSql,
   rejectOutboundFollow as rejectOutboundFollowSql,
   updateOutboundFollowOptions as updateOutboundFollowOptionsSql,
 } from "./generated/prisma/sql";
@@ -58,6 +59,21 @@ export const findOutboundFollow = async (
   runD1(async () => {
     const rows = await queryTyped(db, findOutboundFollowSql(accountId, actorUri));
     return outboundFollowFromRow(rows[0]);
+  });
+
+/** Up to `limit` follows of `actorUri` with an id after `afterId`, in id order. */
+export const listOutboundFollowsByActor = async (
+  db: D1Database,
+  actorUri: string,
+  afterId: string,
+  limit: number,
+): Promise<Result<OutboundFollow[], RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped(db, listOutboundFollowsByActorSql(actorUri, afterId, limit));
+    return rows.flatMap((row) => {
+      const follow = outboundFollowFromRow(row);
+      return follow ? [follow] : [];
+    });
   });
 
 /**

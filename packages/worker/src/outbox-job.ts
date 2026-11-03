@@ -15,6 +15,7 @@ import { suspendedDomains } from "./admin-domain-block-store";
 import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
 import { processDistributePollUpdateJob } from "./poll-update";
 import { processPushJob } from "./push-delivery";
+import { processMoveFollowsJob } from "./remote-move";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { findRemoteActorsByUris, listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
@@ -170,6 +171,8 @@ export const processOutboxJob = async (
       return processDistributePollUpdateJob(env, job);
     case "DeliverPush":
       return processPushJob(env, job);
+    case "MoveFollows":
+      return processMoveFollowsJob(env, job);
     case "ExpandFollowers": {
       const startedAt = Date.now();
       const activity = await findOutboundActivity(env.DB, job.activityId);
