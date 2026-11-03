@@ -11,6 +11,7 @@ import { z } from "zod";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
+import { enqueueHomeFanOut } from "./home-fan-out";
 import { enqueueLinkCard } from "./link-card";
 import { isAccountMentionedOnRemoteStatus, recordRemoteStatusMentions } from "./mention-store";
 import { notifyFromRemote } from "./notify";
@@ -147,6 +148,13 @@ const applyNoteUpdate = async (
     });
   }
   await enqueueLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);
+  if (edited) {
+    await enqueueHomeFanOut(env, {
+      event: "status.update",
+      entryId: stored.value.id,
+      author: { kind: "RemoteActor", actorUri: signer.actorUri },
+    });
+  }
   return ok(undefined);
 };
 

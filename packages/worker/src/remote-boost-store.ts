@@ -12,7 +12,7 @@ import {
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import { visibilitySql } from "./sql-enums";
-import { queryTyped, runTyped } from "./typed-sql";
+import { queryTyped } from "./typed-sql";
 
 const RemoteBoostRowSchema = z.object({
   id: z.string().min(1),
@@ -69,14 +69,21 @@ export const insertRemoteBoost = async (
     return rows.length > 0;
   });
 
-/** Drop the boost an `Undo` names, only when `actorUri` (the Undo's signer) made it. */
+/**
+ * Drop the boost an `Undo` names, only when `actorUri` (the Undo's signer)
+ * made it. Resolves to the dropped boost's id, if there was one.
+ */
 export const deleteRemoteBoostByActivity = async (
   db: D1Database,
   activityId: string,
   actorUri: string,
-): Promise<Result<void, RepositoryError>> =>
+): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(db, deleteRemoteBoostByActivitySql(activityId, actorUri));
+    const rows = await queryTyped<{ id: string }>(
+      db,
+      deleteRemoteBoostByActivitySql(activityId, actorUri),
+    );
+    return rows[0]?.id;
   });
 
 export const findRemoteBoostById = async (

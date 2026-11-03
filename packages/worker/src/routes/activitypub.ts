@@ -37,6 +37,7 @@ import {
 import { RemoteDeleteTarget } from "../remote-delete";
 import { applyRemoteUpdate } from "../remote-update";
 import { persistAnnouncedObject, persistRemoteObject } from "../remote-status-persist";
+import { enqueueHomeFanOut } from "../home-fan-out";
 import { recordRemoteBoost } from "../remote-boost";
 import { deleteRemoteBoostByActivity } from "../remote-boost-store";
 import { handleRemotePollVote } from "../remote-poll-vote";
@@ -522,6 +523,13 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       if (undone.isErr()) {
         return jsonRepositoryError(c, undone.error.message);
       }
+      if (undone.value) {
+        await enqueueHomeFanOut(c.env, {
+          event: "delete",
+          entryId: undone.value,
+          author: { kind: "RemoteActor", actorUri: signer.actor.actorUri },
+        });
+      }
       if (statusId && nested?.type === "Announce") {
         await deleteRemoteAnnounce(c.env.DB, signer.actor.actorUri, statusId);
         await deleteRemoteNotifications(c.env.DB, {
@@ -555,6 +563,11 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         );
         // Its mention notifications go with it.
         if (deleted.isOk() && deleted.value) {
+          await enqueueHomeFanOut(c.env, {
+            event: "delete",
+            entryId: deleted.value,
+            author: { kind: "RemoteActor", actorUri: signer.actor.actorUri },
+          });
           await deleteRemoteNotifications(c.env.DB, {
             actorUri: signer.actor.actorUri,
             kinds: ["mention"],
@@ -573,10 +586,22 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         ? await handleRemotePollVote(c.env, identity.value, signer.actor, activityJson.value.object)
         : undefined;
     if (pollVote?.kind === "NotAVote") {
-      await persistRemoteObject(c.env, identity.value, signer.actor, activityJson.value.object, {
-        allowHosts: await federationAllowHosts(c.env),
-        notifyMentions: true,
-      });
+      const created = await persistRemoteObject(
+        c.env,
+        identity.value,
+        signer.actor,
+        activityJson.value.object,
+        { allowHosts: await federationAllowHosts(c.env), notifyMentions: true },
+      );
+      // A redelivered Create finds the note cached and tells followers again,
+      // which clients take as the same status.
+      if (created.isOk() && created.value?.actorUri === signer.actor.actorUri) {
+        await enqueueHomeFanOut(c.env, {
+          event: "update",
+          entryId: created.value.id,
+          author: { kind: "RemoteActor", actorUri: signer.actor.actorUri },
+        });
+      }
     }
     if (activity.kind === "Announce") {
       const announced = await persistAnnouncedObject(
@@ -599,6 +624,13 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       );
       if (boosted.isErr()) {
         return jsonRepositoryError(c, boosted.error.message);
+      }
+      if (boosted.value) {
+        await enqueueHomeFanOut(c.env, {
+          event: "update",
+          entryId: boosted.value.id,
+          author: { kind: "RemoteActor", actorUri: signer.actor.actorUri },
+        });
       }
       const statusId = parseLocalStatusId(identity.value, activity.object);
       if (statusId) {

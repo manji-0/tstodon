@@ -3,6 +3,7 @@ import {
   type InstanceIdentity,
   IsoInstant,
   RemoteBoost,
+  type RemoteBoostValue,
   type RemoteBoostTarget,
   type RemoteStatusValue,
   StatusId,
@@ -61,7 +62,7 @@ const announcedTarget = async (
 /**
  * Keep a remote actor's `Announce` as a boost on its followers' home
  * timelines. `remote` is the announced remote note once cached; a local note
- * is looked up by its URI. Answers whether a boost was newly recorded.
+ * is looked up by its URI. Resolves to the boost when it is newly recorded.
  */
 export const recordRemoteBoost = async (
   db: D1Database,
@@ -70,10 +71,10 @@ export const recordRemoteBoost = async (
   announce: Readonly<{ id: ActivityId; object: string }>,
   rawAnnounce: unknown,
   remote: RemoteStatusValue | undefined,
-): Promise<Result<boolean, RepositoryError>> => {
+): Promise<Result<RemoteBoostValue | undefined, RepositoryError>> => {
   const target = await announcedTarget(db, identity, announce.object, remote);
   if (target.isErr() || !target.value) {
-    return target.map(() => false);
+    return target.map(() => undefined);
   }
   const envelope = parseAnnounceEnvelope(rawAnnounce).unwrapOr(NO_ENVELOPE);
   const publishedAt = IsoInstant.parse(envelope.published ?? "").orElse(() =>
@@ -81,7 +82,7 @@ export const recordRemoteBoost = async (
   );
   const id = StatusId.parse(newEntityId());
   if (publishedAt.isErr() || id.isErr()) {
-    return ok(false);
+    return ok(undefined);
   }
   const boost = RemoteBoost.fromAnnounce({
     id: id.value,
@@ -93,5 +94,9 @@ export const recordRemoteBoost = async (
     cc: stringList(envelope.cc),
     publishedAt: publishedAt.value,
   });
-  return boost.isErr() ? ok(false) : insertRemoteBoost(db, boost.value);
+  if (boost.isErr()) {
+    return ok(undefined);
+  }
+  const inserted = await insertRemoteBoost(db, boost.value);
+  return inserted.map((isNew) => (isNew ? boost.value : undefined));
 };

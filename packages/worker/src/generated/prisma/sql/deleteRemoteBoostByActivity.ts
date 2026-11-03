@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param actorUri
  */
 export const deleteRemoteBoostByActivity = $runtime.makeTypedQueryFactory(
-  "DELETE FROM remote_boosts WHERE activity_id = $1 AND actor_uri = $2",
+  "DELETE FROM remote_boosts WHERE activity_id = $1 AND actor_uri = $2\nRETURNING id",
 ) as (
   activityId: string,
   actorUri: string,
@@ -17,5 +17,7 @@ export const deleteRemoteBoostByActivity = $runtime.makeTypedQueryFactory(
 
 export namespace deleteRemoteBoostByActivity {
   export type Parameters = [activityId: string, actorUri: string];
-  export type Result = {};
+  export type Result = {
+    id: string | null;
+  };
 }

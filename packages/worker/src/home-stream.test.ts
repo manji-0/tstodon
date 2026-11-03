@@ -4,11 +4,14 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { OutboxJob, StatusId } from "@tstodon/domain";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { fanOutHomePage, HOME_FAN_OUT_PAGE_SIZE } from "./home-fan-out";
+import { RemoteAccountId } from "./remote-account-id";
 import { parseInstanceIdentity } from "./runtime-config";
 import { publishToAccount } from "./stream-publish";
 
 const ORIGIN = "https://example.com";
+const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
 const MessageSchema = z.object({
   stream: z.array(z.string()),
@@ -18,9 +21,10 @@ const MessageSchema = z.object({
 
 const StatusPayloadSchema = z.object({
   id: z.string(),
+  uri: z.string(),
   content: z.string(),
   account: z.object({ id: z.string() }),
-  reblog: z.object({ id: z.string() }).nullable(),
+  reblog: z.object({ id: z.string(), uri: z.string() }).nullable(),
 });
 
 type Heard = Readonly<{ event: string; payload: string }>;
@@ -239,5 +243,128 @@ describe("home streams of local followers", () => {
     for (const stream of opened) {
       stream.close();
     }
+  });
+});
+
+/** Follow `remote` as `email`, and have it accept. */
+const followRemote = async (email: string, remote: Remote, options: object = {}) => {
+  const followed = await json(
+    email,
+    `/api/v1/accounts/${RemoteAccountId.encode(remote.actorUri)}/follow`,
+    {
+      method: "POST",
+      body: JSON.stringify(options),
+    },
+  );
+  expect(followed.status).toBe(200);
+  const viewer = await signedInAccount(email);
+  const row = await env.DB.prepare(
+    "SELECT follow_activity_id FROM outbound_follows WHERE account_id = ? AND actor_uri = ?",
+  )
+    .bind(viewer.id, remote.actorUri)
+    .first<{ follow_activity_id: string }>();
+  expect(
+    await remote.send({
+      id: `${remote.actorUri}/accepts/${viewer.id}`,
+      type: "Accept",
+      object: row?.follow_activity_id,
+    }),
+  ).toBe(202);
+};
+
+const remoteNote = (author: Remote, slug: string, extra: Record<string, unknown> = {}) => ({
+  id: `${new URL(author.actorUri).origin}/notes/${slug}`,
+  type: "Note",
+  attributedTo: author.actorUri,
+  content: `<p>${slug}</p>`,
+  published: "2026-10-20T00:00:00.000Z",
+  to: [PUBLIC],
+  cc: [`${author.actorUri}/followers`],
+  ...extra,
+});
+
+/** Deliver a public note by `author`; resolves to its URI. */
+const createRemote = async (author: Remote, slug: string): Promise<string> => {
+  const object = remoteNote(author, slug);
+  expect(await author.send({ id: `${object.id}/activity`, type: "Create", object })).toBe(202);
+  return object.id;
+};
+
+describe("home streams of followers of a remote actor", () => {
+  it("hear its new note and its boost, the boost only when the follow shows boosts", async () => {
+    const actor = await remoteActor("hs-remote-actor");
+    const other = await remoteActor("hs-remote-other", "other.example");
+    // Created first, so a fan-out reaches it before the follower.
+    const noBoosts = await openStream("hs-remote-noboosts@example.com");
+    const follower = await openStream("hs-remote-follower@example.com");
+    await followRemote("hs-remote-noboosts@example.com", actor, { reblogs: false });
+    await followRemote("hs-remote-follower@example.com", actor);
+
+    const noteUri = await createRemote(actor, "hs-remote-note");
+    for (const stream of [noBoosts, follower]) {
+      const heard = await stream.next();
+      expect(heard.event).toBe("update");
+      expect(statusOf(heard)).toMatchObject({ uri: noteUri, reblog: null });
+    }
+
+    const otherUri = await createRemote(other, "hs-remote-boosted");
+    const announceId = `${actor.actorUri}/statuses/hs-remote-boost/activity`;
+    expect(
+      await actor.send({
+        id: announceId,
+        type: "Announce",
+        object: otherUri,
+        published: "2026-10-21T00:00:00.000Z",
+        to: [PUBLIC],
+        cc: [`${actor.actorUri}/followers`],
+      }),
+    ).toBe(202);
+    const boost = statusOf(await follower.next());
+    expect(boost).toMatchObject({ uri: announceId, reblog: { uri: otherUri } });
+    expect(await noBoosts.heardNothing()).toBe(true);
+
+    expect(
+      await actor.send({
+        id: `${announceId}/undo`,
+        type: "Undo",
+        object: announceId,
+      }),
+    ).toBe(202);
+    expect(await follower.next()).toEqual({ stream: ["user"], event: "delete", payload: boost.id });
+    for (const stream of [noBoosts, follower]) {
+      stream.close();
+    }
+  });
+
+  it("hear its edit and its delete", async () => {
+    const actor = await remoteActor("hs-remote-editor");
+    const follower = await openStream("hs-remote-edit-follower@example.com");
+    await followRemote("hs-remote-edit-follower@example.com", actor);
+    const noteUri = await createRemote(actor, "hs-remote-edit");
+    const created = statusOf(await follower.next());
+
+    expect(
+      await actor.send({
+        id: `${noteUri}/update`,
+        type: "Update",
+        object: remoteNote(actor, "hs-remote-edit", {
+          content: "<p>edited</p>",
+          updated: "2026-10-21T12:00:00.000Z",
+        }),
+      }),
+    ).toBe(202);
+    const edited = await follower.next();
+    expect(edited.event).toBe("status.update");
+    expect(statusOf(edited)).toMatchObject({ id: created.id, content: "<p>edited</p>" });
+
+    expect(await actor.send({ id: `${noteUri}/delete`, type: "Delete", object: noteUri })).toBe(
+      202,
+    );
+    expect(await follower.next()).toEqual({
+      stream: ["user"],
+      event: "delete",
+      payload: created.id,
+    });
+    follower.close();
   });
 });
