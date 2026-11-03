@@ -1,6 +1,7 @@
 import type { InstanceIdentity, LocalStatus, RemoteNote } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { restrictedDomains, suspendedDomains } from "./admin-domain-block-store";
+import { listSuppressedAuthors } from "./block-mute-store";
 import type { RepositoryError } from "./d1";
 import { listBlockedDomains } from "./domain-block-store";
 import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "./filter-match";
@@ -142,16 +143,28 @@ const publicSurfaceDocuments = async (
   if (remoteStatuses.isErr()) {
     return err(remoteStatuses.error);
   }
+  // As in Mastodon's public feeds, authors the viewer blocks or mutes (and
+  // local ones who block the viewer) stay out.
+  const suppressed = viewerId ? await listSuppressedAuthors(env.DB, viewerId) : ok(undefined);
+  if (suppressed.isErr()) {
+    return err(suppressed.error);
+  }
+  const visibleLocal = localStatuses.value.filter(
+    (status) => !suppressed.value?.accountIds.has(status.accountId),
+  );
+  const visibleRemote = remoteStatuses.value.filter(
+    (status) => !suppressed.value?.actorUris.has(status.actorUri),
+  );
   const rendered =
-    remoteStatuses.value.length === 0
+    visibleRemote.length === 0
       ? { statuses: [], documents: [] }
-      : await remoteTimelineDocuments(env, identity, remoteStatuses.value, viewerId);
+      : await remoteTimelineDocuments(env, identity, visibleRemote, viewerId);
   const filteredLocal = await attachFilteredToStatuses(
     env.DB,
     viewerId,
     "public",
-    localStatuses.value,
-    await mastodonStatuses(env, identity, localStatuses.value, viewerId),
+    visibleLocal,
+    await mastodonStatuses(env, identity, visibleLocal, viewerId),
   );
   const filteredRemote = await attachFilteredToRemoteStatuses(
     env.DB,

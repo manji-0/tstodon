@@ -113,6 +113,30 @@ describe("blocks and mutes", () => {
     expect(read(z.array(MastodonAccountPreviewSchema), blocksAfter.body)).toHaveLength(0);
   });
 
+  it("keeps blocked and muted authors off the public and tag timelines", async () => {
+    const bId = await accountIdFor("blk-pub-b@example.com");
+    const cId = await accountIdFor("blk-pub-c@example.com");
+    const bStatus = await postStatus("blk-pub-b@example.com", "public from b #blkpub");
+    const cStatus = await postStatus("blk-pub-c@example.com", "public from c #blkpub");
+    expect((await action("blk-pub-a@example.com", bId, "block")).status).toBe(200);
+    expect((await action("blk-pub-a@example.com", cId, "mute")).status).toBe(200);
+
+    const ids = async (email: string, path: string): Promise<string[]> => {
+      const response = await json(path, { headers: await auth(email) });
+      expect(response.status).toBe(200);
+      return read(z.array(MastodonStatusPreviewSchema), response.body).map((status) => status.id);
+    };
+    for (const path of ["/api/v1/timelines/public?local=true", "/api/v1/timelines/tag/blkpub"]) {
+      const seen = await ids("blk-pub-a@example.com", path);
+      expect(seen).not.toContain(bStatus.id);
+      expect(seen).not.toContain(cStatus.id);
+      // B is blocked by A, so A's posts would stay off B's view too; C is only muted.
+      expect(await ids("blk-pub-d@example.com", path)).toEqual(
+        expect.arrayContaining([bStatus.id, cStatus.id]),
+      );
+    }
+  });
+
   it("mutes timeline content and gates notifications separately", async () => {
     await accountIdFor("mute-a@example.com");
     const bId = await accountIdFor("mute-b@example.com");
