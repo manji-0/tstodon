@@ -79,6 +79,13 @@ export {
   type StatusQuoteTarget as StatusQuoteTargetValue,
 } from "./status-quote-target";
 export { StreamEvent, type StreamEvent as StreamEventValue } from "./stream-event";
+export {
+  StreamChannel,
+  type StreamChannel as StreamChannelValue,
+  type StreamChannelError,
+  StreamDelivery,
+  type StreamDelivery as StreamDeliveryValue,
+} from "./stream-channel";
 export { Username } from "./username";
 export { Visibility, reblogVisibility, type Visibility as VisibilityValue } from "./visibility";
 export { Notification, type Notification as NotificationValue } from "./notification";

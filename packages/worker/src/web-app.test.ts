@@ -163,7 +163,15 @@ describe("Mastodon web app", () => {
     if (event.isErr()) {
       throw new Error("stream event rejected");
     }
-    await publishToAccount(env, account.id, event.value);
+    // The hub takes the subscription some time after the socket sends it.
+    let heard = false;
+    void received.then(() => {
+      heard = true;
+    });
+    for (let attempt = 0; attempt < 100 && !heard; attempt += 1) {
+      await publishToAccount(env, account.id, event.value);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
     expect(JSON.parse(await received)).toEqual({
       stream: ["user"],
       event: "delete",

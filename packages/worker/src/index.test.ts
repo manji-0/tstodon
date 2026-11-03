@@ -872,7 +872,7 @@ describe("worker http", () => {
     });
     expect(account.status).toBe(200);
     const preview = read(MastodonAccountPreviewSchema, account.body);
-    const upgrade = await SELF.fetch("https://example.com/api/v1/streaming", {
+    const upgrade = await SELF.fetch("https://example.com/api/v1/streaming?stream=user", {
       headers: {
         ...(await auth("stream-hub@example.com")),
         Upgrade: "websocket",
@@ -904,7 +904,7 @@ describe("worker http", () => {
       z.object({ stream: z.array(z.string()), event: z.string(), payload: z.string() }),
       JSON.parse(await received),
     );
-    expect(message.stream).toContain("user");
+    expect(message.stream).toEqual(["user"]);
     expect(message.event).toBe("notification");
     expect(JSON.parse(message.payload)).toMatchObject({ type: "follow" });
     socket.close();

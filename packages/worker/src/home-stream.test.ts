@@ -2,22 +2,16 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { OutboxJob, StatusId } from "@tstodon/domain";
+import { OutboxJob } from "@tstodon/domain";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { type Heard, openStream as openSocket } from "../test/stream-fixture";
 import { fanOutHomePage, HOME_FAN_OUT_PAGE_SIZE } from "./home-fan-out";
 import { RemoteAccountId } from "./remote-account-id";
 import { parseInstanceIdentity } from "./runtime-config";
-import { publishToAccount } from "./stream-publish";
 
 const ORIGIN = "https://example.com";
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
-
-const MessageSchema = z.object({
-  stream: z.array(z.string()),
-  event: z.string(),
-  payload: z.string(),
-});
 
 const StatusPayloadSchema = z.object({
   id: z.string(),
@@ -27,18 +21,8 @@ const StatusPayloadSchema = z.object({
   reblog: z.object({ id: z.string(), uri: z.string() }).nullable(),
 });
 
-type Heard = Readonly<{ event: string; payload: string }>;
-
-const parseMessage = (raw: unknown): Heard => {
-  const parsed = schemaResult(MessageSchema)(typeof raw === "string" ? JSON.parse(raw) : raw);
-  if (parsed.isErr()) {
-    throw new Error("stream message rejected");
-  }
-  return parsed.value;
-};
-
 /** The status an `update` or `status.update` carries. */
-const statusOf = (heard: Heard) => {
+const statusOf = (heard: Pick<Heard, "payload">) => {
   const parsed = schemaResult(StatusPayloadSchema)(JSON.parse(heard.payload));
   if (parsed.isErr()) {
     throw new Error("status payload rejected");
@@ -46,56 +30,13 @@ const statusOf = (heard: Heard) => {
   return parsed.value;
 };
 
-/** The `user` stream of the account signed in as `email`, read one message at a time. */
+/** The `user` stream of the account signed in as `email`. */
 const openStream = async (email: string) => {
-  const account = await signedInAccount(email);
-  const upgrade = await SELF.fetch(`${ORIGIN}/api/v1/streaming`, {
-    headers: { ...(await authHeaders(email)), Upgrade: "websocket" },
-  });
-  expect(upgrade.status).toBe(101);
-  const socket = upgrade.webSocket;
-  if (!socket) {
-    throw new Error("missing websocket");
+  const stream = await openSocket({ email, query: "?stream=user" });
+  if (!stream.account) {
+    throw new Error("missing account");
   }
-  socket.accept();
-  const heard: Heard[] = [];
-  const waiting: ((message: Heard) => void)[] = [];
-  socket.addEventListener("message", (message) => {
-    const parsed = parseMessage(message.data);
-    const waiter = waiting.shift();
-    if (waiter) {
-      waiter(parsed);
-    } else {
-      heard.push(parsed);
-    }
-  });
-  const next = (): Promise<Heard> => {
-    const queued = heard.shift();
-    if (queued) {
-      return Promise.resolve(queued);
-    }
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`${email} heard nothing`)), 10_000);
-      waiting.push((message) => {
-        clearTimeout(timer);
-        resolve(message);
-      });
-    });
-  };
-  /**
-   * Whether the stream stayed quiet until now: a marker published to it after
-   * the events under test have reached others must be the next thing heard.
-   */
-  const heardNothing = async (): Promise<boolean> => {
-    const marker = StatusId.parse(`9${Date.now()}`);
-    if (marker.isErr()) {
-      throw new Error("marker id rejected");
-    }
-    await publishToAccount(env, account.id, { kind: "delete", statusId: marker.value });
-    const first = await next();
-    return first.event === "delete" && first.payload === marker.value;
-  };
-  return { account, next, heardNothing, close: () => socket.close() };
+  return { ...stream, account: stream.account };
 };
 
 const json = async (email: string, path: string, init: RequestInit = {}) => {
@@ -115,7 +56,7 @@ const post = async (email: string, status: string): Promise<string> => {
     body: JSON.stringify({ status }),
   });
   expect(posted.status).toBe(200);
-  return statusOf({ event: "update", payload: JSON.stringify(posted.body) }).id;
+  return statusOf({ payload: JSON.stringify(posted.body) }).id;
 };
 
 const follow = async (email: string, targetEmail: string, options: object = {}) => {
