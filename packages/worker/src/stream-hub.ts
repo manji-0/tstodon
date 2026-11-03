@@ -112,13 +112,18 @@ export class StreamHub extends DurableObject<Env> {
     if (state.isErr()) {
       return new Response("Missing socket state", { status: 400 });
     }
-    const written = await this.withRowsFor(hubName(state.value.viewer), state.value.channels);
+    const pair = new WebSocketPair();
+    const written = await this.subscribeWithRows(
+      hubName(state.value.viewer),
+      state.value.channels,
+      () => {
+        this.ctx.acceptWebSocket(pair[1]);
+        pair[1].serializeAttachment(state.value);
+      },
+    );
     if (written.isErr()) {
       return Response.json(streamRefusalError({ kind: "Unavailable" }), { status: 503 });
     }
-    const pair = new WebSocketPair();
-    this.ctx.acceptWebSocket(pair[1]);
-    pair[1].serializeAttachment(state.value);
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
@@ -148,7 +153,9 @@ export class StreamHub extends DurableObject<Env> {
         ...state,
         channels: state.channels.filter((held) => StreamChannel.key(held) !== target),
       } satisfies SocketState);
-      await this.syncSubscriptions(hubName(state.viewer));
+      if (subscriptionRow(channel.value)) {
+        await this.syncSubscriptions(hubName(state.viewer));
+      }
       return;
     }
     const channel = await requestStreamChannel(this.env, state.viewer, wire);
@@ -156,21 +163,20 @@ export class StreamHub extends DurableObject<Env> {
       socket.send(JSON.stringify(streamRefusalError(channel.error)));
       return;
     }
-    const written = await this.withRowsFor(hubName(state.viewer), [channel.value]);
+    const written = await this.subscribeWithRows(hubName(state.viewer), [channel.value], () => {
+      // Read again: other messages may have changed the socket while this one waited.
+      const current = this.stateOf(socket);
+      const target = StreamChannel.key(channel.value);
+      if (current && !current.channels.some((held) => StreamChannel.key(held) === target)) {
+        socket.serializeAttachment({
+          ...current,
+          channels: [...current.channels, channel.value],
+        } satisfies SocketState);
+      }
+    });
     if (written.isErr()) {
       socket.send(JSON.stringify(streamRefusalError({ kind: "Unavailable" })));
-      return;
     }
-    // Read again: other messages may have changed the socket while this one waited.
-    const current = this.stateOf(socket);
-    const target = StreamChannel.key(channel.value);
-    if (!current || current.channels.some((held) => StreamChannel.key(held) === target)) {
-      return;
-    }
-    socket.serializeAttachment({
-      ...current,
-      channels: [...current.channels, channel.value],
-    } satisfies SocketState);
   }
 
   override async webSocketClose(socket: WebSocket): Promise<void> {
@@ -183,19 +189,33 @@ export class StreamHub extends DurableObject<Env> {
 
   private async syncAfterClose(socket: WebSocket): Promise<void> {
     const state = this.stateOf(socket);
-    if (state) {
+    if (state?.channels.some((channel) => subscriptionRow(channel))) {
       await this.syncSubscriptions(hubName(state.viewer));
     }
   }
 
-  /** Write rows for channels about to be subscribed, before any socket holds them. */
-  private async withRowsFor(
+  /**
+   * Write rows for channels about to be subscribed, then `attach` them to
+   * their socket. They count as pending until attached, in the same turn, so
+   * no row write in between drops them. Sockets on `user*` streams alone
+   * never touch D1.
+   */
+  private async subscribeWithRows(
     hub: string,
     channels: ReadonlyArray<StreamChannelValue>,
+    attach: () => void,
   ): Promise<Result<void, RepositoryError>> {
+    if (!channels.some((channel) => subscriptionRow(channel))) {
+      attach();
+      return ok(undefined);
+    }
     this.adding.push(...channels);
     try {
-      return await this.syncSubscriptions(hub);
+      const written = await this.syncSubscriptions(hub);
+      if (written.isOk()) {
+        attach();
+      }
+      return written;
     } finally {
       for (const channel of channels) {
         const index = this.adding.indexOf(channel);
