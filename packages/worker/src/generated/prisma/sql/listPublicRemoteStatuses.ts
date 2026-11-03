@@ -6,15 +6,19 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
  * @param limit
+ * @param onlyId
+ * @param onlyMedia
  */
 export const listPublicRemoteStatuses = $runtime.makeTypedQueryFactory(
-  "SELECT id, actor_uri, object_uri, url, content_html, spoiler_text, visibility, sensitive, language, published_at, edited_at, media_json, card_json, poll_json\nFROM remote_statuses\nWHERE visibility = 'public'\nORDER BY published_at DESC LIMIT $1",
+  "SELECT id, actor_uri, object_uri, url, content_html, spoiler_text, visibility, sensitive, language, published_at, edited_at, media_json, card_json, poll_json\nFROM remote_statuses\nWHERE visibility = 'public'\nAND ($2 = '' OR id = $2)\nAND ($3 = 0 OR media_json NOT IN ('[]', ''))\nORDER BY published_at DESC LIMIT $1",
 ) as (
   limit: number,
+  onlyId: string,
+  onlyMedia: number,
 ) => $runtime.TypedSql<listPublicRemoteStatuses.Parameters, listPublicRemoteStatuses.Result>;
 
 export namespace listPublicRemoteStatuses {
-  export type Parameters = [limit: number];
+  export type Parameters = [limit: number, onlyId: string, onlyMedia: number];
   export type Result = {
     id: string | null;
     actor_uri: string;

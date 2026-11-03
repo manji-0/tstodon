@@ -18,11 +18,18 @@ import { mastodonRemoteStatus, remoteStatusVisible } from "./remote-status-docum
 import {
   listActorRemoteStatuses,
   listFollowedRemoteStatuses,
+  listPublicRemoteStatuses,
+  listTagRemoteStatuses,
 } from "./remote-status-timeline-store";
 import { listRemoteStatusCards } from "./status-card-store";
 import { attachRemoteReplyRefs } from "./status-documents";
 import { filterMutedThreads, mutedThreadStatusIds } from "./status-mute-store";
-import { type AccountStatusFilters, listHomeStatuses } from "./status-timeline-store";
+import { listTagStatuses, type TagStatusFilters } from "./status-discovery-store";
+import {
+  type AccountStatusFilters,
+  listHomeStatuses,
+  listPublicStatuses,
+} from "./status-timeline-store";
 
 /**
  * Remote statuses rendered for a timeline: the visible ones whose actor is not
@@ -104,6 +111,111 @@ export const mergeTimelineDocuments = (
     })
     .slice(0, limit);
 };
+
+/**
+ * `local`/`remote` on a public or tag timeline: which side of the federation
+ * it holds.
+ */
+export type TimelineScopes = Readonly<{ local: boolean; remote: boolean }>;
+
+/**
+ * Local and remote statuses of a public surface (the public or a tag
+ * timeline), rendered for the viewer with `filtered` under the `public`
+ * context, newest first.
+ */
+const publicSurfaceDocuments = async (
+  env: Env,
+  identity: InstanceIdentity,
+  viewerId: string | undefined,
+  local: Promise<Result<LocalStatus[], RepositoryError>> | undefined,
+  remote: Promise<Result<RemoteNote[], RepositoryError>> | undefined,
+  limit: number,
+  cursor: IdCursor,
+): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+  const [localStatuses, remoteStatuses] = await Promise.all([
+    local ?? Promise.resolve(ok([])),
+    remote ?? Promise.resolve(ok([])),
+  ]);
+  if (localStatuses.isErr()) {
+    return err(localStatuses.error);
+  }
+  if (remoteStatuses.isErr()) {
+    return err(remoteStatuses.error);
+  }
+  const rendered =
+    remoteStatuses.value.length === 0
+      ? { statuses: [], documents: [] }
+      : await remoteTimelineDocuments(env, identity, remoteStatuses.value, viewerId);
+  const filteredLocal = await attachFilteredToStatuses(
+    env.DB,
+    viewerId,
+    "public",
+    localStatuses.value,
+    await mastodonStatuses(env, identity, localStatuses.value, viewerId),
+  );
+  const filteredRemote = await attachFilteredToRemoteStatuses(
+    env.DB,
+    viewerId,
+    "public",
+    rendered.statuses,
+    rendered.documents,
+  );
+  return ok(mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit));
+};
+
+/**
+ * The public timeline as the viewer sees it. This is the one definition of
+ * what it holds: `GET /api/v1/timelines/public` pages it, and the public
+ * streams ask it for one entry (`onlyId`) to decide whether a viewer hears
+ * about that entry.
+ */
+export const publicTimelineDocuments = (
+  env: Env,
+  identity: InstanceIdentity,
+  viewerId: string | undefined,
+  options: Readonly<{ scopes: TimelineScopes; onlyMedia: boolean }>,
+  limit: number,
+  cursor: IdCursor,
+): Promise<Result<Record<string, unknown>[], RepositoryError>> =>
+  publicSurfaceDocuments(
+    env,
+    identity,
+    viewerId,
+    options.scopes.local ? listPublicStatuses(env.DB, limit, cursor, options.onlyMedia) : undefined,
+    options.scopes.remote
+      ? listPublicRemoteStatuses(env.DB, limit, {
+          onlyId: cursor.onlyId,
+          onlyMedia: options.onlyMedia,
+        })
+      : undefined,
+    limit,
+    cursor,
+  );
+
+/**
+ * A tag timeline as the viewer sees it; like `publicTimelineDocuments`, the
+ * hashtag streams ask it for one entry.
+ */
+export const tagTimelineDocuments = (
+  env: Env,
+  identity: InstanceIdentity,
+  viewerId: string | undefined,
+  tag: string,
+  options: Readonly<{ scopes: TimelineScopes; filters: TagStatusFilters }>,
+  limit: number,
+  cursor: IdCursor,
+): Promise<Result<Record<string, unknown>[], RepositoryError>> =>
+  publicSurfaceDocuments(
+    env,
+    identity,
+    viewerId,
+    options.scopes.local ? listTagStatuses(env.DB, tag, limit, cursor, options.filters) : undefined,
+    options.scopes.remote
+      ? listTagRemoteStatuses(env.DB, tag, limit, cursor, options.filters)
+      : undefined,
+    limit,
+    cursor,
+  );
 
 /**
  * Followed remote actors' notes and boosts on one of the viewer's feeds (home

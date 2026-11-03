@@ -202,12 +202,20 @@ export const listActorRemoteStatuses = async (
     return statuses;
   });
 
+/**
+ * Public remote statuses, newest published first; `onlyId` asks for one entry
+ * and `onlyMedia` keeps the ones with attachments.
+ */
 export const listPublicRemoteStatuses = async (
   db: D1Database,
   limit: number,
+  options: Readonly<{ onlyId?: string | undefined; onlyMedia: boolean }>,
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
-    const results = await queryTyped(db, listPublicRemoteStatusesSql(limit));
+    const results = await queryTyped(
+      db,
+      listPublicRemoteStatusesSql(limit, options.onlyId ?? "", options.onlyMedia ? 1 : 0),
+    );
     const statuses: RemoteStatus[] = [];
     for (const raw of results) {
       const row = parseRemoteStatusRow(raw);
@@ -264,20 +272,13 @@ export const listTagRemoteStatuses = async (
     if (filters.onlyMedia) {
       conditions.push("s.media_json NOT IN ('[]', '')");
     }
-    // Mastodon's id cursors, newest first unless `min_id` pages upward.
-    const minId = cursor.minId ?? "";
-    const sinceId = cursor.sinceId ?? "";
-    const maxId = cursor.maxId ?? "";
-    const cursorId = minId || sinceId || maxId;
-    const cursorWhere =
-      cursorId.length > 0 ? (maxId && !minId && !sinceId ? "AND s.id < ?" : "AND s.id > ?") : "";
-    const order = minId.length > 0 ? "ORDER BY s.id ASC" : "ORDER BY s.id DESC";
+    const { where, order, binds: cursorBinds } = idCursorFragment(cursor);
     const { results } = await db
       .prepare(
         `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
-         WHERE ${conditions.join(" AND ")} ${cursorWhere} ${order} LIMIT ?`,
+         WHERE ${conditions.join(" AND ")} ${where} ${order} LIMIT ?`,
       )
-      .bind(...binds, ...(cursorId.length > 0 ? [cursorId] : []), limit)
+      .bind(...binds, ...cursorBinds, limit)
       .all();
     const statuses: RemoteStatus[] = [];
     for (const raw of results ?? []) {

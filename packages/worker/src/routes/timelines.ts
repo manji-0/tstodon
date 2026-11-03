@@ -1,5 +1,4 @@
 import type { Context } from "hono";
-import type { LocalStatus as LocalStatusValue, RemoteNote } from "@tstodon/domain";
 import { authenticate } from "../auth";
 import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "../filter-match";
 import { jsonAuthError, jsonRepositoryError, queryCursor, queryLimit, requireUser } from "../http";
@@ -8,17 +7,10 @@ import { elapsedMs, writeMetric } from "../metrics";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
   listLinkRemoteStatuses,
-  listPublicRemoteStatuses,
   listRemoteDirectStatusesForAccount,
-  listTagRemoteStatuses,
 } from "../remote-status-timeline-store";
 import { listDirectStatusesForAccount } from "../direct-status-store";
-import { listPublicStatuses } from "../status-timeline-store";
-import {
-  listLinkStatuses,
-  listTagStatuses,
-  type TagStatusFilters,
-} from "../status-discovery-store";
+import { listLinkStatuses, type TagStatusFilters } from "../status-discovery-store";
 import { isTruthy } from "../form-values";
 import { findTrendingLinkUrl } from "../trend-store";
 import { rejectedTrendTargets } from "../trend-review-store";
@@ -26,16 +18,17 @@ import { filterMutedThreads, mutedThreadStatusIds } from "../status-mute-store";
 import {
   homeTimelineDocuments,
   mergeTimelineDocuments,
+  publicTimelineDocuments,
   remoteTimelineDocuments,
+  tagTimelineDocuments,
+  type TimelineScopes,
 } from "../timeline-documents";
 
 /**
  * `local`/`remote` on a timeline (both documented): `local=true` keeps local
  * statuses, `remote=true` keeps remote ones, and neither or both keeps both.
  */
-const timelineScopes = (
-  c: Context<{ Bindings: Env }>,
-): Readonly<{ local: boolean; remote: boolean }> => {
+const timelineScopes = (c: Context<{ Bindings: Env }>): TimelineScopes => {
   const local = isTruthy(c.req.query("local"));
   const remote = isTruthy(c.req.query("remote"));
   if (!local && !remote) {
@@ -55,48 +48,18 @@ export const getV1TimelinesPublic = async (
   if (auth.isErr()) {
     return jsonAuthError(c, auth.error);
   }
-  const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
-  const scopes = timelineScopes(c);
-  const limit = queryLimit(c.req.query("limit"));
-  const cursor = queryCursor(c);
-  const localDocuments: Record<string, unknown>[] = [];
-  const localStatuses: LocalStatusValue[] = [];
-  if (scopes.local) {
-    const statuses = await listPublicStatuses(c.env.DB, limit, cursor);
-    if (statuses.isErr()) {
-      return jsonRepositoryError(c, statuses.error.message);
-    }
-    localStatuses.push(...statuses.value);
-    localDocuments.push(
-      ...(await mastodonStatuses(c.env, identity.value, statuses.value, viewerId)),
-    );
-  }
-  const remoteDocuments: Record<string, unknown>[] = [];
-  let remoteStatuses: RemoteNote[] = [];
-  if (scopes.remote) {
-    const remote = await listPublicRemoteStatuses(c.env.DB, limit);
-    if (remote.isErr()) {
-      return jsonRepositoryError(c, remote.error.message);
-    }
-    const rendered = await remoteTimelineDocuments(c.env, identity.value, remote.value, viewerId);
-    remoteStatuses = [...rendered.statuses];
-    remoteDocuments.push(...rendered.documents);
-  }
-  const filteredLocal = await attachFilteredToStatuses(
-    c.env.DB,
-    viewerId,
-    "public",
-    localStatuses,
-    localDocuments,
+  const documents = await publicTimelineDocuments(
+    c.env,
+    identity.value,
+    auth.value.kind === "Account" ? auth.value.account.id : undefined,
+    { scopes: timelineScopes(c), onlyMedia: isTruthy(c.req.query("only_media")) },
+    queryLimit(c.req.query("limit")),
+    queryCursor(c),
   );
-  const filteredRemote = await attachFilteredToRemoteStatuses(
-    c.env.DB,
-    viewerId,
-    "public",
-    remoteStatuses,
-    remoteDocuments,
-  );
-  return c.json(mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit));
+  if (documents.isErr()) {
+    return jsonRepositoryError(c, documents.error.message);
+  }
+  return c.json(documents.value);
 };
 
 export const getV1TimelinesHome = async (
@@ -167,63 +130,20 @@ export const getV1TimelinesTagByHashtag = async (
   if (auth.isErr()) {
     return jsonAuthError(c, auth.error);
   }
-  const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
-  const scopes = timelineScopes(c);
-  const limit = queryLimit(c.req.query("limit"));
-  const cursor = queryCursor(c);
-  const filters = tagStatusFilters(c);
-  const localDocuments: Record<string, unknown>[] = [];
-  let localStatuses: LocalStatusValue[] = [];
-  if (scopes.local) {
-    const statuses = await listTagStatuses(
-      c.env.DB,
-      c.req.param("hashtag"),
-      limit,
-      cursor,
-      filters,
-    );
-    if (statuses.isErr()) {
-      return jsonRepositoryError(c, statuses.error.message);
-    }
-    localStatuses = [...statuses.value];
-    localDocuments.push(
-      ...(await mastodonStatuses(c.env, identity.value, statuses.value, viewerId)),
-    );
-  }
-  const remoteDocuments: Record<string, unknown>[] = [];
-  let remoteStatuses: RemoteNote[] = [];
-  if (scopes.remote) {
-    const remote = await listTagRemoteStatuses(
-      c.env.DB,
-      c.req.param("hashtag"),
-      limit,
-      cursor,
-      filters,
-    );
-    if (remote.isErr()) {
-      return jsonRepositoryError(c, remote.error.message);
-    }
-    const rendered = await remoteTimelineDocuments(c.env, identity.value, remote.value, viewerId);
-    remoteStatuses = [...rendered.statuses];
-    remoteDocuments.push(...rendered.documents);
-  }
-  const filteredLocal = await attachFilteredToStatuses(
-    c.env.DB,
-    viewerId,
-    "public",
-    localStatuses,
-    localDocuments,
+  const documents = await tagTimelineDocuments(
+    c.env,
+    identity.value,
+    auth.value.kind === "Account" ? auth.value.account.id : undefined,
+    c.req.param("hashtag"),
+    { scopes: timelineScopes(c), filters: tagStatusFilters(c) },
+    queryLimit(c.req.query("limit")),
+    queryCursor(c),
   );
-  const filteredRemote = await attachFilteredToRemoteStatuses(
-    c.env.DB,
-    viewerId,
-    "public",
-    remoteStatuses,
-    remoteDocuments,
-  );
-  const documents = mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit);
-  writeMetric(c.env, "timeline.tag", [elapsedMs(startedAt), documents.length], ["ok"]);
-  return c.json(documents);
+  if (documents.isErr()) {
+    return jsonRepositoryError(c, documents.error.message);
+  }
+  writeMetric(c.env, "timeline.tag", [elapsedMs(startedAt), documents.value.length], ["ok"]);
+  return c.json(documents.value);
 };
 
 /**

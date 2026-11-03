@@ -7,6 +7,7 @@ import {
   MODERATED_ACCOUNTS_SQL,
   SEARCHABLE_ACCOUNTS_SQL,
   type StatusCursor,
+  WITH_MEDIA_SQL,
 } from "./status-timeline-store";
 
 /** Additional tag constraints on a tag timeline (`any[]`/`all[]`/`none[]`). */
@@ -68,9 +69,7 @@ export const listTagStatuses = async (
         : ` AND ${patterns(tags)
             .map(() => "content_text NOT LIKE ?")
             .join(" AND ")}`;
-    const onlyMedia = filters.onlyMedia
-      ? " AND id IN (SELECT status_id FROM media_attachments WHERE status_id IS NOT NULL)"
-      : "";
+    const onlyMedia = filters.onlyMedia ? ` ${WITH_MEDIA_SQL}` : "";
     const sql = `SELECT ${statusSelect} FROM statuses
          WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
            AND (content_text LIKE ? OR content_text LIKE ?)

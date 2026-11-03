@@ -20,16 +20,21 @@ export type StatusCursor = IdCursor;
 
 export const cursorFragment = idCursorFragment;
 
+/** Media-only timelines keep statuses with an attachment, as `only_media` asks. */
+export const WITH_MEDIA_SQL = `AND id IN (SELECT status_id FROM media_attachments WHERE status_id IS NOT NULL)`;
+
 export const listPublicStatuses = async (
   db: D1Database,
   limit: number,
   cursor: StatusCursor = {},
+  onlyMedia = false,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
     const { where, order, binds } = cursorFragment(cursor);
+    const media = onlyMedia ? WITH_MEDIA_SQL : "";
     const { results } = await db
       .prepare(
-        `SELECT ${statusSelect} FROM statuses WHERE visibility = 'public' ${MODERATED_ACCOUNTS_SQL} ${where} ${order} LIMIT ?`,
+        `SELECT ${statusSelect} FROM statuses WHERE visibility = 'public' ${MODERATED_ACCOUNTS_SQL} ${media} ${where} ${order} LIMIT ?`,
       )
       .bind(...binds, limit)
       .all();
