@@ -1,10 +1,8 @@
 import type { Context } from "hono";
-import { getSession, getUser } from "void/auth";
+import { getSession } from "void/auth";
 import { z } from "zod";
 import { schemaResult, warmSchemas } from "@tstodon/core";
-import { findAccountByAuthUserId } from "../account-store";
-import { getAccountModeration } from "../account-moderation-store";
-import { disabledAccountIds } from "../account-flag-store";
+import { browserSession, isSameOriginPost } from "../browser-session";
 import {
   authorizationCodePage,
   consentPage,
@@ -149,29 +147,6 @@ const answerCheck = (
   return c.redirect(redirectWith(check.redirectUri, { error: check.error, state: check.state }));
 };
 
-/** The signed-in user's local account, if it may use the API. */
-const signedInAccount = async (env: Env) => {
-  const user = getUser();
-  if (!user) {
-    return { kind: "SignedOut" } as const;
-  }
-  const account = await findAccountByAuthUserId(env.DB, user.id);
-  if (account.isErr() || !account.value) {
-    return { kind: "NoAccount" } as const;
-  }
-  const [moderation, disabled] = await Promise.all([
-    getAccountModeration(env.DB, account.value.id),
-    disabledAccountIds(env.DB, [account.value.id]),
-  ]);
-  if (
-    (moderation.isOk() && moderation.value === "Suspended") ||
-    (disabled.isOk() && disabled.value.has(account.value.id))
-  ) {
-    return { kind: "Barred" } as const;
-  }
-  return { kind: "Account", account: account.value } as const;
-};
-
 const signInRedirect = (c: Context<{ Bindings: Env }>) => {
   const url = new URL(c.req.url);
   url.searchParams.delete("force_login");
@@ -190,7 +165,7 @@ export const getOauthAuthorize = async (c: Context<{ Bindings: Env }, "/oauth/au
   if (params.value.force_login === "true" || params.value.force_login === "1") {
     return signInRedirect(c);
   }
-  const signedIn = await signedInAccount(c.env);
+  const signedIn = await browserSession(c.env);
   if (signedIn.kind === "SignedOut") {
     return signInRedirect(c);
   }
@@ -207,18 +182,8 @@ export const getOauthAuthorize = async (c: Context<{ Bindings: Env }, "/oauth/au
   );
 };
 
-/** The consent form posts back to this origin; refuse a cross-site post. */
-const sameOriginPost = (c: Context<{ Bindings: Env }>): boolean => {
-  const site = c.req.header("Sec-Fetch-Site");
-  if (site !== undefined && site !== "same-origin") {
-    return false;
-  }
-  const origin = c.req.header("Origin");
-  return origin === undefined || origin === new URL(c.req.url).origin;
-};
-
 export const postOauthAuthorize = async (c: Context<{ Bindings: Env }, "/oauth/authorize">) => {
-  if (!sameOriginPost(c)) {
+  if (!isSameOriginPost(c)) {
     return refuse(c, "Authorization must be confirmed on this site.", 403);
   }
   const params = await readOptionalBody(c, AuthorizeParamsSchema);
@@ -229,7 +194,7 @@ export const postOauthAuthorize = async (c: Context<{ Bindings: Env }, "/oauth/a
   if (check.kind !== "Valid") {
     return answerCheck(c, check);
   }
-  const signedIn = await signedInAccount(c.env);
+  const signedIn = await browserSession(c.env);
   if (signedIn.kind === "SignedOut") {
     return refuse(c, "Your session has ended. Sign in and authorize again.", 403);
   }
@@ -431,7 +396,7 @@ const returnTo = (c: Context<{ Bindings: Env }>): string => {
 };
 
 export const getAuthSignIn = async (c: Context<{ Bindings: Env }, "/auth/sign_in">) => {
-  const signedIn = await signedInAccount(c.env);
+  const signedIn = await browserSession(c.env);
   return c.html(
     signInPage(
       instanceName(c.env),
