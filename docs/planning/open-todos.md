@@ -25,11 +25,11 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 Mastodon's web app links to Rails pages that tstodon answers with a "not available on this server" page (`src/routes/unsupported-pages.ts`). Each is a gap a user can reach from the menu.
 
-| ID    | Item                                            | Notes                                                                                                                                                                                                                                                       |
-| ----- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| WEB-5 | `/admin/*` beyond reports, accounts, federation | The dashboard redirects to the reports. Tags, trends, announcements, custom emojis, email blocks, software updates, and per-post moderation (`/admin/accounts/:id/statuses`) reach the notice |
-| WEB-6 | `/severed_relationships`, `/disputes/*`         | No severed-relationship lists or appeals                                                                                                                                                                                                                    |
-| WEB-7 | `/remote_interaction_helper`                    | The signed-out interaction modal loads it in an iframe to look up the visitor's server; it is not served (bare 404, or `index.html` through Void's SPA fallback), so that lookup does not work                                                              |
+| ID    | Item                                            | Notes                                                                                                                                                                                          |
+| ----- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WEB-5 | `/admin/*` beyond reports, accounts, federation | The dashboard redirects to the reports. Tags, trends, announcements, custom emojis, email blocks, software updates, and per-post moderation (`/admin/accounts/:id/statuses`) reach the notice  |
+| WEB-6 | `/severed_relationships`, `/disputes/*`         | No severed-relationship lists or appeals                                                                                                                                                       |
+| WEB-7 | `/remote_interaction_helper`                    | The signed-out interaction modal loads it in an iframe to look up the visitor's server; it is not served (bare 404, or `index.html` through Void's SPA fallback), so that lookup does not work |
 
 ## Done recently (do not re-open)
 
