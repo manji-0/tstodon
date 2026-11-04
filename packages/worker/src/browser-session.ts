@@ -1,9 +1,10 @@
-import type { LocalAccount } from "@tstodon/domain";
+import type { FediRole, LocalAccount } from "@tstodon/domain";
 import type { Context } from "hono";
 import { getSession } from "void/auth";
 import { disabledAccountIds } from "./account-flag-store";
 import { getAccountModeration } from "./account-moderation-store";
 import { findAccountByAuthUserId } from "./account-store";
+import { roleFromAuthUser } from "./auth";
 
 /**
  * Who a browser request acts as, from its Better Auth session cookie: the
@@ -15,7 +16,7 @@ export type BrowserSession =
   | Readonly<{ kind: "SignedOut" }>
   | Readonly<{ kind: "NoAccount" }>
   | Readonly<{ kind: "Barred" }>
-  | Readonly<{ kind: "Account"; account: LocalAccount; signedInAt: Date }>;
+  | Readonly<{ kind: "Account"; account: LocalAccount; role: FediRole; signedInAt: Date }>;
 
 /** The signed-in user's local account, if it may use the API. */
 export const browserSession = async (env: Env): Promise<BrowserSession> => {
@@ -37,7 +38,12 @@ export const browserSession = async (env: Env): Promise<BrowserSession> => {
   ) {
     return { kind: "Barred" };
   }
-  return { kind: "Account", account: account.value, signedInAt: state.session.createdAt };
+  return {
+    kind: "Account",
+    account: account.value,
+    role: roleFromAuthUser(Reflect.get(state.user, "role")),
+    signedInAt: state.session.createdAt,
+  };
 };
 
 /**

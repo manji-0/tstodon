@@ -12,7 +12,7 @@ import {
 } from "../account-migration";
 import { findAccountMove } from "../account-move-store";
 import { errorPage } from "../auth-pages";
-import { browserSession, isSameOriginPost } from "../browser-session";
+import { type BrowserSession, browserSession, isSameOriginPost } from "../browser-session";
 import { readOptionalBody } from "../http";
 import { parseInstanceIdentity } from "../runtime-config";
 import { aliasesPage, migrationPage, type PageMessage } from "../settings-pages";
@@ -28,8 +28,7 @@ export type SettingsContext = Context<{ Bindings: Env }>;
 export const settingsAccount = async (
   c: SettingsContext,
 ): Promise<
-  | Readonly<{ kind: "Account"; account: LocalAccount; signedInAt: Date }>
-  | Readonly<{ kind: "Answered"; response: Response }>
+  Extract<BrowserSession, { kind: "Account" }> | Readonly<{ kind: "Answered"; response: Response }>
 > => {
   if (c.req.method !== "GET" && !isSameOriginPost(c)) {
     return {

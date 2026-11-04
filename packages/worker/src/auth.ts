@@ -67,8 +67,8 @@ const TokenRowSchema = z.object({
 });
 
 /** Better Auth's admin plugin stores roles comma-separated. */
-const roleFromAuthUser = (role: string | null): FediRoleValue =>
-  (role ?? "")
+export const roleFromAuthUser = (role: unknown): FediRoleValue =>
+  (typeof role === "string" ? role : "")
     .split(",")
     .map((name) => name.trim())
     .includes("admin")

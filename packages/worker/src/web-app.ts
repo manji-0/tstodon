@@ -3,9 +3,7 @@ import { getSession } from "void/auth";
 import { z } from "zod";
 import { InstanceLimits, Languages, schemaResult } from "@tstodon/core";
 import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
-import { disabledAccountIds } from "./account-flag-store";
-import { getAccountModeration } from "./account-moderation-store";
-import { findAccountByAuthUserId } from "./account-store";
+import { browserSession } from "./browser-session";
 import { runD1 } from "./d1";
 import {
   ensureWebAccessToken,
@@ -153,40 +151,12 @@ type Viewer = Readonly<{
 /** The signed-in account behind the request's Better Auth session, if it may use the app. */
 const currentViewer = async (env: Env): Promise<Viewer | undefined> => {
   const state = getSession();
-  if (!state) {
+  const viewer = await browserSession(env);
+  if (!state || viewer.kind !== "Account") {
     return undefined;
   }
-  const account = await findAccountByAuthUserId(env.DB, state.user.id);
-  if (account.isErr() || !account.value) {
-    return undefined;
-  }
-  const [moderation, disabled] = await Promise.all([
-    getAccountModeration(env.DB, account.value.id),
-    disabledAccountIds(env.DB, [account.value.id]),
-  ]);
-  if (
-    (moderation.isOk() && moderation.value === "Suspended") ||
-    (disabled.isOk() && disabled.value.has(account.value.id))
-  ) {
-    return undefined;
-  }
-  const token = await webAccessToken(env, state.session, account.value.id);
-  if (!token) {
-    return undefined;
-  }
-  const role = Reflect.get(state.user, "role");
-  return {
-    account: account.value,
-    role:
-      typeof role === "string" &&
-      role
-        .split(",")
-        .map((name) => name.trim())
-        .includes("admin")
-        ? FediRole.Admin
-        : FediRole.User,
-    token,
-  };
+  const token = await webAccessToken(env, state.session, viewer.account.id);
+  return token ? { account: viewer.account, role: viewer.role, token } : undefined;
 };
 
 const SourceSchema = z.object({
