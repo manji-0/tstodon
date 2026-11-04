@@ -13,7 +13,7 @@ const api = apiCors();
 const under = (path: string, prefix: string): boolean =>
   path === prefix || path.startsWith(`${prefix}/`);
 
-export default (c: Context<{ Bindings: Env }>, next: Next) => {
+export default (c: Context<{ Bindings: Env }, string>, next: Next) => {
   const path = c.req.path;
   if (MEDIA_PREFIXES.some((prefix) => under(path, prefix))) {
     return media(c, next);

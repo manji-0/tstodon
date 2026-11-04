@@ -227,7 +227,7 @@ export const readNestedBody = async <T>(
   schema: z.ZodType<T>,
 ): Promise<Result<T, { kind: "ValidationError" }>> => {
   const contentType = c.req.header("content-type") ?? "";
-  const raw = contentType.includes("application/json")
+  const raw: unknown = contentType.includes("application/json")
     ? await c.req.json()
     : nestFormKeys({ ...(await c.req.parseBody()) });
   return schemaResult(schema)(raw).mapErr(() => ({ kind: "ValidationError" as const }));

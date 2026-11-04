@@ -29,8 +29,8 @@ const parseActorDocument = schemaResult(ActorDocumentSchema);
 
 /** An http(s) URL from an ActivityPub value: a string, an Image/Link, or the first of a list. */
 const linkUrl = (value: unknown): string | null => {
-  const first = Array.isArray(value) ? value[0] : value;
-  const candidate =
+  const first: unknown = Array.isArray(value) ? value[0] : value;
+  const candidate: unknown =
     typeof first === "string"
       ? first
       : typeof first === "object" && first !== null

@@ -5,17 +5,17 @@ export const isTruthy = (value: boolean | string | number | undefined): boolean 
   value === true || value === "true" || value === "1" || value === 1;
 
 export const stringList = (value: ReadonlyArray<string> | string | undefined): string[] => {
-  if (Array.isArray(value)) {
-    return value.length === 0 ? [] : value.slice();
+  if (value === undefined) {
+    return [];
   }
-  if (typeof value === "string" && value.length > 0) {
-    return [value];
+  if (typeof value === "string") {
+    return value.length > 0 ? [value] : [];
   }
-  return [];
+  return [...value];
 };
 
 export const numberList = (value: ReadonlyArray<number | string> | number | string): number[] => {
-  const items = Array.isArray(value) ? value : [value];
+  const items = typeof value === "number" || typeof value === "string" ? [value] : value;
   const out: number[] = [];
   for (const item of items) {
     const n = typeof item === "number" ? item : Number.parseInt(item, 10);

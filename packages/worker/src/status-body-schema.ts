@@ -63,7 +63,7 @@ export const mediaAttributesFromForm = (raw: unknown): ReadonlyArray<MediaAttrib
       continue;
     }
     const field = match[2];
-    const text = Array.isArray(value) ? value[0] : value;
+    const text: unknown = Array.isArray(value) ? value[0] : value;
     if (typeof text !== "string") {
       continue;
     }

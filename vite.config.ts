@@ -117,8 +117,29 @@ export default defineConfig({
       ],
       "typescript/no-misused-spread": "error",
       "typescript/consistent-type-assertions": ["error", { assertionStyle: "never" }],
+      // `any` (from `JSON.parse`, `Response.json()`, ...) would carry an
+      // unparsed value past the assertion rule above.
+      "typescript/no-unsafe-argument": "error",
+      "typescript/no-unsafe-assignment": "error",
+      "typescript/no-unsafe-call": "error",
+      "typescript/no-unsafe-member-access": "error",
+      "typescript/no-unsafe-return": "error",
       "vite-plus/prefer-vite-plus-imports": "error",
     },
+    overrides: [
+      {
+        // Test matchers (`expect.any`, `expect.objectContaining`) are typed
+        // `any`, and the build scripts are untyped JavaScript.
+        files: ["**/*.test.ts", "**/*.spec.ts", "packages/worker/test/**", "e2e/**", "scripts/**"],
+        rules: {
+          "typescript/no-unsafe-argument": "off",
+          "typescript/no-unsafe-assignment": "off",
+          "typescript/no-unsafe-call": "off",
+          "typescript/no-unsafe-member-access": "off",
+          "typescript/no-unsafe-return": "off",
+        },
+      },
+    ],
     jsPlugins: [
       {
         name: "vite-plus",

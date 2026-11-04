@@ -66,7 +66,7 @@ const trendingLinkUses = async (
     const day = Math.floor(Date.parse(status.createdAt) / 1000 / SECONDS_PER_DAY) * SECONDS_PER_DAY;
     for (const match of status.text.matchAll(LINK_PATTERN)) {
       const url = match[0].replace(/[.,;:!?]+$/, "");
-      const usage = counts.get(url) ?? { uses: 0, days: new Map() };
+      const usage: LinkUsage = counts.get(url) ?? { uses: 0, days: new Map() };
       usage.uses += 1;
       const daily = usage.days.get(day) ?? { uses: 0, accounts: new Set<string>() };
       daily.uses += 1;

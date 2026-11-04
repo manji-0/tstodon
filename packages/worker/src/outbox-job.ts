@@ -120,7 +120,7 @@ export const outboundAudience = (
     return { followers: true, actorUris: [] };
   }
   const payload = parsed.value;
-  const object =
+  const object: unknown =
     typeof payload === "object" && payload !== null ? Reflect.get(payload, "object") : undefined;
   const audience = [...audienceOf(payload), ...audienceOf(object)];
   if (audience.length === 0) {
