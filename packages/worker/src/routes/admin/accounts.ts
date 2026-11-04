@@ -328,7 +328,7 @@ const changeAccount = async (
     if (!known.value) {
       return notFound(c);
     }
-    const moderated = await moderateRemoteActor(c.env.DB, actorUri.value, remoteAction);
+    const moderated = await moderateRemoteActor(c.env, actorUri.value, remoteAction);
     if (moderated.isErr()) {
       return jsonRepositoryError(c, moderated.error.message);
     }
@@ -437,7 +437,7 @@ export const postV1AdminAccountsByIdAction = async (
     return c.json({ error: "Record invalid", kind: "ValidationError" }, 422);
   }
   const reportId = String(body.value.report_id ?? "").trim();
-  const taken = await takeAccountAction(c.env.DB, {
+  const taken = await takeAccountAction(c.env, {
     accountId: c.req.param("id") ?? "",
     type: type.value,
     reportId: reportId.length > 0 ? reportId : undefined,

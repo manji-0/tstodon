@@ -79,6 +79,11 @@ const SETTINGS_SECTIONS: ReadonlyArray<
         label: "Password and security",
         about: "Passkeys, browser sessions, and apps that can use your account.",
       },
+      {
+        href: "/severed_relationships",
+        label: "Severed relationships",
+        about: "Follows lost when a server or account was suspended.",
+      },
     ],
   },
   {

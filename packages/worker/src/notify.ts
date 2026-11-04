@@ -14,8 +14,15 @@ import { parseInstanceIdentity } from "./runtime-config";
 import { mutedThreadStatusIds } from "./status-mute-store";
 import { publishToAccount } from "./stream-publish";
 
-/** Notification kinds that tell admins about moderation work. */
-const ADMIN_KINDS: ReadonlyArray<string> = ["admin.report", "admin.sign_up"];
+/**
+ * Notification kinds that bypass the recipient's notification policy: they tell
+ * admins about moderation work, or tell an account of a moderation decision.
+ */
+const ADMIN_KINDS: ReadonlyArray<string> = [
+  "admin.report",
+  "admin.sign_up",
+  "severed_relationships",
+];
 
 export const notifyAccount = async (
   env: Env,
@@ -30,6 +37,8 @@ export const notifyAccount = async (
     targetAccountId?: string;
     /** The report an `admin.report` notification points at. */
     reportId?: string;
+    /** The account's severance event a `severed_relationships` notification reports. */
+    severanceEventId?: string;
   },
 ): Promise<Result<void, RepositoryError>> => {
   // The recipient's notification policy decides whether this is delivered,

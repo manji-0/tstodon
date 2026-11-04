@@ -20,6 +20,8 @@ export type NotificationGroup = Readonly<{
   statusId: string | null;
   /** The report an `admin.report` group points at. */
   reportId: string | null;
+  /** The account's severance event a `severed_relationships` group reports. */
+  severanceEventId: string | null;
   notificationIds: ReadonlyArray<string>;
   fromAccountIds: ReadonlyArray<string>;
 }>;
@@ -75,6 +77,7 @@ export const groupNotifications = (
         sampleAccountIds: [row.from_account_id],
         statusId: row.status_id && row.status_id.length > 0 ? row.status_id : null,
         reportId: row.report_id,
+        severanceEventId: row.severance_event_id,
         notificationIds: [row.id],
         fromAccountIds: [row.from_account_id],
       });

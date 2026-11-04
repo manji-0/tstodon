@@ -412,7 +412,7 @@ const postRemoteAccount = async (
       }),
     );
   }
-  const ran = await moderateRemoteActor(c.env.DB, view.actorUri, command.action);
+  const ran = await moderateRemoteActor(c.env, view.actorUri, command.action);
   if (ran.isErr()) {
     return serverError(c, ran.error);
   }

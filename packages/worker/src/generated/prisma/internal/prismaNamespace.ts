@@ -6686,6 +6686,7 @@ export const NotificationsScalarFieldEnum = {
   status_id: "status_id",
   target_account_id: "target_account_id",
   report_id: "report_id",
+  severance_event_id: "severance_event_id",
   created_at: "created_at",
 } as const;
 

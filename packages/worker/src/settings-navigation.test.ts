@@ -70,6 +70,7 @@ describe("settings pages the web app links to", () => {
       "/mutes",
       "/blocks",
       "/filters",
+      "/severed_relationships",
     ]) {
       expect(html).toContain(`href="${href}"`);
     }
@@ -179,7 +180,6 @@ describe("settings pages the web app links to", () => {
     for (const [path, title] of [
       ["/admin/software_updates", "Administration"],
       ["/admin/tags/3", "Administration"],
-      ["/severed_relationships", "Severed relationships"],
       ["/disputes/strikes/3", "Moderation decisions"],
       ["/settings/applications", "Settings"],
     ] as const) {

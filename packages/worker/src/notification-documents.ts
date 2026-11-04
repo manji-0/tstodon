@@ -1,6 +1,7 @@
 import type { InstanceIdentity } from "@tstodon/domain";
 import { accountDocumentsByIds } from "./account-documents";
 import { reportDocumentsByIds } from "./report-documents";
+import { findAccountSeveranceEvents, severanceEventDocument } from "./severed-relationship-store";
 import type { NotificationRow } from "./notification-store";
 import { statusDocumentsByIds } from "./status-documents";
 
@@ -15,7 +16,7 @@ export const mastodonNotifications = async (
   rows: ReadonlyArray<NotificationRow>,
   viewerId: string,
 ): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
-  const [accounts, statuses, reports] = await Promise.all([
+  const [accounts, statuses, reports, severance] = await Promise.all([
     accountDocumentsByIds(
       env,
       identity,
@@ -36,7 +37,14 @@ export const mastodonNotifications = async (
       identity,
       rows.flatMap((row) => (row.report_id ? [row.report_id] : [])),
     ),
+    findAccountSeveranceEvents(
+      env.DB,
+      rows.flatMap((row) => (row.severance_event_id ? [row.severance_event_id] : [])),
+    ),
   ]);
+  const events = new Map(
+    (severance.isOk() ? severance.value : []).map((event) => [event.id, event]),
+  );
   const documents = new Map<string, Record<string, unknown>>();
   for (const row of rows) {
     const account = accounts.get(row.from_account_id);
@@ -53,6 +61,11 @@ export const mastodonNotifications = async (
     if (row.kind === "admin.report" && !report) {
       continue;
     }
+    const event = row.severance_event_id ? events.get(row.severance_event_id) : undefined;
+    // A `severed_relationships` whose event is gone has nothing to show.
+    if (row.kind === "severed_relationships" && !event) {
+      continue;
+    }
     documents.set(row.id, {
       id: row.id,
       type: row.kind,
@@ -61,6 +74,7 @@ export const mastodonNotifications = async (
       status: row.status_id ? (statuses.get(row.status_id) ?? null) : null,
       ...(target ? { target } : {}),
       ...(report ? { report } : {}),
+      ...(event ? { event: severanceEventDocument(event) } : {}),
     });
   }
   return documents;

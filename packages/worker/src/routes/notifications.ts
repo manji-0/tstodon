@@ -19,6 +19,7 @@ import { getMarkers } from "../marker-store";
 import { accountDocumentsByIds } from "../account-documents";
 import { mastodonNotification, mastodonNotifications } from "../notification-documents";
 import { reportDocumentsByIds } from "../report-documents";
+import { findAccountSeveranceEvents, severanceEventDocument } from "../severed-relationship-store";
 import { statusDocumentsByIds } from "../status-documents";
 import {
   DEFAULT_GROUPED_TYPES,
@@ -289,7 +290,7 @@ const groupEnvelope = async (
   if (identity.isErr()) {
     return { accounts: [], statuses: [], notification_groups: [] };
   }
-  const [accountDocuments, statusDocuments, reportDocuments] = await Promise.all([
+  const [accountDocuments, statusDocuments, reportDocuments, severance] = await Promise.all([
     accountDocumentsByIds(c.env, identity.value, accountIds),
     statusDocumentsByIds(c.env, identity.value, statusIds, accountId),
     reportDocumentsByIds(
@@ -297,30 +298,41 @@ const groupEnvelope = async (
       identity.value,
       groups.flatMap((group) => (group.reportId ? [group.reportId] : [])),
     ),
+    findAccountSeveranceEvents(
+      c.env.DB,
+      groups.flatMap((group) => (group.severanceEventId ? [group.severanceEventId] : [])),
+    ),
   ]);
+  const events = new Map(
+    (severance.isOk() ? severance.value : []).map((event) => [event.id, event]),
+  );
   const accounts = accountIds.flatMap((id) => accountDocuments.get(id) ?? []);
   const statuses = statusIds.flatMap((id) => statusDocuments.get(id) ?? []);
   return {
     accounts,
     statuses,
-    notification_groups: groups.map((group) => ({
-      group_key: group.groupKey,
-      notifications_count: group.notificationsCount,
-      type: group.type,
-      most_recent_notification_id: group.mostRecentNotificationId,
-      ...(withPageIds
-        ? {
-            page_min_id: group.pageMinId,
-            page_max_id: group.pageMaxId,
-            latest_page_notification_at: group.latestPageNotificationAt,
-          }
-        : {}),
-      sample_account_ids: group.sampleAccountIds,
-      ...(group.statusId ? { status_id: group.statusId } : {}),
-      ...(group.reportId && reportDocuments.has(group.reportId)
-        ? { report: reportDocuments.get(group.reportId) }
-        : {}),
-    })),
+    notification_groups: groups.map((group) => {
+      const event = group.severanceEventId ? events.get(group.severanceEventId) : undefined;
+      return {
+        group_key: group.groupKey,
+        notifications_count: group.notificationsCount,
+        type: group.type,
+        most_recent_notification_id: group.mostRecentNotificationId,
+        ...(withPageIds
+          ? {
+              page_min_id: group.pageMinId,
+              page_max_id: group.pageMaxId,
+              latest_page_notification_at: group.latestPageNotificationAt,
+            }
+          : {}),
+        sample_account_ids: group.sampleAccountIds,
+        ...(group.statusId ? { status_id: group.statusId } : {}),
+        ...(group.reportId && reportDocuments.has(group.reportId)
+          ? { report: reportDocuments.get(group.reportId) }
+          : {}),
+        ...(event ? { event: severanceEventDocument(event) } : {}),
+      };
+    }),
   };
 };
 

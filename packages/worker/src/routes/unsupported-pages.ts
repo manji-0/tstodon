@@ -22,11 +22,6 @@ const NOTICES = {
       { href: "/admin/email_domain_blocks", label: "Email domain blocks" },
     ],
   },
-  severedRelationships: {
-    title: "Severed relationships",
-    text: "This server does not keep lists of the follows that a server block removed.",
-    alternatives: [],
-  },
   disputes: {
     title: "Moderation decisions",
     text: "Appeals are not available on this server. Contact the server's administrators.",
@@ -45,6 +40,5 @@ const unsupported =
     c.html(unsupportedPage(instanceName(c.env), notice));
 
 export const getUnknownAdmin = unsupported(NOTICES.administration);
-export const getSeveredRelationships = unsupported(NOTICES.severedRelationships);
 export const getDisputes = unsupported(NOTICES.disputes);
 export const getUnknownSettings = unsupported(NOTICES.settings);

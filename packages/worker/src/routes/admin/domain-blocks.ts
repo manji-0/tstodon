@@ -92,7 +92,7 @@ export const postV1AdminDomainBlocks = async (
   if (body.isErr() || body.value.domain === undefined) {
     return validation(c, "domain is required");
   }
-  const created = await createDomainBlock(c.env.DB, identity.value.domain, body.value.domain, {
+  const created = await createDomainBlock(c.env, identity.value.domain, body.value.domain, {
     severity: body.value.severity ?? "silence",
     rejectMedia: parseBool(body.value.reject_media, false),
     rejectReports: parseBool(body.value.reject_reports, false),
@@ -138,7 +138,7 @@ export const putV1AdminDomainBlocksById = async (
   }
   const privateComment = optionalComment(body.value.private_comment);
   const publicComment = optionalComment(body.value.public_comment);
-  const updated = await changeDomainBlock(c.env.DB, id, {
+  const updated = await changeDomainBlock(c.env, id, {
     severity: body.value.severity ?? existing.value.severity,
     rejectMedia:
       body.value.reject_media === undefined

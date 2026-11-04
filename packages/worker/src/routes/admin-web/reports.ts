@@ -267,7 +267,7 @@ export const postAdminReportAction = async (
       }),
     );
   }
-  const taken = await takeAccountAction(c.env.DB, {
+  const taken = await takeAccountAction(c.env, {
     accountId: reportedId,
     type: type.value,
     reportId: report.value.id,

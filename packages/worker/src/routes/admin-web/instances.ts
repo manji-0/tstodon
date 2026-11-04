@@ -180,8 +180,8 @@ export const postAdminInstance = async (
     publicComment: form.value.public_comment || null,
   };
   const saved: Result<unknown, CreateDomainBlockError> = existing.value
-    ? await changeDomainBlock(c.env.DB, existing.value.id, settings)
-    : await createDomainBlock(c.env.DB, identity.value.domain, domain, settings);
+    ? await changeDomainBlock(c.env, existing.value.id, settings)
+    : await createDomainBlock(c.env, identity.value.domain, domain, settings);
   if (saved.isOk()) {
     return pageRedirect(c, withNotice(`/admin/instances/${domain}`, "block_saved"), 303);
   }

@@ -25,6 +25,7 @@ import {
   setRemoteActorModeration,
 } from "./remote-actor-moderation-store";
 import { findRemoteActorByUri } from "./remote-actor-store";
+import { severAndNotify } from "./severance";
 import {
   clearRemoteMediaForDomain,
   type DomainBlockInput,
@@ -120,17 +121,41 @@ export const findAdminRemoteActor = async (
   return moderation.map((standing) => ({ actor: found, moderation: standing }));
 };
 
-/** Apply one moderation transition to a remote actor and store the result. */
+/**
+ * Apply one moderation transition to a remote actor and store the result.
+ * Suspending an actor removes the follows between it and local accounts
+ * (`account_suspension` in `/severed_relationships`).
+ */
 export const moderateRemoteActor = async (
-  db: D1Database,
+  env: Env,
   actorUri: string,
   action: RemoteActorModerationAction,
 ): Promise<Result<void, RepositoryError>> => {
-  const current = await getRemoteActorModeration(db, actorUri);
+  const current = await getRemoteActorModeration(env.DB, actorUri);
   if (current.isErr()) {
     return err(current.error);
   }
-  return setRemoteActorModeration(db, actorUri, RemoteActorModeration.apply(current.value, action));
+  const next = RemoteActorModeration.apply(current.value, action);
+  const stored = await setRemoteActorModeration(env.DB, actorUri, next);
+  if (
+    stored.isErr() ||
+    next.standing.kind !== "Suspended" ||
+    current.value.standing.kind === "Suspended"
+  ) {
+    return stored;
+  }
+  const actor = await findRemoteActorByUri(env.DB, actorUri);
+  if (actor.isErr()) {
+    return err(actor.error);
+  }
+  if (!actor.value) {
+    return stored;
+  }
+  return severAndNotify(env, {
+    scope: { kind: "Actor", actorUri },
+    type: "account_suspension",
+    targetName: `${actor.value.username}@${actor.value.domain}`,
+  });
 };
 
 /** Mastodon's `POST /api/v1/admin/accounts/:id/action` types. */
@@ -189,7 +214,7 @@ const REMOTE_ACTION: Readonly<
  * against the account when none is named.
  */
 export const takeAccountAction = async (
-  db: D1Database,
+  env: Env,
   input: Readonly<{
     accountId: string;
     type: AccountActionType;
@@ -197,6 +222,7 @@ export const takeAccountAction = async (
     moderatorId: string;
   }>,
 ): Promise<Result<void, AccountActionError>> => {
+  const db = env.DB;
   const requested = ReportParty.ofAccountId(input.accountId);
   let target: ReportParty;
   if (requested.kind === "Local") {
@@ -244,7 +270,7 @@ export const takeAccountAction = async (
       ? await applyAction(db, target.accountId, input.type)
       : remoteAction === "none" || remoteAction === "NotApplicable"
         ? ok(undefined)
-        : await moderateRemoteActor(db, target.actorUri, remoteAction);
+        : await moderateRemoteActor(env, target.actorUri, remoteAction);
   if (applied.isErr()) {
     return err(applied.error);
   }
@@ -284,20 +310,38 @@ export type CreateDomainBlockError =
   | Readonly<{ kind: "AlreadyBlocked" }>
   | RepositoryError;
 
+/**
+ * The block as saved, once its effects are carried out: remote media dropped
+ * for `reject_media`, and the follows between local accounts and the server
+ * removed for a `suspend` (`domain_block` in `/severed_relationships`).
+ */
 const savedBlock = async (
-  db: D1Database,
+  env: Env,
   id: string,
 ): Promise<Result<DomainBlockRow | undefined, RepositoryError>> => {
-  const block = await findDomainBlockById(db, id);
-  if (block.isOk() && block.value && block.value.reject_media !== 0) {
-    await clearRemoteMediaForDomain(db, block.value.domain);
+  const block = await findDomainBlockById(env.DB, id);
+  if (block.isErr() || !block.value) {
+    return block;
+  }
+  if (block.value.reject_media !== 0) {
+    await clearRemoteMediaForDomain(env.DB, block.value.domain);
+  }
+  if (block.value.severity === "suspend") {
+    const severed = await severAndNotify(env, {
+      scope: { kind: "Domain", domain: block.value.domain },
+      type: "domain_block",
+      targetName: block.value.domain,
+    });
+    if (severed.isErr()) {
+      return err(severed.error);
+    }
   }
   return block;
 };
 
 /** Block a domain this server has not blocked yet; never its own. */
 export const createDomainBlock = async (
-  db: D1Database,
+  env: Env,
   ownDomain: string,
   rawDomain: string,
   settings: DomainBlockSettings,
@@ -309,29 +353,29 @@ export const createDomainBlock = async (
   if (domain === ownDomain.toLowerCase()) {
     return err({ kind: "OwnDomain" });
   }
-  const existing = await findDomainBlockByDomain(db, domain);
+  const existing = await findDomainBlockByDomain(env.DB, domain);
   if (existing.isErr()) {
     return err(existing.error);
   }
   if (existing.value) {
     return err({ kind: "AlreadyBlocked" });
   }
-  const created = await insertDomainBlock(db, { domain, ...settings });
+  const created = await insertDomainBlock(env.DB, { domain, ...settings });
   if (created.isErr()) {
     return err(created.error);
   }
-  return savedBlock(db, created.value);
+  return savedBlock(env, created.value);
 };
 
 /** Change an existing domain block; `undefined` when there is none. */
 export const changeDomainBlock = async (
-  db: D1Database,
+  env: Env,
   id: string,
   settings: DomainBlockSettings,
 ): Promise<Result<DomainBlockRow | undefined, RepositoryError>> => {
-  const updated = await updateDomainBlock(db, id, settings);
+  const updated = await updateDomainBlock(env.DB, id, settings);
   if (updated.isErr()) {
     return err(updated.error);
   }
-  return updated.value ? savedBlock(db, id) : ok(undefined);
+  return updated.value ? savedBlock(env, id) : ok(undefined);
 };

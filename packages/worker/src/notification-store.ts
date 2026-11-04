@@ -56,6 +56,8 @@ export const insertNotification = async (
     targetAccountId?: string;
     /** The report an `admin.report` notification points at. */
     reportId?: string;
+    /** The account's severance event a `severed_relationships` notification reports. */
+    severanceEventId?: string;
   },
 ): Promise<Result<string, RepositoryError>> => {
   const id = newEntityId();
@@ -72,6 +74,7 @@ export const insertNotification = async (
         nowIso(),
         input.targetAccountId ?? null,
         input.reportId ?? null,
+        input.severanceEventId ?? null,
       ),
     );
   });
@@ -89,6 +92,7 @@ export type NotificationRow = {
   status_id: string | null;
   target_account_id: string | null;
   report_id: string | null;
+  severance_event_id: string | null;
   created_at: string;
 };
 
@@ -152,6 +156,7 @@ export const listNotifications = async (
       status_id: row.status_id,
       target_account_id: row.target_account_id,
       report_id: row.report_id,
+      severance_event_id: row.severance_event_id,
       created_at: row.created_at,
     }));
   });
@@ -181,6 +186,7 @@ export const findNotificationById = async (
       status_id: row.status_id,
       target_account_id: row.target_account_id,
       report_id: row.report_id,
+      severance_event_id: row.severance_event_id,
       created_at: row.created_at,
     };
   });
