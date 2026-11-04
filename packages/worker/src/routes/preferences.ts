@@ -15,6 +15,7 @@ import {
   settingsIndexPage,
 } from "../settings-pages";
 import { instanceName, type SettingsContext, settingsAccount } from "./account-settings";
+import { pageRedirect } from "../page-redirect";
 
 /**
  * The settings Mastodon's web app opens as Rails pages: the index it calls
@@ -24,11 +25,11 @@ import { instanceName, type SettingsContext, settingsAccount } from "./account-s
 
 /** `/settings`: Mastodon sends it on to the first settings page. */
 export const getSettings = (c: Context<{ Bindings: Env }, "/settings">) =>
-  c.redirect("/settings/preferences");
+  pageRedirect(c, "/settings/preferences");
 
 /** `/settings/profile`: the web app edits the profile itself. */
 export const getSettingsProfile = (c: Context<{ Bindings: Env }, "/settings/profile">) =>
-  c.redirect("/profile/edit");
+  pageRedirect(c, "/profile/edit");
 
 /** `/settings/preferences`: an index of the settings this server has. */
 export const getSettingsPreferences = async (

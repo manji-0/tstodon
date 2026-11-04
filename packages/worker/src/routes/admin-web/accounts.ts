@@ -33,6 +33,7 @@ import {
   serverError,
   withNotice,
 } from "./shared";
+import { pageRedirect } from "../../page-redirect";
 
 /** Mastodon's `/admin/accounts` pages: find local accounts and moderate one. */
 
@@ -295,7 +296,8 @@ export const postAdminAccount = async (c: Context<{ Bindings: Env }, "/admin/acc
   if (ran.isErr()) {
     return serverError(c, ran.error);
   }
-  return c.redirect(
+  return pageRedirect(
+    c,
     command.deletes ? withNotice("/admin/accounts", "deleted") : withNotice(path, "updated"),
     303,
   );

@@ -358,7 +358,7 @@ describe("admin pages", () => {
     const admin = await adminBrowser("pages_domains_admin");
     redirectsTo(
       await admin.fetcher("/admin/instances?domain=https://Blocked.Example/about"),
-      `${ORIGIN}/admin/instances/blocked.example`,
+      "/admin/instances/blocked.example",
     );
     const fresh = await page(await admin.fetcher("/admin/instances/blocked.example"));
     expect(fresh).toContain("does not block");

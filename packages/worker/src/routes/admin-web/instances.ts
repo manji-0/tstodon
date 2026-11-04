@@ -28,6 +28,7 @@ import {
   serverError,
   withNotice,
 } from "./shared";
+import { pageRedirect } from "../../page-redirect";
 
 /** Mastodon's `/admin/instances` pages: the domains this server blocks, and how. */
 
@@ -39,12 +40,7 @@ export const getAdminInstances = async (c: Context<{ Bindings: Env }, "/admin/in
   }
   const requested = normalizeDomain(c.req.query("domain") ?? "");
   if (requested.length > 0) {
-    // Void copies the request's query onto a path-only redirect; an absolute
-    // URL keeps `?domain=` off the domain's page.
-    return c.redirect(
-      new URL(`/admin/instances/${encodeURIComponent(requested)}`, c.req.url).toString(),
-      303,
-    );
+    return pageRedirect(c, `/admin/instances/${encodeURIComponent(requested)}`, 303);
   }
   const blocks = await listDomainBlocks(c.env.DB, 200, null);
   return blocks.isErr()
@@ -100,7 +96,10 @@ const instanceDomain = (
   }
   return domain === raw
     ? { kind: "Domain", domain }
-    : { kind: "Answered", response: c.redirect(`/admin/instances/${encodeURIComponent(domain)}`) };
+    : {
+        kind: "Answered",
+        response: pageRedirect(c, `/admin/instances/${encodeURIComponent(domain)}`),
+      };
 };
 
 /** Mastodon's `GET /admin/instances/:domain`: the domain's block, and the form to change it. */
@@ -170,7 +169,7 @@ export const postAdminInstance = async (
     const removed = await deleteDomainBlock(c.env.DB, existing.value.id);
     return removed.isErr()
       ? serverError(c, removed.error)
-      : c.redirect(withNotice("/admin/instances", "block_removed"), 303);
+      : pageRedirect(c, withNotice("/admin/instances", "block_removed"), 303);
   }
   const settings: DomainBlockSettings = {
     severity: form.value.severity,
@@ -184,7 +183,7 @@ export const postAdminInstance = async (
     ? await changeDomainBlock(c.env.DB, existing.value.id, settings)
     : await createDomainBlock(c.env.DB, identity.value.domain, domain, settings);
   if (saved.isOk()) {
-    return c.redirect(withNotice(`/admin/instances/${domain}`, "block_saved"), 303);
+    return pageRedirect(c, withNotice(`/admin/instances/${domain}`, "block_saved"), 303);
   }
   if (saved.error.kind === "RepositoryError") {
     return serverError(c, saved.error);

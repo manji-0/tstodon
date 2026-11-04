@@ -37,6 +37,17 @@ describe("settings pages the web app links to", () => {
     }
   });
 
+  it("keeps the page's query in return_to and off the sign-in page", async () => {
+    const response = await SELF.fetch(`${ORIGIN}/admin/reports?resolved=1`, {
+      redirect: "manual",
+    });
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("location") ?? "", ORIGIN);
+    expect(location.pathname).toBe("/auth/sign_in");
+    expect([...location.searchParams.keys()]).toEqual(["return_to"]);
+    expect(location.searchParams.get("return_to")).toBe("/admin/reports?resolved=1");
+  });
+
   it("redirects /settings and /settings/profile to the pages that do their job", async () => {
     const settings = await SELF.fetch(`${ORIGIN}/settings`, { redirect: "manual" });
     expect(settings.status).toBe(302);

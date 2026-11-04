@@ -31,6 +31,7 @@ import {
 } from "../oauth-store";
 import { DEFAULT_SCOPES, parseScopes, scopesWithin } from "../oauth-scope";
 import { parseInstanceIdentity, registrationsOpen } from "../runtime-config";
+import { signInRedirect as pageSignInRedirect } from "../page-redirect";
 
 export const OOB_REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob";
 
@@ -150,7 +151,7 @@ const answerCheck = (
 const signInRedirect = (c: Context<{ Bindings: Env }>) => {
   const url = new URL(c.req.url);
   url.searchParams.delete("force_login");
-  return c.redirect(`/auth/sign_in?return_to=${encodeURIComponent(url.pathname + url.search)}`);
+  return pageSignInRedirect(c, url);
 };
 
 export const getOauthAuthorize = async (c: Context<{ Bindings: Env }, "/oauth/authorize">) => {

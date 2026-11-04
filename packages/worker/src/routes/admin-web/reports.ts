@@ -36,11 +36,12 @@ import {
   serverError,
   withNotice,
 } from "./shared";
+import { pageRedirect } from "../../page-redirect";
 
 /** Mastodon's `/admin/reports` page and the moderation it offers on a report. */
 
 /** `/admin` and `/admin/dashboard`: the reports are where moderation starts. */
-export const getAdminIndex = (c: Context<{ Bindings: Env }>) => c.redirect("/admin/reports");
+export const getAdminIndex = (c: Context<{ Bindings: Env }>) => pageRedirect(c, "/admin/reports");
 
 const REPORTS_PER_PAGE = 50;
 
@@ -195,7 +196,7 @@ export const postAdminReport = async (c: Context<{ Bindings: Env }, "/admin/repo
     return serverError(c, changed.error);
   }
   return changed.value
-    ? c.redirect(withNotice(`/admin/reports/${id}`, REPORT_NOTICES[command.value]), 303)
+    ? pageRedirect(c, withNotice(`/admin/reports/${id}`, REPORT_NOTICES[command.value]), 303)
     : notFound(c, "report");
 };
 
@@ -255,7 +256,7 @@ export const postAdminReportAction = async (
     moderatorId: admin.account.id,
   });
   if (taken.isOk()) {
-    return c.redirect(withNotice(back, "actioned"), 303);
+    return pageRedirect(c, withNotice(back, "actioned"), 303);
   }
   switch (taken.error.kind) {
     case "AccountNotFound":

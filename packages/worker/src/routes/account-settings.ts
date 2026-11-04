@@ -16,6 +16,7 @@ import { type BrowserSession, browserSession, isSameOriginPost } from "../browse
 import { readOptionalBody } from "../http";
 import { parseInstanceIdentity } from "../runtime-config";
 import { aliasesPage, migrationPage, type PageMessage } from "../settings-pages";
+import { signInRedirect } from "../page-redirect";
 
 export const instanceName = (env: Env): string => env.INSTANCE_NAME || "tstodon";
 
@@ -46,9 +47,7 @@ export const settingsAccount = async (
     case "SignedOut":
       return {
         kind: "Answered",
-        response: c.redirect(
-          `/auth/sign_in?return_to=${encodeURIComponent(new URL(c.req.url).pathname)}`,
-        ),
+        response: signInRedirect(c),
       };
     case "NoAccount":
     case "Barred":

@@ -33,6 +33,7 @@ import { newEntityId } from "../ids";
 import type { PageMessage } from "../settings-pages";
 import { instanceName, type SettingsContext, settingsAccount } from "./account-settings";
 import { expiresAtFromBody, storedContexts } from "./filters/shared";
+import { pageRedirect } from "../page-redirect";
 
 /**
  * Mastodon's filter pages: the list of filters (`/filters`) and the form that
@@ -53,7 +54,7 @@ const serverError = (c: SettingsContext, text: string) =>
 const notFound = (c: SettingsContext) => c.html(filterNotFoundPage(instanceName(c.env)), 404);
 
 const redirectToList = (c: SettingsContext, notice: keyof typeof NOTICES) =>
-  c.redirect(`/filters?notice=${notice}`, 303);
+  pageRedirect(c, `/filters?notice=${notice}`, 303);
 
 const listItemOf = (row: FilterRow, statusCount: number): FilterListItem => ({
   id: row.id,
