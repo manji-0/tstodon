@@ -12,6 +12,7 @@ import {
 import { listExpiredUnnotifiedPolls, markPollExpiryNotified } from "./poll-store";
 import { elapsedMs, measureJobPage, writeMetric } from "./metrics";
 import { suspendedDomains } from "./admin-domain-block-store";
+import { authorityHost } from "./domain-block-store";
 import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
 import { notifyEndedRemotePolls } from "./remote-poll-expiry";
 import { processDistributePollUpdateJob } from "./poll-update";
@@ -231,7 +232,11 @@ export const processOutboxJob = async (
           candidateInboxes.filter((inbox) => {
             try {
               const host = new URL(inbox).host.toLowerCase();
-              return host !== sameHost && !suspended.has(host) && allowListAdmits(allowHosts, host);
+              return (
+                host !== sameHost &&
+                !suspended.has(authorityHost(host)) &&
+                allowListAdmits(allowHosts, host)
+              );
             } catch {
               return false;
             }

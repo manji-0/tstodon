@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
+import { deliveredCreate } from "../test/delivery-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import migration from "../app/db/migrations/0097_remote_actor_authority.sql?raw";
 import { authorityHost, normalizeDomain } from "./domain-block-store";
@@ -123,6 +124,43 @@ describe("a remote actor on a non-default port", () => {
         },
       }),
     ).toBe(403);
+  });
+
+  it("gets no fan-out from a note once its bare hostname is suspended", async () => {
+    const email = "authority-fanout@example.com";
+    const author = read(
+      z.object({ id: z.string() }),
+      await (
+        await call("/api/v1/accounts/verify_credentials", { headers: await authHeaders(email) })
+      ).json(),
+    );
+    const ported = await remoteActor("fanout-bob", "fanout-peer.test:8797");
+    const other = await remoteActor("fanout-carol", "fanout-other.test");
+    for (const follower of [ported, other]) {
+      await env.DB.prepare(
+        `INSERT INTO remote_follows (id, remote_actor_uri, target_account_id, remote_request_kind, follow_kind, created_at)
+         VALUES (?, ?, ?, 'Fulfilled', 'Accepted', '2026-10-21T00:00:00.000Z')`,
+      )
+        .bind(`fanout-${follower.actorUri}`, follower.actorUri, author.id)
+        .run();
+    }
+    // Inserted directly: the admin path would sever the follow before any fan-out.
+    await env.DB.prepare(
+      "INSERT INTO domain_blocks (id, domain, severity) VALUES ('fanout-block', 'fanout-peer.test', 'suspend')",
+    ).run();
+
+    const note = read(
+      z.object({ uri: z.string() }),
+      await (
+        await call("/api/v1/statuses", {
+          method: "POST",
+          headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+          body: JSON.stringify({ status: "to every follower", visibility: "public" }),
+        })
+      ).json(),
+    );
+    const delivered = await deliveredCreate(author.id, note.uri);
+    expect(delivered?.inboxes).toEqual([`${other.actorUri}/inbox`]);
   });
 });
 
