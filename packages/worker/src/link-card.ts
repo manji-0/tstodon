@@ -1,4 +1,3 @@
-import { schemaResult } from "@tstodon/core";
 import type { InstanceIdentity } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { z } from "zod";
@@ -18,6 +17,7 @@ import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 import { setRemoteStatusCard } from "./status-card-store";
 import { setStatusCard } from "./status-card-store";
 import { queryTyped, runTyped } from "./typed-sql";
+import { parseJsonColumn } from "./json-column";
 
 const CardJsonFetchedAtRow = z.object({ card_json: z.string(), fetched_at: z.string() });
 const UrlRow = z.object({ url: z.string() });
@@ -73,7 +73,7 @@ export const cardDocument = (card: LinkCard): Record<string, unknown> => ({
 });
 
 export const parseCardJson = (raw: string): LinkCard | undefined => {
-  const parsed = schemaResult(CardSchema)(JSON.parse(raw));
+  const parsed = parseJsonColumn(CardSchema, raw);
   if (parsed.isErr()) {
     return undefined;
   }

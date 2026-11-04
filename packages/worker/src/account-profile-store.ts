@@ -1,4 +1,3 @@
-import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
@@ -9,6 +8,7 @@ import {
   upsertAccountProfile as upsertAccountProfileSql,
 } from "./generated/prisma/sql";
 import { queryTyped, runTyped } from "./typed-sql";
+import { parseJsonColumn } from "./json-column";
 
 export const ProfileFieldSchema = z.object({
   name: z.string(),
@@ -57,13 +57,16 @@ const ProfileRowSchema = z.object({
   header_content_type: z.string().nullable(),
 });
 
-const parseFields = schemaResult(z.array(ProfileFieldSchema));
+const ProfileFieldsSchema = z.array(ProfileFieldSchema);
 
 const profileFromRow = (row: z.infer<typeof ProfileRowSchema>): AccountProfile => {
-  const fields = parseFields(JSON.parse(row.fields_json.length > 0 ? row.fields_json : "[]"));
+  const fields = parseJsonColumn(
+    ProfileFieldsSchema,
+    row.fields_json.length > 0 ? row.fields_json : "[]",
+  ).unwrapOr([]);
   return {
     note: row.note,
-    fields: fields.isOk() ? fields.value : [],
+    fields,
     bot: row.bot !== 0,
     discoverable: row.discoverable !== 0,
     indexable: (row.indexable ?? 1) !== 0,

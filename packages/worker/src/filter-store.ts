@@ -2,7 +2,7 @@ import { type RepositoryError, runD1 } from "./d1";
 import { queryTyped, runTyped } from "./typed-sql";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
-import { schemaResult, warmSchemas } from "@tstodon/core";
+import { warmSchemas } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import {
@@ -16,6 +16,7 @@ import {
   listFilterStatuses as listFilterStatusesSql,
   updateFilter as updateFilterSql,
 } from "./generated/prisma/sql";
+import { parseJsonColumn } from "./json-column";
 
 const IdRow = z.object({ id: z.string() });
 const IdStatusIdRow = z.object({ id: z.string().nullable(), status_id: z.string() });
@@ -45,11 +46,14 @@ export const FilterKeywordSchema = z.object({
 
 export type FilterKeyword = z.infer<typeof FilterKeywordSchema>;
 
-const parseKeywords = schemaResult(z.array(FilterKeywordSchema));
+const FilterKeywordsSchema = z.array(FilterKeywordSchema);
 
 /** Stored keywords, or a synthetic one built from the v1 `phrase`. */
 export const filterKeywords = (row: FilterRow): ReadonlyArray<FilterKeyword> => {
-  const parsed = parseKeywords(JSON.parse(row.keywords_json.length > 0 ? row.keywords_json : "[]"));
+  const parsed = parseJsonColumn(
+    FilterKeywordsSchema,
+    row.keywords_json.length > 0 ? row.keywords_json : "[]",
+  );
   if (parsed.isOk() && parsed.value.length > 0) {
     return parsed.value;
   }

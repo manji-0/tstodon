@@ -1,5 +1,5 @@
 import { FollowRequest, IsoInstant, RemoteActor } from "@tstodon/domain";
-import { schemaResult, warmSchemas } from "@tstodon/core";
+import { warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
@@ -46,6 +46,7 @@ import {
   upsertRemoteActor as upsertRemoteActorSql,
   upsertRemoteFollow as upsertRemoteFollowSql,
 } from "./generated/prisma/sql";
+import { parseJsonColumn } from "./json-column";
 
 const ActorUriRow = z.object({ actor_uri: z.string() });
 const RemoteActorUriCreatedAtRow = z.object({
@@ -84,17 +85,9 @@ export const RemoteActorRowSchema = z.object({
 
 export type RemoteActorRow = z.infer<typeof RemoteActorRowSchema>;
 
-const parseProfile = schemaResult(RemoteActor.profileSchema);
-
 /** The stored profile; a row from before profiles (`{}`) reads as empty. */
-const profileFromJson = (raw: string) => {
-  try {
-    const parsed = parseProfile(JSON.parse(raw));
-    return parsed.isOk() ? parsed.value : RemoteActor.emptyProfile;
-  } catch {
-    return RemoteActor.emptyProfile;
-  }
-};
+const profileFromJson = (raw: string) =>
+  parseJsonColumn(RemoteActor.profileSchema, raw).unwrapOr(RemoteActor.emptyProfile);
 
 const remoteActorFromRow = (row: RemoteActorRow): Result<RemoteActor, RepositoryError> => {
   const fetchedAt = IsoInstant.parse(row.fetched_at);

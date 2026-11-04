@@ -22,6 +22,7 @@ import {
   sqlInJsonEach,
 } from "./d1";
 import { newEntityId } from "./ids";
+import { parseJsonText } from "./json-column";
 
 /**
  * Imports kept per account, newest first; older finished ones are deleted
@@ -276,18 +277,10 @@ export const listPendingRows = async (
       z.object({ position: z.number(), row_json: z.string() }),
       rows.results,
     ).flatMap((row) => {
-      const parsed = ImportRow.parse(safeJson(row.row_json));
+      const parsed = ImportRow.parse(parseJsonText(row.row_json).unwrapOr(undefined));
       return parsed.isOk() ? [{ position: row.position, row: parsed.value }] : [];
     });
   });
-
-const safeJson = (text: string): unknown => {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-};
 
 export type FailedRow = Readonly<{ position: number; input: string; failure: RowFailureValue }>;
 

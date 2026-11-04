@@ -30,6 +30,7 @@ import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "./
 import { findStatusById } from "./status-store";
 import { publishToAccount } from "./stream-publish";
 import { startOutboxDeliveryWorkflow } from "./delivery";
+import { parseJsonText } from "./json-column";
 
 const processExpiredPolls = async (env: Env): Promise<void> => {
   await notifyEndedRemotePolls(env);
@@ -114,12 +115,11 @@ export const outboundAudience = (
   payloadJson: string,
   localHost: string,
 ): Readonly<{ followers: boolean; actorUris: ReadonlyArray<string> }> => {
-  let payload: unknown;
-  try {
-    payload = JSON.parse(payloadJson);
-  } catch {
+  const parsed = parseJsonText(payloadJson);
+  if (parsed.isErr()) {
     return { followers: true, actorUris: [] };
   }
+  const payload = parsed.value;
   const object =
     typeof payload === "object" && payload !== null ? Reflect.get(payload, "object") : undefined;
   const audience = [...audienceOf(payload), ...audienceOf(object)];

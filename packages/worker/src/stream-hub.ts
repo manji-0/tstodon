@@ -24,6 +24,7 @@ import {
   insertSubscriptionRow,
   subscriptionRow,
 } from "./stream-subscription-store";
+import { parseJsonText } from "./json-column";
 
 /**
  * Streams one socket may hold. Mastodon's web UI multiplexes every column
@@ -114,13 +115,7 @@ const StreamCommandSchema = z.object({
 
 const parseStreamCommand = schemaResult(StreamCommandSchema);
 
-const parseJson = (text: string): unknown => {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-};
+const parseJson = (text: string): unknown => parseJsonText(text).unwrapOr(undefined);
 
 /**
  * One viewer's open streaming sockets (an account's, or every anonymous

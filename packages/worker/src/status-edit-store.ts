@@ -9,6 +9,7 @@ import {
   insertStatusEdit as insertStatusEditSql,
   listStatusEditSnapshots as listStatusEditSnapshotsSql,
 } from "./generated/prisma/sql";
+import { parseJsonText } from "./json-column";
 
 const SnapshotJsonRow = z.object({ snapshot_json: z.string() });
 const UpdatedAtRow = z.object({ updated_at: z.string() });
@@ -32,7 +33,7 @@ export const listStatusEdits = async (
     const rows = await queryTyped(db, listStatusEditSnapshotsSql(statusId), SnapshotJsonRow);
     const snapshots: Record<string, unknown>[] = [];
     for (const row of rows) {
-      const parsed: unknown = JSON.parse(row.snapshot_json);
+      const parsed = parseJsonText(row.snapshot_json).unwrapOr(undefined);
       if (parsed !== null && typeof parsed === "object") {
         snapshots.push({ ...parsed });
       }

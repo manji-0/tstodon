@@ -4,6 +4,7 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import { domainAllowHosts } from "./domain-allow-store";
 import type { CustomEmoji } from "./emoji";
+import { parseJsonText } from "./json-column";
 
 /**
  * An optional string variable that `wrangler.jsonc` may leave out, so it is
@@ -44,13 +45,7 @@ const parseJsonValue = <T>(schema: z.ZodType<T>, raw: string): T | undefined => 
   if (trimmed.length === 0) {
     return undefined;
   }
-  let json: unknown;
-  try {
-    json = JSON.parse(trimmed);
-  } catch {
-    return undefined;
-  }
-  const parsed = schemaResult(schema)(json);
+  const parsed = parseJsonText(trimmed).andThen(schemaResult(schema));
   return parsed.isOk() ? parsed.value : undefined;
 };
 
@@ -59,13 +54,7 @@ const parseJsonArray = <T>(schema: z.ZodType<T[]>, raw: string): ReadonlyArray<T
   if (trimmed.length === 0) {
     return [];
   }
-  let json: unknown;
-  try {
-    json = JSON.parse(trimmed);
-  } catch {
-    return [];
-  }
-  const parsed = schemaResult(schema)(json);
+  const parsed = parseJsonText(trimmed).andThen(schemaResult(schema));
   return parsed.isOk() ? parsed.value : [];
 };
 

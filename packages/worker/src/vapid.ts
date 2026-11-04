@@ -1,5 +1,6 @@
 import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
+import { parseJsonText } from "./json-column";
 
 /**
  * The VAPID key pair push services verify our Web Push requests against
@@ -41,14 +42,6 @@ export const bytesToBase64Url = (bytes: Uint8Array): string =>
     .replaceAll("/", "_")
     .replace(/=+$/, "");
 
-const parseJson = (raw: string): unknown => {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-};
-
 /** The configured VAPID keys, or `undefined` when push is not configured. */
 export const vapidKeys = (env: Env): VapidKeys | undefined => {
   const vars = schemaResult(VapidEnvSchema)(env);
@@ -59,7 +52,7 @@ export const vapidKeys = (env: Env): VapidKeys | undefined => {
   if (raw.length === 0) {
     return undefined;
   }
-  const jwk = schemaResult(VapidJwkSchema)(parseJson(raw));
+  const jwk = parseJsonText(raw).andThen(schemaResult(VapidJwkSchema));
   if (jwk.isErr()) {
     return undefined;
   }

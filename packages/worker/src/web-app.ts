@@ -20,6 +20,7 @@ import {
 } from "./runtime-config";
 import { queryTyped, runTypedBatch } from "./typed-sql";
 import { vapidPublicKey } from "./vapid";
+import { parseJsonText } from "./json-column";
 
 /**
  * Mastodon's own web UI, built by `pnpm web:build` into the Workers Assets
@@ -182,12 +183,7 @@ const webSettings = async (env: Env, accountId: string): Promise<unknown> => {
   if (row === undefined) {
     return {};
   }
-  try {
-    const parsed: unknown = JSON.parse(row.data_json);
-    return parsed;
-  } catch {
-    return {};
-  }
+  return parseJsonText(row.data_json).unwrapOr({});
 };
 
 /** Mastodon's `InitialStateSerializer`, for this server's settings. */
