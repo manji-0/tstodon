@@ -38,7 +38,7 @@ import {
 import { RemoteDeleteTarget } from "../remote-delete";
 import { applyRemoteUpdate } from "../remote-update";
 import { persistAnnouncedObject, persistRemoteObject } from "../remote-status-persist";
-import { announceRemovedBoosts, enqueueHomeFanOut } from "../home-fan-out";
+import { enqueueHomeFanOut } from "../home-fan-out";
 import { purgeRemoteActorAndAnnounce } from "../remote-actor-purge";
 import { enqueuePublicFanOut } from "../public-fan-out";
 import { recordRemoteBoost } from "../remote-boost";
