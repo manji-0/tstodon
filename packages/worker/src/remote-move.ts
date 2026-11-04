@@ -16,7 +16,7 @@ import { parseLocalActorUsername } from "./activitypub";
 import type { RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { followAccountRef } from "./follow-ref";
-import { followAccount, type FollowOptions, unfollowAccount } from "./follow-store";
+import { type FollowOptions, unfollowAccount } from "./follow-store";
 import { type ListMember, listListsContainingMember, replaceListMember } from "./list-store";
 import { moveBlockPage, moveMutePage, moveNotePage } from "./move-carry";
 import { notifyAccount, notifyFromRemote } from "./notify";

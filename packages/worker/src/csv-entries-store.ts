@@ -1,4 +1,4 @@
-import { InstanceIdentity, type ImportTypeValue } from "@tstodon/domain";
+import { InstanceIdentity, type ImportTypeValue, StatusId } from "@tstodon/domain";
 import { z } from "zod";
 import { type Result } from "neverthrow";
 import { listMemberKey } from "./csv-import-file";
@@ -48,7 +48,7 @@ export type Entry =
         acct: string;
         member: ListMember;
       }>)
-  | (Base & Readonly<{ kind: "Bookmarks"; statusId: string; uri: string }>);
+  | (Base & Readonly<{ kind: "Bookmarks"; statusId: StatusId; uri: string }>);
 
 /** Where a page of entries ends: the cursor to continue after, or none when it was the last page. */
 export type EntryPage = Readonly<{ entries: ReadonlyArray<Entry>; next: string | undefined }>;
@@ -359,15 +359,16 @@ const bookmarksPage = (
   runD1(async () => {
     const { results } = await db
       .prepare(
-        `SELECT b.status_id AS status_id, a.username AS username
+        `SELECT b.local_status_id AS status_id, a.username AS username
          FROM bookmarks b
-         JOIN statuses s ON s.id = b.status_id
+         JOIN statuses s ON s.id = b.local_status_id
          JOIN accounts a ON a.id = s.account_id
-         WHERE b.account_id = ? AND b.status_id > ? ORDER BY b.status_id LIMIT ?`,
+         WHERE b.account_id = ? AND b.local_status_id > ?
+         ORDER BY b.local_status_id LIMIT ?`,
       )
       .bind(accountId, after, limit)
       .all();
-    const rows = parseRows(z.object({ status_id: z.string(), username: z.string() }), results);
+    const rows = parseRows(z.object({ status_id: StatusId.schema, username: z.string() }), results);
     return page(
       rows.map((row): Entry => ({
         kind: "Bookmarks",

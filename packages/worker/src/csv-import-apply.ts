@@ -247,7 +247,10 @@ export const applyImportRow = async (
       if (!status.value || !(await canViewStatus(env.DB, status.value, account.id))) {
         return ok(unresolved(failed("Unsupported")));
       }
-      const bookmarked = await bookmarkStatus(env.DB, account.id, row.statusId);
+      const bookmarked = await bookmarkStatus(env.DB, account.id, {
+        kind: "LocalStatus",
+        statusId: status.value.id,
+      });
       return bookmarked.map(() => unresolved(applied));
     }
   }
@@ -286,7 +289,10 @@ const removeEntry = async (
     case "Lists":
       return removeListMembers(env.DB, entry.listId, [entry.member]);
     case "Bookmarks":
-      return unbookmarkStatus(env.DB, account.id, entry.statusId);
+      return unbookmarkStatus(env.DB, account.id, {
+        kind: "LocalStatus",
+        statusId: entry.statusId,
+      });
   }
 };
 

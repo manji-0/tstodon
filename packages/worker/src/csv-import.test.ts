@@ -1,4 +1,4 @@
-import { OutboxJob, type ImportModeValue, type ImportTypeValue } from "@tstodon/domain";
+import { OutboxJob, StatusId, type ImportModeValue, type ImportTypeValue } from "@tstodon/domain";
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { ORIGIN, signUp } from "../test/passkey-browser";
@@ -305,8 +305,14 @@ describe("data export and import", () => {
     await addListMembers(env.DB, news.value.id, [{ kind: "LocalAccount", accountId: dave.id }]);
     const first = await seedNote(bob);
     const second = await seedNote(bob);
-    await bookmarkStatus(env.DB, alice.id, first);
-    await bookmarkStatus(env.DB, alice.id, second);
+    await bookmarkStatus(env.DB, alice.id, {
+      kind: "LocalStatus",
+      statusId: StatusId.schema.parse(first),
+    });
+    await bookmarkStatus(env.DB, alice.id, {
+      kind: "LocalStatus",
+      statusId: StatusId.schema.parse(second),
+    });
 
     const files = {
       follows: await download(alice, "follows.csv"),
