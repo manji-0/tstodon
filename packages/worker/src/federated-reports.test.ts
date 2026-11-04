@@ -1,9 +1,11 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { OutboxJob } from "@tstodon/domain";
+import { attemptInboxDelivery } from "./delivery";
 import { RemoteAccountId } from "./remote-account-id";
 
 const json = async (path: string, init?: RequestInit) => {
@@ -216,5 +218,112 @@ describe("reports from other servers", () => {
     expect(await adminReports(`account_id=${RemoteAccountId.encode(flagger.actorUri)}`)).toEqual(
       [],
     );
+  });
+});
+
+const FlagSchema = z.object({
+  id: z.string(),
+  type: z.literal("Flag"),
+  actor: z.string(),
+  content: z.string(),
+  object: z.array(z.string()),
+});
+
+/** The `Flag`s queued for `inbox`, with who signs each (`null`: the instance actor). */
+const queuedFlags = async (inbox: string) => {
+  const { results } = await env.DB.prepare(
+    `SELECT a.id, a.account_id, a.payload_json FROM outbound_activities a
+     JOIN outbox_deliveries d ON d.activity_id = a.id
+     WHERE a.kind = 'Flag' AND d.inbox_url = ? ORDER BY a.rowid`,
+  )
+    .bind(inbox)
+    .all<{ id: string; account_id: string | null; payload_json: string }>();
+  return results.map((row) => ({
+    activityId: row.id,
+    signer: row.account_id,
+    flag: read(FlagSchema, JSON.parse(row.payload_json)),
+  }));
+};
+
+/** Deliver a queued activity, returning the signed request that went out. */
+const deliver = async (activityId: string, inbox: string): Promise<Request> => {
+  const job = OutboxJob.parse({ kind: "DeliverTarget", activityId, inboxUrl: inbox });
+  if (job.isErr() || job.value.kind !== "DeliverTarget") {
+    throw new Error("deliver job rejected");
+  }
+  const sent: Request[] = [];
+  const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    sent.push(new Request(input, init));
+    return new Response(null, { status: 202 });
+  });
+  try {
+    expect((await attemptInboxDelivery(env, job.value)).kind).toBe("Success");
+  } finally {
+    fetchSpy.mockRestore();
+  }
+  const [request] = sent;
+  if (!request) {
+    throw new Error("nothing was delivered");
+  }
+  return request;
+};
+
+describe("forwarding reports", () => {
+  it("forwards a report on a remote account as a Flag from the instance actor", async () => {
+    const target = await remoteActor("forward-target", "forward.example");
+    const post = await remoteNote(target, "forward-1");
+    const targetId = RemoteAccountId.encode(target.actorUri);
+    const filed = await fileReport("forward-reporter@example.com", {
+      account_id: targetId,
+      status_ids: [post],
+      comment: "forward this",
+      forward: true,
+    });
+    expect(filed.status).toBe(200);
+    const report = read(z.object({ id: z.string(), forwarded: z.boolean() }), filed.body);
+    expect(report.forwarded).toBe(true);
+
+    const inbox = `${target.actorUri}/inbox`;
+    const queued = await queuedFlags(inbox);
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({
+      signer: null,
+      flag: {
+        actor: "https://example.com/actor",
+        content: "forward this",
+        object: [target.actorUri, `${target.actorUri}/notes/forward-1`],
+      },
+    });
+    const request = await deliver(queued[0]?.activityId ?? "", inbox);
+    expect(request.headers.get("Signature")).toContain(
+      'keyId="https://example.com/actor#main-key"',
+    );
+    expect(await request.text()).not.toContain("forward-reporter");
+
+    const [listed] = await adminReports(`target_account_id=${targetId}`);
+    expect(listed).toMatchObject({ id: report.id, forwarded: true });
+  });
+
+  it("keeps a report here without forward, and for a local account", async () => {
+    const target = await remoteActor("unforwarded-target", "unforwarded.example");
+    const kept = await fileReport("forward-reporter@example.com", {
+      account_id: RemoteAccountId.encode(target.actorUri),
+      comment: "only for this server",
+    });
+    expect(read(z.object({ forwarded: z.boolean() }), kept.body).forwarded).toBe(false);
+    expect(await queuedFlags(`${target.actorUri}/inbox`)).toEqual([]);
+
+    const local = await signedInAccount("forward-local-target@example.com");
+    const localReport = await fileReport("forward-reporter@example.com", {
+      account_id: local.id,
+      forward: true,
+    });
+    expect(read(z.object({ forwarded: z.boolean() }), localReport.body).forwarded).toBe(false);
+    const flags = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM outbound_activities WHERE kind = 'Flag' AND payload_json LIKE ?",
+    )
+      .bind(`%/users/${local.username}%`)
+      .first<{ n: number }>();
+    expect(flags?.n).toBe(0);
   });
 });
