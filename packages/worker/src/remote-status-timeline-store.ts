@@ -304,7 +304,8 @@ export const listTagRemoteStatuses = async (
 
 /**
  * Public remote statuses whose preview card was unfurled from `url` (the link
- * timeline), without the domains the viewer blocks or the instance limits or suspends.
+ * timeline), without the actors the viewer blocks or mutes and the domains it
+ * blocks or the instance limits or suspends, all before the limit.
  */
 export const listLinkRemoteStatuses = async (
   db: D1Database,
@@ -314,6 +315,7 @@ export const listLinkRemoteStatuses = async (
   cursor: StatusCursor = {},
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
+    const viewer = viewerId ?? "";
     const minId = cursor.minId ?? "";
     const sinceId = cursor.sinceId ?? "";
     const maxId = cursor.maxId ?? "";
@@ -325,10 +327,19 @@ export const listLinkRemoteStatuses = async (
       .prepare(
         `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
          WHERE s.card_url = ? AND s.visibility = 'public'
+           AND s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
            AND s.actor_uri NOT IN ${DOMAIN_RESTRICTED_ACTORS_SQL}
            ${cursorWhere} ${order} LIMIT ?`,
       )
-      .bind(url, viewerId ?? "", ...(cursorId.length > 0 ? [cursorId] : []), limit)
+      .bind(
+        url,
+        viewer,
+        viewer,
+        nowIso(),
+        viewer,
+        ...(cursorId.length > 0 ? [cursorId] : []),
+        limit,
+      )
       .all();
     const statuses: RemoteStatus[] = [];
     for (const raw of results ?? []) {

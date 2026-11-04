@@ -1,5 +1,5 @@
 /** Digits in an entity id until the year 2453; ids are stored as TEXT and compared as strings. */
-const ENTITY_ID_DIGITS = 18;
+export const ENTITY_ID_DIGITS = 18;
 
 /**
  * A Snowflake-style id that sorts at `atMs` (milliseconds since the epoch),

@@ -309,3 +309,46 @@ describe("home streams of followers of a remote actor", () => {
     follower.close();
   });
 });
+
+describe("home streams and exclusive lists", () => {
+  it("do not hear a post of someone on an exclusive list, local or remote", async () => {
+    const ownerEmail = "hs-excl-owner@example.com";
+    const owner = await openStream(ownerEmail);
+    const listed = "hs-excl-listed@example.com";
+    const plain = "hs-excl-plain@example.com";
+    const listedRemote = await remoteActor("hs-excl-remote", "excl-remote.example");
+    await follow(ownerEmail, listed);
+    await follow(ownerEmail, plain);
+    await followRemote(ownerEmail, listedRemote);
+    const listedAccount = await signedInAccount(listed);
+    const list = await json(ownerEmail, "/api/v1/lists", {
+      method: "POST",
+      body: JSON.stringify({ title: "Quiet", exclusive: true }),
+    });
+    const listId = z.object({ id: z.string() }).parse(list.body).id;
+    const added = await SELF.fetch(`${ORIGIN}/api/v1/lists/${listId}/accounts`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await authHeaders(ownerEmail)) },
+      body: JSON.stringify({
+        account_ids: [listedAccount.id, RemoteAccountId.encode(listedRemote.actorUri)],
+      }),
+    });
+    expect(added.status).toBe(200);
+
+    await post(listed, "from the exclusive list");
+    await createRemote(listedRemote, "hs-excl-remote-note");
+    expect(await owner.heardNothing()).toBe(true);
+
+    const visible = await post(plain, "from outside the list");
+    expect(statusOf(await owner.next()).id).toBe(visible);
+
+    const opened = await json(ownerEmail, `/api/v1/lists/${listId}`, {
+      method: "PUT",
+      body: JSON.stringify({ exclusive: false }),
+    });
+    expect(opened.status).toBe(200);
+    const back = await post(listed, "back on home");
+    expect(statusOf(await owner.next()).id).toBe(back);
+    owner.close();
+  });
+});

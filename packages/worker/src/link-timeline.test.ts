@@ -2,8 +2,9 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { authHeaders } from "../test/auth-fixture";
+import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { cacheLinkCard, processLinkCardJob } from "./link-card";
+import { RemoteAccountId } from "./remote-account-id";
 
 const json = async (
   path: string,
@@ -138,5 +139,58 @@ describe("link timeline", () => {
     });
     expect(rejected.status).toBe(200);
     expect((await linkTimeline(url)).status).toBe(404);
+  });
+});
+
+describe("link timeline moderation", () => {
+  it("drops blocked and muted authors before the limit", async () => {
+    const url = "https://linked.example/moderated";
+    await seedCard(url);
+    const viewer = "link-mod-viewer@example.com";
+    const share = async (email: string, text: string): Promise<string> => {
+      const id = await postStatus(email, `${text} ${url}`);
+      await processLinkCardJob(env, { kind: "ProcessLinkCard", target: "Status", id, url });
+      return id;
+    };
+    const kept = [
+      await share("link-mod-a@example.com", "kept one"),
+      await share("link-mod-b@example.com", "kept two"),
+    ];
+    const blocked = await signedInAccount("link-mod-blocked@example.com");
+    const muted = await signedInAccount("link-mod-muted@example.com");
+    await share("link-mod-blocked@example.com", "blocked");
+    await share("link-mod-muted@example.com", "muted");
+
+    const actorUri = "https://link-mod.example/users/blocked-remote";
+    await env.DB.prepare(
+      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, display_name, fetched_at)
+       VALUES (?, 'blocked-remote', 'link-mod.example', ?, ?, 'pem', 'Blocked', '2026-01-01T00:00:00.000Z')`,
+    )
+      .bind(actorUri, `${actorUri}/inbox`, `${actorUri}#main-key`)
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at)
+       VALUES ('999999999999999999', ?, ?, ?, 'public', '2026-01-01T00:00:00.000Z')`,
+    )
+      .bind(actorUri, `${actorUri}/statuses/1`, `<p><a href="${url}">${url}</a></p>`)
+      .run();
+    await processLinkCardJob(env, {
+      kind: "ProcessLinkCard",
+      target: "RemoteStatus",
+      id: "999999999999999999",
+      url,
+    });
+
+    const authed = async (path: string, method = "GET") =>
+      json(path, { method, headers: await authHeaders(viewer) });
+    expect((await authed(`/api/v1/accounts/${blocked.id}/block`, "POST")).status).toBe(200);
+    expect((await authed(`/api/v1/accounts/${muted.id}/mute`, "POST")).status).toBe(200);
+    const remoteId = RemoteAccountId.encode(actorUri);
+    expect((await authed(`/api/v1/accounts/${remoteId}/block`, "POST")).status).toBe(200);
+
+    const page = await authed(
+      `/api/v1/timelines/link?url=${encodeURIComponent(url)}&limit=${kept.length}`,
+    );
+    expect(read(TimelineSchema, page.body).map((status) => status.id)).toEqual(kept.toReversed());
   });
 });

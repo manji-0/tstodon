@@ -3,6 +3,7 @@ import type { Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { type RepositoryError, runD1 } from "./d1";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
+import { EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL } from "./followed-feed";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { hydrateStatusRows, statusSelect } from "./status-store";
 
@@ -57,7 +58,9 @@ export const listHomeStatuses = async (
   cursor: StatusCursor = {},
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
-    const suppressed = `AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}`;
+    // Members of the viewer's exclusive lists show on those lists only.
+    const suppressed = `AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
+         AND account_id NOT IN ${EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL}`;
     const { where, order, binds } = cursorFragment(cursor);
     // Followers who turned reblogs off keep their own boosts out of the feed,
     // and a follow with `languages[]` only keeps statuses in those languages
@@ -93,6 +96,8 @@ export const listHomeStatuses = async (
         accountId,
         accountId,
         nowIso(),
+        // Exclusive lists: the viewer.
+        accountId,
         // Reblogs off: the viewer, then the follows being checked.
         accountId,
         accountId,

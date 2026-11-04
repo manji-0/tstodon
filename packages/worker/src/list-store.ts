@@ -11,6 +11,7 @@ import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import { hydrateStatusRows, STATUS_SELECT } from "./status-store";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import { RemoteAccountId } from "./remote-account-id";
+import { feedLocalRepliesSql, type ListFeed } from "./followed-feed";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import {
   createList as createListSql,
@@ -320,37 +321,26 @@ export const listListsContainingMember = async (
 export const listListTimelineStatuses = async (
   db: D1Database,
   input: Readonly<{
-    listId: string;
+    feed: ListFeed;
     ownerAccountId: string;
-    repliesPolicy: ListRepliesPolicy;
     limit: number;
     cursor: IdCursor;
   }>,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
-    // Dynamic reply-policy SQL stays on D1 prepare (escape hatch).
-    const replyFilter =
-      input.repliesPolicy === "none"
-        ? `AND in_reply_to_id IS NULL`
-        : input.repliesPolicy === "followed"
-          ? `AND (
-               in_reply_to_id IS NULL
-               OR EXISTS (
-                 SELECT 1 FROM statuses parent
-                 JOIN follows f ON f.target_account_id = parent.account_id
-                 WHERE parent.id = statuses.in_reply_to_id
-                   AND f.follower_account_id = ?
-                   AND f.kind = 'Accepted'
-               )
-             )`
-          : "";
-    const binds: Array<string | number> = [input.listId];
-    binds.push(input.ownerAccountId, input.ownerAccountId, input.ownerAccountId, nowIso());
-    if (input.repliesPolicy === "followed") {
-      binds.push(input.ownerAccountId);
-    }
+    // The reply policy's SQL depends on the list, so this stays on D1 prepare.
+    const replies = feedLocalRepliesSql(input.feed, input.ownerAccountId);
     const { where, order, binds: cursorBinds } = idCursorFragment(input.cursor);
-    binds.push(...cursorBinds, input.limit);
+    const binds = [
+      input.feed.listId,
+      input.ownerAccountId,
+      input.ownerAccountId,
+      input.ownerAccountId,
+      nowIso(),
+      ...replies.binds,
+      ...cursorBinds,
+      input.limit,
+    ];
     const { results } = await db
       .prepare(
         `SELECT ${STATUS_SELECT} FROM statuses
@@ -358,7 +348,7 @@ export const listListTimelineStatuses = async (
            AND visibility != 'direct'
            AND account_id IN (SELECT member_account_id FROM account_list_members WHERE list_id = ?)
            AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
-           ${replyFilter}
+           ${replies.sql}
            ${where} ${order}
          LIMIT ?`,
       )

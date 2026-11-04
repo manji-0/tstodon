@@ -174,18 +174,20 @@ describe("a list timeline with remote members", () => {
     await addMembers(owner, listId, [accountId(member), accountId(blocked)]);
     const root = await note(member, "list-rules-root");
     const reply = await note(member, "list-rules-reply", { inReplyTo: root });
-    await note(blocked, "list-rules-blocked-note");
+    const blockedNote = await note(blocked, "list-rules-blocked-note");
+    const cross = await note(member, "list-rules-cross", { inReplyTo: blockedNote });
     expect((await send(owner, `/api/v1/accounts/${accountId(blocked)}/block`, "POST")).status).toBe(
       200,
     );
 
     const path = `/api/v1/timelines/list/${listId}`;
-    expect(await uris(owner, path)).toEqual([reply, root]);
+    expect(await uris(owner, path)).toEqual([cross, reply, root]);
 
+    // Replies to the author itself pass whatever the policy.
     expect(
       (await send(owner, `/api/v1/lists/${listId}`, "PUT", { replies_policy: "none" })).status,
     ).toBe(200);
-    expect(await uris(owner, path)).toEqual([root]);
+    expect(await uris(owner, path)).toEqual([reply, root]);
   });
 });
 

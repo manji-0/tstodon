@@ -1,8 +1,8 @@
-import type { InstanceIdentity, LocalStatus, RemoteNote } from "@tstodon/domain";
+import { InstanceIdentity, type LocalStatus, type RemoteNote } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "./filter-match";
-import type { FollowedFeed } from "./followed-feed";
+import type { FollowedFeed, ListFeed } from "./followed-feed";
 import type { IdCursor } from "./id-cursor";
 import { type AccountList, listListTimelineStatuses } from "./list-store";
 import { mastodonStatuses } from "./local-status-documents";
@@ -380,19 +380,20 @@ export const listTimelineDocuments = async (
   list: AccountList,
   limit: number,
   cursor: IdCursor,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> =>
-  feedDocuments(
+): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+  const feed: ListFeed = {
+    kind: "List",
+    listId: list.id,
+    repliesPolicy: list.repliesPolicy,
+    localActorPrefix: InstanceIdentity.actorUrl(identity, ""),
+  };
+  return feedDocuments(
     env,
     identity,
     viewerId,
-    { kind: "List", listId: list.id, repliesPolicy: list.repliesPolicy },
-    listListTimelineStatuses(env.DB, {
-      listId: list.id,
-      ownerAccountId: viewerId,
-      repliesPolicy: list.repliesPolicy,
-      limit,
-      cursor,
-    }),
+    feed,
+    listListTimelineStatuses(env.DB, { feed, ownerAccountId: viewerId, limit, cursor }),
     limit,
     cursor,
   );
+};

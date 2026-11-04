@@ -102,6 +102,7 @@ export const listTagStatuses = async (
 /** Public local notes whose preview card was unfurled from `url` (the link timeline). */
 export const listLinkStatuses = async (
   db: D1Database,
+  viewerId: string | undefined,
   url: string,
   limit: number,
   cursor: StatusCursor = {},
@@ -112,9 +113,10 @@ export const listLinkStatuses = async (
       .prepare(
         `SELECT ${statusSelect} FROM statuses
          WHERE card_url = ? AND kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
+         AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
          ${where} ${order} LIMIT ?`,
       )
-      .bind(url, ...binds, limit)
+      .bind(url, ...suppressedBinds(viewerId), ...binds, limit)
       .all();
     return hydrateStatusRows(db, results ?? []);
   });
