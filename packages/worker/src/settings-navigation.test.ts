@@ -145,4 +145,27 @@ describe("settings pages the web app links to", () => {
     expect(crossSite.status).toBe(403);
     expect((await lookup("prefs_cross_site")).locked).toBe(false);
   });
+
+  it("explains the Rails pages this server does not have", async () => {
+    for (const [path, title] of [
+      ["/filters", "Muted words"],
+      ["/filters/12/edit", "Muted words"],
+      ["/statuses_cleanup", "Automated post deletion"],
+      ["/auth/edit", "Password and security"],
+      ["/settings/export", "Import and export"],
+      ["/admin", "Administration"],
+      ["/admin/reports", "Administration"],
+      ["/admin/reports/7", "Administration"],
+      ["/admin/dashboard", "Administration"],
+      ["/admin/software_updates", "Administration"],
+      ["/severed_relationships", "Severed relationships"],
+      ["/disputes/strikes/3", "Moderation decisions"],
+      ["/settings/applications", "Settings"],
+    ] as const) {
+      const html = await page(await SELF.fetch(`${ORIGIN}${path}`), 404);
+      expect(html, path).toContain(`<h1>${title}</h1>`);
+      expect(html, path).toContain("This page is not available on this server.");
+      expect(html, path).toContain('href="/settings/preferences"');
+    }
+  });
 });
