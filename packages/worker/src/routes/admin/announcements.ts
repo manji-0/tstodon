@@ -1,14 +1,19 @@
 import type { Context } from "hono";
+import type { Result } from "neverthrow";
 import { z } from "zod";
 import {
-  type AnnouncementInput,
+  ANNOUNCEMENT_ERRORS,
+  type AnnouncementDraft,
+  type AnnouncementError,
+  changeAnnouncement,
+  createAnnouncement,
+} from "../../admin-announcements";
+import {
   type AnnouncementRow,
   deleteAnnouncementById,
   findAnnouncementRowById,
-  insertAnnouncement,
   listAdminAnnouncements,
   setAnnouncementPublished,
-  updateAnnouncement,
 } from "../../announcement-admin-store";
 import { nowIso } from "../../clock";
 import {
@@ -29,42 +34,32 @@ const AnnouncementBodySchema = z.object({
   scheduled_at: z.string().nullable().optional(),
 });
 
-const escapeHtmlText = (text: string): string =>
-  text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+const draftOf = (body: z.infer<typeof AnnouncementBodySchema>): AnnouncementDraft => ({
+  text: body.text,
+  content: body.content,
+  startsAt: body.starts_at,
+  endsAt: body.ends_at,
+  allDay: body.all_day === undefined ? undefined : parseBool(body.all_day, false),
+  scheduledAt: body.scheduled_at,
+});
 
-const announcementContent = (body: z.infer<typeof AnnouncementBodySchema>): string | undefined => {
-  if (typeof body.content === "string" && body.content.trim().length > 0) {
-    return body.content;
+const announcementResponse = (
+  c: Context<{ Bindings: Env }>,
+  saved: Result<AnnouncementRow, AnnouncementError>,
+): Response => {
+  if (saved.isOk()) {
+    return c.json(adminAnnouncementDocument(saved.value));
   }
-  if (typeof body.text === "string") {
-    return `<p>${escapeHtmlText(body.text.trim())}</p>`;
+  switch (saved.error.kind) {
+    case "NotFound":
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    case "RepositoryError":
+      return jsonRepositoryError(c, saved.error.message);
+    case "TextRequired":
+    case "InvalidWindow":
+    case "InvalidSchedule":
+      return validation(c, ANNOUNCEMENT_ERRORS[saved.error.kind]);
   }
-  return undefined;
-};
-
-/** `null` passes through (clears); a missing value inherits `fallback`. */
-const dateField = (
-  value: string | null | undefined,
-  fallback: string | null,
-): string | null | undefined => {
-  if (value === undefined) {
-    return fallback;
-  }
-  if (value === null || value.length === 0) {
-    return null;
-  }
-  return Number.isFinite(Date.parse(value)) ? value : undefined;
-};
-
-const scheduledPublishedAt = (scheduledAt: string | null): string | undefined => {
-  if (scheduledAt === null || scheduledAt.length === 0) {
-    return nowIso();
-  }
-  const parsed = Date.parse(scheduledAt);
-  if (!Number.isFinite(parsed)) {
-    return undefined;
-  }
-  return parsed > Date.now() ? new Date(parsed).toISOString() : nowIso();
 };
 
 const adminAnnouncementDocument = (row: AnnouncementRow): Record<string, unknown> => ({
@@ -109,35 +104,8 @@ export const postV1AdminAnnouncements = async (
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const content = announcementContent(body.value);
-  if (content === undefined) {
-    return validation(c, "text is required");
-  }
-  const startsAt = dateField(body.value.starts_at, null);
-  const endsAt = dateField(body.value.ends_at, null);
-  if (startsAt === undefined || endsAt === undefined) {
-    return validation(c, "starts_at and ends_at must be ISO 8601 datetimes");
-  }
-  const publishedAt = scheduledPublishedAt(body.value.scheduled_at ?? nowIso());
-  if (publishedAt === undefined) {
-    return validation(c, "scheduled_at must be an ISO 8601 datetime");
-  }
-  const input: AnnouncementInput = {
-    content,
-    startsAt,
-    endsAt,
-    allDay: parseBool(body.value.all_day, false),
-    publishedAt,
-  };
-  const created = await insertAnnouncement(c.env.DB, input);
-  if (created.isErr()) {
-    return jsonRepositoryError(c, created.error.message);
-  }
-  const row = await findAnnouncementRowById(c.env.DB, created.value);
-  if (row.isErr() || !row.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  return c.json(adminAnnouncementDocument(row.value));
+  const created = await createAnnouncement(c.env.DB, draftOf(body.value));
+  return announcementResponse(c, created);
 };
 
 export const putV1AdminAnnouncementsById = async (
@@ -147,49 +115,12 @@ export const putV1AdminAnnouncementsById = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const id = c.req.param("id") ?? "";
-  const existing = await findAnnouncementRowById(c.env.DB, id);
-  if (existing.isErr()) {
-    return jsonRepositoryError(c, existing.error.message);
-  }
-  if (!existing.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
   const body = await readBody(c, AnnouncementBodySchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const content = announcementContent(body.value) ?? existing.value.content;
-  const startsAt = dateField(body.value.starts_at, existing.value.starts_at);
-  const endsAt = dateField(body.value.ends_at, existing.value.ends_at);
-  if (startsAt === undefined || endsAt === undefined) {
-    return validation(c, "starts_at and ends_at must be ISO 8601 datetimes");
-  }
-  const scheduled =
-    body.value.scheduled_at === undefined
-      ? existing.value.published_at
-      : scheduledPublishedAt(body.value.scheduled_at);
-  if (scheduled === undefined) {
-    return validation(c, "scheduled_at must be an ISO 8601 datetime");
-  }
-  const updated = await updateAnnouncement(c.env.DB, id, {
-    content,
-    startsAt,
-    endsAt,
-    allDay:
-      body.value.all_day === undefined
-        ? existing.value.all_day !== 0
-        : parseBool(body.value.all_day, false),
-    publishedAt: scheduled,
-  });
-  if (updated.isErr()) {
-    return jsonRepositoryError(c, updated.error.message);
-  }
-  const row = await findAnnouncementRowById(c.env.DB, id);
-  if (row.isErr() || !row.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  return c.json(adminAnnouncementDocument(row.value));
+  const changed = await changeAnnouncement(c.env.DB, c.req.param("id") ?? "", draftOf(body.value));
+  return announcementResponse(c, changed);
 };
 
 export const deleteV1AdminAnnouncementsById = async (

@@ -43,7 +43,7 @@ import { enqueuePublicFanOut } from "../public-fan-out";
 import { recordRemoteBoost } from "../remote-boost";
 import { deleteRemoteBoostByActivity } from "../remote-boost-store";
 import { handleRemotePollVote } from "../remote-poll-vote";
-import { deleteRemoteStatusByObjectUri } from "../remote-status-store";
+import { removeRemoteStatus } from "../remote-status-delete";
 import {
   deleteRemoteAnnounce,
   deleteRemoteFavourite,
@@ -577,27 +577,10 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         }
       } else if (!parseLocalStatusId(identity.value, deleteTarget.objectUri)) {
         // Remote note delete (object is remote URI we may have cached).
-        const deleted = await deleteRemoteStatusByObjectUri(
-          c.env.DB,
-          deleteTarget.objectUri,
-          signer.actor.actorUri,
-        );
-        // Its mention notifications go with it.
-        if (deleted.isOk() && deleted.value) {
-          await enqueueHomeFanOut(c.env, {
-            event: "delete",
-            entryId: deleted.value.id,
-            author: { kind: "RemoteActor", actorUri: signer.actor.actorUri },
-          });
-          if (deleted.value.public) {
-            await enqueuePublicFanOut(c.env, { event: "delete", entryId: deleted.value.id });
-          }
-          await deleteRemoteNotifications(c.env.DB, {
-            actorUri: signer.actor.actorUri,
-            kinds: ["mention"],
-            statusId: deleted.value.id,
-          });
-        }
+        await removeRemoteStatus(c.env, signer.actor.actorUri, {
+          kind: "ObjectUri",
+          objectUri: deleteTarget.objectUri,
+        });
       }
     }
     if (activity.kind === "Update") {

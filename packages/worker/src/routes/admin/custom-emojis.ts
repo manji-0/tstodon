@@ -1,19 +1,17 @@
 import type { Context } from "hono";
 import {
+  changeCustomEmoji,
+  removeCustomEmoji,
+  UPLOAD_EMOJI_ERRORS,
+  uploadCustomEmoji,
+  uploadedFile,
+} from "../../admin-custom-emojis";
+import {
   adminCustomEmojiJson,
-  deleteCustomEmoji,
   findCustomEmojiRowById,
-  findCustomEmojiRowByShortcode,
-  insertCustomEmoji,
-  isValidShortcode,
   listCustomEmojiRows,
-  loadCustomEmojis,
-  normalizeShortcode,
-  replaceCustomEmojiImage,
-  updateCustomEmojiAttributes,
 } from "../../custom-emoji-store";
 import { jsonAuthError, jsonRepositoryError, requireAdmin } from "../../http";
-import { newEntityId } from "../../ids";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { parseBool, validation } from "./shared";
 
@@ -27,9 +25,6 @@ const optionalCategory = (value: unknown): string | null | undefined => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 };
-
-const fileFrom = (value: unknown): File | undefined =>
-  typeof File !== "undefined" && value instanceof File && value.size > 0 ? value : undefined;
 
 export const getV1AdminCustomEmojis = async (
   c: Context<{ Bindings: Env }, "/api/v1/admin/custom_emojis">,
@@ -63,45 +58,18 @@ export const postV1AdminCustomEmojis = async (
     return jsonAuthError(c, admin.error);
   }
   const body = await c.req.parseBody();
-  const shortcode = normalizeShortcode(typeof body.shortcode === "string" ? body.shortcode : "");
-  if (!isValidShortcode(shortcode)) {
-    return validation(c, "shortcode is invalid");
-  }
-  const image = fileFrom(body.image);
-  if (!image) {
-    return validation(c, "image is required");
-  }
-  const existing = await findCustomEmojiRowByShortcode(c.env.DB, shortcode);
-  if (existing.isErr()) {
-    return jsonRepositoryError(c, existing.error.message);
-  }
-  const configured = await loadCustomEmojis(c.env, identity.value.mediaPublicBaseUrl);
-  if (existing.value || configured.some((emoji) => emoji.shortcode.toLowerCase() === shortcode)) {
-    return validation(c, "shortcode has already been taken");
-  }
-
-  const id = newEntityId();
-  const objectKey = `emoji/${id}`;
-  const contentType = image.type.length > 0 ? image.type : "application/octet-stream";
-  await c.env.MEDIA.put(objectKey, await image.arrayBuffer(), {
-    httpMetadata: { contentType },
-  });
-  const inserted = await insertCustomEmoji(c.env.DB, {
-    id,
-    shortcode,
-    objectKey,
-    contentType,
+  const uploaded = await uploadCustomEmoji(c.env, identity.value.mediaPublicBaseUrl, {
+    shortcode: typeof body.shortcode === "string" ? body.shortcode : "",
+    image: uploadedFile(body.image),
     visibleInPicker: parseBool(body.visible_in_picker, true),
     category: optionalCategory(body.category) ?? null,
   });
-  if (inserted.isErr()) {
-    return jsonRepositoryError(c, inserted.error.message);
+  if (uploaded.isErr()) {
+    return uploaded.error.kind === "RepositoryError"
+      ? jsonRepositoryError(c, uploaded.error.message)
+      : validation(c, UPLOAD_EMOJI_ERRORS[uploaded.error.kind]);
   }
-  const row = await findCustomEmojiRowById(c.env.DB, id);
-  if (row.isErr() || !row.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  return c.json(adminCustomEmojiJson(row.value, identity.value.mediaPublicBaseUrl));
+  return c.json(adminCustomEmojiJson(uploaded.value, identity.value.mediaPublicBaseUrl));
 };
 
 export const patchV1AdminCustomEmojisById = async (
@@ -116,13 +84,14 @@ export const patchV1AdminCustomEmojisById = async (
     return jsonAuthError(c, admin.error);
   }
   const id = c.req.param("id") ?? "";
-  const row = await findCustomEmojiRowById(c.env.DB, id);
-  if (row.isErr()) {
-    return jsonRepositoryError(c, row.error.message);
+  const existing = await findCustomEmojiRowById(c.env.DB, id);
+  if (existing.isErr()) {
+    return jsonRepositoryError(c, existing.error.message);
   }
-  if (!row.value) {
+  if (!existing.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
+  const current = existing.value.visible_in_picker !== 0;
 
   let visibleInPicker: boolean | undefined;
   let category: string | null | undefined;
@@ -130,42 +99,23 @@ export const patchV1AdminCustomEmojisById = async (
   if ((c.req.header("content-type") ?? "").includes("application/json")) {
     const body = await c.req.json<Record<string, unknown>>();
     if (body.visible_in_picker !== undefined) {
-      visibleInPicker = parseBool(body.visible_in_picker, row.value.visible_in_picker !== 0);
+      visibleInPicker = parseBool(body.visible_in_picker, current);
     }
     category = optionalCategory(body.category);
   } else {
     const body = await c.req.parseBody();
     if (body.visible_in_picker !== undefined) {
-      visibleInPicker = parseBool(body.visible_in_picker, row.value.visible_in_picker !== 0);
+      visibleInPicker = parseBool(body.visible_in_picker, current);
     }
     category = optionalCategory(body.category);
-    image = fileFrom(body.image);
+    image = uploadedFile(body.image);
   }
 
-  if (visibleInPicker !== undefined || category !== undefined) {
-    const updated = await updateCustomEmojiAttributes(
-      c.env.DB,
-      id,
-      visibleInPicker ?? row.value.visible_in_picker !== 0,
-      category !== undefined ? category : row.value.category,
-    );
-    if (updated.isErr()) {
-      return jsonRepositoryError(c, updated.error.message);
-    }
+  const latest = await changeCustomEmoji(c.env, id, { visibleInPicker, category, image });
+  if (latest.isErr()) {
+    return jsonRepositoryError(c, latest.error.message);
   }
-  if (image) {
-    const contentType = image.type.length > 0 ? image.type : "application/octet-stream";
-    await c.env.MEDIA.put(`emoji/${id}`, await image.arrayBuffer(), {
-      httpMetadata: { contentType },
-    });
-    const replaced = await replaceCustomEmojiImage(c.env.DB, id, `emoji/${id}`, contentType);
-    if (replaced.isErr()) {
-      return jsonRepositoryError(c, replaced.error.message);
-    }
-  }
-
-  const latest = await findCustomEmojiRowById(c.env.DB, id);
-  if (latest.isErr() || !latest.value) {
+  if (!latest.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(adminCustomEmojiJson(latest.value, identity.value.mediaPublicBaseUrl));
@@ -178,14 +128,12 @@ export const deleteV1AdminCustomEmojisById = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const id = c.req.param("id") ?? "";
-  const objectKey = await deleteCustomEmoji(c.env.DB, id);
-  if (objectKey.isErr()) {
-    return jsonRepositoryError(c, objectKey.error.message);
+  const removed = await removeCustomEmoji(c.env, c.req.param("id") ?? "");
+  if (removed.isErr()) {
+    return jsonRepositoryError(c, removed.error.message);
   }
-  if (!objectKey.value) {
+  if (!removed.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  await c.env.MEDIA.delete(objectKey.value);
   return c.json({});
 };

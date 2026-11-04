@@ -355,6 +355,23 @@ export const deleteStatus = async (
     return rows.length > 0;
   });
 
+/** Set a note's sensitive flag. False when the row is not the account's own note. */
+export const setNoteSensitive = async (
+  db: D1Database,
+  id: string,
+  accountId: string,
+  sensitive: boolean,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const changed = await db
+      .prepare(
+        "UPDATE statuses SET sensitive = ? WHERE id = ? AND account_id = ? AND kind = 'LocalNote'",
+      )
+      .bind(sensitive ? 1 : 0, id, accountId)
+      .run();
+    return changed.meta.changes > 0;
+  });
+
 export const deleteReblogOf = async (
   db: D1Database,
   accountId: string,

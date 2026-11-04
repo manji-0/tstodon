@@ -16,7 +16,8 @@ import { listTrendingStatuses, listTrendingTags } from "../../status-discovery-s
 import { tagDailyHistories, tagDailyHistory } from "../../tag-store";
 import { cardDocument, listCachedLinkCards } from "../../link-card";
 import { fallbackLinkCard, listTrendingLinks } from "../../trend-store";
-import { listTrendReviews, setTrendReview, type TrendState } from "../../trend-review-store";
+import { listTrendReviews, type TrendState } from "../../trend-review-store";
+import { type ReviewTrendError, reviewTrend } from "../../admin-trends";
 import { StatusId } from "@tstodon/domain";
 
 const adminTagFields = (state: TrendState | undefined): Record<string, unknown> => ({
@@ -39,6 +40,9 @@ const adminTagDocument = async (
 
 const notFound = (c: Context<{ Bindings: Env }>) =>
   c.json({ error: "Record not found", kind: "NotFound" }, 404);
+
+const reviewFailure = (c: Context<{ Bindings: Env }>, error: ReviewTrendError) =>
+  error.kind === "NotFound" ? notFound(c) : jsonRepositoryError(c, error.message);
 
 export const getV1AdminTrendsTags = async (
   c: Context<{ Bindings: Env }, "/api/v1/admin/trends/tags">,
@@ -85,12 +89,9 @@ const reviewTag = (state: TrendState) => async (c: Context<{ Bindings: Env }>) =
     return jsonAuthError(c, admin.error);
   }
   const name = (c.req.param("id") ?? "").trim();
-  if (name.length === 0) {
-    return notFound(c);
-  }
-  const saved = await setTrendReview(c.env.DB, "Tag", name, state);
+  const saved = await reviewTrend(c.env.DB, { kind: "Tag", name }, state);
   if (saved.isErr()) {
-    return jsonRepositoryError(c, saved.error.message);
+    return reviewFailure(c, saved.error);
   }
   return c.json(await adminTagDocument(c, identity.value, name, state));
 };
@@ -122,18 +123,9 @@ const reviewLink = (state: TrendState) => async (c: Context<{ Bindings: Env }>) 
   }
   // A link trend has no row id of its own, so the URL is its identifier.
   const url = c.req.param("id") ?? "";
-  let parsed: URL | undefined;
-  try {
-    parsed = new URL(url);
-  } catch {
-    parsed = undefined;
-  }
-  if (!parsed || (parsed.protocol !== "http:" && parsed.protocol !== "https:")) {
-    return notFound(c);
-  }
-  const saved = await setTrendReview(c.env.DB, "Link", url, state);
+  const saved = await reviewTrend(c.env.DB, { kind: "Link", url }, state);
   if (saved.isErr()) {
-    return jsonRepositoryError(c, saved.error.message);
+    return reviewFailure(c, saved.error);
   }
   const cached = await listCachedLinkCards(c.env.DB, [url]);
   const preview = cached.get(url);
@@ -179,16 +171,13 @@ const reviewStatus = (state: TrendState) => async (c: Context<{ Bindings: Env }>
   if (id.isErr()) {
     return notFound(c);
   }
-  const found = await findStatusById(c.env.DB, id.value);
-  if (found.isErr()) {
-    return jsonRepositoryError(c, found.error.message);
-  }
-  if (!found.value) {
-    return notFound(c);
-  }
-  const saved = await setTrendReview(c.env.DB, "Status", raw, state);
+  const saved = await reviewTrend(c.env.DB, { kind: "Status", id: raw }, state);
   if (saved.isErr()) {
-    return jsonRepositoryError(c, saved.error.message);
+    return reviewFailure(c, saved.error);
+  }
+  const found = await findStatusById(c.env.DB, id.value);
+  if (found.isErr() || !found.value) {
+    return notFound(c);
   }
   return c.json(
     (await mastodonStatus(c.env, identity.value, found.value, admin.value.account.id)) ?? {},

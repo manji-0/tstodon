@@ -1,16 +1,13 @@
-import { InstanceIdentity, LocalStatus, StatusComposition, Visibility } from "@tstodon/domain";
+import { type InstanceIdentity, LocalStatus, StatusComposition, Visibility } from "@tstodon/domain";
 import type { Context } from "hono";
 import { findAccountsByUsernames } from "../../account-store";
 import { authenticate } from "../../auth";
-import { noteDocument } from "../../activitypub";
 import { nowIso } from "../../clock";
-import { enqueueLocalActivity } from "../../delivery";
 import { deleteLocalStatus } from "../../local-status-delete";
+import { announceNoteUpdate } from "../../local-status-update";
 import { mentionUsernames, textToHtml } from "../../html";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "../../mention-store";
-import { loadNoteMentions, resolveRemoteMentions } from "../../mention-resolve";
-import { loadNoteReply } from "../../reply-target";
-import { quotedStatusUri } from "../../quote-uri";
+import { resolveRemoteMentions } from "../../mention-resolve";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -19,14 +16,8 @@ import {
   requireFunctionalUser,
   requireUser,
 } from "../../http";
-import { newEntityId } from "../../ids";
 import { mastodonStatus } from "../../local-status-documents";
-import {
-  countPollVotes,
-  findPollByStatusId,
-  loadNotePoll,
-  replacePollOptions,
-} from "../../poll-store";
+import { countPollVotes, findPollByStatusId, replacePollOptions } from "../../poll-store";
 import {
   CreateStatusBodySchema,
   mediaAttributesFromForm,
@@ -35,11 +26,7 @@ import {
 import { isTruthy, stringList } from "../../form-values";
 import { schemaResult } from "@tstodon/core";
 import { parseInstanceIdentity } from "../../runtime-config";
-import { ok } from "neverthrow";
 import { notifyAccount } from "../../notify";
-import { enqueueHomeFanOut } from "../../home-fan-out";
-import { enqueuePublicFanOut } from "../../public-fan-out";
-import { publishToAccount } from "../../stream-publish";
 import { findStatusById, replaceStatusMedia, updateLocalNote } from "../../status-store";
 import { findStatusUpdatedAt, insertStatusEdit, listStatusEdits } from "../../status-edit-store";
 import { canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
@@ -289,54 +276,27 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     return jsonRepositoryError(c, remoteSaved.error.message);
   }
 
-  const quoteUri = await quotedStatusUri(c.env, identity.value, existing.id);
-  const actor = InstanceIdentity.actorUrl(identity.value, user.value.username);
   // An edit reaches the same audience as the note: a direct one only the
   // remote accounts it mentions.
-  const enqueued =
-    revised.visibility.kind === "Direct" && remoteMentions.length === 0
-      ? ok(undefined)
-      : await enqueueLocalActivity(c.env, user.value.id, "Update", {
-          "@context": "https://www.w3.org/ns/activitystreams",
-          id: `${actor}/statuses/${existing.id}/updates/${newEntityId()}`,
-          type: "Update",
-          actor,
-          published: updatedAt,
-          object: noteDocument(identity.value, user.value, revised, {
-            quoteUri,
-            mentions: await loadNoteMentions(c.env.DB, identity.value, existing.id),
-            reply: await loadNoteReply(c.env.DB, identity.value, revised),
-            poll: await loadNotePoll(c.env.DB, existing.id),
-          }),
-        });
-  if (enqueued.isErr()) {
+  const announced = await announceNoteUpdate(
+    c.env,
+    identity.value,
+    user.value,
+    revised,
+    updatedAt,
+    !(revised.visibility.kind === "Direct" && remoteMentions.length === 0),
+  );
+  if (announced.isErr()) {
     return jsonRepositoryError(
       c,
-      enqueued.error.kind === "RepositoryError"
-        ? enqueued.error.message
-        : enqueued.error.kind === "QueueSendFailed"
-          ? enqueued.error.message
+      announced.error.kind === "RepositoryError"
+        ? announced.error.message
+        : announced.error.kind === "QueueSendFailed"
+          ? announced.error.message
           : "invalid activity id",
     );
   }
-
-  const latest = await findStatusById(c.env.DB, existing.id);
-  if (latest.isErr() || !latest.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  const document = await mastodonStatus(c.env, identity.value, latest.value, user.value.id);
-  if (document) {
-    await publishToAccount(c.env, user.value.id, { kind: "status.update", payload: document });
-  }
-  await enqueueHomeFanOut(c.env, {
-    event: "status.update",
-    entryId: existing.id,
-    author: { kind: "LocalAccount", accountId: user.value.id },
-  });
-  if (revised.visibility.kind === "Public") {
-    await enqueuePublicFanOut(c.env, { event: "status.update", entryId: existing.id });
-  }
-  return c.json(document ?? {});
+  return c.json(announced.value ?? {});
 };
 
 export const putV1StatusesById = (c: Context<{ Bindings: Env }, "/api/v1/statuses/:id">) =>

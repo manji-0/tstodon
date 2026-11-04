@@ -298,5 +298,38 @@ export const deleteRemoteStatusByObjectUri = async (
     return row ? { id: row.id, public: row.visibility === "public" } : undefined;
   });
 
+/** Delete a cached remote status by id, only when `actorUri` wrote it. */
+export const deleteRemoteStatusById = async (
+  db: D1Database,
+  id: string,
+  actorUri: string,
+): Promise<Result<Readonly<{ id: string; public: boolean }> | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const row = await db
+      .prepare(
+        "DELETE FROM remote_statuses WHERE id = ? AND actor_uri = ? RETURNING id, visibility",
+      )
+      .bind(id, actorUri)
+      .first<{ id: string; visibility: string }>();
+    return row ? { id: row.id, public: row.visibility === "public" } : undefined;
+  });
+
+/** Set a cached remote status's sensitive flag. The status's visibility, or `undefined` when `actorUri` wrote no such status. */
+export const setRemoteStatusSensitive = async (
+  db: D1Database,
+  id: string,
+  actorUri: string,
+  sensitive: boolean,
+): Promise<Result<Readonly<{ public: boolean }> | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const row = await db
+      .prepare(
+        "UPDATE remote_statuses SET sensitive = ? WHERE id = ? AND actor_uri = ? RETURNING visibility",
+      )
+      .bind(sensitive ? 1 : 0, id, actorUri)
+      .first<{ visibility: string }>();
+    return row ? { public: row.visibility === "public" } : undefined;
+  });
+
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([RemoteStatusRowSchema]);
