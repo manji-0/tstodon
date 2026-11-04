@@ -291,7 +291,7 @@ ${messageLine(message)}${
       <ul>${accounts
         .map(
           (state) => `
-        <li><a href="/admin/accounts/${escapeHtml(state.account.id)}">@${escapeHtml(state.account.username)}</a> <span class="muted">${escapeHtml(state.account.accessEmail.unwrap())} · ${escapeHtml(moderationSummary(state))}</span></li>`,
+        <li><a href="/admin/accounts/${escapeHtml(state.account.id)}">@${escapeHtml(state.account.username)}</a> <span class="muted">${escapeHtml(state.account.accessEmail.reveal())} · ${escapeHtml(moderationSummary(state))}</span></li>`,
         )
         .join("")}
       </ul>`
@@ -321,7 +321,7 @@ export const accountPage = (
 ${messageLine(message)}
       <ul>
         <li>Display name: ${account.displayName.length === 0 ? `<span class="muted">none</span>` : escapeHtml(account.displayName)}</li>
-        <li>Email: ${escapeHtml(account.accessEmail.unwrap())}</li>
+        <li>Email: ${escapeHtml(account.accessEmail.reveal())}</li>
         <li>Joined: ${escapeHtml(account.createdAt)}</li>
         <li>State: ${escapeHtml(moderationSummary(view.state))}</li>
         <li><a href="/@${escapeHtml(account.username)}">Profile in the web app</a></li>

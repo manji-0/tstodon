@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { authHeaders, signedInAccount, signupEmail } from "../test/auth-fixture";
 import { createSignupAccount } from "./passkey-signup";
 
 const json = async (
@@ -87,7 +87,12 @@ const signUp = async (username: string, approval: boolean) => {
   )
     .bind(userId, username, email, now, now)
     .run();
-  const account = await createSignupAccount(env, { username, email }, userId, approval);
+  const account = await createSignupAccount(
+    env,
+    { username, email: signupEmail(email) },
+    userId,
+    approval,
+  );
   if (account.isErr()) {
     throw new Error(`sign-up failed: ${account.error.kind}`);
   }
@@ -198,7 +203,7 @@ describe("admin sign-up notifications", () => {
       .run();
     const created = await createSignupAccount(
       env,
-      { username: "founder", email: "founder@example.com" },
+      { username: "founder", email: signupEmail("founder@example.com") },
       userId,
     );
     expect(created.isOk()).toBe(true);

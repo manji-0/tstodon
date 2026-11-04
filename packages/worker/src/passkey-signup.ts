@@ -1,3 +1,4 @@
+import { Sensitive, type SensitiveValue } from "@tstodon/core";
 import { notifyAdmins } from "./admin-notify";
 import { err, ok, type Result } from "neverthrow";
 import { AccessEmail, type LocalAccount } from "@tstodon/domain";
@@ -78,13 +79,13 @@ export const signupErrorMessage = (error: SignupError): string => {
   }
 };
 
-export type SignupIntent = Readonly<{ username: string; email: string }>;
+export type SignupIntent = Readonly<{ username: string; email: SensitiveValue<AccessEmail> }>;
 
 /** Whether `username` and `email` may still become a new account. */
 const checkAvailable = async (
   env: Env,
   rawUsername: string,
-  rawEmail: string,
+  rawEmail: SensitiveValue<string>,
 ): Promise<Result<SignupIntent, SignupError>> => {
   if (!registrationsOpen(env)) {
     return err({ kind: "RegistrationsClosed" });
@@ -93,14 +94,15 @@ const checkAvailable = async (
   if (username.isErr()) {
     return err(username.error);
   }
-  const email = AccessEmail.parse(rawEmail);
-  if (email.isErr()) {
+  const parsed = AccessEmail.parse(rawEmail.reveal());
+  if (parsed.isErr()) {
     return err({ kind: "InvalidEmail" });
   }
+  const email = Sensitive.of(parsed.value);
   const [taken, emailTaken, blocked] = await Promise.all([
     findAccountByUsername(env.DB, username.value),
-    findAccountByEmail(env.DB, email.value),
-    isRegistrationBlocked(env.DB, email.value),
+    findAccountByEmail(env.DB, email),
+    isRegistrationBlocked(env.DB, email),
   ]);
   if (taken.isErr()) {
     return err(taken.error);
@@ -120,7 +122,7 @@ const checkAvailable = async (
   if (blocked.value) {
     return err({ kind: "RegistrationBlocked" });
   }
-  return ok({ username: username.value, email: email.value });
+  return ok({ username: username.value, email });
 };
 
 const signupMail = (instanceName: string, username: string, link: string) => ({
@@ -138,18 +140,19 @@ const signupMail = (instanceName: string, username: string, link: string) => ({
 export const requestSignup = async (
   env: Env,
   rawUsername: string,
-  rawEmail: string,
+  rawEmail: SensitiveValue<string>,
 ): Promise<Result<SignupIntent, SignupError>> => {
   const intent = await checkAvailable(env, rawUsername, rawEmail);
   if (intent.isErr()) {
     return intent;
   }
+  const address = intent.value.email.reveal();
   const now = new Date();
   const recent = await runD1(() =>
     queryTyped(
       env.DB,
       findRecentSignupIntent(
-        intent.value.email,
+        address,
         new Date(now.getTime() - SIGNUP_RESEND_INTERVAL_MS).toISOString(),
       ),
       CountedRow,
@@ -164,11 +167,11 @@ export const requestSignup = async (
   }
   const token = randomSecret();
   const stored = await runTypedBatch(env.DB, [
-    deleteSignupIntentsByEmail(intent.value.email, now.toISOString()),
+    deleteSignupIntentsByEmail(address, now.toISOString()),
     insertSignupIntent(
       await sha256Hex(token),
       intent.value.username,
-      intent.value.email,
+      address,
       new Date(now.getTime() + SIGNUP_LINK_TTL_MS).toISOString(),
       now.toISOString(),
     ),
@@ -188,7 +191,7 @@ export const requestSignup = async (
 
 const IntentRowSchema = z.object({
   username: z.string(),
-  email: z.string(),
+  email: Sensitive.schema(AccessEmail.schema),
   expires_at: z.string(),
 });
 

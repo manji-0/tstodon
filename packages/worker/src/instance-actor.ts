@@ -23,7 +23,7 @@ export type InstanceActorKeys = Readonly<{
 
 const InstanceActorKeysRowSchema = z.object({
   public_key_pem: z.string().min(1),
-  private_key_jwk: z.string().min(1),
+  private_key_jwk: Sensitive.schema(z.string().min(1)),
 });
 
 const findKeys = async (
@@ -36,7 +36,7 @@ const findKeys = async (
     const row = found[0];
     return row === undefined
       ? undefined
-      : { publicKeyPem: row.public_key_pem, privateKeyJwk: Sensitive.of(row.private_key_jwk) };
+      : { publicKeyPem: row.public_key_pem, privateKeyJwk: row.private_key_jwk };
   });
 };
 
@@ -58,7 +58,11 @@ export const instanceActorKeys = async (
   const stored = await runD1(() =>
     runTyped(
       db,
-      insertInstanceActorKeysSql(generated.publicKeyPem, generated.privateKeyJwk, nowIso()),
+      insertInstanceActorKeysSql(
+        generated.publicKeyPem,
+        generated.privateKeyJwk.reveal(),
+        nowIso(),
+      ),
     ),
   );
   if (stored.isErr()) {

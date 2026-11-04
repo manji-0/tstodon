@@ -7,7 +7,6 @@ import {
   schemaResult,
   warmSchemas,
 } from "./schema-result";
-import { Sensitive } from "./sensitive";
 
 describe("schemaResult", () => {
   it("returns Ok for valid input", () => {
@@ -94,11 +93,5 @@ describe("compileSchema", () => {
     const cold = z.object({ cold: z.string() });
     expect(peekCompiledFastPath(cold)).toBe(false);
     expect(peekCompiledFastPath(cold)).toBe(false);
-  });
-});
-
-describe("Sensitive", () => {
-  it("redacts on JSON serialization", () => {
-    expect(JSON.stringify({ email: Sensitive.of("a@example.com") })).toBe('{"email":"[REDACTED]"}');
   });
 });

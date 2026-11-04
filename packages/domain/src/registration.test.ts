@@ -1,3 +1,4 @@
+import { Sensitive } from "@tstodon/core";
 import { describe, expect, it } from "vite-plus/test";
 import { AccountId } from "./account-id";
 import { IsoInstant } from "./iso-instant";
@@ -58,12 +59,14 @@ describe("Registration", () => {
     const account = LocalAccount.provision(
       Registration.register(intent.value, id.value, {
         publicKeyPem: "pem",
-        privateKeyJwk: "{}",
+        privateKeyJwk: Sensitive.of('{"d":"private-exponent"}'),
       }),
       createdAt.value,
     );
     expect(account.kind).toBe("LocalAccount");
     expect(JSON.stringify(account)).toContain("[REDACTED]");
     expect(JSON.stringify(account)).not.toContain("alice@example.com");
+    expect(JSON.stringify(account)).not.toContain("private-exponent");
+    expect(account.accessEmail.reveal()).toBe("alice@example.com");
   });
 });

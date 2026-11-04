@@ -1,7 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { schemaResult } from "@tstodon/core";
+import { schemaResult, Sensitive } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { canonicalEmailHash } from "./registration-block-store";
 
@@ -55,8 +55,8 @@ describe("canonical email blocks", () => {
   it("blocks a canonical hash and refuses a respelled sign-up", async () => {
     const admin = "ceb-admin@example.com";
     // A fresh address that no other test authenticates as.
-    const hash = await canonicalEmailHash("Casey.Block+spam@example.com");
-    expect(hash).toBe(await canonicalEmailHash("caseyblock@example.com"));
+    const hash = await canonicalEmailHash(Sensitive.of("Casey.Block+spam@example.com"));
+    expect(hash).toBe(await canonicalEmailHash(Sensitive.of("caseyblock@example.com")));
 
     const created = await adminJson(admin, "/api/v1/admin/canonical_email_blocks", {
       method: "POST",

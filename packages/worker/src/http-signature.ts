@@ -1,4 +1,4 @@
-import { warmSchemas } from "@tstodon/core";
+import { type SensitiveValue, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { parseJsonColumn } from "./json-column";
 import { z } from "zod";
@@ -50,13 +50,13 @@ export type SignatureError = Readonly<{
 const signRequest = async (
   method: string,
   url: URL,
-  privateKeyJwk: string,
+  privateKeyJwk: SensitiveValue<string>,
   keyId: string,
   headers: ReadonlyArray<string>,
   values: Record<string, string>,
 ): Promise<Result<string, SignatureError>> => {
   const signingString = buildSigningString(method, url.pathname + url.search, headers, values);
-  const parsed = parseJsonColumn(RsaPrivateJwkSchema, privateKeyJwk);
+  const parsed = parseJsonColumn(RsaPrivateJwkSchema, privateKeyJwk.reveal());
   if (parsed.isErr()) {
     return err({ kind: "InvalidSignature", message: parsed.error.message });
   }
@@ -105,7 +105,7 @@ const signRequest = async (
 /** Headers for a signed delivery POST: `(request-target) host date digest`. */
 export const signInboxRequest = async (
   url: URL,
-  privateKeyJwk: string,
+  privateKeyJwk: SensitiveValue<string>,
   keyId: string,
   body: string,
 ): Promise<Result<Headers, SignatureError>> => {
@@ -134,7 +134,7 @@ export const signInboxRequest = async (
 /** Headers for a signed fetch GET (authorized fetch): `(request-target) host date`. */
 export const signFetchRequest = async (
   url: URL,
-  privateKeyJwk: string,
+  privateKeyJwk: SensitiveValue<string>,
   keyId: string,
 ): Promise<Result<Headers, SignatureError>> => {
   const date = new Date().toUTCString();

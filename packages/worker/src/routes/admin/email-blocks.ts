@@ -1,3 +1,4 @@
+import { Sensitive } from "@tstodon/core";
 import type { Context } from "hono";
 import { z } from "zod";
 import { normalizeDomain } from "../../domain-block-store";
@@ -25,12 +26,21 @@ import {
   requireAdmin,
 } from "../../http";
 
+/** A non-blank `email`, wrapped; a blank or missing one reads as `undefined`. */
+const OptionalEmailSchema = z
+  .string()
+  .optional()
+  .transform((raw) => {
+    const email = (raw ?? "").trim();
+    return email.length === 0 ? undefined : Sensitive.of(email);
+  });
+
 const CanonicalEmailBlockBodySchema = z.object({
-  email: z.string().optional(),
+  email: OptionalEmailSchema,
   canonical_email_hash: z.string().optional(),
 });
 
-const CanonicalEmailTestBodySchema = z.object({ email: z.string().optional() });
+const CanonicalEmailTestBodySchema = z.object({ email: OptionalEmailSchema });
 
 const EmailDomainBlockBodySchema = z.object({ domain: z.string().optional() });
 
@@ -83,8 +93,8 @@ export const postV1AdminCanonicalEmailBlocksTest = async (
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const email = (body.value.email ?? "").trim();
-  if (email.length === 0) {
+  const email = body.value.email;
+  if (email === undefined) {
     return jsonValidationError(c);
   }
   const block = await findCanonicalEmailBlockByEmail(c.env.DB, email);
@@ -108,10 +118,10 @@ export const postV1AdminCanonicalEmailBlocks = async (
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const email = (body.value.email ?? "").trim();
+  const email = body.value.email;
   const given = (body.value.canonical_email_hash ?? "").trim();
   let hash: string;
-  if (email.length > 0) {
+  if (email !== undefined) {
     hash = await canonicalEmailHash(email);
   } else if (given.length > 0) {
     hash = given;

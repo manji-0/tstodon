@@ -52,7 +52,7 @@ const passkeyItem = (passkey: PasskeyEntry, view: SecurityView): string => `
 
 const sessionItem = (session: SecurityView["sessions"][number], view: SecurityView): string => `
         <li>${session.current ? "<strong>This browser</strong>" : "A browser"}
-          <span class="muted">signed in ${minute(session.signedInAt)}${session.ipAddress === undefined ? "" : ` from ${escapeHtml(session.ipAddress)}`}</span>
+          <span class="muted">signed in ${minute(session.signedInAt)}${session.ipAddress === undefined ? "" : ` from ${escapeHtml(session.ipAddress.reveal())}`}</span>
           ${session.userAgent === undefined ? "" : `<br /><span class="muted"><code>${escapeHtml(session.userAgent)}</code></span>`}${
             view.signIn === "Stale"
               ? ""

@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { getSession } from "void/auth";
 import { z } from "zod";
-import { schemaResult, warmSchemas } from "@tstodon/core";
+import { schemaResult, Sensitive, warmSchemas } from "@tstodon/core";
 import { browserSession, EXPIRED_SESSION_COOKIES, isSameOriginPost } from "../browser-session";
 import {
   authorizationCodePage,
@@ -412,13 +412,13 @@ export const getAuthSignUp = (c: Context<{ Bindings: Env }, "/auth/sign_up">) =>
 
 const SignUpBodySchema = z.object({
   username: z.string().trim().default(""),
-  email: z.string().trim().default(""),
+  email: Sensitive.schema(z.string().trim().default("")),
 });
 
 /** Step one of sign-up: mail a confirmation link for the username and address. */
 export const postAuthSignUp = async (c: Context<{ Bindings: Env }, "/auth/sign_up">) => {
   const body = await readOptionalBody(c, SignUpBodySchema);
-  const form = body.isOk() ? body.value : { username: "", email: "" };
+  const form = body.isOk() ? body.value : { username: "", email: Sensitive.of("") };
   const requested = await requestSignup(c.env, form.username, form.email);
   if (requested.isErr()) {
     const status =

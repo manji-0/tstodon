@@ -50,20 +50,23 @@ const ComposingSchema = z.object({
   agreement: z.boolean(),
 });
 
+const SensitiveAccessEmail = Sensitive.schema(AccessEmail.schema);
+const SensitivePrivateKeyJwk = Sensitive.schema(z.string().min(1));
+
 const IntentSchema = z.object({
   kind: z.literal("IntentValidated"),
   username: Username.schema,
-  email: AccessEmail.schema,
+  email: SensitiveAccessEmail,
 });
 
 const RegisteringSchema = z.object({
   kind: z.literal("Registering"),
   id: AccountId.schema,
   username: Username.schema,
-  email: AccessEmail.schema,
+  email: SensitiveAccessEmail,
   displayName: z.string().min(1),
   publicKeyPem: z.string().min(1),
-  privateKeyJwk: z.string().min(1),
+  privateKeyJwk: SensitivePrivateKeyJwk,
 });
 
 export const RegistrationSchema = z.discriminatedUnion("kind", [
@@ -123,13 +126,13 @@ export const Registration = {
     return ok({
       kind: "IntentValidated",
       username: username.value,
-      email: email.value,
+      email: Sensitive.of(email.value),
     });
   },
   register: (
     intent: RegistrationIntent,
     id: AccountId,
-    keys: Readonly<{ publicKeyPem: string; privateKeyJwk: string }>,
+    keys: Readonly<{ publicKeyPem: string; privateKeyJwk: SensitiveValue<string> }>,
   ): RegisteringAccount => ({
     kind: "Registering",
     id,
@@ -145,18 +148,13 @@ export const LocalAccountSchema = z.object({
   kind: z.literal("LocalAccount"),
   id: AccountId.schema,
   username: Username.schema,
-  accessEmail: AccessEmail.schema.transform((email): SensitiveValue<typeof email> =>
-    Sensitive.of(email),
-  ),
+  accessEmail: SensitiveAccessEmail,
   displayName: z.string(),
   locked: z.boolean(),
   defaultPostVisibility: Visibility.schema,
   defaultQuotePolicy: QuoteApprovalPolicy.schema,
   publicKeyPem: z.string().min(1),
-  privateKeyJwk: z
-    .string()
-    .min(1)
-    .transform((jwk): SensitiveValue<string> => Sensitive.of(jwk)),
+  privateKeyJwk: SensitivePrivateKeyJwk,
   createdAt: IsoInstant.schema,
 });
 
@@ -171,13 +169,13 @@ export const LocalAccount = {
     kind: "LocalAccount",
     id: registering.id,
     username: registering.username,
-    accessEmail: Sensitive.of(registering.email),
+    accessEmail: registering.email,
     displayName: registering.displayName,
     locked: false,
     defaultPostVisibility: Visibility.Public,
     defaultQuotePolicy: QuoteApprovalPolicy.Public,
     publicKeyPem: registering.publicKeyPem,
-    privateKeyJwk: Sensitive.of(registering.privateKeyJwk),
+    privateKeyJwk: registering.privateKeyJwk,
     createdAt,
   }),
 } as const;

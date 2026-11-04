@@ -1,3 +1,4 @@
+import type { SensitiveValue } from "@tstodon/core";
 import { z } from "zod";
 import { ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
@@ -47,8 +48,8 @@ export type EmailDomainBlock = Readonly<{
  * `+tag`, then the address is SHA-256 hashed. Two spellings of one mailbox
  * therefore block each other.
  */
-export const canonicalEmailHash = async (email: string): Promise<string> => {
-  const [local = "", domain = ""] = email.trim().toLowerCase().split("@", 2);
+export const canonicalEmailHash = async (email: SensitiveValue<string>): Promise<string> => {
+  const [local = "", domain = ""] = email.reveal().trim().toLowerCase().split("@", 2);
   const canonicalLocal = (local.split("+", 1)[0] ?? "").replaceAll(".", "");
   const bytes = new TextEncoder().encode(`${canonicalLocal}@${domain}`);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -114,7 +115,7 @@ export const findCanonicalEmailBlockById = async (
 
 export const findCanonicalEmailBlockByEmail = async (
   db: D1Database,
-  email: string,
+  email: SensitiveValue<string>,
 ): Promise<Result<CanonicalEmailBlock | undefined, RepositoryError>> => {
   const hash = await canonicalEmailHash(email);
   const queried = await runD1(async () =>
@@ -201,9 +202,9 @@ export const deleteEmailDomainBlock = async (
  */
 export const isRegistrationBlocked = async (
   db: D1Database,
-  email: string,
+  email: SensitiveValue<string>,
 ): Promise<Result<boolean, RepositoryError>> => {
-  const [local, domain] = email.trim().toLowerCase().split("@", 2);
+  const [local, domain] = email.reveal().trim().toLowerCase().split("@", 2);
   if (!local || !domain) {
     return ok(false);
   }

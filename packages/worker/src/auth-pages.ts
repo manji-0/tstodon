@@ -1,3 +1,4 @@
+import { Sensitive, type SensitiveValue } from "@tstodon/core";
 import { escapeHtml } from "./html";
 
 /**
@@ -156,13 +157,13 @@ export const PASSKEY_REGISTER = `
         }
       };`;
 
-export type SignUpForm = Readonly<{ username: string; email: string }>;
+export type SignUpForm = Readonly<{ username: string; email: SensitiveValue<string> }>;
 
 /** Step one: username and email; the server mails a confirmation link. */
 export const signUpPage = (
   instanceName: string,
   open: boolean,
-  form: SignUpForm = { username: "", email: "" },
+  form: SignUpForm = { username: "", email: Sensitive.of("") },
   error?: string,
 ): string =>
   page(
@@ -174,7 +175,7 @@ export const signUpPage = (
         <label for="username">Username</label>
         <input id="username" name="username" required maxlength="30" pattern="[A-Za-z0-9_]+" autocomplete="username" value="${escapeHtml(form.username)}" />
         <label for="email">Email address</label>
-        <input id="email" name="email" type="email" required autocomplete="email" value="${escapeHtml(form.email)}" />
+        <input id="email" name="email" type="email" required autocomplete="email" value="${escapeHtml(form.email.reveal())}" />
         <button type="submit">Send confirmation email</button>
       </form>
       <p class="error" role="alert">${error === undefined ? "" : escapeHtml(error)}</p>
@@ -183,11 +184,11 @@ export const signUpPage = (
       <p>${escapeHtml(instanceName)} is not accepting new accounts.</p>`,
   );
 
-export const signUpSentPage = (instanceName: string, email: string): string =>
+export const signUpSentPage = (instanceName: string, email: SensitiveValue<string>): string =>
   page(
     `Check your email · ${instanceName}`,
     `      <h1>Check your email</h1>
-      <p>We sent a link to <strong>${escapeHtml(email)}</strong>. Open it within an hour to confirm the address and create your passkey.</p>
+      <p>We sent a link to <strong>${escapeHtml(email.reveal())}</strong>. Open it within an hour to confirm the address and create your passkey.</p>
       <p class="muted">No email? Check spam, or <a href="/auth/sign_up">start again</a>.</p>`,
   );
 

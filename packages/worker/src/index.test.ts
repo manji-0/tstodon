@@ -421,7 +421,7 @@ describe("worker http", () => {
     const url = new URL("https://example.com/inbox");
     const headers = await signInboxRequest(
       url,
-      actor.value.privateKeyJwk.unwrap(),
+      actor.value.privateKeyJwk,
       "https://example.com/users/carol#main-key",
       body,
     );

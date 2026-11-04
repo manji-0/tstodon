@@ -1,3 +1,4 @@
+import type { SensitiveValue } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 
 /**
@@ -12,7 +13,7 @@ import { err, ok, type Result } from "neverthrow";
  */
 
 export type OutgoingEmail = Readonly<{
-  to: string;
+  to: SensitiveValue<string>;
   subject: string;
   text: string;
   html: string;
@@ -32,16 +33,17 @@ export const sendEmail = async (
   env: Env,
   message: OutgoingEmail,
 ): Promise<Result<void, MailError>> => {
+  const to = message.to.reveal();
   try {
     if (String(env.EMAIL_TRANSPORT) === "capture") {
-      await env.APP_CACHE.put(mailboxKey(message.to), JSON.stringify(message), {
+      await env.APP_CACHE.put(mailboxKey(to), JSON.stringify({ ...message, to }), {
         expirationTtl: 3600,
       });
       return ok(undefined);
     }
     await env.EMAIL.send({
       from: senderAddress(env.EMAIL_FROM),
-      to: message.to,
+      to,
       subject: message.subject,
       text: message.text,
       html: message.html,

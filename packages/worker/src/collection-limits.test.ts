@@ -74,7 +74,7 @@ describe("collection limits", () => {
           `${username}@example.com`,
           username,
           keys.publicKeyPem,
-          keys.privateKeyJwk,
+          keys.privateKeyJwk.reveal(),
           created,
           created,
         )

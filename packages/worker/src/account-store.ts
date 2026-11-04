@@ -2,17 +2,16 @@ import {
   AccessEmail,
   AccountId,
   IsoInstant,
-  LocalAccount,
+  type LocalAccount,
   Username,
   Visibility,
 } from "@tstodon/domain";
-import { schemaResult, warmSchemas } from "@tstodon/core";
+import { schemaResult, Sensitive, type SensitiveValue, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
 import { queryTyped, runTyped } from "./typed-sql";
-import { toRepositoryError } from "./d1";
 import { quotePolicyFromSql, quotePolicySql, visibilitySql } from "./sql-enums";
 import {
   countAccounts as countAccountsSql,
@@ -38,13 +37,13 @@ const IdRow = z.object({ id: z.string() });
 export const AccountRowSchema = z.object({
   id: z.string().min(1),
   username: z.string().min(1),
-  access_email: z.string().min(1),
+  access_email: Sensitive.schema(AccessEmail.schema),
   display_name: z.string(),
   locked: z.number(),
   default_post_visibility: z.string(),
   default_quote_policy: z.string(),
   public_key_pem: z.string().min(1),
-  private_key_jwk: z.string().min(1),
+  private_key_jwk: Sensitive.schema(z.string().min(1)),
   created_at: z.string().min(1),
   bio_text: z.string(),
 });
@@ -53,22 +52,19 @@ export type AccountRow = z.infer<typeof AccountRowSchema>;
 
 export const parseAccountRow = schemaResult(AccountRowSchema);
 
-const parseLocalAccount = schemaResult(LocalAccount.schema);
-
 export const accountFromRow = (row: AccountRow): Result<LocalAccount, RepositoryError> => {
   const id = AccountId.parse(row.id);
   const username = Username.parse(row.username);
-  const email = AccessEmail.parse(row.access_email);
   const createdAt = IsoInstant.parse(row.created_at);
   const visibility = Visibility.fromMastodon(row.default_post_visibility);
-  if (id.isErr() || username.isErr() || email.isErr() || createdAt.isErr() || visibility.isErr()) {
+  if (id.isErr() || username.isErr() || createdAt.isErr() || visibility.isErr()) {
     return err({ kind: "RepositoryError", message: "invalid account row" });
   }
-  const parsed = parseLocalAccount({
+  return ok({
     kind: "LocalAccount",
     id: id.value,
     username: username.value,
-    accessEmail: email.value,
+    accessEmail: row.access_email,
     displayName: row.display_name,
     locked: row.locked === 1,
     defaultPostVisibility: visibility.value,
@@ -77,7 +73,6 @@ export const accountFromRow = (row: AccountRow): Result<LocalAccount, Repository
     privateKeyJwk: row.private_key_jwk,
     createdAt: createdAt.value,
   });
-  return parsed.mapErr(() => toRepositoryError("account schema rejected row"));
 };
 
 export const findAccountById = async (
@@ -165,10 +160,10 @@ export const findAccountsByUsernames = async (
 
 export const findAccountByEmail = async (
   db: D1Database,
-  email: string,
+  email: SensitiveValue<AccessEmail>,
 ): Promise<Result<LocalAccount | undefined, RepositoryError>> => {
   const queried = await runD1(async () => {
-    return queryTyped(db, findAccountByEmailSql(email.toLowerCase()), AccountRowSchema);
+    return queryTyped(db, findAccountByEmailSql(email.reveal()), AccountRowSchema);
   });
   if (queried.isErr()) {
     return err(queried.error);
@@ -220,13 +215,13 @@ export const insertAccount = async (
       insertAccountSql(
         account.id,
         account.username,
-        account.accessEmail.unwrap(),
+        account.accessEmail.reveal(),
         account.displayName,
         account.locked ? 1 : 0,
         visibilitySql(account.defaultPostVisibility),
         quotePolicySql(account.defaultQuotePolicy),
         account.publicKeyPem,
-        account.privateKeyJwk.unwrap(),
+        account.privateKeyJwk.reveal(),
         account.createdAt,
         account.createdAt,
         "",

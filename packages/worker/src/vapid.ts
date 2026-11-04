@@ -1,4 +1,4 @@
-import { schemaResult } from "@tstodon/core";
+import { schemaResult, Sensitive, type SensitiveValue } from "@tstodon/core";
 import { z } from "zod";
 import { parseJsonText } from "./json-column";
 
@@ -23,7 +23,7 @@ const VapidEnvSchema = z.object({
 });
 
 export type VapidKeys = Readonly<{
-  privateJwk: VapidJwk;
+  privateJwk: SensitiveValue<VapidJwk>;
   /** The uncompressed public point, base64url (Mastodon's `vapid_key`). */
   publicKey: string;
   /** `mailto:` or `https:` contact for the VAPID JWT `sub` (`VAPID_SUBJECT`), if set. */
@@ -64,7 +64,7 @@ export const vapidKeys = (env: Env): VapidKeys | undefined => {
   point.set(y, 1 + x.length);
   const subject = (vars.value.VAPID_SUBJECT ?? "").trim();
   return {
-    privateJwk: jwk.value,
+    privateJwk: Sensitive.of(jwk.value),
     publicKey: bytesToBase64Url(point),
     subject: subject.length > 0 ? subject : undefined,
   };

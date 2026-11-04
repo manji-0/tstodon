@@ -6,6 +6,7 @@ import {
   OutboxJob,
   type OutboxJob as OutboxJobValue,
 } from "@tstodon/domain";
+import type { SensitiveValue } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountById } from "./account-store";
 import type { RepositoryError } from "./d1";
@@ -191,7 +192,7 @@ export const startOutboxDeliveryWorkflow = async (
 };
 
 type SigningKey =
-  | Readonly<{ kind: "Found"; keyId: string; privateKeyJwk: string }>
+  | Readonly<{ kind: "Found"; keyId: string; privateKeyJwk: SensitiveValue<string> }>
   /** The signing account is gone: the activity can never be delivered. */
   | Readonly<{ kind: "Missing" }>
   | Readonly<{ kind: "Unavailable" }>;
@@ -211,7 +212,7 @@ const signingKey = async (
         ? {
             kind: "Found",
             keyId: `${InstanceIdentity.actorUrl(identity, account.value.username)}#main-key`,
-            privateKeyJwk: account.value.privateKeyJwk.unwrap(),
+            privateKeyJwk: account.value.privateKeyJwk,
           }
         : { kind: "Missing" };
     }
@@ -221,7 +222,7 @@ const signingKey = async (
         ? {
             kind: "Found",
             keyId: instanceActorKeyId(identity),
-            privateKeyJwk: keys.value.privateKeyJwk.unwrap(),
+            privateKeyJwk: keys.value.privateKeyJwk,
           }
         : { kind: "Unavailable" };
     }

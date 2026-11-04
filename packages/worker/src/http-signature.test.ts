@@ -50,7 +50,7 @@ const signAs = async (
   const keys = await generateAccountKeys();
   const privateKey = await crypto.subtle.importKey(
     "jwk",
-    JSON.parse(keys.privateKeyJwk),
+    JSON.parse(keys.privateKeyJwk.reveal()),
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false,
     ["sign"],

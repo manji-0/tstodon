@@ -1,4 +1,5 @@
-import { AccessEmail, AccountId, LocalAccount, Registration, Username } from "@tstodon/domain";
+import type { SensitiveValue } from "@tstodon/core";
+import { type AccessEmail, AccountId, LocalAccount, Registration, Username } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { markAccountPending } from "./account-flag-store";
 import { isRegistrationBlocked } from "./registration-block-store";
@@ -31,14 +32,13 @@ export const signupUsername = (raw: string): Result<Username, ProvisionError> =>
 
 /**
  * Create the local account `username` for the Better Auth user `authUserId`.
- * `email` is the sign-in identity the account records (Better Auth's, which
- * for passkey sign-ups is synthesized from the username).
+ * `email` is the confirmed address the account records.
  */
 export const provisionLocalAccount = async (
   db: D1Database,
   input: Readonly<{
     username: string;
-    email: string;
+    email: SensitiveValue<AccessEmail>;
     authUserId: string;
     /** With `REGISTRATION_APPROVAL` a brand-new account waits for an admin. */
     pending: boolean;
@@ -48,13 +48,9 @@ export const provisionLocalAccount = async (
   if (username.isErr()) {
     return err(username.error);
   }
-  const email = AccessEmail.parse(input.email);
-  if (email.isErr()) {
-    return err({ kind: "RepositoryError", message: "invalid email" });
-  }
   const [taken, blocked] = await Promise.all([
     findAccountByUsername(db, username.value),
-    isRegistrationBlocked(db, email.value),
+    isRegistrationBlocked(db, input.email),
   ]);
   if (taken.isErr()) {
     return err(taken.error);
@@ -74,7 +70,7 @@ export const provisionLocalAccount = async (
     return err({ kind: "RepositoryError", message: "invalid id" });
   }
   const registering = Registration.register(
-    { kind: "IntentValidated", username: username.value, email: email.value },
+    { kind: "IntentValidated", username: username.value, email: input.email },
     id.value,
     keys,
   );

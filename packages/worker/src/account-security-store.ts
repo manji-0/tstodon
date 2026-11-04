@@ -1,3 +1,4 @@
+import { Sensitive, type SensitiveValue } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { runD1, type RepositoryError } from "./d1";
@@ -34,7 +35,7 @@ export type SessionEntry = Readonly<{
   id: string;
   signedInAt: Date;
   expiresAt: Date;
-  ipAddress: string | undefined;
+  ipAddress: SensitiveValue<string> | undefined;
   userAgent: string | undefined;
 }>;
 
@@ -111,7 +112,13 @@ const SessionRowSchema = z.object({
   id: z.string(),
   createdAt: z.number(),
   expiresAt: z.number(),
-  ipAddress: z.string().nullable(),
+  ipAddress: z
+    .string()
+    .nullable()
+    .transform((ip) => {
+      const trimmed = ip?.trim();
+      return trimmed ? Sensitive.of(trimmed) : undefined;
+    }),
   userAgent: z.string().nullable(),
 });
 
@@ -126,7 +133,7 @@ export const listSessions = async (
       id: row.id,
       signedInAt: new Date(row.createdAt),
       expiresAt: new Date(row.expiresAt),
-      ipAddress: row.ipAddress?.trim() || undefined,
+      ipAddress: row.ipAddress,
       userAgent: row.userAgent?.trim() || undefined,
     })),
   );

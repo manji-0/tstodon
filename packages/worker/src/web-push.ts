@@ -150,7 +150,7 @@ export const encryptAesgcm = async (
 
 /** The ES256 VAPID token for the push service at `endpoint`'s origin, valid for 12 hours. */
 export const vapidToken = async (vapid: VapidKeys, endpoint: string, subject: string) => {
-  const key = await importJWK(vapid.privateJwk, "ES256");
+  const key = await importJWK(vapid.privateJwk.reveal(), "ES256");
   return new SignJWT({ sub: subject })
     .setProtectedHeader({ typ: "JWT", alg: "ES256" })
     .setAudience(new URL(endpoint).origin)

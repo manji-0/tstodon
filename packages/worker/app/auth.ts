@@ -124,7 +124,7 @@ export default defineAuth(({ defaults, env }) => ({
           }
           const user = await ctx.context.internalAdapter.createUser(
             {
-              email: intent.value.email,
+              email: intent.value.email.reveal(),
               emailVerified: true,
               name: intent.value.username,
               role: signupRole(worker, intent.value.username),

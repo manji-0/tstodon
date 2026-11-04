@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { importJWK, jwtVerify } from "jose";
 import { schemaResult } from "@tstodon/core";
-import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { authHeaders, signedInAccount, signupEmail } from "../test/auth-fixture";
 import { createSignupAccount } from "./passkey-signup";
 import { processPushJob } from "./push-delivery";
 import { RemoteAccountId } from "./remote-account-id";
@@ -494,7 +494,7 @@ describe("push delivery", () => {
         .run();
       const created = await createSignupAccount(
         env,
-        { username: "pushnew", email: "pushnew@example.com" },
+        { username: "pushnew", email: signupEmail("pushnew@example.com") },
         userId,
       );
       expect(created.isOk()).toBe(true);

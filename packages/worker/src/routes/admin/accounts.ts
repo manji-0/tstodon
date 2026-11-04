@@ -82,7 +82,7 @@ const adminAccountDocument = async (
   state: AdminAccountState,
 ): Promise<Record<string, unknown>> => ({
   ...(await mastodonAccountDocument(env, identity, state.account)),
-  email: state.account.accessEmail.unwrap(),
+  email: state.account.accessEmail.reveal(),
   ip: null,
   role: { id: "-1", name: "user", highlighted: false },
   approved: !state.pending,

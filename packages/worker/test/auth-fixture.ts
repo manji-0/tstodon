@@ -1,4 +1,5 @@
 import { AccessEmail, Username, type LocalAccount } from "@tstodon/domain";
+import { Sensitive, type SensitiveValue } from "@tstodon/core";
 import { env } from "cloudflare:test";
 import { provisionLocalAccount } from "../src/account-provision";
 import { findAccountByEmail, findAccountByUsername } from "../src/account-store";
@@ -13,6 +14,10 @@ import { registrationApprovalRequired } from "../src/runtime-config";
  */
 
 const FIXTURE_APP_ID = "test-fixture-app";
+
+/** `raw` as the parsed, wrapped address a sign-up carries. */
+export const signupEmail = (raw: string): SensitiveValue<AccessEmail> =>
+  Sensitive.of(AccessEmail.schema.parse(raw));
 
 export const ALL_SCOPES = ["read", "write", "follow", "push", "admin:read", "admin:write"];
 
@@ -54,7 +59,7 @@ export const signedInAccount = async (
     throw new Error(`invalid email ${rawEmail}`);
   }
   const role = options?.admin ? "admin" : "user";
-  const existing = await findAccountByEmail(env.DB, email.value);
+  const existing = await findAccountByEmail(env.DB, Sensitive.of(email.value));
   if (existing.isErr()) {
     throw new Error(existing.error.message);
   }
@@ -76,7 +81,7 @@ export const signedInAccount = async (
     .run();
   const account = await provisionLocalAccount(env.DB, {
     username: await fixtureUsername(email.value),
-    email: email.value,
+    email: Sensitive.of(email.value),
     authUserId: userId,
     pending: options?.pending ?? registrationApprovalRequired(env),
   });

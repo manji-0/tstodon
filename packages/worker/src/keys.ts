@@ -1,3 +1,5 @@
+import { Sensitive, type SensitiveValue } from "@tstodon/core";
+
 const toPem = (label: string, der: ArrayBuffer): string => {
   const bytes = new Uint8Array(der);
   let binary = "";
@@ -11,7 +13,7 @@ const toPem = (label: string, der: ArrayBuffer): string => {
 
 export const generateAccountKeys = async (): Promise<{
   publicKeyPem: string;
-  privateKeyJwk: string;
+  privateKeyJwk: SensitiveValue<string>;
 }> => {
   const pair = await crypto.subtle.generateKey(
     {
@@ -33,6 +35,6 @@ export const generateAccountKeys = async (): Promise<{
   }
   return {
     publicKeyPem: toPem("PUBLIC KEY", spki),
-    privateKeyJwk: JSON.stringify(privateJwk),
+    privateKeyJwk: Sensitive.of(JSON.stringify(privateJwk)),
   };
 };
