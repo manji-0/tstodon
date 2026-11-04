@@ -25,6 +25,12 @@ describe("FediRole", () => {
       id: "admin",
       highlighted: true,
     });
+    // The web app shows its moderation links for the manage-reports (0x10)
+    // and manage-users (0x400) flags.
+    const adminPermissions = Number(FediRole.toMastodon(FediRole.Admin).permissions);
+    expect(adminPermissions & 0x10).toBe(0x10);
+    expect(adminPermissions & 0x400).toBe(0x400);
+    expect(FediRole.toMastodon(FediRole.User).permissions).toBe("0");
     expect(FediRole.toMastodon(FediRole.User)).toMatchObject({
       id: "user",
       highlighted: false,

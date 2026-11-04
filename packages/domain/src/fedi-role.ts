@@ -16,6 +16,13 @@ export type FediRoleName = z.infer<typeof FediRoleNameSchema>;
 
 const METADATA_KEY = "fedi/role";
 
+/**
+ * Every Mastodon permission flag (bits 0 through 20). Mastodon reports an
+ * administrator's computed permissions as all of them, and its web app
+ * checks single flags (manage reports, manage users) to show admin links.
+ */
+const ALL_PERMISSIONS = "2097151";
+
 export const FediRole = {
   schema: FediRoleSchema,
   parse: schemaResult(FediRoleSchema),
@@ -49,7 +56,7 @@ export const FediRole = {
   ): Readonly<{
     id: FediRoleName;
     name: "Admin" | "User";
-    permissions: "0" | "1";
+    permissions: "0" | typeof ALL_PERMISSIONS;
     color: "";
     highlighted: boolean;
   }> => {
@@ -58,7 +65,7 @@ export const FediRole = {
         return {
           id: "admin",
           name: "Admin",
-          permissions: "1",
+          permissions: ALL_PERMISSIONS,
           color: "",
           highlighted: true,
         };
