@@ -76,6 +76,20 @@ const MoveFollowsSchema = z.object({
   afterId: z.string(),
 });
 
+/**
+ * Run the next page of a data import (see `csv-import.ts`): apply the next
+ * pending rows after `afterPosition`, or, in an overwrite, remove the next
+ * page of entries (after `afterCursor`) that the file does not name.
+ */
+const ProcessCsvImportSchema = z.object({
+  kind: z.literal("ProcessCsvImport"),
+  importId: z.string().min(1),
+  step: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("Rows"), afterPosition: z.number().int().min(0) }),
+    z.object({ kind: z.literal("Prune"), afterCursor: z.string() }),
+  ]),
+});
+
 /** Store the recent public notes and boosts in a remote actor's outbox, and its pinned notes. */
 const BackfillRemoteOutboxSchema = z.object({
   kind: z.literal("BackfillRemoteOutbox"),
@@ -133,6 +147,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   FanOutHomeSchema,
   FanOutPublicSchema,
   BackfillRemoteOutboxSchema,
+  ProcessCsvImportSchema,
 ]);
 
 export type OutboxJob = z.infer<typeof OutboxJobSchema>;

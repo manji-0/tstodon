@@ -18,6 +18,18 @@ export {
 } from "./inbox-activity";
 export { InstanceIdentity } from "./instance-identity";
 export { IsoInstant } from "./iso-instant";
+export {
+  ImportMode,
+  type ImportMode as ImportModeValue,
+  ImportRow,
+  type ImportRow as ImportRowValue,
+  ImportType,
+  type ImportType as ImportTypeValue,
+  RowFailure,
+  type RowFailure as RowFailureValue,
+  RowOutcome,
+  type RowOutcome as RowOutcomeValue,
+} from "./csv-import";
 export { FediRole, type FediRole as FediRoleValue, type FediRoleName } from "./fedi-role";
 export { LocalFollow, type LocalFollow as LocalFollowValue } from "./local-follow";
 export { LocalAccount, type LocalAccount as LocalAccountValue } from "./registration";
