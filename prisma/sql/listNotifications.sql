@@ -8,7 +8,7 @@
 -- @param {Int} $8:cursorGreaterThan
 -- @param {Int} $9:ascending
 -- @param {Int} $10:includeFiltered
-SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.created_at
+SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.created_at
 FROM notifications n
 WHERE n.account_id = $1
   AND n.created_at > COALESCE(

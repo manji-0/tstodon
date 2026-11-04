@@ -32,6 +32,7 @@ export type NotificationsMinAggregateOutputType = {
   kind: string | null;
   status_id: string | null;
   target_account_id: string | null;
+  report_id: string | null;
   created_at: string | null;
 };
 
@@ -43,6 +44,7 @@ export type NotificationsMaxAggregateOutputType = {
   kind: string | null;
   status_id: string | null;
   target_account_id: string | null;
+  report_id: string | null;
   created_at: string | null;
 };
 
@@ -54,6 +56,7 @@ export type NotificationsCountAggregateOutputType = {
   kind: number;
   status_id: number;
   target_account_id: number;
+  report_id: number;
   created_at: number;
   _all: number;
 };
@@ -66,6 +69,7 @@ export type NotificationsMinAggregateInputType = {
   kind?: true;
   status_id?: true;
   target_account_id?: true;
+  report_id?: true;
   created_at?: true;
 };
 
@@ -77,6 +81,7 @@ export type NotificationsMaxAggregateInputType = {
   kind?: true;
   status_id?: true;
   target_account_id?: true;
+  report_id?: true;
   created_at?: true;
 };
 
@@ -88,6 +93,7 @@ export type NotificationsCountAggregateInputType = {
   kind?: true;
   status_id?: true;
   target_account_id?: true;
+  report_id?: true;
   created_at?: true;
   _all?: true;
 };
@@ -177,6 +183,7 @@ export type NotificationsGroupByOutputType = {
   kind: string;
   status_id: string | null;
   target_account_id: string | null;
+  report_id: string | null;
   created_at: string;
   _count: NotificationsCountAggregateOutputType | null;
   _min: NotificationsMinAggregateOutputType | null;
@@ -207,6 +214,7 @@ export type notificationsWhereInput = {
   kind?: Prisma.StringFilter<"notifications"> | string;
   status_id?: Prisma.StringNullableFilter<"notifications"> | string | null;
   target_account_id?: Prisma.StringNullableFilter<"notifications"> | string | null;
+  report_id?: Prisma.StringNullableFilter<"notifications"> | string | null;
   created_at?: Prisma.StringFilter<"notifications"> | string;
   accounts_notifications_account_idToaccounts?: Prisma.XOR<
     Prisma.AccountsScalarRelationFilter,
@@ -222,6 +230,7 @@ export type notificationsOrderByWithRelationInput = {
   kind?: Prisma.SortOrder;
   status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   target_account_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  report_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   accounts_notifications_account_idToaccounts?: Prisma.accountsOrderByWithRelationInput;
 };
@@ -238,6 +247,7 @@ export type notificationsWhereUniqueInput = Prisma.AtLeast<
     kind?: Prisma.StringFilter<"notifications"> | string;
     status_id?: Prisma.StringNullableFilter<"notifications"> | string | null;
     target_account_id?: Prisma.StringNullableFilter<"notifications"> | string | null;
+    report_id?: Prisma.StringNullableFilter<"notifications"> | string | null;
     created_at?: Prisma.StringFilter<"notifications"> | string;
     accounts_notifications_account_idToaccounts?: Prisma.XOR<
       Prisma.AccountsScalarRelationFilter,
@@ -255,6 +265,7 @@ export type notificationsOrderByWithAggregationInput = {
   kind?: Prisma.SortOrder;
   status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   target_account_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  report_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   _count?: Prisma.notificationsCountOrderByAggregateInput;
   _max?: Prisma.notificationsMaxOrderByAggregateInput;
@@ -276,6 +287,7 @@ export type notificationsScalarWhereWithAggregatesInput = {
   kind?: Prisma.StringWithAggregatesFilter<"notifications"> | string;
   status_id?: Prisma.StringNullableWithAggregatesFilter<"notifications"> | string | null;
   target_account_id?: Prisma.StringNullableWithAggregatesFilter<"notifications"> | string | null;
+  report_id?: Prisma.StringNullableWithAggregatesFilter<"notifications"> | string | null;
   created_at?: Prisma.StringWithAggregatesFilter<"notifications"> | string;
 };
 
@@ -286,6 +298,7 @@ export type notificationsCreateInput = {
   kind: string;
   status_id?: string | null;
   target_account_id?: string | null;
+  report_id?: string | null;
   created_at?: string;
   accounts_notifications_account_idToaccounts: Prisma.accountsCreateNestedOneWithoutNotifications_notifications_account_idToaccountsInput;
 };
@@ -298,6 +311,7 @@ export type notificationsUncheckedCreateInput = {
   kind: string;
   status_id?: string | null;
   target_account_id?: string | null;
+  report_id?: string | null;
   created_at?: string;
 };
 
@@ -308,6 +322,7 @@ export type notificationsUpdateInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  report_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   accounts_notifications_account_idToaccounts?: Prisma.accountsUpdateOneRequiredWithoutNotifications_notifications_account_idToaccountsNestedInput;
 };
@@ -320,6 +335,7 @@ export type notificationsUncheckedUpdateInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  report_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -331,6 +347,7 @@ export type notificationsCreateManyInput = {
   kind: string;
   status_id?: string | null;
   target_account_id?: string | null;
+  report_id?: string | null;
   created_at?: string;
 };
 
@@ -341,6 +358,7 @@ export type notificationsUpdateManyMutationInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  report_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -352,6 +370,7 @@ export type notificationsUncheckedUpdateManyInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  report_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -373,6 +392,7 @@ export type notificationsCountOrderByAggregateInput = {
   kind?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
+  report_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
@@ -384,6 +404,7 @@ export type notificationsMaxOrderByAggregateInput = {
   kind?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
+  report_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
@@ -395,6 +416,7 @@ export type notificationsMinOrderByAggregateInput = {
   kind?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   target_account_id?: Prisma.SortOrder;
+  report_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
@@ -493,6 +515,7 @@ export type notificationsCreateWithoutAccounts_notifications_account_idToaccount
   kind: string;
   status_id?: string | null;
   target_account_id?: string | null;
+  report_id?: string | null;
   created_at?: string;
 };
 
@@ -503,6 +526,7 @@ export type notificationsUncheckedCreateWithoutAccounts_notifications_account_id
   kind: string;
   status_id?: string | null;
   target_account_id?: string | null;
+  report_id?: string | null;
   created_at?: string;
 };
 
@@ -562,6 +586,7 @@ export type notificationsScalarWhereInput = {
   kind?: Prisma.StringFilter<"notifications"> | string;
   status_id?: Prisma.StringNullableFilter<"notifications"> | string | null;
   target_account_id?: Prisma.StringNullableFilter<"notifications"> | string | null;
+  report_id?: Prisma.StringNullableFilter<"notifications"> | string | null;
   created_at?: Prisma.StringFilter<"notifications"> | string;
 };
 
@@ -572,6 +597,7 @@ export type notificationsCreateManyAccounts_notifications_account_idToaccountsIn
   kind: string;
   status_id?: string | null;
   target_account_id?: string | null;
+  report_id?: string | null;
   created_at?: string;
 };
 
@@ -582,6 +608,7 @@ export type notificationsUpdateWithoutAccounts_notifications_account_idToaccount
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  report_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -592,6 +619,7 @@ export type notificationsUncheckedUpdateWithoutAccounts_notifications_account_id
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  report_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -603,6 +631,7 @@ export type notificationsUncheckedUpdateManyWithoutAccounts_notifications_accoun
     kind?: Prisma.StringFieldUpdateOperationsInput | string;
     status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
     target_account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+    report_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
     created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   };
 
@@ -617,6 +646,7 @@ export type notificationsSelect<
     kind?: boolean;
     status_id?: boolean;
     target_account_id?: boolean;
+    report_id?: boolean;
     created_at?: boolean;
     accounts_notifications_account_idToaccounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
@@ -634,6 +664,7 @@ export type notificationsSelectCreateManyAndReturn<
     kind?: boolean;
     status_id?: boolean;
     target_account_id?: boolean;
+    report_id?: boolean;
     created_at?: boolean;
     accounts_notifications_account_idToaccounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
@@ -651,6 +682,7 @@ export type notificationsSelectUpdateManyAndReturn<
     kind?: boolean;
     status_id?: boolean;
     target_account_id?: boolean;
+    report_id?: boolean;
     created_at?: boolean;
     accounts_notifications_account_idToaccounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
@@ -665,6 +697,7 @@ export type notificationsSelectScalar = {
   kind?: boolean;
   status_id?: boolean;
   target_account_id?: boolean;
+  report_id?: boolean;
   created_at?: boolean;
 };
 
@@ -678,6 +711,7 @@ export type notificationsOmit<
   | "kind"
   | "status_id"
   | "target_account_id"
+  | "report_id"
   | "created_at",
   ExtArgs["result"]["notifications"]
 >;
@@ -713,6 +747,7 @@ export type $notificationsPayload<
       kind: string;
       status_id: string | null;
       target_account_id: string | null;
+      report_id: string | null;
       created_at: string;
     },
     ExtArgs["result"]["notifications"]
@@ -1305,6 +1340,7 @@ export interface notificationsFieldRefs {
   readonly kind: Prisma.FieldRef<"notifications", "String">;
   readonly status_id: Prisma.FieldRef<"notifications", "String">;
   readonly target_account_id: Prisma.FieldRef<"notifications", "String">;
+  readonly report_id: Prisma.FieldRef<"notifications", "String">;
   readonly created_at: Prisma.FieldRef<"notifications", "String">;
 }
 

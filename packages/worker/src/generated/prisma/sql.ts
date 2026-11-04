@@ -412,6 +412,8 @@ export * from "./sql/listAccountMovesByIdsJson";
 
 export * from "./sql/listAccountProfiles";
 
+export * from "./sql/listAdminAccountIds";
+
 export * from "./sql/listAdminAnnouncements";
 
 export * from "./sql/listAnnouncementDismissals";

@@ -6,5 +6,6 @@
 -- @param {String} $6:statusId?
 -- @param {String} $7:createdAt
 -- @param {String} $8:targetAccountId?
-INSERT INTO notifications (id, account_id, from_account_id, from_actor_uri, kind, status_id, created_at, target_account_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+-- @param {String} $9:reportId?
+INSERT INTO notifications (id, account_id, from_account_id, from_actor_uri, kind, status_id, created_at, target_account_id, report_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)

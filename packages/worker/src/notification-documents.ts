@@ -1,5 +1,6 @@
 import type { InstanceIdentity } from "@tstodon/domain";
 import { accountDocumentsByIds } from "./account-documents";
+import { reportDocumentsByIds } from "./report-documents";
 import type { NotificationRow } from "./notification-store";
 import { statusDocumentsByIds } from "./status-documents";
 
@@ -14,7 +15,7 @@ export const mastodonNotifications = async (
   rows: ReadonlyArray<NotificationRow>,
   viewerId: string,
 ): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
-  const [accounts, statuses] = await Promise.all([
+  const [accounts, statuses, reports] = await Promise.all([
     accountDocumentsByIds(
       env,
       identity,
@@ -30,6 +31,11 @@ export const mastodonNotifications = async (
       rows.flatMap((row) => (row.status_id ? [row.status_id] : [])),
       viewerId,
     ),
+    reportDocumentsByIds(
+      env,
+      identity,
+      rows.flatMap((row) => (row.report_id ? [row.report_id] : [])),
+    ),
   ]);
   const documents = new Map<string, Record<string, unknown>>();
   for (const row of rows) {
@@ -42,6 +48,11 @@ export const mastodonNotifications = async (
     if (row.kind === "move" && !target) {
       continue;
     }
+    const report = row.report_id ? reports.get(row.report_id) : undefined;
+    // An `admin.report` whose report is gone has nothing to show.
+    if (row.kind === "admin.report" && !report) {
+      continue;
+    }
     documents.set(row.id, {
       id: row.id,
       type: row.kind,
@@ -49,6 +60,7 @@ export const mastodonNotifications = async (
       account,
       status: row.status_id ? (statuses.get(row.status_id) ?? null) : null,
       ...(target ? { target } : {}),
+      ...(report ? { report } : {}),
     });
   }
   return documents;

@@ -18,6 +18,7 @@ import {
 import { getMarkers } from "../marker-store";
 import { accountDocumentsByIds } from "../account-documents";
 import { mastodonNotification, mastodonNotifications } from "../notification-documents";
+import { reportDocumentsByIds } from "../report-documents";
 import { statusDocumentsByIds } from "../status-documents";
 import {
   DEFAULT_GROUPED_TYPES,
@@ -288,9 +289,14 @@ const groupEnvelope = async (
   if (identity.isErr()) {
     return { accounts: [], statuses: [], notification_groups: [] };
   }
-  const [accountDocuments, statusDocuments] = await Promise.all([
+  const [accountDocuments, statusDocuments, reportDocuments] = await Promise.all([
     accountDocumentsByIds(c.env, identity.value, accountIds),
     statusDocumentsByIds(c.env, identity.value, statusIds, accountId),
+    reportDocumentsByIds(
+      c.env,
+      identity.value,
+      groups.flatMap((group) => (group.reportId ? [group.reportId] : [])),
+    ),
   ]);
   const accounts = accountIds.flatMap((id) => accountDocuments.get(id) ?? []);
   const statuses = statusIds.flatMap((id) => statusDocuments.get(id) ?? []);
@@ -311,6 +317,9 @@ const groupEnvelope = async (
         : {}),
       sample_account_ids: group.sampleAccountIds,
       ...(group.statusId ? { status_id: group.statusId } : {}),
+      ...(group.reportId && reportDocuments.has(group.reportId)
+        ? { report: reportDocuments.get(group.reportId) }
+        : {}),
     })),
   };
 };

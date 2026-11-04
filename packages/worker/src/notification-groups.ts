@@ -18,6 +18,8 @@ export type NotificationGroup = Readonly<{
   /** Up to three most recent senders, newest first. */
   sampleAccountIds: ReadonlyArray<string>;
   statusId: string | null;
+  /** The report an `admin.report` group points at. */
+  reportId: string | null;
   notificationIds: ReadonlyArray<string>;
   fromAccountIds: ReadonlyArray<string>;
 }>;
@@ -72,6 +74,7 @@ export const groupNotifications = (
         latestPageNotificationAt: row.created_at,
         sampleAccountIds: [row.from_account_id],
         statusId: row.status_id && row.status_id.length > 0 ? row.status_id : null,
+        reportId: row.report_id,
         notificationIds: [row.id],
         fromAccountIds: [row.from_account_id],
       });

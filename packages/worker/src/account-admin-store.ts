@@ -2,6 +2,8 @@ import { type LocalAccount } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { type RepositoryError, runD1 } from "./d1";
+import { queryTyped } from "./typed-sql";
+import { listAdminAccountIds as listAdminAccountIdsSql } from "./generated/prisma/sql";
 import { accountFromRow, parseAccountRow, STATUS_SQL } from "./account-store";
 
 /**
@@ -84,3 +86,13 @@ export const listAdminAccounts = async (
     }
     return accounts;
   });
+
+/** Ids of the local accounts whose sign-in user holds the admin role. */
+export const listAdminAccountIds = async (
+  db: D1Database,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+  runD1(async () =>
+    (await queryTyped<{ id: string | null }>(db, listAdminAccountIdsSql())).flatMap((row) =>
+      row.id ? [row.id] : [],
+    ),
+  );

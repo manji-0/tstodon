@@ -54,6 +54,8 @@ export const insertNotification = async (
     statusId?: string;
     /** The account a `move` notification points at: where the sender moved to. */
     targetAccountId?: string;
+    /** The report an `admin.report` notification points at. */
+    reportId?: string;
   },
 ): Promise<Result<string, RepositoryError>> => {
   const id = newEntityId();
@@ -69,6 +71,7 @@ export const insertNotification = async (
         input.statusId ?? null,
         nowIso(),
         input.targetAccountId ?? null,
+        input.reportId ?? null,
       ),
     );
   });
@@ -85,6 +88,7 @@ export type NotificationRow = {
   kind: string;
   status_id: string | null;
   target_account_id: string | null;
+  report_id: string | null;
   created_at: string;
 };
 
@@ -147,6 +151,7 @@ export const listNotifications = async (
       kind: row.kind,
       status_id: row.status_id,
       target_account_id: row.target_account_id,
+      report_id: row.report_id,
       created_at: row.created_at,
     }));
   });
@@ -175,6 +180,7 @@ export const findNotificationById = async (
       kind: row.kind,
       status_id: row.status_id,
       target_account_id: row.target_account_id,
+      report_id: row.report_id,
       created_at: row.created_at,
     };
   });
