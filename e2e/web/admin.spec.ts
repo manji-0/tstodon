@@ -29,6 +29,33 @@ const fileReport = async (page: Page, targetUsername: string, comment: string) =
   );
 
 test.describe("admin links in the web UI", () => {
+  test("an admin hears of a sign-up and a report in the notifications column and opens the report", async ({
+    page,
+    newPerson,
+  }) => {
+    const reporter = person("reporter");
+    const target = person("reported");
+    await signUp(page, "modadmin3");
+    const reporterPage = await newPerson();
+    await signUp(reporterPage, reporter);
+    const targetPage = await newPerson();
+    await signUp(targetPage, target);
+    const report = await fileReport(reporterPage, target, "Harasses people in replies.");
+    expect(report.status).toBe(200);
+
+    await page.goto("/notifications");
+    await expect(page.getByText(`${reporter} signed up`)).toBeVisible();
+    await expect(page.getByText(`${target} signed up`)).toBeVisible();
+    await expect(page.getByText(`${reporter} reported ${target}`)).toBeVisible();
+
+    const [moderation] = await Promise.all([
+      page.waitForEvent("popup"),
+      page.getByRole("link", { name: `${reporter} reported ${target}` }).click(),
+    ]);
+    await expect(moderation).toHaveURL(new RegExp(`/admin/reports/${report.id}$`));
+    await expect(moderation.getByText("Harasses people in replies.")).toBeVisible();
+  });
+
   test("an admin opens a report from the More menu and resolves it", async ({
     page,
     newPerson,
