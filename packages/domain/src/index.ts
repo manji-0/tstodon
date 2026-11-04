@@ -52,6 +52,12 @@ export {
   type RemoteActorProfile,
 } from "./remote-actor";
 export {
+  RemoteActorModeration,
+  type RemoteActorModeration as RemoteActorModerationValue,
+  type RemoteActorModerationAction,
+  type RemoteActorStanding,
+} from "./remote-actor-moderation";
+export {
   RemoteBoost,
   type RemoteBoost as RemoteBoostValue,
   type RemoteBoostError,
