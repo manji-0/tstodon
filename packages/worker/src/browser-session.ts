@@ -16,7 +16,15 @@ export type BrowserSession =
   | Readonly<{ kind: "SignedOut" }>
   | Readonly<{ kind: "NoAccount" }>
   | Readonly<{ kind: "Barred" }>
-  | Readonly<{ kind: "Account"; account: LocalAccount; role: FediRole; signedInAt: Date }>;
+  | Readonly<{
+      kind: "Account";
+      account: LocalAccount;
+      role: FediRole;
+      signedInAt: Date;
+      /** The Better Auth user and session behind the cookie. */
+      userId: string;
+      sessionId: string;
+    }>;
 
 /** The signed-in user's local account, if it may use the API. */
 export const browserSession = async (env: Env): Promise<BrowserSession> => {
@@ -43,6 +51,8 @@ export const browserSession = async (env: Env): Promise<BrowserSession> => {
     account: account.value,
     role: roleFromAuthUser(Reflect.get(state.user, "role")),
     signedInAt: state.session.createdAt,
+    userId: state.user.id,
+    sessionId: state.session.id,
   };
 };
 
@@ -59,3 +69,12 @@ export const isSameOriginPost = (c: Context<{ Bindings: Env }>): boolean => {
   const origin = c.req.header("Origin");
   return origin === undefined || origin === new URL(c.req.url).origin;
 };
+
+/** `Set-Cookie` values that expire the Better Auth session cookie, under either of its names. */
+export const EXPIRED_SESSION_COOKIES: ReadonlyArray<string> = [
+  "better-auth.session_token",
+  "__Secure-better-auth.session_token",
+].map(
+  (name) =>
+    `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${name.startsWith("__Secure-") ? "; Secure" : ""}`,
+);

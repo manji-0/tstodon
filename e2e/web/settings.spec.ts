@@ -52,4 +52,28 @@ test.describe("settings links in the web UI", () => {
     await expect(filters.getByLabel("Title")).toHaveValue("Spoilers");
     await expect(filters.getByLabel("Keyword or phrase").first()).toHaveValue("season finale");
   });
+
+  test("adds, renames, and removes a passkey, and keeps the last one", async ({ page }) => {
+    await signUp(page, person("sec"));
+    await page.goto("/settings/preferences");
+    await page.getByRole("link", { name: "Password and security" }).click();
+    await expect(page).toHaveURL(/\/auth\/edit$/);
+    await expect(page.getByRole("heading", { name: "Password and security" })).toBeVisible();
+    await expect(page.getByText("This is your only passkey")).toBeVisible();
+    await expect(page.getByText("This browser")).toBeVisible();
+
+    await page.getByLabel("Name for the new passkey").fill("Laptop");
+    await page.getByRole("button", { name: "Add a passkey" }).click();
+    await expect(page.getByText("Laptop", { exact: true })).toBeVisible();
+
+    await page.getByLabel("Name", { exact: true }).last().fill("Work laptop");
+    await page.getByRole("button", { name: "Rename" }).last().click();
+    await expect(page.getByText("Passkey renamed.")).toBeVisible();
+    await expect(page.getByText("Work laptop", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Remove passkey" }).last().click();
+    await expect(page.getByText("Passkey removed.")).toBeVisible();
+    await expect(page.getByText("This is your only passkey")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Remove passkey" })).toHaveCount(0);
+  });
 });

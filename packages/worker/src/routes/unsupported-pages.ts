@@ -8,11 +8,6 @@ import { instanceName } from "./account-settings";
  * SPA fallback replaces a 404 to a browser navigation with `index.html`.
  */
 const NOTICES = {
-  accountSecurity: {
-    title: "Password and security",
-    text: "This server signs in with passkeys instead of passwords, and has no page to manage them yet. To sign out, use Logout in the web app's menu.",
-    alternatives: [],
-  },
   importExport: {
     title: "Import and export",
     text: "This server cannot export or import follows, lists, or blocks as files yet. To take your followers to another account, use account migration.",
@@ -52,7 +47,6 @@ const unsupported =
   (c: Context<{ Bindings: Env }>): Response | Promise<Response> =>
     c.html(unsupportedPage(instanceName(c.env), notice));
 
-export const getAuthEdit = unsupported(NOTICES.accountSecurity);
 export const getSettingsExport = unsupported(NOTICES.importExport);
 export const getUnknownAdmin = unsupported(NOTICES.administration);
 export const getSeveredRelationships = unsupported(NOTICES.severedRelationships);

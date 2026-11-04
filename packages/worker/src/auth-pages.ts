@@ -103,6 +103,59 @@ export const PASSKEY_SIGN_IN = `
         }
       };`;
 
+/**
+ * `registerPasskey(query, body)`: create a passkey through Better Auth's
+ * registration endpoints (`query` goes to the options request, `body` joins
+ * the credential in the verification). It resolves to whether it did, and
+ * shows why not. Needs {@link WEBAUTHN_HELPERS}.
+ */
+export const PASSKEY_REGISTER = `
+      const registerPasskey = async (query, body) => {
+        try {
+          const optionsResponse = await fetch(
+            "/api/auth/passkey/generate-register-options?" + new URLSearchParams(query),
+          );
+          if (!optionsResponse.ok) {
+            show(await failure(optionsResponse));
+            return false;
+          }
+          const options = await optionsResponse.json();
+          const credential = await navigator.credentials.create({
+            publicKey: {
+              ...options,
+              challenge: fromB64u(options.challenge),
+              user: { ...options.user, id: fromB64u(options.user.id) },
+              excludeCredentials: credentialIds(options.excludeCredentials),
+            },
+          });
+          const response = {
+            id: credential.id,
+            rawId: toB64u(credential.rawId),
+            type: credential.type,
+            authenticatorAttachment: credential.authenticatorAttachment || undefined,
+            clientExtensionResults: credential.getClientExtensionResults(),
+            response: {
+              clientDataJSON: toB64u(credential.response.clientDataJSON),
+              attestationObject: toB64u(credential.response.attestationObject),
+              transports: credential.response.getTransports ? credential.response.getTransports() : [],
+            },
+          };
+          const verified = await fetch("/api/auth/passkey/verify-registration", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ response, ...body }),
+          });
+          if (!verified.ok) {
+            show(await failure(verified));
+            return false;
+          }
+          return true;
+        } catch (error) {
+          show(error instanceof Error ? error.message : String(error));
+          return false;
+        }
+      };`;
+
 export type SignUpForm = Readonly<{ username: string; email: string }>;
 
 /** Step one: username and email; the server mails a confirmation link. */
@@ -148,46 +201,13 @@ export const signUpPasskeyPage = (instanceName: string, username: string, token:
         <button type="submit">Create passkey</button>
       </form>
       <p id="error" class="error" role="alert"></p>`,
-    `${WEBAUTHN_HELPERS}
+    `${WEBAUTHN_HELPERS}${PASSKEY_REGISTER}
       document.getElementById("form").addEventListener("submit", async (event) => {
         event.preventDefault();
         show("");
         const { token, username } = event.target.dataset;
-        try {
-          const query = new URLSearchParams({ context: token, name: username });
-          const optionsResponse = await fetch("/api/auth/passkey/generate-register-options?" + query);
-          if (!optionsResponse.ok) return show(await failure(optionsResponse));
-          const options = await optionsResponse.json();
-          const credential = await navigator.credentials.create({
-            publicKey: {
-              ...options,
-              challenge: fromB64u(options.challenge),
-              user: { ...options.user, id: fromB64u(options.user.id) },
-              excludeCredentials: credentialIds(options.excludeCredentials),
-            },
-          });
-          const response = {
-            id: credential.id,
-            rawId: toB64u(credential.rawId),
-            type: credential.type,
-            authenticatorAttachment: credential.authenticatorAttachment || undefined,
-            clientExtensionResults: credential.getClientExtensionResults(),
-            response: {
-              clientDataJSON: toB64u(credential.response.clientDataJSON),
-              attestationObject: toB64u(credential.response.attestationObject),
-              transports: credential.response.getTransports ? credential.response.getTransports() : [],
-            },
-          };
-          const verified = await fetch("/api/auth/passkey/verify-registration", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ response, createSession: true }),
-          });
-          if (!verified.ok) return show(await failure(verified));
-          location.assign("/");
-        } catch (error) {
-          show(error instanceof Error ? error.message : String(error));
-        }
+        const created = await registerPasskey({ context: token, name: username }, { createSession: true });
+        if (created) location.assign("/");
       });`,
   );
 

@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import { getSession } from "void/auth";
 import { z } from "zod";
 import { schemaResult, warmSchemas } from "@tstodon/core";
-import { browserSession, isSameOriginPost } from "../browser-session";
+import { browserSession, EXPIRED_SESSION_COOKIES, isSameOriginPost } from "../browser-session";
 import {
   authorizationCodePage,
   consentPage,
@@ -470,12 +470,8 @@ export const deleteAuthSignOut = async (c: Context<{ Bindings: Env }, "/auth/sig
       return c.json({ error: removed.error.message, kind: removed.error.kind }, 500);
     }
   }
-  for (const name of ["better-auth.session_token", "__Secure-better-auth.session_token"]) {
-    c.header(
-      "Set-Cookie",
-      `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${name.startsWith("__Secure-") ? "; Secure" : ""}`,
-      { append: true },
-    );
+  for (const cookie of EXPIRED_SESSION_COOKIES) {
+    c.header("Set-Cookie", cookie, { append: true });
   }
   return (c.req.header("Accept") ?? "").includes("application/json")
     ? c.json({ redirect_to: "/" })

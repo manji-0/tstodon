@@ -206,6 +206,17 @@ const liveIntent = (rows: ReadonlyArray<unknown>): Result<SignupIntent, SignupEr
   return ok({ username: row.value.username, email: row.value.email });
 };
 
+const SIGNUP_USER_PREFIX = "signup:";
+
+/**
+ * The placeholder user a sign-up passkey ceremony runs as, until the account
+ * exists. A signed-in user adding a passkey runs as their own Better Auth id.
+ */
+export const signupCeremonyUserId = (username: string): string =>
+  `${SIGNUP_USER_PREFIX}${username}`;
+
+export const isSignupCeremony = (userId: string): boolean => userId.startsWith(SIGNUP_USER_PREFIX);
+
 /** Step two, before the passkey: the intent behind a link, if it can still sign up. */
 export const checkSignupLink = async (
   env: Env,

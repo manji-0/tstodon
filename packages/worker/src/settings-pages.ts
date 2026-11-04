@@ -11,7 +11,7 @@ import { escapeHtml } from "./html";
 /**
  * Account settings that Mastodon keeps in Rails pages, not in its web app:
  * the settings index (`/settings/preferences`), posting defaults, privacy
- * and reach, the "moving from" aliases (`/settings/aliases`) and the move to
+ * and reach, passkeys and sessions (`/auth/edit`, in `account-security-pages.ts`), the "moving from" aliases (`/settings/aliases`) and the move to
  * another account (`/settings/migration`). Plain forms in the style of the
  * sign-in pages, posted back to this origin with the session cookie.
  */
@@ -69,6 +69,16 @@ const SETTINGS_SECTIONS: ReadonlyArray<
       { href: "/domain_blocks", label: "Blocked domains", about: "Servers you do not see." },
       { href: "/followed_tags", label: "Followed hashtags", about: "Hashtags in your home feed." },
       { href: "/filters", label: "Filters", about: "Hide posts with certain words." },
+    ],
+  },
+  {
+    heading: "Account and security",
+    links: [
+      {
+        href: "/auth/edit",
+        label: "Password and security",
+        about: "Passkeys, browser sessions, and apps that can use your account.",
+      },
     ],
   },
   {

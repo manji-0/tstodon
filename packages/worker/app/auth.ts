@@ -1,6 +1,6 @@
 import { passkey } from "@better-auth/passkey";
 import type { BetterAuthPlugin } from "better-auth";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { admin } from "better-auth/plugins";
 import { defineAuth } from "void/auth";
 
@@ -38,6 +38,42 @@ const sessionLookupKeepsCaching = {
 } satisfies BetterAuthPlugin;
 
 /**
+ * The Password and security page (`/auth/edit`) is the one place a passkey is
+ * removed: it refuses the last one, and asks for a recent sign-in. Better
+ * Auth's own endpoints would let any session skip both, so the delete is
+ * closed and a signed-in user adding a passkey needs the same recent sign-in.
+ */
+const passkeyGuards = {
+  id: "tstodon-passkey-guards",
+  hooks: {
+    before: [
+      {
+        matcher: (ctx) => ctx.path === "/passkey/delete-passkey",
+        handler: createAuthMiddleware(async () => {
+          throw new APIError("FORBIDDEN", {
+            message: "Remove a passkey on the Password and security page.",
+          });
+        }),
+      },
+      {
+        matcher: (ctx) =>
+          ctx.path === "/passkey/generate-register-options" ||
+          ctx.path === "/passkey/verify-registration",
+        handler: createAuthMiddleware(async (ctx) => {
+          const session = await getSessionFromCtx(ctx);
+          const { signInIsStale } = await import("#src/recent-sign-in");
+          if (session && signInIsStale(session.session.createdAt)) {
+            throw new APIError("FORBIDDEN", {
+              message: "Confirm with your passkey before you add another.",
+            });
+          }
+        }),
+      },
+    ],
+  },
+} satisfies BetterAuthPlugin;
+
+/**
  * Sign-in is passkey-only: no passwords, no social providers. Mastodon
  * clients never see these sessions; `/oauth/authorize` turns one into an
  * OAuth access token.
@@ -48,6 +84,7 @@ export default defineAuth(({ defaults, env }) => ({
   emailAndPassword: { enabled: false },
   plugins: [
     sessionLookupKeepsCaching,
+    passkeyGuards,
     // `user.role = 'admin'` makes the linked local account an instance admin.
     admin(),
     passkey({
@@ -56,16 +93,25 @@ export default defineAuth(({ defaults, env }) => ({
         // The passkey `context` is the token from the emailed sign-up link,
         // so a passkey can only be created for a confirmed address.
         resolveUser: async ({ context }) => {
-          const { checkSignupLink, signupErrorMessage } = await signup();
+          const { checkSignupLink, signupCeremonyUserId, signupErrorMessage } = await signup();
           const intent = await checkSignupLink(await workerEnv(env), context);
           if (intent.isErr()) {
             throw new APIError("BAD_REQUEST", { message: signupErrorMessage(intent.error) });
           }
-          return { id: `signup:${intent.value.username}`, name: intent.value.username };
+          return { id: signupCeremonyUserId(intent.value.username), name: intent.value.username };
         },
-        afterVerification: async ({ ctx, context }) => {
-          const { consumeSignupLink, createSignupAccount, signupErrorMessage, signupRole } =
-            await signup();
+        afterVerification: async ({ ctx, context, user: ceremonyUser }) => {
+          const {
+            consumeSignupLink,
+            createSignupAccount,
+            isSignupCeremony,
+            signupErrorMessage,
+            signupRole,
+          } = await signup();
+          if (!isSignupCeremony(ceremonyUser.id)) {
+            // A signed-in user adding a passkey: the account exists already.
+            return undefined;
+          }
           const worker = await workerEnv(env);
           const intent = await consumeSignupLink(worker, context);
           if (intent.isErr()) {

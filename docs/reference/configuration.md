@@ -51,15 +51,16 @@ Object keys: `attachments/{accountId}/{mediaId}`, `avatars/{accountId}/{blobId}`
 
 Sign-in is Void's [Better Auth](https://www.better-auth.com/) integration, configured in `packages/worker/app/auth.ts` and mounted at `/api/auth/*`. It is **passkey-only** (no passwords, no social providers) and carries the Better Auth **admin** plugin. Mastodon clients never use those sessions directly: the Worker is its own OAuth 2 authorization server and turns a signed-in session into an access token.
 
-| Surface                                                    | Purpose                                                                                             |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `GET /auth/sign_up`                                        | Choose a username and create a passkey; creates the Better Auth user and the local account together |
-| `GET /auth/sign_in`                                        | Sign in with a passkey (or see who is signed in and sign out); `GET /login` redirects here          |
-| `POST /api/v1/apps`, `GET /api/v1/apps/verify_credentials` | Register a client (`client_name`, `redirect_uris`, `scopes`); the secret is shown once              |
-| `GET`/`POST /oauth/authorize`                              | Consent page (needs a session); `code` flow, optional PKCE (`S256`), `urn:ietf:wg:oauth:2.0:oob`    |
-| `POST /oauth/token`                                        | `authorization_code` and `client_credentials` grants; client auth by body or HTTP Basic             |
-| `POST /oauth/revoke`                                       | RFC 7009 revocation                                                                                 |
-| `GET /.well-known/oauth-authorization-server`              | RFC 8414 metadata                                                                                   |
+| Surface                                                    | Purpose                                                                                                                              |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /auth/sign_up`                                        | Choose a username and create a passkey; creates the Better Auth user and the local account together                                  |
+| `GET /auth/sign_in`                                        | Sign in with a passkey (or see who is signed in and sign out); `GET /login` redirects here                                           |
+| `GET /auth/edit`                                           | Password and security: add, rename, and remove passkeys; end browser sessions; revoke apps (a sign-in within 10 minutes for changes) |
+| `POST /api/v1/apps`, `GET /api/v1/apps/verify_credentials` | Register a client (`client_name`, `redirect_uris`, `scopes`); the secret is shown once                                               |
+| `GET`/`POST /oauth/authorize`                              | Consent page (needs a session); `code` flow, optional PKCE (`S256`), `urn:ietf:wg:oauth:2.0:oob`                                     |
+| `POST /oauth/token`                                        | `authorization_code` and `client_credentials` grants; client auth by body or HTTP Basic                                              |
+| `POST /oauth/revoke`                                       | RFC 7009 revocation                                                                                                                  |
+| `GET /.well-known/oauth-authorization-server`              | RFC 8414 metadata                                                                                                                    |
 
 API requests authenticate with `Authorization: Bearer <access token>` (streaming also takes `?access_token=`). Client secrets, codes, and tokens are stored as SHA-256 digests (`oauth_applications`, `oauth_authorization_codes`, `oauth_access_tokens`). A token needs the granular scope Mastodon gives the endpoint (`read:statuses` for timelines, `write:favourites` to favourite, `admin:read:reports` for admin reports, …; the table is `SCOPE_RULES` in `packages/worker/src/oauth-scope.ts`). A top-level scope (`read`, `write`, `admin:read`, `admin:write`) covers every granular scope under it, `follow` covers `read`/`write` `:follows` / `:blocks` / `:mutes`, and `profile` allows only `GET /api/v1/accounts/verify_credentials`. Public metadata (instance, custom emojis, trends) needs no scope. Anything else is `403` with `kind: "InsufficientScope"`. Suspended and disabled accounts are refused at every token use.
 
