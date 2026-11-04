@@ -42,7 +42,8 @@ const WebManifestSchema = z.object({
   themeSelection: z.string(),
   inert: z.string(),
   theme: z.string(),
-  favicon: z.string(),
+  // Builds from before the favicon was recorded have no key; they still serve.
+  favicon: z.string().optional(),
   common: EntrySchema,
   application: EntrySchema,
   locales: z.array(z.string()),
@@ -351,7 +352,7 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
   }
   if (path === "/favicon.ico") {
     const manifest = await webManifest(c.env, c.req.url);
-    return manifest ? c.redirect(manifest.favicon, 302) : next();
+    return manifest?.favicon ? c.redirect(manifest.favicon, 302) : next();
   }
   if (!isWebAppPath(path)) {
     return next();
