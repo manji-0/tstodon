@@ -10,7 +10,12 @@ import {
 } from "../http";
 import { notifyAdmins } from "../admin-notify";
 import { instanceRules } from "../runtime-config";
-import { insertReport, ReportCategorySchema } from "../report-store";
+import type { Result } from "neverthrow";
+import { findAccountById } from "../account-store";
+import type { RepositoryError } from "../d1";
+import { findRemoteActorByUri } from "../remote-actor-store";
+import { reportedStatuses } from "../report-documents";
+import { insertReport, ReportCategorySchema, ReportParty } from "../report-store";
 import { stringList } from "../form-values";
 
 export const ReportBodySchema = z.object({
@@ -63,16 +68,31 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
       422,
     );
   }
+  const target = ReportParty.ofAccountId(body.value.account_id);
+  const known = await reportTargetExists(c.env.DB, target);
+  if (known.isErr()) {
+    return jsonRepositoryError(c, known.error.message);
+  }
+  if (!known.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const statusIds = await targetStatusIds(c.env.DB, target, stringList(body.value.status_ids));
+  if (statusIds.isErr()) {
+    return jsonRepositoryError(c, statusIds.error.message);
+  }
   const report = await insertReport(c.env.DB, {
-    accountId: user.value.id,
-    targetAccountId: body.value.account_id,
-    statusIds: stringList(body.value.status_ids),
+    reporter: { kind: "Local", accountId: user.value.id },
+    target,
+    statusIds: statusIds.value,
     comment: body.value.comment ?? "",
     category: category.value,
     ruleIds: requestedRules,
   });
   if (report.isErr()) {
     return jsonRepositoryError(c, report.error.message);
+  }
+  if (report.value.kind === "AlreadyFiled") {
+    return jsonRepositoryError(c, "report without a Flag was already filed");
   }
   // A failed notification must not lose the filed report.
   await notifyAdmins(c.env, {
@@ -87,9 +107,39 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
     category: category.value,
     comment: body.value.comment ?? "",
     forwarded: false,
-    status_ids: stringList(body.value.status_ids),
+    status_ids: statusIds.value,
     rule_ids: requestedRules,
     target_account: { id: body.value.account_id },
+  });
+};
+
+const reportTargetExists = async (
+  db: D1Database,
+  target: ReportParty,
+): Promise<Result<boolean, RepositoryError>> => {
+  const found =
+    target.kind === "Local"
+      ? await findAccountById(db, target.accountId)
+      : await findRemoteActorByUri(db, target.actorUri);
+  return found.map((value) => value !== undefined);
+};
+
+/** As Mastodon's `ReportService`: only the target's own posts stay attached. */
+const targetStatusIds = async (
+  db: D1Database,
+  target: ReportParty,
+  requested: ReadonlyArray<string>,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> => {
+  const statuses = await reportedStatuses(db, requested);
+  return statuses.map(({ local, remote }) => {
+    const owned = new Set<string>(
+      target.kind === "Local"
+        ? local.filter((status) => status.accountId === target.accountId).map((status) => status.id)
+        : remote
+            .filter(({ status }) => status.actorUri === target.actorUri)
+            .map(({ status }) => status.id),
+    );
+    return [...new Set(requested)].filter((id) => owned.has(id));
   });
 };
 

@@ -25,7 +25,9 @@ import {
   readBody,
   requireAdmin,
 } from "../../http";
-import { mastodonAccountDocument } from "../../account-documents";
+import { mastodonAccountDocument, mastodonRemoteAccount } from "../../account-documents";
+import { findRemoteActorByUri } from "../../remote-actor-store";
+import type { ReportParty } from "../../report-store";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { isTruthy } from "../../form-values";
 
@@ -93,6 +95,41 @@ export const adminAccountFor = async (
 ): Promise<Record<string, unknown> | null> => {
   const state = await findAdminAccount(env.DB, accountId);
   return state.isOk() && state.value ? adminAccountDocument(env, identity, state.value) : null;
+};
+
+/**
+ * A report's reporter or target as an `Admin::Account`. A remote actor has no
+ * login, email, or local moderation state here; `null` when it is no longer
+ * known.
+ */
+export const adminPartyFor = async (
+  env: Env,
+  identity: InstanceIdentity,
+  party: ReportParty,
+): Promise<Record<string, unknown> | null> => {
+  if (party.kind === "Local") {
+    return adminAccountFor(env, identity, party.accountId);
+  }
+  const actor = await findRemoteActorByUri(env.DB, party.actorUri);
+  if (actor.isErr() || !actor.value) {
+    return null;
+  }
+  return {
+    ...mastodonRemoteAccount(identity, actor.value),
+    domain: actor.value.domain,
+    email: null,
+    ip: null,
+    role: { id: "-1", name: "user", highlighted: false },
+    approved: true,
+    disabled: false,
+    silenced: false,
+    suspended: false,
+    limited: false,
+    sensitized: false,
+    invited_by_account_id: null,
+    created_by_application_id: null,
+    invite_request: null,
+  };
 };
 
 const notFound = (c: Context<{ Bindings: Env }>) =>

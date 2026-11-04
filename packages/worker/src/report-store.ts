@@ -1,11 +1,13 @@
 import { parseRows, type RepositoryError, runD1 } from "./d1";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
-import { runTyped } from "./typed-sql";
+import { queryTyped } from "./typed-sql";
 import { newEntityId } from "./ids";
 import { parseJsonColumn } from "./json-column";
 import { nowIso } from "./clock";
 import type { Result } from "neverthrow";
 import { z } from "zod";
+import { schemaResult } from "@tstodon/core";
+import { RemoteAccountId } from "./remote-account-id";
 import { insertReport as insertReportSql } from "./generated/prisma/sql";
 
 /** Mastodon's report categories. */
@@ -18,10 +20,37 @@ export const ReportCategorySchema = z.union([
 
 export type ReportCategory = z.infer<typeof ReportCategorySchema>;
 
+/**
+ * One side of a report: a local account, or a remote actor. A report from
+ * another server (a `Flag`) has a remote reporter; a report a local user files
+ * against a remote account has a remote target.
+ */
+export const ReportPartySchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("Local"), accountId: z.string().min(1) }),
+  z.object({ kind: z.literal("Remote"), actorUri: z.string().min(1) }),
+]);
+
+export type ReportParty = z.infer<typeof ReportPartySchema>;
+
+export const ReportParty = {
+  schema: ReportPartySchema,
+  parse: schemaResult(ReportPartySchema),
+  /** The account id the API shows for the party: a local id, or `r_…` for a remote actor. */
+  accountId: (party: ReportParty): string =>
+    party.kind === "Local" ? party.accountId : RemoteAccountId.encode(party.actorUri),
+  /** The party an API account id names. */
+  ofAccountId: (id: string): ReportParty => {
+    const actorUri = RemoteAccountId.decode(id);
+    return actorUri.isOk()
+      ? { kind: "Remote", actorUri: actorUri.value }
+      : { kind: "Local", accountId: id };
+  },
+} as const;
+
 export type ReportRow = Readonly<{
   id: string;
-  accountId: string;
-  targetAccountId: string;
+  reporter: ReportParty;
+  target: ReportParty;
   statusIds: ReadonlyArray<string>;
   comment: string;
   category: string;
@@ -29,14 +58,18 @@ export type ReportRow = Readonly<{
   assignedAccountId: string | null;
   actionTakenAt: string | null;
   actionTakenByAccountId: string | null;
+  /** Whether the report was forwarded to the target's server. */
+  forwarded: boolean;
   createdAt: string;
   updatedAt: string | null;
 }>;
 
 const ReportRowSchema = z.object({
   id: z.string(),
-  account_id: z.string(),
-  target_account_id: z.string(),
+  account_id: z.string().nullable(),
+  reporter_actor_uri: z.string().nullable(),
+  target_account_id: z.string().nullable(),
+  target_actor_uri: z.string().nullable(),
   status_ids_json: z.string(),
   comment: z.string(),
   category: z.string(),
@@ -44,14 +77,24 @@ const ReportRowSchema = z.object({
   assigned_account_id: z.string().nullable(),
   action_taken_at: z.string().nullable(),
   action_taken_by_account_id: z.string().nullable(),
+  forwarded: z.number(),
   created_at: z.string(),
   updated_at: z.string().nullable(),
 });
 
+/** The table's CHECKs keep exactly one of the two columns set. */
+const partyOf = (accountId: string | null, actorUri: string | null): ReportParty =>
+  accountId !== null ? { kind: "Local", accountId } : { kind: "Remote", actorUri: actorUri ?? "" };
+
+const partyColumns = (
+  party: ReportParty,
+): readonly [accountId: string | null, actorUri: string | null] =>
+  party.kind === "Local" ? [party.accountId, null] : [null, party.actorUri];
+
 const reportFromRow = (row: z.infer<typeof ReportRowSchema>): ReportRow => ({
   id: row.id,
-  accountId: row.account_id,
-  targetAccountId: row.target_account_id,
+  reporter: partyOf(row.account_id, row.reporter_actor_uri),
+  target: partyOf(row.target_account_id, row.target_actor_uri),
   statusIds: parseJsonColumn(z.array(z.string()), row.status_ids_json).unwrapOr([]),
   comment: row.comment,
   category: row.category,
@@ -59,40 +102,52 @@ const reportFromRow = (row: z.infer<typeof ReportRowSchema>): ReportRow => ({
   assignedAccountId: row.assigned_account_id,
   actionTakenAt: row.action_taken_at,
   actionTakenByAccountId: row.action_taken_by_account_id,
+  forwarded: row.forwarded !== 0,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
 
-const REPORT_SELECT = `id, account_id, target_account_id, status_ids_json, comment, category,
-       rule_ids_json, assigned_account_id, action_taken_at, action_taken_by_account_id, created_at, updated_at`;
+const REPORT_SELECT = `id, account_id, reporter_actor_uri, target_account_id, target_actor_uri,
+       status_ids_json, comment, category, rule_ids_json, assigned_account_id, action_taken_at,
+       action_taken_by_account_id, forwarded, created_at, updated_at`;
+
+/** A report filed, or the one already filed for the same `Flag`. */
+export type ReportFiling =
+  | Readonly<{ kind: "Filed"; id: string }>
+  | Readonly<{ kind: "AlreadyFiled" }>;
 
 export const insertReport = async (
   db: D1Database,
-  input: {
-    accountId: string;
-    targetAccountId: string;
+  input: Readonly<{
+    reporter: ReportParty;
+    target: ReportParty;
     statusIds: ReadonlyArray<string>;
     comment: string;
     category?: string;
     ruleIds?: ReadonlyArray<string>;
-  },
-): Promise<Result<{ id: string }, RepositoryError>> =>
+    forwarded?: boolean;
+    /** The id of the `Flag` a remote report arrived as. */
+    flagUri?: string;
+  }>,
+): Promise<Result<ReportFiling, RepositoryError>> =>
   runD1(async () => {
     const id = newEntityId();
-    await runTyped(
+    const rows = await queryTyped<{ id: string }>(
       db,
       insertReportSql(
         id,
-        input.accountId,
-        input.targetAccountId,
+        ...partyColumns(input.reporter),
+        ...partyColumns(input.target),
         JSON.stringify(input.statusIds),
         input.comment,
         input.category ?? "other",
         JSON.stringify(input.ruleIds ?? []),
+        input.forwarded === true ? 1 : 0,
+        input.flagUri ?? null,
         nowIso(),
       ),
     );
-    return { id };
+    return rows.length > 0 ? { kind: "Filed", id } : { kind: "AlreadyFiled" };
   });
 
 /** Mastodon's admin report filters, paged by report id. */
@@ -118,12 +173,14 @@ export const listReports = async (
       conditions.push("action_taken_at IS NULL");
     }
     if (filters.accountId) {
-      conditions.push("account_id = ?");
-      binds.push(filters.accountId);
+      const reporter = ReportParty.ofAccountId(filters.accountId);
+      conditions.push(reporter.kind === "Local" ? "account_id = ?" : "reporter_actor_uri = ?");
+      binds.push(reporter.kind === "Local" ? reporter.accountId : reporter.actorUri);
     }
     if (filters.targetAccountId) {
-      conditions.push("target_account_id = ?");
-      binds.push(filters.targetAccountId);
+      const target = ReportParty.ofAccountId(filters.targetAccountId);
+      conditions.push(target.kind === "Local" ? "target_account_id = ?" : "target_actor_uri = ?");
+      binds.push(target.kind === "Local" ? target.accountId : target.actorUri);
     }
     const { where, order, binds: cursorBinds } = idCursorFragment(filters.cursor);
     const { results } = await db

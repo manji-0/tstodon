@@ -20,31 +20,38 @@ import {
   setReportResolved,
   updateReport,
 } from "../../report-store";
-import { findStatusesByIds } from "../../status-store";
+import { reportedStatuses } from "../../report-documents";
+import { mastodonRemoteStatus } from "../../remote-status-document";
 import { schemaResult } from "@tstodon/core";
-import { adminAccountFor } from "./accounts";
+import { adminAccountFor, adminPartyFor } from "./accounts";
 
 const adminReportDocument = async (
   c: Context<{ Bindings: Env }>,
   identity: InstanceIdentity,
   report: ReportRow,
 ): Promise<Record<string, unknown>> => {
-  const reported = await findStatusesByIds(c.env.DB, [...report.statusIds]);
-  const statuses =
-    reported.isOk() && reported.value.size > 0
-      ? await mastodonStatuses(c.env, identity, [...reported.value.values()], undefined)
-      : [];
+  const reported = await reportedStatuses(c.env.DB, report.statusIds);
+  const statuses = reported.isOk()
+    ? [
+        ...(reported.value.local.length > 0
+          ? await mastodonStatuses(c.env, identity, [...reported.value.local], undefined)
+          : []),
+        ...reported.value.remote.map(({ status, actor }) =>
+          mastodonRemoteStatus(identity, status, actor),
+        ),
+      ]
+    : [];
   return {
     id: report.id,
     action_taken: report.actionTakenAt !== null,
     action_taken_at: report.actionTakenAt,
     category: report.category,
     comment: report.comment,
-    forwarded: false,
+    forwarded: report.forwarded,
     created_at: report.createdAt,
     updated_at: report.updatedAt ?? report.createdAt,
-    account: await adminAccountFor(c.env, identity, report.accountId),
-    target_account: await adminAccountFor(c.env, identity, report.targetAccountId),
+    account: await adminPartyFor(c.env, identity, report.reporter),
+    target_account: await adminPartyFor(c.env, identity, report.target),
     assigned_account: report.assignedAccountId
       ? await adminAccountFor(c.env, identity, report.assignedAccountId)
       : null,

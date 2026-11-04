@@ -1143,31 +1143,34 @@ export type accountsCreateNestedOneWithoutReports_reports_account_idToaccountsIn
   connect?: Prisma.accountsWhereUniqueInput;
 };
 
-export type accountsUpdateOneRequiredWithoutReports_reports_target_account_idToaccountsNestedInput =
-  {
-    create?: Prisma.XOR<
-      Prisma.accountsCreateWithoutReports_reports_target_account_idToaccountsInput,
-      Prisma.accountsUncheckedCreateWithoutReports_reports_target_account_idToaccountsInput
-    >;
-    connectOrCreate?: Prisma.accountsCreateOrConnectWithoutReports_reports_target_account_idToaccountsInput;
-    upsert?: Prisma.accountsUpsertWithoutReports_reports_target_account_idToaccountsInput;
-    connect?: Prisma.accountsWhereUniqueInput;
-    update?: Prisma.XOR<
-      Prisma.XOR<
-        Prisma.accountsUpdateToOneWithWhereWithoutReports_reports_target_account_idToaccountsInput,
-        Prisma.accountsUpdateWithoutReports_reports_target_account_idToaccountsInput
-      >,
-      Prisma.accountsUncheckedUpdateWithoutReports_reports_target_account_idToaccountsInput
-    >;
-  };
+export type accountsUpdateOneWithoutReports_reports_target_account_idToaccountsNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.accountsCreateWithoutReports_reports_target_account_idToaccountsInput,
+    Prisma.accountsUncheckedCreateWithoutReports_reports_target_account_idToaccountsInput
+  >;
+  connectOrCreate?: Prisma.accountsCreateOrConnectWithoutReports_reports_target_account_idToaccountsInput;
+  upsert?: Prisma.accountsUpsertWithoutReports_reports_target_account_idToaccountsInput;
+  disconnect?: Prisma.accountsWhereInput | boolean;
+  delete?: Prisma.accountsWhereInput | boolean;
+  connect?: Prisma.accountsWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.accountsUpdateToOneWithWhereWithoutReports_reports_target_account_idToaccountsInput,
+      Prisma.accountsUpdateWithoutReports_reports_target_account_idToaccountsInput
+    >,
+    Prisma.accountsUncheckedUpdateWithoutReports_reports_target_account_idToaccountsInput
+  >;
+};
 
-export type accountsUpdateOneRequiredWithoutReports_reports_account_idToaccountsNestedInput = {
+export type accountsUpdateOneWithoutReports_reports_account_idToaccountsNestedInput = {
   create?: Prisma.XOR<
     Prisma.accountsCreateWithoutReports_reports_account_idToaccountsInput,
     Prisma.accountsUncheckedCreateWithoutReports_reports_account_idToaccountsInput
   >;
   connectOrCreate?: Prisma.accountsCreateOrConnectWithoutReports_reports_account_idToaccountsInput;
   upsert?: Prisma.accountsUpsertWithoutReports_reports_account_idToaccountsInput;
+  disconnect?: Prisma.accountsWhereInput | boolean;
+  delete?: Prisma.accountsWhereInput | boolean;
   connect?: Prisma.accountsWhereUniqueInput;
   update?: Prisma.XOR<
     Prisma.XOR<

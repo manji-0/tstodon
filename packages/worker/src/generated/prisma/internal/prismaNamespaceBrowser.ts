@@ -779,7 +779,9 @@ export type Email_domain_blocksScalarFieldEnum =
 export const ReportsScalarFieldEnum = {
   id: "id",
   account_id: "account_id",
+  reporter_actor_uri: "reporter_actor_uri",
   target_account_id: "target_account_id",
+  target_actor_uri: "target_actor_uri",
   status_ids_json: "status_ids_json",
   comment: "comment",
   category: "category",
@@ -787,6 +789,8 @@ export const ReportsScalarFieldEnum = {
   rule_ids_json: "rule_ids_json",
   action_taken_at: "action_taken_at",
   action_taken_by_account_id: "action_taken_by_account_id",
+  forwarded: "forwarded",
+  flag_uri: "flag_uri",
   created_at: "created_at",
   updated_at: "updated_at",
 } as const;

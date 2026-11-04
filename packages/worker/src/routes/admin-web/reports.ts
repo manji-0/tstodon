@@ -16,12 +16,14 @@ import type { RepositoryError } from "../../d1";
 import {
   findReportById,
   listReports,
+  ReportParty,
   type ReportRow,
   setReportAssigned,
   setReportResolved,
 } from "../../report-store";
 import { instanceRules } from "../../runtime-config";
-import { findStatusesByIds } from "../../status-store";
+import { reportedStatuses } from "../../report-documents";
+import { summaryText } from "../../remote-actor-fetch";
 import { instanceName } from "../account-settings";
 import {
   accountLabeller,
@@ -47,8 +49,8 @@ const summaryOf = async (
   report: ReportRow,
 ): Promise<ReportSummary> => ({
   id: report.id,
-  reporter: await label(report.accountId),
-  target: await label(report.targetAccountId),
+  reporter: await label(ReportParty.accountId(report.reporter)),
+  target: await label(ReportParty.accountId(report.target)),
   category: report.category,
   comment: report.comment,
   statusCount: report.statusIds.length,
@@ -112,25 +114,32 @@ export const getAdminReport = async (c: Context<{ Bindings: Env }, "/admin/repor
   const label = accountLabeller(c.env.DB);
   const [summary, statuses, target, actionTakenBy] = await Promise.all([
     summaryOf(label, row),
-    findStatusesByIds(c.env.DB, row.statusIds),
-    findAdminAccount(c.env.DB, row.targetAccountId),
+    reportedStatuses(c.env.DB, row.statusIds),
+    row.target.kind === "Local" ? findAdminAccount(c.env.DB, row.target.accountId) : undefined,
     row.actionTakenByAccountId === null ? undefined : label(row.actionTakenByAccountId),
   ]);
   const details: ReportDetails = {
     ...summary,
     statuses: statuses.isOk()
-      ? [...statuses.value.values()].map((status) => ({
-          id: status.id,
-          text: statusText(status),
-          createdAt: status.createdAt,
-        }))
+      ? [
+          ...statuses.value.local.map((status) => ({
+            id: status.id,
+            text: statusText(status),
+            createdAt: status.createdAt,
+          })),
+          ...statuses.value.remote.map(({ status }) => ({
+            id: status.id,
+            text: summaryText(status.contentHtml),
+            createdAt: status.publishedAt,
+          })),
+        ]
       : [],
     rules: instanceRules(c.env)
       .filter((rule) => row.ruleIds.includes(rule.id))
       .map((rule) => rule.text),
     actionTakenBy,
     actionTakenAt: row.actionTakenAt,
-    targetState: target.isOk() ? target.value : undefined,
+    targetState: target?.isOk() ? target.value : undefined,
     assignedToViewer: row.assignedAccountId === admin.account.id,
   };
   return c.html(reportPage(instanceName(c.env), details, noticeOf(c)));
@@ -216,11 +225,18 @@ export const postAdminReportAction = async (
     return notFound(c, "report");
   }
   const back = `/admin/reports/${id}`;
-  if (report.value.targetAccountId === admin.account.id) {
+  const reported = report.value.target;
+  if (reported.kind === "Remote") {
+    return c.html(
+      errorPage(instanceName(c.env), "The reported account is not on this server."),
+      422,
+    );
+  }
+  if (reported.accountId === admin.account.id) {
     return c.html(errorPage(instanceName(c.env), "You cannot moderate your own account."), 422);
   }
   if (type.value === "suspend" && fields.confirmed !== "1") {
-    const target = await accountLabeller(c.env.DB)(report.value.targetAccountId);
+    const target = await accountLabeller(c.env.DB)(reported.accountId);
     return c.html(
       confirmPage(instanceName(c.env), {
         title: `Suspend ${target.label}?`,
@@ -233,7 +249,7 @@ export const postAdminReportAction = async (
     );
   }
   const taken = await takeAccountAction(c.env.DB, {
-    accountId: report.value.targetAccountId,
+    accountId: reported.accountId,
     type: type.value,
     reportId: report.value.id,
     moderatorId: admin.account.id,
