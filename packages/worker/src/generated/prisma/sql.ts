@@ -72,7 +72,13 @@ export * from "./sql/deleteAnnouncementById";
 
 export * from "./sql/deleteAnnouncementReaction";
 
+export * from "./sql/deleteAuthPasskeyKeepingOne";
+
 export * from "./sql/deleteAuthSession";
+
+export * from "./sql/deleteAuthorizationCodesOfAccount";
+
+export * from "./sql/deleteAuthorizedApplicationTokens";
 
 export * from "./sql/deleteBlock";
 
@@ -113,6 +119,8 @@ export * from "./sql/deleteNotificationRequests";
 export * from "./sql/deleteOauthAccessToken";
 
 export * from "./sql/deleteOutboundFollow";
+
+export * from "./sql/deleteOwnAuthSession";
 
 export * from "./sql/deletePushSubscription";
 
@@ -424,6 +432,12 @@ export * from "./sql/listAnnouncementDismissals";
 
 export * from "./sql/listAnnouncementReactions";
 
+export * from "./sql/listAuthPasskeys";
+
+export * from "./sql/listAuthSessions";
+
+export * from "./sql/listAuthorizedApplicationTokens";
+
 export * from "./sql/listCustomEmojiRows";
 
 export * from "./sql/listDirectoryAccountsByActive";
@@ -569,6 +583,8 @@ export * from "./sql/releasePollUpdate";
 export * from "./sql/releaseRemoteOutboxBackfill";
 
 export * from "./sql/releaseStatusIdempotency";
+
+export * from "./sql/renameAuthPasskey";
 
 export * from "./sql/replaceCustomEmojiImage";
 

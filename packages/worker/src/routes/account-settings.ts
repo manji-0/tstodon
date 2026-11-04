@@ -17,6 +17,7 @@ import { readOptionalBody } from "../http";
 import { parseInstanceIdentity } from "../runtime-config";
 import { aliasesPage, migrationPage, type PageMessage } from "../settings-pages";
 import { signInRedirect } from "../page-redirect";
+import { signInIsStale } from "../recent-sign-in";
 
 export const instanceName = (env: Env): string => env.INSTANCE_NAME || "tstodon";
 
@@ -150,15 +151,6 @@ export const postSettingsAliasesRemove = async (
   return renderAliases(c, signedIn.account, { kind: "notice", text: "Alias removed." });
 };
 
-/**
- * How recent a sign-in must be to move the account. Mastodon asks for the
- * password again; a passkey sign-in on the page starts a fresh session.
- */
-export const MOVE_REAUTH_WINDOW_MS = 10 * 60 * 1000;
-
-const reauthRequired = (signedInAt: Date, now: number = Date.now()): boolean =>
-  now - signedInAt.getTime() > MOVE_REAUTH_WINDOW_MS;
-
 const moveErrorMessage = (error: MoveAccountError): string => {
   switch (error.kind) {
     case "InvalidHandle":
@@ -199,7 +191,7 @@ const renderMigration = async (
       {
         movedTo: move.value?.acct,
         nextMoveAt: next !== undefined && next.getTime() > Date.now() ? next : undefined,
-        reauthRequired: reauthRequired(signedInAt),
+        reauthRequired: signInIsStale(signedInAt),
       },
       message,
     ),
@@ -228,7 +220,7 @@ export const postSettingsMigration = async (
     return signedIn.response;
   }
   const { account, signedInAt } = signedIn;
-  if (reauthRequired(signedInAt)) {
+  if (signInIsStale(signedInAt)) {
     return renderMigration(
       c,
       account,
