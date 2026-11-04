@@ -1,10 +1,10 @@
-import { parseRows, type RepositoryError, runD1 } from "./d1";
+import { parseRows, type RepositoryError, runD1, toRepositoryError } from "./d1";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { queryTyped } from "./typed-sql";
 import { newEntityId } from "./ids";
 import { parseJsonColumn } from "./json-column";
 import { nowIso } from "./clock";
-import type { Result } from "neverthrow";
+import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { RemoteAccountId } from "./remote-account-id";
@@ -111,25 +111,22 @@ const REPORT_SELECT = `id, account_id, reporter_actor_uri, target_account_id, ta
        status_ids_json, comment, category, rule_ids_json, assigned_account_id, action_taken_at,
        action_taken_by_account_id, forwarded, created_at, updated_at`;
 
-/** A report filed, or the one already filed for the same `Flag`. */
-export type ReportFiling =
-  | Readonly<{ kind: "Filed"; id: string }>
-  | Readonly<{ kind: "AlreadyFiled" }>;
+export type ReportInput = Readonly<{
+  reporter: ReportParty;
+  target: ReportParty;
+  statusIds: ReadonlyArray<string>;
+  comment: string;
+  category?: string;
+  ruleIds?: ReadonlyArray<string>;
+  forwarded?: boolean;
+}>;
 
-export const insertReport = async (
+/** The new report's id; `undefined` when a report for the same `Flag` exists. */
+const insertReportRow = (
   db: D1Database,
-  input: Readonly<{
-    reporter: ReportParty;
-    target: ReportParty;
-    statusIds: ReadonlyArray<string>;
-    comment: string;
-    category?: string;
-    ruleIds?: ReadonlyArray<string>;
-    forwarded?: boolean;
-    /** The id of the `Flag` a remote report arrived as. */
-    flagUri?: string;
-  }>,
-): Promise<Result<ReportFiling, RepositoryError>> =>
+  input: ReportInput,
+  flagUri: string | null,
+): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
     const id = newEntityId();
     const rows = await queryTyped<{ id: string }>(
@@ -143,12 +140,37 @@ export const insertReport = async (
         input.category ?? "other",
         JSON.stringify(input.ruleIds ?? []),
         input.forwarded === true ? 1 : 0,
-        input.flagUri ?? null,
+        flagUri,
         nowIso(),
       ),
     );
-    return rows.length > 0 ? { kind: "Filed", id } : { kind: "AlreadyFiled" };
+    return rows.length > 0 ? id : undefined;
   });
+
+export const insertReport = async (
+  db: D1Database,
+  input: ReportInput,
+): Promise<Result<{ id: string }, RepositoryError>> => {
+  const inserted = await insertReportRow(db, input, null);
+  return inserted.andThen((id) =>
+    id === undefined ? err(toRepositoryError("report was not inserted")) : ok({ id }),
+  );
+};
+
+/** A report a `Flag` filed, or the one an earlier delivery of it already filed. */
+export type FlagReportFiling =
+  | Readonly<{ kind: "Filed"; id: string }>
+  | Readonly<{ kind: "AlreadyFiled" }>;
+
+export const insertFlagReport = async (
+  db: D1Database,
+  input: ReportInput & Readonly<{ flagUri: string }>,
+): Promise<Result<FlagReportFiling, RepositoryError>> => {
+  const inserted = await insertReportRow(db, input, input.flagUri);
+  return inserted.map((id) =>
+    id === undefined ? { kind: "AlreadyFiled" } : { kind: "Filed", id },
+  );
+};
 
 /** Mastodon's admin report filters, paged by report id. */
 export type AdminReportFilters = Readonly<{

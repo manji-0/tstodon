@@ -105,9 +105,6 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
   if (report.isErr()) {
     return jsonRepositoryError(c, report.error.message);
   }
-  if (report.value.kind === "AlreadyFiled") {
-    return jsonRepositoryError(c, "report without a Flag was already filed");
-  }
   if (forwardTo !== undefined) {
     const forwarded = await forwardReport(c.env, identity.value, {
       id: report.value.id,

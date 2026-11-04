@@ -7,6 +7,9 @@ import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { OutboxJob } from "@tstodon/domain";
 import { attemptInboxDelivery } from "./delivery";
 import { RemoteAccountId } from "./remote-account-id";
+import { findRemoteActorByUri } from "./remote-actor-store";
+import { receiveRemoteFlag } from "./remote-flag";
+import { parseInstanceIdentity } from "./runtime-config";
 
 const json = async (path: string, init?: RequestInit) => {
   const response = await SELF.fetch(`https://example.com${path}`, init);
@@ -176,6 +179,28 @@ describe("reports from other servers", () => {
         report: { target_account: { id: target.id } },
       },
     ]);
+  });
+
+  it("files one report for a Flag handled twice past the inbox's own deduplication", async () => {
+    const target = await localPoster("flag-twice@example.com", "reported twice");
+    const flagger = await remoteActor("flag-twice", "flagging-twice.example");
+    const sender = await findRemoteActorByUri(env.DB, flagger.actorUri);
+    const identity = parseInstanceIdentity(env);
+    if (sender.isErr() || !sender.value || identity.isErr()) {
+      throw new Error("fixture missing");
+    }
+    const flag = {
+      id: "https://flagging-twice.example/flags/1",
+      type: "Flag",
+      actor: flagger.actorUri,
+      object: [target.actorUri],
+    };
+    for (const _ of [1, 2]) {
+      expect((await receiveRemoteFlag(env, identity.value, sender.value, flag)).isOk()).toBe(true);
+    }
+    expect(
+      await adminReports(`account_id=${RemoteAccountId.encode(flagger.actorUri)}`),
+    ).toHaveLength(1);
   });
 
   it("reports the author when a Flag names only posts, and caps the comment", async () => {

@@ -8,7 +8,7 @@ import { findDomainBlockByDomain } from "./admin-domain-block-store";
 import { notifyAdmins } from "./admin-notify";
 import type { RepositoryError } from "./d1";
 import { RemoteAccountId } from "./remote-account-id";
-import { insertReport } from "./report-store";
+import { insertFlagReport } from "./report-store";
 import { findStatusesByIds } from "./status-store";
 
 /** Mastodon keeps this much of a remote report's comment. */
@@ -101,7 +101,7 @@ export const receiveRemoteFlag = async (
     return ok(undefined);
   }
   const targetId = target.id;
-  const report = await insertReport(env.DB, {
+  const report = await insertFlagReport(env.DB, {
     reporter: { kind: "Remote", actorUri: sender.actorUri },
     target: { kind: "Local", accountId: targetId },
     statusIds: [...new Set(statusIds)].filter(
