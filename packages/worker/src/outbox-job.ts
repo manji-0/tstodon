@@ -21,6 +21,7 @@ import { processFanOutPublicJob } from "./public-fan-out";
 import { processCsvImportJob } from "./csv-import-apply";
 import { processMoveFollowsJob } from "./remote-move";
 import { processBackfillRemoteOutboxJob } from "./remote-outbox-backfill";
+import { processBackfillRemoteThreadJob } from "./remote-thread-backfill";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { cleanUpAccountStatuses, queueStatusesCleanup } from "./statuses-cleanup";
@@ -196,6 +197,8 @@ export const processOutboxJob = async (
       return processFanOutPublicJob(env, job);
     case "BackfillRemoteOutbox":
       return processBackfillRemoteOutboxJob(env, job);
+    case "BackfillRemoteThread":
+      return processBackfillRemoteThreadJob(env, job);
     case "ExpandFollowers": {
       const startedAt = Date.now();
       const activity = await findOutboundActivity(env.DB, job.activityId);

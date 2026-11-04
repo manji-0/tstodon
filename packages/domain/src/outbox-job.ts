@@ -90,10 +90,27 @@ const ProcessCsvImportSchema = z.object({
   ]),
 });
 
-/** Store the recent public notes and boosts in a remote actor's outbox, and its pinned notes. */
+/**
+ * Store the recent public notes and boosts in a remote actor's outbox, and its
+ * pinned notes. `from` says which page: the collection's first (`Start`, which
+ * also reads the pins), or a later one an earlier job found by following
+ * `next`, `depth` pages in.
+ */
 const BackfillRemoteOutboxSchema = z.object({
   kind: z.literal("BackfillRemoteOutbox"),
   actorUri: z.url(),
+  from: z
+    .discriminatedUnion("kind", [
+      z.object({ kind: z.literal("Start") }),
+      z.object({ kind: z.literal("Page"), pageUri: z.url(), depth: z.number().int().min(1) }),
+    ])
+    .default({ kind: "Start" }),
+});
+
+/** Store the notes above a cached remote status in its thread, and the replies it lists. */
+const BackfillRemoteThreadSchema = z.object({
+  kind: z.literal("BackfillRemoteThread"),
+  statusId: StatusId.schema,
 });
 
 /** Whose followers have a home timeline entry: a local account's or a remote actor's. */
@@ -159,6 +176,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   FanOutRemovedStatusesSchema,
   FanOutPublicSchema,
   BackfillRemoteOutboxSchema,
+  BackfillRemoteThreadSchema,
   ProcessCsvImportSchema,
 ]);
 

@@ -20,6 +20,7 @@ import {
   releaseRemoteOutboxBackfill,
   upsertRemoteActor,
 } from "./remote-actor-store";
+import { type CollectionPage, fetchCollectionPage, firstCollectionPage } from "./remote-collection";
 import { persistAnnouncedObject, persistRemoteObject } from "./remote-status-persist";
 import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 
@@ -27,11 +28,11 @@ import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 export const OUTBOX_BACKFILL_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Collection items processed per backfill: the first page's newest, enough
- * to fill a profile's first screen. Each referenced item can cost a fetch,
- * so this bounds the job's subrequests.
+ * Outbox pages read per backfill, the first included. Each later page is its
+ * own queued job, so a deep outbox never grows one invocation, and a profile
+ * gets at most this many pages of history.
  */
-export const OUTBOX_BACKFILL_ITEM_LIMIT = 20;
+export const OUTBOX_BACKFILL_PAGE_LIMIT = 5;
 
 type BackfillRemoteOutbox = Extract<OutboxJobValue, { kind: "BackfillRemoteOutbox" }>;
 
@@ -54,51 +55,6 @@ export const requestRemoteOutboxBackfill = async (env: Env, actorUri: string): P
     console.error(JSON.stringify({ kind: "OutboxBackfillNotQueued", actorUri }));
     await releaseRemoteOutboxBackfill(env.DB, actorUri, claimed.value);
   }
-};
-
-const CollectionPageSchema = z
-  .object({
-    orderedItems: z.array(z.unknown()).optional(),
-    items: z.array(z.unknown()).optional(),
-  })
-  .passthrough();
-
-const CollectionSchema = CollectionPageSchema.extend({
-  first: z.union([z.string().min(1), CollectionPageSchema]).optional(),
-});
-
-const parseCollection = schemaResult(CollectionSchema);
-const parseCollectionPage = schemaResult(CollectionPageSchema);
-
-const pageItems = (page: z.infer<typeof CollectionPageSchema>): ReadonlyArray<unknown> =>
-  page.orderedItems ?? page.items ?? [];
-
-/**
- * The first items of a collection: its own, or its `first` page's, which may
- * be embedded or a link. Only one page is read. Undefined when the collection
- * could not be read, as opposed to an empty one.
- */
-const collectionItems = async (
-  identity: InstanceIdentity,
-  collectionUri: string,
-  options: FederatedFetchOptions,
-): Promise<ReadonlyArray<unknown> | undefined> => {
-  const raw = await fetchActivityJson(identity, collectionUri, options);
-  const collection = raw.isOk() ? parseCollection(raw.value) : undefined;
-  if (!collection || collection.isErr()) {
-    return undefined;
-  }
-  const own = pageItems(collection.value);
-  const first = collection.value.first;
-  if (own.length > 0 || first === undefined) {
-    return own.slice(0, OUTBOX_BACKFILL_ITEM_LIMIT);
-  }
-  if (typeof first !== "string") {
-    return pageItems(first).slice(0, OUTBOX_BACKFILL_ITEM_LIMIT);
-  }
-  const page = await fetchActivityJson(identity, first, options);
-  const parsed = page.isOk() ? parseCollectionPage(page.value) : undefined;
-  return parsed?.isOk() ? pageItems(parsed.value).slice(0, OUTBOX_BACKFILL_ITEM_LIMIT) : undefined;
 };
 
 const AudienceSchema = z.union([z.string(), z.array(z.string())]).optional();
@@ -228,20 +184,69 @@ export const processBackfillRemoteOutboxJob = async (
     allowHosts: await federationAllowHosts(env),
     blockedHosts: suspended,
   };
+  const { from } = job;
+  // A later page is a link taken from the remote's document; it must stay on
+  // the actor's host, like the items it holds.
+  if (from.kind === "Page") {
+    const page =
+      urlHost(from.pageUri) === urlHost(cached.value.actorUri)
+        ? await fetchCollectionPage(identity.value, from.pageUri, options)
+        : undefined;
+    if (page) {
+      await backfillPage(env, identity.value, cached.value, page, from.depth, options);
+    }
+    return "ok";
+  }
   const actor = await withCollections(env, identity.value, cached.value, options);
   const outbox = actor.outboxUri
-    ? await collectionItems(identity.value, actor.outboxUri, options)
+    ? await firstCollectionPage(identity.value, actor.outboxUri, options)
     : undefined;
-  for (const item of outbox ?? []) {
-    await backfillOutboxItem(env, identity.value, actor, item, options);
+  if (outbox) {
+    await backfillPage(env, identity.value, actor, outbox, 0, options);
   }
   const featured = actor.featuredUri
-    ? await collectionItems(identity.value, actor.featuredUri, options)
+    ? await firstCollectionPage(identity.value, actor.featuredUri, options)
     : undefined;
   if (featured) {
-    await backfillPins(env, identity.value, actor, featured, options);
+    await backfillPins(env, identity.value, actor, featured.items, options);
   }
   return "ok";
+};
+
+/**
+ * Store one outbox page's items, then queue the page after it, until
+ * `OUTBOX_BACKFILL_PAGE_LIMIT` pages have been read. `depth` counts the pages
+ * before this one.
+ */
+const backfillPage = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+  page: CollectionPage,
+  depth: number,
+  options: FederatedFetchOptions,
+): Promise<void> => {
+  for (const item of page.items) {
+    await backfillOutboxItem(env, identity, actor, item, options);
+  }
+  if (page.next === undefined || depth + 1 >= OUTBOX_BACKFILL_PAGE_LIMIT) {
+    return;
+  }
+  const job = OutboxJob.parse({
+    kind: "BackfillRemoteOutbox",
+    actorUri: actor.actorUri,
+    from: { kind: "Page", pageUri: page.next, depth: depth + 1 },
+  });
+  if (job.isErr()) {
+    return;
+  }
+  try {
+    await env.OUTBOX_PROCESS_QUEUE.send(job.value);
+  } catch {
+    console.error(
+      JSON.stringify({ kind: "OutboxBackfillPageNotQueued", actorUri: actor.actorUri }),
+    );
+  }
 };
 
 const parseObjectReference = schemaResult(ObjectReferenceSchema);
@@ -280,4 +285,4 @@ const backfillPins = async (
 };
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
-warmSchemas([CollectionSchema, CollectionPageSchema, OutboxItemSchema]);
+warmSchemas([OutboxItemSchema]);

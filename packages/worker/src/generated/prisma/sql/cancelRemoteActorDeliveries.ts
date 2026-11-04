@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param updatedAt
  */
 export const cancelRemoteActorDeliveries = $runtime.makeTypedQueryFactory(
-  "UPDATE outbox_deliveries\nSET kind = 'Failed', reason_kind = 'Permanent', attempt_count = 0, http_status = 410,\nupdated_at = $2\nWHERE kind = 'Queued'\nAND inbox_url = (SELECT inbox_uri FROM remote_actors WHERE actor_uri = $1)",
+  "UPDATE outbox_deliveries\nSET kind = 'Failed', reason_kind = 'Permanent', attempt_count = 0, http_status = 410,\nupdated_at = $2\nWHERE kind = 'Queued'\nAND inbox_url IN (\nSELECT COALESCE(shared_inbox_uri, inbox_uri) FROM remote_actors WHERE actor_uri = $1\nUNION\nSELECT inbox_uri FROM remote_actors WHERE actor_uri = $1\n)\nAND NOT EXISTS (\nSELECT 1 FROM remote_actors other\nWHERE other.actor_uri <> $1\nAND (other.inbox_uri = outbox_deliveries.inbox_url\nOR other.shared_inbox_uri = outbox_deliveries.inbox_url)\n)",
 ) as (
   actorUri: string,
   updatedAt: string,

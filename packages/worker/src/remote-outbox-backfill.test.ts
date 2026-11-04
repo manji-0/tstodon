@@ -7,7 +7,8 @@ import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
-import { OUTBOX_BACKFILL_ITEM_LIMIT, requestRemoteOutboxBackfill } from "./remote-outbox-backfill";
+import { COLLECTION_PAGE_ITEM_LIMIT } from "./remote-collection";
+import { OUTBOX_BACKFILL_PAGE_LIMIT, requestRemoteOutboxBackfill } from "./remote-outbox-backfill";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -244,7 +245,7 @@ describe("requesting a remote outbox backfill", () => {
       requestRemoteOutboxBackfill(recording.env, remote.actorUri),
     ]);
     expect(recording.sent.map((entry) => entry.message)).toEqual([
-      { kind: "BackfillRemoteOutbox", actorUri: remote.actorUri },
+      { kind: "BackfillRemoteOutbox", actorUri: remote.actorUri, from: { kind: "Start" } },
     ]);
 
     await requestRemoteOutboxBackfill(recording.env, remote.actorUri);
@@ -359,9 +360,9 @@ describe("backfilling a remote outbox", () => {
     expect(await storedCount(other)).toBe(0);
   });
 
-  it(`processes at most ${OUTBOX_BACKFILL_ITEM_LIMIT} items`, async () => {
+  it(`processes at most ${COLLECTION_PAGE_ITEM_LIMIT} items`, async () => {
     const remote = await remoteActor("backfill-cap", "backfill.example");
-    const items = Array.from({ length: OUTBOX_BACKFILL_ITEM_LIMIT + 5 }, (_, index) =>
+    const items = Array.from({ length: COLLECTION_PAGE_ITEM_LIMIT + 5 }, (_, index) =>
       createItem(
         remote,
         `cap-${index}`,
@@ -371,10 +372,84 @@ describe("backfilling a remote outbox", () => {
 
     await serving(outboxDocuments(remote, items), () => runBackfill(remote));
 
-    expect(await storedCount(remote)).toBe(OUTBOX_BACKFILL_ITEM_LIMIT);
+    expect(await storedCount(remote)).toBe(COLLECTION_PAGE_ITEM_LIMIT);
     const stored = await profileUris(remote, `?limit=40`);
-    expect(stored).toHaveLength(OUTBOX_BACKFILL_ITEM_LIMIT);
-    expect(stored).not.toContain(noteUri(remote, `cap-${OUTBOX_BACKFILL_ITEM_LIMIT}`));
+    expect(stored).toHaveLength(COLLECTION_PAGE_ITEM_LIMIT);
+    expect(stored).not.toContain(noteUri(remote, `cap-${COLLECTION_PAGE_ITEM_LIMIT}`));
+  });
+
+  it(`follows next links as queued page jobs, up to ${OUTBOX_BACKFILL_PAGE_LIMIT} pages`, async () => {
+    const remote = await remoteActor("backfill-deep", "backfill.example");
+    const pages = OUTBOX_BACKFILL_PAGE_LIMIT + 2;
+    const pageUri = (page: number): string =>
+      page === 0
+        ? `${outboxUri(remote)}?page=true`
+        : `${outboxUri(remote)}?page=true&max_id=${page}`;
+    const documents = new Map(outboxDocuments(remote, []));
+    for (let page = 0; page < pages; page += 1) {
+      documents.set(pageUri(page), {
+        id: pageUri(page),
+        type: "OrderedCollectionPage",
+        orderedItems: [
+          createItem(
+            remote,
+            `deep-${page}`,
+            new Date(Date.UTC(2024, 0, 31) - page * 60_000).toISOString(),
+          ),
+        ],
+        ...(page + 1 < pages ? { next: pageUri(page + 1) } : {}),
+      });
+    }
+    const recording = recordingEnv();
+
+    await serving(documents, async () => {
+      await runBackfill(remote, recording.env);
+      expect(recording.sent).toHaveLength(1);
+      while (recording.sent.length > 0) {
+        const queued = recording.sent.shift();
+        const job = OutboxJob.parse(queued?.message);
+        if (job.isErr()) {
+          throw new Error("queued job rejected");
+        }
+        expect(await processOutboxJob(recording.env, job.value)).toBe("ok");
+      }
+    });
+
+    const stored = await profileUris(remote, "?limit=40");
+    expect(stored).toEqual(
+      Array.from({ length: OUTBOX_BACKFILL_PAGE_LIMIT }, (_, page) =>
+        noteUri(remote, `deep-${page}`),
+      ),
+    );
+  });
+
+  it("reads a later page only from the actor's host", async () => {
+    const remote = await remoteActor("backfill-page-host", "backfill.example");
+    const elsewhere = "https://elsewhere.example/outbox?page=2";
+    const documents = new Map<string, unknown>([
+      [
+        elsewhere,
+        {
+          id: elsewhere,
+          type: "OrderedCollectionPage",
+          orderedItems: [createItem(remote, "page-host", "2024-03-03T00:00:00.000Z")],
+        },
+      ],
+    ]);
+    const job = OutboxJob.parse({
+      kind: "BackfillRemoteOutbox",
+      actorUri: remote.actorUri,
+      from: { kind: "Page", pageUri: elsewhere, depth: 1 },
+    });
+    if (job.isErr()) {
+      throw new Error("backfill job rejected");
+    }
+
+    await serving(documents, async () => {
+      expect(await processOutboxJob(env, job.value)).toBe("ok");
+    });
+
+    expect(await storedCount(remote)).toBe(0);
   });
 
   it("puts old posts at their publish time on a follower's home, telling no one", async () => {

@@ -15,6 +15,7 @@ import { parseInstanceIdentity } from "../../runtime-config";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "../../d1";
 import { findRemoteStatusById, findRemoteStatusesByIds } from "../../remote-status-store";
+import { requestRemoteThreadBackfill } from "../../remote-thread-backfill";
 import { ContextLimits, findStatusById, findStatusesByIds } from "../../status-store";
 import { canViewRemoteBoost, canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
 import { findRemoteBoostById } from "../../remote-boost-store";
@@ -183,6 +184,9 @@ export const getV1StatusesByIdContext = async (
   }
   if (!start) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  if (start.kind === "Remote") {
+    await requestRemoteThreadBackfill(c.env, start.status);
   }
   const limits = viewerId ? ContextLimits.authenticated : ContextLimits.anonymous;
   const ancestors = await listThreadAncestors(c.env.DB, identity.value, start, limits.depth);

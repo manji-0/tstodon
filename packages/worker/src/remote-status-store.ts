@@ -20,6 +20,8 @@ import { toRepositoryError } from "./d1";
 import { visibilitySql } from "./sql-enums";
 import { htmlHashtags } from "./html";
 import {
+  claimRemoteStatusThreadBackfill as claimRemoteStatusThreadBackfillSql,
+  releaseRemoteStatusThreadBackfill as releaseRemoteStatusThreadBackfillSql,
   deleteRemoteStatusByObjectUri as deleteRemoteStatusByObjectUriSql,
   findRemoteStatusById as findRemoteStatusByIdSql,
   findRemoteStatusByObjectUri as findRemoteStatusByObjectUriSql,
@@ -131,6 +133,35 @@ export const findRemoteStatusById = async (
       return rows[0];
     }),
   );
+
+/**
+ * Claim fetching the status's thread unless one was claimed within `ttlMs`.
+ * Resolves to the claim's timestamp, or undefined when another holds it.
+ */
+export const claimRemoteThreadBackfill = async (
+  db: D1Database,
+  statusId: string,
+  ttlMs: number,
+): Promise<Result<string | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const now = Date.now();
+    const claimedAt = new Date(now).toISOString();
+    const rows = await queryTyped<{ id: string }>(
+      db,
+      claimRemoteStatusThreadBackfillSql(claimedAt, statusId, new Date(now - ttlMs).toISOString()),
+    );
+    return rows.length > 0 ? claimedAt : undefined;
+  });
+
+/** Give up a claim whose job could not be queued, so the next view tries again. */
+export const releaseRemoteThreadBackfill = async (
+  db: D1Database,
+  statusId: string,
+  claimedAt: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, releaseRemoteStatusThreadBackfillSql(statusId, claimedAt));
+  });
 
 /** Stored remote statuses keyed by id; unknown or unreadable rows are left out. */
 export const findRemoteStatusesByIds = async (
