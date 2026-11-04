@@ -1,24 +1,21 @@
 import type { Context } from "hono";
+import type { Result } from "neverthrow";
 import { z } from "zod";
-import type { InstanceIdentity, LocalAccount } from "@tstodon/domain";
-import {
-  type AccountModeration,
-  getAccountModeration,
-  listAccountModerations,
-  setAccountModeration,
-} from "../../account-moderation-store";
-import {
-  approveAccount,
-  disabledAccountIds,
-  isAccountSensitized,
-  mediaObjectKeysForAccount,
-  pendingAccountIds,
-  sensitizedAccountIds,
-  setAccountDisabled,
-  setAccountSensitized,
-} from "../../account-flag-store";
-import { deleteAccount, findAccountById } from "../../account-store";
+import { schemaResult } from "@tstodon/core";
+import type { InstanceIdentity } from "@tstodon/domain";
+import { setAccountModeration } from "../../account-moderation-store";
+import { approveAccount, setAccountDisabled, setAccountSensitized } from "../../account-flag-store";
+import { findAccountById } from "../../account-store";
 import { listAdminAccounts } from "../../account-admin-store";
+import {
+  AccountActionTypeSchema,
+  type AdminAccountState,
+  adminAccountStates,
+  findAdminAccount,
+  purgeAccount,
+  takeAccountAction,
+} from "../../admin-actions";
+import type { RepositoryError } from "../../d1";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -30,7 +27,6 @@ import {
 } from "../../http";
 import { mastodonAccountDocument } from "../../account-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
-import { findReportById, listOpenReportIdsForTarget, setReportResolved } from "../../report-store";
 import { isTruthy } from "../../form-values";
 
 const adminAccountFilters = (
@@ -71,27 +67,36 @@ const adminAccountFilters = (
 const adminAccountDocument = async (
   env: Env,
   identity: InstanceIdentity,
-  account: LocalAccount,
-  moderation: AccountModeration | null,
-  sensitized: boolean,
-  pending: boolean,
-  disabled: boolean,
+  state: AdminAccountState,
 ): Promise<Record<string, unknown>> => ({
-  ...(await mastodonAccountDocument(env, identity, account)),
-  email: account.accessEmail.unwrap(),
+  ...(await mastodonAccountDocument(env, identity, state.account)),
+  email: state.account.accessEmail.unwrap(),
   ip: null,
   role: { id: "-1", name: "user", highlighted: false },
-  approved: !pending,
+  approved: !state.pending,
   // `disable` blocks the login; it is separate from suspension.
-  disabled,
-  silenced: moderation === "Silenced",
-  suspended: moderation === "Suspended",
-  limited: moderation !== null,
-  sensitized,
+  disabled: state.disabled,
+  silenced: state.moderation === "Silenced",
+  suspended: state.moderation === "Suspended",
+  limited: state.moderation !== null,
+  sensitized: state.sensitized,
   invited_by_account_id: null,
   created_by_application_id: null,
   invite_request: null,
 });
+
+/** An `Admin::Account` for an id, with its moderation and flag state. */
+export const adminAccountFor = async (
+  env: Env,
+  identity: InstanceIdentity,
+  accountId: string,
+): Promise<Record<string, unknown> | null> => {
+  const state = await findAdminAccount(env.DB, accountId);
+  return state.isOk() && state.value ? adminAccountDocument(env, identity, state.value) : null;
+};
+
+const notFound = (c: Context<{ Bindings: Env }>) =>
+  c.json({ error: "Record not found", kind: "NotFound" }, 404);
 
 export const getV1AdminAccountsById = async (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id">,
@@ -105,10 +110,7 @@ export const getV1AdminAccountsById = async (
     return jsonAuthError(c, admin.error);
   }
   const document = await adminAccountFor(c.env, identity.value, c.req.param("id") ?? "");
-  if (!document) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  return c.json(document);
+  return document ? c.json(document) : notFound(c);
 };
 
 export const getV1AdminAccounts = async (
@@ -133,54 +135,21 @@ export const getV1AdminAccounts = async (
   if (accounts.isErr()) {
     return jsonRepositoryError(c, accounts.error.message);
   }
-  const moderations = await listAccountModerations(
-    c.env.DB,
-    accounts.value.map((account) => account.id),
-  );
-  if (moderations.isErr()) {
-    return jsonRepositoryError(c, moderations.error.message);
-  }
-  const sensitized = await sensitizedAccountIds(
-    c.env.DB,
-    accounts.value.map((account) => account.id),
-  );
-  if (sensitized.isErr()) {
-    return jsonRepositoryError(c, sensitized.error.message);
-  }
-  const pending = await pendingAccountIds(
-    c.env.DB,
-    accounts.value.map((account) => account.id),
-  );
-  if (pending.isErr()) {
-    return jsonRepositoryError(c, pending.error.message);
-  }
-  const disabled = await disabledAccountIds(
-    c.env.DB,
-    accounts.value.map((account) => account.id),
-  );
-  if (disabled.isErr()) {
-    return jsonRepositoryError(c, disabled.error.message);
+  const states = await adminAccountStates(c.env.DB, accounts.value);
+  if (states.isErr()) {
+    return jsonRepositoryError(c, states.error.message);
   }
   const documents: Record<string, unknown>[] = [];
-  for (const account of accounts.value) {
-    documents.push(
-      await adminAccountDocument(
-        c.env,
-        identity.value,
-        account,
-        moderations.value.get(account.id) ?? null,
-        sensitized.value.has(account.id),
-        pending.value.has(account.id),
-        disabled.value.has(account.id),
-      ),
-    );
+  for (const state of states.value) {
+    documents.push(await adminAccountDocument(c.env, identity.value, state));
   }
   return c.json(documents);
 };
 
-const setAccountModerationRoute = async (
+/** Change one local account, then answer its `Admin::Account` as it now is. */
+const changeAccount = async (
   c: Context<{ Bindings: Env }>,
-  moderation: AccountModeration | null,
+  change: (db: D1Database, accountId: string) => Promise<Result<void, RepositoryError>>,
 ): Promise<Response> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -195,46 +164,51 @@ const setAccountModerationRoute = async (
     return jsonRepositoryError(c, account.error.message);
   }
   if (!account.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    return notFound(c);
   }
-  const changed = await setAccountModeration(c.env.DB, account.value.id, moderation);
+  const changed = await change(c.env.DB, account.value.id);
   if (changed.isErr()) {
     return jsonRepositoryError(c, changed.error.message);
   }
-  const sensitized = await isAccountSensitized(c.env.DB, account.value.id);
-  const pending = await pendingAccountIds(c.env.DB, [account.value.id]);
-  const disabled = await disabledAccountIds(c.env.DB, [account.value.id]);
-  return c.json(
-    await adminAccountDocument(
-      c.env,
-      identity.value,
-      account.value,
-      moderation,
-      sensitized.isOk() ? sensitized.value : false,
-      pending.isOk() ? pending.value.has(account.value.id) : false,
-      disabled.isOk() ? disabled.value.has(account.value.id) : false,
-    ),
-  );
+  const document = await adminAccountFor(c.env, identity.value, account.value.id);
+  return document ? c.json(document) : notFound(c);
 };
 
 export const postV1AdminAccountsByIdSilence = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/silence">,
-) => setAccountModerationRoute(c, "Silenced");
+) => changeAccount(c, (db, id) => setAccountModeration(db, id, "Silenced"));
 export const postV1AdminAccountsByIdUnsilence = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/unsilence">,
-) => setAccountModerationRoute(c, null);
+) => changeAccount(c, (db, id) => setAccountModeration(db, id, null));
 export const postV1AdminAccountsByIdSuspend = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/suspend">,
-) => setAccountModerationRoute(c, "Suspended");
+) => changeAccount(c, (db, id) => setAccountModeration(db, id, "Suspended"));
 export const postV1AdminAccountsByIdUnsuspend = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/unsuspend">,
-) => setAccountModerationRoute(c, null);
+) => changeAccount(c, (db, id) => setAccountModeration(db, id, null));
 /**
  * `POST /:id/enable` restores a disabled login (Mastodon's `user.enable!`); it
- * does not lift a silence or a suspension — `/unsilence` and `/unsuspend` do.
+ * does not lift a silence or a suspension: `/unsilence` and `/unsuspend` do.
  */
-export const postV1AdminAccountsByIdEnable = async (
+export const postV1AdminAccountsByIdEnable = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/enable">,
+) => changeAccount(c, (db, id) => setAccountDisabled(db, id, false));
+export const postV1AdminAccountsByIdSensitize = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/sensitize">,
+) => changeAccount(c, (db, id) => setAccountSensitized(db, id, true));
+export const postV1AdminAccountsByIdUnsensitize = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/unsensitize">,
+) => changeAccount(c, (db, id) => setAccountSensitized(db, id, false));
+export const postV1AdminAccountsByIdApprove = (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/approve">,
+) => changeAccount(c, approveAccount);
+
+/**
+ * Reject the local account waiting for approval. Rejecting purges the
+ * account, so the document is built first and answered with `approved: false`.
+ */
+export const postV1AdminAccountsByIdReject = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/reject">,
 ) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -244,163 +218,19 @@ export const postV1AdminAccountsByIdEnable = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const account = await findAccountById(c.env.DB, c.req.param("id") ?? "");
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
+  const state = await findAdminAccount(c.env.DB, c.req.param("id") ?? "");
+  if (state.isErr()) {
+    return jsonRepositoryError(c, state.error.message);
   }
-  if (!account.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  if (!state.value) {
+    return notFound(c);
   }
-  const enabled = await setAccountDisabled(c.env.DB, account.value.id, false);
-  if (enabled.isErr()) {
-    return jsonRepositoryError(c, enabled.error.message);
-  }
-  const moderation = await getAccountModeration(c.env.DB, account.value.id);
-  const sensitized = await isAccountSensitized(c.env.DB, account.value.id);
-  const pending = await pendingAccountIds(c.env.DB, [account.value.id]);
-  return c.json(
-    await adminAccountDocument(
-      c.env,
-      identity.value,
-      account.value,
-      moderation.isOk() ? moderation.value : null,
-      sensitized.isOk() ? sensitized.value : false,
-      pending.isOk() ? pending.value.has(account.value.id) : false,
-      false,
-    ),
-  );
-};
-
-/** An `Admin::Account` for an id, with its moderation and flag state. */
-export const adminAccountFor = async (
-  env: Env,
-  identity: InstanceIdentity,
-  accountId: string,
-): Promise<Record<string, unknown> | null> => {
-  const account = await findAccountById(env.DB, accountId);
-  if (account.isErr() || !account.value) {
-    return null;
-  }
-  const moderation = await getAccountModeration(env.DB, accountId);
-  const sensitized = await isAccountSensitized(env.DB, accountId);
-  const pending = await pendingAccountIds(env.DB, [accountId]);
-  const disabled = await disabledAccountIds(env.DB, [accountId]);
-  return adminAccountDocument(
-    env,
-    identity,
-    account.value,
-    moderation.isOk() ? moderation.value : null,
-    sensitized.isOk() ? sensitized.value : false,
-    pending.isOk() && pending.value.has(accountId),
-    disabled.isOk() && disabled.value.has(accountId),
-  );
-};
-
-/** Mastodon's `Admin::Report` document. */
-
-const setSensitized = async (
-  c: Context<{ Bindings: Env }>,
-  sensitized: boolean,
-): Promise<Response> => {
-  const identity = parseInstanceIdentity(c.env);
-  if (identity.isErr()) {
-    return c.json(identity.error, 500);
-  }
-  const admin = await requireAdmin(c);
-  if (admin.isErr()) {
-    return jsonAuthError(c, admin.error);
-  }
-  const account = await findAccountById(c.env.DB, c.req.param("id") ?? "");
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
-  }
-  if (!account.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  const changed = await setAccountSensitized(c.env.DB, account.value.id, sensitized);
-  if (changed.isErr()) {
-    return jsonRepositoryError(c, changed.error.message);
-  }
-  const moderation = await getAccountModeration(c.env.DB, account.value.id);
-  const pending = await pendingAccountIds(c.env.DB, [account.value.id]);
-  const disabled = await disabledAccountIds(c.env.DB, [account.value.id]);
-  return c.json(
-    await adminAccountDocument(
-      c.env,
-      identity.value,
-      account.value,
-      moderation.isOk() ? moderation.value : null,
-      sensitized,
-      pending.isOk() ? pending.value.has(account.value.id) : false,
-      disabled.isOk() ? disabled.value.has(account.value.id) : false,
-    ),
-  );
-};
-
-/**
- * Approve or reject the local account waiting for approval. Rejecting purges
- * the account (Mastodon's `DeleteAccountService`), so the document is built
- * first and answered with `approved: false`.
- */
-const approveOrReject = async (c: Context<{ Bindings: Env }>, approve: boolean) => {
-  const identity = parseInstanceIdentity(c.env);
-  if (identity.isErr()) {
-    return c.json(identity.error, 500);
-  }
-  const admin = await requireAdmin(c);
-  if (admin.isErr()) {
-    return jsonAuthError(c, admin.error);
-  }
-  const id = c.req.param("id") ?? "";
-  const account = await findAccountById(c.env.DB, id);
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
-  }
-  if (!account.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  const moderation = await getAccountModeration(c.env.DB, id);
-  const sensitized = await isAccountSensitized(c.env.DB, id);
-  const disabled = await disabledAccountIds(c.env.DB, [id]);
-  const loginDisabled = disabled.isOk() && disabled.value.has(id);
-  if (approve) {
-    const approved = await approveAccount(c.env.DB, id);
-    if (approved.isErr()) {
-      return jsonRepositoryError(c, approved.error.message);
-    }
-    return c.json(
-      await adminAccountDocument(
-        c.env,
-        identity.value,
-        account.value,
-        moderation.isOk() ? moderation.value : null,
-        sensitized.isOk() ? sensitized.value : false,
-        false,
-        loginDisabled,
-      ),
-    );
-  }
-  const document = await adminAccountDocument(
-    c.env,
-    identity.value,
-    account.value,
-    moderation.isOk() ? moderation.value : null,
-    sensitized.isOk() ? sensitized.value : false,
-    true,
-    loginDisabled,
-  );
-  const objects = await mediaObjectKeysForAccount(c.env.DB, id);
-  if (objects.isErr()) {
-    return jsonRepositoryError(c, objects.error.message);
-  }
-  for (const objectKey of objects.value) {
-    await c.env.MEDIA.delete(objectKey);
-  }
-  const purged = await deleteAccount(c.env.DB, id);
-  if (purged.isErr()) {
-    return jsonRepositoryError(c, purged.error.message);
-  }
-  return c.json(document);
+  const document = await adminAccountDocument(c.env, identity.value, {
+    ...state.value,
+    pending: true,
+  });
+  const purged = await purgeAccount(c.env, state.value.account.id);
+  return purged.isErr() ? jsonRepositoryError(c, purged.error.message) : c.json(document);
 };
 
 const AccountActionBodySchema = z.object({
@@ -408,10 +238,12 @@ const AccountActionBodySchema = z.object({
   report_id: z.union([z.string(), z.number()]).optional(),
 });
 
+const parseActionType = schemaResult(AccountActionTypeSchema);
+
 /**
- * `POST /api/v1/admin/accounts/:id/action` — the moderation action Mastodon
- * documents (`none`, `sensitive`, `disable`, `silence`, `suspend`). The report
- * resolution and warning text around it are not part of this instance yet.
+ * `POST /api/v1/admin/accounts/:id/action`: the moderation action Mastodon
+ * documents (`none`, `sensitive`, `disable`, `silence`, `suspend`). The
+ * warning text around it is not part of this instance yet.
  */
 export const postV1AdminAccountsByIdAction = async (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/action">,
@@ -424,85 +256,28 @@ export const postV1AdminAccountsByIdAction = async (
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const type = (body.value.type ?? "").trim().toLowerCase();
-  if (!["none", "sensitive", "disable", "silence", "suspend"].includes(type)) {
+  const type = parseActionType((body.value.type ?? "").trim().toLowerCase());
+  if (type.isErr()) {
     return c.json({ error: "Record invalid", kind: "ValidationError" }, 422);
   }
-  const account = await findAccountById(c.env.DB, c.req.param("id") ?? "");
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
+  const reportId = String(body.value.report_id ?? "").trim();
+  const taken = await takeAccountAction(c.env.DB, {
+    accountId: c.req.param("id") ?? "",
+    type: type.value,
+    reportId: reportId.length > 0 ? reportId : undefined,
+    moderatorId: admin.value.account.id,
+  });
+  if (taken.isOk()) {
+    return c.json({});
   }
-  if (!account.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  switch (taken.error.kind) {
+    case "AccountNotFound":
+    case "ReportNotFound":
+      return notFound(c);
+    case "RepositoryError":
+      return jsonRepositoryError(c, taken.error.message);
   }
-  const id = account.value.id;
-  if (type === "sensitive") {
-    const changed = await setAccountSensitized(c.env.DB, id, true);
-    if (changed.isErr()) {
-      return jsonRepositoryError(c, changed.error.message);
-    }
-  }
-  if (type === "disable") {
-    const changed = await setAccountDisabled(c.env.DB, id, true);
-    if (changed.isErr()) {
-      return jsonRepositoryError(c, changed.error.message);
-    }
-  }
-  if (type === "silence" || type === "suspend") {
-    const changed = await setAccountModeration(
-      c.env.DB,
-      id,
-      type === "silence" ? "Silenced" : "Suspended",
-    );
-    if (changed.isErr()) {
-      return jsonRepositoryError(c, changed.error.message);
-    }
-  }
-  // Mastodon resolves the report that prompted the action, or every open
-  // report against the account when none is named.
-  const requestedReport = body.value.report_id;
-  const reportId = requestedReport === undefined ? "" : String(requestedReport).trim();
-  const reporterAccountId = admin.value.account.id;
-  if (reportId.length > 0) {
-    const report = await findReportById(c.env.DB, reportId);
-    if (report.isErr()) {
-      return jsonRepositoryError(c, report.error.message);
-    }
-    if (!report.value) {
-      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-    }
-    const resolved = await setReportResolved(c.env.DB, reportId, reporterAccountId);
-    if (resolved.isErr()) {
-      return jsonRepositoryError(c, resolved.error.message);
-    }
-  } else {
-    const open = await listOpenReportIdsForTarget(c.env.DB, id);
-    if (open.isErr()) {
-      return jsonRepositoryError(c, open.error.message);
-    }
-    for (const openId of open.value) {
-      const resolved = await setReportResolved(c.env.DB, openId, reporterAccountId);
-      if (resolved.isErr()) {
-        return jsonRepositoryError(c, resolved.error.message);
-      }
-    }
-  }
-  return c.json({});
 };
-
-export const postV1AdminAccountsByIdApprove = (
-  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/approve">,
-) => approveOrReject(c, true);
-export const postV1AdminAccountsByIdReject = (
-  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/reject">,
-) => approveOrReject(c, false);
-
-export const postV1AdminAccountsByIdSensitize = (
-  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/sensitize">,
-) => setSensitized(c, true);
-export const postV1AdminAccountsByIdUnsensitize = (
-  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/unsensitize">,
-) => setSensitized(c, false);
 
 export const deleteV1AdminAccountsById = async (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id">,
@@ -511,30 +286,9 @@ export const deleteV1AdminAccountsById = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const id = c.req.param("id") ?? "";
-  const account = await findAccountById(c.env.DB, id);
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
-  }
-  if (!account.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  // Drop the account's bucket objects first; rows cascade from `accounts`.
-  const objects = await mediaObjectKeysForAccount(c.env.DB, id);
-  if (objects.isErr()) {
-    return jsonRepositoryError(c, objects.error.message);
-  }
-  for (const objectKey of objects.value) {
-    await c.env.MEDIA.delete(objectKey);
-  }
-  const purged = await deleteAccount(c.env.DB, id);
+  const purged = await purgeAccount(c.env, c.req.param("id") ?? "");
   if (purged.isErr()) {
     return jsonRepositoryError(c, purged.error.message);
   }
-  if (!purged.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  return c.json({});
+  return purged.value ? c.json({}) : notFound(c);
 };
-
-/** The review fields Mastodon's Admin::Tag serializer adds to a tag. */

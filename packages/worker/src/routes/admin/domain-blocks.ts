@@ -1,17 +1,13 @@
 import type { Context } from "hono";
 import { z } from "zod";
+import { changeDomainBlock, createDomainBlock } from "../../admin-actions";
 import {
-  clearRemoteMediaForDomain,
   deleteDomainBlock,
   domainBlockDocument,
   DomainBlockSeveritySchema,
-  findDomainBlockByDomain,
   findDomainBlockById,
-  insertDomainBlock,
   listDomainBlocks,
-  updateDomainBlock,
 } from "../../admin-domain-block-store";
-import { normalizeDomain } from "../../domain-block-store";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -96,22 +92,7 @@ export const postV1AdminDomainBlocks = async (
   if (body.isErr() || body.value.domain === undefined) {
     return validation(c, "domain is required");
   }
-  const domain = normalizeDomain(body.value.domain);
-  if (domain.length === 0) {
-    return validation(c, "domain is required");
-  }
-  if (domain === identity.value.domain.toLowerCase()) {
-    return validation(c, "You cannot block your own domain");
-  }
-  const existing = await findDomainBlockByDomain(c.env.DB, domain);
-  if (existing.isErr()) {
-    return jsonRepositoryError(c, existing.error.message);
-  }
-  if (existing.value) {
-    return validation(c, "domain has already been blocked");
-  }
-  const created = await insertDomainBlock(c.env.DB, {
-    domain,
+  const created = await createDomainBlock(c.env.DB, identity.value.domain, body.value.domain, {
     severity: body.value.severity ?? "silence",
     rejectMedia: parseBool(body.value.reject_media, false),
     rejectReports: parseBool(body.value.reject_reports, false),
@@ -120,16 +101,20 @@ export const postV1AdminDomainBlocks = async (
     publicComment: optionalComment(body.value.public_comment) ?? null,
   });
   if (created.isErr()) {
-    return jsonRepositoryError(c, created.error.message);
+    switch (created.error.kind) {
+      case "DomainRequired":
+        return validation(c, "domain is required");
+      case "OwnDomain":
+        return validation(c, "You cannot block your own domain");
+      case "AlreadyBlocked":
+        return validation(c, "domain has already been blocked");
+      case "RepositoryError":
+        return jsonRepositoryError(c, created.error.message);
+    }
   }
-  const block = await findDomainBlockById(c.env.DB, created.value);
-  if (block.isErr() || !block.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  if (block.value.reject_media !== 0) {
-    await clearRemoteMediaForDomain(c.env.DB, block.value.domain);
-  }
-  return c.json(domainBlockDocument(block.value));
+  return created.value
+    ? c.json(domainBlockDocument(created.value))
+    : c.json({ error: "Record not found", kind: "NotFound" }, 404);
 };
 
 export const putV1AdminDomainBlocksById = async (
@@ -153,7 +138,7 @@ export const putV1AdminDomainBlocksById = async (
   }
   const privateComment = optionalComment(body.value.private_comment);
   const publicComment = optionalComment(body.value.public_comment);
-  const updated = await updateDomainBlock(c.env.DB, id, {
+  const updated = await changeDomainBlock(c.env.DB, id, {
     severity: body.value.severity ?? existing.value.severity,
     rejectMedia:
       body.value.reject_media === undefined
@@ -173,14 +158,9 @@ export const putV1AdminDomainBlocksById = async (
   if (updated.isErr()) {
     return jsonRepositoryError(c, updated.error.message);
   }
-  const block = await findDomainBlockById(c.env.DB, id);
-  if (block.isErr() || !block.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  if (block.value.reject_media !== 0) {
-    await clearRemoteMediaForDomain(c.env.DB, block.value.domain);
-  }
-  return c.json(domainBlockDocument(block.value));
+  return updated.value
+    ? c.json(domainBlockDocument(updated.value))
+    : c.json({ error: "Record not found", kind: "NotFound" }, 404);
 };
 
 export const deleteV1AdminDomainBlocksById = async (
