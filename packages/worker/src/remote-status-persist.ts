@@ -20,6 +20,7 @@ import { mediaRejectedDomains } from "./admin-domain-block-store";
 import { enqueueLinkCard } from "./link-card";
 import { notifyFromRemote } from "./notify";
 import { findRemoteStatusByObjectUri, upsertRemoteStatus } from "./remote-status-store";
+import { publishConversationUpdate } from "./conversation-stream";
 import { recordRemoteStatusMentions } from "./mention-store";
 import { isTruthy, stringList } from "./form-values";
 import { NoteDocumentSchema } from "./activitypub-wire";
@@ -146,13 +147,17 @@ const recordMentions = async (
   identity: InstanceIdentity,
   actor: RemoteActor,
   raw: unknown,
-  statusId: string,
+  status: RemoteStatusValue,
   notify: boolean,
 ): Promise<Result<void, RepositoryError>> => {
+  const statusId = status.id;
   const accountIds = await mentionedLocalAccountIds(env, identity, raw);
   const recorded = await recordRemoteStatusMentions(env.DB, statusId, accountIds);
   if (recorded.isErr()) {
     return err(recorded.error);
+  }
+  if (status.visibility.kind === "Direct") {
+    await publishConversationUpdate(env, identity, accountIds, statusId);
   }
   if (notify) {
     for (const accountId of accountIds) {
@@ -313,7 +318,7 @@ const storeRemoteNote = async (
     identity,
     actor,
     raw,
-    stored.value.id,
+    stored.value,
     options.notifyMentions === true,
   );
   if (mentions.isErr()) {

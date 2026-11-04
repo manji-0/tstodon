@@ -1,6 +1,5 @@
 import type { Context } from "hono";
-import { accountDocumentsByIds } from "../account-documents";
-import { statusDocumentsByIds } from "../status-documents";
+import { conversationDocuments } from "../conversation-documents";
 import {
   hideConversation,
   latestStatusIdInConversation,
@@ -30,28 +29,8 @@ export const getV1Conversations = async (
   if (conversations.isErr()) {
     return jsonRepositoryError(c, conversations.error.message);
   }
-  // Participants may be remote (`r_…`), and a last status may be a cached
-  // remote note; both render in bulk.
-  const [accounts, statuses] = await Promise.all([
-    accountDocumentsByIds(
-      c.env,
-      identity.value,
-      conversations.value.flatMap((conversation) => conversation.accountIds),
-    ),
-    statusDocumentsByIds(
-      c.env,
-      identity.value,
-      conversations.value.map((conversation) => conversation.lastStatus.status.id),
-      user.value.id,
-    ),
-  ]);
   return c.json(
-    conversations.value.map((conversation) => ({
-      id: conversation.id,
-      unread: conversation.unread,
-      accounts: conversation.accountIds.flatMap((id) => accounts.get(id) ?? []),
-      last_status: statuses.get(conversation.lastStatus.status.id) ?? null,
-    })),
+    await conversationDocuments(c.env, identity.value, user.value.id, conversations.value),
   );
 };
 

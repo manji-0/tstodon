@@ -23,6 +23,7 @@ import { insertStatusQuote, setStatusQuotePolicy, type QuotePolicy } from "./quo
 import { insertLocalNote, setStatusReplyUri } from "./status-store";
 import { enqueueHomeFanOut } from "./home-fan-out";
 import { enqueuePublicFanOut } from "./public-fan-out";
+import { publishConversationUpdate } from "./conversation-stream";
 import { publishToAccount } from "./stream-publish";
 
 /** Inline media metadata accepted on create (`media_attributes`). */
@@ -273,6 +274,14 @@ export const publishLocalNote = async (
   }
   const document = (await mastodonStatus(env, identity, note, user.id)) ?? {};
   await publishToAccount(env, user.id, { kind: "update", payload: document });
+  if (note.visibility.kind === "Direct") {
+    await publishConversationUpdate(
+      env,
+      identity,
+      [user.id, ...mentionedAccounts.value.map((account) => account.id)],
+      note.id,
+    );
+  }
   await enqueueHomeFanOut(env, {
     event: "update",
     entryId: note.id,
