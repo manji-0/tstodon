@@ -27,7 +27,7 @@ export {
   DELIVERY_MAX_ATTEMPTS,
   type OutboxDelivery as OutboxDeliveryValue,
 } from "./outbox-delivery";
-export { OutboxJob, type OutboxJob as OutboxJobValue } from "./outbox-job";
+export { OutboxJob, type MovePhase, type OutboxJob as OutboxJobValue } from "./outbox-job";
 export {
   OutboundFollow,
   type OutboundFollow as OutboundFollowValue,

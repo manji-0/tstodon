@@ -4,6 +4,8 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
+import { remoteActor } from "../test/remote-actor-fixture";
+import { RemoteAccountId } from "./remote-account-id";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -80,6 +82,20 @@ describe("account notes", () => {
     await setNote(email, targetId, "temporary");
     const cleared = await setNote(email, targetId, "   ");
     expect(cleared.status).toBe(200);
+    expect(read(RelationshipSchema, cleared.body).note).toBe("");
+  });
+
+  it("keeps a note on a remote account, and clears it", async () => {
+    const email = "note-remote@example.com";
+    await accountIdFor(email);
+    const remote = await remoteActor("noted-remote", "notes.example");
+    const targetId = RemoteAccountId.encode(remote.actorUri);
+
+    const saved = await setNote(email, targetId, "from the other server");
+    expect(saved.status).toBe(200);
+    expect(read(RelationshipSchema, saved.body).note).toBe("from the other server");
+
+    const cleared = await setNote(email, targetId, "");
     expect(read(RelationshipSchema, cleared.body).note).toBe("");
   });
 

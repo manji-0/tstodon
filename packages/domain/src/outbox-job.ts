@@ -50,14 +50,29 @@ const DeliverPushSchema = z.object({
 });
 
 /**
- * Move the next page of local follows of an account that moved, local or
- * remote: those after `afterId` (empty for the first page), to the account
- * it moved to.
+ * What an account that moved carries over to the account it moved to, in the
+ * order it is done: the local follows (with the list memberships that ride on
+ * them), then the notes, blocks and mutes of local accounts.
+ */
+const MovePhaseSchema = z.union([
+  z.literal("follows"),
+  z.literal("notes"),
+  z.literal("blocks"),
+  z.literal("mutes"),
+]);
+
+export type MovePhase = z.infer<typeof MovePhaseSchema>;
+
+/**
+ * Carry the next page of an account that moved, local or remote, to the
+ * account it moved to: the local accounts of `phase` after `afterId` (empty
+ * for the first page). A job queued before phases existed moves follows.
  */
 const MoveFollowsSchema = z.object({
   kind: z.literal("MoveFollows"),
   fromActorUri: z.url(),
   toActorUri: z.url(),
+  phase: MovePhaseSchema.default("follows"),
   afterId: z.string(),
 });
 

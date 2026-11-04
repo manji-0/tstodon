@@ -19,6 +19,7 @@ import {
   findListForAccount as findListForAccountSql,
   insertListMember as insertListMemberSql,
   insertListRemoteMember as insertListRemoteMemberSql,
+  insertListRemoteMemberOfFollow as insertListRemoteMemberOfFollowSql,
   listListMembers as listListMembersSql,
   listListsContainingAccount as listListsContainingAccountSql,
   listListsContainingRemoteActor as listListsContainingRemoteActorSql,
@@ -340,3 +341,36 @@ export const listListTimelineStatuses = async (
       .all();
     return hydrateStatusRows(db, results ?? []);
   });
+
+/**
+ * Put `to` on `lists` of `ownerId` in place of `from`, as Mastodon moves list
+ * memberships along with a moved follow. A remote `to` goes in through the
+ * owner's follow of it, requested or accepted (the `Accept` may not have come
+ * yet); the owner must already have that follow. A remote `from` leaves with
+ * its follow, which the caller deletes next.
+ */
+export const replaceListMember = async (
+  db: D1Database,
+  ownerId: string,
+  lists: ReadonlyArray<AccountList>,
+  from: ListMember,
+  to: ListMember,
+): Promise<Result<void, RepositoryError>> => {
+  if (lists.length === 0) {
+    return ok(undefined);
+  }
+  const now = nowIso();
+  const statements = lists.flatMap((list) => [
+    d1PrepareTyped(
+      db,
+      to.kind === "LocalAccount"
+        ? insertListMemberSql(list.id, to.accountId, now)
+        : insertListRemoteMemberOfFollowSql(list.id, ownerId, to.actorUri, now),
+    ),
+    ...(from.kind === "LocalAccount"
+      ? [d1PrepareTyped(db, deleteListMemberSql(list.id, from.accountId))]
+      : []),
+  ]);
+  const batched = await runD1BatchChunked(db, statements);
+  return batched.isErr() ? err(batched.error) : ok(undefined);
+};

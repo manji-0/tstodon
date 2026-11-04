@@ -7,7 +7,7 @@ import { OutboundFollow } from "@tstodon/domain";
 import { RemoteAccountId } from "./remote-account-id";
 import { outboundFollowFromRow } from "./outbound-follow-store";
 import { parseJsonColumn } from "./json-column";
-import { d1PrepareTyped, runTyped } from "./typed-sql";
+import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   deleteAccountNote as deleteAccountNoteSql,
   findAccountDomainBlock as findAccountDomainBlockSql,
@@ -59,12 +59,12 @@ export const relationshipFlags = async (
   const batched = await runD1Batch(db, [
     d1PrepareTyped(db, findFollowKindSql(viewerId, targetId)),
     d1PrepareTyped(db, findFollowKindSql(targetId, viewerId)),
-    // Blocks and mutes of a remote account are keyed by its actor URI.
+    // Blocks, mutes and notes of a remote account are keyed by its actor URI.
     d1PrepareTyped(db, findBlockSql(viewerId, targetActorUri.unwrapOr(targetId))),
     d1PrepareTyped(db, findBlockSql(targetId, viewerId)),
     d1PrepareTyped(db, findActiveMuteSql(viewerId, targetActorUri.unwrapOr(targetId), nowIso())),
     d1PrepareTyped(db, findEndorsementSql(viewerId, targetId)),
-    d1PrepareTyped(db, findAccountNoteSql(viewerId, targetId)),
+    d1PrepareTyped(db, findAccountNoteSql(viewerId, targetActorUri.unwrapOr(targetId))),
     d1PrepareTyped(db, findAccountDomainBlockSql(viewerId, targetDomain ?? "")),
     d1PrepareTyped(db, findOutboundFollowSql(viewerId, targetActorUri.unwrapOr(""))),
   ]);
@@ -116,6 +116,17 @@ export const relationshipFlags = async (
   });
 };
 
+/** The viewer's private note about the account `target` (an actor URI or a local id) names, if any. */
+export const findAccountNoteText = async (
+  db: D1Database,
+  viewerId: string,
+  target: string,
+): Promise<Result<string | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ note: string }>(db, findAccountNoteSql(viewerId, target));
+    return rows[0]?.note;
+  });
+
 /** Set (or, for an empty note, clear) the viewer's private note about a target. */
 export const setAccountNote = async (
   db: D1Database,
@@ -126,7 +137,7 @@ export const setAccountNote = async (
   const trimmed = note.trim();
   if (trimmed.length === 0) {
     const removed = await runD1(async () => {
-      await runTyped(db, deleteAccountNoteSql(viewerId, target.id));
+      await runTyped(db, deleteAccountNoteSql(viewerId, target.accountId ?? target.actorUri));
     });
     if (removed.isErr()) {
       return err(removed.error);

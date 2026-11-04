@@ -1,4 +1,10 @@
-import type { InstanceIdentity, LocalAccount, OutboxJob, RemoteActor } from "@tstodon/domain";
+import type {
+  InstanceIdentity,
+  LocalAccount,
+  MovePhase,
+  OutboxJob,
+  RemoteActor,
+} from "@tstodon/domain";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -11,6 +17,8 @@ import { findBlock } from "./block-mute-store";
 import type { RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { findFollowKind, followAccount, type FollowOptions, unfollowAccount } from "./follow-store";
+import { type ListMember, listListsContainingMember, replaceListMember } from "./list-store";
+import { moveBlockPage, moveMutePage, moveNotePage } from "./move-carry";
 import { notifyAccount, notifyFromRemote } from "./notify";
 import { parseInstanceIdentity } from "./runtime-config";
 import { followRemoteActor, unfollowRemoteActor } from "./outbound-follow";
@@ -152,12 +160,19 @@ const notifyMoved = (
         targetAccountId: refAccountId(to),
       });
 
+const listMemberOf = (ref: AccountRef): ListMember =>
+  ref.kind === "LocalAccount"
+    ? { kind: "LocalAccount", accountId: ref.account.id }
+    : { kind: "RemoteActor", actorUri: ref.actorUri };
+
 /**
  * Move one page of local follows of `from` to `to`, as Mastodon's
  * `UnfollowFollowWorker` does for each follower: follow `to` with the same
- * options (a follow of `to` that exists is kept), then unfollow `from`, and
- * tell the follower with a `move` notification. A follower whose follow of
- * `to` is refused (see {@link followMoveTarget}) keeps the follow of `from`.
+ * options (a follow of `to` that exists is kept), put `to` on the lists that
+ * held `from` (a remote `from` leaves its lists with the follow), then
+ * unfollow `from`, and tell the follower with a `move` notification. A
+ * follower whose follow of `to` is refused (see {@link followMoveTarget})
+ * keeps the follow of `from` and its lists.
  * Redoing a page changes nothing: moved follows are gone from `from`.
  * Resolves to the cursor of the next page, or `undefined` when this was the last.
  */
@@ -188,6 +203,20 @@ export const moveFollowPage = async (
     if (!followed.value) {
       continue;
     }
+    const lists = await listListsContainingMember(env.DB, follower.value.id, listMemberOf(from));
+    if (lists.isErr()) {
+      return err(lists.error);
+    }
+    const carried = await replaceListMember(
+      env.DB,
+      follower.value.id,
+      lists.value,
+      listMemberOf(from),
+      listMemberOf(to),
+    );
+    if (carried.isErr()) {
+      return err(carried.error);
+    }
     const unfollowed = await unfollowMoved(env, identity, follower.value, from);
     if (unfollowed.isErr()) {
       return err(unfollowed.error);
@@ -198,8 +227,62 @@ export const moveFollowPage = async (
   return ok(page.value.length >= pageSize ? last?.id : undefined);
 };
 
+/** What is carried over to the account moved to, in this order. */
+const MOVE_PHASES: ReadonlyArray<MovePhase> = ["follows", "notes", "blocks", "mutes"];
+
+/** Where carrying a move over stands: the phase and the last account done in it. */
+export type MoveCursor = Readonly<{ phase: MovePhase; afterId: string }>;
+
+const movePhasePage = (
+  env: Env,
+  identity: InstanceIdentity,
+  from: AccountRef,
+  to: AccountRef,
+  cursor: MoveCursor,
+  pageSize: number,
+): Promise<Result<string | undefined, RepositoryError>> => {
+  switch (cursor.phase) {
+    case "follows":
+      return moveFollowPage(env, identity, from, to, cursor.afterId, pageSize);
+    case "notes":
+      return moveNotePage(env, from, to, { afterId: cursor.afterId, pageSize });
+    case "blocks":
+      return moveBlockPage(env, from, to, { afterId: cursor.afterId, pageSize });
+    case "mutes":
+      return moveMutePage(env, from, to, { afterId: cursor.afterId, pageSize });
+  }
+};
+
 /**
- * Move the first page of the local follows of `from` to `to` now, and queue a
+ * Carry a page of the move from `cursor` on, as Mastodon's `MoveWorker`: the
+ * local follows (with their list memberships), then the notes, blocks and
+ * mutes of local accounts. A phase that ends within the page goes straight
+ * on to the next, so one call costs at most a page per phase. Resolves to the
+ * cursor of the next page, or `undefined` when everything is carried over.
+ */
+export const moveCarryPage = async (
+  env: Env,
+  identity: InstanceIdentity,
+  from: AccountRef,
+  to: AccountRef,
+  cursor: MoveCursor,
+  pageSize: number = MOVE_PAGE_SIZE,
+): Promise<Result<MoveCursor | undefined, RepositoryError>> => {
+  for (const phase of MOVE_PHASES.slice(MOVE_PHASES.indexOf(cursor.phase))) {
+    const here = phase === cursor.phase ? cursor : { phase, afterId: "" };
+    const next = await movePhasePage(env, identity, from, to, here, pageSize);
+    if (next.isErr()) {
+      return err(next.error);
+    }
+    if (next.value !== undefined) {
+      return ok({ phase, afterId: next.value });
+    }
+  }
+  return ok(undefined);
+};
+
+/**
+ * Carry the first page of each thing a move carries over now, and queue a
  * `MoveFollows` job for the rest. The caller has verified and recorded the move.
  */
 export const startMovingFollows = async (
@@ -208,7 +291,7 @@ export const startMovingFollows = async (
   from: AccountRef,
   to: AccountRef,
 ): Promise<Result<void, RepositoryError>> => {
-  const next = await moveFollowPage(env, identity, from, to, "");
+  const next = await moveCarryPage(env, identity, from, to, { phase: "follows", afterId: "" });
   if (next.isErr()) {
     return err(next.error);
   }
@@ -217,7 +300,8 @@ export const startMovingFollows = async (
       kind: "MoveFollows",
       fromActorUri: from.actorUri,
       toActorUri: to.actorUri,
-      afterId: next.value,
+      phase: next.value.phase,
+      afterId: next.value.afterId,
     };
     try {
       await env.OUTBOX_PROCESS_QUEUE.send(job);
@@ -327,7 +411,7 @@ const movedTo = async (
   return move.map((found) => found?.targetUri === to.actorUri);
 };
 
-/** Move the next page of follows queued by {@link startMovingFollows}. */
+/** Carry the next page of a move queued by {@link startMovingFollows}. */
 export const processMoveFollowsJob = async (
   env: Env,
   job: Extract<OutboxJob, { kind: "MoveFollows" }>,
@@ -352,12 +436,15 @@ export const processMoveFollowsJob = async (
   if (!recorded.value) {
     return "ok";
   }
-  const next = await moveFollowPage(env, identity.value, from.value, to.value, job.afterId);
+  const next = await moveCarryPage(env, identity.value, from.value, to.value, {
+    phase: job.phase,
+    afterId: job.afterId,
+  });
   if (next.isErr()) {
     return "retry";
   }
   if (next.value !== undefined) {
-    const queued: OutboxJob = { ...job, afterId: next.value };
+    const queued: OutboxJob = { ...job, ...next.value };
     try {
       await env.OUTBOX_PROCESS_QUEUE.send(queued);
     } catch {
