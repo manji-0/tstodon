@@ -58,6 +58,7 @@ describe("settings pages the web app links to", () => {
       "/settings/migration",
       "/mutes",
       "/blocks",
+      "/filters",
     ]) {
       expect(html).toContain(`href="${href}"`);
     }
@@ -165,8 +166,6 @@ describe("settings pages the web app links to", () => {
 
   it("explains the Rails pages this server does not have", async () => {
     for (const [path, title] of [
-      ["/filters", "Muted words"],
-      ["/filters/12/edit", "Muted words"],
       ["/statuses_cleanup", "Automated post deletion"],
       ["/auth/edit", "Password and security"],
       ["/settings/export", "Import and export"],
