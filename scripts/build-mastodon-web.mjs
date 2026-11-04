@@ -13,6 +13,7 @@
 
 import { execFileSync } from "node:child_process";
 import {
+  copyFileSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -80,7 +81,9 @@ cpSync(path.join(publicDir, "emoji"), path.join(assets, "emoji"), { recursive: t
 cpSync(path.join(publicDir, "sounds"), path.join(assets, "sounds"), { recursive: true });
 for (const file of readdirSync(publicDir)) {
   if (/^(sw\.js|badge\.png|loading\.(gif|png)|oops\.(gif|png)|web-push-icon_.*\.png)$/.test(file)) {
-    cpSync(path.join(publicDir, file), path.join(assets, file));
+    // `sw.js` is a symlink into packs/ in the source; copy the file, not the link.
+    rmSync(path.join(assets, file), { force: true });
+    copyFileSync(path.join(publicDir, file), path.join(assets, file));
   }
 }
 
