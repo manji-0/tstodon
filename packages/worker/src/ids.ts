@@ -16,6 +16,16 @@ export const entityIdAt = (atMs: number): string => {
 export const newEntityId = (): string => entityIdAt(Date.now());
 
 /**
+ * The same instant with fresh random low bits: for an id that collided with
+ * one already stored at that instant (backfilled posts often share a second).
+ */
+export const rerollEntityId = (id: string): string => {
+  const bytes = crypto.getRandomValues(new Uint16Array(1));
+  const rand = BigInt(bytes[0] ?? 0);
+  return ((BigInt(id) & ~0xffffn) | rand).toString().padStart(ENTITY_ID_DIGITS, "0");
+};
+
+/**
  * Which instant a stored remote status or boost sorts at. Ones that arrive
  * live sort at `Received`; ones backfilled from an outbox sort at `Published`,
  * so old posts take their place in timelines instead of looking new.

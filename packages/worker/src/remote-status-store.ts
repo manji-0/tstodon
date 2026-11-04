@@ -13,6 +13,7 @@ import { schemaResult, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
+import { rerollEntityId } from "./ids";
 import { jsonStringArray, parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
 import { removedBoostsFromRows, type RemovedBoost } from "./removed-boost";
 import { parseJsonText } from "./json-column";
@@ -219,6 +220,42 @@ const replaceRemoteStatusTags = async (
   ]);
 };
 
+/** Insert a remote status row, or update the row its object URI already holds. */
+const writeRemoteStatusRow = async (
+  db: D1Database,
+  row: RemoteStatus,
+  inReplyToUri: string | undefined,
+): Promise<void> => {
+  await runTyped(
+    db,
+    upsertRemoteStatusSql(
+      row.id,
+      row.actorUri,
+      row.objectUri,
+      row.url ?? null,
+      row.contentHtml,
+      row.spoilerText,
+      visibilitySql(row.visibility),
+      row.sensitive ? 1 : 0,
+      row.language.kind === "Present" ? row.language.value : null,
+      row.publishedAt,
+      JSON.stringify(row.media),
+      nowIso(),
+      nowIso(),
+      inReplyToUri ?? null,
+      row.editedAt.kind === "Edited" ? row.editedAt.at : null,
+      row.poll.kind === "NoPoll" ? null : JSON.stringify(row.poll),
+      JSON.stringify(row.emojis),
+    ),
+  );
+};
+
+/** Retries for a new remote status whose generated id is already taken. */
+const ID_COLLISION_RETRIES = 4;
+
+const isIdCollision = (error: unknown): boolean =>
+  error instanceof Error && /UNIQUE constraint failed: remote_statuses\.id/.test(error.message);
+
 export const upsertRemoteStatus = async (
   db: D1Database,
   status: RemoteStatus,
@@ -229,32 +266,29 @@ export const upsertRemoteStatus = async (
   if (existing.isErr()) {
     return err(existing.error);
   }
-  const persisted = existing.value
+  let persisted = existing.value
     ? { ...status, id: existing.value.id, kind: "RemoteNote" as const }
     : status;
   const written = await runD1(async () => {
-    await runTyped(
-      db,
-      upsertRemoteStatusSql(
-        persisted.id,
-        persisted.actorUri,
-        persisted.objectUri,
-        persisted.url ?? null,
-        persisted.contentHtml,
-        persisted.spoilerText,
-        visibilitySql(persisted.visibility),
-        persisted.sensitive ? 1 : 0,
-        persisted.language.kind === "Present" ? persisted.language.value : null,
-        persisted.publishedAt,
-        JSON.stringify(persisted.media),
-        nowIso(),
-        nowIso(),
-        inReplyToUri ?? null,
-        persisted.editedAt.kind === "Edited" ? persisted.editedAt.at : null,
-        persisted.poll.kind === "NoPoll" ? null : JSON.stringify(persisted.poll),
-        JSON.stringify(persisted.emojis),
-      ),
-    );
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await writeRemoteStatusRow(db, persisted, inReplyToUri);
+        break;
+      } catch (error) {
+        // A new row whose id another status already holds (same instant, same
+        // random bits): retry at the same instant with new random bits.
+        const rerolled = StatusId.parse(rerollEntityId(persisted.id));
+        if (
+          existing.value ||
+          attempt >= ID_COLLISION_RETRIES ||
+          !isIdCollision(error) ||
+          rerolled.isErr()
+        ) {
+          throw error;
+        }
+        persisted = { ...persisted, id: rerolled.value };
+      }
+    }
     // The row has to exist before its tags (the index holds a foreign key).
     await replaceRemoteStatusTags(db, persisted.id, htmlHashtags(persisted.contentHtml));
     // A changed tally is the author's count of every vote it has seen, ours included.

@@ -25,12 +25,16 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
 const noteUri = (remote: Remote, slug: string): string =>
   `${new URL(remote.actorUri).origin}/notes/${slug}`;
 
+// Each fixture note is published a second after the last, so notes sort in the
+// order the test builds them (same-instant ids only order by their random bits).
+let published = Date.parse("2024-03-03T00:00:00.000Z");
+
 const noteDocument = (remote: Remote, slug: string, extra: Record<string, unknown> = {}) => ({
   id: noteUri(remote, slug),
   type: "Note",
   attributedTo: remote.actorUri,
   content: `<p>${slug}</p>`,
-  published: "2024-03-03T00:00:00.000Z",
+  published: new Date((published += 1000)).toISOString(),
   to: [PUBLIC],
   cc: [`${remote.actorUri}/followers`],
   ...extra,
@@ -168,9 +172,11 @@ describe("opening a remote status", () => {
       noteUri(author, "thread-root"),
       noteUri(author, "thread-parent"),
     ]);
+    // Descendants are in id order, and backfilled ids follow `published`: the
+    // embedded reply was written first.
     expect((await contextOf(openedId)).descendants.map((entry) => entry.uri)).toEqual([
-      noteUri(author, "thread-reply-link"),
       noteUri(author, "thread-reply-embedded"),
+      noteUri(author, "thread-reply-link"),
     ]);
   });
 
