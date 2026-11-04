@@ -1,3 +1,4 @@
+import { notifyAdmins } from "./admin-notify";
 import { err, ok, type Result } from "neverthrow";
 import { AccessEmail, type LocalAccount } from "@tstodon/domain";
 import { findAccountByEmail, findAccountByUsername } from "./account-store";
@@ -248,14 +249,22 @@ export const signupRole = (env: Env, username: string): "admin" | "user" =>
     ? "admin"
     : "user";
 
-export const createSignupAccount = (
+export const createSignupAccount = async (
   env: Env,
   intent: SignupIntent,
   authUserId: string,
-): Promise<Result<LocalAccount, ProvisionError>> =>
-  provisionLocalAccount(env.DB, {
+  pending: boolean = registrationApprovalRequired(env),
+): Promise<Result<LocalAccount, ProvisionError>> => {
+  const account = await provisionLocalAccount(env.DB, {
     username: intent.username,
     email: intent.email,
     authUserId,
-    pending: registrationApprovalRequired(env),
+    pending,
   });
+  if (account.isOk()) {
+    // Admins hear of every sign-up, approval-required or not. The account
+    // exists either way, so a failed notification does not fail the sign-up.
+    await notifyAdmins(env, { kind: "admin.sign_up", fromAccountId: account.value.id });
+  }
+  return account;
+};

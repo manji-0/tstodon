@@ -14,6 +14,9 @@ import { parseInstanceIdentity } from "./runtime-config";
 import { mutedThreadStatusIds } from "./status-mute-store";
 import { publishToAccount } from "./stream-publish";
 
+/** Notification kinds that tell admins about moderation work. */
+const ADMIN_KINDS: ReadonlyArray<string> = ["admin.report", "admin.sign_up"];
+
 export const notifyAccount = async (
   env: Env,
   input: {
@@ -25,16 +28,21 @@ export const notifyAccount = async (
     statusId?: string;
     /** The account a `move` notification points at: where the sender moved to. */
     targetAccountId?: string;
+    /** The report an `admin.report` notification points at. */
+    reportId?: string;
   },
 ): Promise<Result<void, RepositoryError>> => {
   // The recipient's notification policy decides whether this is delivered,
-  // held back as a request, or dropped outright.
-  const disposition = await notificationDisposition(env.DB, {
-    recipientId: input.accountId,
-    senderId: input.fromAccountId,
-    kind: input.kind,
-    statusId: input.statusId,
-  });
+  // held back as a request, or dropped outright. Mastodon's moderation
+  // notifications bypass it: a new sign-up is always "new" and "not followed".
+  const disposition = ADMIN_KINDS.includes(input.kind)
+    ? ok("accept" as const)
+    : await notificationDisposition(env.DB, {
+        recipientId: input.accountId,
+        senderId: input.fromAccountId,
+        kind: input.kind,
+        statusId: input.statusId,
+      });
   if (disposition.isErr()) {
     return err(disposition.error);
   }

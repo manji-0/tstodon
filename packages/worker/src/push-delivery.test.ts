@@ -3,7 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { importJWK, jwtVerify } from "jose";
 import { schemaResult } from "@tstodon/core";
-import { authHeaders } from "../test/auth-fixture";
+import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { createSignupAccount } from "./passkey-signup";
 import { processPushJob } from "./push-delivery";
 import { RemoteAccountId } from "./remote-account-id";
 import { base64UrlToBytes, bytesToBase64Url } from "./vapid";
@@ -174,10 +175,11 @@ const subscribe = async (
   subscriber: Subscriber,
   data: Record<string, unknown>,
   standard: boolean,
+  admin = false,
 ): Promise<number> => {
   const response = await json("/api/v1/push/subscription", {
     method: "POST",
-    headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+    headers: { "content-type": "application/json", ...(await authHeaders(email, { admin })) },
     body: JSON.stringify({
       subscription: {
         endpoint,
@@ -420,6 +422,85 @@ describe("push delivery", () => {
         .run();
       expect(await notify("push-remote-2")).toBe("ok");
       expect(captured.map((push) => push.url)).toEqual([`https://${host}/follower`]);
+    });
+  });
+
+  it("pushes the admin report and sign-up notifications with their titles", async () => {
+    const admin = "push-admin@example.com";
+    const host = "push-admin.example";
+    const subscriber = await newSubscriber();
+    // Admin alerts need an admin; `authHeaders` without `admin` resets the role.
+    const subscriptionId = await subscribe(
+      admin,
+      `https://${host}/send/admin`,
+      subscriber,
+      { alerts: { "admin.report": true, "admin.sign_up": true } },
+      true,
+      true,
+    );
+    const recipientId = await accountId(admin);
+    const adminHeaders = await authHeaders(admin, { admin: true });
+    await signedInAccount("push-admin-target@example.com");
+    await signedInAccount("push-admin-reporter@example.com");
+    const target = await accountId("push-admin-target@example.com");
+
+    const latest = async (type: string): Promise<string> => {
+      const listed = await json(`/api/v1/notifications?types[]=${type}`, {
+        headers: adminHeaders,
+      });
+      const [first] = read(z.array(z.object({ id: z.string() })), listed.body);
+      if (!first) {
+        throw new Error(`no ${type} notification`);
+      }
+      return first.id;
+    };
+    const pushed = async (notificationId: string, captured: Captured[]) => {
+      expect(
+        await processPushJob(env, {
+          kind: "DeliverPush",
+          accountId: recipientId,
+          notificationId,
+          subscriptionId,
+        }),
+      ).toBe("ok");
+      const push = captured.at(-1);
+      if (!push) {
+        throw new Error("no push was sent");
+      }
+      return read(PayloadSchema, JSON.parse(await decryptAes128gcm(subscriber, push.body)));
+    };
+
+    await withPushService(host, 201, async (captured) => {
+      const filed = await json("/api/v1/reports", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(await authHeaders("push-admin-reporter@example.com")),
+        },
+        body: JSON.stringify({ account_id: target }),
+      });
+      expect(filed.status).toBe(200);
+      const report = await pushed(await latest("admin.report"), captured);
+      expect(report.notification_type).toBe("admin.report");
+      expect(report.title).toMatch(/^New report from /);
+
+      const userId = crypto.randomUUID();
+      const now = Date.now();
+      await env.DB.prepare(
+        `INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt, role)
+         VALUES (?, 'pushnew', 'pushnew@example.com', 1, ?, ?, 'user')`,
+      )
+        .bind(userId, now, now)
+        .run();
+      const created = await createSignupAccount(
+        env,
+        { username: "pushnew", email: "pushnew@example.com" },
+        userId,
+      );
+      expect(created.isOk()).toBe(true);
+      const signUp = await pushed(await latest("admin.sign_up"), captured);
+      expect(signUp.notification_type).toBe("admin.sign_up");
+      expect(signUp.title).toBe("pushnew signed up");
     });
   });
 });

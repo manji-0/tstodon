@@ -8,6 +8,7 @@ import {
   readBody,
   requireUser,
 } from "../http";
+import { notifyAdmins } from "../admin-notify";
 import { instanceRules } from "../runtime-config";
 import { insertReport, ReportCategorySchema } from "../report-store";
 import { stringList } from "../form-values";
@@ -73,6 +74,12 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
   if (report.isErr()) {
     return jsonRepositoryError(c, report.error.message);
   }
+  // A failed notification must not lose the filed report.
+  await notifyAdmins(c.env, {
+    kind: "admin.report",
+    fromAccountId: user.value.id,
+    reportId: report.value.id,
+  });
   return c.json({
     id: report.value.id,
     action_taken: false,
