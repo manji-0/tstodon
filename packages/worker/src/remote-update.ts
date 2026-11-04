@@ -1,6 +1,7 @@
 import {
   IsoInstant,
   RemotePoll,
+  StatusTarget,
   type InstanceIdentity,
   type RemoteActor,
   type RemoteStatusValue,
@@ -26,6 +27,7 @@ import {
   noteFromUnknown,
   parseNoteDocument,
 } from "./remote-status-persist";
+import { listLocalBoosterAccountIds } from "./status-interaction-store";
 import { findRemoteStatusByObjectUri, upsertRemoteStatus } from "./remote-status-store";
 
 const UpdateObjectSchema = z
@@ -159,6 +161,17 @@ const applyNoteUpdate = async (
   }
   await enqueueLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);
   if (edited) {
+    // As Mastodon's UpdateStatusService: local accounts that boosted the note hear it changed.
+    // Quotes are skipped: a local account cannot yet quote a remote status.
+    const boosters = await listLocalBoosterAccountIds(env.DB, StatusTarget.remote(stored.value.id));
+    for (const accountId of boosters.isOk() ? boosters.value : []) {
+      await notifyFromRemote(env, {
+        accountId,
+        actorUri: signer.actorUri,
+        kind: "update",
+        statusId: stored.value.id,
+      });
+    }
     await enqueueHomeFanOut(env, {
       event: "status.update",
       entryId: stored.value.id,

@@ -374,3 +374,19 @@ export const listStatusRebloggedBy = async (
       cursorAscending(cursor),
     );
   });
+
+/** Every local account that currently boosts the target, for notifying them when it changes. */
+export const listLocalBoosterAccountIds = async (
+  db: D1Database,
+  target: StatusTargetValue,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await db
+      .prepare(
+        `SELECT DISTINCT account_id FROM statuses
+         WHERE kind = 'LocalReblog' AND (reblog_of_id = ? OR reblog_of_remote_id = ?)`,
+      )
+      .bind(...statusTargetColumns(target))
+      .all<{ account_id: string }>();
+    return (rows.results ?? []).map((row) => row.account_id);
+  });

@@ -174,6 +174,79 @@ describe("remote Update of a note", () => {
   });
 });
 
+describe("update notifications to local boosters", () => {
+  const NotificationsSchema = z.array(
+    z.object({ type: z.string(), status: z.object({ id: z.string() }).nullable() }),
+  );
+
+  const updates = async (headers: Record<string, string>, id: string) =>
+    read(NotificationsSchema, await json("/api/v1/notifications?types[]=update", { headers }))
+      .filter((entry) => entry.status?.id === id)
+      .map((entry) => entry.type);
+
+  const boosted = async (email: string, id: string) => {
+    const headers = await authHeaders(email);
+    const response = await SELF.fetch(`https://example.com/api/v1/statuses/${id}/reblog`, {
+      method: "POST",
+      headers,
+    });
+    expect(response.status).toBe(200);
+    return headers;
+  };
+
+  it("notifies a booster once per content edit, not for poll refreshes or replays", async () => {
+    const author = await remoteActor("notify-booster-author");
+    const id = await create(author, "boosted", "<p>v1</p>");
+    const booster = await boosted("update-notify-booster@example.com", id);
+    const bystander = await authHeaders("update-notify-bystander@example.com");
+
+    const edit = note(author, "boosted", "<p>v2</p>", { updated: "2026-10-21T00:00:00.000Z" });
+    await update(author, "boosted-1", edit);
+    expect(await updates(booster, id)).toEqual(["update"]);
+
+    await update(author, "boosted-2", edit);
+    await update(author, "boosted-3", { ...edit, updated: "2026-10-20T12:00:00.000Z" });
+    expect(await updates(booster, id)).toEqual(["update"]);
+    expect(await updates(bystander, id)).toEqual([]);
+
+    await update(
+      author,
+      "boosted-4",
+      note(author, "boosted", "<p>v3</p>", { updated: "2026-10-22T00:00:00.000Z" }),
+    );
+    expect(await updates(booster, id)).toEqual(["update", "update"]);
+  });
+
+  it("notifies nobody when the note is edited without a booster", async () => {
+    const author = await remoteActor("notify-no-booster-author");
+    const id = await create(author, "unboosted", "<p>v1</p>");
+    const reader = await authHeaders("update-notify-reader@example.com");
+    await update(
+      author,
+      "unboosted-1",
+      note(author, "unboosted", "<p>v2</p>", { updated: "2026-10-21T00:00:00.000Z" }),
+    );
+    expect(await updates(reader, id)).toEqual([]);
+  });
+
+  it("sends nothing to a booster who muted the author", async () => {
+    const author = await remoteActor("notify-muted-author");
+    const id = await create(author, "muted", "<p>v1</p>");
+    const booster = await boosted("update-notify-muter@example.com", id);
+    const muted = await SELF.fetch(
+      `https://example.com/api/v1/accounts/${RemoteAccountId.encode(author.actorUri)}/mute`,
+      { method: "POST", headers: booster },
+    );
+    expect(muted.status).toBe(200);
+    await update(
+      author,
+      "muted-1",
+      note(author, "muted", "<p>v2</p>", { updated: "2026-10-21T00:00:00.000Z" }),
+    );
+    expect(await updates(booster, id)).toEqual([]);
+  });
+});
+
 describe("history and source of an edited remote note", () => {
   const HistorySchema = z.array(
     z.object({
