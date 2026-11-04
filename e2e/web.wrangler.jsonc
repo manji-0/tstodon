@@ -40,6 +40,8 @@
     "MEDIA_PUBLIC_BASE_URL": "http://localhost:8793",
     "EMAIL_FROM": "tstodon <noreply@example.com>",
     "EMAIL_TRANSPORT": "capture",
+    // The admin scenarios sign up as these.
+    "ADMIN_USERNAMES": "modadmin,modadmin2",
   },
   "d1_databases": [
     {
