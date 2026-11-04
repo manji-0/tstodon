@@ -114,3 +114,13 @@ processes:
         condition: process_healthy
     availability:
       restart: "no"
+
+  e2e-federation-reports:
+    command: pnpm exec tsx e2e/federation-reports.ts
+    depends_on:
+      tstodon-a:
+        condition: process_healthy
+      tstodon-b:
+        condition: process_healthy
+    availability:
+      restart: "no"

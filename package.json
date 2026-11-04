@@ -26,7 +26,8 @@
     "e2e:federation:remote-follow": "tsx e2e/federation-remote-follow.ts",
     "e2e:federation:remote-updates": "tsx e2e/federation-remote-updates.ts",
     "e2e:federation:migration": "tsx e2e/federation-migration.ts",
-    "e2e:federation:all": "tsx e2e/federation-smoke.ts && tsx e2e/federation-follow-create.ts && tsx e2e/federation-interactions.ts && tsx e2e/federation-delete-shared-inbox.ts && tsx e2e/federation-accept.ts && tsx e2e/federation-remote-follow.ts && tsx e2e/federation-remote-updates.ts && tsx e2e/federation-migration.ts",
+    "e2e:federation:reports": "tsx e2e/federation-reports.ts",
+    "e2e:federation:all": "tsx e2e/federation-smoke.ts && tsx e2e/federation-follow-create.ts && tsx e2e/federation-interactions.ts && tsx e2e/federation-delete-shared-inbox.ts && tsx e2e/federation-accept.ts && tsx e2e/federation-remote-follow.ts && tsx e2e/federation-remote-updates.ts && tsx e2e/federation-migration.ts && tsx e2e/federation-reports.ts",
     "e2e:web": "playwright test -c e2e/web/playwright.config.ts",
     "e2e:up": "process-compose up",
     "ci": "vp check && vp -C packages/worker build && vp test run && pnpm -C packages/worker exec wrangler deploy --dry-run"
