@@ -5,6 +5,7 @@ import {
   latestStatusIdInConversation,
   listConversationsForAccount,
 } from "../conversation-store";
+import { publishConversationRead } from "../conversation-stream";
 import { jsonAuthError, jsonRepositoryError, queryLimit, requireUser } from "../http";
 import { markConversationRead } from "../marker-store";
 import { parseInstanceIdentity } from "../runtime-config";
@@ -62,6 +63,7 @@ export const postV1ConversationsByIdRead = async (
   if (marked.isErr()) {
     return jsonRepositoryError(c, marked.error.message);
   }
+  await publishConversationRead(c.env, identity.value, user.value.id, conversationId);
   return c.body(null, 200);
 };
 

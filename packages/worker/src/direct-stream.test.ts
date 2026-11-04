@@ -145,4 +145,45 @@ describe("direct stream", () => {
     ]);
     socket.close();
   });
+
+  it("send the account's direct stream the read conversation, and nothing on removal", async () => {
+    const author = "dm-read-author@example.com";
+    const recipient = "dm-read-recipient@example.com";
+    const recipientSocket = await openStream({ email: recipient, query: "?stream=direct" });
+    const otherSocket = await openStream({ email: recipient, query: "?stream=direct" });
+    const authorSocket = await openStream({ email: author, query: "?stream=direct" });
+
+    const statusId = await postTo(author, recipient, "direct", "please read me");
+    const unread = conversationOf((await recipientSocket.next()).payload);
+    expect(unread.unread).toBe(true);
+    expect(conversationOf((await otherSocket.next()).payload).id).toBe(unread.id);
+    await authorSocket.next();
+
+    const read = await json(recipient, `/api/v1/conversations/${unread.id}/read`, {
+      method: "POST",
+      body: "{}",
+    });
+    expect(read.status).toBe(200);
+    for (const socket of [recipientSocket, otherSocket]) {
+      const heard = await socket.next();
+      expect(heard).toMatchObject({ stream: ["direct"], event: "conversation" });
+      expect(conversationOf(heard.payload)).toMatchObject({
+        id: unread.id,
+        unread: false,
+        last_status: { id: statusId },
+      });
+    }
+    // Only the account that read it hears about it.
+    expect(await authorSocket.heardNothing({ kind: "Direct" })).toBe(true);
+
+    const removed = await json(recipient, `/api/v1/conversations/${unread.id}`, {
+      method: "DELETE",
+    });
+    expect(removed.status).toBe(200);
+    expect(await recipientSocket.heardNothing({ kind: "Direct" })).toBe(true);
+    expect(await authorSocket.heardNothing({ kind: "Direct" })).toBe(true);
+    for (const socket of [recipientSocket, otherSocket, authorSocket]) {
+      socket.close();
+    }
+  });
 });
