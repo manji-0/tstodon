@@ -1,6 +1,7 @@
+import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { jsonStringArray, type RepositoryError, runD1, runD1Batch } from "./d1";
-import { d1PrepareTyped, queryTyped } from "./typed-sql";
+import { d1PrepareTyped, CountedRow, queryTyped } from "./typed-sql";
 import {
   deleteStatusMentions as deleteStatusMentionsSql,
   deleteStatusRemoteMentions as deleteStatusRemoteMentionsSql,
@@ -13,6 +14,10 @@ import {
   listStatusMentionsByIds as listStatusMentionsByIdsSql,
   listStatusRemoteMentions as listStatusRemoteMentionsSql,
 } from "./generated/prisma/sql";
+
+const StatusIdAccountIdRow = z.object({ status_id: z.string(), account_id: z.string() });
+const OkRow = z.object({ ok: z.number() });
+const StatusIdActorUriRow = z.object({ status_id: z.string(), actor_uri: z.string() });
 
 /** Record the local accounts a cached remote note addresses. */
 export const recordRemoteStatusMentions = async (
@@ -38,7 +43,7 @@ export const isAccountMentionedOnRemoteStatus = async (
   accountId: string,
 ): Promise<Result<boolean, RepositoryError>> => {
   const rows = await runD1(async () =>
-    queryTyped(db, isAccountMentionedOnRemoteStatusSql(statusId, accountId)),
+    queryTyped(db, isAccountMentionedOnRemoteStatusSql(statusId, accountId), CountedRow),
   );
   return rows.isErr() ? err(rows.error) : ok(rows.value.length > 0);
 };
@@ -53,9 +58,10 @@ export const listRemoteStatusMentions = async (
     return ok(mentions);
   }
   const rows = await runD1(async () =>
-    queryTyped<{ status_id: string; account_id: string }>(
+    queryTyped(
       db,
       listRemoteStatusMentionsSql(jsonStringArray([...new Set(statusIds)])),
+      StatusIdAccountIdRow,
     ),
   );
   if (rows.isErr()) {
@@ -93,7 +99,7 @@ export const isAccountMentionedOnStatus = async (
   accountId: string,
 ): Promise<Result<boolean, RepositoryError>> => {
   const queried = await runD1(async () => {
-    return queryTyped<{ ok: number }>(db, isAccountMentionedOnStatusSql(statusId, accountId));
+    return queryTyped(db, isAccountMentionedOnStatusSql(statusId, accountId), OkRow);
   });
   if (queried.isErr()) {
     return err(queried.error);
@@ -133,14 +139,8 @@ export const listStatusMentions = async (
   }
   const queried = await runD1(async () =>
     Promise.all([
-      queryTyped<{ status_id: string; account_id: string }>(
-        db,
-        listStatusMentionsByIdsSql(jsonStringArray(unique)),
-      ),
-      queryTyped<{ status_id: string; actor_uri: string }>(
-        db,
-        listStatusRemoteMentionsSql(jsonStringArray(unique)),
-      ),
+      queryTyped(db, listStatusMentionsByIdsSql(jsonStringArray(unique)), StatusIdAccountIdRow),
+      queryTyped(db, listStatusRemoteMentionsSql(jsonStringArray(unique)), StatusIdActorUriRow),
     ]),
   );
   if (queried.isErr()) {

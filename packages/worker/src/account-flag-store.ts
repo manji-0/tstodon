@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { jsonStringArray, runD1, type RepositoryError } from "./d1";
@@ -15,13 +16,17 @@ import {
 } from "./generated/prisma/sql";
 import { queryTyped, runTyped } from "./typed-sql";
 
+const SensitizedRow = z.object({ sensitized: z.number() });
+const AccountIdRow = z.object({ account_id: z.string() });
+const ObjectKeyRow = z.object({ object_key: z.string() });
+
 /** True when an admin forced the account's media to be marked sensitive. */
 export const isAccountSensitized = async (
   db: D1Database,
   accountId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ sensitized: number }>(db, findAccountFlagSql(accountId));
+    const rows = await queryTyped(db, findAccountFlagSql(accountId), SensitizedRow);
     return (rows[0]?.sensitized ?? 0) !== 0;
   });
 
@@ -35,7 +40,7 @@ export const sensitizedAccountIds = async (
     return ok(new Set<string>());
   }
   const queried = await runD1(async () =>
-    queryTyped<{ account_id: string }>(db, listSensitizedAccountIdsSql(jsonStringArray(unique))),
+    queryTyped(db, listSensitizedAccountIdsSql(jsonStringArray(unique)), AccountIdRow),
   );
   if (queried.isErr()) {
     return err(queried.error);
@@ -70,7 +75,7 @@ export const pendingAccountIds = async (
     return ok(new Set<string>());
   }
   const queried = await runD1(async () =>
-    queryTyped<{ account_id: string }>(db, listPendingAccountIdsSql(jsonStringArray(unique))),
+    queryTyped(db, listPendingAccountIdsSql(jsonStringArray(unique)), AccountIdRow),
   );
   if (queried.isErr()) {
     return err(queried.error);
@@ -99,7 +104,7 @@ export const disabledAccountIds = async (
     return ok(new Set<string>());
   }
   const queried = await runD1(async () =>
-    queryTyped<{ account_id: string }>(db, listDisabledAccountIdsSql(jsonStringArray(unique))),
+    queryTyped(db, listDisabledAccountIdsSql(jsonStringArray(unique)), AccountIdRow),
   );
   if (queried.isErr()) {
     return err(queried.error);
@@ -139,9 +144,6 @@ export const mediaObjectKeysForAccount = async (
   accountId: string,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ object_key: string }>(
-      db,
-      listMediaObjectKeysForAccountSql(accountId),
-    );
+    const rows = await queryTyped(db, listMediaObjectKeysForAccountSql(accountId), ObjectKeyRow);
     return rows.map((row) => row.object_key);
   });

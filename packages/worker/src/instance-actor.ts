@@ -3,7 +3,7 @@ import { InstanceIdentity } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { parseRow, type RepositoryError, runD1, toRepositoryError } from "./d1";
+import { type RepositoryError, runD1, toRepositoryError } from "./d1";
 import {
   findInstanceActorKeys as findInstanceActorKeysSql,
   insertInstanceActorKeys as insertInstanceActorKeysSql,
@@ -29,20 +29,14 @@ const InstanceActorKeysRowSchema = z.object({
 const findKeys = async (
   db: D1Database,
 ): Promise<Result<InstanceActorKeys | undefined, RepositoryError>> => {
-  const rows = await runD1(() => queryTyped(db, findInstanceActorKeysSql()));
-  if (rows.isErr()) {
-    return err(rows.error);
-  }
-  if (rows.value[0] === undefined) {
-    return ok(undefined);
-  }
-  const row = parseRow(InstanceActorKeysRowSchema, rows.value[0]);
-  if (row.isErr()) {
-    return err(toRepositoryError("invalid instance actor keys row"));
-  }
-  return ok({
-    publicKeyPem: row.value.public_key_pem,
-    privateKeyJwk: Sensitive.of(row.value.private_key_jwk),
+  const rows = await runD1(() =>
+    queryTyped(db, findInstanceActorKeysSql(), InstanceActorKeysRowSchema),
+  );
+  return rows.map((found) => {
+    const row = found[0];
+    return row === undefined
+      ? undefined
+      : { publicKeyPem: row.public_key_pem, privateKeyJwk: Sensitive.of(row.private_key_jwk) };
   });
 };
 

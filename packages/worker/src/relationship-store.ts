@@ -20,6 +20,8 @@ import {
   upsertAccountNote as upsertAccountNoteSql,
 } from "./generated/prisma/sql";
 
+const NoteRow = z.object({ note: z.string() });
+
 export type RelationshipFlags = Readonly<{
   following: boolean;
   followedBy: boolean;
@@ -123,7 +125,7 @@ export const findAccountNoteText = async (
   target: string,
 ): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ note: string }>(db, findAccountNoteSql(viewerId, target));
+    const rows = await queryTyped(db, findAccountNoteSql(viewerId, target), NoteRow);
     return rows[0]?.note;
   });
 

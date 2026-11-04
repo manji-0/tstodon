@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   type InstanceIdentity,
   OutboxJob,
@@ -16,6 +17,8 @@ import { publishToAccount, publishToHub } from "./stream-publish";
 import { listListStreamSubscriptions } from "./stream-subscription-store";
 import { homeTimelineDocuments, listTimelineDocuments } from "./timeline-documents";
 import { queryTyped } from "./typed-sql";
+
+const AccountIdRow = z.object({ account_id: z.string() });
 
 type FanOutHome = Extract<OutboxJobValue, { kind: "FanOutHome" }>;
 type FanOutRemovedStatuses = Extract<OutboxJobValue, { kind: "FanOutRemovedStatuses" }>;
@@ -199,7 +202,7 @@ export const fanOutHomePage = async (
   pageSize: number = HOME_FAN_OUT_PAGE_SIZE,
 ): Promise<Result<Readonly<{ recipients: number; next: string | undefined }>, RepositoryError>> => {
   const page = await runD1(() =>
-    queryTyped<{ account_id: string }>(
+    queryTyped(
       env.DB,
       listHomeFanOutAccounts(
         job.author.kind === "LocalAccount" ? job.author.accountId : "",
@@ -207,6 +210,7 @@ export const fanOutHomePage = async (
         job.afterAccountId,
         pageSize,
       ),
+      AccountIdRow,
     ),
   );
   if (page.isErr()) {

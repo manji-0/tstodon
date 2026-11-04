@@ -20,6 +20,9 @@ import { newEntityId } from "./ids";
 import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { queryTyped, runTyped } from "./typed-sql";
 
+const IdRow = z.object({ id: z.string() });
+const DomainRow = z.object({ domain: z.string() });
+
 export const DomainBlockSeveritySchema = z.union([
   z.literal("silence"),
   z.literal("suspend"),
@@ -85,9 +88,8 @@ export const findDomainBlockById = async (
   id: string,
 ): Promise<Result<DomainBlockRow | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, findDomainBlockByIdSql(id));
-    const row = parseRow(rows[0]);
-    return row.isOk() ? row.value : undefined;
+    const rows = await queryTyped(db, findDomainBlockByIdSql(id), DomainBlockRowSchema);
+    return rows[0];
   });
 
 export const findDomainBlockByDomain = async (
@@ -95,9 +97,8 @@ export const findDomainBlockByDomain = async (
   domain: string,
 ): Promise<Result<DomainBlockRow | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, findDomainBlockByDomainSql(domain));
-    const row = parseRow(rows[0]);
-    return row.isOk() ? row.value : undefined;
+    const rows = await queryTyped(db, findDomainBlockByDomainSql(domain), DomainBlockRowSchema);
+    return rows[0];
   });
 
 export const insertDomainBlock = async (
@@ -133,7 +134,7 @@ export const updateDomainBlock = async (
   input: Omit<DomainBlockInput, "domain">,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
+    const rows = await queryTyped(
       db,
       updateDomainBlockSql(
         id,
@@ -145,6 +146,7 @@ export const updateDomainBlock = async (
         input.publicComment,
         nowIso(),
       ),
+      IdRow,
     );
     return rows.length > 0;
   });
@@ -154,23 +156,19 @@ export const deleteDomainBlock = async (
   id: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(db, deleteDomainBlockSql(id));
+    const rows = await queryTyped(db, deleteDomainBlockSql(id), IdRow);
     return rows.length > 0;
   });
 
 /** Domains hidden from public surfaces (silence + suspend). */
 export const restrictedDomains = async (db: D1Database): Promise<ReadonlySet<string>> => {
-  const rows = await runD1(async () =>
-    queryTyped<{ domain: string }>(db, listRestrictedDomainsSql()),
-  );
+  const rows = await runD1(async () => queryTyped(db, listRestrictedDomainsSql(), DomainRow));
   return new Set((rows.isOk() ? rows.value : []).map((row) => authorityHost(row.domain)));
 };
 
 /** Domains federation is refused with (suspend). */
 export const suspendedDomains = async (db: D1Database): Promise<ReadonlySet<string>> => {
-  const rows = await runD1(async () =>
-    queryTyped<{ domain: string }>(db, listSuspendedDomainsSql()),
-  );
+  const rows = await runD1(async () => queryTyped(db, listSuspendedDomainsSql(), DomainRow));
   return new Set((rows.isOk() ? rows.value : []).map((row) => authorityHost(row.domain)));
 };
 
@@ -198,15 +196,7 @@ export const listPublicDomainBlocks = async (
   db: D1Database,
 ): Promise<Result<DomainBlockRow[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, listPublicDomainBlocksSql());
-    const blocks: DomainBlockRow[] = [];
-    for (const raw of rows) {
-      const row = parseRow(raw);
-      if (row.isOk()) {
-        blocks.push(row.value);
-      }
-    }
-    return blocks;
+    return queryTyped(db, listPublicDomainBlocksSql(), DomainBlockRowSchema);
   });
 
 export const publicDomainBlockDocument = async (
@@ -223,9 +213,7 @@ export const publicDomainBlockDocument = async (
 
 /** Domains whose remote media must not be kept (`reject_media`). */
 export const mediaRejectedDomains = async (db: D1Database): Promise<ReadonlySet<string>> => {
-  const rows = await runD1(async () =>
-    queryTyped<{ domain: string }>(db, listMediaRejectedDomainsSql()),
-  );
+  const rows = await runD1(async () => queryTyped(db, listMediaRejectedDomainsSql(), DomainRow));
   return new Set((rows.isOk() ? rows.value : []).map((row) => authorityHost(row.domain)));
 };
 

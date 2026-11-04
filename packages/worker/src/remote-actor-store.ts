@@ -47,6 +47,25 @@ import {
   upsertRemoteFollow as upsertRemoteFollowSql,
 } from "./generated/prisma/sql";
 
+const ActorUriRow = z.object({ actor_uri: z.string() });
+const RemoteActorUriCreatedAtRow = z.object({
+  remote_actor_uri: z.string(),
+  created_at: z.string(),
+});
+const FollowActivityIdRow = z.object({ follow_activity_id: z.string().nullable() });
+const FollowActivityIdRemoteRequestKindRow = z.object({
+  follow_activity_id: z.string().nullable(),
+  remote_request_kind: z.string(),
+});
+const RemoteActorUriRow = z.object({ remote_actor_uri: z.string() });
+const InboxUriSharedInboxUriRow = z.object({
+  inbox_uri: z.string(),
+  shared_inbox_uri: z.string().nullable(),
+});
+const DomainRow = z.object({ domain: z.string() });
+const IdRow = z.object({ id: z.string() });
+const AccountIdRow = z.object({ account_id: z.string() });
+
 export const RemoteActorRowSchema = z.object({
   actor_uri: z.string().min(1),
   username: z.string().min(1),
@@ -64,8 +83,6 @@ export const RemoteActorRowSchema = z.object({
 });
 
 export type RemoteActorRow = z.infer<typeof RemoteActorRowSchema>;
-
-const parseRemoteActorRow = schemaResult(RemoteActorRowSchema);
 
 const parseProfile = schemaResult(RemoteActor.profileSchema);
 
@@ -102,19 +119,12 @@ const remoteActorFromRow = (row: RemoteActorRow): Result<RemoteActor, Repository
 };
 
 const readRemoteActor = async (
-  queried: Result<unknown, RepositoryError>,
+  queried: Result<RemoteActorRow | undefined, RepositoryError>,
 ): Promise<Result<RemoteActor | undefined, RepositoryError>> => {
   if (queried.isErr()) {
     return err(queried.error);
   }
-  if (!queried.value) {
-    return ok(undefined);
-  }
-  const row = parseRemoteActorRow(queried.value);
-  if (row.isErr()) {
-    return err(toRepositoryError("invalid remote actor row"));
-  }
-  return remoteActorFromRow(row.value);
+  return queried.value === undefined ? ok(undefined) : remoteActorFromRow(queried.value);
 };
 
 /** A cached actor by its `user@domain` handle, compared without case. */
@@ -125,7 +135,11 @@ export const findRemoteActorByHandle = async (
 ): Promise<Result<RemoteActor | undefined, RepositoryError>> =>
   readRemoteActor(
     await runD1(async () => {
-      const rows = await queryTyped(db, findRemoteActorByHandleSql(username, domain));
+      const rows = await queryTyped(
+        db,
+        findRemoteActorByHandleSql(username, domain),
+        RemoteActorRowSchema,
+      );
       return rows[0];
     }),
   );
@@ -136,7 +150,7 @@ export const findRemoteActorByUri = async (
 ): Promise<Result<RemoteActor | undefined, RepositoryError>> =>
   readRemoteActor(
     await runD1(async () => {
-      const rows = await queryTyped(db, findRemoteActorByUriSql(actorUri));
+      const rows = await queryTyped(db, findRemoteActorByUriSql(actorUri), RemoteActorRowSchema);
       return rows[0];
     }),
   );
@@ -152,15 +166,14 @@ export const findRemoteActorsByUris = async (
     return ok(actors);
   }
   const queried = await runD1(async () =>
-    queryTyped(db, findRemoteActorsByUrisSql(jsonStringArray(unique))),
+    queryTyped(db, findRemoteActorsByUrisSql(jsonStringArray(unique)), RemoteActorRowSchema),
   );
   if (queried.isErr()) {
     return err(queried.error);
   }
-  for (const raw of queried.value) {
-    const row = parseRemoteActorRow(raw);
-    const actor = row.isOk() ? remoteActorFromRow(row.value) : undefined;
-    if (actor?.isOk()) {
+  for (const row of queried.value) {
+    const actor = remoteActorFromRow(row);
+    if (actor.isOk()) {
       actors.set(actor.value.actorUri, actor.value);
     }
   }
@@ -173,7 +186,11 @@ export const findRemoteActorByPublicKeyId = async (
 ): Promise<Result<RemoteActor | undefined, RepositoryError>> =>
   readRemoteActor(
     await runD1(async () => {
-      const rows = await queryTyped(db, findRemoteActorByPublicKeyIdSql(publicKeyId));
+      const rows = await queryTyped(
+        db,
+        findRemoteActorByPublicKeyIdSql(publicKeyId),
+        RemoteActorRowSchema,
+      );
       return rows[0];
     }),
   );
@@ -234,9 +251,10 @@ export const claimRemoteOutboxBackfill = async (
   runD1(async () => {
     const now = Date.now();
     const claimedAt = new Date(now).toISOString();
-    const rows = await queryTyped<{ actor_uri: string }>(
+    const rows = await queryTyped(
       db,
       claimRemoteOutboxBackfillSql(claimedAt, actorUri, new Date(now - ttlMs).toISOString()),
+      ActorUriRow,
     );
     return rows.length > 0 ? claimedAt : undefined;
   });
@@ -289,9 +307,10 @@ export const listPendingRemoteFollowRequesters = async (
   limit: number,
 ): Promise<Result<PendingRemoteFollowRequester[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ remote_actor_uri: string; created_at: string }>(
+    const rows = await queryTyped(
       db,
       listPendingRemoteFollowRequestersSql(targetAccountId, limit),
+      RemoteActorUriCreatedAtRow,
     );
     return rows.map((row) => ({
       remoteActorUri: row.remote_actor_uri,
@@ -306,9 +325,10 @@ export const findPendingRemoteFollowRequest = async (
   remoteActorUri: string,
 ): Promise<Result<string | null, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ follow_activity_id: string | null }>(
+    const rows = await queryTyped(
       db,
       findPendingRemoteFollowRequestSql(targetAccountId, remoteActorUri),
+      FollowActivityIdRow,
     );
     return rows[0]?.follow_activity_id ?? null;
   });
@@ -325,10 +345,11 @@ export const findRemoteFollow = async (
   >
 > =>
   runD1(async () => {
-    const rows = await queryTyped<{
-      follow_activity_id: string | null;
-      remote_request_kind: string;
-    }>(db, findRemoteFollowSql(targetAccountId, remoteActorUri));
+    const rows = await queryTyped(
+      db,
+      findRemoteFollowSql(targetAccountId, remoteActorUri),
+      FollowActivityIdRemoteRequestKindRow,
+    );
     const row = rows[0];
     return row
       ? { followActivityId: row.follow_activity_id, requestKind: row.remote_request_kind }
@@ -342,9 +363,10 @@ export const authorizeRemoteFollowRequest = async (
   remoteActorUri: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ remote_actor_uri: string }>(
+    const rows = await queryTyped(
       db,
       authorizeRemoteFollowRequestSql(targetAccountId, remoteActorUri),
+      RemoteActorUriRow,
     );
     return rows.length > 0;
   });
@@ -356,9 +378,10 @@ export const rejectRemoteFollowRequest = async (
   remoteActorUri: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ remote_actor_uri: string }>(
+    const rows = await queryTyped(
       db,
       rejectRemoteFollowRequestSql(targetAccountId, remoteActorUri),
+      RemoteActorUriRow,
     );
     return rows.length > 0;
   });
@@ -377,9 +400,10 @@ export const listAcceptedRemoteFollowerInboxes = async (
   targetAccountId: string,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const results = await queryTyped<{ inbox_uri: string; shared_inbox_uri: string | null }>(
+    const results = await queryTyped(
       db,
       listAcceptedRemoteFollowerInboxesSql(targetAccountId),
+      InboxUriSharedInboxUriRow,
     );
     const inboxes = new Set<string>();
     for (const row of results) {
@@ -394,16 +418,17 @@ export const listAcceptedRemoteFollowerUris = async (
   limit: number,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const results = await queryTyped<{ remote_actor_uri: string }>(
+    const results = await queryTyped(
       db,
       listAcceptedRemoteFollowerUrisSql(targetAccountId, limit),
+      RemoteActorUriRow,
     );
     return results.map((row) => row.remote_actor_uri);
   });
 
 export const listPeerDomains = async (db: D1Database): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const results = await queryTyped<{ domain: string }>(db, listPeerDomainsSql());
+    const results = await queryTyped(db, listPeerDomainsSql(), DomainRow);
     return results.map((row) => row.domain);
   });
 
@@ -414,14 +439,14 @@ export const searchRemoteActors = async (
   limit: number,
 ): Promise<Result<RemoteActor[], RepositoryError>> =>
   runD1(async () => {
-    const results = await queryTyped(db, searchRemoteActorsSql(`%${query}%`, limit));
+    const results = await queryTyped(
+      db,
+      searchRemoteActorsSql(`%${query}%`, limit),
+      RemoteActorRowSchema,
+    );
     const actors: RemoteActor[] = [];
-    for (const raw of results) {
-      const row = parseRemoteActorRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const actor = remoteActorFromRow(row.value);
+    for (const row of results) {
+      const actor = remoteActorFromRow(row);
       if (actor.isOk()) {
         actors.push(actor.value);
       }
@@ -482,10 +507,7 @@ export const listRemoteActorHomeEntryIds = async (
   limit: number,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
-      db,
-      listRemoteActorHomeEntryIdsSql(actorUri, limit),
-    );
+    const rows = await queryTyped(db, listRemoteActorHomeEntryIdsSql(actorUri, limit), IdRow);
     return rows.map((row) => row.id);
   });
 
@@ -499,9 +521,10 @@ export const listRemoteActorFollowerAccountIds = async (
     const ids: string[] = [];
     while (ids.length < limit) {
       const size = Math.min(200, limit - ids.length);
-      const page = await queryTyped<{ account_id: string }>(
+      const page = await queryTyped(
         db,
         listHomeFanOutAccountsSql("", actorUri, ids.at(-1) ?? "", size),
+        AccountIdRow,
       );
       ids.push(...page.map((row) => row.account_id));
       if (page.length < size) {

@@ -13,8 +13,9 @@ import {
 } from "./generated/prisma/sql";
 import { newEntityId } from "./ids";
 import type { Announcement } from "./runtime-config";
-import { parseRow } from "./d1";
 import { queryTyped, runTyped } from "./typed-sql";
+
+const IdRow = z.object({ id: z.string() });
 
 export const AnnouncementRowSchema = z.object({
   id: z.string().min(1),
@@ -37,17 +38,6 @@ export type AnnouncementInput = Readonly<{
   publishedAt: string | null;
 }>;
 
-const parseRows = (rows: Record<string, unknown>[]): AnnouncementRow[] => {
-  const parsed: AnnouncementRow[] = [];
-  for (const raw of rows) {
-    const row = parseRow(AnnouncementRowSchema, raw);
-    if (row.isOk()) {
-      parsed.push(row.value);
-    }
-  }
-  return parsed;
-};
-
 /** Adapt a stored row to the shape the public announcement document builder uses. */
 export const announcementFromRow = (row: AnnouncementRow): Announcement => ({
   id: row.id,
@@ -63,23 +53,22 @@ export const announcementFromRow = (row: AnnouncementRow): Announcement => ({
 export const listAdminAnnouncements = async (
   db: D1Database,
 ): Promise<Result<AnnouncementRow[], RepositoryError>> =>
-  runD1(async () => parseRows(await queryTyped(db, listAdminAnnouncementsSql())));
+  runD1(async () => queryTyped(db, listAdminAnnouncementsSql(), AnnouncementRowSchema));
 
 /** Announcements authored at runtime that are live at `now`. */
 export const listPublishedAnnouncements = async (
   db: D1Database,
   now: string,
 ): Promise<Result<AnnouncementRow[], RepositoryError>> =>
-  runD1(async () => parseRows(await queryTyped(db, listPublishedAnnouncementsSql(now))));
+  runD1(async () => queryTyped(db, listPublishedAnnouncementsSql(now), AnnouncementRowSchema));
 
 export const findAnnouncementRowById = async (
   db: D1Database,
   id: string,
 ): Promise<Result<AnnouncementRow | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, findAnnouncementByIdSql(id));
-    const row = parseRow(AnnouncementRowSchema, rows[0]);
-    return row.isOk() ? row.value : undefined;
+    const rows = await queryTyped(db, findAnnouncementByIdSql(id), AnnouncementRowSchema);
+    return rows[0];
   });
 
 export const insertAnnouncement = async (
@@ -113,7 +102,7 @@ export const updateAnnouncement = async (
   input: AnnouncementInput,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
+    const rows = await queryTyped(
       db,
       updateAnnouncementSql(
         id,
@@ -124,6 +113,7 @@ export const updateAnnouncement = async (
         input.publishedAt,
         nowIso(),
       ),
+      IdRow,
     );
     return rows.length > 0;
   });
@@ -134,9 +124,10 @@ export const setAnnouncementPublished = async (
   publishedAt: string | null,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
+    const rows = await queryTyped(
       db,
       setAnnouncementPublishedSql(id, publishedAt, nowIso()),
+      IdRow,
     );
     return rows.length > 0;
   });
@@ -146,6 +137,6 @@ export const deleteAnnouncementById = async (
   id: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(db, deleteAnnouncementByIdSql(id));
+    const rows = await queryTyped(db, deleteAnnouncementByIdSql(id), IdRow);
     return rows.length > 0;
   });

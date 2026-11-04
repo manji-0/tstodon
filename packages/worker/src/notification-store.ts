@@ -1,8 +1,9 @@
+import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
-import { queryTyped, runTyped } from "./typed-sql";
+import { CountedRow, queryTyped, runTyped } from "./typed-sql";
 import {
   clearNotifications as clearNotificationsSql,
   countUnreadNotifications as countUnreadNotificationsSql,
@@ -13,6 +14,9 @@ import {
   insertNotification as insertNotificationSql,
   listNotifications as listNotificationsSql,
 } from "./generated/prisma/sql";
+
+const PresentRow = z.object({ present: z.number() });
+const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
 
 /**
  * Withdraw what a remote actor's activity notified, when the activity is
@@ -39,6 +43,7 @@ export const deleteRemoteNotifications = async (
             input.accountId ?? "",
             input.statusId ?? "",
           ),
+          CountedRow,
         )
       ).length,
   );
@@ -84,17 +89,19 @@ export const insertNotification = async (
   return ok(id);
 };
 
-export type NotificationRow = {
-  id: string;
-  account_id: string;
-  from_account_id: string;
-  kind: string;
-  status_id: string | null;
-  target_account_id: string | null;
-  report_id: string | null;
-  severance_event_id: string | null;
-  created_at: string;
-};
+const NotificationQueryRowSchema = z.object({
+  id: z.string().nullable(),
+  account_id: z.string(),
+  from_account_id: z.string(),
+  kind: z.string(),
+  status_id: z.string().nullable(),
+  target_account_id: z.string().nullable(),
+  report_id: z.string().nullable(),
+  severance_event_id: z.string().nullable(),
+  created_at: z.string(),
+});
+
+export type NotificationRow = z.infer<typeof NotificationQueryRowSchema> & { id: string };
 
 export type NotificationFilters = Readonly<{
   types?: ReadonlyArray<string>;
@@ -133,7 +140,7 @@ export const listNotifications = async (
 ): Promise<Result<NotificationRow[], RepositoryError>> =>
   runD1(async () => {
     const cursor = notificationCursor(filters);
-    const results = await queryTyped<NotificationRow>(
+    const results = await queryTyped(
       db,
       listNotificationsSql(
         accountId,
@@ -147,6 +154,7 @@ export const listNotifications = async (
         cursor.ascending,
         filters.includeFiltered ? 1 : 0,
       ),
+      NotificationQueryRowSchema,
     );
     return results.map((row) => ({
       id: row.id ?? "",
@@ -170,12 +178,13 @@ export const findNotificationById = async (
   notificationId: string,
 ): Promise<Result<NotificationRow | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<NotificationRow>(
+    const rows = await queryTyped(
       db,
       findNotificationByIdSql(notificationId, accountId),
+      NotificationQueryRowSchema,
     );
     const row = rows[0];
-    if (!row || row.id === undefined) {
+    if (!row || row.id === null) {
       return undefined;
     }
     return {
@@ -197,9 +206,10 @@ export const dismissNotification = async (
   notificationId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const owned = await queryTyped<{ present: number }>(
+    const owned = await queryTyped(
       db,
       findNotificationOwnedSql(accountId, notificationId),
+      PresentRow,
     );
     if (owned.length === 0) {
       return false;
@@ -224,9 +234,10 @@ export const countUnreadNotifications = async (
   markerId: string | undefined,
 ): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ count: number | bigint }>(
+    const rows = await queryTyped(
       db,
       countUnreadNotificationsSql(accountId, markerId ?? "", nowIso()),
+      CountRow,
     );
     return Number(rows[0]?.count ?? 0);
   });

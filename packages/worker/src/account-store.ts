@@ -32,6 +32,9 @@ import {
 } from "./generated/prisma/sql";
 import { type AdminAccountFilters } from "./account-admin-store";
 
+const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
+const IdRow = z.object({ id: z.string() });
+
 export const AccountRowSchema = z.object({
   id: z.string().min(1),
   username: z.string().min(1),
@@ -82,20 +85,13 @@ export const findAccountById = async (
   id: string,
 ): Promise<Result<LocalAccount | undefined, RepositoryError>> => {
   const queried = await runD1(async () => {
-    return queryTyped(db, findAccountByIdSql(id));
+    return queryTyped(db, findAccountByIdSql(id), AccountRowSchema);
   });
   if (queried.isErr()) {
     return err(queried.error);
   }
-  const raw = queried.value[0];
-  if (!raw) {
-    return ok(undefined);
-  }
-  const row = parseAccountRow(raw);
-  if (row.isErr()) {
-    return err(toRepositoryError("invalid account row"));
-  }
-  return accountFromRow(row.value);
+  const row = queried.value[0];
+  return row === undefined ? ok(undefined) : accountFromRow(row);
 };
 
 export const findAccountsByIds = async (
@@ -108,17 +104,13 @@ export const findAccountsByIds = async (
     return ok(accounts);
   }
   const queried = await runD1(async () =>
-    queryTyped(db, findAccountsByIdsJsonSql(jsonStringArray(unique))),
+    queryTyped(db, findAccountsByIdsJsonSql(jsonStringArray(unique)), AccountRowSchema),
   );
   if (queried.isErr()) {
     return err(queried.error);
   }
-  for (const raw of queried.value) {
-    const row = parseAccountRow(raw);
-    if (row.isErr()) {
-      continue;
-    }
-    const account = accountFromRow(row.value);
+  for (const row of queried.value) {
+    const account = accountFromRow(row);
     if (account.isOk()) {
       accounts.set(account.value.id, account.value);
     }
@@ -131,20 +123,13 @@ export const findAccountByUsername = async (
   username: string,
 ): Promise<Result<LocalAccount | undefined, RepositoryError>> => {
   const queried = await runD1(async () => {
-    return queryTyped(db, findAccountByUsernameSql(username.toLowerCase()));
+    return queryTyped(db, findAccountByUsernameSql(username.toLowerCase()), AccountRowSchema);
   });
   if (queried.isErr()) {
     return err(queried.error);
   }
-  const raw = queried.value[0];
-  if (!raw) {
-    return ok(undefined);
-  }
-  const row = parseAccountRow(raw);
-  if (row.isErr()) {
-    return err(toRepositoryError("invalid account row"));
-  }
-  return accountFromRow(row.value);
+  const row = queried.value[0];
+  return row === undefined ? ok(undefined) : accountFromRow(row);
 };
 
 /** Resolve many local usernames in one (or few chunked) IN queries. */
@@ -164,17 +149,13 @@ export const findAccountsByUsernames = async (
   }
   const accounts: LocalAccount[] = [];
   const queried = await runD1(async () =>
-    queryTyped(db, findAccountsByUsernamesJsonSql(jsonStringArray(normalized))),
+    queryTyped(db, findAccountsByUsernamesJsonSql(jsonStringArray(normalized)), AccountRowSchema),
   );
   if (queried.isErr()) {
     return err(queried.error);
   }
-  for (const raw of queried.value) {
-    const row = parseAccountRow(raw);
-    if (row.isErr()) {
-      continue;
-    }
-    const parsed = accountFromRow(row.value);
+  for (const row of queried.value) {
+    const parsed = accountFromRow(row);
     if (parsed.isOk()) {
       accounts.push(parsed.value);
     }
@@ -187,20 +168,13 @@ export const findAccountByEmail = async (
   email: string,
 ): Promise<Result<LocalAccount | undefined, RepositoryError>> => {
   const queried = await runD1(async () => {
-    return queryTyped(db, findAccountByEmailSql(email.toLowerCase()));
+    return queryTyped(db, findAccountByEmailSql(email.toLowerCase()), AccountRowSchema);
   });
   if (queried.isErr()) {
     return err(queried.error);
   }
-  const raw = queried.value[0];
-  if (!raw) {
-    return ok(undefined);
-  }
-  const row = parseAccountRow(raw);
-  if (row.isErr()) {
-    return err(toRepositoryError("invalid account row"));
-  }
-  return accountFromRow(row.value);
+  const row = queried.value[0];
+  return row === undefined ? ok(undefined) : accountFromRow(row);
 };
 
 /** The local account the Better Auth user `authUserId` signs in as. */
@@ -208,19 +182,14 @@ export const findAccountByAuthUserId = async (
   db: D1Database,
   authUserId: string,
 ): Promise<Result<LocalAccount | undefined, RepositoryError>> => {
-  const queried = await runD1(async () => queryTyped(db, findAccountByAuthUserIdSql(authUserId)));
+  const queried = await runD1(async () =>
+    queryTyped(db, findAccountByAuthUserIdSql(authUserId), AccountRowSchema),
+  );
   if (queried.isErr()) {
     return err(queried.error);
   }
-  const raw = queried.value[0];
-  if (!raw) {
-    return ok(undefined);
-  }
-  const row = parseAccountRow(raw);
-  if (row.isErr()) {
-    return err(toRepositoryError("invalid account row"));
-  }
-  return accountFromRow(row.value);
+  const row = queried.value[0];
+  return row === undefined ? ok(undefined) : accountFromRow(row);
 };
 
 export const searchAccounts = async (
@@ -233,13 +202,10 @@ export const searchAccounts = async (
     const results = await queryTyped(
       db,
       searchAccountsSql(`%${query.toLowerCase()}%`, `%${query}%`, limit, offset),
+      AccountRowSchema,
     );
-    return results.flatMap((raw) => {
-      const row = parseAccountRow(raw);
-      if (row.isErr()) {
-        return [];
-      }
-      const parsed = accountFromRow(row.value);
+    return results.flatMap((row) => {
+      const parsed = accountFromRow(row);
       return parsed.isOk() ? [parsed.value] : [];
     });
   });
@@ -270,7 +236,7 @@ export const insertAccount = async (
 
 export const countAccounts = async (db: D1Database): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ count: number | bigint }>(db, countAccountsSql());
+    const rows = await queryTyped(db, countAccountsSql(), CountRow);
     return Number(rows[0]?.count ?? 0);
   });
 
@@ -281,15 +247,19 @@ export const listDirectoryAccounts = async (
   runD1(async () => {
     const results =
       input.order === "active"
-        ? await queryTyped(db, listDirectoryAccountsByActiveSql(input.limit, input.offset))
-        : await queryTyped(db, listDirectoryAccountsByNewSql(input.limit, input.offset));
+        ? await queryTyped(
+            db,
+            listDirectoryAccountsByActiveSql(input.limit, input.offset),
+            AccountRowSchema,
+          )
+        : await queryTyped(
+            db,
+            listDirectoryAccountsByNewSql(input.limit, input.offset),
+            AccountRowSchema,
+          );
     const accounts: LocalAccount[] = [];
-    for (const raw of results) {
-      const row = parseAccountRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const account = accountFromRow(row.value);
+    for (const row of results) {
+      const account = accountFromRow(row);
       if (account.isOk()) {
         accounts.push(account.value);
       }
@@ -304,7 +274,7 @@ export const setAccountLocked = async (
   locked: boolean,
 ): Promise<Result<void, RepositoryError>> => {
   const written = await runD1(async () => {
-    await queryTyped(db, setAccountLockedSql(locked ? 1 : 0, accountId));
+    await runTyped(db, setAccountLockedSql(locked ? 1 : 0, accountId));
   });
   return written.map(() => undefined);
 };
@@ -315,7 +285,7 @@ export const deleteAccount = async (
   id: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(db, deleteAccountSql(id));
+    const rows = await queryTyped(db, deleteAccountSql(id), IdRow);
     return rows.length > 0;
   });
 

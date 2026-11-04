@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { type RepositoryError, runD1 } from "./d1";
@@ -8,6 +9,9 @@ import {
   insertStatusEdit as insertStatusEditSql,
   listStatusEditSnapshots as listStatusEditSnapshotsSql,
 } from "./generated/prisma/sql";
+
+const SnapshotJsonRow = z.object({ snapshot_json: z.string() });
+const UpdatedAtRow = z.object({ updated_at: z.string() });
 
 /** Store the previous revision of a status as a history snapshot. */
 export const insertStatusEdit = async (
@@ -25,10 +29,7 @@ export const listStatusEdits = async (
   statusId: string,
 ): Promise<Result<Record<string, unknown>[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ snapshot_json: string }>(
-      db,
-      listStatusEditSnapshotsSql(statusId),
-    );
+    const rows = await queryTyped(db, listStatusEditSnapshotsSql(statusId), SnapshotJsonRow);
     const snapshots: Record<string, unknown>[] = [];
     for (const row of rows) {
       const parsed: unknown = JSON.parse(row.snapshot_json);
@@ -44,6 +45,6 @@ export const findStatusUpdatedAt = async (
   statusId: string,
 ): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ updated_at: string }>(db, findStatusUpdatedAtSql(statusId));
+    const rows = await queryTyped(db, findStatusUpdatedAtSql(statusId), UpdatedAtRow);
     return rows[0]?.updated_at;
   });

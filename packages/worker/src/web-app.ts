@@ -177,13 +177,13 @@ const SourceSchema = z.object({
 const SettingsRowSchema = z.object({ data_json: z.string() });
 
 const webSettings = async (env: Env, accountId: string): Promise<unknown> => {
-  const rows = await runD1(() => queryTyped(env.DB, findWebSettings(accountId)));
-  const row = rows.isOk() ? schemaResult(SettingsRowSchema)(rows.value[0]) : undefined;
-  if (!row || row.isErr()) {
+  const rows = await runD1(() => queryTyped(env.DB, findWebSettings(accountId), SettingsRowSchema));
+  const row = rows.isOk() ? rows.value[0] : undefined;
+  if (row === undefined) {
     return {};
   }
   try {
-    const parsed: unknown = JSON.parse(row.value.data_json);
+    const parsed: unknown = JSON.parse(row.data_json);
     return parsed;
   } catch {
     return {};

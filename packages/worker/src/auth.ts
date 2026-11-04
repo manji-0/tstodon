@@ -66,6 +66,9 @@ const TokenRowSchema = z.object({
   web_session_expires_at: z.number().nullable(),
 });
 
+/** The token row keeps the account's columns, which `AccountRowSchema` reads when it has one. */
+const TokenQueryRowSchema = TokenRowSchema.loose();
+
 /** Better Auth's admin plugin stores roles comma-separated. */
 export const roleFromAuthUser = (role: unknown): FediRoleValue =>
   (typeof role === "string" ? role : "")
@@ -89,47 +92,43 @@ export const authenticate = async (
     return ok({ kind: "Anonymous" });
   }
   const rows = await runD1(async () =>
-    queryTyped(env.DB, findAccessTokenAccount(await sha256Hex(presented))),
+    queryTyped(env.DB, findAccessTokenAccount(await sha256Hex(presented)), TokenQueryRowSchema),
   );
   if (rows.isErr()) {
     return err(rows.error);
   }
-  const raw = rows.value[0];
-  if (raw === undefined) {
+  const row = rows.value[0];
+  if (row === undefined) {
     return err({ kind: "InvalidToken" });
   }
-  const row = parseRow(TokenRowSchema, raw);
-  if (row.isErr()) {
-    return err(row.error);
-  }
-  if (row.value.web_session_id !== null && (row.value.web_session_expires_at ?? 0) <= Date.now()) {
+  if (row.web_session_id !== null && (row.web_session_expires_at ?? 0) <= Date.now()) {
     // The web app's token lives only as long as its Better Auth session.
     return err({ kind: "InvalidToken" });
   }
   const token: AccessToken = {
-    id: row.value.token_id,
-    applicationId: row.value.application_id,
-    scopes: row.value.scopes.split(" ").filter((scope) => scope.length > 0),
+    id: row.token_id,
+    applicationId: row.application_id,
+    scopes: row.scopes.split(" ").filter((scope) => scope.length > 0),
   };
   const path = new URL(request.url).pathname;
   if (!scopeAllows(token.scopes, requiredScope(request.method, path), path)) {
     return err({ kind: "InsufficientScope" });
   }
-  if (row.value.account_id === null) {
+  if (row.account_id === null) {
     return ok({ kind: "Application", token });
   }
-  const accountRow = parseRow(AccountRowSchema, raw).andThen(accountFromRow);
+  const accountRow = parseRow(AccountRowSchema, row).andThen(accountFromRow);
   if (accountRow.isErr()) {
     return err(accountRow.error);
   }
-  if (row.value.moderation === "Suspended" || row.value.disabled !== 0) {
+  if (row.moderation === "Suspended" || row.disabled !== 0) {
     // Mastodon's `disable` action blocks the login while the profile stays.
     return err({ kind: "Forbidden" });
   }
   return ok({
     kind: "Account",
     account: accountRow.value,
-    role: roleFromAuthUser(row.value.auth_role),
+    role: roleFromAuthUser(row.auth_role),
     token,
   });
 };

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
@@ -10,6 +11,15 @@ import {
 } from "./generated/prisma/sql";
 import { queryTyped, runTyped } from "./typed-sql";
 
+const AnnouncementIdRow = z.object({ announcement_id: z.string() });
+const Row2 = z.object({
+  announcement_id: z.string(),
+  reaction_name: z.string(),
+  count: z.union([z.number(), z.bigint()]),
+  me: z.union([z.number(), z.bigint()]),
+});
+const ReactionNameRow = z.object({ reaction_name: z.string() });
+
 export type AnnouncementReactionState = Readonly<{ count: number; me: boolean }>;
 
 export const listAnnouncementDismissals = async (
@@ -17,10 +27,7 @@ export const listAnnouncementDismissals = async (
   accountId: string,
 ): Promise<Result<ReadonlySet<string>, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ announcement_id: string }>(
-      db,
-      listAnnouncementDismissalsSql(accountId),
-    );
+    const rows = await queryTyped(db, listAnnouncementDismissalsSql(accountId), AnnouncementIdRow);
     return new Set(rows.map((row) => row.announcement_id));
   });
 
@@ -41,12 +48,7 @@ export const announcementReactionState = async (
   Result<ReadonlyMap<string, ReadonlyMap<string, AnnouncementReactionState>>, RepositoryError>
 > =>
   runD1(async () => {
-    const rows = await queryTyped<{
-      announcement_id: string;
-      reaction_name: string;
-      count: number | bigint;
-      me: number | bigint;
-    }>(db, listAnnouncementReactionsSql(accountId));
+    const rows = await queryTyped(db, listAnnouncementReactionsSql(accountId), Row2);
     const state = new Map<string, Map<string, AnnouncementReactionState>>();
     for (const row of rows) {
       if (row.announcement_id.length === 0 || row.reaction_name.length === 0) {
@@ -85,9 +87,10 @@ export const removeAnnouncementReaction = async (
   reactionName: string,
 ): Promise<Result<boolean, RepositoryError>> => {
   const deleted = await runD1(async () => {
-    const rows = await queryTyped<{ reaction_name: string }>(
+    const rows = await queryTyped(
       db,
       deleteAnnouncementReactionSql(accountId, announcementId, reactionName),
+      ReactionNameRow,
     );
     return rows.length > 0;
   });

@@ -3,7 +3,7 @@ import { err, ok, type Result } from "neverthrow";
 import { AccessEmail, type LocalAccount } from "@tstodon/domain";
 import { findAccountByEmail, findAccountByUsername } from "./account-store";
 import { provisionLocalAccount, signupUsername, type ProvisionError } from "./account-provision";
-import { parseRow, runD1 } from "./d1";
+import { runD1 } from "./d1";
 import { escapeHtml } from "./html";
 import {
   consumeSignupIntent as consumeSignupIntentSql,
@@ -20,7 +20,7 @@ import {
   registrationApprovalRequired,
   registrationsOpen,
 } from "./runtime-config";
-import { queryTyped, runTypedBatch } from "./typed-sql";
+import { CountedRow, queryTyped, runTypedBatch } from "./typed-sql";
 import { z } from "zod";
 
 /**
@@ -152,6 +152,7 @@ export const requestSignup = async (
         intent.value.email,
         new Date(now.getTime() - SIGNUP_RESEND_INTERVAL_MS).toISOString(),
       ),
+      CountedRow,
     ),
   );
   if (recent.isErr()) {
@@ -191,19 +192,14 @@ const IntentRowSchema = z.object({
   expires_at: z.string(),
 });
 
-const liveIntent = (rows: ReadonlyArray<unknown>): Result<SignupIntent, SignupError> => {
-  const raw = rows[0];
-  if (raw === undefined) {
+const liveIntent = (
+  rows: ReadonlyArray<z.infer<typeof IntentRowSchema>>,
+): Result<SignupIntent, SignupError> => {
+  const row = rows[0];
+  if (row === undefined || Date.parse(row.expires_at) <= Date.now()) {
     return err({ kind: "InvalidSignupLink" });
   }
-  const row = parseRow(IntentRowSchema, raw);
-  if (row.isErr()) {
-    return err(row.error);
-  }
-  if (Date.parse(row.value.expires_at) <= Date.now()) {
-    return err({ kind: "InvalidSignupLink" });
-  }
-  return ok({ username: row.value.username, email: row.value.email });
+  return ok({ username: row.username, email: row.email });
 };
 
 const SIGNUP_USER_PREFIX = "signup:";
@@ -226,7 +222,7 @@ export const checkSignupLink = async (
     return err({ kind: "InvalidSignupLink" });
   }
   const hash = await sha256Hex(token);
-  const rows = await runD1(() => queryTyped(env.DB, findSignupIntentSql(hash)));
+  const rows = await runD1(() => queryTyped(env.DB, findSignupIntentSql(hash), IntentRowSchema));
   if (rows.isErr()) {
     return err(rows.error);
   }
@@ -243,7 +239,7 @@ export const consumeSignupLink = async (
     return err({ kind: "InvalidSignupLink" });
   }
   const hash = await sha256Hex(token);
-  const rows = await runD1(() => queryTyped(env.DB, consumeSignupIntentSql(hash)));
+  const rows = await runD1(() => queryTyped(env.DB, consumeSignupIntentSql(hash), IntentRowSchema));
   if (rows.isErr()) {
     return err(rows.error);
   }

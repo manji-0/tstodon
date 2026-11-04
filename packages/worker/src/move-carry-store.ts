@@ -1,7 +1,7 @@
 import { warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
-import { parseRows, runD1, type RepositoryError } from "./d1";
+import { runD1, type RepositoryError } from "./d1";
 import {
   listBlockersOfActor as listBlockersOfActorSql,
   listMutersOfActor as listMutersOfActorSql,
@@ -30,13 +30,13 @@ export const listBlockers = async (
   limit: number,
 ): Promise<Result<AccountPage<{ accountId: string }>, RepositoryError>> => {
   const rows = await runD1(async () =>
-    queryTyped(db, listBlockersOfActorSql(targetActorUri, afterId, limit)),
+    queryTyped(db, listBlockersOfActorSql(targetActorUri, afterId, limit), BlockerRowSchema),
   );
   return rows.isErr()
     ? err(rows.error)
     : ok(
         pageOf(
-          parseRows(BlockerRowSchema, rows.value).map((row) => ({ accountId: row.account_id })),
+          rows.value.map((row) => ({ accountId: row.account_id })),
           limit,
         ),
       );
@@ -62,13 +62,13 @@ export const listMuters = async (
   limit: number,
 ): Promise<Result<AccountPage<MuterRow>, RepositoryError>> => {
   const rows = await runD1(async () =>
-    queryTyped(db, listMutersOfActorSql(targetActorUri, afterId, limit)),
+    queryTyped(db, listMutersOfActorSql(targetActorUri, afterId, limit), MuterRowSchema),
   );
   return rows.isErr()
     ? err(rows.error)
     : ok(
         pageOf(
-          parseRows(MuterRowSchema, rows.value).map((row) => ({
+          rows.value.map((row) => ({
             accountId: row.account_id,
             notifications: row.notifications !== 0,
             expiresAt: row.expires_at,
@@ -90,13 +90,13 @@ export const listNoters = async (
   limit: number,
 ): Promise<Result<AccountPage<NoterRow>, RepositoryError>> => {
   const rows = await runD1(async () =>
-    queryTyped(db, listNotersOfActorSql(targetActorUri, afterId, limit)),
+    queryTyped(db, listNotersOfActorSql(targetActorUri, afterId, limit), NoterRowSchema),
   );
   return rows.isErr()
     ? err(rows.error)
     : ok(
         pageOf(
-          parseRows(NoterRowSchema, rows.value).map((row) => ({
+          rows.value.map((row) => ({
             accountId: row.account_id,
             note: row.note,
           })),

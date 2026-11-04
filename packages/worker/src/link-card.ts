@@ -19,6 +19,10 @@ import { setRemoteStatusCard } from "./status-card-store";
 import { setStatusCard } from "./status-card-store";
 import { queryTyped, runTyped } from "./typed-sql";
 
+const CardJsonFetchedAtRow = z.object({ card_json: z.string(), fetched_at: z.string() });
+const UrlRow = z.object({ url: z.string() });
+const UrlCardJsonRow = z.object({ url: z.string(), card_json: z.string() });
+
 /** A small `PreviewCard`: what a client needs to render a link preview. */
 export type LinkCard = Readonly<{
   url: string;
@@ -156,10 +160,7 @@ const cachedCard = async (
   url: string,
 ): Promise<Result<Readonly<{ card: LinkCard; fresh: boolean }> | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ card_json: string; fetched_at: string }>(
-      db,
-      findLinkCardSql(url),
-    );
+    const rows = await queryTyped(db, findLinkCardSql(url), CardJsonFetchedAtRow);
     const row = rows[0];
     if (row === undefined) {
       return undefined;
@@ -276,7 +277,7 @@ export const listStaleLinkCardUrls = async (
 ): Promise<ReadonlyArray<string>> => {
   const before = new Date(Date.now() - CARD_TTL_MS).toISOString();
   const queried = await runD1(async () =>
-    queryTyped<{ url: string }>(db, listStaleLinkCardsSql(before, limit)),
+    queryTyped(db, listStaleLinkCardsSql(before, limit), UrlRow),
   );
   return queried.isOk() ? queried.value.map((row) => row.url) : [];
 };
@@ -303,7 +304,7 @@ export const listCachedLinkCards = async (
     return new Map<string, LinkCard>();
   }
   const queried = await runD1(async () =>
-    queryTyped<{ url: string; card_json: string }>(db, listLinkCardsSql(jsonStringArray(unique))),
+    queryTyped(db, listLinkCardsSql(jsonStringArray(unique)), UrlCardJsonRow),
   );
   if (queried.isErr()) {
     return new Map<string, LinkCard>();

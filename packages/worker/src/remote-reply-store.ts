@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { type RemoteStatus } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
@@ -50,12 +51,14 @@ export type RemoteReplyTarget = Readonly<{
   inReplyToUri: string | undefined;
 }>;
 
-type ReplyTargetRow = {
-  id: string;
-  object_uri: string;
-  visibility: string;
-  in_reply_to_uri: string | null;
-};
+const ReplyTargetRowSchema = z.object({
+  id: z.string(),
+  object_uri: z.string(),
+  visibility: z.string(),
+  in_reply_to_uri: z.string().nullable(),
+});
+
+type ReplyTargetRow = z.infer<typeof ReplyTargetRowSchema>;
 
 const replyTargetFromRow = (row: ReplyTargetRow): RemoteReplyTarget => ({
   id: row.id,
@@ -73,9 +76,10 @@ export const findRemoteStatusReplyTargets = async (
     return ok(targets);
   }
   const rows = await runD1(async () =>
-    queryTyped<ReplyTargetRow>(
+    queryTyped(
       db,
       findRemoteStatusReplyTargetsSql(jsonStringArray([...new Set(statusIds)])),
+      ReplyTargetRowSchema,
     ),
   );
   if (rows.isErr()) {
@@ -92,7 +96,7 @@ export const findRemoteStatusReplyTargetByObjectUri = async (
   objectUri: string,
 ): Promise<Result<RemoteReplyTarget | undefined, RepositoryError>> => {
   const rows = await runD1(async () =>
-    queryTyped<ReplyTargetRow>(db, findRemoteStatusReplyTargetByObjectUriSql(objectUri)),
+    queryTyped(db, findRemoteStatusReplyTargetByObjectUriSql(objectUri), ReplyTargetRowSchema),
   );
   if (rows.isErr()) {
     return err(rows.error);

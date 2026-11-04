@@ -3,7 +3,6 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { runD1, runD1Batch, type RepositoryError } from "./d1";
-import { parseRow } from "./d1";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   getConversationRead as getConversationReadSql,
@@ -11,6 +10,8 @@ import {
   upsertConversationRead as upsertConversationReadSql,
   upsertMarker as upsertMarkerSql,
 } from "./generated/prisma/sql";
+
+const LastReadStatusIdRow = z.object({ last_read_status_id: z.string() });
 
 export const MarkerTimelineSchema = z.union([z.literal("home"), z.literal("notifications")]);
 export type MarkerTimeline = z.infer<typeof MarkerTimelineSchema>;
@@ -43,17 +44,17 @@ export const getMarkers = async (
   const timelineA = timelines[0] ?? "home";
   const timelineB = timelines[1] ?? timelineA;
   return runD1(async () => {
-    const results = await queryTyped(db, getMarkersByTimelinesSql(accountId, timelineA, timelineB));
+    const results = await queryTyped(
+      db,
+      getMarkersByTimelinesSql(accountId, timelineA, timelineB),
+      MarkerRowSchema,
+    );
     const markers: Record<string, MarkerDocument> = {};
-    for (const raw of results) {
-      const row = parseRow(MarkerRowSchema, raw);
-      if (row.isErr()) {
-        continue;
-      }
-      markers[row.value.timeline] = {
-        last_read_id: row.value.last_read_id,
-        version: row.value.version,
-        updated_at: row.value.updated_at,
+    for (const row of results) {
+      markers[row.timeline] = {
+        last_read_id: row.last_read_id,
+        version: row.version,
+        updated_at: row.updated_at,
       };
     }
     return markers;
@@ -104,10 +105,7 @@ export const getConversationRead = async (
   conversationId: string,
 ): Promise<Result<string | undefined, RepositoryError>> => {
   const queried = await runD1(async () => {
-    return queryTyped<{ last_read_status_id: string }>(
-      db,
-      getConversationReadSql(accountId, conversationId),
-    );
+    return queryTyped(db, getConversationReadSql(accountId, conversationId), LastReadStatusIdRow);
   });
   if (queried.isErr()) {
     return err(queried.error);

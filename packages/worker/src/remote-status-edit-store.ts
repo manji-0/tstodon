@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { type RepositoryError, runD1 } from "./d1";
@@ -7,6 +8,8 @@ import {
 } from "./generated/prisma/sql";
 import { newEntityId } from "./ids";
 import { queryTyped, runTyped } from "./typed-sql";
+
+const SnapshotJsonRow = z.object({ snapshot_json: z.string() });
 
 /** Keep the version of a remote note an `Update` is about to replace. */
 export const insertRemoteStatusEdit = async (
@@ -24,9 +27,6 @@ export const listRemoteStatusEdits = async (
   statusId: string,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ snapshot_json: string }>(
-      db,
-      listRemoteStatusEditSnapshotsSql(statusId),
-    );
+    const rows = await queryTyped(db, listRemoteStatusEditSnapshotsSql(statusId), SnapshotJsonRow);
     return rows.map((row) => row.snapshot_json);
   });

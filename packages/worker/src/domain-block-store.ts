@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
@@ -8,6 +9,8 @@ import {
   listAccountDomainBlocks as listAccountDomainBlocksSql,
 } from "./generated/prisma/sql";
 import { queryTyped, runTyped } from "./typed-sql";
+
+const DomainRow = z.object({ domain: z.string() });
 
 /**
  * The hostname of a `host[:port]` authority, lower case: what blocks,
@@ -51,10 +54,7 @@ export const unblockDomain = async (
   domain: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ domain: string }>(
-      db,
-      deleteAccountDomainBlockSql(accountId, domain),
-    );
+    const rows = await queryTyped(db, deleteAccountDomainBlockSql(accountId, domain), DomainRow);
     return rows.length > 0;
   });
 
@@ -63,7 +63,7 @@ export const listBlockedDomains = async (
   accountId: string,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ domain: string }>(db, listAccountDomainBlocksSql(accountId));
+    const rows = await queryTyped(db, listAccountDomainBlocksSql(accountId), DomainRow);
     return rows.map((row) => row.domain);
   });
 
@@ -73,10 +73,7 @@ export const isDomainBlocked = async (
   domain: string,
 ): Promise<Result<boolean, RepositoryError>> => {
   const found = await runD1(async () => {
-    const rows = await queryTyped<{ domain: string }>(
-      db,
-      findAccountDomainBlockSql(accountId, domain),
-    );
+    const rows = await queryTyped(db, findAccountDomainBlockSql(accountId, domain), DomainRow);
     return rows.length > 0;
   });
   if (found.isErr()) {

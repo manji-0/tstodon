@@ -17,6 +17,19 @@ import {
   insertEmailDomainBlock as insertEmailDomainBlockSql,
 } from "./generated/prisma/sql";
 
+const IdCanonicalEmailHashCreatedAtRow = z.object({
+  id: z.string(),
+  canonical_email_hash: z.string(),
+  created_at: z.string(),
+});
+const IdRow = z.object({ id: z.string() });
+const IdDomainCreatedAtRow = z.object({
+  id: z.string(),
+  domain: z.string(),
+  created_at: z.string(),
+});
+const DayAccountsRow = z.object({ day: z.string(), accounts: z.number() });
+
 export type CanonicalEmailBlock = Readonly<{
   id: string;
   canonicalEmailHash: string;
@@ -90,11 +103,11 @@ export const findCanonicalEmailBlockById = async (
   id: string,
 ): Promise<Result<CanonicalEmailBlock | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{
-      id: string;
-      canonical_email_hash: string;
-      created_at: string;
-    }>(db, findCanonicalEmailBlockByIdSql(id));
+    const rows = await queryTyped(
+      db,
+      findCanonicalEmailBlockByIdSql(id),
+      IdCanonicalEmailHashCreatedAtRow,
+    );
     const row = rows[0];
     return row ? canonicalFromRow(row) : undefined;
   });
@@ -105,10 +118,7 @@ export const findCanonicalEmailBlockByEmail = async (
 ): Promise<Result<CanonicalEmailBlock | undefined, RepositoryError>> => {
   const hash = await canonicalEmailHash(email);
   const queried = await runD1(async () =>
-    queryTyped<{ id: string; canonical_email_hash: string; created_at: string }>(
-      db,
-      findCanonicalEmailBlockByHashSql(hash),
-    ),
+    queryTyped(db, findCanonicalEmailBlockByHashSql(hash), IdCanonicalEmailHashCreatedAtRow),
   );
   if (queried.isErr()) {
     return queried.map(() => undefined);
@@ -134,7 +144,7 @@ export const deleteCanonicalEmailBlock = async (
   id: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(db, deleteCanonicalEmailBlockSql(id));
+    const rows = await queryTyped(db, deleteCanonicalEmailBlockSql(id), IdRow);
     return rows.length > 0;
   });
 
@@ -160,10 +170,7 @@ export const findEmailDomainBlockById = async (
   id: string,
 ): Promise<Result<EmailDomainBlock | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string; domain: string; created_at: string }>(
-      db,
-      findEmailDomainBlockByIdSql(id),
-    );
+    const rows = await queryTyped(db, findEmailDomainBlockByIdSql(id), IdDomainCreatedAtRow);
     const row = rows[0];
     return row ? domainFromRow(row) : undefined;
   });
@@ -184,7 +191,7 @@ export const deleteEmailDomainBlock = async (
   id: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(db, deleteEmailDomainBlockSql(id));
+    const rows = await queryTyped(db, deleteEmailDomainBlockSql(id), IdRow);
     return rows.length > 0;
   });
 
@@ -201,7 +208,7 @@ export const isRegistrationBlocked = async (
     return ok(false);
   }
   const blockedDomain = await runD1(async () =>
-    queryTyped<{ id: string }>(db, findEmailDomainBlockByDomainSql(domain)),
+    queryTyped(db, findEmailDomainBlockByDomainSql(domain), IdRow),
   );
   if (blockedDomain.isErr()) {
     return blockedDomain.map(() => false);
@@ -229,9 +236,10 @@ export const emailDomainHistory = async (
     startOfToday.setUTCHours(0, 0, 0, 0);
     const since = new Date(startOfToday.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
     const counts = new Map<string, number>();
-    const rows = await queryTyped<{ day: string; accounts: number }>(
+    const rows = await queryTyped(
       db,
       emailDomainAccountHistorySql(domain, since.toISOString()),
+      DayAccountsRow,
     );
     for (const row of rows) {
       counts.set(row.day, Number(row.accounts));

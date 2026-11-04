@@ -1,6 +1,6 @@
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
-import { parseRows, runD1, type RepositoryError } from "./d1";
+import { runD1, type RepositoryError } from "./d1";
 import {
   deleteAuthorizationCodesOfAccount,
   deleteAuthorizedApplicationTokens,
@@ -60,7 +60,7 @@ export const listPasskeys = async (
   userId: string,
 ): Promise<Result<ReadonlyArray<PasskeyEntry>, RepositoryError>> =>
   runD1(async () =>
-    parseRows(PasskeyRowSchema, await queryTyped(db, listAuthPasskeys(userId))).map((row) => ({
+    (await queryTyped(db, listAuthPasskeys(userId), PasskeyRowSchema)).map((row) => ({
       id: row.id,
       name: row.name?.trim() || undefined,
       addedAt: row.createdAt === null ? undefined : new Date(row.createdAt),
@@ -122,7 +122,7 @@ export const listSessions = async (
   now: number = Date.now(),
 ): Promise<Result<ReadonlyArray<SessionEntry>, RepositoryError>> =>
   runD1(async () =>
-    parseRows(SessionRowSchema, await queryTyped(db, listAuthSessions(userId, now))).map((row) => ({
+    (await queryTyped(db, listAuthSessions(userId, now), SessionRowSchema)).map((row) => ({
       id: row.id,
       signedInAt: new Date(row.createdAt),
       expiresAt: new Date(row.expiresAt),
@@ -162,9 +162,10 @@ export const listAuthorizedApplications = async (
   accountId: string,
 ): Promise<Result<ReadonlyArray<AuthorizedApp>, RepositoryError>> =>
   runD1(async () => {
-    const rows = parseRows(
+    const rows = await queryTyped(
+      db,
+      listAuthorizedApplicationTokens(accountId),
       AppTokenRowSchema,
-      await queryTyped(db, listAuthorizedApplicationTokens(accountId)),
     );
     const byApp = Map.groupBy(rows, (row) => row.application_id);
     return [...byApp].map(([applicationId, tokens]) => {

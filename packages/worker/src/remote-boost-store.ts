@@ -14,7 +14,9 @@ import { feedFollowSql, type FollowedFeed } from "./followed-feed";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import { DOMAIN_SUSPENDED_ACTORS_SQL } from "./domain-hidden-actors";
 import { visibilitySql } from "./sql-enums";
-import { queryTyped } from "./typed-sql";
+import { CountedRow, queryTyped } from "./typed-sql";
+
+const IdRow = z.object({ id: z.string() });
 
 const RemoteBoostRowSchema = z.object({
   id: z.string().min(1),
@@ -28,25 +30,26 @@ const RemoteBoostRowSchema = z.object({
 
 const parseRemoteBoostRow = schemaResult(RemoteBoostRowSchema);
 
+const boostFromRow = (row: z.infer<typeof RemoteBoostRowSchema>): RemoteBoostValue | undefined => {
+  const visibility = Visibility.fromMastodon(row.visibility);
+  const boost = RemoteBoost.parse({
+    kind: "RemoteBoost",
+    id: row.id,
+    actorUri: row.actor_uri,
+    activityId: row.activity_id,
+    target: row.local_status_id
+      ? { kind: "LocalStatus", statusId: row.local_status_id }
+      : { kind: "RemoteStatus", statusId: row.remote_status_id },
+    visibility: visibility.isOk() ? visibility.value : undefined,
+    publishedAt: row.published_at,
+  });
+  return boost.isOk() ? boost.value : undefined;
+};
+
 /** A stored boost, or nothing for a row that does not read back as one. */
 const remoteBoostFromRow = (raw: unknown): RemoteBoostValue | undefined => {
   const row = parseRemoteBoostRow(raw);
-  if (row.isErr()) {
-    return undefined;
-  }
-  const visibility = Visibility.fromMastodon(row.value.visibility);
-  const boost = RemoteBoost.parse({
-    kind: "RemoteBoost",
-    id: row.value.id,
-    actorUri: row.value.actor_uri,
-    activityId: row.value.activity_id,
-    target: row.value.local_status_id
-      ? { kind: "LocalStatus", statusId: row.value.local_status_id }
-      : { kind: "RemoteStatus", statusId: row.value.remote_status_id },
-    visibility: visibility.isOk() ? visibility.value : undefined,
-    publishedAt: row.value.published_at,
-  });
-  return boost.isOk() ? boost.value : undefined;
+  return row.isOk() ? boostFromRow(row.value) : undefined;
 };
 
 /** Record a boost; `true` only when it is new (a redelivery or a second boost of the status answers `false`). */
@@ -67,6 +70,7 @@ export const insertRemoteBoost = async (
         boost.publishedAt,
         nowIso(),
       ),
+      CountedRow,
     );
     return rows.length > 0;
   });
@@ -81,10 +85,7 @@ export const deleteRemoteBoostByActivity = async (
   actorUri: string,
 ): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
-      db,
-      deleteRemoteBoostByActivitySql(activityId, actorUri),
-    );
+    const rows = await queryTyped(db, deleteRemoteBoostByActivitySql(activityId, actorUri), IdRow);
     return rows[0]?.id;
   });
 
@@ -93,8 +94,8 @@ export const findRemoteBoostById = async (
   id: string,
 ): Promise<Result<RemoteBoostValue | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, findRemoteBoostByIdSql(id));
-    return rows[0] === undefined ? undefined : remoteBoostFromRow(rows[0]);
+    const rows = await queryTyped(db, findRemoteBoostByIdSql(id), RemoteBoostRowSchema);
+    return rows[0] === undefined ? undefined : boostFromRow(rows[0]);
   });
 
 /** Actor URIs (local or remote) the viewer blocks or mutes. Binds: (viewerId, viewerId, now). */

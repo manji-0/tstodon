@@ -10,7 +10,11 @@ import { queryTyped } from "./typed-sql";
 import { idCursorBounds, idCursorFragment, type IdCursor } from "./id-cursor";
 import { DOMAIN_RESTRICTED_ACTORS_SQL, DOMAIN_SUSPENDED_ACTORS_SQL } from "./domain-hidden-actors";
 import { feedFollowSql, feedRepliesSql, type FollowedFeed } from "./followed-feed";
-import { parseRemoteStatusRow, remoteStatusFromRow } from "./remote-status-store";
+import {
+  parseRemoteStatusRow,
+  RemoteStatusRowSchema,
+  remoteStatusFromRow,
+} from "./remote-status-store";
 
 /**
  * Remote direct notes that address the account, newest first, leaving out
@@ -219,14 +223,11 @@ export const listPublicRemoteStatuses = async (
         after,
         ascending ? 1 : 0,
       ),
+      RemoteStatusRowSchema,
     );
     const statuses: RemoteStatus[] = [];
-    for (const raw of results) {
-      const row = parseRemoteStatusRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const parsed = remoteStatusFromRow(row.value);
+    for (const row of results) {
+      const parsed = remoteStatusFromRow(row);
       if (parsed.isOk()) {
         statuses.push(parsed.value);
       }

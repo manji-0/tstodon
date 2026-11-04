@@ -4,7 +4,7 @@ import type { Result } from "neverthrow";
 import { runD1, type RepositoryError } from "./d1";
 import { nowIso } from "./clock";
 import { parseJsonColumn } from "./json-column";
-import { queryTyped } from "./typed-sql";
+import { CountedRow, queryTyped } from "./typed-sql";
 import {
   deletePushSubscription as deletePushSubscriptionSql,
   findTokenPushSubscription as findTokenPushSubscriptionSql,
@@ -82,34 +82,28 @@ export const noAlerts = (): Record<PushAlertKey, boolean> => ({
   "admin.report": false,
 });
 
-const subscriptionFromRow = (raw: unknown): PushSubscription | undefined => {
-  const row = schemaResult(PushSubscriptionRowSchema)(raw);
-  if (row.isErr()) {
-    return undefined;
-  }
-  const stored = parseJsonColumn(StoredAlertsSchema, row.value.alerts_json);
+const subscriptionFromRow = (row: z.infer<typeof PushSubscriptionRowSchema>): PushSubscription => {
+  const stored = parseJsonColumn(StoredAlertsSchema, row.alerts_json);
   const alerts = noAlerts();
   for (const key of PUSH_ALERT_KEYS) {
     alerts[key] = stored.isOk() && stored.value[key] === true;
   }
-  const policy = schemaResult(PushPolicySchema)(row.value.policy);
+  const policy = schemaResult(PushPolicySchema)(row.policy);
   return {
-    id: Number(row.value.id),
-    accountId: row.value.account_id,
-    endpoint: row.value.endpoint,
-    p256dh: row.value.p256dh,
-    auth: row.value.auth,
-    standard: Number(row.value.standard) === 1,
+    id: Number(row.id),
+    accountId: row.account_id,
+    endpoint: row.endpoint,
+    p256dh: row.p256dh,
+    auth: row.auth,
+    standard: Number(row.standard) === 1,
     alerts,
     policy: policy.isOk() ? policy.value : "all",
   };
 };
 
-const subscriptionsFrom = (rows: ReadonlyArray<unknown>): PushSubscription[] =>
-  rows.flatMap((raw) => {
-    const subscription = subscriptionFromRow(raw);
-    return subscription ? [subscription] : [];
-  });
+const subscriptionsFrom = (
+  rows: ReadonlyArray<z.infer<typeof PushSubscriptionRowSchema>>,
+): PushSubscription[] => rows.map(subscriptionFromRow);
 
 /**
  * Subscribe the access token: a token holds one subscription, and a new one
@@ -142,6 +136,7 @@ export const upsertPushSubscription = async (
         input.policy,
         nowIso(),
       ),
+      PushSubscriptionRowSchema,
     );
     return subscriptionsFrom(rows)[0];
   });
@@ -153,14 +148,24 @@ export const findTokenPushSubscription = async (
 ): Promise<Result<PushSubscription | undefined, RepositoryError>> =>
   runD1(
     async () =>
-      subscriptionsFrom(await queryTyped(db, findTokenPushSubscriptionSql(accessTokenId)))[0],
+      subscriptionsFrom(
+        await queryTyped(
+          db,
+          findTokenPushSubscriptionSql(accessTokenId),
+          PushSubscriptionRowSchema,
+        ),
+      )[0],
   );
 
 export const listPushSubscriptions = async (
   db: D1Database,
   accountId: string,
 ): Promise<Result<PushSubscription[], RepositoryError>> =>
-  runD1(async () => subscriptionsFrom(await queryTyped(db, listPushSubscriptionsSql(accountId))));
+  runD1(async () =>
+    subscriptionsFrom(
+      await queryTyped(db, listPushSubscriptionsSql(accountId), PushSubscriptionRowSchema),
+    ),
+  );
 
 export const updatePushSubscriptionData = async (
   db: D1Database,
@@ -174,6 +179,7 @@ export const updatePushSubscriptionData = async (
         await queryTyped(
           db,
           updatePushSubscriptionDataSql(accessTokenId, JSON.stringify(alerts), policy, nowIso()),
+          PushSubscriptionRowSchema,
         ),
       )[0],
   );
@@ -182,4 +188,4 @@ export const deletePushSubscription = async (
   db: D1Database,
   id: number,
 ): Promise<Result<boolean, RepositoryError>> =>
-  runD1(async () => (await queryTyped(db, deletePushSubscriptionSql(id))).length > 0);
+  runD1(async () => (await queryTyped(db, deletePushSubscriptionSql(id), CountedRow)).length > 0);

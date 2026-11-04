@@ -1,7 +1,6 @@
-import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
-import { jsonStringArray, parseRows, runD1, type RepositoryError } from "./d1";
+import { jsonStringArray, runD1, type RepositoryError } from "./d1";
 import {
   cancelAccountMove as cancelAccountMoveSql,
   claimAccountMove as claimAccountMoveSql,
@@ -11,7 +10,7 @@ import {
 } from "./generated/prisma/sql";
 import type { FollowOptions } from "./follow-store";
 import { parseJsonColumn } from "./json-column";
-import { queryTyped } from "./typed-sql";
+import { CountedRow, queryTyped } from "./typed-sql";
 
 /** Where a local account moved to, and when. */
 export type AccountMove = Readonly<{ acct: string; targetUri: string; movedAt: string }>;
@@ -31,7 +30,7 @@ const MoveRowSchema = z.object({
   cancelled_at: z.string().nullable(),
 });
 
-const parseMoveRow = schemaResult(MoveRowSchema);
+const MoveTargetRowSchema = z.object({ account_id: z.string(), target_uri: z.string() });
 
 /** The last move of the account, standing or cancelled; `undefined` when it never moved. */
 export const findAccountMoveRecord = async (
@@ -39,18 +38,14 @@ export const findAccountMoveRecord = async (
   accountId: string,
 ): Promise<Result<AccountMoveRecord | undefined, RepositoryError>> =>
   runD1(async () => {
-    const row = parseMoveRow((await queryTyped(db, findAccountMoveSql(accountId)))[0]);
-    if (row.isErr()) {
+    const [row] = await queryTyped(db, findAccountMoveSql(accountId), MoveRowSchema);
+    if (row === undefined) {
       return undefined;
     }
-    const move = {
-      acct: row.value.acct,
-      targetUri: row.value.target_uri,
-      movedAt: row.value.moved_at,
-    };
-    return row.value.cancelled_at === null
+    const move = { acct: row.acct, targetUri: row.target_uri, movedAt: row.moved_at };
+    return row.cancelled_at === null
       ? { kind: "Moved", move }
-      : { kind: "Cancelled", move, cancelledAt: row.value.cancelled_at };
+      : { kind: "Cancelled", move, cancelledAt: row.cancelled_at };
   });
 
 /** The move the account's actor and profile show now; `undefined` when it never moved or cancelled. */
@@ -69,7 +64,8 @@ export const cancelAccountMove = async (
   cancelledAt: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(
-    async () => (await queryTyped(db, cancelAccountMoveSql(accountId, cancelledAt))).length > 0,
+    async () =>
+      (await queryTyped(db, cancelAccountMoveSql(accountId, cancelledAt), CountedRow)).length > 0,
   );
 
 /** The move targets of whichever of `accountIds` moved, by account id. */
@@ -81,18 +77,16 @@ export const listAccountMoveTargets = async (
     return ok(new Map());
   }
   const rows = await runD1(async () =>
-    queryTyped(db, listAccountMovesByIdsJsonSql(jsonStringArray([...new Set(accountIds)]))),
+    queryTyped(
+      db,
+      listAccountMovesByIdsJsonSql(jsonStringArray([...new Set(accountIds)])),
+      MoveTargetRowSchema,
+    ),
   );
   if (rows.isErr()) {
     return err(rows.error);
   }
-  return ok(
-    new Map(
-      parseRows(z.object({ account_id: z.string(), target_uri: z.string() }), rows.value).map(
-        (row) => [row.account_id, row.target_uri],
-      ),
-    ),
-  );
+  return ok(new Map(rows.value.map((row) => [row.account_id, row.target_uri])));
 };
 
 /**
@@ -120,6 +114,7 @@ export const claimAccountMove = async (
             move.movedAt,
             cooldownStartedBefore,
           ),
+          CountedRow,
         )
       ).length > 0,
   );
@@ -147,9 +142,12 @@ export const listAcceptedFollowsPage = async (
   limit: number,
 ): Promise<Result<ReadonlyArray<LocalFollowEdge>, RepositoryError>> =>
   runD1(async () =>
-    parseRows(
-      FollowEdgeRowSchema,
-      await queryTyped(db, listAcceptedFollowsPageSql(targetAccountId, afterId, limit)),
+    (
+      await queryTyped(
+        db,
+        listAcceptedFollowsPageSql(targetAccountId, afterId, limit),
+        FollowEdgeRowSchema,
+      )
     ).map((row) => ({
       id: row.id,
       followerAccountId: row.follower_account_id,

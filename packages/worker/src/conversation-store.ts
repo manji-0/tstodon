@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import type {
   InstanceIdentity,
@@ -24,6 +25,8 @@ import { listRemoteDirectStatusesForAccount } from "./remote-status-timeline-sto
 import { listRemoteStatusMentions } from "./mention-store";
 import { CONTEXT_ANCESTOR_LIMIT, findStatusById, listStatusReplyUris } from "./status-store";
 import { listDirectStatusesForAccount, resolveDirectConversationRoot } from "./direct-status-store";
+
+const HiddenStatusIdRow = z.object({ hidden_status_id: z.string() });
 
 /** A direct status in a conversation: a local note or a cached remote one. */
 export type ConversationStatus =
@@ -247,7 +250,7 @@ export const conversationHiddenStatusId = async (
   conversationId: string,
 ): Promise<Result<string | undefined, StoreError>> => {
   const rows = await runD1(async () =>
-    queryTyped<{ hidden_status_id: string }>(db, getConversationHideSql(accountId, conversationId)),
+    queryTyped(db, getConversationHideSql(accountId, conversationId), HiddenStatusIdRow),
   );
   if (rows.isErr()) {
     return err(rows.error);

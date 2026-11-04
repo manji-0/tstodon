@@ -5,7 +5,7 @@ import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { RemoteAccountId } from "./remote-account-id";
-import { queryTyped, runTyped } from "./typed-sql";
+import { CountedRow, queryTyped, runTyped } from "./typed-sql";
 import {
   deleteBlock as deleteBlockSql,
   deleteMute as deleteMuteSql,
@@ -14,6 +14,9 @@ import {
   upsertBlock as upsertBlockSql,
   upsertMute as upsertMuteSql,
 } from "./generated/prisma/sql";
+
+const TargetActorUriRow = z.object({ target_actor_uri: z.string() });
+const NotificationsRow = z.object({ notifications: z.union([z.number(), z.bigint()]) });
 
 export type BlockedAccount = Readonly<{
   id: string;
@@ -50,9 +53,10 @@ export const unblockAccount = async (
   targetActorUri: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ target_actor_uri: string }>(
+    const rows = await queryTyped(
       db,
       deleteBlockSql(blockerAccountId, targetActorUri),
+      TargetActorUriRow,
     );
     return rows.length > 0;
   });
@@ -85,10 +89,7 @@ export const unmuteAccount = async (
   targetActorUri: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ target_actor_uri: string }>(
-      db,
-      deleteMuteSql(accountId, targetActorUri),
-    );
+    const rows = await queryTyped(db, deleteMuteSql(accountId, targetActorUri), TargetActorUriRow);
     return rows.length > 0;
   });
 
@@ -168,7 +169,7 @@ export const findBlock = async (
   accountId: string,
   target: string,
 ): Promise<Result<boolean, RepositoryError>> =>
-  runD1(async () => (await queryTyped(db, findBlockSql(accountId, target))).length > 0);
+  runD1(async () => (await queryTyped(db, findBlockSql(accountId, target), CountedRow)).length > 0);
 
 /** The live mute of `target` by `accountId`, with whether it also mutes notifications. */
 export const findActiveMute = async (
@@ -177,9 +178,10 @@ export const findActiveMute = async (
   target: string,
 ): Promise<Result<Readonly<{ notifications: boolean }> | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ notifications: number | bigint }>(
+    const rows = await queryTyped(
       db,
       findActiveMuteSql(accountId, target, nowIso()),
+      NotificationsRow,
     );
     const row = rows[0];
     return row ? { notifications: Number(row.notifications) !== 0 } : undefined;

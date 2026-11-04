@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { runD1, type RepositoryError } from "./d1";
 import { nowIso } from "./clock";
 import { newEntityId } from "./ids";
@@ -12,6 +13,10 @@ import {
   upsertRemoteFavourite as upsertRemoteFavouriteSql,
 } from "./generated/prisma/sql";
 
+const IdRow = z.object({ id: z.string().nullable() });
+const IdCreatedAtRow = z.object({ id: z.string().nullable(), created_at: z.string() });
+const CountRow = z.object({ count: z.number() });
+
 /** Record a remote Like; `true` only when it is new (a redelivery answers `false`). */
 export const upsertRemoteFavourite = async (
   db: D1Database,
@@ -19,9 +24,10 @@ export const upsertRemoteFavourite = async (
   statusId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string | null }>(
+    const rows = await queryTyped(
       db,
       upsertRemoteFavouriteSql(newEntityId(), remoteActorUri, statusId, nowIso()),
+      IdRow,
     );
     return rows.length > 0;
   });
@@ -44,9 +50,10 @@ export const upsertRemoteAnnounce = async (
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
     const now = nowIso();
-    const rows = await queryTyped<{ id: string | null; created_at: string }>(
+    const rows = await queryTyped(
       db,
       upsertRemoteAnnounceSql(newEntityId(), remoteActorUri, statusId, activityId, now),
+      IdCreatedAtRow,
     );
     // The conflict path keeps the original row, so its `created_at` predates `now`.
     return rows[0]?.created_at === now;
@@ -66,7 +73,7 @@ export const countRemoteFavourites = async (
   statusId: string,
 ): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ count: number }>(db, countRemoteFavouritesSql(statusId));
+    const rows = await queryTyped(db, countRemoteFavouritesSql(statusId), CountRow);
     return Number(rows[0]?.count ?? 0);
   });
 
@@ -75,6 +82,6 @@ export const countRemoteAnnounces = async (
   statusId: string,
 ): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ count: number }>(db, countRemoteAnnouncesSql(statusId));
+    const rows = await queryTyped(db, countRemoteAnnouncesSql(statusId), CountRow);
     return Number(rows[0]?.count ?? 0);
   });

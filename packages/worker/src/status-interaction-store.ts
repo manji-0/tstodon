@@ -21,6 +21,8 @@ import {
   insertFavouriteOrIgnore as insertFavouriteOrIgnoreSql,
 } from "./generated/prisma/sql";
 
+const IdRow = z.object({ id: z.string() });
+
 /** Favourite a status; resolves to the new favourite's id, or nothing when it was already one. */
 export const favouriteStatus = async (
   db: D1Database,
@@ -28,7 +30,7 @@ export const favouriteStatus = async (
   target: StatusTargetValue,
 ): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
+    const rows = await queryTyped(
       db,
       insertFavouriteOrIgnoreSql(
         newEntityId(),
@@ -36,6 +38,7 @@ export const favouriteStatus = async (
         ...statusTargetColumns(target),
         nowIso(),
       ),
+      IdRow,
     );
     return rows[0]?.id;
   });
@@ -47,9 +50,10 @@ export const unfavouriteStatus = async (
   target: StatusTargetValue,
 ): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
+    const rows = await queryTyped(
       db,
       deleteFavouriteSql(accountId, ...statusTargetColumns(target)),
+      IdRow,
     );
     return rows[0]?.id;
   });

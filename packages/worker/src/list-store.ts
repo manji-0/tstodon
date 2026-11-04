@@ -6,7 +6,6 @@ import { nowIso } from "./clock";
 import { runD1, runD1BatchChunked, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
 import { findOutboundFollow } from "./outbound-follow-store";
-import { parseRow, toRepositoryError } from "./d1";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import { hydrateStatusRows, STATUS_SELECT } from "./status-store";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
@@ -28,6 +27,8 @@ import {
   listListsForAccount as listListsForAccountSql,
   updateList as updateListSql,
 } from "./generated/prisma/sql";
+
+const IdRow = z.object({ id: z.string() });
 
 export const ListRepliesPolicySchema = z.union([
   z.literal("followed"),
@@ -73,21 +74,10 @@ export const ListMember = {
     member.kind === "LocalAccount" ? member.accountId : RemoteAccountId.encode(member.actorUri),
 } as const;
 
-const memberFromRow = (raw: unknown): ListMember | undefined => {
-  const row = parseRow(ListMemberRowSchema, raw);
-  if (row.isErr()) {
-    return undefined;
-  }
-  return row.value.kind === "LocalAccount"
-    ? { kind: "LocalAccount", accountId: row.value.member }
-    : { kind: "RemoteActor", actorUri: row.value.member };
-};
-
-const listsFromRows = (rows: ReadonlyArray<unknown>): AccountList[] =>
-  rows.flatMap((raw) => {
-    const row = parseRow(ListRowSchema, raw);
-    return row.isOk() ? [listFromRow(row.value)] : [];
-  });
+const memberFromRow = (row: z.infer<typeof ListMemberRowSchema>): ListMember =>
+  row.kind === "LocalAccount"
+    ? { kind: "LocalAccount", accountId: row.member }
+    : { kind: "RemoteActor", actorUri: row.member };
 
 export type AccountList = Readonly<{
   id: string;
@@ -123,7 +113,9 @@ export const listListsForAccount = async (
   db: D1Database,
   accountId: string,
 ): Promise<Result<AccountList[], RepositoryError>> =>
-  runD1(async () => listsFromRows(await queryTyped(db, listListsForAccountSql(accountId))));
+  runD1(async () =>
+    (await queryTyped(db, listListsForAccountSql(accountId), ListRowSchema)).map(listFromRow),
+  );
 
 export const findListForAccount = async (
   db: D1Database,
@@ -131,20 +123,9 @@ export const findListForAccount = async (
   listId: string,
 ): Promise<Result<AccountList | undefined, RepositoryError>> => {
   const queried = await runD1(async () => {
-    return queryTyped(db, findListForAccountSql(listId, accountId));
+    return queryTyped(db, findListForAccountSql(listId, accountId), ListRowSchema);
   });
-  if (queried.isErr()) {
-    return err(queried.error);
-  }
-  const raw = queried.value[0];
-  if (!raw) {
-    return ok(undefined);
-  }
-  const row = parseRow(ListRowSchema, raw);
-  if (row.isErr()) {
-    return err(toRepositoryError("invalid list row"));
-  }
-  return ok(listFromRow(row.value));
+  return queried.map((rows) => (rows[0] === undefined ? undefined : listFromRow(rows[0])));
 };
 
 export const createList = async (
@@ -214,7 +195,7 @@ export const deleteList = async (
   listId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(db, deleteListSql(listId, accountId));
+    const rows = await queryTyped(db, deleteListSql(listId, accountId), IdRow);
     return rows.length > 0;
   });
 
@@ -224,7 +205,7 @@ export const listListMembers = async (
   listId: string,
 ): Promise<Result<ListMember[], RepositoryError>> =>
   runD1(async () =>
-    (await queryTyped(db, listListMembersSql(listId))).flatMap((raw) => memberFromRow(raw) ?? []),
+    (await queryTyped(db, listListMembersSql(listId), ListMemberRowSchema)).map(memberFromRow),
   );
 
 const insertMemberSql = (listId: string, member: ListMember, now: string) =>
@@ -308,14 +289,15 @@ export const listListsContainingMember = async (
   member: ListMember,
 ): Promise<Result<AccountList[], RepositoryError>> =>
   runD1(async () =>
-    listsFromRows(
+    (
       await queryTyped(
         db,
         member.kind === "LocalAccount"
           ? listListsContainingAccountSql(ownerAccountId, member.accountId)
           : listListsContainingRemoteActorSql(ownerAccountId, member.actorUri),
-      ),
-    ),
+        ListRowSchema,
+      )
+    ).map(listFromRow),
   );
 
 export const listListTimelineStatuses = async (

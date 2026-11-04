@@ -1,5 +1,5 @@
 import { runD1, type RepositoryError } from "./d1";
-import { queryTyped, runTyped } from "./typed-sql";
+import { CountedRow, queryTyped, runTyped } from "./typed-sql";
 import { nowIso } from "./clock";
 import type { Result } from "neverthrow";
 import {
@@ -12,7 +12,7 @@ export const inboxActivityExists = async (
   activityId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, inboxActivityExistsSql(activityId));
+    const rows = await queryTyped(db, inboxActivityExistsSql(activityId), CountedRow);
     return rows.length > 0;
   });
 

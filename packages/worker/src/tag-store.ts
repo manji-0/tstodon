@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { InstanceLimits } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
@@ -16,6 +17,13 @@ import {
 } from "./generated/prisma/sql";
 import { extractHashtags } from "./status-discovery-store";
 import { queryTyped, runTyped } from "./typed-sql";
+
+const TagNameRow = z.object({ tag_name: z.string() });
+const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
+const CountLastStatusAtRow = z.object({
+  count: z.union([z.number(), z.bigint()]),
+  last_status_at: z.string().nullable(),
+});
 
 export type TagHistoryEntry = Readonly<{ day: string; uses: string; accounts: string }>;
 
@@ -45,7 +53,7 @@ export const unfollowTag = async (
   tag: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ tag_name: string }>(db, unfollowTagSql(accountId, tag));
+    const rows = await queryTyped(db, unfollowTagSql(accountId, tag), TagNameRow);
     return rows.length > 0;
   });
 
@@ -55,7 +63,7 @@ export const isTagFollowed = async (
   tag: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ tag_name: string }>(db, isTagFollowedSql(accountId, tag));
+    const rows = await queryTyped(db, isTagFollowedSql(accountId, tag), TagNameRow);
     return rows.length > 0;
   });
 
@@ -64,7 +72,7 @@ export const listFollowedTags = async (
   accountId: string,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ tag_name: string }>(db, listFollowedTagsSql(accountId));
+    const rows = await queryTyped(db, listFollowedTagsSql(accountId), TagNameRow);
     return rows.map((row) => row.tag_name);
   });
 
@@ -83,7 +91,7 @@ export const unfeatureTag = async (
   tag: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ tag_name: string }>(db, unfeatureTagSql(accountId, tag));
+    const rows = await queryTyped(db, unfeatureTagSql(accountId, tag), TagNameRow);
     return rows.length > 0;
   });
 
@@ -93,7 +101,7 @@ export const isTagFeatured = async (
   tag: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ tag_name: string }>(db, isTagFeaturedSql(accountId, tag));
+    const rows = await queryTyped(db, isTagFeaturedSql(accountId, tag), TagNameRow);
     return rows.length > 0;
   });
 
@@ -102,7 +110,7 @@ export const listFeaturedTags = async (
   accountId: string,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ tag_name: string }>(db, listFeaturedTagsSql(accountId));
+    const rows = await queryTyped(db, listFeaturedTagsSql(accountId), TagNameRow);
     return rows.map((row) => row.tag_name);
   });
 
@@ -111,7 +119,7 @@ export const countFeaturedTags = async (
   accountId: string,
 ): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ count: number | bigint }>(db, countFeaturedTagsSql(accountId));
+    const rows = await queryTyped(db, countFeaturedTagsSql(accountId), CountRow);
     return Number(rows[0]?.count ?? 0);
   });
 
@@ -122,9 +130,10 @@ export const accountTagUses = async (
   tag: string,
 ): Promise<Result<{ count: number; lastStatusAt: string | null }, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ count: number | bigint; last_status_at: string | null }>(
+    const rows = await queryTyped(
       db,
       countAccountTagUsesSql(accountId, `%#${tag}%`),
+      CountLastStatusAtRow,
     );
     const row = rows[0];
     return { count: Number(row?.count ?? 0), lastStatusAt: row?.last_status_at ?? null };

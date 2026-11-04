@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { Result } from "neverthrow";
 import { type RepositoryError, runD1 } from "./d1";
 import { nowIso } from "./clock";
@@ -7,16 +8,15 @@ import {
   listSuggestionExclusionIds as listSuggestionExclusionIdsSql,
 } from "./generated/prisma/sql";
 
+const IdRow = z.object({ id: z.string().nullable() });
+
 /** Account ids the viewer already follows, blocks, has muted, or dismissed (suggestions skip these). */
 export const listSuggestionExclusionIds = async (
   db: D1Database,
   viewerId: string,
 ): Promise<Result<Set<string>, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string | null }>(
-      db,
-      listSuggestionExclusionIdsSql(viewerId, nowIso()),
-    );
+    const rows = await queryTyped(db, listSuggestionExclusionIdsSql(viewerId, nowIso()), IdRow);
     return new Set(rows.flatMap((row) => (row.id ? [row.id] : [])));
   });
 

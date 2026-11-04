@@ -10,6 +10,8 @@ import { schemaResult } from "@tstodon/core";
 import { RemoteAccountId } from "./remote-account-id";
 import { insertReport as insertReportSql } from "./generated/prisma/sql";
 
+const IdRow = z.object({ id: z.string() });
+
 /** Mastodon's report categories. */
 export const ReportCategorySchema = z.union([
   z.literal("spam"),
@@ -139,7 +141,7 @@ const insertReportRow = (
 ): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
     const id = newEntityId();
-    const rows = await queryTyped<{ id: string }>(
+    const rows = await queryTyped(
       db,
       insertReportSql(
         id,
@@ -155,6 +157,7 @@ const insertReportRow = (
         input.reporterAcct ?? null,
         input.targetAcct ?? null,
       ),
+      IdRow,
     );
     return rows.length > 0 ? id : undefined;
   });

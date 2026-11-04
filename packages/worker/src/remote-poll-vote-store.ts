@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { RemoteStatus } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
@@ -10,6 +11,8 @@ import {
   settleRemotePollOwnVotes as settleRemotePollOwnVotesSql,
 } from "./generated/prisma/sql";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
+
+const StatusIdAccountIdRow = z.object({ status_id: z.string(), account_id: z.string() });
 
 /**
  * What local accounts have voted on one remote poll: the viewer's own
@@ -28,12 +31,14 @@ export const NO_REMOTE_POLL_VOTES: RemotePollVotes = {
   pendingVoters: 0,
 };
 
-type VoteRow = Readonly<{
-  status_id: string;
-  account_id: string;
-  choice_index: number;
-  optimistic: number;
-}>;
+const VoteRowSchema = z.object({
+  status_id: z.string(),
+  account_id: z.string(),
+  choice_index: z.number(),
+  optimistic: z.number(),
+});
+
+type VoteRow = z.infer<typeof VoteRowSchema>;
 
 const votesByStatus = (
   rows: ReadonlyArray<VoteRow>,
@@ -79,7 +84,7 @@ export const findRemotePollVotes = async (
     return new Map();
   }
   const rows = await runD1(async () =>
-    queryTyped<VoteRow>(db, listRemotePollVotesSql(viewerId ?? "", jsonStringArray(ids))),
+    queryTyped(db, listRemotePollVotesSql(viewerId ?? "", jsonStringArray(ids)), VoteRowSchema),
   );
   return rows.isOk() ? votesByStatus(rows.value, viewerId ?? "") : new Map();
 };
@@ -129,9 +134,10 @@ export const listEndedRemotePollVoters = async (
   limit: number,
 ): Promise<Result<EndedPollVoter[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ status_id: string; account_id: string }>(
+    const rows = await queryTyped(
       db,
       listEndedRemotePollVotersSql(now, limit),
+      StatusIdAccountIdRow,
     );
     return rows.map((row) => ({ statusId: row.status_id, accountId: row.account_id }));
   });

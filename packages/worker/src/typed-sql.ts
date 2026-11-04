@@ -1,5 +1,6 @@
-import { runD1Batch, runD1BatchChunked, type RepositoryError } from "./d1";
+import { parseRows, runD1Batch, runD1BatchChunked, type RepositoryError } from "./d1";
 import type { Result } from "neverthrow";
+import { z } from "zod";
 
 type TypedSqlLike = { readonly sql: string; readonly values: ReadonlyArray<unknown> };
 
@@ -19,13 +20,22 @@ export const d1PrepareTyped = (db: D1Database, typed: TypedSqlLike): D1PreparedS
   return db.prepare(sql).bind(...values);
 };
 
-/** Run a TypedSQL SELECT / RETURNING query through D1. */
-export const queryTyped = async <Row = Record<string, unknown>>(
+/** A row whose columns the caller does not read: it only counts or awaits the rows. */
+export const CountedRow = z.object({});
+
+/**
+ * Run a TypedSQL SELECT / RETURNING query through D1 and parse its rows with
+ * `schema`. Prisma's generated row types do not describe what D1 returns
+ * (`COUNT(*)` is typed `bigint`; D1 yields a number), so rows are parsed here,
+ * once. A row that does not match is left out, as {@link parseRows} does.
+ */
+export const queryTyped = async <Row>(
   db: D1Database,
   typed: TypedSqlLike,
+  schema: z.ZodType<Row>,
 ): Promise<Row[]> => {
-  const { results } = await d1PrepareTyped(db, typed).all<Row>();
-  return (results ?? []) as Row[];
+  const { results } = await d1PrepareTyped(db, typed).all();
+  return parseRows(schema, results);
 };
 
 /** Run a TypedSQL write through D1 (no result rows required). */

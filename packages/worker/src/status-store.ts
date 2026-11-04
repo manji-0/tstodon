@@ -15,7 +15,7 @@ import {
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { jsonStringArray, type RepositoryError, runD1, runD1Batch, sqlInJsonEach } from "./d1";
-import { parseRow, toRepositoryError } from "./d1";
+import { parseRow } from "./d1";
 import { type RemovedBoost, removedBoostsFromRows } from "./removed-boost";
 import { visibilitySql } from "./sql-enums";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
@@ -35,6 +35,11 @@ import {
   setStatusReplyUri as setStatusReplyUriSql,
   updateLocalNote as updateLocalNoteSql,
 } from "./generated/prisma/sql";
+
+const NullableIdRow = z.object({ id: z.string().nullable() });
+const IdInReplyToUriRow = z.object({ id: z.string(), in_reply_to_uri: z.string() });
+const IdRow = z.object({ id: z.string() });
+const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
 
 export const StatusRowSchema = z.object({
   id: z.string().min(1),
@@ -142,7 +147,7 @@ export const statusFromRow = (
 };
 
 const mediaIdsFor = async (db: D1Database, statusId: string): Promise<MediaId[]> => {
-  const results = await queryTyped<{ id: string | null }>(db, listMediaIdsForStatusSql(statusId));
+  const results = await queryTyped(db, listMediaIdsForStatusSql(statusId), NullableIdRow);
   return results.flatMap((row) => {
     if (!row.id) {
       return [];
@@ -156,23 +161,19 @@ export const findStatusById = async (
   db: D1Database,
   id: string,
 ): Promise<Result<LocalStatusValue | undefined, RepositoryError>> => {
-  const queried = await runD1(async () => queryTyped(db, findStatusByIdSql(id)));
+  const queried = await runD1(async () => queryTyped(db, findStatusByIdSql(id), StatusRowSchema));
   if (queried.isErr()) {
     return err(queried.error);
   }
-  const raw = queried.value[0];
-  if (!raw) {
+  const row = queried.value[0];
+  if (!row) {
     return ok(undefined);
-  }
-  const row = parseRow(StatusRowSchema, raw);
-  if (row.isErr()) {
-    return err(toRepositoryError("invalid status row"));
   }
   const media = await runD1(() => mediaIdsFor(db, id));
   if (media.isErr()) {
     return err(media.error);
   }
-  return statusFromRow(row.value, media.value);
+  return statusFromRow(row, media.value);
 };
 
 export const findStatusesByIds = async (
@@ -220,10 +221,7 @@ export const listStatusReplyUris = async (
     return ok(new Map());
   }
   const rows = await runD1(async () =>
-    queryTyped<{ id: string; in_reply_to_uri: string }>(
-      db,
-      listStatusReplyUrisSql(jsonStringArray(unique)),
-    ),
+    queryTyped(db, listStatusReplyUrisSql(jsonStringArray(unique)), IdInReplyToUriRow),
   );
   return rows.isErr()
     ? err(rows.error)
@@ -278,9 +276,10 @@ export const findLocalReblog = async (
   target: StatusTargetValue,
 ): Promise<Result<StatusId | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
+    const rows = await queryTyped(
       db,
       findLocalReblogSql(accountId, ...statusTargetColumns(target)),
+      IdRow,
     );
     const id = StatusId.parse(rows[0]?.id ?? "");
     return id.isOk() ? id.value : undefined;
@@ -330,7 +329,7 @@ export const updateLocalNote = async (
   updatedAt: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
+    const rows = await queryTyped(
       db,
       updateLocalNoteSql(
         note.id,
@@ -343,6 +342,7 @@ export const updateLocalNote = async (
         updatedAt,
         note.accountId,
       ),
+      IdRow,
     );
     return rows.length > 0;
   });
@@ -398,7 +398,7 @@ export const deleteReblogOf = async (
 
 export const countStatuses = async (db: D1Database): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ count: number | bigint }>(db, countStatusesSql());
+    const rows = await queryTyped(db, countStatusesSql(), CountRow);
     return Number(rows[0]?.count ?? 0);
   });
 

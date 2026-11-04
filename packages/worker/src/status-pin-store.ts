@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { nowIso } from "./clock";
@@ -10,7 +11,11 @@ import {
   pinStatus as pinStatusSql,
   unpinStatus as unpinStatusSql,
 } from "./generated/prisma/sql";
-import { hydrateStatusRows } from "./status-store";
+import { hydrateStatusRows, StatusRowSchema } from "./status-store";
+
+const StatusIdRow = z.object({ status_id: z.string() });
+const PresentRow = z.object({ present: z.number() });
+const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
 
 export const pinStatus = async (
   db: D1Database,
@@ -27,7 +32,7 @@ export const unpinStatus = async (
   statusId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ status_id: string }>(db, unpinStatusSql(accountId, statusId));
+    const rows = await queryTyped(db, unpinStatusSql(accountId, statusId), StatusIdRow);
     return rows.length > 0;
   });
 
@@ -37,7 +42,7 @@ export const isStatusPinned = async (
   statusId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ present: number }>(db, isStatusPinnedSql(accountId, statusId));
+    const rows = await queryTyped(db, isStatusPinnedSql(accountId, statusId), PresentRow);
     return rows.length > 0;
   });
 
@@ -46,10 +51,7 @@ export const countPinnedStatuses = async (
   accountId: string,
 ): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ count: number | bigint }>(
-      db,
-      countPinnedStatusesSql(accountId),
-    );
+    const rows = await queryTyped(db, countPinnedStatusesSql(accountId), CountRow);
     return Number(rows[0]?.count ?? 0);
   });
 
@@ -58,6 +60,6 @@ export const listPinnedStatuses = async (
   accountId: string,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
-    const results = await queryTyped(db, listPinnedStatusesSql(accountId));
+    const results = await queryTyped(db, listPinnedStatusesSql(accountId), StatusRowSchema);
     return hydrateStatusRows(db, results);
   });

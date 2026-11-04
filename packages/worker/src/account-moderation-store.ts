@@ -11,6 +11,9 @@ import {
 } from "./generated/prisma/sql";
 import { queryTyped, runTyped } from "./typed-sql";
 
+const ModerationRow = z.object({ moderation: z.string() });
+const AccountIdModerationRow = z.object({ account_id: z.string(), moderation: z.string() });
+
 export const AccountModerationSchema = z.union([z.literal("Silenced"), z.literal("Suspended")]);
 
 export type AccountModeration = z.infer<typeof AccountModerationSchema>;
@@ -23,7 +26,7 @@ export const getAccountModeration = async (
   accountId: string,
 ): Promise<Result<AccountModeration | null, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ moderation: string }>(db, findAccountModerationSql(accountId));
+    const rows = await queryTyped(db, findAccountModerationSql(accountId), ModerationRow);
     const parsed = parseModeration(rows[0]?.moderation);
     return parsed.isOk() ? parsed.value : null;
   });
@@ -38,9 +41,10 @@ export const listAccountModerations = async (
     if (unique.length === 0) {
       return moderations;
     }
-    const rows = await queryTyped<{ account_id: string; moderation: string }>(
+    const rows = await queryTyped(
       db,
       listAccountModerationsSql(jsonStringArray(unique)),
+      AccountIdModerationRow,
     );
     for (const row of rows) {
       const parsed = parseModeration(row.moderation);

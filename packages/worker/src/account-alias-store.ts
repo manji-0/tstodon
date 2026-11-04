@@ -1,7 +1,7 @@
 import { type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { parseRows, runD1, type RepositoryError } from "./d1";
+import { runD1, type RepositoryError } from "./d1";
 import {
   deleteAccountAlias as deleteAccountAliasSql,
   insertAccountAliasOrIgnore as insertAccountAliasOrIgnoreSql,
@@ -30,9 +30,11 @@ export const listAccountAliases = async (
   accountId: string,
 ): Promise<Result<ReadonlyArray<AccountAlias>, RepositoryError>> =>
   runD1(async () =>
-    parseRows(AliasRowSchema, await queryTyped(db, listAccountAliasesSql(accountId))).map(
-      (row) => ({ id: row.id, acct: row.acct, actorUri: row.actor_uri }),
-    ),
+    (await queryTyped(db, listAccountAliasesSql(accountId), AliasRowSchema)).map((row) => ({
+      id: row.id,
+      acct: row.acct,
+      actorUri: row.actor_uri,
+    })),
   );
 
 /** Add an alias; adding one the account already has changes nothing. */

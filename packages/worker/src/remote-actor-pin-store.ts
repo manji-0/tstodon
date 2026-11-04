@@ -6,7 +6,7 @@ import {
   insertRemoteActorPin as insertRemoteActorPinSql,
   listRemoteActorPinnedStatuses as listRemoteActorPinnedStatusesSql,
 } from "./generated/prisma/sql";
-import { parseRemoteStatusRow, remoteStatusFromRow } from "./remote-status-store";
+import { RemoteStatusRowSchema, remoteStatusFromRow } from "./remote-status-store";
 import { queryTyped, runTypedBatch } from "./typed-sql";
 
 /** Make `statusIds`, in this order, the notes `actorUri` pinned. */
@@ -34,10 +34,13 @@ export const listRemoteActorPinnedStatuses = async (
   viewerId: string | undefined,
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, listRemoteActorPinnedStatusesSql(actorUri, viewerId ?? ""));
-    return rows.flatMap((raw) => {
-      const row = parseRemoteStatusRow(raw);
-      const status = row.isOk() ? remoteStatusFromRow(row.value) : undefined;
-      return status?.isOk() ? [status.value] : [];
+    const rows = await queryTyped(
+      db,
+      listRemoteActorPinnedStatusesSql(actorUri, viewerId ?? ""),
+      RemoteStatusRowSchema,
+    );
+    return rows.flatMap((row) => {
+      const status = remoteStatusFromRow(row);
+      return status.isOk() ? [status.value] : [];
     });
   });

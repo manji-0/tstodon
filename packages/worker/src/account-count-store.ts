@@ -9,6 +9,12 @@ import {
   countStatusesByAccountIdsJson as countStatusesByAccountIdsJsonSql,
 } from "./generated/prisma/sql";
 
+const CountsRowSchema = z.object({
+  followers: z.union([z.number(), z.bigint()]),
+  following: z.union([z.number(), z.bigint()]),
+  statuses: z.union([z.number(), z.bigint()]),
+});
+
 export type AccountCounts = Readonly<{ followers: number; following: number; statuses: number }>;
 
 export const accountCounts = async (
@@ -16,7 +22,7 @@ export const accountCounts = async (
   accountId: string,
 ): Promise<Result<AccountCounts, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, accountCountsSql(accountId));
+    const rows = await queryTyped(db, accountCountsSql(accountId), CountsRowSchema);
     const row = rows[0];
     return {
       followers: Number(row?.followers ?? 0),

@@ -9,7 +9,7 @@ import { z } from "zod";
 import { nowIso } from "./clock";
 import { type RepositoryError, runD1, runD1Batch } from "./d1";
 import { newEntityId } from "./ids";
-import { parseRow, toRepositoryError } from "./d1";
+import { toRepositoryError } from "./d1";
 import { d1PrepareTyped, queryTyped, runTyped, runTypedBatchChunked } from "./typed-sql";
 import {
   findOutboundActivity as findOutboundActivitySql,
@@ -91,32 +91,30 @@ const persistColumns = (
   }
 };
 
-export const parseOutboxDelivery = (raw: unknown): Result<OutboxDeliveryValue, RepositoryError> => {
-  const row = parseRow(OutboxDeliveryRowSchema, raw);
-  if (row.isErr()) {
-    return err(row.error);
-  }
-  if (row.value.kind === "Failed" && row.value.reason_kind === "Permanent") {
+const outboxDeliveryFromRow = (
+  row: z.infer<typeof OutboxDeliveryRowSchema>,
+): Result<OutboxDeliveryValue, RepositoryError> => {
+  if (row.kind === "Failed" && row.reason_kind === "Permanent") {
     return OutboxDelivery.parse({
       kind: "Failed",
       reasonKind: "Permanent",
-      httpStatus: row.value.http_status,
+      httpStatus: row.http_status,
     }).mapErr(() => toRepositoryError("invalid outbox delivery row"));
   }
-  if (row.value.kind === "Failed") {
+  if (row.kind === "Failed") {
     return OutboxDelivery.parse({
       kind: "Failed",
       reasonKind: "RetryExhausted",
-      attemptCount: row.value.attempt_count,
+      attemptCount: row.attempt_count,
     }).mapErr(() => toRepositoryError("invalid outbox delivery row"));
   }
-  if (row.value.kind === "Queued") {
+  if (row.kind === "Queued") {
     return OutboxDelivery.parse({
       kind: "Queued",
-      attemptCount: row.value.attempt_count,
+      attemptCount: row.attempt_count,
     }).mapErr(() => toRepositoryError("invalid outbox delivery row"));
   }
-  return OutboxDelivery.parse({ kind: row.value.kind }).mapErr(() =>
+  return OutboxDelivery.parse({ kind: row.kind }).mapErr(() =>
     toRepositoryError("invalid outbox delivery row"),
   );
 };
@@ -178,20 +176,9 @@ export const findOutboundActivity = async (
   id: string,
 ): Promise<Result<OutboundActivityRow | undefined, RepositoryError>> => {
   const queried = await runD1(async () => {
-    return queryTyped(db, findOutboundActivitySql(id));
+    return queryTyped(db, findOutboundActivitySql(id), OutboundActivityRowSchema);
   });
-  if (queried.isErr()) {
-    return err(queried.error);
-  }
-  const raw = queried.value[0];
-  if (!raw) {
-    return ok(undefined);
-  }
-  const row = parseRow(OutboundActivityRowSchema, raw);
-  if (row.isErr()) {
-    return err(toRepositoryError("invalid outbound activity row"));
-  }
-  return ok(row.value);
+  return queried.map((rows) => rows[0]);
 };
 
 /** The account's Creates and Announces addressed to Public, newest first (the AP outbox). */
@@ -201,11 +188,11 @@ export const listPublicOutboxActivities = async (
   limit: number,
 ): Promise<Result<OutboundActivityRow[], RepositoryError>> =>
   runD1(async () => {
-    const results = await queryTyped(db, listPublicOutboxActivitiesSql(accountId, limit));
-    return results.flatMap((raw) => {
-      const row = parseRow(OutboundActivityRowSchema, raw);
-      return row.isOk() ? [row.value] : [];
-    });
+    return queryTyped(
+      db,
+      listPublicOutboxActivitiesSql(accountId, limit),
+      OutboundActivityRowSchema,
+    );
   });
 
 export const listOutboundActivities = async (
@@ -214,11 +201,7 @@ export const listOutboundActivities = async (
   limit: number,
 ): Promise<Result<OutboundActivityRow[], RepositoryError>> =>
   runD1(async () => {
-    const results = await queryTyped(db, listOutboundActivitiesSql(accountId, limit));
-    return results.flatMap((raw) => {
-      const row = parseRow(OutboundActivityRowSchema, raw);
-      return row.isOk() ? [row.value] : [];
-    });
+    return queryTyped(db, listOutboundActivitiesSql(accountId, limit), OutboundActivityRowSchema);
   });
 
 export const markOutboundExpanded = async (
@@ -306,16 +289,13 @@ export const findOutboxTarget = async (
   inboxUrl: string,
 ): Promise<Result<OutboxDeliveryValue | undefined, RepositoryError>> => {
   const queried = await runD1(async () => {
-    return queryTyped(db, findOutboxTargetSql(activityId, inboxUrl));
+    return queryTyped(db, findOutboxTargetSql(activityId, inboxUrl), OutboxDeliveryRowSchema);
   });
   if (queried.isErr()) {
     return err(queried.error);
   }
-  const raw = queried.value[0];
-  if (!raw) {
-    return ok(undefined);
-  }
-  return parseOutboxDelivery(raw);
+  const row = queried.value[0];
+  return row === undefined ? ok(undefined) : outboxDeliveryFromRow(row);
 };
 
 export const findOutboxFanout = async (
@@ -323,16 +303,13 @@ export const findOutboxFanout = async (
   activityId: string,
 ): Promise<Result<OutboxDeliveryValue | undefined, RepositoryError>> => {
   const queried = await runD1(async () => {
-    return queryTyped(db, findOutboxFanoutSql(activityId));
+    return queryTyped(db, findOutboxFanoutSql(activityId), OutboxDeliveryRowSchema);
   });
   if (queried.isErr()) {
     return err(queried.error);
   }
-  const raw = queried.value[0];
-  if (!raw) {
-    return ok(undefined);
-  }
-  return parseOutboxDelivery(raw);
+  const row = queried.value[0];
+  return row === undefined ? ok(undefined) : outboxDeliveryFromRow(row);
 };
 
 export const persistOutboxTarget = async (

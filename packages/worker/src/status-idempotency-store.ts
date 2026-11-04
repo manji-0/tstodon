@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { runD1, runD1Batch, type RepositoryError } from "./d1";
@@ -8,7 +9,9 @@ import {
   releaseStatusIdempotency as releaseStatusIdempotencySql,
   reserveStatusIdempotency as reserveStatusIdempotencySql,
 } from "./generated/prisma/sql";
-import { d1PrepareTyped, queryTyped } from "./typed-sql";
+import { d1PrepareTyped, CountedRow, queryTyped } from "./typed-sql";
+
+const StatusIdRow = z.object({ status_id: z.string() });
 
 /** Mastodon keeps `Idempotency-Key` results for up to an hour. */
 const IDEMPOTENCY_TTL_MS = 60 * 60 * 1000;
@@ -26,9 +29,10 @@ export const findStatusIdempotency = async (
   key: string,
 ): Promise<Result<IdempotentStatusLookup | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ status_id: string }>(
+    const rows = await queryTyped(
       db,
       findStatusIdempotencySql(accountId, key, expiredBefore()),
+      StatusIdRow,
     );
     const row = rows[0];
     if (!row) {
@@ -64,7 +68,7 @@ export const completeStatusIdempotency = async (
   statusId: string,
 ): Promise<Result<void, RepositoryError>> => {
   const written = await runD1(async () => {
-    await queryTyped(db, completeStatusIdempotencySql(accountId, key, statusId));
+    await queryTyped(db, completeStatusIdempotencySql(accountId, key, statusId), CountedRow);
   });
   return written.map(() => undefined);
 };
@@ -76,7 +80,7 @@ export const releaseStatusIdempotency = async (
   key: string,
 ): Promise<Result<void, RepositoryError>> => {
   const released = await runD1(async () => {
-    await queryTyped(db, releaseStatusIdempotencySql(accountId, key));
+    await queryTyped(db, releaseStatusIdempotencySql(accountId, key), CountedRow);
   });
   return released.map(() => undefined);
 };

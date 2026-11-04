@@ -21,6 +21,17 @@ import {
   upsertFollowOptions as upsertFollowOptionsSql,
 } from "./generated/prisma/sql";
 
+const IdRow = z.object({ id: z.string() });
+const Row2 = z.object({
+  kind: z.string(),
+  reblogs: z.number(),
+  notify: z.number(),
+  languages_json: z.string(),
+});
+const FollowerAccountIdRow = z.object({ follower_account_id: z.string() });
+const KindRow = z.object({ kind: z.string() });
+const TargetAccountIdRow = z.object({ target_account_id: z.string() });
+
 /** Mastodon's per-follow options; omitted fields keep their defaults. */
 export type FollowOptions = Readonly<{
   reblogs?: boolean;
@@ -41,16 +52,12 @@ export const followAccount = async (
     if (followKind === "None") {
       return state;
     }
-    const inserted = await queryTyped<{ id: string }>(
+    const inserted = await queryTyped(
       db,
       insertFollowOrIgnoreSql(newEntityId(), followerId, targetId, followKind, nowIso()),
+      IdRow,
     );
-    const existing = await queryTyped<{
-      kind: string;
-      reblogs: number;
-      notify: number;
-      languages_json: string;
-    }>(db, findFollowKindSql(followerId, targetId));
+    const existing = await queryTyped(db, findFollowKindSql(followerId, targetId), Row2);
     const row = existing[0];
     if (
       options.reblogs !== undefined ||
@@ -128,9 +135,10 @@ export const authorizeFollowRequest = async (
   followerAccountId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ follower_account_id: string }>(
+    const rows = await queryTyped(
       db,
       authorizeFollowRequestSql(targetAccountId, followerAccountId),
+      FollowerAccountIdRow,
     );
     return rows.length > 0;
   });
@@ -142,9 +150,10 @@ export const rejectFollowRequest = async (
   followerAccountId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ follower_account_id: string }>(
+    const rows = await queryTyped(
       db,
       rejectFollowRequestSql(targetAccountId, followerAccountId),
+      FollowerAccountIdRow,
     );
     return rows.length > 0;
   });
@@ -156,7 +165,7 @@ export const findFollowKind = async (
   targetId: string,
 ): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ kind: string }>(db, findFollowKindSql(followerId, targetId));
+    const rows = await queryTyped(db, findFollowKindSql(followerId, targetId), KindRow);
     return rows[0]?.kind;
   });
 
@@ -171,10 +180,7 @@ export const familiarFollowerIds = async (
   limit: number,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
-      db,
-      listFamiliarFollowerIdsSql(viewerId, targetId, limit),
-    );
+    const rows = await queryTyped(db, listFamiliarFollowerIdsSql(viewerId, targetId, limit), IdRow);
     return rows.map((row) => row.id);
   });
 
@@ -183,9 +189,10 @@ export const listAcceptedFollowerIds = async (
   targetAccountId: string,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
-    const results = await queryTyped<{ follower_account_id: string }>(
+    const results = await queryTyped(
       db,
       listAcceptedFollowerIdsSql(targetAccountId),
+      FollowerAccountIdRow,
     );
     return results.map((row) => row.follower_account_id);
   });
@@ -240,10 +247,7 @@ export const notifyingFollowerIds = async (
   accountId: string,
 ): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ follower_account_id: string }>(
-      db,
-      listNotifyingFollowerIdsSql(accountId),
-    );
+    const rows = await queryTyped(db, listNotifyingFollowerIdsSql(accountId), FollowerAccountIdRow);
     return rows.map((row) => row.follower_account_id);
   });
 
@@ -253,10 +257,7 @@ export const followingAccountIds = async (
   accountId: string,
 ): Promise<Result<ReadonlySet<string>, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ target_account_id: string }>(
-      db,
-      listFollowingAccountIdsSql(accountId),
-    );
+    const rows = await queryTyped(db, listFollowingAccountIdsSql(accountId), TargetAccountIdRow);
     return new Set(rows.map((row) => row.target_account_id));
   });
 

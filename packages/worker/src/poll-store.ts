@@ -26,6 +26,11 @@ import {
   updateStatusPollId as updateStatusPollIdSql,
 } from "./generated/prisma/sql";
 
+const OptionIndexRow = z.object({ option_index: z.number() });
+const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
+const IdRow = z.object({ id: z.string() });
+const NullableIdRow = z.object({ id: z.string().nullable() });
+
 export const PollOptionSchema = z.object({
   title: z.string(),
   votesCount: z.number().int().nonnegative(),
@@ -114,7 +119,7 @@ const pollFromRow = async (
   }
   const votes = viewerId
     ? await runD1(async () =>
-        queryTyped<{ option_index: number }>(db, listPollVotesForAccountSql(row.id, viewerId)),
+        queryTyped(db, listPollVotesForAccountSql(row.id, viewerId), OptionIndexRow),
       )
     : ok<{ option_index: number }[]>([]);
   if (votes.isErr()) {
@@ -133,21 +138,17 @@ const pollFromRow = async (
 };
 
 const loadPoll = async (
-  queried: Result<unknown, RepositoryError>,
+  queried: Result<z.infer<typeof PollRowSchema> | undefined, RepositoryError>,
   db: D1Database,
   viewerId: string | undefined,
 ): Promise<Result<PollRecord | undefined, RepositoryError>> => {
   if (queried.isErr()) {
     return err(queried.error);
   }
-  if (!queried.value) {
+  if (queried.value === undefined) {
     return ok(undefined);
   }
-  const row = parseRow(PollRowSchema, queried.value);
-  if (row.isErr()) {
-    return err(toRepositoryError("invalid poll row"));
-  }
-  const poll = await pollFromRow(db, row.value, viewerId);
+  const poll = await pollFromRow(db, queried.value, viewerId);
   if (poll.isErr()) {
     return err(poll.error);
   }
@@ -160,7 +161,7 @@ export const findPollByStatusId = async (
   viewerId: string | undefined,
 ): Promise<Result<PollRecord | undefined, RepositoryError>> => {
   const queried = await runD1(async () => {
-    const rows = await queryTyped(db, findPollByStatusIdSql(statusId));
+    const rows = await queryTyped(db, findPollByStatusIdSql(statusId), PollRowSchema);
     return rows[0];
   });
   return loadPoll(queried, db, viewerId);
@@ -179,7 +180,7 @@ export const countPollVotes = async (
   pollId: string,
 ): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ count: number | bigint }>(db, countPollVotesSql(pollId));
+    const rows = await queryTyped(db, countPollVotesSql(pollId), CountRow);
     return Number(rows[0]?.count ?? 0);
   });
 
@@ -195,7 +196,7 @@ export const replacePollOptions = async (
   },
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
+    const rows = await queryTyped(
       db,
       replacePollOptionsSql(
         input.pollId,
@@ -204,6 +205,7 @@ export const replacePollOptions = async (
         input.expiresAt,
         input.hideTotals ? 1 : 0,
       ),
+      IdRow,
     );
     return rows.length > 0;
   });
@@ -291,7 +293,7 @@ export const findPollById = async (
   viewerId: string | undefined,
 ): Promise<Result<PollRecord | undefined, RepositoryError>> => {
   const queried = await runD1(async () => {
-    const rows = await queryTyped(db, findPollByIdSql(pollId));
+    const rows = await queryTyped(db, findPollByIdSql(pollId), PollRowSchema);
     return rows[0];
   });
   return loadPoll(queried, db, viewerId);
@@ -304,7 +306,7 @@ export const votePoll = async (
   choices: ReadonlyArray<number>,
 ): Promise<Result<void, RepositoryError>> => {
   const queried = await runD1(async () => {
-    return queryTyped(db, findPollVoteTargetSql(pollId));
+    return queryTyped(db, findPollVoteTargetSql(pollId), PollVoteTargetRowSchema);
   });
   if (queried.isErr()) {
     return err(queried.error);
@@ -313,14 +315,10 @@ export const votePoll = async (
   if (!target) {
     return err(toRepositoryError("poll not found"));
   }
-  const row = parseRow(PollVoteTargetRowSchema, target);
-  if (row.isErr()) {
-    return err(toRepositoryError("invalid poll row"));
-  }
-  if (Date.parse(row.value.expires_at) <= Date.now()) {
+  if (Date.parse(target.expires_at) <= Date.now()) {
     return err(toRepositoryError("poll expired"));
   }
-  const options = parseJsonColumn(PollOptionsSchema, row.value.options_json);
+  const options = parseJsonColumn(PollOptionsSchema, target.options_json);
   if (options.isErr()) {
     return err(options.error);
   }
@@ -373,10 +371,7 @@ export const recordRemotePollVote = async (
     return ok({ kind: "UnknownOption" });
   }
   const earlier = await runD1(async () =>
-    queryTyped<{ option_index: number }>(
-      db,
-      listRemotePollVotesForActorSql(poll.id, vote.actorUri),
-    ),
+    queryTyped(db, listRemotePollVotesForActorSql(poll.id, vote.actorUri), OptionIndexRow),
   );
   if (earlier.isErr()) {
     return err(earlier.error);
@@ -417,19 +412,16 @@ export const listExpiredUnnotifiedPolls = async (
   limit: number,
 ): Promise<Result<ExpiredPollTarget[], RepositoryError>> =>
   runD1(async () => {
-    const results = await queryTyped(db, listExpiredUnnotifiedPollsSql(now, limit));
-    return results.flatMap((raw) => {
-      const row = parseRow(ExpiredPollTargetRowSchema, raw);
-      return row.isOk()
-        ? [
-            {
-              id: row.value.id,
-              statusId: row.value.status_id,
-              accountId: row.value.account_id,
-            },
-          ]
-        : [];
-    });
+    const results = await queryTyped(
+      db,
+      listExpiredUnnotifiedPollsSql(now, limit),
+      ExpiredPollTargetRowSchema,
+    );
+    return results.map((row) => ({
+      id: row.id,
+      statusId: row.status_id,
+      accountId: row.account_id,
+    }));
   });
 
 export const markPollExpiryNotified = async (
@@ -457,13 +449,14 @@ export const claimPollUpdate = async (
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
     const now = Date.now();
-    const rows = await queryTyped<{ id: string | null }>(
+    const rows = await queryTyped(
       db,
       claimPollUpdateSql(
         new Date(now).toISOString(),
         pollId,
         new Date(now - POLL_UPDATE_CLAIM_TTL_MS).toISOString(),
       ),
+      NullableIdRow,
     );
     return rows.length > 0;
   });

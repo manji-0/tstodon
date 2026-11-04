@@ -57,7 +57,6 @@ const ProfileRowSchema = z.object({
   header_content_type: z.string().nullable(),
 });
 
-const parseProfileRow = schemaResult(ProfileRowSchema);
 const parseFields = schemaResult(z.array(ProfileFieldSchema));
 
 const profileFromRow = (row: z.infer<typeof ProfileRowSchema>): AccountProfile => {
@@ -81,9 +80,8 @@ export const findAccountProfile = async (
   accountId: string,
 ): Promise<Result<AccountProfile, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, findAccountProfileSql(accountId));
-    const row = parseProfileRow(rows[0]);
-    return row.isOk() ? profileFromRow(row.value) : { ...EMPTY_ACCOUNT_PROFILE };
+    const [row] = await queryTyped(db, findAccountProfileSql(accountId), ProfileRowSchema);
+    return row === undefined ? { ...EMPTY_ACCOUNT_PROFILE } : profileFromRow(row);
   });
 
 export const listAccountProfiles = async (
@@ -95,17 +93,14 @@ export const listAccountProfiles = async (
     return ok(new Map<string, AccountProfile>());
   }
   const queried = await runD1(async () =>
-    queryTyped(db, listAccountProfilesSql(jsonStringArray(unique))),
+    queryTyped(db, listAccountProfilesSql(jsonStringArray(unique)), ProfileRowSchema),
   );
   if (queried.isErr()) {
     return err(queried.error);
   }
   const profiles = new Map<string, AccountProfile>();
-  for (const raw of queried.value) {
-    const row = parseProfileRow(raw);
-    if (row.isOk()) {
-      profiles.set(row.value.account_id, profileFromRow(row.value));
-    }
+  for (const row of queried.value) {
+    profiles.set(row.account_id, profileFromRow(row));
   }
   return ok(profiles);
 };

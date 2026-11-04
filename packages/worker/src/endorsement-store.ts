@@ -10,6 +10,8 @@ import {
   insertEndorsement as insertEndorsementSql,
 } from "./generated/prisma/sql";
 
+const TargetActorUriRow = z.object({ target_actor_uri: z.string() });
+
 export const endorseAccount = async (
   db: D1Database,
   viewerId: string,
@@ -28,10 +30,7 @@ export const unendorseAccount = async (
   targetId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ target_actor_uri: string }>(
-      db,
-      deleteEndorsementSql(viewerId, targetId),
-    );
+    const rows = await queryTyped(db, deleteEndorsementSql(viewerId, targetId), TargetActorUriRow);
     return rows.length > 0;
   });
 

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { RemoteActorModeration } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { nowIso } from "./clock";
@@ -10,7 +11,14 @@ import {
 } from "./generated/prisma/sql";
 import { queryTyped, runTyped } from "./typed-sql";
 
-type ModerationColumns = Readonly<{ moderation: string | null; sensitized: number }>;
+const ModerationColumnsSchema = z.object({
+  moderation: z.string().nullable(),
+  sensitized: z.number(),
+});
+
+const ActorModerationRowSchema = ModerationColumnsSchema.extend({ actor_uri: z.string() });
+
+type ModerationColumns = z.infer<typeof ModerationColumnsSchema>;
 
 /** The columns hold only values this store writes; anything else reads as the default. */
 const moderationOf = (row: ModerationColumns): RemoteActorModeration => ({
@@ -28,7 +36,11 @@ export const getRemoteActorModeration = async (
   actorUri: string,
 ): Promise<Result<RemoteActorModeration, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<ModerationColumns>(db, findRemoteActorModerationSql(actorUri));
+    const rows = await queryTyped(
+      db,
+      findRemoteActorModerationSql(actorUri),
+      ModerationColumnsSchema,
+    );
     return rows[0] ? moderationOf(rows[0]) : RemoteActorModeration.inGoodStanding;
   });
 
@@ -42,9 +54,10 @@ export const listRemoteActorModerations = async (
     if (unique.length === 0) {
       return new Map();
     }
-    const rows = await queryTyped<ModerationColumns & Readonly<{ actor_uri: string }>>(
+    const rows = await queryTyped(
       db,
       listRemoteActorModerationsSql(jsonStringArray(unique)),
+      ActorModerationRowSchema,
     );
     return new Map(rows.map((row) => [row.actor_uri, moderationOf(row)]));
   });

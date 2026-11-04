@@ -1,7 +1,7 @@
 import { StreamChannel, type StreamChannelValue } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
-import { parseRows, type RepositoryError, runD1 } from "./d1";
+import { type RepositoryError, runD1 } from "./d1";
 import {
   deleteStreamSubscription,
   insertStreamSubscription,
@@ -71,14 +71,12 @@ export const listListStreamSubscriptions = async (
     return ok([]);
   }
   const rows = await runD1(() =>
-    queryTyped(db, listListStreamSubscriptionsSql(JSON.stringify(hubs))),
+    queryTyped(db, listListStreamSubscriptionsSql(JSON.stringify(hubs)), ListRowSchema),
   );
   if (rows.isErr()) {
     return err(rows.error);
   }
-  return ok(
-    parseRows(ListRowSchema, rows.value).map((row) => ({ hub: row.hub, listId: row.param })),
-  );
+  return ok(rows.value.map((row) => ({ hub: row.hub, listId: row.param })));
 };
 
 const HubRowSchema = z.object({ hub: z.string(), stream: z.string(), param: z.string() });
@@ -107,13 +105,14 @@ export const listPublicStreamSubscriptions = async (
         input.limit,
         input.anyTag ? 1 : 0,
       ),
+      HubRowSchema,
     ),
   );
   if (rows.isErr()) {
     return err(rows.error);
   }
   const hubs = new Map<string, StreamChannelValue[]>();
-  for (const row of parseRows(HubRowSchema, rows.value)) {
+  for (const row of rows.value) {
     const channel = channelOfRow(row);
     hubs.set(row.hub, [...(hubs.get(row.hub) ?? []), ...(channel ? [channel] : [])]);
   }

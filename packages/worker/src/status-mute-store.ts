@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { jsonStringArray, runD1, type RepositoryError } from "./d1";
@@ -18,15 +19,19 @@ import { findRemoteStatusRefsByObjectUris } from "./remote-status-store";
 import { findStatusesByIds } from "./status-store";
 import { queryTyped, runTyped } from "./typed-sql";
 
+const IdInReplyToIdRow = z.object({ id: z.string(), in_reply_to_id: z.string().nullable() });
+const ThreadRootStatusIdRow = z.object({ thread_root_status_id: z.string() });
+
 /** Reply links (`id -> in_reply_to_id`) for the given status ids. */
 const listStatusReplyLinks = async (
   db: D1Database,
   ids: ReadonlyArray<string>,
 ): Promise<Result<Map<string, string | null>, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string; in_reply_to_id: string | null }>(
+    const rows = await queryTyped(
       db,
       listStatusReplyLinksSql(jsonStringArray(ids)),
+      IdInReplyToIdRow,
     );
     const links = new Map<string, string | null>();
     for (const row of rows) {
@@ -92,10 +97,7 @@ export const listStatusMuteRoots = async (
   accountId: string,
 ): Promise<Result<ReadonlySet<string>, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ thread_root_status_id: string }>(
-      db,
-      listStatusMuteRootsSql(accountId),
-    );
+    const rows = await queryTyped(db, listStatusMuteRootsSql(accountId), ThreadRootStatusIdRow);
     return new Set(rows.map((row) => row.thread_root_status_id));
   });
 
@@ -114,9 +116,10 @@ export const unmuteStatusThread = async (
   threadRootStatusId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ thread_root_status_id: string }>(
+    const rows = await queryTyped(
       db,
       unmuteStatusSql(accountId, threadRootStatusId),
+      ThreadRootStatusIdRow,
     );
     return rows.length > 0;
   });

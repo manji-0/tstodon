@@ -1,7 +1,7 @@
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { parseRow, runD1, type RepositoryError } from "./d1";
+import { runD1, type RepositoryError } from "./d1";
 import {
   consumeOauthAuthorizationCode as consumeOauthAuthorizationCodeSql,
   deleteExpiredOauthAuthorizationCodes as deleteExpiredOauthAuthorizationCodesSql,
@@ -71,14 +71,9 @@ const applicationFromRow = (row: z.infer<typeof OauthApplicationRowSchema>): Oau
 });
 
 const firstApplication = (
-  rows: ReadonlyArray<unknown>,
-): Result<OauthApplication | undefined, RepositoryError> => {
-  const raw = rows[0];
-  if (raw === undefined) {
-    return ok(undefined);
-  }
-  return parseRow(OauthApplicationRowSchema, raw).map(applicationFromRow);
-};
+  rows: ReadonlyArray<z.infer<typeof OauthApplicationRowSchema>>,
+): Result<OauthApplication | undefined, RepositoryError> =>
+  ok(rows[0] === undefined ? undefined : applicationFromRow(rows[0]));
 
 /** A new app and the one time its client secret is visible. */
 export type RegisteredApplication = Readonly<{
@@ -127,15 +122,19 @@ export const findOauthApplicationByClientId = async (
   db: D1Database,
   clientId: string,
 ): Promise<Result<OauthApplication | undefined, RepositoryError>> =>
-  (await runD1(() => queryTyped(db, findOauthApplicationByClientIdSql(clientId)))).andThen(
-    firstApplication,
-  );
+  (
+    await runD1(() =>
+      queryTyped(db, findOauthApplicationByClientIdSql(clientId), OauthApplicationRowSchema),
+    )
+  ).andThen(firstApplication);
 
 export const findOauthApplicationById = async (
   db: D1Database,
   id: string,
 ): Promise<Result<OauthApplication | undefined, RepositoryError>> =>
-  (await runD1(() => queryTyped(db, findOauthApplicationByIdSql(id)))).andThen(firstApplication);
+  (
+    await runD1(() => queryTyped(db, findOauthApplicationByIdSql(id), OauthApplicationRowSchema))
+  ).andThen(firstApplication);
 
 /** The app named by `client_id`, when `clientSecret` is its secret. */
 export const authenticateOauthClient = async (
@@ -213,29 +212,27 @@ export const consumeAuthorizationCode = async (
   code: string,
 ): Promise<Result<AuthorizationGrant | undefined, RepositoryError>> => {
   const hash = await sha256Hex(code);
-  const rows = await runD1(() => queryTyped(db, consumeOauthAuthorizationCodeSql(hash)));
+  const rows = await runD1(() =>
+    queryTyped(db, consumeOauthAuthorizationCodeSql(hash), AuthorizationCodeRowSchema),
+  );
   if (rows.isErr()) {
     return err(rows.error);
   }
-  const raw = rows.value[0];
-  if (raw === undefined) {
+  const row = rows.value[0];
+  if (row === undefined) {
     return ok(undefined);
   }
-  const row = parseRow(AuthorizationCodeRowSchema, raw);
-  if (row.isErr()) {
-    return err(row.error);
-  }
-  if (Date.parse(row.value.expires_at) <= Date.now()) {
+  if (Date.parse(row.expires_at) <= Date.now()) {
     return ok(undefined);
   }
   return ok({
-    applicationId: row.value.application_id,
-    accountId: row.value.account_id,
-    redirectUri: row.value.redirect_uri,
-    scopes: row.value.scopes.split(" ").filter((scope) => scope.length > 0),
+    applicationId: row.application_id,
+    accountId: row.account_id,
+    redirectUri: row.redirect_uri,
+    scopes: row.scopes.split(" ").filter((scope) => scope.length > 0),
     pkce:
-      row.value.code_challenge && row.value.code_challenge_method
-        ? { challenge: row.value.code_challenge, method: row.value.code_challenge_method }
+      row.code_challenge && row.code_challenge_method
+        ? { challenge: row.code_challenge, method: row.code_challenge_method }
         : undefined,
   });
 };

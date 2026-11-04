@@ -36,6 +36,14 @@ import {
 import { settleRemotePollVotes } from "./remote-poll-vote-store";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 
+const IdRow = z.object({ id: z.string() });
+const IdObjectUriActorUriRow = z.object({
+  id: z.string(),
+  object_uri: z.string(),
+  actor_uri: z.string(),
+});
+const IdContentHtmlRow = z.object({ id: z.string(), content_html: z.string() });
+
 export const RemoteStatusRowSchema = z.object({
   id: z.string().min(1),
   actor_uri: z.string().min(1),
@@ -109,19 +117,12 @@ export const remoteStatusFromRow = (
 };
 
 const readRemoteStatus = async (
-  queried: Result<unknown, RepositoryError>,
+  queried: Result<RemoteStatusRow | undefined, RepositoryError>,
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> => {
   if (queried.isErr()) {
     return err(queried.error);
   }
-  if (!queried.value) {
-    return ok(undefined);
-  }
-  const row = parseRemoteStatusRow(queried.value);
-  if (row.isErr()) {
-    return err(toRepositoryError("invalid remote status row"));
-  }
-  return remoteStatusFromRow(row.value);
+  return queried.value === undefined ? ok(undefined) : remoteStatusFromRow(queried.value);
 };
 
 export const findRemoteStatusById = async (
@@ -130,7 +131,7 @@ export const findRemoteStatusById = async (
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> =>
   readRemoteStatus(
     await runD1(async () => {
-      const rows = await queryTyped(db, findRemoteStatusByIdSql(id));
+      const rows = await queryTyped(db, findRemoteStatusByIdSql(id), RemoteStatusRowSchema);
       return rows[0];
     }),
   );
@@ -147,9 +148,10 @@ export const claimRemoteThreadBackfill = async (
   runD1(async () => {
     const now = Date.now();
     const claimedAt = new Date(now).toISOString();
-    const rows = await queryTyped<{ id: string }>(
+    const rows = await queryTyped(
       db,
       claimRemoteStatusThreadBackfillSql(claimedAt, statusId, new Date(now - ttlMs).toISOString()),
+      IdRow,
     );
     return rows.length > 0 ? claimedAt : undefined;
   });
@@ -175,14 +177,14 @@ export const findRemoteStatusesByIds = async (
     return ok(statuses);
   }
   const queried = await runD1(async () =>
-    queryTyped(db, findRemoteStatusesByIdsSql(jsonStringArray(unique))),
+    queryTyped(db, findRemoteStatusesByIdsSql(jsonStringArray(unique)), RemoteStatusRowSchema),
   );
   if (queried.isErr()) {
     return err(queried.error);
   }
-  for (const raw of queried.value) {
-    const status = await readRemoteStatus(ok(raw));
-    if (status.isOk() && status.value) {
+  for (const row of queried.value) {
+    const status = remoteStatusFromRow(row);
+    if (status.isOk()) {
       statuses.set(status.value.id, status.value);
     }
   }
@@ -195,7 +197,11 @@ export const findRemoteStatusByObjectUri = async (
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> =>
   readRemoteStatus(
     await runD1(async () => {
-      const rows = await queryTyped(db, findRemoteStatusByObjectUriSql(objectUri));
+      const rows = await queryTyped(
+        db,
+        findRemoteStatusByObjectUriSql(objectUri),
+        RemoteStatusRowSchema,
+      );
       return rows[0];
     }),
   );
@@ -319,9 +325,10 @@ export const findRemoteStatusRefsByObjectUris = async (
     return ok(new Map());
   }
   const rows = await runD1(async () =>
-    queryTyped<{ id: string; object_uri: string; actor_uri: string }>(
+    queryTyped(
       db,
       findRemoteStatusRefsByObjectUrisSql(jsonStringArray(unique)),
+      IdObjectUriActorUriRow,
     ),
   );
   return rows.isErr()
@@ -340,7 +347,7 @@ export const indexMissingRemoteTags = async (
   limit: number = 100,
 ): Promise<void> => {
   const rows = await runD1(async () =>
-    queryTyped<{ id: string; content_html: string }>(db, listUnindexedRemoteStatusesSql(limit)),
+    queryTyped(db, listUnindexedRemoteStatusesSql(limit), IdContentHtmlRow),
   );
   if (rows.isErr()) {
     return;

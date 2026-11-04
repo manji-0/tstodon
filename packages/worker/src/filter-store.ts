@@ -17,18 +17,25 @@ import {
   updateFilter as updateFilterSql,
 } from "./generated/prisma/sql";
 
+const IdRow = z.object({ id: z.string() });
+const IdStatusIdRow = z.object({ id: z.string().nullable(), status_id: z.string() });
+const NullableIdRow = z.object({ id: z.string().nullable() });
+
 export const FilterContextSchema = z.array(z.string());
 
-export type FilterRow = {
-  id: string;
-  account_id: string;
-  phrase: string;
-  context_json: string;
-  whole_word: number;
-  irreversible: number;
-  expires_at: string | null;
-  keywords_json: string;
-};
+/** A `filters` row; a column of the wrong type reads as its default. */
+export const FilterRowSchema = z.object({
+  id: z.string().min(1),
+  account_id: z.string().min(1),
+  phrase: z.string().catch(""),
+  context_json: z.string().catch("[]"),
+  whole_word: z.number().catch(0),
+  irreversible: z.number().catch(0),
+  expires_at: z.string().nullable().catch(null),
+  keywords_json: z.string().catch("[]"),
+});
+
+export type FilterRow = z.infer<typeof FilterRowSchema>;
 
 export const FilterKeywordSchema = z.object({
   id: z.string().min(1),
@@ -47,24 +54,6 @@ export const filterKeywords = (row: FilterRow): ReadonlyArray<FilterKeyword> => 
     return parsed.value;
   }
   return [{ id: row.id, keyword: row.phrase, whole_word: row.whole_word === 1 }];
-};
-
-export const filterRowFrom = (raw: Record<string, unknown>): FilterRow | undefined => {
-  const id = typeof raw.id === "string" ? raw.id : undefined;
-  const accountId = typeof raw.account_id === "string" ? raw.account_id : undefined;
-  if (!id || !accountId) {
-    return undefined;
-  }
-  return {
-    id,
-    account_id: accountId,
-    phrase: typeof raw.phrase === "string" ? raw.phrase : "",
-    context_json: typeof raw.context_json === "string" ? raw.context_json : "[]",
-    whole_word: typeof raw.whole_word === "number" ? raw.whole_word : 0,
-    irreversible: typeof raw.irreversible === "number" ? raw.irreversible : 0,
-    expires_at: typeof raw.expires_at === "string" ? raw.expires_at : null,
-    keywords_json: typeof raw.keywords_json === "string" ? raw.keywords_json : "[]",
-  };
 };
 
 const keywordsJson = (keywords: ReadonlyArray<FilterKeyword>, fallbackPhrase: string): string =>
@@ -122,11 +111,7 @@ export const listFilters = async (
   accountId: string,
 ): Promise<Result<FilterRow[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, listFiltersSql(accountId));
-    return rows.flatMap((raw) => {
-      const row = filterRowFrom(raw);
-      return row ? [row] : [];
-    });
+    return queryTyped(db, listFiltersSql(accountId), FilterRowSchema);
   });
 
 export const deleteFilter = async (
@@ -135,7 +120,7 @@ export const deleteFilter = async (
   id: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(db, deleteFilterSql(id, accountId));
+    const rows = await queryTyped(db, deleteFilterSql(id, accountId), IdRow);
     return rows.length > 0;
   });
 
@@ -145,8 +130,8 @@ export const findFilterById = async (
   id: string,
 ): Promise<Result<FilterRow | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, findFilterByIdSql(id, accountId));
-    return rows[0] === undefined ? undefined : filterRowFrom(rows[0]);
+    const rows = await queryTyped(db, findFilterByIdSql(id, accountId), FilterRowSchema);
+    return rows[0];
   });
 
 export const updateFilter = async (
@@ -163,7 +148,7 @@ export const updateFilter = async (
   },
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
+    const rows = await queryTyped(
       db,
       updateFilterSql(
         id,
@@ -177,6 +162,7 @@ export const updateFilter = async (
           ? JSON.stringify(input.keywords)
           : JSON.stringify([{ id, keyword: input.phrase, whole_word: input.wholeWord }]),
       ),
+      IdRow,
     );
     return rows.length > 0;
   });
@@ -191,10 +177,7 @@ export const listFilterStatuses = async (
   filterId: string,
 ): Promise<Result<FilterStatus[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string | null; status_id: string }>(
-      db,
-      listFilterStatusesSql(filterId),
-    );
+    const rows = await queryTyped(db, listFilterStatusesSql(filterId), IdStatusIdRow);
     return rows.flatMap((row) => (row.id ? [{ id: row.id, status_id: row.status_id }] : []));
   });
 
@@ -205,9 +188,10 @@ export const addFilterStatus = async (
   statusId: string,
 ): Promise<Result<FilterStatus | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string | null; status_id: string }>(
+    const rows = await queryTyped(
       db,
       insertFilterStatusSql(newEntityId(), filterId, statusId, nowIso()),
+      IdStatusIdRow,
     );
     const row = rows[0];
     return row?.id ? { id: row.id, status_id: row.status_id } : undefined;
@@ -220,10 +204,7 @@ export const findFilterStatusById = async (
   id: string,
 ): Promise<Result<FilterStatus | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string | null; status_id: string }>(
-      db,
-      findFilterStatusByIdSql(accountId, id),
-    );
+    const rows = await queryTyped(db, findFilterStatusByIdSql(accountId, id), IdStatusIdRow);
     const row = rows[0];
     return row?.id ? { id: row.id, status_id: row.status_id } : undefined;
   });
@@ -234,10 +215,7 @@ export const removeFilterStatusById = async (
   id: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string | null }>(
-      db,
-      deleteFilterStatusByIdSql(accountId, id),
-    );
+    const rows = await queryTyped(db, deleteFilterStatusByIdSql(accountId, id), NullableIdRow);
     return rows.length > 0;
   });
 

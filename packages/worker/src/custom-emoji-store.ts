@@ -13,8 +13,10 @@ import {
   updateCustomEmojiAttributes as updateCustomEmojiAttributesSql,
 } from "./generated/prisma/sql";
 import { customEmojis as configuredCustomEmojis } from "./runtime-config";
-import { parseRow } from "./d1";
 import { queryTyped, runTyped } from "./typed-sql";
+
+const IdRow = z.object({ id: z.string() });
+const ObjectKeyRow = z.object({ object_key: z.string() });
 
 export const CustomEmojiRowSchema = z.object({
   id: z.string().min(1),
@@ -56,15 +58,7 @@ export const listCustomEmojiRows = async (
   db: D1Database,
 ): Promise<Result<CustomEmojiRow[], RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, listCustomEmojiRowsSql());
-    const parsed: CustomEmojiRow[] = [];
-    for (const raw of rows) {
-      const row = parseRow(CustomEmojiRowSchema, raw);
-      if (row.isOk()) {
-        parsed.push(row.value);
-      }
-    }
-    return parsed;
+    return queryTyped(db, listCustomEmojiRowsSql(), CustomEmojiRowSchema);
   });
 
 const findOne = async (
@@ -72,9 +66,8 @@ const findOne = async (
   typed: { readonly sql: string; readonly values: ReadonlyArray<unknown> },
 ): Promise<Result<CustomEmojiRow | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, typed);
-    const row = parseRow(CustomEmojiRowSchema, rows[0]);
-    return row.isOk() ? row.value : undefined;
+    const rows = await queryTyped(db, typed, CustomEmojiRowSchema);
+    return rows[0];
   });
 
 export const findCustomEmojiRowById = async (
@@ -122,9 +115,10 @@ export const updateCustomEmojiAttributes = async (
   category: string | null,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
+    const rows = await queryTyped(
       db,
       updateCustomEmojiAttributesSql(id, visibleInPicker ? 1 : 0, category, nowIso()),
+      IdRow,
     );
     return rows.length > 0;
   });
@@ -136,9 +130,10 @@ export const replaceCustomEmojiImage = async (
   contentType: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
+    const rows = await queryTyped(
       db,
       replaceCustomEmojiImageSql(id, objectKey, contentType, nowIso()),
+      IdRow,
     );
     return rows.length > 0;
   });
@@ -149,7 +144,7 @@ export const deleteCustomEmoji = async (
   id: string,
 ): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ object_key: string }>(db, deleteCustomEmojiSql(id));
+    const rows = await queryTyped(db, deleteCustomEmojiSql(id), ObjectKeyRow);
     return rows[0]?.object_key;
   });
 

@@ -1,6 +1,7 @@
+import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
-import { queryTyped } from "./typed-sql";
+import { CountedRow, queryTyped } from "./typed-sql";
 
 /** `IfMissing` leaves a status alone when it already has a card for the same link. */
 export type CardWrite = "Always" | "IfMissing";
@@ -10,6 +11,8 @@ import {
   setRemoteStatusCard as setRemoteStatusCardSql,
   updateStatusCard as updateStatusCardSql,
 } from "./generated/prisma/sql";
+
+const IdCardJsonRow = z.object({ id: z.string(), card_json: z.string() });
 
 /** Store the link preview built for a remote status, with the link it was unfurled from. */
 export const setRemoteStatusCard = async (
@@ -23,6 +26,7 @@ export const setRemoteStatusCard = async (
     await queryTyped(
       db,
       setRemoteStatusCardSql(statusId, cardJson, cardUrl, write === "IfMissing" ? 1 : 0),
+      CountedRow,
     );
   });
   return written.map(() => undefined);
@@ -38,10 +42,7 @@ export const listRemoteStatusCards = async (
     return ok(new Map<string, string>());
   }
   const queried = await runD1(async () =>
-    queryTyped<{ id: string; card_json: string }>(
-      db,
-      listRemoteStatusCardsSql(jsonStringArray(unique)),
-    ),
+    queryTyped(db, listRemoteStatusCardsSql(jsonStringArray(unique)), IdCardJsonRow),
   );
   if (queried.isErr()) {
     return err(queried.error);
@@ -61,6 +62,7 @@ export const setStatusCard = async (
     await queryTyped(
       db,
       updateStatusCardSql(statusId, cardJson, cardUrl, write === "IfMissing" ? 1 : 0),
+      CountedRow,
     );
   });
   return written.map(() => undefined);
@@ -76,7 +78,7 @@ export const listStatusCards = async (
     return ok(new Map<string, string>());
   }
   const queried = await runD1(async () =>
-    queryTyped<{ id: string; card_json: string }>(db, listStatusCardsSql(jsonStringArray(unique))),
+    queryTyped(db, listStatusCardsSql(jsonStringArray(unique)), IdCardJsonRow),
   );
   if (queried.isErr()) {
     return err(queried.error);

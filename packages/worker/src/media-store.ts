@@ -11,6 +11,9 @@ import {
   updateMediaMetadata as updateMediaMetadataSql,
 } from "./generated/prisma/sql";
 
+const IdRow = z.object({ id: z.string() });
+const ObjectKeyRow = z.object({ object_key: z.string() });
+
 export const MediaRowSchema = z.object({
   id: z.string().min(1),
   account_id: z.string().min(1),
@@ -70,9 +73,8 @@ export const findMediaById = async (
   id: string,
 ): Promise<Result<MediaRow | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, findMediaByIdSql(id));
-    const row = parseRow(MediaRowSchema, rows[0]);
-    return row.isOk() ? row.value : undefined;
+    const rows = await queryTyped(db, findMediaByIdSql(id), MediaRowSchema);
+    return rows[0];
   });
 
 /** Dynamic IN arity stays on D1 prepare until fixed-arity TypedSQL variants land. */
@@ -118,7 +120,7 @@ export const updateMediaMetadata = async (
   },
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(
+    const rows = await queryTyped(
       db,
       updateMediaMetadataSql(
         input.id,
@@ -127,6 +129,7 @@ export const updateMediaMetadata = async (
         input.focusX,
         input.focusY,
       ),
+      IdRow,
     );
     return rows.length > 0;
   });
@@ -138,6 +141,6 @@ export const deleteMedia = async (
   accountId: string,
 ): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ object_key: string }>(db, deleteMediaSql(id, accountId));
+    const rows = await queryTyped(db, deleteMediaSql(id, accountId), ObjectKeyRow);
     return rows[0]?.object_key;
   });

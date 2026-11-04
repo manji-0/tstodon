@@ -16,6 +16,10 @@ import {
 } from "./generated/prisma/sql";
 import { queryTyped, runTyped } from "./typed-sql";
 
+const RequestsNotificationsRow = z.object({ requests: z.number(), notifications: z.number() });
+const NotificationIdRow = z.object({ notification_id: z.string() });
+const FromAccountIdRow = z.object({ from_account_id: z.string() });
+
 /** Mastodon's `accept` / `filter` / `drop` handling for a notification category. */
 export const NotificationPolicyActionSchema = z.union([
   z.literal("accept"),
@@ -62,30 +66,20 @@ export const findNotificationPolicy = async (
   accountId: string,
 ): Promise<Result<NotificationPolicy, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, findNotificationPolicySql(accountId));
-    const row = schemaResult(PolicyRowSchema)(rows[0]);
-    if (row.isErr()) {
+    const [row] = await queryTyped(db, findNotificationPolicySql(accountId), PolicyRowSchema);
+    if (row === undefined) {
       return { ...DEFAULT_NOTIFICATION_POLICY };
     }
     return {
-      forNotFollowing: action(
-        row.value.for_not_following,
-        DEFAULT_NOTIFICATION_POLICY.forNotFollowing,
-      ),
-      forNotFollowers: action(
-        row.value.for_not_followers,
-        DEFAULT_NOTIFICATION_POLICY.forNotFollowers,
-      ),
-      forNewAccounts: action(
-        row.value.for_new_accounts,
-        DEFAULT_NOTIFICATION_POLICY.forNewAccounts,
-      ),
+      forNotFollowing: action(row.for_not_following, DEFAULT_NOTIFICATION_POLICY.forNotFollowing),
+      forNotFollowers: action(row.for_not_followers, DEFAULT_NOTIFICATION_POLICY.forNotFollowers),
+      forNewAccounts: action(row.for_new_accounts, DEFAULT_NOTIFICATION_POLICY.forNewAccounts),
       forPrivateMentions: action(
-        row.value.for_private_mentions,
+        row.for_private_mentions,
         DEFAULT_NOTIFICATION_POLICY.forPrivateMentions,
       ),
       forLimitedAccounts: action(
-        row.value.for_limited_accounts,
+        row.for_limited_accounts,
         DEFAULT_NOTIFICATION_POLICY.forLimitedAccounts,
       ),
     };
@@ -207,9 +201,10 @@ export const countNotificationRequests = async (
   accountId: string,
 ): Promise<Result<Readonly<{ requests: number; notifications: number }>, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ requests: number; notifications: number }>(
+    const rows = await queryTyped(
       db,
       countNotificationRequestsSql(accountId),
+      RequestsNotificationsRow,
     );
     return {
       requests: Number(rows[0]?.requests ?? 0),
@@ -277,9 +272,10 @@ export const acceptNotificationRequests = async (
   fromAccountId: string,
 ): Promise<Result<number, RepositoryError>> => {
   const released = await runD1(async () => {
-    const rows = await queryTyped<{ notification_id: string }>(
+    const rows = await queryTyped(
       db,
       deleteNotificationRequestsSql(accountId, fromAccountId),
+      NotificationIdRow,
     );
     await runTyped(db, insertNotificationAcceptanceSql(accountId, fromAccountId, nowIso()));
     await deleteEmptyRequestGroup(db, accountId, fromAccountId);
@@ -295,9 +291,10 @@ export const dismissNotificationRequests = async (
   fromAccountId: string,
 ): Promise<Result<ReadonlyArray<string>, RepositoryError>> => {
   const dismissed = await runD1(async () => {
-    const rows = await queryTyped<{ notification_id: string }>(
+    const rows = await queryTyped(
       db,
       deleteNotificationRequestsSql(accountId, fromAccountId),
+      NotificationIdRow,
     );
     await deleteEmptyRequestGroup(db, accountId, fromAccountId);
     return rows.map((row) => row.notification_id);
@@ -314,9 +311,10 @@ export const isSenderAccepted = async (
   fromAccountId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ from_account_id: string }>(
+    const rows = await queryTyped(
       db,
       hasNotificationAcceptanceSql(accountId, fromAccountId),
+      FromAccountIdRow,
     );
     return rows.length > 0;
   });
