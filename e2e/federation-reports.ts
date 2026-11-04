@@ -121,6 +121,71 @@ const main = async (): Promise<void> => {
     return fail("the report on B does not carry bob's post", stored);
   }
   console.log("ok B's admin sees the report with bob's post on /admin/reports");
+
+  // Carol on A replies to Bob's post; Alice reports Carol's reply and asks A to
+  // also tell the server of the post it answers (B). Remote actors keep only the
+  // hostname as their domain, so the port of the local B is not part of it.
+  const carol = await signUp(A, "carol");
+  const replyText = `rude reply ${Date.now()}`;
+  const reply = await api(A, carol.headers, "/api/v1/statuses", ApiStatus.parse, "carol replies", {
+    method: "POST",
+    body: { status: replyText, visibility: "public", in_reply_to_id: postOnA.id },
+  });
+  const domainComment = `reply to bob ${Date.now()}`;
+  await api(A, alice.headers, "/api/v1/reports", FiledReport, "alice reports carol's reply", {
+    method: "POST",
+    body: {
+      account_id: carol.id,
+      status_ids: [reply.id],
+      comment: domainComment,
+      forward_to_domains: [new URL(B).hostname, "elsewhere.example"],
+    },
+  });
+  const arrived = await waitFor("B receives the Flag naming carol's reply", async () => {
+    const rows = d1Json(
+      "b",
+      `SELECT payload_json FROM inbox_activities WHERE kind = 'Flag' AND payload_json LIKE '%${domainComment}%'`,
+    );
+    return rows.length > 0 ? rows : undefined;
+  });
+  const PayloadRow = z
+    .object({ payload_json: z.string() })
+    .transform((row): unknown => JSON.parse(row.payload_json));
+  // B keeps only the first object of the Flag it stored, so the full list is
+  // read from the activity A queued.
+  const received = schemaResult(PayloadRow.pipe(z.object({ actor: z.string() }).passthrough()))(
+    arrived[0],
+  );
+  const [sent] = d1Json(
+    "a",
+    `SELECT payload_json FROM outbound_activities WHERE kind = 'Flag' AND payload_json LIKE '%${domainComment}%'`,
+  );
+  const queued = schemaResult(
+    PayloadRow.pipe(z.object({ actor: z.string(), object: z.array(z.string()) }).passthrough()),
+  )(sent);
+  if (
+    received.isErr() ||
+    received.value.actor !== instanceActor ||
+    queued.isErr() ||
+    queued.value.actor !== instanceActor ||
+    queued.value.object[0] !== carol.uri ||
+    !queued.value.object.includes(reply.uri)
+  ) {
+    return fail("the Flag is not from A's instance actor naming carol and her reply", [
+      arrived,
+      sent,
+    ]);
+  }
+  // Nothing in it is local to B, so B files no report, as Mastodon does.
+  const [filed] = d1Json(
+    "b",
+    `SELECT COUNT(*) AS n FROM reports WHERE comment = '${domainComment}'`,
+  );
+  const count = schemaResult(z.object({ n: z.number() }))(filed);
+  if (count.isErr() || count.value.n !== 0) {
+    return fail("B filed a report for a Flag that names none of its accounts", filed);
+  }
+  console.log("ok forward_to_domains sends the report to the server of the post replied to");
   console.log("PASS federation reports");
 };
 

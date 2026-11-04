@@ -10,8 +10,8 @@ import {
 } from "../http";
 import { notifyAdmins } from "../admin-notify";
 import { instanceRules, parseInstanceIdentity } from "../runtime-config";
-import type { LocalAccount, RemoteActor } from "@tstodon/domain";
-import { forwardReport } from "../report-forward";
+import { InstanceIdentity, type LocalAccount, type RemoteActor } from "@tstodon/domain";
+import { forwardReport, forwardReportToDomains, repliedToInboxes } from "../report-forward";
 import type { Result } from "neverthrow";
 import { findAccountById } from "../account-store";
 import type { RepositoryError } from "../d1";
@@ -30,6 +30,8 @@ export const ReportBodySchema = z.object({
     .optional(),
   /** Forward a report on a remote account to its server. */
   forward: booleanish,
+  /** Servers of the accounts the reported posts reply to that should also get the report. */
+  forward_to_domains: z.union([z.array(z.string()), z.string()]).optional(),
 });
 
 export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/reports">) => {
@@ -96,6 +98,10 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
   const report = await insertReport(c.env.DB, {
     reporter: { kind: "Local", accountId: user.value.id },
     target: party,
+    targetAcct:
+      target.value.kind === "Remote"
+        ? `${target.value.actor.username}@${target.value.actor.domain}`
+        : undefined,
     statusIds,
     comment,
     category: category.value,
@@ -105,15 +111,20 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
   if (report.isErr()) {
     return jsonRepositoryError(c, report.error.message);
   }
+  const targetUri =
+    target.value.kind === "Local"
+      ? InstanceIdentity.actorUrl(identity.value, target.value.account.username)
+      : target.value.actor.actorUri;
+  const forwarding = {
+    id: report.value.id,
+    targetUri,
+    comment,
+    statusUris: statuses.value.map(
+      (status) => status.objectUri ?? `${targetUri}/statuses/${status.id}`,
+    ),
+  };
   if (forwardTo !== undefined) {
-    const forwarded = await forwardReport(c.env, identity.value, {
-      id: report.value.id,
-      target: forwardTo,
-      comment,
-      statusUris: statuses.value.flatMap((status) =>
-        status.objectUri === undefined ? [] : [status.objectUri],
-      ),
-    });
+    const forwarded = await forwardReport(c.env, identity.value, forwarding, forwardTo);
     if (forwarded.isErr()) {
       console.error(
         JSON.stringify({
@@ -122,6 +133,44 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
           error: forwarded.error,
         }),
       );
+    }
+  }
+  const requestedDomains = stringList(body.value.forward_to_domains);
+  if (requestedDomains.length > 0) {
+    // Only servers a reported reply points at are reachable, and never the
+    // target's own server, which `forward` covers.
+    const reachable = await repliedToInboxes(
+      c.env.DB,
+      statusIds,
+      target.value.kind === "Remote" ? target.value.actor.domain : undefined,
+    );
+    if (reachable.isErr()) {
+      console.error(
+        JSON.stringify({
+          kind: "ReportForwardFailed",
+          reportId: report.value.id,
+          error: reachable.error,
+        }),
+      );
+    } else {
+      for (const { domain, result } of await forwardReportToDomains(
+        c.env,
+        identity.value,
+        forwarding,
+        requestedDomains,
+        reachable.value,
+      )) {
+        if (result.isErr()) {
+          console.error(
+            JSON.stringify({
+              kind: "ReportForwardFailed",
+              reportId: report.value.id,
+              domain,
+              error: result.error,
+            }),
+          );
+        }
+      }
     }
   }
   // A failed notification must not lose the filed report.

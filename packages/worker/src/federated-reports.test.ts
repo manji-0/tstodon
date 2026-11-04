@@ -329,6 +329,93 @@ describe("forwarding reports", () => {
     expect(listed).toMatchObject({ id: report.id, forwarded: true });
   });
 
+  it("forwards a report to the servers its posts reply to, and only those", async () => {
+    const parentAuthor = await remoteActor("replied-to", "replied-to.example", {
+      sharedInboxUri: "https://replied-to.example/inbox",
+    });
+    const unrelated = await remoteActor("unrelated", "unrelated.example", {
+      sharedInboxUri: "https://unrelated.example/inbox",
+    });
+    const parent = await remoteNote(parentAuthor, "parent-1");
+    const target = await signedInAccount("forward-domains-target@example.com");
+    const targetUri = `https://example.com/users/${target.username}`;
+    const replied = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(await authHeaders("forward-domains-target@example.com")),
+      },
+      body: JSON.stringify({ status: "rude reply", in_reply_to_id: parent }),
+    });
+    expect(replied.status).toBe(200);
+    const reply = read(z.object({ id: z.string(), uri: z.string() }), replied.body);
+
+    const filed = await fileReport("forward-domains-reporter@example.com", {
+      account_id: target.id,
+      status_ids: [reply.id],
+      comment: "forward to the parent's server",
+      forward_to_domains: ["Replied-To.example", "unrelated.example", "nowhere.example"],
+    });
+    expect(filed.status).toBe(200);
+    expect(read(z.object({ forwarded: z.boolean() }), filed.body).forwarded).toBe(false);
+
+    const queued = await queuedFlags("https://replied-to.example/inbox");
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({
+      signer: null,
+      flag: {
+        actor: "https://example.com/actor",
+        content: "forward to the parent's server",
+        object: [targetUri, reply.uri],
+      },
+    });
+    expect(await queuedFlags("https://unrelated.example/inbox")).toEqual([]);
+    expect(await queuedFlags(`${unrelated.actorUri}/inbox`)).toEqual([]);
+  });
+
+  it("does not forward to the target's own server, a suspended domain, or without a reply", async () => {
+    const author = await remoteActor("blocked-parent", "blocked-parent.example", {
+      sharedInboxUri: "https://blocked-parent.example/inbox",
+    });
+    const parent = await remoteNote(author, "parent-2");
+    const target = await signedInAccount("forward-domains-blocked@example.com");
+    const post = async (body: Record<string, unknown>) =>
+      read(
+        z.object({ id: z.string() }),
+        (
+          await json("/api/v1/statuses", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              ...(await authHeaders("forward-domains-blocked@example.com")),
+            },
+            body: JSON.stringify(body),
+          })
+        ).body,
+      );
+    const reply = await post({ status: "reply", in_reply_to_id: parent });
+    const plain = await post({ status: "not a reply" });
+    const blocked = await json("/api/v1/admin/domain_blocks", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(await authHeaders("reports-admin@example.com", { admin: true })),
+      },
+      body: JSON.stringify({ domain: "blocked-parent.example", severity: "suspend" }),
+    });
+    expect(blocked.status).toBe(200);
+
+    for (const statusId of [reply.id, plain.id]) {
+      const filed = await fileReport("forward-domains-reporter@example.com", {
+        account_id: target.id,
+        status_ids: [statusId],
+        forward_to_domains: ["blocked-parent.example"],
+      });
+      expect(filed.status).toBe(200);
+    }
+    expect(await queuedFlags("https://blocked-parent.example/inbox")).toEqual([]);
+  });
+
   it("keeps a report here without forward, and for a local account", async () => {
     const target = await remoteActor("unforwarded-target", "unforwarded.example");
     const kept = await fileReport("forward-reporter@example.com", {
