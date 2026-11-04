@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { type InstanceIdentity, type LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import { authenticate } from "../../auth";
-import { attachRemoteReplyRefs, statusDocumentsByIds } from "../../status-documents";
+import { statusDocumentsByIds } from "../../status-documents";
 import {
   listThreadAncestors,
   listThreadDescendants,
@@ -9,13 +9,11 @@ import {
   visibleThreadStatuses,
 } from "../../thread-context";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../../http";
-import { findRemotePollVotes } from "../../remote-poll-vote-store";
-import { mastodonRemoteStatus } from "../../remote-status-document";
+import { mastodonRemoteStatuses } from "../../remote-status-documents";
 import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "../../d1";
-import { findRemoteActorByUri, findRemoteActorsByUris } from "../../remote-actor-store";
 import { findRemoteStatusById, findRemoteStatusesByIds } from "../../remote-status-store";
 import { ContextLimits, findStatusById, findStatusesByIds } from "../../status-store";
 import { canViewRemoteBoost, canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
@@ -61,23 +59,8 @@ const visibleStatusDocument = async (
     if (!(await canViewRemoteStatus(env.DB, remote.value, viewerId))) {
       return ok(null);
     }
-    const actor = await findRemoteActorByUri(env.DB, remote.value.actorUri);
-    if (actor.isErr()) {
-      return err(actor.error);
-    }
-    if (!actor.value) {
-      return ok(null);
-    }
-    const pollVotes = await findRemotePollVotes(env.DB, viewerId, [remote.value]);
-    const document = mastodonRemoteStatus(
-      identity,
-      remote.value,
-      actor.value,
-      null,
-      pollVotes.get(remote.value.id),
-    );
-    await attachRemoteReplyRefs(env.DB, identity, [document]);
-    return ok(document);
+    const [document] = await mastodonRemoteStatuses(env, identity, [remote.value], viewerId);
+    return ok(document ?? null);
   }
   if (!(await canViewStatus(env.DB, status.value, viewerId))) {
     return ok(null);
@@ -133,33 +116,16 @@ export const getV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/statu
       ),
     )
   ).flat();
-  const [localDocuments, actors] = await Promise.all([
+  const [localDocuments, remoteDocuments] = await Promise.all([
     mastodonStatuses(c.env, identity.value, visibleLocals, viewerId),
-    findRemoteActorsByUris(
-      c.env.DB,
-      visibleRemotes.map((status) => status.actorUri),
-    ),
+    mastodonRemoteStatuses(c.env, identity.value, visibleRemotes, viewerId),
   ]);
-  if (actors.isErr()) {
-    return jsonRepositoryError(c, actors.error.message);
-  }
   const documents = new Map<string, Record<string, unknown>>();
-  for (const document of localDocuments) {
+  for (const document of [...localDocuments, ...remoteDocuments]) {
     if (typeof document.id === "string") {
       documents.set(document.id, document);
     }
   }
-  const pollVotes = await findRemotePollVotes(c.env.DB, viewerId, visibleRemotes);
-  for (const status of visibleRemotes) {
-    const actor = actors.value.get(status.actorUri);
-    if (actor) {
-      documents.set(
-        status.id,
-        mastodonRemoteStatus(identity.value, status, actor, null, pollVotes.get(status.id)),
-      );
-    }
-  }
-  await attachRemoteReplyRefs(c.env.DB, identity.value, [...documents.values()]);
   return c.json(ids.flatMap((id) => documents.get(id) ?? []));
 };
 
@@ -267,7 +233,7 @@ export const postV1StatusesByIdTranslate = async (
   if (status.value.kind === "LocalNote") {
     translatable = status.value;
   } else {
-    const target = await findStatusById(c.env.DB, status.value.reblogOfId);
+    const target = await findStatusById(c.env.DB, status.value.target.statusId);
     if (target.isErr()) {
       return jsonRepositoryError(c, target.error.message);
     }

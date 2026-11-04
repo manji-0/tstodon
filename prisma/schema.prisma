@@ -234,13 +234,19 @@ model accounts {
 }
 
 model bookmarks {
-  account_id String
-  status_id  String
-  created_at String   @default("CURRENT_TIMESTAMP")
-  statuses   statuses @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  accounts   accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id               String           @id
+  account_id       String
+  local_status_id  String?
+  remote_status_id String?
+  created_at       String           @default("CURRENT_TIMESTAMP")
+  statuses         statuses?        @relation(fields: [local_status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  remote_statuses  remote_statuses? @relation(fields: [remote_status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  accounts         accounts         @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@id([account_id, status_id])
+  @@unique([account_id, local_status_id])
+  @@unique([account_id, remote_status_id])
+  @@index([local_status_id], map: "idx_bookmarks_status")
+  @@index([remote_status_id], map: "idx_bookmarks_remote_status")
 }
 
 model conversation_hides {
@@ -264,14 +270,19 @@ model conversation_reads {
 }
 
 model favourites {
-  id                String? @unique
-  account_id String
-  status_id  String
-  created_at String   @default("CURRENT_TIMESTAMP")
-  statuses   statuses @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  accounts   accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id               String           @id
+  account_id       String
+  local_status_id  String?
+  remote_status_id String?
+  created_at       String           @default("CURRENT_TIMESTAMP")
+  statuses         statuses?        @relation(fields: [local_status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  remote_statuses  remote_statuses? @relation(fields: [remote_status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  accounts         accounts         @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@id([account_id, status_id])
+  @@unique([account_id, local_status_id])
+  @@unique([account_id, remote_status_id])
+  @@index([local_status_id, id], map: "idx_favourites_status")
+  @@index([remote_status_id, id], map: "idx_favourites_remote_status")
 }
 
 model filter_statuses {
@@ -650,6 +661,9 @@ model remote_statuses {
   remote_status_mentions remote_status_mentions[]
   remote_poll_own_votes remote_poll_own_votes[]
   remote_boosts remote_boosts[]
+  favourites    favourites[]
+  bookmarks     bookmarks[]
+  statuses      statuses[]
 
   @@index([actor_uri, published_at(sort: Desc)], map: "idx_remote_statuses_actor_published")
   @@index([visibility, published_at(sort: Desc)], map: "idx_remote_statuses_visibility_published")
@@ -804,6 +818,7 @@ model statuses {
   kind                                             String
   ap_id                                            String?             @unique(map: "sqlite_autoindex_statuses_2")
   reblog_of_id                                     String?
+  reblog_of_remote_id                              String?
   in_reply_to_id                                   String?
   in_reply_to_uri                                  String?
   content_text                                     String              @default("")
@@ -828,6 +843,7 @@ model statuses {
   other_statuses_statuses_in_reply_to_idTostatuses statuses[]          @relation("statuses_in_reply_to_idTostatuses")
   statuses_statuses_reblog_of_idTostatuses         statuses?           @relation("statuses_reblog_of_idTostatuses", fields: [reblog_of_id], references: [id], onUpdate: NoAction)
   other_statuses_statuses_reblog_of_idTostatuses   statuses[]          @relation("statuses_reblog_of_idTostatuses")
+  reblog_of_remote                                 remote_statuses?    @relation(fields: [reblog_of_remote_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   accounts                                         accounts            @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([visibility, created_at(sort: Desc)], map: "idx_statuses_visibility_created_at")

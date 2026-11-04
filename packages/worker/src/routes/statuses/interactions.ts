@@ -1,16 +1,30 @@
 import {
   type InstanceIdentity,
-  type LocalAccount,
   LocalStatus,
   reblogVisibility,
   StatusId,
   Visibility,
 } from "@tstodon/domain";
 import { type Context } from "hono";
+import { err, ok, type Result } from "neverthrow";
 import { nowInstant } from "../../clock";
 import { findAccountById } from "../../account-store";
-import { announceActivity, undoAnnounceActivity } from "../../activitypub";
+import {
+  type ActivityObjectRef,
+  announceActivity,
+  likeActivity,
+  localNoteRef,
+  undoActivity,
+} from "../../activitypub";
+import type { RepositoryError } from "../../d1";
 import { enqueueLocalActivity } from "../../delivery";
+import {
+  canViewFoundStatus,
+  type FoundStatus,
+  findStatusAnywhere,
+  findVisibleStatusAnywhere,
+  foundStatusTarget,
+} from "../../found-status";
 import { enqueueHomeFanOut } from "../../home-fan-out";
 import { publishToAccount } from "../../stream-publish";
 import { reachesRemoteInboxes } from "../../outbox-job";
@@ -26,13 +40,17 @@ import {
   setPaginationLinks,
 } from "../../http";
 import { newEntityId } from "../../ids";
-import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
+import { mastodonStatus } from "../../local-status-documents";
+import { mastodonRemoteStatuses } from "../../remote-status-documents";
+import { statusDocumentsByIds } from "../../status-documents";
 
 import { InstanceLimits, warmSchemas } from "@tstodon/core";
 import { parseInstanceIdentity } from "../../runtime-config";
 import {
   bookmarkStatus,
   favouriteStatus,
+  listBookmarkedTargets,
+  listFavouritedTargets,
   unbookmarkStatus,
   unfavouriteStatus,
 } from "../../status-interaction-store";
@@ -49,13 +67,11 @@ import {
   findStatusById,
   insertLocalReblog,
 } from "../../status-store";
-import { listBookmarkedStatuses, listFavouritedStatuses } from "../../status-timeline-store";
 import {
   muteStatusThread,
   resolveThreadRootStatusIds,
   unmuteStatusThread,
 } from "../../status-mute-store";
-import { canViewStatus } from "../../visibility-guard";
 import { z } from "zod";
 
 /** `POST /api/v1/statuses/:id/reblog` — `visibility` is the only parameter. */
@@ -181,6 +197,65 @@ export const postV1StatusesByIdUnmute = (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/unmute">,
 ) => setStatusMuted(c, false);
 
+const notFound = (c: Context<{ Bindings: Env }>) =>
+  c.json({ error: "Record not found", kind: "NotFound" }, 404);
+
+/** The status as the viewer sees it after an interaction, local or remote alike. */
+const targetDocument = async (
+  env: Env,
+  identity: InstanceIdentity,
+  found: FoundStatus,
+  viewerId: string,
+): Promise<Record<string, unknown> | undefined> =>
+  found.kind === "LocalStatus"
+    ? mastodonStatus(env, identity, found.status, viewerId)
+    : (await mastodonRemoteStatuses(env, identity, [found.status], viewerId))[0];
+
+/** How ActivityPub names a status, or nothing when its local author is gone. */
+const activityObjectRef = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  found: FoundStatus,
+): Promise<Result<ActivityObjectRef | undefined, RepositoryError>> => {
+  if (found.kind === "RemoteStatus") {
+    return ok({ uri: found.status.objectUri, authorUri: found.status.actorUri });
+  }
+  const author = await findAccountById(db, found.status.accountId);
+  return author.map((account) => account && localNoteRef(identity, account, found.status.id));
+};
+
+/**
+ * Deliver a local account's activity about a cached remote status to the
+ * remote side. Best effort, as Mastodon's: the interaction is stored either way.
+ */
+const federateRemoteInteraction = async (
+  env: Env,
+  accountId: string,
+  kind: "Like" | "Undo",
+  activity: Record<string, unknown>,
+): Promise<void> => {
+  const enqueued = await enqueueLocalActivity(env, accountId, kind, activity);
+  if (enqueued.isErr()) {
+    console.error(JSON.stringify({ kind: "InteractionNotFederated", activity: kind }));
+  }
+};
+
+/**
+ * The status an interaction names, as the viewer may see it. With `visible`
+ * off (the undo actions), a status the viewer can no longer see still resolves,
+ * so an old favourite or bookmark can be withdrawn.
+ */
+const interactionTarget = async (
+  c: Context<{ Bindings: Env }>,
+  viewerId: string,
+  visible: boolean,
+): Promise<Result<FoundStatus | undefined, RepositoryError>> => {
+  const id = c.req.param("id") ?? "";
+  return visible
+    ? findVisibleStatusAnywhere(c.env.DB, id, viewerId)
+    : findStatusAnywhere(c.env.DB, id);
+};
+
 export const postV1StatusesByIdFavourite = async (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/favourite">,
 ) => {
@@ -192,27 +267,38 @@ export const postV1StatusesByIdFavourite = async (
   if (user.isErr()) {
     return user.error;
   }
-  const status = await findStatusById(c.env.DB, c.req.param("id"));
-  if (status.isErr()) {
-    return jsonRepositoryError(c, status.error.message);
+  const found = await interactionTarget(c, user.value.id, true);
+  if (found.isErr()) {
+    return jsonRepositoryError(c, found.error.message);
   }
-  if (!status.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  if (!found.value) {
+    return notFound(c);
   }
-  const created = await favouriteStatus(c.env.DB, user.value.id, status.value.id);
-  if (created.isOk() && created.value && status.value.accountId !== user.value.id) {
-    await notifyAccount(c.env, {
-      accountId: status.value.accountId,
-      fromAccountId: user.value.id,
-      kind: "favourite",
-      statusId: status.value.id,
-    });
+  const target = found.value;
+  const created = await favouriteStatus(c.env.DB, user.value.id, foundStatusTarget(target));
+  if (created.isErr()) {
+    return jsonRepositoryError(c, created.error.message);
   }
-  const latest = await findStatusById(c.env.DB, status.value.id);
-  if (latest.isErr() || !latest.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  if (created.value !== undefined) {
+    if (target.kind === "LocalStatus" && target.status.accountId !== user.value.id) {
+      await notifyAccount(c.env, {
+        accountId: target.status.accountId,
+        fromAccountId: user.value.id,
+        kind: "favourite",
+        statusId: target.status.id,
+      });
+    }
+    if (target.kind === "RemoteStatus") {
+      const liked = { uri: target.status.objectUri, authorUri: target.status.actorUri };
+      await federateRemoteInteraction(
+        c.env,
+        user.value.id,
+        "Like",
+        likeActivity(identity.value, user.value, created.value, liked),
+      );
+    }
   }
-  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
+  return c.json(await targetDocument(c.env, identity.value, target, user.value.id));
 };
 
 export const postV1StatusesByIdUnfavourite = async (
@@ -226,12 +312,72 @@ export const postV1StatusesByIdUnfavourite = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  await unfavouriteStatus(c.env.DB, user.value.id, c.req.param("id"));
-  const latest = await findStatusById(c.env.DB, c.req.param("id"));
-  if (latest.isErr() || !latest.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  const found = await interactionTarget(c, user.value.id, false);
+  if (found.isErr()) {
+    return jsonRepositoryError(c, found.error.message);
   }
-  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
+  if (!found.value) {
+    return notFound(c);
+  }
+  const target = found.value;
+  const removed = await unfavouriteStatus(c.env.DB, user.value.id, foundStatusTarget(target));
+  if (removed.isErr()) {
+    return jsonRepositoryError(c, removed.error.message);
+  }
+  if (removed.value !== undefined && target.kind === "RemoteStatus") {
+    const liked = { uri: target.status.objectUri, authorUri: target.status.actorUri };
+    await federateRemoteInteraction(
+      c.env,
+      user.value.id,
+      "Undo",
+      undoActivity(likeActivity(identity.value, user.value, removed.value, liked)),
+    );
+  }
+  return c.json(await targetDocument(c.env, identity.value, target, user.value.id));
+};
+
+/**
+ * The status a boost shares: boosting a boost shares the underlying status,
+ * as Mastodon does.
+ */
+const boostedStatus = async (
+  db: D1Database,
+  found: FoundStatus,
+): Promise<Result<FoundStatus | undefined, RepositoryError>> => {
+  let target: FoundStatus | undefined = found;
+  for (
+    let depth = 0;
+    target?.kind === "LocalStatus" && target.status.kind === "LocalReblog" && depth < 5;
+    depth += 1
+  ) {
+    const next = await findStatusAnywhere(db, target.status.target.statusId);
+    if (next.isErr()) {
+      return err(next.error);
+    }
+    target = next.value;
+  }
+  return ok(target);
+};
+
+/**
+ * Mastodon's `StatusPolicy#reblog?`: never a direct status, never someone
+ * else's followers-only post, and never one the viewer cannot see.
+ */
+const rebloggable = async (
+  db: D1Database,
+  target: FoundStatus,
+  viewerId: string,
+): Promise<boolean> => {
+  if (target.kind === "LocalStatus" && target.status.kind !== "LocalNote") {
+    return false;
+  }
+  const visibility = target.status.visibility.kind;
+  const own = target.kind === "LocalStatus" && target.status.accountId === viewerId;
+  return (
+    visibility !== "Direct" &&
+    (visibility !== "FollowersOnly" || own) &&
+    (await canViewFoundStatus(db, target, viewerId))
+  );
 };
 
 export const postV1StatusesByIdReblog = async (
@@ -249,36 +395,20 @@ export const postV1StatusesByIdReblog = async (
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const found = await findStatusById(c.env.DB, c.req.param("id") ?? "");
+  const found = await findStatusAnywhere(c.env.DB, c.req.param("id") ?? "");
   if (found.isErr()) {
     return jsonRepositoryError(c, found.error.message);
   }
-  if (!found.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  const boosted = found.value ? await boostedStatus(c.env.DB, found.value) : ok(undefined);
+  if (boosted.isErr()) {
+    return jsonRepositoryError(c, boosted.error.message);
   }
-  // Boosting a boost shares the underlying status, as Mastodon does.
-  let target = found.value;
-  for (let depth = 0; target.kind === "LocalReblog" && depth < 5; depth += 1) {
-    const original = await findStatusById(c.env.DB, target.reblogOfId);
-    if (original.isErr()) {
-      return jsonRepositoryError(c, original.error.message);
-    }
-    if (!original.value) {
-      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-    }
-    target = original.value;
+  const target = boosted.value;
+  if (!target || !(await rebloggable(c.env.DB, target, user.value.id))) {
+    return notFound(c);
   }
-  // Mastodon's `StatusPolicy#reblog?`: never a direct status, never someone
-  // else's followers-only post, and never one the viewer cannot see.
-  const rebloggable =
-    target.kind === "LocalNote" &&
-    target.visibility.kind !== "Direct" &&
-    (target.visibility.kind !== "FollowersOnly" || target.accountId === user.value.id) &&
-    (await canViewStatus(c.env.DB, target, user.value.id));
-  if (!rebloggable) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  const existing = await findLocalReblog(c.env.DB, user.value.id, target.id);
+  const boostTarget = foundStatusTarget(target);
+  const existing = await findLocalReblog(c.env.DB, user.value.id, boostTarget);
   if (existing.isErr()) {
     return jsonRepositoryError(c, existing.error.message);
   }
@@ -286,7 +416,7 @@ export const postV1StatusesByIdReblog = async (
     // Mastodon answers the boost it already has rather than stacking another.
     const document = await findStatusById(c.env.DB, existing.value);
     if (document.isErr() || !document.value) {
-      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+      return notFound(c);
     }
     return c.json(await mastodonStatus(c.env, identity.value, document.value, user.value.id));
   }
@@ -307,34 +437,38 @@ export const postV1StatusesByIdReblog = async (
   const reblog = LocalStatus.reblog(
     reblogId.value,
     user.value.id,
-    target.id,
+    boostTarget,
     nowInstant(),
-    reblogVisibility(target.visibility, requestedVisibility, user.value.defaultPostVisibility),
+    reblogVisibility(
+      target.status.visibility,
+      requestedVisibility,
+      user.value.defaultPostVisibility,
+    ),
   );
+  const objectRef = await activityObjectRef(c.env.DB, identity.value, target);
+  if (objectRef.isErr()) {
+    return jsonRepositoryError(c, objectRef.error.message);
+  }
+  if (!objectRef.value) {
+    return notFound(c);
+  }
   const inserted = await insertLocalReblog(c.env.DB, reblog);
   if (inserted.isErr()) {
     return jsonRepositoryError(c, inserted.error.message);
   }
-  if (target.accountId !== user.value.id) {
+  if (target.kind === "LocalStatus" && target.status.accountId !== user.value.id) {
     await notifyAccount(c.env, {
-      accountId: target.accountId,
+      accountId: target.status.accountId,
       fromAccountId: user.value.id,
       kind: "reblog",
-      statusId: target.id,
+      statusId: target.status.id,
     });
-  }
-  const noteAuthor = await findAccountById(c.env.DB, target.accountId);
-  if (noteAuthor.isErr()) {
-    return jsonRepositoryError(c, noteAuthor.error.message);
-  }
-  if (!noteAuthor.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const enqueued = await enqueueLocalActivity(
     c.env,
     user.value.id,
     "Announce",
-    announceActivity(identity.value, user.value, reblog, noteAuthor.value),
+    announceActivity(identity.value, user.value, reblog, objectRef.value),
   );
   if (enqueued.isErr()) {
     return jsonRepositoryError(
@@ -346,11 +480,7 @@ export const postV1StatusesByIdReblog = async (
           : "invalid activity id",
     );
   }
-  const latest = await findStatusById(c.env.DB, reblog.id);
-  if (latest.isErr() || !latest.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  const document = await mastodonStatus(c.env, identity.value, latest.value, user.value.id);
+  const document = await mastodonStatus(c.env, identity.value, reblog, user.value.id);
   if (document) {
     await publishToAccount(c.env, user.value.id, { kind: "update", payload: document });
   }
@@ -360,31 +490,6 @@ export const postV1StatusesByIdReblog = async (
     author: { kind: "LocalAccount", accountId: user.value.id },
   });
   return c.json(document);
-};
-
-/** The `Undo` of the viewer's boost of `statusId`, or undefined when there is none. */
-const undoAnnounceFor = async (
-  db: D1Database,
-  identity: InstanceIdentity,
-  booster: LocalAccount,
-  statusId: string,
-): Promise<Record<string, unknown> | undefined> => {
-  const reblogId = await findLocalReblog(db, booster.id, statusId);
-  if (reblogId.isErr() || !reblogId.value) {
-    return undefined;
-  }
-  const [reblog, note] = await Promise.all([
-    findStatusById(db, reblogId.value),
-    findStatusById(db, statusId),
-  ]);
-  if (reblog.isErr() || reblog.value?.kind !== "LocalReblog" || note.isErr() || !note.value) {
-    return undefined;
-  }
-  const author = await findAccountById(db, note.value.accountId);
-  if (author.isErr() || !author.value) {
-    return undefined;
-  }
-  return undoAnnounceActivity(announceActivity(identity, booster, reblog.value, author.value));
 };
 
 export const postV1StatusesByIdUnreblog = async (
@@ -398,54 +503,85 @@ export const postV1StatusesByIdUnreblog = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  // The Undo carries the Announce it withdraws, so build it while the boost exists.
-  const undo = await undoAnnounceFor(c.env.DB, identity.value, user.value, c.req.param("id"));
-  const reblogId = (await findLocalReblog(c.env.DB, user.value.id, c.req.param("id"))).andThen(
-    (id) => StatusId.parse(id ?? ""),
-  );
-  await deleteReblogOf(c.env.DB, user.value.id, c.req.param("id"));
-  if (reblogId.isOk()) {
+  const found = await findStatusAnywhere(c.env.DB, c.req.param("id") ?? "");
+  if (found.isErr()) {
+    return jsonRepositoryError(c, found.error.message);
+  }
+  if (!found.value) {
+    return notFound(c);
+  }
+  const target = foundStatusTarget(found.value);
+  const reblogId = await findLocalReblog(c.env.DB, user.value.id, target);
+  if (reblogId.isErr()) {
+    return jsonRepositoryError(c, reblogId.error.message);
+  }
+  if (reblogId.value) {
+    // The Undo carries the Announce it withdraws, so build it while the boost exists.
+    const [reblog, objectRef] = await Promise.all([
+      findStatusById(c.env.DB, reblogId.value),
+      activityObjectRef(c.env.DB, identity.value, found.value),
+    ]);
+    await deleteReblogOf(c.env.DB, user.value.id, target);
     await publishToAccount(c.env, user.value.id, { kind: "delete", statusId: reblogId.value });
     await enqueueHomeFanOut(c.env, {
       event: "delete",
       entryId: reblogId.value,
       author: { kind: "LocalAccount", accountId: user.value.id },
     });
-  }
-  if (undo && reachesRemoteInboxes(undo, identity.value.domain)) {
-    const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Undo", undo);
-    if (enqueued.isErr()) {
-      console.error(JSON.stringify({ kind: "UnreblogNotFederated", statusId: c.req.param("id") }));
+    const undo =
+      reblog.isOk() && reblog.value?.kind === "LocalReblog" && objectRef.isOk() && objectRef.value
+        ? undoActivity(announceActivity(identity.value, user.value, reblog.value, objectRef.value))
+        : undefined;
+    if (undo && reachesRemoteInboxes(undo, identity.value.domain)) {
+      const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Undo", undo);
+      if (enqueued.isErr()) {
+        console.error(
+          JSON.stringify({ kind: "UnreblogNotFederated", statusId: found.value.status.id }),
+        );
+      }
     }
   }
-  const latest = await findStatusById(c.env.DB, c.req.param("id"));
-  if (latest.isErr() || !latest.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
+  return c.json(await targetDocument(c.env, identity.value, found.value, user.value.id));
 };
 
-export const postV1StatusesByIdBookmark = async (
+const setBookmarked = async (c: Context<{ Bindings: Env }>, bookmark: boolean) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const found = await interactionTarget(c, user.value.id, bookmark);
+  if (found.isErr()) {
+    return jsonRepositoryError(c, found.error.message);
+  }
+  if (!found.value) {
+    return notFound(c);
+  }
+  const target = foundStatusTarget(found.value);
+  const saved = bookmark
+    ? await bookmarkStatus(c.env.DB, user.value.id, target)
+    : await unbookmarkStatus(c.env.DB, user.value.id, target);
+  if (saved.isErr()) {
+    return jsonRepositoryError(c, saved.error.message);
+  }
+  return c.json(await targetDocument(c.env, identity.value, found.value, user.value.id));
+};
+
+export const postV1StatusesByIdBookmark = (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/bookmark">,
-) => {
-  const identity = parseInstanceIdentity(c.env);
-  if (identity.isErr()) {
-    return c.json(identity.error, 500);
-  }
-  const user = await requireUser(c);
-  if (user.isErr()) {
-    return jsonAuthError(c, user.error);
-  }
-  await bookmarkStatus(c.env.DB, user.value.id, c.req.param("id"));
-  const latest = await findStatusById(c.env.DB, c.req.param("id"));
-  if (latest.isErr() || !latest.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
-};
+) => setBookmarked(c, true);
 
-export const postV1StatusesByIdUnbookmark = async (
+export const postV1StatusesByIdUnbookmark = (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/unbookmark">,
+) => setBookmarked(c, false);
+
+/** The viewer's favourites or bookmarks, local and remote statuses alike, newest status first. */
+const engagedStatuses = async (
+  c: Context<{ Bindings: Env }>,
+  list: typeof listFavouritedTargets,
 ) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -455,57 +591,22 @@ export const postV1StatusesByIdUnbookmark = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  await unbookmarkStatus(c.env.DB, user.value.id, c.req.param("id"));
-  const latest = await findStatusById(c.env.DB, c.req.param("id"));
-  if (latest.isErr() || !latest.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  const limit = queryLimit(c.req.query("limit"));
+  const targets = await list(c.env.DB, user.value.id, limit, queryCursor(c));
+  if (targets.isErr()) {
+    return jsonRepositoryError(c, targets.error.message);
   }
-  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
+  const ids = targets.value.map((target) => target.statusId);
+  setPaginationLinks(c, ids, limit);
+  const documents = await statusDocumentsByIds(c.env, identity.value, ids, user.value.id);
+  return c.json(ids.flatMap((id) => documents.get(id) ?? []));
 };
 
-export const getV1Favourites = async (c: Context<{ Bindings: Env }, "/api/v1/favourites">) => {
-  const identity = parseInstanceIdentity(c.env);
-  if (identity.isErr()) {
-    return c.json(identity.error, 500);
-  }
-  const user = await requireUser(c);
-  if (user.isErr()) {
-    return jsonAuthError(c, user.error);
-  }
-  const limit = queryLimit(c.req.query("limit"));
-  const statuses = await listFavouritedStatuses(c.env.DB, user.value.id, limit, queryCursor(c));
-  if (statuses.isErr()) {
-    return jsonRepositoryError(c, statuses.error.message);
-  }
-  setPaginationLinks(
-    c,
-    statuses.value.map((status) => status.id),
-    limit,
-  );
-  return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, user.value.id));
-};
+export const getV1Favourites = (c: Context<{ Bindings: Env }, "/api/v1/favourites">) =>
+  engagedStatuses(c, listFavouritedTargets);
 
-export const getV1Bookmarks = async (c: Context<{ Bindings: Env }, "/api/v1/bookmarks">) => {
-  const identity = parseInstanceIdentity(c.env);
-  if (identity.isErr()) {
-    return c.json(identity.error, 500);
-  }
-  const user = await requireUser(c);
-  if (user.isErr()) {
-    return jsonAuthError(c, user.error);
-  }
-  const limit = queryLimit(c.req.query("limit"));
-  const statuses = await listBookmarkedStatuses(c.env.DB, user.value.id, limit, queryCursor(c));
-  if (statuses.isErr()) {
-    return jsonRepositoryError(c, statuses.error.message);
-  }
-  setPaginationLinks(
-    c,
-    statuses.value.map((status) => status.id),
-    limit,
-  );
-  return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, user.value.id));
-};
+export const getV1Bookmarks = (c: Context<{ Bindings: Env }, "/api/v1/bookmarks">) =>
+  engagedStatuses(c, listBookmarkedTargets);
 
 /**
  * Translation has no backend in this deployment, so an eligible status answers

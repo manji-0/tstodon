@@ -17,7 +17,8 @@ import {
 import { listStatusMentions } from "./mention-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteActorsByUris } from "./remote-actor-store";
-import { findRemoteStatusRefsByObjectUris } from "./remote-status-store";
+import { mastodonRemoteStatuses } from "./remote-status-documents";
+import { findRemoteStatusesByIds, findRemoteStatusRefsByObjectUris } from "./remote-status-store";
 import { findStatusesByIds, listStatusReplyUris } from "./status-store";
 import { listStatusCards } from "./status-card-store";
 import { followingAccountIds } from "./follow-store";
@@ -140,8 +141,12 @@ export const mastodonStatuses = async (
   for (let pass = 0; pass < 4; pass += 1) {
     const missing = new Set<string>();
     for (const status of byId.values()) {
-      if (status.kind === "LocalReblog" && !byId.has(status.reblogOfId)) {
-        missing.add(status.reblogOfId);
+      if (
+        status.kind === "LocalReblog" &&
+        status.target.kind === "LocalStatus" &&
+        !byId.has(status.target.statusId)
+      ) {
+        missing.add(status.target.statusId);
       }
       if (
         status.kind === "LocalNote" &&
@@ -415,16 +420,42 @@ export const mastodonStatuses = async (
     };
   }
 
+  // Boosts of cached remote statuses wrap the remote status as the viewer sees it.
+  const remoteTargets = await findRemoteStatusesByIds(
+    env.DB,
+    allStatuses.flatMap((status) =>
+      status.kind === "LocalReblog" && status.target.kind === "RemoteStatus"
+        ? [status.target.statusId]
+        : [],
+    ),
+  );
+  const remoteDocs = new Map<string, Record<string, unknown>>();
+  if (remoteTargets.isOk()) {
+    for (const document of await mastodonRemoteStatuses(
+      env,
+      identity,
+      [...remoteTargets.value.values()],
+      viewerId,
+    )) {
+      if (typeof document.id === "string") {
+        remoteDocs.set(document.id, document);
+      }
+    }
+  }
+
   const render = (status: LocalStatus): Record<string, unknown> | undefined => {
     if (status.kind === "LocalNote") {
       return noteDocs.get(status.id);
     }
     const accountDoc = accountDocs.get(status.accountId);
-    const target = byId.get(status.reblogOfId);
-    if (!accountDoc || !target) {
+    if (!accountDoc) {
       return undefined;
     }
-    const wrapped = render(target);
+    const local = byId.get(status.target.statusId);
+    const wrapped =
+      status.target.kind === "RemoteStatus"
+        ? remoteDocs.get(status.target.statusId)
+        : local && render(local);
     if (!wrapped) {
       return undefined;
     }

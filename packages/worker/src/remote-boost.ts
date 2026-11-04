@@ -4,7 +4,7 @@ import {
   IsoInstant,
   RemoteBoost,
   type RemoteBoostValue,
-  type RemoteBoostTarget,
+  type StatusTargetValue,
   type RemoteStatusValue,
   StatusId,
   type Visibility,
@@ -38,7 +38,7 @@ const announcedTarget = async (
   remote: RemoteStatusValue | undefined,
 ): Promise<
   Result<
-    Readonly<{ target: RemoteBoostTarget; visibility: Visibility }> | undefined,
+    Readonly<{ target: StatusTargetValue; visibility: Visibility }> | undefined,
     RepositoryError
   >
 > => {

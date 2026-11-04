@@ -94,7 +94,7 @@ const statusText = (status: LocalStatusValue): string => {
         ? status.text
         : `Content warning: ${status.spoilerText}\n${status.text}`;
     case "LocalReblog":
-      return `Boost of post ${status.reblogOfId}`;
+      return `Boost of post ${status.target.statusId}`;
   }
 };
 

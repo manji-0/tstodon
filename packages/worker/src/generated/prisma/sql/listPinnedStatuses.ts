@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  */
 export const listPinnedStatuses = $runtime.makeTypedQueryFactory(
-  "SELECT\ns.id, s.account_id, s.kind, s.reblog_of_id, s.in_reply_to_id, s.content_text,\nCOALESCE(s.content_html, '') AS content_html, s.visibility, s.sensitive,\nCOALESCE(s.spoiler_text, '') AS spoiler_text, s.language, s.created_at, s.updated_at, s.poll_id\nFROM status_pins sp\nJOIN statuses s ON s.id = sp.status_id\nWHERE sp.account_id = $1\nORDER BY sp.created_at DESC, s.id DESC",
+  "SELECT\ns.id, s.account_id, s.kind, s.reblog_of_id, s.reblog_of_remote_id, s.in_reply_to_id, s.content_text,\nCOALESCE(s.content_html, '') AS content_html, s.visibility, s.sensitive,\nCOALESCE(s.spoiler_text, '') AS spoiler_text, s.language, s.created_at, s.updated_at, s.poll_id\nFROM status_pins sp\nJOIN statuses s ON s.id = sp.status_id\nWHERE sp.account_id = $1\nORDER BY sp.created_at DESC, s.id DESC",
 ) as (
   accountId: string,
 ) => $runtime.TypedSql<listPinnedStatuses.Parameters, listPinnedStatuses.Result>;
@@ -20,6 +20,7 @@ export namespace listPinnedStatuses {
     account_id: string;
     kind: string;
     reblog_of_id: string | null;
+    reblog_of_remote_id: string | null;
     in_reply_to_id: string | null;
     content_text: string;
     content_html: null | null;

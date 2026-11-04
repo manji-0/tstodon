@@ -116,6 +116,19 @@ export const noteDeleteActivity = (
 
 const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
 
+/** A status as ActivityPub names it: its object URI and its author's actor URI. */
+export type ActivityObjectRef = Readonly<{ uri: string; authorUri: string }>;
+
+/** A local note's {@link ActivityObjectRef}. */
+export const localNoteRef = (
+  identity: InstanceIdentity,
+  author: LocalAccount,
+  statusId: string,
+): ActivityObjectRef => {
+  const authorUri = InstanceIdentity.actorUrl(identity, author.username);
+  return { uri: `${authorUri}/statuses/${statusId}`, authorUri };
+};
+
 /**
  * The `Announce` for a local boost, as Mastodon sends it: addressed by the
  * boost's visibility, with the boosted note's author in `cc`.
@@ -124,11 +137,11 @@ export const announceActivity = (
   identity: InstanceIdentity,
   booster: LocalAccount,
   reblog: LocalReblog,
-  noteAuthor: LocalAccount,
+  boosted: ActivityObjectRef,
 ): Record<string, unknown> => {
   const actor = InstanceIdentity.actorUrl(identity, booster.username);
   const followers = `${actor}/followers`;
-  const author = InstanceIdentity.actorUrl(identity, noteAuthor.username);
+  const author = boosted.authorUri;
   const [to, cc] =
     reblog.visibility.kind === "Public"
       ? [[PUBLIC_COLLECTION], [author, followers]]
@@ -143,21 +156,42 @@ export const announceActivity = (
     published: reblog.createdAt,
     to,
     cc,
-    object: `${author}/statuses/${reblog.reblogOfId}`,
+    object: boosted.uri,
   };
 };
 
-/** Withdraws an {@link announceActivity}, reaching the same audience. */
-export const undoAnnounceActivity = (
-  announce: Readonly<Record<string, unknown>>,
+/**
+ * The `Like` for a local account's favourite, as Mastodon sends it (its id
+ * names the favourite), addressed to the liked status's author.
+ */
+export const likeActivity = (
+  identity: InstanceIdentity,
+  liker: LocalAccount,
+  favouriteId: string,
+  liked: ActivityObjectRef,
+): Record<string, unknown> => {
+  const actor = InstanceIdentity.actorUrl(identity, liker.username);
+  return {
+    "@context": "https://www.w3.org/ns/activitystreams",
+    id: `${actor}#likes/${favouriteId}`,
+    type: "Like",
+    actor,
+    to: [liked.authorUri],
+    object: liked.uri,
+  };
+};
+
+/** Withdraws an {@link announceActivity} or {@link likeActivity}, reaching the same audience. */
+export const undoActivity = (
+  activity: Readonly<Record<string, unknown>>,
 ): Record<string, unknown> => ({
   "@context": "https://www.w3.org/ns/activitystreams",
-  id: `${String(announce.id)}/undo`,
+  id: `${String(activity.id)}/undo`,
   type: "Undo",
-  actor: announce.actor,
-  to: announce.to,
-  cc: announce.cc,
-  object: { ...announce, "@context": undefined },
+  actor: activity.actor,
+  to: activity.to,
+  cc: activity.cc,
+  object: { ...activity, "@context": undefined },
 });
 
 /** An account a note mentions, as its `Mention` tag names it. */

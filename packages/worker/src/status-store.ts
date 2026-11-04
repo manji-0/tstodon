@@ -8,6 +8,8 @@ import {
   MediaId,
   StatusId,
   StatusQuoteTarget,
+  StatusTarget,
+  type StatusTargetValue,
   Visibility,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
@@ -37,6 +39,7 @@ export const StatusRowSchema = z.object({
   account_id: z.string().min(1),
   kind: z.string().min(1),
   reblog_of_id: z.string().nullable(),
+  reblog_of_remote_id: z.string().nullable(),
   in_reply_to_id: z.string().nullable(),
   content_text: z.string(),
   content_html: z.string(),
@@ -51,7 +54,7 @@ export const StatusRowSchema = z.object({
 
 export type StatusRow = z.infer<typeof StatusRowSchema>;
 
-export const STATUS_SELECT = `id, account_id, kind, reblog_of_id, in_reply_to_id, content_text, COALESCE(content_html, '') AS content_html, visibility, sensitive, COALESCE(spoiler_text, '') AS spoiler_text, language, created_at, updated_at, poll_id`;
+export const STATUS_SELECT = `id, account_id, kind, reblog_of_id, reblog_of_remote_id, in_reply_to_id, content_text, COALESCE(content_html, '') AS content_html, visibility, sensitive, COALESCE(spoiler_text, '') AS spoiler_text, language, created_at, updated_at, poll_id`;
 
 export const statusSelect = STATUS_SELECT;
 
@@ -78,12 +81,13 @@ export const statusFromRow = (
     return err({ kind: "RepositoryError", message: "invalid status ids" });
   }
   if (row.kind === "LocalReblog") {
-    if (!row.reblog_of_id) {
+    const target = StatusTarget.parse(
+      row.reblog_of_id
+        ? { kind: "LocalStatus", statusId: row.reblog_of_id }
+        : { kind: "RemoteStatus", statusId: row.reblog_of_remote_id },
+    );
+    if (target.isErr()) {
       return err({ kind: "RepositoryError", message: "reblog missing target" });
-    }
-    const reblogOfId = StatusId.parse(row.reblog_of_id);
-    if (reblogOfId.isErr()) {
-      return err({ kind: "RepositoryError", message: "invalid reblog target" });
     }
     const reblogVisibility = Visibility.fromMastodon(row.visibility);
     if (reblogVisibility.isErr()) {
@@ -93,7 +97,7 @@ export const statusFromRow = (
       kind: "LocalReblog",
       id: id.value,
       accountId: accountId.value,
-      reblogOfId: reblogOfId.value,
+      target: target.value,
       visibility: reblogVisibility.value,
       createdAt: createdAt.value,
     });
@@ -256,15 +260,28 @@ export const insertLocalNote = async (
   return ok(undefined);
 };
 
+/**
+ * The `(local_status_id, remote_status_id)` pair of columns that names a
+ * target: exactly one is set, as the tables' CHECK asks.
+ */
+export const statusTargetColumns = (
+  target: StatusTargetValue,
+): readonly [local: string | null, remote: string | null] =>
+  target.kind === "LocalStatus" ? [target.statusId, null] : [null, target.statusId];
+
 /** The account's existing boost of a status, if it has one. */
 export const findLocalReblog = async (
   db: D1Database,
   accountId: string,
-  reblogOfId: string,
-): Promise<Result<string | undefined, RepositoryError>> =>
+  target: StatusTargetValue,
+): Promise<Result<StatusId | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped<{ id: string }>(db, findLocalReblogSql(accountId, reblogOfId));
-    return rows[0]?.id;
+    const rows = await queryTyped<{ id: string }>(
+      db,
+      findLocalReblogSql(accountId, ...statusTargetColumns(target)),
+    );
+    const id = StatusId.parse(rows[0]?.id ?? "");
+    return id.isOk() ? id.value : undefined;
   });
 
 export const insertLocalReblog = async (
@@ -277,7 +294,7 @@ export const insertLocalReblog = async (
       insertLocalReblogSql(
         reblog.id,
         reblog.accountId,
-        reblog.reblogOfId,
+        ...statusTargetColumns(reblog.target),
         reblog.createdAt,
         reblog.createdAt,
         Visibility.toMastodon(reblog.visibility),
@@ -341,10 +358,10 @@ export const deleteStatus = async (
 export const deleteReblogOf = async (
   db: D1Database,
   accountId: string,
-  reblogOfId: string,
+  target: StatusTargetValue,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(db, deleteReblogOfSql(accountId, reblogOfId));
+    await runTyped(db, deleteReblogOfSql(accountId, ...statusTargetColumns(target)));
   });
 
 export const countStatuses = async (db: D1Database): Promise<Result<number, RepositoryError>> =>

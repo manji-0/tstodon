@@ -8,14 +8,25 @@ import { mastodonRemoteAccount } from "./account-documents";
 import { remotePollJson } from "./poll-document";
 import { NO_REMOTE_POLL_VOTES, type RemotePollVotes } from "./remote-poll-vote-store";
 import { httpUrl, sanitizeRemoteHtml } from "./sanitize-html";
+import { NO_STATUS_INTERACTIONS, type StatusInteractionCounts } from "./status-interaction-store";
+
+/** What a remote status shows beside its own fields: its card, and the viewer's and this instance's engagement. */
+export type RemoteStatusExtras = Readonly<{
+  card?: Record<string, unknown> | null | undefined;
+  pollVotes?: RemotePollVotes | undefined;
+  /** Local accounts' favourites and boosts only; remote totals are not kept. */
+  interactions?: StatusInteractionCounts | undefined;
+}>;
 
 export const mastodonRemoteStatus = (
   identity: InstanceIdentity,
   status: RemoteStatusValue,
   actor: RemoteActor,
-  card: Record<string, unknown> | null = null,
-  pollVotes: RemotePollVotes = NO_REMOTE_POLL_VOTES,
+  extras: RemoteStatusExtras = {},
 ): Record<string, unknown> => {
+  const card = extras.card ?? null;
+  const pollVotes = extras.pollVotes ?? NO_REMOTE_POLL_VOTES;
+  const interactions = extras.interactions ?? NO_STATUS_INTERACTIONS;
   const url = httpUrl(status.url) ?? httpUrl(status.objectUri) ?? null;
   return {
     id: status.id,
@@ -29,13 +40,13 @@ export const mastodonRemoteStatus = (
     uri: status.objectUri,
     url,
     replies_count: 0,
-    reblogs_count: 0,
-    favourites_count: 0,
+    reblogs_count: interactions.reblogs,
+    favourites_count: interactions.favourites,
     edited_at: status.editedAt.kind === "Edited" ? status.editedAt.at : null,
-    favourited: false,
-    reblogged: false,
+    favourited: interactions.favourited,
+    reblogged: interactions.reblogged,
     muted: false,
-    bookmarked: false,
+    bookmarked: interactions.bookmarked,
     content: sanitizeRemoteHtml(status.contentHtml),
     reblog: null,
     account: mastodonRemoteAccount(identity, actor),

@@ -15,6 +15,7 @@ import {
   type StatusQuoteTarget as StatusQuoteTargetValue,
 } from "./status-quote-target";
 import { StatusId } from "./status-id";
+import { type StatusTarget, StatusTargetSchema } from "./status-target";
 import { Visibility } from "./visibility";
 
 const ComposingStatusSchema = z.object({
@@ -152,7 +153,8 @@ export const LocalReblogSchema = z.object({
   kind: z.literal("LocalReblog"),
   id: StatusId.schema,
   accountId: AccountId.schema,
-  reblogOfId: StatusId.schema,
+  /** The boosted status: a local note, or a cached remote one. */
+  target: StatusTargetSchema,
   /** The boost's own visibility, which may be narrower than the original's. */
   visibility: Visibility.schema,
   createdAt: IsoInstant.schema,
@@ -193,14 +195,14 @@ export const LocalStatus = {
   reblog: (
     id: StatusId,
     accountId: AccountId,
-    reblogOfId: StatusId,
+    target: StatusTarget,
     createdAt: z.infer<typeof IsoInstant.schema>,
     visibility: Visibility,
   ): LocalReblog => ({
     kind: "LocalReblog",
     id,
     accountId,
-    reblogOfId,
+    target,
     visibility,
     createdAt,
   }),

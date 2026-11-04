@@ -1,3 +1,4 @@
+import { StatusTarget, type StatusTargetValue } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import {
@@ -11,6 +12,7 @@ import {
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
+import { statusTargetColumns } from "./status-store";
 import { queryTyped, runTyped } from "./typed-sql";
 import {
   deleteBookmark as deleteBookmarkSql,
@@ -19,45 +21,111 @@ import {
   insertFavouriteOrIgnore as insertFavouriteOrIgnoreSql,
 } from "./generated/prisma/sql";
 
+/** Favourite a status; resolves to the new favourite's id, or nothing when it was already one. */
 export const favouriteStatus = async (
   db: D1Database,
   accountId: string,
-  statusId: string,
-): Promise<Result<boolean, RepositoryError>> =>
+  target: StatusTargetValue,
+): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(
+    const rows = await queryTyped<{ id: string }>(
       db,
-      insertFavouriteOrIgnoreSql(newEntityId(), accountId, statusId, nowIso()),
+      insertFavouriteOrIgnoreSql(
+        newEntityId(),
+        accountId,
+        ...statusTargetColumns(target),
+        nowIso(),
+      ),
     );
-    return rows.length > 0;
+    return rows[0]?.id;
   });
 
+/** Drop a favourite; resolves to its id, or nothing when there was none. */
 export const unfavouriteStatus = async (
   db: D1Database,
   accountId: string,
-  statusId: string,
-): Promise<Result<void, RepositoryError>> =>
+  target: StatusTargetValue,
+): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(db, deleteFavouriteSql(accountId, statusId));
+    const rows = await queryTyped<{ id: string }>(
+      db,
+      deleteFavouriteSql(accountId, ...statusTargetColumns(target)),
+    );
+    return rows[0]?.id;
   });
 
 export const bookmarkStatus = async (
   db: D1Database,
   accountId: string,
-  statusId: string,
+  target: StatusTargetValue,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(db, insertBookmarkOrIgnoreSql(accountId, statusId, nowIso()));
+    await runTyped(
+      db,
+      insertBookmarkOrIgnoreSql(newEntityId(), accountId, ...statusTargetColumns(target), nowIso()),
+    );
   });
 
 export const unbookmarkStatus = async (
   db: D1Database,
   accountId: string,
-  statusId: string,
+  target: StatusTargetValue,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(db, deleteBookmarkSql(accountId, statusId));
+    await runTyped(db, deleteBookmarkSql(accountId, ...statusTargetColumns(target)));
   });
+
+const TargetRowSchema = z.object({
+  local_status_id: z.string().nullable(),
+  remote_status_id: z.string().nullable(),
+});
+
+/** The statuses an account favourited or bookmarked, by status id under the cursor. */
+const listEngagedTargets = async (
+  db: D1Database,
+  table: "favourites" | "bookmarks",
+  accountId: string,
+  limit: number,
+  cursor: IdCursor,
+): Promise<Result<ReadonlyArray<StatusTargetValue>, RepositoryError>> =>
+  runD1(async () => {
+    const { where, order, binds } = idCursorFragment(cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT local_status_id, remote_status_id FROM (
+           SELECT COALESCE(local_status_id, remote_status_id) AS id, local_status_id, remote_status_id
+           FROM ${table} WHERE account_id = ?
+         ) WHERE 1 = 1 ${where} ${order} LIMIT ?`,
+      )
+      .bind(accountId, ...binds, limit)
+      .all();
+    return parseRows(TargetRowSchema, results).flatMap((row) => {
+      const target = StatusTarget.parse(
+        row.local_status_id
+          ? { kind: "LocalStatus", statusId: row.local_status_id }
+          : { kind: "RemoteStatus", statusId: row.remote_status_id },
+      );
+      return target.isOk() ? [target.value] : [];
+    });
+  });
+
+/** The account's favourites, local and remote statuses alike, paged by status id. */
+export const listFavouritedTargets = (
+  db: D1Database,
+  accountId: string,
+  limit: number,
+  cursor: IdCursor = {},
+): Promise<Result<ReadonlyArray<StatusTargetValue>, RepositoryError>> =>
+  listEngagedTargets(db, "favourites", accountId, limit, cursor);
+
+/** The account's bookmarks, local and remote statuses alike, paged by status id. */
+export const listBookmarkedTargets = (
+  db: D1Database,
+  accountId: string,
+  limit: number,
+  cursor: IdCursor = {},
+): Promise<Result<ReadonlyArray<StatusTargetValue>, RepositoryError>> =>
+  listEngagedTargets(db, "bookmarks", accountId, limit, cursor);
 
 export type StatusInteractionCounts = Readonly<{
   favourites: number;
@@ -67,13 +135,13 @@ export type StatusInteractionCounts = Readonly<{
   bookmarked: boolean;
 }>;
 
-const emptyInteractionCounts = (): StatusInteractionCounts => ({
+export const NO_STATUS_INTERACTIONS: StatusInteractionCounts = {
   favourites: 0,
   reblogs: 0,
   favourited: false,
   reblogged: false,
   bookmarked: false,
-});
+};
 
 export const statusInteractionCounts = async (
   db: D1Database,
@@ -84,7 +152,7 @@ export const statusInteractionCounts = async (
   if (bulk.isErr()) {
     return err(bulk.error);
   }
-  return ok(bulk.value.get(statusId) ?? emptyInteractionCounts());
+  return ok(bulk.value.get(statusId) ?? NO_STATUS_INTERACTIONS);
 };
 
 export const statusInteractionCountsByIds = async (
@@ -95,33 +163,38 @@ export const statusInteractionCountsByIds = async (
   const unique = [...new Set(statusIds.filter((id) => id.length > 0))];
   const counts = new Map<string, StatusInteractionCounts>();
   for (const id of unique) {
-    counts.set(id, emptyInteractionCounts());
+    counts.set(id, NO_STATUS_INTERACTIONS);
   }
   if (unique.length === 0) {
     return ok(counts);
   }
 
   const bump = (statusId: string, patch: Partial<StatusInteractionCounts>): void => {
-    const current = counts.get(statusId) ?? emptyInteractionCounts();
+    const current = counts.get(statusId) ?? NO_STATUS_INTERACTIONS;
     counts.set(statusId, { ...current, ...patch });
   };
 
   const idsJson = jsonStringArray(unique);
   const inList = sqlInJsonEach();
+  // Ids are shared by local and remote statuses, so each list matches either column.
+  const targetOf = `COALESCE(local_status_id, remote_status_id)`;
+  const targetIn = `(local_status_id ${inList} OR remote_status_id ${inList})`;
+  const reblogOf = `COALESCE(reblog_of_id, reblog_of_remote_id)`;
+  const reblogIn = `(reblog_of_id ${inList} OR reblog_of_remote_id ${inList})`;
   const statements: D1PreparedStatement[] = [
     db
       .prepare(
-        `SELECT status_id, COUNT(*) AS count FROM favourites
-         WHERE status_id ${inList} GROUP BY status_id`,
+        `SELECT ${targetOf} AS status_id, COUNT(*) AS count FROM favourites
+         WHERE ${targetIn} GROUP BY ${targetOf}`,
       )
-      .bind(idsJson),
+      .bind(idsJson, idsJson),
     db
       .prepare(
-        `SELECT reblog_of_id AS status_id, COUNT(*) AS count FROM statuses
-         WHERE kind = 'LocalReblog' AND reblog_of_id ${inList}
-         GROUP BY reblog_of_id`,
+        `SELECT ${reblogOf} AS status_id, COUNT(*) AS count FROM statuses
+         WHERE kind = 'LocalReblog' AND ${reblogIn}
+         GROUP BY ${reblogOf}`,
       )
-      .bind(idsJson),
+      .bind(idsJson, idsJson),
     db
       .prepare(
         `SELECT status_id, COUNT(*) AS count FROM remote_favourites
@@ -139,22 +212,22 @@ export const statusInteractionCountsByIds = async (
     statements.push(
       db
         .prepare(
-          `SELECT status_id FROM favourites
-           WHERE account_id = ? AND status_id ${inList}`,
+          `SELECT ${targetOf} AS status_id FROM favourites
+           WHERE account_id = ? AND ${targetIn}`,
         )
-        .bind(viewerId, idsJson),
+        .bind(viewerId, idsJson, idsJson),
       db
         .prepare(
-          `SELECT reblog_of_id AS status_id FROM statuses
-           WHERE kind = 'LocalReblog' AND account_id = ? AND reblog_of_id ${inList}`,
+          `SELECT ${reblogOf} AS status_id FROM statuses
+           WHERE kind = 'LocalReblog' AND account_id = ? AND ${reblogIn}`,
         )
-        .bind(viewerId, idsJson),
+        .bind(viewerId, idsJson, idsJson),
       db
         .prepare(
-          `SELECT status_id FROM bookmarks
-           WHERE account_id = ? AND status_id ${inList}`,
+          `SELECT ${targetOf} AS status_id FROM bookmarks
+           WHERE account_id = ? AND ${targetIn}`,
         )
-        .bind(viewerId, idsJson),
+        .bind(viewerId, idsJson, idsJson),
     );
   }
   const batched = await runD1Batch(db, statements);
@@ -243,7 +316,7 @@ const cursorAscending = (cursor: IdCursor): boolean => (cursor.minId ?? "").leng
 
 export const listStatusFavouritedBy = async (
   db: D1Database,
-  statusId: string,
+  target: StatusTargetValue,
   limit: number,
   cursor: IdCursor = {},
 ): Promise<Result<ReadonlyArray<StatusBooster>, RepositoryError>> =>
@@ -252,16 +325,16 @@ export const listStatusFavouritedBy = async (
     const local = await db
       .prepare(
         `SELECT id, account_id AS actor, created_at FROM favourites
-         WHERE status_id = ? ${where} ${order} LIMIT ?`,
+         WHERE (local_status_id = ? OR remote_status_id = ?) ${where} ${order} LIMIT ?`,
       )
-      .bind(statusId, ...binds, limit)
+      .bind(...statusTargetColumns(target), ...binds, limit)
       .all<BoosterRow>();
     const remote = await db
       .prepare(
         `SELECT id, remote_actor_uri AS actor, created_at FROM remote_favourites
          WHERE status_id = ? ${where} ${order} LIMIT ?`,
       )
-      .bind(statusId, ...binds, limit)
+      .bind(target.statusId, ...binds, limit)
       .all<BoosterRow>();
     return mergeStatusBoosters(
       local.results ?? [],
@@ -273,7 +346,7 @@ export const listStatusFavouritedBy = async (
 
 export const listStatusRebloggedBy = async (
   db: D1Database,
-  statusId: string,
+  target: StatusTargetValue,
   limit: number,
   cursor: IdCursor = {},
 ): Promise<Result<ReadonlyArray<StatusBooster>, RepositoryError>> =>
@@ -282,16 +355,17 @@ export const listStatusRebloggedBy = async (
     const local = await db
       .prepare(
         `SELECT id, account_id AS actor, created_at FROM statuses
-         WHERE kind = 'LocalReblog' AND reblog_of_id = ? ${where} ${order} LIMIT ?`,
+         WHERE kind = 'LocalReblog' AND (reblog_of_id = ? OR reblog_of_remote_id = ?)
+         ${where} ${order} LIMIT ?`,
       )
-      .bind(statusId, ...binds, limit)
+      .bind(...statusTargetColumns(target), ...binds, limit)
       .all<BoosterRow>();
     const remote = await db
       .prepare(
         `SELECT id, remote_actor_uri AS actor, created_at FROM remote_announces
          WHERE status_id = ? ${where} ${order} LIMIT ?`,
       )
-      .bind(statusId, ...binds, limit)
+      .bind(target.statusId, ...binds, limit)
       .all<BoosterRow>();
     return mergeStatusBoosters(
       local.results ?? [],

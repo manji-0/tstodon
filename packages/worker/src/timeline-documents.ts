@@ -4,23 +4,19 @@ import type { RepositoryError } from "./d1";
 import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "./filter-match";
 import type { FollowedFeed } from "./followed-feed";
 import type { IdCursor } from "./id-cursor";
-import { cardDocument, parseCardJson } from "./link-card";
 import { type AccountList, listListTimelineStatuses } from "./list-store";
 import { mastodonStatuses } from "./local-status-documents";
 import { listRemoteActorPinnedStatuses } from "./remote-actor-pin-store";
-import { findRemoteActorsByUris } from "./remote-actor-store";
 import { listActorRemoteBoosts, listFollowedRemoteBoosts } from "./remote-boost-store";
 import { remoteBoostDocuments } from "./remote-boost-documents";
-import { findRemotePollVotes } from "./remote-poll-vote-store";
-import { mastodonRemoteStatus, remoteStatusVisible } from "./remote-status-document";
+import { remoteStatusVisible } from "./remote-status-document";
+import { mastodonRemoteStatuses } from "./remote-status-documents";
 import {
   listActorRemoteStatuses,
   listFollowedRemoteStatuses,
   listPublicRemoteStatuses,
   listTagRemoteStatuses,
 } from "./remote-status-timeline-store";
-import { listRemoteStatusCards } from "./status-card-store";
-import { attachRemoteReplyRefs } from "./status-documents";
 import { filterMutedThreads, mutedThreadStatusIds } from "./status-mute-store";
 import { listTagStatuses, type TagStatusFilters } from "./status-discovery-store";
 import {
@@ -30,8 +26,8 @@ import {
 } from "./status-timeline-store";
 
 /**
- * Remote statuses rendered for a timeline: the visible ones, with their preview
- * card. The queries already leave out blocked, muted, and domain-hidden actors
+ * Remote statuses rendered for a timeline: the visible ones, for the viewer.
+ * The queries already leave out blocked, muted, and domain-hidden actors
  * before their `LIMIT`, so a page is never cut short here. The retained statuses come back
  * alongside their documents so `filtered` can be attached to the same rows.
  */
@@ -46,40 +42,11 @@ export const remoteTimelineDocuments = async (
   Readonly<{
     statuses: RemoteNote[];
     documents: Record<string, unknown>[];
-    cards: ReadonlyMap<string, string>;
   }>
 > => {
-  const cards = await listRemoteStatusCards(
-    env.DB,
-    remote.map((status) => status.id),
-  );
-  const actors = await findRemoteActorsByUris(
-    env.DB,
-    remote.map((status) => status.actorUri),
-  );
-  const pollVotes = await findRemotePollVotes(env.DB, viewerId, remote);
-  const statuses: RemoteNote[] = [];
-  const documents: Record<string, unknown>[] = [];
-  for (const status of remote) {
-    const actor = actors.isOk() ? actors.value.get(status.actorUri) : undefined;
-    if (!actor || !visible(status)) {
-      continue;
-    }
-    const rawCard = cards.isOk() ? cards.value.get(status.id) : undefined;
-    const card = rawCard ? parseCardJson(rawCard) : undefined;
-    statuses.push(status);
-    documents.push(
-      mastodonRemoteStatus(
-        identity,
-        status,
-        actor,
-        card ? cardDocument(card) : null,
-        pollVotes.get(status.id),
-      ),
-    );
-  }
-  await attachRemoteReplyRefs(env.DB, identity, documents);
-  return { statuses, documents, cards: cards.isOk() ? cards.value : new Map() };
+  const documents = await mastodonRemoteStatuses(env, identity, remote.filter(visible), viewerId);
+  const rendered = new Set(documents.map((document) => document.id));
+  return { statuses: remote.filter((status) => rendered.has(status.id)), documents };
 };
 
 /** Merge local and remote timeline documents, newest first (`min_id` oldest first). */

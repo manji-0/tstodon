@@ -190,7 +190,7 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     let target = found.value;
     // Quoting a boost quotes the boosted status, as Mastodon does.
     if (target.kind === "LocalReblog") {
-      const original = await findStatusById(c.env.DB, target.reblogOfId);
+      const original = await findStatusById(c.env.DB, target.target.statusId);
       if (original.isErr()) {
         return jsonRepositoryError(c, original.error.message);
       }

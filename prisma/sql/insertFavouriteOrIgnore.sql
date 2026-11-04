@@ -1,6 +1,8 @@
 -- @param {String} $1:id
 -- @param {String} $2:accountId
--- @param {String} $3:statusId
--- @param {String} $4:createdAt
-INSERT OR IGNORE INTO favourites (id, account_id, status_id, created_at) VALUES ($1, $2, $3, $4)
-RETURNING account_id
+-- @param {String} $3:localStatusId?
+-- @param {String} $4:remoteStatusId?
+-- @param {String} $5:createdAt
+INSERT OR IGNORE INTO favourites (id, account_id, local_status_id, remote_status_id, created_at)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id

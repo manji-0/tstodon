@@ -7,21 +7,29 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param id
  * @param accountId
- * @param statusId
+ * @param localStatusId
+ * @param remoteStatusId
  * @param createdAt
  */
 export const insertFavouriteOrIgnore = $runtime.makeTypedQueryFactory(
-  "INSERT OR IGNORE INTO favourites (id, account_id, status_id, created_at) VALUES ($1, $2, $3, $4)\nRETURNING account_id",
+  "INSERT OR IGNORE INTO favourites (id, account_id, local_status_id, remote_status_id, created_at)\nVALUES ($1, $2, $3, $4, $5)\nRETURNING id",
 ) as (
   id: string,
   accountId: string,
-  statusId: string,
+  localStatusId: string | null,
+  remoteStatusId: string | null,
   createdAt: string,
 ) => $runtime.TypedSql<insertFavouriteOrIgnore.Parameters, insertFavouriteOrIgnore.Result>;
 
 export namespace insertFavouriteOrIgnore {
-  export type Parameters = [id: string, accountId: string, statusId: string, createdAt: string];
+  export type Parameters = [
+    id: string,
+    accountId: string,
+    localStatusId: string | null,
+    remoteStatusId: string | null,
+    createdAt: string,
+  ];
   export type Result = {
-    account_id: string;
+    id: string;
   };
 }

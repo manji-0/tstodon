@@ -13,6 +13,7 @@ import {
 import { accountDocumentsByIds, mastodonRemoteAccount } from "../../account-documents";
 import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
 import { listStatusFavouritedBy, listStatusRebloggedBy } from "../../status-interaction-store";
+import { findVisibleStatusAnywhere, foundStatusTarget } from "../../found-status";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { findRemoteActorsByUris } from "../../remote-actor-store";
 import { findStatusById, findStatusesByIds } from "../../status-store";
@@ -32,18 +33,19 @@ const statusEngagementAccounts = async (
     return jsonAuthError(c, auth.error);
   }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
-  const status = await findStatusById(c.env.DB, c.req.param("id") ?? "");
+  const status = await findVisibleStatusAnywhere(c.env.DB, c.req.param("id") ?? "", viewerId);
   if (status.isErr()) {
     return jsonRepositoryError(c, status.error.message);
   }
-  if (!status.value || !(await canViewStatus(c.env.DB, status.value, viewerId))) {
+  if (!status.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
+  const target = foundStatusTarget(status.value);
   const limit = queryAccountsLimit(c.req.query("limit"));
   const engaged =
     kind === "favourited_by"
-      ? await listStatusFavouritedBy(c.env.DB, status.value.id, limit, queryCursor(c))
-      : await listStatusRebloggedBy(c.env.DB, status.value.id, limit, queryCursor(c));
+      ? await listStatusFavouritedBy(c.env.DB, target, limit, queryCursor(c))
+      : await listStatusRebloggedBy(c.env.DB, target, limit, queryCursor(c));
   if (engaged.isErr()) {
     return jsonRepositoryError(c, engaged.error.message);
   }

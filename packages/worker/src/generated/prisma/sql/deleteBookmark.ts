@@ -6,16 +6,22 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
  * @param accountId
- * @param statusId
+ * @param localStatusId
+ * @param remoteStatusId
  */
 export const deleteBookmark = $runtime.makeTypedQueryFactory(
-  "DELETE FROM bookmarks WHERE account_id = $1 AND status_id = $2",
+  "DELETE FROM bookmarks\nWHERE account_id = $1 AND (local_status_id = $2 OR remote_status_id = $3)",
 ) as (
   accountId: string,
-  statusId: string,
+  localStatusId: string | null,
+  remoteStatusId: string | null,
 ) => $runtime.TypedSql<deleteBookmark.Parameters, deleteBookmark.Result>;
 
 export namespace deleteBookmark {
-  export type Parameters = [accountId: string, statusId: string];
+  export type Parameters = [
+    accountId: string,
+    localStatusId: string | null,
+    remoteStatusId: string | null,
+  ];
   export type Result = {};
 }

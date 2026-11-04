@@ -5,15 +5,8 @@ import { ActivityId } from "./activity-id";
 import { IsoInstant } from "./iso-instant";
 import { RemoteStatus } from "./remote-status";
 import { StatusId } from "./status-id";
+import { type StatusTarget, StatusTargetSchema } from "./status-target";
 import type { Visibility } from "./visibility";
-
-/** The status a remote boost shares: a local note, or a cached remote one. */
-export const RemoteBoostTargetSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("LocalStatus"), statusId: StatusId.schema }),
-  z.object({ kind: z.literal("RemoteStatus"), statusId: StatusId.schema }),
-]);
-
-export type RemoteBoostTarget = z.infer<typeof RemoteBoostTargetSchema>;
 
 /** An `Announce` reaches the public, unlisted, or the booster's followers; a direct one is not kept. */
 const RemoteBoostVisibilitySchema = z.discriminatedUnion("kind", [
@@ -32,7 +25,7 @@ export const RemoteBoostSchema = z.object({
   id: StatusId.schema,
   actorUri: z.url(),
   activityId: ActivityId.schema,
-  target: RemoteBoostTargetSchema,
+  target: StatusTargetSchema,
   visibility: RemoteBoostVisibilitySchema,
   publishedAt: IsoInstant.schema,
 });
@@ -44,7 +37,6 @@ export type RemoteBoostError = Readonly<{ kind: "NotAnnounceable" } | { kind: "D
 export const RemoteBoost = {
   schema: RemoteBoostSchema,
   parse: schemaResult(RemoteBoostSchema),
-  targetSchema: RemoteBoostTargetSchema,
   /**
    * The boost an `Announce` makes. As in Mastodon, only a public or unlisted
    * status can be boosted, and the boost takes its visibility from the
@@ -54,7 +46,7 @@ export const RemoteBoost = {
     id: StatusId;
     actorUri: string;
     activityId: ActivityId;
-    target: RemoteBoostTarget;
+    target: StatusTarget;
     targetVisibility: Visibility;
     to: ReadonlyArray<string>;
     cc: ReadonlyArray<string>;

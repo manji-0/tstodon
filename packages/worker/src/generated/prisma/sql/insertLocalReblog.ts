@@ -7,17 +7,19 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param id
  * @param accountId
- * @param reblogOfId
+ * @param localStatusId
+ * @param remoteStatusId
  * @param createdAt
  * @param updatedAt
  * @param visibility
  */
 export const insertLocalReblog = $runtime.makeTypedQueryFactory(
-  "INSERT INTO statuses (\nid, account_id, kind, reblog_of_id, content_text, content_html, visibility, sensitive,\nspoiler_text, created_at, updated_at\n) VALUES ($1, $2, 'LocalReblog', $3, '', '', $6, 0, '', $4, $5)",
+  "INSERT INTO statuses (\nid, account_id, kind, reblog_of_id, reblog_of_remote_id, content_text, content_html, visibility,\nsensitive, spoiler_text, created_at, updated_at\n) VALUES ($1, $2, 'LocalReblog', $3, $4, '', '', $7, 0, '', $5, $6)",
 ) as (
   id: string,
   accountId: string,
-  reblogOfId: string,
+  localStatusId: string | null,
+  remoteStatusId: string | null,
   createdAt: string,
   updatedAt: string,
   visibility: string,
@@ -27,7 +29,8 @@ export namespace insertLocalReblog {
   export type Parameters = [
     id: string,
     accountId: string,
-    reblogOfId: string,
+    localStatusId: string | null,
+    remoteStatusId: string | null,
     createdAt: string,
     updatedAt: string,
     visibility: string,

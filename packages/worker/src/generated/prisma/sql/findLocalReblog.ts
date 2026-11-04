@@ -6,17 +6,23 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
  * @param accountId
- * @param reblogOfId
+ * @param localStatusId
+ * @param remoteStatusId
  */
 export const findLocalReblog = $runtime.makeTypedQueryFactory(
-  "SELECT id FROM statuses\nWHERE kind = 'LocalReblog' AND account_id = $1 AND reblog_of_id = $2\nLIMIT 1",
+  "SELECT id FROM statuses\nWHERE kind = 'LocalReblog' AND account_id = $1\nAND (reblog_of_id = $2 OR reblog_of_remote_id = $3)\nLIMIT 1",
 ) as (
   accountId: string,
-  reblogOfId: string,
+  localStatusId: string | null,
+  remoteStatusId: string | null,
 ) => $runtime.TypedSql<findLocalReblog.Parameters, findLocalReblog.Result>;
 
 export namespace findLocalReblog {
-  export type Parameters = [accountId: string, reblogOfId: string];
+  export type Parameters = [
+    accountId: string,
+    localStatusId: string | null,
+    remoteStatusId: string | null,
+  ];
   export type Result = {
     id: string | null;
   };

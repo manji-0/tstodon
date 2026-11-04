@@ -5,6 +5,7 @@ import {
   LocalStatus,
   RemoteActor,
   StatusId,
+  StatusTarget,
   Visibility,
   reblogVisibility,
   type LocalAccount,
@@ -696,9 +697,9 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     }
   }
   if (activity.kind === "Like") {
-    const statusId = parseLocalStatusId(identity.value, activity.object);
-    if (statusId) {
-      await favouriteStatus(c.env.DB, actor.id, statusId);
+    const statusId = StatusId.parse(parseLocalStatusId(identity.value, activity.object) ?? "");
+    if (statusId.isOk()) {
+      await favouriteStatus(c.env.DB, actor.id, StatusTarget.local(statusId.value));
     }
   }
   if (activity.kind === "Announce") {
@@ -714,7 +715,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
           LocalStatus.reblog(
             reblogId.value,
             actor.id,
-            parsedStatusId.value,
+            StatusTarget.local(parsedStatusId.value),
             nowInstant(),
             reblogVisibility(target.value.visibility, undefined, Visibility.Public),
           ),

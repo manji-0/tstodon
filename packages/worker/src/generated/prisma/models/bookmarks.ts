@@ -24,39 +24,51 @@ export type AggregateBookmarks = {
 };
 
 export type BookmarksMinAggregateOutputType = {
+  id: string | null;
   account_id: string | null;
-  status_id: string | null;
+  local_status_id: string | null;
+  remote_status_id: string | null;
   created_at: string | null;
 };
 
 export type BookmarksMaxAggregateOutputType = {
+  id: string | null;
   account_id: string | null;
-  status_id: string | null;
+  local_status_id: string | null;
+  remote_status_id: string | null;
   created_at: string | null;
 };
 
 export type BookmarksCountAggregateOutputType = {
+  id: number;
   account_id: number;
-  status_id: number;
+  local_status_id: number;
+  remote_status_id: number;
   created_at: number;
   _all: number;
 };
 
 export type BookmarksMinAggregateInputType = {
+  id?: true;
   account_id?: true;
-  status_id?: true;
+  local_status_id?: true;
+  remote_status_id?: true;
   created_at?: true;
 };
 
 export type BookmarksMaxAggregateInputType = {
+  id?: true;
   account_id?: true;
-  status_id?: true;
+  local_status_id?: true;
+  remote_status_id?: true;
   created_at?: true;
 };
 
 export type BookmarksCountAggregateInputType = {
+  id?: true;
   account_id?: true;
-  status_id?: true;
+  local_status_id?: true;
+  remote_status_id?: true;
   created_at?: true;
   _all?: true;
 };
@@ -137,8 +149,10 @@ export type bookmarksGroupByArgs<
 };
 
 export type BookmarksGroupByOutputType = {
+  id: string;
   account_id: string;
-  status_id: string;
+  local_status_id: string | null;
+  remote_status_id: string | null;
   created_at: string;
   _count: BookmarksCountAggregateOutputType | null;
   _min: BookmarksMinAggregateOutputType | null;
@@ -161,39 +175,63 @@ export type bookmarksWhereInput = {
   AND?: Prisma.bookmarksWhereInput | Prisma.bookmarksWhereInput[];
   OR?: Prisma.bookmarksWhereInput[];
   NOT?: Prisma.bookmarksWhereInput | Prisma.bookmarksWhereInput[];
+  id?: Prisma.StringFilter<"bookmarks"> | string;
   account_id?: Prisma.StringFilter<"bookmarks"> | string;
-  status_id?: Prisma.StringFilter<"bookmarks"> | string;
+  local_status_id?: Prisma.StringNullableFilter<"bookmarks"> | string | null;
+  remote_status_id?: Prisma.StringNullableFilter<"bookmarks"> | string | null;
   created_at?: Prisma.StringFilter<"bookmarks"> | string;
-  statuses?: Prisma.XOR<Prisma.StatusesScalarRelationFilter, Prisma.statusesWhereInput>;
+  statuses?: Prisma.XOR<
+    Prisma.StatusesNullableScalarRelationFilter,
+    Prisma.statusesWhereInput
+  > | null;
+  remote_statuses?: Prisma.XOR<
+    Prisma.Remote_statusesNullableScalarRelationFilter,
+    Prisma.remote_statusesWhereInput
+  > | null;
   accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
 };
 
 export type bookmarksOrderByWithRelationInput = {
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
-  status_id?: Prisma.SortOrder;
+  local_status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  remote_status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   statuses?: Prisma.statusesOrderByWithRelationInput;
+  remote_statuses?: Prisma.remote_statusesOrderByWithRelationInput;
   accounts?: Prisma.accountsOrderByWithRelationInput;
 };
 
 export type bookmarksWhereUniqueInput = Prisma.AtLeast<
   {
-    account_id_status_id?: Prisma.bookmarksAccount_idStatus_idCompoundUniqueInput;
+    id?: string;
+    account_id_local_status_id?: Prisma.bookmarksAccount_idLocal_status_idCompoundUniqueInput;
+    account_id_remote_status_id?: Prisma.bookmarksAccount_idRemote_status_idCompoundUniqueInput;
     AND?: Prisma.bookmarksWhereInput | Prisma.bookmarksWhereInput[];
     OR?: Prisma.bookmarksWhereInput[];
     NOT?: Prisma.bookmarksWhereInput | Prisma.bookmarksWhereInput[];
     account_id?: Prisma.StringFilter<"bookmarks"> | string;
-    status_id?: Prisma.StringFilter<"bookmarks"> | string;
+    local_status_id?: Prisma.StringNullableFilter<"bookmarks"> | string | null;
+    remote_status_id?: Prisma.StringNullableFilter<"bookmarks"> | string | null;
     created_at?: Prisma.StringFilter<"bookmarks"> | string;
-    statuses?: Prisma.XOR<Prisma.StatusesScalarRelationFilter, Prisma.statusesWhereInput>;
+    statuses?: Prisma.XOR<
+      Prisma.StatusesNullableScalarRelationFilter,
+      Prisma.statusesWhereInput
+    > | null;
+    remote_statuses?: Prisma.XOR<
+      Prisma.Remote_statusesNullableScalarRelationFilter,
+      Prisma.remote_statusesWhereInput
+    > | null;
     accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
   },
-  "account_id_status_id"
+  "id" | "account_id_local_status_id" | "account_id_remote_status_id"
 >;
 
 export type bookmarksOrderByWithAggregationInput = {
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
-  status_id?: Prisma.SortOrder;
+  local_status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  remote_status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   _count?: Prisma.bookmarksCountOrderByAggregateInput;
   _max?: Prisma.bookmarksMaxOrderByAggregateInput;
@@ -208,48 +246,63 @@ export type bookmarksScalarWhereWithAggregatesInput = {
   NOT?:
     | Prisma.bookmarksScalarWhereWithAggregatesInput
     | Prisma.bookmarksScalarWhereWithAggregatesInput[];
+  id?: Prisma.StringWithAggregatesFilter<"bookmarks"> | string;
   account_id?: Prisma.StringWithAggregatesFilter<"bookmarks"> | string;
-  status_id?: Prisma.StringWithAggregatesFilter<"bookmarks"> | string;
+  local_status_id?: Prisma.StringNullableWithAggregatesFilter<"bookmarks"> | string | null;
+  remote_status_id?: Prisma.StringNullableWithAggregatesFilter<"bookmarks"> | string | null;
   created_at?: Prisma.StringWithAggregatesFilter<"bookmarks"> | string;
 };
 
 export type bookmarksCreateInput = {
+  id: string;
   created_at?: string;
-  statuses: Prisma.statusesCreateNestedOneWithoutBookmarksInput;
+  statuses?: Prisma.statusesCreateNestedOneWithoutBookmarksInput;
+  remote_statuses?: Prisma.remote_statusesCreateNestedOneWithoutBookmarksInput;
   accounts: Prisma.accountsCreateNestedOneWithoutBookmarksInput;
 };
 
 export type bookmarksUncheckedCreateInput = {
+  id: string;
   account_id: string;
-  status_id: string;
+  local_status_id?: string | null;
+  remote_status_id?: string | null;
   created_at?: string;
 };
 
 export type bookmarksUpdateInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
-  statuses?: Prisma.statusesUpdateOneRequiredWithoutBookmarksNestedInput;
+  statuses?: Prisma.statusesUpdateOneWithoutBookmarksNestedInput;
+  remote_statuses?: Prisma.remote_statusesUpdateOneWithoutBookmarksNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutBookmarksNestedInput;
 };
 
 export type bookmarksUncheckedUpdateInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  local_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type bookmarksCreateManyInput = {
+  id: string;
   account_id: string;
-  status_id: string;
+  local_status_id?: string | null;
+  remote_status_id?: string | null;
   created_at?: string;
 };
 
 export type bookmarksUpdateManyMutationInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type bookmarksUncheckedUpdateManyInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  local_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -263,26 +316,37 @@ export type bookmarksOrderByRelationAggregateInput = {
   _count?: Prisma.SortOrder;
 };
 
-export type bookmarksAccount_idStatus_idCompoundUniqueInput = {
+export type bookmarksAccount_idLocal_status_idCompoundUniqueInput = {
   account_id: string;
-  status_id: string;
+  local_status_id: string;
+};
+
+export type bookmarksAccount_idRemote_status_idCompoundUniqueInput = {
+  account_id: string;
+  remote_status_id: string;
 };
 
 export type bookmarksCountOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
-  status_id?: Prisma.SortOrder;
+  local_status_id?: Prisma.SortOrder;
+  remote_status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
 export type bookmarksMaxOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
-  status_id?: Prisma.SortOrder;
+  local_status_id?: Prisma.SortOrder;
+  remote_status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
 export type bookmarksMinOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
-  status_id?: Prisma.SortOrder;
+  local_status_id?: Prisma.SortOrder;
+  remote_status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
@@ -369,6 +433,92 @@ export type bookmarksUncheckedUpdateManyWithoutAccountsNestedInput = {
   updateMany?:
     | Prisma.bookmarksUpdateManyWithWhereWithoutAccountsInput
     | Prisma.bookmarksUpdateManyWithWhereWithoutAccountsInput[];
+  deleteMany?: Prisma.bookmarksScalarWhereInput | Prisma.bookmarksScalarWhereInput[];
+};
+
+export type bookmarksCreateNestedManyWithoutRemote_statusesInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.bookmarksCreateWithoutRemote_statusesInput,
+        Prisma.bookmarksUncheckedCreateWithoutRemote_statusesInput
+      >
+    | Prisma.bookmarksCreateWithoutRemote_statusesInput[]
+    | Prisma.bookmarksUncheckedCreateWithoutRemote_statusesInput[];
+  connectOrCreate?:
+    | Prisma.bookmarksCreateOrConnectWithoutRemote_statusesInput
+    | Prisma.bookmarksCreateOrConnectWithoutRemote_statusesInput[];
+  createMany?: Prisma.bookmarksCreateManyRemote_statusesInputEnvelope;
+  connect?: Prisma.bookmarksWhereUniqueInput | Prisma.bookmarksWhereUniqueInput[];
+};
+
+export type bookmarksUncheckedCreateNestedManyWithoutRemote_statusesInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.bookmarksCreateWithoutRemote_statusesInput,
+        Prisma.bookmarksUncheckedCreateWithoutRemote_statusesInput
+      >
+    | Prisma.bookmarksCreateWithoutRemote_statusesInput[]
+    | Prisma.bookmarksUncheckedCreateWithoutRemote_statusesInput[];
+  connectOrCreate?:
+    | Prisma.bookmarksCreateOrConnectWithoutRemote_statusesInput
+    | Prisma.bookmarksCreateOrConnectWithoutRemote_statusesInput[];
+  createMany?: Prisma.bookmarksCreateManyRemote_statusesInputEnvelope;
+  connect?: Prisma.bookmarksWhereUniqueInput | Prisma.bookmarksWhereUniqueInput[];
+};
+
+export type bookmarksUpdateManyWithoutRemote_statusesNestedInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.bookmarksCreateWithoutRemote_statusesInput,
+        Prisma.bookmarksUncheckedCreateWithoutRemote_statusesInput
+      >
+    | Prisma.bookmarksCreateWithoutRemote_statusesInput[]
+    | Prisma.bookmarksUncheckedCreateWithoutRemote_statusesInput[];
+  connectOrCreate?:
+    | Prisma.bookmarksCreateOrConnectWithoutRemote_statusesInput
+    | Prisma.bookmarksCreateOrConnectWithoutRemote_statusesInput[];
+  upsert?:
+    | Prisma.bookmarksUpsertWithWhereUniqueWithoutRemote_statusesInput
+    | Prisma.bookmarksUpsertWithWhereUniqueWithoutRemote_statusesInput[];
+  createMany?: Prisma.bookmarksCreateManyRemote_statusesInputEnvelope;
+  set?: Prisma.bookmarksWhereUniqueInput | Prisma.bookmarksWhereUniqueInput[];
+  disconnect?: Prisma.bookmarksWhereUniqueInput | Prisma.bookmarksWhereUniqueInput[];
+  delete?: Prisma.bookmarksWhereUniqueInput | Prisma.bookmarksWhereUniqueInput[];
+  connect?: Prisma.bookmarksWhereUniqueInput | Prisma.bookmarksWhereUniqueInput[];
+  update?:
+    | Prisma.bookmarksUpdateWithWhereUniqueWithoutRemote_statusesInput
+    | Prisma.bookmarksUpdateWithWhereUniqueWithoutRemote_statusesInput[];
+  updateMany?:
+    | Prisma.bookmarksUpdateManyWithWhereWithoutRemote_statusesInput
+    | Prisma.bookmarksUpdateManyWithWhereWithoutRemote_statusesInput[];
+  deleteMany?: Prisma.bookmarksScalarWhereInput | Prisma.bookmarksScalarWhereInput[];
+};
+
+export type bookmarksUncheckedUpdateManyWithoutRemote_statusesNestedInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.bookmarksCreateWithoutRemote_statusesInput,
+        Prisma.bookmarksUncheckedCreateWithoutRemote_statusesInput
+      >
+    | Prisma.bookmarksCreateWithoutRemote_statusesInput[]
+    | Prisma.bookmarksUncheckedCreateWithoutRemote_statusesInput[];
+  connectOrCreate?:
+    | Prisma.bookmarksCreateOrConnectWithoutRemote_statusesInput
+    | Prisma.bookmarksCreateOrConnectWithoutRemote_statusesInput[];
+  upsert?:
+    | Prisma.bookmarksUpsertWithWhereUniqueWithoutRemote_statusesInput
+    | Prisma.bookmarksUpsertWithWhereUniqueWithoutRemote_statusesInput[];
+  createMany?: Prisma.bookmarksCreateManyRemote_statusesInputEnvelope;
+  set?: Prisma.bookmarksWhereUniqueInput | Prisma.bookmarksWhereUniqueInput[];
+  disconnect?: Prisma.bookmarksWhereUniqueInput | Prisma.bookmarksWhereUniqueInput[];
+  delete?: Prisma.bookmarksWhereUniqueInput | Prisma.bookmarksWhereUniqueInput[];
+  connect?: Prisma.bookmarksWhereUniqueInput | Prisma.bookmarksWhereUniqueInput[];
+  update?:
+    | Prisma.bookmarksUpdateWithWhereUniqueWithoutRemote_statusesInput
+    | Prisma.bookmarksUpdateWithWhereUniqueWithoutRemote_statusesInput[];
+  updateMany?:
+    | Prisma.bookmarksUpdateManyWithWhereWithoutRemote_statusesInput
+    | Prisma.bookmarksUpdateManyWithWhereWithoutRemote_statusesInput[];
   deleteMany?: Prisma.bookmarksScalarWhereInput | Prisma.bookmarksScalarWhereInput[];
 };
 
@@ -459,12 +609,16 @@ export type bookmarksUncheckedUpdateManyWithoutStatusesNestedInput = {
 };
 
 export type bookmarksCreateWithoutAccountsInput = {
+  id: string;
   created_at?: string;
-  statuses: Prisma.statusesCreateNestedOneWithoutBookmarksInput;
+  statuses?: Prisma.statusesCreateNestedOneWithoutBookmarksInput;
+  remote_statuses?: Prisma.remote_statusesCreateNestedOneWithoutBookmarksInput;
 };
 
 export type bookmarksUncheckedCreateWithoutAccountsInput = {
-  status_id: string;
+  id: string;
+  local_status_id?: string | null;
+  remote_status_id?: string | null;
   created_at?: string;
 };
 
@@ -512,18 +666,80 @@ export type bookmarksScalarWhereInput = {
   AND?: Prisma.bookmarksScalarWhereInput | Prisma.bookmarksScalarWhereInput[];
   OR?: Prisma.bookmarksScalarWhereInput[];
   NOT?: Prisma.bookmarksScalarWhereInput | Prisma.bookmarksScalarWhereInput[];
+  id?: Prisma.StringFilter<"bookmarks"> | string;
   account_id?: Prisma.StringFilter<"bookmarks"> | string;
-  status_id?: Prisma.StringFilter<"bookmarks"> | string;
+  local_status_id?: Prisma.StringNullableFilter<"bookmarks"> | string | null;
+  remote_status_id?: Prisma.StringNullableFilter<"bookmarks"> | string | null;
   created_at?: Prisma.StringFilter<"bookmarks"> | string;
 };
 
-export type bookmarksCreateWithoutStatusesInput = {
+export type bookmarksCreateWithoutRemote_statusesInput = {
+  id: string;
   created_at?: string;
+  statuses?: Prisma.statusesCreateNestedOneWithoutBookmarksInput;
+  accounts: Prisma.accountsCreateNestedOneWithoutBookmarksInput;
+};
+
+export type bookmarksUncheckedCreateWithoutRemote_statusesInput = {
+  id: string;
+  account_id: string;
+  local_status_id?: string | null;
+  created_at?: string;
+};
+
+export type bookmarksCreateOrConnectWithoutRemote_statusesInput = {
+  where: Prisma.bookmarksWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.bookmarksCreateWithoutRemote_statusesInput,
+    Prisma.bookmarksUncheckedCreateWithoutRemote_statusesInput
+  >;
+};
+
+export type bookmarksCreateManyRemote_statusesInputEnvelope = {
+  data:
+    | Prisma.bookmarksCreateManyRemote_statusesInput
+    | Prisma.bookmarksCreateManyRemote_statusesInput[];
+};
+
+export type bookmarksUpsertWithWhereUniqueWithoutRemote_statusesInput = {
+  where: Prisma.bookmarksWhereUniqueInput;
+  update: Prisma.XOR<
+    Prisma.bookmarksUpdateWithoutRemote_statusesInput,
+    Prisma.bookmarksUncheckedUpdateWithoutRemote_statusesInput
+  >;
+  create: Prisma.XOR<
+    Prisma.bookmarksCreateWithoutRemote_statusesInput,
+    Prisma.bookmarksUncheckedCreateWithoutRemote_statusesInput
+  >;
+};
+
+export type bookmarksUpdateWithWhereUniqueWithoutRemote_statusesInput = {
+  where: Prisma.bookmarksWhereUniqueInput;
+  data: Prisma.XOR<
+    Prisma.bookmarksUpdateWithoutRemote_statusesInput,
+    Prisma.bookmarksUncheckedUpdateWithoutRemote_statusesInput
+  >;
+};
+
+export type bookmarksUpdateManyWithWhereWithoutRemote_statusesInput = {
+  where: Prisma.bookmarksScalarWhereInput;
+  data: Prisma.XOR<
+    Prisma.bookmarksUpdateManyMutationInput,
+    Prisma.bookmarksUncheckedUpdateManyWithoutRemote_statusesInput
+  >;
+};
+
+export type bookmarksCreateWithoutStatusesInput = {
+  id: string;
+  created_at?: string;
+  remote_statuses?: Prisma.remote_statusesCreateNestedOneWithoutBookmarksInput;
   accounts: Prisma.accountsCreateNestedOneWithoutBookmarksInput;
 };
 
 export type bookmarksUncheckedCreateWithoutStatusesInput = {
+  id: string;
   account_id: string;
+  remote_status_id?: string | null;
   created_at?: string;
 };
 
@@ -568,42 +784,86 @@ export type bookmarksUpdateManyWithWhereWithoutStatusesInput = {
 };
 
 export type bookmarksCreateManyAccountsInput = {
-  status_id: string;
+  id: string;
+  local_status_id?: string | null;
+  remote_status_id?: string | null;
   created_at?: string;
 };
 
 export type bookmarksUpdateWithoutAccountsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
-  statuses?: Prisma.statusesUpdateOneRequiredWithoutBookmarksNestedInput;
+  statuses?: Prisma.statusesUpdateOneWithoutBookmarksNestedInput;
+  remote_statuses?: Prisma.remote_statusesUpdateOneWithoutBookmarksNestedInput;
 };
 
 export type bookmarksUncheckedUpdateWithoutAccountsInput = {
-  status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  local_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type bookmarksUncheckedUpdateManyWithoutAccountsInput = {
-  status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  local_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+};
+
+export type bookmarksCreateManyRemote_statusesInput = {
+  id: string;
+  account_id: string;
+  local_status_id?: string | null;
+  created_at?: string;
+};
+
+export type bookmarksUpdateWithoutRemote_statusesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  statuses?: Prisma.statusesUpdateOneWithoutBookmarksNestedInput;
+  accounts?: Prisma.accountsUpdateOneRequiredWithoutBookmarksNestedInput;
+};
+
+export type bookmarksUncheckedUpdateWithoutRemote_statusesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  local_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+};
+
+export type bookmarksUncheckedUpdateManyWithoutRemote_statusesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  local_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type bookmarksCreateManyStatusesInput = {
+  id: string;
   account_id: string;
+  remote_status_id?: string | null;
   created_at?: string;
 };
 
 export type bookmarksUpdateWithoutStatusesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  remote_statuses?: Prisma.remote_statusesUpdateOneWithoutBookmarksNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutBookmarksNestedInput;
 };
 
 export type bookmarksUncheckedUpdateWithoutStatusesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type bookmarksUncheckedUpdateManyWithoutStatusesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -611,10 +871,13 @@ export type bookmarksSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     account_id?: boolean;
-    status_id?: boolean;
+    local_status_id?: boolean;
+    remote_status_id?: boolean;
     created_at?: boolean;
-    statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+    statuses?: boolean | Prisma.bookmarks$statusesArgs<ExtArgs>;
+    remote_statuses?: boolean | Prisma.bookmarks$remote_statusesArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
   ExtArgs["result"]["bookmarks"]
@@ -624,10 +887,13 @@ export type bookmarksSelectCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     account_id?: boolean;
-    status_id?: boolean;
+    local_status_id?: boolean;
+    remote_status_id?: boolean;
     created_at?: boolean;
-    statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+    statuses?: boolean | Prisma.bookmarks$statusesArgs<ExtArgs>;
+    remote_statuses?: boolean | Prisma.bookmarks$remote_statusesArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
   ExtArgs["result"]["bookmarks"]
@@ -637,43 +903,51 @@ export type bookmarksSelectUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
+    id?: boolean;
     account_id?: boolean;
-    status_id?: boolean;
+    local_status_id?: boolean;
+    remote_status_id?: boolean;
     created_at?: boolean;
-    statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+    statuses?: boolean | Prisma.bookmarks$statusesArgs<ExtArgs>;
+    remote_statuses?: boolean | Prisma.bookmarks$remote_statusesArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
   ExtArgs["result"]["bookmarks"]
 >;
 
 export type bookmarksSelectScalar = {
+  id?: boolean;
   account_id?: boolean;
-  status_id?: boolean;
+  local_status_id?: boolean;
+  remote_status_id?: boolean;
   created_at?: boolean;
 };
 
 export type bookmarksOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "account_id" | "status_id" | "created_at",
+  "id" | "account_id" | "local_status_id" | "remote_status_id" | "created_at",
   ExtArgs["result"]["bookmarks"]
 >;
 export type bookmarksInclude<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+  statuses?: boolean | Prisma.bookmarks$statusesArgs<ExtArgs>;
+  remote_statuses?: boolean | Prisma.bookmarks$remote_statusesArgs<ExtArgs>;
   accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
 };
 export type bookmarksIncludeCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+  statuses?: boolean | Prisma.bookmarks$statusesArgs<ExtArgs>;
+  remote_statuses?: boolean | Prisma.bookmarks$remote_statusesArgs<ExtArgs>;
   accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
 };
 export type bookmarksIncludeUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+  statuses?: boolean | Prisma.bookmarks$statusesArgs<ExtArgs>;
+  remote_statuses?: boolean | Prisma.bookmarks$remote_statusesArgs<ExtArgs>;
   accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
 };
 
@@ -682,13 +956,16 @@ export type $bookmarksPayload<
 > = {
   name: "bookmarks";
   objects: {
-    statuses: Prisma.$statusesPayload<ExtArgs>;
+    statuses: Prisma.$statusesPayload<ExtArgs> | null;
+    remote_statuses: Prisma.$remote_statusesPayload<ExtArgs> | null;
     accounts: Prisma.$accountsPayload<ExtArgs>;
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
+      id: string;
       account_id: string;
-      status_id: string;
+      local_status_id: string | null;
+      remote_status_id: string | null;
       created_at: string;
     },
     ExtArgs["result"]["bookmarks"]
@@ -831,8 +1108,8 @@ export interface bookmarksDelegate<
    * // Get first 10 Bookmarks
    * const bookmarks = await prisma.bookmarks.findMany({ take: 10 })
    *
-   * // Only select the `account_id`
-   * const bookmarksWithAccount_idOnly = await prisma.bookmarks.findMany({ select: { account_id: true } })
+   * // Only select the `id`
+   * const bookmarksWithIdOnly = await prisma.bookmarks.findMany({ select: { id: true } })
    *
    */
   findMany<T extends bookmarksFindManyArgs>(
@@ -899,9 +1176,9 @@ export interface bookmarksDelegate<
    *   ]
    * })
    *
-   * // Create many Bookmarks and only return the `account_id`
-   * const bookmarksWithAccount_idOnly = await prisma.bookmarks.createManyAndReturn({
-   *   select: { account_id: true },
+   * // Create many Bookmarks and only return the `id`
+   * const bookmarksWithIdOnly = await prisma.bookmarks.createManyAndReturn({
+   *   select: { id: true },
    *   data: [
    *     // ... provide data here
    *   ]
@@ -1027,9 +1304,9 @@ export interface bookmarksDelegate<
    *   ]
    * })
    *
-   * // Update zero or more Bookmarks and only return the `account_id`
-   * const bookmarksWithAccount_idOnly = await prisma.bookmarks.updateManyAndReturn({
-   *   select: { account_id: true },
+   * // Update zero or more Bookmarks and only return the `id`
+   * const bookmarksWithIdOnly = await prisma.bookmarks.updateManyAndReturn({
+   *   select: { id: true },
    *   where: {
    *     // ... provide filter here
    *   },
@@ -1228,17 +1505,29 @@ export interface Prisma__bookmarksClient<
   GlobalOmitOptions = {},
 > extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise";
-  statuses<T extends Prisma.statusesDefaultArgs<ExtArgs> = {}>(
-    args?: Prisma.Subset<T, Prisma.statusesDefaultArgs<ExtArgs>>,
+  statuses<T extends Prisma.bookmarks$statusesArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.bookmarks$statusesArgs<ExtArgs>>,
   ): Prisma.Prisma__statusesClient<
-    | runtime.Types.Result.GetResult<
-        Prisma.$statusesPayload<ExtArgs>,
-        T,
-        "findUniqueOrThrow",
-        GlobalOmitOptions
-      >
-    | Null,
-    Null,
+    runtime.Types.Result.GetResult<
+      Prisma.$statusesPayload<ExtArgs>,
+      T,
+      "findUniqueOrThrow",
+      GlobalOmitOptions
+    > | null,
+    null,
+    ExtArgs,
+    GlobalOmitOptions
+  >;
+  remote_statuses<T extends Prisma.bookmarks$remote_statusesArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.bookmarks$remote_statusesArgs<ExtArgs>>,
+  ): Prisma.Prisma__remote_statusesClient<
+    runtime.Types.Result.GetResult<
+      Prisma.$remote_statusesPayload<ExtArgs>,
+      T,
+      "findUniqueOrThrow",
+      GlobalOmitOptions
+    > | null,
+    null,
     ExtArgs,
     GlobalOmitOptions
   >;
@@ -1287,8 +1576,10 @@ export interface Prisma__bookmarksClient<
  * Fields of the bookmarks model
  */
 export interface bookmarksFieldRefs {
+  readonly id: Prisma.FieldRef<"bookmarks", "String">;
   readonly account_id: Prisma.FieldRef<"bookmarks", "String">;
-  readonly status_id: Prisma.FieldRef<"bookmarks", "String">;
+  readonly local_status_id: Prisma.FieldRef<"bookmarks", "String">;
+  readonly remote_status_id: Prisma.FieldRef<"bookmarks", "String">;
   readonly created_at: Prisma.FieldRef<"bookmarks", "String">;
 }
 
@@ -1719,6 +2010,48 @@ export type bookmarksDeleteManyArgs<
    * Limit how many bookmarks to delete.
    */
   limit?: number;
+};
+
+/**
+ * bookmarks.statuses
+ */
+export type bookmarks$statusesArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the statuses
+   */
+  select?: Prisma.statusesSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the statuses
+   */
+  omit?: Prisma.statusesOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.statusesInclude<ExtArgs> | null;
+  where?: Prisma.statusesWhereInput;
+};
+
+/**
+ * bookmarks.remote_statuses
+ */
+export type bookmarks$remote_statusesArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the remote_statuses
+   */
+  select?: Prisma.remote_statusesSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the remote_statuses
+   */
+  omit?: Prisma.remote_statusesOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.remote_statusesInclude<ExtArgs> | null;
+  where?: Prisma.remote_statusesWhereInput;
 };
 
 /**

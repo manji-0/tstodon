@@ -43,7 +43,6 @@ export {
   RemoteBoost,
   type RemoteBoost as RemoteBoostValue,
   type RemoteBoostError,
-  type RemoteBoostTarget,
 } from "./remote-boost";
 export {
   RemotePoll,
@@ -74,6 +73,7 @@ export {
 } from "./status-composition";
 export { StatusDraftError } from "./status-draft-error";
 export { StatusId, type StatusId as StatusIdValue } from "./status-id";
+export { StatusTarget, type StatusTarget as StatusTargetValue } from "./status-target";
 export {
   StatusQuoteTarget,
   type StatusQuoteTarget as StatusQuoteTargetValue,

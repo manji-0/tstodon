@@ -345,8 +345,10 @@ export type AccountsScalarFieldEnum =
   (typeof AccountsScalarFieldEnum)[keyof typeof AccountsScalarFieldEnum];
 
 export const BookmarksScalarFieldEnum = {
+  id: "id",
   account_id: "account_id",
-  status_id: "status_id",
+  local_status_id: "local_status_id",
+  remote_status_id: "remote_status_id",
   created_at: "created_at",
 } as const;
 
@@ -376,7 +378,8 @@ export type Conversation_readsScalarFieldEnum =
 export const FavouritesScalarFieldEnum = {
   id: "id",
   account_id: "account_id",
-  status_id: "status_id",
+  local_status_id: "local_status_id",
+  remote_status_id: "remote_status_id",
   created_at: "created_at",
 } as const;
 
@@ -908,6 +911,7 @@ export const StatusesScalarFieldEnum = {
   kind: "kind",
   ap_id: "ap_id",
   reblog_of_id: "reblog_of_id",
+  reblog_of_remote_id: "reblog_of_remote_id",
   in_reply_to_id: "in_reply_to_id",
   in_reply_to_uri: "in_reply_to_uri",
   content_text: "content_text",

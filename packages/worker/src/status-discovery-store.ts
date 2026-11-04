@@ -169,7 +169,7 @@ export const listTrendingStatuses = async (
     const { results } = await db
       .prepare(
         `SELECT ${statusSelect},
-            (SELECT COUNT(*) FROM favourites f WHERE f.status_id = statuses.id) AS favourite_count,
+            (SELECT COUNT(*) FROM favourites f WHERE f.local_status_id = statuses.id) AS favourite_count,
             (SELECT COUNT(*) FROM statuses r WHERE r.reblog_of_id = statuses.id) AS reblog_count
          FROM statuses
          WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL} ${SEARCHABLE_ACCOUNTS_SQL} AND created_at >= ?

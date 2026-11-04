@@ -39,6 +39,7 @@ export type StatusesMinAggregateOutputType = {
   kind: string | null;
   ap_id: string | null;
   reblog_of_id: string | null;
+  reblog_of_remote_id: string | null;
   in_reply_to_id: string | null;
   in_reply_to_uri: string | null;
   content_text: string | null;
@@ -58,6 +59,7 @@ export type StatusesMaxAggregateOutputType = {
   kind: string | null;
   ap_id: string | null;
   reblog_of_id: string | null;
+  reblog_of_remote_id: string | null;
   in_reply_to_id: string | null;
   in_reply_to_uri: string | null;
   content_text: string | null;
@@ -77,6 +79,7 @@ export type StatusesCountAggregateOutputType = {
   kind: number;
   ap_id: number;
   reblog_of_id: number;
+  reblog_of_remote_id: number;
   in_reply_to_id: number;
   in_reply_to_uri: number;
   content_text: number;
@@ -105,6 +108,7 @@ export type StatusesMinAggregateInputType = {
   kind?: true;
   ap_id?: true;
   reblog_of_id?: true;
+  reblog_of_remote_id?: true;
   in_reply_to_id?: true;
   in_reply_to_uri?: true;
   content_text?: true;
@@ -124,6 +128,7 @@ export type StatusesMaxAggregateInputType = {
   kind?: true;
   ap_id?: true;
   reblog_of_id?: true;
+  reblog_of_remote_id?: true;
   in_reply_to_id?: true;
   in_reply_to_uri?: true;
   content_text?: true;
@@ -143,6 +148,7 @@ export type StatusesCountAggregateInputType = {
   kind?: true;
   ap_id?: true;
   reblog_of_id?: true;
+  reblog_of_remote_id?: true;
   in_reply_to_id?: true;
   in_reply_to_uri?: true;
   content_text?: true;
@@ -252,6 +258,7 @@ export type StatusesGroupByOutputType = {
   kind: string;
   ap_id: string | null;
   reblog_of_id: string | null;
+  reblog_of_remote_id: string | null;
   in_reply_to_id: string | null;
   in_reply_to_uri: string | null;
   content_text: string;
@@ -291,6 +298,7 @@ export type statusesWhereInput = {
   kind?: Prisma.StringFilter<"statuses"> | string;
   ap_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
   reblog_of_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
+  reblog_of_remote_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
   in_reply_to_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
   in_reply_to_uri?: Prisma.StringNullableFilter<"statuses"> | string | null;
   content_text?: Prisma.StringFilter<"statuses"> | string;
@@ -329,6 +337,10 @@ export type statusesWhereInput = {
     Prisma.statusesWhereInput
   > | null;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.StatusesListRelationFilter;
+  reblog_of_remote?: Prisma.XOR<
+    Prisma.Remote_statusesNullableScalarRelationFilter,
+    Prisma.remote_statusesWhereInput
+  > | null;
   accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
 };
 
@@ -338,6 +350,7 @@ export type statusesOrderByWithRelationInput = {
   kind?: Prisma.SortOrder;
   ap_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   reblog_of_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  reblog_of_remote_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   in_reply_to_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   in_reply_to_uri?: Prisma.SortOrderInput | Prisma.SortOrder;
   content_text?: Prisma.SortOrder;
@@ -364,6 +377,7 @@ export type statusesOrderByWithRelationInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesOrderByRelationAggregateInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesOrderByWithRelationInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesOrderByRelationAggregateInput;
+  reblog_of_remote?: Prisma.remote_statusesOrderByWithRelationInput;
   accounts?: Prisma.accountsOrderByWithRelationInput;
 };
 
@@ -377,6 +391,7 @@ export type statusesWhereUniqueInput = Prisma.AtLeast<
     account_id?: Prisma.StringFilter<"statuses"> | string;
     kind?: Prisma.StringFilter<"statuses"> | string;
     reblog_of_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
+    reblog_of_remote_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
     in_reply_to_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
     in_reply_to_uri?: Prisma.StringNullableFilter<"statuses"> | string | null;
     content_text?: Prisma.StringFilter<"statuses"> | string;
@@ -415,6 +430,10 @@ export type statusesWhereUniqueInput = Prisma.AtLeast<
       Prisma.statusesWhereInput
     > | null;
     other_statuses_statuses_reblog_of_idTostatuses?: Prisma.StatusesListRelationFilter;
+    reblog_of_remote?: Prisma.XOR<
+      Prisma.Remote_statusesNullableScalarRelationFilter,
+      Prisma.remote_statusesWhereInput
+    > | null;
     accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
   },
   "id" | "ap_id"
@@ -426,6 +445,7 @@ export type statusesOrderByWithAggregationInput = {
   kind?: Prisma.SortOrder;
   ap_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   reblog_of_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  reblog_of_remote_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   in_reply_to_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   in_reply_to_uri?: Prisma.SortOrderInput | Prisma.SortOrder;
   content_text?: Prisma.SortOrder;
@@ -457,6 +477,7 @@ export type statusesScalarWhereWithAggregatesInput = {
   kind?: Prisma.StringWithAggregatesFilter<"statuses"> | string;
   ap_id?: Prisma.StringNullableWithAggregatesFilter<"statuses"> | string | null;
   reblog_of_id?: Prisma.StringNullableWithAggregatesFilter<"statuses"> | string | null;
+  reblog_of_remote_id?: Prisma.StringNullableWithAggregatesFilter<"statuses"> | string | null;
   in_reply_to_id?: Prisma.StringNullableWithAggregatesFilter<"statuses"> | string | null;
   in_reply_to_uri?: Prisma.StringNullableWithAggregatesFilter<"statuses"> | string | null;
   content_text?: Prisma.StringWithAggregatesFilter<"statuses"> | string;
@@ -499,6 +520,7 @@ export type statusesCreateInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -508,6 +530,7 @@ export type statusesUncheckedCreateInput = {
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -563,6 +586,7 @@ export type statusesUpdateInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -572,6 +596,7 @@ export type statusesUncheckedUpdateInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -604,6 +629,7 @@ export type statusesCreateManyInput = {
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -639,6 +665,7 @@ export type statusesUncheckedUpdateManyInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -662,14 +689,14 @@ export type statusesOrderByRelationAggregateInput = {
   _count?: Prisma.SortOrder;
 };
 
-export type StatusesScalarRelationFilter = {
-  is?: Prisma.statusesWhereInput;
-  isNot?: Prisma.statusesWhereInput;
-};
-
 export type StatusesNullableScalarRelationFilter = {
   is?: Prisma.statusesWhereInput | null;
   isNot?: Prisma.statusesWhereInput | null;
+};
+
+export type StatusesScalarRelationFilter = {
+  is?: Prisma.statusesWhereInput;
+  isNot?: Prisma.statusesWhereInput;
 };
 
 export type statusesCountOrderByAggregateInput = {
@@ -678,6 +705,7 @@ export type statusesCountOrderByAggregateInput = {
   kind?: Prisma.SortOrder;
   ap_id?: Prisma.SortOrder;
   reblog_of_id?: Prisma.SortOrder;
+  reblog_of_remote_id?: Prisma.SortOrder;
   in_reply_to_id?: Prisma.SortOrder;
   in_reply_to_uri?: Prisma.SortOrder;
   content_text?: Prisma.SortOrder;
@@ -701,6 +729,7 @@ export type statusesMaxOrderByAggregateInput = {
   kind?: Prisma.SortOrder;
   ap_id?: Prisma.SortOrder;
   reblog_of_id?: Prisma.SortOrder;
+  reblog_of_remote_id?: Prisma.SortOrder;
   in_reply_to_id?: Prisma.SortOrder;
   in_reply_to_uri?: Prisma.SortOrder;
   content_text?: Prisma.SortOrder;
@@ -720,6 +749,7 @@ export type statusesMinOrderByAggregateInput = {
   kind?: Prisma.SortOrder;
   ap_id?: Prisma.SortOrder;
   reblog_of_id?: Prisma.SortOrder;
+  reblog_of_remote_id?: Prisma.SortOrder;
   in_reply_to_id?: Prisma.SortOrder;
   in_reply_to_uri?: Prisma.SortOrder;
   content_text?: Prisma.SortOrder;
@@ -832,13 +862,15 @@ export type statusesCreateNestedOneWithoutBookmarksInput = {
   connect?: Prisma.statusesWhereUniqueInput;
 };
 
-export type statusesUpdateOneRequiredWithoutBookmarksNestedInput = {
+export type statusesUpdateOneWithoutBookmarksNestedInput = {
   create?: Prisma.XOR<
     Prisma.statusesCreateWithoutBookmarksInput,
     Prisma.statusesUncheckedCreateWithoutBookmarksInput
   >;
   connectOrCreate?: Prisma.statusesCreateOrConnectWithoutBookmarksInput;
   upsert?: Prisma.statusesUpsertWithoutBookmarksInput;
+  disconnect?: Prisma.statusesWhereInput | boolean;
+  delete?: Prisma.statusesWhereInput | boolean;
   connect?: Prisma.statusesWhereUniqueInput;
   update?: Prisma.XOR<
     Prisma.XOR<
@@ -858,13 +890,15 @@ export type statusesCreateNestedOneWithoutFavouritesInput = {
   connect?: Prisma.statusesWhereUniqueInput;
 };
 
-export type statusesUpdateOneRequiredWithoutFavouritesNestedInput = {
+export type statusesUpdateOneWithoutFavouritesNestedInput = {
   create?: Prisma.XOR<
     Prisma.statusesCreateWithoutFavouritesInput,
     Prisma.statusesUncheckedCreateWithoutFavouritesInput
   >;
   connectOrCreate?: Prisma.statusesCreateOrConnectWithoutFavouritesInput;
   upsert?: Prisma.statusesUpsertWithoutFavouritesInput;
+  disconnect?: Prisma.statusesWhereInput | boolean;
+  delete?: Prisma.statusesWhereInput | boolean;
   connect?: Prisma.statusesWhereUniqueInput;
   update?: Prisma.XOR<
     Prisma.XOR<
@@ -979,6 +1013,92 @@ export type statusesUpdateOneRequiredWithoutRemote_favouritesNestedInput = {
     >,
     Prisma.statusesUncheckedUpdateWithoutRemote_favouritesInput
   >;
+};
+
+export type statusesCreateNestedManyWithoutReblog_of_remoteInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.statusesCreateWithoutReblog_of_remoteInput,
+        Prisma.statusesUncheckedCreateWithoutReblog_of_remoteInput
+      >
+    | Prisma.statusesCreateWithoutReblog_of_remoteInput[]
+    | Prisma.statusesUncheckedCreateWithoutReblog_of_remoteInput[];
+  connectOrCreate?:
+    | Prisma.statusesCreateOrConnectWithoutReblog_of_remoteInput
+    | Prisma.statusesCreateOrConnectWithoutReblog_of_remoteInput[];
+  createMany?: Prisma.statusesCreateManyReblog_of_remoteInputEnvelope;
+  connect?: Prisma.statusesWhereUniqueInput | Prisma.statusesWhereUniqueInput[];
+};
+
+export type statusesUncheckedCreateNestedManyWithoutReblog_of_remoteInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.statusesCreateWithoutReblog_of_remoteInput,
+        Prisma.statusesUncheckedCreateWithoutReblog_of_remoteInput
+      >
+    | Prisma.statusesCreateWithoutReblog_of_remoteInput[]
+    | Prisma.statusesUncheckedCreateWithoutReblog_of_remoteInput[];
+  connectOrCreate?:
+    | Prisma.statusesCreateOrConnectWithoutReblog_of_remoteInput
+    | Prisma.statusesCreateOrConnectWithoutReblog_of_remoteInput[];
+  createMany?: Prisma.statusesCreateManyReblog_of_remoteInputEnvelope;
+  connect?: Prisma.statusesWhereUniqueInput | Prisma.statusesWhereUniqueInput[];
+};
+
+export type statusesUpdateManyWithoutReblog_of_remoteNestedInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.statusesCreateWithoutReblog_of_remoteInput,
+        Prisma.statusesUncheckedCreateWithoutReblog_of_remoteInput
+      >
+    | Prisma.statusesCreateWithoutReblog_of_remoteInput[]
+    | Prisma.statusesUncheckedCreateWithoutReblog_of_remoteInput[];
+  connectOrCreate?:
+    | Prisma.statusesCreateOrConnectWithoutReblog_of_remoteInput
+    | Prisma.statusesCreateOrConnectWithoutReblog_of_remoteInput[];
+  upsert?:
+    | Prisma.statusesUpsertWithWhereUniqueWithoutReblog_of_remoteInput
+    | Prisma.statusesUpsertWithWhereUniqueWithoutReblog_of_remoteInput[];
+  createMany?: Prisma.statusesCreateManyReblog_of_remoteInputEnvelope;
+  set?: Prisma.statusesWhereUniqueInput | Prisma.statusesWhereUniqueInput[];
+  disconnect?: Prisma.statusesWhereUniqueInput | Prisma.statusesWhereUniqueInput[];
+  delete?: Prisma.statusesWhereUniqueInput | Prisma.statusesWhereUniqueInput[];
+  connect?: Prisma.statusesWhereUniqueInput | Prisma.statusesWhereUniqueInput[];
+  update?:
+    | Prisma.statusesUpdateWithWhereUniqueWithoutReblog_of_remoteInput
+    | Prisma.statusesUpdateWithWhereUniqueWithoutReblog_of_remoteInput[];
+  updateMany?:
+    | Prisma.statusesUpdateManyWithWhereWithoutReblog_of_remoteInput
+    | Prisma.statusesUpdateManyWithWhereWithoutReblog_of_remoteInput[];
+  deleteMany?: Prisma.statusesScalarWhereInput | Prisma.statusesScalarWhereInput[];
+};
+
+export type statusesUncheckedUpdateManyWithoutReblog_of_remoteNestedInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.statusesCreateWithoutReblog_of_remoteInput,
+        Prisma.statusesUncheckedCreateWithoutReblog_of_remoteInput
+      >
+    | Prisma.statusesCreateWithoutReblog_of_remoteInput[]
+    | Prisma.statusesUncheckedCreateWithoutReblog_of_remoteInput[];
+  connectOrCreate?:
+    | Prisma.statusesCreateOrConnectWithoutReblog_of_remoteInput
+    | Prisma.statusesCreateOrConnectWithoutReblog_of_remoteInput[];
+  upsert?:
+    | Prisma.statusesUpsertWithWhereUniqueWithoutReblog_of_remoteInput
+    | Prisma.statusesUpsertWithWhereUniqueWithoutReblog_of_remoteInput[];
+  createMany?: Prisma.statusesCreateManyReblog_of_remoteInputEnvelope;
+  set?: Prisma.statusesWhereUniqueInput | Prisma.statusesWhereUniqueInput[];
+  disconnect?: Prisma.statusesWhereUniqueInput | Prisma.statusesWhereUniqueInput[];
+  delete?: Prisma.statusesWhereUniqueInput | Prisma.statusesWhereUniqueInput[];
+  connect?: Prisma.statusesWhereUniqueInput | Prisma.statusesWhereUniqueInput[];
+  update?:
+    | Prisma.statusesUpdateWithWhereUniqueWithoutReblog_of_remoteInput
+    | Prisma.statusesUpdateWithWhereUniqueWithoutReblog_of_remoteInput[];
+  updateMany?:
+    | Prisma.statusesUpdateManyWithWhereWithoutReblog_of_remoteInput
+    | Prisma.statusesUpdateManyWithWhereWithoutReblog_of_remoteInput[];
+  deleteMany?: Prisma.statusesScalarWhereInput | Prisma.statusesScalarWhereInput[];
 };
 
 export type statusesCreateNestedOneWithoutStatus_remote_mentionsInput = {
@@ -1374,6 +1494,7 @@ export type statusesCreateWithoutAccountsInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
 };
 
 export type statusesUncheckedCreateWithoutAccountsInput = {
@@ -1381,6 +1502,7 @@ export type statusesUncheckedCreateWithoutAccountsInput = {
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -1456,6 +1578,7 @@ export type statusesScalarWhereInput = {
   kind?: Prisma.StringFilter<"statuses"> | string;
   ap_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
   reblog_of_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
+  reblog_of_remote_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
   in_reply_to_id?: Prisma.StringNullableFilter<"statuses"> | string | null;
   in_reply_to_uri?: Prisma.StringNullableFilter<"statuses"> | string | null;
   content_text?: Prisma.StringFilter<"statuses"> | string;
@@ -1497,6 +1620,7 @@ export type statusesCreateWithoutBookmarksInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -1506,6 +1630,7 @@ export type statusesUncheckedCreateWithoutBookmarksInput = {
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -1587,6 +1712,7 @@ export type statusesUpdateWithoutBookmarksInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -1596,6 +1722,7 @@ export type statusesUncheckedUpdateWithoutBookmarksInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -1649,6 +1776,7 @@ export type statusesCreateWithoutFavouritesInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -1658,6 +1786,7 @@ export type statusesUncheckedCreateWithoutFavouritesInput = {
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -1739,6 +1868,7 @@ export type statusesUpdateWithoutFavouritesInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -1748,6 +1878,7 @@ export type statusesUncheckedUpdateWithoutFavouritesInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -1801,6 +1932,7 @@ export type statusesCreateWithoutMedia_attachmentsInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -1810,6 +1942,7 @@ export type statusesUncheckedCreateWithoutMedia_attachmentsInput = {
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -1891,6 +2024,7 @@ export type statusesUpdateWithoutMedia_attachmentsInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -1900,6 +2034,7 @@ export type statusesUncheckedUpdateWithoutMedia_attachmentsInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -1953,6 +2088,7 @@ export type statusesCreateWithoutPollsInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -1962,6 +2098,7 @@ export type statusesUncheckedCreateWithoutPollsInput = {
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -2043,6 +2180,7 @@ export type statusesUpdateWithoutPollsInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -2052,6 +2190,7 @@ export type statusesUncheckedUpdateWithoutPollsInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -2105,6 +2244,7 @@ export type statusesCreateWithoutRemote_announcesInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -2114,6 +2254,7 @@ export type statusesUncheckedCreateWithoutRemote_announcesInput = {
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -2195,6 +2336,7 @@ export type statusesUpdateWithoutRemote_announcesInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -2204,6 +2346,7 @@ export type statusesUncheckedUpdateWithoutRemote_announcesInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -2257,6 +2400,7 @@ export type statusesCreateWithoutRemote_favouritesInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -2266,6 +2410,7 @@ export type statusesUncheckedCreateWithoutRemote_favouritesInput = {
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -2347,6 +2492,7 @@ export type statusesUpdateWithoutRemote_favouritesInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -2356,6 +2502,7 @@ export type statusesUncheckedUpdateWithoutRemote_favouritesInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -2379,6 +2526,112 @@ export type statusesUncheckedUpdateWithoutRemote_favouritesInput = {
   status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+};
+
+export type statusesCreateWithoutReblog_of_remoteInput = {
+  id: string;
+  kind: string;
+  ap_id?: string | null;
+  in_reply_to_uri?: string | null;
+  content_text?: string;
+  visibility: string;
+  sensitive?: number;
+  created_at?: string;
+  updated_at?: string;
+  spoiler_text?: string;
+  language?: string | null;
+  content_html?: string;
+  poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesCreateNestedOneWithoutStatusesInput;
+  bookmarks?: Prisma.bookmarksCreateNestedManyWithoutStatusesInput;
+  favourites?: Prisma.favouritesCreateNestedManyWithoutStatusesInput;
+  media_attachments?: Prisma.media_attachmentsCreateNestedManyWithoutStatusesInput;
+  polls?: Prisma.pollsCreateNestedOneWithoutStatusesInput;
+  remote_announces?: Prisma.remote_announcesCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsCreateNestedManyWithoutStatusesInput;
+  remote_favourites?: Prisma.remote_favouritesCreateNestedManyWithoutStatusesInput;
+  status_mentions?: Prisma.status_mentionsCreateNestedManyWithoutStatusesInput;
+  status_remote_mentions?: Prisma.status_remote_mentionsCreateNestedManyWithoutStatusesInput;
+  statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
+  statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
+};
+
+export type statusesUncheckedCreateWithoutReblog_of_remoteInput = {
+  id: string;
+  account_id: string;
+  kind: string;
+  ap_id?: string | null;
+  reblog_of_id?: string | null;
+  in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
+  content_text?: string;
+  visibility: string;
+  sensitive?: number;
+  created_at?: string;
+  updated_at?: string;
+  spoiler_text?: string;
+  language?: string | null;
+  content_html?: string;
+  poll_id?: string | null;
+  status_quotes?: Prisma.status_quotesUncheckedCreateNestedOneWithoutStatusesInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedCreateNestedOneWithoutStatusesInput;
+  bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutStatusesInput;
+  favourites?: Prisma.favouritesUncheckedCreateNestedManyWithoutStatusesInput;
+  media_attachments?: Prisma.media_attachmentsUncheckedCreateNestedManyWithoutStatusesInput;
+  polls?: Prisma.pollsUncheckedCreateNestedOneWithoutStatusesInput;
+  remote_announces?: Prisma.remote_announcesUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedCreateNestedManyWithoutStatusesInput;
+  remote_favourites?: Prisma.remote_favouritesUncheckedCreateNestedManyWithoutStatusesInput;
+  status_mentions?: Prisma.status_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
+  status_remote_mentions?: Prisma.status_remote_mentionsUncheckedCreateNestedManyWithoutStatusesInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUncheckedCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+};
+
+export type statusesCreateOrConnectWithoutReblog_of_remoteInput = {
+  where: Prisma.statusesWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.statusesCreateWithoutReblog_of_remoteInput,
+    Prisma.statusesUncheckedCreateWithoutReblog_of_remoteInput
+  >;
+};
+
+export type statusesCreateManyReblog_of_remoteInputEnvelope = {
+  data:
+    | Prisma.statusesCreateManyReblog_of_remoteInput
+    | Prisma.statusesCreateManyReblog_of_remoteInput[];
+};
+
+export type statusesUpsertWithWhereUniqueWithoutReblog_of_remoteInput = {
+  where: Prisma.statusesWhereUniqueInput;
+  update: Prisma.XOR<
+    Prisma.statusesUpdateWithoutReblog_of_remoteInput,
+    Prisma.statusesUncheckedUpdateWithoutReblog_of_remoteInput
+  >;
+  create: Prisma.XOR<
+    Prisma.statusesCreateWithoutReblog_of_remoteInput,
+    Prisma.statusesUncheckedCreateWithoutReblog_of_remoteInput
+  >;
+};
+
+export type statusesUpdateWithWhereUniqueWithoutReblog_of_remoteInput = {
+  where: Prisma.statusesWhereUniqueInput;
+  data: Prisma.XOR<
+    Prisma.statusesUpdateWithoutReblog_of_remoteInput,
+    Prisma.statusesUncheckedUpdateWithoutReblog_of_remoteInput
+  >;
+};
+
+export type statusesUpdateManyWithWhereWithoutReblog_of_remoteInput = {
+  where: Prisma.statusesScalarWhereInput;
+  data: Prisma.XOR<
+    Prisma.statusesUpdateManyMutationInput,
+    Prisma.statusesUncheckedUpdateManyWithoutReblog_of_remoteInput
+  >;
 };
 
 export type statusesCreateWithoutStatus_remote_mentionsInput = {
@@ -2409,6 +2662,7 @@ export type statusesCreateWithoutStatus_remote_mentionsInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -2418,6 +2672,7 @@ export type statusesUncheckedCreateWithoutStatus_remote_mentionsInput = {
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -2499,6 +2754,7 @@ export type statusesUpdateWithoutStatus_remote_mentionsInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -2508,6 +2764,7 @@ export type statusesUncheckedUpdateWithoutStatus_remote_mentionsInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -2561,6 +2818,7 @@ export type statusesCreateWithoutStatus_mentionsInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -2570,6 +2828,7 @@ export type statusesUncheckedCreateWithoutStatus_mentionsInput = {
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -2651,6 +2910,7 @@ export type statusesUpdateWithoutStatus_mentionsInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -2660,6 +2920,7 @@ export type statusesUncheckedUpdateWithoutStatus_mentionsInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -2713,6 +2974,7 @@ export type statusesCreateWithoutStatus_quotesInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -2722,6 +2984,7 @@ export type statusesUncheckedCreateWithoutStatus_quotesInput = {
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -2803,6 +3066,7 @@ export type statusesUpdateWithoutStatus_quotesInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -2812,6 +3076,7 @@ export type statusesUncheckedUpdateWithoutStatus_quotesInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -2865,6 +3130,7 @@ export type statusesCreateWithoutStatus_quote_policiesInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -2874,6 +3140,7 @@ export type statusesUncheckedCreateWithoutStatus_quote_policiesInput = {
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -2955,6 +3222,7 @@ export type statusesUpdateWithoutStatus_quote_policiesInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -2964,6 +3232,7 @@ export type statusesUncheckedUpdateWithoutStatus_quote_policiesInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -3017,6 +3286,7 @@ export type statusesCreateWithoutOther_statuses_statuses_in_reply_to_idTostatuse
   statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -3026,6 +3296,7 @@ export type statusesUncheckedCreateWithoutOther_statuses_statuses_in_reply_to_id
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -3087,6 +3358,7 @@ export type statusesCreateWithoutStatuses_statuses_in_reply_to_idTostatusesInput
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -3096,6 +3368,7 @@ export type statusesUncheckedCreateWithoutStatuses_statuses_in_reply_to_idTostat
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
@@ -3163,6 +3436,7 @@ export type statusesCreateWithoutOther_statuses_statuses_reblog_of_idTostatusesI
   statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesInput;
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -3172,6 +3446,7 @@ export type statusesUncheckedCreateWithoutOther_statuses_statuses_reblog_of_idTo
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -3233,6 +3508,7 @@ export type statusesCreateWithoutStatuses_statuses_reblog_of_idTostatusesInput =
   statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesInput;
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -3241,6 +3517,7 @@ export type statusesUncheckedCreateWithoutStatuses_statuses_reblog_of_idTostatus
   account_id: string;
   kind: string;
   ap_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -3330,6 +3607,7 @@ export type statusesUpdateWithoutOther_statuses_statuses_in_reply_to_idTostatuse
   statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -3339,6 +3617,7 @@ export type statusesUncheckedUpdateWithoutOther_statuses_statuses_in_reply_to_id
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -3441,6 +3720,7 @@ export type statusesUpdateWithoutOther_statuses_statuses_reblog_of_idTostatusesI
   statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesNestedInput;
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -3450,6 +3730,7 @@ export type statusesUncheckedUpdateWithoutOther_statuses_statuses_reblog_of_idTo
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -3531,6 +3812,7 @@ export type statusesCreateWithoutRemote_boostsInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_in_reply_to_idTostatusesInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedOneWithoutOther_statuses_statuses_reblog_of_idTostatusesInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesCreateNestedManyWithoutStatuses_statuses_reblog_of_idTostatusesInput;
+  reblog_of_remote?: Prisma.remote_statusesCreateNestedOneWithoutStatusesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutStatusesInput;
 };
 
@@ -3540,6 +3822,7 @@ export type statusesUncheckedCreateWithoutRemote_boostsInput = {
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -3621,6 +3904,7 @@ export type statusesUpdateWithoutRemote_boostsInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -3630,6 +3914,7 @@ export type statusesUncheckedUpdateWithoutRemote_boostsInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -3660,6 +3945,7 @@ export type statusesCreateManyAccountsInput = {
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -3702,6 +3988,7 @@ export type statusesUpdateWithoutAccountsInput = {
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
 };
 
 export type statusesUncheckedUpdateWithoutAccountsInput = {
@@ -3709,6 +3996,7 @@ export type statusesUncheckedUpdateWithoutAccountsInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -3740,6 +4028,109 @@ export type statusesUncheckedUpdateManyWithoutAccountsInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  visibility?: Prisma.StringFieldUpdateOperationsInput | string;
+  sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  spoiler_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_html?: Prisma.StringFieldUpdateOperationsInput | string;
+  poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+};
+
+export type statusesCreateManyReblog_of_remoteInput = {
+  id: string;
+  account_id: string;
+  kind: string;
+  ap_id?: string | null;
+  reblog_of_id?: string | null;
+  in_reply_to_id?: string | null;
+  in_reply_to_uri?: string | null;
+  content_text?: string;
+  visibility: string;
+  sensitive?: number;
+  created_at?: string;
+  updated_at?: string;
+  spoiler_text?: string;
+  language?: string | null;
+  content_html?: string;
+  poll_id?: string | null;
+};
+
+export type statusesUpdateWithoutReblog_of_remoteInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  visibility?: Prisma.StringFieldUpdateOperationsInput | string;
+  sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  spoiler_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_html?: Prisma.StringFieldUpdateOperationsInput | string;
+  poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUpdateOneWithoutStatusesNestedInput;
+  bookmarks?: Prisma.bookmarksUpdateManyWithoutStatusesNestedInput;
+  favourites?: Prisma.favouritesUpdateManyWithoutStatusesNestedInput;
+  media_attachments?: Prisma.media_attachmentsUpdateManyWithoutStatusesNestedInput;
+  polls?: Prisma.pollsUpdateOneWithoutStatusesNestedInput;
+  remote_announces?: Prisma.remote_announcesUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUpdateManyWithoutStatusesNestedInput;
+  remote_favourites?: Prisma.remote_favouritesUpdateManyWithoutStatusesNestedInput;
+  status_mentions?: Prisma.status_mentionsUpdateManyWithoutStatusesNestedInput;
+  status_remote_mentions?: Prisma.status_remote_mentionsUpdateManyWithoutStatusesNestedInput;
+  statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesNestedInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
+  statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
+};
+
+export type statusesUncheckedUpdateWithoutReblog_of_remoteInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  visibility?: Prisma.StringFieldUpdateOperationsInput | string;
+  sensitive?: Prisma.IntFieldUpdateOperationsInput | number;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  spoiler_text?: Prisma.StringFieldUpdateOperationsInput | string;
+  language?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  content_html?: Prisma.StringFieldUpdateOperationsInput | string;
+  poll_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  status_quotes?: Prisma.status_quotesUncheckedUpdateOneWithoutStatusesNestedInput;
+  status_quote_policies?: Prisma.status_quote_policiesUncheckedUpdateOneWithoutStatusesNestedInput;
+  bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutStatusesNestedInput;
+  favourites?: Prisma.favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
+  media_attachments?: Prisma.media_attachmentsUncheckedUpdateManyWithoutStatusesNestedInput;
+  polls?: Prisma.pollsUncheckedUpdateOneWithoutStatusesNestedInput;
+  remote_announces?: Prisma.remote_announcesUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_boosts?: Prisma.remote_boostsUncheckedUpdateManyWithoutStatusesNestedInput;
+  remote_favourites?: Prisma.remote_favouritesUncheckedUpdateManyWithoutStatusesNestedInput;
+  status_mentions?: Prisma.status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
+  status_remote_mentions?: Prisma.status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput;
+  other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
+  other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUncheckedUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+};
+
+export type statusesUncheckedUpdateManyWithoutReblog_of_remoteInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  kind?: Prisma.StringFieldUpdateOperationsInput | string;
+  ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -3759,6 +4150,7 @@ export type statusesCreateManyStatuses_statuses_in_reply_to_idTostatusesInput = 
   kind: string;
   ap_id?: string | null;
   reblog_of_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
   visibility: string;
@@ -3776,6 +4168,7 @@ export type statusesCreateManyStatuses_statuses_reblog_of_idTostatusesInput = {
   account_id: string;
   kind: string;
   ap_id?: string | null;
+  reblog_of_remote_id?: string | null;
   in_reply_to_id?: string | null;
   in_reply_to_uri?: string | null;
   content_text?: string;
@@ -3817,6 +4210,7 @@ export type statusesUpdateWithoutStatuses_statuses_in_reply_to_idTostatusesInput
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_reblog_of_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -3826,6 +4220,7 @@ export type statusesUncheckedUpdateWithoutStatuses_statuses_in_reply_to_idTostat
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -3857,6 +4252,7 @@ export type statusesUncheckedUpdateManyWithoutStatuses_statuses_in_reply_to_idTo
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   reblog_of_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
   visibility?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -3897,6 +4293,7 @@ export type statusesUpdateWithoutStatuses_statuses_reblog_of_idTostatusesInput =
   statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateOneWithoutOther_statuses_statuses_in_reply_to_idTostatusesNestedInput;
   other_statuses_statuses_in_reply_to_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_in_reply_to_idTostatusesNestedInput;
   other_statuses_statuses_reblog_of_idTostatuses?: Prisma.statusesUpdateManyWithoutStatuses_statuses_reblog_of_idTostatusesNestedInput;
+  reblog_of_remote?: Prisma.remote_statusesUpdateOneWithoutStatusesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatusesNestedInput;
 };
 
@@ -3905,6 +4302,7 @@ export type statusesUncheckedUpdateWithoutStatuses_statuses_reblog_of_idTostatus
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -3936,6 +4334,7 @@ export type statusesUncheckedUpdateManyWithoutStatuses_statuses_reblog_of_idTost
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   ap_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reblog_of_remote_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   in_reply_to_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   content_text?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -4096,6 +4495,7 @@ export type statusesSelect<
     kind?: boolean;
     ap_id?: boolean;
     reblog_of_id?: boolean;
+    reblog_of_remote_id?: boolean;
     in_reply_to_id?: boolean;
     in_reply_to_uri?: boolean;
     content_text?: boolean;
@@ -4130,6 +4530,7 @@ export type statusesSelect<
     other_statuses_statuses_reblog_of_idTostatuses?:
       | boolean
       | Prisma.statuses$other_statuses_statuses_reblog_of_idTostatusesArgs<ExtArgs>;
+    reblog_of_remote?: boolean | Prisma.statuses$reblog_of_remoteArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     _count?: boolean | Prisma.StatusesCountOutputTypeDefaultArgs<ExtArgs>;
   },
@@ -4145,6 +4546,7 @@ export type statusesSelectCreateManyAndReturn<
     kind?: boolean;
     ap_id?: boolean;
     reblog_of_id?: boolean;
+    reblog_of_remote_id?: boolean;
     in_reply_to_id?: boolean;
     in_reply_to_uri?: boolean;
     content_text?: boolean;
@@ -4162,6 +4564,7 @@ export type statusesSelectCreateManyAndReturn<
     statuses_statuses_reblog_of_idTostatuses?:
       | boolean
       | Prisma.statuses$statuses_statuses_reblog_of_idTostatusesArgs<ExtArgs>;
+    reblog_of_remote?: boolean | Prisma.statuses$reblog_of_remoteArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
   ExtArgs["result"]["statuses"]
@@ -4176,6 +4579,7 @@ export type statusesSelectUpdateManyAndReturn<
     kind?: boolean;
     ap_id?: boolean;
     reblog_of_id?: boolean;
+    reblog_of_remote_id?: boolean;
     in_reply_to_id?: boolean;
     in_reply_to_uri?: boolean;
     content_text?: boolean;
@@ -4193,6 +4597,7 @@ export type statusesSelectUpdateManyAndReturn<
     statuses_statuses_reblog_of_idTostatuses?:
       | boolean
       | Prisma.statuses$statuses_statuses_reblog_of_idTostatusesArgs<ExtArgs>;
+    reblog_of_remote?: boolean | Prisma.statuses$reblog_of_remoteArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
   ExtArgs["result"]["statuses"]
@@ -4204,6 +4609,7 @@ export type statusesSelectScalar = {
   kind?: boolean;
   ap_id?: boolean;
   reblog_of_id?: boolean;
+  reblog_of_remote_id?: boolean;
   in_reply_to_id?: boolean;
   in_reply_to_uri?: boolean;
   content_text?: boolean;
@@ -4225,6 +4631,7 @@ export type statusesOmit<
   | "kind"
   | "ap_id"
   | "reblog_of_id"
+  | "reblog_of_remote_id"
   | "in_reply_to_id"
   | "in_reply_to_uri"
   | "content_text"
@@ -4264,6 +4671,7 @@ export type statusesInclude<
   other_statuses_statuses_reblog_of_idTostatuses?:
     | boolean
     | Prisma.statuses$other_statuses_statuses_reblog_of_idTostatusesArgs<ExtArgs>;
+  reblog_of_remote?: boolean | Prisma.statuses$reblog_of_remoteArgs<ExtArgs>;
   accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   _count?: boolean | Prisma.StatusesCountOutputTypeDefaultArgs<ExtArgs>;
 };
@@ -4276,6 +4684,7 @@ export type statusesIncludeCreateManyAndReturn<
   statuses_statuses_reblog_of_idTostatuses?:
     | boolean
     | Prisma.statuses$statuses_statuses_reblog_of_idTostatusesArgs<ExtArgs>;
+  reblog_of_remote?: boolean | Prisma.statuses$reblog_of_remoteArgs<ExtArgs>;
   accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
 };
 export type statusesIncludeUpdateManyAndReturn<
@@ -4287,6 +4696,7 @@ export type statusesIncludeUpdateManyAndReturn<
   statuses_statuses_reblog_of_idTostatuses?:
     | boolean
     | Prisma.statuses$statuses_statuses_reblog_of_idTostatusesArgs<ExtArgs>;
+  reblog_of_remote?: boolean | Prisma.statuses$reblog_of_remoteArgs<ExtArgs>;
   accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
 };
 
@@ -4310,6 +4720,7 @@ export type $statusesPayload<
     other_statuses_statuses_in_reply_to_idTostatuses: Prisma.$statusesPayload<ExtArgs>[];
     statuses_statuses_reblog_of_idTostatuses: Prisma.$statusesPayload<ExtArgs> | null;
     other_statuses_statuses_reblog_of_idTostatuses: Prisma.$statusesPayload<ExtArgs>[];
+    reblog_of_remote: Prisma.$remote_statusesPayload<ExtArgs> | null;
     accounts: Prisma.$accountsPayload<ExtArgs>;
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
@@ -4319,6 +4730,7 @@ export type $statusesPayload<
       kind: string;
       ap_id: string | null;
       reblog_of_id: string | null;
+      reblog_of_remote_id: string | null;
       in_reply_to_id: string | null;
       in_reply_to_uri: string | null;
       content_text: string;
@@ -5057,6 +5469,19 @@ export interface Prisma__statusesClient<
       >
     | Null
   >;
+  reblog_of_remote<T extends Prisma.statuses$reblog_of_remoteArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.statuses$reblog_of_remoteArgs<ExtArgs>>,
+  ): Prisma.Prisma__remote_statusesClient<
+    runtime.Types.Result.GetResult<
+      Prisma.$remote_statusesPayload<ExtArgs>,
+      T,
+      "findUniqueOrThrow",
+      GlobalOmitOptions
+    > | null,
+    null,
+    ExtArgs,
+    GlobalOmitOptions
+  >;
   accounts<T extends Prisma.accountsDefaultArgs<ExtArgs> = {}>(
     args?: Prisma.Subset<T, Prisma.accountsDefaultArgs<ExtArgs>>,
   ): Prisma.Prisma__accountsClient<
@@ -5107,6 +5532,7 @@ export interface statusesFieldRefs {
   readonly kind: Prisma.FieldRef<"statuses", "String">;
   readonly ap_id: Prisma.FieldRef<"statuses", "String">;
   readonly reblog_of_id: Prisma.FieldRef<"statuses", "String">;
+  readonly reblog_of_remote_id: Prisma.FieldRef<"statuses", "String">;
   readonly in_reply_to_id: Prisma.FieldRef<"statuses", "String">;
   readonly in_reply_to_uri: Prisma.FieldRef<"statuses", "String">;
   readonly content_text: Prisma.FieldRef<"statuses", "String">;
@@ -5920,6 +6346,27 @@ export type statuses$other_statuses_statuses_reblog_of_idTostatusesArgs<
   take?: number;
   skip?: number;
   distinct?: Prisma.StatusesScalarFieldEnum | Prisma.StatusesScalarFieldEnum[];
+};
+
+/**
+ * statuses.reblog_of_remote
+ */
+export type statuses$reblog_of_remoteArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the remote_statuses
+   */
+  select?: Prisma.remote_statusesSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the remote_statuses
+   */
+  omit?: Prisma.remote_statusesOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.remote_statusesInclude<ExtArgs> | null;
+  where?: Prisma.remote_statusesWhereInput;
 };
 
 /**

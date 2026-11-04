@@ -26,21 +26,24 @@ export type AggregateFavourites = {
 export type FavouritesMinAggregateOutputType = {
   id: string | null;
   account_id: string | null;
-  status_id: string | null;
+  local_status_id: string | null;
+  remote_status_id: string | null;
   created_at: string | null;
 };
 
 export type FavouritesMaxAggregateOutputType = {
   id: string | null;
   account_id: string | null;
-  status_id: string | null;
+  local_status_id: string | null;
+  remote_status_id: string | null;
   created_at: string | null;
 };
 
 export type FavouritesCountAggregateOutputType = {
   id: number;
   account_id: number;
-  status_id: number;
+  local_status_id: number;
+  remote_status_id: number;
   created_at: number;
   _all: number;
 };
@@ -48,21 +51,24 @@ export type FavouritesCountAggregateOutputType = {
 export type FavouritesMinAggregateInputType = {
   id?: true;
   account_id?: true;
-  status_id?: true;
+  local_status_id?: true;
+  remote_status_id?: true;
   created_at?: true;
 };
 
 export type FavouritesMaxAggregateInputType = {
   id?: true;
   account_id?: true;
-  status_id?: true;
+  local_status_id?: true;
+  remote_status_id?: true;
   created_at?: true;
 };
 
 export type FavouritesCountAggregateInputType = {
   id?: true;
   account_id?: true;
-  status_id?: true;
+  local_status_id?: true;
+  remote_status_id?: true;
   created_at?: true;
   _all?: true;
 };
@@ -143,9 +149,10 @@ export type favouritesGroupByArgs<
 };
 
 export type FavouritesGroupByOutputType = {
-  id: string | null;
+  id: string;
   account_id: string;
-  status_id: string;
+  local_status_id: string | null;
+  remote_status_id: string | null;
   created_at: string;
   _count: FavouritesCountAggregateOutputType | null;
   _min: FavouritesMinAggregateOutputType | null;
@@ -168,43 +175,63 @@ export type favouritesWhereInput = {
   AND?: Prisma.favouritesWhereInput | Prisma.favouritesWhereInput[];
   OR?: Prisma.favouritesWhereInput[];
   NOT?: Prisma.favouritesWhereInput | Prisma.favouritesWhereInput[];
-  id?: Prisma.StringNullableFilter<"favourites"> | string | null;
+  id?: Prisma.StringFilter<"favourites"> | string;
   account_id?: Prisma.StringFilter<"favourites"> | string;
-  status_id?: Prisma.StringFilter<"favourites"> | string;
+  local_status_id?: Prisma.StringNullableFilter<"favourites"> | string | null;
+  remote_status_id?: Prisma.StringNullableFilter<"favourites"> | string | null;
   created_at?: Prisma.StringFilter<"favourites"> | string;
-  statuses?: Prisma.XOR<Prisma.StatusesScalarRelationFilter, Prisma.statusesWhereInput>;
+  statuses?: Prisma.XOR<
+    Prisma.StatusesNullableScalarRelationFilter,
+    Prisma.statusesWhereInput
+  > | null;
+  remote_statuses?: Prisma.XOR<
+    Prisma.Remote_statusesNullableScalarRelationFilter,
+    Prisma.remote_statusesWhereInput
+  > | null;
   accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
 };
 
 export type favouritesOrderByWithRelationInput = {
-  id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
-  status_id?: Prisma.SortOrder;
+  local_status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  remote_status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   statuses?: Prisma.statusesOrderByWithRelationInput;
+  remote_statuses?: Prisma.remote_statusesOrderByWithRelationInput;
   accounts?: Prisma.accountsOrderByWithRelationInput;
 };
 
 export type favouritesWhereUniqueInput = Prisma.AtLeast<
   {
     id?: string;
-    account_id_status_id?: Prisma.favouritesAccount_idStatus_idCompoundUniqueInput;
+    account_id_local_status_id?: Prisma.favouritesAccount_idLocal_status_idCompoundUniqueInput;
+    account_id_remote_status_id?: Prisma.favouritesAccount_idRemote_status_idCompoundUniqueInput;
     AND?: Prisma.favouritesWhereInput | Prisma.favouritesWhereInput[];
     OR?: Prisma.favouritesWhereInput[];
     NOT?: Prisma.favouritesWhereInput | Prisma.favouritesWhereInput[];
     account_id?: Prisma.StringFilter<"favourites"> | string;
-    status_id?: Prisma.StringFilter<"favourites"> | string;
+    local_status_id?: Prisma.StringNullableFilter<"favourites"> | string | null;
+    remote_status_id?: Prisma.StringNullableFilter<"favourites"> | string | null;
     created_at?: Prisma.StringFilter<"favourites"> | string;
-    statuses?: Prisma.XOR<Prisma.StatusesScalarRelationFilter, Prisma.statusesWhereInput>;
+    statuses?: Prisma.XOR<
+      Prisma.StatusesNullableScalarRelationFilter,
+      Prisma.statusesWhereInput
+    > | null;
+    remote_statuses?: Prisma.XOR<
+      Prisma.Remote_statusesNullableScalarRelationFilter,
+      Prisma.remote_statusesWhereInput
+    > | null;
     accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
   },
-  "account_id_status_id" | "id"
+  "id" | "account_id_local_status_id" | "account_id_remote_status_id"
 >;
 
 export type favouritesOrderByWithAggregationInput = {
-  id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
-  status_id?: Prisma.SortOrder;
+  local_status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  remote_status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   _count?: Prisma.favouritesCountOrderByAggregateInput;
   _max?: Prisma.favouritesMaxOrderByAggregateInput;
@@ -219,56 +246,63 @@ export type favouritesScalarWhereWithAggregatesInput = {
   NOT?:
     | Prisma.favouritesScalarWhereWithAggregatesInput
     | Prisma.favouritesScalarWhereWithAggregatesInput[];
-  id?: Prisma.StringNullableWithAggregatesFilter<"favourites"> | string | null;
+  id?: Prisma.StringWithAggregatesFilter<"favourites"> | string;
   account_id?: Prisma.StringWithAggregatesFilter<"favourites"> | string;
-  status_id?: Prisma.StringWithAggregatesFilter<"favourites"> | string;
+  local_status_id?: Prisma.StringNullableWithAggregatesFilter<"favourites"> | string | null;
+  remote_status_id?: Prisma.StringNullableWithAggregatesFilter<"favourites"> | string | null;
   created_at?: Prisma.StringWithAggregatesFilter<"favourites"> | string;
 };
 
 export type favouritesCreateInput = {
-  id?: string | null;
+  id: string;
   created_at?: string;
-  statuses: Prisma.statusesCreateNestedOneWithoutFavouritesInput;
+  statuses?: Prisma.statusesCreateNestedOneWithoutFavouritesInput;
+  remote_statuses?: Prisma.remote_statusesCreateNestedOneWithoutFavouritesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutFavouritesInput;
 };
 
 export type favouritesUncheckedCreateInput = {
-  id?: string | null;
+  id: string;
   account_id: string;
-  status_id: string;
+  local_status_id?: string | null;
+  remote_status_id?: string | null;
   created_at?: string;
 };
 
 export type favouritesUpdateInput = {
-  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
-  statuses?: Prisma.statusesUpdateOneRequiredWithoutFavouritesNestedInput;
+  statuses?: Prisma.statusesUpdateOneWithoutFavouritesNestedInput;
+  remote_statuses?: Prisma.remote_statusesUpdateOneWithoutFavouritesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutFavouritesNestedInput;
 };
 
 export type favouritesUncheckedUpdateInput = {
-  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  local_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type favouritesCreateManyInput = {
-  id?: string | null;
+  id: string;
   account_id: string;
-  status_id: string;
+  local_status_id?: string | null;
+  remote_status_id?: string | null;
   created_at?: string;
 };
 
 export type favouritesUpdateManyMutationInput = {
-  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type favouritesUncheckedUpdateManyInput = {
-  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  local_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -282,29 +316,37 @@ export type favouritesOrderByRelationAggregateInput = {
   _count?: Prisma.SortOrder;
 };
 
-export type favouritesAccount_idStatus_idCompoundUniqueInput = {
+export type favouritesAccount_idLocal_status_idCompoundUniqueInput = {
   account_id: string;
-  status_id: string;
+  local_status_id: string;
+};
+
+export type favouritesAccount_idRemote_status_idCompoundUniqueInput = {
+  account_id: string;
+  remote_status_id: string;
 };
 
 export type favouritesCountOrderByAggregateInput = {
   id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
-  status_id?: Prisma.SortOrder;
+  local_status_id?: Prisma.SortOrder;
+  remote_status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
 export type favouritesMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
-  status_id?: Prisma.SortOrder;
+  local_status_id?: Prisma.SortOrder;
+  remote_status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
 export type favouritesMinOrderByAggregateInput = {
   id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
-  status_id?: Prisma.SortOrder;
+  local_status_id?: Prisma.SortOrder;
+  remote_status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
@@ -391,6 +433,92 @@ export type favouritesUncheckedUpdateManyWithoutAccountsNestedInput = {
   updateMany?:
     | Prisma.favouritesUpdateManyWithWhereWithoutAccountsInput
     | Prisma.favouritesUpdateManyWithWhereWithoutAccountsInput[];
+  deleteMany?: Prisma.favouritesScalarWhereInput | Prisma.favouritesScalarWhereInput[];
+};
+
+export type favouritesCreateNestedManyWithoutRemote_statusesInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.favouritesCreateWithoutRemote_statusesInput,
+        Prisma.favouritesUncheckedCreateWithoutRemote_statusesInput
+      >
+    | Prisma.favouritesCreateWithoutRemote_statusesInput[]
+    | Prisma.favouritesUncheckedCreateWithoutRemote_statusesInput[];
+  connectOrCreate?:
+    | Prisma.favouritesCreateOrConnectWithoutRemote_statusesInput
+    | Prisma.favouritesCreateOrConnectWithoutRemote_statusesInput[];
+  createMany?: Prisma.favouritesCreateManyRemote_statusesInputEnvelope;
+  connect?: Prisma.favouritesWhereUniqueInput | Prisma.favouritesWhereUniqueInput[];
+};
+
+export type favouritesUncheckedCreateNestedManyWithoutRemote_statusesInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.favouritesCreateWithoutRemote_statusesInput,
+        Prisma.favouritesUncheckedCreateWithoutRemote_statusesInput
+      >
+    | Prisma.favouritesCreateWithoutRemote_statusesInput[]
+    | Prisma.favouritesUncheckedCreateWithoutRemote_statusesInput[];
+  connectOrCreate?:
+    | Prisma.favouritesCreateOrConnectWithoutRemote_statusesInput
+    | Prisma.favouritesCreateOrConnectWithoutRemote_statusesInput[];
+  createMany?: Prisma.favouritesCreateManyRemote_statusesInputEnvelope;
+  connect?: Prisma.favouritesWhereUniqueInput | Prisma.favouritesWhereUniqueInput[];
+};
+
+export type favouritesUpdateManyWithoutRemote_statusesNestedInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.favouritesCreateWithoutRemote_statusesInput,
+        Prisma.favouritesUncheckedCreateWithoutRemote_statusesInput
+      >
+    | Prisma.favouritesCreateWithoutRemote_statusesInput[]
+    | Prisma.favouritesUncheckedCreateWithoutRemote_statusesInput[];
+  connectOrCreate?:
+    | Prisma.favouritesCreateOrConnectWithoutRemote_statusesInput
+    | Prisma.favouritesCreateOrConnectWithoutRemote_statusesInput[];
+  upsert?:
+    | Prisma.favouritesUpsertWithWhereUniqueWithoutRemote_statusesInput
+    | Prisma.favouritesUpsertWithWhereUniqueWithoutRemote_statusesInput[];
+  createMany?: Prisma.favouritesCreateManyRemote_statusesInputEnvelope;
+  set?: Prisma.favouritesWhereUniqueInput | Prisma.favouritesWhereUniqueInput[];
+  disconnect?: Prisma.favouritesWhereUniqueInput | Prisma.favouritesWhereUniqueInput[];
+  delete?: Prisma.favouritesWhereUniqueInput | Prisma.favouritesWhereUniqueInput[];
+  connect?: Prisma.favouritesWhereUniqueInput | Prisma.favouritesWhereUniqueInput[];
+  update?:
+    | Prisma.favouritesUpdateWithWhereUniqueWithoutRemote_statusesInput
+    | Prisma.favouritesUpdateWithWhereUniqueWithoutRemote_statusesInput[];
+  updateMany?:
+    | Prisma.favouritesUpdateManyWithWhereWithoutRemote_statusesInput
+    | Prisma.favouritesUpdateManyWithWhereWithoutRemote_statusesInput[];
+  deleteMany?: Prisma.favouritesScalarWhereInput | Prisma.favouritesScalarWhereInput[];
+};
+
+export type favouritesUncheckedUpdateManyWithoutRemote_statusesNestedInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.favouritesCreateWithoutRemote_statusesInput,
+        Prisma.favouritesUncheckedCreateWithoutRemote_statusesInput
+      >
+    | Prisma.favouritesCreateWithoutRemote_statusesInput[]
+    | Prisma.favouritesUncheckedCreateWithoutRemote_statusesInput[];
+  connectOrCreate?:
+    | Prisma.favouritesCreateOrConnectWithoutRemote_statusesInput
+    | Prisma.favouritesCreateOrConnectWithoutRemote_statusesInput[];
+  upsert?:
+    | Prisma.favouritesUpsertWithWhereUniqueWithoutRemote_statusesInput
+    | Prisma.favouritesUpsertWithWhereUniqueWithoutRemote_statusesInput[];
+  createMany?: Prisma.favouritesCreateManyRemote_statusesInputEnvelope;
+  set?: Prisma.favouritesWhereUniqueInput | Prisma.favouritesWhereUniqueInput[];
+  disconnect?: Prisma.favouritesWhereUniqueInput | Prisma.favouritesWhereUniqueInput[];
+  delete?: Prisma.favouritesWhereUniqueInput | Prisma.favouritesWhereUniqueInput[];
+  connect?: Prisma.favouritesWhereUniqueInput | Prisma.favouritesWhereUniqueInput[];
+  update?:
+    | Prisma.favouritesUpdateWithWhereUniqueWithoutRemote_statusesInput
+    | Prisma.favouritesUpdateWithWhereUniqueWithoutRemote_statusesInput[];
+  updateMany?:
+    | Prisma.favouritesUpdateManyWithWhereWithoutRemote_statusesInput
+    | Prisma.favouritesUpdateManyWithWhereWithoutRemote_statusesInput[];
   deleteMany?: Prisma.favouritesScalarWhereInput | Prisma.favouritesScalarWhereInput[];
 };
 
@@ -481,14 +609,16 @@ export type favouritesUncheckedUpdateManyWithoutStatusesNestedInput = {
 };
 
 export type favouritesCreateWithoutAccountsInput = {
-  id?: string | null;
+  id: string;
   created_at?: string;
-  statuses: Prisma.statusesCreateNestedOneWithoutFavouritesInput;
+  statuses?: Prisma.statusesCreateNestedOneWithoutFavouritesInput;
+  remote_statuses?: Prisma.remote_statusesCreateNestedOneWithoutFavouritesInput;
 };
 
 export type favouritesUncheckedCreateWithoutAccountsInput = {
-  id?: string | null;
-  status_id: string;
+  id: string;
+  local_status_id?: string | null;
+  remote_status_id?: string | null;
   created_at?: string;
 };
 
@@ -536,21 +666,80 @@ export type favouritesScalarWhereInput = {
   AND?: Prisma.favouritesScalarWhereInput | Prisma.favouritesScalarWhereInput[];
   OR?: Prisma.favouritesScalarWhereInput[];
   NOT?: Prisma.favouritesScalarWhereInput | Prisma.favouritesScalarWhereInput[];
-  id?: Prisma.StringNullableFilter<"favourites"> | string | null;
+  id?: Prisma.StringFilter<"favourites"> | string;
   account_id?: Prisma.StringFilter<"favourites"> | string;
-  status_id?: Prisma.StringFilter<"favourites"> | string;
+  local_status_id?: Prisma.StringNullableFilter<"favourites"> | string | null;
+  remote_status_id?: Prisma.StringNullableFilter<"favourites"> | string | null;
   created_at?: Prisma.StringFilter<"favourites"> | string;
 };
 
-export type favouritesCreateWithoutStatusesInput = {
-  id?: string | null;
+export type favouritesCreateWithoutRemote_statusesInput = {
+  id: string;
   created_at?: string;
+  statuses?: Prisma.statusesCreateNestedOneWithoutFavouritesInput;
+  accounts: Prisma.accountsCreateNestedOneWithoutFavouritesInput;
+};
+
+export type favouritesUncheckedCreateWithoutRemote_statusesInput = {
+  id: string;
+  account_id: string;
+  local_status_id?: string | null;
+  created_at?: string;
+};
+
+export type favouritesCreateOrConnectWithoutRemote_statusesInput = {
+  where: Prisma.favouritesWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.favouritesCreateWithoutRemote_statusesInput,
+    Prisma.favouritesUncheckedCreateWithoutRemote_statusesInput
+  >;
+};
+
+export type favouritesCreateManyRemote_statusesInputEnvelope = {
+  data:
+    | Prisma.favouritesCreateManyRemote_statusesInput
+    | Prisma.favouritesCreateManyRemote_statusesInput[];
+};
+
+export type favouritesUpsertWithWhereUniqueWithoutRemote_statusesInput = {
+  where: Prisma.favouritesWhereUniqueInput;
+  update: Prisma.XOR<
+    Prisma.favouritesUpdateWithoutRemote_statusesInput,
+    Prisma.favouritesUncheckedUpdateWithoutRemote_statusesInput
+  >;
+  create: Prisma.XOR<
+    Prisma.favouritesCreateWithoutRemote_statusesInput,
+    Prisma.favouritesUncheckedCreateWithoutRemote_statusesInput
+  >;
+};
+
+export type favouritesUpdateWithWhereUniqueWithoutRemote_statusesInput = {
+  where: Prisma.favouritesWhereUniqueInput;
+  data: Prisma.XOR<
+    Prisma.favouritesUpdateWithoutRemote_statusesInput,
+    Prisma.favouritesUncheckedUpdateWithoutRemote_statusesInput
+  >;
+};
+
+export type favouritesUpdateManyWithWhereWithoutRemote_statusesInput = {
+  where: Prisma.favouritesScalarWhereInput;
+  data: Prisma.XOR<
+    Prisma.favouritesUpdateManyMutationInput,
+    Prisma.favouritesUncheckedUpdateManyWithoutRemote_statusesInput
+  >;
+};
+
+export type favouritesCreateWithoutStatusesInput = {
+  id: string;
+  created_at?: string;
+  remote_statuses?: Prisma.remote_statusesCreateNestedOneWithoutFavouritesInput;
   accounts: Prisma.accountsCreateNestedOneWithoutFavouritesInput;
 };
 
 export type favouritesUncheckedCreateWithoutStatusesInput = {
-  id?: string | null;
+  id: string;
   account_id: string;
+  remote_status_id?: string | null;
   created_at?: string;
 };
 
@@ -595,50 +784,86 @@ export type favouritesUpdateManyWithWhereWithoutStatusesInput = {
 };
 
 export type favouritesCreateManyAccountsInput = {
-  id?: string | null;
-  status_id: string;
+  id: string;
+  local_status_id?: string | null;
+  remote_status_id?: string | null;
   created_at?: string;
 };
 
 export type favouritesUpdateWithoutAccountsInput = {
-  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
-  statuses?: Prisma.statusesUpdateOneRequiredWithoutFavouritesNestedInput;
+  statuses?: Prisma.statusesUpdateOneWithoutFavouritesNestedInput;
+  remote_statuses?: Prisma.remote_statusesUpdateOneWithoutFavouritesNestedInput;
 };
 
 export type favouritesUncheckedUpdateWithoutAccountsInput = {
-  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  local_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type favouritesUncheckedUpdateManyWithoutAccountsInput = {
-  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  local_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+};
+
+export type favouritesCreateManyRemote_statusesInput = {
+  id: string;
+  account_id: string;
+  local_status_id?: string | null;
+  created_at?: string;
+};
+
+export type favouritesUpdateWithoutRemote_statusesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  statuses?: Prisma.statusesUpdateOneWithoutFavouritesNestedInput;
+  accounts?: Prisma.accountsUpdateOneRequiredWithoutFavouritesNestedInput;
+};
+
+export type favouritesUncheckedUpdateWithoutRemote_statusesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  local_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+};
+
+export type favouritesUncheckedUpdateManyWithoutRemote_statusesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  local_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type favouritesCreateManyStatusesInput = {
-  id?: string | null;
+  id: string;
   account_id: string;
+  remote_status_id?: string | null;
   created_at?: string;
 };
 
 export type favouritesUpdateWithoutStatusesInput = {
-  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  remote_statuses?: Prisma.remote_statusesUpdateOneWithoutFavouritesNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutFavouritesNestedInput;
 };
 
 export type favouritesUncheckedUpdateWithoutStatusesInput = {
-  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type favouritesUncheckedUpdateManyWithoutStatusesInput = {
-  id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -648,9 +873,11 @@ export type favouritesSelect<
   {
     id?: boolean;
     account_id?: boolean;
-    status_id?: boolean;
+    local_status_id?: boolean;
+    remote_status_id?: boolean;
     created_at?: boolean;
-    statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+    statuses?: boolean | Prisma.favourites$statusesArgs<ExtArgs>;
+    remote_statuses?: boolean | Prisma.favourites$remote_statusesArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
   ExtArgs["result"]["favourites"]
@@ -662,9 +889,11 @@ export type favouritesSelectCreateManyAndReturn<
   {
     id?: boolean;
     account_id?: boolean;
-    status_id?: boolean;
+    local_status_id?: boolean;
+    remote_status_id?: boolean;
     created_at?: boolean;
-    statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+    statuses?: boolean | Prisma.favourites$statusesArgs<ExtArgs>;
+    remote_statuses?: boolean | Prisma.favourites$remote_statusesArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
   ExtArgs["result"]["favourites"]
@@ -676,9 +905,11 @@ export type favouritesSelectUpdateManyAndReturn<
   {
     id?: boolean;
     account_id?: boolean;
-    status_id?: boolean;
+    local_status_id?: boolean;
+    remote_status_id?: boolean;
     created_at?: boolean;
-    statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+    statuses?: boolean | Prisma.favourites$statusesArgs<ExtArgs>;
+    remote_statuses?: boolean | Prisma.favourites$remote_statusesArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
   ExtArgs["result"]["favourites"]
@@ -687,32 +918,36 @@ export type favouritesSelectUpdateManyAndReturn<
 export type favouritesSelectScalar = {
   id?: boolean;
   account_id?: boolean;
-  status_id?: boolean;
+  local_status_id?: boolean;
+  remote_status_id?: boolean;
   created_at?: boolean;
 };
 
 export type favouritesOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "id" | "account_id" | "status_id" | "created_at",
+  "id" | "account_id" | "local_status_id" | "remote_status_id" | "created_at",
   ExtArgs["result"]["favourites"]
 >;
 export type favouritesInclude<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+  statuses?: boolean | Prisma.favourites$statusesArgs<ExtArgs>;
+  remote_statuses?: boolean | Prisma.favourites$remote_statusesArgs<ExtArgs>;
   accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
 };
 export type favouritesIncludeCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+  statuses?: boolean | Prisma.favourites$statusesArgs<ExtArgs>;
+  remote_statuses?: boolean | Prisma.favourites$remote_statusesArgs<ExtArgs>;
   accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
 };
 export type favouritesIncludeUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+  statuses?: boolean | Prisma.favourites$statusesArgs<ExtArgs>;
+  remote_statuses?: boolean | Prisma.favourites$remote_statusesArgs<ExtArgs>;
   accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
 };
 
@@ -721,14 +956,16 @@ export type $favouritesPayload<
 > = {
   name: "favourites";
   objects: {
-    statuses: Prisma.$statusesPayload<ExtArgs>;
+    statuses: Prisma.$statusesPayload<ExtArgs> | null;
+    remote_statuses: Prisma.$remote_statusesPayload<ExtArgs> | null;
     accounts: Prisma.$accountsPayload<ExtArgs>;
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
-      id: string | null;
+      id: string;
       account_id: string;
-      status_id: string;
+      local_status_id: string | null;
+      remote_status_id: string | null;
       created_at: string;
     },
     ExtArgs["result"]["favourites"]
@@ -1268,17 +1505,29 @@ export interface Prisma__favouritesClient<
   GlobalOmitOptions = {},
 > extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise";
-  statuses<T extends Prisma.statusesDefaultArgs<ExtArgs> = {}>(
-    args?: Prisma.Subset<T, Prisma.statusesDefaultArgs<ExtArgs>>,
+  statuses<T extends Prisma.favourites$statusesArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.favourites$statusesArgs<ExtArgs>>,
   ): Prisma.Prisma__statusesClient<
-    | runtime.Types.Result.GetResult<
-        Prisma.$statusesPayload<ExtArgs>,
-        T,
-        "findUniqueOrThrow",
-        GlobalOmitOptions
-      >
-    | Null,
-    Null,
+    runtime.Types.Result.GetResult<
+      Prisma.$statusesPayload<ExtArgs>,
+      T,
+      "findUniqueOrThrow",
+      GlobalOmitOptions
+    > | null,
+    null,
+    ExtArgs,
+    GlobalOmitOptions
+  >;
+  remote_statuses<T extends Prisma.favourites$remote_statusesArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.favourites$remote_statusesArgs<ExtArgs>>,
+  ): Prisma.Prisma__remote_statusesClient<
+    runtime.Types.Result.GetResult<
+      Prisma.$remote_statusesPayload<ExtArgs>,
+      T,
+      "findUniqueOrThrow",
+      GlobalOmitOptions
+    > | null,
+    null,
     ExtArgs,
     GlobalOmitOptions
   >;
@@ -1329,7 +1578,8 @@ export interface Prisma__favouritesClient<
 export interface favouritesFieldRefs {
   readonly id: Prisma.FieldRef<"favourites", "String">;
   readonly account_id: Prisma.FieldRef<"favourites", "String">;
-  readonly status_id: Prisma.FieldRef<"favourites", "String">;
+  readonly local_status_id: Prisma.FieldRef<"favourites", "String">;
+  readonly remote_status_id: Prisma.FieldRef<"favourites", "String">;
   readonly created_at: Prisma.FieldRef<"favourites", "String">;
 }
 
@@ -1760,6 +2010,48 @@ export type favouritesDeleteManyArgs<
    * Limit how many favourites to delete.
    */
   limit?: number;
+};
+
+/**
+ * favourites.statuses
+ */
+export type favourites$statusesArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the statuses
+   */
+  select?: Prisma.statusesSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the statuses
+   */
+  omit?: Prisma.statusesOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.statusesInclude<ExtArgs> | null;
+  where?: Prisma.statusesWhereInput;
+};
+
+/**
+ * favourites.remote_statuses
+ */
+export type favourites$remote_statusesArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the remote_statuses
+   */
+  select?: Prisma.remote_statusesSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the remote_statuses
+   */
+  omit?: Prisma.remote_statusesOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.remote_statusesInclude<ExtArgs> | null;
+  where?: Prisma.remote_statusesWhereInput;
 };
 
 /**

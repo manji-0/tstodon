@@ -6,16 +6,22 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
  * @param accountId
- * @param reblogOfId
+ * @param localStatusId
+ * @param remoteStatusId
  */
 export const deleteReblogOf = $runtime.makeTypedQueryFactory(
-  "DELETE FROM statuses WHERE account_id = $1 AND kind = 'LocalReblog' AND reblog_of_id = $2",
+  "DELETE FROM statuses\nWHERE account_id = $1 AND kind = 'LocalReblog'\nAND (reblog_of_id = $2 OR reblog_of_remote_id = $3)",
 ) as (
   accountId: string,
-  reblogOfId: string,
+  localStatusId: string | null,
+  remoteStatusId: string | null,
 ) => $runtime.TypedSql<deleteReblogOf.Parameters, deleteReblogOf.Result>;
 
 export namespace deleteReblogOf {
-  export type Parameters = [accountId: string, reblogOfId: string];
+  export type Parameters = [
+    accountId: string,
+    localStatusId: string | null,
+    remoteStatusId: string | null,
+  ];
   export type Result = {};
 }
