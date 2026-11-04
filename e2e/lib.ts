@@ -146,7 +146,7 @@ const mailboxText = (instance: E2eInstance, email: string): string => {
 };
 
 /** A cookie-keeping client for one instance: what a browser does during sign-up. */
-const browserFor = (origin: string) => {
+const browserFor = (origin: string): E2eBrowser => {
   const cookies = new Map<string, string>();
   return async (path: string, init: RequestInit = {}): Promise<Response> => {
     const headers = new Headers(init.headers);
@@ -175,15 +175,18 @@ const IssuedToken = z.object({ access_token: z.string() });
 
 const OOB = "urn:ietf:wg:oauth:2.0:oob";
 
+/** A browser signed in to one instance: requests carry its session cookie. */
+export type E2eBrowser = (path: string, init?: RequestInit) => Promise<Response>;
+
 /**
  * Sign up on `origin` (confirm the email link, then a software passkey), authorize an app through the
- * consent page, and return its bearer token. The username is the email's
- * local part, sanitized as account usernames are.
+ * consent page, and return its bearer token with the signed-in browser. The
+ * username is the email's local part, sanitized as account usernames are.
  */
-export const authHeaders = async (
+const signUpBrowser = async (
   origin: string,
   email: string,
-): Promise<Record<string, string>> => {
+): Promise<Readonly<{ headers: Record<string, string>; browser: E2eBrowser }>> => {
   const username = (email.split("@")[0] ?? "")
     .toLowerCase()
     .replaceAll("-", "_")
@@ -261,8 +264,12 @@ export const authHeaders = async (
     }),
   });
   const token = expectParsed("token", schemaResult(IssuedToken), await tokenResponse.json());
-  return { Authorization: `Bearer ${token.access_token}` };
+  return { headers: { Authorization: `Bearer ${token.access_token}` }, browser };
 };
+
+/** {@link signUpBrowser}'s bearer token alone. */
+export const authHeaders = async (origin: string, email: string): Promise<Record<string, string>> =>
+  (await signUpBrowser(origin, email)).headers;
 
 const unwrapD1Results = (raw: unknown): unknown[] => {
   const parsed = parseD1ExecuteEnvelope(raw);
@@ -535,6 +542,8 @@ export const openStream = async (
 export type E2eUser = Readonly<{
   origin: string;
   headers: Record<string, string>;
+  /** The browser the user signed up with, for the server-rendered settings pages. */
+  browser: E2eBrowser;
   id: string;
   username: string;
   acct: string;
@@ -545,7 +554,7 @@ const runSuffix = Date.now().toString(36).slice(-6);
 
 /** Sign up a fresh user on `origin`; the name gets a per-run suffix so reruns need no reset. */
 export const signUp = async (origin: string, name: string): Promise<E2eUser> => {
-  const headers = await authHeaders(origin, `${name}-${runSuffix}@e2e.example`);
+  const { headers, browser } = await signUpBrowser(origin, `${name}-${runSuffix}@e2e.example`);
   const account = await api(
     origin,
     headers,
@@ -558,6 +567,7 @@ export const signUp = async (origin: string, name: string): Promise<E2eUser> => 
   return {
     origin,
     headers,
+    browser,
     id,
     username: account.username,
     acct: `@${account.username}@${domain}`,

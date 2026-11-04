@@ -46,23 +46,25 @@ pnpm e2e:federation
 
 ## Scenarios
 
-| Script                | Command                                   | Coverage                                                                                                                                                                                         |
-| --------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Smoke                 | `pnpm e2e:federation`                     | Nodeinfo, provision, WebFinger, actor docs, host cross-fetch                                                                                                                                     |
-| Follow→Create         | `pnpm e2e:federation:follow-create`       | Signed Follow into A; ExpandFollowers outbox target; Create into B → `remote_statuses`                                                                                                           |
-| Interactions          | `pnpm e2e:federation:interactions`        | Undo Follow; Like; Announce; Undo Like (+ count asserts)                                                                                                                                         |
-| Delete + shared inbox | `pnpm e2e:federation:delete-shared-inbox` | Shared-inbox fan-out target; Create via `/inbox`; Delete clears `remote_statuses`                                                                                                                |
-| Accept                | `pnpm e2e:federation:accept`              | Unlocked Follow enqueues targeted Accept; delivered to follower inbox                                                                                                                            |
-| Remote follow         | `pnpm e2e:federation:remote-follow`       | A's user resolves and follows B's user (Follow → Accept, follower count on B); B's post reaches A's home, public, hashtag and list timelines and streams; Delete removes it; unfollow sends Undo |
-| Remote updates        | `pnpm e2e:federation:remote-updates`      | Outbox backfill on A's profile view; B's boost of a third user's note as a reblog on A's home; B's edit (`edited_at`); B's poll on A, A's vote counted on B, B's `Update(Question)` back on A    |
+| Script                | Command                                   | Coverage                                                                                                                                                                                                                               |
+| --------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Smoke                 | `pnpm e2e:federation`                     | Nodeinfo, provision, WebFinger, actor docs, host cross-fetch                                                                                                                                                                           |
+| Follow→Create         | `pnpm e2e:federation:follow-create`       | Signed Follow into A; ExpandFollowers outbox target; Create into B → `remote_statuses`                                                                                                                                                 |
+| Interactions          | `pnpm e2e:federation:interactions`        | Undo Follow; Like; Announce; Undo Like (+ count asserts)                                                                                                                                                                               |
+| Delete + shared inbox | `pnpm e2e:federation:delete-shared-inbox` | Shared-inbox fan-out target; Create via `/inbox`; Delete clears `remote_statuses`                                                                                                                                                      |
+| Accept                | `pnpm e2e:federation:accept`              | Unlocked Follow enqueues targeted Accept; delivered to follower inbox                                                                                                                                                                  |
+| Remote follow         | `pnpm e2e:federation:remote-follow`       | A's user resolves and follows B's user (Follow → Accept, follower count on B); B's post reaches A's home, public, hashtag and list timelines and streams; Delete removes it; unfollow sends Undo                                       |
+| Remote updates        | `pnpm e2e:federation:remote-updates`      | Outbox backfill on A's profile view; B's boost of a third user's note as a reblog on A's home; B's edit (`edited_at`); B's poll on A, A's vote counted on B, B's `Update(Question)` back on A                                          |
+| Migration             | `pnpm e2e:federation:migration`           | Bob on B adds Alice on A as an alias (`/settings/aliases`); Alice moves to Bob (`/settings/migration`): `moved` on A, posting refused, B's `Move` handling moves Carol's follow to Bob, A moves Dave's local follow to a follow of Bob |
 
 ### Local peer fetch
 
-The first five scenarios pre-seed `remote_actors` and sign activities on the host, then accept either Worker delivery or a host-driven signed POST. The remote follow and remote updates scenarios use only the client API of each instance: every fetch, WebFinger lookup, and delivery between A and B runs in the Workers. Both sign up fresh users with a per-run suffix, so they rerun against the same state without a reset.
+The first five scenarios pre-seed `remote_actors` and sign activities on the host, then accept either Worker delivery or a host-driven signed POST. The remote follow, remote updates, and migration scenarios use only the client API and the server-rendered settings pages of each instance: every fetch, WebFinger lookup, and delivery between A and B runs in the Workers. Both sign up fresh users with a per-run suffix, so they rerun against the same state without a reset.
 
 The remote updates scenario waits for B's debounced `Update(Question)`. Miniflare honours queue `delaySeconds`, so with Mastodon's default of 180 seconds the step takes three minutes; `e2e/a.wrangler.jsonc` and `e2e/b.wrangler.jsonc` set `POLL_UPDATE_DELAY_SECONDS` to `5`.
 
+Behind an HTTP proxy (`HTTPS_PROXY` set), start the instances with `NO_PROXY=127.0.0.1,localhost`. The Workers' outbound fetches use the proxy otherwise, and it cannot reach the other instance on loopback, so search finds no remote account.
+
 ### Not covered locally
 
-- Account Move: tstodon handles an inbound `Move` but cannot send one, so two instances cannot exercise it. The Vitest suite covers the inbound side.
 - Remote accounts show a port-less `acct`: `remote_actors.domain` is the actor URL's hostname, so B's user appears on A as `@bob@127.0.0.1`, not `@bob@127.0.0.1:8792`. Production domains carry no port. The scenarios match accounts by `uri`.
