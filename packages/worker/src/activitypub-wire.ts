@@ -4,12 +4,25 @@ import { booleanish } from "./form-values";
 
 export const JsonObjectSchema = z.record(z.string(), z.unknown());
 
+const ObjectReferenceSchema = z.union([
+  z.string().min(1),
+  z.object({ id: z.string().min(1) }).passthrough(),
+]);
+
 export const ActivityJsonSchema = z
   .object({
     id: z.string().min(1),
     type: z.string().min(1),
     actor: z.string().min(1),
-    object: z.union([z.string().min(1), z.object({ id: z.string().min(1) }).passthrough()]),
+    /**
+     * One object. A list (a `Flag` names the reported account and posts) is
+     * read as its first entry here; a handler that needs them all reads the
+     * raw activity.
+     */
+    object: z.union([
+      ObjectReferenceSchema,
+      z.tuple([ObjectReferenceSchema], ObjectReferenceSchema).transform(([first]) => first),
+    ]),
   })
   .passthrough();
 

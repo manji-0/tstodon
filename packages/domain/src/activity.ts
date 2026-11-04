@@ -65,6 +65,17 @@ const MoveSchema = z.object({
   object: z.string().min(1),
 });
 
+/**
+ * A report from another server. `object` is the first object it lists; the
+ * rest, and the `content` comment, are read from the raw activity.
+ */
+const FlagSchema = z.object({
+  kind: z.literal("Flag"),
+  id: ActivityId.schema,
+  actor: z.string().min(1),
+  object: z.string().min(1),
+});
+
 const RelationshipActivitySchema = z.discriminatedUnion("kind", [
   FollowSchema,
   UndoSchema,
@@ -80,6 +91,7 @@ export const ActivitySchema = z.discriminatedUnion("kind", [
   MoveSchema,
   LikeSchema,
   AnnounceSchema,
+  FlagSchema,
 ]);
 
 export type Activity = z.infer<typeof ActivitySchema>;

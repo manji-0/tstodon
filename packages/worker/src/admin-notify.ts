@@ -13,8 +13,10 @@ export const notifyAdmins = async (
   env: Env,
   input: Readonly<{
     kind: "admin.report" | "admin.sign_up";
-    /** The reporter, or the new user. */
+    /** The reporter, or the new user: a local id, or `r_…` for a remote reporter. */
     fromAccountId: string;
+    /** The reporter's actor URI when it is a remote actor. */
+    fromActorUri?: string;
     reportId?: string;
   }>,
 ): Promise<Result<void, RepositoryError>> => {
@@ -29,6 +31,7 @@ export const notifyAdmins = async (
         notifyAccount(env, {
           accountId,
           fromAccountId: input.fromAccountId,
+          ...(input.fromActorUri ? { fromActorUri: input.fromActorUri } : {}),
           kind: input.kind,
           ...(input.reportId ? { reportId: input.reportId } : {}),
         }),

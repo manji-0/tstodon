@@ -72,6 +72,7 @@ import { outboundFollowAnswer } from "../outbound-follow";
 import { acceptOutboundFollow, rejectOutboundFollow } from "../outbound-follow-store";
 import { RemoteAccountId } from "../remote-account-id";
 import { applyRemoteMove } from "../remote-move";
+import { receiveRemoteFlag } from "../remote-flag";
 import { instanceActorDocument, instanceActorKeys } from "../instance-actor";
 import { listAccountAliases } from "../account-alias-store";
 import { findAccountMove } from "../account-move-store";
@@ -441,6 +442,12 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
           : await rejectOutboundFollow(c.env.DB, answer.value);
       if (answered.isErr()) {
         return jsonRepositoryError(c, answered.error.message);
+      }
+    }
+    if (activity.kind === "Flag") {
+      const flagged = await receiveRemoteFlag(c.env, identity.value, signer.actor, json.value);
+      if (flagged.isErr()) {
+        return jsonRepositoryError(c, flagged.error.message);
       }
     }
     if (activity.kind === "Move") {
