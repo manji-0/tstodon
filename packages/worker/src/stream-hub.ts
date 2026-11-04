@@ -1,3 +1,4 @@
+import { ANONYMOUS_HUB } from "./stream-access";
 import { DurableObject } from "cloudflare:workers";
 import {
   StreamChannel,
@@ -87,6 +88,14 @@ export const SSE_HEARTBEAT_MS = 15_000;
 
 /** Frames queued for a client that stopped reading before its connection is dropped. */
 const MAX_SSE_BACKLOG = 256;
+
+/**
+ * Open SSE connections per hub. Unlike a hibernating WebSocket, an SSE
+ * response keeps the Durable Object awake and billed, and every tokenless
+ * client shares the anonymous hub, so both are bounded.
+ */
+export const MAX_ACCOUNT_EVENT_STREAMS = 32;
+export const MAX_ANONYMOUS_EVENT_STREAMS = 64;
 
 /** One open `text/event-stream` response: the stream it holds and how to write to it. */
 type EventStreamConnection = Readonly<{
@@ -208,6 +217,10 @@ export class StreamHub extends DurableObject<Env> {
 
   /** An SSE response for `state`'s one stream, which `publish` writes to until the client goes. */
   private async openEventStream(hub: string, state: SocketState): Promise<Response> {
+    const limit = hub === ANONYMOUS_HUB ? MAX_ANONYMOUS_EVENT_STREAMS : MAX_ACCOUNT_EVENT_STREAMS;
+    if (this.eventStreams.size >= limit) {
+      return Response.json({ error: "Too many streaming connections" }, { status: 429 });
+    }
     const refusal = this.admit([], state.channels);
     if (refusal) {
       const error = streamRefusalError(refusal);

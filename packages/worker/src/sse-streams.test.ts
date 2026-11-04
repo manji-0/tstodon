@@ -4,7 +4,7 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { channelOf, openEventStream, requestEventStream } from "../test/sse-fixture";
-import { MAX_HUB_TAGGED_CHANNELS, SSE_HEARTBEAT_MS } from "./stream-hub";
+import { MAX_ACCOUNT_EVENT_STREAMS, MAX_HUB_TAGGED_CHANNELS, SSE_HEARTBEAT_MS } from "./stream-hub";
 
 const ORIGIN = "https://example.com";
 
@@ -257,6 +257,27 @@ describe("streaming over SSE", () => {
       await stream.cancel();
     }
     await eventually(opened[0]?.hub ?? "", 0);
+  });
+
+  it("refuse an SSE connection past the per-account limit, and admit one after a disconnect", async () => {
+    const email = "sse-connections@example.com";
+    const opened = [];
+    for (let index = 0; index < MAX_ACCOUNT_EVENT_STREAMS; index += 1) {
+      opened.push(await openEventStream("/public", { email }));
+    }
+    const refused = await requestEventStream("/public", { email });
+    expect(refused.status).toBe(429);
+    await opened[0]?.cancel();
+    let admitted = await requestEventStream("/public", { email });
+    for (let attempt = 0; admitted.status === 429 && attempt < 20; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      admitted = await requestEventStream("/public", { email });
+    }
+    expect(admitted.status).toBe(200);
+    await admitted.body?.cancel();
+    for (const stream of opened.slice(1)) {
+      await stream.cancel();
+    }
   });
 
   it("drop the registry row when the client disconnects, and keep it while another connection holds it", async () => {
