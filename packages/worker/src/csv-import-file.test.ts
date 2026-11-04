@@ -31,6 +31,37 @@ const refused = (type: ImportTypeValue["kind"], bytes: Uint8Array): ImportFileEr
 const rows = (lines: ReadonlyArray<ParsedLine>) =>
   lines.map((line) => (line.kind === "Ready" ? line.row : line.failure.kind));
 
+describe("header detection", () => {
+  it("keeps a first row that only starts like a header name", () => {
+    // A list called "title" holding "acct", a block of the user "acct", a domain "domain".
+    expect(rows(parse("Lists", "title,acct\nNews,bob\n"))).toEqual([
+      { kind: "Lists", listTitle: "title", handle: "acct" },
+      { kind: "Lists", listTitle: "News", handle: "bob" },
+    ]);
+    expect(rows(parse("Blocks", "acct\nbob\n"))).toEqual([
+      { kind: "Blocks", handle: "acct" },
+      { kind: "Blocks", handle: "bob" },
+    ]);
+    expect(rows(parse("DomainBlocks", "domain\nspam.example\n"))).toEqual([
+      { kind: "DomainBlocks", domain: "domain" },
+      { kind: "DomainBlocks", domain: "spam.example" },
+    ]);
+    expect(rows(parse("Following", "acct\nbob\n"))).toHaveLength(2);
+  });
+
+  it("drops a first row that is a full header", () => {
+    expect(rows(parse("Mutes", "Account address,Hide notifications\nbob,true\n"))).toEqual([
+      { kind: "Mutes", handle: "bob", hideNotifications: true },
+    ]);
+    expect(rows(parse("Following", "acct,show boosts\nbob,false\n"))).toEqual([
+      { kind: "Following", handle: "bob", reblogs: false, notify: false, languages: [] },
+    ]);
+    expect(rows(parse("Lists", "List name,Account address\nNews,bob\n"))).toEqual([
+      { kind: "Lists", listTitle: "News", handle: "bob" },
+    ]);
+  });
+});
+
 describe("parseImportFile", () => {
   it("reads Mastodon's following.csv, with its header and per-follow options", () => {
     const lines = parse(

@@ -30,16 +30,16 @@ import { newEntityId } from "./ids";
 export const IMPORTS_KEPT = 5;
 
 /**
- * An import still `Queued` after this long lost its job (the queue gave up
- * on it); it stops blocking a new import and is shown as finished.
+ * An import still `Queued` after this long lost its job; it stops blocking a
+ * new import and is shown as `Failed`.
  */
 export const IMPORT_STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 
 /** Rows written per D1 batch while a file is stored. */
 const STORE_CHUNK = 100;
 
-/** Where an import is: running its job, or done. */
-export type ImportState = "Queued" | "Finished";
+/** Where an import is: running its job, done, or stopped because its job was lost. */
+export type ImportState = "Queued" | "Finished" | "Failed";
 
 /** Rows of an import by outcome. */
 export type ImportCounts = Readonly<{
@@ -61,7 +61,7 @@ const ImportRowSchema = z.object({
   id: z.string(),
   type: z.string(),
   mode: z.string(),
-  state: z.union([z.literal("Queued"), z.literal("Finished")]),
+  state: z.union([z.literal("Queued"), z.literal("Finished"), z.literal("Failed")]),
   created_at: z.string(),
 });
 
@@ -100,7 +100,7 @@ export const createCsvImport = async (
       : "Finished";
     await db
       .prepare(
-        `UPDATE csv_imports SET state = 'Finished', finished_at = ?
+        `UPDATE csv_imports SET state = 'Failed', finished_at = ?
          WHERE account_id = ? AND state = 'Queued' AND created_at < ?`,
       )
       .bind(now, input.accountId, new Date(Date.now() - IMPORT_STALE_AFTER_MS).toISOString())
@@ -126,17 +126,23 @@ export const createCsvImport = async (
     if (inserted.meta.changes === 0) {
       return undefined;
     }
-    for (const chunk of chunkArray(input.lines, STORE_CHUNK)) {
-      await db.batch(
-        chunk.map((line) =>
-          db
-            .prepare(
-              `INSERT INTO csv_import_rows (import_id, position, input, row_json, key, outcome, reason)
-               VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            )
-            .bind(id, ...storedRow(line)),
-        ),
-      );
+    try {
+      for (const chunk of chunkArray(input.lines, STORE_CHUNK)) {
+        await db.batch(
+          chunk.map((line) =>
+            db
+              .prepare(
+                `INSERT INTO csv_import_rows (import_id, position, input, row_json, key, outcome, reason)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              )
+              .bind(id, ...storedRow(line)),
+          ),
+        );
+      }
+    } catch (error) {
+      // A half-stored import must not stay `Queued`: nothing would run it and it would block the next upload.
+      await db.prepare("DELETE FROM csv_imports WHERE id = ?").bind(id).run();
+      throw error;
     }
     await db
       .prepare(
@@ -149,6 +155,12 @@ export const createCsvImport = async (
       .run();
     return { id, state };
   });
+
+/** A `Queued` import older than {@link IMPORT_STALE_AFTER_MS} lost its job: it reads as `Failed`. */
+const staleAsFailed = (row: z.infer<typeof ImportRowSchema>): ImportState =>
+  row.state === "Queued" && Date.parse(row.created_at) < Date.now() - IMPORT_STALE_AFTER_MS
+    ? "Failed"
+    : row.state;
 
 const withCounts = async (
   db: D1Database,
@@ -174,7 +186,7 @@ const withCounts = async (
             id: row.id,
             type: type.value,
             mode: mode.value,
-            state: row.state,
+            state: staleAsFailed(row),
             createdAt: row.created_at,
             counts: countsFrom(counts.filter((count) => count.import_id === row.id)),
           },
@@ -304,22 +316,27 @@ export const listFailedRows = async (
     });
   });
 
-/** Record what happened to one row. */
+/**
+ * Record what happened to one row, and the account it resolved to when it
+ * did (see `csv_import_rows.resolved`).
+ */
 export const recordRowOutcome = async (
   db: D1Database,
   importId: string,
   position: number,
   outcome: Exclude<RowOutcomeValue, { kind: "Pending" }>,
+  resolved: string | undefined,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await db
       .prepare(
-        `UPDATE csv_import_rows SET outcome = ?, reason = ?
+        `UPDATE csv_import_rows SET outcome = ?, reason = ?, resolved = ?
          WHERE import_id = ? AND position = ?`,
       )
       .bind(
         outcome.kind,
         outcome.kind === "Failed" ? outcome.failure.kind : null,
+        resolved ?? null,
         importId,
         position,
       )
@@ -346,26 +363,52 @@ export const finishCsvImport = async (
       .run();
   });
 
-/** Which of `keys` the import's file names. */
-export const keysInFile = async (
+/** Mark an import whose job the queue gave up on; one already finished stays so. */
+export const failCsvImport = async (
   db: D1Database,
   importId: string,
-  keys: ReadonlyArray<string>,
-): Promise<Result<ReadonlySet<string>, RepositoryError>> => {
-  if (keys.length === 0) {
-    return ok(new Set());
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await db
+      .prepare(
+        "UPDATE csv_imports SET state = 'Failed', finished_at = ? WHERE id = ? AND state = 'Queued'",
+      )
+      .bind(nowIso(), importId)
+      .run();
+  });
+
+/** What a file row says about the entries it may name. */
+export type NamingRow = Readonly<{ key: string; resolved: string | null }>;
+
+/**
+ * The rows of the import's file that may name one of `entries`: by the
+ * account the row resolved to, or, for a row that resolved to none, by its
+ * key (the handle text).
+ */
+export const rowsNaming = async (
+  db: D1Database,
+  importId: string,
+  entries: ReadonlyArray<Readonly<{ key: string; resolved: string }>>,
+): Promise<Result<ReadonlyArray<NamingRow>, RepositoryError>> => {
+  if (entries.length === 0) {
+    return ok([]);
   }
-  const found = await runD1(async () => {
+  return runD1(async () => {
     const rows = await db
       .prepare(
-        `SELECT DISTINCT key FROM csv_import_rows
-         WHERE import_id = ? AND key ${sqlInJsonEach()}`,
+        `SELECT DISTINCT key, resolved FROM csv_import_rows
+         WHERE import_id = ? AND (
+           (resolved IS NULL AND key ${sqlInJsonEach()}) OR resolved ${sqlInJsonEach()}
+         )`,
       )
-      .bind(importId, jsonStringArray(keys))
+      .bind(
+        importId,
+        jsonStringArray(entries.map((entry) => entry.key)),
+        jsonStringArray(entries.map((entry) => entry.resolved)),
+      )
       .all();
-    return parseRows(z.object({ key: z.string() }), rows.results).map((row) => row.key);
+    return parseRows(z.object({ key: z.string(), resolved: z.string().nullable() }), rows.results);
   });
-  return found.isErr() ? err(found.error) : ok(new Set(found.value));
 };
 
 /** The titles of the lists a lists import names. */

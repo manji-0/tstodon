@@ -19,7 +19,12 @@ export type EntryTarget =
   | Readonly<{ kind: "LocalAccount"; accountId: string; actorUri: string }>
   | Readonly<{ kind: "RemoteActor"; actorUri: string }>;
 
-type Base = Readonly<{ cursor: string; key: string }>;
+/**
+ * `key` is the entry's `user@domain` (the domain is the actor's host, which
+ * can differ from the WebFinger domain of its handle); `resolved` is what a
+ * file row that resolved to this entry records (see `csv_import_rows.resolved`).
+ */
+type Base = Readonly<{ cursor: string; key: string; resolved: string }>;
 
 export type Entry =
   | (Base &
@@ -55,7 +60,12 @@ const PersonColumns = {
   actor_uri: z.string(),
 };
 
-/** The `user@domain` of a row's person, and whom it targets; `undefined` for a person no longer known. */
+/**
+ * The `user@domain` of a row's person, and whom it targets. A remote domain
+ * is the host of the actor URI: the WebFinger domain of its handle (what
+ * Mastodon exports) is not stored, so an export writes the host.
+ * `undefined` for a person no longer known.
+ */
 const person = (
   identity: InstanceIdentity,
   row: Readonly<{
@@ -135,6 +145,7 @@ const followingPage = (
               kind: "Following",
               cursor: row.cursor,
               key: who.acct.toLowerCase(),
+              resolved: who.target.actorUri,
               acct: who.acct,
               target: who.target,
               reblogs: row.reblogs !== 0,
@@ -178,7 +189,15 @@ const blocksPage = (
     const entries = rows.flatMap((row): Entry[] => {
       const who = person(identity, row);
       return who
-        ? [{ kind: "Blocks", cursor: row.cursor, key: who.acct.toLowerCase(), ...who }]
+        ? [
+            {
+              kind: "Blocks",
+              cursor: row.cursor,
+              key: who.acct.toLowerCase(),
+              resolved: who.target.actorUri,
+              ...who,
+            },
+          ]
         : [];
     });
     return page(
@@ -221,6 +240,7 @@ const mutesPage = (
               kind: "Mutes",
               cursor: row.cursor,
               key: who.acct.toLowerCase(),
+              resolved: who.target.actorUri,
               ...who,
               hideNotifications: row.notifications !== 0,
             },
@@ -254,6 +274,7 @@ const domainBlocksPage = (
         kind: "DomainBlocks",
         cursor: row.domain,
         key: row.domain,
+        resolved: row.domain,
         domain: row.domain,
       })),
       rows.map((row) => row.domain),
@@ -313,6 +334,7 @@ const listsPage = (
           kind: "Lists",
           cursor: row.cursor,
           key: listMemberKey(row.title, who.acct.toLowerCase()),
+          resolved: listMemberKey(row.title, who.target.actorUri),
           listId: row.list_id,
           title: row.title,
           acct: who.acct,
@@ -351,6 +373,7 @@ const bookmarksPage = (
         kind: "Bookmarks",
         cursor: row.status_id,
         key: row.status_id,
+        resolved: row.status_id,
         statusId: row.status_id,
         uri: `${InstanceIdentity.actorUrl(identity, row.username)}/statuses/${row.status_id}`,
       })),

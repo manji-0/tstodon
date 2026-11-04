@@ -1,7 +1,7 @@
 import type { ImportRowValue, ImportTypeValue, RowFailureValue } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { parseAccountHandle } from "./account-ref";
-import { parseCsv } from "./csv";
+import { parseCsv, unguardCell } from "./csv";
 import { normalizeDomain } from "./domain-block-store";
 
 /** The largest file accepted, in bytes. Mastodon allows 20 MB; this bounds a Worker's memory. */
@@ -66,12 +66,19 @@ export const accountKey = (localDomain: string, handle: string): string | undefi
 export const listMemberKey = (title: string, accountKeyValue: string): string =>
   `${title}${KEY_SEPARATOR}${accountKeyValue}`;
 
+/**
+ * The column names a type's header row may hold, lower case. Only a row made
+ * wholly of these that is not itself a row of the type is a header (see
+ * {@link headerColumns}); Mastodon writes none for lists, blocks, domain
+ * blocks, or bookmarks, so a first row there is data unless it looks like one
+ * of these headers.
+ */
 const HEADERS: Readonly<Record<ImportTypeValue["kind"], ReadonlyArray<string>>> = {
-  Following: ["account address", "acct"],
-  Lists: ["list name", "list_name", "title"],
+  Following: ["account address", "acct", "show boosts", "notify on new posts", "languages"],
+  Lists: ["list name", "list_name", "title", "account address", "acct"],
   Blocks: ["account address", "acct"],
-  Mutes: ["account address", "acct"],
-  DomainBlocks: ["domain"],
+  Mutes: ["account address", "acct", "hide notifications"],
+  DomainBlocks: [],
   Bookmarks: ["uri", "url", "status uri"],
 };
 
@@ -223,19 +230,30 @@ const parseLine = (
   }
 };
 
-/** The file's header record, when its first cell is one of the type's header names. */
+/**
+ * The file's header record: a first record whose every cell is a column name
+ * of the type and that is not a valid row of the type. A data row such as
+ * `title,acct` (a list called "title" holding the account "acct") is valid, so
+ * it is data; `Account address,Show boosts,...` is not, so it is a header.
+ */
 const headerColumns = (
   type: ImportTypeValue,
   first: ReadonlyArray<string> | undefined,
+  context: ImportContext,
 ): Columns | undefined => {
-  const name = first?.[0]?.trim().toLowerCase();
-  if (first === undefined || name === undefined || !HEADERS[type.kind].includes(name)) {
+  const names = HEADERS[type.kind];
+  if (
+    first === undefined ||
+    first.length === 0 ||
+    !first.every((cell) => names.includes(cell.trim().toLowerCase())) ||
+    parseLine(type, first, undefined, context).kind === "Ready"
+  ) {
     return undefined;
   }
   return new Map(
-    first.flatMap((cell, index) => {
+    first.map((cell, index) => {
       const column = cell.trim().toLowerCase();
-      return [[column === "acct" ? "account address" : column, index] as const];
+      return [column === "acct" ? "account address" : column, index] as const;
     }),
   );
 };
@@ -262,12 +280,14 @@ export const parseImportFile = (
     return err({ kind: "NotText" });
   }
   // One record more than the cap, for a header.
-  const records = parseCsv(text, MAX_IMPORT_ROWS + 1);
-  if (records.isErr()) {
-    return err({ kind: records.error.kind === "TooManyRecords" ? "TooManyRows" : "Unreadable" });
+  const parsed = parseCsv(text, MAX_IMPORT_ROWS + 1);
+  if (parsed.isErr()) {
+    return err({ kind: parsed.error.kind === "TooManyRecords" ? "TooManyRows" : "Unreadable" });
   }
-  const columns = headerColumns(type, records.value[0]);
-  const dataRecords = columns === undefined ? records.value : records.value.slice(1);
+  // An export guards cells that a spreadsheet would run as formulas; undo that.
+  const records = parsed.value.map((cells) => cells.map(unguardCell));
+  const columns = headerColumns(type, records[0], context);
+  const dataRecords = columns === undefined ? records : records.slice(1);
   if (dataRecords.length > MAX_IMPORT_ROWS) {
     return err({ kind: "TooManyRows" });
   }

@@ -1,5 +1,5 @@
 import { type ImportTypeValue, type InstanceIdentity } from "@tstodon/domain";
-import { formatCsvRecord } from "./csv";
+import { formatCsvRecord, guardCell } from "./csv";
 import { type Entry, listEntriesPage } from "./csv-entries-store";
 
 /** Entries read from D1 per page while an export streams. */
@@ -85,7 +85,9 @@ export const exportStream = (
           controller.error(new Error(page.error.message));
           return;
         }
-        text += page.value.entries.map((entry) => formatCsvRecord(exportCells(entry))).join("");
+        text += page.value.entries
+          .map((entry) => formatCsvRecord(exportCells(entry).map(guardCell)))
+          .join("");
         if (page.value.next === undefined) {
           done = true;
         } else {

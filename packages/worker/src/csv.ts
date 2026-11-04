@@ -102,3 +102,21 @@ const csvField = (cell: string): string =>
 /** One record as a CSV line, ended by LF. */
 export const formatCsvRecord = (cells: ReadonlyArray<string>): string =>
   `${cells.map(csvField).join(",")}\n`;
+
+/** The first characters that make a spreadsheet read a cell as a formula. */
+const FORMULA_START = /^[=+\-@\t\r]/;
+
+/**
+ * An export cell that a spreadsheet will show as text. Remote usernames and
+ * list titles come from other people, and a cell that starts with `=`, `+`,
+ * `-`, `@`, tab, or CR can run as a formula. A `'` before it keeps it text.
+ * A handle, domain, or URL never starts with those characters, so only free
+ * text (a list title, an attacker's username) is changed; a cell that starts
+ * with `'` gets a second one, so {@link unguardCell} undoes it exactly.
+ */
+export const guardCell = (cell: string): string =>
+  FORMULA_START.test(cell) || cell.startsWith("'") ? `'${cell}` : cell;
+
+/** The cell that {@link guardCell} wrote: a leading `'` before a formula character or another `'`. */
+export const unguardCell = (cell: string): string =>
+  /^'[=+\-@\t\r']/.test(cell) ? cell.slice(1) : cell;

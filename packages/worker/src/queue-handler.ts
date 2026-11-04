@@ -1,4 +1,5 @@
 import { OutboxJob } from "@tstodon/domain";
+import { failCsvImport } from "./csv-import-store";
 import { processOutboxJob } from "./outbox-job";
 import { writeMetric } from "./metrics";
 
@@ -38,6 +39,10 @@ export const handleQueue = async (batch: OutboxBatch, env: Env): Promise<void> =
     }
     if (outcome === "retry") {
       writeMetric(env, "outbox.job", [1], [parsed.value.kind, "failed"]);
+      if (parsed.value.kind === "ProcessCsvImport") {
+        // Nothing will run the rest of the import; show it as stopped, not as running.
+        await failCsvImport(env.DB, parsed.value.importId);
+      }
     }
     message.ack();
   }

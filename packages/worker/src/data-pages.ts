@@ -56,8 +56,16 @@ const progress = (imported: CsvImport): string => {
   return `${applied} done, ${failed} failed${pending > 0 ? `, ${pending} waiting` : ""}`;
 };
 
-const stateText = (imported: CsvImport): string =>
-  imported.state === "Queued" ? "Running" : "Finished";
+const stateText = (imported: CsvImport): string => {
+  switch (imported.state) {
+    case "Queued":
+      return "Running";
+    case "Finished":
+      return "Finished";
+    case "Failed":
+      return "Stopped before it finished";
+  }
+};
 
 const REFRESH_SCRIPT = `      setTimeout(() => location.reload(), 5000);`;
 

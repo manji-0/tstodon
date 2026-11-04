@@ -12,9 +12,16 @@ import {
   startCsvImport,
 } from "./csv-import-apply";
 import { MAX_IMPORT_BYTES, MAX_IMPORT_ROWS, parseImportFile } from "./csv-import-file";
-import { createCsvImport, findCsvImport, IMPORTS_KEPT, listFailedRows } from "./csv-import-store";
+import {
+  createCsvImport,
+  findCsvImport,
+  IMPORT_STALE_AFTER_MS,
+  IMPORTS_KEPT,
+  listFailedRows,
+} from "./csv-import-store";
 import { blockDomain } from "./domain-block-store";
 import { followAccount } from "./follow-store";
+import { handleQueue } from "./queue-handler";
 import { newEntityId } from "./ids";
 import { addListMembers, createList } from "./list-store";
 import { insertOutboundFollow, updateOutboundFollowOptions } from "./outbound-follow-store";
@@ -241,6 +248,17 @@ const upload = (
     body: form.body,
     headers: { ...form.headers, ...extra },
   });
+};
+
+/**
+ * A refused upload redirects (303) to the import page with the reason, so a
+ * browser reload re-sends nothing. The text of that page.
+ */
+const refusalPage = async (owner: User, response: Response): Promise<string> => {
+  expect(response.status).toBe(303);
+  const location = response.headers.get("location") ?? "";
+  expect(location).toMatch(/^\/settings\/import\?error=/);
+  return (await owner.fetcher(location)).text();
 };
 
 describe("data export and import", () => {
@@ -614,6 +632,259 @@ describe("data export and import", () => {
   });
 });
 
+const CORP = "corp.test";
+
+/**
+ * Run `body` with WebFinger answering `acct:<name>@corp.test` with an actor
+ * on `social.corp.test`: the handle's domain is not the actor's host, as with
+ * a Mastodon server that serves WebFinger from its apex domain.
+ */
+const withSplitDomain = async (body: () => Promise<void>) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    const resource = url.searchParams.get("resource") ?? "";
+    const name = /^acct:([^@]+)@corp\.test$/.exec(resource)?.[1];
+    if (url.hostname === CORP && url.pathname === "/.well-known/webfinger" && name) {
+      return Response.json({
+        subject: resource,
+        links: [
+          {
+            rel: "self",
+            type: "application/activity+json",
+            href: `https://social.${CORP}/users/${name}`,
+          },
+        ],
+      });
+    }
+    return new Response("nope", { status: 404 });
+  }) as typeof fetch;
+  try {
+    await body();
+  } finally {
+    globalThis.fetch = original;
+  }
+};
+
+describe("an overwrite where the handle's domain is not the actor's host", () => {
+  it("keeps what the file names, for follows, lists, blocks, and mutes", async () => {
+    const owner = await user("split_owner");
+    const stale = await remoteActor("split_old", "social.corp.test");
+    const named = await remoteActor("split_named", "social.corp.test");
+    const other = await remoteActor("split_other", "social.corp.test");
+    for (const actor of [named, stale]) {
+      await blockAccount(env.DB, owner.id, null, actor.actorUri);
+      await muteAccount(env.DB, owner.id, null, actor.actorUri, {
+        notifications: true,
+        expiresAt: null,
+      });
+      await followRemote(owner, actor, { reblogs: true, notify: false, languages: [] });
+    }
+    const list = await createList(env.DB, owner.id, { title: "Friends" });
+    if (list.isErr()) {
+      throw new Error("list");
+    }
+    await addListMembers(env.DB, list.value.id, [
+      { kind: "RemoteActor", actorUri: named.actorUri },
+      { kind: "RemoteActor", actorUri: stale.actorUri },
+    ]);
+    expect(other.actorUri).toContain("split_other");
+
+    await withSplitDomain(async () => {
+      await runImport(owner, "Blocks", "Overwrite", `split_named@${CORP}\n`);
+      await runImport(owner, "Mutes", "Overwrite", `split_named@${CORP},true\n`);
+      await runImport(owner, "Following", "Overwrite", `split_named@${CORP},true,false,\n`);
+      await runImport(owner, "Lists", "Overwrite", `Friends,split_named@${CORP}\n`);
+    });
+
+    const hosts = (keys: string[]) => keys.map((key) => key.split("@")[0]);
+    expect(hosts(await keysOf(owner, "Blocks"))).toEqual(["split_named"]);
+    expect(hosts(await keysOf(owner, "Mutes"))).toEqual(["split_named"]);
+    expect(hosts(await keysOf(owner, "Following"))).toEqual(["split_named"]);
+    expect(
+      (await keysOf(owner, "Lists")).map((key) => key.split("\u001f")[1]?.split("@")[0]),
+    ).toEqual(["split_named"]);
+  });
+});
+
+describe("import state", () => {
+  const domainLines = (text: string) => {
+    const parsed = parseImportFile({ kind: "DomainBlocks" }, new TextEncoder().encode(text), {
+      localDomain: "example.com",
+      publicOrigin: ORIGIN,
+    });
+    if (parsed.isErr()) {
+      throw new Error("parse");
+    }
+    return parsed.value;
+  };
+
+  it("leaves no import behind when storing its rows fails", async () => {
+    const owner = await user("fail_store");
+    const failing = new Proxy(env.DB, {
+      get: (target, key) =>
+        key === "batch"
+          ? async () => {
+              throw new Error("D1 batch failed");
+            }
+          : (...args: unknown[]) => Reflect.apply(Reflect.get(target, key), target, args),
+    });
+    const created = await createCsvImport(failing, {
+      accountId: owner.id,
+      type: { kind: "DomainBlocks" },
+      mode: { kind: "Merge" },
+      lines: domainLines("a.example\nb.example\n"),
+    });
+    expect(created.isErr()).toBe(true);
+    // The next upload is not held up by it.
+    const next = await createCsvImport(env.DB, {
+      accountId: owner.id,
+      type: { kind: "DomainBlocks" },
+      mode: { kind: "Merge" },
+      lines: domainLines("c.example\n"),
+    });
+    expect(next.isOk() && next.value?.state).toBe("Queued");
+    const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM csv_imports WHERE account_id = ?")
+      .bind(owner.id)
+      .first<{ n: number }>();
+    expect(count?.n).toBe(1);
+  });
+
+  it("marks an import Failed when the queue gives up on its job, and shows it as stopped", async () => {
+    const owner = await user("fail_queue");
+    const text = Array.from({ length: IMPORT_PAGE_SIZE * 2 + 1 }, (_, i) => `q${i}.example`).join(
+      "\n",
+    );
+    const queue = queueEnv();
+    const id = await startImport(queue, owner, "DomainBlocks", "Merge", text);
+    const job = queue.sent.find((entry) => entry.job.kind === "ProcessCsvImport")?.job;
+    // A queue that refuses the next page makes the job ask for a retry.
+    const refusing = new Proxy(env, {
+      get: (target, key) =>
+        key === "OUTBOX_PROCESS_QUEUE"
+          ? {
+              send: async () => {
+                throw new Error("queue down");
+              },
+            }
+          : Reflect.get(target, key),
+    });
+    const retried: boolean[] = [];
+    await handleQueue(
+      {
+        messages: [
+          {
+            body: job,
+            attempts: 1,
+            ack: () => retried.push(false),
+            retry: () => retried.push(true),
+          },
+        ],
+      },
+      refusing,
+    );
+    expect(retried).toEqual([true]);
+    expect((await findCsvImport(env.DB, owner.id, id))._unsafeUnwrap()?.state).toBe("Queued");
+
+    await handleQueue(
+      {
+        messages: [
+          {
+            body: job,
+            attempts: 3,
+            ack: () => retried.push(false),
+            retry: () => retried.push(true),
+          },
+        ],
+      },
+      refusing,
+    );
+    expect(retried).toEqual([true, false]);
+    expect((await findCsvImport(env.DB, owner.id, id))._unsafeUnwrap()?.state).toBe("Failed");
+
+    const page = await (await owner.fetcher("/settings/import")).text();
+    expect(page).toContain("Stopped before it finished");
+    expect(page).not.toContain("Running");
+    expect(page).not.toContain("setTimeout");
+    // It no longer blocks a new upload.
+    const next = await upload(owner, "DomainBlocks", "Merge", "after.example\n");
+    expect(next.headers.get("location")).toMatch(/^\/settings\/imports\/\d+$/);
+  });
+
+  it("shows an import that has been queued too long as stopped, without a refresh", async () => {
+    const owner = await user("fail_stale");
+    const id = await startImport(queueEnv(), owner, "DomainBlocks", "Merge", "old.example\n");
+    await env.DB.prepare("UPDATE csv_imports SET created_at = ? WHERE id = ?")
+      .bind(new Date(Date.now() - IMPORT_STALE_AFTER_MS - 60_000).toISOString(), id)
+      .run();
+    expect((await findCsvImport(env.DB, owner.id, id))._unsafeUnwrap()?.state).toBe("Failed");
+    for (const path of ["/settings/import", `/settings/imports/${id}`]) {
+      const page = await (await owner.fetcher(path)).text();
+      expect(page).toContain("Stopped before it finished");
+      expect(page).not.toContain("setTimeout");
+    }
+  });
+
+  it("answers a refused upload with a redirect, never a page that reloads itself", async () => {
+    const owner = await user("prg_owner");
+    const first = await upload(owner, "DomainBlocks", "Merge", "one.example\n");
+    expect(first.status).toBe(303);
+    // The import is running, so the page refreshes itself ...
+    const listing = await (await owner.fetcher("/settings/import")).text();
+    expect(listing).toContain("setTimeout");
+    // ... but a second upload is answered with a 303, whose body has no script.
+    const second = await upload(owner, "DomainBlocks", "Merge", "two.example\n");
+    expect(second.status).toBe(303);
+    expect(second.headers.get("location")).toBe("/settings/import?error=running");
+    expect(await second.text()).toBe("");
+    const shown = await (await owner.fetcher("/settings/import?error=running")).text();
+    expect(shown).toContain("An import is still running");
+  });
+});
+
+describe("spreadsheet formulas in exports", () => {
+  it("guards cells that start like a formula and imports them back unchanged", async () => {
+    const owner = await user("formula_owner");
+    const target = await user("formula_target");
+    for (const title of ["=HYPERLINK(1)", "+1", "-2", "@sum", "'quoted", "plain"]) {
+      const list = await createList(env.DB, owner.id, { title });
+      if (list.isErr()) {
+        throw new Error("list");
+      }
+      await addListMembers(env.DB, list.value.id, [{ kind: "LocalAccount", accountId: target.id }]);
+    }
+    const file = await download(owner, "lists.csv");
+    expect(lines(file).sort()).toEqual(
+      [
+        "''quoted,formula_target@example.com",
+        "'+1,formula_target@example.com",
+        "'-2,formula_target@example.com",
+        "'=HYPERLINK(1),formula_target@example.com",
+        "'@sum,formula_target@example.com",
+        "plain,formula_target@example.com",
+      ].sort(),
+    );
+    const parsed = parseImportFile({ kind: "Lists" }, new TextEncoder().encode(file), {
+      localDomain: "example.com",
+      publicOrigin: ORIGIN,
+    })._unsafeUnwrap();
+    expect(
+      parsed
+        .flatMap((line) =>
+          line.kind === "Ready" && line.row.kind === "Lists" ? [line.row.listTitle] : [],
+        )
+        .sort(),
+    ).toEqual(["'quoted", "+1", "-2", "=HYPERLINK(1)", "@sum", "plain"].sort());
+  });
+
+  it("guards a remote username that starts like a formula", async () => {
+    const owner = await user("formula_remote_owner");
+    const remote = await remoteActor("=cmd", "remote.example");
+    await blockAccount(env.DB, owner.id, null, remote.actorUri);
+    expect(lines(await download(owner, "blocks.csv"))).toEqual(["'=cmd@remote.example"]);
+  });
+});
+
 describe("/settings/export and /settings/import pages", () => {
   it("send a signed-out browser to sign in", async () => {
     for (const path of [
@@ -672,8 +943,9 @@ describe("/settings/export and /settings/import pages", () => {
   it("refuse an overwrite whose file has a row that cannot be read, and store nothing", async () => {
     const owner = await user("up_overwrite");
     const response = await upload(owner, "Blocks", "Overwrite", "fine_user\n???\n");
-    expect(response.status).toBe(422);
-    expect(await response.text()).toContain("1 rows cannot be read, so nothing was imported");
+    expect(await refusalPage(owner, response)).toContain(
+      "1 rows cannot be read, so nothing was imported",
+    );
     const stored = await env.DB.prepare(
       "SELECT COUNT(*) AS n FROM csv_imports WHERE account_id = (SELECT id FROM accounts WHERE username = ?)",
     )
@@ -686,11 +958,10 @@ describe("/settings/export and /settings/import pages", () => {
     const owner = await user("up_caps");
     const rows = Array.from({ length: MAX_IMPORT_ROWS + 1 }, (_, i) => `u${i}.example`).join("\n");
     const tooMany = await upload(owner, "DomainBlocks", "Merge", rows);
-    expect(tooMany.status).toBe(422);
-    expect(await tooMany.text()).toContain(`more than ${MAX_IMPORT_ROWS} rows`);
+    expect(await refusalPage(owner, tooMany)).toContain(`more than ${MAX_IMPORT_ROWS} rows`);
 
     const tooBig = await upload(owner, "DomainBlocks", "Merge", "x".repeat(MAX_IMPORT_BYTES + 1));
-    expect(tooBig.status).toBe(413);
+    expect(await refusalPage(owner, tooBig)).toContain("over 1 MB");
     // A file whose declared size is over the limit plus the envelope is refused before it is read.
     const huge = await upload(
       owner,
@@ -698,7 +969,7 @@ describe("/settings/export and /settings/import pages", () => {
       "Merge",
       "x".repeat(MAX_IMPORT_BYTES + 20_000),
     );
-    expect(huge.status).toBe(413);
+    expect(await refusalPage(owner, huge)).toContain("over 1 MB");
 
     const notText = await owner.fetcher("/settings/import", {
       method: "POST",
@@ -710,22 +981,20 @@ describe("/settings/export and /settings/import pages", () => {
       headers: { "content-type": "multipart/form-data; boundary=b" },
     });
     // A Blob body has a known length.
-    expect(notText.status).toBe(422);
-    expect(await notText.text()).toContain("not UTF-8 text");
+    expect(await refusalPage(owner, notText)).toContain("not UTF-8 text");
 
     const badType = await upload(owner, "Everything", "Merge", "a.example");
-    expect(badType.status).toBe(422);
+    await refusalPage(owner, badType);
     const badMode = await upload(owner, "Blocks", "Delete", "a");
-    expect(badMode.status).toBe(422);
+    await refusalPage(owner, badMode);
     const urlEncoded = await owner.fetcher("/settings/import", {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: "type=Blocks&mode=Merge&data=a",
     });
-    expect(urlEncoded.status).toBe(422);
+    await refusalPage(owner, urlEncoded);
     const empty = await upload(owner, "Blocks", "Merge", "\n\n");
-    expect(empty.status).toBe(422);
-    expect(await empty.text()).toContain("no rows");
+    expect(await refusalPage(owner, empty)).toContain("no rows");
   });
 
   it("refuse a cross-site post and store nothing", async () => {

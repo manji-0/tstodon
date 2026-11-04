@@ -15,13 +15,15 @@ import {
 import { findAccountById } from "./account-store";
 import { blockAccount, muteAccount, unblockAccount, unmuteAccount } from "./block-mute-store";
 import { type Entry, listEntriesPage } from "./csv-entries-store";
+import { listMemberKey } from "./csv-import-file";
 import {
   finishCsvImport,
   findCsvImportOwner,
-  keysInFile,
   listPendingRows,
   listTitlesInFile,
+  type NamingRow,
   recordRowOutcome,
+  rowsNaming,
 } from "./csv-import-store";
 import type { RepositoryError } from "./d1";
 import { blockDomain, normalizeDomain, unblockDomain } from "./domain-block-store";
@@ -52,14 +54,26 @@ export const IMPORT_PAGE_SIZE = 10;
 export const PRUNE_PAGE_SIZE = 50;
 
 /**
- * Seconds before the next job of an import runs. With one import running per
- * account, and the queue consumer running one job at a time, this holds the
- * rate of remote lookups to at most `IMPORT_PAGE_SIZE / IMPORT_PAGE_DELAY_SECONDS`
- * a second for the whole server.
+ * Seconds before the next job of an import runs. An import has one job in
+ * flight, so this spaces its pages: at most `IMPORT_PAGE_SIZE /
+ * IMPORT_PAGE_DELAY_SECONDS` rows a second for one import. It is not a
+ * server-wide limit: the queue consumer takes up to `maxBatchSize` (10)
+ * messages per invocation and runs them one after the other, so imports of
+ * different accounts add up, to at most 10 jobs (100 rows, each maybe a
+ * WebFinger lookup and an actor fetch) in one invocation's subrequest budget.
  */
 export const IMPORT_PAGE_DELAY_SECONDS = 2;
 
 type Applied = Exclude<RowOutcomeValue, { kind: "Pending" }>;
+
+/**
+ * What applying a row came to: the outcome, and the account the row resolved
+ * to (its actor URI; for a list row, title and actor URI, see
+ * `listMemberKey`) when one did, whatever the outcome.
+ */
+export type Attempt = Readonly<{ outcome: Applied; resolved: string | undefined }>;
+
+const unresolved = (outcome: Applied): Attempt => ({ outcome, resolved: undefined });
 
 const applied: Applied = { kind: "Applied" };
 const failed = (kind: "UnknownAccount" | "Refused" | "NotFollowed" | "Unsupported"): Applied => ({
@@ -106,12 +120,17 @@ const withAccount = async (
   identity: InstanceIdentity,
   handle: string,
   use: (ref: AccountRef) => Promise<Result<Applied, RepositoryError>>,
-): Promise<Result<Applied, RepositoryError>> => {
+  resolvedAs: (ref: AccountRef) => string = (ref) => ref.actorUri,
+): Promise<Result<Attempt, RepositoryError>> => {
   const ref = await resolveHandle(env, identity, handle);
   if (ref.isErr()) {
     return err(ref.error);
   }
-  return ref.value ? use(ref.value) : ok(failed("UnknownAccount"));
+  const resolved = ref.value;
+  if (!resolved) {
+    return ok(unresolved(failed("UnknownAccount")));
+  }
+  return (await use(resolved)).map((outcome) => ({ outcome, resolved: resolvedAs(resolved) }));
 };
 
 const isSelf = (account: LocalAccount, ref: AccountRef): boolean =>
@@ -145,7 +164,7 @@ export const applyImportRow = async (
   identity: InstanceIdentity,
   account: LocalAccount,
   row: ImportRowValue,
-): Promise<Result<Applied, RepositoryError>> => {
+): Promise<Result<Attempt, RepositoryError>> => {
   switch (row.kind) {
     case "Following":
       return withAccount(env, identity, row.handle, async (ref) => {
@@ -189,41 +208,47 @@ export const applyImportRow = async (
     case "DomainBlocks": {
       const domain = normalizeDomain(row.domain);
       if (domain === identity.domain.toLowerCase()) {
-        return ok(failed("Refused"));
+        return ok(unresolved(failed("Refused")));
       }
       const blocked = await blockDomain(env.DB, account.id, domain);
-      return blocked.map(() => applied);
+      return blocked.map(() => unresolved(applied));
     }
     case "Lists":
-      return withAccount(env, identity, row.handle, async (ref) => {
-        if (isSelf(account, ref)) {
-          return ok(failed("Refused"));
-        }
-        const member = memberOf(ref);
-        const unfollowed = await findUnfollowedRemoteMember(env.DB, account.id, [member]);
-        if (unfollowed.isErr()) {
-          return err(unfollowed.error);
-        }
-        if (unfollowed.value) {
-          return ok(failed("NotFollowed"));
-        }
-        const listId = await listFor(env.DB, account.id, row.listTitle);
-        if (listId.isErr()) {
-          return err(listId.error);
-        }
-        const added = await addListMembers(env.DB, listId.value, [member]);
-        return added.map(() => applied);
-      });
+      return withAccount(
+        env,
+        identity,
+        row.handle,
+        async (ref) => {
+          if (isSelf(account, ref)) {
+            return ok(failed("Refused"));
+          }
+          const member = memberOf(ref);
+          const unfollowed = await findUnfollowedRemoteMember(env.DB, account.id, [member]);
+          if (unfollowed.isErr()) {
+            return err(unfollowed.error);
+          }
+          if (unfollowed.value) {
+            return ok(failed("NotFollowed"));
+          }
+          const listId = await listFor(env.DB, account.id, row.listTitle);
+          if (listId.isErr()) {
+            return err(listId.error);
+          }
+          const added = await addListMembers(env.DB, listId.value, [member]);
+          return added.map(() => applied);
+        },
+        (ref) => listMemberKey(row.listTitle, ref.actorUri),
+      );
     case "Bookmarks": {
       const status = await findStatusById(env.DB, row.statusId);
       if (status.isErr()) {
         return err(status.error);
       }
       if (!status.value || !(await canViewStatus(env.DB, status.value, account.id))) {
-        return ok(failed("Unsupported"));
+        return ok(unresolved(failed("Unsupported")));
       }
       const bookmarked = await bookmarkStatus(env.DB, account.id, row.statusId);
-      return bookmarked.map(() => applied);
+      return bookmarked.map(() => unresolved(applied));
     }
   }
 };
@@ -288,6 +313,16 @@ export const startCsvImport = (env: Env, importId: string): Promise<boolean> =>
     step: { kind: "Rows", afterPosition: 0 },
   });
 
+/**
+ * Whether the file names `entry`: a row resolved to the same account, or a
+ * row that resolved to none has the same handle text. The handle text of a
+ * resolved row says nothing: its domain can differ from the actor's host.
+ */
+const isNamed = (rows: ReadonlyArray<NamingRow>, entry: Entry): boolean =>
+  rows.some((row) =>
+    row.resolved === null ? row.key === entry.key : row.resolved === entry.resolved,
+  );
+
 type ProcessJob = Extract<OutboxJob, { kind: "ProcessCsvImport" }>;
 
 /**
@@ -327,11 +362,17 @@ export const processCsvImportJob = async (env: Env, job: ProcessJob): Promise<"o
       return "retry";
     }
     for (const { position, row } of pending.value) {
-      const outcome = await applyImportRow(env, identity.value, user, row);
-      if (outcome.isErr()) {
+      const attempt = await applyImportRow(env, identity.value, user, row);
+      if (attempt.isErr()) {
         return "retry";
       }
-      const recorded = await recordRowOutcome(env.DB, job.importId, position, outcome.value);
+      const recorded = await recordRowOutcome(
+        env.DB,
+        job.importId,
+        position,
+        attempt.value.outcome,
+        attempt.value.resolved,
+      );
       if (recorded.isErr()) {
         return "retry";
       }
@@ -359,11 +400,7 @@ export const processCsvImportJob = async (env: Env, job: ProcessJob): Promise<"o
     PRUNE_PAGE_SIZE,
   );
   const named = page.isOk()
-    ? await keysInFile(
-        env.DB,
-        job.importId,
-        page.value.entries.map((entry) => entry.key),
-      )
+    ? await rowsNaming(env.DB, job.importId, page.value.entries)
     : undefined;
   const titles = type.kind === "Lists" ? await listTitlesInFile(env.DB, job.importId) : undefined;
   if (page.isErr() || named === undefined || named.isErr() || titles?.isErr()) {
@@ -371,7 +408,7 @@ export const processCsvImportJob = async (env: Env, job: ProcessJob): Promise<"o
   }
   for (const entry of page.value.entries) {
     const keep =
-      named.value.has(entry.key) ||
+      isNamed(named.value, entry) ||
       (entry.kind === "Lists" && titles?.isOk() && !titles.value.has(entry.title));
     if (!keep && (await removeEntry(env, identity.value, user, entry)).isErr()) {
       return "retry";
