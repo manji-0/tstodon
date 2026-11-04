@@ -1,1 +1,1 @@
-export { getFilters as GET } from "#src/routes/unsupported-pages";
+export { getFilters as GET, postCreateFilter as POST } from "#src/routes/filter-settings";

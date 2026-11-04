@@ -23,7 +23,7 @@ import {
 } from "../../filter-store";
 import { isTruthy, stringList } from "../../form-values";
 import { booleanish } from "../../form-values";
-import { expiresAtFromBody, filterNotFound, storedContexts } from "./shared";
+import { expiresAtFromBody, filterActionOf, filterNotFound, storedContexts } from "./shared";
 
 export const FilterV2BodySchema = z.object({
   title: z.string().optional(),
@@ -55,13 +55,6 @@ export const FilterV2BodySchema = z.object({
     )
     .optional(),
 });
-
-/**
- * Mastodon's `filter_action`: `hide` is the only action tstodon stores, and
- * anything else (an absent value, or `blur`, which belongs to API version 5)
- * falls back to `warn`, which is what the entity documents for unknown values.
- */
-const filterActionOf = (value: unknown): "warn" | "hide" => (value === "hide" ? "hide" : "warn");
 
 export const postV2Filters = async (c: Context<{ Bindings: Env }, "/api/v2/filters">) => {
   const user = await requireUser(c);

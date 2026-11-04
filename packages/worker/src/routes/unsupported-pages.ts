@@ -8,11 +8,6 @@ import { instanceName } from "./account-settings";
  * SPA fallback replaces a 404 to a browser navigation with `index.html`.
  */
 const NOTICES = {
-  filters: {
-    title: "Muted words",
-    text: 'Filters still work on this server: in the web app, choose "Filter this post" from a post\'s menu, or use an app that manages filters.',
-    alternatives: [],
-  },
   statusesCleanup: {
     title: "Automated post deletion",
     text: "This server does not delete old posts automatically. You can delete a post from its menu in the web app.",
@@ -58,7 +53,6 @@ const unsupported =
   (c: Context<{ Bindings: Env }>): Response | Promise<Response> =>
     c.html(unsupportedPage(instanceName(c.env), notice));
 
-export const getFilters = unsupported(NOTICES.filters);
 export const getStatusesCleanup = unsupported(NOTICES.statusesCleanup);
 export const getAuthEdit = unsupported(NOTICES.accountSecurity);
 export const getSettingsExport = unsupported(NOTICES.importExport);

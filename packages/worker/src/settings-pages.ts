@@ -13,7 +13,7 @@ import { escapeHtml } from "./html";
 
 export type PageMessage = Readonly<{ kind: "error" | "notice"; text: string }>;
 
-const nav = `      <p class="muted"><a href="/">Back to the web app</a> · <a href="/settings/preferences">Preferences</a></p>`;
+export const nav = `      <p class="muted"><a href="/">Back to the web app</a> · <a href="/settings/preferences">Preferences</a></p>`;
 
 type Link = Readonly<{ href: string; label: string }>;
 
@@ -58,6 +58,7 @@ const SETTINGS_SECTIONS: ReadonlyArray<
       { href: "/blocks", label: "Blocked users", about: "Accounts that cannot reach you." },
       { href: "/domain_blocks", label: "Blocked domains", about: "Servers you do not see." },
       { href: "/followed_tags", label: "Followed hashtags", about: "Hashtags in your home feed." },
+      { href: "/filters", label: "Filters", about: "Hide posts with certain words." },
     ],
   },
   {
@@ -90,7 +91,7 @@ export const settingsIndexPage = (instanceName: string, username: string): strin
       ).join("")}`,
   );
 
-const messageLine = (message: PageMessage | undefined): string =>
+export const messageLine = (message: PageMessage | undefined): string =>
   `      <p id="error" class="${message?.kind === "notice" ? "muted" : "error"}" role="alert">${message === undefined ? "" : escapeHtml(message.text)}</p>`;
 
 export const aliasesPage = (
@@ -179,7 +180,7 @@ ${messageLine(message)}`,
       : "",
   );
 
-const options = (
+export const options = (
   choices: ReadonlyArray<readonly [value: string, label: string]>,
   selected: string,
 ): string =>
@@ -190,7 +191,7 @@ const options = (
     )
     .join("");
 
-const checkbox = (
+export const checkbox = (
   id: string,
   checked: boolean,
   label: string,

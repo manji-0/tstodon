@@ -15,3 +15,11 @@ export const filterNotFound = (c: Context<{ Bindings: Env }>) =>
 
 export const storedContexts = (row: Pick<FilterRow, "context_json">): string[] =>
   parseJsonColumn(z.array(z.string()), row.context_json).unwrapOr([]);
+
+/**
+ * Mastodon's `filter_action`: `hide` is the only action tstodon stores, and
+ * anything else (an absent value, or `blur`, which belongs to API version 5)
+ * falls back to `warn`, which is what the entity documents for unknown values.
+ */
+export const filterActionOf = (value: unknown): "warn" | "hide" =>
+  value === "hide" ? "hide" : "warn";
