@@ -141,8 +141,8 @@ export const listAdminRemoteActorUris = async (
       binds.push(`%${filters.displayName}%`);
     }
     if (filters.byDomain) {
-      conditions.push("lower(a.domain) = ?");
-      binds.push(filters.byDomain.toLowerCase());
+      conditions.push("(lower(a.domain) = ? OR a.host = ?)");
+      binds.push(filters.byDomain.toLowerCase(), filters.byDomain.toLowerCase());
     }
     if (filters.email || filters.ip || filters.staff) {
       conditions.push("0");

@@ -8,7 +8,7 @@ import { suspendedDomains } from "./admin-domain-block-store";
 import { findBlock } from "./block-mute-store";
 import type { RepositoryError } from "./d1";
 import { enqueueTargetedActivity } from "./delivery";
-import { hostnameOf, isDomainBlocked } from "./domain-block-store";
+import { authorityHost, hostnameOf, isDomainBlocked } from "./domain-block-store";
 import type { FollowOptions } from "./follow-store";
 import { newEntityId } from "./ids";
 import {
@@ -48,7 +48,7 @@ export const followRemoteActor = async (
   actor: RemoteActor,
   options: FollowOptions,
 ): Promise<Result<void, FollowRemoteActorError>> => {
-  const domain = actor.domain.toLowerCase();
+  const domain = authorityHost(actor.domain);
   const inboxHost = hostnameOf(actor.inboxUri) ?? domain;
   const suspended = await suspendedDomains(env.DB);
   if (

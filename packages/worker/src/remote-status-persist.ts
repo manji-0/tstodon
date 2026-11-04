@@ -1,3 +1,4 @@
+import { authorityHost } from "./domain-block-store";
 import {
   InstanceIdentity,
   IsoInstant,
@@ -233,7 +234,7 @@ export const applyMediaPolicy = async (
   status: RemoteStatusValue,
 ): Promise<RemoteStatusValue> => {
   const rejected = await mediaRejectedDomains(env.DB);
-  return rejected.has(actor.domain.toLowerCase()) ? { ...status, media: [] } : status;
+  return rejected.has(authorityHost(actor.domain)) ? { ...status, media: [] } : status;
 };
 
 type PersistOptions = Readonly<{

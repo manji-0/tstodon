@@ -137,7 +137,7 @@ export const remoteActorFromDocument = (
   const actor = RemoteActor.fromFetched({
     actorUri: document.value.id,
     username: document.value.preferredUsername.toLowerCase(),
-    domain: parsedUri.hostname.toLowerCase(),
+    domain: parsedUri.host.toLowerCase(),
     inboxUri: document.value.inbox,
     publicKeyId: document.value.publicKey.id,
     publicKeyPem: document.value.publicKey.publicKeyPem,

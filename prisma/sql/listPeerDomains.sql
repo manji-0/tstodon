@@ -1,3 +1,3 @@
-SELECT DISTINCT domain FROM remote_actors
-WHERE domain IS NOT NULL AND domain != ''
+SELECT DISTINCT host AS domain FROM remote_actors
+WHERE host != ''
 ORDER BY domain ASC

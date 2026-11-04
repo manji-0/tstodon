@@ -23,7 +23,7 @@ export const textToHtml = (text: string): string => {
 const mentionHandles = (text: string): ReadonlyArray<{ username: string; domain?: string }> =>
   [
     ...text.matchAll(
-      /(?<![\w@])@([a-z0-9_](?:[a-z0-9_.-]*[a-z0-9_])?)(?:@([a-z0-9-]+(?:\.[a-z0-9-]+)+))?/gi,
+      /(?<![\w@])@([a-z0-9_](?:[a-z0-9_.-]*[a-z0-9_])?)(?:@([a-z0-9-]+(?:\.[a-z0-9-]+)+(?::\d{1,5})?))?/gi,
     ),
   ].flatMap((match) => {
     const username = match[1];

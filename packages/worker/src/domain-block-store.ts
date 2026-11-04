@@ -9,14 +9,32 @@ import {
 } from "./generated/prisma/sql";
 import { queryTyped, runTyped } from "./typed-sql";
 
-/** Normalize a user-supplied domain: strip scheme, path, leading `@`, lowercase. */
+/**
+ * The hostname of a `host[:port]` authority, lower case: what blocks,
+ * suspensions and the allow list name. A remote actor's `domain` keeps its
+ * port, and a rule on `peer.test` covers `peer.test:8792` too.
+ */
+export const authorityHost = (authority: string): string => {
+  const lower = authority.toLowerCase();
+  if (lower.startsWith("[")) {
+    return lower.slice(0, lower.indexOf("]") + 1);
+  }
+  const colon = lower.indexOf(":");
+  return colon < 0 ? lower : lower.slice(0, colon);
+};
+
+/**
+ * Normalize a user-supplied domain: strip scheme, path, leading `@`, port,
+ * lowercase. Blocks name hostnames.
+ */
 export const normalizeDomain = (raw: string): string =>
-  raw
-    .trim()
-    .replace(/^@/, "")
-    .replace(/^https?:\/\//i, "")
-    .replace(/\/.*$/, "")
-    .toLowerCase();
+  authorityHost(
+    raw
+      .trim()
+      .replace(/^@/, "")
+      .replace(/^https?:\/\//i, "")
+      .replace(/\/.*$/, ""),
+  );
 
 export const blockDomain = async (
   db: D1Database,

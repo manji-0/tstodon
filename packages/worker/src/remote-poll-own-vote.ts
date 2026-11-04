@@ -3,7 +3,7 @@ import { err, ok, type Result } from "neverthrow";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { nowIso } from "./clock";
 import { enqueueTargetedActivity } from "./delivery";
-import { hostnameOf, isDomainBlocked } from "./domain-block-store";
+import { authorityHost, hostnameOf, isDomainBlocked } from "./domain-block-store";
 import { newEntityId } from "./ids";
 import { pollVoteActivity } from "./poll-vote-activity";
 import { remotePollJson } from "./poll-document";
@@ -53,8 +53,8 @@ export const voteOnRemotePoll = async (
   if (!author.value) {
     return err({ kind: "NotFound" });
   }
-  const inboxHost = hostnameOf(author.value.inboxUri) ?? author.value.domain.toLowerCase();
-  const blocked = await isDomainBlocked(env.DB, voter.id, author.value.domain.toLowerCase());
+  const inboxHost = hostnameOf(author.value.inboxUri) ?? authorityHost(author.value.domain);
+  const blocked = await isDomainBlocked(env.DB, voter.id, authorityHost(author.value.domain));
   if (
     blocked.isErr() ||
     blocked.value ||

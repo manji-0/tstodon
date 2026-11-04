@@ -1,13 +1,14 @@
 /**
  * SQL fragments selecting the remote actors whose domain a viewer must not see
  * statuses from, so a timeline query leaves them out before its `LIMIT`. Both
- * take the viewer id once (`''` for an anonymous viewer) and compare domains
- * case-insensitively, as `remote_actors.domain` is stored. An admin's
+ * take the viewer id once (`''` for an anonymous viewer) and match a block's
+ * hostname against `remote_actors.host`, the actor's domain without its port,
+ * so a block on `peer.test` covers `peer.test:8792` too. An admin's
  * silence or suspension of a single actor hides it like its domain's.
  */
 const hiddenActorsSql = (severities: string, moderations: string): string => `(
   SELECT actor_uri FROM remote_actors
-  WHERE lower(domain) IN (
+  WHERE host IN (
     SELECT lower(domain) FROM account_domain_blocks WHERE account_id = ?
     UNION
     SELECT lower(domain) FROM domain_blocks WHERE severity IN (${severities})

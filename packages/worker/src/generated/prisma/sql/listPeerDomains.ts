@@ -7,12 +7,12 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  */
 export const listPeerDomains = $runtime.makeTypedQueryFactory(
-  "SELECT DISTINCT domain FROM remote_actors\nWHERE domain IS NOT NULL AND domain != ''\nORDER BY domain ASC",
+  "SELECT DISTINCT host AS domain FROM remote_actors\nWHERE host != ''\nORDER BY domain ASC",
 ) as () => $runtime.TypedSql<listPeerDomains.Parameters, listPeerDomains.Result>;
 
 export namespace listPeerDomains {
   export type Parameters = [];
   export type Result = {
-    domain: string;
+    domain: string | null;
   };
 }

@@ -14,7 +14,7 @@ import {
 } from "./status-store";
 import { canViewRemoteStatus, canViewStatus } from "./visibility-guard";
 import { restrictedDomains } from "./admin-domain-block-store";
-import { listBlockedDomains } from "./domain-block-store";
+import { authorityHost, listBlockedDomains } from "./domain-block-store";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { listSuppressedAuthors } from "./block-mute-store";
 
@@ -198,7 +198,7 @@ export const visibleThreadStatuses = async (
       return true;
     }
     const actor = actors.isOk() ? actors.value.get(node.status.actorUri) : undefined;
-    return !actor || blockedDomains.has(actor.domain.toLowerCase());
+    return !actor || blockedDomains.has(authorityHost(actor.domain));
   };
   return (
     await Promise.all(

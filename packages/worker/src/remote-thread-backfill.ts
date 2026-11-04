@@ -1,3 +1,4 @@
+import { authorityHost } from "./domain-block-store";
 import {
   type InstanceIdentity,
   OutboxJob,
@@ -154,7 +155,7 @@ export const processBackfillRemoteThreadJob = async (
     return "retry";
   }
   const suspended = await suspendedDomains(env.DB);
-  if (!actor.value || suspended.has(actor.value.domain.toLowerCase())) {
+  if (!actor.value || suspended.has(authorityHost(actor.value.domain))) {
     return "ok";
   }
   const options: FederatedFetchOptions = {

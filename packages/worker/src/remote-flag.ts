@@ -1,3 +1,4 @@
+import { authorityHost } from "./domain-block-store";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import { InstanceIdentity, type LocalAccount, type RemoteActor } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
@@ -62,7 +63,7 @@ export const receiveRemoteFlag = async (
   if (flag.isErr()) {
     return ok(undefined);
   }
-  const block = await findDomainBlockByDomain(env.DB, sender.domain.toLowerCase());
+  const block = await findDomainBlockByDomain(env.DB, authorityHost(sender.domain));
   if (block.isErr()) {
     return err(block.error);
   }

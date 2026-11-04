@@ -22,7 +22,7 @@ WHERE visibility = 'public'
   )
   AND actor_uri NOT IN (
     SELECT actor_uri FROM remote_actors
-    WHERE lower(domain) IN (
+    WHERE host IN (
       SELECT lower(domain) FROM account_domain_blocks WHERE account_id = $4
       UNION
       SELECT lower(domain) FROM domain_blocks WHERE severity IN ('silence', 'suspend')

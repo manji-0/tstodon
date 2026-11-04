@@ -1,3 +1,4 @@
+import { authorityHost } from "./domain-block-store";
 import type { InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { parseSignatureHeader, verifySignedFetch } from "./http-signature";
@@ -36,7 +37,7 @@ export const signedFetchActor = async (
   if (actor.isErr()) {
     return undefined;
   }
-  const host = actor.value.domain.toLowerCase();
+  const host = authorityHost(actor.value.domain);
   if (suspended.has(host) || !allowListAdmits(allowHosts, host)) {
     return undefined;
   }

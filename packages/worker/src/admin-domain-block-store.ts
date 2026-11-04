@@ -1,3 +1,4 @@
+import { authorityHost } from "./domain-block-store";
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -162,7 +163,7 @@ export const restrictedDomains = async (db: D1Database): Promise<ReadonlySet<str
   const rows = await runD1(async () =>
     queryTyped<{ domain: string }>(db, listRestrictedDomainsSql()),
   );
-  return new Set((rows.isOk() ? rows.value : []).map((row) => row.domain.toLowerCase()));
+  return new Set((rows.isOk() ? rows.value : []).map((row) => authorityHost(row.domain)));
 };
 
 /** Domains federation is refused with (suspend). */
@@ -170,7 +171,7 @@ export const suspendedDomains = async (db: D1Database): Promise<ReadonlySet<stri
   const rows = await runD1(async () =>
     queryTyped<{ domain: string }>(db, listSuspendedDomainsSql()),
   );
-  return new Set((rows.isOk() ? rows.value : []).map((row) => row.domain.toLowerCase()));
+  return new Set((rows.isOk() ? rows.value : []).map((row) => authorityHost(row.domain)));
 };
 
 export const domainBlockDocument = (row: DomainBlockRow): Record<string, unknown> => ({
@@ -225,7 +226,7 @@ export const mediaRejectedDomains = async (db: D1Database): Promise<ReadonlySet<
   const rows = await runD1(async () =>
     queryTyped<{ domain: string }>(db, listMediaRejectedDomainsSql()),
   );
-  return new Set((rows.isOk() ? rows.value : []).map((row) => row.domain.toLowerCase()));
+  return new Set((rows.isOk() ? rows.value : []).map((row) => authorityHost(row.domain)));
 };
 
 /** Called when a block starts rejecting media so stored attachments go away too. */

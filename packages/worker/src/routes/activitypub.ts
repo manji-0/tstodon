@@ -1,3 +1,4 @@
+import { authorityHost } from "../domain-block-store";
 import {
   ActivityId,
   InboxActivity,
@@ -363,7 +364,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       return c.json({ kind: "InvalidSignature" }, 401);
     }
     // Limited federation: an actor outside the allow list never federates here.
-    const remoteHost = remote.value.domain.toLowerCase();
+    const remoteHost = authorityHost(remote.value.domain);
     if (suspended.has(remoteHost) || !allowListAdmits(allowHosts, remoteHost)) {
       return c.json(
         { error: "This instance does not federate with that domain", kind: "Forbidden" },
