@@ -82,6 +82,21 @@ const SETTINGS_SECTIONS: ReadonlyArray<
     ],
   },
   {
+    heading: "Import and export",
+    links: [
+      {
+        href: "/settings/export",
+        label: "Export",
+        about: "Download your follows, lists, blocks, mutes, and bookmarks.",
+      },
+      {
+        href: "/settings/import",
+        label: "Import",
+        about: "Upload them from Mastodon or another server.",
+      },
+    ],
+  },
+  {
     heading: "Account migration",
     links: [
       {

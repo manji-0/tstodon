@@ -8,14 +8,6 @@ import { instanceName } from "./account-settings";
  * SPA fallback replaces a 404 to a browser navigation with `index.html`.
  */
 const NOTICES = {
-  importExport: {
-    title: "Import and export",
-    text: "This server cannot export or import follows, lists, or blocks as files yet. To take your followers to another account, use account migration.",
-    alternatives: [
-      { href: "/settings/migration", label: "Move to a different account" },
-      { href: "/settings/aliases", label: "Moving from a different account" },
-    ],
-  },
   administration: {
     title: "Administration",
     text: "This server's admin pages cover reports, accounts, and federation. For anything else, use Mastodon's admin API (/api/v1/admin) from an app that supports it.",
@@ -47,7 +39,6 @@ const unsupported =
   (c: Context<{ Bindings: Env }>): Response | Promise<Response> =>
     c.html(unsupportedPage(instanceName(c.env), notice));
 
-export const getSettingsExport = unsupported(NOTICES.importExport);
 export const getUnknownAdmin = unsupported(NOTICES.administration);
 export const getSeveredRelationships = unsupported(NOTICES.severedRelationships);
 export const getDisputes = unsupported(NOTICES.disputes);

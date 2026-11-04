@@ -1,1 +1,1 @@
-export { getSettingsExport as GET } from "#src/routes/unsupported-pages";
+export { getSettingsExport as GET } from "#src/routes/data-settings";

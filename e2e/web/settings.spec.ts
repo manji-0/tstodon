@@ -80,4 +80,31 @@ test.describe("settings links in the web UI", () => {
     await expect(page.getByText("This is your only passkey")).toBeVisible();
     await expect(page.getByRole("button", { name: "Remove passkey" })).toHaveCount(0);
   });
+  test("downloads a CSV export and uploads an import that finishes", async ({ page }) => {
+    await signUp(page, person("data"));
+    await page.goto("/settings/preferences");
+    await page.getByRole("link", { name: "Export" }).click();
+    await expect(page).toHaveURL(/\/settings\/export$/);
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("link", { name: "Follows" }).click(),
+    ]);
+    expect(download.suggestedFilename()).toBe("follows.csv");
+
+    await page.getByRole("link", { name: "Import", exact: true }).click();
+    await expect(page).toHaveURL(/\/settings\/import$/);
+    await page.getByLabel("Data type").selectOption("DomainBlocks");
+    await page.getByLabel("CSV file").setInputFiles({
+      name: "domain_blocks.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from("spam.example\nads.example\n"),
+    });
+    await page.getByRole("button", { name: "Upload" }).click();
+    await expect(page).toHaveURL(/\/settings\/imports\/\d+$/);
+    await expect(page.getByRole("heading", { name: "Blocked domains import" })).toBeVisible();
+    // The page reloads itself until the queue job has applied every row.
+    await expect(page.getByText("Finished (merge): 2 done, 0 failed.")).toBeVisible({
+      timeout: 30_000,
+    });
+  });
 });
