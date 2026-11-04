@@ -14,6 +14,8 @@ export const handleScheduled = (
       env.OUTBOX_PROCESS_QUEUE.send({ kind: "BackfillRemoteTags" }),
       // Publish the scheduled posts whose time has come.
       env.OUTBOX_PROCESS_QUEUE.send({ kind: "PublishScheduledStatuses" }),
+      // Delete the old posts of accounts with automated post deletion on.
+      env.OUTBOX_PROCESS_QUEUE.send({ kind: "CleanUpStatuses" }),
     ]).then(() => {
       writeMetric(env, "cron", [1], [controller.cron, "scheduled"]);
     }),

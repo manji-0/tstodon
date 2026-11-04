@@ -1,4 +1,9 @@
 import { Languages } from "@tstodon/core";
+import {
+  type InteractionThreshold,
+  MIN_AGE_CHOICES,
+  type StatusesCleanupPolicyValue,
+} from "@tstodon/domain";
 import type { AccountAlias } from "./account-alias-store";
 import { page, PASSKEY_SIGN_IN, WEBAUTHN_HELPERS } from "./auth-pages";
 import { escapeHtml } from "./html";
@@ -47,6 +52,11 @@ const SETTINGS_SECTIONS: ReadonlyArray<
         href: "/settings/preferences/posting_defaults",
         label: "Posting defaults",
         about: "Visibility, quotes, media, and language of new posts.",
+      },
+      {
+        href: "/statuses_cleanup",
+        label: "Automated post deletion",
+        about: "Delete your old posts automatically.",
       },
     ],
   },
@@ -317,3 +327,41 @@ export const unsupportedPage = (instanceName: string, notice: UnsupportedNotice)
       ${linkList(notice.alternatives)}`
       }`,
   );
+
+/** Mastodon's `/statuses_cleanup`: delete old posts automatically, unless a keep rule protects them. */
+export const statusesCleanupPage = (
+  instanceName: string,
+  policy: StatusesCleanupPolicyValue,
+  message?: PageMessage,
+): string => {
+  const rules = policy.rules;
+  const count = (threshold: InteractionThreshold): string =>
+    threshold.kind === "AtLeast" ? String(threshold.count) : "";
+  return page(
+    `Automated post deletion · ${instanceName}`,
+    `${nav}
+      <h1>Automated post deletion</h1>
+      <p>Delete your old posts automatically once they reach an age you choose, unless one of the exceptions below applies. Deleted posts also leave other servers that received them.</p>
+      <form method="post" action="/statuses_cleanup">
+        ${checkbox("enabled", policy.kind === "Enabled", "Enable automatic deletion of posts", "Posts are deleted a few at a time, so it can take a while.")}
+        <label for="min_status_age">Age threshold</label>
+        <select id="min_status_age" name="min_status_age">${options(
+          MIN_AGE_CHOICES.map((choice) => [String(choice.seconds), choice.label]),
+          String(rules.minAgeSeconds),
+        )}</select>
+        <h2>Exceptions</h2>
+        ${checkbox("keep_pinned", rules.keepPinned, "Keep pinned posts", "")}
+        ${checkbox("keep_direct", rules.keepDirect, "Keep direct messages", "")}
+        ${checkbox("keep_self_fav", rules.keepSelfFavourited, "Keep posts you favourited", "")}
+        ${checkbox("keep_self_bookmark", rules.keepSelfBookmarked, "Keep posts you bookmarked", "")}
+        ${checkbox("keep_polls", rules.keepPolls, "Keep polls", "")}
+        ${checkbox("keep_media", rules.keepMedia, "Keep posts with media attachments", "")}
+        <label for="min_favs">Keep posts favourited at least this many times <span class="muted">(leave empty to ignore favourites)</span></label>
+        <input id="min_favs" name="min_favs" inputmode="numeric" pattern="[0-9]*" value="${escapeHtml(count(rules.keepFavourites))}" />
+        <label for="min_reblogs">Keep posts boosted at least this many times <span class="muted">(leave empty to ignore boosts)</span></label>
+        <input id="min_reblogs" name="min_reblogs" inputmode="numeric" pattern="[0-9]*" value="${escapeHtml(count(rules.keepBoosts))}" />
+        <button type="submit">Save changes</button>
+      </form>
+${messageLine(message)}`,
+  );
+};

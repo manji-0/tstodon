@@ -462,6 +462,7 @@ export const ModelName = {
   remote_poll_own_votes: "remote_poll_own_votes",
   outbound_follows: "outbound_follows",
   remote_boosts: "remote_boosts",
+  statuses_cleanup_policies: "statuses_cleanup_policies",
 } as const;
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName];
@@ -552,7 +553,8 @@ export type TypeMap<
       | "statuses"
       | "remote_poll_own_votes"
       | "outbound_follows"
-      | "remote_boosts";
+      | "remote_boosts"
+      | "statuses_cleanup_policies";
     txIsolationLevel: TransactionIsolationLevel;
   };
   model: {
@@ -5924,6 +5926,82 @@ export type TypeMap<
         };
       };
     };
+    statuses_cleanup_policies: {
+      payload: Prisma.$statuses_cleanup_policiesPayload<ExtArgs>;
+      fields: Prisma.statuses_cleanup_policiesFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.statuses_cleanup_policiesFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$statuses_cleanup_policiesPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.statuses_cleanup_policiesFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$statuses_cleanup_policiesPayload>;
+        };
+        findFirst: {
+          args: Prisma.statuses_cleanup_policiesFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$statuses_cleanup_policiesPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.statuses_cleanup_policiesFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$statuses_cleanup_policiesPayload>;
+        };
+        findMany: {
+          args: Prisma.statuses_cleanup_policiesFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$statuses_cleanup_policiesPayload>[];
+        };
+        create: {
+          args: Prisma.statuses_cleanup_policiesCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$statuses_cleanup_policiesPayload>;
+        };
+        createMany: {
+          args: Prisma.statuses_cleanup_policiesCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.statuses_cleanup_policiesCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$statuses_cleanup_policiesPayload>[];
+        };
+        delete: {
+          args: Prisma.statuses_cleanup_policiesDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$statuses_cleanup_policiesPayload>;
+        };
+        update: {
+          args: Prisma.statuses_cleanup_policiesUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$statuses_cleanup_policiesPayload>;
+        };
+        deleteMany: {
+          args: Prisma.statuses_cleanup_policiesDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.statuses_cleanup_policiesUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.statuses_cleanup_policiesUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$statuses_cleanup_policiesPayload>[];
+        };
+        upsert: {
+          args: Prisma.statuses_cleanup_policiesUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$statuses_cleanup_policiesPayload>;
+        };
+        aggregate: {
+          args: Prisma.Statuses_cleanup_policiesAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateStatuses_cleanup_policies>;
+        };
+        groupBy: {
+          args: Prisma.statuses_cleanup_policiesGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Statuses_cleanup_policiesGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.statuses_cleanup_policiesCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Statuses_cleanup_policiesCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
   };
 } & {
   other: {
@@ -6794,6 +6872,26 @@ export const Remote_boostsScalarFieldEnum = {
 export type Remote_boostsScalarFieldEnum =
   (typeof Remote_boostsScalarFieldEnum)[keyof typeof Remote_boostsScalarFieldEnum];
 
+export const Statuses_cleanup_policiesScalarFieldEnum = {
+  account_id: "account_id",
+  enabled: "enabled",
+  min_status_age: "min_status_age",
+  keep_pinned: "keep_pinned",
+  keep_direct: "keep_direct",
+  keep_self_fav: "keep_self_fav",
+  keep_self_bookmark: "keep_self_bookmark",
+  keep_polls: "keep_polls",
+  keep_media: "keep_media",
+  min_favs: "min_favs",
+  min_reblogs: "min_reblogs",
+  last_inspected_id: "last_inspected_id",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Statuses_cleanup_policiesScalarFieldEnum =
+  (typeof Statuses_cleanup_policiesScalarFieldEnum)[keyof typeof Statuses_cleanup_policiesScalarFieldEnum];
+
 export const SortOrder = {
   asc: "asc",
   desc: "desc",
@@ -7056,6 +7154,7 @@ export type GlobalOmitConfig = {
   remote_poll_own_votes?: Prisma.remote_poll_own_votesOmit;
   outbound_follows?: Prisma.outbound_followsOmit;
   remote_boosts?: Prisma.remote_boostsOmit;
+  statuses_cleanup_policies?: Prisma.statuses_cleanup_policiesOmit;
 };
 
 /* Types for Logging */

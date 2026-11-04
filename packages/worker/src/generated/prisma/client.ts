@@ -396,3 +396,8 @@ export type outbound_follows = Prisma.outbound_followsModel;
  *
  */
 export type remote_boosts = Prisma.remote_boostsModel;
+/**
+ * Model statuses_cleanup_policies
+ *
+ */
+export type statuses_cleanup_policies = Prisma.statuses_cleanup_policiesModel;

@@ -119,6 +119,7 @@ export const ModelName = {
   remote_poll_own_votes: "remote_poll_own_votes",
   outbound_follows: "outbound_follows",
   remote_boosts: "remote_boosts",
+  statuses_cleanup_policies: "statuses_cleanup_policies",
 } as const;
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName];
@@ -963,6 +964,26 @@ export const Remote_boostsScalarFieldEnum = {
 
 export type Remote_boostsScalarFieldEnum =
   (typeof Remote_boostsScalarFieldEnum)[keyof typeof Remote_boostsScalarFieldEnum];
+
+export const Statuses_cleanup_policiesScalarFieldEnum = {
+  account_id: "account_id",
+  enabled: "enabled",
+  min_status_age: "min_status_age",
+  keep_pinned: "keep_pinned",
+  keep_direct: "keep_direct",
+  keep_self_fav: "keep_self_fav",
+  keep_self_bookmark: "keep_self_bookmark",
+  keep_polls: "keep_polls",
+  keep_media: "keep_media",
+  min_favs: "min_favs",
+  min_reblogs: "min_reblogs",
+  last_inspected_id: "last_inspected_id",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Statuses_cleanup_policiesScalarFieldEnum =
+  (typeof Statuses_cleanup_policiesScalarFieldEnum)[keyof typeof Statuses_cleanup_policiesScalarFieldEnum];
 
 export const SortOrder = {
   asc: "asc",

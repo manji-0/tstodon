@@ -78,4 +78,5 @@ export type * from "./models/statuses";
 export type * from "./models/remote_poll_own_votes";
 export type * from "./models/outbound_follows";
 export type * from "./models/remote_boosts";
+export type * from "./models/statuses_cleanup_policies";
 export type * from "./commonInputTypes";

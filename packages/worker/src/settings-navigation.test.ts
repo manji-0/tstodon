@@ -177,7 +177,6 @@ describe("settings pages the web app links to", () => {
 
   it("explains the Rails pages this server does not have", async () => {
     for (const [path, title] of [
-      ["/statuses_cleanup", "Automated post deletion"],
       ["/auth/edit", "Password and security"],
       ["/settings/export", "Import and export"],
       ["/admin/software_updates", "Administration"],

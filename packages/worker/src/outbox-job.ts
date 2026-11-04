@@ -21,6 +21,7 @@ import { processMoveFollowsJob } from "./remote-move";
 import { processBackfillRemoteOutboxJob } from "./remote-outbox-backfill";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
+import { cleanUpAccountStatuses, queueStatusesCleanup } from "./statuses-cleanup";
 import { findRemoteActorsByUris, listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 import { findStatusById } from "./status-store";
@@ -164,6 +165,12 @@ export const processOutboxJob = async (
       return "ok";
     case "BackfillRemoteTags":
       await indexMissingRemoteTags(env.DB);
+      return "ok";
+    case "CleanUpStatuses":
+      await queueStatusesCleanup(env);
+      return "ok";
+    case "CleanUpAccountStatuses":
+      await cleanUpAccountStatuses(env, job.accountId);
       return "ok";
     case "PublishScheduledStatuses":
       await publishDueScheduledStatuses(env);
