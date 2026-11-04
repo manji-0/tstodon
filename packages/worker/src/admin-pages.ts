@@ -1,8 +1,10 @@
+import type { RemoteActorModerationValue } from "@tstodon/domain";
 import type { AdminAccountFilters } from "./account-admin-store";
 import type { AdminAccountState } from "./admin-actions";
 import type { DomainBlockRow } from "./admin-domain-block-store";
 import { page } from "./auth-pages";
 import { escapeHtml } from "./html";
+import { RemoteAccountId } from "./remote-account-id";
 import { checkbox, messageLine, options, type PageMessage } from "./settings-pages";
 
 /**
@@ -108,12 +110,17 @@ export type ReportDetails = ReportSummary &
     rules: ReadonlyArray<string>;
     actionTakenBy: AccountLabel | undefined;
     actionTakenAt: string | null;
-    /** The target's moderation state, when it is a local account this server can act on. */
-    targetState: AdminAccountState | undefined;
+    /**
+     * The target's moderation summary and the actions this server can take on
+     * it; `undefined` when it cannot act, because the target is gone.
+     */
+    targetModeration:
+      | Readonly<{ summary: string; actions: ReadonlyArray<readonly [string, string]> }>
+      | undefined;
     assignedToViewer: boolean;
   }>;
 
-const moderationSummary = (state: AdminAccountState): string => {
+export const moderationSummary = (state: AdminAccountState): string => {
   const labels = [
     state.moderation === "Suspended" ? "suspended" : undefined,
     state.moderation === "Silenced" ? "limited" : undefined,
@@ -124,7 +131,17 @@ const moderationSummary = (state: AdminAccountState): string => {
   return labels.length === 0 ? "in good standing" : labels.join(", ");
 };
 
-/** The moderation actions a report page offers on its target. */
+/** How a remote actor stands with this server, for the pages that name it. */
+export const remoteModerationSummary = (moderation: RemoteActorModerationValue): string => {
+  const labels = [
+    moderation.standing.kind === "Suspended" ? "suspended" : undefined,
+    moderation.standing.kind === "Silenced" ? "limited" : undefined,
+    moderation.sensitized ? "media marked sensitive" : undefined,
+  ].filter((label) => label !== undefined);
+  return labels.length === 0 ? "in good standing" : labels.join(", ");
+};
+
+/** The moderation actions a report page offers on a local target. */
 export const REPORT_ACTIONS = [
   ["none", "Resolve with no action"],
   ["sensitive", "Mark media as sensitive"],
@@ -132,6 +149,9 @@ export const REPORT_ACTIONS = [
   ["silence", "Limit"],
   ["suspend", "Suspend"],
 ] as const;
+
+/** A remote actor has no login to disable. */
+export const REMOTE_REPORT_ACTIONS = REPORT_ACTIONS.filter(([type]) => type !== "disable");
 
 /** Mastodon's `GET /admin/reports/:id`. */
 export const reportPage = (
@@ -146,7 +166,7 @@ export const reportPage = (
     `      <h1>Report #${escapeHtml(report.id)}</h1>
 ${messageLine(message)}
       <ul>
-        <li>Reported account: ${accountLink(report.target)}${report.targetState === undefined ? "" : ` <span class="muted">(${escapeHtml(moderationSummary(report.targetState))})</span>`}</li>
+        <li>Reported account: ${accountLink(report.target)}${report.targetModeration === undefined ? "" : ` <span class="muted">(${escapeHtml(report.targetModeration.summary)})</span>`}</li>
         <li>Reported by: ${accountLink(report.reporter)}</li>
         <li>Category: ${escapeHtml(report.category)}</li>
         <li>Filed: ${escapeHtml(report.createdAt)}</li>
@@ -181,13 +201,13 @@ ${messageLine(message)}
       <h2>Handle this report</h2>
       ${report.assignedToViewer ? postButton(base, "Unassign", { do: "unassign" }) : postButton(base, "Assign to me", { do: "assign_to_self" })}
       ${report.resolved ? postButton(base, "Reopen", { do: "reopen" }) : postButton(base, "Mark as resolved", { do: "resolve" })}${
-        report.targetState === undefined
+        report.targetModeration === undefined
           ? `
-      <p class="muted">The reported account is not on this server, so moderate its server instead.</p>`
+      <p class="muted">This server no longer has the reported account, so there is nothing to act on here.</p>`
           : `
       <h2>Act on ${escapeHtml(report.target.label)}</h2>
       <p class="muted">Each action also resolves this report.</p>
-      ${REPORT_ACTIONS.map(([type, label]) => postButton(`${base}/action`, label, { type })).join("\n      ")}`
+      ${report.targetModeration.actions.map(([type, label]) => postButton(`${base}/action`, label, { type })).join("\n      ")}`
       }`,
   );
 };
@@ -310,15 +330,51 @@ ${messageLine(message)}
   );
 };
 
-/** A remote account: this server moderates its domain, not the account itself. */
-export const remoteAccountPage = (instanceName: string, actorUri: string, domain: string): string =>
-  adminPage(
+/** A remote actor's admin page: its standing here and the actions on it. */
+export const remoteActorPage = (
+  instanceName: string,
+  view: Readonly<{
+    actorUri: string;
+    acct: string;
+    domain: string | undefined;
+    /** Absent once the actor was purged from this server's cache. */
+    moderation: RemoteActorModerationValue | undefined;
+    openReports: ReadonlyArray<string>;
+    actions: ReadonlyArray<AccountActionButton>;
+  }>,
+  message?: PageMessage,
+): string => {
+  const action = `/admin/accounts/${RemoteAccountId.encode(view.actorUri)}`;
+  return adminPage(
     instanceName,
-    "Remote account",
-    `      <h1>Remote account</h1>
-      <p><code>${escapeHtml(actorUri)}</code> lives on another server. This server cannot moderate a single remote account yet; you can limit or suspend its whole server.</p>
-      <p><a href="/admin/instances/${escapeHtml(domain)}">Moderate ${escapeHtml(domain)}</a></p>`,
+    view.acct,
+    `      <h1>${escapeHtml(view.acct)}</h1>
+${messageLine(message)}
+      <ul>
+        <li>Actor: <code>${escapeHtml(view.actorUri)}</code></li>
+        <li>State: ${view.moderation === undefined ? "no longer known to this server" : escapeHtml(remoteModerationSummary(view.moderation))}</li>${
+          view.domain === undefined
+            ? ""
+            : `
+        <li><a href="/admin/instances/${escapeHtml(view.domain)}">Moderate ${escapeHtml(view.domain)}</a> as a whole</li>`
+        }
+      </ul>
+      <h2>Open reports</h2>${
+        view.openReports.length === 0
+          ? `
+      <p class="muted">No open reports.</p>`
+          : `
+      <ul>${view.openReports.map((id) => `<li><a href="/admin/reports/${escapeHtml(id)}">Report #${escapeHtml(id)}</a></li>`).join("")}</ul>`
+      }
+      <h2>Moderation</h2>${
+        view.moderation === undefined
+          ? `
+      <p class="muted">This server no longer has the account, so there is nothing to act on here.</p>`
+          : `
+      ${view.actions.map((button) => postButton(action, button.label, { do: button.command })).join("\n      ")}`
+      }`,
   );
+};
 
 export const adminNotFoundPage = (instanceName: string, what: string): string =>
   adminPage(

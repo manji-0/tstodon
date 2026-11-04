@@ -15,6 +15,8 @@ import { elapsedMs, writeMetric } from "../metrics";
 import { resolveRemoteActor, resolveRemoteActorByHandle } from "../remote-actor-fetch";
 import { suspendedDomains } from "../admin-domain-block-store";
 import { searchRemoteActors } from "../remote-actor-store";
+import { getRemoteActorModeration } from "../remote-actor-moderation-store";
+import { RemoteAccountId } from "../remote-account-id";
 import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import { searchStatuses } from "../status-timeline-store";
 import { isTagFeatured, isTagFollowed, tagDailyHistory } from "../tag-store";
@@ -91,7 +93,14 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     }
     if (resolve) {
       const resolved = await resolveSearchAccount(c.env, identity.value, query);
-      if (resolved && !seen.has(String(resolved.id))) {
+      const resolvedActor = resolved ? RemoteAccountId.decode(String(resolved.id)) : undefined;
+      const resolvedStanding =
+        resolvedActor?.isOk() === true
+          ? await getRemoteActorModeration(c.env.DB, resolvedActor.value)
+          : undefined;
+      const suspended =
+        resolvedStanding?.isOk() === true && resolvedStanding.value.standing.kind === "Suspended";
+      if (resolved && !suspended && !seen.has(String(resolved.id))) {
         seen.add(String(resolved.id));
         accountDocs.push(resolved);
       }

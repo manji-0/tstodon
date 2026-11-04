@@ -77,6 +77,11 @@ export type announcements = Prisma.announcementsModel;
  */
 export type account_moderation = Prisma.account_moderationModel;
 /**
+ * Model remote_actor_moderation
+ *
+ */
+export type remote_actor_moderation = Prisma.remote_actor_moderationModel;
+/**
  * Model account_domain_blocks
  *
  */

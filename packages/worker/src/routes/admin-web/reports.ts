@@ -3,9 +3,18 @@ import type { LocalStatusValue } from "@tstodon/domain";
 import type { Context } from "hono";
 import type { Result } from "neverthrow";
 import { z } from "zod";
-import { AccountActionTypeSchema, findAdminAccount, takeAccountAction } from "../../admin-actions";
+import {
+  AccountActionTypeSchema,
+  findAdminAccount,
+  findAdminRemoteActor,
+  takeAccountAction,
+} from "../../admin-actions";
 import {
   confirmPage,
+  moderationSummary,
+  REMOTE_REPORT_ACTIONS,
+  remoteModerationSummary,
+  REPORT_ACTIONS,
   type ReportDetails,
   reportPage,
   reportsPage,
@@ -50,8 +59,8 @@ const summaryOf = async (
   report: ReportRow,
 ): Promise<ReportSummary> => ({
   id: report.id,
-  reporter: await label(ReportParty.accountId(report.reporter)),
-  target: await label(ReportParty.accountId(report.target)),
+  reporter: await label(ReportParty.accountId(report.reporter), report.reporterAcct),
+  target: await label(ReportParty.accountId(report.target), report.targetAcct),
   category: report.category,
   comment: report.comment,
   statusCount: report.statusIds.length,
@@ -98,6 +107,23 @@ const statusText = (status: LocalStatusValue): string => {
   }
 };
 
+/** What the report page says of its target and offers on it; `undefined` when the target is gone. */
+const targetModerationOf = async (
+  db: D1Database,
+  target: ReportParty,
+): Promise<ReportDetails["targetModeration"]> => {
+  if (target.kind === "Local") {
+    const state = await findAdminAccount(db, target.accountId);
+    return state.isOk() && state.value
+      ? { summary: moderationSummary(state.value), actions: REPORT_ACTIONS }
+      : undefined;
+  }
+  const state = await findAdminRemoteActor(db, target.actorUri);
+  return state.isOk() && state.value
+    ? { summary: remoteModerationSummary(state.value.moderation), actions: REMOTE_REPORT_ACTIONS }
+    : undefined;
+};
+
 /** Mastodon's `GET /admin/reports/:id`. */
 export const getAdminReport = async (c: Context<{ Bindings: Env }, "/admin/reports/:id">) => {
   const admin = await adminSession(c);
@@ -113,10 +139,10 @@ export const getAdminReport = async (c: Context<{ Bindings: Env }, "/admin/repor
   }
   const row = report.value;
   const label = accountLabeller(c.env.DB);
-  const [summary, statuses, target, actionTakenBy] = await Promise.all([
+  const [summary, statuses, targetModeration, actionTakenBy] = await Promise.all([
     summaryOf(label, row),
     reportedStatuses(c.env.DB, row.statusIds),
-    row.target.kind === "Local" ? findAdminAccount(c.env.DB, row.target.accountId) : undefined,
+    targetModerationOf(c.env.DB, row.target),
     row.actionTakenByAccountId === null ? undefined : label(row.actionTakenByAccountId),
   ]);
   const details: ReportDetails = {
@@ -140,7 +166,7 @@ export const getAdminReport = async (c: Context<{ Bindings: Env }, "/admin/repor
       .map((rule) => rule.text),
     actionTakenBy,
     actionTakenAt: row.actionTakenAt,
-    targetState: target?.isOk() ? target.value : undefined,
+    targetModeration,
     assignedToViewer: row.assignedAccountId === admin.account.id,
   };
   return c.html(reportPage(instanceName(c.env), details, noticeOf(c)));
@@ -227,21 +253,16 @@ export const postAdminReportAction = async (
   }
   const back = `/admin/reports/${id}`;
   const reported = report.value.target;
-  if (reported.kind === "Remote") {
-    return c.html(
-      errorPage(instanceName(c.env), "The reported account is not on this server."),
-      422,
-    );
-  }
-  if (reported.accountId === admin.account.id) {
+  const reportedId = ReportParty.accountId(reported);
+  if (reported.kind === "Local" && reported.accountId === admin.account.id) {
     return c.html(errorPage(instanceName(c.env), "You cannot moderate your own account."), 422);
   }
   if (type.value === "suspend" && fields.confirmed !== "1") {
-    const target = await accountLabeller(c.env.DB)(reported.accountId);
+    const target = await accountLabeller(c.env.DB)(reportedId, report.value.targetAcct);
     return c.html(
       confirmPage(instanceName(c.env), {
         title: `Suspend ${target.label}?`,
-        text: "Suspending hides the account and its posts and blocks its login. You can lift it later from the account's page.",
+        text: "Suspending hides the account and its posts and refuses what it sends. You can lift it later from the account's page.",
         action: `${back}/action`,
         fields: { type: "suspend" },
         confirmLabel: "Suspend",
@@ -250,7 +271,7 @@ export const postAdminReportAction = async (
     );
   }
   const taken = await takeAccountAction(c.env.DB, {
-    accountId: reported.accountId,
+    accountId: reportedId,
     type: type.value,
     reportId: report.value.id,
     moderatorId: admin.account.id,
@@ -261,7 +282,12 @@ export const postAdminReportAction = async (
   switch (taken.error.kind) {
     case "AccountNotFound":
       return c.html(
-        errorPage(instanceName(c.env), "The reported account is not on this server."),
+        errorPage(instanceName(c.env), "This server no longer has the reported account."),
+        422,
+      );
+    case "NotApplicable":
+      return c.html(
+        errorPage(instanceName(c.env), "That action does not apply to a remote account."),
         422,
       );
     case "ReportNotFound":

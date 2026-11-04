@@ -17,9 +17,11 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param forwarded
  * @param flagUri
  * @param createdAt
+ * @param reporterAcct
+ * @param targetAcct
  */
 export const insertReport = $runtime.makeTypedQueryFactory(
-  "INSERT INTO reports (id, account_id, reporter_actor_uri, target_account_id, target_actor_uri,\nstatus_ids_json, comment, category, rule_ids_json, forwarded, flag_uri,\ncreated_at)\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)\nON CONFLICT (flag_uri) DO NOTHING\nRETURNING id",
+  "INSERT INTO reports (id, account_id, reporter_actor_uri, target_account_id, target_actor_uri,\nstatus_ids_json, comment, category, rule_ids_json, forwarded, flag_uri,\ncreated_at, reporter_acct, target_acct)\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)\nON CONFLICT (flag_uri) DO NOTHING\nRETURNING id",
 ) as (
   id: string,
   accountId: string | null,
@@ -33,6 +35,8 @@ export const insertReport = $runtime.makeTypedQueryFactory(
   forwarded: number,
   flagUri: string | null,
   createdAt: string,
+  reporterAcct: string | null,
+  targetAcct: string | null,
 ) => $runtime.TypedSql<insertReport.Parameters, insertReport.Result>;
 
 export namespace insertReport {
@@ -49,6 +53,8 @@ export namespace insertReport {
     forwarded: number,
     flagUri: string | null,
     createdAt: string,
+    reporterAcct: string | null,
+    targetAcct: string | null,
   ];
   export type Result = {
     id: string | null;

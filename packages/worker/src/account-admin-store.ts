@@ -96,3 +96,64 @@ export const listAdminAccountIds = async (
       row.id ? [row.id] : [],
     ),
   );
+
+/**
+ * The remote actors an admin's `origin=remote` list shows, as actor URIs in
+ * username order. A remote actor can be limited, suspended, or have its media
+ * marked sensitive; it has no sign-up, login, email, or IP here, so
+ * `pending`, `disabled`, `email`, `ip`, and `staff` match nothing.
+ */
+export const listAdminRemoteActorUris = async (
+  db: D1Database,
+  filters: Pick<
+    AdminAccountFilters,
+    | "status"
+    | "username"
+    | "displayName"
+    | "email"
+    | "byDomain"
+    | "ip"
+    | "staff"
+    | "limit"
+    | "offset"
+  >,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+  runD1(async () => {
+    const standing = (comparison: string): string =>
+      `COALESCE((SELECT moderation FROM remote_actor_moderation m WHERE m.actor_uri = a.actor_uri), '') ${comparison}`;
+    const statusCondition: Record<AdminAccountFilters["status"], string> = {
+      active: standing("<> 'Suspended'"),
+      silenced: standing("= 'Silenced'"),
+      suspended: standing("= 'Suspended'"),
+      sensitized:
+        "EXISTS (SELECT 1 FROM remote_actor_moderation m WHERE m.actor_uri = a.actor_uri AND m.sensitized <> 0)",
+      pending: "0",
+      disabled: "0",
+    };
+    const conditions = [statusCondition[filters.status]];
+    const binds: Array<string | number> = [];
+    if (filters.username) {
+      conditions.push("a.username LIKE ?");
+      binds.push(`%${filters.username}%`);
+    }
+    if (filters.displayName) {
+      conditions.push("a.display_name LIKE ?");
+      binds.push(`%${filters.displayName}%`);
+    }
+    if (filters.byDomain) {
+      conditions.push("lower(a.domain) = ?");
+      binds.push(filters.byDomain.toLowerCase());
+    }
+    if (filters.email || filters.ip || filters.staff) {
+      conditions.push("0");
+    }
+    const { results } = await db
+      .prepare(
+        `SELECT a.actor_uri FROM remote_actors a
+         WHERE ${conditions.join(" AND ")}
+         ORDER BY a.username, a.domain, a.actor_uri LIMIT ? OFFSET ?`,
+      )
+      .bind(...binds, filters.limit, filters.offset)
+      .all<{ actor_uri: string }>();
+    return (results ?? []).map((row) => row.actor_uri);
+  });

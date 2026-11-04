@@ -326,7 +326,7 @@ describe("admin pages", () => {
     expect((await apiAccount(admin.id)).suspended).toBe(false);
   });
 
-  it("sends a remote account's admin link on to its server's page", async () => {
+  it("says an uncached remote account is unknown and still links its server's page", async () => {
     const admin = await adminBrowser("pages_remote_admin");
     const id = RemoteAccountId.encode("https://remote.example/users/alice");
     const html = await page(await admin.fetcher(`/admin/accounts/${id}`));

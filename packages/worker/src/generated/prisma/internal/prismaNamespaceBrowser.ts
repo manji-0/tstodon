@@ -55,6 +55,7 @@ export const ModelName = {
   account_notes: "account_notes",
   announcements: "announcements",
   account_moderation: "account_moderation",
+  remote_actor_moderation: "remote_actor_moderation",
   account_domain_blocks: "account_domain_blocks",
   push_subscriptions: "push_subscriptions",
   status_idempotency: "status_idempotency",
@@ -213,6 +214,17 @@ export const Account_moderationScalarFieldEnum = {
 
 export type Account_moderationScalarFieldEnum =
   (typeof Account_moderationScalarFieldEnum)[keyof typeof Account_moderationScalarFieldEnum];
+
+export const Remote_actor_moderationScalarFieldEnum = {
+  actor_uri: "actor_uri",
+  moderation: "moderation",
+  sensitized: "sensitized",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Remote_actor_moderationScalarFieldEnum =
+  (typeof Remote_actor_moderationScalarFieldEnum)[keyof typeof Remote_actor_moderationScalarFieldEnum];
 
 export const Account_domain_blocksScalarFieldEnum = {
   account_id: "account_id",
@@ -809,6 +821,8 @@ export const ReportsScalarFieldEnum = {
   flag_uri: "flag_uri",
   created_at: "created_at",
   updated_at: "updated_at",
+  reporter_acct: "reporter_acct",
+  target_acct: "target_acct",
 } as const;
 
 export type ReportsScalarFieldEnum =

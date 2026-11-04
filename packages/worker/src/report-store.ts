@@ -60,6 +60,9 @@ export type ReportRow = Readonly<{
   actionTakenByAccountId: string | null;
   /** Whether the report was forwarded to the target's server. */
   forwarded: boolean;
+  /** `user@domain` of a remote reporter / target when the report was filed; `null` for a local party. */
+  reporterAcct: string | null;
+  targetAcct: string | null;
   createdAt: string;
   updatedAt: string | null;
 }>;
@@ -78,6 +81,8 @@ const ReportRowSchema = z.object({
   action_taken_at: z.string().nullable(),
   action_taken_by_account_id: z.string().nullable(),
   forwarded: z.number(),
+  reporter_acct: z.string().nullable(),
+  target_acct: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string().nullable(),
 });
@@ -103,13 +108,15 @@ const reportFromRow = (row: z.infer<typeof ReportRowSchema>): ReportRow => ({
   actionTakenAt: row.action_taken_at,
   actionTakenByAccountId: row.action_taken_by_account_id,
   forwarded: row.forwarded !== 0,
+  reporterAcct: row.reporter_acct,
+  targetAcct: row.target_acct,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
 
 const REPORT_SELECT = `id, account_id, reporter_actor_uri, target_account_id, target_actor_uri,
        status_ids_json, comment, category, rule_ids_json, assigned_account_id, action_taken_at,
-       action_taken_by_account_id, forwarded, created_at, updated_at`;
+       action_taken_by_account_id, forwarded, reporter_acct, target_acct, created_at, updated_at`;
 
 export type ReportInput = Readonly<{
   reporter: ReportParty;
@@ -119,6 +126,9 @@ export type ReportInput = Readonly<{
   category?: string;
   ruleIds?: ReadonlyArray<string>;
   forwarded?: boolean;
+  /** The `user@domain` handle of a remote party, kept for when the actor is purged. */
+  reporterAcct?: string | undefined;
+  targetAcct?: string | undefined;
 }>;
 
 /** The new report's id; `undefined` when a report for the same `Flag` exists. */
@@ -142,6 +152,8 @@ const insertReportRow = (
         input.forwarded === true ? 1 : 0,
         flagUri,
         nowIso(),
+        input.reporterAcct ?? null,
+        input.targetAcct ?? null,
       ),
     );
     return rows.length > 0 ? id : undefined;
@@ -272,19 +284,44 @@ export const setReportAssigned = async (
     return (results?.length ?? 0) > 0;
   });
 
-/** Ids of the open reports targeting an account, for a moderation action. */
+/** Ids of the open reports targeting an account or remote actor, for a moderation action. */
 export const listOpenReportIdsForTarget = async (
   db: D1Database,
-  targetAccountId: string,
+  target: ReportParty,
 ): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
   runD1(async () => {
+    const [column, value] =
+      target.kind === "Local"
+        ? ["target_account_id", target.accountId]
+        : ["target_actor_uri", target.actorUri];
     const { results } = await db
       .prepare(
-        "SELECT id FROM reports WHERE target_account_id = ? AND action_taken_at IS NULL ORDER BY id DESC",
+        `SELECT id FROM reports WHERE ${column} = ? AND action_taken_at IS NULL ORDER BY id DESC`,
       )
-      .bind(targetAccountId)
+      .bind(value)
       .all<{ id: string }>();
     return (results ?? []).map((row) => row.id);
+  });
+
+/**
+ * The `user@domain` handle some report remembers for a remote actor, for
+ * naming it after the actor was purged from the cache.
+ */
+export const findRemoteActorAcct = async (
+  db: D1Database,
+  actorUri: string,
+): Promise<Result<string | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const row = await db
+      .prepare(
+        `SELECT target_acct AS acct FROM reports WHERE target_actor_uri = ? AND target_acct IS NOT NULL
+         UNION ALL
+         SELECT reporter_acct AS acct FROM reports WHERE reporter_actor_uri = ? AND reporter_acct IS NOT NULL
+         LIMIT 1`,
+      )
+      .bind(actorUri, actorUri)
+      .first<{ acct: string }>();
+    return row?.acct;
   });
 
 /** Resolve (`byAccountId` set) or reopen (`null`) a report. */

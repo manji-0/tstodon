@@ -23,6 +23,7 @@ import { jsonRepositoryError, queryLimit } from "../http";
 import { verifyInboxRequest, parseSignatureHeader } from "../http-signature";
 import { localActorDocument } from "../local-actor";
 import { suspendedDomains } from "../admin-domain-block-store";
+import { getRemoteActorModeration } from "../remote-actor-moderation-store";
 import { signedFetchActor } from "../signed-fetch";
 import { inboxActivityExists, insertInboxActivity } from "../inbox-store";
 import { listPublicOutboxActivities } from "../outbox-store";
@@ -368,6 +369,18 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         { error: "This instance does not federate with that domain", kind: "Forbidden" },
         403,
       );
+    }
+    // An admin suspended this actor: nothing it sends is processed, except
+    // the deletion of its own account.
+    const moderation = await getRemoteActorModeration(c.env.DB, remote.value.actorUri);
+    if (moderation.isErr()) {
+      return jsonRepositoryError(c, moderation.error.message);
+    }
+    if (
+      moderation.value.standing.kind === "Suspended" &&
+      !(payload.kind === "Delete" && deleteTarget.kind === "ActorDelete")
+    ) {
+      return c.json({ error: "This actor is suspended on this instance", kind: "Forbidden" }, 403);
     }
     signer = { kind: "Remote", actor: remote.value };
   }

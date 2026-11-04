@@ -1,20 +1,30 @@
 import type { Context } from "hono";
-import type { Result } from "neverthrow";
+import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import type { InstanceIdentity } from "@tstodon/domain";
+import {
+  type InstanceIdentity,
+  RemoteActorModeration,
+  type RemoteActorModerationAction,
+  type RemoteActorModerationValue,
+  type RemoteActorValue,
+} from "@tstodon/domain";
 import { setAccountModeration } from "../../account-moderation-store";
 import { approveAccount, setAccountDisabled, setAccountSensitized } from "../../account-flag-store";
 import { findAccountById } from "../../account-store";
-import { listAdminAccounts } from "../../account-admin-store";
+import { listAdminAccounts, listAdminRemoteActorUris } from "../../account-admin-store";
 import {
   AccountActionTypeSchema,
   type AdminAccountState,
   adminAccountStates,
   findAdminAccount,
+  findAdminRemoteActor,
+  moderateRemoteActor,
   purgeAccount,
   takeAccountAction,
 } from "../../admin-actions";
+import { listRemoteActorModerations } from "../../remote-actor-moderation-store";
+import { RemoteAccountId } from "../../remote-account-id";
 import type { RepositoryError } from "../../d1";
 import {
   jsonAuthError,
@@ -26,7 +36,7 @@ import {
   requireAdmin,
 } from "../../http";
 import { mastodonAccountDocument, mastodonRemoteAccount } from "../../account-documents";
-import { findRemoteActorByUri } from "../../remote-actor-store";
+import { findRemoteActorsByUris } from "../../remote-actor-store";
 import type { ReportParty } from "../../report-store";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { isTruthy } from "../../form-values";
@@ -55,7 +65,7 @@ const adminAccountFilters = (
     return value.length > 0 ? value : undefined;
   };
   return {
-    origin: present("remote") ? "remote" : "local",
+    origin: present("remote") || c.req.query("origin") === "remote" ? "remote" : "local",
     status: present("sensitized") ? "sensitized" : status,
     username: trimmed("username"),
     displayName: trimmed("display_name"),
@@ -87,49 +97,113 @@ const adminAccountDocument = async (
   invite_request: null,
 });
 
+/** An `Admin::Account` for a remote actor: it has no login, email, or IP here. */
+const adminRemoteDocument = (
+  account: Record<string, unknown>,
+  domain: string,
+  moderation: RemoteActorModerationValue,
+): Record<string, unknown> => ({
+  ...account,
+  domain,
+  email: null,
+  ip: null,
+  role: { id: "-1", name: "user", highlighted: false },
+  approved: true,
+  disabled: false,
+  silenced: moderation.standing.kind === "Silenced",
+  suspended: moderation.standing.kind === "Suspended",
+  limited: moderation.standing.kind !== "InGoodStanding",
+  sensitized: moderation.sensitized,
+  invited_by_account_id: null,
+  created_by_application_id: null,
+  invite_request: null,
+});
+
+const remoteActorDocument = (
+  identity: InstanceIdentity,
+  actor: RemoteActorValue,
+  moderation: RemoteActorModerationValue,
+): Record<string, unknown> =>
+  adminRemoteDocument(mastodonRemoteAccount(identity, actor), actor.domain, moderation);
+
+/**
+ * What a report remembers of a remote actor that was purged from the cache:
+ * its handle, with the rest of the account blank.
+ */
+const purgedRemoteDocument = (
+  identity: InstanceIdentity,
+  actorUri: string,
+  acct: string,
+): Record<string, unknown> => {
+  const separator = acct.lastIndexOf("@");
+  const username = separator > 0 ? acct.slice(0, separator) : acct;
+  const domain = separator > 0 ? acct.slice(separator + 1) : "";
+  return adminRemoteDocument(
+    {
+      id: RemoteAccountId.encode(actorUri),
+      username,
+      acct,
+      display_name: "",
+      locked: false,
+      bot: false,
+      discoverable: false,
+      group: false,
+      created_at: new Date(0).toISOString(),
+      note: "",
+      url: actorUri,
+      uri: actorUri,
+      avatar: identity.thumbnailUrl,
+      avatar_static: identity.thumbnailUrl,
+      header: identity.thumbnailUrl,
+      header_static: identity.thumbnailUrl,
+      followers_count: 0,
+      following_count: 0,
+      statuses_count: 0,
+      last_status_at: null,
+      emojis: [],
+      fields: [],
+    },
+    domain,
+    RemoteActorModeration.inGoodStanding,
+  );
+};
+
 /** An `Admin::Account` for an id, with its moderation and flag state. */
 export const adminAccountFor = async (
   env: Env,
   identity: InstanceIdentity,
   accountId: string,
 ): Promise<Record<string, unknown> | null> => {
+  const actorUri = RemoteAccountId.decode(accountId);
+  if (actorUri.isOk()) {
+    const state = await findAdminRemoteActor(env.DB, actorUri.value);
+    return state.isOk() && state.value
+      ? remoteActorDocument(identity, state.value.actor, state.value.moderation)
+      : null;
+  }
   const state = await findAdminAccount(env.DB, accountId);
   return state.isOk() && state.value ? adminAccountDocument(env, identity, state.value) : null;
 };
 
 /**
  * A report's reporter or target as an `Admin::Account`. A remote actor has no
- * login, email, or local moderation state here; `null` when it is no longer
- * known.
+ * login or email. One purged from the cache is shown from the handle the
+ * report kept (`acct`); `null` when the report kept none.
  */
 export const adminPartyFor = async (
   env: Env,
   identity: InstanceIdentity,
   party: ReportParty,
+  acct: string | null,
 ): Promise<Record<string, unknown> | null> => {
   if (party.kind === "Local") {
     return adminAccountFor(env, identity, party.accountId);
   }
-  const actor = await findRemoteActorByUri(env.DB, party.actorUri);
-  if (actor.isErr() || !actor.value) {
-    return null;
+  const state = await findAdminRemoteActor(env.DB, party.actorUri);
+  if (state.isOk() && state.value) {
+    return remoteActorDocument(identity, state.value.actor, state.value.moderation);
   }
-  return {
-    ...mastodonRemoteAccount(identity, actor.value),
-    domain: actor.value.domain,
-    email: null,
-    ip: null,
-    role: { id: "-1", name: "user", highlighted: false },
-    approved: true,
-    disabled: false,
-    silenced: false,
-    suspended: false,
-    limited: false,
-    sensitized: false,
-    invited_by_account_id: null,
-    created_by_application_id: null,
-    invite_request: null,
-  };
+  return acct === null ? null : purgedRemoteDocument(identity, party.actorUri, acct);
 };
 
 const notFound = (c: Context<{ Bindings: Env }>) =>
@@ -150,6 +224,45 @@ export const getV1AdminAccountsById = async (
   return document ? c.json(document) : notFound(c);
 };
 
+/**
+ * `origin=remote`: the cached remote actors, by username. Their ids are not
+ * ordered by arrival, so this list pages by `offset`, not by id cursor.
+ */
+const remoteAdminAccounts = async (
+  env: Env,
+  identity: InstanceIdentity,
+  filters: Parameters<typeof listAdminRemoteActorUris>[1],
+): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+  const uris = await listAdminRemoteActorUris(env.DB, filters);
+  if (uris.isErr()) {
+    return err(uris.error);
+  }
+  const [actors, moderations] = await Promise.all([
+    findRemoteActorsByUris(env.DB, uris.value),
+    listRemoteActorModerations(env.DB, uris.value),
+  ]);
+  if (actors.isErr()) {
+    return err(actors.error);
+  }
+  if (moderations.isErr()) {
+    return err(moderations.error);
+  }
+  return ok(
+    uris.value.flatMap((uri) => {
+      const actor = actors.value.get(uri);
+      return actor
+        ? [
+            remoteActorDocument(
+              identity,
+              actor,
+              moderations.value.get(uri) ?? RemoteActorModeration.inGoodStanding,
+            ),
+          ]
+        : [];
+    }),
+  );
+};
+
 export const getV1AdminAccounts = async (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts">,
 ) => {
@@ -163,8 +276,13 @@ export const getV1AdminAccounts = async (
   }
   const limit = queryAdminLimit(c.req.query("limit"));
   const offset = Math.max(Number.parseInt(c.req.query("offset") ?? "0", 10) || 0, 0);
+  const filters = adminAccountFilters(c);
+  if (filters.origin === "remote") {
+    const remote = await remoteAdminAccounts(c.env, identity.value, { ...filters, limit, offset });
+    return remote.isErr() ? jsonRepositoryError(c, remote.error.message) : c.json(remote.value);
+  }
   const accounts = await listAdminAccounts(c.env.DB, {
-    ...adminAccountFilters(c),
+    ...filters,
     cursor: queryCursor(c),
     limit,
     offset,
@@ -183,10 +301,15 @@ export const getV1AdminAccounts = async (
   return c.json(documents);
 };
 
-/** Change one local account, then answer its `Admin::Account` as it now is. */
+/**
+ * Change one account, then answer its `Admin::Account` as it now is. A remote
+ * actor (`r_…` id) takes the change only when `remoteAction` names its
+ * counterpart; the others (login, approval) do not exist for it.
+ */
 const changeAccount = async (
   c: Context<{ Bindings: Env }>,
   change: (db: D1Database, accountId: string) => Promise<Result<void, RepositoryError>>,
+  remoteAction?: RemoteActorModerationAction,
 ): Promise<Response> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -195,6 +318,22 @@ const changeAccount = async (
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
+  }
+  const actorUri = RemoteAccountId.decode(c.req.param("id") ?? "");
+  if (actorUri.isOk() && remoteAction !== undefined) {
+    const known = await findAdminRemoteActor(c.env.DB, actorUri.value);
+    if (known.isErr()) {
+      return jsonRepositoryError(c, known.error.message);
+    }
+    if (!known.value) {
+      return notFound(c);
+    }
+    const moderated = await moderateRemoteActor(c.env.DB, actorUri.value, remoteAction);
+    if (moderated.isErr()) {
+      return jsonRepositoryError(c, moderated.error.message);
+    }
+    const document = await adminAccountFor(c.env, identity.value, c.req.param("id") ?? "");
+    return document ? c.json(document) : notFound(c);
   }
   const account = await findAccountById(c.env.DB, c.req.param("id") ?? "");
   if (account.isErr()) {
@@ -213,16 +352,16 @@ const changeAccount = async (
 
 export const postV1AdminAccountsByIdSilence = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/silence">,
-) => changeAccount(c, (db, id) => setAccountModeration(db, id, "Silenced"));
+) => changeAccount(c, (db, id) => setAccountModeration(db, id, "Silenced"), "silence");
 export const postV1AdminAccountsByIdUnsilence = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/unsilence">,
-) => changeAccount(c, (db, id) => setAccountModeration(db, id, null));
+) => changeAccount(c, (db, id) => setAccountModeration(db, id, null), "unsilence");
 export const postV1AdminAccountsByIdSuspend = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/suspend">,
-) => changeAccount(c, (db, id) => setAccountModeration(db, id, "Suspended"));
+) => changeAccount(c, (db, id) => setAccountModeration(db, id, "Suspended"), "suspend");
 export const postV1AdminAccountsByIdUnsuspend = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/unsuspend">,
-) => changeAccount(c, (db, id) => setAccountModeration(db, id, null));
+) => changeAccount(c, (db, id) => setAccountModeration(db, id, null), "unsuspend");
 /**
  * `POST /:id/enable` restores a disabled login (Mastodon's `user.enable!`); it
  * does not lift a silence or a suspension: `/unsilence` and `/unsuspend` do.
@@ -232,10 +371,10 @@ export const postV1AdminAccountsByIdEnable = (
 ) => changeAccount(c, (db, id) => setAccountDisabled(db, id, false));
 export const postV1AdminAccountsByIdSensitize = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/sensitize">,
-) => changeAccount(c, (db, id) => setAccountSensitized(db, id, true));
+) => changeAccount(c, (db, id) => setAccountSensitized(db, id, true), "sensitize");
 export const postV1AdminAccountsByIdUnsensitize = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/unsensitize">,
-) => changeAccount(c, (db, id) => setAccountSensitized(db, id, false));
+) => changeAccount(c, (db, id) => setAccountSensitized(db, id, false), "unsensitize");
 export const postV1AdminAccountsByIdApprove = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/approve">,
 ) => changeAccount(c, approveAccount);
@@ -311,6 +450,8 @@ export const postV1AdminAccountsByIdAction = async (
     case "AccountNotFound":
     case "ReportNotFound":
       return notFound(c);
+    case "NotApplicable":
+      return c.json({ error: "Record invalid", kind: "ValidationError" }, 422);
     case "RepositoryError":
       return jsonRepositoryError(c, taken.error.message);
   }

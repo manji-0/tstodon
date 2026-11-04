@@ -10,6 +10,7 @@ import {
   type NotificationPolicyAction,
 } from "./notification-policy-store";
 import { RemoteAccountId } from "./remote-account-id";
+import { getRemoteActorModeration } from "./remote-actor-moderation-store";
 import { findRemoteFollow } from "./remote-actor-store";
 import { findFollowKind } from "./follow-store";
 import { findStatusById } from "./status-store";
@@ -36,7 +37,8 @@ const mostRestrictive = (
  * reads the remote follow. `for_private_mentions` is not applied: its
  * exemption is "the recipient follows the sender", which a remote sender can
  * never meet, so the `drop` default would discard every remote direct message.
- * `for_new_accounts` and `for_limited_accounts` need local account state.
+ * `for_new_accounts` needs local account state. An actor an admin limited
+ * counts under `for_limited_accounts`; a suspended one is dropped.
  */
 const remoteDisposition = async (
   db: D1Database,
@@ -52,7 +54,17 @@ const remoteDisposition = async (
   if (follow.isErr()) {
     return err(follow.error);
   }
+  const moderation = await getRemoteActorModeration(db, actorUri.value);
+  if (moderation.isErr()) {
+    return err(moderation.error);
+  }
   const actions: NotificationPolicyAction[] = [policy.forNotFollowing];
+  if (moderation.value.standing.kind === "Silenced") {
+    actions.push(policy.forLimitedAccounts);
+  }
+  if (moderation.value.standing.kind === "Suspended") {
+    actions.push("drop");
+  }
   if (follow.value?.requestKind !== "Fulfilled") {
     actions.push(policy.forNotFollowers);
   }

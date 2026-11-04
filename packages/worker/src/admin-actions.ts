@@ -1,4 +1,9 @@
-import type { LocalAccount } from "@tstodon/domain";
+import {
+  type LocalAccount,
+  type RemoteActorValue,
+  RemoteActorModeration,
+  type RemoteActorModerationAction,
+} from "@tstodon/domain";
 import { err, ok, Result } from "neverthrow";
 import { z } from "zod";
 import {
@@ -16,6 +21,11 @@ import {
 } from "./account-moderation-store";
 import { deleteAccount, findAccountById } from "./account-store";
 import {
+  getRemoteActorModeration,
+  setRemoteActorModeration,
+} from "./remote-actor-moderation-store";
+import { findRemoteActorByUri } from "./remote-actor-store";
+import {
   clearRemoteMediaForDomain,
   type DomainBlockInput,
   type DomainBlockRow,
@@ -26,7 +36,12 @@ import {
 } from "./admin-domain-block-store";
 import type { RepositoryError } from "./d1";
 import { normalizeDomain } from "./domain-block-store";
-import { findReportById, listOpenReportIdsForTarget, setReportResolved } from "./report-store";
+import {
+  findReportById,
+  listOpenReportIdsForTarget,
+  ReportParty,
+  setReportResolved,
+} from "./report-store";
 
 /**
  * Moderation that both the admin API (`/api/v1/admin/*`) and the admin web
@@ -82,6 +97,42 @@ export const findAdminAccount = async (
   return states.map((found) => found[0]);
 };
 
+/** A remote actor with the moderation an admin applied to it. */
+export type AdminRemoteActorState = Readonly<{
+  actor: RemoteActorValue;
+  moderation: RemoteActorModeration;
+}>;
+
+/** The cached remote actor at `actorUri` with its moderation, if there is one. */
+export const findAdminRemoteActor = async (
+  db: D1Database,
+  actorUri: string,
+): Promise<Result<AdminRemoteActorState | undefined, RepositoryError>> => {
+  const actor = await findRemoteActorByUri(db, actorUri);
+  if (actor.isErr()) {
+    return err(actor.error);
+  }
+  const found = actor.value;
+  if (!found) {
+    return ok(undefined);
+  }
+  const moderation = await getRemoteActorModeration(db, actorUri);
+  return moderation.map((standing) => ({ actor: found, moderation: standing }));
+};
+
+/** Apply one moderation transition to a remote actor and store the result. */
+export const moderateRemoteActor = async (
+  db: D1Database,
+  actorUri: string,
+  action: RemoteActorModerationAction,
+): Promise<Result<void, RepositoryError>> => {
+  const current = await getRemoteActorModeration(db, actorUri);
+  if (current.isErr()) {
+    return err(current.error);
+  }
+  return setRemoteActorModeration(db, actorUri, RemoteActorModeration.apply(current.value, action));
+};
+
 /** Mastodon's `POST /api/v1/admin/accounts/:id/action` types. */
 export const AccountActionTypeSchema = z.union([
   z.literal("none"),
@@ -95,6 +146,7 @@ export type AccountActionType = z.infer<typeof AccountActionTypeSchema>;
 
 export type AccountActionError =
   | Readonly<{ kind: "AccountNotFound" }>
+  | Readonly<{ kind: "NotApplicable" }>
   | Readonly<{ kind: "ReportNotFound" }>
   | RepositoryError;
 
@@ -118,9 +170,23 @@ const applyAction = async (
 };
 
 /**
- * A moderation action on a local account. As in Mastodon, it resolves the
- * report that prompted it, or every open report against the account when
- * none is named.
+ * What each action type does to a remote actor. It has no login to `disable`,
+ * which Mastodon's remote accounts do not take either.
+ */
+const REMOTE_ACTION: Readonly<
+  Record<AccountActionType, RemoteActorModerationAction | "none" | "NotApplicable">
+> = {
+  none: "none",
+  sensitive: "sensitize",
+  silence: "silence",
+  suspend: "suspend",
+  disable: "NotApplicable",
+};
+
+/**
+ * A moderation action on a local account or a remote actor (`r_…` id). As in
+ * Mastodon, it resolves the report that prompted it, or every open report
+ * against the account when none is named.
  */
 export const takeAccountAction = async (
   db: D1Database,
@@ -131,16 +197,33 @@ export const takeAccountAction = async (
     moderatorId: string;
   }>,
 ): Promise<Result<void, AccountActionError>> => {
-  const account = await findAccountById(db, input.accountId);
-  if (account.isErr()) {
-    return err(account.error);
-  }
-  if (!account.value) {
-    return err({ kind: "AccountNotFound" });
+  const requested = ReportParty.ofAccountId(input.accountId);
+  let target: ReportParty;
+  if (requested.kind === "Local") {
+    const account = await findAccountById(db, requested.accountId);
+    if (account.isErr()) {
+      return err(account.error);
+    }
+    if (!account.value) {
+      return err({ kind: "AccountNotFound" });
+    }
+    target = { kind: "Local", accountId: account.value.id };
+  } else {
+    const actor = await findRemoteActorByUri(db, requested.actorUri);
+    if (actor.isErr()) {
+      return err(actor.error);
+    }
+    if (!actor.value) {
+      return err({ kind: "AccountNotFound" });
+    }
+    if (REMOTE_ACTION[input.type] === "NotApplicable") {
+      return err({ kind: "NotApplicable" });
+    }
+    target = requested;
   }
   let reportIds: ReadonlyArray<string>;
   if (input.reportId === undefined) {
-    const open = await listOpenReportIdsForTarget(db, account.value.id);
+    const open = await listOpenReportIdsForTarget(db, target);
     if (open.isErr()) {
       return err(open.error);
     }
@@ -155,7 +238,13 @@ export const takeAccountAction = async (
     }
     reportIds = [report.value.id];
   }
-  const applied = await applyAction(db, account.value.id, input.type);
+  const remoteAction = REMOTE_ACTION[input.type];
+  const applied =
+    target.kind === "Local"
+      ? await applyAction(db, target.accountId, input.type)
+      : remoteAction === "none" || remoteAction === "NotApplicable"
+        ? ok(undefined)
+        : await moderateRemoteActor(db, target.actorUri, remoteAction);
   if (applied.isErr()) {
     return err(applied.error);
   }

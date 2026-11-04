@@ -50,6 +50,8 @@ export type ReportsMinAggregateOutputType = {
   flag_uri: string | null;
   created_at: string | null;
   updated_at: string | null;
+  reporter_acct: string | null;
+  target_acct: string | null;
 };
 
 export type ReportsMaxAggregateOutputType = {
@@ -69,6 +71,8 @@ export type ReportsMaxAggregateOutputType = {
   flag_uri: string | null;
   created_at: string | null;
   updated_at: string | null;
+  reporter_acct: string | null;
+  target_acct: string | null;
 };
 
 export type ReportsCountAggregateOutputType = {
@@ -88,6 +92,8 @@ export type ReportsCountAggregateOutputType = {
   flag_uri: number;
   created_at: number;
   updated_at: number;
+  reporter_acct: number;
+  target_acct: number;
   _all: number;
 };
 
@@ -116,6 +122,8 @@ export type ReportsMinAggregateInputType = {
   flag_uri?: true;
   created_at?: true;
   updated_at?: true;
+  reporter_acct?: true;
+  target_acct?: true;
 };
 
 export type ReportsMaxAggregateInputType = {
@@ -135,6 +143,8 @@ export type ReportsMaxAggregateInputType = {
   flag_uri?: true;
   created_at?: true;
   updated_at?: true;
+  reporter_acct?: true;
+  target_acct?: true;
 };
 
 export type ReportsCountAggregateInputType = {
@@ -154,6 +164,8 @@ export type ReportsCountAggregateInputType = {
   flag_uri?: true;
   created_at?: true;
   updated_at?: true;
+  reporter_acct?: true;
+  target_acct?: true;
   _all?: true;
 };
 
@@ -261,6 +273,8 @@ export type ReportsGroupByOutputType = {
   flag_uri: string | null;
   created_at: string;
   updated_at: string | null;
+  reporter_acct: string | null;
+  target_acct: string | null;
   _count: ReportsCountAggregateOutputType | null;
   _avg: ReportsAvgAggregateOutputType | null;
   _sum: ReportsSumAggregateOutputType | null;
@@ -300,6 +314,8 @@ export type reportsWhereInput = {
   flag_uri?: Prisma.StringNullableFilter<"reports"> | string | null;
   created_at?: Prisma.StringFilter<"reports"> | string;
   updated_at?: Prisma.StringNullableFilter<"reports"> | string | null;
+  reporter_acct?: Prisma.StringNullableFilter<"reports"> | string | null;
+  target_acct?: Prisma.StringNullableFilter<"reports"> | string | null;
   accounts_reports_target_account_idToaccounts?: Prisma.XOR<
     Prisma.AccountsNullableScalarRelationFilter,
     Prisma.accountsWhereInput
@@ -327,6 +343,8 @@ export type reportsOrderByWithRelationInput = {
   flag_uri?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  reporter_acct?: Prisma.SortOrderInput | Prisma.SortOrder;
+  target_acct?: Prisma.SortOrderInput | Prisma.SortOrder;
   accounts_reports_target_account_idToaccounts?: Prisma.accountsOrderByWithRelationInput;
   accounts_reports_account_idToaccounts?: Prisma.accountsOrderByWithRelationInput;
 };
@@ -352,6 +370,8 @@ export type reportsWhereUniqueInput = Prisma.AtLeast<
     forwarded?: Prisma.IntFilter<"reports"> | number;
     created_at?: Prisma.StringFilter<"reports"> | string;
     updated_at?: Prisma.StringNullableFilter<"reports"> | string | null;
+    reporter_acct?: Prisma.StringNullableFilter<"reports"> | string | null;
+    target_acct?: Prisma.StringNullableFilter<"reports"> | string | null;
     accounts_reports_target_account_idToaccounts?: Prisma.XOR<
       Prisma.AccountsNullableScalarRelationFilter,
       Prisma.accountsWhereInput
@@ -381,6 +401,8 @@ export type reportsOrderByWithAggregationInput = {
   flag_uri?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  reporter_acct?: Prisma.SortOrderInput | Prisma.SortOrder;
+  target_acct?: Prisma.SortOrderInput | Prisma.SortOrder;
   _count?: Prisma.reportsCountOrderByAggregateInput;
   _avg?: Prisma.reportsAvgOrderByAggregateInput;
   _max?: Prisma.reportsMaxOrderByAggregateInput;
@@ -412,6 +434,8 @@ export type reportsScalarWhereWithAggregatesInput = {
   flag_uri?: Prisma.StringNullableWithAggregatesFilter<"reports"> | string | null;
   created_at?: Prisma.StringWithAggregatesFilter<"reports"> | string;
   updated_at?: Prisma.StringNullableWithAggregatesFilter<"reports"> | string | null;
+  reporter_acct?: Prisma.StringNullableWithAggregatesFilter<"reports"> | string | null;
+  target_acct?: Prisma.StringNullableWithAggregatesFilter<"reports"> | string | null;
 };
 
 export type reportsCreateInput = {
@@ -429,6 +453,8 @@ export type reportsCreateInput = {
   flag_uri?: string | null;
   created_at?: string;
   updated_at?: string | null;
+  reporter_acct?: string | null;
+  target_acct?: string | null;
   accounts_reports_target_account_idToaccounts?: Prisma.accountsCreateNestedOneWithoutReports_reports_target_account_idToaccountsInput;
   accounts_reports_account_idToaccounts?: Prisma.accountsCreateNestedOneWithoutReports_reports_account_idToaccountsInput;
 };
@@ -450,6 +476,8 @@ export type reportsUncheckedCreateInput = {
   flag_uri?: string | null;
   created_at?: string;
   updated_at?: string | null;
+  reporter_acct?: string | null;
+  target_acct?: string | null;
 };
 
 export type reportsUpdateInput = {
@@ -467,6 +495,8 @@ export type reportsUpdateInput = {
   flag_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reporter_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  target_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   accounts_reports_target_account_idToaccounts?: Prisma.accountsUpdateOneWithoutReports_reports_target_account_idToaccountsNestedInput;
   accounts_reports_account_idToaccounts?: Prisma.accountsUpdateOneWithoutReports_reports_account_idToaccountsNestedInput;
 };
@@ -488,6 +518,8 @@ export type reportsUncheckedUpdateInput = {
   flag_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reporter_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  target_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type reportsCreateManyInput = {
@@ -507,6 +539,8 @@ export type reportsCreateManyInput = {
   flag_uri?: string | null;
   created_at?: string;
   updated_at?: string | null;
+  reporter_acct?: string | null;
+  target_acct?: string | null;
 };
 
 export type reportsUpdateManyMutationInput = {
@@ -524,6 +558,8 @@ export type reportsUpdateManyMutationInput = {
   flag_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reporter_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  target_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type reportsUncheckedUpdateManyInput = {
@@ -543,6 +579,8 @@ export type reportsUncheckedUpdateManyInput = {
   flag_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reporter_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  target_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type ReportsListRelationFilter = {
@@ -572,6 +610,8 @@ export type reportsCountOrderByAggregateInput = {
   flag_uri?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  reporter_acct?: Prisma.SortOrder;
+  target_acct?: Prisma.SortOrder;
 };
 
 export type reportsAvgOrderByAggregateInput = {
@@ -595,6 +635,8 @@ export type reportsMaxOrderByAggregateInput = {
   flag_uri?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  reporter_acct?: Prisma.SortOrder;
+  target_acct?: Prisma.SortOrder;
 };
 
 export type reportsMinOrderByAggregateInput = {
@@ -614,6 +656,8 @@ export type reportsMinOrderByAggregateInput = {
   flag_uri?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  reporter_acct?: Prisma.SortOrder;
+  target_acct?: Prisma.SortOrder;
 };
 
 export type reportsSumOrderByAggregateInput = {
@@ -809,6 +853,8 @@ export type reportsCreateWithoutAccounts_reports_target_account_idToaccountsInpu
   flag_uri?: string | null;
   created_at?: string;
   updated_at?: string | null;
+  reporter_acct?: string | null;
+  target_acct?: string | null;
   accounts_reports_account_idToaccounts?: Prisma.accountsCreateNestedOneWithoutReports_reports_account_idToaccountsInput;
 };
 
@@ -828,6 +874,8 @@ export type reportsUncheckedCreateWithoutAccounts_reports_target_account_idToacc
   flag_uri?: string | null;
   created_at?: string;
   updated_at?: string | null;
+  reporter_acct?: string | null;
+  target_acct?: string | null;
 };
 
 export type reportsCreateOrConnectWithoutAccounts_reports_target_account_idToaccountsInput = {
@@ -859,6 +907,8 @@ export type reportsCreateWithoutAccounts_reports_account_idToaccountsInput = {
   flag_uri?: string | null;
   created_at?: string;
   updated_at?: string | null;
+  reporter_acct?: string | null;
+  target_acct?: string | null;
   accounts_reports_target_account_idToaccounts?: Prisma.accountsCreateNestedOneWithoutReports_reports_target_account_idToaccountsInput;
 };
 
@@ -878,6 +928,8 @@ export type reportsUncheckedCreateWithoutAccounts_reports_account_idToaccountsIn
   flag_uri?: string | null;
   created_at?: string;
   updated_at?: string | null;
+  reporter_acct?: string | null;
+  target_acct?: string | null;
 };
 
 export type reportsCreateOrConnectWithoutAccounts_reports_account_idToaccountsInput = {
@@ -942,6 +994,8 @@ export type reportsScalarWhereInput = {
   flag_uri?: Prisma.StringNullableFilter<"reports"> | string | null;
   created_at?: Prisma.StringFilter<"reports"> | string;
   updated_at?: Prisma.StringNullableFilter<"reports"> | string | null;
+  reporter_acct?: Prisma.StringNullableFilter<"reports"> | string | null;
+  target_acct?: Prisma.StringNullableFilter<"reports"> | string | null;
 };
 
 export type reportsUpsertWithWhereUniqueWithoutAccounts_reports_account_idToaccountsInput = {
@@ -988,6 +1042,8 @@ export type reportsCreateManyAccounts_reports_target_account_idToaccountsInput =
   flag_uri?: string | null;
   created_at?: string;
   updated_at?: string | null;
+  reporter_acct?: string | null;
+  target_acct?: string | null;
 };
 
 export type reportsCreateManyAccounts_reports_account_idToaccountsInput = {
@@ -1006,6 +1062,8 @@ export type reportsCreateManyAccounts_reports_account_idToaccountsInput = {
   flag_uri?: string | null;
   created_at?: string;
   updated_at?: string | null;
+  reporter_acct?: string | null;
+  target_acct?: string | null;
 };
 
 export type reportsUpdateWithoutAccounts_reports_target_account_idToaccountsInput = {
@@ -1023,6 +1081,8 @@ export type reportsUpdateWithoutAccounts_reports_target_account_idToaccountsInpu
   flag_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reporter_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  target_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   accounts_reports_account_idToaccounts?: Prisma.accountsUpdateOneWithoutReports_reports_account_idToaccountsNestedInput;
 };
 
@@ -1042,6 +1102,8 @@ export type reportsUncheckedUpdateWithoutAccounts_reports_target_account_idToacc
   flag_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reporter_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  target_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type reportsUncheckedUpdateManyWithoutAccounts_reports_target_account_idToaccountsInput = {
@@ -1060,6 +1122,8 @@ export type reportsUncheckedUpdateManyWithoutAccounts_reports_target_account_idT
   flag_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reporter_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  target_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type reportsUpdateWithoutAccounts_reports_account_idToaccountsInput = {
@@ -1077,6 +1141,8 @@ export type reportsUpdateWithoutAccounts_reports_account_idToaccountsInput = {
   flag_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reporter_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  target_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   accounts_reports_target_account_idToaccounts?: Prisma.accountsUpdateOneWithoutReports_reports_target_account_idToaccountsNestedInput;
 };
 
@@ -1096,6 +1162,8 @@ export type reportsUncheckedUpdateWithoutAccounts_reports_account_idToaccountsIn
   flag_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reporter_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  target_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type reportsUncheckedUpdateManyWithoutAccounts_reports_account_idToaccountsInput = {
@@ -1114,6 +1182,8 @@ export type reportsUncheckedUpdateManyWithoutAccounts_reports_account_idToaccoun
   flag_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  reporter_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  target_acct?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type reportsSelect<
@@ -1136,6 +1206,8 @@ export type reportsSelect<
     flag_uri?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
+    reporter_acct?: boolean;
+    target_acct?: boolean;
     accounts_reports_target_account_idToaccounts?:
       | boolean
       | Prisma.reports$accounts_reports_target_account_idToaccountsArgs<ExtArgs>;
@@ -1166,6 +1238,8 @@ export type reportsSelectCreateManyAndReturn<
     flag_uri?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
+    reporter_acct?: boolean;
+    target_acct?: boolean;
     accounts_reports_target_account_idToaccounts?:
       | boolean
       | Prisma.reports$accounts_reports_target_account_idToaccountsArgs<ExtArgs>;
@@ -1196,6 +1270,8 @@ export type reportsSelectUpdateManyAndReturn<
     flag_uri?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
+    reporter_acct?: boolean;
+    target_acct?: boolean;
     accounts_reports_target_account_idToaccounts?:
       | boolean
       | Prisma.reports$accounts_reports_target_account_idToaccountsArgs<ExtArgs>;
@@ -1223,6 +1299,8 @@ export type reportsSelectScalar = {
   flag_uri?: boolean;
   created_at?: boolean;
   updated_at?: boolean;
+  reporter_acct?: boolean;
+  target_acct?: boolean;
 };
 
 export type reportsOmit<
@@ -1243,7 +1321,9 @@ export type reportsOmit<
   | "forwarded"
   | "flag_uri"
   | "created_at"
-  | "updated_at",
+  | "updated_at"
+  | "reporter_acct"
+  | "target_acct",
   ExtArgs["result"]["reports"]
 >;
 export type reportsInclude<
@@ -1303,6 +1383,8 @@ export type $reportsPayload<
       flag_uri: string | null;
       created_at: string;
       updated_at: string | null;
+      reporter_acct: string | null;
+      target_acct: string | null;
     },
     ExtArgs["result"]["reports"]
   >;
@@ -1898,6 +1980,8 @@ export interface reportsFieldRefs {
   readonly flag_uri: Prisma.FieldRef<"reports", "String">;
   readonly created_at: Prisma.FieldRef<"reports", "String">;
   readonly updated_at: Prisma.FieldRef<"reports", "String">;
+  readonly reporter_acct: Prisma.FieldRef<"reports", "String">;
+  readonly target_acct: Prisma.FieldRef<"reports", "String">;
 }
 
 // Custom InputTypes

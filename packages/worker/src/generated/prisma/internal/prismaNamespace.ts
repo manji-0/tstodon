@@ -398,6 +398,7 @@ export const ModelName = {
   account_notes: "account_notes",
   announcements: "announcements",
   account_moderation: "account_moderation",
+  remote_actor_moderation: "remote_actor_moderation",
   account_domain_blocks: "account_domain_blocks",
   push_subscriptions: "push_subscriptions",
   status_idempotency: "status_idempotency",
@@ -491,6 +492,7 @@ export type TypeMap<
       | "account_notes"
       | "announcements"
       | "account_moderation"
+      | "remote_actor_moderation"
       | "account_domain_blocks"
       | "push_subscriptions"
       | "status_idempotency"
@@ -1088,6 +1090,82 @@ export type TypeMap<
           args: Prisma.account_moderationCountArgs<ExtArgs>;
           result:
             | runtime.Types.Utils.Optional<Prisma.Account_moderationCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    remote_actor_moderation: {
+      payload: Prisma.$remote_actor_moderationPayload<ExtArgs>;
+      fields: Prisma.remote_actor_moderationFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.remote_actor_moderationFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_moderationPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.remote_actor_moderationFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_moderationPayload>;
+        };
+        findFirst: {
+          args: Prisma.remote_actor_moderationFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_moderationPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.remote_actor_moderationFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_moderationPayload>;
+        };
+        findMany: {
+          args: Prisma.remote_actor_moderationFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_moderationPayload>[];
+        };
+        create: {
+          args: Prisma.remote_actor_moderationCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_moderationPayload>;
+        };
+        createMany: {
+          args: Prisma.remote_actor_moderationCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.remote_actor_moderationCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_moderationPayload>[];
+        };
+        delete: {
+          args: Prisma.remote_actor_moderationDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_moderationPayload>;
+        };
+        update: {
+          args: Prisma.remote_actor_moderationUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_moderationPayload>;
+        };
+        deleteMany: {
+          args: Prisma.remote_actor_moderationDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.remote_actor_moderationUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.remote_actor_moderationUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_moderationPayload>[];
+        };
+        upsert: {
+          args: Prisma.remote_actor_moderationUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_moderationPayload>;
+        };
+        aggregate: {
+          args: Prisma.Remote_actor_moderationAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateRemote_actor_moderation>;
+        };
+        groupBy: {
+          args: Prisma.remote_actor_moderationGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Remote_actor_moderationGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.remote_actor_moderationCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Remote_actor_moderationCountAggregateOutputType>
             | number;
         };
       };
@@ -6198,6 +6276,17 @@ export const Account_moderationScalarFieldEnum = {
 export type Account_moderationScalarFieldEnum =
   (typeof Account_moderationScalarFieldEnum)[keyof typeof Account_moderationScalarFieldEnum];
 
+export const Remote_actor_moderationScalarFieldEnum = {
+  actor_uri: "actor_uri",
+  moderation: "moderation",
+  sensitized: "sensitized",
+  created_at: "created_at",
+  updated_at: "updated_at",
+} as const;
+
+export type Remote_actor_moderationScalarFieldEnum =
+  (typeof Remote_actor_moderationScalarFieldEnum)[keyof typeof Remote_actor_moderationScalarFieldEnum];
+
 export const Account_domain_blocksScalarFieldEnum = {
   account_id: "account_id",
   domain: "domain",
@@ -6793,6 +6882,8 @@ export const ReportsScalarFieldEnum = {
   flag_uri: "flag_uri",
   created_at: "created_at",
   updated_at: "updated_at",
+  reporter_acct: "reporter_acct",
+  target_acct: "target_acct",
 } as const;
 
 export type ReportsScalarFieldEnum =
@@ -7184,6 +7275,7 @@ export type GlobalOmitConfig = {
   account_notes?: Prisma.account_notesOmit;
   announcements?: Prisma.announcementsOmit;
   account_moderation?: Prisma.account_moderationOmit;
+  remote_actor_moderation?: Prisma.remote_actor_moderationOmit;
   account_domain_blocks?: Prisma.account_domain_blocksOmit;
   push_subscriptions?: Prisma.push_subscriptionsOmit;
   status_idempotency?: Prisma.status_idempotencyOmit;

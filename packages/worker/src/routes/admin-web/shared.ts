@@ -7,6 +7,7 @@ import { errorPage } from "../../auth-pages";
 import type { RepositoryError } from "../../d1";
 import { readOptionalBody } from "../../http";
 import { RemoteAccountId } from "../../remote-account-id";
+import { findRemoteActorByUri } from "../../remote-actor-store";
 import type { PageMessage } from "../../settings-pages";
 import { instanceName, type SettingsContext, settingsAccount } from "../account-settings";
 
@@ -70,16 +71,21 @@ export const readFields = async (c: SettingsContext): Promise<Readonly<Record<st
 export const remoteDomain = (actorUri: string): string | undefined =>
   URL.canParse(actorUri) ? new URL(actorUri).host : undefined;
 
-/** Names accounts for a page, reading each one once. */
+/**
+ * Names accounts for a page, reading each one once. A remote actor is named by
+ * its cached handle, else by the `acct` a report kept of it.
+ */
 export const accountLabeller = (db: D1Database) => {
   const known = new Map<string, Promise<AccountLabel>>();
-  const lookUp = async (id: string): Promise<AccountLabel> => {
+  const lookUp = async (id: string, acct: string | null): Promise<AccountLabel> => {
     const remote = RemoteAccountId.decode(id);
     if (remote.isOk()) {
-      const domain = remoteDomain(remote.value);
+      const actor = await findRemoteActorByUri(db, remote.value);
+      const handle =
+        actor.isOk() && actor.value ? `${actor.value.username}@${actor.value.domain}` : acct;
       return {
-        label: remote.value,
-        href: domain === undefined ? undefined : `/admin/instances/${domain}`,
+        label: handle === null ? remote.value : `@${handle}`,
+        href: `/admin/accounts/${id}`,
       };
     }
     const account = await findAccountById(db, id);
@@ -87,8 +93,8 @@ export const accountLabeller = (db: D1Database) => {
       ? { label: `@${account.value.username}`, href: `/admin/accounts/${id}` }
       : { label: `account ${id}`, href: undefined };
   };
-  return (id: string): Promise<AccountLabel> => {
-    const label = known.get(id) ?? lookUp(id);
+  return (id: string, acct: string | null = null): Promise<AccountLabel> => {
+    const label = known.get(id) ?? lookUp(id, acct);
     known.set(id, label);
     return label;
   };

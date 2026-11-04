@@ -132,6 +132,8 @@ export * from "./sql/deleteReblogOf";
 
 export * from "./sql/deleteRemoteActor";
 
+export * from "./sql/deleteRemoteActorModeration";
+
 export * from "./sql/deleteRemoteActorPins";
 
 export * from "./sql/deleteRemoteAnnounce";
@@ -269,6 +271,8 @@ export * from "./sql/findRemoteActorByHandle";
 export * from "./sql/findRemoteActorByPublicKeyId";
 
 export * from "./sql/findRemoteActorByUri";
+
+export * from "./sql/findRemoteActorModeration";
 
 export * from "./sql/findRemoteActorsByUris";
 
@@ -526,6 +530,8 @@ export * from "./sql/listPublishedAnnouncements";
 
 export * from "./sql/listPushSubscriptions";
 
+export * from "./sql/listRemoteActorModerations";
+
 export * from "./sql/listRemoteActorPinnedStatuses";
 
 export * from "./sql/listRemotePollVotes";
@@ -703,6 +709,8 @@ export * from "./sql/upsertNotificationPolicy";
 export * from "./sql/upsertPushSubscription";
 
 export * from "./sql/upsertRemoteActor";
+
+export * from "./sql/upsertRemoteActorModeration";
 
 export * from "./sql/upsertRemoteAnnounce";
 

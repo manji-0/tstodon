@@ -103,6 +103,7 @@ export const receiveRemoteFlag = async (
   const targetId = target.id;
   const report = await insertFlagReport(env.DB, {
     reporter: { kind: "Remote", actorUri: sender.actorUri },
+    reporterAcct: `${sender.username}@${sender.domain}`,
     target: { kind: "Local", accountId: targetId },
     statusIds: [...new Set(statusIds)].filter(
       (id) => statuses.value.get(id)?.accountId === targetId,

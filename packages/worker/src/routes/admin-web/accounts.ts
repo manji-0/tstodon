@@ -1,14 +1,18 @@
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { Context } from "hono";
-import type { Result } from "neverthrow";
+import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { approveAccount, setAccountDisabled, setAccountSensitized } from "../../account-flag-store";
 import { setAccountModeration } from "../../account-moderation-store";
+import type { RemoteActorModerationAction, RemoteActorModerationValue } from "@tstodon/domain";
 import { listAdminAccounts } from "../../account-admin-store";
 import {
   type AdminAccountState,
+  type AdminRemoteActorState,
   adminAccountStates,
   findAdminAccount,
+  findAdminRemoteActor,
+  moderateRemoteActor,
   purgeAccount,
 } from "../../admin-actions";
 import {
@@ -16,11 +20,11 @@ import {
   type AccountsQuery,
   accountsPage,
   confirmPage,
-  remoteAccountPage,
+  remoteActorPage,
 } from "../../admin-pages";
 import type { RepositoryError } from "../../d1";
 import { RemoteAccountId } from "../../remote-account-id";
-import { listOpenReportIdsForTarget } from "../../report-store";
+import { findRemoteActorAcct, listOpenReportIdsForTarget } from "../../report-store";
 import type { PageMessage } from "../../settings-pages";
 import { instanceName, type SettingsContext } from "../account-settings";
 import {
@@ -186,7 +190,10 @@ const renderAccount = async (
   message: PageMessage | undefined,
   status: 200 | 422 = 200,
 ) => {
-  const open = await listOpenReportIdsForTarget(c.env.DB, state.account.id);
+  const open = await listOpenReportIdsForTarget(c.env.DB, {
+    kind: "Local",
+    accountId: state.account.id,
+  });
   if (open.isErr()) {
     return serverError(c, open.error);
   }
@@ -207,21 +214,145 @@ const renderAccount = async (
   );
 };
 
+/** The remote actor's buttons: it can be limited, suspended, and have its media marked sensitive. */
+type RemoteAccountCommand = Readonly<{
+  label: string;
+  /** Whether the actor's state offers this action. */
+  offered: (moderation: RemoteActorModerationValue) => boolean;
+  /** Asked before the action goes through. */
+  confirm?: string;
+  action: RemoteActorModerationAction;
+}>;
+
+const REMOTE_COMMANDS: Readonly<Record<RemoteActorModerationAction, RemoteAccountCommand>> = {
+  silence: {
+    label: "Limit",
+    offered: (moderation) => moderation.standing.kind === "InGoodStanding",
+    action: "silence",
+  },
+  unsilence: {
+    label: "Lift limit",
+    offered: (moderation) => moderation.standing.kind === "Silenced",
+    action: "unsilence",
+  },
+  suspend: {
+    label: "Suspend",
+    offered: (moderation) => moderation.standing.kind !== "Suspended",
+    confirm:
+      "Suspending hides the account and its posts and refuses everything it sends. You can lift it later.",
+    action: "suspend",
+  },
+  unsuspend: {
+    label: "Unsuspend",
+    offered: (moderation) => moderation.standing.kind === "Suspended",
+    action: "unsuspend",
+  },
+  sensitize: {
+    label: "Mark media as sensitive",
+    offered: (moderation) => !moderation.sensitized,
+    action: "sensitize",
+  },
+  unsensitize: {
+    label: "Stop marking media as sensitive",
+    offered: (moderation) => moderation.sensitized,
+    action: "unsensitize",
+  },
+};
+
+const RemoteCommandSchema = z.union([
+  z.literal("silence"),
+  z.literal("unsilence"),
+  z.literal("suspend"),
+  z.literal("unsuspend"),
+  z.literal("sensitize"),
+  z.literal("unsensitize"),
+]);
+
+/** A remote actor at an `r_…` id: what this server has of it, or only its handle once purged. */
+type RemoteAccountView = Readonly<{
+  actorUri: string;
+  acct: string;
+  domain: string | undefined;
+  state: AdminRemoteActorState | undefined;
+}>;
+
+const remoteAccountAt = async (
+  db: D1Database,
+  actorUri: string,
+): Promise<Result<RemoteAccountView, RepositoryError>> => {
+  const state = await findAdminRemoteActor(db, actorUri);
+  if (state.isErr()) {
+    return err(state.error);
+  }
+  let acct: string;
+  if (state.value) {
+    acct = `${state.value.actor.username}@${state.value.actor.domain}`;
+  } else {
+    const remembered = await findRemoteActorAcct(db, actorUri);
+    if (remembered.isErr()) {
+      return err(remembered.error);
+    }
+    acct = remembered.value ?? actorUri;
+  }
+  return ok({
+    actorUri,
+    acct,
+    domain: state.value?.actor.domain ?? remoteDomain(actorUri),
+    state: state.value,
+  });
+};
+
+const renderRemoteAccount = async (
+  c: SettingsContext,
+  view: RemoteAccountView,
+  message: PageMessage | undefined,
+  status: 200 | 422 = 200,
+) => {
+  const open = await listOpenReportIdsForTarget(c.env.DB, {
+    kind: "Remote",
+    actorUri: view.actorUri,
+  });
+  if (open.isErr()) {
+    return serverError(c, open.error);
+  }
+  const moderation = view.state?.moderation;
+  return c.html(
+    remoteActorPage(
+      instanceName(c.env),
+      {
+        actorUri: view.actorUri,
+        acct: view.acct,
+        domain: view.domain,
+        moderation,
+        openReports: open.value,
+        actions:
+          moderation === undefined
+            ? []
+            : Object.entries(REMOTE_COMMANDS)
+                .filter(([, command]) => command.offered(moderation))
+                .map(([name, command]) => ({ command: name, label: command.label })),
+      },
+      message,
+    ),
+    status,
+  );
+};
+
 /** The account at the path's id, or the page that answers instead. */
 const accountAt = async (
   c: SettingsContext,
   id: string,
 ): Promise<
   | Readonly<{ kind: "Found"; state: AdminAccountState }>
+  | Readonly<{ kind: "FoundRemote"; view: RemoteAccountView }>
   | Readonly<{ kind: "Answered"; response: Response }>
 > => {
   const remote = RemoteAccountId.decode(id);
-  const domain = remote.isOk() ? remoteDomain(remote.value) : undefined;
-  if (remote.isOk() && domain !== undefined) {
-    return {
-      kind: "Answered",
-      response: c.html(remoteAccountPage(instanceName(c.env), remote.value, domain)),
-    };
+  if (remote.isOk()) {
+    const view = await remoteAccountAt(c.env.DB, remote.value);
+    return view.isOk()
+      ? { kind: "FoundRemote", view: view.value }
+      : { kind: "Answered", response: serverError(c, view.error) };
   }
   const state = await findAdminAccount(c.env.DB, id);
   if (state.isErr()) {
@@ -239,9 +370,53 @@ export const getAdminAccount = async (c: Context<{ Bindings: Env }, "/admin/acco
     return admin.response;
   }
   const found = await accountAt(c, c.req.param("id"));
-  return found.kind === "Answered"
-    ? found.response
-    : renderAccount(c, admin.account.id, found.state, noticeOf(c));
+  switch (found.kind) {
+    case "Answered":
+      return found.response;
+    case "FoundRemote":
+      return renderRemoteAccount(c, found.view, noticeOf(c));
+    case "Found":
+      return renderAccount(c, admin.account.id, found.state, noticeOf(c));
+  }
+};
+
+/** The remote actor page's moderation buttons; suspending asks again first. */
+const postRemoteAccount = async (
+  c: SettingsContext,
+  view: RemoteAccountView,
+  fields: Readonly<Record<string, string>>,
+) => {
+  const name = schemaResult(RemoteCommandSchema)(fields.do);
+  if (name.isErr()) {
+    return badForm(c);
+  }
+  const command = REMOTE_COMMANDS[name.value];
+  const path = `/admin/accounts/${RemoteAccountId.encode(view.actorUri)}`;
+  if (view.state === undefined || !command.offered(view.state.moderation)) {
+    return renderRemoteAccount(
+      c,
+      view,
+      { kind: "error", text: `"${command.label}" does not apply to this account now.` },
+      422,
+    );
+  }
+  if (command.confirm !== undefined && fields.confirmed !== "1") {
+    return c.html(
+      confirmPage(instanceName(c.env), {
+        title: `${command.label}: ${view.acct}?`,
+        text: command.confirm,
+        action: path,
+        fields: { do: name.value },
+        confirmLabel: command.label,
+        cancelHref: path,
+      }),
+    );
+  }
+  const ran = await moderateRemoteActor(c.env.DB, view.actorUri, command.action);
+  if (ran.isErr()) {
+    return serverError(c, ran.error);
+  }
+  return pageRedirect(c, withNotice(path, "updated"), 303);
 };
 
 /** The account page's moderation buttons; destructive ones ask again first. */
@@ -255,6 +430,9 @@ export const postAdminAccount = async (c: Context<{ Bindings: Env }, "/admin/acc
     return found.response;
   }
   const fields = await readFields(c);
+  if (found.kind === "FoundRemote") {
+    return postRemoteAccount(c, found.view, fields);
+  }
   const name = schemaResult(AccountCommandSchema)(fields.do);
   if (name.isErr()) {
     return badForm(c);
@@ -303,4 +481,4 @@ export const postAdminAccount = async (c: Context<{ Bindings: Env }, "/admin/acc
   );
 };
 
-warmSchemas([AccountsQuerySchema, AccountCommandSchema]);
+warmSchemas([AccountsQuerySchema, AccountCommandSchema, RemoteCommandSchema]);

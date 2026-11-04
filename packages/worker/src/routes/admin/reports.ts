@@ -50,8 +50,8 @@ const adminReportDocument = async (
     forwarded: report.forwarded,
     created_at: report.createdAt,
     updated_at: report.updatedAt ?? report.createdAt,
-    account: await adminPartyFor(c.env, identity, report.reporter),
-    target_account: await adminPartyFor(c.env, identity, report.target),
+    account: await adminPartyFor(c.env, identity, report.reporter, report.reporterAcct),
+    target_account: await adminPartyFor(c.env, identity, report.target, report.targetAcct),
     assigned_account: report.assignedAccountId
       ? await adminAccountFor(c.env, identity, report.assignedAccountId)
       : null,

@@ -2,6 +2,7 @@ import type { InstanceIdentity, RemoteStatusValue } from "@tstodon/domain";
 import { parseLocalStatusId } from "./activitypub";
 import { cardDocument, parseCardJson } from "./link-card";
 import { RemoteAccountId } from "./remote-account-id";
+import { listRemoteActorModerations } from "./remote-actor-moderation-store";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { findRemotePollVotes } from "./remote-poll-vote-store";
 import { findRemoteStatusReplyTargets } from "./remote-reply-store";
@@ -74,8 +75,10 @@ export const attachRemoteReplyRefs = async (
 /**
  * Cached remote statuses as Mastodon statuses rendered for the viewer, in the
  * order given: author, preview card, the viewer's poll votes, local accounts'
- * favourites and boosts with the viewer's own, and reply refs. A status whose
- * author is not cached is left out. No visibility check is made here.
+ * favourites and boosts with the viewer's own, and reply refs. A status with
+ * media is marked sensitive when an admin marked its author's media sensitive,
+ * as Mastodon does for a remote account. A status whose author is not cached
+ * is left out. No visibility check is made here.
  */
 export const mastodonRemoteStatuses = async (
   env: Env,
@@ -87,12 +90,11 @@ export const mastodonRemoteStatuses = async (
     return [];
   }
   const ids = statuses.map((status) => status.id);
-  const [cards, actors, pollVotes, interactions] = await Promise.all([
+  const actorUris = statuses.map((status) => status.actorUri);
+  const [cards, actors, moderations, pollVotes, interactions] = await Promise.all([
     listRemoteStatusCards(env.DB, ids),
-    findRemoteActorsByUris(
-      env.DB,
-      statuses.map((status) => status.actorUri),
-    ),
+    findRemoteActorsByUris(env.DB, actorUris),
+    listRemoteActorModerations(env.DB, actorUris),
     findRemotePollVotes(env.DB, viewerId, statuses),
     statusInteractionCountsByIds(env.DB, ids, viewerId),
   ]);
@@ -103,13 +105,16 @@ export const mastodonRemoteStatuses = async (
     }
     const rawCard = cards.isOk() ? cards.value.get(status.id) : undefined;
     const card = rawCard ? parseCardJson(rawCard) : undefined;
-    return [
-      mastodonRemoteStatus(identity, status, actor, {
-        card: card ? cardDocument(card) : null,
-        pollVotes: pollVotes.get(status.id),
-        interactions: interactions.isOk() ? interactions.value.get(status.id) : undefined,
-      }),
-    ];
+    const document = mastodonRemoteStatus(identity, status, actor, {
+      card: card ? cardDocument(card) : null,
+      pollVotes: pollVotes.get(status.id),
+      interactions: interactions.isOk() ? interactions.value.get(status.id) : undefined,
+    });
+    const sensitized = moderations.isOk() && moderations.value.get(status.actorUri)?.sensitized;
+    if (sensitized && status.media.length > 0) {
+      document.sensitive = true;
+    }
+    return [document];
   });
   await attachRemoteReplyRefs(env.DB, identity, documents);
   return documents;
