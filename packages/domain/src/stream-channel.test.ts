@@ -80,4 +80,17 @@ describe("StreamChannel", () => {
   it("parses back only channels the wire parser could produce", () => {
     expect(StreamChannel.parse({ kind: "Hashtag", tag: "%", localOnly: false }).isErr()).toBe(true);
   });
+
+  it("name the stream an SSE path stands for", () => {
+    expect(StreamChannel.streamFromPath("user", false)).toBe("user");
+    expect(StreamChannel.streamFromPath("/user/notification/", false)).toBe("user:notification");
+    expect(StreamChannel.streamFromPath("public/local", false)).toBe("public:local");
+    expect(StreamChannel.streamFromPath("public/remote/media", false)).toBe("public:remote:media");
+    expect(StreamChannel.streamFromPath("public/remote", true)).toBe("public:remote:media");
+    expect(StreamChannel.streamFromPath("public/media", true)).toBe("public:media");
+    expect(StreamChannel.streamFromPath("hashtag/local", true)).toBe("hashtag:local");
+    expect(StreamChannel.streamFromPath("health", false)).toBeUndefined();
+    expect(StreamChannel.streamFromPath("constructor", false)).toBeUndefined();
+    expect(StreamChannel.streamFromPath("", false)).toBeUndefined();
+  });
 });

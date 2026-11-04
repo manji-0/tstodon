@@ -148,10 +148,48 @@ const fromWire = (
   }
 };
 
+/** The `stream` a Mastodon SSE path names, by the path under `/api/v1/streaming/`. */
+const PATH_STREAMS = {
+  user: "user",
+  "user/notification": "user:notification",
+  direct: "direct",
+  public: "public",
+  "public/local": "public:local",
+  "public/remote": "public:remote",
+  "public/media": "public:media",
+  "public/local/media": "public:local:media",
+  "public/remote/media": "public:remote:media",
+  hashtag: "hashtag",
+  "hashtag/local": "hashtag:local",
+  list: "list",
+} as const satisfies Record<string, string>;
+
+const isPathStream = (path: string): path is keyof typeof PATH_STREAMS =>
+  Object.hasOwn(PATH_STREAMS, path);
+
+/**
+ * The stream a path under `/api/v1/streaming/` names (`user/notification`,
+ * `public/local`, `hashtag/local`, ...) as the `stream` of a client's wire
+ * request, or nothing for a path Mastodon's streaming server does not serve.
+ * `only_media=true` makes a `public` path its `:media` variant, as it does
+ * there.
+ */
+const streamFromPath = (path: string, onlyMedia: boolean): string | undefined => {
+  const trimmed = path.replace(/^\/+|\/+$/g, "");
+  if (!isPathStream(trimmed)) {
+    return undefined;
+  }
+  const stream: string = PATH_STREAMS[trimmed];
+  return onlyMedia && stream.startsWith("public") && !stream.endsWith(":media")
+    ? `${stream}:media`
+    : stream;
+};
+
 export const StreamChannel = {
   schema: StreamChannelSchema,
   parse: schemaResult(StreamChannelSchema),
   fromWire,
+  streamFromPath,
   streamName,
   key,
 } as const;
