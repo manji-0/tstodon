@@ -107,4 +107,26 @@ test.describe("admin links in the web UI", () => {
     await expect(moderation.getByText("Account updated.")).toBeVisible();
     await expect(moderation.getByText("State: limited")).toBeVisible();
   });
+
+  test("an admin opens the dashboard, then publishes an announcement from the admin pages", async ({
+    page,
+  }) => {
+    const text = `Maintenance window ${Date.now().toString(36)}`;
+    await signUp(page, "modadmin4");
+
+    await page.goto("/admin");
+    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+    await expect(page.getByText("Open reports")).toBeVisible();
+
+    await page.getByRole("link", { name: "Announcements", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Announcements" })).toBeVisible();
+    await page.getByLabel("Text").fill(text);
+    await page.getByRole("button", { name: "Create announcement" }).click();
+    await expect(page.getByText("Announcement created.")).toBeVisible();
+    await page.getByRole("link", { name: text }).click();
+    await expect(page.getByText(/^Published /)).toBeVisible();
+    await page.getByRole("button", { name: "Unpublish" }).click();
+    await expect(page.getByText("Announcement unpublished.")).toBeVisible();
+    await expect(page.getByText("This announcement is a draft.")).toBeVisible();
+  });
 });

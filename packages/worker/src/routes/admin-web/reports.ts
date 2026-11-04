@@ -49,9 +49,6 @@ import { pageRedirect } from "../../page-redirect";
 
 /** Mastodon's `/admin/reports` page and the moderation it offers on a report. */
 
-/** `/admin` and `/admin/dashboard`: the reports are where moderation starts. */
-export const getAdminIndex = (c: Context<{ Bindings: Env }>) => pageRedirect(c, "/admin/reports");
-
 const REPORTS_PER_PAGE = 50;
 
 const summaryOf = async (

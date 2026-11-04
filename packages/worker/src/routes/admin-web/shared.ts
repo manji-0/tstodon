@@ -12,7 +12,7 @@ import type { PageMessage } from "../../settings-pages";
 import { instanceName, type SettingsContext, settingsAccount } from "../account-settings";
 
 /**
- * What the admin pages (reports, accounts, federation) share. Each page and
+ * What the admin pages share. Each page and
  * form post needs an admin's browser session: the same role `/api/v1/admin`
  * requires of a token.
  */
@@ -27,6 +27,22 @@ const NOTICES = {
   deleted: "Account deleted.",
   block_saved: "Domain block saved.",
   block_removed: "Domain block removed.",
+  posts_marked_sensitive: "Posts marked as sensitive.",
+  posts_marked_not_sensitive: "Posts marked as not sensitive.",
+  posts_deleted: "Posts deleted.",
+  announcement_created: "Announcement created.",
+  announcement_saved: "Announcement saved.",
+  announcement_published: "Announcement published.",
+  announcement_unpublished: "Announcement unpublished.",
+  announcement_deleted: "Announcement deleted.",
+  emoji_uploaded: "Emoji uploaded.",
+  emoji_shown: "Emoji shown in the picker.",
+  emoji_hidden: "Emoji hidden from the picker.",
+  emoji_deleted: "Emoji deleted.",
+  trend_approved: "Trend approved.",
+  trend_rejected: "Trend rejected.",
+  email_block_added: "Email domain blocked.",
+  email_block_removed: "Email domain block removed.",
 } as const;
 
 export type NoticeKey = keyof typeof NOTICES;
@@ -66,6 +82,29 @@ const FormFieldsSchema = z.record(z.string(), z.string());
 export const readFields = async (c: SettingsContext): Promise<Readonly<Record<string, string>>> => {
   const fields = await readOptionalBody(c, FormFieldsSchema);
   return fields.isOk() ? fields.value : {};
+};
+
+type FormPart = string | File;
+
+/** Every part of a form post, a repeated name (checkboxes) kept as a list. */
+export const readParts = async (
+  c: SettingsContext,
+): Promise<Readonly<Record<string, FormPart | ReadonlyArray<FormPart>>>> => {
+  try {
+    return await c.req.parseBody({ all: true });
+  } catch {
+    return {};
+  }
+};
+
+/** The text values of one named part, whether it came once, repeatedly, or not at all. */
+export const textParts = (
+  parts: Readonly<Record<string, FormPart | ReadonlyArray<FormPart>>>,
+  name: string,
+): ReadonlyArray<string> => {
+  const part = parts[name];
+  const all = part === undefined ? [] : Array.isArray(part) ? part : [part];
+  return all.filter((value): value is string => typeof value === "string");
 };
 
 export const remoteDomain = (actorUri: string): string | undefined =>

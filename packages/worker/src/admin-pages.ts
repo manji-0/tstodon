@@ -9,25 +9,38 @@ import { checkbox, messageLine, options, type PageMessage } from "./settings-pag
 
 /**
  * Mastodon's admin pages that its web app links to (`/admin/reports`,
- * `/admin/accounts`, `/admin/instances`), as plain forms in the style of the
- * settings pages. They act through the same code as `/api/v1/admin`.
+ * `/admin/accounts`, `/admin/instances`, and the content pages in
+ * `admin-content-pages.ts`), as plain forms in the style of the settings
+ * pages. They act through the same code as `/api/v1/admin`.
  */
 
-const adminNav = `      <p class="muted"><a href="/">Back to the web app</a> · <a href="/settings/preferences">Preferences</a></p>
-      <p><strong>Administration</strong> · <a href="/admin/reports">Reports</a> · <a href="/admin/accounts">Accounts</a> · <a href="/admin/instances">Federation</a></p>`;
+/** Where the admin navigation leads, in the order it shows. */
+const ADMIN_LINKS = [
+  ["/admin/dashboard", "Dashboard"],
+  ["/admin/reports", "Reports"],
+  ["/admin/accounts", "Accounts"],
+  ["/admin/instances", "Federation"],
+  ["/admin/announcements", "Announcements"],
+  ["/admin/custom_emojis", "Custom emojis"],
+  ["/admin/trends/tags", "Trends"],
+  ["/admin/email_domain_blocks", "Email domain blocks"],
+] as const;
 
-const adminPage = (instanceName: string, title: string, body: string): string =>
+const adminNav = `      <p class="muted"><a href="/">Back to the web app</a> · <a href="/settings/preferences">Preferences</a></p>
+      <p><strong>Administration</strong> · ${ADMIN_LINKS.map(([href, label]) => `<a href="${href}">${label}</a>`).join(" · ")}</p>`;
+
+export const adminPage = (instanceName: string, title: string, body: string): string =>
   page(`${title} · ${instanceName}`, `${adminNav}\n${body}`);
 
 /** An account as an admin page names it, linked to its admin page when it has one. */
 export type AccountLabel = Readonly<{ label: string; href: string | undefined }>;
 
-const accountLink = (account: AccountLabel): string =>
+export const accountLink = (account: AccountLabel): string =>
   account.href === undefined
     ? escapeHtml(account.label)
     : `<a href="${escapeHtml(account.href)}">${escapeHtml(account.label)}</a>`;
 
-const postButton = (
+export const postButton = (
   action: string,
   label: string,
   fields: Readonly<Record<string, string>> = {},
@@ -39,10 +52,10 @@ const postButton = (
     )
     .join("")}<button type="submit">${escapeHtml(label)}</button></form>`;
 
-const excerpt = (text: string, length = 140): string =>
+export const excerpt = (text: string, length = 140): string =>
   text.length > length ? `${text.slice(0, length - 1)}…` : text;
 
-const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
+export const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
 export type ReportSummary = Readonly<{
   id: string;
@@ -312,6 +325,7 @@ ${messageLine(message)}
         <li>Joined: ${escapeHtml(account.createdAt)}</li>
         <li>State: ${escapeHtml(moderationSummary(view.state))}</li>
         <li><a href="/@${escapeHtml(account.username)}">Profile in the web app</a></li>
+        <li><a href="/admin/accounts/${escapeHtml(account.id)}/statuses">Posts</a></li>
       </ul>
       <h2>Open reports</h2>${
         view.openReports.length === 0
@@ -352,7 +366,8 @@ export const remoteActorPage = (
 ${messageLine(message)}
       <ul>
         <li>Actor: <code>${escapeHtml(view.actorUri)}</code></li>
-        <li>State: ${view.moderation === undefined ? "no longer known to this server" : escapeHtml(remoteModerationSummary(view.moderation))}</li>${
+        <li>State: ${view.moderation === undefined ? "no longer known to this server" : escapeHtml(remoteModerationSummary(view.moderation))}</li>
+        <li><a href="${escapeHtml(action)}/statuses">Posts</a></li>${
           view.domain === undefined
             ? ""
             : `

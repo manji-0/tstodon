@@ -10,11 +10,16 @@ import { instanceName } from "./account-settings";
 const NOTICES = {
   administration: {
     title: "Administration",
-    text: "This server's admin pages cover reports, accounts, and federation. For anything else, use Mastodon's admin API (/api/v1/admin) from an app that supports it.",
+    text: "This server's admin pages cover the dashboard, reports, accounts, federation, announcements, custom emojis, trends, and email domain blocks. For anything else, use Mastodon's admin API (/api/v1/admin) from an app that supports it.",
     alternatives: [
+      { href: "/admin/dashboard", label: "Dashboard" },
       { href: "/admin/reports", label: "Reports" },
       { href: "/admin/accounts", label: "Accounts" },
       { href: "/admin/instances", label: "Federation" },
+      { href: "/admin/announcements", label: "Announcements" },
+      { href: "/admin/custom_emojis", label: "Custom emojis" },
+      { href: "/admin/trends/tags", label: "Trends" },
+      { href: "/admin/email_domain_blocks", label: "Email domain blocks" },
     ],
   },
   severedRelationships: {

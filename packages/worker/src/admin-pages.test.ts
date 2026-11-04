@@ -1,34 +1,18 @@
-import { env, SELF } from "cloudflare:test";
+import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { authHeaders } from "../test/auth-fixture";
 import { RemoteAccountId } from "./remote-account-id";
-import { type Browser, ORIGIN, postForm, read, signUp } from "../test/passkey-browser";
-
-const page = async (response: Response, status = 200): Promise<string> => {
-  expect(response.status).toBe(status);
-  expect(response.headers.get("content-type")).toContain("text/html");
-  return response.text();
-};
-
-const redirectsTo = (response: Response, location: string) => {
-  expect(response.status).toBe(303);
-  expect(response.headers.get("location")).toBe(location);
-};
-
-const api = async (path: string, headers: Record<string, string>, init: RequestInit = {}) => {
-  const response = await SELF.fetch(`${ORIGIN}${path}`, {
-    ...init,
-    headers: {
-      ...headers,
-      ...(init.body === undefined ? {} : { "content-type": "application/json" }),
-    },
-  });
-  expect(response.status, path).toBe(200);
-  return response.json();
-};
-
-const IdSchema = z.object({ id: z.string().min(1) });
+import {
+  accountOf,
+  adminApi,
+  adminBrowser,
+  api,
+  IdSchema,
+  page,
+  redirectsTo,
+} from "../test/admin-browser";
+import { ORIGIN, postForm, read, signUp } from "../test/passkey-browser";
 
 const AdminReportSchema = z.object({
   id: z.string(),
@@ -57,26 +41,6 @@ const DomainBlockSchema = z.object({
   private_comment: z.string().nullable(),
 });
 
-/** A signed-in browser whose Better Auth user has the admin role. */
-const adminBrowser = async (username: string): Promise<{ fetcher: Browser; id: string }> => {
-  const { fetcher } = await signUp(username);
-  await env.DB.prepare(
-    `UPDATE "user" SET role = 'admin' WHERE id = (SELECT auth_user_id FROM accounts WHERE username = ?)`,
-  )
-    .bind(username)
-    .run();
-  const lookup = await SELF.fetch(`${ORIGIN}/api/v1/accounts/lookup?acct=${username}`);
-  return { fetcher, id: read(IdSchema, await lookup.json()).id };
-};
-
-const accountOf = async (email: string) => {
-  const headers = await authHeaders(email);
-  return {
-    headers,
-    id: read(IdSchema, await api("/api/v1/accounts/verify_credentials", headers)).id,
-  };
-};
-
 /** A report against `targetEmail`'s account, with one of its posts attached. */
 const fileReport = async (reporterEmail: string, targetEmail: string, comment: string) => {
   const target = await accountOf(targetEmail);
@@ -102,8 +66,6 @@ const fileReport = async (reporterEmail: string, targetEmail: string, comment: s
   return { reportId: report.id, targetId: target.id };
 };
 
-const adminApi = () => authHeaders("pages-api-admin@example.com", { admin: true });
-
 const apiReport = async (id: string) =>
   read(AdminReportSchema, await api(`/api/v1/admin/reports/${id}`, await adminApi()));
 
@@ -128,14 +90,6 @@ describe("admin pages", () => {
       expect(response.headers.get("location"), path).toBe(
         `/auth/sign_in?return_to=${encodeURIComponent(path)}`,
       );
-    }
-  });
-
-  it("opens the reports from /admin and /admin/dashboard", async () => {
-    for (const path of ["/admin", "/admin/dashboard"]) {
-      const response = await SELF.fetch(`${ORIGIN}${path}`, { redirect: "manual" });
-      expect(response.status, path).toBe(302);
-      expect(response.headers.get("location"), path).toBe("/admin/reports");
     }
   });
 

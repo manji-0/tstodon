@@ -1,1 +1,1 @@
-export { getAdminIndex as GET } from "#src/routes/admin-web/reports";
+export { getAdminDashboard as GET } from "#src/routes/admin-web/dashboard";

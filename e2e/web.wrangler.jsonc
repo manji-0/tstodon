@@ -41,7 +41,7 @@
     "EMAIL_FROM": "tstodon <noreply@example.com>",
     "EMAIL_TRANSPORT": "capture",
     // The admin scenarios sign up as these.
-    "ADMIN_USERNAMES": "modadmin,modadmin2,modadmin3",
+    "ADMIN_USERNAMES": "modadmin,modadmin2,modadmin3,modadmin4",
   },
   "d1_databases": [
     {
