@@ -58,6 +58,8 @@ export * from "./sql/createList";
 
 export * from "./sql/deleteAccount";
 
+export * from "./sql/deleteAccountAlias";
+
 export * from "./sql/deleteAccountDomainBlock";
 
 export * from "./sql/deleteAccountModeration";
@@ -294,6 +296,8 @@ export * from "./sql/inboxActivityExists";
 
 export * from "./sql/insertAccount";
 
+export * from "./sql/insertAccountAliasOrIgnore";
+
 export * from "./sql/insertAccountDomainBlock";
 
 export * from "./sql/insertAnnouncement";
@@ -391,6 +395,8 @@ export * from "./sql/listAcceptedFollowerIds";
 export * from "./sql/listAcceptedRemoteFollowerInboxes";
 
 export * from "./sql/listAcceptedRemoteFollowerUris";
+
+export * from "./sql/listAccountAliases";
 
 export * from "./sql/listAccountDomainBlocks";
 

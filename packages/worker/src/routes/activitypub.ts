@@ -72,6 +72,7 @@ import { outboundFollowAnswer } from "../outbound-follow";
 import { acceptOutboundFollow, rejectOutboundFollow } from "../outbound-follow-store";
 import { RemoteAccountId } from "../remote-account-id";
 import { applyRemoteMove } from "../remote-move";
+import { listAccountAliases } from "../account-alias-store";
 
 const parseNestedActivityObject = schemaResult(NestedActivityObjectSchema);
 const parseActivityJson = schemaResult(ActivityJsonSchema);
@@ -92,7 +93,17 @@ export const getUsersByUsername = async (c: Context<{ Bindings: Env }, "/users/:
   if (!account.value) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  return c.json(actorDocument(identity.value, account.value), 200, jsonLd);
+  const aliases = await listAccountAliases(c.env.DB, account.value.id);
+  if (aliases.isErr()) {
+    return jsonRepositoryError(c, aliases.error.message);
+  }
+  return c.json(
+    actorDocument(identity.value, account.value, {
+      alsoKnownAs: aliases.value.map((alias) => alias.actorUri),
+    }),
+    200,
+    jsonLd,
+  );
 };
 
 export const getUsersByUsernameStatusesById = async (

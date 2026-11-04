@@ -8,13 +8,30 @@ import type { z } from "zod";
 import type { ActivityJsonSchema } from "./activitypub-wire";
 import type { PollRecord } from "./poll-store";
 
+/**
+ * A local account's `Person`. As Mastodon's `ActorSerializer`, `alsoKnownAs`
+ * lists the accounts it moved from and `movedTo` the account it moved to,
+ * each only when there is one.
+ */
 export const actorDocument = (
   identity: InstanceIdentity,
   account: LocalAccount,
+  migration: Readonly<{ alsoKnownAs: ReadonlyArray<string>; movedTo?: string | undefined }> = {
+    alsoKnownAs: [],
+  },
 ): Record<string, unknown> => {
   const id = InstanceIdentity.actorUrl(identity, account.username);
   return {
-    "@context": ["https://www.w3.org/ns/activitystreams", "https://w3id.org/security/v1"],
+    "@context": [
+      "https://www.w3.org/ns/activitystreams",
+      "https://w3id.org/security/v1",
+      {
+        alsoKnownAs: { "@id": "as:alsoKnownAs", "@type": "@id" },
+        movedTo: { "@id": "as:movedTo", "@type": "@id" },
+      },
+    ],
+    ...(migration.alsoKnownAs.length > 0 ? { alsoKnownAs: migration.alsoKnownAs } : {}),
+    ...(migration.movedTo ? { movedTo: migration.movedTo } : {}),
     id,
     type: "Person",
     preferredUsername: account.username,
