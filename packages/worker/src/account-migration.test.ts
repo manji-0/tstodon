@@ -351,3 +351,177 @@ describe("moving to a different account", () => {
     expect(await movedTo(mover.id)).toBeUndefined();
   });
 });
+
+/** The `kind` activities the account queued, oldest first, as their JSON payloads. */
+const queuedPayloads = async (accountId: string, kind: string) => {
+  const { results } = await env.DB.prepare(
+    "SELECT id, payload_json FROM outbound_activities WHERE account_id = ? AND kind = ? ORDER BY rowid",
+  )
+    .bind(accountId, kind)
+    .all<{ id: string; payload_json: string }>();
+  return results.map((row) => ({ id: row.id, payload: JSON.parse(row.payload_json) as unknown }));
+};
+
+const UpdateSchema = z.object({
+  type: z.literal("Update"),
+  actor: z.string(),
+  object: z.object({ id: z.string(), type: z.string(), movedTo: z.string().optional() }),
+});
+
+/** The inboxes the queued activity `id` goes to, expanded as the outbox queue does. */
+const inboxesOf = async (activityId: string) => {
+  const job = OutboxJob.parse({ kind: "ExpandFollowers", activityId });
+  if (job.isErr()) {
+    throw new Error("expand job rejected");
+  }
+  await processOutboxJob(env, job.value);
+  const { results } = await env.DB.prepare(
+    "SELECT inbox_url FROM outbox_deliveries WHERE activity_id = ? AND inbox_url IS NOT NULL ORDER BY inbox_url",
+  )
+    .bind(activityId)
+    .all<{ inbox_url: string }>();
+  return results.map((row) => row.inbox_url);
+};
+
+const apiAs = async (accountId: string, path: string, method: string, body?: unknown) =>
+  json(path, {
+    method,
+    headers: {
+      Authorization: `Bearer ${await accessTokenFor(accountId)}`,
+      "content-type": "application/json",
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+
+describe("an account that moved", () => {
+  it("tells remote servers with an actor Update, and a cancelled redirect with another", async () => {
+    const { fetcher } = await signUp("redirect_cancel");
+    const mover = await localAccount("redirect_cancel");
+    const moverUri = `${ORIGIN}/users/redirect_cancel`;
+    const fan = await remoteActor("redirect-fan", "fans.example");
+    expect(
+      await fan.send({ id: `${fan.actorUri}/follows/redirect`, type: "Follow", object: moverUri }),
+    ).toBe(202);
+    const follower = "redirect-cancel-follower@example.com";
+    expect((await followLocally(follower, mover.id)).status).toBe(200);
+    const target = await remoteAccount("redirect-cancel-new", "new.example", [moverUri]);
+
+    expect((await queuedPayloads(mover.id, "Update")).length).toBe(0);
+    const moved = await withFetched(target.documents, () =>
+      postForm(fetcher, "/settings/migration", { acct: "redirect-cancel-new@new.example" }),
+    );
+    expect(await moved.text()).toContain("Cancel redirect");
+    const [update] = await queuedPayloads(mover.id, "Update");
+    expect(update && read(UpdateSchema, update.payload)).toMatchObject({
+      actor: moverUri,
+      object: { id: moverUri, type: "Person", movedTo: target.actorUri },
+    });
+    expect(update && (await inboxesOf(update.id))).toEqual([`${fan.actorUri}/inbox`]);
+
+    const cancelled = await postForm(fetcher, "/settings/migration/cancel", {});
+    expect(cancelled.status).toBe(200);
+    const page = await cancelled.text();
+    expect(page).toContain("The redirect is cancelled");
+    expect(page).not.toContain("Cancel redirect</button>");
+    expect(page).toContain("You can move to a different account again after");
+
+    expect((await actor("redirect_cancel")).movedTo).toBeUndefined();
+    expect(await movedTo(mover.id)).toBeUndefined();
+    expect((await post(mover.id)).status).toBe(200);
+    const updates = await queuedPayloads(mover.id, "Update");
+    expect(updates).toHaveLength(2);
+    const [, undone] = updates;
+    expect(undone && read(UpdateSchema, undone.payload).object.movedTo).toBeUndefined();
+    expect(undone && (await inboxesOf(undone.id))).toEqual([`${fan.actorUri}/inbox`]);
+
+    // The follower who moved stays moved.
+    expect(await relationship(follower, target.id)).toMatchObject({ requested: true });
+    expect(await relationship(follower, mover.id)).toMatchObject({ following: false });
+
+    // The cooldown of the cancelled move still holds, for the same target too.
+    const again = await withFetched(target.documents, () =>
+      postForm(fetcher, "/settings/migration", { acct: "redirect-cancel-new@new.example" }),
+    );
+    expect(again.status).toBe(422);
+    expect(await again.text()).toContain("You moved recently");
+    expect((await actor("redirect_cancel")).movedTo).toBeUndefined();
+  });
+
+  it("has nothing to cancel before it moves, and only from this site", async () => {
+    const { fetcher } = await signUp("redirect_none");
+    const nothing = await postForm(fetcher, "/settings/migration/cancel", {});
+    expect(nothing.status).toBe(422);
+    expect(await nothing.text()).toContain("has not moved");
+
+    const crossSite = await fetcher("/settings/migration/cancel", {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "sec-fetch-site": "cross-site",
+      },
+      body: "",
+    });
+    expect(crossSite.status).toBe(403);
+    const signedOut = await SELF.fetch(`${ORIGIN}/settings/migration/cancel`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { origin: ORIGIN },
+    });
+    expect(signedOut.status).toBe(302);
+  });
+
+  it("can no longer follow, favourite, boost or edit, until the redirect is cancelled", async () => {
+    const { fetcher } = await signUp("redirect_limits");
+    const mover = await localAccount("redirect_limits");
+    const target = await signedInAccount("redirect-limits-new@example.com");
+    await addAccountAlias(env.DB, target.id, {
+      acct: "redirect_limits",
+      actorUri: `${ORIGIN}/users/redirect_limits`,
+    });
+    const other = await signedInAccount("redirect-limits-other@example.com");
+    const own = read(
+      z.object({ id: z.string() }),
+      (await apiAs(mover.id, "/api/v1/statuses", "POST", { status: "before" })).body,
+    ).id;
+    const theirs = read(
+      z.object({ id: z.string() }),
+      (await apiAs(other.id, "/api/v1/statuses", "POST", { status: "from elsewhere" })).body,
+    ).id;
+    expect((await apiAs(mover.id, `/api/v1/statuses/${theirs}/favourite`, "POST")).status).toBe(
+      200,
+    );
+    expect((await apiAs(mover.id, `/api/v1/statuses/${theirs}/unfavourite`, "POST")).status).toBe(
+      200,
+    );
+
+    expect((await postForm(fetcher, "/settings/migration", { acct: target.username })).status).toBe(
+      200,
+    );
+
+    const refusals = [
+      ["POST", "/api/v1/statuses", { status: "after" }],
+      ["PUT", `/api/v1/statuses/${own}`, { status: "edited" }],
+      ["POST", `/api/v1/accounts/${other.id}/follow`, {}],
+      ["POST", `/api/v1/statuses/${theirs}/favourite`, undefined],
+      ["POST", `/api/v1/statuses/${theirs}/reblog`, undefined],
+    ] as const;
+    for (const [method, path, body] of refusals) {
+      const refused = await apiAs(mover.id, path, method, body);
+      expect(refused.status, `${method} ${path}`).toBe(403);
+      expect(refused.body).toMatchObject({ error: "Your login is currently disabled" });
+    }
+    expect((await apiAs(mover.id, "/api/v1/accounts/verify_credentials", "GET")).status).toBe(200);
+    expect((await apiAs(mover.id, "/api/v1/timelines/home", "GET")).status).toBe(200);
+    expect((await apiAs(other.id, `/api/v1/statuses/${theirs}/favourite`, "POST")).status).toBe(
+      200,
+    );
+
+    expect((await postForm(fetcher, "/settings/migration/cancel", {})).status).toBe(200);
+    expect((await apiAs(mover.id, `/api/v1/statuses/${theirs}/favourite`, "POST")).status).toBe(
+      200,
+    );
+    expect(
+      (await apiAs(mover.id, `/api/v1/statuses/${own}`, "PUT", { status: "edited" })).status,
+    ).toBe(200);
+  });
+});

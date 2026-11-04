@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { schemaResult } from "@tstodon/core";
+import { findAccountMove } from "./account-move-store";
 import {
   requireAccount,
   requireAdmin as requireAdminSession,
@@ -8,7 +9,7 @@ import {
   type AuthenticatedSession,
 } from "./auth";
 import type { LocalAccount } from "@tstodon/domain";
-import type { Result } from "neverthrow";
+import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
 
 /** Read a `limit` query parameter, defaulted to `fallback` and clamped to `max`. */
@@ -118,6 +119,30 @@ export const jsonAuthError = (c: Context<{ Bindings: Env }>, error: AuthError) =
 export const requireUser = async (
   c: Context<{ Bindings: Env }>,
 ): Promise<Result<LocalAccount, AuthError>> => requireAccount(c.req.raw, c.env);
+
+/**
+ * {@link requireUser} for the actions a moved account may no longer take. As
+ * with Mastodon (4.4 `Api::BaseController#require_user!`, which refuses a user
+ * whose `User#functional?` is false once `moved_to_account_id` is set), a
+ * moved account is answered 403 "Your login is currently disabled". The error
+ * is the response to return.
+ */
+export const requireFunctionalUser = async (
+  c: Context<{ Bindings: Env }>,
+): Promise<Result<LocalAccount, Response>> => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return err(jsonAuthError(c, user.error));
+  }
+  const move = await findAccountMove(c.env.DB, user.value.id);
+  if (move.isErr()) {
+    return err(jsonRepositoryError(c, move.error.message));
+  }
+  if (move.value) {
+    return err(c.json({ error: "Your login is currently disabled", kind: "Forbidden" }, 403));
+  }
+  return ok(user.value);
+};
 
 export const requireSession = async (
   c: Context<{ Bindings: Env }>,

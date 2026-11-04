@@ -203,11 +203,11 @@ export const upsertRemoteActor = async (
   return ok(written.value);
 };
 
-/** Record that `actorUri` moved to `movedTo`; the caller has verified the move. */
+/** Record that `actorUri` moved to `movedTo` (the caller has verified the move), or, with `null`, that it did not. */
 export const setRemoteActorMovedTo = async (
   db: D1Database,
   actorUri: string,
-  movedTo: string,
+  movedTo: string | null,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await runTyped(db, setRemoteActorMovedToSql(actorUri, movedTo));

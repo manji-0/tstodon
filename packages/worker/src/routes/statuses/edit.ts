@@ -16,6 +16,7 @@ import {
   jsonRepositoryError,
   jsonValidationError,
   readUnknownBody,
+  requireFunctionalUser,
   requireUser,
 } from "../../http";
 import { newEntityId } from "../../ids";
@@ -82,9 +83,9 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const user = await requireUser(c);
+  const user = await requireFunctionalUser(c);
   if (user.isErr()) {
-    return jsonAuthError(c, user.error);
+    return user.error;
   }
   const found = await findStatusById(c.env.DB, c.req.param("id") ?? "");
   if (found.isErr()) {

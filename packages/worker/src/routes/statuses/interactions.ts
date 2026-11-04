@@ -21,6 +21,7 @@ import {
   queryCursor,
   queryLimit,
   readOptionalBody,
+  requireFunctionalUser,
   requireUser,
   setPaginationLinks,
 } from "../../http";
@@ -187,9 +188,9 @@ export const postV1StatusesByIdFavourite = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const user = await requireUser(c);
+  const user = await requireFunctionalUser(c);
   if (user.isErr()) {
-    return jsonAuthError(c, user.error);
+    return user.error;
   }
   const status = await findStatusById(c.env.DB, c.req.param("id"));
   if (status.isErr()) {
@@ -240,9 +241,9 @@ export const postV1StatusesByIdReblog = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const user = await requireUser(c);
+  const user = await requireFunctionalUser(c);
   if (user.isErr()) {
-    return jsonAuthError(c, user.error);
+    return user.error;
   }
   const body = await readOptionalBody(c, ReblogBodySchema);
   if (body.isErr()) {

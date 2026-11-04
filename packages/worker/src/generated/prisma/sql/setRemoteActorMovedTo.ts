@@ -12,10 +12,10 @@ export const setRemoteActorMovedTo = $runtime.makeTypedQueryFactory(
   "UPDATE remote_actors SET moved_to = $2 WHERE actor_uri = $1",
 ) as (
   actorUri: string,
-  movedTo: string,
+  movedTo: string | null,
 ) => $runtime.TypedSql<setRemoteActorMovedTo.Parameters, setRemoteActorMovedTo.Result>;
 
 export namespace setRemoteActorMovedTo {
-  export type Parameters = [actorUri: string, movedTo: string];
+  export type Parameters = [actorUri: string, movedTo: string | null];
   export type Result = {};
 }

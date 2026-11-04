@@ -195,7 +195,11 @@ export const migrationPage = (
         state.movedTo === undefined
           ? ""
           : `
-      <p><strong>@${escapeHtml(username)}</strong> has moved to <strong>${escapeHtml(state.movedTo)}</strong> and can no longer post.</p>`
+      <p><strong>@${escapeHtml(username)}</strong> has moved to <strong>${escapeHtml(state.movedTo)}</strong> and can no longer post.</p>
+      <form id="cancel-move" method="post" action="/settings/migration/cancel">
+        <button type="submit">Cancel redirect</button>
+      </form>
+      <p class="muted">Cancelling stops the redirect. Followers who already moved stay with the new account, and moving again has to wait out the cooldown.</p>`
       }
       <p>Moving sends your followers to the new account. First add <code>@${escapeHtml(username)}</code> as an alias on the new account, under "Moving from a different account". Your posts and the accounts you follow stay here.</p>
       ${

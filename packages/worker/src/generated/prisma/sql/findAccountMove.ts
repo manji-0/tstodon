@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  */
 export const findAccountMove = $runtime.makeTypedQueryFactory(
-  "SELECT acct, target_uri, moved_at FROM account_moves WHERE account_id = $1",
+  "SELECT acct, target_uri, moved_at, cancelled_at FROM account_moves WHERE account_id = $1",
 ) as (accountId: string) => $runtime.TypedSql<findAccountMove.Parameters, findAccountMove.Result>;
 
 export namespace findAccountMove {
@@ -17,5 +17,6 @@ export namespace findAccountMove {
     acct: string;
     target_uri: string;
     moved_at: string;
+    cancelled_at: string | null;
   };
 }

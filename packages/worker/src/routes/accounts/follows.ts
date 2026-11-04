@@ -9,6 +9,7 @@ import {
   jsonRepositoryError,
   jsonValidationError,
   readOptionalBody,
+  requireFunctionalUser,
   requireUser,
 } from "../../http";
 import { mastodonRelationship } from "../../relationship-document";
@@ -119,9 +120,9 @@ const followRemote = async (
 export const postV1AccountsByIdFollow = async (
   c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/follow">,
 ) => {
-  const user = await requireUser(c);
+  const user = await requireFunctionalUser(c);
   if (user.isErr()) {
-    return jsonAuthError(c, user.error);
+    return user.error;
   }
   const targetId = c.req.param("id") ?? "";
   const target = await findAccountByIdOrUsername(c.env.DB, targetId);

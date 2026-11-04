@@ -14,13 +14,13 @@ import type { Context } from "hono";
 import { findAccountByUsername, findAccountsByIds } from "../account-store";
 import {
   activityPayloadFromJson,
-  actorDocument,
   noteDocument,
   parseLocalActorUsername,
   parseLocalStatusId,
 } from "../activitypub";
 import { jsonRepositoryError, queryLimit } from "../http";
 import { verifyInboxRequest, parseSignatureHeader } from "../http-signature";
+import { localActorDocument } from "../local-actor";
 import { suspendedDomains } from "../admin-domain-block-store";
 import { signedFetchActor } from "../signed-fetch";
 import { inboxActivityExists, insertInboxActivity } from "../inbox-store";
@@ -74,8 +74,6 @@ import { RemoteAccountId } from "../remote-account-id";
 import { applyRemoteMove } from "../remote-move";
 import { receiveRemoteFlag } from "../remote-flag";
 import { instanceActorDocument, instanceActorKeys } from "../instance-actor";
-import { listAccountAliases } from "../account-alias-store";
-import { findAccountMove } from "../account-move-store";
 
 const parseNestedActivityObject = schemaResult(NestedActivityObjectSchema);
 const parseActivityJson = schemaResult(ActivityJsonSchema);
@@ -96,24 +94,11 @@ export const getUsersByUsername = async (c: Context<{ Bindings: Env }, "/users/:
   if (!account.value) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  const [aliases, move] = await Promise.all([
-    listAccountAliases(c.env.DB, account.value.id),
-    findAccountMove(c.env.DB, account.value.id),
-  ]);
-  if (aliases.isErr()) {
-    return jsonRepositoryError(c, aliases.error.message);
+  const document = await localActorDocument(c.env.DB, identity.value, account.value);
+  if (document.isErr()) {
+    return jsonRepositoryError(c, document.error.message);
   }
-  if (move.isErr()) {
-    return jsonRepositoryError(c, move.error.message);
-  }
-  return c.json(
-    actorDocument(identity.value, account.value, {
-      alsoKnownAs: aliases.value.map((alias) => alias.actorUri),
-      movedTo: move.value?.targetUri,
-    }),
-    200,
-    jsonLd,
-  );
+  return c.json(document.value, 200, jsonLd);
 };
 
 export const getUsersByUsernameStatusesById = async (

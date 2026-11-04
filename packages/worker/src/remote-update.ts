@@ -16,8 +16,9 @@ import { enqueuePublicFanOut } from "./public-fan-out";
 import { enqueueLinkCard } from "./link-card";
 import { isAccountMentionedOnRemoteStatus, recordRemoteStatusMentions } from "./mention-store";
 import { notifyFromRemote } from "./notify";
-import { remoteActorFromDocument } from "./remote-actor-fetch";
-import { upsertRemoteActor } from "./remote-actor-store";
+import { actorMovedTo, remoteActorFromDocument } from "./remote-actor-fetch";
+import { setRemoteActorMovedTo, upsertRemoteActor } from "./remote-actor-store";
+import { findMoveTarget } from "./remote-move";
 import {
   applyMediaPolicy,
   mentionedLocalAccountIds,
@@ -162,18 +163,43 @@ const applyNoteUpdate = async (
   return ok(undefined);
 };
 
-/** Refresh the cached profile of the actor that signed the Update; nobody else's. */
+/**
+ * Refresh the cached profile of the actor that signed the Update; nobody
+ * else's. Its `movedTo` follows the document as Mastodon's account processing
+ * does: a target that lists the signer in `alsoKnownAs` is recorded, a
+ * document without one clears a recorded move (the redirect was cancelled).
+ * Only a `Move` carries followers over.
+ */
 const applyActorUpdate = async (
   env: Env,
+  identity: InstanceIdentity,
   signer: RemoteActor,
   target: Extract<UpdateTarget, { kind: "ActorUpdate" }>,
+  options: FederatedFetchOptions,
 ): Promise<Result<void, RepositoryError>> => {
   const refreshed = remoteActorFromDocument(target.raw, signer.actorUri);
   if (refreshed.isErr()) {
     return ok(undefined);
   }
   const stored = await upsertRemoteActor(env.DB, refreshed.value);
-  return stored.isErr() ? err(stored.error) : ok(undefined);
+  if (stored.isErr()) {
+    return err(stored.error);
+  }
+  const movedTo = actorMovedTo(target.raw);
+  if (movedTo === signer.movedTo) {
+    return ok(undefined);
+  }
+  if (movedTo === undefined) {
+    return setRemoteActorMovedTo(env.DB, signer.actorUri, null);
+  }
+  const destination = await findMoveTarget(env, identity, movedTo, options);
+  if (destination.isErr()) {
+    return err(destination.error);
+  }
+  if (!destination.value?.aliases.includes(signer.actorUri)) {
+    return ok(undefined);
+  }
+  return setRemoteActorMovedTo(env.DB, signer.actorUri, destination.value.ref.actorUri);
 };
 
 /**
@@ -205,7 +231,7 @@ export const applyRemoteUpdate = async (
     case "NoteUpdate":
       return applyNoteUpdate(env, identity, signer, target);
     case "ActorUpdate":
-      return applyActorUpdate(env, signer, target);
+      return applyActorUpdate(env, identity, signer, target, options);
     case "Unsupported":
       return ok(undefined);
   }

@@ -6,11 +6,13 @@ import { listAccountAliases, removeAccountAlias } from "../account-alias-store";
 import {
   addAlias,
   type AddAliasError,
+  cancelMove,
+  type CancelMoveError,
   moveAccount,
   type MoveAccountError,
   nextMoveAt,
 } from "../account-migration";
-import { findAccountMove } from "../account-move-store";
+import { findAccountMoveRecord } from "../account-move-store";
 import { errorPage } from "../auth-pages";
 import { type BrowserSession, browserSession, isSameOriginPost } from "../browser-session";
 import { readOptionalBody } from "../http";
@@ -172,6 +174,11 @@ const moveErrorMessage = (error: MoveAccountError): string => {
   }
 };
 
+const cancelErrorMessage = (error: CancelMoveError): string =>
+  error.kind === "NotMoved"
+    ? "This account has not moved."
+    : "The server could not cancel the redirect. Try again.";
+
 const renderMigration = async (
   c: SettingsContext,
   account: LocalAccount,
@@ -179,17 +186,17 @@ const renderMigration = async (
   message?: PageMessage,
   status: 200 | 403 | 422 | 500 = 200,
 ) => {
-  const move = await findAccountMove(c.env.DB, account.id);
-  if (move.isErr()) {
+  const record = await findAccountMoveRecord(c.env.DB, account.id);
+  if (record.isErr()) {
     return c.html(errorPage(instanceName(c.env), "The server could not read your account."), 500);
   }
-  const next = move.value ? nextMoveAt(move.value) : undefined;
+  const next = record.value ? nextMoveAt(record.value.move) : undefined;
   return c.html(
     migrationPage(
       instanceName(c.env),
       account.username,
       {
-        movedTo: move.value?.acct,
+        movedTo: record.value?.kind === "Moved" ? record.value.move.acct : undefined,
         nextMoveAt: next !== undefined && next.getTime() > Date.now() ? next : undefined,
         reauthRequired: signInIsStale(signedInAt),
       },
@@ -256,6 +263,35 @@ export const postSettingsMigration = async (
   return renderMigration(c, account, signedInAt, {
     kind: "notice",
     text: `Your followers are moving to ${moved.value.acct}.`,
+  });
+};
+
+/** Mastodon's `POST /settings/migration/cancel`: stop redirecting to the account moved to. */
+export const postSettingsMigrationCancel = async (
+  c: Context<{ Bindings: Env }, "/settings/migration/cancel">,
+) => {
+  const signedIn = await settingsAccount(c);
+  if (signedIn.kind === "Answered") {
+    return signedIn.response;
+  }
+  const { account, signedInAt } = signedIn;
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.html(errorPage(instanceName(c.env), "The server is misconfigured."), 500);
+  }
+  const cancelled = await cancelMove(c.env, identity.value, account);
+  if (cancelled.isErr()) {
+    return renderMigration(
+      c,
+      account,
+      signedInAt,
+      { kind: "error", text: cancelErrorMessage(cancelled.error) },
+      cancelled.error.kind === "NotMoved" ? 422 : 500,
+    );
+  }
+  return renderMigration(c, account, signedInAt, {
+    kind: "notice",
+    text: "The redirect is cancelled. Followers who already moved stay with the new account.",
   });
 };
 

@@ -127,6 +127,14 @@ type Mover = Readonly<{
     id: string,
     options?: Readonly<{ aliases?: ReadonlyArray<string>; object?: string }>,
   ) => Promise<number>;
+  /**
+   * Sign and send an actor `Update` from `old`, naming `movedTo` when given;
+   * `aliases` is what the target's document claims.
+   */
+  update: (
+    id: string,
+    options?: Readonly<{ movedTo?: string; aliases?: ReadonlyArray<string> }>,
+  ) => Promise<number>;
 }>;
 
 const jsonResponse = (body: unknown): Response =>
@@ -152,29 +160,52 @@ const mover = async (slug: string): Promise<Mover> => {
     },
     alsoKnownAs: aliases,
   });
+  const serving = async <T>(aliases: ReadonlyArray<string>, work: () => Promise<T>): Promise<T> => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const href =
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      return href === target.actorUri
+        ? jsonResponse(document(aliases))
+        : original(input as RequestInfo, init);
+    }) as typeof fetch;
+    try {
+      return await work();
+    } finally {
+      globalThis.fetch = original;
+    }
+  };
   return {
     old,
     target,
-    move: async (id, options = {}) => {
-      const original = globalThis.fetch;
-      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-        const href =
-          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        return href === target.actorUri
-          ? jsonResponse(document(options.aliases ?? [old.actorUri]))
-          : original(input as RequestInfo, init);
-      }) as typeof fetch;
-      try {
-        return await old.send({
+    move: (id, options = {}) =>
+      serving(options.aliases ?? [old.actorUri], () =>
+        old.send({
           id: `${old.actorUri}/moves/${id}`,
           type: "Move",
           object: options.object ?? old.actorUri,
           target: target.actorUri,
-        });
-      } finally {
-        globalThis.fetch = original;
-      }
-    },
+        }),
+      ),
+    update: (id, options = {}) =>
+      serving(options.aliases ?? [old.actorUri], () =>
+        old.send({
+          id: `${old.actorUri}/updates/${id}`,
+          type: "Update",
+          object: {
+            id: old.actorUri,
+            type: "Person",
+            preferredUsername: `mover-${slug}`,
+            inbox: `${old.actorUri}/inbox`,
+            publicKey: {
+              id: `${old.actorUri}#main-key`,
+              owner: old.actorUri,
+              publicKeyPem: old.publicKeyPem,
+            },
+            ...(options.movedTo === undefined ? {} : { movedTo: options.movedTo }),
+          },
+        }),
+      ),
   };
 };
 
@@ -420,5 +451,36 @@ describe("a followed remote account moving to a local account", () => {
     expect(await relationship(email, old)).toMatchObject({ following: true });
     expect(await relationship(email, target.local)).toMatchObject({ following: false });
     expect(await notifications(email)).toHaveLength(0);
+  });
+});
+
+describe("a remote account's actor Update naming where it moved", () => {
+  const movedId = async (email: string, account: Remote) =>
+    read(
+      z.object({ moved: z.object({ id: z.string() }).optional() }),
+      (await json(`/api/v1/accounts/${idOf(account)}`, { headers: await authHeaders(email) })).body,
+    ).moved?.id;
+
+  it("shows the account as moved while the target lists it, and clears that when the Update stops naming it", async () => {
+    const { old, target, update } = await mover("update");
+    const email = "mover-update-viewer@example.com";
+    await acceptedFollow(email, old, "update");
+
+    expect(await update("moved", { movedTo: target.actorUri })).toBe(202);
+    expect(await movedId(email, old)).toBe(idOf(target));
+    // Only a Move carries followers over.
+    expect(await relationship(email, old)).toMatchObject({ following: true });
+
+    expect(await update("cancelled")).toBe(202);
+    expect(await movedId(email, old)).toBeUndefined();
+  });
+
+  it("ignores a target that does not list the account", async () => {
+    const { old, target, update } = await mover("update-unlisted");
+    const email = "mover-update-unlisted-viewer@example.com";
+    await acceptedFollow(email, old, "update-unlisted");
+
+    expect(await update("moved", { movedTo: target.actorUri, aliases: [] })).toBe(202);
+    expect(await movedId(email, old)).toBeUndefined();
   });
 });

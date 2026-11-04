@@ -4,6 +4,9 @@
  * page; Alice starts the move on A's settings page. B's Carol, who follows
  * Alice, ends up following Bob; A's Dave, a local follower, follows Bob
  * across instances; Alice shows as moved on both and can no longer post.
+ * Erin on B blocks Bob, so her follow of Alice stays and B is still a follower
+ * server of Alice. Then Alice cancels the redirect: A's actor `Update` reaches
+ * B, which stops showing her as moved, while Carol keeps following Bob.
  */
 import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
@@ -74,14 +77,20 @@ const main = async (): Promise<void> => {
   const dave = await signUp(A, "dave");
   const bob = await signUp(B, "bob");
   const carol = await signUp(B, "carol");
-  console.log(`ok users ${alice.acct}, ${dave.acct}, ${bob.acct}, ${carol.acct}`);
+  const erin = await signUp(B, "erin");
+  console.log(`ok users ${alice.acct}, ${dave.acct}, ${bob.acct}, ${carol.acct}, ${erin.acct}`);
 
   const aliceOnB = await followRemote(carol, alice);
   await api(A, dave.headers, `/api/v1/accounts/${alice.id}/follow`, Relationship.parse, "follow", {
     method: "POST",
     body: {},
   });
-  console.log("ok carol@B and dave@A follow alice");
+  await followRemote(erin, alice);
+  await api(B, erin.headers, `/api/v1/accounts/${bob.id}/block`, Relationship.parse, "block", {
+    method: "POST",
+    body: {},
+  });
+  console.log("ok carol@B and dave@A follow alice; erin@B follows alice and blocks bob");
 
   const aliases = await postSettings(
     bob,
@@ -152,6 +161,46 @@ const main = async (): Promise<void> => {
   const bobOnA = notice.target?.id ?? "";
   await waitFor("bob accepts dave's follow", () => following(dave, bobOnA));
   console.log("ok dave@A follows bob@B after alice's move");
+
+  const cancelled = await postSettings(alice, "/settings/migration/cancel", {}, "alice cancels");
+  if (!cancelled.includes("The redirect is cancelled")) {
+    return fail("migration page did not confirm the cancel", cancelled);
+  }
+  const aliceAfterCancel = await api(
+    A,
+    alice.headers,
+    `/api/v1/accounts/${alice.id}`,
+    MovedAccount,
+    "alice",
+  );
+  if (aliceAfterCancel.moved) {
+    return fail("alice on A is still moved after cancelling", aliceAfterCancel);
+  }
+  const reposted = await getJson(`${A}/api/v1/statuses`, {
+    method: "POST",
+    headers: { ...alice.headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "back again" }),
+  });
+  if (reposted.status !== 200) {
+    return fail(`alice could not post after cancelling (HTTP ${reposted.status})`, reposted.body);
+  }
+  await waitFor("B stops showing alice as moved", async () => {
+    const account = await api(
+      B,
+      carol.headers,
+      `/api/v1/accounts/${aliceOnB.id}`,
+      MovedAccount,
+      "alice on B",
+    );
+    return account.moved ? undefined : account;
+  });
+  if (!(await following(carol, bob.id))) {
+    return fail("carol stopped following bob after alice cancelled");
+  }
+  if (!(await following(erin, aliceOnB.id))) {
+    return fail("erin stopped following alice, whom the Move left her");
+  }
+  console.log("ok cancel: Update(Person) reached B, alice posts again, carol still follows bob");
   console.log("PASS federation migration");
 };
 

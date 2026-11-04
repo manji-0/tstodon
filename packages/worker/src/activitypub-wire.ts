@@ -62,6 +62,8 @@ export const ActorDocumentSchema = z
     published: z.string().nullable().optional(),
     /** The accounts this one says it is also: a list, or a single URI. */
     alsoKnownAs: z.union([z.string(), z.array(z.string())]).optional(),
+    /** The account this one says it moved to. */
+    movedTo: z.string().min(1).nullable().optional(),
   })
   .passthrough();
 

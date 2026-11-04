@@ -1,11 +1,17 @@
 import { InstanceIdentity, type LocalAccount } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { addAccountAlias } from "./account-alias-store";
-import { type AccountMove, claimAccountMove, findAccountMove } from "./account-move-store";
+import {
+  type AccountMove,
+  cancelAccountMove,
+  claimAccountMove,
+  findAccountMoveRecord,
+} from "./account-move-store";
 import { localRef, refAcct, resolveAccountHandle, type ResolveHandleError } from "./account-ref";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { enqueueLocalActivity, type EnqueueLocalActivityError } from "./delivery";
 import { newEntityId } from "./ids";
+import { sendActorUpdate } from "./local-actor";
 import { findMoveTarget, startMovingFollows } from "./remote-move";
 import { federationAllowHosts } from "./runtime-config";
 
@@ -56,9 +62,12 @@ export type MoveAccountError =
  * `Settings::MigrationsController#create` and `MoveService`: the target,
  * fetched fresh, must list this account in `alsoKnownAs`, and an account
  * moves somewhere else at most once per {@link MOVE_COOLDOWN_MS}. The move
- * is recorded, a `Move` goes to every remote follower's inbox, and local
- * followers are moved to the target as an inbound `Move` moves them.
- * Repeating the same move sends the `Move` again and changes nothing else.
+ * is recorded, a `Move` goes to every remote follower's inbox and an actor
+ * `Update` shows `movedTo` to servers that cached the actor, and local
+ * followers (with their blocks, mutes, notes and lists) are moved to the
+ * target as an inbound `Move` moves them. Repeating a standing move sends the
+ * `Move` again and changes nothing else; after a cancelled move the cooldown
+ * holds for the same target too.
  */
 export const moveAccount = async (
   env: Env,
@@ -75,16 +84,16 @@ export const moveAccount = async (
   if (resolved.value.actorUri === self.actorUri) {
     return err({ kind: "SelfMove" });
   }
-  const current = await findAccountMove(env.DB, account.id);
+  const current = await findAccountMoveRecord(env.DB, account.id);
   if (current.isErr()) {
     return err(current.error);
   }
-  if (
-    current.value &&
-    current.value.targetUri !== resolved.value.actorUri &&
-    nextMoveAt(current.value) > now
-  ) {
-    return err({ kind: "OnCooldown", until: nextMoveAt(current.value) });
+  const standing =
+    current.value?.kind === "Moved" && current.value.move.targetUri === resolved.value.actorUri
+      ? current.value.move
+      : undefined;
+  if (current.value && !standing && nextMoveAt(current.value.move) > now) {
+    return err({ kind: "OnCooldown", until: nextMoveAt(current.value.move) });
   }
   const target = await findMoveTarget(env, identity, resolved.value.actorUri, {
     allowHosts: await federationAllowHosts(env),
@@ -115,10 +124,10 @@ export const moveAccount = async (
   }
   if (!claimed.value) {
     // Another move won the race since the check above.
-    const winner = await findAccountMove(env.DB, account.id);
+    const winner = await findAccountMoveRecord(env.DB, account.id);
     return err({
       kind: "OnCooldown",
-      until: winner.isOk() && winner.value ? nextMoveAt(winner.value) : now,
+      until: winner.isOk() && winner.value ? nextMoveAt(winner.value.move) : now,
     });
   }
   const sent = await enqueueLocalActivity(env, account.id, "Move", {
@@ -132,9 +141,37 @@ export const moveAccount = async (
   if (sent.isErr()) {
     return err(sent.error);
   }
+  const updated = await sendActorUpdate(env, identity, account);
+  if (updated.isErr()) {
+    return err(updated.error);
+  }
   const moved = await startMovingFollows(env, identity, self, target.value.ref);
   if (moved.isErr()) {
     return err(moved.error);
   }
-  return ok(current.value?.targetUri === move.targetUri ? current.value : move);
+  return ok(standing ?? move);
+};
+
+export type CancelMoveError = Readonly<{ kind: "NotMoved" }> | EnqueueLocalActivityError;
+
+/**
+ * Cancel the redirect, as Mastodon's `Settings::MigrationsController#cancel`:
+ * the actor stops naming `movedTo` and remote servers are told with an actor
+ * `Update`. Followers already moved stay moved, and the cooldown of the move
+ * still holds for a new one.
+ */
+export const cancelMove = async (
+  env: Env,
+  identity: InstanceIdentity,
+  account: LocalAccount,
+  now: Date = new Date(),
+): Promise<Result<void, CancelMoveError>> => {
+  const cancelled = await cancelAccountMove(env.DB, account.id, now.toISOString());
+  if (cancelled.isErr()) {
+    return err(cancelled.error);
+  }
+  if (!cancelled.value) {
+    return err({ kind: "NotMoved" });
+  }
+  return sendActorUpdate(env, identity, account);
 };

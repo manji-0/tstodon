@@ -12,7 +12,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param cooldownStartedBefore
  */
 export const claimAccountMove = $runtime.makeTypedQueryFactory(
-  "INSERT INTO account_moves (account_id, acct, target_uri, moved_at) VALUES ($1, $2, $3, $4)\nON CONFLICT (account_id) DO UPDATE SET\nacct = excluded.acct,\ntarget_uri = excluded.target_uri,\nmoved_at = CASE WHEN account_moves.target_uri = excluded.target_uri THEN account_moves.moved_at ELSE excluded.moved_at END\nWHERE account_moves.target_uri = excluded.target_uri OR account_moves.moved_at <= $5\nRETURNING account_id",
+  "INSERT INTO account_moves (account_id, acct, target_uri, moved_at) VALUES ($1, $2, $3, $4)\nON CONFLICT (account_id) DO UPDATE SET\nacct = excluded.acct,\ntarget_uri = excluded.target_uri,\nmoved_at = CASE\nWHEN account_moves.target_uri = excluded.target_uri AND account_moves.cancelled_at IS NULL\nTHEN account_moves.moved_at ELSE excluded.moved_at END,\ncancelled_at = NULL\nWHERE (account_moves.target_uri = excluded.target_uri AND account_moves.cancelled_at IS NULL)\nOR account_moves.moved_at <= $5\nRETURNING account_id",
 ) as (
   accountId: string,
   acct: string,

@@ -106,6 +106,12 @@ export const actorAliases = (raw: unknown): ReadonlyArray<string> => {
   return aliases === undefined ? [] : typeof aliases === "string" ? [aliases] : aliases;
 };
 
+/** The account an actor document says it moved to; `undefined` when it names none. */
+export const actorMovedTo = (raw: unknown): string | undefined => {
+  const document = parseActorDocument(raw);
+  return document.isOk() ? (document.value.movedTo ?? undefined) : undefined;
+};
+
 /** An actor document that describes `actorUri` and holds that actor's own key. */
 export const remoteActorFromDocument = (
   raw: unknown,

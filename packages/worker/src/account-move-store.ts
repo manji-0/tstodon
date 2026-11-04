@@ -3,6 +3,7 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { jsonStringArray, parseRows, runD1, type RepositoryError } from "./d1";
 import {
+  cancelAccountMove as cancelAccountMoveSql,
   claimAccountMove as claimAccountMoveSql,
   findAccountMove as findAccountMoveSql,
   listAcceptedFollowsPage as listAcceptedFollowsPageSql,
@@ -15,24 +16,61 @@ import { queryTyped } from "./typed-sql";
 /** Where a local account moved to, and when. */
 export type AccountMove = Readonly<{ acct: string; targetUri: string; movedAt: string }>;
 
+/**
+ * The account's last move: standing, or cancelled. A cancelled move still
+ * counts for the cooldown, which runs from `move.movedAt`.
+ */
+export type AccountMoveRecord =
+  | Readonly<{ kind: "Moved"; move: AccountMove }>
+  | Readonly<{ kind: "Cancelled"; move: AccountMove; cancelledAt: string }>;
+
 const MoveRowSchema = z.object({
   acct: z.string().min(1),
   target_uri: z.string().min(1),
   moved_at: z.string().min(1),
+  cancelled_at: z.string().nullable(),
 });
 
 const parseMoveRow = schemaResult(MoveRowSchema);
 
+/** The last move of the account, standing or cancelled; `undefined` when it never moved. */
+export const findAccountMoveRecord = async (
+  db: D1Database,
+  accountId: string,
+): Promise<Result<AccountMoveRecord | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const row = parseMoveRow((await queryTyped(db, findAccountMoveSql(accountId)))[0]);
+    if (row.isErr()) {
+      return undefined;
+    }
+    const move = {
+      acct: row.value.acct,
+      targetUri: row.value.target_uri,
+      movedAt: row.value.moved_at,
+    };
+    return row.value.cancelled_at === null
+      ? { kind: "Moved", move }
+      : { kind: "Cancelled", move, cancelledAt: row.value.cancelled_at };
+  });
+
+/** The move the account's actor and profile show now; `undefined` when it never moved or cancelled. */
 export const findAccountMove = async (
   db: D1Database,
   accountId: string,
 ): Promise<Result<AccountMove | undefined, RepositoryError>> =>
-  runD1(async () => {
-    const row = parseMoveRow((await queryTyped(db, findAccountMoveSql(accountId)))[0]);
-    return row.isOk()
-      ? { acct: row.value.acct, targetUri: row.value.target_uri, movedAt: row.value.moved_at }
-      : undefined;
-  });
+  (await findAccountMoveRecord(db, accountId)).map((record) =>
+    record?.kind === "Moved" ? record.move : undefined,
+  );
+
+/** Cancel the standing move. Resolves to false when there was none. */
+export const cancelAccountMove = async (
+  db: D1Database,
+  accountId: string,
+  cancelledAt: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(
+    async () => (await queryTyped(db, cancelAccountMoveSql(accountId, cancelledAt))).length > 0,
+  );
 
 /** The move targets of whichever of `accountIds` moved, by account id. */
 export const listAccountMoveTargets = async (
@@ -58,9 +96,10 @@ export const listAccountMoveTargets = async (
 };
 
 /**
- * Record the move, unless the account moved somewhere else after
- * `cooldownStartedBefore` (one statement, so two moves cannot both pass the
- * cooldown). Recording the same move again keeps its time. `false` when the
+ * Record the move, unless the account moved after `cooldownStartedBefore`
+ * (one statement, so two moves cannot both pass the cooldown). Recording the
+ * standing move again keeps its time; a cancelled move is over, so a move to
+ * the same target is a new one and the cooldown holds. `false` when the
  * cooldown refused it.
  */
 export const claimAccountMove = async (
