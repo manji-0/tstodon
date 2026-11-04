@@ -46,6 +46,8 @@ const WebManifestSchema = z.object({
   favicon: z.string().optional(),
   common: EntrySchema,
   application: EntrySchema,
+  // Builds from before the helper was recorded have no key; the page is then not served.
+  remoteInteractionHelper: EntrySchema.optional(),
   locales: z.array(z.string()),
 });
 
@@ -56,7 +58,7 @@ const parseWebManifest = schemaResult(WebManifestSchema);
 let manifestLoad: Promise<WebManifest | undefined> | undefined;
 
 /** The build's compact manifest, once per isolate; `undefined` without a web build. */
-const webManifest = (env: Env, requestUrl: string): Promise<WebManifest | undefined> => {
+export const webManifest = (env: Env, requestUrl: string): Promise<WebManifest | undefined> => {
   manifestLoad ??= (async () => {
     try {
       const response = await env.ASSETS.fetch(new URL("/packs/tstodon-web.json", requestUrl));
@@ -288,7 +290,7 @@ const scriptJson = (value: unknown): string =>
     .replaceAll("\u2028", "\\u2028")
     .replaceAll("\u2029", "\\u2029");
 
-const entryTags = (entry: z.infer<typeof EntrySchema>): string =>
+export const entryTags = (entry: z.infer<typeof EntrySchema>): string =>
   [
     ...entry.css.map(
       (href) => `<link rel="stylesheet" href="${attribute(href)}" crossorigin="anonymous">`,

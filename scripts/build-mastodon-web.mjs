@@ -132,6 +132,8 @@ const compact = {
   favicon: url(manifest[faviconKey].file),
   common: entry("entrypoints/common.ts"),
   application: entry("entrypoints/application.ts"),
+  // The iframe page of the signed-out interaction modal (/remote_interaction_helper).
+  remoteInteractionHelper: entry("entrypoints/remote_interaction_helper.ts"),
   locales,
 };
 writeFileSync(
