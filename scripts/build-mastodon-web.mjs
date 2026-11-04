@@ -118,12 +118,18 @@ const locales = readdirSync(path.join(source, "app", "javascript", "mastodon", "
   .map((file) => file.replace(/\.json$/, ""))
   .sort();
 
+const faviconKey = Object.keys(manifest).find((key) => /^_favicon-32x32-.*\.png$/.test(key));
+if (!faviconKey) {
+  throw new Error("Vite manifest has no 32x32 favicon");
+}
+
 const compact = {
   ref,
   polyfills: url(manifest["../../vite/legacy-polyfills"].file),
   themeSelection: url(manifest["entrypoints/theme-selection.ts"].file),
   inert: url(manifest["styles/entrypoints/inert.scss"].file),
   theme: url(manifest["styles/application.scss"].file),
+  favicon: url(manifest[faviconKey].file),
   common: entry("entrypoints/common.ts"),
   application: entry("entrypoints/application.ts"),
   locales,

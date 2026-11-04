@@ -13,6 +13,7 @@ const MANIFEST: WebManifest = {
   themeSelection: "/packs/theme-selection.js",
   inert: "/packs/inert.css",
   theme: "/packs/theme.css",
+  favicon: "/packs/favicon.png",
   common: { js: "/packs/common.js", css: [], preload: [] },
   application: { js: "/packs/application.js", css: ["/packs/app.css"], preload: ["/packs/r.js"] },
   locales: ["en", "ja"],
@@ -100,6 +101,14 @@ describe("Mastodon web app", () => {
       redirect: "manual",
     });
     expect(note.headers.get("location")).toBe("/users/alice/statuses/123");
+  });
+
+  it.skipIf(!webBuilt)("answers /favicon.ico with the build's favicon", async () => {
+    const response = await SELF.fetch(`${ORIGIN}/favicon.ico`, { redirect: "manual" });
+    expect(response.status).toBe(302);
+    const icon = await SELF.fetch(new URL(response.headers.get("location") ?? "", ORIGIN));
+    expect(icon.status).toBe(200);
+    expect(icon.headers.get("content-type")).toBe("image/png");
   });
 
   it("stores the web UI's settings", async () => {

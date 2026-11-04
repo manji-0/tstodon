@@ -42,6 +42,7 @@ const WebManifestSchema = z.object({
   themeSelection: z.string(),
   inert: z.string(),
   theme: z.string(),
+  favicon: z.string(),
   common: EntrySchema,
   application: EntrySchema,
   locales: z.array(z.string()),
@@ -336,8 +337,9 @@ export const webAppPage = (
 
 /**
  * Request-wide middleware: the web app's paths get the shell (once the UI is
- * built), `/web/*` redirects as in Mastodon, and `/@user` asked for as
- * ActivityPub goes to the actor or note URL.
+ * built), `/web/*` redirects as in Mastodon, `/@user` asked for as
+ * ActivityPub goes to the actor or note URL, and the `/favicon.ico` every
+ * browser asks for goes to the build's hashed favicon.
  */
 export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next) => {
   if (c.req.method !== "GET" && c.req.method !== "HEAD") {
@@ -346,6 +348,10 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
   const path = c.req.path;
   if (path === "/web" || path.startsWith("/web/")) {
     return c.redirect(path.slice("/web".length) || "/", 302);
+  }
+  if (path === "/favicon.ico") {
+    const manifest = await webManifest(c.env, c.req.url);
+    return manifest ? c.redirect(manifest.favicon, 302) : next();
   }
   if (!isWebAppPath(path)) {
     return next();
