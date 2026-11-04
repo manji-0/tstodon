@@ -3,7 +3,7 @@ import { authenticate } from "../auth";
 import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "../filter-match";
 import { jsonAuthError, jsonRepositoryError, queryCursor, queryLimit, requireUser } from "../http";
 import { mastodonStatuses } from "../local-status-documents";
-import { elapsedMs, writeMetric } from "../metrics";
+import { writeTimelineMetric } from "../metrics";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
   listLinkRemoteStatuses,
@@ -40,6 +40,7 @@ const timelineScopes = (c: Context<{ Bindings: Env }>): TimelineScopes => {
 export const getV1TimelinesPublic = async (
   c: Context<{ Bindings: Env }, "/api/v1/timelines/public">,
 ) => {
+  const startedAt = Date.now();
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -56,6 +57,12 @@ export const getV1TimelinesPublic = async (
     queryLimit(c.req.query("limit")),
     queryCursor(c),
   );
+  writeTimelineMetric(
+    c.env,
+    "public",
+    startedAt,
+    documents.isOk() ? documents.value.length : undefined,
+  );
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }
@@ -65,6 +72,7 @@ export const getV1TimelinesPublic = async (
 export const getV1TimelinesHome = async (
   c: Context<{ Bindings: Env }, "/api/v1/timelines/home">,
 ) => {
+  const startedAt = Date.now();
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -79,6 +87,12 @@ export const getV1TimelinesHome = async (
     user.value.id,
     queryLimit(c.req.query("limit")),
     queryCursor(c),
+  );
+  writeTimelineMetric(
+    c.env,
+    "home",
+    startedAt,
+    documents.isOk() ? documents.value.length : undefined,
   );
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
@@ -139,10 +153,15 @@ export const getV1TimelinesTagByHashtag = async (
     queryLimit(c.req.query("limit")),
     queryCursor(c),
   );
+  writeTimelineMetric(
+    c.env,
+    "tag",
+    startedAt,
+    documents.isOk() ? documents.value.length : undefined,
+  );
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }
-  writeMetric(c.env, "timeline.tag", [elapsedMs(startedAt), documents.value.length], ["ok"]);
   return c.json(documents.value);
 };
 

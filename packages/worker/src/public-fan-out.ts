@@ -7,6 +7,7 @@ import {
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
+import { measureJobPage, measureStreamRender } from "./metrics";
 import { parseInstanceIdentity } from "./runtime-config";
 import { ANONYMOUS_HUB } from "./stream-access";
 import { MAX_HUB_TAGGED_CHANNELS } from "./stream-hub";
@@ -130,7 +131,7 @@ const fanOutPublicPage = async (
   identity: InstanceIdentity,
   job: FanOutPublic,
   pageSize: number = PUBLIC_FAN_OUT_PAGE_SIZE,
-): Promise<Result<string | undefined, RepositoryError>> => {
+): Promise<Result<Readonly<{ hubs: number; next: string | undefined }>, RepositoryError>> => {
   const page = await listPublicStreamSubscriptions(env.DB, {
     entryId: job.entryId,
     afterHub: job.afterHub,
@@ -141,13 +142,17 @@ const fanOutPublicPage = async (
     return err(page.error);
   }
   let passes = 0;
+  let told = 0;
   for (const [index, hub] of page.value.hubs.entries()) {
     const cost = job.event === "delete" ? 0 : hub.channels.length;
     if (passes > 0 && passes + cost > PUBLIC_FAN_OUT_PASS_BUDGET) {
-      return ok(page.value.hubs[index - 1]?.hub);
+      return ok({ hubs: told, next: page.value.hubs[index - 1]?.hub });
     }
     passes += cost;
-    const delivery = await hubDelivery(env, identity, job, hub);
+    told += 1;
+    const delivery = await measureStreamRender(env, "public", () =>
+      hubDelivery(env, identity, job, hub),
+    );
     if (delivery.isErr()) {
       return err(delivery.error);
     }
@@ -159,28 +164,28 @@ const fanOutPublicPage = async (
       }
     }
   }
-  return ok(page.value.next);
+  return ok({ hubs: told, next: page.value.next });
 };
 
 /** Handle one queued page of a public fan-out, queueing the next when there is one. */
-export const processFanOutPublicJob = async (
-  env: Env,
-  job: FanOutPublic,
-): Promise<"ok" | "retry"> => {
-  const identity = parseInstanceIdentity(env);
-  if (identity.isErr()) {
-    return "retry";
-  }
-  const next = await fanOutPublicPage(env, identity.value, job);
-  if (next.isErr()) {
-    return "retry";
-  }
-  if (next.value !== undefined) {
-    try {
-      await env.OUTBOX_PROCESS_QUEUE.send({ ...job, afterHub: next.value });
-    } catch {
-      console.error(JSON.stringify({ kind: "PublicFanOutNotQueued", entryId: job.entryId }));
+export const processFanOutPublicJob = (env: Env, job: FanOutPublic): Promise<"ok" | "retry"> =>
+  measureJobPage(env, job.kind, async () => {
+    const identity = parseInstanceIdentity(env);
+    if (identity.isErr()) {
+      return { outcome: "retry", size: 0, chained: false };
     }
-  }
-  return "ok";
-};
+    const page = await fanOutPublicPage(env, identity.value, job);
+    if (page.isErr()) {
+      return { outcome: "retry", size: 0, chained: false };
+    }
+    const { hubs, next } = page.value;
+    if (next !== undefined) {
+      try {
+        await env.OUTBOX_PROCESS_QUEUE.send({ ...job, afterHub: next });
+      } catch {
+        console.error(JSON.stringify({ kind: "PublicFanOutNotQueued", entryId: job.entryId }));
+        return { outcome: "ok", size: hubs, chained: false };
+      }
+    }
+    return { outcome: "ok", size: hubs, chained: next !== undefined };
+  });

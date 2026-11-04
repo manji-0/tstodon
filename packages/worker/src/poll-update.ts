@@ -4,6 +4,7 @@ import { noteDocument } from "./activitypub";
 import { nowIso } from "./clock";
 import { enqueueLocalActivity } from "./delivery";
 import { newEntityId } from "./ids";
+import { measureJobPage } from "./metrics";
 import { loadNoteMentions } from "./mention-resolve";
 import { reachesRemoteInboxes } from "./outbox-job";
 import { claimPollUpdate, findPollById, type PollRecord, releasePollUpdate } from "./poll-store";
@@ -92,15 +93,20 @@ export const processDistributePollUpdateJob = async (
   env: Env,
   job: Extract<OutboxJob, { kind: "DistributePollUpdate" }>,
 ): Promise<"ok"> => {
-  await releasePollUpdate(env.DB, job.pollId);
-  const identity = parseInstanceIdentity(env);
-  const found = await findPollById(env.DB, job.pollId, undefined);
-  if (identity.isErr() || found.isErr() || !found.value || found.value.hideTotals) {
-    return "ok";
-  }
-  const status = await findStatusById(env.DB, found.value.statusId);
-  if (status.isOk() && status.value?.kind === "LocalNote") {
-    await distributePollUpdate(env, identity.value, status.value, found.value);
-  }
+  // One poll per job: `size` is 1 when an `Update` was considered, 0 when there was nothing to do.
+  await measureJobPage(env, job.kind, async () => {
+    await releasePollUpdate(env.DB, job.pollId);
+    const identity = parseInstanceIdentity(env);
+    const found = await findPollById(env.DB, job.pollId, undefined);
+    if (identity.isErr() || found.isErr() || !found.value || found.value.hideTotals) {
+      return { outcome: "ok", size: 0, chained: false };
+    }
+    const status = await findStatusById(env.DB, found.value.statusId);
+    if (status.isOk() && status.value?.kind === "LocalNote") {
+      await distributePollUpdate(env, identity.value, status.value, found.value);
+      return { outcome: "ok", size: 1, chained: false };
+    }
+    return { outcome: "ok", size: 0, chained: false };
+  });
   return "ok";
 };

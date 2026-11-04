@@ -20,6 +20,7 @@ import { type FollowOptions, unfollowAccount } from "./follow-store";
 import { type ListMember, listListsContainingMember, replaceListMember } from "./list-store";
 import { moveBlockPage, moveMutePage, moveNotePage } from "./move-carry";
 import { notifyAccount, notifyFromRemote } from "./notify";
+import { type JobPage, measureJobPage } from "./metrics";
 import { parseInstanceIdentity } from "./runtime-config";
 import { unfollowRemoteActor } from "./outbound-follow";
 import { listOutboundFollowsByActor } from "./outbound-follow-store";
@@ -349,36 +350,48 @@ const movedTo = async (
 };
 
 /** Carry the next page of a move queued by {@link startMovingFollows}. */
-export const processMoveFollowsJob = async (
+export const processMoveFollowsJob = (
   env: Env,
   job: Extract<OutboxJob, { kind: "MoveFollows" }>,
-): Promise<"ok" | "retry"> => {
+): Promise<"ok" | "retry"> => measureJobPage(env, job.kind, () => runMoveFollowsPage(env, job));
+
+/** `size` is -1: the phase pages do not report how many accounts they carried. */
+const runMoveFollowsPage = async (
+  env: Env,
+  job: Extract<OutboxJob, { kind: "MoveFollows" }>,
+): Promise<JobPage> => {
+  const stalled = (outcome: "ok" | "retry"): JobPage => ({
+    outcome,
+    size: -1,
+    chained: false,
+    step: job.phase,
+  });
   const identity = parseInstanceIdentity(env);
   if (identity.isErr()) {
-    return "retry";
+    return stalled("retry");
   }
   const from = await findAccountRef(env.DB, identity.value, job.fromActorUri);
   const to = await findAccountRef(env.DB, identity.value, job.toActorUri);
   if (from.isErr() || to.isErr()) {
-    return "retry";
+    return stalled("retry");
   }
   if (!from.value || !to.value) {
-    return "ok";
+    return stalled("ok");
   }
   // Only a move that was verified and recorded carries follows over.
   const recorded = await movedTo(env.DB, from.value, to.value);
   if (recorded.isErr()) {
-    return "retry";
+    return stalled("retry");
   }
   if (!recorded.value) {
-    return "ok";
+    return stalled("ok");
   }
   const next = await moveCarryPage(env, identity.value, from.value, to.value, {
     phase: job.phase,
     afterId: job.afterId,
   });
   if (next.isErr()) {
-    return "retry";
+    return stalled("retry");
   }
   if (next.value !== undefined) {
     const queued: OutboxJob = { ...job, ...next.value };
@@ -388,9 +401,10 @@ export const processMoveFollowsJob = async (
       console.error(
         JSON.stringify({ kind: "MoveFollowsNotQueued", fromActorUri: job.fromActorUri }),
       );
+      return stalled("ok");
     }
   }
-  return "ok";
+  return { ...stalled("ok"), chained: next.value !== undefined };
 };
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.

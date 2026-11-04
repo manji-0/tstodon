@@ -10,6 +10,7 @@ import { type RepositoryError, runD1 } from "./d1";
 import { listHomeFanOutAccounts } from "./generated/prisma/sql";
 import { findListForAccount } from "./list-store";
 import type { RemovedBoost } from "./removed-boost";
+import { measureJobPage, measureStreamRender } from "./metrics";
 import { parseInstanceIdentity } from "./runtime-config";
 import { publishToAccount, publishToHub } from "./stream-publish";
 import { listListStreamSubscriptions } from "./stream-subscription-store";
@@ -147,7 +148,9 @@ export const announceHomeEntry = async (
   accountIds: ReadonlyArray<string>,
 ): Promise<Result<void, RepositoryError>> => {
   for (const accountId of accountIds) {
-    const event = await followerEvent(env, identity, entry, accountId);
+    const event = await measureStreamRender(env, "home", () =>
+      followerEvent(env, identity, entry, accountId),
+    );
     if (event.isErr()) {
       return err(event.error);
     }
@@ -164,7 +167,9 @@ export const announceHomeEntry = async (
     return err(lists.error);
   }
   for (const { hub: accountId, listId } of lists.value) {
-    const event = await listEvent(env, identity, entry, accountId, listId);
+    const event = await measureStreamRender(env, "list", () =>
+      listEvent(env, identity, entry, accountId, listId),
+    );
     if (event.isErr()) {
       return err(event.error);
     }
@@ -184,14 +189,15 @@ export const announceHomeEntry = async (
 
 /**
  * Tell one page of the author's local followers about the entry. Resolves to
- * the cursor of the next page, or `undefined` when this was the last.
+ * the followers told and the cursor of the next page (`undefined` when this
+ * was the last).
  */
 export const fanOutHomePage = async (
   env: Env,
   identity: InstanceIdentity,
   job: FanOutHome,
   pageSize: number = HOME_FAN_OUT_PAGE_SIZE,
-): Promise<Result<string | undefined, RepositoryError>> => {
+): Promise<Result<Readonly<{ recipients: number; next: string | undefined }>, RepositoryError>> => {
   const page = await runD1(() =>
     queryTyped<{ account_id: string }>(
       env.DB,
@@ -211,28 +217,34 @@ export const fanOutHomePage = async (
   if (announced.isErr()) {
     return err(announced.error);
   }
-  return ok(accountIds.length >= pageSize ? accountIds.at(-1) : undefined);
+  return ok({
+    recipients: accountIds.length,
+    next: accountIds.length >= pageSize ? accountIds.at(-1) : undefined,
+  });
 };
 
 /** Handle one queued page of a home fan-out, queueing the next when there is one. */
-export const processFanOutHomeJob = async (env: Env, job: FanOutHome): Promise<"ok" | "retry"> => {
-  const identity = parseInstanceIdentity(env);
-  if (identity.isErr()) {
-    return "retry";
-  }
-  const next = await fanOutHomePage(env, identity.value, job);
-  if (next.isErr()) {
-    return "retry";
-  }
-  if (next.value !== undefined) {
-    try {
-      await env.OUTBOX_PROCESS_QUEUE.send({ ...job, afterAccountId: next.value });
-    } catch {
-      console.error(JSON.stringify({ kind: "HomeFanOutNotQueued", entryId: job.entryId }));
+export const processFanOutHomeJob = (env: Env, job: FanOutHome): Promise<"ok" | "retry"> =>
+  measureJobPage(env, job.kind, async () => {
+    const identity = parseInstanceIdentity(env);
+    if (identity.isErr()) {
+      return { outcome: "retry", size: 0, chained: false };
     }
-  }
-  return "ok";
-};
+    const page = await fanOutHomePage(env, identity.value, job);
+    if (page.isErr()) {
+      return { outcome: "retry", size: 0, chained: false };
+    }
+    const { recipients, next } = page.value;
+    if (next !== undefined) {
+      try {
+        await env.OUTBOX_PROCESS_QUEUE.send({ ...job, afterAccountId: next });
+      } catch {
+        console.error(JSON.stringify({ kind: "HomeFanOutNotQueued", entryId: job.entryId }));
+        return { outcome: "ok", size: recipients, chained: false };
+      }
+    }
+    return { outcome: "ok", size: recipients, chained: next !== undefined };
+  });
 
 /**
  * Accounts and entries per `FanOutRemovedStatuses` job: at most 20 x 20
@@ -273,24 +285,26 @@ export const enqueueRemovedStatusesFanOut = async (
 /**
  * Tell the listed accounts that each listed entry is gone.
  */
-export const processFanOutRemovedStatusesJob = async (
+export const processFanOutRemovedStatusesJob = (
   env: Env,
   job: FanOutRemovedStatuses,
-): Promise<"ok" | "retry"> => {
-  const identity = parseInstanceIdentity(env);
-  if (identity.isErr()) {
-    return "retry";
-  }
-  for (const entryId of job.statusIds) {
-    const announced = await announceHomeEntry(
-      env,
-      identity.value,
-      { event: "delete", entryId },
-      job.accountIds,
-    );
-    if (announced.isErr()) {
-      return "retry";
+): Promise<"ok" | "retry"> =>
+  measureJobPage(env, job.kind, async () => {
+    const identity = parseInstanceIdentity(env);
+    if (identity.isErr()) {
+      return { outcome: "retry", size: 0, chained: false };
     }
-  }
-  return "ok";
-};
+    for (const entryId of job.statusIds) {
+      const announced = await announceHomeEntry(
+        env,
+        identity.value,
+        { event: "delete", entryId },
+        job.accountIds,
+      );
+      if (announced.isErr()) {
+        return { outcome: "retry", size: 0, chained: false };
+      }
+    }
+    // Entries times accounts told; the job is one page and never chains.
+    return { outcome: "ok", size: job.statusIds.length * job.accountIds.length, chained: false };
+  });

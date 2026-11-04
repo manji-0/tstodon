@@ -28,6 +28,7 @@ import {
 import type { RepositoryError } from "./d1";
 import { blockDomain, normalizeDomain, unblockDomain } from "./domain-block-store";
 import { followAccountRef } from "./follow-ref";
+import { type JobPage, measureJobPage } from "./metrics";
 import { unfollowAccount } from "./follow-store";
 import {
   addListMembers,
@@ -338,22 +339,34 @@ type ProcessJob = Extract<OutboxJob, { kind: "ProcessCsvImport" }>;
  * the import is then finished. A page redone applies only rows still pending,
  * and applying a row twice changes nothing.
  */
-export const processCsvImportJob = async (env: Env, job: ProcessJob): Promise<"ok" | "retry"> => {
+export const processCsvImportJob = (env: Env, job: ProcessJob): Promise<"ok" | "retry"> =>
+  measureJobPage(env, job.kind, () => runCsvImportPage(env, job));
+
+/** Where a pass stands for metrics: `size` is the rows applied or entries checked. */
+const pass = (
+  step: "Rows" | "Prune",
+  size: number,
+  outcome: "ok" | "retry",
+  chained = false,
+): JobPage => ({ outcome, size, chained: chained && outcome === "ok", step });
+
+const runCsvImportPage = async (env: Env, job: ProcessJob): Promise<JobPage> => {
   const identity = parseInstanceIdentity(env);
   const owner = await findCsvImportOwner(env.DB, job.importId);
+  const stepName = job.step.kind;
   if (identity.isErr() || owner.isErr()) {
-    return "retry";
+    return pass(stepName, 0, "retry");
   }
   if (!owner.value) {
-    return "ok";
+    return pass(stepName, 0, "ok");
   }
   const { accountId, type, mode } = owner.value;
   const account = await findAccountById(env.DB, accountId);
   if (account.isErr()) {
-    return "retry";
+    return pass(stepName, 0, "retry");
   }
   if (!account.value) {
-    return "ok";
+    return pass(stepName, 0, "ok");
   }
   const user = account.value;
 
@@ -365,12 +378,13 @@ export const processCsvImportJob = async (env: Env, job: ProcessJob): Promise<"o
       IMPORT_PAGE_SIZE,
     );
     if (pending.isErr()) {
-      return "retry";
+      return pass("Rows", 0, "retry");
     }
+    const rows = pending.value.length;
     for (const { position, row } of pending.value) {
       const attempt = await applyImportRow(env, identity.value, user, row);
       if (attempt.isErr()) {
-        return "retry";
+        return pass("Rows", rows, "retry");
       }
       const recorded = await recordRowOutcome(
         env.DB,
@@ -380,21 +394,23 @@ export const processCsvImportJob = async (env: Env, job: ProcessJob): Promise<"o
         attempt.value.resolved,
       );
       if (recorded.isErr()) {
-        return "retry";
+        return pass("Rows", rows, "retry");
       }
     }
     const last = pending.value.at(-1);
-    if (last !== undefined && pending.value.length >= IMPORT_PAGE_SIZE) {
-      return (await enqueue(env, { ...job, step: { kind: "Rows", afterPosition: last.position } }))
-        ? "ok"
-        : "retry";
+    if (last !== undefined && rows >= IMPORT_PAGE_SIZE) {
+      const queued = await enqueue(env, {
+        ...job,
+        step: { kind: "Rows", afterPosition: last.position },
+      });
+      return pass("Rows", rows, queued ? "ok" : "retry", true);
     }
     if (mode.kind === "Overwrite") {
-      return (await enqueue(env, { ...job, step: { kind: "Prune", afterCursor: "" } }))
-        ? "ok"
-        : "retry";
+      const queued = await enqueue(env, { ...job, step: { kind: "Prune", afterCursor: "" } });
+      return pass("Rows", rows, queued ? "ok" : "retry", true);
     }
-    return (await finishCsvImport(env.DB, job.importId)).isOk() ? "ok" : "retry";
+    const finished = await finishCsvImport(env.DB, job.importId);
+    return pass("Rows", rows, finished.isOk() ? "ok" : "retry");
   }
 
   const page = await listEntriesPage(
@@ -410,20 +426,24 @@ export const processCsvImportJob = async (env: Env, job: ProcessJob): Promise<"o
     : undefined;
   const titles = type.kind === "Lists" ? await listTitlesInFile(env.DB, job.importId) : undefined;
   if (page.isErr() || named === undefined || named.isErr() || titles?.isErr()) {
-    return "retry";
+    return pass("Prune", 0, "retry");
   }
+  const entries = page.value.entries.length;
   for (const entry of page.value.entries) {
     const keep =
       isNamed(named.value, entry) ||
       (entry.kind === "Lists" && titles?.isOk() && !titles.value.has(entry.title));
     if (!keep && (await removeEntry(env, identity.value, user, entry)).isErr()) {
-      return "retry";
+      return pass("Prune", entries, "retry");
     }
   }
   if (page.value.next !== undefined) {
-    return (await enqueue(env, { ...job, step: { kind: "Prune", afterCursor: page.value.next } }))
-      ? "ok"
-      : "retry";
+    const queued = await enqueue(env, {
+      ...job,
+      step: { kind: "Prune", afterCursor: page.value.next },
+    });
+    return pass("Prune", entries, queued ? "ok" : "retry", true);
   }
-  return (await finishCsvImport(env.DB, job.importId)).isOk() ? "ok" : "retry";
+  const finished = await finishCsvImport(env.DB, job.importId);
+  return pass("Prune", entries, finished.isOk() ? "ok" : "retry");
 };

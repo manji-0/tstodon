@@ -322,6 +322,52 @@ Do not move timeline truth into DO storage as a first response to load.
 
 Analytics Engine is already wired for cron (`METRICS` via `writeMetric` in `packages/worker/src/metrics.ts`); extend blobs/indexes per path rather than inventing a parallel system.
 
+### Metric reference
+
+Every point is written by `writeMetric` (`packages/worker/src/metrics.ts`) to the `METRICS` dataset `tstodon_metrics`, and a failed write is swallowed. Analytics Engine exposes `index1` (the `indexes[0]` below), `blob1..N` and `double1..N` in this order. Sampling applies, so weight sums by `_sample_interval`.
+
+| Index (`index1`)  | Written by                                                                                                                                                  | Doubles (`double1..`)                   | Blobs (`blob1..`)                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ---------------------------------------------- |
+| `outbox.job`      | `handleQueue`, when a job is retried or dropped                                                                                                             | `[1]`                                   | `[jobKind, retry or failed]`                   |
+| `outbox.job.page` | One queue pass of `FanOutHome`, `FanOutPublic`, `DistributePollUpdate`, `MoveFollows`, `BackfillRemoteOutbox`, `ProcessCsvImport`, `CleanUpAccountStatuses` | `[size, elapsedMs, chainedFlag]`        | `[jobKind, ok or retry or error, step]`        |
+| `outbox.expand`   | `ExpandFollowers`                                                                                                                                           | `[remoteTargetCount, expandMs, okFlag]` | `[ok or targets_failed]`                       |
+| `outbox.enqueue`  | `enqueueLocalActivity` and the targeted variant                                                                                                             | `[1]`                                   | `[activityKind]` or `[activityKind, targeted]` |
+| `stream.render`   | One recipient of a home, list or public fan-out                                                                                                             | `[renderMs, deliveredFlag]`             | `[home or list or public, ok or error]`        |
+| `timeline.home`   | `GET /api/v1/timelines/home`                                                                                                                                | `[latencyMs, rows]`                     | `[ok or error]`                                |
+| `timeline.list`   | `GET /api/v1/timelines/list/:id`                                                                                                                            | `[latencyMs, rows]`                     | `[ok or error]`                                |
+| `timeline.public` | `GET /api/v1/timelines/public`                                                                                                                              | `[latencyMs, rows]`                     | `[ok or error]`                                |
+| `timeline.tag`    | `GET /api/v1/timelines/tag/:hashtag`                                                                                                                        | `[latencyMs, rows]`                     | `[ok or error]`                                |
+| `search`          | `GET /api/v2/search`                                                                                                                                        | `[latencyMs, accountHits, statusHits]`  | see `routes/search.ts`                         |
+| `cron`            | Scheduled handler                                                                                                                                           | `[1]`                                   | `[cronExpression, scheduled]`                  |
+
+`outbox.job.page` details:
+
+- `size` is the recipients or rows the pass handled: followers told (`FanOutHome`), stream hubs told (`FanOutPublic`), outbox items fetched (`BackfillRemoteOutbox`), rows applied or entries checked (`ProcessCsvImport`), old posts scanned (`CleanUpAccountStatuses`), and 1 or 0 for `DistributePollUpdate` (one poll per job). `MoveFollows` writes `-1`: its phase pages do not report a count.
+- `chainedFlag` is 1 when the pass queued a follow-up page. `CleanUpAccountStatuses`, `BackfillRemoteOutbox` and `DistributePollUpdate` never chain.
+- `step` is the CSV step (`Rows` or `Prune`) or the move phase (`follows`, `notes`, `blocks`, `mutes`); empty for the other jobs.
+- `error` means the pass threw. A `retry` is the queue redelivering; the final drop is the `failed` point on `outbox.job`.
+- D1 query counts per pass are not recorded: D1 does not report them to the Worker, and wrapping the binding would change every call site. Estimate from `size` and the per-recipient queries each job's doc comment names.
+
+`stream.render` is one point per recipient, so its volume equals the fan-out volume; query it with a time window. `deliveredFlag` is 0 when the entry is not on that recipient's timeline.
+
+### Answering the D1 open questions
+
+Run these against the Analytics Engine SQL API (`POST /client/v4/accounts/<id>/analytics_engine/sql`, dataset `tstodon_metrics`). The decisions stay open until an operator reads the numbers; this section does not set any threshold.
+
+| ID   | Question                                                                 | Look at                                                                            | Query                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1-1 | Does fan-out or expand CPU need chunking or caps?                        | `outbox.expand`, `outbox.job.page` (`FanOutHome`, `FanOutPublic`), `stream.render` | `SELECT quantileWeighted(0.95, double2, _sample_interval) AS p95_ms, quantileWeighted(0.95, double1, _sample_interval) AS p95_targets FROM tstodon_metrics WHERE index1 = 'outbox.expand' AND timestamp > NOW() - INTERVAL '7' DAY`; the same over `index1 = 'outbox.job.page' AND blob1 = 'FanOutHome'` with `double2` (ms) and `double1` (followers per pass); `SUM(double3 * _sample_interval) / SUM(_sample_interval)` is the share of passes that chained |
+| D1-2 | Is a hard cap on list member mutation size needed?                       | Not measured by these indexes                                                      | List member mutations write no metric. The nearest signal is `ProcessCsvImport` passes with `blob3 = 'Rows'` (rows per pass and `double2`) when an import adds list members; a cap needs a product decision, not a latency number.                                                                                                                                                                                                                             |
+| D1-3 | Should hashtag rows or FTS replace `LIKE`?                               | `timeline.tag`, `search`                                                           | `SELECT quantileWeighted(0.95, double1, _sample_interval) AS p95_ms, SUM(_sample_interval) AS requests FROM tstodon_metrics WHERE index1 = 'timeline.tag' AND blob1 = 'ok' AND timestamp > NOW() - INTERVAL '7' DAY`; for `search`, `double1` is the latency and `double3` the status hits                                                                                                                                                                     |
+| D1-4 | Does collapsing the preload `Promise.all` into one `runD1Batch` pay off? | `timeline.home`, `timeline.list`, `timeline.public`, `timeline.tag`                | `SELECT index1, quantileWeighted(0.5, double1, _sample_interval) AS p50_ms, quantileWeighted(0.95, double1, _sample_interval) AS p95_ms FROM tstodon_metrics WHERE index1 LIKE 'timeline.%' AND blob1 = 'ok' GROUP BY index1`. All four share the `mastodonStatuses` preload, so a high p95 on rows near `limit` points at it; compare before and after a trial change.                                                                                        |
+| D1-5 | Is there a hot-key write that D1 primary cannot absorb?                  | `outbox.job.page`, `outbox.job` `failed`, `outbox.enqueue`                         | `SELECT blob1, blob2, SUM(_sample_interval) AS passes, quantileWeighted(0.95, double2, _sample_interval) AS p95_ms FROM tstodon_metrics WHERE index1 = 'outbox.job.page' GROUP BY blob1, blob2` shows which job spends its time and whether `retry` clusters on one; a Durable Object needs a named row that serializes writes, which these metrics can only suggest.                                                                                          |
+
+Reading the results:
+
+- Do not compare `double2` across job kinds without `size`; divide by `double1` for a per-recipient cost where `double1 > 0`.
+- `retry` points that cluster on one `blob1` with growing `double2` suggest D1 contention rather than a bad job.
+- `timeline.*` latency includes authentication and document assembly, not only SQL.
+
 ## Security & Privacy Considerations
 
 - Heavy read paths must still enforce visibility (`visibility-guard` / query filters); preload must not skip authz.

@@ -10,7 +10,7 @@ import {
   markOutboundExpanded,
 } from "./outbox-store";
 import { listExpiredUnnotifiedPolls, markPollExpiryNotified } from "./poll-store";
-import { elapsedMs, writeMetric } from "./metrics";
+import { elapsedMs, measureJobPage, writeMetric } from "./metrics";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
 import { notifyEndedRemotePolls } from "./remote-poll-expiry";
@@ -174,8 +174,12 @@ export const processOutboxJob = async (
       await queueStatusesCleanup(env);
       return "ok";
     case "CleanUpAccountStatuses":
-      await cleanUpAccountStatuses(env, job.accountId);
-      return "ok";
+      // One pass per account; the cron queues the next run, so it never chains.
+      return measureJobPage(env, job.kind, async () => ({
+        outcome: "ok",
+        size: (await cleanUpAccountStatuses(env, job.accountId)).scanned,
+        chained: false,
+      }));
     case "PublishScheduledStatuses":
       await publishDueScheduledStatuses(env);
       return "ok";

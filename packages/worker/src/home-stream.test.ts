@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { OutboxJob } from "@tstodon/domain";
@@ -7,6 +7,7 @@ import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { type Heard, openStream as openSocket } from "../test/stream-fixture";
 import { fanOutHomePage, HOME_FAN_OUT_PAGE_SIZE } from "./home-fan-out";
+import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
 import { parseInstanceIdentity } from "./runtime-config";
 
@@ -171,16 +172,36 @@ describe("home streams of local followers", () => {
       fanOutHomePage(env, identity.value, { ...fanOut, afterAccountId }, 1);
 
     const firstPage = await page("");
-    expect(firstPage.isOk() && firstPage.value).toBe(first.account.id);
+    expect(firstPage.isOk() && firstPage.value.next).toBe(first.account.id);
     expect(statusOf(await first.next()).id).toBe(id);
     expect(await second.heardNothing()).toBe(true);
 
     // A full page always hands on a cursor; the page after the last follower is empty.
     const secondPage = await page(first.account.id);
-    expect(secondPage.isOk() && secondPage.value).toBe(second.account.id);
+    expect(secondPage.isOk() && secondPage.value.next).toBe(second.account.id);
     expect(statusOf(await second.next()).id).toBe(id);
     const lastPage = await page(second.account.id);
-    expect(lastPage.isOk() && lastPage.value).toBe(undefined);
+    expect(lastPage.isOk() && lastPage.value.next).toBe(undefined);
+
+    // The queued pass reports how many followers it told and what each render cost.
+    const written = vi.spyOn(env.METRICS, "writeDataPoint");
+    expect(await processOutboxJob(env, fanOut)).toBe("ok");
+    const points = written.mock.calls.map(([point]) => point);
+    written.mockRestore();
+    expect(points.filter((point) => point?.indexes?.[0] === "stream.render")).toEqual([
+      { indexes: ["stream.render"], doubles: [expect.any(Number), 1], blobs: ["home", "ok"] },
+      { indexes: ["stream.render"], doubles: [expect.any(Number), 1], blobs: ["home", "ok"] },
+    ]);
+    expect(points.filter((point) => point?.indexes?.[0] === "outbox.job.page")).toEqual([
+      {
+        indexes: ["outbox.job.page"],
+        doubles: [2, expect.any(Number), 0],
+        blobs: ["FanOutHome", "ok", ""],
+      },
+    ]);
+    for (const stream of opened) {
+      expect(statusOf(await stream.next()).id).toBe(id);
+    }
     for (const stream of opened) {
       stream.close();
     }

@@ -71,15 +71,18 @@ const factsOf = (
  * it stopped so posts it keeps do not hold up the older ones behind them, and
  * starts over from the oldest post once it reaches the end.
  */
-export const cleanUpAccountStatuses = async (env: Env, accountId: string): Promise<void> => {
+export const cleanUpAccountStatuses = async (
+  env: Env,
+  accountId: string,
+): Promise<Readonly<{ scanned: number }>> => {
   const identity = parseInstanceIdentity(env);
   const policy = await findStatusesCleanupPolicy(env.DB, accountId);
   if (identity.isErr() || policy.isErr() || policy.value.kind === "Disabled") {
-    return;
+    return { scanned: 0 };
   }
   const account = await findAccountById(env.DB, accountId);
   if (account.isErr() || !account.value) {
-    return;
+    return { scanned: 0 };
   }
   const [moderation, disabled] = await Promise.all([
     getAccountModeration(env.DB, accountId),
@@ -89,13 +92,13 @@ export const cleanUpAccountStatuses = async (env: Env, accountId: string): Promi
     (moderation.isOk() && moderation.value === "Suspended") ||
     (disabled.isOk() && disabled.value.has(accountId))
   ) {
-    return;
+    return { scanned: 0 };
   }
   const now = Date.now();
   const cutoff = new Date(now - policy.value.rules.minAgeSeconds * 1000).toISOString();
   const cursor = await findCleanupCursor(env.DB, accountId);
   if (cursor.isErr()) {
-    return;
+    return { scanned: 0 };
   }
   const candidates = await listCleanupCandidates(
     env.DB,
@@ -106,7 +109,7 @@ export const cleanUpAccountStatuses = async (env: Env, accountId: string): Promi
   );
   const pinned = await listPinnedStatuses(env.DB, accountId);
   if (candidates.isErr() || pinned.isErr()) {
-    return;
+    return { scanned: 0 };
   }
   const pinnedIds = new Set(pinned.value.map((status) => status.id));
   const counts = await statusInteractionCountsByIds(
@@ -116,7 +119,7 @@ export const cleanUpAccountStatuses = async (env: Env, accountId: string): Promi
   );
   if (counts.isErr()) {
     // Without the counts a keep rule could not hold; try again next run.
-    return;
+    return { scanned: 0 };
   }
   let deleted = 0;
   let stoppedAt = "";
@@ -135,4 +138,5 @@ export const cleanUpAccountStatuses = async (env: Env, accountId: string): Promi
   }
   const reachedEnd = candidates.value.length < CLEANUP_SCAN_BATCH && deleted < CLEANUP_DELETE_BATCH;
   await saveCleanupCursor(env.DB, accountId, reachedEnd ? "" : stoppedAt);
+  return { scanned: candidates.value.length };
 };

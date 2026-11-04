@@ -23,6 +23,7 @@ import {
 } from "./remote-actor-store";
 import { type CollectionPage, fetchCollectionPage, firstCollectionPage } from "./remote-collection";
 import { persistAnnouncedObject, persistRemoteObject } from "./remote-status-persist";
+import { type JobPage, measureJobPage } from "./metrics";
 import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 
 /** How long a backfilled outbox counts as fresh before a profile view fetches it again. */
@@ -168,18 +169,21 @@ const withCollections = async (
   return stored.isOk() ? stored.value : actor;
 };
 
-export const processBackfillRemoteOutboxJob = async (
+export const processBackfillRemoteOutboxJob = (
   env: Env,
   job: BackfillRemoteOutbox,
-): Promise<"ok" | "retry"> => {
+): Promise<"ok" | "retry"> => measureJobPage(env, job.kind, () => backfillRemoteOutbox(env, job));
+
+/** `size` is the outbox items fetched; `chained` is whether the next page was queued. */
+const backfillRemoteOutbox = async (env: Env, job: BackfillRemoteOutbox): Promise<JobPage> => {
   const identity = parseInstanceIdentity(env);
   const cached = await findRemoteActorByUri(env.DB, job.actorUri);
   if (identity.isErr() || cached.isErr()) {
-    return "retry";
+    return { outcome: "retry", size: 0, chained: false };
   }
   const suspended = await suspendedDomains(env.DB);
   if (!cached.value || suspended.has(authorityHost(cached.value.domain))) {
-    return "ok";
+    return { outcome: "ok", size: 0, chained: false };
   }
   const options: FederatedFetchOptions = {
     allowHosts: await federationAllowHosts(env),
@@ -193,31 +197,31 @@ export const processBackfillRemoteOutboxJob = async (
       urlHost(from.pageUri) === urlHost(cached.value.actorUri)
         ? await fetchCollectionPage(identity.value, from.pageUri, options)
         : undefined;
-    if (page) {
-      await backfillPage(env, identity.value, cached.value, page, from.depth, options);
-    }
-    return "ok";
+    const chained = page
+      ? await backfillPage(env, identity.value, cached.value, page, from.depth, options)
+      : false;
+    return { outcome: "ok", size: page?.items.length ?? 0, chained };
   }
   const actor = await withCollections(env, identity.value, cached.value, options);
   const outbox = actor.outboxUri
     ? await firstCollectionPage(identity.value, actor.outboxUri, options)
     : undefined;
-  if (outbox) {
-    await backfillPage(env, identity.value, actor, outbox, 0, options);
-  }
+  const chained = outbox
+    ? await backfillPage(env, identity.value, actor, outbox, 0, options)
+    : false;
   const featured = actor.featuredUri
     ? await firstCollectionPage(identity.value, actor.featuredUri, options)
     : undefined;
   if (featured) {
     await backfillPins(env, identity.value, actor, featured.items, options);
   }
-  return "ok";
+  return { outcome: "ok", size: outbox?.items.length ?? 0, chained };
 };
 
 /**
  * Store one outbox page's items, then queue the page after it, until
  * `OUTBOX_BACKFILL_PAGE_LIMIT` pages have been read. `depth` counts the pages
- * before this one.
+ * before this one. Resolves to whether the next page was queued.
  */
 const backfillPage = async (
   env: Env,
@@ -226,12 +230,12 @@ const backfillPage = async (
   page: CollectionPage,
   depth: number,
   options: FederatedFetchOptions,
-): Promise<void> => {
+): Promise<boolean> => {
   for (const item of page.items) {
     await backfillOutboxItem(env, identity, actor, item, options);
   }
   if (page.next === undefined || depth + 1 >= OUTBOX_BACKFILL_PAGE_LIMIT) {
-    return;
+    return false;
   }
   const job = OutboxJob.parse({
     kind: "BackfillRemoteOutbox",
@@ -239,14 +243,16 @@ const backfillPage = async (
     from: { kind: "Page", pageUri: page.next, depth: depth + 1 },
   });
   if (job.isErr()) {
-    return;
+    return false;
   }
   try {
     await env.OUTBOX_PROCESS_QUEUE.send(job.value);
+    return true;
   } catch {
     console.error(
       JSON.stringify({ kind: "OutboxBackfillPageNotQueued", actorUri: actor.actorUri }),
     );
+    return false;
   }
 };
 

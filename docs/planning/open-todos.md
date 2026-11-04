@@ -7,13 +7,15 @@ Tracked leftovers so e2e work can proceed without losing them.
 
 ## D1 / heavy scenarios (deferred)
 
-| ID   | Item                                                   | Notes                                                  |
-| ---- | ------------------------------------------------------ | ------------------------------------------------------ |
-| D1-1 | Fan-out / expand-CPU SLO for secondary queue chunking  | Open Question — needs `outbox.expand` metrics evidence |
-| D1-2 | Hard API max on list member mutation size              | Open Question — do not invent a number                 |
-| D1-3 | Promote hashtag rows / FTS                             | After search/`timeline.tag` p95 evidence (Doc B PR6)   |
-| D1-4 | Timeline preload: `Promise.all` vs single `runD1Batch` | Defer until metrics show a success criterion           |
-| D1-5 | Hot-key Durable Object for write serialization         | Only with evidence beyond D1 primary                   |
+| ID   | Item                                                   | Notes                                                              |
+| ---- | ------------------------------------------------------ | ------------------------------------------------------------------ |
+| D1-1 | Fan-out / expand-CPU SLO for secondary queue chunking  | Open Question — needs `outbox.expand` / `outbox.job.page` evidence |
+| D1-2 | Hard API max on list member mutation size              | Open Question — do not invent a number                             |
+| D1-3 | Promote hashtag rows / FTS                             | After search/`timeline.tag` p95 evidence (Doc B PR6)               |
+| D1-4 | Timeline preload: `Promise.all` vs single `runD1Batch` | Defer until metrics show a success criterion                       |
+| D1-5 | Hot-key Durable Object for write serialization         | Only with evidence beyond D1 primary                               |
+
+The metrics these items wait on are written (see "Answering the D1 open questions" in `docs/architecture/d1-heavy-scenarios.md`); each item stays open until an operator has production numbers.
 
 ## Direct messages (open)
 
@@ -34,6 +36,8 @@ Mastodon's web app links to Rails pages that tstodon answers with a "not availab
 | WEB-7 | `/remote_interaction_helper` | The signed-out interaction modal loads it in an iframe to look up the visitor's server; it is not served (bare 404, or `index.html` through Void's SPA fallback), so that lookup does not work |
 
 ## Done recently (do not re-open)
+
+- D1 evidence instrumentation (#22). Queue passes of `FanOutHome`, `FanOutPublic`, `DistributePollUpdate`, `MoveFollows`, `BackfillRemoteOutbox` (per page), `BackfillRemoteThread`, `FanOutRemovedStatuses`, `ProcessCsvImport` and `CleanUpAccountStatuses` write `outbox.job.page` (size, elapsed ms, chained flag; kind, outcome, step) through `measureJobPage`; each fan-out recipient writes `stream.render`; the home, list, public and tag timelines write `timeline.<name>` through `writeTimelineMetric`. All best effort. `docs/architecture/d1-heavy-scenarios.md` documents every index and maps D1-1 to D1-5 to queries. Not done: D1 query counts per pass (D1 does not report them), a `MoveFollows` row count (the phase pages return only a cursor), and the D1-1..D1-5 decisions themselves, which need production data.
 
 - Remote actor domains with ports. `remote_actors.domain` is the actor's `host[:port]` authority (`URL.host`), as Mastodon stores it, so a peer on a non-default port renders as `@bob@127.0.0.1:8792`, `@bob@127.0.0.1:8792` and `@bob@127.0.0.1:8793` are two accounts, and a handle with a port finds its cached actor (mentions accept `:port` too). Moderation names hostnames: a virtual generated column `remote_actors.host` (migration 0098, indexed) is the domain without its port, the timeline queries and `clearRemoteMediaForDomain` match blocks against it, TypeScript checks use `authorityHost()` (`src/domain-block-store.ts`), and `normalizeDomain` strips a typed port, so a block, suspension or media rule on `peer.test` covers every port. The allow list already matched by hostname. Migration 0097 recomputes `domain` from `actor_uri` for cached rows and rewrites existing block rows typed with a port to their hostname (dropping one that duplicates a bare-hostname block). Consequence: a port-specific block is not possible, and the instance peers list and admin filter name hostnames. Not done: `GET /api/v1/accounts/lookup` still resolves only local usernames (it ignores the domain part of `acct`).
 

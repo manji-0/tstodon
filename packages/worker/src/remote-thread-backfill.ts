@@ -1,3 +1,4 @@
+import { type JobPage, measureJobPage } from "./metrics";
 import { authorityHost } from "./domain-block-store";
 import {
   type InstanceIdentity,
@@ -138,25 +139,28 @@ const backfillReplies = async (
   }
 };
 
-export const processBackfillRemoteThreadJob = async (
+export const processBackfillRemoteThreadJob = (
   env: Env,
   job: BackfillRemoteThread,
-): Promise<"ok" | "retry"> => {
+): Promise<"ok" | "retry"> => measureJobPage(env, job.kind, () => backfillRemoteThread(env, job));
+
+/** The job is one pass and never chains; `size` is not counted (0). */
+const backfillRemoteThread = async (env: Env, job: BackfillRemoteThread): Promise<JobPage> => {
   const identity = parseInstanceIdentity(env);
   const status = await findRemoteStatusById(env.DB, job.statusId);
   if (identity.isErr() || status.isErr()) {
-    return "retry";
+    return { outcome: "retry", size: 0, chained: false };
   }
   if (!status.value) {
-    return "ok";
+    return { outcome: "ok", size: 0, chained: false };
   }
   const actor = await findRemoteActorByUri(env.DB, status.value.actorUri);
   if (actor.isErr()) {
-    return "retry";
+    return { outcome: "retry", size: 0, chained: false };
   }
   const suspended = await suspendedDomains(env.DB);
   if (!actor.value || suspended.has(authorityHost(actor.value.domain))) {
-    return "ok";
+    return { outcome: "ok", size: 0, chained: false };
   }
   const options: FederatedFetchOptions = {
     allowHosts: await federationAllowHosts(env),
@@ -164,5 +168,5 @@ export const processBackfillRemoteThreadJob = async (
   };
   await backfillAncestors(env, identity.value, actor.value, status.value, options);
   await backfillReplies(env, identity.value, actor.value, status.value, options);
-  return "ok";
+  return { outcome: "ok", size: 0, chained: false };
 };

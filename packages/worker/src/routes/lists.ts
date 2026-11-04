@@ -25,6 +25,7 @@ import {
   updateList,
 } from "../list-store";
 import { accountDocumentsByIds, documentsInOrder } from "../account-documents";
+import { writeTimelineMetric } from "../metrics";
 import { parseInstanceIdentity } from "../runtime-config";
 import { listTimelineDocuments } from "../timeline-documents";
 import { isTruthy, stringList } from "../form-values";
@@ -261,6 +262,7 @@ export const getV1AccountsByIdLists = async (
 export const getV1TimelinesListById = async (
   c: Context<{ Bindings: Env }, "/api/v1/timelines/list/:id">,
 ) => {
+  const startedAt = Date.now();
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -283,6 +285,12 @@ export const getV1TimelinesListById = async (
     list.value,
     queryLimit(c.req.query("limit")),
     queryCursor(c),
+  );
+  writeTimelineMetric(
+    c.env,
+    "list",
+    startedAt,
+    documents.isOk() ? documents.value.length : undefined,
   );
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
