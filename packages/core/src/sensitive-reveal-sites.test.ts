@@ -1,0 +1,66 @@
+/// <reference types="node" />
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vite-plus/test";
+
+/**
+ * Every `Sensitive#reveal()` outside tests, per file. A new reveal fails this
+ * test until it is added here, so each one shows up in review with its reason.
+ */
+const REVEAL_SITES: Readonly<Record<string, number>> = {
+  // Hands the confirmed address to Better Auth's `createUser`.
+  "packages/worker/app/auth.ts": 1,
+  // Writes the address and private key, and looks an account up by address.
+  "packages/worker/src/account-store.ts": 3,
+  // Shows a user the IP address of their own sessions.
+  "packages/worker/src/account-security-pages.ts": 1,
+  // The admin account list and page show the address (Mastodon's `/admin/accounts`).
+  "packages/worker/src/admin-pages.ts": 2,
+  // Echoes the address back to the person signing up.
+  "packages/worker/src/auth-pages.ts": 2,
+  // Imports the RSA key to sign a delivery.
+  "packages/worker/src/http-signature.ts": 1,
+  // Stores a newly generated instance actor key.
+  "packages/worker/src/instance-actor.ts": 1,
+  // The recipient of an outgoing email.
+  "packages/worker/src/mailer.ts": 1,
+  // Validates the submitted address, then binds it into the sign-up intent queries.
+  "packages/worker/src/passkey-signup.ts": 2,
+  // Domain and canonical-hash sign-up block checks.
+  "packages/worker/src/registration-block-store.ts": 2,
+  // The admin API's `Admin::Account#email`.
+  "packages/worker/src/routes/admin/accounts.ts": 1,
+  // Imports the VAPID key to sign a push.
+  "packages/worker/src/web-push.ts": 1,
+};
+
+const ROOT = path.resolve(import.meta.dirname, "../../..");
+const SCANNED = [
+  "packages/core/src",
+  "packages/domain/src",
+  "packages/worker/src",
+  "packages/worker/app",
+];
+
+const isRuntimeSource = (file: string): boolean =>
+  file.endsWith(".ts") && !file.endsWith(".test.ts") && !file.includes("/generated/");
+
+const revealSites = (): Record<string, number> => {
+  const files = SCANNED.flatMap((dir) =>
+    readdirSync(path.join(ROOT, dir), { recursive: true, encoding: "utf8" })
+      .map((entry) => `${dir}/${entry.split(path.sep).join("/")}`)
+      .filter(isRuntimeSource),
+  );
+  return Object.fromEntries(
+    files.flatMap((file): Array<[string, number]> => {
+      const count = readFileSync(path.join(ROOT, file), "utf8").match(/\.reveal\(\)/g)?.length ?? 0;
+      return count === 0 ? [] : [[file, count]];
+    }),
+  );
+};
+
+describe("Sensitive reveal sites", () => {
+  it("lists every reveal() outside tests in REVEAL_SITES", () => {
+    expect(revealSites()).toEqual(REVEAL_SITES);
+  });
+});
