@@ -1,3 +1,4 @@
+import { newEntityId } from "./ids";
 import { schemaResult } from "@tstodon/core";
 import { AccountId, StatusesCleanupPolicy, type StatusesCleanupPolicyValue } from "@tstodon/domain";
 import { env, SELF } from "cloudflare:test";
@@ -96,14 +97,12 @@ describe("automated post deletion job", () => {
         owner,
         pinned,
       ),
-      env.DB.prepare("INSERT INTO favourites (account_id, status_id) VALUES (?, ?)").bind(
-        owner,
-        selfFavourited,
-      ),
-      env.DB.prepare("INSERT INTO bookmarks (account_id, status_id) VALUES (?, ?)").bind(
-        owner,
-        bookmarked,
-      ),
+      env.DB.prepare(
+        "INSERT INTO favourites (id, account_id, local_status_id) VALUES (?, ?, ?)",
+      ).bind(newEntityId(), owner, selfFavourited),
+      env.DB.prepare(
+        "INSERT INTO bookmarks (id, account_id, local_status_id) VALUES (?, ?, ?)",
+      ).bind(newEntityId(), owner, bookmarked),
       env.DB.prepare("UPDATE statuses SET poll_id = 'poll-1' WHERE id = ?").bind(poll),
       env.DB.prepare(
         "INSERT INTO polls (id, status_id, expires_at, options_json) VALUES ('poll-1', ?, ?, '[]')",
@@ -111,10 +110,9 @@ describe("automated post deletion job", () => {
       env.DB.prepare(
         "INSERT INTO media_attachments (id, account_id, status_id, object_key, content_type) VALUES ('media-1', ?, ?, 'cleanup/media-1', 'image/png')",
       ).bind(owner, media),
-      env.DB.prepare("INSERT INTO favourites (account_id, status_id) VALUES (?, ?)").bind(
-        other,
-        popular,
-      ),
+      env.DB.prepare(
+        "INSERT INTO favourites (id, account_id, local_status_id) VALUES (?, ?, ?)",
+      ).bind(newEntityId(), other, popular),
       env.DB.prepare(
         "INSERT INTO statuses (id, account_id, kind, reblog_of_id, visibility) VALUES (?, ?, 'LocalReblog', ?, 'public')",
       ).bind(entityIdAt(Date.now() - 1000), other, boosted),
