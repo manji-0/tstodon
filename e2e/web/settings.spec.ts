@@ -41,6 +41,15 @@ test.describe("settings links in the web UI", () => {
     await privacy.close();
 
     const filters = await fromMoreMenu("Muted words");
-    await expect(filters.getByText("This page is not available on this server.")).toBeVisible();
+    await expect(filters.getByRole("heading", { name: "Muted words" })).toBeVisible();
+    await filters.getByRole("link", { name: "Add new filter" }).click();
+    await filters.getByLabel("Title").fill("Spoilers");
+    await filters.getByLabel("Keyword or phrase").first().fill("season finale");
+    await filters.getByRole("button", { name: "Create filter" }).click();
+    await expect(filters.getByText("Filter created.")).toBeVisible();
+    await expect(filters.getByText("Spoilers")).toBeVisible();
+    await filters.getByRole("link", { name: "Edit" }).click();
+    await expect(filters.getByLabel("Title")).toHaveValue("Spoilers");
+    await expect(filters.getByLabel("Keyword or phrase").first()).toHaveValue("season finale");
   });
 });
