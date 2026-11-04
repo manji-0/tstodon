@@ -8,6 +8,8 @@ import {
   postForm,
   postJson,
   read,
+  registrationOptions,
+  requestSignupLink,
   signUp,
 } from "../test/passkey-browser";
 import { softPasskey, type SoftPasskey } from "../test/soft-passkey";
@@ -163,6 +165,32 @@ describe("Password and security: who may use it", () => {
     expect((await passkeysOf("sec_cross_site"))[0]?.name).not.toBe("Hijacked");
     expect(await sessionsOf("sec_cross_site")).toHaveLength(1);
     expect((await verifyCredentials(app.token)).status).toBe(200);
+  });
+});
+
+describe("Password and security: signing up while signed in", () => {
+  it("refuses a sign-up link in a signed-in browser instead of adding a passkey to that account", async () => {
+    const { fetcher } = await signUp("sec_signup_owner");
+    const before = await passkeysOf("sec_signup_owner");
+    const token = await requestSignupLink(
+      browser(),
+      "sec_signup_new",
+      "sec_signup_new@mail.example",
+    );
+
+    const page = await fetcher(`/auth/sign_up/verify?${new URLSearchParams({ token }).toString()}`);
+    expect(page.status).toBe(403);
+    expect(await page.text()).toContain("Sign out first");
+    expect((await registrationOptions(fetcher, token)).status).toBe(403);
+
+    expect(await passkeysOf("sec_signup_owner")).toHaveLength(before.length);
+    const created = await findAccountByUsername(env.DB, "sec_signup_new");
+    expect(created.isOk() && created.value).toBeFalsy();
+    // The link is still good for a signed-out browser.
+    const fresh = await browser()(
+      `/auth/sign_up/verify?${new URLSearchParams({ token }).toString()}`,
+    );
+    expect(fresh.status).toBe(200);
   });
 });
 

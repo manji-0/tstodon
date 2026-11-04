@@ -123,6 +123,6 @@ ${messageLine(message)}
         event.preventDefault();
         show("");
         const name = new FormData(event.target).get("name");
-        if (await registerPasskey({ name }, { name })) location.reload();
+        if (await registerPasskey({}, { name })) location.reload();
       });`,
   );

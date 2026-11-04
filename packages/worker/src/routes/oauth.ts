@@ -445,6 +445,12 @@ const parseTokenQuery = schemaResult(TokenQuerySchema);
 export const getAuthSignUpVerify = async (
   c: Context<{ Bindings: Env }, "/auth/sign_up/verify">,
 ) => {
+  // Better Auth registers a passkey for the signed-in user whenever a session
+  // exists, so a sign-up ceremony in a signed-in browser would add the passkey
+  // to that account and never create the new one.
+  if (getSession()) {
+    return refuse(c, "You are signed in. Sign out first, then open this sign-up link again.", 403);
+  }
   const query = parseTokenQuery(c.req.query());
   const token = query.isOk() ? query.value.token : undefined;
   const intent = await checkSignupLink(c.env, token);

@@ -61,6 +61,11 @@ const passkeyGuards = {
           ctx.path === "/passkey/verify-registration",
         handler: createAuthMiddleware(async (ctx) => {
           const session = await getSessionFromCtx(ctx);
+          if (session && typeof ctx.query?.context === "string" && ctx.query.context !== "") {
+            throw new APIError("FORBIDDEN", {
+              message: "Sign out before you create another account.",
+            });
+          }
           const { signInIsStale } = await import("#src/recent-sign-in");
           if (session && signInIsStale(session.session.createdAt)) {
             throw new APIError("FORBIDDEN", {
