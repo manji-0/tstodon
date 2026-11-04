@@ -271,7 +271,7 @@ None: every route listed above is implemented.
 <!-- constrained-by ../getting-started/development.md#domain-changes -->
 
 - Domain modules are `kind` discriminated unions with companion `schema` / `parse` / transitions. Domain code does not throw Zod or HTTP errors.
-- Boundaries (HTTP bodies, D1 rows, queue payloads, JSON columns) parse with `schemaResult`. The only allowed TypeScript assertions are `as const` and `as const satisfies Type`.
+- Boundaries (HTTP bodies, D1 rows, queue payloads, JSON columns) parse with `schemaResult`. The only allowed TypeScript assertions are `as const` and `as const satisfies Type`; Oxlint's `consistent-type-assertions` (`assertionStyle: "never"`) and the `no-unsafe-*` rules for runtime code fail `pnpm lint` otherwise.
 - PII fields use `Sensitive`.
 - Hono handlers map `Result` error `kind`s to status codes. Domain graphs such as follow `Pending | Accepted | None` stay out of middleware.
 - Worker tests load D1 migrations and parse JSON responses with Zod. They do not use `json() as { id: string }`.

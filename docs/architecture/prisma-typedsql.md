@@ -12,6 +12,8 @@ Worker SQL that is a **single, fixed-shape statement** should live in `prisma/sq
 
 Prisma generates typed factories under `packages/worker/src/generated/prisma`. At runtime we execute them through D1 via `queryTyped` / `runTyped` / `d1PrepareTyped` in `packages/worker/src/typed-sql.ts` (rewrites `$1`-style placeholders to `?`). There is **no** runtime `PrismaClient` path.
 
+The generated `Result` row types are not trusted: they do not describe what D1 returns (`COUNT(*)` is typed `bigint`; D1 yields a number). Each `queryTyped` call passes a Zod row schema, and rows are parsed there, once.
+
 Do **not** use Prisma model CRUD APIs for domain persistence.
 
 Design decisions:

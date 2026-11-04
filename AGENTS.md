@@ -29,7 +29,7 @@ Hono handlers are a boundary: parse with Zod, call domain companions, map `Resul
 - Compose nested `z.discriminatedUnion` instead of optional fields.
 - Look up a variant with `z.getDiscriminatedOption(union, kind)`.
 - Companion objects own `schema` and `parse`.
-- Parse unknown input with `schemaResult`; do not use `as` except `as const` and `as const satisfies Type`.
+- Parse unknown input with `schemaResult`; do not use `as` except `as const` and `as const satisfies Type` (`pnpm lint` fails on any other). `queryTyped` takes the row schema; JSON columns go through `parseJsonColumn` / `parseJsonText` in `src/json-column.ts`.
 
 ## Development Commands
 

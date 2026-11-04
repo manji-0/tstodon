@@ -170,13 +170,13 @@ export const d1PrepareTyped = (
 ): D1PreparedStatement =>
   db.prepare(typed.sql.replace(/\$\d+/g, "?")).bind(...(typed.values as unknown[]));
 
-export const queryTyped = async <Row>(db, typed): Promise<Row[]>
+export const queryTyped = async <Row>(db, typed, schema: z.ZodType<Row>): Promise<Row[]>
 export const runTyped = async (db, typed): Promise<D1Result>
 ```
 
 Rules for callers:
 
-1. Fixed-shape single statements → TypedSQL file + `runTyped` / `queryTyped`.
+1. Fixed-shape single statements → TypedSQL file + `runTyped` / `queryTyped`. `queryTyped` parses each row with its schema (a module-level constant, so `schemaResult` compiles it once) and leaves out a row that does not match; `CountedRow` serves a RETURNING query whose rows are only counted.
 2. Fixed-shape multi-statement writes → `d1PrepareTyped` × N + `runD1Batch` / `runD1BatchChunked`.
 3. Shape-varying SQL → `db.prepare` with fixed bind positions per branch; membership still uses `sqlInJsonEach`.
 
