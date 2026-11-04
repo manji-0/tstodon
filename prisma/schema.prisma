@@ -482,12 +482,21 @@ model notifications {
 }
 
 model outbound_activities {
-  id           String @id
-  account_id   String
+  id           String    @id
+  account_id   String?
   kind         String
   payload_json String
-  created_at   String   @default("CURRENT_TIMESTAMP")
-  accounts     accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  created_at   String    @default("CURRENT_TIMESTAMP")
+  accounts     accounts? @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([account_id, id], map: "idx_outbound_activities_account")
+}
+
+model instance_actor_keys {
+  id              Int    @id
+  public_key_pem  String
+  private_key_jwk String
+  created_at      String
 }
 
 model outbox_deliveries {

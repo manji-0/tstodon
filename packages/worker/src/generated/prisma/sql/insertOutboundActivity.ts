@@ -15,7 +15,7 @@ export const insertOutboundActivity = $runtime.makeTypedQueryFactory(
   "INSERT INTO outbound_activities (id, account_id, kind, payload_json, created_at)\nVALUES ($1, $2, $3, $4, $5)",
 ) as (
   id: string,
-  accountId: string,
+  accountId: string | null,
   kind: string,
   payloadJson: string,
   createdAt: string,
@@ -24,7 +24,7 @@ export const insertOutboundActivity = $runtime.makeTypedQueryFactory(
 export namespace insertOutboundActivity {
   export type Parameters = [
     id: string,
-    accountId: string,
+    accountId: string | null,
     kind: string,
     payloadJson: string,
     createdAt: string,

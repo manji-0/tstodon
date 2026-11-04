@@ -227,6 +227,11 @@ export type notifications = Prisma.notificationsModel;
  */
 export type outbound_activities = Prisma.outbound_activitiesModel;
 /**
+ * Model instance_actor_keys
+ *
+ */
+export type instance_actor_keys = Prisma.instance_actor_keysModel;
+/**
  * Model outbox_deliveries
  *
  */

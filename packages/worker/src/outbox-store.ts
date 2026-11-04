@@ -26,7 +26,8 @@ import {
 
 export const OutboundActivityRowSchema = z.object({
   id: z.string().min(1),
-  account_id: z.string().min(1),
+  /** `null` for an activity the instance actor signs. */
+  account_id: z.string().min(1).nullable(),
   kind: z.string().min(1),
   payload_json: z.string().min(1),
   created_at: z.string().min(1),
@@ -120,14 +121,25 @@ export const parseOutboxDelivery = (raw: unknown): Result<OutboxDeliveryValue, R
   );
 };
 
+/** Who signs an outbound activity: a local account, or the instance actor. */
+export type OutboundSigner =
+  | Readonly<{ kind: "Account"; accountId: string }>
+  | Readonly<{ kind: "InstanceActor" }>;
+
+export const outboundSignerOf = (row: Pick<OutboundActivityRow, "account_id">): OutboundSigner =>
+  row.account_id === null
+    ? { kind: "InstanceActor" }
+    : { kind: "Account", accountId: row.account_id };
+
 export const insertOutboundActivity = async (
   db: D1Database,
   input: {
-    accountId: string;
+    signer: OutboundSigner;
     kind: string;
     payload: unknown;
   },
 ): Promise<Result<OutboundActivityRow, RepositoryError>> => {
+  const accountId = input.signer.kind === "Account" ? input.signer.accountId : null;
   const id = newEntityId();
   const createdAt = nowIso();
   const payloadJson = JSON.stringify(input.payload);
@@ -135,7 +147,7 @@ export const insertOutboundActivity = async (
   const batched = await runD1Batch(db, [
     d1PrepareTyped(
       db,
-      insertOutboundActivitySql(id, input.accountId, input.kind, payloadJson, createdAt),
+      insertOutboundActivitySql(id, accountId, input.kind, payloadJson, createdAt),
     ),
     d1PrepareTyped(
       db,
@@ -154,7 +166,7 @@ export const insertOutboundActivity = async (
   }
   return ok({
     id,
-    account_id: input.accountId,
+    account_id: accountId,
     kind: input.kind,
     payload_json: payloadJson,
     created_at: createdAt,

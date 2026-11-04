@@ -90,6 +90,7 @@ export const ModelName = {
   media_attachments: "media_attachments",
   notifications: "notifications",
   outbound_activities: "outbound_activities",
+  instance_actor_keys: "instance_actor_keys",
   outbox_deliveries: "outbox_deliveries",
   poll_votes: "poll_votes",
   remote_poll_votes: "remote_poll_votes",
@@ -613,6 +614,16 @@ export const Outbound_activitiesScalarFieldEnum = {
 
 export type Outbound_activitiesScalarFieldEnum =
   (typeof Outbound_activitiesScalarFieldEnum)[keyof typeof Outbound_activitiesScalarFieldEnum];
+
+export const Instance_actor_keysScalarFieldEnum = {
+  id: "id",
+  public_key_pem: "public_key_pem",
+  private_key_jwk: "private_key_jwk",
+  created_at: "created_at",
+} as const;
+
+export type Instance_actor_keysScalarFieldEnum =
+  (typeof Instance_actor_keysScalarFieldEnum)[keyof typeof Instance_actor_keysScalarFieldEnum];
 
 export const Outbox_deliveriesScalarFieldEnum = {
   id: "id",

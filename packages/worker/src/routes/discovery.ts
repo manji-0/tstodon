@@ -21,6 +21,15 @@ export const getWellKnownWebfinger = async (
     return c.json({ kind: "UnknownResource", resource }, 404);
   }
   const username = resource.slice(prefix.length, resource.length - suffix.length);
+  // As Mastodon: `acct:<domain>@<domain>` names the instance actor.
+  if (username === identity.value.domain) {
+    const actorUrl = InstanceIdentity.instanceActorUrl(identity.value);
+    return c.json({
+      subject: resource,
+      aliases: [actorUrl],
+      links: [{ rel: "self", type: "application/activity+json", href: actorUrl }],
+    });
+  }
   const account = await findAccountByUsername(c.env.DB, username);
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);

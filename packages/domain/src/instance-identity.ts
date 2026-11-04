@@ -33,6 +33,8 @@ export const InstanceIdentity = {
   webfingerSubject: (identity: InstanceIdentity, username: string): string =>
     `acct:${username}@${identity.domain}`,
   sharedInboxUrl: (identity: InstanceIdentity): string => `${origin(identity)}/inbox`,
+  /** Mastodon's instance actor: the Application that speaks for the server itself. */
+  instanceActorUrl: (identity: InstanceIdentity): string => `${origin(identity)}/actor`,
   webfingerUrl: (identity: InstanceIdentity, username: string): string =>
     `${origin(identity)}/.well-known/webfinger?resource=${encodeURIComponent(
       InstanceIdentity.webfingerSubject(identity, username),

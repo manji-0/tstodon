@@ -725,6 +725,11 @@ export type accountsSumOrderByAggregateInput = {
   locked?: Prisma.SortOrder;
 };
 
+export type AccountsNullableScalarRelationFilter = {
+  is?: Prisma.accountsWhereInput | null;
+  isNot?: Prisma.accountsWhereInput | null;
+};
+
 export type accountsCreateNestedOneWithoutAccount_list_membersInput = {
   create?: Prisma.XOR<
     Prisma.accountsCreateWithoutAccount_list_membersInput,
@@ -1049,13 +1054,15 @@ export type accountsCreateNestedOneWithoutOutbound_activitiesInput = {
   connect?: Prisma.accountsWhereUniqueInput;
 };
 
-export type accountsUpdateOneRequiredWithoutOutbound_activitiesNestedInput = {
+export type accountsUpdateOneWithoutOutbound_activitiesNestedInput = {
   create?: Prisma.XOR<
     Prisma.accountsCreateWithoutOutbound_activitiesInput,
     Prisma.accountsUncheckedCreateWithoutOutbound_activitiesInput
   >;
   connectOrCreate?: Prisma.accountsCreateOrConnectWithoutOutbound_activitiesInput;
   upsert?: Prisma.accountsUpsertWithoutOutbound_activitiesInput;
+  disconnect?: Prisma.accountsWhereInput | boolean;
+  delete?: Prisma.accountsWhereInput | boolean;
   connect?: Prisma.accountsWhereUniqueInput;
   update?: Prisma.XOR<
     Prisma.XOR<

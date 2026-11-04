@@ -72,6 +72,7 @@ import { outboundFollowAnswer } from "../outbound-follow";
 import { acceptOutboundFollow, rejectOutboundFollow } from "../outbound-follow-store";
 import { RemoteAccountId } from "../remote-account-id";
 import { applyRemoteMove } from "../remote-move";
+import { instanceActorDocument, instanceActorKeys } from "../instance-actor";
 import { listAccountAliases } from "../account-alias-store";
 import { findAccountMove } from "../account-move-store";
 
@@ -748,3 +749,17 @@ const notifyStatusAuthor = async (
 export const postUsersByUsernameInbox = (c: Context<{ Bindings: Env }, "/users/:username/inbox">) =>
   handleInbox(c);
 export const postInbox = (c: Context<{ Bindings: Env }, "/inbox">) => handleInbox(c);
+export const postActorInbox = (c: Context<{ Bindings: Env }, "/actor/inbox">) => handleInbox(c);
+
+/** Mastodon's instance actor document (`GET /actor`). */
+export const getActor = async (c: Context<{ Bindings: Env }, "/actor">) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const keys = await instanceActorKeys(c.env.DB);
+  if (keys.isErr()) {
+    return jsonRepositoryError(c, keys.error.message);
+  }
+  return c.json(instanceActorDocument(identity.value, keys.value.publicKeyPem), 200, jsonLd);
+};

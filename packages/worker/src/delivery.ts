@@ -10,7 +10,14 @@ import { err, ok, type Result } from "neverthrow";
 import { findAccountById } from "./account-store";
 import type { RepositoryError } from "./d1";
 import { signInboxRequest } from "./http-signature";
-import { ensureOutboxTarget, findOutboundActivity, insertOutboundActivity } from "./outbox-store";
+import { instanceActorKeyId, instanceActorKeys } from "./instance-actor";
+import {
+  ensureOutboxTarget,
+  findOutboundActivity,
+  insertOutboundActivity,
+  type OutboundSigner,
+  outboundSignerOf,
+} from "./outbox-store";
 import { writeMetric } from "./metrics";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { hostnameOf } from "./domain-block-store";
@@ -30,7 +37,7 @@ export const enqueueLocalActivity = async (
   payload: unknown,
 ): Promise<Result<void, EnqueueLocalActivityError>> => {
   const inserted = await insertOutboundActivity(env.DB, {
-    accountId,
+    signer: { kind: "Account", accountId },
     kind,
     payload,
   });
@@ -78,9 +85,27 @@ export const enqueueLocalActivity = async (
 };
 
 /** Insert outbound activity and deliver to one inbox (Accept, etc.) without ExpandFollowers. */
-export const enqueueTargetedActivity = async (
+export const enqueueTargetedActivity = (
   env: Env,
   accountId: string,
+  kind: string,
+  payload: unknown,
+  inboxUrl: string,
+): Promise<Result<void, EnqueueLocalActivityError>> =>
+  enqueueSignedActivity(env, { kind: "Account", accountId }, kind, payload, inboxUrl);
+
+/** {@link enqueueTargetedActivity}, signed by the instance actor rather than a user. */
+export const enqueueInstanceActorActivity = (
+  env: Env,
+  kind: string,
+  payload: unknown,
+  inboxUrl: string,
+): Promise<Result<void, EnqueueLocalActivityError>> =>
+  enqueueSignedActivity(env, { kind: "InstanceActor" }, kind, payload, inboxUrl);
+
+const enqueueSignedActivity = async (
+  env: Env,
+  signer: OutboundSigner,
   kind: string,
   payload: unknown,
   inboxUrl: string,
@@ -94,16 +119,12 @@ export const enqueueTargetedActivity = async (
   ) {
     return ok(undefined);
   }
-  const inserted = await insertOutboundActivity(env.DB, {
-    accountId,
-    kind,
-    payload,
-  });
+  const inserted = await insertOutboundActivity(env.DB, { signer, kind, payload });
   if (inserted.isErr()) {
     console.error(
       JSON.stringify({
         kind: "OutboxEnqueueInsertFailed",
-        accountId,
+        signer,
         activityKind: kind,
         message: inserted.error.message,
       }),
@@ -169,6 +190,44 @@ export const startOutboxDeliveryWorkflow = async (
   }
 };
 
+type SigningKey =
+  | Readonly<{ kind: "Found"; keyId: string; privateKeyJwk: string }>
+  /** The signing account is gone: the activity can never be delivered. */
+  | Readonly<{ kind: "Missing" }>
+  | Readonly<{ kind: "Unavailable" }>;
+
+const signingKey = async (
+  env: Env,
+  identity: InstanceIdentity,
+  signer: OutboundSigner,
+): Promise<SigningKey> => {
+  switch (signer.kind) {
+    case "Account": {
+      const account = await findAccountById(env.DB, signer.accountId);
+      if (account.isErr()) {
+        return { kind: "Unavailable" };
+      }
+      return account.value
+        ? {
+            kind: "Found",
+            keyId: `${InstanceIdentity.actorUrl(identity, account.value.username)}#main-key`,
+            privateKeyJwk: account.value.privateKeyJwk.unwrap(),
+          }
+        : { kind: "Missing" };
+    }
+    case "InstanceActor": {
+      const keys = await instanceActorKeys(env.DB);
+      return keys.isOk()
+        ? {
+            kind: "Found",
+            keyId: instanceActorKeyId(identity),
+            privateKeyJwk: keys.value.privateKeyJwk.unwrap(),
+          }
+        : { kind: "Unavailable" };
+    }
+  }
+};
+
 export const attemptInboxDelivery = async (
   env: Env,
   job: DeliverTargetJob,
@@ -177,12 +236,15 @@ export const attemptInboxDelivery = async (
   if (activity.isErr() || !activity.value) {
     return DeliveryAttemptOutcome.forHttpStatus(404);
   }
-  const account = await findAccountById(env.DB, activity.value.account_id);
-  if (account.isErr() || !account.value) {
-    return DeliveryAttemptOutcome.forHttpStatus(404);
-  }
   const identity = parseInstanceIdentity(env);
   if (identity.isErr()) {
+    return DeliveryAttemptOutcome.TransientFailure;
+  }
+  const key = await signingKey(env, identity.value, outboundSignerOf(activity.value));
+  if (key.kind === "Missing") {
+    return DeliveryAttemptOutcome.forHttpStatus(404);
+  }
+  if (key.kind === "Unavailable") {
     return DeliveryAttemptOutcome.TransientFailure;
   }
   let inbox: URL;
@@ -191,11 +253,10 @@ export const attemptInboxDelivery = async (
   } catch {
     return DeliveryAttemptOutcome.forHttpStatus(400);
   }
-  const keyId = `${InstanceIdentity.actorUrl(identity.value, account.value.username)}#main-key`;
   const headers = await signInboxRequest(
     inbox,
-    account.value.privateKeyJwk.unwrap(),
-    keyId,
+    key.privateKeyJwk,
+    key.keyId,
     activity.value.payload_json,
   );
   if (headers.isErr()) {

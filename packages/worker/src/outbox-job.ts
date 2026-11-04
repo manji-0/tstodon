@@ -191,9 +191,11 @@ export const processOutboxJob = async (
       const identity = parseInstanceIdentity(env);
       const sameHost = identity.isOk() ? identity.value.domain : "";
       const audience = outboundAudience(activity.value.payload_json, sameHost);
-      const remoteFollowers = audience.followers
-        ? await listAcceptedRemoteFollowerInboxes(env.DB, activity.value.account_id)
-        : ok([]);
+      // The instance actor has no followers.
+      const remoteFollowers =
+        audience.followers && activity.value.account_id !== null
+          ? await listAcceptedRemoteFollowerInboxes(env.DB, activity.value.account_id)
+          : ok([]);
       const addressed = await findRemoteActorsByUris(env.DB, audience.actorUris);
       const candidateInboxes = [
         ...(remoteFollowers.isOk() ? remoteFollowers.value : []),

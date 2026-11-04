@@ -153,7 +153,7 @@ export type outbound_activitiesGroupByArgs<
 
 export type Outbound_activitiesGroupByOutputType = {
   id: string;
-  account_id: string;
+  account_id: string | null;
   kind: string;
   payload_json: string;
   created_at: string;
@@ -180,16 +180,19 @@ export type outbound_activitiesWhereInput = {
   OR?: Prisma.outbound_activitiesWhereInput[];
   NOT?: Prisma.outbound_activitiesWhereInput | Prisma.outbound_activitiesWhereInput[];
   id?: Prisma.StringFilter<"outbound_activities"> | string;
-  account_id?: Prisma.StringFilter<"outbound_activities"> | string;
+  account_id?: Prisma.StringNullableFilter<"outbound_activities"> | string | null;
   kind?: Prisma.StringFilter<"outbound_activities"> | string;
   payload_json?: Prisma.StringFilter<"outbound_activities"> | string;
   created_at?: Prisma.StringFilter<"outbound_activities"> | string;
-  accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
+  accounts?: Prisma.XOR<
+    Prisma.AccountsNullableScalarRelationFilter,
+    Prisma.accountsWhereInput
+  > | null;
 };
 
 export type outbound_activitiesOrderByWithRelationInput = {
   id?: Prisma.SortOrder;
-  account_id?: Prisma.SortOrder;
+  account_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   kind?: Prisma.SortOrder;
   payload_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
@@ -202,18 +205,21 @@ export type outbound_activitiesWhereUniqueInput = Prisma.AtLeast<
     AND?: Prisma.outbound_activitiesWhereInput | Prisma.outbound_activitiesWhereInput[];
     OR?: Prisma.outbound_activitiesWhereInput[];
     NOT?: Prisma.outbound_activitiesWhereInput | Prisma.outbound_activitiesWhereInput[];
-    account_id?: Prisma.StringFilter<"outbound_activities"> | string;
+    account_id?: Prisma.StringNullableFilter<"outbound_activities"> | string | null;
     kind?: Prisma.StringFilter<"outbound_activities"> | string;
     payload_json?: Prisma.StringFilter<"outbound_activities"> | string;
     created_at?: Prisma.StringFilter<"outbound_activities"> | string;
-    accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
+    accounts?: Prisma.XOR<
+      Prisma.AccountsNullableScalarRelationFilter,
+      Prisma.accountsWhereInput
+    > | null;
   },
   "id"
 >;
 
 export type outbound_activitiesOrderByWithAggregationInput = {
   id?: Prisma.SortOrder;
-  account_id?: Prisma.SortOrder;
+  account_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   kind?: Prisma.SortOrder;
   payload_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
@@ -231,7 +237,7 @@ export type outbound_activitiesScalarWhereWithAggregatesInput = {
     | Prisma.outbound_activitiesScalarWhereWithAggregatesInput
     | Prisma.outbound_activitiesScalarWhereWithAggregatesInput[];
   id?: Prisma.StringWithAggregatesFilter<"outbound_activities"> | string;
-  account_id?: Prisma.StringWithAggregatesFilter<"outbound_activities"> | string;
+  account_id?: Prisma.StringNullableWithAggregatesFilter<"outbound_activities"> | string | null;
   kind?: Prisma.StringWithAggregatesFilter<"outbound_activities"> | string;
   payload_json?: Prisma.StringWithAggregatesFilter<"outbound_activities"> | string;
   created_at?: Prisma.StringWithAggregatesFilter<"outbound_activities"> | string;
@@ -242,12 +248,12 @@ export type outbound_activitiesCreateInput = {
   kind: string;
   payload_json: string;
   created_at?: string;
-  accounts: Prisma.accountsCreateNestedOneWithoutOutbound_activitiesInput;
+  accounts?: Prisma.accountsCreateNestedOneWithoutOutbound_activitiesInput;
 };
 
 export type outbound_activitiesUncheckedCreateInput = {
   id: string;
-  account_id: string;
+  account_id?: string | null;
   kind: string;
   payload_json: string;
   created_at?: string;
@@ -258,12 +264,12 @@ export type outbound_activitiesUpdateInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   payload_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
-  accounts?: Prisma.accountsUpdateOneRequiredWithoutOutbound_activitiesNestedInput;
+  accounts?: Prisma.accountsUpdateOneWithoutOutbound_activitiesNestedInput;
 };
 
 export type outbound_activitiesUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
-  account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   payload_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -271,7 +277,7 @@ export type outbound_activitiesUncheckedUpdateInput = {
 
 export type outbound_activitiesCreateManyInput = {
   id: string;
-  account_id: string;
+  account_id?: string | null;
   kind: string;
   payload_json: string;
   created_at?: string;
@@ -286,7 +292,7 @@ export type outbound_activitiesUpdateManyMutationInput = {
 
 export type outbound_activitiesUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
-  account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  account_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   payload_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
@@ -493,7 +499,7 @@ export type outbound_activitiesScalarWhereInput = {
   OR?: Prisma.outbound_activitiesScalarWhereInput[];
   NOT?: Prisma.outbound_activitiesScalarWhereInput | Prisma.outbound_activitiesScalarWhereInput[];
   id?: Prisma.StringFilter<"outbound_activities"> | string;
-  account_id?: Prisma.StringFilter<"outbound_activities"> | string;
+  account_id?: Prisma.StringNullableFilter<"outbound_activities"> | string | null;
   kind?: Prisma.StringFilter<"outbound_activities"> | string;
   payload_json?: Prisma.StringFilter<"outbound_activities"> | string;
   created_at?: Prisma.StringFilter<"outbound_activities"> | string;
@@ -536,7 +542,7 @@ export type outbound_activitiesSelect<
     kind?: boolean;
     payload_json?: boolean;
     created_at?: boolean;
-    accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
+    accounts?: boolean | Prisma.outbound_activities$accountsArgs<ExtArgs>;
   },
   ExtArgs["result"]["outbound_activities"]
 >;
@@ -550,7 +556,7 @@ export type outbound_activitiesSelectCreateManyAndReturn<
     kind?: boolean;
     payload_json?: boolean;
     created_at?: boolean;
-    accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
+    accounts?: boolean | Prisma.outbound_activities$accountsArgs<ExtArgs>;
   },
   ExtArgs["result"]["outbound_activities"]
 >;
@@ -564,7 +570,7 @@ export type outbound_activitiesSelectUpdateManyAndReturn<
     kind?: boolean;
     payload_json?: boolean;
     created_at?: boolean;
-    accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
+    accounts?: boolean | Prisma.outbound_activities$accountsArgs<ExtArgs>;
   },
   ExtArgs["result"]["outbound_activities"]
 >;
@@ -586,17 +592,17 @@ export type outbound_activitiesOmit<
 export type outbound_activitiesInclude<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
+  accounts?: boolean | Prisma.outbound_activities$accountsArgs<ExtArgs>;
 };
 export type outbound_activitiesIncludeCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
+  accounts?: boolean | Prisma.outbound_activities$accountsArgs<ExtArgs>;
 };
 export type outbound_activitiesIncludeUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
+  accounts?: boolean | Prisma.outbound_activities$accountsArgs<ExtArgs>;
 };
 
 export type $outbound_activitiesPayload<
@@ -604,12 +610,12 @@ export type $outbound_activitiesPayload<
 > = {
   name: "outbound_activities";
   objects: {
-    accounts: Prisma.$accountsPayload<ExtArgs>;
+    accounts: Prisma.$accountsPayload<ExtArgs> | null;
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
       id: string;
-      account_id: string;
+      account_id: string | null;
       kind: string;
       payload_json: string;
       created_at: string;
@@ -1154,17 +1160,16 @@ export interface Prisma__outbound_activitiesClient<
   GlobalOmitOptions = {},
 > extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise";
-  accounts<T extends Prisma.accountsDefaultArgs<ExtArgs> = {}>(
-    args?: Prisma.Subset<T, Prisma.accountsDefaultArgs<ExtArgs>>,
+  accounts<T extends Prisma.outbound_activities$accountsArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.outbound_activities$accountsArgs<ExtArgs>>,
   ): Prisma.Prisma__accountsClient<
-    | runtime.Types.Result.GetResult<
-        Prisma.$accountsPayload<ExtArgs>,
-        T,
-        "findUniqueOrThrow",
-        GlobalOmitOptions
-      >
-    | Null,
-    Null,
+    runtime.Types.Result.GetResult<
+      Prisma.$accountsPayload<ExtArgs>,
+      T,
+      "findUniqueOrThrow",
+      GlobalOmitOptions
+    > | null,
+    null,
     ExtArgs,
     GlobalOmitOptions
   >;
@@ -1657,6 +1662,27 @@ export type outbound_activitiesDeleteManyArgs<
    * Limit how many outbound_activities to delete.
    */
   limit?: number;
+};
+
+/**
+ * outbound_activities.accounts
+ */
+export type outbound_activities$accountsArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the accounts
+   */
+  select?: Prisma.accountsSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the accounts
+   */
+  omit?: Prisma.accountsOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.accountsInclude<ExtArgs> | null;
+  where?: Prisma.accountsWhereInput;
 };
 
 /**

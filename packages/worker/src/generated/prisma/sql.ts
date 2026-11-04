@@ -214,6 +214,8 @@ export * from "./sql/findFilterStatusById";
 
 export * from "./sql/findFollowKind";
 
+export * from "./sql/findInstanceActorKeys";
+
 export * from "./sql/findLinkCard";
 
 export * from "./sql/findListForAccount";
@@ -327,6 +329,8 @@ export * from "./sql/insertFilterStatus";
 export * from "./sql/insertFollowOrIgnore";
 
 export * from "./sql/insertInboxActivity";
+
+export * from "./sql/insertInstanceActorKeys";
 
 export * from "./sql/insertListMember";
 

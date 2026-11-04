@@ -433,6 +433,7 @@ export const ModelName = {
   media_attachments: "media_attachments",
   notifications: "notifications",
   outbound_activities: "outbound_activities",
+  instance_actor_keys: "instance_actor_keys",
   outbox_deliveries: "outbox_deliveries",
   poll_votes: "poll_votes",
   remote_poll_votes: "remote_poll_votes",
@@ -523,6 +524,7 @@ export type TypeMap<
       | "media_attachments"
       | "notifications"
       | "outbound_activities"
+      | "instance_actor_keys"
       | "outbox_deliveries"
       | "poll_votes"
       | "remote_poll_votes"
@@ -3728,6 +3730,82 @@ export type TypeMap<
         };
       };
     };
+    instance_actor_keys: {
+      payload: Prisma.$instance_actor_keysPayload<ExtArgs>;
+      fields: Prisma.instance_actor_keysFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.instance_actor_keysFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$instance_actor_keysPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.instance_actor_keysFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$instance_actor_keysPayload>;
+        };
+        findFirst: {
+          args: Prisma.instance_actor_keysFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$instance_actor_keysPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.instance_actor_keysFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$instance_actor_keysPayload>;
+        };
+        findMany: {
+          args: Prisma.instance_actor_keysFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$instance_actor_keysPayload>[];
+        };
+        create: {
+          args: Prisma.instance_actor_keysCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$instance_actor_keysPayload>;
+        };
+        createMany: {
+          args: Prisma.instance_actor_keysCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.instance_actor_keysCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$instance_actor_keysPayload>[];
+        };
+        delete: {
+          args: Prisma.instance_actor_keysDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$instance_actor_keysPayload>;
+        };
+        update: {
+          args: Prisma.instance_actor_keysUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$instance_actor_keysPayload>;
+        };
+        deleteMany: {
+          args: Prisma.instance_actor_keysDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.instance_actor_keysUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.instance_actor_keysUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$instance_actor_keysPayload>[];
+        };
+        upsert: {
+          args: Prisma.instance_actor_keysUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$instance_actor_keysPayload>;
+        };
+        aggregate: {
+          args: Prisma.Instance_actor_keysAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateInstance_actor_keys>;
+        };
+        groupBy: {
+          args: Prisma.instance_actor_keysGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Instance_actor_keysGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.instance_actor_keysCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Instance_actor_keysCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
     outbox_deliveries: {
       payload: Prisma.$outbox_deliveriesPayload<ExtArgs>;
       fields: Prisma.outbox_deliveriesFieldRefs;
@@ -6367,6 +6445,16 @@ export const Outbound_activitiesScalarFieldEnum = {
 export type Outbound_activitiesScalarFieldEnum =
   (typeof Outbound_activitiesScalarFieldEnum)[keyof typeof Outbound_activitiesScalarFieldEnum];
 
+export const Instance_actor_keysScalarFieldEnum = {
+  id: "id",
+  public_key_pem: "public_key_pem",
+  private_key_jwk: "private_key_jwk",
+  created_at: "created_at",
+} as const;
+
+export type Instance_actor_keysScalarFieldEnum =
+  (typeof Instance_actor_keysScalarFieldEnum)[keyof typeof Instance_actor_keysScalarFieldEnum];
+
 export const Outbox_deliveriesScalarFieldEnum = {
   id: "id",
   activity_id: "activity_id",
@@ -6935,6 +7023,7 @@ export type GlobalOmitConfig = {
   media_attachments?: Prisma.media_attachmentsOmit;
   notifications?: Prisma.notificationsOmit;
   outbound_activities?: Prisma.outbound_activitiesOmit;
+  instance_actor_keys?: Prisma.instance_actor_keysOmit;
   outbox_deliveries?: Prisma.outbox_deliveriesOmit;
   poll_votes?: Prisma.poll_votesOmit;
   remote_poll_votes?: Prisma.remote_poll_votesOmit;

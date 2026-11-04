@@ -19,7 +19,7 @@ export namespace listPublicOutboxActivities {
   export type Parameters = [accountId: string, limit: number];
   export type Result = {
     id: string | null;
-    account_id: string;
+    account_id: string | null;
     kind: string;
     payload_json: string;
     created_at: string;
