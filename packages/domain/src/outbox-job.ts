@@ -118,6 +118,17 @@ const FanOutHomeSchema = z.object({
 });
 
 /**
+ * Tell the listed local accounts that the listed home timeline entries are
+ * gone with `delete`. Used when the entries' author was purged: its followers
+ * are listed up front, since the follows are gone with it.
+ */
+const FanOutRemovedStatusesSchema = z.object({
+  kind: z.literal("FanOutRemovedStatuses"),
+  accountIds: z.array(AccountId.schema).min(1).max(20),
+  statusIds: z.array(StatusId.schema).min(1).max(20),
+});
+
+/**
  * Tell the next page of stream hubs (those after `afterHub`, empty for the
  * first page) with public or hashtag subscriptions about a public status by
  * its id. `update` and `status.update` reach the subscriptions whose
@@ -145,6 +156,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   DeliverPushSchema,
   MoveFollowsSchema,
   FanOutHomeSchema,
+  FanOutRemovedStatusesSchema,
   FanOutPublicSchema,
   BackfillRemoteOutboxSchema,
   ProcessCsvImportSchema,

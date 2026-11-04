@@ -2,12 +2,14 @@ import {
   type InstanceIdentity,
   OutboxJob,
   type OutboxJob as OutboxJobValue,
+  StatusId,
   type StreamEventValue,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { type RepositoryError, runD1 } from "./d1";
 import { listHomeFanOutAccounts } from "./generated/prisma/sql";
 import { findListForAccount } from "./list-store";
+import type { RemovedBoost } from "./removed-boost";
 import { parseInstanceIdentity } from "./runtime-config";
 import { publishToAccount, publishToHub } from "./stream-publish";
 import { listListStreamSubscriptions } from "./stream-subscription-store";
@@ -15,6 +17,10 @@ import { homeTimelineDocuments, listTimelineDocuments } from "./timeline-documen
 import { queryTyped } from "./typed-sql";
 
 type FanOutHome = Extract<OutboxJobValue, { kind: "FanOutHome" }>;
+type FanOutRemovedStatuses = Extract<OutboxJobValue, { kind: "FanOutRemovedStatuses" }>;
+
+/** The event a fan-out tells and the home timeline entry it is about. */
+type HomeEntryEvent = Pick<FanOutHome, "event" | "entryId">;
 
 /**
  * Followers told per pass. Each one costs a home timeline query for the entry,
@@ -51,11 +57,37 @@ export const enqueueHomeFanOut = async (
   }
 };
 
+/**
+ * Tell the boosters and their followers that boosts are gone, as for any
+ * status their account deletes: the booster's own streams, and the home and
+ * list streams of its followers.
+ */
+export const announceRemovedBoosts = async (
+  env: Env,
+  boosts: ReadonlyArray<RemovedBoost>,
+): Promise<void> => {
+  for (const boost of boosts) {
+    const statusId = StatusId.parse(boost.id);
+    if (statusId.isOk()) {
+      try {
+        await publishToAccount(env, boost.accountId, { kind: "delete", statusId: statusId.value });
+      } catch {
+        console.error(JSON.stringify({ kind: "BoostRemovalNotPublished", entryId: boost.id }));
+      }
+    }
+    await enqueueHomeFanOut(env, {
+      event: "delete",
+      entryId: boost.id,
+      author: { kind: "LocalAccount", accountId: boost.accountId },
+    });
+  }
+};
+
 /** The event a follower hears, or nothing when the entry is not on its home timeline. */
 const followerEvent = async (
   env: Env,
   identity: InstanceIdentity,
-  job: FanOutHome,
+  job: HomeEntryEvent,
   accountId: string,
 ): Promise<Result<StreamEventValue | undefined, RepositoryError>> => {
   if (job.event === "delete") {
@@ -78,7 +110,7 @@ const followerEvent = async (
 const listEvent = async (
   env: Env,
   identity: InstanceIdentity,
-  job: FanOutHome,
+  job: HomeEntryEvent,
   accountId: string,
   listId: string,
 ): Promise<Result<StreamEventValue | undefined, RepositoryError>> => {
@@ -103,11 +135,56 @@ const listEvent = async (
 };
 
 /**
- * Tell one page of the author's local followers about the entry, each with
- * the document rendered for it, on its home and on each list stream it has
- * open whose list holds the entry. Redoing a page only sends the events again,
- * which clients take as the same status. Resolves to the cursor of the next
- * page, or `undefined` when this was the last.
+ * Tell each account about the entry, with the document rendered for it, on
+ * its home and on each list stream it has open whose list holds the entry.
+ * Redoing it only sends the events again, which clients take as the same
+ * status.
+ */
+export const announceHomeEntry = async (
+  env: Env,
+  identity: InstanceIdentity,
+  entry: HomeEntryEvent,
+  accountIds: ReadonlyArray<string>,
+): Promise<Result<void, RepositoryError>> => {
+  for (const accountId of accountIds) {
+    const event = await followerEvent(env, identity, entry, accountId);
+    if (event.isErr()) {
+      return err(event.error);
+    }
+    if (event.value) {
+      try {
+        await publishToAccount(env, accountId, event.value);
+      } catch {
+        console.error(JSON.stringify({ kind: "HomeFanOutNotPublished", accountId }));
+      }
+    }
+  }
+  const lists = await listListStreamSubscriptions(env.DB, accountIds);
+  if (lists.isErr()) {
+    return err(lists.error);
+  }
+  for (const { hub: accountId, listId } of lists.value) {
+    const event = await listEvent(env, identity, entry, accountId, listId);
+    if (event.isErr()) {
+      return err(event.error);
+    }
+    if (event.value) {
+      try {
+        await publishToHub(env, accountId, {
+          channels: [{ kind: "List", listId }],
+          event: event.value,
+        });
+      } catch {
+        console.error(JSON.stringify({ kind: "ListFanOutNotPublished", accountId }));
+      }
+    }
+  }
+  return ok(undefined);
+};
+
+/**
+ * Tell one page of the author's local followers about the entry. Resolves to
+ * the cursor of the next page, or `undefined` when this was the last.
  */
 export const fanOutHomePage = async (
   env: Env,
@@ -129,44 +206,12 @@ export const fanOutHomePage = async (
   if (page.isErr()) {
     return err(page.error);
   }
-  for (const { account_id: accountId } of page.value) {
-    const event = await followerEvent(env, identity, job, accountId);
-    if (event.isErr()) {
-      return err(event.error);
-    }
-    if (event.value) {
-      try {
-        await publishToAccount(env, accountId, event.value);
-      } catch {
-        console.error(JSON.stringify({ kind: "HomeFanOutNotPublished", accountId }));
-      }
-    }
+  const accountIds = page.value.map((row) => row.account_id);
+  const announced = await announceHomeEntry(env, identity, job, accountIds);
+  if (announced.isErr()) {
+    return err(announced.error);
   }
-  const lists = await listListStreamSubscriptions(
-    env.DB,
-    page.value.map((row) => row.account_id),
-  );
-  if (lists.isErr()) {
-    return err(lists.error);
-  }
-  for (const { hub: accountId, listId } of lists.value) {
-    const event = await listEvent(env, identity, job, accountId, listId);
-    if (event.isErr()) {
-      return err(event.error);
-    }
-    if (event.value) {
-      try {
-        await publishToHub(env, accountId, {
-          channels: [{ kind: "List", listId }],
-          event: event.value,
-        });
-      } catch {
-        console.error(JSON.stringify({ kind: "ListFanOutNotPublished", accountId }));
-      }
-    }
-  }
-  const last = page.value.at(-1);
-  return ok(page.value.length >= pageSize ? last?.account_id : undefined);
+  return ok(accountIds.length >= pageSize ? accountIds.at(-1) : undefined);
 };
 
 /** Handle one queued page of a home fan-out, queueing the next when there is one. */
@@ -184,6 +229,67 @@ export const processFanOutHomeJob = async (env: Env, job: FanOutHome): Promise<"
       await env.OUTBOX_PROCESS_QUEUE.send({ ...job, afterAccountId: next.value });
     } catch {
       console.error(JSON.stringify({ kind: "HomeFanOutNotQueued", entryId: job.entryId }));
+    }
+  }
+  return "ok";
+};
+
+/**
+ * Accounts and entries per `FanOutRemovedStatuses` job: at most 20 x 20
+ * stream publishes, plus one list lookup per entry, per queue invocation.
+ */
+export const REMOVED_STATUSES_JOB_ACCOUNTS = 20;
+export const REMOVED_STATUSES_JOB_ENTRIES = 20;
+
+/**
+ * Queue telling `accountIds` that the entries are gone, in jobs of bounded
+ * size. For entries whose author is already purged, so the audience cannot be
+ * looked up from the author. Best effort, like `enqueueHomeFanOut`.
+ */
+export const enqueueRemovedStatusesFanOut = async (
+  env: Env,
+  accountIds: ReadonlyArray<string>,
+  statusIds: ReadonlyArray<string>,
+): Promise<void> => {
+  for (let at = 0; at < accountIds.length; at += REMOVED_STATUSES_JOB_ACCOUNTS) {
+    for (let from = 0; from < statusIds.length; from += REMOVED_STATUSES_JOB_ENTRIES) {
+      const job = OutboxJob.parse({
+        kind: "FanOutRemovedStatuses",
+        accountIds: accountIds.slice(at, at + REMOVED_STATUSES_JOB_ACCOUNTS),
+        statusIds: statusIds.slice(from, from + REMOVED_STATUSES_JOB_ENTRIES),
+      });
+      if (job.isErr()) {
+        continue;
+      }
+      try {
+        await env.OUTBOX_PROCESS_QUEUE.send(job.value);
+      } catch {
+        console.error(JSON.stringify({ kind: "RemovedStatusesFanOutNotQueued" }));
+      }
+    }
+  }
+};
+
+/**
+ * Tell the listed accounts that each listed entry is gone.
+ */
+export const processFanOutRemovedStatusesJob = async (
+  env: Env,
+  job: FanOutRemovedStatuses,
+): Promise<"ok" | "retry"> => {
+  const identity = parseInstanceIdentity(env);
+  if (identity.isErr()) {
+    return "retry";
+  }
+  for (const entryId of job.statusIds) {
+    const announced = await announceHomeEntry(
+      env,
+      identity.value,
+      { event: "delete", entryId },
+      job.accountIds,
+    );
+    if (announced.isErr()) {
+      return "retry";
     }
   }
   return "ok";

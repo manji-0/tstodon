@@ -7,4 +7,4 @@
 -- @param {String} $7:inboxUrl
 UPDATE outbox_deliveries
 SET kind = $1, reason_kind = $2, attempt_count = $3, http_status = $4, updated_at = $5
-WHERE activity_id = $6 AND inbox_url = $7
+WHERE activity_id = $6 AND inbox_url = $7 AND kind = 'Queued'

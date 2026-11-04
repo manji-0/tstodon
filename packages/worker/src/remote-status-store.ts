@@ -13,7 +13,8 @@ import { schemaResult, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { jsonStringArray, type RepositoryError, runD1, runD1Batch } from "./d1";
+import { jsonStringArray, parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
+import { removedBoostsFromRows, type RemovedBoost } from "./removed-boost";
 import { parseJsonText } from "./json-column";
 import { toRepositoryError } from "./d1";
 import { visibilitySql } from "./sql-enums";
@@ -24,6 +25,7 @@ import {
   findRemoteStatusByObjectUri as findRemoteStatusByObjectUriSql,
   findRemoteStatusesByIds as findRemoteStatusesByIdsSql,
   findRemoteStatusRefsByObjectUris as findRemoteStatusRefsByObjectUrisSql,
+  listLocalBoostsOfRemoteObject as listLocalBoostsOfRemoteObjectSql,
   listUnindexedRemoteStatuses as listUnindexedRemoteStatusesSql,
   markRemoteStatusTagsIndexed as markRemoteStatusTagsIndexedSql,
   upsertRemoteStatus as upsertRemoteStatusSql,
@@ -283,36 +285,83 @@ export const indexMissingRemoteTags = async (
   }
 };
 
-/** Delete a cached remote status, only when `actorUri` (the Delete's signer) wrote it. */
+/**
+ * Delete a cached remote status, only when `actorUri` (the Delete's signer)
+ * wrote it. The local boosts of it go with it, and are returned.
+ */
 export const deleteRemoteStatusByObjectUri = async (
   db: D1Database,
   objectUri: string,
   actorUri: string,
-): Promise<Result<Readonly<{ id: string; public: boolean }> | undefined, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped<{ id: string; visibility: string }>(
-      db,
-      deleteRemoteStatusByObjectUriSql(objectUri, actorUri),
-    );
-    const row = rows[0];
-    return row ? { id: row.id, public: row.visibility === "public" } : undefined;
-  });
+): Promise<
+  Result<
+    Readonly<{ id: string; public: boolean; boosts: ReadonlyArray<RemovedBoost> }> | undefined,
+    RepositoryError
+  >
+> => {
+  const batched = await runD1Batch(db, [
+    d1PrepareTyped(db, listLocalBoostsOfRemoteObjectSql(objectUri, actorUri)),
+    d1PrepareTyped(db, deleteRemoteStatusByObjectUriSql(objectUri, actorUri)),
+  ]);
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  const [boosts, deleted] = batched.value;
+  const row = parseRows(DeletedRemoteStatusRowSchema, deleted?.results)[0];
+  return ok(
+    row
+      ? {
+          id: row.id,
+          public: row.visibility === "public",
+          boosts: removedBoostsFromRows(boosts?.results),
+        }
+      : undefined,
+  );
+};
+
+const DeletedRemoteStatusRowSchema = z.object({ id: z.string().min(1), visibility: z.string() });
 
 /** Delete a cached remote status by id, only when `actorUri` wrote it. */
 export const deleteRemoteStatusById = async (
   db: D1Database,
   id: string,
   actorUri: string,
-): Promise<Result<Readonly<{ id: string; public: boolean }> | undefined, RepositoryError>> =>
-  runD1(async () => {
-    const row = await db
+): Promise<
+  Result<
+    Readonly<{ id: string; public: boolean; boosts: ReadonlyArray<RemovedBoost> }> | undefined,
+    RepositoryError
+  >
+> => {
+  // The local boosts of it go with it (the FK cascade); read them first so their streams hear it.
+  const batched = await runD1Batch(db, [
+    db
+      .prepare(
+        `SELECT s.id, s.account_id FROM statuses s
+         JOIN remote_statuses r ON r.id = s.reblog_of_remote_id
+         WHERE r.id = ? AND r.actor_uri = ? AND s.kind = 'LocalReblog'`,
+      )
+      .bind(id, actorUri),
+    db
       .prepare(
         "DELETE FROM remote_statuses WHERE id = ? AND actor_uri = ? RETURNING id, visibility",
       )
-      .bind(id, actorUri)
-      .first<{ id: string; visibility: string }>();
-    return row ? { id: row.id, public: row.visibility === "public" } : undefined;
-  });
+      .bind(id, actorUri),
+  ]);
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  const [boosts, deleted] = batched.value;
+  const row = parseRows(DeletedRemoteStatusRowSchema, deleted?.results)[0];
+  return ok(
+    row
+      ? {
+          id: row.id,
+          public: row.visibility === "public",
+          boosts: removedBoostsFromRows(boosts?.results),
+        }
+      : undefined,
+  );
+};
 
 /** Set a cached remote status's sensitive flag. The status's visibility, or `undefined` when `actorUri` wrote no such status. */
 export const setRemoteStatusSensitive = async (

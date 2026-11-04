@@ -1,6 +1,6 @@
 import type { Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
-import { enqueueHomeFanOut } from "./home-fan-out";
+import { announceRemovedBoosts, enqueueHomeFanOut } from "./home-fan-out";
 import { deleteRemoteNotifications } from "./notification-store";
 import { enqueuePublicFanOut } from "./public-fan-out";
 import { deleteRemoteStatusById, deleteRemoteStatusByObjectUri } from "./remote-status-store";
@@ -26,6 +26,7 @@ export const removeRemoteStatus = async (
       ? await deleteRemoteStatusByObjectUri(env.DB, match.objectUri, actorUri)
       : await deleteRemoteStatusById(env.DB, match.id, actorUri);
   if (deleted.isOk() && deleted.value) {
+    await announceRemovedBoosts(env, deleted.value.boosts);
     await enqueueHomeFanOut(env, {
       event: "delete",
       entryId: deleted.value.id,

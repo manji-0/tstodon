@@ -14,7 +14,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param inboxUrl
  */
 export const updateOutboxTarget = $runtime.makeTypedQueryFactory(
-  "UPDATE outbox_deliveries\nSET kind = $1, reason_kind = $2, attempt_count = $3, http_status = $4, updated_at = $5\nWHERE activity_id = $6 AND inbox_url = $7",
+  "UPDATE outbox_deliveries\nSET kind = $1, reason_kind = $2, attempt_count = $3, http_status = $4, updated_at = $5\nWHERE activity_id = $6 AND inbox_url = $7 AND kind = 'Queued'",
 ) as (
   kind: string,
   reasonKind: string | null,

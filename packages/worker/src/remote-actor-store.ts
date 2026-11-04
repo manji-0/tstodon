@@ -8,6 +8,7 @@ import { newEntityId } from "./ids";
 import { toRepositoryError } from "./d1";
 import { queryTyped, runTyped, runTypedBatch } from "./typed-sql";
 import { RemoteAccountId } from "./remote-account-id";
+import { removedBoostsFromRows, type RemovedBoost } from "./removed-boost";
 import {
   deleteRemoteActor as deleteRemoteActorSql,
   authorizeRemoteFollowRequest as authorizeRemoteFollowRequestSql,
@@ -24,6 +25,13 @@ import {
   listAcceptedRemoteFollowerUris as listAcceptedRemoteFollowerUrisSql,
   listPeerDomains as listPeerDomainsSql,
   listPendingRemoteFollowRequesters as listPendingRemoteFollowRequestersSql,
+  cancelRemoteActorDeliveries as cancelRemoteActorDeliveriesSql,
+  listHomeFanOutAccounts as listHomeFanOutAccountsSql,
+  listLocalBoostsOfRemoteActor as listLocalBoostsOfRemoteActorSql,
+  listRemoteActorHomeEntryIds as listRemoteActorHomeEntryIdsSql,
+  purgeRemoteActorConversationHides as purgeRemoteActorConversationHidesSql,
+  purgeRemoteActorConversationReads as purgeRemoteActorConversationReadsSql,
+  purgeRemoteActorStatusMutes as purgeRemoteActorStatusMutesSql,
   purgeRemoteActorBlocks as purgeRemoteActorBlocksSql,
   purgeRemoteActorEndorsements as purgeRemoteActorEndorsementsSql,
   purgeRemoteActorMutes as purgeRemoteActorMutesSql,
@@ -428,14 +436,26 @@ export const searchRemoteActors = async (
  * mentions), follows and follow requests both ways, favourites, announces, and the
  * mentions local notes made of it. Rows keyed by actor URI or `r_…` id without
  * a foreign key (notifications, blocks, mutes, endorsements, notes) go in the
- * same batch. Resolves to false when the actor was not cached.
+ * same batch, as do the thread mutes and conversation marks that point at the
+ * actor's statuses, and the queued deliveries to its inbox (marked failed, so a
+ * delivery workflow waiting to retry stops at its next attempt; a shared inbox
+ * stays while another cached actor uses it). The local boosts of its statuses
+ * go with them by cascade and are returned. Resolves to `undefined` when the
+ * actor was not cached.
  */
 export const purgeRemoteActor = async (
   db: D1Database,
   actorUri: string,
-): Promise<Result<boolean, RepositoryError>> => {
+): Promise<
+  Result<Readonly<{ boosts: ReadonlyArray<RemovedBoost> }> | undefined, RepositoryError>
+> => {
   const remoteAccountId = RemoteAccountId.encode(actorUri);
   const batched = await runTypedBatch(db, [
+    listLocalBoostsOfRemoteActorSql(actorUri),
+    cancelRemoteActorDeliveriesSql(actorUri, nowIso()),
+    purgeRemoteActorStatusMutesSql(actorUri),
+    purgeRemoteActorConversationReadsSql(actorUri),
+    purgeRemoteActorConversationHidesSql(actorUri),
     purgeRemoteActorNotificationDismissalsSql(actorUri),
     purgeRemoteActorNotificationsSql(actorUri),
     purgeRemoteActorRequestGroupsSql(remoteAccountId),
@@ -449,8 +469,47 @@ export const purgeRemoteActor = async (
   if (batched.isErr()) {
     return err(batched.error);
   }
-  return ok((batched.value.at(-1)?.results ?? []).length > 0);
+  if ((batched.value.at(-1)?.results ?? []).length === 0) {
+    return ok(undefined);
+  }
+  return ok({ boosts: removedBoostsFromRows(batched.value[0]?.results) });
 };
+
+/** Home timeline entries a purge of the actor takes away, newest first, up to `limit`. */
+export const listRemoteActorHomeEntryIds = async (
+  db: D1Database,
+  actorUri: string,
+  limit: number,
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ id: string }>(
+      db,
+      listRemoteActorHomeEntryIdsSql(actorUri, limit),
+    );
+    return rows.map((row) => row.id);
+  });
+
+/** Ids of the local accounts that follow the actor, in order, up to `limit`. */
+export const listRemoteActorFollowerAccountIds = async (
+  db: D1Database,
+  actorUri: string,
+  limit: number,
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const ids: string[] = [];
+    while (ids.length < limit) {
+      const size = Math.min(200, limit - ids.length);
+      const page = await queryTyped<{ account_id: string }>(
+        db,
+        listHomeFanOutAccountsSql("", actorUri, ids.at(-1) ?? "", size),
+      );
+      ids.push(...page.map((row) => row.account_id));
+      if (page.length < size) {
+        break;
+      }
+    }
+    return ids;
+  });
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([RemoteActorRowSchema]);

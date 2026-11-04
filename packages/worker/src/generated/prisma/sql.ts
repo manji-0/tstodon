@@ -14,6 +14,8 @@ export * from "./sql/authorizeRemoteFollowRequest";
 
 export * from "./sql/cancelAccountMove";
 
+export * from "./sql/cancelRemoteActorDeliveries";
+
 export * from "./sql/claimAccountMove";
 
 export * from "./sql/claimPollUpdate";
@@ -113,6 +115,8 @@ export * from "./sql/deleteList";
 export * from "./sql/deleteListMember";
 
 export * from "./sql/deleteListRemoteMember";
+
+export * from "./sql/deleteLocalBoostsOfOwned";
 
 export * from "./sql/deleteMedia";
 
@@ -490,6 +494,10 @@ export * from "./sql/listListsContainingRemoteActor";
 
 export * from "./sql/listListsForAccount";
 
+export * from "./sql/listLocalBoostsOfRemoteActor";
+
+export * from "./sql/listLocalBoostsOfRemoteObject";
+
 export * from "./sql/listMediaIdsForStatus";
 
 export * from "./sql/listMediaObjectKeysForAccount";
@@ -529,6 +537,8 @@ export * from "./sql/listPublicStreamSubscriptions";
 export * from "./sql/listPublishedAnnouncements";
 
 export * from "./sql/listPushSubscriptions";
+
+export * from "./sql/listRemoteActorHomeEntryIds";
 
 export * from "./sql/listRemoteActorModerations";
 
@@ -582,6 +592,10 @@ export * from "./sql/pruneStatusIdempotency";
 
 export * from "./sql/purgeRemoteActorBlocks";
 
+export * from "./sql/purgeRemoteActorConversationHides";
+
+export * from "./sql/purgeRemoteActorConversationReads";
+
 export * from "./sql/purgeRemoteActorEndorsements";
 
 export * from "./sql/purgeRemoteActorMutes";
@@ -595,6 +609,8 @@ export * from "./sql/purgeRemoteActorNotifications";
 export * from "./sql/purgeRemoteActorRequestAcceptances";
 
 export * from "./sql/purgeRemoteActorRequestGroups";
+
+export * from "./sql/purgeRemoteActorStatusMutes";
 
 export * from "./sql/rejectFollowRequest";
 

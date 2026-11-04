@@ -16,7 +16,7 @@ import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
 import { notifyEndedRemotePolls } from "./remote-poll-expiry";
 import { processDistributePollUpdateJob } from "./poll-update";
 import { processPushJob } from "./push-delivery";
-import { processFanOutHomeJob } from "./home-fan-out";
+import { processFanOutHomeJob, processFanOutRemovedStatusesJob } from "./home-fan-out";
 import { processFanOutPublicJob } from "./public-fan-out";
 import { processCsvImportJob } from "./csv-import-apply";
 import { processMoveFollowsJob } from "./remote-move";
@@ -190,6 +190,8 @@ export const processOutboxJob = async (
       return processCsvImportJob(env, job);
     case "FanOutHome":
       return processFanOutHomeJob(env, job);
+    case "FanOutRemovedStatuses":
+      return processFanOutRemovedStatusesJob(env, job);
     case "FanOutPublic":
       return processFanOutPublicJob(env, job);
     case "BackfillRemoteOutbox":

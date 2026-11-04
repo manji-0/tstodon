@@ -1,9 +1,9 @@
 import type { InstanceIdentity, LocalAccount, LocalStatusValue } from "@tstodon/domain";
-import type { Result } from "neverthrow";
+import { err, ok, type Result } from "neverthrow";
 import { noteDeleteActivity, noteDocument } from "./activitypub";
 import type { RepositoryError } from "./d1";
 import { enqueueLocalActivity } from "./delivery";
-import { enqueueHomeFanOut } from "./home-fan-out";
+import { announceRemovedBoosts, enqueueHomeFanOut } from "./home-fan-out";
 import { loadNoteMentions } from "./mention-resolve";
 import { reachesRemoteInboxes } from "./outbox-job";
 import { enqueuePublicFanOut } from "./public-fan-out";
@@ -34,9 +34,13 @@ export const deleteLocalStatus = async (
         )
       : undefined;
   const deleted = await deleteStatus(env.DB, status.id, account.id);
-  if (deleted.isErr() || !deleted.value) {
-    return deleted;
+  if (deleted.isErr()) {
+    return err(deleted.error);
   }
+  if (!deleted.value) {
+    return ok(false);
+  }
+  await announceRemovedBoosts(env, deleted.value);
   await publishToAccount(env, account.id, { kind: "delete", statusId: status.id });
   await enqueueHomeFanOut(env, {
     event: "delete",
@@ -53,5 +57,5 @@ export const deleteLocalStatus = async (
       console.error(JSON.stringify({ kind: "StatusDeleteNotFederated", statusId: status.id }));
     }
   }
-  return deleted;
+  return ok(true);
 };

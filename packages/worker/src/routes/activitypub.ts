@@ -32,13 +32,13 @@ import {
   deleteRemoteFollow,
   findRemoteActorByUri,
   findRemoteFollow,
-  purgeRemoteActor,
   upsertRemoteFollow,
 } from "../remote-actor-store";
 import { RemoteDeleteTarget } from "../remote-delete";
 import { applyRemoteUpdate } from "../remote-update";
 import { persistAnnouncedObject, persistRemoteObject } from "../remote-status-persist";
-import { enqueueHomeFanOut } from "../home-fan-out";
+import { announceRemovedBoosts, enqueueHomeFanOut } from "../home-fan-out";
+import { purgeRemoteActorAndAnnounce } from "../remote-actor-purge";
 import { enqueuePublicFanOut } from "../public-fan-out";
 import { recordRemoteBoost } from "../remote-boost";
 import { deleteRemoteBoostByActivity } from "../remote-boost-store";
@@ -571,7 +571,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     }
     if (activity.kind === "Delete") {
       if (deleteTarget.kind === "ActorDelete") {
-        const purged = await purgeRemoteActor(c.env.DB, deleteTarget.actorUri);
+        const purged = await purgeRemoteActorAndAnnounce(c.env, deleteTarget.actorUri);
         if (purged.isErr()) {
           return jsonRepositoryError(c, purged.error.message);
         }

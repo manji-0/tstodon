@@ -16,11 +16,13 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { jsonStringArray, type RepositoryError, runD1, runD1Batch, sqlInJsonEach } from "./d1";
 import { parseRow, toRepositoryError } from "./d1";
+import { type RemovedBoost, removedBoostsFromRows } from "./removed-boost";
 import { visibilitySql } from "./sql-enums";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   attachMediaToStatus as attachMediaToStatusSql,
   countStatuses as countStatusesSql,
+  deleteLocalBoostsOfOwned as deleteLocalBoostsOfOwnedSql,
   deleteReblogOf as deleteReblogOfSql,
   deleteStatusOwned as deleteStatusOwnedSql,
   detachStatusMedia as detachStatusMediaSql,
@@ -345,15 +347,28 @@ export const updateLocalNote = async (
     return rows.length > 0;
   });
 
+/**
+ * Delete the account's own status along with the local boosts of it (the
+ * foreign key would only null their target). Resolves to the boosts removed,
+ * or `undefined` when the account owns no such status.
+ */
 export const deleteStatus = async (
   db: D1Database,
   id: string,
   accountId: string,
-): Promise<Result<boolean, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped<{ id: string | null }>(db, deleteStatusOwnedSql(id, accountId));
-    return rows.length > 0;
-  });
+): Promise<Result<ReadonlyArray<RemovedBoost> | undefined, RepositoryError>> => {
+  const batched = await runD1Batch(db, [
+    d1PrepareTyped(db, deleteLocalBoostsOfOwnedSql(id, accountId)),
+    d1PrepareTyped(db, deleteStatusOwnedSql(id, accountId)),
+  ]);
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  const [boosts, deleted] = batched.value;
+  return ok(
+    (deleted?.results ?? []).length > 0 ? removedBoostsFromRows(boosts?.results) : undefined,
+  );
+};
 
 /** Set a note's sensitive flag. False when the row is not the account's own note. */
 export const setNoteSensitive = async (
