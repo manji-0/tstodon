@@ -14,6 +14,7 @@ import {
   createList,
   deleteList,
   findListForAccount,
+  findUnfollowedRemoteMember,
   ListMember,
   ListRepliesPolicySchema,
   listListMembers,
@@ -27,8 +28,6 @@ import { accountDocumentsByIds, documentsInOrder } from "../account-documents";
 import { parseInstanceIdentity } from "../runtime-config";
 import { listTimelineDocuments } from "../timeline-documents";
 import { isTruthy, stringList } from "../form-values";
-import { findOutboundFollow } from "../outbound-follow-store";
-import { OutboundFollow } from "@tstodon/domain";
 import { warmSchemas } from "@tstodon/core";
 import { z } from "zod";
 
@@ -192,20 +191,15 @@ export const postV1ListsByIdAccounts = async (
   }
   // As in Mastodon, a remote account goes on a list only while it is followed,
   // and one that is not refuses the whole request.
-  for (const member of members) {
-    if (member.kind !== "RemoteActor") {
-      continue;
-    }
-    const follow = await findOutboundFollow(c.env.DB, user.value.id, member.actorUri);
-    if (follow.isErr()) {
-      return jsonRepositoryError(c, follow.error.message);
-    }
-    if (!OutboundFollow.relationship(follow.value).following) {
-      return c.json(
-        { error: "Validation failed: Account has not been followed", kind: "NotFollowed" },
-        422,
-      );
-    }
+  const unfollowed = await findUnfollowedRemoteMember(c.env.DB, user.value.id, members);
+  if (unfollowed.isErr()) {
+    return jsonRepositoryError(c, unfollowed.error.message);
+  }
+  if (unfollowed.value) {
+    return c.json(
+      { error: "Validation failed: Account has not been followed", kind: "NotFollowed" },
+      422,
+    );
   }
   const existing = members.filter(
     (member) => member.kind === "RemoteActor" || found.value.has(member.accountId),

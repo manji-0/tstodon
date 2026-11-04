@@ -1,10 +1,11 @@
 import { warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
-import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
+import { OutboundFollow, type LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import { nowIso } from "./clock";
 import { runD1, runD1BatchChunked, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
+import { findOutboundFollow } from "./outbound-follow-store";
 import { parseRow, toRepositoryError } from "./d1";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import { hydrateStatusRows, STATUS_SELECT } from "./status-store";
@@ -234,6 +235,30 @@ const deleteMemberSql = (listId: string, member: ListMember) =>
   member.kind === "LocalAccount"
     ? deleteListMemberSql(listId, member.accountId)
     : deleteListRemoteMemberSql(listId, member.actorUri);
+
+/**
+ * The first remote member among `members` that `ownerId` does not follow, as
+ * Mastodon requires of a list account; `undefined` when the owner follows all.
+ */
+export const findUnfollowedRemoteMember = async (
+  db: D1Database,
+  ownerId: string,
+  members: ReadonlyArray<ListMember>,
+): Promise<Result<ListMember | undefined, RepositoryError>> => {
+  for (const member of members) {
+    if (member.kind !== "RemoteActor") {
+      continue;
+    }
+    const follow = await findOutboundFollow(db, ownerId, member.actorUri);
+    if (follow.isErr()) {
+      return err(follow.error);
+    }
+    if (!OutboundFollow.relationship(follow.value).following) {
+      return ok(member);
+    }
+  }
+  return ok(undefined);
+};
 
 /**
  * Add members to the list. A remote actor goes in only while the list's owner

@@ -13,16 +13,16 @@ import { type AccountRef, findAccountRef, localRef, refAccountId, remoteRef } fr
 import { findAccountMove, listAcceptedFollowsPage } from "./account-move-store";
 import { findAccountById, findAccountByUsername } from "./account-store";
 import { parseLocalActorUsername } from "./activitypub";
-import { findBlock } from "./block-mute-store";
 import type { RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
-import { findFollowKind, followAccount, type FollowOptions, unfollowAccount } from "./follow-store";
+import { followAccountRef } from "./follow-ref";
+import { followAccount, type FollowOptions, unfollowAccount } from "./follow-store";
 import { type ListMember, listListsContainingMember, replaceListMember } from "./list-store";
 import { moveBlockPage, moveMutePage, moveNotePage } from "./move-carry";
 import { notifyAccount, notifyFromRemote } from "./notify";
 import { parseInstanceIdentity } from "./runtime-config";
-import { followRemoteActor, unfollowRemoteActor } from "./outbound-follow";
-import { findOutboundFollow, listOutboundFollowsByActor } from "./outbound-follow-store";
+import { unfollowRemoteActor } from "./outbound-follow";
+import { listOutboundFollowsByActor } from "./outbound-follow-store";
 import { actorAliases, remoteActorFromDocument } from "./remote-actor-fetch";
 import { setRemoteActorMovedTo, upsertRemoteActor } from "./remote-actor-store";
 
@@ -41,71 +41,6 @@ const parseMove = schemaResult(MoveSchema);
 
 const uriOf = (value: z.infer<typeof UriSchema>): string =>
   typeof value === "string" ? value : value.id;
-
-/**
- * Follow `to` for `follower` with `options`, as Mastodon's `FollowService`
- * does for a moved follow. `false` when the follow is refused: a block either
- * way, a domain block or federation limits, or the follower being `to`. A
- * follow of `to` that exists is kept as it is.
- */
-const followMoveTarget = async (
-  env: Env,
-  identity: InstanceIdentity,
-  follower: LocalAccount,
-  to: AccountRef,
-  options: FollowOptions,
-): Promise<Result<boolean, RepositoryError>> => {
-  if (to.kind === "RemoteActor") {
-    const existing = await findOutboundFollow(env.DB, follower.id, to.actorUri);
-    if (existing.isErr()) {
-      return err(existing.error);
-    }
-    if (existing.value) {
-      return ok(true);
-    }
-    const followed = await followRemoteActor(env, identity, follower, to.actor, options);
-    if (followed.isErr()) {
-      return followed.error.kind === "RepositoryError" ? err(followed.error) : ok(false);
-    }
-    return ok(true);
-  }
-  const target = to.account;
-  if (target.id === follower.id) {
-    return ok(false);
-  }
-  const [blocking, blocked] = await Promise.all([
-    findBlock(env.DB, follower.id, target.id),
-    findBlock(env.DB, target.id, follower.id),
-  ]);
-  if (blocking.isErr()) {
-    return err(blocking.error);
-  }
-  if (blocked.isErr()) {
-    return err(blocked.error);
-  }
-  if (blocking.value || blocked.value) {
-    return ok(false);
-  }
-  const existing = await findFollowKind(env.DB, follower.id, target.id);
-  if (existing.isErr()) {
-    return err(existing.error);
-  }
-  if (existing.value !== undefined) {
-    return ok(true);
-  }
-  const followed = await followAccount(env.DB, follower.id, target.id, target.locked, options);
-  if (followed.isErr()) {
-    return err(followed.error);
-  }
-  if (followed.value.kind === "LocalFollower" && followed.value.follow.kind !== "None") {
-    await notifyAccount(env, {
-      accountId: target.id,
-      fromAccountId: follower.id,
-      kind: followed.value.follow.kind === "Pending" ? "follow_request" : "follow",
-    });
-  }
-  return ok(true);
-};
 
 /** A local account's follow of the account that moved: who follows, with which options. */
 type MovingFollow = Readonly<{ id: string; followerAccountId: string; options: FollowOptions }>;
@@ -171,7 +106,7 @@ const listMemberOf = (ref: AccountRef): ListMember =>
  * options (a follow of `to` that exists is kept), put `to` on the lists that
  * held `from` (a remote `from` leaves its lists with the follow), then
  * unfollow `from`, and tell the follower with a `move` notification. A
- * follower whose follow of `to` is refused (see {@link followMoveTarget})
+ * follower whose follow of `to` is refused (see {@link followAccountRef})
  * keeps the follow of `from` and its lists.
  * Redoing a page changes nothing: moved follows are gone from `from`.
  * Resolves to the cursor of the next page, or `undefined` when this was the last.
@@ -196,7 +131,9 @@ export const moveFollowPage = async (
     if (!follower.value) {
       continue;
     }
-    const followed = await followMoveTarget(env, identity, follower.value, to, follow.options);
+    const followed = await followAccountRef(env, identity, follower.value, to, follow.options, {
+      kind: "Keep",
+    });
     if (followed.isErr()) {
       return err(followed.error);
     }

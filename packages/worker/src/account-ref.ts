@@ -63,6 +63,15 @@ export type ResolveHandleError =
  */
 const HANDLE_PATTERN = /^@?([A-Za-z0-9_]+(?:[.-]+[A-Za-z0-9_]+)*)(?:@([A-Za-z0-9.-]+(?::\d+)?))?$/;
 
+/** The parts of a handle that {@link HANDLE_PATTERN} accepts; the domain is lower case. */
+export const parseAccountHandle = (
+  raw: string,
+): Readonly<{ username: string; domain: string | undefined }> | undefined => {
+  const match = HANDLE_PATTERN.exec(raw.trim());
+  const username = match?.[1];
+  return match && username ? { username, domain: match[2]?.toLowerCase() } : undefined;
+};
+
 /**
  * The account a handle names, as Mastodon's `ResolveAccountService`: a bare
  * username or one at this instance's domain is local; anything else is looked
@@ -73,12 +82,11 @@ export const resolveAccountHandle = async (
   identity: InstanceIdentity,
   raw: string,
 ): Promise<Result<AccountRef, ResolveHandleError>> => {
-  const match = HANDLE_PATTERN.exec(raw.trim());
-  const username = match?.[1];
-  if (!username) {
+  const handle = parseAccountHandle(raw);
+  if (!handle) {
     return err({ kind: "InvalidHandle" });
   }
-  const domain = match[2]?.toLowerCase();
+  const { username, domain } = handle;
   if (domain === undefined || domain === identity.domain) {
     const account = await findAccountByUsername(env.DB, username);
     if (account.isErr()) {
