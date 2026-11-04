@@ -1,5 +1,6 @@
 import { InstanceIdentity, type LocalAccount, type RemoteActor, Visibility } from "@tstodon/domain";
 import { accountCounts, accountCountsByIds } from "./account-count-store";
+import { listAccountMoveTargets } from "./account-move-store";
 import { findAccountsByIds, findAccountsByUsernames } from "./account-store";
 import { parseLocalActorUsername } from "./activitypub";
 import type { ComposeDefaults } from "./account-defaults-store";
@@ -69,6 +70,27 @@ export const accountDocumentsByIds = async (
   return documents;
 };
 
+/** `documents`, keyed by local account id, with `moved` for the accounts that moved away. */
+const withLocalMoves = async (
+  env: Env,
+  identity: InstanceIdentity,
+  documents: Map<string, Record<string, unknown>>,
+): Promise<Map<string, Record<string, unknown>>> => {
+  const targets = await listAccountMoveTargets(env.DB, [...documents.keys()]);
+  if (targets.isErr() || targets.value.size === 0) {
+    return documents;
+  }
+  const moved = await movedToDocuments(env, identity, [...targets.value.values()]);
+  for (const [id, targetUri] of targets.value) {
+    const document = documents.get(id);
+    const target = moved.get(targetUri);
+    if (document && target) {
+      documents.set(id, { moved: target, ...document });
+    }
+  }
+  return documents;
+};
+
 /**
  * The accounts that moved accounts point at, keyed by actor URI, as Mastodon
  * renders them under `moved`: a local account or a cached remote actor. One
@@ -95,7 +117,8 @@ const movedToDocuments = async (
     ),
   ]);
   if (locals.isOk()) {
-    for (const document of (await mastodonAccountDocuments(env, identity, locals.value)).values()) {
+    const targets = await mastodonAccountDocuments(env, identity, locals.value, false);
+    for (const document of targets.values()) {
       if (typeof document.uri === "string") {
         documents.set(document.uri, document);
       }
@@ -212,20 +235,29 @@ export const mastodonAccountDocument = async (
     accountCounts(env.DB, account.id),
     findAccountProfile(env.DB, account.id),
   ]);
-  return mastodonAccount(
+  const document = mastodonAccount(
     identity,
     account,
     counts.isOk() ? counts.value : { followers: 0, following: 0, statuses: 0 },
     emojisInText(account.displayName, await loadCustomEmojis(env, identity.mediaPublicBaseUrl)),
     profile.isOk() ? profile.value : EMPTY_ACCOUNT_PROFILE,
   );
+  return (
+    (await withLocalMoves(env, identity, new Map([[account.id, document]]))).get(account.id) ??
+    document
+  );
 };
 
-/** {@link mastodonAccountDocument} for many accounts with one counts batch and one profile query. */
+/**
+ * {@link mastodonAccountDocument} for many accounts with one counts batch and
+ * one profile query. `includeMoved: false` leaves out `moved`, for documents
+ * rendered under another account's `moved`.
+ */
 export const mastodonAccountDocuments = async (
   env: Env,
   identity: InstanceIdentity,
   accounts: ReadonlyArray<LocalAccount>,
+  includeMoved = true,
 ): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
   const documents = new Map<string, Record<string, unknown>>();
   if (accounts.length === 0) {
@@ -253,7 +285,7 @@ export const mastodonAccountDocuments = async (
       ),
     );
   }
-  return documents;
+  return includeMoved ? withLocalMoves(env, identity, documents) : documents;
 };
 
 /** A remote actor as a Mastodon account (`moved` is added by {@link accountDocumentsByIds}). */

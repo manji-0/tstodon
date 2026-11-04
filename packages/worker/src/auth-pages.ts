@@ -35,7 +35,7 @@ export const safeReturnTo = (raw: string | undefined): string =>
   raw && raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("\\") ? raw : "/";
 
 /** base64url <-> ArrayBuffer and the WebAuthn JSON forms simplewebauthn expects. */
-const WEBAUTHN_HELPERS = `
+export const WEBAUTHN_HELPERS = `
       const fromB64u = (value) => {
         const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
         const padded = base64 + "===".slice((base64.length + 3) % 4);
@@ -49,6 +49,55 @@ const WEBAUTHN_HELPERS = `
       const failure = async (response) => {
         try { return (await response.json()).message || response.statusText; }
         catch { return response.statusText; }
+      };`;
+
+/**
+ * `signInWithPasskey()`: a passkey sign-in that starts a new session. It
+ * resolves to whether it did, and shows why not. Needs {@link WEBAUTHN_HELPERS}.
+ */
+export const PASSKEY_SIGN_IN = `
+      const signInWithPasskey = async () => {
+        try {
+          const optionsResponse = await fetch("/api/auth/passkey/generate-authenticate-options");
+          if (!optionsResponse.ok) {
+            show(await failure(optionsResponse));
+            return false;
+          }
+          const options = await optionsResponse.json();
+          const credential = await navigator.credentials.get({
+            publicKey: {
+              ...options,
+              challenge: fromB64u(options.challenge),
+              allowCredentials: credentialIds(options.allowCredentials),
+            },
+          });
+          const response = {
+            id: credential.id,
+            rawId: toB64u(credential.rawId),
+            type: credential.type,
+            authenticatorAttachment: credential.authenticatorAttachment || undefined,
+            clientExtensionResults: credential.getClientExtensionResults(),
+            response: {
+              clientDataJSON: toB64u(credential.response.clientDataJSON),
+              authenticatorData: toB64u(credential.response.authenticatorData),
+              signature: toB64u(credential.response.signature),
+              userHandle: credential.response.userHandle ? toB64u(credential.response.userHandle) : undefined,
+            },
+          };
+          const verified = await fetch("/api/auth/passkey/verify-authentication", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ response }),
+          });
+          if (!verified.ok) {
+            show(await failure(verified));
+            return false;
+          }
+          return true;
+        } catch (error) {
+          show(error instanceof Error ? error.message : String(error));
+          return false;
+        }
       };`;
 
 export type SignUpForm = Readonly<{ username: string; email: string }>;
@@ -159,44 +208,11 @@ export const signInPage = (
       <form id="sign-out"><button type="submit">Sign out</button></form>
       <p id="error" class="error" role="alert"></p>`,
     signedInAs === undefined
-      ? `${WEBAUTHN_HELPERS}
+      ? `${WEBAUTHN_HELPERS}${PASSKEY_SIGN_IN}
       document.getElementById("form").addEventListener("submit", async (event) => {
         event.preventDefault();
         show("");
-        try {
-          const optionsResponse = await fetch("/api/auth/passkey/generate-authenticate-options");
-          if (!optionsResponse.ok) return show(await failure(optionsResponse));
-          const options = await optionsResponse.json();
-          const credential = await navigator.credentials.get({
-            publicKey: {
-              ...options,
-              challenge: fromB64u(options.challenge),
-              allowCredentials: credentialIds(options.allowCredentials),
-            },
-          });
-          const response = {
-            id: credential.id,
-            rawId: toB64u(credential.rawId),
-            type: credential.type,
-            authenticatorAttachment: credential.authenticatorAttachment || undefined,
-            clientExtensionResults: credential.getClientExtensionResults(),
-            response: {
-              clientDataJSON: toB64u(credential.response.clientDataJSON),
-              authenticatorData: toB64u(credential.response.authenticatorData),
-              signature: toB64u(credential.response.signature),
-              userHandle: credential.response.userHandle ? toB64u(credential.response.userHandle) : undefined,
-            },
-          };
-          const verified = await fetch("/api/auth/passkey/verify-authentication", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ response }),
-          });
-          if (!verified.ok) return show(await failure(verified));
-          location.assign(event.target.dataset.returnTo);
-        } catch (error) {
-          show(error instanceof Error ? error.message : String(error));
-        }
+        if (await signInWithPasskey()) location.assign(event.target.dataset.returnTo);
       });`
       : `
       document.getElementById("sign-out").addEventListener("submit", async (event) => {

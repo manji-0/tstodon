@@ -4,22 +4,19 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { listAccountAliases } from "./account-alias-store";
 import { type AccountRef, findAccountRef, localRef, refAccountId, remoteRef } from "./account-ref";
+import { findAccountMove, listAcceptedFollowsPage } from "./account-move-store";
 import { findAccountById, findAccountByUsername } from "./account-store";
 import { parseLocalActorUsername } from "./activitypub";
 import { findBlock } from "./block-mute-store";
 import type { RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
-import { findFollowKind, followAccount, type FollowOptions } from "./follow-store";
+import { findFollowKind, followAccount, type FollowOptions, unfollowAccount } from "./follow-store";
 import { notifyAccount, notifyFromRemote } from "./notify";
 import { parseInstanceIdentity } from "./runtime-config";
 import { followRemoteActor, unfollowRemoteActor } from "./outbound-follow";
 import { findOutboundFollow, listOutboundFollowsByActor } from "./outbound-follow-store";
 import { actorAliases, remoteActorFromDocument } from "./remote-actor-fetch";
-import {
-  findRemoteActorByUri,
-  setRemoteActorMovedTo,
-  upsertRemoteActor,
-} from "./remote-actor-store";
+import { setRemoteActorMovedTo, upsertRemoteActor } from "./remote-actor-store";
 
 /**
  * Follows moved per pass. The first page is moved while the `Move` is handled;
@@ -102,6 +99,59 @@ const followMoveTarget = async (
   return ok(true);
 };
 
+/** A local account's follow of the account that moved: who follows, with which options. */
+type MovingFollow = Readonly<{ id: string; followerAccountId: string; options: FollowOptions }>;
+
+/** One page of the local follows of `from`, after `afterId` in id order. */
+const movingFollows = async (
+  db: D1Database,
+  from: AccountRef,
+  afterId: string,
+  pageSize: number,
+): Promise<Result<ReadonlyArray<MovingFollow>, RepositoryError>> => {
+  if (from.kind === "LocalAccount") {
+    return listAcceptedFollowsPage(db, from.account.id, afterId, pageSize);
+  }
+  const page = await listOutboundFollowsByActor(db, from.actorUri, afterId, pageSize);
+  return page.map((follows) =>
+    follows.map((follow) => ({
+      id: follow.id,
+      followerAccountId: follow.accountId,
+      options: { reblogs: follow.reblogs, notify: follow.notify, languages: follow.languages },
+    })),
+  );
+};
+
+const unfollowMoved = async (
+  env: Env,
+  identity: InstanceIdentity,
+  follower: LocalAccount,
+  from: AccountRef,
+): Promise<Result<void, RepositoryError>> =>
+  from.kind === "LocalAccount"
+    ? unfollowAccount(env.DB, follower.id, from.account.id)
+    : unfollowRemoteActor(env, identity, follower, from.actor);
+
+const notifyMoved = (
+  env: Env,
+  follower: LocalAccount,
+  from: AccountRef,
+  to: AccountRef,
+): Promise<Result<void, RepositoryError>> =>
+  from.kind === "LocalAccount"
+    ? notifyAccount(env, {
+        accountId: follower.id,
+        fromAccountId: from.account.id,
+        kind: "move",
+        targetAccountId: refAccountId(to),
+      })
+    : notifyFromRemote(env, {
+        accountId: follower.id,
+        actorUri: from.actorUri,
+        kind: "move",
+        targetAccountId: refAccountId(to),
+      });
+
 /**
  * Move one page of local follows of `from` to `to`, as Mastodon's
  * `UnfollowFollowWorker` does for each follower: follow `to` with the same
@@ -114,66 +164,68 @@ const followMoveTarget = async (
 export const moveFollowPage = async (
   env: Env,
   identity: InstanceIdentity,
-  from: RemoteActor,
+  from: AccountRef,
   to: AccountRef,
   afterId: string,
   pageSize: number = MOVE_PAGE_SIZE,
 ): Promise<Result<string | undefined, RepositoryError>> => {
-  const page = await listOutboundFollowsByActor(env.DB, from.actorUri, afterId, pageSize);
+  const page = await movingFollows(env.DB, from, afterId, pageSize);
   if (page.isErr()) {
     return err(page.error);
   }
   for (const follow of page.value) {
-    const follower = await findAccountById(env.DB, follow.accountId);
+    const follower = await findAccountById(env.DB, follow.followerAccountId);
     if (follower.isErr()) {
       return err(follower.error);
     }
     if (!follower.value) {
       continue;
     }
-    const followed = await followMoveTarget(env, identity, follower.value, to, {
-      reblogs: follow.reblogs,
-      notify: follow.notify,
-      languages: follow.languages,
-    });
+    const followed = await followMoveTarget(env, identity, follower.value, to, follow.options);
     if (followed.isErr()) {
       return err(followed.error);
     }
     if (!followed.value) {
       continue;
     }
-    const unfollowed = await unfollowRemoteActor(env, identity, follower.value, from);
+    const unfollowed = await unfollowMoved(env, identity, follower.value, from);
     if (unfollowed.isErr()) {
       return err(unfollowed.error);
     }
-    await notifyFromRemote(env, {
-      accountId: follower.value.id,
-      actorUri: from.actorUri,
-      kind: "move",
-      targetAccountId: refAccountId(to),
-    });
+    await notifyMoved(env, follower.value, from, to);
   }
   const last = page.value.at(-1);
   return ok(page.value.length >= pageSize ? last?.id : undefined);
 };
 
-const queueNextPage = async (
+/**
+ * Move the first page of the local follows of `from` to `to` now, and queue a
+ * `MoveFollows` job for the rest. The caller has verified and recorded the move.
+ */
+export const startMovingFollows = async (
   env: Env,
-  from: RemoteActor,
+  identity: InstanceIdentity,
+  from: AccountRef,
   to: AccountRef,
-  afterId: string,
-): Promise<void> => {
-  const job: OutboxJob = {
-    kind: "MoveFollows",
-    fromActorUri: from.actorUri,
-    toActorUri: to.actorUri,
-    afterId,
-  };
-  try {
-    await env.OUTBOX_PROCESS_QUEUE.send(job);
-  } catch {
-    console.error(JSON.stringify({ kind: "MoveFollowsNotQueued", fromActorUri: from.actorUri }));
+): Promise<Result<void, RepositoryError>> => {
+  const next = await moveFollowPage(env, identity, from, to, "");
+  if (next.isErr()) {
+    return err(next.error);
   }
+  if (next.value !== undefined) {
+    const job: OutboxJob = {
+      kind: "MoveFollows",
+      fromActorUri: from.actorUri,
+      toActorUri: to.actorUri,
+      afterId: next.value,
+    };
+    try {
+      await env.OUTBOX_PROCESS_QUEUE.send(job);
+    } catch {
+      console.error(JSON.stringify({ kind: "MoveFollowsNotQueued", fromActorUri: from.actorUri }));
+    }
+  }
+  return ok(undefined);
 };
 
 /**
@@ -182,7 +234,7 @@ const queueNextPage = async (
  * fetched fresh (a cached document could predate the alias) and cached.
  * `undefined` when the target cannot be found or read.
  */
-const moveTarget = async (
+export const findMoveTarget = async (
   env: Env,
   identity: InstanceIdentity,
   targetUri: string,
@@ -227,7 +279,7 @@ const moveTarget = async (
  * Handle an inbox `Move` from a signature-verified remote actor (Mastodon's
  * `ActivityPub::Activity::Move`). It counts only when the signer moves itself
  * (`object` is the signer) and the target lists the signer in `alsoKnownAs`
- * (see {@link moveTarget}); anything else is ignored. A counted move is
+ * (see {@link findMoveTarget}); anything else is ignored. A counted move is
  * recorded on the signer, and its local followers are moved to the target.
  *
  * Followers of local accounts need nothing here: the new server sends its own
@@ -248,7 +300,7 @@ export const applyRemoteMove = async (
   if (targetUri === signer.actorUri) {
     return ok(undefined);
   }
-  const target = await moveTarget(env, identity, targetUri, options);
+  const target = await findMoveTarget(env, identity, targetUri, options);
   if (target.isErr()) {
     return err(target.error);
   }
@@ -259,17 +311,23 @@ export const applyRemoteMove = async (
   if (recorded.isErr()) {
     return err(recorded.error);
   }
-  const next = await moveFollowPage(env, identity, signer, target.value.ref, "");
-  if (next.isErr()) {
-    return err(next.error);
-  }
-  if (next.value !== undefined) {
-    await queueNextPage(env, signer, target.value.ref, next.value);
-  }
-  return ok(undefined);
+  return startMovingFollows(env, identity, remoteRef(signer), target.value.ref);
 };
 
-/** Move the next page of follows queued by {@link applyRemoteMove}. */
+/** Whether `from` has a verified, recorded move to `to`. */
+const movedTo = async (
+  db: D1Database,
+  from: AccountRef,
+  to: AccountRef,
+): Promise<Result<boolean, RepositoryError>> => {
+  if (from.kind === "RemoteActor") {
+    return ok(from.actor.movedTo === to.actorUri);
+  }
+  const move = await findAccountMove(db, from.account.id);
+  return move.map((found) => found?.targetUri === to.actorUri);
+};
+
+/** Move the next page of follows queued by {@link startMovingFollows}. */
 export const processMoveFollowsJob = async (
   env: Env,
   job: Extract<OutboxJob, { kind: "MoveFollows" }>,
@@ -278,13 +336,20 @@ export const processMoveFollowsJob = async (
   if (identity.isErr()) {
     return "retry";
   }
-  const from = await findRemoteActorByUri(env.DB, job.fromActorUri);
+  const from = await findAccountRef(env.DB, identity.value, job.fromActorUri);
   const to = await findAccountRef(env.DB, identity.value, job.toActorUri);
   if (from.isErr() || to.isErr()) {
     return "retry";
   }
+  if (!from.value || !to.value) {
+    return "ok";
+  }
   // Only a move that was verified and recorded carries follows over.
-  if (!from.value || !to.value || from.value.movedTo !== to.value.actorUri) {
+  const recorded = await movedTo(env.DB, from.value, to.value);
+  if (recorded.isErr()) {
+    return "retry";
+  }
+  if (!recorded.value) {
     return "ok";
   }
   const next = await moveFollowPage(env, identity.value, from.value, to.value, job.afterId);
@@ -292,7 +357,14 @@ export const processMoveFollowsJob = async (
     return "retry";
   }
   if (next.value !== undefined) {
-    await queueNextPage(env, from.value, to.value, next.value);
+    const queued: OutboxJob = { ...job, afterId: next.value };
+    try {
+      await env.OUTBOX_PROCESS_QUEUE.send(queued);
+    } catch {
+      console.error(
+        JSON.stringify({ kind: "MoveFollowsNotQueued", fromActorUri: job.fromActorUri }),
+      );
+    }
   }
   return "ok";
 };

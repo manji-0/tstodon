@@ -6,6 +6,7 @@ import {
   Visibility,
 } from "@tstodon/domain";
 import type { Context } from "hono";
+import { findAccountMove } from "../../account-move-store";
 import { findAccountById } from "../../account-store";
 import { findComposeDefaults } from "../../account-defaults-store";
 import { escapeHtml, mentionUsernames } from "../../html";
@@ -129,6 +130,15 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
+  }
+  const move = await findAccountMove(c.env.DB, user.value.id);
+  if (move.isErr()) {
+    return jsonRepositoryError(c, move.error.message);
+  }
+  if (move.value) {
+    // Mastodon's `User#functional?` is false once the account moved, and
+    // `require_user!` answers with this.
+    return c.json({ error: "Your login is currently disabled", kind: "Forbidden" }, 403);
   }
   const rawBody = await readUnknownBody(c);
   const body = schemaResult(CreateStatusBodySchema)(withoutNullFields(rawBody)).mapErr(() => ({

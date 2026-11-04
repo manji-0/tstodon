@@ -1,5 +1,5 @@
 import type { AccountAlias } from "./account-alias-store";
-import { page } from "./auth-pages";
+import { page, PASSKEY_SIGN_IN, WEBAUTHN_HELPERS } from "./auth-pages";
 import { escapeHtml } from "./html";
 
 /**
@@ -9,16 +9,18 @@ import { escapeHtml } from "./html";
  * pages, posted back to this origin with the session cookie.
  */
 
+export type PageMessage = Readonly<{ kind: "error" | "notice"; text: string }>;
+
 const nav = `      <p class="muted"><a href="/">Back to the web app</a> · <a href="/settings/aliases">Moving from</a> · <a href="/settings/migration">Moving to</a></p>`;
 
-const alert = (message: string | undefined, kind: "error" | "notice" = "error"): string =>
-  `      <p class="${kind === "error" ? "error" : "muted"}" role="${kind === "error" ? "alert" : "status"}">${message === undefined ? "" : escapeHtml(message)}</p>`;
+const messageLine = (message: PageMessage | undefined): string =>
+  `      <p id="error" class="${message?.kind === "notice" ? "muted" : "error"}" role="alert">${message === undefined ? "" : escapeHtml(message.text)}</p>`;
 
 export const aliasesPage = (
   instanceName: string,
   username: string,
   aliases: ReadonlyArray<AccountAlias>,
-  message?: Readonly<{ kind: "error" | "notice"; text: string }>,
+  message?: PageMessage,
 ): string =>
   page(
     `Moving from a different account · ${instanceName}`,
@@ -30,7 +32,7 @@ export const aliasesPage = (
         <input id="acct" name="acct" required placeholder="username@domain" autocomplete="off" />
         <button type="submit">Create alias</button>
       </form>
-${alert(message?.text, message?.kind)}
+${messageLine(message)}
       <h2>Aliases</h2>
       ${
         aliases.length === 0
@@ -48,4 +50,54 @@ ${alert(message?.text, message?.kind)}
               .join("")}
       </ul>`
       }`,
+  );
+
+export type MigrationState = Readonly<{
+  /** The handle of the account this one moved to, if it moved. */
+  movedTo: string | undefined;
+  /** When the account may move somewhere else; `undefined` when it may now. */
+  nextMoveAt: Date | undefined;
+  /** Whether the session is too old to move without signing in again. */
+  reauthRequired: boolean;
+}>;
+
+/**
+ * Mastodon's `/settings/migration`. Moving needs a recent sign-in: when the
+ * session is older than that, the form signs in again with the passkey
+ * before it posts.
+ */
+export const migrationPage = (
+  instanceName: string,
+  username: string,
+  state: MigrationState,
+  message?: PageMessage,
+): string =>
+  page(
+    `Move to a different account · ${instanceName}`,
+    `${nav}
+      <h1>Move to a different account</h1>${
+        state.movedTo === undefined
+          ? ""
+          : `
+      <p><strong>@${escapeHtml(username)}</strong> has moved to <strong>${escapeHtml(state.movedTo)}</strong> and can no longer post.</p>`
+      }
+      <p>Moving sends your followers to the new account. First add <code>@${escapeHtml(username)}</code> as an alias on the new account, under "Moving from a different account". Your posts and the accounts you follow stay here.</p>
+      ${
+        state.nextMoveAt === undefined
+          ? `<form id="move" method="post" action="/settings/migration">
+        <label for="acct">Handle of the new account</label>
+        <input id="acct" name="acct" required placeholder="username@domain" autocomplete="off" />
+        <button type="submit">Move followers</button>
+      </form>${state.reauthRequired ? `\n      <p class="muted">You confirm with your passkey before the move starts.</p>` : ""}`
+          : `<p class="muted">You can move to a different account again after ${escapeHtml(state.nextMoveAt.toISOString())}.</p>`
+      }
+${messageLine(message)}`,
+    state.nextMoveAt === undefined && state.reauthRequired
+      ? `${WEBAUTHN_HELPERS}${PASSKEY_SIGN_IN}
+      document.getElementById("move").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        show("");
+        if (await signInWithPasskey()) event.target.submit();
+      });`
+      : "",
   );

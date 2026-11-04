@@ -313,7 +313,14 @@ describe("a followed remote account moving", () => {
     }
     expect(MOVE_PAGE_SIZE).toBeGreaterThan(2);
 
-    const first = await moveFollowPage(env, identity.value, from.value, remoteRef(to.value), "", 1);
+    const first = await moveFollowPage(
+      env,
+      identity.value,
+      remoteRef(from.value),
+      remoteRef(to.value),
+      "",
+      1,
+    );
     const cursor = first.isOk() ? first.value : undefined;
     expect(cursor).toBeDefined();
     const movedAfterFirst = await Promise.all(
@@ -325,7 +332,7 @@ describe("a followed remote account moving", () => {
     const second = await moveFollowPage(
       env,
       identity.value,
-      from.value,
+      remoteRef(from.value),
       remoteRef(to.value),
       cursor ?? "",
       1,
@@ -335,7 +342,7 @@ describe("a followed remote account moving", () => {
     const last = await moveFollowPage(
       env,
       identity.value,
-      from.value,
+      remoteRef(from.value),
       remoteRef(to.value),
       rest ?? "",
       1,

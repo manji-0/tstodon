@@ -43,8 +43,9 @@ const DeliverPushSchema = z.object({
 });
 
 /**
- * Move the next page of local follows of a remote actor that moved: those
- * after `afterId` (empty for the first page), to the account it moved to.
+ * Move the next page of local follows of an account that moved, local or
+ * remote: those after `afterId` (empty for the first page), to the account
+ * it moved to.
  */
 const MoveFollowsSchema = z.object({
   kind: z.literal("MoveFollows"),

@@ -17,6 +17,7 @@ export type Remote = Readonly<{
 export const remoteActor = async (
   username: string,
   domain: string = "remote.example",
+  options: Readonly<{ sharedInboxUri?: string }> = {},
 ): Promise<Remote> => {
   const actorUri = `https://${domain}/users/${username}`;
   const keys = await generateAccountKeys();
@@ -29,6 +30,7 @@ export const remoteActor = async (
     username,
     domain,
     inboxUri: `${actorUri}/inbox`,
+    sharedInboxUri: options.sharedInboxUri,
     publicKeyId: `${actorUri}#main-key`,
     publicKeyPem: keys.publicKeyPem,
     displayName: `Remote ${username}`,

@@ -73,6 +73,7 @@ import { acceptOutboundFollow, rejectOutboundFollow } from "../outbound-follow-s
 import { RemoteAccountId } from "../remote-account-id";
 import { applyRemoteMove } from "../remote-move";
 import { listAccountAliases } from "../account-alias-store";
+import { findAccountMove } from "../account-move-store";
 
 const parseNestedActivityObject = schemaResult(NestedActivityObjectSchema);
 const parseActivityJson = schemaResult(ActivityJsonSchema);
@@ -93,13 +94,20 @@ export const getUsersByUsername = async (c: Context<{ Bindings: Env }, "/users/:
   if (!account.value) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  const aliases = await listAccountAliases(c.env.DB, account.value.id);
+  const [aliases, move] = await Promise.all([
+    listAccountAliases(c.env.DB, account.value.id),
+    findAccountMove(c.env.DB, account.value.id),
+  ]);
   if (aliases.isErr()) {
     return jsonRepositoryError(c, aliases.error.message);
+  }
+  if (move.isErr()) {
+    return jsonRepositoryError(c, move.error.message);
   }
   return c.json(
     actorDocument(identity.value, account.value, {
       alsoKnownAs: aliases.value.map((alias) => alias.actorUri),
+      movedTo: move.value?.targetUri,
     }),
     200,
     jsonLd,

@@ -12,6 +12,8 @@ export * from "./sql/authorizeFollowRequest";
 
 export * from "./sql/authorizeRemoteFollowRequest";
 
+export * from "./sql/claimAccountMove";
+
 export * from "./sql/claimPollUpdate";
 
 export * from "./sql/claimRemoteOutboxBackfill";
@@ -171,6 +173,8 @@ export * from "./sql/findAccountDomainBlock";
 export * from "./sql/findAccountFlag";
 
 export * from "./sql/findAccountModeration";
+
+export * from "./sql/findAccountMove";
 
 export * from "./sql/findAccountNote";
 
@@ -392,6 +396,8 @@ export * from "./sql/isTagFollowed";
 
 export * from "./sql/listAcceptedFollowerIds";
 
+export * from "./sql/listAcceptedFollowsPage";
+
 export * from "./sql/listAcceptedRemoteFollowerInboxes";
 
 export * from "./sql/listAcceptedRemoteFollowerUris";
@@ -401,6 +407,8 @@ export * from "./sql/listAccountAliases";
 export * from "./sql/listAccountDomainBlocks";
 
 export * from "./sql/listAccountModerations";
+
+export * from "./sql/listAccountMovesByIdsJson";
 
 export * from "./sql/listAccountProfiles";
 
