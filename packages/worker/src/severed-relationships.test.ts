@@ -216,6 +216,25 @@ describe("severed relationships", () => {
     ).toBe("Account address\n");
   });
 
+  it("severs a follow of an actor on a non-default port when its hostname is suspended", async () => {
+    const erin = await person("sev_erin");
+    const remote = await remoteActor("ported", "sev-ported.example:8796");
+    await follow(erin, remote, true);
+    await blockDomain("sev-ported.example", "suspend");
+
+    expect(await count("outbound_follows", remote.actorUri)).toBe(0);
+    const [notification] = await severedNotifications(erin);
+    expect(notification?.event).toMatchObject({
+      type: "domain_block",
+      target_name: "sev-ported.example",
+      following_count: 1,
+    });
+    const following = await erin.fetcher(
+      `/severed_relationships/${notification?.event.id ?? ""}/following.csv`,
+    );
+    expect(await following.text()).toContain("ported@sev-ported.example:8796,");
+  });
+
   it("severs when a silence is raised to a suspension, not before", async () => {
     const erin = await person("sev_erin");
     const remote = await remoteActor("raised", "sev-raised.example");

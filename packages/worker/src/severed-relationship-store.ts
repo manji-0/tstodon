@@ -59,8 +59,11 @@ export type SeveredFollow = Readonly<{
   languages: ReadonlyArray<string>;
 }>;
 
-/** `(? <> '' AND lower(r.domain) = ?) OR (? <> '' AND r.actor_uri = ?)` for a scope, `r` being `remote_actors`. */
-const ACTOR_MATCH_SQL = `((? <> '' AND lower(r.domain) = ?) OR (? <> '' AND r.actor_uri = ?))`;
+/**
+ * `(? <> '' AND r.host = ?) OR (? <> '' AND r.actor_uri = ?)` for a scope, `r` being `remote_actors`.
+ * A block names a hostname, so it matches `host` and covers every port of it.
+ */
+const ACTOR_MATCH_SQL = `((? <> '' AND r.host = ?) OR (? <> '' AND r.actor_uri = ?))`;
 
 const matchBinds = (scope: SeveranceScope): [string, string, string, string] => {
   const domain = scope.kind === "Domain" ? scope.domain.toLowerCase() : "";
