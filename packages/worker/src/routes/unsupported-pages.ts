@@ -4,8 +4,8 @@ import { instanceName } from "./account-settings";
 
 /**
  * Rails pages of Mastodon that its web app links to and this server has no
- * counterpart for. Each answers a page that says so, in place of a bare 404
- * from the asset fallback.
+ * counterpart for. Each answers a page that says so, with status 200: Void's
+ * SPA fallback replaces a 404 to a browser navigation with `index.html`.
  */
 const NOTICES = {
   filters: {
@@ -56,7 +56,7 @@ const NOTICES = {
 const unsupported =
   (notice: UnsupportedNotice) =>
   (c: Context<{ Bindings: Env }>): Response | Promise<Response> =>
-    c.html(unsupportedPage(instanceName(c.env), notice), 404);
+    c.html(unsupportedPage(instanceName(c.env), notice));
 
 export const getFilters = unsupported(NOTICES.filters);
 export const getStatusesCleanup = unsupported(NOTICES.statusesCleanup);

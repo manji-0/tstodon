@@ -20,7 +20,10 @@ export const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   return parsed.value;
 };
 
-/** A browser: keeps cookies, sends Origin on writes, does not follow redirects. */
+/**
+ * A browser: keeps cookies, sends Origin on writes (unless the request sets
+ * its own), does not follow redirects.
+ */
 export const browser = () => {
   const cookies = new Map<string, string>();
   return async (path: string, init: RequestInit = {}): Promise<Response> => {
@@ -28,7 +31,7 @@ export const browser = () => {
     if (cookies.size > 0) {
       headers.set("cookie", [...cookies].map(([name, value]) => `${name}=${value}`).join("; "));
     }
-    if (init.method !== undefined && init.method !== "GET") {
+    if (init.method !== undefined && init.method !== "GET" && !headers.has("origin")) {
       headers.set("origin", ORIGIN);
     }
     const response = await SELF.fetch(`${ORIGIN}${path}`, { ...init, headers, redirect: "manual" });

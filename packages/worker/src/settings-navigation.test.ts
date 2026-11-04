@@ -146,6 +146,23 @@ describe("settings pages the web app links to", () => {
     expect((await lookup("prefs_cross_site")).locked).toBe(false);
   });
 
+  it("accepts a form posted from its own page, which sends Origin: null", async () => {
+    // The pages set `referrer: no-referrer`, so a browser's form post carries
+    // `Origin: null` and only Sec-Fetch-Site says where it came from.
+    const { fetcher } = await signUp("prefs_same_site");
+    const sameSite = await fetcher("/settings/privacy", {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "sec-fetch-site": "same-origin",
+        origin: "null",
+      },
+      body: "",
+    });
+    expect(await page(sameSite)).toContain("Changes saved.");
+    expect((await lookup("prefs_same_site")).locked).toBe(true);
+  });
+
   it("explains the Rails pages this server does not have", async () => {
     for (const [path, title] of [
       ["/filters", "Muted words"],
@@ -162,7 +179,9 @@ describe("settings pages the web app links to", () => {
       ["/disputes/strikes/3", "Moderation decisions"],
       ["/settings/applications", "Settings"],
     ] as const) {
-      const html = await page(await SELF.fetch(`${ORIGIN}${path}`), 404);
+      const html = await page(
+        await SELF.fetch(`${ORIGIN}${path}`, { headers: { accept: "text/html" } }),
+      );
       expect(html, path).toContain(`<h1>${title}</h1>`);
       expect(html, path).toContain("This page is not available on this server.");
       expect(html, path).toContain('href="/settings/preferences"');

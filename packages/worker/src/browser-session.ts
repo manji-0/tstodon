@@ -40,11 +40,15 @@ export const browserSession = async (env: Env): Promise<BrowserSession> => {
   return { kind: "Account", account: account.value, signedInAt: state.session.createdAt };
 };
 
-/** A form posts back to this origin; refuse a cross-site post. */
+/**
+ * A form posts back to this origin; refuse a cross-site post. A browser's
+ * Sec-Fetch-Site decides when it is sent: the pages' `no-referrer` policy
+ * makes their own form posts carry `Origin: null`.
+ */
 export const isSameOriginPost = (c: Context<{ Bindings: Env }>): boolean => {
   const site = c.req.header("Sec-Fetch-Site");
-  if (site !== undefined && site !== "same-origin") {
-    return false;
+  if (site !== undefined) {
+    return site === "same-origin";
   }
   const origin = c.req.header("Origin");
   return origin === undefined || origin === new URL(c.req.url).origin;
