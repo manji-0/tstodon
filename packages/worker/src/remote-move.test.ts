@@ -4,6 +4,8 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { addAccountAlias } from "./account-alias-store";
+import { remoteRef } from "./account-ref";
 import { generateAccountKeys } from "./keys";
 import { RemoteAccountId } from "./remote-account-id";
 import { MOVE_PAGE_SIZE, moveFollowPage } from "./remote-move";
@@ -33,8 +35,13 @@ const RelationshipSchema = z.object({
   languages: z.array(z.string()).nullable(),
 });
 
-const idOf = (remote: Remote | string) =>
-  RemoteAccountId.encode(typeof remote === "string" ? remote : remote.actorUri);
+/** A local account, named by its API id. */
+type Local = Readonly<{ localId: string }>;
+
+const idOf = (account: Remote | Local | string) =>
+  typeof account === "object" && "localId" in account
+    ? account.localId
+    : RemoteAccountId.encode(typeof account === "string" ? account : account.actorUri);
 
 const follow = async (email: string, remote: Remote, body: Record<string, unknown> = {}) =>
   json(`/api/v1/accounts/${idOf(remote)}/follow`, {
@@ -43,7 +50,7 @@ const follow = async (email: string, remote: Remote, body: Record<string, unknow
     body: JSON.stringify(body),
   });
 
-const relationship = async (email: string, remote: Remote | string) => {
+const relationship = async (email: string, remote: Remote | Local | string) => {
   const response = await json(`/api/v1/accounts/relationships?id[]=${idOf(remote)}`, {
     headers: await authHeaders(email),
   });
@@ -306,7 +313,7 @@ describe("a followed remote account moving", () => {
     }
     expect(MOVE_PAGE_SIZE).toBeGreaterThan(2);
 
-    const first = await moveFollowPage(env, identity.value, from.value, to.value, "", 1);
+    const first = await moveFollowPage(env, identity.value, from.value, remoteRef(to.value), "", 1);
     const cursor = first.isOk() ? first.value : undefined;
     expect(cursor).toBeDefined();
     const movedAfterFirst = await Promise.all(
@@ -315,14 +322,96 @@ describe("a followed remote account moving", () => {
     expect(movedAfterFirst.filter(Boolean)).toHaveLength(1);
 
     // A full page always hands on a cursor; the page after the last follow is empty.
-    const second = await moveFollowPage(env, identity.value, from.value, to.value, cursor ?? "", 1);
+    const second = await moveFollowPage(
+      env,
+      identity.value,
+      from.value,
+      remoteRef(to.value),
+      cursor ?? "",
+      1,
+    );
     const rest = second.isOk() ? second.value : undefined;
     expect(rest).toBeDefined();
-    const last = await moveFollowPage(env, identity.value, from.value, to.value, rest ?? "", 1);
+    const last = await moveFollowPage(
+      env,
+      identity.value,
+      from.value,
+      remoteRef(to.value),
+      rest ?? "",
+      1,
+    );
     expect(last.isOk() && last.value).toBe(undefined);
     for (const email of emails) {
       expect(await relationship(email, target)).toMatchObject({ requested: true });
       expect(await relationship(email, old)).toMatchObject({ following: false });
     }
+  });
+});
+
+describe("a followed remote account moving to a local account", () => {
+  /** A local account that may list `old` as the account it moved from. */
+  const localTarget = async (slug: string, old: Remote, alias: boolean) => {
+    const account = await signedInAccount(`move-in-${slug}@example.com`);
+    if (alias) {
+      const added = await addAccountAlias(env.DB, account.id, {
+        acct: "mover@old.example",
+        actorUri: old.actorUri,
+      });
+      expect(added.isOk()).toBe(true);
+    }
+    return {
+      local: { localId: account.id },
+      actorUri: `https://example.com/users/${account.username}`,
+    };
+  };
+
+  it("moves the follow to the local account that lists the old one as an alias", async () => {
+    const old = await remoteActor("mover-in", "old.example");
+    const target = await localTarget("aliased", old, true);
+    const email = "move-in-aliased-follower@example.com";
+    await acceptedFollow(email, old, "in-aliased");
+
+    expect(
+      await old.send({
+        id: `${old.actorUri}/moves/in`,
+        type: "Move",
+        object: old.actorUri,
+        target: target.actorUri,
+      }),
+    ).toBe(202);
+
+    expect(await relationship(email, old)).toMatchObject({ following: false, requested: false });
+    expect(await relationship(email, target.local)).toMatchObject({ following: true });
+    expect(await queued(email, "Undo")).toHaveLength(1);
+    const [moved] = await notifications(email);
+    expect(moved).toMatchObject({
+      type: "move",
+      account: { id: idOf(old) },
+      target: { id: target.local.localId },
+    });
+    const account = await json(`/api/v1/accounts/${idOf(old)}`);
+    expect(read(z.object({ moved: z.object({ id: z.string() }) }), account.body).moved.id).toBe(
+      target.local.localId,
+    );
+  });
+
+  it("is ignored when the local account does not list the old one", async () => {
+    const old = await remoteActor("mover-in-unlisted", "old.example");
+    const target = await localTarget("unlisted", old, false);
+    const email = "move-in-unlisted-follower@example.com";
+    await acceptedFollow(email, old, "in-unlisted");
+
+    expect(
+      await old.send({
+        id: `${old.actorUri}/moves/in-unlisted`,
+        type: "Move",
+        object: old.actorUri,
+        target: target.actorUri,
+      }),
+    ).toBe(202);
+
+    expect(await relationship(email, old)).toMatchObject({ following: true });
+    expect(await relationship(email, target.local)).toMatchObject({ following: false });
+    expect(await notifications(email)).toHaveLength(0);
   });
 });

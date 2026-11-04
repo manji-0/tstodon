@@ -1,6 +1,7 @@
 import { InstanceIdentity, type LocalAccount, type RemoteActor, Visibility } from "@tstodon/domain";
 import { accountCounts, accountCountsByIds } from "./account-count-store";
-import { findAccountsByIds } from "./account-store";
+import { findAccountsByIds, findAccountsByUsernames } from "./account-store";
+import { parseLocalActorUsername } from "./activitypub";
 import type { ComposeDefaults } from "./account-defaults-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteActorsByUris } from "./remote-actor-store";
@@ -49,22 +50,60 @@ export const accountDocumentsByIds = async (
     }
   }
   if (actors.isOk()) {
-    const moved = await findRemoteActorsByUris(
-      env.DB,
+    const moved = await movedToDocuments(
+      env,
+      identity,
       [...actors.value.values()].flatMap((actor) => (actor.movedTo ? [actor.movedTo] : [])),
     );
     for (const [actorUri, id] of remote) {
       const actor = actors.value.get(actorUri);
       if (actor) {
-        documents.set(
-          id,
-          mastodonRemoteAccount(
-            identity,
-            actor,
-            actor.movedTo && moved.isOk() ? moved.value.get(actor.movedTo) : undefined,
-          ),
-        );
+        const target = actor.movedTo ? moved.get(actor.movedTo) : undefined;
+        documents.set(id, {
+          ...(target ? { moved: target } : {}),
+          ...mastodonRemoteAccount(identity, actor),
+        });
       }
+    }
+  }
+  return documents;
+};
+
+/**
+ * The accounts that moved accounts point at, keyed by actor URI, as Mastodon
+ * renders them under `moved`: a local account or a cached remote actor. One
+ * level deep; a target's own `moved` is left out.
+ */
+const movedToDocuments = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actorUris: ReadonlyArray<string>,
+): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
+  const documents = new Map<string, Record<string, unknown>>();
+  if (actorUris.length === 0) {
+    return documents;
+  }
+  const usernames = actorUris.flatMap((uri) => {
+    const username = parseLocalActorUsername(identity, uri);
+    return username === undefined ? [] : [username];
+  });
+  const [locals, actors] = await Promise.all([
+    findAccountsByUsernames(env.DB, usernames),
+    findRemoteActorsByUris(
+      env.DB,
+      actorUris.filter((uri) => parseLocalActorUsername(identity, uri) === undefined),
+    ),
+  ]);
+  if (locals.isOk()) {
+    for (const document of (await mastodonAccountDocuments(env, identity, locals.value)).values()) {
+      if (typeof document.uri === "string") {
+        documents.set(document.uri, document);
+      }
+    }
+  }
+  if (actors.isOk()) {
+    for (const [uri, actor] of actors.value) {
+      documents.set(uri, mastodonRemoteAccount(identity, actor));
     }
   }
   return documents;
@@ -217,18 +256,13 @@ export const mastodonAccountDocuments = async (
   return documents;
 };
 
-/**
- * A remote actor as a Mastodon account. `moved` is the actor it moved to, when
- * it has moved and that actor is cached: Mastodon renders it as `moved`.
- */
+/** A remote actor as a Mastodon account (`moved` is added by {@link accountDocumentsByIds}). */
 export const mastodonRemoteAccount = (
   identity: InstanceIdentity,
   actor: RemoteActor,
-  moved?: RemoteActor,
 ): Record<string, unknown> => {
   const { profile } = actor;
   return {
-    ...(moved ? { moved: mastodonRemoteAccount(identity, moved) } : {}),
     id: RemoteAccountId.encode(actor.actorUri),
     username: actor.username,
     acct: `${actor.username}@${actor.domain}`,

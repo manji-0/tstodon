@@ -16,11 +16,7 @@ import {
   mastodonRemoteAccount,
 } from "../../account-documents";
 import { mastodonRelationship } from "../../relationship-document";
-import {
-  findRemoteActorByUri,
-  findRemoteActorsByUris,
-  searchRemoteActors,
-} from "../../remote-actor-store";
+import { findRemoteActorsByUris, searchRemoteActors } from "../../remote-actor-store";
 import { resolveRemoteActorByHandle } from "../../remote-actor-fetch";
 import { suspendedDomains } from "../../admin-domain-block-store";
 import { federationAllowHosts } from "../../runtime-config";
@@ -284,24 +280,10 @@ export const lookupAccountDocument = async (
       document: await mastodonAccountDocument(env, identity, account.value),
     });
   }
-  const actorUri = RemoteAccountId.decode(id);
-  if (actorUri.isOk()) {
-    const actor = await findRemoteActorByUri(env.DB, actorUri.value);
-    if (actor.isErr()) {
-      return err(actor.error);
-    }
-    if (actor.value) {
-      const moved = actor.value.movedTo
-        ? await findRemoteActorByUri(env.DB, actor.value.movedTo)
-        : undefined;
-      return ok({
-        kind: "Found",
-        document: mastodonRemoteAccount(
-          identity,
-          actor.value,
-          moved?.isOk() ? moved.value : undefined,
-        ),
-      });
+  if (RemoteAccountId.decode(id).isOk()) {
+    const document = (await accountDocumentsByIds(env, identity, [id])).get(id);
+    if (document) {
+      return ok({ kind: "Found", document });
     }
   }
   return ok({ kind: "NotFound" });
