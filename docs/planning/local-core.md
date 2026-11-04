@@ -272,7 +272,7 @@ None: every route listed above is implemented.
 
 - Domain modules are `kind` discriminated unions with companion `schema` / `parse` / transitions. Domain code does not throw Zod or HTTP errors.
 - Boundaries (HTTP bodies, D1 rows, queue payloads, JSON columns) parse with `schemaResult`. The only allowed TypeScript assertions are `as const` and `as const satisfies Type`; Oxlint's `consistent-type-assertions` (`assertionStyle: "never"`) and the `no-unsafe-*` rules for runtime code fail `pnpm lint` otherwise.
-- PII fields use `Sensitive`.
+- PII and key material are `Sensitive<T>` from the schema that reads them (`Sensitive.schema(...)` in a row or body schema), so `JSON.stringify`, string coercion and `console.log` print `[REDACTED]`. `reveal()` is the only way out, and `packages/core/src/sensitive-reveal-sites.test.ts` lists every call outside tests: a new one fails the test until it is listed with its reason.
 - Hono handlers map `Result` error `kind`s to status codes. Domain graphs such as follow `Pending | Accepted | None` stay out of middleware.
 - Worker tests load D1 migrations and parse JSON responses with Zod. They do not use `json() as { id: string }`.
 
