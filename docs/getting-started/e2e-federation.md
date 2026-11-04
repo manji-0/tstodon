@@ -69,4 +69,4 @@ Behind an HTTP proxy (`HTTPS_PROXY` set), start the instances with `NO_PROXY=127
 
 ### Not covered locally
 
-- Remote accounts show a port-less `acct`: `remote_actors.domain` is the actor URL's hostname, so B's user appears on A as `@bob@127.0.0.1`, not `@bob@127.0.0.1:8792`. Production domains carry no port. The scenarios match accounts by `uri`.
+- Outbox paging: tstodon serves its outbox as one `OrderedCollection` without `next` links, so the instances cannot exercise the deeper backfill (`OUTBOX_BACKFILL_PAGE_LIMIT`). Vitest covers it with served page documents (`src/remote-outbox-backfill.test.ts`).

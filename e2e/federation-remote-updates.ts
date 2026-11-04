@@ -63,6 +63,11 @@ const main = async (): Promise<void> => {
     return fail("boost on alice's home is not bob reblogging carol", boost);
   }
   console.log("ok Announce: bob's boost of carol on alice's home", boost.id);
+  // The peer's port stays in the handle, as Mastodon renders it.
+  if (boost.account.acct !== bob.acct.replace(/^@/, "")) {
+    return fail(`bob appears on A as ${boost.account.acct}, not ${bob.acct}`, boost);
+  }
+  console.log("ok remote acct keeps the port", boost.account.acct);
 
   const original = await api(B, bob.headers, "/api/v1/statuses", ApiStatus.parse, "bob posts", {
     method: "POST",
