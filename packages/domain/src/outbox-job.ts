@@ -20,6 +20,13 @@ const RefreshLinkCardsSchema = unitKind("RefreshLinkCards");
 const BackfillRemoteTagsSchema = unitKind("BackfillRemoteTags");
 /** Publish the scheduled statuses whose time has come (cron). */
 const PublishScheduledStatusesSchema = unitKind("PublishScheduledStatuses");
+/** Queue one `CleanUpAccountStatuses` per account with automated post deletion on (cron). */
+const CleanUpStatusesSchema = unitKind("CleanUpStatuses");
+/** Delete the next bounded batch of one account's posts that its cleanup policy removes. */
+const CleanUpAccountStatusesSchema = z.object({
+  kind: z.literal("CleanUpAccountStatuses"),
+  accountId: AccountId.schema,
+});
 /** Build the link preview for a stored status or remote status. */
 const ProcessLinkCardSchema = z.object({
   kind: z.literal("ProcessLinkCard"),
@@ -102,6 +109,8 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   RefreshLinkCardsSchema,
   BackfillRemoteTagsSchema,
   PublishScheduledStatusesSchema,
+  CleanUpStatusesSchema,
+  CleanUpAccountStatusesSchema,
   ProcessLinkCardSchema,
   DistributePollUpdateSchema,
   DeliverPushSchema,

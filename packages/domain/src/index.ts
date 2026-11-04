@@ -91,3 +91,11 @@ export {
 export { Username } from "./username";
 export { Visibility, reblogVisibility, type Visibility as VisibilityValue } from "./visibility";
 export { Notification, type Notification as NotificationValue } from "./notification";
+export {
+  MIN_AGE_CHOICES,
+  StatusesCleanupPolicy,
+  type InteractionThreshold,
+  type StatusCleanupFacts,
+  type StatusesCleanupPolicy as StatusesCleanupPolicyValue,
+  type StatusesCleanupRules,
+} from "./statuses-cleanup-policy";
