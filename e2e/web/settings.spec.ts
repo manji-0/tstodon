@@ -1,4 +1,4 @@
-import { expect, signUp, test } from "./fixtures";
+import { expect, replacePasskeyDevice, signUp, test } from "./fixtures";
 
 /**
  * The web app's links to Mastodon's Rails settings pages: they land on this
@@ -53,7 +53,10 @@ test.describe("settings links in the web UI", () => {
     await expect(filters.getByLabel("Keyword or phrase").first()).toHaveValue("season finale");
   });
 
-  test("adds, renames, and removes a passkey, and keeps the last one", async ({ page }) => {
+  test("adds, renames, and removes a passkey, and keeps the last one", async ({
+    context,
+    page,
+  }) => {
     await signUp(page, person("sec"));
     await page.goto("/settings/preferences");
     await page.getByRole("link", { name: "Password and security" }).click();
@@ -62,6 +65,7 @@ test.describe("settings links in the web UI", () => {
     await expect(page.getByText("This is your only passkey")).toBeVisible();
     await expect(page.getByText("This browser")).toBeVisible();
 
+    await replacePasskeyDevice(context, page);
     await page.getByLabel("Name for the new passkey").fill("Laptop");
     await page.getByRole("button", { name: "Add a passkey" }).click();
     await expect(page.getByText("Laptop", { exact: true })).toBeVisible();

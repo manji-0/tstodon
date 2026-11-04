@@ -1,19 +1,23 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, test as base, type BrowserContext, type Page } from "@playwright/test";
+import {
+  expect,
+  test as base,
+  type BrowserContext,
+  type CDPSession,
+  type Page,
+} from "@playwright/test";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-/**
- * Give the context's browser a platform authenticator (Chromium's virtual
- * WebAuthn device), so passkey prompts complete without a person. Each page
- * gets its own; a credential lives on the authenticator that created it.
- */
-export const addPasskeyDevice = async (context: BrowserContext, page: Page): Promise<void> => {
+type PasskeyDevice = Readonly<{ cdp: CDPSession; authenticatorId: string }>;
+const devices = new WeakMap<Page, PasskeyDevice>();
+
+const newPasskeyDevice = async (context: BrowserContext, page: Page): Promise<PasskeyDevice> => {
   const cdp = await context.newCDPSession(page);
   await cdp.send("WebAuthn.enable");
-  await cdp.send("WebAuthn.addVirtualAuthenticator", {
+  const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
     options: {
       protocol: "ctap2",
       transport: "internal",
@@ -23,6 +27,28 @@ export const addPasskeyDevice = async (context: BrowserContext, page: Page): Pro
       automaticPresenceSimulation: true,
     },
   });
+  return { cdp, authenticatorId };
+};
+
+/**
+ * Give the context's browser a platform authenticator (Chromium's virtual
+ * WebAuthn device), so passkey prompts complete without a person. Each page
+ * gets its own; a credential lives on the authenticator that created it.
+ */
+export const addPasskeyDevice = async (context: BrowserContext, page: Page): Promise<void> => {
+  devices.set(page, await newPasskeyDevice(context, page));
+};
+
+/**
+ * Swap the page's authenticator for an empty one: another device, as far as
+ * a site can tell, so it can register a second passkey for the same person.
+ */
+export const replacePasskeyDevice = async (context: BrowserContext, page: Page): Promise<void> => {
+  const old = devices.get(page);
+  await old?.cdp.send("WebAuthn.removeVirtualAuthenticator", {
+    authenticatorId: old.authenticatorId,
+  });
+  await addPasskeyDevice(context, page);
 };
 
 /** The confirmation link the server "sent" (`EMAIL_TRANSPORT=capture` keeps it in KV). */
