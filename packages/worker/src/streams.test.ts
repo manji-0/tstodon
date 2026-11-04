@@ -246,3 +246,90 @@ describe("streaming subscriptions", () => {
     await eventually(hub, 0);
   });
 });
+
+describe("streaming scopes", () => {
+  const REQUIRED = { error: "Access token does not have the required scopes", status: 401 };
+
+  const upgradeAs = async (email: string, scopes: ReadonlyArray<string>, query: string) =>
+    SELF.fetch(`${ORIGIN}/api/v1/streaming${query}`, {
+      headers: { ...(await authHeaders(email, { scopes })), Upgrade: "websocket" },
+    });
+
+  it("refuse a token without read scopes on user, user:notification, direct, and list, but not public or hashtag", async () => {
+    const email = "sc-write-only@example.com";
+    const listId = await createList(email, "scoped");
+    const scopes = ["write", "push"];
+    for (const query of [
+      "?stream=user",
+      "?stream=user:notification",
+      "?stream=direct",
+      `?stream=list&list=${listId}`,
+    ]) {
+      const refused = await upgradeAs(email, scopes, query);
+      expect(refused.status, query).toBe(401);
+      expect(await refused.json(), query).toEqual(REQUIRED);
+    }
+    for (const query of ["?stream=public", "?stream=hashtag&tag=cats"]) {
+      const accepted = await upgradeAs(email, scopes, query);
+      expect(accepted.status, query).toBe(101);
+      accepted.webSocket?.accept();
+      accepted.webSocket?.close();
+    }
+
+    const socket = await openStream({ email, scopes, query: "?stream=public:local" });
+    for (const command of [
+      { stream: "user" },
+      { stream: "user:notification" },
+      { stream: "direct" },
+      { stream: "list", list: listId },
+    ]) {
+      socket.send({ type: "subscribe", ...command });
+      expect(await socket.nextError(), command.stream).toEqual(REQUIRED);
+    }
+    await socket.subscribe({ stream: "hashtag", tag: "cats" });
+    socket.close();
+  });
+
+  it("send a read:statuses token updates on user but no notifications, and refuse user:notification", async () => {
+    const email = "sc-statuses@example.com";
+    const scopes = ["read:statuses"];
+    const socket = await openStream({ email, scopes, query: "?stream=user" });
+    expect((await upgradeAs(email, scopes, "?stream=user:notification")).status).toBe(401);
+
+    await follow("sc-statuses-follower@example.com", email);
+    await post(email, "heard on user");
+    expect(await socket.next()).toMatchObject({ stream: ["user"], event: "update" });
+    expect(await socket.heardNothing()).toBe(true);
+    await socket.subscribe({ stream: "direct" });
+    socket.send({ type: "subscribe", stream: "user:notification" });
+    expect(await socket.nextError()).toEqual(REQUIRED);
+    socket.close();
+  });
+
+  it("open only user:notification to a read:notifications token", async () => {
+    const email = "sc-notifications@example.com";
+    const scopes = ["read:notifications"];
+    for (const query of ["?stream=user", "?stream=direct"]) {
+      expect((await upgradeAs(email, scopes, query)).status, query).toBe(401);
+    }
+    const socket = await openStream({ email, scopes, query: "?stream=user:notification" });
+    await follow("sc-notifications-follower@example.com", email);
+    expect(await socket.next()).toMatchObject({
+      stream: ["user:notification"],
+      event: "notification",
+    });
+    socket.send({ type: "subscribe", stream: "user" });
+    expect(await socket.nextError()).toEqual(REQUIRED);
+    socket.close();
+  });
+
+  it("treat read as every read scope", async () => {
+    const email = "sc-read@example.com";
+    const socket = await openStream({ email, scopes: ["read"], query: "?stream=user" });
+    await socket.subscribe({ stream: "user:notification" });
+    await socket.subscribe({ stream: "direct" });
+    await follow("sc-read-follower@example.com", email);
+    expect(await socket.next()).toMatchObject({ event: "notification" });
+    socket.close();
+  });
+});

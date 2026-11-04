@@ -59,14 +59,19 @@ const channelOf = (command: StreamCommand): StreamChannelValue => {
 };
 
 /**
- * A streaming socket, signed in as `email` or anonymous, opened at
+ * A streaming socket, signed in as `email` (with a token of `scopes`, every
+ * scope by default) or anonymous, opened at
  * `/api/v1/streaming` with `query`, and read one message at a time.
  */
-export const openStream = async (options: Readonly<{ email?: string; query?: string }>) => {
+export const openStream = async (
+  options: Readonly<{ email?: string; query?: string; scopes?: ReadonlyArray<string> }>,
+) => {
   const account = options.email ? await signedInAccount(options.email) : undefined;
   const upgrade = await SELF.fetch(`${ORIGIN}/api/v1/streaming${options.query ?? ""}`, {
     headers: {
-      ...(options.email ? await authHeaders(options.email) : {}),
+      ...(options.email
+        ? await authHeaders(options.email, options.scopes ? { scopes: options.scopes } : {})
+        : {}),
       Upgrade: "websocket",
     },
   });

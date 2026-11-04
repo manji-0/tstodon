@@ -14,6 +14,7 @@ import {
   parseSocketState,
   requestStreamChannel,
   type SocketState,
+  type StreamAccess,
   type StreamRefusal,
   streamRefusalError,
 } from "./stream-access";
@@ -57,6 +58,7 @@ const mastodonStreamMessage = (channel: StreamChannelValue, event: StreamEventVa
     case "update":
     case "notification":
     case "status.update":
+    case "conversation":
       return JSON.stringify({ stream, event: event.kind, payload: JSON.stringify(event.payload) });
   }
 };
@@ -105,8 +107,13 @@ export class StreamHub extends DurableObject<Env> {
     }
     const wanted = new Set(delivery.value.channels.map(StreamChannel.key));
     for (const socket of this.openSockets()) {
-      for (const channel of this.stateOf(socket)?.channels ?? []) {
-        if (wanted.has(StreamChannel.key(channel))) {
+      const state = this.stateOf(socket);
+      for (const channel of state?.channels ?? []) {
+        if (
+          wanted.has(StreamChannel.key(channel)) &&
+          state &&
+          mayHear(state.access, delivery.value.event)
+        ) {
           socket.send(mastodonStreamMessage(channel, delivery.value.event));
         }
       }
@@ -191,7 +198,7 @@ export class StreamHub extends DurableObject<Env> {
     if (!state) {
       return ok(undefined);
     }
-    const channel = await requestStreamChannel(this.env, state.viewer, wire);
+    const channel = await requestStreamChannel(this.env, state.viewer, state.access, wire);
     if (channel.isErr()) {
       return err(channel.error);
     }
@@ -337,6 +344,10 @@ export class StreamHub extends DurableObject<Env> {
     return state.isOk() ? state.value : undefined;
   }
 }
+
+/** A token without `read:notifications` hears no notifications on `user`. */
+const mayHear = (access: StreamAccess, event: StreamEventValue): boolean =>
+  access.notifications || (event.kind !== "notification" && event.kind !== "notifications_merged");
 
 const isTagged = (channel: StreamChannelValue): boolean =>
   channel.kind === "Hashtag" || channel.kind === "List";

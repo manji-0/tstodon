@@ -1,10 +1,12 @@
 import type { Context } from "hono";
 import { bearerToken } from "../auth";
-import { jsonAuthError, requireUser } from "../http";
+import { jsonAuthError, requireSession } from "../http";
 import {
   hubName,
   requestStreamChannel,
+  NO_STREAM_ACCESS,
   type SocketState,
+  streamAccess,
   type StreamViewer,
   streamRefusalError,
 } from "../stream-access";
@@ -15,22 +17,25 @@ import { SOCKET_STATE_HEADER } from "../stream-hub";
  * by `stream` (with `tag` or `list`), and to more with `subscribe` messages,
  * as the web UI does over one shared socket. Without a token a socket may
  * only take public and hashtag streams, which are as open as their
- * timelines. A browser passes the token as the WebSocket subprotocol
+ * timelines. The other streams need the scope Mastodon asks for them (see
+ * `streamAccess`), checked here and on each `subscribe`. A browser passes the token as the WebSocket subprotocol
  * (`Sec-WebSocket-Protocol`), which the handshake must echo back.
  */
 export const getV1Streaming = async (c: Context<{ Bindings: Env }>) => {
   let viewer: StreamViewer = { kind: "Anonymous" };
+  let access = NO_STREAM_ACCESS;
   if (bearerToken(c.req.raw)) {
-    const user = await requireUser(c);
-    if (user.isErr()) {
-      return jsonAuthError(c, user.error);
+    const session = await requireSession(c);
+    if (session.isErr()) {
+      return jsonAuthError(c, session.error);
     }
-    viewer = { kind: "Account", accountId: user.value.id };
+    viewer = { kind: "Account", accountId: session.value.account.id };
+    access = streamAccess(session.value.token.scopes);
   }
   const stream = c.req.query("stream");
-  const state: SocketState = { viewer, channels: [] };
+  const state: SocketState = { viewer, access, channels: [] };
   if (stream) {
-    const channel = await requestStreamChannel(c.env, viewer, {
+    const channel = await requestStreamChannel(c.env, viewer, access, {
       stream,
       tag: c.req.query("tag"),
       list: c.req.query("list"),

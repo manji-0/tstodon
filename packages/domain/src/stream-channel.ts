@@ -38,12 +38,14 @@ const ListChannelSchema = z.object({
 
 /**
  * One stream a streaming socket can subscribe to, as Mastodon's streaming
- * API names them: `user`, `user:notification`, `public[:local|:remote][:media]`,
- * `hashtag[:local]` with a `tag`, and `list` with a `list` id.
+ * API names them: `user`, `user:notification`, `direct`,
+ * `public[:local|:remote][:media]`, `hashtag[:local]` with a `tag`, and
+ * `list` with a `list` id.
  */
 export const StreamChannelSchema = z.discriminatedUnion("kind", [
   unitKind("User"),
   unitKind("UserNotification"),
+  unitKind("Direct"),
   PublicChannelSchema,
   HashtagChannelSchema,
   ListChannelSchema,
@@ -88,6 +90,8 @@ const streamName = (channel: StreamChannel): string[] => {
       return ["user"];
     case "UserNotification":
       return ["user:notification"];
+    case "Direct":
+      return ["direct"];
     case "Public":
       return [publicStreamName(channel)];
     case "Hashtag":
@@ -116,6 +120,8 @@ const fromWire = (
       return ok({ kind: "User" });
     case "user:notification":
       return ok({ kind: "UserNotification" });
+    case "direct":
+      return ok({ kind: "Direct" });
     case "hashtag":
     case "hashtag:local": {
       if (tag.length === 0) {

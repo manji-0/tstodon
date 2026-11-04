@@ -18,6 +18,11 @@ const StatusUpdateSchema = z.object({
   kind: z.literal("status.update"),
   payload: z.unknown(),
 });
+/** A Conversation entity on the `direct` stream: a direct message arrived or moved one. */
+const ConversationSchema = z.object({
+  kind: z.literal("conversation"),
+  payload: z.unknown(),
+});
 /** Mastodon's event telling clients that accepted requests have merged. */
 const NotificationsMergedSchema = unitKind("notifications_merged");
 
@@ -26,6 +31,7 @@ export const StreamEventSchema = z.discriminatedUnion("kind", [
   DeleteSchema,
   NotificationSchema,
   StatusUpdateSchema,
+  ConversationSchema,
   NotificationsMergedSchema,
 ]);
 

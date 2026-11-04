@@ -14,13 +14,14 @@ import { queryTyped, runTyped } from "./typed-sql";
 export type SubscriptionRow = Readonly<{ stream: string; param: string }>;
 
 /**
- * The row a fan-out finds a channel by. `user*` streams have none: they go
+ * The row a fan-out finds a channel by. `user*` and `direct` streams have none: they go
  * to the account's own hub, which needs no lookup.
  */
 export const subscriptionRow = (channel: StreamChannelValue): SubscriptionRow | undefined => {
   switch (channel.kind) {
     case "User":
     case "UserNotification":
+    case "Direct":
       return undefined;
     case "Public":
       return { stream: StreamChannel.streamName(channel)[0] ?? "", param: "" };

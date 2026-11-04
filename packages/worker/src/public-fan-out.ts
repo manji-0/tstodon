@@ -88,6 +88,7 @@ const channelDocument = async (
     }
     case "User":
     case "UserNotification":
+    case "Direct":
     case "List":
       return ok(undefined);
   }
