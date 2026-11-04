@@ -192,6 +192,14 @@ describe("account source", () => {
     ).toContain(followerId);
   });
 
+  it("changes source sensitive on its own", async () => {
+    const email = "source-sensitive-only@example.com";
+    const marked = await patchJson(email, { source: { sensitive: true } });
+    expect(read(CredentialSchema, marked.body).source.sensitive).toBe(true);
+    const unmarked = await patchJson(email, { source: { sensitive: false } });
+    expect(read(CredentialSchema, unmarked.body).source.sensitive).toBe(false);
+  });
+
   it("applies source sensitive and language to new posts", async () => {
     const email = "source-compose@example.com";
     const updated = await patchJson(email, {

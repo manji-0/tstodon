@@ -56,12 +56,12 @@ export const updateAccountDefaults = async (
       assignments.push("default_language = ?");
       binds.push(input.language);
     }
-    if (assignments.length === 0) {
-      return;
-    }
     if (input.sensitive !== undefined) {
       assignments.push("default_sensitive = ?");
       binds.push(input.sensitive ? "1" : "0");
+    }
+    if (assignments.length === 0) {
+      return;
     }
     await db
       .prepare(`UPDATE accounts SET ${assignments.join(", ")}, updated_at = ? WHERE id = ?`)
