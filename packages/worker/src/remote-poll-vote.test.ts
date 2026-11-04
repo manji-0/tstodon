@@ -105,13 +105,15 @@ const count = async (sql: string, ...binds: string[]): Promise<number> =>
       .first<{ n: number }>()
   )?.n ?? -1;
 
+const JsonObject = z.record(z.string(), z.unknown());
+
 const updates = async (poll: LocalPoll): Promise<ReadonlyArray<Record<string, unknown>>> => {
   const rows = await env.DB.prepare(
     "SELECT payload_json FROM outbound_activities WHERE account_id = ? AND kind = 'Update' ORDER BY rowid",
   )
     .bind(poll.authorId)
     .all<{ payload_json: string }>();
-  return rows.results.map((row) => JSON.parse(row.payload_json) as Record<string, unknown>);
+  return rows.results.map((row) => JsonObject.parse(JSON.parse(row.payload_json)));
 };
 
 describe("remote votes on a local poll", () => {
@@ -121,7 +123,7 @@ describe("remote votes on a local poll", () => {
       headers: { accept: "application/activity+json" },
     });
     expect(response.status).toBe(200);
-    const note = (await response.json()) as Record<string, unknown>;
+    const note = JsonObject.parse(await response.json());
     expect(note).toMatchObject({
       type: "Question",
       anyOf: [
@@ -139,9 +141,9 @@ describe("remote votes on a local poll", () => {
 
   it("serves a single-choice poll as oneOf and a Create that carries the Question", async () => {
     const poll = await createPoll("oneof-author@example.com");
-    const note = (await (
-      await SELF.fetch(`https://example.com${new URL(poll.statusUri).pathname}`)
-    ).json()) as Record<string, unknown>;
+    const note = JsonObject.parse(
+      await (await SELF.fetch(`https://example.com${new URL(poll.statusUri).pathname}`)).json(),
+    );
     expect(note.type).toBe("Question");
     expect(note.anyOf).toBeUndefined();
     expect(Array.isArray(note.oneOf)).toBe(true);
@@ -151,7 +153,9 @@ describe("remote votes on a local poll", () => {
     )
       .bind(poll.authorId)
       .first<{ payload_json: string }>();
-    const activity = JSON.parse(created?.payload_json ?? "{}") as { object?: { type?: string } };
+    const activity = z
+      .object({ object: z.object({ type: z.string().optional() }).optional() })
+      .parse(JSON.parse(created?.payload_json ?? "{}"));
     expect(activity.object?.type).toBe("Question");
   });
 

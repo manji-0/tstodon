@@ -112,14 +112,14 @@ describe("account search", () => {
 
   it("answers 503 when a resolved address cannot be fetched", async () => {
     const original = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const href =
         typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       if (href.includes("webfinger") || href.includes("unreachable.example")) {
         return new Response("nope", { status: 503 });
       }
-      return original(input as RequestInfo, init);
-    }) as typeof fetch;
+      return original(input, init);
+    };
     try {
       const failed = await json(
         "/api/v1/accounts/search?q=%40someone%40unreachable.example&resolve=true",
@@ -157,7 +157,7 @@ describe("account search", () => {
       throw new Error("no spki");
     }
     const pem = `-----BEGIN PUBLIC KEY-----\n${btoa(String.fromCharCode(...new Uint8Array(spki)))}\n-----END PUBLIC KEY-----\n`;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       // Workers' fetch throws on `redirect: "error"`; mirror that here.
       if (init?.redirect === "error") {
         throw new TypeError("Invalid redirect value");
@@ -187,8 +187,8 @@ describe("account search", () => {
           publicKey: { id: `${actor}#main-key`, owner: actor, publicKeyPem: pem },
         });
       }
-      return original(input as RequestInfo, init);
-    }) as typeof fetch;
+      return original(input, init);
+    };
     try {
       const results = await search(
         "account-search-remote-resolver@example.com",
@@ -224,10 +224,10 @@ describe("account search", () => {
   it("does not resolve without resolve=true", async () => {
     let calls = 0;
     const original = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       calls += 1;
-      return original(input as RequestInfo, init);
-    }) as typeof fetch;
+      return original(input, init);
+    };
     try {
       const results = await search(
         "account-search-no-resolve@example.com",

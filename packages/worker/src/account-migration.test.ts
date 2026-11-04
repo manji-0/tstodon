@@ -359,7 +359,10 @@ const queuedPayloads = async (accountId: string, kind: string) => {
   )
     .bind(accountId, kind)
     .all<{ id: string; payload_json: string }>();
-  return results.map((row) => ({ id: row.id, payload: JSON.parse(row.payload_json) as unknown }));
+  return results.map((row) => ({
+    id: row.id,
+    payload: z.unknown().parse(JSON.parse(row.payload_json)),
+  }));
 };
 
 const UpdateSchema = z.object({

@@ -30,14 +30,14 @@ const withFetchStub = async (
   run: () => Promise<void>,
 ): Promise<void> => {
   const original = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const href = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const stubbed = handler(new URL(href));
     if (stubbed) {
       return stubbed;
     }
-    return original(input as RequestInfo, init);
-  }) as typeof fetch;
+    return original(input, init);
+  };
   try {
     await run();
   } finally {

@@ -63,15 +63,15 @@ const withFetchStub = async (
 ): Promise<number> => {
   let calls = 0;
   const original = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const href = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const stubbed = handler(new URL(href));
     if (stubbed) {
       calls += 1;
       return stubbed;
     }
-    return original(input as RequestInfo, init);
-  }) as typeof fetch;
+    return original(input, init);
+  };
   try {
     await run();
   } finally {
@@ -295,11 +295,11 @@ describe("link cards", () => {
     });
     let calls = 0;
     const original = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const href =
         typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       if (new URL(href).hostname !== "race.example") {
-        return original(input as RequestInfo, init);
+        return original(input, init);
       }
       calls += 1;
       if (calls === 1) {
@@ -310,7 +310,7 @@ describe("link cards", () => {
       return new Response(`<meta property="og:title" content="New Title" />`, {
         headers: { "content-type": "text/html" },
       });
-    }) as typeof fetch;
+    };
     try {
       const slow = unfurl(status.id, url);
       await hanging;
@@ -423,9 +423,9 @@ describe("link cards", () => {
       () => undefined,
       async () => {
         const original = globalThis.fetch;
-        globalThis.fetch = (async () => {
+        globalThis.fetch = async () => {
           throw new Error("network down");
-        }) as typeof fetch;
+        };
         try {
           expect(
             await processLinkCardJob(env, {

@@ -3,7 +3,10 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z } from "zod";
 import type { ValidationError } from "./validation-error";
 
-const compiledSchemas = new WeakMap<object, StandardSchemaV1<unknown, unknown>>();
+// Each cached value has the type its key schema names. TypeScript cannot tie a
+// value's type to its key's, so reading these caches back takes the package's
+// only two type assertions.
+const compiledSchemas = new WeakMap<z.ZodType, z.ZodType>();
 const parseFns = new WeakMap<object, (raw: unknown) => Result<unknown, ValidationError>>();
 
 const isZodType = (schema: unknown): schema is z.ZodType =>
@@ -13,6 +16,7 @@ const isZodType = (schema: unknown): schema is z.ZodType =>
 export const compileSchema = <T extends z.ZodType>(schema: T): T => {
   const cached = compiledSchemas.get(schema);
   if (cached) {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- keyed by schema, see above
     return cached as T;
   }
   let compiled: T;
@@ -28,12 +32,7 @@ export const compileSchema = <T extends z.ZodType>(schema: T): T => {
   return compiled;
 };
 
-type ZodWithBag = z.ZodType & {
-  _zod?: { bag?: { validator?: unknown } };
-};
-
-const hasValidator = (schema: z.ZodType): boolean =>
-  (schema as ZodWithBag)._zod?.bag?.validator != null;
+const hasValidator = (schema: z.ZodType): boolean => schema._zod.bag["validator"] != null;
 
 /**
  * True when a prior `compileSchema`/`warmSchemas`/`schemaResult` call already
@@ -44,7 +43,7 @@ export const peekCompiledFastPath = (schema: z.ZodType): boolean => {
     return true;
   }
   const cached = compiledSchemas.get(schema);
-  return cached != null && hasValidator(cached as z.ZodType);
+  return cached != null && hasValidator(cached);
 };
 
 /** True when `compileSchema` installed a compiled fast-path validator on the schema. */
@@ -61,8 +60,9 @@ export const warmSchemas = (schemas: ReadonlyArray<z.ZodType>): void => {
 export const schemaResult = <T>(
   schema: StandardSchemaV1<unknown, T>,
 ): ((raw: unknown) => Result<T, ValidationError>) => {
-  const cached = parseFns.get(schema as object);
+  const cached = parseFns.get(schema);
   if (cached) {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- keyed by schema, see above
     return cached as (raw: unknown) => Result<T, ValidationError>;
   }
 
@@ -81,9 +81,9 @@ export const schemaResult = <T>(
     return ok(result.value);
   };
 
-  parseFns.set(schema as object, parse as (raw: unknown) => Result<unknown, ValidationError>);
+  parseFns.set(schema, parse);
   if (effective !== schema) {
-    parseFns.set(effective as object, parse as (raw: unknown) => Result<unknown, ValidationError>);
+    parseFns.set(effective, parse);
   }
   return parse;
 };

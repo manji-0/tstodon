@@ -162,13 +162,11 @@ const mover = async (slug: string): Promise<Mover> => {
   });
   const serving = async <T>(aliases: ReadonlyArray<string>, work: () => Promise<T>): Promise<T> => {
     const original = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const href =
         typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      return href === target.actorUri
-        ? jsonResponse(document(aliases))
-        : original(input as RequestInfo, init);
-    }) as typeof fetch;
+      return href === target.actorUri ? jsonResponse(document(aliases)) : original(input, init);
+    };
     try {
       return await work();
     } finally {

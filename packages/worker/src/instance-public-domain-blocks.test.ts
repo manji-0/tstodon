@@ -4,6 +4,7 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { isLimitedFederation } from "./runtime-config";
+import { envWith } from "../test/env-fixture";
 
 const auth = (email: string, admin = false): Promise<Record<string, string>> =>
   authHeaders(email, { admin });
@@ -50,11 +51,9 @@ describe("limited federation guards", () => {
     expect(peers.status).toBe(200);
     expect(read(z.array(z.string()), peers.body)).toEqual([]);
     expect((await json("/api/v1/instance/activity")).status).toBe(200);
-    expect(await isLimitedFederation({ FEDERATION_ALLOW_HOSTS: "" } as unknown as Env)).toBe(false);
+    expect(await isLimitedFederation(envWith({ FEDERATION_ALLOW_HOSTS: "" }))).toBe(false);
     expect(
-      await isLimitedFederation({
-        FEDERATION_ALLOW_HOSTS: "a.example,b.example",
-      } as unknown as Env),
+      await isLimitedFederation(envWith({ FEDERATION_ALLOW_HOSTS: "a.example,b.example" })),
     ).toBe(true);
   });
 });

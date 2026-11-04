@@ -497,10 +497,10 @@ describe("data export and import", () => {
     await blockAccount(env.DB, target.id, owner.id, `${ORIGIN}/users/${owner.name}`);
     const original = globalThis.fetch;
     const fetched: string[] = [];
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
       fetched.push(String(input instanceof Request ? input.url : input));
       return new Response("nope", { status: 404 });
-    }) as typeof fetch;
+    };
     try {
       const id = await runImport(
         owner,
@@ -647,7 +647,7 @@ const CORP = "corp.test";
  */
 const withSplitDomain = async (body: () => Promise<void>) => {
   const original = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  globalThis.fetch = async (input: RequestInfo | URL) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const resource = url.searchParams.get("resource") ?? "";
     const name = /^acct:([^@]+)@corp\.test$/.exec(resource)?.[1];
@@ -664,7 +664,7 @@ const withSplitDomain = async (body: () => Promise<void>) => {
       });
     }
     return new Response("nope", { status: 404 });
-  }) as typeof fetch;
+  };
   try {
     await body();
   } finally {

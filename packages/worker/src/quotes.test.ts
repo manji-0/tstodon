@@ -293,9 +293,9 @@ describe("quote posts", () => {
       .bind(quotterAccount.id)
       .first<{ payload_json: string }>();
     expect(row).not.toBeNull();
-    const payload = JSON.parse(row?.payload_json ?? "{}") as {
-      object?: Record<string, unknown>;
-    };
+    const payload = z
+      .object({ object: z.record(z.string(), z.unknown()).optional() })
+      .parse(JSON.parse(row?.payload_json ?? "{}"));
     const quotedUri = String(payload.object?.quote);
     expect(quotedUri).toContain(original.id);
     expect(payload.object?.quote_uri).toBe(quotedUri);

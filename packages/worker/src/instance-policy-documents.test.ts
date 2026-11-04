@@ -8,6 +8,7 @@ import {
   privacyPolicy,
   termsOfService,
 } from "./runtime-config";
+import { envWith } from "../test/env-fixture";
 
 const json = async (path: string): Promise<{ status: number; body: unknown }> => {
   const response = await SELF.fetch(`https://example.com${path}`);
@@ -69,16 +70,20 @@ describe("instance policy documents", () => {
   });
 
   it("treats malformed or empty configuration as absent", () => {
-    const empty = {} as Env;
+    const empty = envWith({
+      INSTANCE_EXTENDED_DESCRIPTION: "",
+      INSTANCE_PRIVACY_POLICY: "",
+      INSTANCE_TERMS_OF_SERVICE: "",
+    });
     expect(extendedDescription(empty)).toBeUndefined();
     expect(privacyPolicy(empty)).toBeUndefined();
     expect(termsOfService(empty)).toBeUndefined();
 
-    const malformed = {
+    const malformed = envWith({
       INSTANCE_EXTENDED_DESCRIPTION: "not json",
       INSTANCE_PRIVACY_POLICY: '{"updated_at":"x"}',
       INSTANCE_TERMS_OF_SERVICE: '{"content":"<p>x</p>","effective_date":"soon"}',
-    } as unknown as Env;
+    });
     expect(extendedDescription(malformed)).toBeUndefined();
     expect(privacyPolicy(malformed)).toBeUndefined();
     expect(termsOfService(malformed)).toBeUndefined();

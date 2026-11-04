@@ -121,10 +121,10 @@ describe("admin domain blocks", () => {
 
     let fetched = 0;
     const original = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       fetched += 1;
-      return original(input as RequestInfo, init);
-    }) as typeof fetch;
+      return original(input, init);
+    };
     try {
       const resolved = await json("/api/v2/search?q=@bob@suspended.example&resolve=true", {
         headers: await auth(email),

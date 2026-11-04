@@ -1,21 +1,19 @@
 import type { Context } from "hono";
 import { cors } from "hono/cors";
 import type { MiddlewareHandler } from "hono";
-import { parseInstanceIdentity } from "./runtime-config";
+import { optionalEnvString, parseInstanceIdentity } from "./runtime-config";
 
 const normalizeOrigin = (value: string): string => value.trim().replace(/\/$/, "");
 
-const splitOrigins = (raw: string | undefined): string[] =>
-  `${raw ?? ""}`
+const splitOrigins = (raw: string): string[] =>
+  raw
     .split(",")
     .map(normalizeOrigin)
     .filter((value) => value.length > 0);
 
 /** Origins allowed to call `/api/*` and the OAuth token endpoints from a browser. */
 export const apiCorsAllowedOrigins = (env: Env): ReadonlySet<string> => {
-  const origins = new Set(
-    splitOrigins((env as { CORS_ALLOWED_ORIGINS?: string }).CORS_ALLOWED_ORIGINS),
-  );
+  const origins = new Set(splitOrigins(optionalEnvString(env, "CORS_ALLOWED_ORIGINS")));
   const identity = parseInstanceIdentity(env);
   if (identity.isOk()) {
     origins.add(normalizeOrigin(identity.value.publicOrigin));

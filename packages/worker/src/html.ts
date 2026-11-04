@@ -1,13 +1,13 @@
 const HTML_ESCAPE_RE = /[&<>"]/g;
-const HTML_ESCAPE_MAP = {
+const HTML_ESCAPE_MAP: Readonly<Record<string, string>> = {
   "&": "&amp;",
   "<": "&lt;",
   ">": "&gt;",
   '"': "&quot;",
-} as const;
+};
 
 export const escapeHtml = (value: string): string =>
-  value.replace(HTML_ESCAPE_RE, (ch) => HTML_ESCAPE_MAP[ch as keyof typeof HTML_ESCAPE_MAP]);
+  value.replace(HTML_ESCAPE_RE, (ch) => HTML_ESCAPE_MAP[ch] ?? ch);
 
 export const textToHtml = (text: string): string => {
   const escaped = escapeHtml(text).replaceAll("\n", "<br>");

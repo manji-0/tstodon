@@ -24,6 +24,11 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   return parsed.value;
 };
 
+/** A queued vote `Create`: the fields the assertions read, the rest kept for `toMatchObject`. */
+const QueuedCreateSchema = z.looseObject({
+  object: z.looseObject({ id: z.string().optional(), name: z.string().optional() }),
+});
+
 const PollSchema = z.object({
   id: z.string(),
   expires_at: z.string().nullable(),
@@ -197,7 +202,7 @@ describe("remote polls", () => {
         .all<{ payload_json: string; inbox_url: string }>();
       return rows.results.map((row) => ({
         inbox: row.inbox_url,
-        activity: JSON.parse(row.payload_json) as Record<string, any>,
+        activity: QueuedCreateSchema.parse(JSON.parse(row.payload_json)),
       }));
     };
 

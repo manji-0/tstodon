@@ -6,6 +6,7 @@ import { newEntityId } from "./ids";
 import { measureJobPage, measureStreamRender } from "./metrics";
 import { processOutboxJob } from "./outbox-job";
 import { ok, err } from "neverthrow";
+import { z } from "zod";
 
 type Point = Readonly<{ indexes: string[]; doubles: number[]; blobs: string[] }>;
 
@@ -225,7 +226,7 @@ describe("timeline request metrics", () => {
       headers: { "content-type": "application/json", ...(await authHeaders(email)) },
       body: JSON.stringify({ title: "metrics" }),
     });
-    const list = (await created.json()) as { id: string };
+    const list = z.object({ id: z.string() }).parse(await created.json());
     for (const path of [
       "/api/v1/timelines/home",
       `/api/v1/timelines/list/${list.id}`,

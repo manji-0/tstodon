@@ -187,15 +187,15 @@ describe("remote boosts on the home timeline", () => {
     const noteUri = "https://remote.example/notes/boost-fetched";
 
     const original = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const href =
         typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       return href === noteUri
         ? new Response(JSON.stringify(noteDocument(author, noteUri, "boost-fetched")), {
             headers: { "content-type": "application/activity+json" },
           })
-        : original(input as RequestInfo, init);
-    }) as typeof fetch;
+        : original(input, init);
+    };
     try {
       expect(await boost(booster, noteUri, "fetch")).toBe(202);
     } finally {

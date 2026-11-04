@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import { resolveApiCorsOrigin } from "./cors";
+import { envWith } from "../test/env-fixture";
 
-const env = {
+const env = envWith({
   INSTANCE_DOMAIN: "example.com",
   INSTANCE_PUBLIC_ORIGIN: "https://example.com",
   INSTANCE_NAME: "tstodon",
@@ -12,7 +13,7 @@ const env = {
   INSTANCE_THUMBNAIL_URL: "https://example.com/site/thumbnail.png",
   MEDIA_PUBLIC_BASE_URL: "https://example.com",
   CORS_ALLOWED_ORIGINS: "https://web.example.com, https://admin.example.com/",
-} as unknown as Env;
+});
 
 describe("cors allowlist", () => {
   it("allows the instance public origin and configured extras", () => {

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import { Hono } from "hono";
 import { jsonAuthError, jsonRepositoryError, jsonValidationError, queryLimit } from "./http";
+import { z } from "zod";
+
+const KindBody = z.object({ kind: z.string() });
 
 describe("queryLimit", () => {
   it("falls back when missing or non-positive", () => {
@@ -44,7 +47,7 @@ describe("Result to HTTP mappers", () => {
     for (const kind of ["MissingToken", "InvalidToken"] as const) {
       const res = await app.request(`/auth/${kind}`);
       expect(res.status).toBe(401);
-      const body = (await res.json()) as { kind: string };
+      const body = KindBody.parse(await res.json());
       expect(body.kind).toBe(kind);
     }
   });
@@ -52,7 +55,7 @@ describe("Result to HTTP mappers", () => {
   it("maps Forbidden to 403", async () => {
     const res = await app.request("/auth/Forbidden");
     expect(res.status).toBe(403);
-    const body = (await res.json()) as { kind: string };
+    const body = KindBody.parse(await res.json());
     expect(body.kind).toBe("Forbidden");
   });
 
@@ -60,14 +63,14 @@ describe("Result to HTTP mappers", () => {
     const res = await app.request("/auth/VerificationUnavailable");
     expect(res.status).toBe(503);
     expect(res.headers.get("Retry-After")).toBe("5");
-    const body = (await res.json()) as { kind: string };
+    const body = KindBody.parse(await res.json());
     expect(body.kind).toBe("VerificationUnavailable");
   });
 
   it("maps RepositoryError to 500", async () => {
     const res = await app.request("/auth/RepositoryError");
     expect(res.status).toBe(500);
-    const body = (await res.json()) as { kind: string; error: string };
+    const body = z.object({ kind: z.string(), error: z.string() }).parse(await res.json());
     expect(body.kind).toBe("RepositoryError");
     expect(body.error).toBe("db down");
   });

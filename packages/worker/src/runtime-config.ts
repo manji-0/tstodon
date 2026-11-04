@@ -10,7 +10,7 @@ import { parseJsonText } from "./json-column";
  * An optional string variable that `wrangler.jsonc` may leave out, so it is
  * absent from the generated `Env`; anything but a string reads as empty.
  */
-const optionalEnvString = (env: Env, name: string): string => {
+export const optionalEnvString = (env: Env, name: string): string => {
   const value: unknown = Reflect.get(env, name);
   return typeof value === "string" ? value : "";
 };

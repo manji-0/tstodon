@@ -95,6 +95,8 @@ export default defineConfig({
       "packages/worker/.wrangler/**",
       "e2e/instances/.wrangler/**",
       "**/worker-configuration.d.ts",
+      // Prisma's generated client and TypedSQL modules cast internally.
+      "packages/worker/src/generated/**",
     ],
     rules: {
       "typescript/consistent-type-definitions": ["error", "type"],
@@ -114,6 +116,7 @@ export default defineConfig({
         },
       ],
       "typescript/no-misused-spread": "error",
+      "typescript/consistent-type-assertions": ["error", { assertionStyle: "never" }],
       "vite-plus/prefer-vite-plus-imports": "error",
     },
     jsPlugins: [
