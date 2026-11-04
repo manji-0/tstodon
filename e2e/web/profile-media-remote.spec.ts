@@ -120,4 +120,48 @@ test.describe("Mastodon web UI: profile, media, remote accounts", () => {
     await expect(page.getByText("I live on another server.")).toBeVisible();
     await expect(page.locator('img[src="http://127.0.0.1:8794/avatar.png"]').first()).toBeVisible();
   });
+
+  test("favourites and boosts a post from another server", async ({ page }) => {
+    // The outbox backfill runs on the queue, so the post can take a while to appear.
+    test.setTimeout(150_000);
+    await signUp(page, person("engager"));
+    const openProfile = async () => {
+      await page.goto("/home");
+      await page.getByPlaceholder("Search or paste URL").fill("@remote_alice@127.0.0.1:8794");
+      await page.keyboard.press("Enter");
+      await page
+        .getByRole("link", { name: /Remote Alice/ })
+        .first()
+        .click();
+      await expect(page.getByRole("heading", { name: "Remote Alice" })).toBeVisible();
+    };
+
+    // The first visit queues the outbox backfill that brings her post in.
+    const post = status(page, "Greetings from the remote server");
+    await expect(async () => {
+      await openProfile();
+      await expect(post).toBeVisible({ timeout: 3_000 });
+    }).toPass({ timeout: 45_000 });
+
+    const favourited = page.waitForResponse(
+      (response) => /\/api\/v1\/statuses\/[^/]+\/favourite$/.test(response.url()) && response.ok(),
+    );
+    await post.getByRole("button", { name: "Favorite" }).click();
+    await favourited;
+    await expect(post.getByRole("button", { name: "Remove from favorites" })).toBeVisible();
+
+    const reblogged = page.waitForResponse(
+      (response) => /\/api\/v1\/statuses\/[^/]+\/reblog$/.test(response.url()) && response.ok(),
+    );
+    await post.getByRole("button", { name: "Boost or quote" }).click();
+    await page.getByRole("button", { name: "Boost", exact: true }).click();
+    await reblogged;
+
+    // What the server kept: the post on Favorites, and the boost on home.
+    await page.goto("/favourites");
+    await expect(post).toBeVisible();
+    await page.goto("/home");
+    await expect(post).toBeVisible();
+    await expect(page.getByText(/boosted/).first()).toBeVisible();
+  });
 });
