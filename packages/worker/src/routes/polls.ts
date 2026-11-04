@@ -50,7 +50,14 @@ export const getV1PollsById = async (c: Context<{ Bindings: Env }, "/api/v1/poll
       return c.json({ error: "Record not found", kind: "NotFound" }, 404);
     }
     const votes = await findRemotePollVotes(c.env.DB, viewerId, [remote.value]);
-    return c.json(remotePollJson(remote.value.id, remote.value.poll, votes.get(remote.value.id)));
+    return c.json(
+      remotePollJson(
+        remote.value.id,
+        remote.value.poll,
+        votes.get(remote.value.id),
+        remote.value.emojis,
+      ),
+    );
   }
   const poll = await findPollById(c.env.DB, c.req.param("id"), viewerId);
   if (poll.isErr()) {

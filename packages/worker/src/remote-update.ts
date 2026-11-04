@@ -19,6 +19,7 @@ import { notifyFromRemote } from "./notify";
 import { actorMovedTo, remoteActorFromDocument } from "./remote-actor-fetch";
 import { setRemoteActorMovedTo, upsertRemoteActor } from "./remote-actor-store";
 import { findMoveTarget } from "./remote-move";
+import { snapshotRemoteRevision } from "./remote-status-edit";
 import {
   applyMediaPolicy,
   mentionedLocalAccountIds,
@@ -121,6 +122,13 @@ const applyNoteUpdate = async (
   const previous = cached.value.editedAt;
   if (edited && previous.kind === "Edited" && !isNewer(editedAt.value, previous.at)) {
     return ok(undefined);
+  }
+  if (edited) {
+    // The version being replaced goes into the history first; the original is the first one kept.
+    const kept = await snapshotRemoteRevision(env.DB, cached.value);
+    if (kept.isErr()) {
+      return err(kept.error);
+    }
   }
   const status: RemoteStatusValue = edited
     ? { ...refreshed, editedAt: { kind: "Edited", at: editedAt.value } }

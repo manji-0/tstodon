@@ -14,10 +14,11 @@
 -- @param {String} $14:inReplyToUri?
 -- @param {String} $15:editedAt?
 -- @param {String} $16:pollJson?
+-- @param {String} $17:emojisJson
 INSERT INTO remote_statuses (
   id, actor_uri, object_uri, url, content_html, spoiler_text,
-  visibility, sensitive, language, published_at, media_json, created_at, updated_at, in_reply_to_uri, edited_at, poll_json
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+  visibility, sensitive, language, published_at, media_json, created_at, updated_at, in_reply_to_uri, edited_at, poll_json, emojis_json
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 ON CONFLICT(object_uri) DO UPDATE SET
   card_json = CASE WHEN content_html = excluded.content_html THEN card_json ELSE NULL END,
   card_url = CASE WHEN content_html = excluded.content_html THEN card_url ELSE NULL END,
@@ -30,5 +31,6 @@ ON CONFLICT(object_uri) DO UPDATE SET
   url = excluded.url,
   media_json = excluded.media_json,
   poll_json = excluded.poll_json,
+  emojis_json = excluded.emojis_json,
   edited_at = coalesce(excluded.edited_at, edited_at),
   updated_at = excluded.updated_at

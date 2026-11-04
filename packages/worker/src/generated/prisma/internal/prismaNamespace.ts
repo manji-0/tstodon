@@ -420,6 +420,7 @@ export const ModelName = {
   notification_dismissals: "notification_dismissals",
   notification_clear_markers: "notification_clear_markers",
   status_edits: "status_edits",
+  remote_status_edits: "remote_status_edits",
   status_pins: "status_pins",
   account_announcement_dismissals: "account_announcement_dismissals",
   account_announcement_reactions: "account_announcement_reactions",
@@ -512,6 +513,7 @@ export type TypeMap<
       | "notification_dismissals"
       | "notification_clear_markers"
       | "status_edits"
+      | "remote_status_edits"
       | "status_pins"
       | "account_announcement_dismissals"
       | "account_announcement_reactions"
@@ -2744,6 +2746,82 @@ export type TypeMap<
           args: Prisma.status_editsCountArgs<ExtArgs>;
           result:
             | runtime.Types.Utils.Optional<Prisma.Status_editsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    remote_status_edits: {
+      payload: Prisma.$remote_status_editsPayload<ExtArgs>;
+      fields: Prisma.remote_status_editsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.remote_status_editsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_editsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.remote_status_editsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_editsPayload>;
+        };
+        findFirst: {
+          args: Prisma.remote_status_editsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_editsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.remote_status_editsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_editsPayload>;
+        };
+        findMany: {
+          args: Prisma.remote_status_editsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_editsPayload>[];
+        };
+        create: {
+          args: Prisma.remote_status_editsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_editsPayload>;
+        };
+        createMany: {
+          args: Prisma.remote_status_editsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.remote_status_editsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_editsPayload>[];
+        };
+        delete: {
+          args: Prisma.remote_status_editsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_editsPayload>;
+        };
+        update: {
+          args: Prisma.remote_status_editsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_editsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.remote_status_editsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.remote_status_editsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.remote_status_editsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_editsPayload>[];
+        };
+        upsert: {
+          args: Prisma.remote_status_editsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_status_editsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Remote_status_editsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateRemote_status_edits>;
+        };
+        groupBy: {
+          args: Prisma.remote_status_editsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Remote_status_editsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.remote_status_editsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Remote_status_editsCountAggregateOutputType>
             | number;
         };
       };
@@ -6382,6 +6460,16 @@ export const Status_editsScalarFieldEnum = {
 export type Status_editsScalarFieldEnum =
   (typeof Status_editsScalarFieldEnum)[keyof typeof Status_editsScalarFieldEnum];
 
+export const Remote_status_editsScalarFieldEnum = {
+  id: "id",
+  status_id: "status_id",
+  snapshot_json: "snapshot_json",
+  created_at: "created_at",
+} as const;
+
+export type Remote_status_editsScalarFieldEnum =
+  (typeof Remote_status_editsScalarFieldEnum)[keyof typeof Remote_status_editsScalarFieldEnum];
+
 export const Status_pinsScalarFieldEnum = {
   account_id: "account_id",
   status_id: "status_id",
@@ -6662,6 +6750,7 @@ export const Remote_statusesScalarFieldEnum = {
   in_reply_to_uri: "in_reply_to_uri",
   edited_at: "edited_at",
   poll_json: "poll_json",
+  emojis_json: "emojis_json",
   created_at: "created_at",
   updated_at: "updated_at",
 } as const;
@@ -6841,6 +6930,7 @@ export const Remote_poll_own_votesScalarFieldEnum = {
   choice_index: "choice_index",
   activity_id: "activity_id",
   optimistic: "optimistic",
+  expiry_notified_at: "expiry_notified_at",
   created_at: "created_at",
 } as const;
 
@@ -7116,6 +7206,7 @@ export type GlobalOmitConfig = {
   notification_dismissals?: Prisma.notification_dismissalsOmit;
   notification_clear_markers?: Prisma.notification_clear_markersOmit;
   status_edits?: Prisma.status_editsOmit;
+  remote_status_edits?: Prisma.remote_status_editsOmit;
   status_pins?: Prisma.status_pinsOmit;
   account_announcement_dismissals?: Prisma.account_announcement_dismissalsOmit;
   account_announcement_reactions?: Prisma.account_announcement_reactionsOmit;

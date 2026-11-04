@@ -36,6 +36,7 @@ export type * from "./models/mutes";
 export type * from "./models/notification_dismissals";
 export type * from "./models/notification_clear_markers";
 export type * from "./models/status_edits";
+export type * from "./models/remote_status_edits";
 export type * from "./models/status_pins";
 export type * from "./models/account_announcement_dismissals";
 export type * from "./models/account_announcement_reactions";

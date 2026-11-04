@@ -1,4 +1,5 @@
-import type { RemotePollValue } from "@tstodon/domain";
+import type { RemoteEmoji, RemotePollValue } from "@tstodon/domain";
+import { remoteEmojisJson, remoteEmojisInTexts } from "./remote-emoji-document";
 import type { PollRecord } from "./poll-store";
 import { NO_REMOTE_POLL_VOTES, type RemotePollVotes } from "./remote-poll-vote-store";
 
@@ -40,6 +41,7 @@ export const remotePollJson = (
   statusId: string,
   poll: Exclude<RemotePollValue, { kind: "NoPoll" }>,
   votes: RemotePollVotes = NO_REMOTE_POLL_VOTES,
+  emojis: ReadonlyArray<RemoteEmoji> = [],
 ): Record<string, unknown> => {
   const expiresAt = poll.ends.kind === "At" ? poll.ends.at : null;
   const options = poll.options.map((option, index) => ({
@@ -63,6 +65,12 @@ export const remotePollJson = (
     voted: votes.ownChoices.length > 0,
     own_votes: [...votes.ownChoices],
     options,
-    emojis: [],
+    // Only the emoji the option titles use belong to the poll.
+    emojis: remoteEmojisJson(
+      remoteEmojisInTexts(
+        poll.options.map((option) => option.title),
+        emojis,
+      ),
+    ),
   };
 };

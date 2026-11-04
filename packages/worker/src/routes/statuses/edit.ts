@@ -42,7 +42,10 @@ import { enqueuePublicFanOut } from "../../public-fan-out";
 import { publishToAccount } from "../../stream-publish";
 import { findStatusById, replaceStatusMedia, updateLocalNote } from "../../status-store";
 import { findStatusUpdatedAt, insertStatusEdit, listStatusEdits } from "../../status-edit-store";
-import { canViewStatus } from "../../visibility-guard";
+import { canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
+import { findRemoteActorByUri } from "../../remote-actor-store";
+import { findRemoteStatusById } from "../../remote-status-store";
+import { remoteStatusHistory } from "../../remote-status-edit";
 import { isQuotePolicy, listAcceptedQuoteEdges, setStatusQuotePolicy } from "../../quote-store";
 import { applyMediaAttributes, queueLinkCard, visibilityIsPublic } from "./create";
 
@@ -341,6 +344,31 @@ export const putV1StatusesById = (c: Context<{ Bindings: Env }, "/api/v1/statuse
 export const patchV1StatusesById = (c: Context<{ Bindings: Env }, "/api/v1/statuses/:id">) =>
   updateStatus(c);
 
+/** The history of a cached remote note the viewer may see, or 404. */
+const remoteHistory = async (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/history">,
+  identity: InstanceIdentity,
+  id: string,
+  viewerId: string | undefined,
+) => {
+  const remote = await findRemoteStatusById(c.env.DB, id);
+  if (remote.isErr()) {
+    return jsonRepositoryError(c, remote.error.message);
+  }
+  if (!remote.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const actor = await findRemoteActorByUri(c.env.DB, remote.value.actorUri);
+  if (actor.isErr()) {
+    return jsonRepositoryError(c, actor.error.message);
+  }
+  if (!actor.value || !(await canViewRemoteStatus(c.env.DB, remote.value, viewerId))) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const history = await remoteStatusHistory(c.env.DB, identity, remote.value, actor.value);
+  return history.isErr() ? jsonRepositoryError(c, history.error.message) : c.json(history.value);
+};
+
 export const getV1StatusesByIdHistory = async (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/history">,
 ) => {
@@ -358,7 +386,7 @@ export const getV1StatusesByIdHistory = async (
     return jsonRepositoryError(c, status.error.message);
   }
   if (!status.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    return remoteHistory(c, identity.value, c.req.param("id") ?? "", viewerId);
   }
   if (!(await canViewStatus(c.env.DB, status.value, viewerId))) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
@@ -391,7 +419,13 @@ export const getV1StatusesByIdSource = async (
   if (status.isErr()) {
     return jsonRepositoryError(c, status.error.message);
   }
-  if (!status.value || status.value.kind !== "LocalNote") {
+  // The source is for the author to edit from: a remote note, or anyone
+  // else's, answers as if it did not exist.
+  if (
+    !status.value ||
+    status.value.kind !== "LocalNote" ||
+    status.value.accountId !== user.value.id
+  ) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json({

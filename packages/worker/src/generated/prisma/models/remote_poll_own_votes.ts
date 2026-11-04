@@ -42,6 +42,7 @@ export type Remote_poll_own_votesMinAggregateOutputType = {
   choice_index: number | null;
   activity_id: string | null;
   optimistic: number | null;
+  expiry_notified_at: string | null;
   created_at: string | null;
 };
 
@@ -51,6 +52,7 @@ export type Remote_poll_own_votesMaxAggregateOutputType = {
   choice_index: number | null;
   activity_id: string | null;
   optimistic: number | null;
+  expiry_notified_at: string | null;
   created_at: string | null;
 };
 
@@ -60,6 +62,7 @@ export type Remote_poll_own_votesCountAggregateOutputType = {
   choice_index: number;
   activity_id: number;
   optimistic: number;
+  expiry_notified_at: number;
   created_at: number;
   _all: number;
 };
@@ -80,6 +83,7 @@ export type Remote_poll_own_votesMinAggregateInputType = {
   choice_index?: true;
   activity_id?: true;
   optimistic?: true;
+  expiry_notified_at?: true;
   created_at?: true;
 };
 
@@ -89,6 +93,7 @@ export type Remote_poll_own_votesMaxAggregateInputType = {
   choice_index?: true;
   activity_id?: true;
   optimistic?: true;
+  expiry_notified_at?: true;
   created_at?: true;
 };
 
@@ -98,6 +103,7 @@ export type Remote_poll_own_votesCountAggregateInputType = {
   choice_index?: true;
   activity_id?: true;
   optimistic?: true;
+  expiry_notified_at?: true;
   created_at?: true;
   _all?: true;
 };
@@ -199,6 +205,7 @@ export type Remote_poll_own_votesGroupByOutputType = {
   choice_index: number;
   activity_id: string;
   optimistic: number;
+  expiry_notified_at: string | null;
   created_at: string;
   _count: Remote_poll_own_votesCountAggregateOutputType | null;
   _avg: Remote_poll_own_votesAvgAggregateOutputType | null;
@@ -229,6 +236,7 @@ export type remote_poll_own_votesWhereInput = {
   choice_index?: Prisma.IntFilter<"remote_poll_own_votes"> | number;
   activity_id?: Prisma.StringFilter<"remote_poll_own_votes"> | string;
   optimistic?: Prisma.IntFilter<"remote_poll_own_votes"> | number;
+  expiry_notified_at?: Prisma.StringNullableFilter<"remote_poll_own_votes"> | string | null;
   created_at?: Prisma.StringFilter<"remote_poll_own_votes"> | string;
   accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
   remote_statuses?: Prisma.XOR<
@@ -243,6 +251,7 @@ export type remote_poll_own_votesOrderByWithRelationInput = {
   choice_index?: Prisma.SortOrder;
   activity_id?: Prisma.SortOrder;
   optimistic?: Prisma.SortOrder;
+  expiry_notified_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   accounts?: Prisma.accountsOrderByWithRelationInput;
   remote_statuses?: Prisma.remote_statusesOrderByWithRelationInput;
@@ -259,6 +268,7 @@ export type remote_poll_own_votesWhereUniqueInput = Prisma.AtLeast<
     choice_index?: Prisma.IntFilter<"remote_poll_own_votes"> | number;
     activity_id?: Prisma.StringFilter<"remote_poll_own_votes"> | string;
     optimistic?: Prisma.IntFilter<"remote_poll_own_votes"> | number;
+    expiry_notified_at?: Prisma.StringNullableFilter<"remote_poll_own_votes"> | string | null;
     created_at?: Prisma.StringFilter<"remote_poll_own_votes"> | string;
     accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
     remote_statuses?: Prisma.XOR<
@@ -275,6 +285,7 @@ export type remote_poll_own_votesOrderByWithAggregationInput = {
   choice_index?: Prisma.SortOrder;
   activity_id?: Prisma.SortOrder;
   optimistic?: Prisma.SortOrder;
+  expiry_notified_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   _count?: Prisma.remote_poll_own_votesCountOrderByAggregateInput;
   _avg?: Prisma.remote_poll_own_votesAvgOrderByAggregateInput;
@@ -296,6 +307,10 @@ export type remote_poll_own_votesScalarWhereWithAggregatesInput = {
   choice_index?: Prisma.IntWithAggregatesFilter<"remote_poll_own_votes"> | number;
   activity_id?: Prisma.StringWithAggregatesFilter<"remote_poll_own_votes"> | string;
   optimistic?: Prisma.IntWithAggregatesFilter<"remote_poll_own_votes"> | number;
+  expiry_notified_at?:
+    | Prisma.StringNullableWithAggregatesFilter<"remote_poll_own_votes">
+    | string
+    | null;
   created_at?: Prisma.StringWithAggregatesFilter<"remote_poll_own_votes"> | string;
 };
 
@@ -303,6 +318,7 @@ export type remote_poll_own_votesCreateInput = {
   choice_index: number;
   activity_id: string;
   optimistic?: number;
+  expiry_notified_at?: string | null;
   created_at?: string;
   accounts: Prisma.accountsCreateNestedOneWithoutRemote_poll_own_votesInput;
   remote_statuses: Prisma.remote_statusesCreateNestedOneWithoutRemote_poll_own_votesInput;
@@ -314,6 +330,7 @@ export type remote_poll_own_votesUncheckedCreateInput = {
   choice_index: number;
   activity_id: string;
   optimistic?: number;
+  expiry_notified_at?: string | null;
   created_at?: string;
 };
 
@@ -321,6 +338,7 @@ export type remote_poll_own_votesUpdateInput = {
   choice_index?: Prisma.IntFieldUpdateOperationsInput | number;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   optimistic?: Prisma.IntFieldUpdateOperationsInput | number;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutRemote_poll_own_votesNestedInput;
   remote_statuses?: Prisma.remote_statusesUpdateOneRequiredWithoutRemote_poll_own_votesNestedInput;
@@ -332,6 +350,7 @@ export type remote_poll_own_votesUncheckedUpdateInput = {
   choice_index?: Prisma.IntFieldUpdateOperationsInput | number;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   optimistic?: Prisma.IntFieldUpdateOperationsInput | number;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -341,6 +360,7 @@ export type remote_poll_own_votesCreateManyInput = {
   choice_index: number;
   activity_id: string;
   optimistic?: number;
+  expiry_notified_at?: string | null;
   created_at?: string;
 };
 
@@ -348,6 +368,7 @@ export type remote_poll_own_votesUpdateManyMutationInput = {
   choice_index?: Prisma.IntFieldUpdateOperationsInput | number;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   optimistic?: Prisma.IntFieldUpdateOperationsInput | number;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -357,6 +378,7 @@ export type remote_poll_own_votesUncheckedUpdateManyInput = {
   choice_index?: Prisma.IntFieldUpdateOperationsInput | number;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   optimistic?: Prisma.IntFieldUpdateOperationsInput | number;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -382,6 +404,7 @@ export type remote_poll_own_votesCountOrderByAggregateInput = {
   choice_index?: Prisma.SortOrder;
   activity_id?: Prisma.SortOrder;
   optimistic?: Prisma.SortOrder;
+  expiry_notified_at?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
@@ -396,6 +419,7 @@ export type remote_poll_own_votesMaxOrderByAggregateInput = {
   choice_index?: Prisma.SortOrder;
   activity_id?: Prisma.SortOrder;
   optimistic?: Prisma.SortOrder;
+  expiry_notified_at?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
@@ -405,6 +429,7 @@ export type remote_poll_own_votesMinOrderByAggregateInput = {
   choice_index?: Prisma.SortOrder;
   activity_id?: Prisma.SortOrder;
   optimistic?: Prisma.SortOrder;
+  expiry_notified_at?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
 };
 
@@ -637,6 +662,7 @@ export type remote_poll_own_votesCreateWithoutAccountsInput = {
   choice_index: number;
   activity_id: string;
   optimistic?: number;
+  expiry_notified_at?: string | null;
   created_at?: string;
   remote_statuses: Prisma.remote_statusesCreateNestedOneWithoutRemote_poll_own_votesInput;
 };
@@ -646,6 +672,7 @@ export type remote_poll_own_votesUncheckedCreateWithoutAccountsInput = {
   choice_index: number;
   activity_id: string;
   optimistic?: number;
+  expiry_notified_at?: string | null;
   created_at?: string;
 };
 
@@ -704,6 +731,7 @@ export type remote_poll_own_votesScalarWhereInput = {
   choice_index?: Prisma.IntFilter<"remote_poll_own_votes"> | number;
   activity_id?: Prisma.StringFilter<"remote_poll_own_votes"> | string;
   optimistic?: Prisma.IntFilter<"remote_poll_own_votes"> | number;
+  expiry_notified_at?: Prisma.StringNullableFilter<"remote_poll_own_votes"> | string | null;
   created_at?: Prisma.StringFilter<"remote_poll_own_votes"> | string;
 };
 
@@ -711,6 +739,7 @@ export type remote_poll_own_votesCreateWithoutRemote_statusesInput = {
   choice_index: number;
   activity_id: string;
   optimistic?: number;
+  expiry_notified_at?: string | null;
   created_at?: string;
   accounts: Prisma.accountsCreateNestedOneWithoutRemote_poll_own_votesInput;
 };
@@ -720,6 +749,7 @@ export type remote_poll_own_votesUncheckedCreateWithoutRemote_statusesInput = {
   choice_index: number;
   activity_id: string;
   optimistic?: number;
+  expiry_notified_at?: string | null;
   created_at?: string;
 };
 
@@ -770,6 +800,7 @@ export type remote_poll_own_votesCreateManyAccountsInput = {
   choice_index: number;
   activity_id: string;
   optimistic?: number;
+  expiry_notified_at?: string | null;
   created_at?: string;
 };
 
@@ -777,6 +808,7 @@ export type remote_poll_own_votesUpdateWithoutAccountsInput = {
   choice_index?: Prisma.IntFieldUpdateOperationsInput | number;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   optimistic?: Prisma.IntFieldUpdateOperationsInput | number;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   remote_statuses?: Prisma.remote_statusesUpdateOneRequiredWithoutRemote_poll_own_votesNestedInput;
 };
@@ -786,6 +818,7 @@ export type remote_poll_own_votesUncheckedUpdateWithoutAccountsInput = {
   choice_index?: Prisma.IntFieldUpdateOperationsInput | number;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   optimistic?: Prisma.IntFieldUpdateOperationsInput | number;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -794,6 +827,7 @@ export type remote_poll_own_votesUncheckedUpdateManyWithoutAccountsInput = {
   choice_index?: Prisma.IntFieldUpdateOperationsInput | number;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   optimistic?: Prisma.IntFieldUpdateOperationsInput | number;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -802,6 +836,7 @@ export type remote_poll_own_votesCreateManyRemote_statusesInput = {
   choice_index: number;
   activity_id: string;
   optimistic?: number;
+  expiry_notified_at?: string | null;
   created_at?: string;
 };
 
@@ -809,6 +844,7 @@ export type remote_poll_own_votesUpdateWithoutRemote_statusesInput = {
   choice_index?: Prisma.IntFieldUpdateOperationsInput | number;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   optimistic?: Prisma.IntFieldUpdateOperationsInput | number;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutRemote_poll_own_votesNestedInput;
 };
@@ -818,6 +854,7 @@ export type remote_poll_own_votesUncheckedUpdateWithoutRemote_statusesInput = {
   choice_index?: Prisma.IntFieldUpdateOperationsInput | number;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   optimistic?: Prisma.IntFieldUpdateOperationsInput | number;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -826,6 +863,7 @@ export type remote_poll_own_votesUncheckedUpdateManyWithoutRemote_statusesInput 
   choice_index?: Prisma.IntFieldUpdateOperationsInput | number;
   activity_id?: Prisma.StringFieldUpdateOperationsInput | string;
   optimistic?: Prisma.IntFieldUpdateOperationsInput | number;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -838,6 +876,7 @@ export type remote_poll_own_votesSelect<
     choice_index?: boolean;
     activity_id?: boolean;
     optimistic?: boolean;
+    expiry_notified_at?: boolean;
     created_at?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     remote_statuses?: boolean | Prisma.remote_statusesDefaultArgs<ExtArgs>;
@@ -854,6 +893,7 @@ export type remote_poll_own_votesSelectCreateManyAndReturn<
     choice_index?: boolean;
     activity_id?: boolean;
     optimistic?: boolean;
+    expiry_notified_at?: boolean;
     created_at?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     remote_statuses?: boolean | Prisma.remote_statusesDefaultArgs<ExtArgs>;
@@ -870,6 +910,7 @@ export type remote_poll_own_votesSelectUpdateManyAndReturn<
     choice_index?: boolean;
     activity_id?: boolean;
     optimistic?: boolean;
+    expiry_notified_at?: boolean;
     created_at?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     remote_statuses?: boolean | Prisma.remote_statusesDefaultArgs<ExtArgs>;
@@ -883,13 +924,20 @@ export type remote_poll_own_votesSelectScalar = {
   choice_index?: boolean;
   activity_id?: boolean;
   optimistic?: boolean;
+  expiry_notified_at?: boolean;
   created_at?: boolean;
 };
 
 export type remote_poll_own_votesOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "status_id" | "account_id" | "choice_index" | "activity_id" | "optimistic" | "created_at",
+  | "status_id"
+  | "account_id"
+  | "choice_index"
+  | "activity_id"
+  | "optimistic"
+  | "expiry_notified_at"
+  | "created_at",
   ExtArgs["result"]["remote_poll_own_votes"]
 >;
 export type remote_poll_own_votesInclude<
@@ -926,6 +974,7 @@ export type $remote_poll_own_votesPayload<
       choice_index: number;
       activity_id: string;
       optimistic: number;
+      expiry_notified_at: string | null;
       created_at: string;
     },
     ExtArgs["result"]["remote_poll_own_votes"]
@@ -1532,6 +1581,7 @@ export interface remote_poll_own_votesFieldRefs {
   readonly choice_index: Prisma.FieldRef<"remote_poll_own_votes", "Int">;
   readonly activity_id: Prisma.FieldRef<"remote_poll_own_votes", "String">;
   readonly optimistic: Prisma.FieldRef<"remote_poll_own_votes", "Int">;
+  readonly expiry_notified_at: Prisma.FieldRef<"remote_poll_own_votes", "String">;
   readonly created_at: Prisma.FieldRef<"remote_poll_own_votes", "String">;
 }
 

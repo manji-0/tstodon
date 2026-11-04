@@ -187,6 +187,11 @@ export type notification_clear_markers = Prisma.notification_clear_markersModel;
  */
 export type status_edits = Prisma.status_editsModel;
 /**
+ * Model remote_status_edits
+ *
+ */
+export type remote_status_edits = Prisma.remote_status_editsModel;
+/**
  * Model status_pins
  *
  */

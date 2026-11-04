@@ -20,6 +20,8 @@ export * from "./sql/claimPollUpdate";
 
 export * from "./sql/claimRemoteOutboxBackfill";
 
+export * from "./sql/claimRemotePollExpiryNotice";
+
 export * from "./sql/clearAccountSensitized";
 
 export * from "./sql/clearNotifications";
@@ -386,6 +388,8 @@ export * from "./sql/insertRemotePollOwnVote";
 
 export * from "./sql/insertRemotePollVoteOrIgnore";
 
+export * from "./sql/insertRemoteStatusEdit";
+
 export * from "./sql/insertRemoteStatusMention";
 
 export * from "./sql/insertReport";
@@ -451,6 +455,8 @@ export * from "./sql/listDirectoryAccountsByActive";
 export * from "./sql/listDirectoryAccountsByNew";
 
 export * from "./sql/listDisabledAccountIds";
+
+export * from "./sql/listEndedRemotePollVoters";
 
 export * from "./sql/listExpiredUnnotifiedPolls";
 
@@ -527,6 +533,8 @@ export * from "./sql/listRemotePollVotes";
 export * from "./sql/listRemotePollVotesForActor";
 
 export * from "./sql/listRemoteStatusCards";
+
+export * from "./sql/listRemoteStatusEditSnapshots";
 
 export * from "./sql/listRemoteStatusMentions";
 

@@ -8,7 +8,7 @@
 -- @param {Int} $8:ascending
 -- Newest id first (oldest first when $8 = 1), between the exclusive bounds $7 and $6 ('' leaves a side open).
 -- Leaves out the actors the viewer blocks or mutes and the domains it blocks or the instance silences or suspends (nothing for a viewer of '').
-SELECT id, actor_uri, object_uri, url, content_html, spoiler_text, visibility, sensitive, language, published_at, edited_at, media_json, card_json, poll_json
+SELECT id, actor_uri, object_uri, url, content_html, spoiler_text, visibility, sensitive, language, published_at, edited_at, media_json, card_json, poll_json, emojis_json
 FROM remote_statuses
 WHERE visibility = 'public'
   AND ($2 = '' OR id = $2)

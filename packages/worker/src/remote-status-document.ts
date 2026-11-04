@@ -7,6 +7,7 @@ import {
 import { mastodonRemoteAccount } from "./account-documents";
 import { remotePollJson } from "./poll-document";
 import { NO_REMOTE_POLL_VOTES, type RemotePollVotes } from "./remote-poll-vote-store";
+import { remoteEmojisJson } from "./remote-emoji-document";
 import { httpUrl, sanitizeRemoteHtml } from "./sanitize-html";
 import { NO_STATUS_INTERACTIONS, type StatusInteractionCounts } from "./status-interaction-store";
 
@@ -70,9 +71,12 @@ export const mastodonRemoteStatus = (
     ),
     mentions: [],
     tags: [],
-    emojis: [],
+    emojis: remoteEmojisJson(status.emojis),
     card,
-    poll: status.poll.kind === "NoPoll" ? null : remotePollJson(status.id, status.poll, pollVotes),
+    poll:
+      status.poll.kind === "NoPoll"
+        ? null
+        : remotePollJson(status.id, status.poll, pollVotes, status.emojis),
     quote: null,
     quotes_count: 0,
     quote_approval: { automatic: [], manual: [], current_user: "unknown" },

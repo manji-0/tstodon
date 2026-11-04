@@ -53,9 +53,11 @@ export {
 } from "./remote-poll";
 export {
   RemoteAttachmentSchema,
+  RemoteEmojiSchema,
   RemoteStatus,
   type RemoteNote,
   type RemoteAttachment,
+  type RemoteEmoji,
   type RemoteStatus as RemoteStatusValue,
 } from "./remote-status";
 export {

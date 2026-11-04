@@ -3,7 +3,9 @@ import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { jsonStringArray, type RepositoryError, runD1, runD1Batch } from "./d1";
 import {
+  claimRemotePollExpiryNotice as claimRemotePollExpiryNoticeSql,
   insertRemotePollOwnVote as insertRemotePollOwnVoteSql,
+  listEndedRemotePollVoters as listEndedRemotePollVotersSql,
   listRemotePollVotes as listRemotePollVotesSql,
   settleRemotePollOwnVotes as settleRemotePollOwnVotesSql,
 } from "./generated/prisma/sql";
@@ -116,3 +118,34 @@ export const recordRemotePollVotes = async (
 export const settleRemotePollVotes = async (db: D1Database, statusId: string): Promise<void> => {
   await runTyped(db, settleRemotePollOwnVotesSql(statusId));
 };
+
+/** A local account that voted on a remote poll which has since ended. */
+export type EndedPollVoter = Readonly<{ statusId: string; accountId: string }>;
+
+/** Voters of remote polls that ended by `now` and have not been told, oldest first. */
+export const listEndedRemotePollVoters = async (
+  db: D1Database,
+  now: string,
+  limit: number,
+): Promise<Result<EndedPollVoter[], RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped<{ status_id: string; account_id: string }>(
+      db,
+      listEndedRemotePollVotersSql(now, limit),
+    );
+    return rows.map((row) => ({ statusId: row.status_id, accountId: row.account_id }));
+  });
+
+/** Mark the voter as told; true for the one caller that marked it, so each voter is told once. */
+export const claimRemotePollExpiryNotice = async (
+  db: D1Database,
+  notifiedAt: string,
+  voter: EndedPollVoter,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const result = await runTyped(
+      db,
+      claimRemotePollExpiryNoticeSql(notifiedAt, voter.statusId, voter.accountId),
+    );
+    return (result.meta.changes ?? 0) > 0;
+  });

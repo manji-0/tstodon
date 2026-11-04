@@ -4,6 +4,9 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { OutboxJob } from "@tstodon/domain";
+import { processOutboxJob } from "./outbox-job";
+import { RemoteAccountId } from "./remote-account-id";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -369,6 +372,94 @@ describe("remote polls", () => {
       const { poll } = await statusAs(email, id);
       expect(poll).toMatchObject({ voted: true, own_votes: [0], votes_count: 5, voters_count: 5 });
       expect(poll?.options.map((option) => option.votes_count)).toEqual([4, 1]);
+    });
+  });
+
+  it("renders the custom emoji its option titles use", async () => {
+    const author = await remoteActor("poll-emoji");
+    const id = await create(
+      author,
+      question(author, "emoji", {
+        oneOf: choices([":cat: cats", "dogs"], [1, 1]),
+        tag: [
+          { type: "Emoji", name: ":cat:", icon: { url: "https://remote.example/cat.png" } },
+          { type: "Emoji", name: ":unused:", icon: { url: "https://remote.example/unused.png" } },
+        ],
+      }),
+    );
+    const { poll } = await status(id);
+    expect(poll?.emojis).toEqual([
+      {
+        shortcode: "cat",
+        url: "https://remote.example/cat.png",
+        static_url: "https://remote.example/cat.png",
+        visible_in_picker: false,
+      },
+    ]);
+    const direct = read(PollSchema, (await json(`/api/v1/polls/remote-${id}`)).body);
+    expect(direct.emojis).toHaveLength(1);
+  });
+
+  describe("expiry notifications", () => {
+    const vote = (email: string, id: string) =>
+      authHeaders(email).then((headers) =>
+        json(`/api/v1/polls/remote-${id}/votes`, {
+          method: "POST",
+          headers: { ...headers, "content-type": "application/json" },
+          body: JSON.stringify({ choices: [0] }),
+        }),
+      );
+
+    const runExpiryJob = async () => {
+      const job = OutboxJob.parse({ kind: "ProcessExpiredPolls" });
+      if (job.isErr()) {
+        throw new Error("expired polls job rejected");
+      }
+      await processOutboxJob(env, job.value);
+    };
+
+    const pollNotifications = async (email: string) =>
+      read(
+        z.array(z.object({ type: z.string(), status: z.object({ id: z.string() }) })),
+        (await json("/api/v1/notifications?types[]=poll", { headers: await authHeaders(email) }))
+          .body,
+      );
+
+    const endPoll = (id: string) =>
+      env.DB.prepare(
+        "UPDATE remote_statuses SET poll_json = json_set(poll_json, '$.ends.at', ?) WHERE id = ?",
+      )
+        .bind("2020-01-01T00:00:00.000Z", id)
+        .run();
+
+    it("tells a local voter once, only after the poll has ended", async () => {
+      const author = await remoteActor("poll-expiry");
+      const id = await create(author, question(author, "expiry"));
+      const voter = "remote-poll-expiry-voter@example.com";
+      const bystander = "remote-poll-expiry-bystander@example.com";
+      await authHeaders(bystander);
+      expect((await vote(voter, id)).status).toBe(200);
+
+      await runExpiryJob();
+      expect(await pollNotifications(voter)).toEqual([]);
+
+      await endPoll(id);
+      await runExpiryJob();
+      await runExpiryJob();
+      expect(await pollNotifications(voter)).toMatchObject([{ type: "poll", status: { id } }]);
+      expect(await pollNotifications(bystander)).toEqual([]);
+    });
+
+    it("does not announce a poll nobody voted on", async () => {
+      const author = await remoteActor("poll-expiry-unvoted");
+      await create(author, question(author, "expiry-unvoted", { endTime: "2020-01-01T00:00:00Z" }));
+      await runExpiryJob();
+      const count = await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM notifications WHERE kind = 'poll' AND from_account_id = ?",
+      )
+        .bind(RemoteAccountId.encode(author.actorUri))
+        .first<{ n: number }>();
+      expect(count?.n).toBe(0);
     });
   });
 

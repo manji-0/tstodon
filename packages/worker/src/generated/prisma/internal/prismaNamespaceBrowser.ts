@@ -77,6 +77,7 @@ export const ModelName = {
   notification_dismissals: "notification_dismissals",
   notification_clear_markers: "notification_clear_markers",
   status_edits: "status_edits",
+  remote_status_edits: "remote_status_edits",
   status_pins: "status_pins",
   account_announcement_dismissals: "account_announcement_dismissals",
   account_announcement_reactions: "account_announcement_reactions",
@@ -475,6 +476,16 @@ export const Status_editsScalarFieldEnum = {
 export type Status_editsScalarFieldEnum =
   (typeof Status_editsScalarFieldEnum)[keyof typeof Status_editsScalarFieldEnum];
 
+export const Remote_status_editsScalarFieldEnum = {
+  id: "id",
+  status_id: "status_id",
+  snapshot_json: "snapshot_json",
+  created_at: "created_at",
+} as const;
+
+export type Remote_status_editsScalarFieldEnum =
+  (typeof Remote_status_editsScalarFieldEnum)[keyof typeof Remote_status_editsScalarFieldEnum];
+
 export const Status_pinsScalarFieldEnum = {
   account_id: "account_id",
   status_id: "status_id",
@@ -755,6 +766,7 @@ export const Remote_statusesScalarFieldEnum = {
   in_reply_to_uri: "in_reply_to_uri",
   edited_at: "edited_at",
   poll_json: "poll_json",
+  emojis_json: "emojis_json",
   created_at: "created_at",
   updated_at: "updated_at",
 } as const;
@@ -934,6 +946,7 @@ export const Remote_poll_own_votesScalarFieldEnum = {
   choice_index: "choice_index",
   activity_id: "activity_id",
   optimistic: "optimistic",
+  expiry_notified_at: "expiry_notified_at",
   created_at: "created_at",
 } as const;
 

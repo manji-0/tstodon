@@ -1,8 +1,10 @@
 import {
   InstanceIdentity,
   IsoInstant,
+  RemoteEmojiSchema,
   RemoteStatus,
   StatusId,
+  type RemoteEmoji,
   type RemoteActor,
   type RemoteStatus as RemoteStatusValue,
 } from "@tstodon/domain";
@@ -24,6 +26,7 @@ import { publishConversationUpdate } from "./conversation-stream";
 import { recordRemoteStatusMentions } from "./mention-store";
 import { isTruthy, stringList } from "./form-values";
 import { NoteDocumentSchema } from "./activitypub-wire";
+import { remoteEmojisInTexts } from "./remote-emoji-document";
 import { remotePollFromDocument } from "./remote-poll-parse";
 
 export const parseNoteDocument = schemaResult(NoteDocumentSchema);
@@ -36,6 +39,51 @@ const noteLanguage = (
     .map((key) => key.trim().toLowerCase())
     .find((key) => /^[a-z]{2,3}(-[a-z0-9]+)?$/.test(key));
   return tag ? { kind: "Present", value: tag } : { kind: "None" };
+};
+
+const parseRemoteEmoji = schemaResult(RemoteEmojiSchema);
+
+const EmojiTagsSchema = z.object({
+  tag: z
+    .array(
+      z
+        .object({
+          type: z.string().optional(),
+          name: z.string().optional(),
+          icon: z.object({ url: z.string().optional() }).passthrough().optional(),
+        })
+        .passthrough(),
+    )
+    .optional(),
+});
+
+/** Mastodon caps a status's emoji far below this; it only bounds a hostile document. */
+const MAX_EMOJIS = 50;
+
+/**
+ * The custom emoji a note declares in `Emoji` tags and actually uses in its
+ * content, spoiler or poll option titles, as Mastodon keeps them.
+ */
+export const noteEmojis = (
+  raw: unknown,
+  texts: ReadonlyArray<string>,
+): ReadonlyArray<RemoteEmoji> => {
+  const tags = schemaResult(EmojiTagsSchema)(raw);
+  const seen = new Set<string>();
+  const emojis: RemoteEmoji[] = [];
+  for (const tag of tags.isOk() ? (tags.value.tag ?? []) : []) {
+    const shortcode = tag.name?.replace(/^:|:$/g, "");
+    const url = tag.icon?.url;
+    if (tag.type !== "Emoji" || !shortcode || !url || seen.has(shortcode.toLowerCase())) {
+      continue;
+    }
+    seen.add(shortcode.toLowerCase());
+    const parsed = parseRemoteEmoji({ shortcode, url });
+    if (parsed.isOk()) {
+      emojis.push(parsed.value);
+    }
+  }
+  return remoteEmojisInTexts(texts, emojis).slice(0, MAX_EMOJIS);
 };
 
 export const noteFromUnknown = (
@@ -75,6 +123,7 @@ export const noteFromUnknown = (
       },
     ];
   });
+  const poll = remotePollFromDocument(document.value);
   return RemoteStatus.fromFetched({
     id: id.value,
     media: attachments,
@@ -89,7 +138,12 @@ export const noteFromUnknown = (
     sensitive: isTruthy(document.value.sensitive),
     language: noteLanguage(document.value.contentMap),
     publishedAt: publishedAt.value,
-    poll: remotePollFromDocument(document.value),
+    poll,
+    emojis: noteEmojis(raw, [
+      document.value.content,
+      document.value.summary ?? "",
+      ...(poll.kind === "NoPoll" ? [] : poll.options.map((option) => option.title)),
+    ]),
     ...(document.value.url ? { url: document.value.url } : {}),
   });
 };

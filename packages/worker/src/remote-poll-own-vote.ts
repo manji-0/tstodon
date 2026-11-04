@@ -113,5 +113,5 @@ export const voteOnRemotePoll = async (
     }
   }
   const after = await findRemotePollVotes(env.DB, voter.id, [status]);
-  return ok(remotePollJson(status.id, poll, after.get(status.id)));
+  return ok(remotePollJson(status.id, poll, after.get(status.id), status.emojis));
 };

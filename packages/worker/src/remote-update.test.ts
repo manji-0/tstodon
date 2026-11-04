@@ -174,6 +174,132 @@ describe("remote Update of a note", () => {
   });
 });
 
+describe("history and source of an edited remote note", () => {
+  const HistorySchema = z.array(
+    z.object({
+      content: z.string(),
+      spoiler_text: z.string(),
+      sensitive: z.boolean(),
+      created_at: z.string(),
+      account: z.object({ acct: z.string() }),
+      poll: z.object({ options: z.array(z.object({ title: z.string() })) }).nullable(),
+      media_attachments: z.array(z.object({ url: z.string() })),
+      emojis: z.array(z.object({ shortcode: z.string(), url: z.string() })),
+    }),
+  );
+
+  const history = async (id: string) => {
+    const response = await SELF.fetch(`https://example.com/api/v1/statuses/${id}/history`);
+    expect(response.status).toBe(200);
+    return read(HistorySchema, await response.json());
+  };
+
+  it("lists every version, the original first and the current one last", async () => {
+    const author = await remoteActor("history-author");
+    const id = await create(author, "history-me", "<p>v1</p>");
+    expect(await history(id)).toMatchObject([{ content: "<p>v1</p>" }]);
+
+    await update(
+      author,
+      "history-1",
+      note(author, "history-me", "<p>v2</p>", {
+        summary: "cw",
+        sensitive: true,
+        attachment: [
+          { type: "Image", mediaType: "image/png", url: "https://remote.example/a.png" },
+        ],
+        tag: [{ type: "Emoji", name: ":blob:", icon: { url: "https://remote.example/blob.png" } }],
+        updated: "2026-10-21T00:00:00.000Z",
+      }),
+    );
+    await update(
+      author,
+      "history-2",
+      note(author, "history-me", "<p>v3 :blob:</p>", {
+        tag: [{ type: "Emoji", name: ":blob:", icon: { url: "https://remote.example/blob.png" } }],
+        updated: "2026-10-22T00:00:00.000Z",
+      }),
+    );
+
+    const versions = await history(id);
+    expect(versions.map((version) => version.content)).toEqual([
+      "<p>v1</p>",
+      "<p>v2</p>",
+      "<p>v3 :blob:</p>",
+    ]);
+    expect(versions.map((version) => version.created_at)).toEqual([
+      "2026-10-20T00:00:00.000Z",
+      "2026-10-21T00:00:00.000Z",
+      "2026-10-22T00:00:00.000Z",
+    ]);
+    expect(versions[1]).toMatchObject({
+      spoiler_text: "cw",
+      sensitive: true,
+      account: { acct: expect.stringContaining("history-author") },
+      media_attachments: [{ url: "https://remote.example/a.png" }],
+    });
+    expect(versions[0]).toMatchObject({
+      spoiler_text: "",
+      sensitive: false,
+      media_attachments: [],
+    });
+    expect(versions[2]?.emojis).toEqual([
+      { shortcode: "blob", url: "https://remote.example/blob.png" },
+    ]);
+  });
+
+  it("keeps no version for a poll count refresh or a replayed Update", async () => {
+    const author = await remoteActor("history-replay");
+    const id = await create(author, "history-replay", "<p>a</p>");
+    const edit = note(author, "history-replay", "<p>b</p>", {
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+    await update(author, "replay-1", edit);
+    await update(author, "replay-2", edit);
+    await update(author, "replay-3", {
+      ...edit,
+      content: "<p>stale</p>",
+      updated: "2026-10-20T12:00:00.000Z",
+    });
+    expect((await history(id)).map((version) => version.content)).toEqual(["<p>a</p>", "<p>b</p>"]);
+  });
+
+  it("hides the history of a note the viewer cannot see", async () => {
+    const author = await remoteActor("history-private");
+    const object = note(author, "history-private", "<p>dm</p>", { to: [author.actorUri] });
+    await author.send({ id: `${object.id}/create`, type: "Create", object });
+    const row = await env.DB.prepare("SELECT id FROM remote_statuses WHERE object_uri = ?")
+      .bind(object.id)
+      .first<{ id: string }>();
+    const response = await SELF.fetch(`https://example.com/api/v1/statuses/${row?.id}/history`);
+    expect(response.status).toBe(404);
+  });
+
+  it("answers 404 on the source of a remote note and of another account's note", async () => {
+    const author = await remoteActor("source-author");
+    const id = await create(author, "source-me", "<p>x</p>");
+    const reader = await authHeaders("remote-source-reader@example.com");
+    expect(
+      (await SELF.fetch(`https://example.com/api/v1/statuses/${id}/source`, { headers: reader }))
+        .status,
+    ).toBe(404);
+
+    const writer = await authHeaders("remote-source-writer@example.com");
+    const created = read(
+      z.object({ id: z.string() }),
+      await json("/api/v1/statuses", {
+        method: "POST",
+        headers: { ...writer, "content-type": "application/json" },
+        body: JSON.stringify({ status: "mine", visibility: "public" }),
+      }),
+    );
+    const source = (headers: Record<string, string>) =>
+      SELF.fetch(`https://example.com/api/v1/statuses/${created.id}/source`, { headers });
+    expect((await source(writer)).status).toBe(200);
+    expect((await source(reader)).status).toBe(404);
+  });
+});
+
 describe("remote Update of an actor", () => {
   const AccountSchema = z.object({ display_name: z.string(), note: z.string() });
   const account = async (actorUri: string) =>

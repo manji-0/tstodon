@@ -21,9 +21,10 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param inReplyToUri
  * @param editedAt
  * @param pollJson
+ * @param emojisJson
  */
 export const upsertRemoteStatus = $runtime.makeTypedQueryFactory(
-  "INSERT INTO remote_statuses (\nid, actor_uri, object_uri, url, content_html, spoiler_text,\nvisibility, sensitive, language, published_at, media_json, created_at, updated_at, in_reply_to_uri, edited_at, poll_json\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)\nON CONFLICT(object_uri) DO UPDATE SET\ncard_json = CASE WHEN content_html = excluded.content_html THEN card_json ELSE NULL END,\ncard_url = CASE WHEN content_html = excluded.content_html THEN card_url ELSE NULL END,\ncontent_html = excluded.content_html,\nspoiler_text = excluded.spoiler_text,\nvisibility = excluded.visibility,\nsensitive = excluded.sensitive,\nlanguage = excluded.language,\npublished_at = excluded.published_at,\nurl = excluded.url,\nmedia_json = excluded.media_json,\npoll_json = excluded.poll_json,\nedited_at = coalesce(excluded.edited_at, edited_at),\nupdated_at = excluded.updated_at",
+  "INSERT INTO remote_statuses (\nid, actor_uri, object_uri, url, content_html, spoiler_text,\nvisibility, sensitive, language, published_at, media_json, created_at, updated_at, in_reply_to_uri, edited_at, poll_json, emojis_json\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)\nON CONFLICT(object_uri) DO UPDATE SET\ncard_json = CASE WHEN content_html = excluded.content_html THEN card_json ELSE NULL END,\ncard_url = CASE WHEN content_html = excluded.content_html THEN card_url ELSE NULL END,\ncontent_html = excluded.content_html,\nspoiler_text = excluded.spoiler_text,\nvisibility = excluded.visibility,\nsensitive = excluded.sensitive,\nlanguage = excluded.language,\npublished_at = excluded.published_at,\nurl = excluded.url,\nmedia_json = excluded.media_json,\npoll_json = excluded.poll_json,\nemojis_json = excluded.emojis_json,\nedited_at = coalesce(excluded.edited_at, edited_at),\nupdated_at = excluded.updated_at",
 ) as (
   id: string,
   actorUri: string,
@@ -41,6 +42,7 @@ export const upsertRemoteStatus = $runtime.makeTypedQueryFactory(
   inReplyToUri: string | null,
   editedAt: string | null,
   pollJson: string | null,
+  emojisJson: string,
 ) => $runtime.TypedSql<upsertRemoteStatus.Parameters, upsertRemoteStatus.Result>;
 
 export namespace upsertRemoteStatus {
@@ -61,6 +63,7 @@ export namespace upsertRemoteStatus {
     inReplyToUri: string | null,
     editedAt: string | null,
     pollJson: string | null,
+    emojisJson: string,
   ];
   export type Result = {};
 }

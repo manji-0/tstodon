@@ -13,6 +13,7 @@ import { listExpiredUnnotifiedPolls, markPollExpiryNotified } from "./poll-store
 import { elapsedMs, writeMetric } from "./metrics";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
+import { notifyEndedRemotePolls } from "./remote-poll-expiry";
 import { processDistributePollUpdateJob } from "./poll-update";
 import { processPushJob } from "./push-delivery";
 import { processFanOutHomeJob } from "./home-fan-out";
@@ -29,6 +30,7 @@ import { publishToAccount } from "./stream-publish";
 import { startOutboxDeliveryWorkflow } from "./delivery";
 
 const processExpiredPolls = async (env: Env): Promise<void> => {
+  await notifyEndedRemotePolls(env);
   const identity = parseInstanceIdentity(env);
   if (identity.isErr()) {
     return;

@@ -16,6 +16,15 @@ export const RemoteAttachmentSchema = z.object({
 
 export type RemoteAttachment = z.infer<typeof RemoteAttachmentSchema>;
 
+/** A custom emoji a remote note declares in its `tag`. */
+export const RemoteEmojiSchema = z.object({
+  /** The name between the colons, without them. */
+  shortcode: z.string().min(1),
+  url: z.url(),
+});
+
+export type RemoteEmoji = z.infer<typeof RemoteEmojiSchema>;
+
 const RemoteNoteSchema = z.object({
   kind: z.literal("RemoteNote"),
   id: StatusId.schema,
@@ -38,6 +47,8 @@ const RemoteNoteSchema = z.object({
   ]),
   media: z.array(RemoteAttachmentSchema),
   poll: RemotePollSchema,
+  /** The emoji the content, spoiler or poll options use. */
+  emojis: z.array(RemoteEmojiSchema),
 });
 
 export const RemoteStatusSchema = z.discriminatedUnion("kind", [RemoteNoteSchema]);
@@ -105,6 +116,7 @@ export const RemoteStatus = {
     publishedAt: z.infer<typeof IsoInstant.schema>;
     editedAt?: z.infer<typeof IsoInstant.schema> | undefined;
     poll?: RemotePoll | undefined;
+    emojis?: ReadonlyArray<RemoteEmoji> | undefined;
   }): Result<RemoteStatus, RemoteStatusParseError> => {
     const parsed = parseRemoteStatus({
       kind: "RemoteNote",
@@ -121,6 +133,7 @@ export const RemoteStatus = {
       // Mastodon carries at most four attachments on a status.
       media: (input.media ?? []).slice(0, 4),
       poll: input.poll ?? RemotePoll.none,
+      emojis: input.emojis ?? [],
       ...(input.url ? { url: input.url } : {}),
     });
     return parsed.mapErr((): RemoteStatusParseError => ({ kind: "InvalidObject" }));

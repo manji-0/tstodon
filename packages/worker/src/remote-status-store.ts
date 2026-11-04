@@ -3,6 +3,8 @@ import {
   RemotePoll,
   type RemoteAttachment,
   RemoteAttachmentSchema,
+  type RemoteEmoji,
+  RemoteEmojiSchema,
   RemoteStatus,
   StatusId,
   Visibility,
@@ -44,6 +46,7 @@ export const RemoteStatusRowSchema = z.object({
   media_json: z.string(),
   card_json: z.string().nullable(),
   poll_json: z.string().nullable(),
+  emojis_json: z.string(),
 });
 
 export type RemoteStatusRow = z.infer<typeof RemoteStatusRowSchema>;
@@ -52,6 +55,11 @@ export const parseRemoteStatusRow = schemaResult(RemoteStatusRowSchema);
 
 const mediaFromJson = (raw: string): ReadonlyArray<RemoteAttachment> => {
   const parsed = schemaResult(z.array(RemoteAttachmentSchema))(parseJsonText(raw).unwrapOr([]));
+  return parsed.isOk() ? parsed.value : [];
+};
+
+const emojisFromJson = (raw: string): ReadonlyArray<RemoteEmoji> => {
+  const parsed = schemaResult(z.array(RemoteEmojiSchema))(parseJsonText(raw).unwrapOr([]));
   return parsed.isOk() ? parsed.value : [];
 };
 
@@ -90,6 +98,7 @@ export const remoteStatusFromRow = (
     editedAt,
     media: mediaFromJson(row.media_json),
     poll: pollFromJson(row.poll_json),
+    emojis: emojisFromJson(row.emojis_json),
     ...(row.url ? { url: row.url } : {}),
   }).mapErr(() => toRepositoryError("invalid remote status row"));
 };
@@ -210,6 +219,7 @@ export const upsertRemoteStatus = async (
         inReplyToUri ?? null,
         persisted.editedAt.kind === "Edited" ? persisted.editedAt.at : null,
         persisted.poll.kind === "NoPoll" ? null : JSON.stringify(persisted.poll),
+        JSON.stringify(persisted.emojis),
       ),
     );
     // The row has to exist before its tags (the index holds a foreign key).
