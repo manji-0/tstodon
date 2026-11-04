@@ -105,6 +105,16 @@ processes:
     availability:
       restart: "no"
 
+  e2e-federation-remote-engagement:
+    command: pnpm exec tsx e2e/federation-remote-engagement.ts
+    depends_on:
+      tstodon-a:
+        condition: process_healthy
+      tstodon-b:
+        condition: process_healthy
+    availability:
+      restart: "no"
+
   e2e-federation-migration:
     command: pnpm exec tsx e2e/federation-migration.ts
     depends_on:
