@@ -1,0 +1,418 @@
+import type { AdminAccountFilters } from "./account-admin-store";
+import type { AdminAccountState } from "./admin-actions";
+import type { DomainBlockRow } from "./admin-domain-block-store";
+import { page } from "./auth-pages";
+import { escapeHtml } from "./html";
+import { checkbox, messageLine, options, type PageMessage } from "./settings-pages";
+
+/**
+ * Mastodon's admin pages that its web app links to (`/admin/reports`,
+ * `/admin/accounts`, `/admin/instances`), as plain forms in the style of the
+ * settings pages. They act through the same code as `/api/v1/admin`.
+ */
+
+const adminNav = `      <p class="muted"><a href="/">Back to the web app</a> · <a href="/settings/preferences">Preferences</a></p>
+      <p><strong>Administration</strong> · <a href="/admin/reports">Reports</a> · <a href="/admin/accounts">Accounts</a> · <a href="/admin/instances">Federation</a></p>`;
+
+const adminPage = (instanceName: string, title: string, body: string): string =>
+  page(`${title} · ${instanceName}`, `${adminNav}\n${body}`);
+
+/** An account as an admin page names it, linked to its admin page when it has one. */
+export type AccountLabel = Readonly<{ label: string; href: string | undefined }>;
+
+const accountLink = (account: AccountLabel): string =>
+  account.href === undefined
+    ? escapeHtml(account.label)
+    : `<a href="${escapeHtml(account.href)}">${escapeHtml(account.label)}</a>`;
+
+const postButton = (
+  action: string,
+  label: string,
+  fields: Readonly<Record<string, string>> = {},
+): string =>
+  `<form method="post" action="${escapeHtml(action)}">${Object.entries(fields)
+    .map(
+      ([name, value]) =>
+        `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}" />`,
+    )
+    .join("")}<button type="submit">${escapeHtml(label)}</button></form>`;
+
+const excerpt = (text: string, length = 140): string =>
+  text.length > length ? `${text.slice(0, length - 1)}…` : text;
+
+const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
+
+export type ReportSummary = Readonly<{
+  id: string;
+  reporter: AccountLabel;
+  target: AccountLabel;
+  category: string;
+  comment: string;
+  statusCount: number;
+  assignee: AccountLabel | undefined;
+  resolved: boolean;
+  createdAt: string;
+}>;
+
+const reportListItem = (report: ReportSummary): string => `
+        <li>
+          <a href="/admin/reports/${escapeHtml(report.id)}"><strong>Report #${escapeHtml(report.id)}</strong></a>
+          on ${accountLink(report.target)} by ${accountLink(report.reporter)}
+          <br /><span class="muted">${escapeHtml(report.category)} · ${count(report.statusCount, "post")} · ${report.assignee === undefined ? "unassigned" : `assigned to ${escapeHtml(report.assignee.label)}`} · ${escapeHtml(report.createdAt)}</span>${
+            report.comment.length === 0
+              ? ""
+              : `
+          <br />${escapeHtml(excerpt(report.comment))}`
+          }
+        </li>`;
+
+/** Mastodon's `GET /admin/reports`: open reports, or resolved ones. */
+export const reportsPage = (
+  instanceName: string,
+  view: Readonly<{
+    resolved: boolean;
+    reports: ReadonlyArray<ReportSummary>;
+    olderHref: string | undefined;
+  }>,
+  message?: PageMessage,
+): string =>
+  adminPage(
+    instanceName,
+    "Reports",
+    `      <h1>Reports</h1>
+      <p>${
+        view.resolved
+          ? `<a href="/admin/reports">Unresolved</a> · <strong>Resolved</strong>`
+          : `<strong>Unresolved</strong> · <a href="/admin/reports?resolved=1">Resolved</a>`
+      }</p>
+${messageLine(message)}${
+      view.reports.length === 0
+        ? `
+      <p class="muted">${view.resolved ? "No resolved reports." : "No unresolved reports."}</p>`
+        : `
+      <ul>${view.reports.map(reportListItem).join("")}
+      </ul>`
+    }${
+      view.olderHref === undefined
+        ? ""
+        : `
+      <p><a href="${escapeHtml(view.olderHref)}">Older reports</a></p>`
+    }`,
+  );
+
+export type ReportedStatus = Readonly<{ id: string; text: string; createdAt: string }>;
+
+export type ReportDetails = ReportSummary &
+  Readonly<{
+    statuses: ReadonlyArray<ReportedStatus>;
+    rules: ReadonlyArray<string>;
+    actionTakenBy: AccountLabel | undefined;
+    actionTakenAt: string | null;
+    /** The target's moderation state, when it is a local account this server can act on. */
+    targetState: AdminAccountState | undefined;
+    assignedToViewer: boolean;
+  }>;
+
+const moderationSummary = (state: AdminAccountState): string => {
+  const labels = [
+    state.moderation === "Suspended" ? "suspended" : undefined,
+    state.moderation === "Silenced" ? "limited" : undefined,
+    state.sensitized ? "media marked sensitive" : undefined,
+    state.disabled ? "login disabled" : undefined,
+    state.pending ? "waiting for approval" : undefined,
+  ].filter((label) => label !== undefined);
+  return labels.length === 0 ? "in good standing" : labels.join(", ");
+};
+
+/** The moderation actions a report page offers on its target. */
+export const REPORT_ACTIONS = [
+  ["none", "Resolve with no action"],
+  ["sensitive", "Mark media as sensitive"],
+  ["disable", "Disable login"],
+  ["silence", "Limit"],
+  ["suspend", "Suspend"],
+] as const;
+
+/** Mastodon's `GET /admin/reports/:id`. */
+export const reportPage = (
+  instanceName: string,
+  report: ReportDetails,
+  message?: PageMessage,
+): string => {
+  const base = `/admin/reports/${report.id}`;
+  return adminPage(
+    instanceName,
+    `Report #${report.id}`,
+    `      <h1>Report #${escapeHtml(report.id)}</h1>
+${messageLine(message)}
+      <ul>
+        <li>Reported account: ${accountLink(report.target)}${report.targetState === undefined ? "" : ` <span class="muted">(${escapeHtml(moderationSummary(report.targetState))})</span>`}</li>
+        <li>Reported by: ${accountLink(report.reporter)}</li>
+        <li>Category: ${escapeHtml(report.category)}</li>
+        <li>Filed: ${escapeHtml(report.createdAt)}</li>
+        <li>Assigned to: ${report.assignee === undefined ? "nobody" : accountLink(report.assignee)}</li>
+        <li>Status: ${
+          report.resolved
+            ? `resolved${report.actionTakenBy === undefined ? "" : ` by ${accountLink(report.actionTakenBy)}`}${report.actionTakenAt === null ? "" : ` at ${escapeHtml(report.actionTakenAt)}`}`
+            : "unresolved"
+        }</li>
+      </ul>
+      <h2>Comment</h2>
+      ${report.comment.length === 0 ? `<p class="muted">No comment.</p>` : `<p>${escapeHtml(report.comment)}</p>`}${
+        report.rules.length === 0
+          ? ""
+          : `
+      <h2>Rules broken</h2>
+      <ul>${report.rules.map((rule) => `<li>${escapeHtml(rule)}</li>`).join("")}</ul>`
+      }
+      <h2>Reported posts</h2>${
+        report.statuses.length === 0
+          ? `
+      <p class="muted">${report.statusCount === 0 ? "No posts attached." : "The attached posts are no longer available."}</p>`
+          : `
+      <ul>${report.statuses
+        .map(
+          (status) => `
+        <li><blockquote>${escapeHtml(status.text)}</blockquote><span class="muted">${escapeHtml(status.createdAt)}</span></li>`,
+        )
+        .join("")}
+      </ul>`
+      }
+      <h2>Handle this report</h2>
+      ${report.assignedToViewer ? postButton(base, "Unassign", { do: "unassign" }) : postButton(base, "Assign to me", { do: "assign_to_self" })}
+      ${report.resolved ? postButton(base, "Reopen", { do: "reopen" }) : postButton(base, "Mark as resolved", { do: "resolve" })}${
+        report.targetState === undefined
+          ? `
+      <p class="muted">The reported account is not on this server, so moderate its server instead.</p>`
+          : `
+      <h2>Act on ${escapeHtml(report.target.label)}</h2>
+      <p class="muted">Each action also resolves this report.</p>
+      ${REPORT_ACTIONS.map(([type, label]) => postButton(`${base}/action`, label, { type })).join("\n      ")}`
+      }`,
+  );
+};
+
+/** Asks again before a destructive form post goes through. */
+export const confirmPage = (
+  instanceName: string,
+  view: Readonly<{
+    title: string;
+    text: string;
+    action: string;
+    fields: Readonly<Record<string, string>>;
+    confirmLabel: string;
+    cancelHref: string;
+  }>,
+): string =>
+  adminPage(
+    instanceName,
+    view.title,
+    `      <h1>${escapeHtml(view.title)}</h1>
+      <p>${escapeHtml(view.text)}</p>
+      ${postButton(view.action, view.confirmLabel, { ...view.fields, confirmed: "1" })}
+      <p><a href="${escapeHtml(view.cancelHref)}">Cancel</a></p>`,
+  );
+
+export type AccountsQuery = Readonly<{
+  status: AdminAccountFilters["status"];
+  username: string;
+  email: string;
+}>;
+
+/** The account statuses the accounts list filters by, as Mastodon names them. */
+const ACCOUNT_STATUSES: ReadonlyArray<readonly [AccountsQuery["status"], string]> = [
+  ["active", "Active"],
+  ["pending", "Pending"],
+  ["silenced", "Limited"],
+  ["suspended", "Suspended"],
+  ["disabled", "Login disabled"],
+  ["sensitized", "Media sensitive"],
+];
+
+/** Mastodon's `GET /admin/accounts`. */
+export const accountsPage = (
+  instanceName: string,
+  query: AccountsQuery,
+  accounts: ReadonlyArray<AdminAccountState>,
+  message?: PageMessage,
+): string =>
+  adminPage(
+    instanceName,
+    "Accounts",
+    `      <h1>Accounts</h1>
+      <form method="get" action="/admin/accounts">
+        <label for="status">Status</label>
+        <select id="status" name="status">${options(ACCOUNT_STATUSES, query.status)}</select>
+        <label for="username">Username</label>
+        <input id="username" name="username" value="${escapeHtml(query.username)}" autocomplete="off" />
+        <label for="email">Email</label>
+        <input id="email" name="email" value="${escapeHtml(query.email)}" autocomplete="off" />
+        <button type="submit">Search</button>
+      </form>
+      <p class="muted">Only accounts on this server are listed. Moderate a remote account's server under Federation.</p>
+${messageLine(message)}${
+      accounts.length === 0
+        ? `
+      <p class="muted">No accounts match.</p>`
+        : `
+      <ul>${accounts
+        .map(
+          (state) => `
+        <li><a href="/admin/accounts/${escapeHtml(state.account.id)}">@${escapeHtml(state.account.username)}</a> <span class="muted">${escapeHtml(state.account.accessEmail.unwrap())} · ${escapeHtml(moderationSummary(state))}</span></li>`,
+        )
+        .join("")}
+      </ul>`
+    }`,
+  );
+
+/** One button on an account's admin page. */
+export type AccountActionButton = Readonly<{ command: string; label: string }>;
+
+/** Mastodon's `GET /admin/accounts/:id`. */
+export const accountPage = (
+  instanceName: string,
+  view: Readonly<{
+    state: AdminAccountState;
+    isViewer: boolean;
+    openReports: ReadonlyArray<string>;
+    actions: ReadonlyArray<AccountActionButton>;
+  }>,
+  message?: PageMessage,
+): string => {
+  const { account } = view.state;
+  const action = `/admin/accounts/${account.id}`;
+  return adminPage(
+    instanceName,
+    `@${account.username}`,
+    `      <h1>@${escapeHtml(account.username)}</h1>
+${messageLine(message)}
+      <ul>
+        <li>Display name: ${account.displayName.length === 0 ? `<span class="muted">none</span>` : escapeHtml(account.displayName)}</li>
+        <li>Email: ${escapeHtml(account.accessEmail.unwrap())}</li>
+        <li>Joined: ${escapeHtml(account.createdAt)}</li>
+        <li>State: ${escapeHtml(moderationSummary(view.state))}</li>
+        <li><a href="/@${escapeHtml(account.username)}">Profile in the web app</a></li>
+      </ul>
+      <h2>Open reports</h2>${
+        view.openReports.length === 0
+          ? `
+      <p class="muted">No open reports.</p>`
+          : `
+      <ul>${view.openReports.map((id) => `<li><a href="/admin/reports/${escapeHtml(id)}">Report #${escapeHtml(id)}</a></li>`).join("")}</ul>`
+      }
+      <h2>Moderation</h2>${
+        view.isViewer
+          ? `
+      <p class="muted">You cannot moderate your own account.</p>`
+          : `
+      ${view.actions.map((button) => postButton(action, button.label, { do: button.command })).join("\n      ")}`
+      }`,
+  );
+};
+
+/** A remote account: this server moderates its domain, not the account itself. */
+export const remoteAccountPage = (instanceName: string, actorUri: string, domain: string): string =>
+  adminPage(
+    instanceName,
+    "Remote account",
+    `      <h1>Remote account</h1>
+      <p><code>${escapeHtml(actorUri)}</code> lives on another server. This server cannot moderate a single remote account yet; you can limit or suspend its whole server.</p>
+      <p><a href="/admin/instances/${escapeHtml(domain)}">Moderate ${escapeHtml(domain)}</a></p>`,
+  );
+
+export const adminNotFoundPage = (instanceName: string, what: string): string =>
+  adminPage(
+    instanceName,
+    "Not found",
+    `      <h1>Not found</h1>
+      <p>There is no such ${escapeHtml(what)}.</p>`,
+  );
+
+const SEVERITY_LABELS = { silence: "Limit", suspend: "Suspend", noop: "None" } as const;
+
+/** Mastodon's `GET /admin/instances`: the domains this server blocks. */
+export const instancesPage = (
+  instanceName: string,
+  blocks: ReadonlyArray<DomainBlockRow>,
+  message?: PageMessage,
+): string =>
+  adminPage(
+    instanceName,
+    "Federation",
+    `      <h1>Federation</h1>
+      <form method="get" action="/admin/instances">
+        <label for="domain">Domain</label>
+        <input id="domain" name="domain" required placeholder="example.com" autocomplete="off" />
+        <button type="submit">Moderate domain</button>
+      </form>
+${messageLine(message)}
+      <h2>Blocked domains</h2>${
+        blocks.length === 0
+          ? `
+      <p class="muted">No domains are blocked.</p>`
+          : `
+      <ul>${blocks
+        .map(
+          (block) => `
+        <li><a href="/admin/instances/${escapeHtml(block.domain)}">${escapeHtml(block.domain)}</a> <span class="muted">${SEVERITY_LABELS[block.severity]}${block.reject_media === 0 ? "" : " · rejects media"}${block.reject_reports === 0 ? "" : " · rejects reports"}</span></li>`,
+        )
+        .join("")}
+      </ul>`
+      }`,
+  );
+
+export type DomainBlockForm = Readonly<{
+  severity: DomainBlockRow["severity"];
+  rejectMedia: boolean;
+  rejectReports: boolean;
+  obfuscate: boolean;
+  privateComment: string;
+  publicComment: string;
+}>;
+
+/** Mastodon's `GET /admin/instances/:domain`, with the form that blocks it. */
+export const instancePage = (
+  instanceName: string,
+  view: Readonly<{ domain: string; blocked: boolean; form: DomainBlockForm }>,
+  message?: PageMessage,
+): string => {
+  const action = `/admin/instances/${view.domain}`;
+  return adminPage(
+    instanceName,
+    view.domain,
+    `      <h1>${escapeHtml(view.domain)}</h1>
+${messageLine(message)}
+      <p>${
+        view.blocked
+          ? `This server blocks <strong>${escapeHtml(view.domain)}</strong>: ${escapeHtml(SEVERITY_LABELS[view.form.severity].toLowerCase())}.`
+          : `This server does not block <strong>${escapeHtml(view.domain)}</strong>.`
+      }</p>
+      <h2>${view.blocked ? "Change the block" : "Block this domain"}</h2>
+      <form method="post" action="${escapeHtml(action)}">
+        <input type="hidden" name="do" value="save" />
+        <label for="severity">Severity</label>
+        <select id="severity" name="severity">${options(
+          [
+            ["silence", "Limit: hide its accounts from people who do not follow them"],
+            ["suspend", "Suspend: refuse all its content and remove its accounts' data"],
+            ["noop", "None: only reject media or reports"],
+          ],
+          view.form.severity,
+        )}</select>
+        ${checkbox("reject_media", view.form.rejectMedia, "Reject media files", "Its attachments are not stored.")}
+        ${checkbox("reject_reports", view.form.rejectReports, "Reject reports", "Reports from this server are ignored.")}
+        ${checkbox("obfuscate", view.form.obfuscate, "Obfuscate domain name", "The public list of blocks shows it partly hidden.")}
+        <label for="public_comment">Public comment</label>
+        <input id="public_comment" name="public_comment" value="${escapeHtml(view.form.publicComment)}" />
+        <label for="private_comment">Private comment</label>
+        <input id="private_comment" name="private_comment" value="${escapeHtml(view.form.privateComment)}" />
+        <button type="submit">${view.blocked ? "Save changes" : "Block domain"}</button>
+      </form>${
+        view.blocked
+          ? `
+      <h2>Lift the block</h2>
+      ${postButton(action, "Remove block", { do: "remove" })}`
+          : ""
+      }`,
+  );
+};

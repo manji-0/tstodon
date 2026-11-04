@@ -78,17 +78,35 @@ const SETTINGS_SECTIONS: ReadonlyArray<
   },
 ];
 
+const ADMIN_SECTION = {
+  heading: "Administration",
+  links: [
+    { href: "/admin/reports", label: "Reports", about: "Reports from users, and actions on them." },
+    { href: "/admin/accounts", label: "Accounts", about: "Approve, limit, or suspend accounts." },
+    { href: "/admin/instances", label: "Federation", about: "Limit or suspend other servers." },
+  ],
+} as const;
+
 /** The settings this server has, grouped like Mastodon's settings sidebar. */
-export const settingsIndexPage = (instanceName: string, username: string): string =>
+export const settingsIndexPage = (
+  instanceName: string,
+  username: string,
+  isAdmin: boolean,
+): string =>
   page(
     `Preferences · ${instanceName}`,
     `      <p class="muted"><a href="/">Back to the web app</a></p>
       <h1>Preferences</h1>
-      <p>Settings for <strong>@${escapeHtml(username)}</strong>.</p>${SETTINGS_SECTIONS.map(
-        (section) => `
+      <p>Settings for <strong>@${escapeHtml(username)}</strong>.</p>${[
+        ...SETTINGS_SECTIONS,
+        ...(isAdmin ? [ADMIN_SECTION] : []),
+      ]
+        .map(
+          (section) => `
       <h2>${escapeHtml(section.heading)}</h2>
       ${linkList(section.links)}`,
-      ).join("")}`,
+        )
+        .join("")}`,
   );
 
 export const messageLine = (message: PageMessage | undefined): string =>

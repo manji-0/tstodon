@@ -28,8 +28,12 @@ const NOTICES = {
   },
   administration: {
     title: "Administration",
-    text: "This server has no admin web pages. Admins and moderators use Mastodon's admin API (/api/v1/admin) from an app that supports it.",
-    alternatives: [],
+    text: "This server's admin pages cover reports, accounts, and federation. For anything else, use Mastodon's admin API (/api/v1/admin) from an app that supports it.",
+    alternatives: [
+      { href: "/admin/reports", label: "Reports" },
+      { href: "/admin/accounts", label: "Accounts" },
+      { href: "/admin/instances", label: "Federation" },
+    ],
   },
   severedRelationships: {
     title: "Severed relationships",
@@ -56,7 +60,7 @@ const unsupported =
 export const getStatusesCleanup = unsupported(NOTICES.statusesCleanup);
 export const getAuthEdit = unsupported(NOTICES.accountSecurity);
 export const getSettingsExport = unsupported(NOTICES.importExport);
-export const getAdmin = unsupported(NOTICES.administration);
+export const getUnknownAdmin = unsupported(NOTICES.administration);
 export const getSeveredRelationships = unsupported(NOTICES.severedRelationships);
 export const getDisputes = unsupported(NOTICES.disputes);
 export const getUnknownSettings = unsupported(NOTICES.settings);

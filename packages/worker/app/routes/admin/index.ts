@@ -1,1 +1,1 @@
-export { getAdmin as GET } from "#src/routes/unsupported-pages";
+export { getAdminIndex as GET } from "#src/routes/admin-web/reports";

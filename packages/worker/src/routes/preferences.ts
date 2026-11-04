@@ -1,5 +1,5 @@
 import { Languages, warmSchemas } from "@tstodon/core";
-import { QuoteApprovalPolicy, Visibility } from "@tstodon/domain";
+import { FediRole, QuoteApprovalPolicy, Visibility } from "@tstodon/domain";
 import type { Context } from "hono";
 import { z } from "zod";
 import { findComposeDefaults, updateAccountDefaults } from "../account-defaults-store";
@@ -37,7 +37,13 @@ export const getSettingsPreferences = async (
   const signedIn = await settingsAccount(c);
   return signedIn.kind === "Answered"
     ? signedIn.response
-    : c.html(settingsIndexPage(instanceName(c.env), signedIn.account.username));
+    : c.html(
+        settingsIndexPage(
+          instanceName(c.env),
+          signedIn.account.username,
+          FediRole.isAdmin(signedIn.role),
+        ),
+      );
 };
 
 const QUOTE_POLICIES = {
