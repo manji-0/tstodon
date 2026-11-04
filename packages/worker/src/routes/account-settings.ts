@@ -17,15 +17,15 @@ import { readOptionalBody } from "../http";
 import { parseInstanceIdentity } from "../runtime-config";
 import { aliasesPage, migrationPage, type PageMessage } from "../settings-pages";
 
-const instanceName = (env: Env): string => env.INSTANCE_NAME || "tstodon";
+export const instanceName = (env: Env): string => env.INSTANCE_NAME || "tstodon";
 
-type SettingsContext = Context<{ Bindings: Env }>;
+export type SettingsContext = Context<{ Bindings: Env }>;
 
 /**
  * The signed-in account for a settings page, or the response that replaces
  * the page: sign-in for a signed-out browser, an error for anyone else.
  */
-const settingsAccount = async (
+export const settingsAccount = async (
   c: SettingsContext,
 ): Promise<
   | Readonly<{ kind: "Account"; account: LocalAccount; signedInAt: Date }>

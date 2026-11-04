@@ -1,17 +1,94 @@
+import { Languages } from "@tstodon/core";
 import type { AccountAlias } from "./account-alias-store";
 import { page, PASSKEY_SIGN_IN, WEBAUTHN_HELPERS } from "./auth-pages";
 import { escapeHtml } from "./html";
 
 /**
  * Account settings that Mastodon keeps in Rails pages, not in its web app:
- * the "moving from" aliases (`/settings/aliases`) and the move to another
- * account (`/settings/migration`). Plain forms in the style of the sign-in
- * pages, posted back to this origin with the session cookie.
+ * the settings index (`/settings/preferences`), posting defaults, privacy
+ * and reach, the "moving from" aliases (`/settings/aliases`) and the move to
+ * another account (`/settings/migration`). Plain forms in the style of the
+ * sign-in pages, posted back to this origin with the session cookie.
  */
 
 export type PageMessage = Readonly<{ kind: "error" | "notice"; text: string }>;
 
-const nav = `      <p class="muted"><a href="/">Back to the web app</a> · <a href="/settings/aliases">Moving from</a> · <a href="/settings/migration">Moving to</a></p>`;
+const nav = `      <p class="muted"><a href="/">Back to the web app</a> · <a href="/settings/preferences">Preferences</a></p>`;
+
+type Link = Readonly<{ href: string; label: string }>;
+
+const linkList = (links: ReadonlyArray<Link & { about?: string }>): string =>
+  `<ul>${links
+    .map(
+      (link) => `
+        <li><a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>${link.about === undefined ? "" : ` <span class="muted">${escapeHtml(link.about)}</span>`}</li>`,
+    )
+    .join("")}
+      </ul>`;
+
+const SETTINGS_SECTIONS: ReadonlyArray<
+  Readonly<{ heading: string; links: ReadonlyArray<Link & { about: string }> }>
+> = [
+  {
+    heading: "Profile",
+    links: [
+      { href: "/profile/edit", label: "Edit profile", about: "Name, bio, fields, and pictures." },
+      {
+        href: "/settings/privacy",
+        label: "Privacy and reach",
+        about: "Follow requests, discovery, and search.",
+      },
+    ],
+  },
+  {
+    heading: "Posting",
+    links: [
+      {
+        href: "/settings/preferences/posting_defaults",
+        label: "Posting defaults",
+        about: "Visibility, quotes, media, and language of new posts.",
+      },
+    ],
+  },
+  {
+    heading: "Accounts and hashtags",
+    links: [
+      { href: "/follow_requests", label: "Follow requests", about: "Accounts waiting for you." },
+      { href: "/mutes", label: "Muted users", about: "Accounts you do not see." },
+      { href: "/blocks", label: "Blocked users", about: "Accounts that cannot reach you." },
+      { href: "/domain_blocks", label: "Blocked domains", about: "Servers you do not see." },
+      { href: "/followed_tags", label: "Followed hashtags", about: "Hashtags in your home feed." },
+    ],
+  },
+  {
+    heading: "Account migration",
+    links: [
+      {
+        href: "/settings/aliases",
+        label: "Moving from a different account",
+        about: "Let another account move its followers here.",
+      },
+      {
+        href: "/settings/migration",
+        label: "Move to a different account",
+        about: "Send your followers to another account.",
+      },
+    ],
+  },
+];
+
+/** The settings this server has, grouped like Mastodon's settings sidebar. */
+export const settingsIndexPage = (instanceName: string, username: string): string =>
+  page(
+    `Preferences · ${instanceName}`,
+    `      <p class="muted"><a href="/">Back to the web app</a></p>
+      <h1>Preferences</h1>
+      <p>Settings for <strong>@${escapeHtml(username)}</strong>.</p>${SETTINGS_SECTIONS.map(
+        (section) => `
+      <h2>${escapeHtml(section.heading)}</h2>
+      ${linkList(section.links)}`,
+      ).join("")}`,
+  );
 
 const messageLine = (message: PageMessage | undefined): string =>
   `      <p id="error" class="${message?.kind === "notice" ? "muted" : "error"}" role="alert">${message === undefined ? "" : escapeHtml(message.text)}</p>`;
@@ -100,4 +177,124 @@ ${messageLine(message)}`,
         if (await signInWithPasskey()) event.target.submit();
       });`
       : "",
+  );
+
+const options = (
+  choices: ReadonlyArray<readonly [value: string, label: string]>,
+  selected: string,
+): string =>
+  choices
+    .map(
+      ([value, label]) =>
+        `<option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(label)}</option>`,
+    )
+    .join("");
+
+const checkbox = (
+  id: string,
+  checked: boolean,
+  label: string,
+  hint: string,
+): string => `<p class="check"><input type="checkbox" id="${id}" name="${id}" value="1"${checked ? " checked" : ""} />
+        <label for="${id}">${escapeHtml(label)} <span class="muted">${escapeHtml(hint)}</span></label></p>`;
+
+export type PostingDefaults = Readonly<{
+  privacy: "public" | "unlisted" | "private" | "direct";
+  quotePolicy: "public" | "followers" | "nobody";
+  sensitive: boolean;
+  /** A language code, or `""` for none. */
+  language: string;
+}>;
+
+/** Mastodon's `/settings/preferences/posting_defaults`: the account's `source` defaults. */
+export const postingDefaultsPage = (
+  instanceName: string,
+  defaults: PostingDefaults,
+  message?: PageMessage,
+): string =>
+  page(
+    `Posting defaults · ${instanceName}`,
+    `${nav}
+      <h1>Posting defaults</h1>
+      <p>New posts start with these settings. You can still change them on each post.</p>
+      <form method="post" action="/settings/preferences/posting_defaults">
+        <label for="privacy">Visibility</label>
+        <select id="privacy" name="privacy">${options(
+          [
+            ["public", "Public"],
+            ["unlisted", "Quiet public"],
+            ["private", "Followers only"],
+            ["direct", "Private mention"],
+          ],
+          defaults.privacy,
+        )}</select>
+        <label for="quote_policy">Who can quote</label>
+        <select id="quote_policy" name="quote_policy">${options(
+          [
+            ["public", "Anyone"],
+            ["followers", "Followers only"],
+            ["nobody", "Just me"],
+          ],
+          defaults.quotePolicy,
+        )}</select>
+        <label for="language">Language</label>
+        <select id="language" name="language">${options(
+          [["", "Not set"], ...Languages],
+          defaults.language,
+        )}</select>
+        ${checkbox("sensitive", defaults.sensitive, "Always mark media as sensitive", "Viewers click to see it.")}
+        <button type="submit">Save changes</button>
+      </form>
+${messageLine(message)}`,
+  );
+
+export type PrivacySettings = Readonly<{
+  locked: boolean;
+  discoverable: boolean;
+  indexable: boolean;
+  hideCollections: boolean;
+}>;
+
+/**
+ * Mastodon's `/settings/privacy`. The checkbox ids are Mastodon's, since the
+ * web app links to `#account_unlocked` and `#account_discoverable`.
+ */
+export const privacyPage = (
+  instanceName: string,
+  settings: PrivacySettings,
+  message?: PageMessage,
+): string =>
+  page(
+    `Privacy and reach · ${instanceName}`,
+    `${nav}
+      <h1>Privacy and reach</h1>
+      <form method="post" action="/settings/privacy">
+        ${checkbox("account_unlocked", !settings.locked, "Automatically accept new followers", "Turn this off to review follow requests yourself.")}
+        ${checkbox("account_discoverable", settings.discoverable, "Feature profile and posts in discovery", "Your profile can appear in suggestions and the directory.")}
+        ${checkbox("account_indexable", settings.indexable, "Include public posts in search results", "People can find your public posts by searching.")}
+        ${checkbox("account_show_collections", !settings.hideCollections, "Show who you follow and who follows you", "Visible on your profile.")}
+        <button type="submit">Save changes</button>
+      </form>
+${messageLine(message)}`,
+  );
+
+export type UnsupportedNotice = Readonly<{
+  title: string;
+  /** What the server offers instead, or why it has no such page. */
+  text: string;
+  alternatives: ReadonlyArray<Link>;
+}>;
+
+/** A Mastodon page this server has no counterpart for: say so and offer a way on. */
+export const unsupportedPage = (instanceName: string, notice: UnsupportedNotice): string =>
+  page(
+    `${notice.title} · ${instanceName}`,
+    `${nav}
+      <h1>${escapeHtml(notice.title)}</h1>
+      <p><strong>This page is not available on this server.</strong> ${escapeHtml(notice.text)}</p>${
+        notice.alternatives.length === 0
+          ? ""
+          : `
+      ${linkList(notice.alternatives)}`
+      }`,
   );

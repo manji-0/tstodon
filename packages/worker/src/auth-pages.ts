@@ -15,8 +15,11 @@ export const page = (title: string, body: string, script = ""): string => `<!doc
     <title>${escapeHtml(title)}</title>
     <style>
       body { font-family: system-ui, sans-serif; max-width: 28rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.5; }
-      label, input, button { display: block; width: 100%; box-sizing: border-box; }
-      input, button { font: inherit; padding: 0.5rem; margin-top: 0.25rem; }
+      label, input, select, button { display: block; width: 100%; box-sizing: border-box; }
+      input, select, button { font: inherit; padding: 0.5rem; margin-top: 0.25rem; }
+      select + label { margin-top: 0.75rem; }
+      .check { display: flex; gap: 0.5rem; align-items: baseline; margin: 0.75rem 0 0; }
+      .check input { width: auto; flex: none; margin: 0; }
       button { margin-top: 1rem; cursor: pointer; }
       .error { color: #b00020; }
       .muted { color: #666; }
