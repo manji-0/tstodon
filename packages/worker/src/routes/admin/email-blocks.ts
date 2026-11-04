@@ -1,7 +1,7 @@
+import { Hostname } from "@tstodon/domain";
 import { Sensitive } from "@tstodon/core";
 import type { Context } from "hono";
 import { z } from "zod";
-import { normalizeDomain } from "../../domain-block-store";
 import {
   canonicalEmailHash,
   deleteCanonicalEmailBlock,
@@ -222,8 +222,8 @@ export const postV1AdminEmailDomainBlocks = async (
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const domain = normalizeDomain(body.value.domain ?? "");
-  if (domain.length === 0) {
+  const domain = Hostname.fromInput(body.value.domain ?? "");
+  if (domain === undefined) {
     return jsonValidationError(c);
   }
   const blocked = await insertEmailDomainBlock(c.env.DB, domain);

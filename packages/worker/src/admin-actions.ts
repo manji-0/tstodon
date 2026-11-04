@@ -3,6 +3,7 @@ import {
   type RemoteActorValue,
   RemoteActorModeration,
   type RemoteActorModerationAction,
+  Hostname,
 } from "@tstodon/domain";
 import { err, ok, Result } from "neverthrow";
 import { z } from "zod";
@@ -36,7 +37,6 @@ import {
   updateDomainBlock,
 } from "./admin-domain-block-store";
 import type { RepositoryError } from "./d1";
-import { normalizeDomain } from "./domain-block-store";
 import {
   findReportById,
   listOpenReportIdsForTarget,
@@ -323,12 +323,13 @@ const savedBlock = async (
   if (block.isErr() || !block.value) {
     return block;
   }
+  const host = Hostname.ofAuthority(block.value.domain);
   if (block.value.reject_media !== 0) {
-    await clearRemoteMediaForDomain(env.DB, block.value.domain);
+    await clearRemoteMediaForDomain(env.DB, host);
   }
   if (block.value.severity === "suspend") {
     const severed = await severAndNotify(env, {
-      scope: { kind: "Domain", domain: block.value.domain },
+      scope: { kind: "Domain", domain: host },
       type: "domain_block",
       targetName: block.value.domain,
     });
@@ -346,8 +347,8 @@ export const createDomainBlock = async (
   rawDomain: string,
   settings: DomainBlockSettings,
 ): Promise<Result<DomainBlockRow | undefined, CreateDomainBlockError>> => {
-  const domain = normalizeDomain(rawDomain);
-  if (domain.length === 0) {
+  const domain = Hostname.fromInput(rawDomain);
+  if (domain === undefined) {
     return err({ kind: "DomainRequired" });
   }
   if (domain === ownDomain.toLowerCase()) {

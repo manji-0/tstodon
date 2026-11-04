@@ -1,11 +1,7 @@
+import { Hostname } from "@tstodon/domain";
 import type { Context } from "hono";
 import { z } from "zod";
-import {
-  blockDomain,
-  listBlockedDomains,
-  normalizeDomain,
-  unblockDomain,
-} from "../domain-block-store";
+import { blockDomain, listBlockedDomains, unblockDomain } from "../domain-block-store";
 import { jsonAuthError, jsonRepositoryError, readBody, requireUser } from "../http";
 import { parseInstanceIdentity } from "../runtime-config";
 
@@ -38,8 +34,8 @@ export const postV1DomainBlocks = async (
   if (body.isErr()) {
     return c.json({ error: "domain is required", kind: "ValidationError" }, 422);
   }
-  const domain = normalizeDomain(body.value.domain);
-  if (domain.length === 0) {
+  const domain = Hostname.fromInput(body.value.domain);
+  if (domain === undefined) {
     return c.json({ error: "domain is required", kind: "ValidationError" }, 422);
   }
   if (domain === identity.value.domain.toLowerCase()) {
@@ -67,8 +63,8 @@ export const deleteV1DomainBlocks = async (
       raw = body.value.domain;
     }
   }
-  const domain = normalizeDomain(raw);
-  if (domain.length === 0) {
+  const domain = Hostname.fromInput(raw);
+  if (domain === undefined) {
     return c.json({ error: "domain is required", kind: "ValidationError" }, 422);
   }
   const removed = await unblockDomain(c.env.DB, user.value.id, domain);

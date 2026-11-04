@@ -4,6 +4,7 @@ import {
   type LocalAccount,
   type OutboxJob,
   type RowOutcomeValue,
+  Hostname,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import {
@@ -26,7 +27,7 @@ import {
   rowsNaming,
 } from "./csv-import-store";
 import type { RepositoryError } from "./d1";
-import { blockDomain, normalizeDomain, unblockDomain } from "./domain-block-store";
+import { blockDomain, unblockDomain } from "./domain-block-store";
 import { followAccountRef } from "./follow-ref";
 import { type JobPage, measureJobPage } from "./metrics";
 import { unfollowAccount } from "./follow-store";
@@ -207,8 +208,8 @@ export const applyImportRow = async (
         return muted.map(() => applied);
       });
     case "DomainBlocks": {
-      const domain = normalizeDomain(row.domain);
-      if (domain === identity.domain.toLowerCase()) {
+      const domain = Hostname.fromInput(row.domain);
+      if (domain === undefined || domain === identity.domain.toLowerCase()) {
         return ok(unresolved(failed("Refused")));
       }
       const blocked = await blockDomain(env.DB, account.id, domain);
@@ -284,7 +285,7 @@ const removeEntry = async (
       return removed.map(() => undefined);
     }
     case "DomainBlocks": {
-      const removed = await unblockDomain(env.DB, account.id, entry.domain);
+      const removed = await unblockDomain(env.DB, account.id, Hostname.ofAuthority(entry.domain));
       return removed.map(() => undefined);
     }
     case "Lists":

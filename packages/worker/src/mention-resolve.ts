@@ -1,5 +1,4 @@
-import { authorityHost } from "./domain-block-store";
-import { InstanceIdentity, type RemoteActor } from "@tstodon/domain";
+import { InstanceIdentity, type RemoteActor, Hostname } from "@tstodon/domain";
 import { findAccountsByIds } from "./account-store";
 import type { NoteMention } from "./activitypub";
 import { listStatusMentions } from "./mention-store";
@@ -28,7 +27,7 @@ export const resolveRemoteMentions = async (
   const allowHosts = await federationAllowHosts(env);
   const actors = new Map<string, RemoteActor>();
   for (const handle of handles) {
-    if (blockedHosts.has(authorityHost(handle.domain))) {
+    if (blockedHosts.has(Hostname.ofAuthority(handle.domain))) {
       continue;
     }
     const cached = await findRemoteActorByHandle(env.DB, handle.username, handle.domain);

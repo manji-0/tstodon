@@ -1,5 +1,6 @@
 import { schemaResult } from "@tstodon/core";
 import { err, type Result } from "neverthrow";
+import type { Hostname } from "@tstodon/domain";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { jsonStringArray, type RepositoryError, runD1, runD1Batch } from "./d1";
@@ -24,7 +25,7 @@ export type SeveranceType = z.infer<typeof SeveranceTypeSchema>;
 
 /** Whose follows a decision removes: every actor of a server, or one actor. */
 export type SeveranceScope =
-  | Readonly<{ kind: "Domain"; domain: string }>
+  | Readonly<{ kind: "Domain"; domain: Hostname }>
   | Readonly<{ kind: "Actor"; actorUri: string }>;
 
 /** A decision to sever, as the caller names it. */
@@ -66,7 +67,7 @@ export type SeveredFollow = Readonly<{
 const ACTOR_MATCH_SQL = `((? <> '' AND r.host = ?) OR (? <> '' AND r.actor_uri = ?))`;
 
 const matchBinds = (scope: SeveranceScope): [string, string, string, string] => {
-  const domain = scope.kind === "Domain" ? scope.domain.toLowerCase() : "";
+  const domain = scope.kind === "Domain" ? scope.domain : "";
   const actorUri = scope.kind === "Actor" ? scope.actorUri : "";
   return [domain, domain, actorUri, actorUri];
 };

@@ -1,8 +1,8 @@
+import { Hostname } from "@tstodon/domain";
 import type { ImportRowValue, ImportTypeValue, RowFailureValue } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { parseAccountHandle } from "./account-ref";
 import { parseCsv, unguardCell } from "./csv";
-import { normalizeDomain } from "./domain-block-store";
 
 /** The largest file accepted, in bytes. Mastodon allows 20 MB; this bounds a Worker's memory. */
 export const MAX_IMPORT_BYTES = 1_048_576;
@@ -212,8 +212,8 @@ const parseLine = (
           };
     }
     case "DomainBlocks": {
-      const domain = normalizeDomain(cells[0] ?? "");
-      return domain === "" || domain.length > MAX_DOMAIN_LENGTH || !HOST_PATTERN.test(domain)
+      const domain = Hostname.fromInput(cells[0] ?? "");
+      return domain === undefined || domain.length > MAX_DOMAIN_LENGTH || !HOST_PATTERN.test(domain)
         ? malformed
         : { kind: "Ready", row: { kind: "DomainBlocks", domain }, key: domain };
     }

@@ -1,9 +1,10 @@
+import { Hostname } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { err, ok } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import { holdNotification } from "./notification-policy-store";
 import { notificationDisposition } from "./notification-policy";
-import { hostnameOf, isDomainBlocked } from "./domain-block-store";
+import { isDomainBlocked } from "./domain-block-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { findActiveMute, findBlock } from "./block-mute-store";
 import { mastodonNotification } from "./notification-documents";
@@ -147,7 +148,7 @@ export const notifyFromRemote = async (
   if (muted.isErr()) {
     return err(muted.error);
   }
-  const domain = hostnameOf(input.actorUri);
+  const domain = Hostname.ofUri(input.actorUri);
   const domainBlocked = domain ? await isDomainBlocked(env.DB, input.accountId, domain) : ok(false);
   if (domainBlocked.isErr()) {
     return err(domainBlocked.error);

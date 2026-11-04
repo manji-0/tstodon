@@ -1,3 +1,4 @@
+import { Hostname } from "@tstodon/domain";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { Context } from "hono";
 import type { Result } from "neverthrow";
@@ -16,7 +17,6 @@ import {
 } from "../../admin-domain-block-store";
 import { type DomainBlockForm, instancePage, instancesPage } from "../../admin-pages";
 import { errorPage } from "../../auth-pages";
-import { normalizeDomain } from "../../domain-block-store";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { instanceName, type SettingsContext } from "../account-settings";
 import {
@@ -38,8 +38,8 @@ export const getAdminInstances = async (c: Context<{ Bindings: Env }, "/admin/in
   if (admin.kind === "Answered") {
     return admin.response;
   }
-  const requested = normalizeDomain(c.req.query("domain") ?? "");
-  if (requested.length > 0) {
+  const requested = Hostname.fromInput(c.req.query("domain") ?? "");
+  if (requested !== undefined) {
     return pageRedirect(c, `/admin/instances/${encodeURIComponent(requested)}`, 303);
   }
   const blocks = await listDomainBlocks(c.env.DB, 200, null);
@@ -88,10 +88,10 @@ const instanceDomain = (
   c: SettingsContext,
   raw: string,
 ):
-  | Readonly<{ kind: "Domain"; domain: string }>
+  | Readonly<{ kind: "Domain"; domain: Hostname }>
   | Readonly<{ kind: "Answered"; response: Response }> => {
-  const domain = normalizeDomain(raw);
-  if (domain.length === 0) {
+  const domain = Hostname.fromInput(raw);
+  if (domain === undefined) {
     return { kind: "Answered", response: notFound(c, "domain") };
   }
   return domain === raw

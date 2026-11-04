@@ -1,4 +1,4 @@
-import { authorityHost } from "./domain-block-store";
+import { Hostname } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -94,7 +94,7 @@ export const findDomainBlockById = async (
 
 export const findDomainBlockByDomain = async (
   db: D1Database,
-  domain: string,
+  domain: Hostname,
 ): Promise<Result<DomainBlockRow | undefined, RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(db, findDomainBlockByDomainSql(domain), DomainBlockRowSchema);
@@ -161,15 +161,15 @@ export const deleteDomainBlock = async (
   });
 
 /** Domains hidden from public surfaces (silence + suspend). */
-export const restrictedDomains = async (db: D1Database): Promise<ReadonlySet<string>> => {
+export const restrictedDomains = async (db: D1Database): Promise<ReadonlySet<Hostname>> => {
   const rows = await runD1(async () => queryTyped(db, listRestrictedDomainsSql(), DomainRow));
-  return new Set((rows.isOk() ? rows.value : []).map((row) => authorityHost(row.domain)));
+  return new Set((rows.isOk() ? rows.value : []).map((row) => Hostname.ofAuthority(row.domain)));
 };
 
 /** Domains federation is refused with (suspend). */
-export const suspendedDomains = async (db: D1Database): Promise<ReadonlySet<string>> => {
+export const suspendedDomains = async (db: D1Database): Promise<ReadonlySet<Hostname>> => {
   const rows = await runD1(async () => queryTyped(db, listSuspendedDomainsSql(), DomainRow));
-  return new Set((rows.isOk() ? rows.value : []).map((row) => authorityHost(row.domain)));
+  return new Set((rows.isOk() ? rows.value : []).map((row) => Hostname.ofAuthority(row.domain)));
 };
 
 export const domainBlockDocument = (row: DomainBlockRow): Record<string, unknown> => ({
@@ -212,15 +212,15 @@ export const publicDomainBlockDocument = async (
 };
 
 /** Domains whose remote media must not be kept (`reject_media`). */
-export const mediaRejectedDomains = async (db: D1Database): Promise<ReadonlySet<string>> => {
+export const mediaRejectedDomains = async (db: D1Database): Promise<ReadonlySet<Hostname>> => {
   const rows = await runD1(async () => queryTyped(db, listMediaRejectedDomainsSql(), DomainRow));
-  return new Set((rows.isOk() ? rows.value : []).map((row) => authorityHost(row.domain)));
+  return new Set((rows.isOk() ? rows.value : []).map((row) => Hostname.ofAuthority(row.domain)));
 };
 
 /** Called when a block starts rejecting media so stored attachments go away too. */
 export const clearRemoteMediaForDomain = async (
   db: D1Database,
-  domain: string,
+  domain: Hostname,
 ): Promise<Result<void, RepositoryError>> => {
   const cleared = await runD1(async () => {
     await runTyped(db, clearRemoteMediaForDomainSql(domain, nowIso()));

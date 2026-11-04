@@ -16,6 +16,7 @@ export {
   InboxActivitySchema,
   type InboxActivity as InboxActivityValue,
 } from "./inbox-activity";
+export { Hostname, type Hostname as HostnameValue } from "./hostname";
 export { InstanceIdentity } from "./instance-identity";
 export { IsoInstant } from "./iso-instant";
 export {

@@ -1,4 +1,4 @@
-import { InstanceIdentity } from "@tstodon/domain";
+import { InstanceIdentity, Hostname } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountsByIds } from "./account-store";
 import { parseLocalStatusId } from "./activitypub";
@@ -14,7 +14,7 @@ import {
 } from "./status-store";
 import { canViewRemoteStatus, canViewStatus } from "./visibility-guard";
 import { restrictedDomains } from "./admin-domain-block-store";
-import { authorityHost, listBlockedDomains } from "./domain-block-store";
+import { listBlockedDomains } from "./domain-block-store";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { listSuppressedAuthors } from "./block-mute-store";
 
@@ -183,7 +183,7 @@ export const visibleThreadStatuses = async (
   if (viewerId) {
     const own = await listBlockedDomains(db, viewerId);
     for (const domain of own.isOk() ? own.value : []) {
-      blockedDomains.add(domain.toLowerCase());
+      blockedDomains.add(domain);
     }
   }
   const actors = await findRemoteActorsByUris(
@@ -198,7 +198,7 @@ export const visibleThreadStatuses = async (
       return true;
     }
     const actor = actors.isOk() ? actors.value.get(node.status.actorUri) : undefined;
-    return !actor || blockedDomains.has(authorityHost(actor.domain));
+    return !actor || blockedDomains.has(Hostname.ofAuthority(actor.domain));
   };
   return (
     await Promise.all(

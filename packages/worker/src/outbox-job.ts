@@ -1,5 +1,10 @@
 import { assertNever } from "@tstodon/core";
-import { type LocalStatus, OutboxJob, type OutboxJob as OutboxJobValue } from "@tstodon/domain";
+import {
+  Hostname,
+  type LocalStatus,
+  OutboxJob,
+  type OutboxJob as OutboxJobValue,
+} from "@tstodon/domain";
 import { ok } from "neverthrow";
 import { nowIso } from "./clock";
 import { mastodonStatuses } from "./local-status-documents";
@@ -12,7 +17,6 @@ import {
 import { listExpiredUnnotifiedPolls, markPollExpiryNotified } from "./poll-store";
 import { elapsedMs, measureJobPage, writeMetric } from "./metrics";
 import { suspendedDomains } from "./admin-domain-block-store";
-import { authorityHost } from "./domain-block-store";
 import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
 import { notifyEndedRemotePolls } from "./remote-poll-expiry";
 import { processDistributePollUpdateJob } from "./poll-update";
@@ -234,7 +238,7 @@ export const processOutboxJob = async (
               const host = new URL(inbox).host.toLowerCase();
               return (
                 host !== sameHost &&
-                !suspended.has(authorityHost(host)) &&
+                !suspended.has(Hostname.ofAuthority(host)) &&
                 allowListAdmits(allowHosts, host)
               );
             } catch {

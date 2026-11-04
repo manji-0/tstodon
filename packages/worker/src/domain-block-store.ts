@@ -1,3 +1,4 @@
+import { Hostname } from "@tstodon/domain";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
@@ -12,37 +13,19 @@ import { queryTyped, runTyped } from "./typed-sql";
 
 const DomainRow = z.object({ domain: z.string() });
 
-/**
- * The hostname of a `host[:port]` authority, lower case: what blocks,
- * suspensions and the allow list name. A remote actor's `domain` keeps its
- * port, and a rule on `peer.test` covers `peer.test:8792` too.
- */
-export const authorityHost = (authority: string): string => {
-  const lower = authority.toLowerCase();
-  if (lower.startsWith("[")) {
-    return lower.slice(0, lower.indexOf("]") + 1);
-  }
-  const colon = lower.indexOf(":");
-  return colon < 0 ? lower : lower.slice(0, colon);
-};
+const hostOfRow = (row: z.infer<typeof DomainRow>): Hostname => Hostname.ofAuthority(row.domain);
 
 /**
- * Normalize a user-supplied domain: strip scheme, path, leading `@`, port,
- * lowercase. Blocks name hostnames.
+ * Aliases for the inbox handlers still importing them (`outbound-follow.ts`,
+ * `remote-flag.ts`, `routes/activitypub.ts`); delete once those call `Hostname`.
  */
-export const normalizeDomain = (raw: string): string =>
-  authorityHost(
-    raw
-      .trim()
-      .replace(/^@/, "")
-      .replace(/^https?:\/\//i, "")
-      .replace(/\/.*$/, ""),
-  );
+export const authorityHost = Hostname.ofAuthority;
+export const hostnameOf = Hostname.ofUri;
 
 export const blockDomain = async (
   db: D1Database,
   accountId: string,
-  domain: string,
+  domain: Hostname,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await runTyped(db, insertAccountDomainBlockSql(accountId, domain, nowIso()));
@@ -51,7 +34,7 @@ export const blockDomain = async (
 export const unblockDomain = async (
   db: D1Database,
   accountId: string,
-  domain: string,
+  domain: Hostname,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(db, deleteAccountDomainBlockSql(accountId, domain), DomainRow);
@@ -61,16 +44,16 @@ export const unblockDomain = async (
 export const listBlockedDomains = async (
   db: D1Database,
   accountId: string,
-): Promise<Result<string[], RepositoryError>> =>
+): Promise<Result<Hostname[], RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(db, listAccountDomainBlocksSql(accountId), DomainRow);
-    return rows.map((row) => row.domain);
+    return rows.map(hostOfRow);
   });
 
 export const isDomainBlocked = async (
   db: D1Database,
   accountId: string,
-  domain: string,
+  domain: Hostname,
 ): Promise<Result<boolean, RepositoryError>> => {
   const found = await runD1(async () => {
     const rows = await queryTyped(db, findAccountDomainBlockSql(accountId, domain), DomainRow);
@@ -80,13 +63,4 @@ export const isDomainBlocked = async (
     return err(found.error);
   }
   return ok(found.value);
-};
-
-/** The trailing host of an ActivityPub URI, when it parses. */
-export const hostnameOf = (uri: string): string | undefined => {
-  try {
-    return new URL(uri).hostname.toLowerCase();
-  } catch {
-    return undefined;
-  }
 };

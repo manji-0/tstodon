@@ -1,5 +1,4 @@
-import { authorityHost } from "./domain-block-store";
-import { InstanceIdentity, RemoteActor } from "@tstodon/domain";
+import { InstanceIdentity, RemoteActor, Hostname } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import { enqueueInstanceActorActivity, type EnqueueLocalActivityError } from "./delivery";
@@ -93,7 +92,7 @@ export const repliedToInboxes = async (
   }
   const inboxes = new Map<string, string>();
   for (const actor of actors.value.values()) {
-    const domain = authorityHost(actor.domain);
+    const domain = Hostname.ofAuthority(actor.domain);
     if (domain !== ownDomain?.toLowerCase() && !inboxes.has(domain)) {
       inboxes.set(domain, RemoteActor.deliveryInbox(actor));
     }

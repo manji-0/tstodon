@@ -1,4 +1,10 @@
-import { OutboxJob, StatusId, type ImportModeValue, type ImportTypeValue } from "@tstodon/domain";
+import {
+  Hostname,
+  OutboxJob,
+  StatusId,
+  type ImportModeValue,
+  type ImportTypeValue,
+} from "@tstodon/domain";
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { ORIGIN, signUp } from "../test/passkey-browser";
@@ -291,8 +297,8 @@ describe("data export and import", () => {
       notifications: true,
       expiresAt: null,
     });
-    await blockDomain(env.DB, alice.id, "spam.example");
-    await blockDomain(env.DB, alice.id, "ads.example");
+    await blockDomain(env.DB, alice.id, Hostname.ofAuthority("spam.example"));
+    await blockDomain(env.DB, alice.id, Hostname.ofAuthority("ads.example"));
     const close = await createList(env.DB, alice.id, { title: 'Close, "best" friends' });
     const news = await createList(env.DB, alice.id, { title: "News" });
     if (close.isErr() || news.isErr()) {
@@ -413,7 +419,7 @@ describe("data export and import", () => {
     const remoteFollowed = await remoteActor("ow_followed", "remote.example");
 
     await blockAccount(env.DB, owner.id, bob.id, `${ORIGIN}/users/${bob.name}`);
-    await blockDomain(env.DB, owner.id, "old.example");
+    await blockDomain(env.DB, owner.id, Hostname.ofAuthority("old.example"));
     await runImport(owner, "Blocks", "Merge", "ow_carol\n");
     expect(await keysOf(owner, "Blocks")).toEqual(["ow_bob@example.com", "ow_carol@example.com"]);
     await runImport(owner, "Blocks", "Overwrite", "ow_carol@example.com\now_kept@remote.example\n");
@@ -630,7 +636,7 @@ describe("data export and import", () => {
     const bystander = await user("iso_bystander");
     const target = await user("iso_target");
     await blockAccount(env.DB, bystander.id, target.id, `${ORIGIN}/users/${target.name}`);
-    await blockDomain(env.DB, bystander.id, "keep.example");
+    await blockDomain(env.DB, bystander.id, Hostname.ofAuthority("keep.example"));
     await runImport(owner, "Blocks", "Overwrite", "iso_target\n");
     await runImport(owner, "DomainBlocks", "Overwrite", "mine.example\n");
     expect(await keysOf(bystander, "Blocks")).toEqual(["iso_target@example.com"]);

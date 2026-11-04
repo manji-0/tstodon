@@ -1,9 +1,14 @@
-import { type LocalAccount, RemotePoll, type RemotePollChoiceError } from "@tstodon/domain";
+import {
+  type LocalAccount,
+  RemotePoll,
+  type RemotePollChoiceError,
+  Hostname,
+} from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { nowIso } from "./clock";
 import { enqueueTargetedActivity } from "./delivery";
-import { authorityHost, hostnameOf, isDomainBlocked } from "./domain-block-store";
+import { isDomainBlocked } from "./domain-block-store";
 import { newEntityId } from "./ids";
 import { pollVoteActivity } from "./poll-vote-activity";
 import { remotePollJson } from "./poll-document";
@@ -53,8 +58,13 @@ export const voteOnRemotePoll = async (
   if (!author.value) {
     return err({ kind: "NotFound" });
   }
-  const inboxHost = hostnameOf(author.value.inboxUri) ?? authorityHost(author.value.domain);
-  const blocked = await isDomainBlocked(env.DB, voter.id, authorityHost(author.value.domain));
+  const inboxHost =
+    Hostname.ofUri(author.value.inboxUri) ?? Hostname.ofAuthority(author.value.domain);
+  const blocked = await isDomainBlocked(
+    env.DB,
+    voter.id,
+    Hostname.ofAuthority(author.value.domain),
+  );
   if (
     blocked.isErr() ||
     blocked.value ||

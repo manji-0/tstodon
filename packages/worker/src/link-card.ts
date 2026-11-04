@@ -1,4 +1,4 @@
-import type { InstanceIdentity } from "@tstodon/domain";
+import type { Hostname, InstanceIdentity } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
@@ -196,7 +196,7 @@ export const resolveLinkCard = async (
   url: string,
   options: Readonly<{
     allowHosts?: ReadonlySet<string>;
-    blockedHosts?: ReadonlySet<string>;
+    blockedHosts?: ReadonlySet<Hostname>;
   }> = {},
 ): Promise<LinkCardOutcome> => {
   const cached = await cachedCard(env.DB, url);
@@ -261,7 +261,7 @@ export const buildLinkCard = async (
   url: string,
   options: Readonly<{
     allowHosts?: ReadonlySet<string>;
-    blockedHosts?: ReadonlySet<string>;
+    blockedHosts?: ReadonlySet<Hostname>;
   }> = {},
 ): Promise<LinkCard | undefined> => {
   const outcome = await resolveLinkCard(env, identity, url, options);

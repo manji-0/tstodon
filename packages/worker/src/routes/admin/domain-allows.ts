@@ -1,6 +1,6 @@
+import { Hostname } from "@tstodon/domain";
 import type { Context } from "hono";
 import { z } from "zod";
-import { normalizeDomain } from "../../domain-block-store";
 import {
   deleteDomainAllow,
   type DomainAllowRow,
@@ -75,8 +75,8 @@ export const postV1AdminDomainAllows = async (
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const domain = normalizeDomain(body.value.domain ?? "");
-  if (domain.length === 0 || !HOSTNAME_PATTERN.test(domain)) {
+  const domain = Hostname.fromInput(body.value.domain ?? "");
+  if (domain === undefined || !HOSTNAME_PATTERN.test(domain)) {
     return c.json({ error: "Validation failed: Domain is invalid", kind: "ValidationError" }, 422);
   }
   // Idempotent, like Mastodon: an already allowed domain answers its document.

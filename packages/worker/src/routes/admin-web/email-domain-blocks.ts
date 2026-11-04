@@ -1,8 +1,8 @@
+import { Hostname } from "@tstodon/domain";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { Context } from "hono";
 import { z } from "zod";
 import { type EmailDomainBlockEntry, emailDomainBlocksPage } from "../../admin-content-pages";
-import { normalizeDomain } from "../../domain-block-store";
 import { pageRedirect } from "../../page-redirect";
 import {
   deleteEmailDomainBlock,
@@ -84,8 +84,8 @@ export const postAdminEmailDomainBlocks = async (c: Context<{ Bindings: Env }>) 
       ? pageRedirect(c, withNotice("/admin/email_domain_blocks", "email_block_removed"), 303)
       : notFound(c, "email domain block");
   }
-  const domain = normalizeDomain(form.value.domain);
-  if (domain.length === 0) {
+  const domain = Hostname.fromInput(form.value.domain);
+  if (domain === undefined) {
     return renderBlocks(c, form.value.domain, { kind: "error", text: "Enter a domain." }, 422);
   }
   const blocked = await insertEmailDomainBlock(c.env.DB, domain);

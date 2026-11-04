@@ -1,4 +1,4 @@
-import { authorityHost } from "../../domain-block-store";
+import { Hostname } from "@tstodon/domain";
 import { assertNever } from "@tstodon/core";
 import type { Context } from "hono";
 import { findAccountByIdOrUsername } from "../../account-store";
@@ -89,7 +89,7 @@ const remoteAccountStatuses = async (
   const hidden =
     blocks?.blocking === true ||
     blocks?.domainBlocking === true ||
-    (await suspendedDomains(c.env.DB)).has(authorityHost(actor.value.domain));
+    (await suspendedDomains(c.env.DB)).has(Hostname.ofAuthority(actor.value.domain));
   if (hidden) {
     return c.json([]);
   }

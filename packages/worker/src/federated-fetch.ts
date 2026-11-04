@@ -1,6 +1,6 @@
 import { err, ok, type Result } from "neverthrow";
 import { schemaResult } from "@tstodon/core";
-import type { InstanceIdentity } from "@tstodon/domain";
+import { Hostname, type InstanceIdentity } from "@tstodon/domain";
 import { RemoteWebfingerSchema } from "./activitypub-wire";
 
 export type FederatedFetchError =
@@ -48,7 +48,7 @@ export const isBlockedFederatedHost = (
 export type FederatedFetchOptions = Readonly<{
   allowHosts?: ReadonlySet<string>;
   /** Hostnames this instance refuses to talk to (admin-suspended domains). */
-  blockedHosts?: ReadonlySet<string>;
+  blockedHosts?: ReadonlySet<Hostname>;
 }>;
 
 /**
@@ -68,7 +68,7 @@ export const isFederatedHostRefused = (
   }
   return (
     isBlockedFederatedHost(hostname, instanceDomain, allowHosts) ||
-    (options.blockedHosts?.has(host) ?? false)
+    (options.blockedHosts?.has(Hostname.ofAuthority(hostname)) ?? false)
   );
 };
 

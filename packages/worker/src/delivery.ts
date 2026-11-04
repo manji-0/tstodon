@@ -5,6 +5,7 @@ import {
   InstanceIdentity,
   OutboxJob,
   type OutboxJob as OutboxJobValue,
+  Hostname,
 } from "@tstodon/domain";
 import type { SensitiveValue } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
@@ -21,7 +22,6 @@ import {
 } from "./outbox-store";
 import { writeMetric } from "./metrics";
 import { suspendedDomains } from "./admin-domain-block-store";
-import { hostnameOf } from "./domain-block-store";
 import { federatesWithHost, parseInstanceIdentity } from "./runtime-config";
 
 type DeliverTargetJob = Extract<OutboxJobValue, { kind: "DeliverTarget" }>;
@@ -113,7 +113,7 @@ const enqueueSignedActivity = async (
 ): Promise<Result<void, EnqueueLocalActivityError>> => {
   // A suspended domain, or one outside the federation allow list, is never
   // contacted; the activity is dropped quietly.
-  const inboxHost = hostnameOf(inboxUrl);
+  const inboxHost = Hostname.ofUri(inboxUrl);
   if (
     inboxHost &&
     ((await suspendedDomains(env.DB)).has(inboxHost) || !(await federatesWithHost(env, inboxHost)))

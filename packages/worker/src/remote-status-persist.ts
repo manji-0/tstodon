@@ -1,4 +1,3 @@
-import { authorityHost } from "./domain-block-store";
 import {
   InstanceIdentity,
   IsoInstant,
@@ -8,6 +7,7 @@ import {
   type RemoteEmoji,
   type RemoteActor,
   type RemoteStatus as RemoteStatusValue,
+  Hostname,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
@@ -234,12 +234,12 @@ export const applyMediaPolicy = async (
   status: RemoteStatusValue,
 ): Promise<RemoteStatusValue> => {
   const rejected = await mediaRejectedDomains(env.DB);
-  return rejected.has(authorityHost(actor.domain)) ? { ...status, media: [] } : status;
+  return rejected.has(Hostname.ofAuthority(actor.domain)) ? { ...status, media: [] } : status;
 };
 
 type PersistOptions = Readonly<{
   allowHosts?: ReadonlySet<string>;
-  blockedHosts?: ReadonlySet<string>;
+  blockedHosts?: ReadonlySet<Hostname>;
   /** Notify the local accounts the note mentions, when it is newly stored (inbox `Create`). */
   notifyMentions?: boolean;
   /** Which instant a newly stored note's id sorts at; `Received` by default. */

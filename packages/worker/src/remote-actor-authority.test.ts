@@ -6,7 +6,6 @@ import { authHeaders } from "../test/auth-fixture";
 import { deliveredCreate } from "../test/delivery-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import migration from "../app/db/migrations/0097_remote_actor_authority.sql?raw";
-import { authorityHost, normalizeDomain } from "./domain-block-store";
 import { RemoteAccountId } from "./remote-account-id";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -49,15 +48,6 @@ const publicUris = async (email: string): Promise<string[]> =>
       await call("/api/v1/timelines/public?limit=40", { headers: await authHeaders(email) })
     ).json(),
   ).map((status) => status.uri);
-
-describe("hostnames of authorities", () => {
-  it("drops the port and folds the case", () => {
-    expect(authorityHost("Peer.Test:8792")).toBe("peer.test");
-    expect(authorityHost("peer.test")).toBe("peer.test");
-    expect(authorityHost("[::1]:8792")).toBe("[::1]");
-    expect(normalizeDomain(" https://Peer.Test:8792/path ")).toBe("peer.test");
-  });
-});
 
 describe("a remote actor on a non-default port", () => {
   it("keeps its port in the handle, apart from the same name on another port", async () => {

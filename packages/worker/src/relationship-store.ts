@@ -2,8 +2,7 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
 import { nowIso } from "./clock";
-import { hostnameOf } from "./domain-block-store";
-import { OutboundFollow } from "@tstodon/domain";
+import { OutboundFollow, Hostname } from "@tstodon/domain";
 import { RemoteAccountId } from "./remote-account-id";
 import { outboundFollowFromRow } from "./outbound-follow-store";
 import { parseJsonColumn } from "./json-column";
@@ -57,7 +56,7 @@ export const relationshipFlags = async (
   targetId: string,
 ): Promise<Result<RelationshipFlags, RepositoryError>> => {
   const targetActorUri = RemoteAccountId.decode(targetId);
-  const targetDomain = targetActorUri.isOk() ? hostnameOf(targetActorUri.value) : undefined;
+  const targetDomain = targetActorUri.isOk() ? Hostname.ofUri(targetActorUri.value) : undefined;
   const batched = await runD1Batch(db, [
     d1PrepareTyped(db, findFollowKindSql(viewerId, targetId)),
     d1PrepareTyped(db, findFollowKindSql(targetId, viewerId)),
