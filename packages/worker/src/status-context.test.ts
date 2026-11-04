@@ -53,6 +53,8 @@ const contextAt = async (
 };
 
 describe("status context", () => {
+  // Posting a 22-deep chain one reply at a time takes 5-13 s alone and longer
+  // under the full suite, past the 15 s default.
   it("bounds anonymous contexts and lifts the bounds for a signed-in viewer", async () => {
     const email = "context-author@example.com";
     // A 22-deep chain: root plus 22 replies.
@@ -86,5 +88,5 @@ describe("status context", () => {
     expect(authenticatedRoot.descendants).toHaveLength(22);
     // Descendants come back in chronological (id) order.
     expect(authenticatedRoot.descendants.map((status) => status.id)).toEqual(chain.slice(1));
-  });
+  }, 60_000);
 });
