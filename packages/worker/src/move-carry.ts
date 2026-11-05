@@ -1,6 +1,9 @@
 import { err, ok, type Result } from "neverthrow";
 import { type AccountRef, refAcct } from "./account-ref";
-import { blockAccount, findActiveMute, findBlock, muteAccount } from "./block-mute-store";
+import type { InstanceIdentity } from "@tstodon/domain";
+import { blockAccountTarget } from "./account-block";
+import { findAccountById } from "./account-store";
+import { findActiveMute, findBlock, muteAccount } from "./block-mute-store";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { findFollowKind } from "./follow-store";
@@ -132,6 +135,7 @@ export const moveNotePage = async (
  */
 export const moveBlockPage = async (
   env: Env,
+  identity: InstanceIdentity,
   from: AccountRef,
   to: AccountRef,
   page: CarryPage,
@@ -157,7 +161,17 @@ export const moveBlockPage = async (
     if (blocking.value || following.value) {
       continue;
     }
-    const blocked = await blockAccount(env.DB, accountId, targetAccountId(to), to.actorUri);
+    const blocker = await findAccountById(env.DB, accountId);
+    if (blocker.isErr()) {
+      return err(blocker.error);
+    }
+    if (!blocker.value) {
+      continue;
+    }
+    const blocked = await blockAccountTarget(env, identity, blocker.value, {
+      accountId: targetAccountId(to),
+      actorUri: to.actorUri,
+    });
     if (blocked.isErr()) {
       return err(blocked.error);
     }

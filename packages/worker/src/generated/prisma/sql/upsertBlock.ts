@@ -12,7 +12,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param createdAt
  */
 export const upsertBlock = $runtime.makeTypedQueryFactory(
-  "INSERT INTO blocks (id, blocker_account_id, target_account_id, target_actor_uri, created_at)\nVALUES ($1, $2, $3, $4, $5)\nON CONFLICT(blocker_account_id, target_actor_uri) DO UPDATE SET\ntarget_account_id = excluded.target_account_id",
+  "INSERT INTO blocks (id, blocker_account_id, target_account_id, target_actor_uri, created_at)\nVALUES ($1, $2, $3, $4, $5)\nON CONFLICT(blocker_account_id, target_actor_uri) DO UPDATE SET\ntarget_account_id = excluded.target_account_id\nRETURNING id",
 ) as (
   id: string,
   blockerAccountId: string,
@@ -29,5 +29,7 @@ export namespace upsertBlock {
     targetActorUri: string,
     createdAt: string,
   ];
-  export type Result = {};
+  export type Result = {
+    id: string | null;
+  };
 }

@@ -687,8 +687,13 @@ describe("an overwrite where the handle's domain is not the actor's host", () =>
     const stale = await remoteActor("split_old", "social.corp.test");
     const named = await remoteActor("split_named", "social.corp.test");
     const other = await remoteActor("split_other", "social.corp.test");
-    for (const actor of [named, stale]) {
+    // A block ends the follows, so the blocked actors are not the followed ones.
+    const blockedNamed = await remoteActor("split_blocked_named", "social.corp.test");
+    const blockedStale = await remoteActor("split_blocked_old", "social.corp.test");
+    for (const actor of [blockedNamed, blockedStale]) {
       await blockAccount(env.DB, owner.id, null, actor.actorUri);
+    }
+    for (const actor of [named, stale]) {
       await muteAccount(env.DB, owner.id, null, actor.actorUri, {
         notifications: true,
         expiresAt: null,
@@ -706,14 +711,14 @@ describe("an overwrite where the handle's domain is not the actor's host", () =>
     expect(other.actorUri).toContain("split_other");
 
     await withSplitDomain(async () => {
-      await runImport(owner, "Blocks", "Overwrite", `split_named@${CORP}\n`);
+      await runImport(owner, "Blocks", "Overwrite", `split_blocked_named@${CORP}\n`);
       await runImport(owner, "Mutes", "Overwrite", `split_named@${CORP},true\n`);
       await runImport(owner, "Following", "Overwrite", `split_named@${CORP},true,false,\n`);
       await runImport(owner, "Lists", "Overwrite", `Friends,split_named@${CORP}\n`);
     });
 
     const hosts = (keys: string[]) => keys.map((key) => key.split("@")[0]);
-    expect(hosts(await keysOf(owner, "Blocks"))).toEqual(["split_named"]);
+    expect(hosts(await keysOf(owner, "Blocks"))).toEqual(["split_blocked_named"]);
     expect(hosts(await keysOf(owner, "Mutes"))).toEqual(["split_named"]);
     expect(hosts(await keysOf(owner, "Following"))).toEqual(["split_named"]);
     expect(

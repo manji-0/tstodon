@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param targetActorUri
  */
 export const deleteBlock = $runtime.makeTypedQueryFactory(
-  "DELETE FROM blocks WHERE blocker_account_id = $1 AND target_actor_uri = $2\nRETURNING target_actor_uri",
+  "DELETE FROM blocks WHERE blocker_account_id = $1 AND target_actor_uri = $2\nRETURNING id",
 ) as (
   blockerAccountId: string,
   targetActorUri: string,
@@ -18,6 +18,6 @@ export const deleteBlock = $runtime.makeTypedQueryFactory(
 export namespace deleteBlock {
   export type Parameters = [blockerAccountId: string, targetActorUri: string];
   export type Result = {
-    target_actor_uri: string;
+    id: string | null;
   };
 }

@@ -13,12 +13,11 @@ import {
 import { mastodonRelationship } from "../../relationship-document";
 import { availableAccountDocumentsByIds } from "../../account-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
+import { blockAccountTarget, unblockAccountTarget } from "../../account-block";
 import {
-  blockAccount,
   listBlockedAccounts,
   listMutedAccounts,
   muteAccount,
-  unblockAccount,
   unmuteAccount,
 } from "../../block-mute-store";
 import { relationshipFlags } from "../../relationship-store";
@@ -63,8 +62,8 @@ const blockOrUnblock = async (c: Context<{ Bindings: Env }>, block: boolean): Pr
     return selfTargetError(c, block ? "block" : "unblock");
   }
   const written = block
-    ? await blockAccount(c.env.DB, user.value.id, target.accountId, target.actorUri)
-    : await unblockAccount(c.env.DB, user.value.id, target.actorUri);
+    ? await blockAccountTarget(c.env, identity.value, user.value, target)
+    : await unblockAccountTarget(c.env, identity.value, user.value, target);
   if (written.isErr()) {
     return jsonRepositoryError(c, written.error.message);
   }

@@ -15,6 +15,7 @@ import {
   upsertMute as upsertMuteSql,
 } from "./generated/prisma/sql";
 
+const IdRow = z.object({ id: z.string() });
 const TargetActorUriRow = z.object({ target_actor_uri: z.string() });
 const NotificationsRow = z.object({ notifications: z.union([z.number(), z.bigint()]) });
 
@@ -34,31 +35,39 @@ export type MutedAccount = Readonly<{
   createdAt: string;
 }>;
 
+/**
+ * Write the `blocks` row and answer its id, the one an existing block keeps.
+ * This is the row alone: `blockAccountTarget` also severs the follows and
+ * federates the block.
+ */
 export const blockAccount = async (
   db: D1Database,
   blockerAccountId: string,
   targetAccountId: string | null,
   targetActorUri: string,
-): Promise<Result<void, RepositoryError>> =>
+): Promise<Result<string, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(
+    const rows = await queryTyped(
       db,
       upsertBlockSql(newEntityId(), blockerAccountId, targetAccountId, targetActorUri, nowIso()),
+      IdRow,
     );
+    const id = rows[0]?.id;
+    if (id === undefined) {
+      throw new Error("block upsert returned no row");
+    }
+    return id;
   });
 
+/** Delete the `blocks` row and answer its id; `undefined` when there was none. */
 export const unblockAccount = async (
   db: D1Database,
   blockerAccountId: string,
   targetActorUri: string,
-): Promise<Result<boolean, RepositoryError>> =>
+): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(
-      db,
-      deleteBlockSql(blockerAccountId, targetActorUri),
-      TargetActorUriRow,
-    );
-    return rows.length > 0;
+    const rows = await queryTyped(db, deleteBlockSql(blockerAccountId, targetActorUri), IdRow);
+    return rows[0]?.id;
   });
 
 export const muteAccount = async (

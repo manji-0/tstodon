@@ -185,7 +185,7 @@ const movePhasePage = (
     case "notes":
       return moveNotePage(env, from, to, { afterId: cursor.afterId, pageSize });
     case "blocks":
-      return moveBlockPage(env, from, to, { afterId: cursor.afterId, pageSize });
+      return moveBlockPage(env, identity, from, to, { afterId: cursor.afterId, pageSize });
     case "mutes":
       return moveMutePage(env, from, to, { afterId: cursor.afterId, pageSize });
   }

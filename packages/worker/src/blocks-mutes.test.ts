@@ -103,9 +103,10 @@ describe("blocks and mutes", () => {
     );
 
     const unblocked = await action("blk-a@example.com", bId, "unblock");
-    expect(unblocked.body).toMatchObject({ blocking: false });
-    expect(await homeIds("blk-a@example.com")).toContain(bStatus.id);
-    expect(await homeIds("blk-b@example.com")).toContain(aStatus.id);
+    // The block ended the follows both ways, and unblocking does not bring them back.
+    expect(unblocked.body).toMatchObject({ blocking: false, following: false, followed_by: false });
+    expect(await homeIds("blk-a@example.com")).not.toContain(bStatus.id);
+    expect(await homeIds("blk-b@example.com")).not.toContain(aStatus.id);
 
     const blocksAfter = await json("/api/v1/blocks", {
       headers: await auth("blk-a@example.com"),

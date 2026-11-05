@@ -89,9 +89,9 @@ const queued = async (email: string, kind: string) => {
 };
 
 const acceptedRemoteFollow = async (email: string, remote: Remote): Promise<string> => {
-  expect((await send(email, `/api/v1/accounts/${remoteId(remote)}/follow`, "POST", {})).status).toBe(
-    200,
-  );
+  expect(
+    (await send(email, `/api/v1/accounts/${remoteId(remote)}/follow`, "POST", {})).status,
+  ).toBe(200);
   const account = await signedInAccount(email);
   const row = await env.DB.prepare(
     "SELECT follow_activity_id FROM outbound_follows WHERE account_id = ? AND actor_uri = ?",

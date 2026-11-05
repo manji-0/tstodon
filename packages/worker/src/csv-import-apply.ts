@@ -14,7 +14,8 @@ import {
   resolveAccountHandle,
 } from "./account-ref";
 import { findAccountById } from "./account-store";
-import { blockAccount, muteAccount, unblockAccount, unmuteAccount } from "./block-mute-store";
+import { blockAccountTarget, unblockAccountTarget } from "./account-block";
+import { muteAccount, unmuteAccount } from "./block-mute-store";
 import { type Entry, listEntriesPage } from "./csv-entries-store";
 import { listMemberKey } from "./csv-import-file";
 import {
@@ -185,12 +186,10 @@ export const applyImportRow = async (
         if (isSelf(account, ref)) {
           return ok(failed("Refused"));
         }
-        const blocked = await blockAccount(
-          env.DB,
-          account.id,
-          ref.kind === "LocalAccount" ? ref.account.id : null,
-          ref.actorUri,
-        );
+        const blocked = await blockAccountTarget(env, identity, account, {
+          accountId: ref.kind === "LocalAccount" ? ref.account.id : null,
+          actorUri: ref.actorUri,
+        });
         return blocked.map(() => applied);
       });
     case "Mutes":
@@ -276,10 +275,11 @@ const removeEntry = async (
       }
       return actor.value ? unfollowRemoteActor(env, identity, account, actor.value) : ok(undefined);
     }
-    case "Blocks": {
-      const removed = await unblockAccount(env.DB, account.id, entry.target.actorUri);
-      return removed.map(() => undefined);
-    }
+    case "Blocks":
+      return unblockAccountTarget(env, identity, account, {
+        accountId: entry.target.kind === "LocalAccount" ? entry.target.accountId : null,
+        actorUri: entry.target.actorUri,
+      });
     case "Mutes": {
       const removed = await unmuteAccount(env.DB, account.id, entry.target.actorUri);
       return removed.map(() => undefined);

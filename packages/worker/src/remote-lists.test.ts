@@ -175,13 +175,16 @@ describe("a list timeline with remote members", () => {
     const root = await note(member, "list-rules-root");
     const reply = await note(member, "list-rules-reply", { inReplyTo: root });
     const blockedNote = await note(blocked, "list-rules-blocked-note");
-    const cross = await note(member, "list-rules-cross", { inReplyTo: blockedNote });
+    await note(member, "list-rules-cross", { inReplyTo: blockedNote });
     expect((await send(owner, `/api/v1/accounts/${accountId(blocked)}/block`, "POST")).status).toBe(
       200,
     );
 
+    // The block ended the follow of `blocked` and with it the membership, so
+    // under the default "list" policy `cross` is a reply to a non-member.
+    expect(await memberIds(owner, listId)).toEqual([accountId(member)]);
     const path = `/api/v1/timelines/list/${listId}`;
-    expect(await uris(owner, path)).toEqual([cross, reply, root]);
+    expect(await uris(owner, path)).toEqual([reply, root]);
 
     // Replies to the author itself pass whatever the policy.
     expect(

@@ -7,3 +7,4 @@ INSERT INTO blocks (id, blocker_account_id, target_account_id, target_actor_uri,
 VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT(blocker_account_id, target_actor_uri) DO UPDATE SET
   target_account_id = excluded.target_account_id
+RETURNING id
