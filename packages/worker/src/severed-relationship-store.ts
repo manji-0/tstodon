@@ -187,11 +187,10 @@ const ActorUriRowSchema = z.object({ actor_uri: z.string() });
 
 /**
  * The next `limit` actors on `domain` (every port of it), after `afterActorUri`
- * in URI order, that `accountId` follows (accepted) or that follow or ask to
- * follow it. The account's own pending requests stay, as Mastodon's
- * `AfterBlockDomainFromAccountService` only unfollows accepted follows.
+ * in URI order, that `accountId` follows or asks to follow, that follow or ask
+ * to follow it, or that sent it a notification.
  */
-export const listDomainFollowPeers = async (
+export const listDomainPeers = async (
   db: D1Database,
   accountId: string,
   domain: Hostname,
@@ -204,16 +203,20 @@ export const listDomainFollowPeers = async (
         `SELECT DISTINCT actor_uri FROM (
            SELECT o.actor_uri
            FROM outbound_follows o JOIN remote_actors r ON r.actor_uri = o.actor_uri
-           WHERE o.account_id = ? AND o.state = 'Accepted' AND r.host = ?
+           WHERE o.account_id = ? AND r.host = ?
            UNION ALL
            SELECT f.remote_actor_uri
            FROM remote_follows f JOIN remote_actors r ON r.actor_uri = f.remote_actor_uri
            WHERE f.target_account_id = ? AND r.host = ?
+           UNION ALL
+           SELECT n.from_actor_uri
+           FROM notifications n JOIN remote_actors r ON r.actor_uri = n.from_actor_uri
+           WHERE n.account_id = ? AND r.host = ?
          )
          WHERE actor_uri > ?
          ORDER BY actor_uri LIMIT ?`,
       )
-      .bind(accountId, domain, accountId, domain, afterActorUri, limit)
+      .bind(accountId, domain, accountId, domain, accountId, domain, afterActorUri, limit)
       .all();
     return (results ?? []).flatMap((raw) => {
       const row = schemaResult(ActorUriRowSchema)(raw);
@@ -253,9 +256,11 @@ const removedFollows = (result: D1Result | undefined): RemovedFollow[] =>
   });
 
 /**
- * Remove the follows between `accountId` and `actorUris`: its accepted
- * follows of them, and their follows and requests of it. The accepted ones,
- * both ways, are recorded under `eventId` in the same batch, so a follow is
+ * Remove the follows between `accountId` and `actorUris`, both ways and in
+ * every state, and the account's notifications from them (Mastodon's
+ * `clear_notifications!`). The account's own requests are withdrawn too,
+ * where Mastodon keeps them: a later `Accept` would otherwise make a follow
+ * the block forbids. The accepted follows, both ways, are recorded under `eventId` in the same batch, so a follow is
  * recorded exactly when it is removed. The event is written with the first
  * page that has a follow to record, so a severance that only drops requests
  * leaves none.
@@ -310,8 +315,7 @@ export const severAccountPage = async (
     db
       .prepare(
         `DELETE FROM outbound_follows
-         WHERE account_id = ? AND state = 'Accepted'
-           AND actor_uri IN (SELECT value FROM json_each(?))
+         WHERE account_id = ? AND actor_uri IN (SELECT value FROM json_each(?))
          RETURNING actor_uri, follow_activity_id`,
       )
       .bind(page.accountId, actors),
@@ -320,6 +324,12 @@ export const severAccountPage = async (
         `DELETE FROM remote_follows
          WHERE target_account_id = ? AND remote_actor_uri IN (SELECT value FROM json_each(?))
          RETURNING remote_actor_uri AS actor_uri, follow_activity_id`,
+      )
+      .bind(page.accountId, actors),
+    db
+      .prepare(
+        `DELETE FROM notifications
+         WHERE account_id = ? AND from_actor_uri IN (SELECT value FROM json_each(?))`,
       )
       .bind(page.accountId, actors),
   ]);

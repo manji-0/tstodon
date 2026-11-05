@@ -100,8 +100,9 @@ const ProcessCsvImportSchema = z.object({
 });
 
 /**
- * Remove the next page of an account's follows with a domain it blocked: the
- * actors on `domain` after `afterActorUri` in URI order. The follows are
+ * Remove the next page of an account's follows, requests, and notifications
+ * with a domain it blocked: the actors on `domain` after `afterActorUri` in
+ * URI order. The accepted follows are
  * recorded under the `user_domain_block` severance event `eventId`, which the
  * last page closes and notifies.
  */

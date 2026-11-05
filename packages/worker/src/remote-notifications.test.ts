@@ -227,16 +227,6 @@ describe("notifications from remote actors", () => {
     const headers = { "content-type": "application/json", ...(await authHeaders(email)) };
     const status = await post(email, "followed across a domain block");
     const friend = await remoteActor("friend", "blocked-but-followed.example");
-    const friendId = RemoteAccountId.encode(friend.actorUri);
-    expect(
-      (await json(`/api/v1/accounts/${friendId}/follow`, { method: "POST", headers, body: "{}" }))
-        .status,
-    ).toBe(200);
-    const follow = await env.DB.prepare(
-      "SELECT follow_activity_id FROM outbound_follows WHERE actor_uri = ?",
-    )
-      .bind(friend.actorUri)
-      .first<{ follow_activity_id: string }>();
     expect(
       (
         await json("/api/v1/domain_blocks", {
@@ -246,15 +236,15 @@ describe("notifications from remote actors", () => {
         })
       ).status,
     ).toBe(200);
-    // A domain block severs accepted follows with the domain (#60) and keeps pending
-    // requests, as Mastodon does, so the follow is accepted after the block.
-    expect(
-      await friend.send({
-        id: `${friend.actorUri}/accepts/1`,
-        type: "Accept",
-        object: follow?.follow_activity_id,
-      }),
-    ).toBe(202);
+    // The block severs every follow with the domain (#60, #67), so the follow
+    // is written after it, as one accepted before a queued page severs it.
+    const account = await me(email);
+    await env.DB.prepare(
+      `INSERT INTO outbound_follows (id, account_id, actor_uri, follow_activity_id, state)
+       VALUES ('blocked-but-followed', ?, ?, 'https://example.com/follows/blocked-but-followed', 'Accepted')`,
+    )
+      .bind(account.id, friend.actorUri)
+      .run();
     const stranger = await remoteActor("stranger", "blocked-but-followed.example");
 
     for (const [sender, slug] of [

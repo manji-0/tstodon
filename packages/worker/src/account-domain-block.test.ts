@@ -285,12 +285,14 @@ describe("blocking a domain severs the account's follows with it", () => {
 
   it("clears the account's notifications from the domain and the senders it accepted there", async () => {
     const a = "dblock-notifications@example.com";
-    const status = read(
-      z.object({ uri: z.string() }),
-      (await send(a, "/api/v1/statuses", "POST", { status: "seen from afar" })).body,
-    );
-    const like = (remote: Remote, slug: string) =>
-      remote.send({ id: `${remote.actorUri}/likes/${slug}`, type: "Like", object: status.uri });
+    const post = async (text: string) =>
+      read(
+        z.object({ uri: z.string() }),
+        (await send(a, "/api/v1/statuses", "POST", { status: text })).body,
+      ).uri;
+    const status = await post("seen from afar");
+    const like = (remote: Remote, slug: string, object = status) =>
+      remote.send({ id: `${remote.actorUri}/likes/${slug}`, type: "Like", object });
     const senders = async () =>
       read(
         z.array(z.object({ account: z.object({ id: z.string() }) })),
@@ -327,7 +329,7 @@ describe("blocking a domain severs the account's follows with it", () => {
       (await send(a, "/api/v1/domain_blocks?domain=dblock-notified.test", "DELETE")).status,
     ).toBe(200);
     expect(await senders()).toEqual([remoteId(elsewhere)]);
-    expect(await like(accepted, "2")).toBe(202);
+    expect(await like(accepted, "2", await post("seen again"))).toBe(202);
     expect(await senders()).toEqual([remoteId(elsewhere)]);
     expect(await requests()).toHaveLength(1);
   });

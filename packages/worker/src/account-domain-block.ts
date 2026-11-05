@@ -5,13 +5,14 @@ import type { RepositoryError } from "./d1";
 import { blockDomain, isDomainBlocked } from "./domain-block-store";
 import { newEntityId } from "./ids";
 import { measureJobPage } from "./metrics";
+import { forgetDomainNotificationAcceptances } from "./notification-policy-store";
 import { sendFollowUndo } from "./outbound-follow";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { sendFollowReject } from "./remote-follower";
 import { parseInstanceIdentity } from "./runtime-config";
 import {
   finishAccountSeverance,
-  listDomainFollowPeers,
+  listDomainPeers,
   type SeveredAccountPage,
   severAccountPage,
 } from "./severed-relationship-store";
@@ -83,12 +84,13 @@ const closeSeverance = async (
 };
 
 /**
- * Sever the next page of the account's follows with the blocked domain, as
- * Mastodon's `AfterBlockDomainFromAccountService`: remove its accepted follows
- * of the domain's actors and their follows and requests of it, recording the
- * accepted ones under the `user_domain_block` event, then send an
- * `Undo(Follow)` or `Reject(Follow)` for each. The last page closes the event
- * and notifies the account.
+ * Sever the next page of the account's ties with the blocked domain, as
+ * Mastodon's `AfterBlockDomainFromAccountService`: remove the follows and
+ * requests between the account and the domain's actors, recording the
+ * accepted ones under the `user_domain_block` event, and the notifications
+ * they sent it, then send an `Undo(Follow)` or `Reject(Follow)` for each
+ * follow. The first page also forgets the senders there whose requests the
+ * account accepted. The last page closes the event and notifies the account.
  */
 const severPage = async (
   env: Env,
@@ -96,7 +98,13 @@ const severPage = async (
   account: LocalAccount,
   job: SeverJob,
 ): Promise<Result<SeveredPage, RepositoryError>> => {
-  const actorUris = await listDomainFollowPeers(
+  if (job.afterActorUri === "") {
+    const forgotten = await forgetDomainNotificationAcceptances(env.DB, account.id, job.domain);
+    if (forgotten.isErr()) {
+      return err(forgotten.error);
+    }
+  }
+  const actorUris = await listDomainPeers(
     env.DB,
     account.id,
     job.domain,

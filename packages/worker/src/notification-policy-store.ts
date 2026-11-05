@@ -1,5 +1,5 @@
 import { schemaResult } from "@tstodon/core";
-import { NotificationPolicy, NotificationPolicyAction } from "@tstodon/domain";
+import { type Hostname, NotificationPolicy, NotificationPolicyAction } from "@tstodon/domain";
 import { nowIso } from "./clock";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -15,6 +15,7 @@ import {
   insertNotificationRequest as insertNotificationRequestSql,
   upsertNotificationPolicy as upsertNotificationPolicySql,
 } from "./generated/prisma/sql";
+import { RemoteAccountId } from "./remote-account-id";
 import { queryTyped, runTyped } from "./typed-sql";
 
 const RequestsNotificationsRow = z.object({ requests: z.number(), notifications: z.number() });
@@ -290,4 +291,44 @@ export const isSenderAccepted = async (
       FromAccountIdRow,
     );
     return rows.length > 0;
+  });
+
+/**
+ * Forget the senders on `domain` (every port of it) whose requests the
+ * account accepted, as Mastodon's `clear_notification_permissions!` does when
+ * the account blocks the domain. An acceptance names its sender by `r_…` id,
+ * so the account's remote ones are decoded to find the domain's actors.
+ */
+export const forgetDomainNotificationAcceptances = async (
+  db: D1Database,
+  accountId: string,
+  domain: Hostname,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare("SELECT from_account_id FROM notification_request_acceptances WHERE account_id = ?")
+      .bind(accountId)
+      .all();
+    const senders = (results ?? []).flatMap((raw) => {
+      const row = schemaResult(FromAccountIdRow)(raw);
+      if (row.isErr()) {
+        return [];
+      }
+      const actorUri = RemoteAccountId.decode(row.value.from_account_id);
+      return actorUri.isOk() ? [[row.value.from_account_id, actorUri.value]] : [];
+    });
+    if (senders.length === 0) {
+      return;
+    }
+    await db
+      .prepare(
+        `DELETE FROM notification_request_acceptances
+         WHERE account_id = ? AND from_account_id IN (
+           SELECT json_extract(s.value, '$[0]') FROM json_each(?) s
+           JOIN remote_actors r ON r.actor_uri = json_extract(s.value, '$[1]')
+           WHERE r.host = ?
+         )`,
+      )
+      .bind(accountId, JSON.stringify(senders), domain)
+      .run();
   });
