@@ -19,11 +19,32 @@ const blockActivity = (actorUrl: string, blockId: string, target: string) => ({
   object: target,
 });
 
+/** Log a severing step that failed: the block holds without it. */
+const logUnsevered = (
+  step: string,
+  blocker: LocalAccount,
+  target: BlockTarget,
+  result: Result<unknown, RepositoryError>,
+): void => {
+  if (result.isErr()) {
+    console.error(
+      JSON.stringify({
+        kind: "BlockFollowNotSevered",
+        step,
+        blockerId: blocker.id,
+        targetActorUri: target.actorUri,
+        message: result.error.message,
+      }),
+    );
+  }
+};
+
 /**
  * Drop the follows both ways, as `UnfollowService` and `RejectFollowService`
  * do inside Mastodon's `BlockService`: the blocker's follow or request of the
  * target (an `Undo(Follow)` to a remote one), and the target's follow or
- * request of the blocker (a `Reject(Follow)` to a remote one).
+ * request of the blocker (a `Reject(Follow)` to a remote one). Each step is
+ * best effort and runs whether or not the other failed.
  */
 const severFollows = async (
   env: Env,
@@ -31,19 +52,37 @@ const severFollows = async (
   blocker: LocalAccount,
   target: BlockTarget,
   actor: RemoteActor | undefined,
-): Promise<Result<void, RepositoryError>> => {
+): Promise<void> => {
   if (target.accountId !== null) {
-    const unfollowed = await unfollowAccount(env.DB, blocker.id, target.accountId);
-    return unfollowed.isErr() ? unfollowed : unfollowAccount(env.DB, target.accountId, blocker.id);
+    logUnsevered(
+      "Unfollow",
+      blocker,
+      target,
+      await unfollowAccount(env.DB, blocker.id, target.accountId),
+    );
+    logUnsevered(
+      "RemoveFollower",
+      blocker,
+      target,
+      await unfollowAccount(env.DB, target.accountId, blocker.id),
+    );
+    return;
   }
   if (!actor) {
-    return ok(undefined);
+    return;
   }
-  const unfollowed = await unfollowRemoteActor(env, identity, blocker, actor);
-  if (unfollowed.isErr()) {
-    return unfollowed;
-  }
-  return (await removeRemoteFollower(env, identity, blocker, actor)).map(() => undefined);
+  logUnsevered(
+    "Unfollow",
+    blocker,
+    target,
+    await unfollowRemoteActor(env, identity, blocker, actor),
+  );
+  logUnsevered(
+    "RemoveFollower",
+    blocker,
+    target,
+    await removeRemoteFollower(env, identity, blocker, actor),
+  );
 };
 
 /** The cached actor of a remote target; a local target or an uncached actor has none. */
@@ -54,9 +93,10 @@ const remoteActorOf = async (
   target.accountId === null ? findRemoteActorByUri(db, target.actorUri) : ok(undefined);
 
 /**
- * Block `target` as Mastodon's `BlockService`: sever the follows between the
- * two, write the block, and send a remote target the `Block`. The caller
- * refuses a self-block.
+ * Block `target` as Mastodon's `BlockService`: write the block, sever the
+ * follows between the two, and send a remote target the `Block`. The block
+ * comes first so a failed severing step cannot leave the follows half gone
+ * with no block; the caller refuses a self-block.
  */
 export const blockAccountTarget = async (
   env: Env,
@@ -68,14 +108,11 @@ export const blockAccountTarget = async (
   if (actor.isErr()) {
     return err(actor.error);
   }
-  const severed = await severFollows(env, identity, blocker, target, actor.value);
-  if (severed.isErr()) {
-    return severed;
-  }
   const blocked = await blockAccount(env.DB, blocker.id, target.accountId, target.actorUri);
   if (blocked.isErr()) {
     return err(blocked.error);
   }
+  await severFollows(env, identity, blocker, target, actor.value);
   if (actor.value) {
     const actorUrl = InstanceIdentity.actorUrl(identity, blocker.username);
     // Delivery is best effort: the block already holds here.

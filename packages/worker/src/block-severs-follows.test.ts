@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
@@ -316,6 +316,7 @@ describe("a block whose follow severing fails", () => {
       },
     });
 
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const blocked = await blockAccountTarget(
       { ...env, DB: failingFollowDeletes },
       identity.value,
@@ -326,6 +327,11 @@ describe("a block whose follow severing fails", () => {
       },
     );
     expect(blocked.isOk()).toBe(true);
+    expect(logged.mock.calls.map(([line]) => JSON.parse(String(line)).kind)).toEqual([
+      "BlockFollowNotSevered",
+      "BlockFollowNotSevered",
+    ]);
+    logged.mockRestore();
     const relationships = read(
       z.array(Relationship),
       (await get(a, `/api/v1/accounts/relationships?id=${bId}`)).body,
