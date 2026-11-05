@@ -62,6 +62,10 @@ Workers AI and Vectorize are the intended search/moderation path, but they are n
 
 Variants are objects with `kind` and `z.literal` discriminators. Nested unions replace optional fields. `z.getDiscriminatedOption` extracts a single variant schema. See the follow-request, outbox-delivery, and ActivityPub models in `packages/domain`.
 
+## Read and Write Contracts
+
+A use case that reads or writes storage takes each operation as a parameter. The operation's type is a function type in `packages/domain`, beside the concept it serves: reads in `<concept>-resolver.ts` (or with the concept, as `FindThreadParent` in `thread-status.ts`), writes in `<concept>-store.ts`. Contracts name domain types and fail with `RepositoryError`; there is no `ports/` directory and no SQL in the domain. The D1 functions in `packages/worker/src/*-store.ts` stay the implementations. The composition point (an inbox handler, a route, or an `env`-taking entry such as `notifyAccount`) wires them as `(input) => storeFunction(env.DB, input)`. Each use case receives only the operations it calls, so its unit tests pass in-memory functions instead of D1. Examples: `answerOutboundFollow`, `listThreadAncestors`, `deliverNotification`, `withdrawRemoteStatus` and `recordInboxFollow`. Add a contract only when a use case takes it; a store function with no such use case stays a plain D1 function.
+
 ## Authentication Model
 
 <!-- derived-from ../reference/configuration.md#authentication -->
