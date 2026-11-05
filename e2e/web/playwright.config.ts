@@ -31,11 +31,12 @@ export default defineConfig({
       command: "node e2e/web/serve.mjs",
       cwd: "../..",
       url: "http://localhost:8793/healthz",
-      // Migrations are applied before Playwright starts (database.mjs). On a
-      // 4-CPU machine the server answered in 17 to 33 s with a warm Vite cache
-      // (load average 6 to 11) and 45 to 86 s with a cold one (fresh clone or
-      // dependency change, load average 8 to 16). 150 s leaves room for the
-      // slowest of those, not for the migrations as well.
+      // The budget was 180 s while serve.mjs also applied the migrations; they
+      // now run before Playwright starts (database.mjs). On a 4-CPU machine the
+      // server answered in 17 to 33 s with a warm Vite cache (load average 6 to
+      // 11) and 45 to 86 s with a cold one (fresh clone or dependency change,
+      // load average 8 to 16). 150 s leaves room for the slowest of those, not
+      // for the migrations as well.
       timeout: 150_000,
       reuseExistingServer: false,
       stdout: "ignore",
