@@ -56,6 +56,11 @@ export type RemoteActorParseError = Readonly<{ kind: "InvalidActor" }>;
 
 const parseRemoteActor = schemaResult(RemoteActorSchema);
 
+const hostnames = (actor: RemoteActor): ReadonlyArray<Hostname> => {
+  const uriHost = Hostname.ofUri(actor.actorUri);
+  return [Hostname.ofAuthority(actor.domain), ...(uriHost ? [uriHost] : [])];
+};
+
 export const RemoteActor = {
   schema: RemoteActorSchema,
   profileSchema: RemoteActorProfileSchema,
@@ -96,12 +101,14 @@ export const RemoteActor = {
   },
   deliveryInbox: (actor: RemoteActor): string => actor.sharedInboxUri ?? actor.inboxUri,
   /**
-   * The hostnames a suspension or the allow list is checked against: the
-   * account domain's and the actor URI's. The URI host serves the actor and
-   * its key, so a WebFinger domain elsewhere never lifts a rule on it.
+   * The hostnames an instance rule (a suspension, silence, `reject_media`,
+   * `reject_reports`, the allow list) is checked against: the account
+   * domain's and the actor URI's. The URI host serves the actor and its key,
+   * so an account domain elsewhere never lifts a rule on it. A user's domain
+   * block names the account domain only, as Mastodon matches `account.domain`.
    */
-  hostnames: (actor: RemoteActor): ReadonlyArray<Hostname> => {
-    const uriHost = Hostname.ofUri(actor.actorUri);
-    return [Hostname.ofAuthority(actor.domain), ...(uriHost ? [uriHost] : [])];
-  },
+  hostnames,
+  /** True when an instance rule naming any of `hosts` applies to the actor. */
+  onAnyHost: (actor: RemoteActor, hosts: ReadonlySet<Hostname>): boolean =>
+    hostnames(actor).some((host) => hosts.has(host)),
 } as const;

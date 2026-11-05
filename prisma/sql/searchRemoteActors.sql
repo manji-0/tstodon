@@ -5,18 +5,16 @@
 -- @param {Int} $5:offset
 -- The rows account search may list, so OFFSET counts listed accounts. Each
 -- clause is a rule `searchableRemoteActors` applies: the actor is not
--- suspended; its hostname (`Hostname.ofAuthority`: lower case, port dropped,
--- IPv6 brackets kept) is not in `suspendedDomains`; and `allowListAdmits`
--- the authority, with or without its port, when there is an allow list.
+-- suspended; neither its account domain's hostname (`host`) nor its URI's
+-- (`uri_host`) is in `suspendedDomains`; and, when there is an allow list,
+-- `allowListAdmits` the authority, with or without its port, and the URI host.
 SELECT actor_uri, username, domain, inbox_uri, shared_inbox_uri, public_key_id, public_key_pem, display_name, profile_json, moved_to, outbox_uri, featured_uri, fetched_at
 FROM remote_actors
 WHERE (username LIKE $1 OR (username || '@' || domain) LIKE $1)
   AND actor_uri NOT IN (SELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended')
-  AND (CASE
-    WHEN substr(domain, 1, 1) = '[' THEN substr(lower(domain), 1, instr(domain, ']'))
-    WHEN instr(domain, ':') > 0 THEN substr(lower(domain), 1, instr(domain, ':') - 1)
-    ELSE lower(domain)
-  END) NOT IN (SELECT value FROM json_each($2))
+  AND host NOT IN (SELECT value FROM json_each($2))
+  AND uri_host NOT IN (SELECT value FROM json_each($2))
+  AND (json_array_length($3) = 0 OR uri_host IN (SELECT value FROM json_each($3)))
   AND (json_array_length($3) = 0 OR EXISTS (
     SELECT 1 FROM json_each($3) AS allow
     WHERE allow.value = lower(domain)

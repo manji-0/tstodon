@@ -4,8 +4,7 @@ import {
   OutboxBackfill,
   OutboxJob,
   type OutboxJob as OutboxJobValue,
-  type RemoteActor,
-  Hostname,
+  RemoteActor,
 } from "@tstodon/domain";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import { z } from "zod";
@@ -171,7 +170,7 @@ const backfillRemoteOutbox = async (env: Env, job: BackfillRemoteOutbox): Promis
     return { outcome: "retry", size: 0, chained: false };
   }
   const suspended = await suspendedDomains(env.DB);
-  if (!cached.value || suspended.has(Hostname.ofAuthority(cached.value.domain))) {
+  if (!cached.value || RemoteActor.onAnyHost(cached.value, suspended)) {
     return { outcome: "ok", size: 0, chained: false };
   }
   const options: FederatedFetchOptions = {

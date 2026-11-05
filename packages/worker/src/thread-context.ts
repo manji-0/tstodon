@@ -2,6 +2,7 @@ import {
   type FindThreadParent,
   Hostname,
   InstanceIdentity,
+  RemoteActor,
   type ThreadStatus,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
@@ -182,7 +183,7 @@ export const visibleThreadStatuses = async (
   const suppressed = viewerId ? await listSuppressedAuthors(db, viewerId) : undefined;
   const restricted = await restrictedDomains(db);
   const own = viewerId ? await listBlockedDomains(db, viewerId) : undefined;
-  const blockedDomains = new Set([...restricted, ...(own?.isOk() ? own.value : [])]);
+  const blockedDomains = new Set(own?.isOk() ? own.value : []);
   const actors = await findRemoteActorsByUris(
     db,
     statuses.flatMap((node) => (node.kind === "Remote" ? [node.status.actorUri] : [])),
@@ -195,7 +196,11 @@ export const visibleThreadStatuses = async (
       return true;
     }
     const actor = actors.isOk() ? actors.value.get(node.status.actorUri) : undefined;
-    return !actor || blockedDomains.has(Hostname.ofAuthority(actor.domain));
+    return (
+      !actor ||
+      blockedDomains.has(Hostname.ofAuthority(actor.domain)) ||
+      RemoteActor.onAnyHost(actor, restricted)
+    );
   };
   return (
     await Promise.all(

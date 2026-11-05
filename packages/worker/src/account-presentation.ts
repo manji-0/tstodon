@@ -4,7 +4,7 @@ import {
   Hostname,
   type InstanceIdentity,
   type LocalAccount,
-  type RemoteActor,
+  RemoteActor,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { listAccountStandings } from "./account-moderation-store";
@@ -46,8 +46,11 @@ const remotePresenter = async (
   return moderations.map(
     (byUri) => (actor) =>
       AccountPresentation.ofRemote({
-        federates: allowListAdmits(allowHosts, actor.domain),
-        domainSuspended: blockedHosts.has(Hostname.ofAuthority(actor.domain)),
+        // The account domain's authority and the URI host, as the search SQL reads them.
+        federates:
+          allowListAdmits(allowHosts, actor.domain) &&
+          allowListAdmits(allowHosts, Hostname.ofUri(actor.actorUri) ?? actor.domain),
+        domainSuspended: RemoteActor.onAnyHost(actor, blockedHosts),
         standing: byUri.get(actor.actorUri)?.standing ?? AccountStanding.inGoodStanding,
       }),
   );

@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param now
  */
 export const clearRemoteMediaForDomain = $runtime.makeTypedQueryFactory(
-  "UPDATE remote_statuses SET media_json = '[]', updated_at = $2\nWHERE actor_uri IN (SELECT actor_uri FROM remote_actors WHERE host = $1)",
+  "UPDATE remote_statuses SET media_json = '[]', updated_at = $2\nWHERE actor_uri IN (SELECT actor_uri FROM remote_actors WHERE host = $1 OR uri_host = $1)",
 ) as (
   domain: string,
   now: string,

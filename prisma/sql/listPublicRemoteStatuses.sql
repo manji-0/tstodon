@@ -7,7 +7,7 @@
 -- @param {String} $7:after
 -- @param {Int} $8:ascending
 -- Newest id first (oldest first when $8 = 1), between the exclusive bounds $7 and $6 ('' leaves a side open).
--- Leaves out the actors the viewer blocks or mutes, the domains it blocks or the instance silences or suspends, and the actors an admin silenced or suspended (nothing for a viewer of '').
+-- Leaves out the actors the viewer blocks or mutes, the account domains it blocks, the domains the instance silences or suspends (the account domain or the actor URI's host), and the actors an admin silenced or suspended (nothing for a viewer of '').
 SELECT id, actor_uri, object_uri, url, content_html, spoiler_text, visibility, sensitive, language, published_at, edited_at, media_json, card_json, poll_json, emojis_json
 FROM remote_statuses
 WHERE visibility = 'public'
@@ -22,11 +22,9 @@ WHERE visibility = 'public'
   )
   AND actor_uri NOT IN (
     SELECT actor_uri FROM remote_actors
-    WHERE host IN (
-      SELECT lower(domain) FROM account_domain_blocks WHERE account_id = $4
-      UNION
-      SELECT lower(domain) FROM domain_blocks WHERE severity IN ('silence', 'suspend')
-    )
+    WHERE host IN (SELECT lower(domain) FROM account_domain_blocks WHERE account_id = $4)
+      OR host IN (SELECT lower(domain) FROM domain_blocks WHERE severity IN ('silence', 'suspend'))
+      OR uri_host IN (SELECT lower(domain) FROM domain_blocks WHERE severity IN ('silence', 'suspend'))
   )
   AND actor_uri NOT IN (SELECT actor_uri FROM remote_actor_moderation WHERE moderation IS NOT NULL)
 ORDER BY CASE WHEN $8 = 1 THEN id END ASC, id DESC LIMIT $1

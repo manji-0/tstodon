@@ -1,5 +1,5 @@
 import { schemaResult, warmSchemas } from "@tstodon/core";
-import { Hostname, InstanceIdentity, type LocalAccount, type RemoteActor } from "@tstodon/domain";
+import { InstanceIdentity, type LocalAccount, RemoteActor } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { findAccountById, findAccountByUsername } from "./account-store";
@@ -62,12 +62,14 @@ export const receiveRemoteFlag = async (
   if (flag.isErr()) {
     return ok(undefined);
   }
-  const block = await findDomainBlockByDomain(env.DB, Hostname.ofAuthority(sender.domain));
-  if (block.isErr()) {
-    return err(block.error);
-  }
-  if (block.value !== undefined && block.value.reject_reports !== 0) {
-    return ok(undefined);
+  for (const host of RemoteActor.hostnames(sender)) {
+    const block = await findDomainBlockByDomain(env.DB, host);
+    if (block.isErr()) {
+      return err(block.error);
+    }
+    if (block.value !== undefined && block.value.reject_reports !== 0) {
+      return ok(undefined);
+    }
   }
   const uris = objectUris(flag.value.object);
   let target: LocalAccount | undefined;

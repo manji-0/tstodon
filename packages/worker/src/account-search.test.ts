@@ -64,11 +64,11 @@ const cacheRemoteActor = async (username: string, domain: string): Promise<void>
 };
 
 const cacheRemoteActors = async (
-  actors: ReadonlyArray<Readonly<{ username: string; domain: string }>>,
+  actors: ReadonlyArray<Readonly<{ username: string; domain: string; uriHost?: string }>>,
 ): Promise<void> => {
   await env.DB.batch(
-    actors.map(({ username, domain }) => {
-      const actorUri = `https://${domain}/users/${username}`;
+    actors.map(({ username, domain, uriHost }) => {
+      const actorUri = `https://${uriHost ?? domain}/users/${username}`;
       return env.DB.prepare(
         `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, display_name, fetched_at)
          VALUES (?, ?, ?, ?, ?, 'pem', ?, '2026-01-01T00:00:00.000Z')`,
@@ -430,21 +430,32 @@ describe("account search", () => {
         pending.id,
       ),
     ]);
-    const remotes = [
-      { username: "pinsearch_good", domain: "pinsearch-allowed.example" },
-      { username: "pinsearch_port", domain: "pinsearch-allowed.example:8443" },
-      { username: "pinsearch_silenced", domain: "pinsearch-allowed.example" },
-      { username: "pinsearch_suspended", domain: "pinsearch-allowed.example" },
-      { username: "pinsearch_blocked", domain: "pinsearch-blocked.example" },
-      { username: "pinsearch_blockedport", domain: "PinSearch-Blocked.example:8443" },
-      { username: "pinsearch_ipv6", domain: "[fd00::47]:8443" },
-      { username: "pinsearch_stranger", domain: "pinsearch-stranger.example" },
-      { username: "pinsearch_lookalike", domain: "pinsearch-allowed.example.evil" },
-    ];
+    const remotes: ReadonlyArray<Readonly<{ username: string; domain: string; uriHost?: string }>> =
+      [
+        { username: "pinsearch_good", domain: "pinsearch-allowed.example" },
+        { username: "pinsearch_port", domain: "pinsearch-allowed.example:8443" },
+        { username: "pinsearch_silenced", domain: "pinsearch-allowed.example" },
+        { username: "pinsearch_suspended", domain: "pinsearch-allowed.example" },
+        { username: "pinsearch_blocked", domain: "pinsearch-blocked.example" },
+        { username: "pinsearch_blockedport", domain: "PinSearch-Blocked.example:8443" },
+        { username: "pinsearch_ipv6", domain: "[fd00::47]:8443" },
+        { username: "pinsearch_stranger", domain: "pinsearch-stranger.example" },
+        { username: "pinsearch_lookalike", domain: "pinsearch-allowed.example.evil" },
+        {
+          username: "pinsearch_splitsuspended",
+          domain: "pinsearch-allowed.example",
+          uriHost: "pinsearch-blocked.example",
+        },
+        {
+          username: "pinsearch_splitstranger",
+          domain: "pinsearch-allowed.example",
+          uriHost: "pinsearch-stranger.example",
+        },
+      ];
     await cacheRemoteActors(remotes);
     const uriOf = (username: string): string => {
       const remote = remotes.find((candidate) => candidate.username === username);
-      return `https://${remote?.domain ?? ""}/users/${username}`;
+      return `https://${remote?.uriHost ?? remote?.domain ?? ""}/users/${username}`;
     };
     await env.DB.batch([
       env.DB.prepare(

@@ -5,9 +5,9 @@ import {
   RemoteStatus,
   StatusId,
   type RemoteEmoji,
-  type RemoteActor,
+  RemoteActor,
   type RemoteStatus as RemoteStatusValue,
-  Hostname,
+  type Hostname,
   type MentionedPost,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
@@ -262,7 +262,7 @@ export const applyMediaPolicy = async (
   status: RemoteStatusValue,
 ): Promise<RemoteStatusValue> => {
   const rejected = await mediaRejectedDomains(env.DB);
-  return rejected.has(Hostname.ofAuthority(actor.domain)) ? { ...status, media: [] } : status;
+  return RemoteActor.onAnyHost(actor, rejected) ? { ...status, media: [] } : status;
 };
 
 type PersistOptions = Readonly<{

@@ -61,15 +61,16 @@ export type SeveredFollow = Readonly<{
 }>;
 
 /**
- * `(? <> '' AND r.host = ?) OR (? <> '' AND r.actor_uri = ?)` for a scope, `r` being `remote_actors`.
- * A block names a hostname, so it matches `host` and covers every port of it.
+ * The actors in a scope, `r` being `remote_actors`. An admin block names a
+ * hostname, so it matches the account domain's (`host`) or the actor URI's
+ * (`uri_host`), as `RemoteActor.onAnyHost`, and covers every port of it.
  */
-const ACTOR_MATCH_SQL = `((? <> '' AND r.host = ?) OR (? <> '' AND r.actor_uri = ?))`;
+const ACTOR_MATCH_SQL = `((? <> '' AND (r.host = ? OR r.uri_host = ?)) OR (? <> '' AND r.actor_uri = ?))`;
 
-const matchBinds = (scope: SeveranceScope): [string, string, string, string] => {
+const matchBinds = (scope: SeveranceScope): [string, string, string, string, string] => {
   const domain = scope.kind === "Domain" ? scope.domain : "";
   const actorUri = scope.kind === "Actor" ? scope.actorUri : "";
-  return [domain, domain, actorUri, actorUri];
+  return [domain, domain, domain, actorUri, actorUri];
 };
 
 const MATCHING_ACTORS_SQL = `SELECT r.actor_uri FROM remote_actors r WHERE ${ACTOR_MATCH_SQL}`;

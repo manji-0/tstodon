@@ -6,7 +6,7 @@ import {
   type LocalAccount,
   type OutboundFollowAnswer,
   type RejectOutboundFollow,
-  type RemoteActor,
+  RemoteActor,
 } from "@tstodon/domain";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
@@ -24,7 +24,7 @@ import {
   insertOutboundFollow,
   updateOutboundFollowOptions,
 } from "./outbound-follow-store";
-import { federatesWithHost } from "./runtime-config";
+import { allowListAdmits, federationAllowHosts } from "./runtime-config";
 
 export type FollowRemoteActorError =
   | RepositoryError
@@ -55,15 +55,12 @@ export const followRemoteActor = async (
   actor: RemoteActor,
   options: FollowOptions,
 ): Promise<Result<void, FollowRemoteActorError>> => {
-  const domain = Hostname.ofAuthority(actor.domain);
-  const inboxHost = Hostname.ofUri(actor.inboxUri) ?? domain;
+  const hosts = [...RemoteActor.hostnames(actor), Hostname.ofUri(actor.inboxUri)].flatMap((host) =>
+    host === undefined ? [] : [host],
+  );
   const suspended = await suspendedDomains(env.DB);
-  if (
-    suspended.has(domain) ||
-    suspended.has(inboxHost) ||
-    !(await federatesWithHost(env, domain)) ||
-    !(await federatesWithHost(env, inboxHost))
-  ) {
+  const allowHosts = await federationAllowHosts(env);
+  if (hosts.some((host) => suspended.has(host) || !allowListAdmits(allowHosts, host))) {
     return err({ kind: "NotFederated" });
   }
   const blocked = await findBlock(env.DB, follower.id, actor.actorUri);
@@ -73,7 +70,11 @@ export const followRemoteActor = async (
   if (blocked.value) {
     return err({ kind: "Blocked" });
   }
-  const domainBlocked = await isDomainBlocked(env.DB, follower.id, domain);
+  const domainBlocked = await isDomainBlocked(
+    env.DB,
+    follower.id,
+    Hostname.ofAuthority(actor.domain),
+  );
   if (domainBlocked.isErr()) {
     return err(domainBlocked.error);
   }

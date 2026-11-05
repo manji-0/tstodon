@@ -3,9 +3,8 @@ import {
   type InstanceIdentity,
   OutboxJob,
   type OutboxJob as OutboxJobValue,
-  type RemoteActor,
+  RemoteActor,
   type RemoteStatus,
-  Hostname,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
@@ -159,7 +158,7 @@ const backfillRemoteThread = async (env: Env, job: BackfillRemoteThread): Promis
     return { outcome: "retry", size: 0, chained: false };
   }
   const suspended = await suspendedDomains(env.DB);
-  if (!actor.value || suspended.has(Hostname.ofAuthority(actor.value.domain))) {
+  if (!actor.value || RemoteActor.onAnyHost(actor.value, suspended)) {
     return { outcome: "ok", size: 0, chained: false };
   }
   const options: FederatedFetchOptions = {
