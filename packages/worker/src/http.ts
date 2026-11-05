@@ -57,30 +57,40 @@ export const setPaginationLinks = (
   rowIds: ReadonlyArray<string>,
   limit: number,
   options: Readonly<{ prev?: "min_id" | "since_id" }> = {},
+): void =>
+  setLinkHeader(c, {
+    next: rowIds.length >= limit ? rowIds.at(-1) : undefined,
+    prev: rowIds[0],
+    prevCursor: options.prev,
+  });
+
+/**
+ * Mastodon's `Link` header from page cursors: `max_id=<next>` as `rel="next"`
+ * and `min_id=<prev>` (or `since_id`) as `rel="prev"`, keeping the request's
+ * other query parameters.
+ */
+export const setLinkHeader = (
+  c: Context<{ Bindings: Env }>,
+  cursors: Readonly<{
+    next: string | undefined;
+    prev: string | undefined;
+    prevCursor?: "min_id" | "since_id" | undefined;
+  }>,
 ): void => {
-  if (rowIds.length === 0) {
-    return;
-  }
-  const url = new URL(c.req.url);
   const link = (cursor: string, value: string, rel: "next" | "prev"): string => {
-    const target = new URL(url.toString());
+    const target = new URL(c.req.url);
     target.searchParams.delete("max_id");
     target.searchParams.delete("since_id");
     target.searchParams.delete("min_id");
     target.searchParams.set(cursor, value);
     return `<${target.toString()}>; rel="${rel}"`;
   };
-  const links: string[] = [];
-  if (rowIds.length >= limit) {
-    const last = rowIds[rowIds.length - 1];
-    if (last !== undefined) {
-      links.push(link("max_id", last, "next"));
-    }
-  }
-  const first = rowIds[0];
-  if (first !== undefined) {
-    links.push(link(options.prev ?? "min_id", first, "prev"));
-  }
+  const links = [
+    ...(cursors.next === undefined ? [] : [link("max_id", cursors.next, "next")]),
+    ...(cursors.prev === undefined
+      ? []
+      : [link(cursors.prevCursor ?? "min_id", cursors.prev, "prev")]),
+  ];
   if (links.length > 0) {
     c.header("Link", links.join(", "));
   }

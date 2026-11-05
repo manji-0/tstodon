@@ -14,6 +14,7 @@ import {
   jsonRepositoryError,
   queryCursor,
   queryNotificationsLimit,
+  setLinkHeader,
   setPaginationLinks,
   requireUser,
 } from "../http";
@@ -264,6 +265,9 @@ const groupedNotificationPage = async (
       groups: ReadonlyArray<NotificationGroup>;
       accountIds: ReadonlyArray<string>;
       statusIds: ReadonlyArray<string>;
+      /** The `Link` cursors: oldest and newest notification the page covers. */
+      next: string | undefined;
+      prev: string | undefined;
     }>
   | Readonly<{ kind: "Err"; message: string }>
 > => {
@@ -273,6 +277,8 @@ const groupedNotificationPage = async (
   const pagesDown = filters.minId === undefined && filters.sinceId === undefined;
   const visible: NotificationRow[] = [];
   let cursor = filters;
+  // Set while the windows read so far were full and showed nothing.
+  let olderThan: string | undefined;
   for (let read = 0; read < NOTIFICATION_GROUP_WINDOWS; read += 1) {
     const rows = await listNotifications(c.env.DB, accountId, window, cursor);
     if (rows.isErr()) {
@@ -289,16 +295,23 @@ const groupedNotificationPage = async (
     visible.push(...rows.value.filter((row) => senders.value.has(row.from_account_id)));
     const last = rows.value.at(-1);
     if (visible.length > 0 || !pagesDown || !last || rows.value.length < window) {
+      olderThan = undefined;
       break;
     }
+    olderThan = last.id;
     cursor = { ...cursor, maxId: last.id };
   }
   const grouped = NotificationGroup.fold(visible.map(groupedEntry), groupedTypes, limit);
+  const covered = grouped.groups.flatMap((group) => group.notificationIds).toSorted();
   return {
     kind: "Ok",
     groups: grouped.groups,
     accountIds: grouped.accountIds,
     statusIds: grouped.statusIds,
+    // Past the window bound with nothing shown, the next page reads on from
+    // the last row read instead of ending the list.
+    next: covered.at(0) ?? olderThan,
+    prev: covered.at(-1),
   };
 };
 
@@ -423,7 +436,11 @@ export const getV2Notifications = async (
     page.statusIds,
     true,
   );
-  return envelope.isErr() ? jsonRepositoryError(c, envelope.error.message) : c.json(envelope.value);
+  if (envelope.isErr()) {
+    return jsonRepositoryError(c, envelope.error.message);
+  }
+  setLinkHeader(c, { next: page.next, prev: page.prev });
+  return c.json(envelope.value);
 };
 
 export const getV2NotificationsByGroupKey = async (
