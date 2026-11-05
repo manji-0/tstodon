@@ -2,9 +2,15 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
+import { Hono } from "hono";
 import { authHeaders } from "../test/auth-fixture";
+import { findAccountById } from "./account-store";
+import { announceNoteUpdate } from "./local-status-update";
 import { processOutboxJob } from "./outbox-job";
+import { getUsersByUsernameStatusesById } from "./routes/activitypub";
+import { parseInstanceIdentity } from "./runtime-config";
 import { insertScheduledStatus } from "./scheduled-status-store";
+import { findStatusById } from "./status-store";
 
 const json = async (
   path: string,
@@ -68,6 +74,32 @@ const queuedNotes = async (accountId: string, kind: "Create" | "Update") => {
     .bind(accountId, kind)
     .all<{ payload_json: string }>();
   return rows.results.map((row) => read(Activity, JSON.parse(row.payload_json)).object);
+};
+
+/** A D1 binding whose media lookup by id fails, as when D1 drops the connection. */
+const failingMediaLookup = (db: D1Database): D1Database =>
+  new Proxy(db, {
+    get(target, prop) {
+      if (prop === "prepare") {
+        return (sql: string) => {
+          if (/FROM media_attachments WHERE id /.test(sql)) {
+            throw new Error("D1_ERROR: Network connection lost.");
+          }
+          return target.prepare(sql);
+        };
+      }
+      const value: unknown = Reflect.get(target, prop);
+      return typeof value === "function"
+        ? (...args: unknown[]) => Reflect.apply(value, target, args)
+        : value;
+    },
+  });
+
+const accountIdOf = async (email: string): Promise<string> => {
+  const credentials = await json("/api/v1/accounts/verify_credentials", {
+    headers: await authHeaders(email),
+  });
+  return read(z.object({ id: z.string().min(1) }), credentials.body).id;
 };
 
 describe("note attachments", () => {
@@ -194,5 +226,130 @@ describe("note attachments", () => {
     expect(created?.attachment).toEqual([
       { type: "Document", mediaType: "image/png", url, name: "scheduled alt", blurhash: null },
     ]);
+  });
+
+  it("sends no Update when the note's media cannot be read", async () => {
+    const email = "note-attachments-update-d1@example.com";
+    const media = await upload(email, "kept.png", "image/png");
+    const posted = await send(email, "POST", "/api/v1/statuses", {
+      status: "media that must survive",
+      media_ids: [media],
+    });
+    expect(posted.status).toBe(200);
+    const status = read(PostedStatus, posted.body);
+    const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+    const account = (await findAccountById(env.DB, status.account.id))._unsafeUnwrap();
+    const note = (await findStatusById(env.DB, status.id))._unsafeUnwrap();
+    if (!account || note?.kind !== "LocalNote") {
+      throw new Error("posted note not stored");
+    }
+
+    await announceNoteUpdate(
+      { ...env, DB: failingMediaLookup(env.DB) },
+      identity,
+      account,
+      note,
+      new Date().toISOString(),
+      true,
+    );
+
+    expect(await queuedNotes(status.account.id, "Update")).toEqual([]);
+  });
+
+  it("publishes a scheduled post locally without a Create when its media cannot be read", async () => {
+    const email = "note-attachments-create-d1@example.com";
+    const media = await upload(email, "pending.png", "image/png");
+    const accountId = await accountIdOf(email);
+    const stored = await insertScheduledStatus(env.DB, {
+      accountId,
+      scheduledAt: new Date(Date.now() - 60_000).toISOString(),
+      params: {
+        text: "scheduled while D1 fails",
+        visibility: "public",
+        spoiler_text: "",
+        sensitive: false,
+        language: null,
+        media_ids: [media],
+        media_attributes: [],
+        poll: null,
+        in_reply_to_id: null,
+      },
+    });
+    expect(stored.isOk()).toBe(true);
+
+    await processOutboxJob(
+      { ...env, DB: failingMediaLookup(env.DB) },
+      { kind: "PublishScheduledStatuses" },
+    );
+
+    const statuses = await json(`/api/v1/accounts/${accountId}/statuses`, {
+      headers: await authHeaders(email),
+    });
+    const [published] = read(z.array(PostedStatus), statuses.body);
+    expect(published?.media_attachments.map((attachment) => attachment.id)).toEqual([media]);
+    expect(await queuedNotes(accountId, "Create")).toEqual([]);
+  });
+
+  it("answers 500 for a fetched note whose media cannot be read", async () => {
+    const email = "note-attachments-fetch-d1@example.com";
+    const media = await upload(email, "fetched.png", "image/png");
+    const posted = await send(email, "POST", "/api/v1/statuses", {
+      status: "fetched while D1 fails",
+      media_ids: [media],
+    });
+    expect(posted.status).toBe(200);
+    const status = read(PostedStatus, posted.body);
+    const app = new Hono<{ Bindings: Env }>().get(
+      "/users/:username/statuses/:id",
+      getUsersByUsernameStatusesById,
+    );
+
+    const response = await app.request(
+      `https://example.com/users/${status.account.username}/statuses/${status.id}`,
+      { headers: { accept: "application/activity+json" } },
+      { ...env, DB: failingMediaLookup(env.DB) },
+    );
+
+    expect(response.status).toBe(500);
+  });
+
+  it("federates none of another account's media named in media_ids", async () => {
+    const owner = "note-attachments-owner@example.com";
+    const other = "note-attachments-borrower@example.com";
+    const owned = await upload(owner, "private.png", "image/png");
+    const kept = await send(owner, "POST", "/api/v1/statuses", {
+      status: "only for followers",
+      visibility: "private",
+      media_ids: [owned],
+    });
+    expect(kept.status).toBe(200);
+
+    const posted = await send(other, "POST", "/api/v1/statuses", {
+      status: "borrowing a picture",
+      media_ids: [owned],
+    });
+    expect(posted.status).toBe(200);
+    const status = read(PostedStatus, posted.body);
+
+    const [created] = await queuedNotes(status.account.id, "Create");
+    expect(created?.id).toBe(status.uri);
+    expect(created?.attachment).toEqual([]);
+  });
+
+  it("marks a sensitized author's media sensitive, as Mastodon does", async () => {
+    const email = "note-attachments-sensitized@example.com";
+    const accountId = await accountIdOf(email);
+    const sensitized = await json(`/api/v1/admin/accounts/${accountId}/sensitize`, {
+      method: "POST",
+      headers: await authHeaders("note-attachments-admin@example.com", { admin: true }),
+    });
+    expect(sensitized.status).toBe(200);
+    const media = await upload(email, "flagged.png", "image/png");
+
+    await send(email, "POST", "/api/v1/statuses", { status: "with media", media_ids: [media] });
+    await send(email, "POST", "/api/v1/statuses", { status: "words only" });
+
+    const created = await queuedNotes(accountId, "Create");
+    expect(created.map((note) => note["sensitive"])).toEqual([true, false]);
   });
 });
