@@ -24,6 +24,7 @@ import { ContextLimits, findStatusById, findStatusesByIds } from "../../status-s
 import { canViewRemoteBoost, canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
 import { findRemoteBoostById } from "../../remote-boost-store";
 import { remoteBoostDocuments } from "../../remote-boost-documents";
+import { documentsById } from "../../documents-by-id";
 
 /** A remote actor's boost, fetched by its id as Mastodon allows for reblogs. */
 const visibleRemoteBoostDocument = async (
@@ -125,12 +126,7 @@ export const getV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/statu
     mastodonStatuses(c.env, identity.value, visibleLocals, viewerId),
     mastodonRemoteStatuses(c.env, identity.value, visibleRemotes, viewerId),
   ]);
-  const documents = new Map<string, Record<string, unknown>>();
-  for (const document of [...localDocuments, ...remoteDocuments]) {
-    if (typeof document.id === "string") {
-      documents.set(document.id, document);
-    }
-  }
+  const documents = documentsById([...localDocuments, ...remoteDocuments]);
   return c.json(ids.flatMap((id) => documents.get(id) ?? []));
 };
 

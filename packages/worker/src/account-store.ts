@@ -10,7 +10,7 @@ import { schemaResult, Sensitive, type SensitiveValue, warmSchemas } from "@tsto
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
+import { jsonStringArray, okValues, type RepositoryError, runD1 } from "./d1";
 import { queryTyped, runTyped } from "./typed-sql";
 import { quotePolicyFromSql, quotePolicySql, visibilitySql } from "./sql-enums";
 import {
@@ -94,9 +94,8 @@ export const findAccountsByIds = async (
   ids: ReadonlyArray<string>,
 ): Promise<Result<Map<string, LocalAccount>, RepositoryError>> => {
   const unique = [...new Set(ids.filter((id) => id.length > 0))];
-  const accounts = new Map<string, LocalAccount>();
   if (unique.length === 0) {
-    return ok(accounts);
+    return ok(new Map<string, LocalAccount>());
   }
   const queried = await runD1(async () =>
     queryTyped(db, findAccountsByIdsJsonSql(jsonStringArray(unique)), AccountRowSchema),
@@ -104,13 +103,14 @@ export const findAccountsByIds = async (
   if (queried.isErr()) {
     return err(queried.error);
   }
-  for (const row of queried.value) {
-    const account = accountFromRow(row);
-    if (account.isOk()) {
-      accounts.set(account.value.id, account.value);
-    }
-  }
-  return ok(accounts);
+  return ok(
+    new Map(
+      okValues(queried.value.map((row) => accountFromRow(row))).map((account) => [
+        account.id,
+        account,
+      ]),
+    ),
+  );
 };
 
 export const findAccountByUsername = async (
@@ -142,20 +142,13 @@ export const findAccountsByUsernames = async (
   if (normalized.length === 0) {
     return ok([]);
   }
-  const accounts: LocalAccount[] = [];
   const queried = await runD1(async () =>
     queryTyped(db, findAccountsByUsernamesJsonSql(jsonStringArray(normalized)), AccountRowSchema),
   );
   if (queried.isErr()) {
     return err(queried.error);
   }
-  for (const row of queried.value) {
-    const parsed = accountFromRow(row);
-    if (parsed.isOk()) {
-      accounts.push(parsed.value);
-    }
-  }
-  return ok(accounts);
+  return ok(okValues(queried.value.map((row) => accountFromRow(row))));
 };
 
 export const findAccountByEmail = async (
@@ -252,14 +245,7 @@ export const listDirectoryAccounts = async (
             listDirectoryAccountsByNewSql(input.limit, input.offset),
             AccountRowSchema,
           );
-    const accounts: LocalAccount[] = [];
-    for (const row of results) {
-      const account = accountFromRow(row);
-      if (account.isOk()) {
-        accounts.push(account.value);
-      }
-    }
-    return accounts;
+    return okValues(results.map((row) => accountFromRow(row)));
   });
 
 /** Toggle whether the account approves followers by hand. */

@@ -41,6 +41,7 @@ import { mastodonAccount } from "./account-documents";
 import { mastodonMedia } from "./media-document";
 import { pollJson } from "./poll-document";
 import { quotePolicyName } from "./quote-policy-name";
+import { documentsById } from "./documents-by-id";
 
 const mediaAttachmentsJson = (
   identity: InstanceIdentity,
@@ -429,19 +430,11 @@ export const mastodonStatuses = async (
         : [],
     ),
   );
-  const remoteDocs = new Map<string, Record<string, unknown>>();
-  if (remoteTargets.isOk()) {
-    for (const document of await mastodonRemoteStatuses(
-      env,
-      identity,
-      [...remoteTargets.value.values()],
-      viewerId,
-    )) {
-      if (typeof document.id === "string") {
-        remoteDocs.set(document.id, document);
-      }
-    }
-  }
+  const remoteDocs = documentsById(
+    remoteTargets.isOk()
+      ? await mastodonRemoteStatuses(env, identity, [...remoteTargets.value.values()], viewerId)
+      : [],
+  );
 
   const render = (status: LocalStatus): Record<string, unknown> | undefined => {
     if (status.kind === "LocalNote") {

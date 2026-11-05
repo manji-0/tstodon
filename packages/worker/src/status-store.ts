@@ -15,8 +15,15 @@ import {
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
-import { jsonStringArray, type RepositoryError, runD1, runD1Batch, sqlInJsonEach } from "./d1";
-import { parseRow } from "./d1";
+import {
+  jsonStringArray,
+  okValues,
+  parseRows,
+  type RepositoryError,
+  runD1,
+  runD1Batch,
+  sqlInJsonEach,
+} from "./d1";
 import { removedBoostsFromRows } from "./removed-boost";
 import { visibilitySql } from "./sql-enums";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
@@ -182,9 +189,8 @@ export const findStatusesByIds = async (
   ids: ReadonlyArray<string>,
 ): Promise<Result<Map<string, LocalStatusValue>, RepositoryError>> => {
   const unique = [...new Set(ids.filter((id) => id.length > 0))];
-  const statuses = new Map<string, LocalStatusValue>();
   if (unique.length === 0) {
-    return ok(statuses);
+    return ok(new Map<string, LocalStatusValue>());
   }
   const queried = await runD1(() =>
     db
@@ -196,10 +202,7 @@ export const findStatusesByIds = async (
     return err(queried.error);
   }
   const hydrated = await hydrateStatusRows(db, queried.value.results ?? []);
-  for (const status of hydrated) {
-    statuses.set(status.id, status);
-  }
-  return ok(statuses);
+  return ok(new Map(hydrated.map((status) => [status.id, status])));
 };
 
 /** Record the remote status a local note replies to, by its object URI. */
@@ -407,38 +410,30 @@ export const hydrateStatusRows = async (
   db: D1Database,
   rows: unknown[],
 ): Promise<LocalStatusValue[]> => {
-  const statusRows: StatusRow[] = [];
-  for (const raw of rows) {
-    const row = parseRow(StatusRowSchema, raw);
-    if (row.isOk()) {
-      statusRows.push(row.value);
-    }
-  }
+  const statusRows = parseRows(StatusRowSchema, rows);
   if (statusRows.length === 0) {
     return [];
   }
-  const mediaByStatus = new Map<string, MediaId[]>();
   const { results } = await db
     .prepare(`SELECT status_id, id FROM media_attachments WHERE status_id ${sqlInJsonEach()}`)
     .bind(jsonStringArray(statusRows.map((row) => row.id)))
     .all<{ status_id: string; id: string }>();
-  for (const media of results ?? []) {
-    const parsed = MediaId.parse(media.id);
-    if (parsed.isErr()) {
-      continue;
-    }
-    const list = mediaByStatus.get(media.status_id) ?? [];
-    list.push(parsed.value);
-    mediaByStatus.set(media.status_id, list);
-  }
-  const statuses: LocalStatusValue[] = [];
-  for (const row of statusRows) {
-    const parsed = statusFromRow(row, mediaByStatus.get(row.id) ?? []);
-    if (parsed.isOk()) {
-      statuses.push(parsed.value);
-    }
-  }
-  return statuses;
+  const mediaByStatus = Map.groupBy(
+    okValues(
+      (results ?? []).map((media) =>
+        MediaId.parse(media.id).map((id) => ({ statusId: media.status_id, id })),
+      ),
+    ),
+    (media) => media.statusId,
+  );
+  return okValues(
+    statusRows.map((row) =>
+      statusFromRow(
+        row,
+        (mediaByStatus.get(row.id) ?? []).map((media) => media.id),
+      ),
+    ),
+  );
 };
 
 /** Local notes answering any of these local statuses, oldest first. */

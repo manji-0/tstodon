@@ -9,7 +9,7 @@ import { warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
+import { jsonStringArray, okValues, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
 import { toRepositoryError } from "./d1";
 import { queryTyped, runTyped, runTypedBatch } from "./typed-sql";
@@ -160,9 +160,8 @@ export const findRemoteActorsByUris = async (
   actorUris: ReadonlyArray<string>,
 ): Promise<Result<ReadonlyMap<string, RemoteActor>, RepositoryError>> => {
   const unique = [...new Set(actorUris.filter((uri) => uri.length > 0))];
-  const actors = new Map<string, RemoteActor>();
   if (unique.length === 0) {
-    return ok(actors);
+    return ok(new Map<string, RemoteActor>());
   }
   const queried = await runD1(async () =>
     queryTyped(db, findRemoteActorsByUrisSql(jsonStringArray(unique)), RemoteActorRowSchema),
@@ -170,13 +169,14 @@ export const findRemoteActorsByUris = async (
   if (queried.isErr()) {
     return err(queried.error);
   }
-  for (const row of queried.value) {
-    const actor = remoteActorFromRow(row);
-    if (actor.isOk()) {
-      actors.set(actor.value.actorUri, actor.value);
-    }
-  }
-  return ok(actors);
+  return ok(
+    new Map(
+      okValues(queried.value.map((row) => remoteActorFromRow(row))).map((actor) => [
+        actor.actorUri,
+        actor,
+      ]),
+    ),
+  );
 };
 
 export const findRemoteActorByPublicKeyId = async (
@@ -401,11 +401,7 @@ export const listAcceptedRemoteFollowerInboxes = async (
       listAcceptedRemoteFollowerInboxesSql(targetAccountId),
       InboxUriSharedInboxUriRow,
     );
-    const inboxes = new Set<string>();
-    for (const row of results) {
-      inboxes.add(row.shared_inbox_uri ?? row.inbox_uri);
-    }
-    return [...inboxes];
+    return [...new Set(results.map((row) => row.shared_inbox_uri ?? row.inbox_uri))];
   });
 
 export const listAcceptedRemoteFollowerUris = async (
@@ -440,14 +436,7 @@ export const searchRemoteActors = async (
       searchRemoteActorsSql(`%${query}%`, limit),
       RemoteActorRowSchema,
     );
-    const actors: RemoteActor[] = [];
-    for (const row of results) {
-      const actor = remoteActorFromRow(row);
-      if (actor.isOk()) {
-        actors.push(actor.value);
-      }
-    }
-    return actors;
+    return okValues(results.map((row) => remoteActorFromRow(row)));
   });
 
 /**

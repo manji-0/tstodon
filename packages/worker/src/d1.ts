@@ -21,6 +21,10 @@ export const parseRows = <T>(schema: z.ZodType<T>, rows: ReadonlyArray<unknown> 
     return parsed.isOk() ? [parsed.value] : [];
   });
 
+/** The values of the results that succeeded, in order; a failed one is left out. */
+export const okValues = <T, E>(results: Iterable<Result<T, E>>): T[] =>
+  [...results].flatMap((result) => (result.isOk() ? [result.value] : []));
+
 /** The failure every D1 adapter maps its errors to; the domain's contracts name it. */
 export type { RepositoryError };
 
@@ -52,11 +56,9 @@ export const chunkArray = <T>(
     return [];
   }
   const size = Math.max(1, chunkSize);
-  const chunks: T[][] = [];
-  for (let offset = 0; offset < items.length; offset += size) {
-    chunks.push(items.slice(offset, offset + size));
-  }
-  return chunks;
+  return Array.from({ length: Math.ceil(items.length / size) }, (_, index) =>
+    items.slice(index * size, (index + 1) * size),
+  );
 };
 
 export const runD1 = async <T>(work: () => Promise<T>): Promise<Result<T, RepositoryError>> => {

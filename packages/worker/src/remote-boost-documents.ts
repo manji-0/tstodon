@@ -7,6 +7,7 @@ import { findRemoteActorsByUris } from "./remote-actor-store";
 import { mastodonRemoteStatuses } from "./remote-status-documents";
 import { findRemoteStatusesByIds } from "./remote-status-store";
 import { findStatusesByIds } from "./status-store";
+import { documentsById } from "./documents-by-id";
 
 /**
  * Remote boosts as Mastodon statuses: the booster as `account`, the boosted
@@ -45,12 +46,7 @@ export const remoteBoostDocuments = async (
   if (actors.isErr()) {
     return err(actors.error);
   }
-  const documents = new Map<string, Record<string, unknown>>();
-  for (const document of [...localDocuments, ...remoteDocuments]) {
-    if (typeof document.id === "string") {
-      documents.set(document.id, document);
-    }
-  }
+  const documents = documentsById([...localDocuments, ...remoteDocuments]);
   return ok(
     boosts.flatMap((boost) => {
       const booster = actors.value.get(boost.actorUri);

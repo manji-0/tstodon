@@ -101,11 +101,7 @@ export const listAccountProfiles = async (
   if (queried.isErr()) {
     return err(queried.error);
   }
-  const profiles = new Map<string, AccountProfile>();
-  for (const row of queried.value) {
-    profiles.set(row.account_id, profileFromRow(row));
-  }
-  return ok(profiles);
+  return ok(new Map(queried.value.map((row) => [row.account_id, profileFromRow(row)])));
 };
 
 export const upsertAccountProfile = async (

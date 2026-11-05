@@ -2,7 +2,7 @@ import { type RemoteStatus } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { SUPPRESSED_ACTOR_URIS_SQL } from "./block-mute-store";
 import { nowIso } from "./clock";
-import { type RepositoryError, runD1 } from "./d1";
+import { okValues, type RepositoryError, runD1 } from "./d1";
 import { listPublicRemoteStatuses as listPublicRemoteStatusesSql } from "./generated/prisma/sql";
 import type { AccountStatusFilters, StatusCursor } from "./status-timeline-store";
 import type { TagStatusFilters } from "./status-discovery-store";
@@ -225,14 +225,7 @@ export const listPublicRemoteStatuses = async (
       ),
       RemoteStatusRowSchema,
     );
-    const statuses: RemoteStatus[] = [];
-    for (const row of results) {
-      const parsed = remoteStatusFromRow(row);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
+    return okValues(results.map((row) => remoteStatusFromRow(row)));
   });
 
 /**

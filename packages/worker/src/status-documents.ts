@@ -3,6 +3,7 @@ import { mastodonStatuses } from "./local-status-documents";
 import { mastodonRemoteStatuses } from "./remote-status-documents";
 import { findRemoteStatusesByIds } from "./remote-status-store";
 import { findStatusesByIds } from "./status-store";
+import { documentsById } from "./documents-by-id";
 
 /**
  * Status documents keyed by status id, for ids that may be local statuses or
@@ -16,10 +17,9 @@ export const statusDocumentsByIds = async (
   ids: ReadonlyArray<string>,
   viewerId: string | undefined,
 ): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
-  const documents = new Map<string, Record<string, unknown>>();
   const unique = [...new Set(ids)];
   if (unique.length === 0) {
-    return documents;
+    return new Map();
   }
   const [locals, remotes] = await Promise.all([
     findStatusesByIds(env.DB, unique),
@@ -40,10 +40,5 @@ export const statusDocumentsByIds = async (
         )
       : []),
   ];
-  for (const document of rendered) {
-    if (typeof document.id === "string") {
-      documents.set(document.id, document);
-    }
-  }
-  return documents;
+  return documentsById(rendered);
 };

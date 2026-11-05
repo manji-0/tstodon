@@ -36,6 +36,7 @@ import { findStatusById } from "./status-store";
 import { publishToAccount } from "./stream-publish";
 import { startOutboxDeliveryWorkflow } from "./delivery";
 import { parseJsonText } from "./json-column";
+import { documentsById } from "./documents-by-id";
 
 const processExpiredPolls = async (env: Env): Promise<void> => {
   await notifyEndedRemotePolls(env);
@@ -75,13 +76,7 @@ const processExpiredPolls = async (env: Env): Promise<void> => {
       items.map((item) => item.status),
       accountId,
     );
-    const byStatusId = new Map<string, Record<string, unknown>>();
-    for (const document of documents) {
-      const id = document.id;
-      if (typeof id === "string") {
-        byStatusId.set(id, document);
-      }
-    }
+    const byStatusId = documentsById(documents);
     for (const item of items) {
       const document = byStatusId.get(item.status.id);
       if (document) {

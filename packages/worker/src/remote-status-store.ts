@@ -15,7 +15,14 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { rerollEntityId } from "./ids";
-import { jsonStringArray, parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
+import {
+  jsonStringArray,
+  okValues,
+  parseRows,
+  type RepositoryError,
+  runD1,
+  runD1Batch,
+} from "./d1";
 import { removedBoostsFromRows } from "./removed-boost";
 import { parseJsonText } from "./json-column";
 import { toRepositoryError } from "./d1";
@@ -173,9 +180,8 @@ export const findRemoteStatusesByIds = async (
   ids: ReadonlyArray<string>,
 ): Promise<Result<ReadonlyMap<string, RemoteStatus>, RepositoryError>> => {
   const unique = [...new Set(ids.filter((id) => id.length > 0))];
-  const statuses = new Map<string, RemoteStatus>();
   if (unique.length === 0) {
-    return ok(statuses);
+    return ok(new Map<string, RemoteStatus>());
   }
   const queried = await runD1(async () =>
     queryTyped(db, findRemoteStatusesByIdsSql(jsonStringArray(unique)), RemoteStatusRowSchema),
@@ -183,13 +189,14 @@ export const findRemoteStatusesByIds = async (
   if (queried.isErr()) {
     return err(queried.error);
   }
-  for (const row of queried.value) {
-    const status = remoteStatusFromRow(row);
-    if (status.isOk()) {
-      statuses.set(status.value.id, status.value);
-    }
-  }
-  return ok(statuses);
+  return ok(
+    new Map(
+      okValues(queried.value.map((row) => remoteStatusFromRow(row))).map((status) => [
+        status.id,
+        status,
+      ]),
+    ),
+  );
 };
 
 export const findRemoteStatusByObjectUri = async (

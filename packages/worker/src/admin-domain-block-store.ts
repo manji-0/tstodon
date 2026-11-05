@@ -3,7 +3,7 @@ import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { okValues, runD1, type RepositoryError } from "./d1";
 import {
   deleteDomainBlock as deleteDomainBlockSql,
   findDomainBlockByDomain as findDomainBlockByDomainSql,
@@ -72,15 +72,7 @@ export const listDomainBlocks = async (
       )
       .bind(...binds, limit)
       .all();
-    const rows = results ?? [];
-    const blocks: DomainBlockRow[] = [];
-    for (const raw of rows) {
-      const row = parseRow(raw);
-      if (row.isOk()) {
-        blocks.push(row.value);
-      }
-    }
-    return blocks;
+    return okValues((results ?? []).map((raw) => parseRow(raw)));
   });
 
 export const findDomainBlockById = async (

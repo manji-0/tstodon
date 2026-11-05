@@ -3,7 +3,7 @@ import { z } from "zod";
 import { jsonStringArray, runD1, sqlInJsonEach, type RepositoryError } from "./d1";
 import { queryTyped, runTyped } from "./typed-sql";
 import { nowIso } from "./clock";
-import { parseRow } from "./d1";
+import { parseRows } from "./d1";
 import {
   deleteMedia as deleteMediaSql,
   findMediaById as findMediaByIdSql,
@@ -83,9 +83,8 @@ export const findMediaByIds = async (
   ids: ReadonlyArray<string>,
 ): Promise<Result<Map<string, MediaRow>, RepositoryError>> => {
   const unique = [...new Set(ids.filter((id) => id.length > 0))];
-  const media = new Map<string, MediaRow>();
   if (unique.length === 0) {
-    return ok(media);
+    return ok(new Map<string, MediaRow>());
   }
   const queried = await runD1(() =>
     db
@@ -99,13 +98,7 @@ export const findMediaByIds = async (
   if (queried.isErr()) {
     return err(queried.error);
   }
-  for (const raw of queried.value.results ?? []) {
-    const row = parseRow(MediaRowSchema, raw);
-    if (row.isOk()) {
-      media.set(row.value.id, row.value);
-    }
-  }
-  return ok(media);
+  return ok(new Map(parseRows(MediaRowSchema, queried.value.results).map((row) => [row.id, row])));
 };
 
 /** Set alt text and an optional focal point on one of the account's media rows. */

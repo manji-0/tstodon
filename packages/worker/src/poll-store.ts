@@ -5,7 +5,7 @@ import { nowIso } from "./clock";
 import { jsonStringArray, type RepositoryError, runD1, runD1Batch, sqlInJsonEach } from "./d1";
 import { newEntityId } from "./ids";
 import { parseJsonColumn } from "./json-column";
-import { parseRow, toRepositoryError } from "./d1";
+import { parseRows, toRepositoryError } from "./d1";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   claimPollUpdate as claimPollUpdateSql,
@@ -216,11 +216,9 @@ export const findPollsByStatusIds = async (
   viewerId: string | undefined,
 ): Promise<Result<Map<string, PollRecord>, RepositoryError>> => {
   const unique = [...new Set(statusIds.filter((id) => id.length > 0))];
-  const polls = new Map<string, PollRecord>();
   if (unique.length === 0) {
-    return ok(polls);
+    return ok(new Map<string, PollRecord>());
   }
-  const rows: PollRow[] = [];
   const queried = await runD1(() =>
     db
       .prepare(
@@ -238,53 +236,56 @@ export const findPollsByStatusIds = async (
   if (queried.isErr()) {
     return err(queried.error);
   }
-  for (const raw of queried.value.results ?? []) {
-    const row = parseRow(PollRowSchema, raw);
-    if (row.isOk()) {
-      rows.push(row.value);
-    }
-  }
+  const rows = parseRows(PollRowSchema, queried.value.results);
   if (rows.length === 0) {
-    return ok(polls);
+    return ok(new Map<string, PollRecord>());
   }
-  const votesByPoll = new Map<string, number[]>();
-  if (viewerId) {
-    const pollIds = rows.map((row) => row.id);
-    const votesQueried = await runD1(() =>
-      db
-        .prepare(
-          `SELECT poll_id, option_index FROM poll_votes
-           WHERE account_id = ? AND poll_id ${sqlInJsonEach()}`,
+  const viewerVotes = viewerId
+    ? (
+        await runD1(() =>
+          db
+            .prepare(
+              `SELECT poll_id, option_index FROM poll_votes
+             WHERE account_id = ? AND poll_id ${sqlInJsonEach()}`,
+            )
+            .bind(viewerId, jsonStringArray(rows.map((row) => row.id)))
+            .all<{ poll_id: string; option_index: number }>(),
         )
-        .bind(viewerId, jsonStringArray(pollIds))
-        .all<{ poll_id: string; option_index: number }>(),
-    );
-    if (votesQueried.isErr()) {
-      return err(votesQueried.error);
-    }
-    for (const vote of votesQueried.value.results ?? []) {
-      const list = votesByPoll.get(vote.poll_id) ?? [];
-      list.push(vote.option_index);
-      votesByPoll.set(vote.poll_id, list);
-    }
+      ).map(({ results }) => results ?? [])
+    : ok([]);
+  if (viewerVotes.isErr()) {
+    return err(viewerVotes.error);
   }
-  for (const row of rows) {
-    const options = parseJsonColumn(PollOptionsSchema, row.options_json);
-    if (options.isErr()) {
-      continue;
-    }
-    polls.set(row.status_id, {
-      id: row.id,
-      statusId: row.status_id,
-      multiple: row.multiple === 1,
-      expiresAt: row.expires_at,
-      hideTotals: row.hide_totals === 1,
-      options: options.value,
-      votersCount: row.voters_count,
-      votedIndexes: votesByPoll.get(row.id) ?? [],
-    });
-  }
-  return ok(polls);
+  const votesByPoll = new Map(
+    [...Map.groupBy(viewerVotes.value, (vote) => vote.poll_id)].map(([pollId, votes]) => [
+      pollId,
+      votes.map((vote) => vote.option_index),
+    ]),
+  );
+  return ok(
+    new Map(
+      rows.flatMap((row): [string, PollRecord][] => {
+        const options = parseJsonColumn(PollOptionsSchema, row.options_json);
+        return options.isErr()
+          ? []
+          : [
+              [
+                row.status_id,
+                {
+                  id: row.id,
+                  statusId: row.status_id,
+                  multiple: row.multiple === 1,
+                  expiresAt: row.expires_at,
+                  hideTotals: row.hide_totals === 1,
+                  options: options.value,
+                  votersCount: row.voters_count,
+                  votedIndexes: votesByPoll.get(row.id) ?? [],
+                },
+              ],
+            ];
+      }),
+    ),
+  );
 };
 
 export const findPollById = async (
