@@ -272,24 +272,6 @@ describe("local members' boosts", () => {
     ]);
   });
 
-  it("keep an unfollowed member's followers-only posts and boosts off the list", async () => {
-    const owner = "boost-private-owner@example.com";
-    const stranger = "boost-private-stranger@example.com";
-    const strangerId = (await signedInAccount(stranger)).id;
-    const listId = await createList(owner);
-    await addMembers(owner, listId, [strangerId]);
-
-    await post(stranger, "public post");
-    const hidden = await send(stranger, "/api/v1/statuses", "POST", {
-      status: "private post",
-      visibility: "private",
-    });
-    expect(hidden.status).toBe(200);
-    await reblog(stranger, read(StatusSchema, hidden.body).id);
-
-    expect(await labels(owner, `/api/v1/timelines/list/${listId}`)).toEqual(["public post"]);
-  });
-
   it("stay off home and the list when the owner blocks or mutes the boosted author", async () => {
     const owner = "boost-hidden-owner@example.com";
     const member = "boost-hidden-member@example.com";
@@ -333,6 +315,137 @@ describe("local members' boosts", () => {
     const kept = ["boost:owner post", "boost:boost-hidden-shown post"];
     expect(await boosts("/api/v1/timelines/home")).toEqual(kept);
     expect(await boosts(`/api/v1/timelines/list/${listId}`)).toEqual(kept);
+  });
+});
+
+describe("a follow's languages", () => {
+  it("keep the same posts on home and on the list", async () => {
+    const owner = "lang-list-owner@example.com";
+    const member = "lang-list-member@example.com";
+    const memberId = (await signedInAccount(member)).id;
+    expect(
+      (await send(owner, `/api/v1/accounts/${memberId}/follow`, "POST", { languages: ["en"] }))
+        .status,
+    ).toBe(200);
+    const listId = await createList(owner);
+    await addMembers(owner, listId, [memberId]);
+
+    for (const [status, language] of [
+      ["english post", "en"],
+      ["french post", "fr"],
+      ["unlabelled post", ""],
+    ]) {
+      expect((await send(member, "/api/v1/statuses", "POST", { status, language })).status).toBe(
+        200,
+      );
+    }
+
+    const kept = ["unlabelled post", "english post"];
+    expect(await labels(owner, "/api/v1/timelines/home")).toEqual(kept);
+    expect(await labels(owner, `/api/v1/timelines/list/${listId}`)).toEqual(kept);
+  });
+});
+
+const lock = async (email: string) =>
+  expect(
+    (await send(email, "/api/v1/accounts/update_credentials", "PATCH", { locked: true })).status,
+  ).toBe(200);
+
+const memberIds = async (email: string, listId: string): Promise<string[]> =>
+  read(
+    z.array(z.object({ id: z.string() })),
+    (await get(email, `/api/v1/lists/${listId}/accounts`)).body,
+  ).map((account) => account.id);
+
+describe("a list's local members", () => {
+  it("must be followed or requested, as Mastodon's ListAccount requires", async () => {
+    const owner = "member-rule-owner@example.com";
+    const stranger = "member-rule-stranger@example.com";
+    const locked = "member-rule-locked@example.com";
+    const ownerId = (await signedInAccount(owner)).id;
+    const strangerId = (await signedInAccount(stranger)).id;
+    await lock(locked);
+    const lockedId = await followLocal(owner, locked);
+    const listId = await createList(owner);
+
+    const refused = await send(owner, `/api/v1/lists/${listId}/accounts`, "POST", {
+      account_ids: [lockedId, strangerId],
+    });
+    expect(refused).toEqual({
+      status: 422,
+      body: { error: "Validation failed: Account must be a followed account", kind: "NotFollowed" },
+    });
+    expect(await memberIds(owner, listId)).toEqual([]);
+
+    await addMembers(owner, listId, [lockedId, ownerId]);
+    expect((await memberIds(owner, listId)).toSorted()).toEqual([lockedId, ownerId].toSorted());
+  });
+
+  it("leave the owner's lists when the follow ends", async () => {
+    const owner = "member-leave-owner@example.com";
+    const unfollowed = "member-leave-unfollowed@example.com";
+    const blocked = "member-leave-blocked@example.com";
+    const rejecting = "member-leave-rejecting@example.com";
+    const kept = "member-leave-kept@example.com";
+    await lock(rejecting);
+    const ids = [
+      await followLocal(owner, unfollowed),
+      await followLocal(owner, blocked),
+      await followLocal(owner, rejecting),
+      await followLocal(owner, kept),
+    ];
+    const [unfollowedId, blockedId, , keptId] = ids;
+    const lists = [await createList(owner), await createList(owner)];
+    for (const listId of lists) {
+      await addMembers(owner, listId, ids);
+    }
+
+    const ownerId = (await signedInAccount(owner)).id;
+    for (const [email, path] of [
+      [owner, `/api/v1/accounts/${unfollowedId}/unfollow`],
+      [owner, `/api/v1/accounts/${blockedId}/block`],
+      [rejecting, `/api/v1/follow_requests/${ownerId}/reject`],
+    ] as const) {
+      expect((await send(email, path, "POST", {})).status).toBe(200);
+    }
+    await followLocal(owner, unfollowed);
+
+    for (const listId of lists) {
+      expect(await memberIds(owner, listId)).toEqual([keptId]);
+    }
+  });
+
+  it("show posts on the list only while followed, as the list stream delivers them", async () => {
+    const owner = "member-feed-owner@example.com";
+    const stranger = "member-feed-stranger@example.com";
+    const requested = "member-feed-requested@example.com";
+    const followed = "member-feed-followed@example.com";
+    await lock(requested);
+    const requestedId = await followLocal(owner, requested);
+    const followedId = await followLocal(owner, followed);
+    const strangerId = (await signedInAccount(stranger)).id;
+    const listId = await createList(owner);
+    await addMembers(owner, listId, [requestedId, followedId]);
+    // A membership stored before members had to be followed.
+    await env.DB.prepare(
+      "INSERT INTO account_list_members (list_id, member_account_id, created_at) VALUES (?, ?, ?)",
+    )
+      .bind(listId, strangerId, "2026-11-01T00:00:00.000Z")
+      .run();
+
+    for (const email of [stranger, requested, followed]) {
+      await post(email, `${email.split("@")[0]} post`);
+      const hidden = await send(email, "/api/v1/statuses", "POST", {
+        status: `${email.split("@")[0]} private`,
+        visibility: "private",
+      });
+      expect(hidden.status).toBe(200);
+    }
+
+    expect(await labels(owner, `/api/v1/timelines/list/${listId}`)).toEqual([
+      "member-feed-followed private",
+      "member-feed-followed post",
+    ]);
   });
 });
 
