@@ -515,6 +515,7 @@ model notifications {
 
   @@index([account_id, created_at(sort: Desc)], map: "idx_notifications_account_created_at")
   @@index([account_id, from_account_id], map: "idx_notifications_account_from")
+  @@index([account_id, from_actor_uri], map: "idx_notifications_account_actor")
 }
 
 model outbound_activities {
