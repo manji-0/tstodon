@@ -39,14 +39,27 @@ const sessionLookupKeepsCaching = {
 
 /**
  * The Password and security page (`/auth/edit`) is the one place a passkey is
- * removed: it refuses the last one, and asks for a recent sign-in. Better
- * Auth's own endpoints would let any session skip both, so the delete is
- * closed and a signed-in user adding a passkey needs the same recent sign-in.
+ * removed or a session ended: it refuses the last passkey, and asks for a
+ * recent sign-in. Better Auth's own endpoints would let any session skip
+ * both, so they are closed (in `before` hooks: an `after` hook runs once the
+ * endpoint has already deleted), and a signed-in user adding a passkey needs
+ * the same recent sign-in.
  */
-const passkeyGuards = {
-  id: "tstodon-passkey-guards",
+const securityPageGuards = {
+  id: "tstodon-security-page-guards",
   hooks: {
     before: [
+      {
+        matcher: (ctx) =>
+          ctx.path === "/revoke-session" ||
+          ctx.path === "/revoke-sessions" ||
+          ctx.path === "/revoke-other-sessions",
+        handler: createAuthMiddleware(async () => {
+          throw new APIError("FORBIDDEN", {
+            message: "End a session on the Password and security page.",
+          });
+        }),
+      },
       {
         matcher: (ctx) => ctx.path === "/passkey/delete-passkey",
         handler: createAuthMiddleware(async () => {
@@ -89,7 +102,7 @@ export default defineAuth(({ defaults, env }) => ({
   emailAndPassword: { enabled: false },
   plugins: [
     sessionLookupKeepsCaching,
-    passkeyGuards,
+    securityPageGuards,
     // `user.role = 'admin'` makes the linked local account an instance admin.
     admin(),
     passkey({
