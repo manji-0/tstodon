@@ -10,7 +10,12 @@ import {
 } from "../http";
 import { notifyAdmins } from "../admin-notify";
 import { instanceRules, parseInstanceIdentity } from "../runtime-config";
-import { InstanceIdentity, type LocalAccount, type RemoteActor } from "@tstodon/domain";
+import {
+  InstanceIdentity,
+  type LocalAccount,
+  type RemoteActor,
+  ReportForwarding,
+} from "@tstodon/domain";
 import { forwardReport, forwardReportToDomains, repliedToInboxes } from "../report-forward";
 import type { Result } from "neverthrow";
 import { findAccountById } from "../account-store";
@@ -106,7 +111,8 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
     comment,
     category: category.value,
     ruleIds: requestedRules,
-    forwarded: forwardTo !== undefined,
+    forwarding:
+      forwardTo === undefined ? ReportForwarding.notForwarded : ReportForwarding.forwarded,
   });
   if (report.isErr()) {
     return jsonRepositoryError(c, report.error.message);

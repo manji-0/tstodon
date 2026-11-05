@@ -73,11 +73,11 @@ export const reportDocumentsByIds = async (
     }
     documents.set(row.id, {
       id: row.id,
-      action_taken: row.actionTakenAt !== null,
-      action_taken_at: row.actionTakenAt,
+      action_taken: row.resolution.kind === "Resolved",
+      action_taken_at: row.resolution.kind === "Resolved" ? row.resolution.at : null,
       category: row.category,
       comment: row.comment,
-      forwarded: row.forwarded,
+      forwarded: row.forwarding.kind === "Forwarded",
       created_at: row.createdAt,
       status_ids: row.statusIds,
       rule_ids: row.ruleIds,

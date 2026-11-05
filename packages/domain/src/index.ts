@@ -126,6 +126,14 @@ export type {
   RemovedRemoteStatus,
 } from "./remote-status-removal";
 export {
+  ReportForwarding,
+  type ReportForwarding as ReportForwardingValue,
+} from "./report-forwarding";
+export {
+  ReportResolution,
+  type ReportResolution as ReportResolutionValue,
+} from "./report-resolution";
+export {
   Registration,
   type Registration as RegistrationValue,
   type RegistrationValidationErrors,

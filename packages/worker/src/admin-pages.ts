@@ -65,7 +65,6 @@ export type ReportSummary = Readonly<{
   comment: string;
   statusCount: number;
   assignee: AccountLabel | undefined;
-  resolved: boolean;
   createdAt: string;
 }>;
 
@@ -121,8 +120,9 @@ export type ReportDetails = ReportSummary &
   Readonly<{
     statuses: ReadonlyArray<ReportedStatus>;
     rules: ReadonlyArray<string>;
-    actionTakenBy: AccountLabel | undefined;
-    actionTakenAt: string | null;
+    resolution:
+      | Readonly<{ kind: "Open" }>
+      | Readonly<{ kind: "Resolved"; at: string; by: AccountLabel }>;
     /**
      * The target's moderation summary and the actions this server can take on
      * it; `undefined` when it cannot act, because the target is gone.
@@ -185,8 +185,8 @@ ${messageLine(message)}
         <li>Filed: ${escapeHtml(report.createdAt)}</li>
         <li>Assigned to: ${report.assignee === undefined ? "nobody" : accountLink(report.assignee)}</li>
         <li>Status: ${
-          report.resolved
-            ? `resolved${report.actionTakenBy === undefined ? "" : ` by ${accountLink(report.actionTakenBy)}`}${report.actionTakenAt === null ? "" : ` at ${escapeHtml(report.actionTakenAt)}`}`
+          report.resolution.kind === "Resolved"
+            ? `resolved by ${accountLink(report.resolution.by)} at ${escapeHtml(report.resolution.at)}`
             : "unresolved"
         }</li>
       </ul>
@@ -213,7 +213,7 @@ ${messageLine(message)}
       }
       <h2>Handle this report</h2>
       ${report.assignedToViewer ? postButton(base, "Unassign", { do: "unassign" }) : postButton(base, "Assign to me", { do: "assign_to_self" })}
-      ${report.resolved ? postButton(base, "Reopen", { do: "reopen" }) : postButton(base, "Mark as resolved", { do: "resolve" })}${
+      ${report.resolution.kind === "Resolved" ? postButton(base, "Reopen", { do: "reopen" }) : postButton(base, "Mark as resolved", { do: "resolve" })}${
         report.targetModeration === undefined
           ? `
       <p class="muted">This server no longer has the reported account, so there is nothing to act on here.</p>`

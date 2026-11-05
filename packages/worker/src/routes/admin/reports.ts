@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { z } from "zod";
-import type { InstanceIdentity } from "@tstodon/domain";
+import { type InstanceIdentity, ReportResolution } from "@tstodon/domain";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -17,13 +17,14 @@ import {
   findReportById,
   listReports,
   setReportAssigned,
-  setReportResolved,
+  setReportResolution,
   updateReport,
 } from "../../report-store";
 import { reportedStatuses } from "../../report-documents";
 import { mastodonRemoteStatus } from "../../remote-status-document";
 import { schemaResult } from "@tstodon/core";
 import { adminAccountFor, adminPartyFor } from "./accounts";
+import { nowIso } from "../../clock";
 
 const adminReportDocument = async (
   c: Context<{ Bindings: Env }>,
@@ -43,11 +44,11 @@ const adminReportDocument = async (
     : [];
   return {
     id: report.id,
-    action_taken: report.actionTakenAt !== null,
-    action_taken_at: report.actionTakenAt,
+    action_taken: report.resolution.kind === "Resolved",
+    action_taken_at: report.resolution.kind === "Resolved" ? report.resolution.at : null,
     category: report.category,
     comment: report.comment,
-    forwarded: report.forwarded,
+    forwarded: report.forwarding.kind === "Forwarded",
     created_at: report.createdAt,
     updated_at: report.updatedAt ?? report.createdAt,
     account: await adminPartyFor(c.env, identity, report.reporter, report.reporterAcct),
@@ -55,9 +56,10 @@ const adminReportDocument = async (
     assigned_account: report.assignedAccountId
       ? await adminAccountFor(c.env, identity, report.assignedAccountId)
       : null,
-    action_taken_by_account: report.actionTakenByAccountId
-      ? await adminAccountFor(c.env, identity, report.actionTakenByAccountId)
-      : null,
+    action_taken_by_account:
+      report.resolution.kind === "Resolved"
+        ? await adminAccountFor(c.env, identity, report.resolution.byAccountId)
+        : null,
     statuses,
     // The configured rules this violation is tied to.
     rules: instanceRules(c.env)
@@ -71,13 +73,15 @@ const adminReportDocument = async (
 };
 
 /** Boolean report filters: `resolved=false` narrows to open reports. */
-const reportResolvedFilter = (c: Context<{ Bindings: Env }>): boolean | undefined => {
+const reportResolvedFilter = (
+  c: Context<{ Bindings: Env }>,
+): ReportResolution["kind"] | undefined => {
   const raw = (c.req.query("resolved") ?? "").trim().toLowerCase();
   if (raw === "true" || raw === "1") {
-    return true;
+    return "Resolved";
   }
   if (raw === "false" || raw === "0") {
-    return false;
+    return "Open";
   }
   return undefined;
 };
@@ -92,7 +96,7 @@ export const getV1AdminReports = async (c: Context<{ Bindings: Env }, "/api/v1/a
     return jsonAuthError(c, admin.error);
   }
   const reports = await listReports(c.env.DB, {
-    resolved: reportResolvedFilter(c),
+    resolution: reportResolvedFilter(c),
     accountId: c.req.query("account_id") || undefined,
     targetAccountId: c.req.query("target_account_id") || undefined,
     cursor: queryCursor(c),
@@ -273,7 +277,11 @@ const resolveReport = async (c: Context<{ Bindings: Env }>, resolved: boolean) =
     return jsonAuthError(c, admin.error);
   }
   const id = c.req.param("id") ?? "";
-  const changed = await setReportResolved(c.env.DB, id, resolved ? admin.value.account.id : null);
+  const changed = await setReportResolution(
+    c.env.DB,
+    id,
+    resolved ? ReportResolution.resolved(admin.value.account.id, nowIso()) : ReportResolution.open,
+  );
   if (changed.isErr()) {
     return jsonRepositoryError(c, changed.error.message);
   }

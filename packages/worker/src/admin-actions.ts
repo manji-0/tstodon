@@ -5,7 +5,9 @@ import {
   RemoteActorModeration,
   type RemoteActorModerationAction,
   Hostname,
+  ReportResolution,
 } from "@tstodon/domain";
+import { nowIso } from "./clock";
 import { err, ok, Result } from "neverthrow";
 import {
   disabledAccountIds,
@@ -41,7 +43,7 @@ import {
   findReportById,
   listOpenReportIdsForTarget,
   ReportParty,
-  setReportResolved,
+  setReportResolution,
 } from "./report-store";
 
 /**
@@ -249,8 +251,9 @@ export const takeAccountAction = async (
   if (applied.isErr()) {
     return err(applied.error);
   }
+  const resolution = ReportResolution.resolved(input.moderatorId, nowIso());
   for (const reportId of reportIds) {
-    const resolved = await setReportResolved(db, reportId, input.moderatorId);
+    const resolved = await setReportResolution(db, reportId, resolution);
     if (resolved.isErr()) {
       return err(resolved.error);
     }

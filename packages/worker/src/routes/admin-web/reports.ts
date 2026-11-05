@@ -1,5 +1,6 @@
 import { schemaResult, warmSchemas } from "@tstodon/core";
-import { AccountActionType, type LocalStatusValue } from "@tstodon/domain";
+import { AccountActionType, type LocalStatusValue, ReportResolution } from "@tstodon/domain";
+import { nowIso } from "../../clock";
 import type { Context } from "hono";
 import type { Result } from "neverthrow";
 import { z } from "zod";
@@ -23,7 +24,7 @@ import {
   ReportParty,
   type ReportRow,
   setReportAssigned,
-  setReportResolved,
+  setReportResolution,
 } from "../../report-store";
 import { instanceRules } from "../../runtime-config";
 import { reportedStatuses } from "../../report-documents";
@@ -57,7 +58,6 @@ const summaryOf = async (
   comment: report.comment,
   statusCount: report.statusIds.length,
   assignee: report.assignedAccountId === null ? undefined : await label(report.assignedAccountId),
-  resolved: report.actionTakenAt !== null,
   createdAt: report.createdAt,
 });
 
@@ -69,7 +69,7 @@ export const getAdminReports = async (c: Context<{ Bindings: Env }, "/admin/repo
   }
   const resolved = c.req.query("resolved") === "1";
   const reports = await listReports(c.env.DB, {
-    resolved,
+    resolution: resolved ? "Resolved" : "Open",
     cursor: { maxId: c.req.query("max_id") },
     limit: REPORTS_PER_PAGE,
   });
@@ -116,6 +116,14 @@ const targetModerationOf = async (
     : undefined;
 };
 
+const resolutionOf = async (
+  label: ReturnType<typeof accountLabeller>,
+  resolution: ReportResolution,
+): Promise<ReportDetails["resolution"]> =>
+  resolution.kind === "Open"
+    ? resolution
+    : { kind: "Resolved", at: resolution.at, by: await label(resolution.byAccountId) };
+
 /** Mastodon's `GET /admin/reports/:id`. */
 export const getAdminReport = async (c: Context<{ Bindings: Env }, "/admin/reports/:id">) => {
   const admin = await adminSession(c);
@@ -131,11 +139,11 @@ export const getAdminReport = async (c: Context<{ Bindings: Env }, "/admin/repor
   }
   const row = report.value;
   const label = accountLabeller(c.env.DB);
-  const [summary, statuses, targetModeration, actionTakenBy] = await Promise.all([
+  const [summary, statuses, targetModeration, resolution] = await Promise.all([
     summaryOf(label, row),
     reportedStatuses(c.env.DB, row.statusIds),
     targetModerationOf(c.env.DB, row.target),
-    row.actionTakenByAccountId === null ? undefined : label(row.actionTakenByAccountId),
+    resolutionOf(label, row.resolution),
   ]);
   const details: ReportDetails = {
     ...summary,
@@ -156,8 +164,7 @@ export const getAdminReport = async (c: Context<{ Bindings: Env }, "/admin/repor
     rules: instanceRules(c.env)
       .filter((rule) => row.ruleIds.includes(rule.id))
       .map((rule) => rule.text),
-    actionTakenBy,
-    actionTakenAt: row.actionTakenAt,
+    resolution,
     targetModeration,
     assignedToViewer: row.assignedAccountId === admin.account.id,
   };
@@ -181,9 +188,9 @@ const runReportCommand = (
 ): Promise<Result<boolean, RepositoryError>> => {
   switch (command) {
     case "resolve":
-      return setReportResolved(db, reportId, adminId);
+      return setReportResolution(db, reportId, ReportResolution.resolved(adminId, nowIso()));
     case "reopen":
-      return setReportResolved(db, reportId, null);
+      return setReportResolution(db, reportId, ReportResolution.open);
     case "assign_to_self":
       return setReportAssigned(db, reportId, adminId);
     case "unassign":
