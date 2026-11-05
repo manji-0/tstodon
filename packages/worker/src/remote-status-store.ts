@@ -289,8 +289,8 @@ export const upsertRemoteStatus = async (
         await writeRemoteStatusRow(db, persisted, inReplyToUri);
         break;
       } catch (error) {
-        // A new row whose id another status already holds (same instant, same
-        // random bits): retry at the same instant with new random bits.
+        // A new row whose id another isolate already stored (same instant, same
+        // random low bits): retry at the same instant with new random low bits.
         const rerolled = StatusId.parse(rerollEntityId(persisted.id));
         if (
           existing.value ||
