@@ -1,6 +1,7 @@
 import { schemaResult } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
+import { Hostname } from "./hostname";
 import { IsoInstant } from "./iso-instant";
 
 /**
@@ -94,4 +95,13 @@ export const RemoteActor = {
     return parsed.mapErr((): RemoteActorParseError => ({ kind: "InvalidActor" }));
   },
   deliveryInbox: (actor: RemoteActor): string => actor.sharedInboxUri ?? actor.inboxUri,
+  /**
+   * The hostnames a suspension or the allow list is checked against: the
+   * account domain's and the actor URI's. The URI host serves the actor and
+   * its key, so a WebFinger domain elsewhere never lifts a rule on it.
+   */
+  hostnames: (actor: RemoteActor): ReadonlyArray<Hostname> => {
+    const uriHost = Hostname.ofUri(actor.actorUri);
+    return [Hostname.ofAuthority(actor.domain), ...(uriHost ? [uriHost] : [])];
+  },
 } as const;

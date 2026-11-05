@@ -24,8 +24,8 @@ import { type JobPage, measureJobPage } from "./metrics";
 import { parseInstanceIdentity } from "./runtime-config";
 import { unfollowRemoteActor } from "./outbound-follow";
 import { listOutboundFollowsByActor } from "./outbound-follow-store";
-import { actorAliases, remoteActorFromDocument } from "./remote-actor-fetch";
-import { setRemoteActorMovedTo, upsertRemoteActor } from "./remote-actor-store";
+import { actorAliases, cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
+import { setRemoteActorMovedTo } from "./remote-actor-store";
 
 /**
  * Follows moved per pass. The first page is moved while the `Move` is handled;
@@ -290,7 +290,7 @@ export const findMoveTarget = async (
   if (target.isErr()) {
     return ok(undefined);
   }
-  const cached = await upsertRemoteActor(env.DB, target.value);
+  const cached = await cacheFetchedActor(env.DB, identity, target.value, options);
   if (cached.isErr()) {
     return err(cached.error);
   }

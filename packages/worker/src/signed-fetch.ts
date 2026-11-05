@@ -1,5 +1,4 @@
-import { Hostname } from "@tstodon/domain";
-import type { InstanceIdentity, RemoteActor } from "@tstodon/domain";
+import { type InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { parseSignatureHeader, verifySignedFetch } from "./http-signature";
 import { resolveRemoteActor } from "./remote-actor-fetch";
@@ -37,8 +36,11 @@ export const signedFetchActor = async (
   if (actor.isErr()) {
     return undefined;
   }
-  const host = Hostname.ofAuthority(actor.value.domain);
-  if (suspended.has(host) || !allowListAdmits(allowHosts, host)) {
+  if (
+    RemoteActor.hostnames(actor.value).some(
+      (host) => suspended.has(host) || !allowListAdmits(allowHosts, host),
+    )
+  ) {
     return undefined;
   }
   return (await verifySignedFetch(request, parsed, actor.value.publicKeyPem))

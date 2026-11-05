@@ -6,13 +6,10 @@ import {
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
+import { parseAccountHandle } from "./account-handle";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
-import {
-  fetchActivityJson,
-  fetchWebfingerActorUri,
-  type FederatedFetchOptions,
-} from "./federated-fetch";
+import { fetchActivityJson, fetchWebfinger, type FederatedFetchOptions } from "./federated-fetch";
 import { ActorDocumentSchema } from "./activitypub-wire";
 import {
   findRemoteActorByPublicKeyId,
@@ -156,6 +153,61 @@ export const remoteActorFromDocument = (
   return ok(actor.value);
 };
 
+type Handle = Readonly<{ username: string; domain: string }>;
+
+const sameHandle = (a: Handle, b: Handle): boolean =>
+  a.username.toLowerCase() === b.username.toLowerCase() &&
+  a.domain.toLowerCase() === b.domain.toLowerCase();
+
+/** The account a WebFinger lookup of `handle` names, and the actor it links. */
+const webfingerSubject = async (
+  identity: InstanceIdentity,
+  handle: Handle,
+  options: FederatedFetchOptions,
+): Promise<Readonly<{ subject: Handle; self: string }> | undefined> => {
+  const answer = await fetchWebfinger(identity, `${handle.username}@${handle.domain}`, options);
+  if (answer.isErr() || answer.value.subject === undefined) {
+    return undefined;
+  }
+  const subject = parseAccountHandle(answer.value.subject.replace(/^acct:/, ""));
+  return subject?.domain === undefined
+    ? undefined
+    : { subject: { username: subject.username, domain: subject.domain }, self: answer.value.self };
+};
+
+/**
+ * The handle WebFinger confirms for an actor read from its own document, as
+ * Mastodon's `check_webfinger!`. The lookup starts at the URI's authority;
+ * a `subject` on another domain is taken only when WebFinger on that domain
+ * names the same account and links back to the same actor, so an actor
+ * cannot claim a domain it does not control. Any other answer keeps the
+ * URI's authority, which the actor's document already proves.
+ */
+const confirmedHandle = async (
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+  options: FederatedFetchOptions,
+): Promise<Handle> => {
+  const claimed = { username: actor.username, domain: actor.domain };
+  const first = await webfingerSubject(identity, claimed, options);
+  if (!first || sameHandle(first.subject, claimed)) {
+    return claimed;
+  }
+  const second = await webfingerSubject(identity, first.subject, options);
+  return second && sameHandle(second.subject, first.subject) && second.self === actor.actorUri
+    ? { username: second.subject.username.toLowerCase(), domain: second.subject.domain }
+    : claimed;
+};
+
+/** Cache an actor read from its own document, under the handle WebFinger confirms for it. */
+export const cacheFetchedActor = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+  options: FederatedFetchOptions,
+): Promise<Result<RemoteActor, RepositoryError>> =>
+  upsertRemoteActor(db, { ...actor, ...(await confirmedHandle(identity, actor, options)) });
+
 export const resolveRemoteActor = async (
   db: D1Database,
   identity: InstanceIdentity,
@@ -192,7 +244,7 @@ export const resolveRemoteActor = async (
   ) {
     return err({ kind: "InvalidSignature" });
   }
-  const stored = await upsertRemoteActor(db, actor.value);
+  const stored = await cacheFetchedActor(db, identity, actor.value, options);
   if (stored.isErr()) {
     return err(stored.error);
   }
@@ -206,9 +258,10 @@ export const resolveRemoteActorByHandle = async (
   handle: string,
   options: FederatedFetchOptions = {},
 ): Promise<Result<RemoteActor, RemoteActorResolveError>> => {
-  const actorUri = await fetchWebfingerActorUri(identity, handle, options);
-  if (actorUri.isErr()) {
-    return err(actorUri.error);
+  const answer = await fetchWebfinger(identity, handle, options);
+  if (answer.isErr()) {
+    return err(answer.error);
   }
-  return resolveRemoteActor(db, identity, `${actorUri.value}#main-key`, actorUri.value, options);
+  const actorUri = answer.value.self;
+  return resolveRemoteActor(db, identity, `${actorUri}#main-key`, actorUri, options);
 };

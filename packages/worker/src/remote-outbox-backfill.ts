@@ -14,12 +14,11 @@ import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch
 import { stringList } from "./form-values";
 import { replaceRemoteActorPins } from "./remote-actor-pin-store";
 import { recordRemoteBoost } from "./remote-boost";
-import { remoteActorFromDocument } from "./remote-actor-fetch";
+import { cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
 import {
   claimRemoteOutboxBackfill,
   findRemoteActorByUri,
   releaseRemoteOutboxBackfill,
-  upsertRemoteActor,
 } from "./remote-actor-store";
 import { type CollectionPage, fetchCollectionPage, firstCollectionPage } from "./remote-collection";
 import { persistAnnouncedObject, persistRemoteObject } from "./remote-status-persist";
@@ -155,7 +154,7 @@ const withCollections = async (
   if (!refreshed || refreshed.isErr()) {
     return actor;
   }
-  const stored = await upsertRemoteActor(env.DB, refreshed.value);
+  const stored = await cacheFetchedActor(env.DB, identity, refreshed.value, options);
   return stored.isOk() ? stored.value : actor;
 };
 

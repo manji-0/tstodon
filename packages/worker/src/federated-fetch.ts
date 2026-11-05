@@ -137,12 +137,15 @@ export const fetchActivityJson = async (
   }
 };
 
-/** Resolve a `user@domain` handle to its ActivityPub actor URI via WebFinger. */
-export const fetchWebfingerActorUri = async (
+/** A WebFinger answer: the account it names and its ActivityPub actor URI. */
+export type WebfingerAnswer = Readonly<{ subject: string | undefined; self: string }>;
+
+/** Look up a `user@domain` handle by WebFinger. */
+export const fetchWebfinger = async (
   identity: InstanceIdentity,
   handle: string,
   options: FederatedFetchOptions = {},
-): Promise<Result<string, FederatedFetchError>> => {
+): Promise<Result<WebfingerAnswer, FederatedFetchError>> => {
   const trimmed = handle.replace(/^@/, "").trim();
   const atIndex = trimmed.lastIndexOf("@");
   if (atIndex <= 0 || atIndex === trimmed.length - 1) {
@@ -193,7 +196,7 @@ export const fetchWebfingerActorUri = async (
     if (!self?.href) {
       return err({ kind: "InvalidSignature" });
     }
-    return ok(self.href);
+    return ok({ subject: parsed.value.subject, self: self.href });
   } catch {
     return err({ kind: "VerificationUnavailable" });
   }

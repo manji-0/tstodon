@@ -7,12 +7,8 @@ import {
   Hostname,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import {
-  type AccountRef,
-  parseAccountHandle,
-  remoteRef,
-  resolveAccountHandle,
-} from "./account-ref";
+import { parseAccountHandle } from "./account-handle";
+import { type AccountRef, remoteRef, resolveAccountHandle } from "./account-ref";
 import { findAccountById } from "./account-store";
 import { blockAccountTarget, unblockAccountTarget } from "./account-block";
 import { muteAccount, unmuteAccount } from "./block-mute-store";

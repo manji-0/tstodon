@@ -88,6 +88,8 @@ describe("remote search resolution", () => {
         expect(
           read(MastodonSearchPreviewSchema, resolved.body).accounts.map((account) => account.acct),
         ).toContain("remote@remote.example");
+        // The handle lookup, then the actor's WebFinger round trip on its URI host.
+        expect(webfingerCalls).toBe(2);
 
         const cached = await json("/api/v2/search?q=remote@remote.example");
         expect(
@@ -95,7 +97,7 @@ describe("remote search resolution", () => {
         ).toContain("remote@remote.example");
       },
     );
-    expect(webfingerCalls).toBe(1);
+    expect(webfingerCalls).toBe(2);
   });
 
   it("refuses to resolve without sign-in", async () => {

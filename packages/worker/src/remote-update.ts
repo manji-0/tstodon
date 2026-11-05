@@ -17,8 +17,8 @@ import { enqueuePublicFanOut } from "./public-fan-out";
 import { enqueueLinkCard } from "./link-card";
 import { isAccountMentionedOnRemoteStatus, recordRemoteStatusMentions } from "./mention-store";
 import { notifyFromRemote } from "./notify";
-import { actorMovedTo, remoteActorFromDocument } from "./remote-actor-fetch";
-import { setRemoteActorMovedTo, upsertRemoteActor } from "./remote-actor-store";
+import { actorMovedTo, cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
+import { setRemoteActorMovedTo } from "./remote-actor-store";
 import { findMoveTarget } from "./remote-move";
 import { snapshotRemoteRevision } from "./remote-status-edit";
 import {
@@ -205,7 +205,7 @@ const applyActorUpdate = async (
   if (refreshed.isErr()) {
     return ok(undefined);
   }
-  const stored = await upsertRemoteActor(env.DB, refreshed.value);
+  const stored = await cacheFetchedActor(env.DB, identity, refreshed.value, options);
   if (stored.isErr()) {
     return err(stored.error);
   }
