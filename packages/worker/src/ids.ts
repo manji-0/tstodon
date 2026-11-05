@@ -7,14 +7,14 @@ const LOW_VALUES = 1 << Number(LOW_BITS);
 
 /**
  * How many low values this isolate remembers across instants. Past it, the
- * oldest instants are forgotten, never the one being drawn, so at most 65,536
- * numbers are held. Forgotten instants are ones a burst has moved past;
- * reusing one only risks the 1 in 65,536 match that ids from another isolate
- * already carry.
+ * instants it first drew at longest ago are forgotten, never the one being
+ * drawn, so at most 65,536 numbers are held. A forgotten instant is usually
+ * one the clock has moved past; drawing at it again only risks the 1 in
+ * 65,536 match that ids from another isolate already carry.
  */
 const REMEMBERED_LOW_VALUES = LOW_VALUES;
 
-/** Low values handed out per instant, oldest instant first. */
+/** Low values handed out per instant, in the order each instant was first drawn. */
 const usedLowValues = new Map<bigint, Set<number>>();
 let rememberedCount = 0;
 
