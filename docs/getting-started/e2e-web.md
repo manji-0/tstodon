@@ -25,7 +25,7 @@ The browser is the Chromium Playwright 1.56 expects (`PLAYWRIGHT_BROWSERS_PATH`,
 ## How the scenarios sign up
 
 - Each page gets a Chromium virtual WebAuthn authenticator (`addPasskeyDevice` in `e2e/web/fixtures.ts`), so passkey prompts complete on their own. A second person (`newPerson`) is a separate browser context with its own authenticator.
-- The instance runs with `EMAIL_TRANSPORT=capture`: the confirmation mail lands in the `APP_CACHE` KV namespace, and `confirmationLink` reads it with `wrangler kv key get --local`.
+- The instance runs with `EMAIL_TRANSPORT=capture`: the confirmation mail lands in the `APP_CACHE` KV namespace, and `confirmationLink` reads it from the dev server's local explorer API (`/cdn-cgi/local/explorer/api/storage/kv/...`). It does not spawn `wrangler kv key get`: that costs several seconds per sign-up on a loaded machine, and the three-person admin scenario then runs past its timeout.
 - The UI runs in English (`locale: "en-US"`) so the selectors can use its labels ("What's on your mind?", "Post", "Favorite", …).
 - A scenario fails on any uncaught page error or 5xx from `/api/*`, as well as on its own assertions.
 

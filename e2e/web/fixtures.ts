@@ -1,15 +1,12 @@
-import { execFileSync } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   expect,
   test as base,
+  type APIRequestContext,
   type BrowserContext,
   type CDPSession,
   type Page,
 } from "@playwright/test";
-
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+import { z } from "zod";
 
 type PasskeyDevice = Readonly<{ cdp: CDPSession; authenticatorId: string }>;
 const devices = new WeakMap<Page, PasskeyDevice>();
@@ -51,27 +48,29 @@ export const replacePasskeyDevice = async (context: BrowserContext, page: Page):
   await addPasskeyDevice(context, page);
 };
 
-/** The confirmation link the server "sent" (`EMAIL_TRANSPORT=capture` keeps it in KV). */
-export const confirmationLink = (email: string): string => {
-  const mail = execFileSync(
-    "pnpm",
-    [
-      "exec",
-      "wrangler",
-      "kv",
-      "key",
-      "get",
-      `mailbox:${email.toLowerCase()}`,
-      "--binding",
-      "APP_CACHE",
-      "--local",
-      "--config",
-      "e2e/web.wrangler.jsonc",
-      "--persist-to",
-      ".wrangler/e2e-web",
-    ],
-    { cwd: root, encoding: "utf8" },
-  );
+const kvApi = "/cdn-cgi/local/explorer/api/storage/kv/namespaces";
+const KvNamespaces = z.object({
+  result: z.array(z.object({ id: z.string(), title: z.string() })),
+});
+
+/**
+ * The confirmation link the server "sent" (`EMAIL_TRANSPORT=capture` keeps it
+ * in KV), read through the dev server's local explorer API. Spawning
+ * `wrangler kv key get` instead costs seconds per sign-up on a busy machine,
+ * enough to push the multi-person scenarios past their timeout.
+ */
+export const confirmationLink = async (
+  request: APIRequestContext,
+  email: string,
+): Promise<string> => {
+  const namespaces = KvNamespaces.parse(await (await request.get(kvApi)).json());
+  const appCache = namespaces.result.find((namespace) => namespace.title === "APP_CACHE");
+  if (!appCache) {
+    throw new Error("the dev server has no APP_CACHE KV namespace");
+  }
+  const mail = await (
+    await request.get(`${kvApi}/${appCache.id}/values/mailbox:${email.toLowerCase()}`)
+  ).text();
   const link = /https?:\/\/[^\s"]+\/auth\/sign_up\/verify\?token=[\w-]+/.exec(mail)?.[0];
   if (!link) {
     throw new Error(`no sign-up link mailed to ${email}`);
@@ -88,7 +87,7 @@ export const signUp = async (page: Page, username: string): Promise<void> => {
   await page.getByLabel("Email address").fill(email);
   await page.getByRole("button", { name: "Send confirmation email" }).click();
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
-  await page.goto(confirmationLink(email));
+  await page.goto(await confirmationLink(page.request, email));
   await expect(page.getByText(`@${username}`)).toBeVisible();
   await page.getByRole("button", { name: "Create passkey" }).click();
   await page.waitForURL("/");

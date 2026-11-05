@@ -56,6 +56,8 @@ const server = spawn(
       CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH: `../../${config}`,
       TSTODON_PERSIST_TO: state,
       VOID_INSPECTOR_PORT: "false",
+      // fixtures.ts reads the captured mail through the local explorer API.
+      X_LOCAL_EXPLORER: "true",
     },
   },
 );
