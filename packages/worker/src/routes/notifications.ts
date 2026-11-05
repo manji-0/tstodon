@@ -317,13 +317,12 @@ const groupedNotificationPage = async (
  * Mastodon's `by_group_key` for one account. A type and target key leaves out
  * the notifications the policy holds, which Mastodon gives no group key; an
  * `ungrouped-<id>` key names its notification held or not. The list's cursors,
- * `limit` and type filters do not apply.
+ * `limit`, type filters and `grouped_types` do not apply.
  */
 const groupTarget = (
-  c: Context<{ Bindings: Env }>,
   groupKey: string,
 ): Readonly<{ group: NotificationGroupTarget; includeFiltered: boolean }> | undefined => {
-  const group = NotificationGroup.target(groupKey, groupedQuery(c).groupedTypes);
+  const group = NotificationGroup.target(groupKey);
   return group ? { group, includeFiltered: group.kind === "Notification" } : undefined;
 };
 
@@ -337,7 +336,7 @@ const notificationGroupByKey = async (
   accountId: string,
   groupKey: string,
 ): Promise<Result<NotificationGroup | undefined, RepositoryError>> => {
-  const target = groupTarget(c, groupKey);
+  const target = groupTarget(groupKey);
   if (!target) {
     return ok(undefined);
   }
@@ -548,7 +547,7 @@ export const getV2NotificationsByGroupKeyAccounts = async (
   // notification of the group, newest first, paged by notification id.
   const limit = queryAccountsLimit(c.req.query("limit"));
   const cursor = queryCursor(c);
-  const target = groupTarget(c, c.req.param("groupKey"));
+  const target = groupTarget(c.req.param("groupKey"));
   const rows = target
     ? await listNotifications(c.env.DB, user.value.id, limit, { ...target, ...cursor })
     : ok([]);
@@ -585,7 +584,7 @@ export const postV2NotificationsByGroupKeyDismiss = async (
   // As Mastodon's `by_group_key(...).destroy_all` and `render_empty`: every
   // notification the key names, whoever sent it, and 200 even when it names
   // none.
-  const target = groupTarget(c, c.req.param("groupKey"));
+  const target = groupTarget(c.req.param("groupKey"));
   if (target) {
     const dismissed = await dismissNotificationGroup(c.env.DB, user.value.id, target.group);
     if (dismissed.isErr()) {

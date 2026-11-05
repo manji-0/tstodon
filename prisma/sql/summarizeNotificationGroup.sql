@@ -7,7 +7,8 @@
 -- oldest id. No row when the key names nothing visible. Visibility is
 -- `listNotifications`'s; held notifications follow `dismissNotificationGroup`.
 WITH members AS (
-  SELECT n.id, n.kind, n.from_account_id, n.status_id, n.report_id, n.severance_event_id, n.created_at
+  SELECT n.id, n.kind, n.from_account_id, n.status_id, n.report_id, n.severance_event_id, n.created_at,
+    n.id IN (SELECT notification_id FROM notification_requests WHERE account_id = $1) AS held
   FROM notifications n
   WHERE n.account_id = $1
     AND ($3 <> '' OR $4 <> '')
@@ -45,7 +46,7 @@ WITH members AS (
           AND (expires_at IS NULL OR expires_at > $2)
     )
 )
-SELECT m.id, m.kind, m.from_account_id, m.status_id, m.report_id, m.severance_event_id, m.created_at,
+SELECT m.id, m.kind, m.from_account_id, m.status_id, m.report_id, m.severance_event_id, m.created_at, m.held,
   (SELECT COUNT(*) FROM members) AS notifications_count,
   (SELECT MIN(id) FROM members) AS oldest_id
 FROM members m

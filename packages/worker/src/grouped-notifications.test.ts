@@ -462,8 +462,11 @@ describe("a notification group by key", () => {
 
     const listed = read(
       EnvelopeSchema,
-      (await json("/api/v2/notifications?include_filtered=true", { headers: await auth(authorEmail) }))
-        .body,
+      (
+        await json("/api/v2/notifications?include_filtered=true", {
+          headers: await auth(authorEmail),
+        })
+      ).body,
     ).notification_groups;
     const heldGroup = listed.find((group) => group.most_recent_notification_id === held);
     expect(heldGroup?.notifications_count).toBe(1);

@@ -11,7 +11,8 @@
 -- @param {String} $11:notificationId
 -- @param {String} $12:groupType
 -- @param {String} $13:groupTarget
-SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at
+SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at,
+  n.id IN (SELECT notification_id FROM notification_requests WHERE account_id = $1) AS held
 FROM notifications n
 WHERE n.account_id = $1
   AND n.created_at > COALESCE(

@@ -12,6 +12,7 @@ const entry = (
   kind: string,
   fromAccountId: string,
   statusId: string | null = null,
+  held = false,
 ): GroupedNotificationEntry => ({
   id,
   kind,
@@ -20,6 +21,7 @@ const entry = (
   reportId: null,
   severanceEventId: null,
   createdAt: `2026-11-04T00:00:${id.padStart(2, "0")}.000Z`,
+  held,
 });
 
 describe("NotificationGroup.key", () => {
@@ -30,6 +32,12 @@ describe("NotificationGroup.key", () => {
 
   it("gives every other kind its own group", () => {
     expect(NotificationGroup.key(entry("3", "mention", "a", "s1"), grouped)).toBe("ungrouped-3");
+  });
+
+  it("gives a held notification its own group, as Mastodon gives it no group key", () => {
+    expect(NotificationGroup.key(entry("4", "favourite", "a", "s1", true), grouped)).toBe(
+      "ungrouped-4",
+    );
   });
 });
 
@@ -154,17 +162,22 @@ describe("NotificationGroup.fold", () => {
 
 describe("NotificationGroup.target", () => {
   it("names one notification for an ungrouped key and a type and target otherwise", () => {
-    expect(NotificationGroup.target("ungrouped-7", grouped)).toEqual({
+    expect(NotificationGroup.target("ungrouped-7")).toEqual({
       kind: "Notification",
       id: "7",
     });
-    expect(NotificationGroup.target("favourite-s-1", grouped)).toEqual({
+    expect(NotificationGroup.target("favourite-s-1")).toEqual({
       kind: "Group",
       type: "favourite",
       target: "s-1",
     });
-    expect(NotificationGroup.target("mention-s1", grouped)).toBeUndefined();
-    expect(NotificationGroup.target("favourite-", grouped)).toBeUndefined();
+    expect(NotificationGroup.target("mention-s1")).toEqual({
+      kind: "Group",
+      type: "mention",
+      target: "s1",
+    });
+    expect(NotificationGroup.target("nonsense-s1")).toBeUndefined();
+    expect(NotificationGroup.target("favourite-")).toBeUndefined();
   });
 });
 

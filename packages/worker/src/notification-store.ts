@@ -85,9 +85,14 @@ const NotificationQueryRowSchema = z.object({
   report_id: z.string().nullable(),
   severance_event_id: z.string().nullable(),
   created_at: z.string(),
+  held: z.number(),
 });
 
-export type NotificationRow = z.infer<typeof NotificationQueryRowSchema> & { id: string };
+/** A stored notification; `held` when the notification policy holds it. */
+export type NotificationRow = Omit<z.infer<typeof NotificationQueryRowSchema>, "id" | "held"> & {
+  id: string;
+  held: boolean;
+};
 
 /** The fields of a row `NotificationGroup` groups on. */
 export const groupedEntry = (row: NotificationRow): GroupedNotificationEntry => ({
@@ -98,6 +103,7 @@ export const groupedEntry = (row: NotificationRow): GroupedNotificationEntry => 
   reportId: row.report_id,
   severanceEventId: row.severance_event_id,
   createdAt: row.created_at,
+  held: row.held,
 });
 
 export type NotificationFilters = Readonly<{
@@ -177,6 +183,7 @@ export const listNotifications = async (
       report_id: row.report_id,
       severance_event_id: row.severance_event_id,
       created_at: row.created_at,
+      held: row.held !== 0,
     }));
   });
 
@@ -208,6 +215,7 @@ export const findNotificationById = async (
       report_id: row.report_id,
       severance_event_id: row.severance_event_id,
       created_at: row.created_at,
+      held: row.held !== 0,
     };
   });
 
@@ -247,6 +255,7 @@ const NotificationGroupSummaryRowSchema = z.object({
   report_id: z.string().nullable(),
   severance_event_id: z.string().nullable(),
   created_at: z.string(),
+  held: z.number(),
   notifications_count: z.number(),
   oldest_id: z.string(),
 });
@@ -275,6 +284,7 @@ export const summarizeNotificationGroup = async (
         reportId: row.report_id,
         severanceEventId: row.severance_event_id,
         createdAt: row.created_at,
+        held: row.held !== 0,
       },
       notificationsCount: row.notifications_count,
       oldestId: row.oldest_id,

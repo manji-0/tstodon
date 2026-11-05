@@ -7,6 +7,8 @@ export type GroupedNotificationEntry = Readonly<{
   reportId: string | null;
   severanceEventId: string | null;
   createdAt: string;
+  /** Held by the notification policy: Mastodon gives it no group key. */
+  held: boolean;
 }>;
 
 export type NotificationGroup = Readonly<{
@@ -63,6 +65,25 @@ export type NotificationGroupTarget =
  */
 const defaultGroupedTypes: ReadonlyArray<string> = ["favourite", "reblog", "follow"];
 
+/** Mastodon's `Notification::TYPES`: the types a `{type}-{target}` key can name. */
+const notificationTypes: ReadonlySet<string> = new Set([
+  "mention",
+  "status",
+  "reblog",
+  "follow",
+  "follow_request",
+  "favourite",
+  "poll",
+  "update",
+  "admin.sign_up",
+  "admin.report",
+  "severed_relationships",
+  "moderation_warning",
+  "annual_report",
+  "quote",
+  "quoted_update",
+]);
+
 const SAMPLE_ACCOUNT_LIMIT = 3;
 
 const UNGROUPED_PREFIX = "ungrouped-";
@@ -70,17 +91,21 @@ const UNGROUPED_PREFIX = "ungrouped-";
 const statusOf = (entry: GroupedNotificationEntry): string | null =>
   entry.statusId && entry.statusId.length > 0 ? entry.statusId : null;
 
-/** Mastodon's group key: `{type}-{target}` for groupable types, else per notification. */
+/**
+ * Mastodon's group key: `{type}-{target}` for groupable types, else per
+ * notification. A held notification has no group key, so it is ungrouped.
+ */
 const key = (entry: GroupedNotificationEntry, groupedTypes: ReadonlySet<string>): string =>
-  groupedTypes.has(entry.kind)
+  !entry.held && groupedTypes.has(entry.kind)
     ? `${entry.kind}-${statusOf(entry) ?? entry.fromAccountId}`
     : `${UNGROUPED_PREFIX}${entry.id}`;
 
-/** Read a group key back into what it names; undefined for a key {@link key} never makes. */
-const target = (
-  groupKey: string,
-  groupedTypes: ReadonlySet<string>,
-): NotificationGroupTarget | undefined => {
+/**
+ * Read a group key back into what it names, as Mastodon's `by_group_key`:
+ * whatever types the request groups. Undefined for a key no notification type
+ * makes.
+ */
+const target = (groupKey: string): NotificationGroupTarget | undefined => {
   if (groupKey.startsWith(UNGROUPED_PREFIX)) {
     const id = groupKey.slice(UNGROUPED_PREFIX.length);
     return id.length > 0 ? { kind: "Notification", id } : undefined;
@@ -88,7 +113,7 @@ const target = (
   const separator = groupKey.indexOf("-");
   const type = groupKey.slice(0, separator);
   const rest = groupKey.slice(separator + 1);
-  return separator > 0 && rest.length > 0 && groupedTypes.has(type)
+  return separator > 0 && rest.length > 0 && notificationTypes.has(type)
     ? { kind: "Group", type, target: rest }
     : undefined;
 };
