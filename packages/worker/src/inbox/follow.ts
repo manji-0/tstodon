@@ -1,17 +1,22 @@
 import {
   type HasRemoteFollow,
+  Hostname,
   InstanceIdentity,
   type LocalAccount,
   type RecordInboxFollow,
   RemoteActor,
 } from "@tstodon/domain";
-import { ok } from "neverthrow";
+import { err, ok, type Result } from "neverthrow";
 import { findAccountByUsername } from "../account-store";
 import { parseLocalActorUsername } from "../activitypub";
+import { findBlock } from "../block-mute-store";
+import type { RepositoryError } from "../d1";
 import { enqueueTargetedActivity } from "../delivery";
+import { isDomainBlocked } from "../domain-block-store";
 import { followAccount } from "../follow-store";
 import { notifyFromRemote, notifyNewFollow } from "../notify";
 import { findRemoteFollow, upsertRemoteFollow } from "../remote-actor-store";
+import { sendFollowReject } from "../remote-follower";
 import type { ActivityOf, InboxHandler, LocalDelivery, RemoteDelivery } from "./handler";
 
 /** The `Accept` an unlocked account sends back for a remote actor's `Follow`. */
@@ -75,6 +80,22 @@ export const recordInboxFollow = async (
   };
 };
 
+/**
+ * Mastodon's `ActivityPub::Activity::Follow` rejects a follower that the
+ * target blocks, by account or by domain.
+ */
+const blocksFollower = async (
+  db: D1Database,
+  target: LocalAccount,
+  follower: RemoteActor,
+): Promise<Result<boolean, RepositoryError>> => {
+  const blocked = await findBlock(db, target.id, follower.actorUri);
+  if (blocked.isErr() || blocked.value) {
+    return blocked;
+  }
+  return isDomainBlocked(db, target.id, Hostname.ofAuthority(follower.domain));
+};
+
 export const receiveRemoteFollow: InboxHandler<RemoteDelivery<"Follow">> = async ({
   env,
   identity,
@@ -83,6 +104,14 @@ export const receiveRemoteFollow: InboxHandler<RemoteDelivery<"Follow">> = async
 }) => {
   const target = await localAccountAt(env, identity, activity.object);
   if (!target) {
+    return ok(undefined);
+  }
+  const refused = await blocksFollower(env.DB, target, signer);
+  if (refused.isErr()) {
+    return err(refused.error);
+  }
+  if (refused.value) {
+    await sendFollowReject(env, identity, target, signer, activity.id);
     return ok(undefined);
   }
   const outcome = await recordInboxFollow(
@@ -124,6 +153,13 @@ export const receiveLocalFollow: InboxHandler<LocalDelivery<"Follow">> = async (
 }) => {
   const target = await localAccountAt(env, identity, activity.object);
   if (!target) {
+    return ok(undefined);
+  }
+  const blocked = await findBlock(env.DB, target.id, signer.id);
+  if (blocked.isErr()) {
+    return err(blocked.error);
+  }
+  if (blocked.value) {
     return ok(undefined);
   }
   const followed = await followAccount(env.DB, signer.id, target.id, target.locked);
