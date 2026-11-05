@@ -223,3 +223,29 @@ describe("blocking an account severs the follows between the two", () => {
     ]);
   });
 });
+
+describe("a remote actor's Block of a local account", () => {
+  it("ends the follows both ways and answers with Undo(Follow) and Reject(Follow)", async () => {
+    const a = "blocked-by-remote@example.com";
+    const remote = await remoteActor("remote-blocker");
+    const followId = await acceptedRemoteFollow(a, remote);
+    const remoteFollowId = await remoteFollows(remote, a);
+    expect(await counts(a)).toEqual({ followers_count: 1, following_count: 1 });
+
+    const username = (await signedInAccount(a)).username;
+    expect(
+      await remote.send({
+        id: `${remote.actorUri}#blocks/1`,
+        type: "Block",
+        object: `https://example.com/users/${username}`,
+      }),
+    ).toBe(202);
+    expect(await counts(a)).toEqual({ followers_count: 0, following_count: 0 });
+    expect(await queued(a, "Undo")).toMatchObject([
+      { activity: { type: "Undo", object: { id: followId, type: "Follow" } } },
+    ]);
+    expect(await queued(a, "Reject")).toMatchObject([
+      { activity: { type: "Reject", object: { id: remoteFollowId, type: "Follow" } } },
+    ]);
+  });
+});

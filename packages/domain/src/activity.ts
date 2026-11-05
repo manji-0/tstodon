@@ -57,6 +57,14 @@ const AnnounceSchema = z.object({
   object: z.string().min(1),
 });
 
+/** `object` is the account the actor blocks. */
+const BlockSchema = z.object({
+  kind: z.literal("Block"),
+  id: ActivityId.schema,
+  actor: z.string().min(1),
+  object: z.string().min(1),
+});
+
 /** `object` is the account that moved; its `target` is read from the raw activity. */
 const MoveSchema = z.object({
   kind: z.literal("Move"),
@@ -81,6 +89,7 @@ const RelationshipActivitySchema = z.discriminatedUnion("kind", [
   UndoSchema,
   AcceptSchema,
   RejectSchema,
+  BlockSchema,
 ]);
 
 export const ActivitySchema = z.discriminatedUnion("kind", [

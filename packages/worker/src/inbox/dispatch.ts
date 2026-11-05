@@ -6,6 +6,7 @@ import { receiveRemoteFlag } from "../remote-flag";
 import { applyRemoteMove } from "../remote-move";
 import { applyRemoteUpdate } from "../remote-update";
 import { receiveLocalAnnounce, receiveRemoteAnnounce } from "./announce";
+import { receiveRemoteBlock } from "./block";
 import { receiveRemoteCreate } from "./create";
 import { receiveRemoteDelete } from "./delete";
 import { receiveLocalFollow, receiveRemoteFollow } from "./follow";
@@ -36,6 +37,8 @@ const dispatchRemote = async (receipt: InboxReceipt, signer: RemoteActor): Dispa
     case "Accept":
     case "Reject":
       return receiveFollowAnswer({ ...delivery, activity });
+    case "Block":
+      return receiveRemoteBlock({ ...delivery, activity });
     case "Move":
       return applyRemoteMove(env, identity, signer, receipt.received, {
         allowHosts: receipt.allowHosts,
@@ -70,6 +73,7 @@ const dispatchLocal = async (receipt: InboxReceipt, signer: LocalAccount): Dispa
     case "Delete":
     case "Accept":
     case "Reject":
+    case "Block":
     case "Move":
     case "Flag":
       return ok(undefined);
