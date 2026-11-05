@@ -1,40 +1,16 @@
-import { schemaResult, unitKind } from "@tstodon/core";
+import { schemaResult } from "@tstodon/core";
 import {
-  AccountId,
   StreamChannel,
-  type StreamChannelError,
+  type StreamAccess,
   type StreamChannelValue,
+  type StreamRefusal,
+  StreamSubscription,
+  type StreamViewer,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { findListForAccount } from "./list-store";
 import { covers } from "./oauth-scope";
-
-/**
- * Who a streaming socket belongs to. Public and hashtag streams are open to
- * anonymous sockets, as `GET /api/v1/timelines/public` and the tag timeline
- * are; the others need the account.
- */
-const StreamViewerSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("Account"), accountId: AccountId.schema }),
-  unitKind("Anonymous"),
-]);
-
-export type StreamViewer = z.infer<typeof StreamViewerSchema>;
-
-/**
- * What a token's scopes let a socket stream, as Mastodon's streaming server
- * reads them: `statuses` (`read` or `read:statuses`) opens `user`, `list`,
- * and `direct`; `notifications` (`read` or `read:notifications`) opens
- * `user:notification` and lets `user` carry notifications. Kept as two
- * flags, not the scopes, so the socket attachment stays small.
- */
-const StreamAccessSchema = z.object({
-  statuses: z.boolean(),
-  notifications: z.boolean(),
-});
-
-export type StreamAccess = z.infer<typeof StreamAccessSchema>;
 
 /** An anonymous socket holds no token, so no scope. */
 export const NO_STREAM_ACCESS: StreamAccess = { statuses: false, notifications: false };
@@ -46,8 +22,8 @@ export const streamAccess = (scopes: ReadonlyArray<string>): StreamAccess => ({
 
 /** A socket's owner, scopes, and subscribed streams, kept on the socket across hibernation. */
 const SocketStateSchema = z.object({
-  viewer: StreamViewerSchema,
-  access: StreamAccessSchema,
+  viewer: StreamSubscription.viewerSchema,
+  access: StreamSubscription.accessSchema,
   channels: z.array(StreamChannel.schema),
 });
 
@@ -62,56 +38,26 @@ export const ANONYMOUS_HUB = "anonymous";
 export const hubName = (viewer: StreamViewer): string =>
   viewer.kind === "Account" ? viewer.accountId : ANONYMOUS_HUB;
 
-/** Why a socket may not subscribe to a stream. */
-export type StreamRefusal =
-  | StreamChannelError
-  | Readonly<{ kind: "NeedsAccount" }>
-  | Readonly<{ kind: "InsufficientScope" }>
-  | Readonly<{ kind: "NotListOwner" }>
-  | Readonly<{ kind: "SocketFull" }>
-  | Readonly<{ kind: "HubFull" }>
-  | Readonly<{ kind: "Unavailable" }>;
-
-/**
- * May this viewer subscribe? `user*` and `direct` are the account's own, a
- * list only its owner's, and each needs the scope of its stream. Public and
- * hashtag streams need no token, so no scope either.
- */
+/** A list stream is granted once the account is shown to own the list. */
 const authorizeStreamChannel = async (
   env: Env,
   viewer: StreamViewer,
   access: StreamAccess,
   channel: StreamChannelValue,
 ): Promise<Result<StreamChannelValue, StreamRefusal>> => {
-  switch (channel.kind) {
-    case "Public":
-    case "Hashtag":
-      return ok(channel);
-    case "User":
-    case "Direct":
-      if (viewer.kind === "Anonymous") {
-        return err({ kind: "NeedsAccount" });
-      }
-      return access.statuses ? ok(channel) : err({ kind: "InsufficientScope" });
-    case "UserNotification":
-      if (viewer.kind === "Anonymous") {
-        return err({ kind: "NeedsAccount" });
-      }
-      return access.notifications ? ok(channel) : err({ kind: "InsufficientScope" });
-    case "List": {
-      if (viewer.kind === "Anonymous") {
-        return err({ kind: "NeedsAccount" });
-      }
-      if (!access.statuses) {
-        return err({ kind: "InsufficientScope" });
-      }
-      const list = await findListForAccount(env.DB, viewer.accountId, channel.listId);
-      if (list.isErr()) {
-        return err({ kind: "Unavailable" });
-      }
-      return list.value ? ok(channel) : err({ kind: "NotListOwner" });
-    }
+  const subscription = StreamSubscription.authorize(viewer, access, channel);
+  if (subscription.isErr()) {
+    return err(subscription.error);
   }
+  if (subscription.value.kind === "Granted") {
+    return ok(subscription.value.channel);
+  }
+  const { accountId, channel: listChannel } = subscription.value;
+  const list = await findListForAccount(env.DB, accountId, listChannel.listId);
+  if (list.isErr()) {
+    return err({ kind: "Unavailable" });
+  }
+  return list.value ? ok(listChannel) : err({ kind: "NotListOwner" });
 };
 
 /** Mastodon's streaming error: the message and the HTTP status it stands for. */

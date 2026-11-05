@@ -122,6 +122,13 @@ export {
   StreamDelivery,
   type StreamDelivery as StreamDeliveryValue,
 } from "./stream-channel";
+export {
+  StreamSubscription,
+  type StreamAccess,
+  type StreamRefusal,
+  type StreamSubscription as StreamSubscriptionValue,
+  type StreamViewer,
+} from "./stream-subscription";
 export { Username } from "./username";
 export { Visibility, reblogVisibility, type Visibility as VisibilityValue } from "./visibility";
 export { Notification, type Notification as NotificationValue } from "./notification";

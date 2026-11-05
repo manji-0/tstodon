@@ -1,4 +1,4 @@
-import { StreamChannel } from "@tstodon/domain";
+import { StreamChannel, type StreamViewer } from "@tstodon/domain";
 import type { Context } from "hono";
 import { bearerToken } from "../auth";
 import { jsonAuthError, requireSession } from "../http";
@@ -8,7 +8,6 @@ import {
   NO_STREAM_ACCESS,
   type SocketState,
   streamAccess,
-  type StreamViewer,
   streamRefusalError,
 } from "../stream-access";
 import { SOCKET_STATE_HEADER } from "../stream-hub";

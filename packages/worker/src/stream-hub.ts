@@ -4,7 +4,9 @@ import {
   StreamChannel,
   type StreamChannelValue,
   StreamDelivery,
+  type StreamAccess,
   type StreamEventValue,
+  type StreamRefusal,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
@@ -15,8 +17,6 @@ import {
   parseSocketState,
   requestStreamChannel,
   type SocketState,
-  type StreamAccess,
-  type StreamRefusal,
   streamRefusalError,
 } from "./stream-access";
 import {
