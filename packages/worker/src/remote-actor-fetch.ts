@@ -210,8 +210,8 @@ const domainHandle = (raw: string | undefined): AccountHandle | undefined => {
 /**
  * A WebFinger lookup: the account its `subject` names and its `self` link;
  * `Disowned` when the server answered 404 or 410; `Failed` when nothing is
- * known (a timeout, a 5xx, a 3xx, any other 4xx, an unreadable answer, no
- * `self` link).
+ * known (a timeout, a 5xx, a redirect it does not follow, any other 4xx, an
+ * unreadable answer, no `self` link).
  */
 type WebfingerLookup =
   | Readonly<{ kind: "Answered"; subject: AccountHandle | undefined; self: string }>

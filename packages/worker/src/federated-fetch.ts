@@ -143,6 +143,64 @@ export const fetchActivityJson = async (
 /** A WebFinger answer: the account it names and its ActivityPub actor URI. */
 export type WebfingerAnswer = Readonly<{ subject: string | undefined; self: string }>;
 
+/** Redirects a WebFinger lookup follows, as Mastodon's `Request` (`max_hops: 3`). */
+const WEBFINGER_MAX_REDIRECTS = 3;
+
+const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
+
+/**
+ * GET a WebFinger URL, following up to three redirects, as a split-domain
+ * server (Mastodon's `LOCAL_DOMAIN` / `WEB_DOMAIN`) redirects its account
+ * domain's WebFinger to its own host. Every hop passes the same host guard
+ * and scheme rule as the first, a URL already fetched is not fetched again,
+ * and one 5 s deadline covers the whole chain. The answer still speaks for
+ * the domain first asked, which chose where to redirect.
+ */
+const followWebfingerRedirects = async (
+  identity: InstanceIdentity,
+  first: URL,
+  options: FederatedFetchOptions,
+): Promise<Result<Response, FederatedFetchError>> => {
+  const signal = AbortSignal.timeout(5000);
+  const fetched = new Set<string>();
+  let url = first;
+  for (let redirects = 0; ; redirects += 1) {
+    if (
+      fetched.has(url.href) ||
+      url.protocol !== `${webfingerScheme(url.hostname, options.allowHosts)}:` ||
+      isFederatedHostRefused(url.hostname, identity.domain, options)
+    ) {
+      return err({ kind: "InvalidSignature" });
+    }
+    fetched.add(url.href);
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/jrd+json, application/json",
+        "User-Agent": `tstodon (${identity.publicOrigin})`,
+      },
+      // Workers' fetch would follow redirects past the host guard, and
+      // rejects `redirect: "error"` outright, so each hop is followed here.
+      redirect: "manual",
+      signal,
+    });
+    const location = response.headers.get("location");
+    if (!REDIRECT_STATUSES.has(response.status) || location === null) {
+      return ok(response);
+    }
+    await response.body?.cancel();
+    if (redirects === WEBFINGER_MAX_REDIRECTS) {
+      return err({ kind: "InvalidSignature" });
+    }
+    const next = URL.parse(location, url.href);
+    if (next === null) {
+      return err({ kind: "InvalidSignature" });
+    }
+    next.hash = "";
+    url = next;
+  }
+};
+
 /** Look up a `user@domain` handle by WebFinger. */
 export const fetchWebfinger = async (
   identity: InstanceIdentity,
@@ -164,21 +222,12 @@ export const fetchWebfinger = async (
   if (url.isErr()) {
     return err(url.error);
   }
-  if (isFederatedHostRefused(url.value.hostname, identity.domain, options)) {
-    return err({ kind: "InvalidSignature" });
-  }
   try {
-    const response = await fetch(url.value, {
-      method: "GET",
-      headers: {
-        Accept: "application/jrd+json, application/json",
-        "User-Agent": `tstodon (${identity.publicOrigin})`,
-      },
-      // Redirects are refused (a 3xx is not `ok` below). Workers' fetch
-      // rejects `redirect: "error"` outright, so it must be "manual".
-      redirect: "manual",
-      signal: AbortSignal.timeout(5000),
-    });
+    const followed = await followWebfingerRedirects(identity, url.value, options);
+    if (followed.isErr()) {
+      return err(followed.error);
+    }
+    const response = followed.value;
     if (response.status >= 500) {
       return err({ kind: "VerificationUnavailable" });
     }
