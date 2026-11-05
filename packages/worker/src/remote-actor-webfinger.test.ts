@@ -2,8 +2,9 @@ import { SELF, createExecutionContext, env, waitOnExecutionContext } from "cloud
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { Hostname } from "@tstodon/domain";
+import { Hostname, RemoteActor } from "@tstodon/domain";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { generateAccountKeys } from "./keys";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 import { remoteActorFromDocument } from "./remote-actor-fetch";
@@ -674,7 +675,7 @@ describe("an actor URI whose host SQL would read differently", () => {
 });
 
 describe("the stale actor refresh batch", () => {
-  it("fetches the REFRESH_BATCH longest waiting actors", async () => {
+  it("re-fetches every due actor in one run, the longest waiting first", async () => {
     const hosts = Array.from({ length: 12 }, (_, index) => `wf-batch${index}.example`);
     for (const [index, host] of hosts.entries()) {
       await remoteActor("b", host, {
@@ -689,9 +690,7 @@ describe("the stale actor refresh batch", () => {
 
     await refreshStaleRemoteActors(env);
 
-    expect(fetched.filter((host) => hosts.includes(host)).toSorted()).toEqual(
-      hosts.slice(0, 10).toSorted(),
-    );
+    expect(fetched.filter((host) => hosts.includes(host)).toSorted()).toEqual(hosts.toSorted());
   });
 });
 
@@ -845,5 +844,236 @@ describe("an instance rule on either host of a poll's or a mention's actor", () 
       }),
     );
     expect(posted.mentions).toEqual([]);
+  });
+});
+
+describe("a former holder of a handle whose URI host's own WebFinger fails", () => {
+  it.each([503, 403, 302])(
+    "loses the account domain that answers 404 while its URI host answers %i",
+    async (status) => {
+      const host = `old.wf-n1-${status}.example`;
+      const remote = await remoteActor("alice", host, {
+        accountDomain: `wf-n1-${status}.example`,
+        fetchedAt: EPOCH,
+      });
+      serveRemote(remote, "alice", {
+        [host]: { status },
+        [`wf-n1-${status}.example`]: { status: 404 },
+      });
+
+      await refreshStaleRemoteActors(env);
+
+      expect(await acctOf(remote.actorUri)).toBe(`alice@${host}`);
+    },
+  );
+
+  it("loses it when its URI host names a domain that does not answer", async () => {
+    const host = "old.wf-n1-elsewhere.example";
+    const remote = await remoteActor("alice", host, {
+      accountDomain: "wf-n1-elsewhere.example",
+      fetchedAt: EPOCH,
+    });
+    serveRemote(remote, "alice", {
+      [host]: { subject: "acct:alice@wf-n1-down.example", self: remote.actorUri },
+      "wf-n1-down.example": { status: 503 },
+      "wf-n1-elsewhere.example": { status: 404 },
+    });
+
+    await refreshStaleRemoteActors(env);
+
+    expect(await acctOf(remote.actorUri)).toBe(`alice@${host}`);
+  });
+});
+
+describe("a round trip that cannot finish while another actor takes its handle", () => {
+  it("leaves the handle as the other actor's confirmation left it", async () => {
+    const old = await remoteActor("alice", "old.wf-race.example", {
+      accountDomain: "wf-race.example",
+      fetchedAt: EPOCH,
+    });
+    const next = await remoteActor("alice", "new.wf-race.example", { cache: false });
+    const documents = [
+      { remote: old, username: "alice" },
+      { remote: next, username: "alice" },
+    ];
+    const original = globalThis.fetch;
+    let taken = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = new URL(new Request(input, init).url);
+      const served = documents.find((actor) => actor.remote.actorUri === url.href);
+      if (served) {
+        return jsonResponse(actorDocument(served));
+      }
+      if (url.pathname !== "/.well-known/webfinger") {
+        return original(input, init);
+      }
+      const answer = (self: string) =>
+        jsonResponse({
+          subject: "acct:alice@wf-race.example",
+          links: [{ rel: "self", type: "application/activity+json", href: self }],
+        });
+      if (url.host === "old.wf-race.example") {
+        return answer(old.actorUri);
+      }
+      if (url.host === "new.wf-race.example" || taken) {
+        return answer(next.actorUri);
+      }
+      // The old actor's refresh asks the account domain; while it waits, the
+      // new actor's delivery confirms the handle for the new actor.
+      taken = true;
+      expect(await like(next, "wf-race-next", "wf-race-viewer@example.com")).toBe(202);
+      return new Response(null, { status: 503 });
+    });
+
+    await refreshStaleRemoteActors(env);
+
+    expect({
+      lookup: await lookUpHandle("alice@wf-race.example"),
+      old: await acctOf(old.actorUri),
+    }).toEqual({
+      lookup: RemoteAccountId.encode(next.actorUri),
+      old: "alice@old.wf-race.example",
+    });
+  });
+});
+
+describe("an actor a passing 404 moved to its URI host", () => {
+  it("takes its account domain back when a resolve=true search asks for it", async () => {
+    const remote = await remoteActor("alice", "social.wf-n3.example", {
+      accountDomain: "wf-n3.example",
+      fetchedAt: EPOCH,
+    });
+    const confirmed = { subject: "acct:alice@wf-n3.example", self: remote.actorUri };
+    serveRemote(remote, "alice", {
+      "social.wf-n3.example": confirmed,
+      "wf-n3.example": { status: 404 },
+    });
+    await refreshStaleRemoteActors(env);
+    expect(await acctOf(remote.actorUri)).toBe("alice@social.wf-n3.example");
+    serveRemote(remote, "alice", {
+      "social.wf-n3.example": confirmed,
+      "wf-n3.example": confirmed,
+    });
+
+    const searched = await read(
+      z.object({ accounts: z.array(z.object({ acct: z.string() })) }),
+      await call("/api/v2/search?q=@alice@wf-n3.example&resolve=true", {
+        headers: await authHeaders("wf-n3-searcher@example.com"),
+      }),
+    );
+
+    expect({
+      searched: searched.accounts.map((account) => account.acct),
+      acct: await acctOf(remote.actorUri),
+    }).toEqual({ searched: ["alice@wf-n3.example"], acct: "alice@wf-n3.example" });
+  });
+});
+
+const mentioned = async (email: string, status: string) =>
+  (
+    await read(
+      z.object({ mentions: z.array(z.object({ id: z.string(), acct: z.string() })) }),
+      await call("/api/v1/statuses", {
+        method: "POST",
+        headers: await signedIn(email),
+        body: JSON.stringify({ status }),
+      }),
+    )
+  ).mentions;
+
+describe("a cached handle WebFinger confirmed over a day ago, when a post mentions it", () => {
+  it("is not mentioned once its account domain disowns it", async () => {
+    const remote = await remoteActor("alice", "social.wf-stale-mention.example", {
+      accountDomain: "wf-stale-mention.example",
+      fetchedAt: EPOCH,
+    });
+    serveRemote(remote, "alice", {
+      "social.wf-stale-mention.example": { status: 503 },
+      "wf-stale-mention.example": { status: 404 },
+    });
+
+    expect(
+      await mentioned("wf-stale-mention@example.com", "hi @alice@wf-stale-mention.example"),
+    ).toEqual([]);
+  });
+
+  it("names the actor its account domain confirms now", async () => {
+    const old = await remoteActor("alice", "old.wf-moved-mention.example", {
+      accountDomain: "wf-moved-mention.example",
+      fetchedAt: EPOCH,
+    });
+    const next = await remoteActor("alice", "new.wf-moved-mention.example", { cache: false });
+    const confirmed = { subject: "acct:alice@wf-moved-mention.example", self: next.actorUri };
+    serveRemotes(
+      [
+        { remote: old, username: "alice" },
+        { remote: next, username: "alice" },
+      ],
+      {
+        "old.wf-moved-mention.example": { status: 503 },
+        "new.wf-moved-mention.example": confirmed,
+        "wf-moved-mention.example": confirmed,
+      },
+    );
+
+    expect(
+      await mentioned("wf-moved-mention@example.com", "hi @alice@wf-moved-mention.example"),
+    ).toEqual([
+      { id: RemoteAccountId.encode(next.actorUri), acct: "alice@wf-moved-mention.example" },
+    ]);
+  });
+
+  it("stays mentioned while its account domain is down", async () => {
+    const remote = await remoteActor("alice", "social.wf-down-mention.example", {
+      accountDomain: "wf-down-mention.example",
+      fetchedAt: EPOCH,
+    });
+    serveRemote(remote, "alice", {
+      "social.wf-down-mention.example": { status: 503 },
+      "wf-down-mention.example": { status: 503 },
+    });
+
+    expect(
+      await mentioned("wf-down-mention@example.com", "hi @alice@wf-down-mention.example"),
+    ).toEqual([
+      { id: RemoteAccountId.encode(remote.actorUri), acct: "alice@wf-down-mention.example" },
+    ]);
+  });
+});
+
+describe("a legacy row whose actor URI the authority check would refuse", () => {
+  it("keeps its own host when WebFinger confirms its handle for another actor", async () => {
+    const legacy = "https://someone@wf-legacy.example/users/alice";
+    const keys = await generateAccountKeys();
+    const legacyActor = RemoteActor.fromFetched({
+      actorUri: legacy,
+      username: "alice",
+      domain: "wf-legacy.example",
+      inboxUri: `${legacy}/inbox`,
+      publicKeyId: `${legacy}#main-key`,
+      publicKeyPem: keys.publicKeyPem,
+      displayName: "Legacy alice",
+      fetchedAt: EPOCH,
+    });
+    expect(legacyActor.isOk()).toBe(true);
+    if (legacyActor.isOk()) {
+      expect((await upsertRemoteActor(env.DB, legacyActor.value)).isOk()).toBe(true);
+    }
+    const next = await remoteActor("alice", "social.wf-legacy.example", { cache: false });
+    const confirmed = { subject: "acct:alice@wf-legacy.example", self: next.actorUri };
+    serveRemote(next, "alice", {
+      "social.wf-legacy.example": confirmed,
+      "wf-legacy.example": confirmed,
+    });
+
+    expect(await like(next, "wf-legacy", "wf-legacy-viewer@example.com")).toBe(202);
+
+    expect({
+      lookup: await lookUpHandle("alice@wf-legacy.example"),
+      legacy: await acctOf(legacy),
+    }).toEqual({
+      lookup: RemoteAccountId.encode(next.actorUri),
+      legacy: "alice@wf-legacy.example",
+    });
   });
 });
