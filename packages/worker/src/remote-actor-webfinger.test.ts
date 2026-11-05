@@ -1183,3 +1183,181 @@ describe("a mention of a handle whose servers are down", () => {
     expect(asked.filter((host) => host.includes("wf-once-mention"))).toEqual([]);
   });
 });
+
+/** A WebFinger endpoint's reply: a redirect to `location`, or an answer. */
+type WebfingerHop =
+  | Readonly<{ location: string; status?: 301 | 302 | 307 | 308 }>
+  | Readonly<{ subject: string; self: string }>;
+
+/**
+ * Serves each actor's document from its URI and each host's WebFinger reply
+ * (a 404 for a host it does not name), and lists every URL fetched.
+ */
+const serveWebfingerHops = (
+  actors: ReadonlyArray<Served>,
+  hops: Readonly<Record<string, WebfingerHop>>,
+): ReadonlyArray<URL> => {
+  vi.restoreAllMocks();
+  const fetched: URL[] = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = new URL(new Request(input, init).url);
+    fetched.push(url);
+    const served = actors.find((actor) => actor.remote.actorUri === url.href);
+    if (served) {
+      return jsonResponse(actorDocument(served));
+    }
+    const hop = url.pathname === "/.well-known/webfinger" ? hops[url.host] : undefined;
+    if (hop === undefined) {
+      return new Response(null, { status: 404 });
+    }
+    if ("location" in hop) {
+      return new Response(null, { status: hop.status ?? 301, headers: { location: hop.location } });
+    }
+    return jsonResponse({
+      subject: hop.subject,
+      links: [{ rel: "self", type: "application/activity+json", href: hop.self }],
+    });
+  });
+  return fetched;
+};
+
+const webfingerUrl = (origin: string, acct: string): string =>
+  `${origin}/.well-known/webfinger?resource=${encodeURIComponent(`acct:${acct}`)}`;
+
+describe("an account domain whose WebFinger redirects to the server's own host", () => {
+  it("stores the account domain the redirected answer confirms", async () => {
+    const remote = await remoteActor("alice", "social.wf-redirect.example", { cache: false });
+    const answer = { subject: "acct:alice@wf-redirect.example", self: remote.actorUri };
+    serveWebfingerHops([{ remote, username: "alice" }], {
+      "social.wf-redirect.example": answer,
+      "wf-redirect.example": {
+        location: webfingerUrl("https://social.wf-redirect.example", "alice@wf-redirect.example"),
+      },
+    });
+
+    expect(await like(remote, "wf-redirect", "wf-redirect-viewer@example.com")).toBe(202);
+
+    expect(await acctOf(remote.actorUri)).toBe("alice@wf-redirect.example");
+  });
+
+  it("follows up to three redirects, relative ones included", async () => {
+    const remote = await remoteActor("alice", "social.wf-hops.example", { cache: false });
+    const answer = { subject: "acct:alice@wf-hops.example", self: remote.actorUri };
+    serveWebfingerHops([{ remote, username: "alice" }], {
+      "social.wf-hops.example": answer,
+      "wf-hops.example": {
+        location: "https://one.wf-hops.example/.well-known/webfinger",
+        status: 302,
+      },
+      "one.wf-hops.example": { location: "https://two.wf-hops.example/.well-known/webfinger" },
+      "two.wf-hops.example": {
+        location: "//social.wf-hops.example/.well-known/webfinger?resource=x",
+        status: 308,
+      },
+    });
+
+    expect(await like(remote, "wf-hops", "wf-hops-viewer@example.com")).toBe(202);
+
+    expect(await acctOf(remote.actorUri)).toBe("alice@wf-hops.example");
+  });
+
+  it("does not let a third party's redirect move another server's actor", async () => {
+    const victim = await remoteActor("bob", "wf-victim-r.example", { cache: false });
+    serveWebfingerHops([{ remote: victim, username: "bob" }], {
+      "wf-evil-r.example": {
+        location: webfingerUrl("https://wf-victim-r.example", "bob@wf-victim-r.example"),
+      },
+      "wf-victim-r.example": { subject: "acct:bob@wf-victim-r.example", self: victim.actorUri },
+    });
+
+    const searched = await call("/api/v2/search?q=@bob@wf-evil-r.example&resolve=true", {
+      headers: await authHeaders("wf-evil-r-searcher@example.com"),
+    });
+    expect(searched.status).toBe(200);
+
+    expect(await acctOf(victim.actorUri)).toBe("bob@wf-victim-r.example");
+  });
+});
+
+describe("an account domain whose WebFinger redirect cannot be followed", () => {
+  it.each([
+    [
+      "a fourth redirect",
+      "fourth",
+      {
+        "one.wf-fourth.example": {
+          location: "https://two.wf-fourth.example/.well-known/webfinger",
+        },
+        "two.wf-fourth.example": {
+          location: "https://three.wf-fourth.example/.well-known/webfinger",
+        },
+        "three.wf-fourth.example": {
+          location: "https://four.wf-fourth.example/.well-known/webfinger",
+        },
+      },
+      [
+        "wf-fourth.example",
+        "one.wf-fourth.example",
+        "two.wf-fourth.example",
+        "three.wf-fourth.example",
+      ],
+    ],
+    [
+      "a redirect loop",
+      "loop",
+      {
+        "one.wf-loop.example": {
+          location: webfingerUrl("https://wf-loop.example", "alice@wf-loop.example"),
+        },
+      },
+      ["wf-loop.example", "one.wf-loop.example"],
+    ],
+    [
+      "a redirect to plain HTTP",
+      "http",
+      { "one.wf-http.example": { location: "http://two.wf-http.example/.well-known/webfinger" } },
+      ["wf-http.example", "one.wf-http.example"],
+    ],
+    [
+      "a redirect to a loopback host",
+      "loopback",
+      { "one.wf-loopback.example": { location: "https://127.0.0.1/.well-known/webfinger" } },
+      ["wf-loopback.example", "one.wf-loopback.example"],
+    ],
+    [
+      "a redirect to a suspended host",
+      "susp-hop",
+      {
+        "one.wf-susp-hop.example": {
+          location: "https://two.wf-susp-hop.example/.well-known/webfinger",
+        },
+      },
+      ["wf-susp-hop.example", "one.wf-susp-hop.example"],
+    ],
+  ] as const)("keeps the stored account domain after %s", async (_, slug, hops, asked) => {
+    const host = `social.wf-${slug}.example`;
+    const domain = `wf-${slug}.example`;
+    if (slug === "susp-hop") {
+      await suspend("wf-susp-hop", "two.wf-susp-hop.example");
+    }
+    const remote = await remoteActor("alice", host, { accountDomain: domain, fetchedAt: EPOCH });
+    const answer = { subject: `acct:alice@${domain}`, self: remote.actorUri };
+    const fetched = serveWebfingerHops([{ remote, username: "alice" }], {
+      [host]: answer,
+      [`two.wf-${slug}.example`]: answer,
+      [`four.wf-${slug}.example`]: answer,
+      "127.0.0.1": answer,
+      [domain]: { location: `https://one.wf-${slug}.example/.well-known/webfinger` },
+      ...hops,
+    });
+
+    await refreshStaleRemoteActors(env);
+
+    expect({
+      acct: await acctOf(remote.actorUri),
+      asked: fetched
+        .filter((url) => url.pathname === "/.well-known/webfinger" && url.host !== host)
+        .map((url) => url.host),
+    }).toEqual({ acct: `alice@${domain}`, asked });
+  });
+});
