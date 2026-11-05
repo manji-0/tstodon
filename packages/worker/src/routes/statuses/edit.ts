@@ -1,4 +1,14 @@
-import { type InstanceIdentity, LocalStatus, StatusComposition, Visibility } from "@tstodon/domain";
+import {
+  type InstanceIdentity,
+  type LocalAccount,
+  type LocalNote,
+  LocalStatus,
+  type RemoteActor,
+  StatusComposition,
+  Visibility,
+} from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
+import type { z } from "zod";
 import type { Context } from "hono";
 import { findAccountsByUsernames } from "../../account-store";
 import { authenticate } from "../../auth";
@@ -35,6 +45,8 @@ import { findRemoteStatusById } from "../../remote-status-store";
 import { remoteStatusHistory } from "../../remote-status-edit";
 import { isQuotePolicy, listAcceptedQuoteEdges, setStatusQuotePolicy } from "../../quote-store";
 import { applyMediaAttributes, queueLinkCard, visibilityIsPublic } from "./create";
+import { StatusRefusal } from "./refusal";
+import type { MediaAttribute } from "../../status-body-schema";
 
 export const deleteV1StatusesById = async (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id">,
@@ -68,6 +80,258 @@ export const deleteV1StatusesById = async (
   return c.json({ ...(document ?? {}), text: sourceText });
 };
 
+type UpdateStatusBody = z.infer<typeof CreateStatusBodySchema>;
+
+/** The new options of a poll that may still be edited: no votes yet, not expired. */
+type PollUpdate = Readonly<{
+  pollId: string;
+  options: ReadonlyArray<string>;
+  multiple: boolean;
+  expiresAt: string;
+  hideTotals: boolean;
+}>;
+
+const resolvePollEdit = async (
+  db: D1Database,
+  note: LocalNote,
+  viewerId: string,
+  pollEdit: UpdateStatusBody["poll"],
+): Promise<Result<PollUpdate | undefined, StatusRefusal>> => {
+  if (!pollEdit) {
+    return ok(undefined);
+  }
+  const current = await findPollByStatusId(db, note.id, viewerId);
+  if (current.isErr()) {
+    return err(StatusRefusal.repository(current.error.message));
+  }
+  if (!current.value) {
+    return err(StatusRefusal.rejected(422, "cannot edit a poll", "PollEditUnsupported"));
+  }
+  const votes = await countPollVotes(db, current.value.id);
+  if (votes.isErr()) {
+    return err(StatusRefusal.repository(votes.error.message));
+  }
+  if (votes.value > 0) {
+    return err(
+      StatusRefusal.rejected(422, "cannot edit a poll after voting has started", "PollVotesCast"),
+    );
+  }
+  if (Date.parse(current.value.expiresAt) <= Date.now()) {
+    return err(
+      StatusRefusal.rejected(422, "cannot edit a poll after it has expired", "PollExpired"),
+    );
+  }
+  const options = pollEdit.options
+    .map((option) => option.trim())
+    .filter((option) => option.length > 0);
+  if (options.length < 2) {
+    return err(
+      StatusRefusal.rejected(422, "poll must have at least two options", "PollOptionsRequired"),
+    );
+  }
+  const expiresIn = pollEdit.expires_in === undefined ? undefined : Number(pollEdit.expires_in);
+  return ok({
+    pollId: current.value.id,
+    options,
+    multiple: isTruthy(pollEdit.multiple),
+    expiresAt:
+      expiresIn !== undefined && Number.isFinite(expiresIn)
+        ? new Date(Date.now() + expiresIn * 1000).toISOString()
+        : current.value.expiresAt,
+    // `hide_totals` is optional on an edit: omitting it keeps the poll's.
+    hideTotals:
+      pollEdit.hide_totals === undefined
+        ? current.value.hideTotals
+        : isTruthy(pollEdit.hide_totals),
+  });
+};
+
+/** Store the revision being replaced, stamped with the time it was made. */
+const snapshotPreviousRevision = async (
+  env: Env,
+  identity: InstanceIdentity,
+  note: LocalNote,
+  viewerId: string,
+): Promise<Result<void, StatusRefusal>> => {
+  const priorUpdatedAt = await findStatusUpdatedAt(env.DB, note.id);
+  const revisionAt =
+    priorUpdatedAt.isOk() && priorUpdatedAt.value ? priorUpdatedAt.value : note.createdAt;
+  const previousDocument = await mastodonStatus(env, identity, note, viewerId);
+  if (!previousDocument) {
+    return ok(undefined);
+  }
+  const snapshotted = await insertStatusEdit(
+    env.DB,
+    note.id,
+    JSON.stringify({ ...previousDocument, created_at: revisionAt }),
+  );
+  return snapshotted.isErr()
+    ? err(StatusRefusal.repository(snapshotted.error.message))
+    : ok(undefined);
+};
+
+/**
+ * Replace the local and remote accounts the revised text mentions; the
+ * remote actors come back for the audience of the update.
+ */
+const replaceMentions = async (
+  env: Env,
+  identity: InstanceIdentity,
+  note: LocalNote,
+): Promise<Result<ReadonlyArray<RemoteActor>, StatusRefusal>> => {
+  const mentionedAccounts = await findAccountsByUsernames(env.DB, [
+    ...mentionUsernames(note.text, identity.domain),
+  ]);
+  if (mentionedAccounts.isErr()) {
+    return err(StatusRefusal.repository(mentionedAccounts.error.message));
+  }
+  const mentions = await replaceStatusMentions(
+    env.DB,
+    note.id,
+    mentionedAccounts.value.map((account) => account.id),
+  );
+  if (mentions.isErr()) {
+    return err(StatusRefusal.repository(mentions.error.message));
+  }
+  const remoteMentions = await resolveRemoteMentions(env, identity, note.text);
+  const remoteSaved = await replaceStatusRemoteMentions(
+    env.DB,
+    note.id,
+    remoteMentions.map((actor) => actor.actorUri),
+  );
+  return remoteSaved.isErr()
+    ? err(StatusRefusal.repository(remoteSaved.error.message))
+    : ok(remoteMentions);
+};
+
+/**
+ * Revise the author's note from the request, keep the previous revision,
+ * store the new one with what hangs off it (poll, quote policy, media,
+ * mentions), and announce the update. The steps keep their order, so a
+ * refusal leaves exactly what it left before.
+ */
+const editNote = async (
+  env: Env,
+  identity: InstanceIdentity,
+  author: LocalAccount,
+  existing: LocalNote,
+  body: UpdateStatusBody,
+  mediaAttributes: ReadonlyArray<MediaAttribute>,
+): Promise<Result<Record<string, unknown> | undefined, StatusRefusal>> => {
+  const pollUpdate = await resolvePollEdit(env.DB, existing, author.id, body.poll);
+  if (pollUpdate.isErr()) {
+    return err(pollUpdate.error);
+  }
+  const visibility =
+    body.visibility && body.visibility.length > 0
+      ? Visibility.fromMastodon(body.visibility)
+      : ok(existing.visibility);
+  if (visibility.isErr()) {
+    return err(StatusRefusal.rejected(400, "Invalid visibility", "Unknown"));
+  }
+  const draft = StatusComposition.validate(
+    StatusComposition.composing({
+      text: body.status ?? existing.text,
+      visibility: visibility.value,
+      spoilerText: body.spoiler_text ?? existing.spoilerText,
+      sensitive: body.sensitive !== undefined ? isTruthy(body.sensitive) : existing.sensitive,
+      language:
+        body.language === undefined
+          ? existing.language
+          : body.language.length > 0
+            ? { kind: "Present", value: body.language }
+            : { kind: "None" },
+      mediaIds: body.media_ids !== undefined ? stringList(body.media_ids) : existing.mediaIds,
+      poll: existing.poll,
+    }),
+  );
+  if (draft.isErr()) {
+    return err(StatusRefusal.rejected(422, draft.error.kind, draft.error.kind));
+  }
+  const revised = LocalStatus.revise(existing, draft.value, textToHtml(draft.value.text));
+
+  const snapshotted = await snapshotPreviousRevision(env, identity, existing, author.id);
+  if (snapshotted.isErr()) {
+    return err(snapshotted.error);
+  }
+  const updatedAt = nowIso();
+  const applied = await updateLocalNote(env.DB, revised, updatedAt);
+  if (applied.isErr()) {
+    return err(StatusRefusal.repository(applied.error.message));
+  }
+  if (!applied.value) {
+    return err(StatusRefusal.notFound);
+  }
+  // Authors who quoted this status hear that the original changed.
+  const quoteEdges = await listAcceptedQuoteEdges(env.DB, existing.id);
+  const quoters = (quoteEdges.isOk() ? quoteEdges.value : []).filter(
+    (edge) => edge.accountId !== author.id,
+  );
+  for (const edge of quoters) {
+    await notifyAccount(env, {
+      accountId: edge.accountId,
+      fromAccountId: author.id,
+      kind: "quoted_update",
+      statusId: edge.statusId,
+    });
+  }
+  await queueLinkCard(env, existing.id, revised.text);
+  if (pollUpdate.value) {
+    const poll = await replacePollOptions(env.DB, pollUpdate.value);
+    if (poll.isErr()) {
+      return err(StatusRefusal.repository(poll.error.message));
+    }
+  }
+  const policyEdit = (body.quote_approval_policy ?? "").trim().toLowerCase();
+  if (policyEdit.length > 0) {
+    if (!isQuotePolicy(policyEdit)) {
+      return err(StatusRefusal.rejected(422, "Invalid quote_approval_policy", "ValidationError"));
+    }
+    const stored = await setStatusQuotePolicy(
+      env.DB,
+      existing.id,
+      visibilityIsPublic(revised.visibility) ? policyEdit : "nobody",
+    );
+    if (stored.isErr()) {
+      return err(StatusRefusal.repository(stored.error.message));
+    }
+  }
+  const media = await replaceStatusMedia(env.DB, existing.id, author.id, revised.mediaIds);
+  if (media.isErr()) {
+    return err(StatusRefusal.repository(media.error.message));
+  }
+  const attributeError = await applyMediaAttributes(env, author.id, existing.id, mediaAttributes);
+  if (attributeError) {
+    return err(StatusRefusal.repository(attributeError));
+  }
+  const remoteMentions = await replaceMentions(env, identity, revised);
+  if (remoteMentions.isErr()) {
+    return err(remoteMentions.error);
+  }
+  // An edit reaches the same audience as the note: a direct one only the
+  // remote accounts it mentions.
+  const announced = await announceNoteUpdate(
+    env,
+    identity,
+    author,
+    revised,
+    updatedAt,
+    !(revised.visibility.kind === "Direct" && remoteMentions.value.length === 0),
+  );
+  if (announced.isErr()) {
+    return err(
+      StatusRefusal.repository(
+        announced.error.kind === "RepositoryError"
+          ? announced.error.message
+          : announced.error.kind === "QueueSendFailed"
+            ? announced.error.message
+            : "invalid activity id",
+      ),
+    );
+  }
+  return ok(announced.value);
+};
+
 const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -86,217 +350,19 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const rawBody = await readUnknownBody(c);
-  const body = schemaResult(CreateStatusBodySchema)(withoutNullFields(rawBody)).mapErr(() => ({
-    kind: "ValidationError" as const,
-  }));
+  const body = schemaResult(CreateStatusBodySchema)(withoutNullFields(rawBody));
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const mediaAttributes = body.value.media_attributes ?? mediaAttributesFromForm(rawBody);
-  const pollEdit = body.value.poll;
-  let pollUpdate:
-    | Readonly<{
-        pollId: string;
-        options: ReadonlyArray<string>;
-        multiple: boolean;
-        expiresAt: string;
-        hideTotals: boolean;
-      }>
-    | undefined;
-  if (pollEdit) {
-    const current = await findPollByStatusId(c.env.DB, existing.id, user.value.id);
-    if (current.isErr()) {
-      return jsonRepositoryError(c, current.error.message);
-    }
-    if (!current.value) {
-      return c.json({ error: "cannot edit a poll", kind: "PollEditUnsupported" }, 422);
-    }
-    const votes = await countPollVotes(c.env.DB, current.value.id);
-    if (votes.isErr()) {
-      return jsonRepositoryError(c, votes.error.message);
-    }
-    if (votes.value > 0) {
-      return c.json(
-        { error: "cannot edit a poll after voting has started", kind: "PollVotesCast" },
-        422,
-      );
-    }
-    if (Date.parse(current.value.expiresAt) <= Date.now()) {
-      return c.json({ error: "cannot edit a poll after it has expired", kind: "PollExpired" }, 422);
-    }
-    const options = pollEdit.options
-      .map((option) => option.trim())
-      .filter((option) => option.length > 0);
-    if (options.length < 2) {
-      return c.json(
-        { error: "poll must have at least two options", kind: "PollOptionsRequired" },
-        422,
-      );
-    }
-    const expiresIn = pollEdit.expires_in === undefined ? undefined : Number(pollEdit.expires_in);
-    pollUpdate = {
-      pollId: current.value.id,
-      options,
-      multiple: isTruthy(pollEdit.multiple),
-      expiresAt:
-        expiresIn !== undefined && Number.isFinite(expiresIn)
-          ? new Date(Date.now() + expiresIn * 1000).toISOString()
-          : current.value.expiresAt,
-      // `hide_totals` is optional on an edit: omitting it keeps the poll's.
-      hideTotals:
-        pollEdit.hide_totals === undefined
-          ? current.value.hideTotals
-          : isTruthy(pollEdit.hide_totals),
-    };
-  }
-  let visibilityValue = existing.visibility;
-  if (body.value.visibility && body.value.visibility.length > 0) {
-    const parsedVisibility = Visibility.fromMastodon(body.value.visibility);
-    if (parsedVisibility.isErr()) {
-      return c.json({ error: "Invalid visibility", kind: "Unknown" }, 400);
-    }
-    visibilityValue = parsedVisibility.value;
-  }
-  const composing = StatusComposition.composing({
-    text: body.value.status ?? existing.text,
-    visibility: visibilityValue,
-    spoilerText: body.value.spoiler_text ?? existing.spoilerText,
-    sensitive:
-      body.value.sensitive !== undefined ? isTruthy(body.value.sensitive) : existing.sensitive,
-    language:
-      body.value.language === undefined
-        ? existing.language
-        : body.value.language.length > 0
-          ? { kind: "Present", value: body.value.language }
-          : { kind: "None" },
-    mediaIds:
-      body.value.media_ids !== undefined ? stringList(body.value.media_ids) : existing.mediaIds,
-    poll: existing.poll,
-  });
-  const draft = StatusComposition.validate(composing);
-  if (draft.isErr()) {
-    return c.json({ error: draft.error.kind, kind: draft.error.kind }, 422);
-  }
-  const revised = LocalStatus.revise(existing, draft.value, textToHtml(draft.value.text));
-
-  // Snapshot the previous revision before mutating, stamped with its revision time.
-  const priorUpdatedAt = await findStatusUpdatedAt(c.env.DB, existing.id);
-  const revisionAt =
-    priorUpdatedAt.isOk() && priorUpdatedAt.value ? priorUpdatedAt.value : existing.createdAt;
-  const previousDocument = await mastodonStatus(c.env, identity.value, existing, user.value.id);
-  if (previousDocument) {
-    const snapshotted = await insertStatusEdit(
-      c.env.DB,
-      existing.id,
-      JSON.stringify({ ...previousDocument, created_at: revisionAt }),
-    );
-    if (snapshotted.isErr()) {
-      return jsonRepositoryError(c, snapshotted.error.message);
-    }
-  }
-
-  const updatedAt = nowIso();
-  const applied = await updateLocalNote(c.env.DB, revised, updatedAt);
-  if (applied.isErr()) {
-    return jsonRepositoryError(c, applied.error.message);
-  }
-  if (!applied.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  // Authors who quoted this status hear that the original changed.
-  const quoteEdges = await listAcceptedQuoteEdges(c.env.DB, existing.id);
-  if (quoteEdges.isOk()) {
-    for (const edge of quoteEdges.value) {
-      if (edge.accountId === user.value.id) {
-        continue;
-      }
-      await notifyAccount(c.env, {
-        accountId: edge.accountId,
-        fromAccountId: user.value.id,
-        kind: "quoted_update",
-        statusId: edge.statusId,
-      });
-    }
-  }
-  await queueLinkCard(c.env, existing.id, revised.text);
-  if (pollUpdate) {
-    const poll = await replacePollOptions(c.env.DB, pollUpdate);
-    if (poll.isErr()) {
-      return jsonRepositoryError(c, poll.error.message);
-    }
-  }
-  const policyEdit = (body.value.quote_approval_policy ?? "").trim().toLowerCase();
-  if (policyEdit.length > 0) {
-    if (!isQuotePolicy(policyEdit)) {
-      return c.json({ error: "Invalid quote_approval_policy", kind: "ValidationError" }, 422);
-    }
-    const stored = await setStatusQuotePolicy(
-      c.env.DB,
-      existing.id,
-      visibilityIsPublic(revised.visibility) ? policyEdit : "nobody",
-    );
-    if (stored.isErr()) {
-      return jsonRepositoryError(c, stored.error.message);
-    }
-  }
-  const media = await replaceStatusMedia(c.env.DB, existing.id, user.value.id, revised.mediaIds);
-  if (media.isErr()) {
-    return jsonRepositoryError(c, media.error.message);
-  }
-  const attributeError = await applyMediaAttributes(
-    c.env,
-    user.value.id,
-    existing.id,
-    mediaAttributes,
-  );
-  if (attributeError) {
-    return jsonRepositoryError(c, attributeError);
-  }
-  const mentionedAccounts = await findAccountsByUsernames(c.env.DB, [
-    ...mentionUsernames(revised.text, identity.value.domain),
-  ]);
-  if (mentionedAccounts.isErr()) {
-    return jsonRepositoryError(c, mentionedAccounts.error.message);
-  }
-  const mentions = await replaceStatusMentions(
-    c.env.DB,
-    existing.id,
-    mentionedAccounts.value.map((account) => account.id),
-  );
-  if (mentions.isErr()) {
-    return jsonRepositoryError(c, mentions.error.message);
-  }
-  const remoteMentions = await resolveRemoteMentions(c.env, identity.value, revised.text);
-  const remoteSaved = await replaceStatusRemoteMentions(
-    c.env.DB,
-    existing.id,
-    remoteMentions.map((actor) => actor.actorUri),
-  );
-  if (remoteSaved.isErr()) {
-    return jsonRepositoryError(c, remoteSaved.error.message);
-  }
-
-  // An edit reaches the same audience as the note: a direct one only the
-  // remote accounts it mentions.
-  const announced = await announceNoteUpdate(
+  const edited = await editNote(
     c.env,
     identity.value,
     user.value,
-    revised,
-    updatedAt,
-    !(revised.visibility.kind === "Direct" && remoteMentions.length === 0),
+    existing,
+    body.value,
+    body.value.media_attributes ?? mediaAttributesFromForm(rawBody),
   );
-  if (announced.isErr()) {
-    return jsonRepositoryError(
-      c,
-      announced.error.kind === "RepositoryError"
-        ? announced.error.message
-        : announced.error.kind === "QueueSendFailed"
-          ? announced.error.message
-          : "invalid activity id",
-    );
-  }
-  return c.json(announced.value ?? {});
+  return edited.isErr() ? StatusRefusal.respond(c, edited.error) : c.json(edited.value ?? {});
 };
 
 export const putV1StatusesById = (c: Context<{ Bindings: Env }, "/api/v1/statuses/:id">) =>
