@@ -16,12 +16,13 @@ export type Remote = Readonly<{
 /**
  * A cached remote actor that can sign inbox deliveries. Its URI is on
  * `host`; its account domain is `options.accountDomain`, `host` by default,
- * as a WebFinger domain that serves actors from another host.
+ * as a WebFinger domain that serves actors from another host. With
+ * `cache: false` it is not stored, so the first delivery fetches its document.
  */
 export const remoteActor = async (
   username: string,
   host: string = "remote.example",
-  options: Readonly<{ sharedInboxUri?: string; accountDomain?: string }> = {},
+  options: Readonly<{ sharedInboxUri?: string; accountDomain?: string; cache?: false }> = {},
 ): Promise<Remote> => {
   const actorUri = `https://${host}/users/${username}`;
   const keys = await generateAccountKeys();
@@ -43,7 +44,9 @@ export const remoteActor = async (
   if (actor.isErr()) {
     throw new Error("remote actor fixture rejected");
   }
-  expect((await upsertRemoteActor(env.DB, actor.value)).isOk()).toBe(true);
+  if (options.cache !== false) {
+    expect((await upsertRemoteActor(env.DB, actor.value)).isOk()).toBe(true);
+  }
   return {
     actorUri,
     publicKeyPem: keys.publicKeyPem,
