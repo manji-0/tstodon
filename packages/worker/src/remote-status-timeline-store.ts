@@ -90,11 +90,7 @@ export const listFollowedRemoteStatuses = async (
                AND COALESCE(s.language, '') <> ''
                AND s.language NOT IN (SELECT value FROM json_each(f.languages_json))
              )
-             AND s.actor_uri NOT IN (SELECT target_actor_uri FROM blocks WHERE blocker_account_id = ?)
-             AND s.actor_uri NOT IN (
-               SELECT target_actor_uri FROM mutes
-               WHERE account_id = ? AND (expires_at IS NULL OR expires_at > ?)
-             )
+             AND s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
              AND s.actor_uri NOT IN ${DOMAIN_SUSPENDED_ACTORS_SQL}
          ) s WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )

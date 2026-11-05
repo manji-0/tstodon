@@ -11,7 +11,7 @@ import {
 } from "./generated/prisma/sql";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { feedFollowSql, type FollowedFeed } from "./followed-feed";
-import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
+import { SUPPRESSED_ACCOUNT_IDS_SQL, SUPPRESSED_ACTOR_URIS_SQL } from "./block-mute-store";
 import { DOMAIN_SUSPENDED_ACTORS_SQL } from "./domain-hidden-actors";
 import { visibilitySql } from "./sql-enums";
 import { CountedRow, queryTyped } from "./typed-sql";
@@ -98,14 +98,6 @@ export const findRemoteBoostById = async (
     return rows[0] === undefined ? undefined : boostFromRow(rows[0]);
   });
 
-/** Actor URIs (local or remote) the viewer blocks or mutes. Binds: (viewerId, viewerId, now). */
-const HIDDEN_ACTOR_URIS_SQL = `(
-  SELECT target_actor_uri FROM blocks WHERE blocker_account_id = ?
-  UNION
-  SELECT target_actor_uri FROM mutes
-  WHERE account_id = ? AND (expires_at IS NULL OR expires_at > ?)
-)`;
-
 /**
  * Boosts on one of the account's followed feeds (home or a list): those of
  * remote actors it follows (accepted, with reblogs shown) on that feed, newest
@@ -137,8 +129,8 @@ export const listFollowedRemoteBoosts = async (
            LEFT JOIN remote_statuses rs ON rs.id = b.remote_status_id
            WHERE COALESCE(ls.visibility, rs.visibility) IN ('public', 'unlisted')
              AND (ls.id IS NULL OR ls.account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL})
-             AND b.actor_uri NOT IN ${HIDDEN_ACTOR_URIS_SQL}
-             AND COALESCE(rs.actor_uri, '') NOT IN ${HIDDEN_ACTOR_URIS_SQL}
+             AND b.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
+             AND COALESCE(rs.actor_uri, '') NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
              AND b.actor_uri NOT IN ${DOMAIN_SUSPENDED_ACTORS_SQL}
              AND COALESCE(rs.actor_uri, '') NOT IN ${DOMAIN_SUSPENDED_ACTORS_SQL}
          ) WHERE 1 = 1 ${where} ${order} LIMIT ?`,
@@ -198,7 +190,7 @@ export const listActorRemoteBoosts = async (
              ))
              AND COALESCE(ls.visibility, rs.visibility) IN ('public', 'unlisted')
              AND (ls.id IS NULL OR ls.account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL})
-             AND COALESCE(rs.actor_uri, '') NOT IN ${HIDDEN_ACTOR_URIS_SQL}
+             AND COALESCE(rs.actor_uri, '') NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
              AND COALESCE(rs.actor_uri, '') NOT IN ${DOMAIN_SUSPENDED_ACTORS_SQL}
          ) WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )
