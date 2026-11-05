@@ -16,8 +16,8 @@ export type AccountSearchQuery = Readonly<{
   remoteTerms: string;
   /**
    * `FollowedBy` is `following=true`: only the local accounts the viewer
-   * follows, and no remote actor, since this instance keeps no record of
-   * following one.
+   * follows. Remote actors the viewer follows and the viewer's own account
+   * are left out, unlike Mastodon's `first_degree`.
    */
   scope: LocalAccountSearchScope;
 }>;

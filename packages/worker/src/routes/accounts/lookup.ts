@@ -15,7 +15,13 @@ import {
   searchableLocalAccounts,
   searchableRemoteActors,
 } from "../../account-presentation";
-import { jsonAuthError, jsonRepositoryError, queryAccountsLimit, requireUser } from "../../http";
+import {
+  jsonAuthError,
+  jsonRepositoryError,
+  queryAccountsLimit,
+  queryOffset,
+  requireUser,
+} from "../../http";
 import {
   accountDocumentsByIds,
   accountRefDocument,
@@ -126,8 +132,7 @@ export const getV1AccountsSearch = async (
   const rawQuery = (c.req.query("q") ?? "").trim();
   const query = rawQuery.replace(/^@/, "");
   const limit = queryAccountsLimit(c.req.query("limit"));
-  const requestedOffset = Number.parseInt(c.req.query("offset") ?? "0", 10);
-  const offset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
+  const offset = queryOffset(c.req.query("offset"));
   const resolve = isTruthy(c.req.query("resolve"));
   const onlyFollowing = isTruthy(c.req.query("following"));
   if (query.length === 0) {

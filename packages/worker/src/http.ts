@@ -28,10 +28,10 @@ export const queryLimit = (raw: string | undefined, fallback = 20): number =>
 /** Trends: tags and links default to 10 and cap at 20, as Mastodon does. */
 export const queryTrendsLimit = (raw: string | undefined): number => queryLimitMax(raw, 10, 20);
 
-/** Mastodon's `offset` for the trends lists. */
+/** Mastodon's `offset` for paged lists, kept to a value SQLite can bind as an integer. */
 export const queryOffset = (raw: string | undefined): number => {
   const parsed = Number.parseInt(raw ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, Number.MAX_SAFE_INTEGER) : 0;
 };
 
 /** Account collections (followers, blocks, directory…): 40 by default, capped at 80. */

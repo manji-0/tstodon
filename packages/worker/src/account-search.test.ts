@@ -207,6 +207,18 @@ describe("account search", () => {
     expect(first.length).toBe(2);
   });
 
+  it("answers an empty page for an offset past what SQLite can bind", async () => {
+    const viewer = "account-search-huge-offset@example.com";
+    await credentials("hugeoffset-a@example.com");
+    const huge = "100000000000000000000";
+    expect(await search(viewer, `q=hugeoffset&offset=${huge}`)).toEqual([]);
+    const v2 = await json(`/api/v2/search?q=hugeoffset&type=accounts&offset=${huge}`, {
+      headers: await auth(viewer),
+    });
+    expect(v2.status).toBe(200);
+    expect(read(z.object({ accounts: AccountListSchema }), v2.body).accounts).toEqual([]);
+  });
+
   it("pages accounts in /api/v2/search with type=accounts", async () => {
     const viewer = "account-search-v2-pager@example.com";
     await seedMixedResults("v2page");
