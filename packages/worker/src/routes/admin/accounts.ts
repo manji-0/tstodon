@@ -1,8 +1,8 @@
 import type { Context } from "hono";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
-import { schemaResult } from "@tstodon/core";
 import {
+  AccountActionType,
   type InstanceIdentity,
   RemoteActorModeration,
   type RemoteActorModerationAction,
@@ -14,7 +14,6 @@ import { approveAccount, setAccountDisabled, setAccountSensitized } from "../../
 import { findAccountById } from "../../account-store";
 import { listAdminAccounts, listAdminRemoteActorUris } from "../../account-admin-store";
 import {
-  AccountActionTypeSchema,
   type AdminAccountState,
   adminAccountStates,
   findAdminAccount,
@@ -414,8 +413,6 @@ const AccountActionBodySchema = z.object({
   report_id: z.union([z.string(), z.number()]).optional(),
 });
 
-const parseActionType = schemaResult(AccountActionTypeSchema);
-
 /**
  * `POST /api/v1/admin/accounts/:id/action`: the moderation action Mastodon
  * documents (`none`, `sensitive`, `disable`, `silence`, `suspend`). The
@@ -432,7 +429,7 @@ export const postV1AdminAccountsByIdAction = async (
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const type = parseActionType((body.value.type ?? "").trim().toLowerCase());
+  const type = AccountActionType.parse((body.value.type ?? "").trim().toLowerCase());
   if (type.isErr()) {
     return c.json({ error: "Record invalid", kind: "ValidationError" }, 422);
   }

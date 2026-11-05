@@ -1,4 +1,5 @@
 import {
+  AccountActionType,
   type LocalAccount,
   type RemoteActorValue,
   RemoteActorModeration,
@@ -6,7 +7,6 @@ import {
   Hostname,
 } from "@tstodon/domain";
 import { err, ok, Result } from "neverthrow";
-import { z } from "zod";
 import {
   disabledAccountIds,
   mediaObjectKeysForAccount,
@@ -158,17 +158,6 @@ export const moderateRemoteActor = async (
   });
 };
 
-/** Mastodon's `POST /api/v1/admin/accounts/:id/action` types. */
-export const AccountActionTypeSchema = z.union([
-  z.literal("none"),
-  z.literal("sensitive"),
-  z.literal("disable"),
-  z.literal("silence"),
-  z.literal("suspend"),
-]);
-
-export type AccountActionType = z.infer<typeof AccountActionTypeSchema>;
-
 export type AccountActionError =
   | Readonly<{ kind: "AccountNotFound" }>
   | Readonly<{ kind: "NotApplicable" }>
@@ -192,20 +181,6 @@ const applyAction = async (
     case "suspend":
       return setAccountModeration(db, accountId, "Suspended");
   }
-};
-
-/**
- * What each action type does to a remote actor. It has no login to `disable`,
- * which Mastodon's remote accounts do not take either.
- */
-const REMOTE_ACTION: Readonly<
-  Record<AccountActionType, RemoteActorModerationAction | "none" | "NotApplicable">
-> = {
-  none: "none",
-  sensitive: "sensitize",
-  silence: "silence",
-  suspend: "suspend",
-  disable: "NotApplicable",
 };
 
 /**
@@ -242,7 +217,7 @@ export const takeAccountAction = async (
     if (!actor.value) {
       return err({ kind: "AccountNotFound" });
     }
-    if (REMOTE_ACTION[input.type] === "NotApplicable") {
+    if (AccountActionType.remoteEffect(input.type).kind === "NotApplicable") {
       return err({ kind: "NotApplicable" });
     }
     target = requested;
@@ -264,13 +239,13 @@ export const takeAccountAction = async (
     }
     reportIds = [report.value.id];
   }
-  const remoteAction = REMOTE_ACTION[input.type];
+  const remoteEffect = AccountActionType.remoteEffect(input.type);
   const applied =
     target.kind === "Local"
       ? await applyAction(db, target.accountId, input.type)
-      : remoteAction === "none" || remoteAction === "NotApplicable"
-        ? ok(undefined)
-        : await moderateRemoteActor(env, target.actorUri, remoteAction);
+      : remoteEffect.kind === "Moderate"
+        ? await moderateRemoteActor(env, target.actorUri, remoteEffect.action)
+        : ok(undefined);
   if (applied.isErr()) {
     return err(applied.error);
   }

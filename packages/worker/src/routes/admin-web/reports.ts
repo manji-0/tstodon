@@ -1,14 +1,9 @@
 import { schemaResult, warmSchemas } from "@tstodon/core";
-import type { LocalStatusValue } from "@tstodon/domain";
+import { AccountActionType, type LocalStatusValue } from "@tstodon/domain";
 import type { Context } from "hono";
 import type { Result } from "neverthrow";
 import { z } from "zod";
-import {
-  AccountActionTypeSchema,
-  findAdminAccount,
-  findAdminRemoteActor,
-  takeAccountAction,
-} from "../../admin-actions";
+import { findAdminAccount, findAdminRemoteActor, takeAccountAction } from "../../admin-actions";
 import {
   confirmPage,
   moderationSummary,
@@ -236,7 +231,7 @@ export const postAdminReportAction = async (
     return admin.response;
   }
   const fields = await readFields(c);
-  const type = schemaResult(AccountActionTypeSchema)(fields.type);
+  const type = AccountActionType.parse(fields.type);
   if (type.isErr()) {
     return badForm(c);
   }
@@ -294,4 +289,4 @@ export const postAdminReportAction = async (
   }
 };
 
-warmSchemas([ReportCommandSchema, AccountActionTypeSchema]);
+warmSchemas([ReportCommandSchema, AccountActionType.schema]);
