@@ -1,10 +1,15 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
+
+// Each case builds a timeline from 10 to 30 API calls (a post or a boost runs
+// about 50 D1 statements): 2 to 5 s on an idle machine, past the shared 15 s
+// budget once several suites share the CPU (#50).
+vi.setConfig({ testTimeout: 45_000 });
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 

@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
@@ -8,6 +8,10 @@ import { nowIso } from "./clock";
 import { generateAccountKeys } from "./keys";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { upsertRemoteAnnounce, upsertRemoteFavourite } from "./remote-interaction-store";
+
+// Each case makes several status writes and boosts by fresh accounts; on a
+// busy machine that outgrows the shared 15 s budget (#50).
+vi.setConfig({ testTimeout: 45_000 });
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 

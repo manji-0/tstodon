@@ -1,5 +1,5 @@
 import { SELF } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { authHeaders } from "../test/auth-fixture";
 import { schemaResult } from "@tstodon/core";
@@ -7,6 +7,10 @@ import {
   MastodonAccountPreviewSchema,
   MastodonStatusPreviewSchema,
 } from "../test/mastodon-preview-schemas";
+
+// The pin-limit case makes a dozen status writes; on a busy machine that
+// outgrows the shared 15 s budget (#50).
+vi.setConfig({ testTimeout: 45_000 });
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
