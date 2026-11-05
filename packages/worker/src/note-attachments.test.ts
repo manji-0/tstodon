@@ -181,6 +181,70 @@ describe("note attachments", () => {
     expect(note.attachment).toEqual(expected);
   });
 
+  it("keeps the media_ids order, not the upload order, when the status is read back", async () => {
+    const email = "note-attachments-order@example.com";
+    const first = await upload(email, "first.png", "image/png");
+    const second = await upload(email, "second.png", "image/png");
+    const third = await upload(email, "third.png", "image/png");
+    const posted = await send(email, "POST", "/api/v1/statuses", {
+      status: "out of upload order",
+      media_ids: [third, first, second],
+    });
+    expect(posted.status).toBe(200);
+    const status = read(PostedStatus, posted.body);
+    const urls = urlsById(status);
+
+    const readBack = async () => {
+      const single = await json(`/api/v1/statuses/${status.id}`, {
+        headers: await authHeaders(email),
+      });
+      const listed = await json(`/api/v1/accounts/${status.account.id}/statuses`, {
+        headers: await authHeaders(email),
+      });
+      const fetched = await json(`/users/${status.account.username}/statuses/${status.id}`);
+      const note = read(
+        z.object({ attachment: z.array(z.object({ url: z.string() })) }),
+        fetched.body,
+      );
+      const timeline = read(z.array(PostedStatus), listed.body);
+      return {
+        api: read(PostedStatus, single.body).media_attachments.map((media) => media.id),
+        timeline: timeline
+          .find((entry) => entry.id === status.id)
+          ?.media_attachments.map((media) => media.id),
+        note: note.attachment.map((attachment) => attachment.url),
+      };
+    };
+
+    expect(await readBack()).toEqual({
+      api: [third, first, second],
+      timeline: [third, first, second],
+      note: [third, first, second].map((id) => urls.get(id)),
+    });
+
+    const edited = await send(email, "PUT", `/api/v1/statuses/${status.id}`, {
+      status: "reordered",
+      media_ids: [second, third, first],
+    });
+    expect(edited.status).toBe(200);
+    expect(read(PostedStatus, edited.body).media_attachments.map((media) => media.id)).toEqual([
+      second,
+      third,
+      first,
+    ]);
+    expect(await readBack()).toEqual({
+      api: [second, third, first],
+      timeline: [second, third, first],
+      note: [second, third, first].map((id) => urls.get(id)),
+    });
+    const updates = await queuedNotes(status.account.id, "Update");
+    expect(
+      read(z.array(z.object({ url: z.string() })), updates.at(-1)?.attachment).map(
+        (attachment) => attachment.url,
+      ),
+    ).toEqual([second, third, first].map((id) => urls.get(id)));
+  });
+
   it("sends an empty attachment list for a note without media", async () => {
     const email = "note-attachments-none@example.com";
     const posted = await send(email, "POST", "/api/v1/statuses", { status: "words only" });
