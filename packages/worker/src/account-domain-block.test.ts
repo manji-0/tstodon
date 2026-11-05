@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { Hostname, type LocalAccount, OutboxJob } from "@tstodon/domain";
@@ -9,6 +9,10 @@ import { blockAccountDomain, SEVER_PAGE_SIZE } from "./account-domain-block";
 import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
 import { parseInstanceIdentity } from "./runtime-config";
+
+// The paged-severance cases took up to 11 s on a lightly loaded machine, past
+// the shared 15 s budget once several suites share the CPU (#50).
+vi.setConfig({ testTimeout: 45_000 });
 
 const json = async (path: string, init?: RequestInit) => {
   const response = await SELF.fetch(`https://example.com${path}`, init);
