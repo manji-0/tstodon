@@ -17,47 +17,56 @@ export type WebfingerConfirmation =
    * back, or with 404 or 410: the domain does not vouch for the actor.
    */
   | Readonly<{ kind: "Mismatch" }>
-  /** A lookup failed (a 5xx, a timeout, an unreadable answer): nothing is known. */
+  /**
+   * The URI host names the cached handle, and that handle's domain did not
+   * answer usably (anything but 404 or 410: a 5xx, a timeout, a 3xx, a 401,
+   * 403 or other 4xx, an unreadable answer, no `self` link); or a lookup
+   * failed so for an actor not cached on another domain. Nothing is known.
+   */
   | Readonly<{ kind: "Unavailable" }>
-  /** The round trip was not run: an actor's own `Update`, as Mastodon applies it. */
-  | Readonly<{ kind: "Unchecked" }>
   /** The account domain WebFinger claims is one this instance does not federate with. */
   | Readonly<{ kind: "Refused"; host: Hostname }>;
 
 export type WebfingerRefusal = Readonly<{ kind: "DomainRefused"; host: Hostname }>;
 
-/** A handle and when WebFinger last confirmed it; `webfingeredAt` is absent when it never did. */
-export type CachedHandle = AccountHandle & Readonly<{ webfingeredAt?: IsoInstant }>;
+/**
+ * How actor fetch writes an actor's handle (`username@domain` and
+ * `last_webfingered_at`) after the round trip.
+ */
+export type HandleWrite =
+  /** Store `handle`, confirmed `webfingeredAt`, and take it from every other row. */
+  | Readonly<{ kind: "Confirm"; handle: AccountHandle; webfingeredAt: IsoInstant }>
+  /** Store the URI's authority, which the document proves, unconfirmed. */
+  | Readonly<{ kind: "UriAuthority" }>
+  /**
+   * Leave the handle and its stamp as the row holds them when it is written,
+   * not as it was read before the round trip, so a confirmation another actor
+   * made meanwhile stands. A row not cached yet takes the URI's authority.
+   */
+  | Readonly<{ kind: "Keep" }>;
 
 /**
- * The handle to cache an actor under. `fromDocument` is its
- * `preferredUsername` at the URI's authority, which the document proves;
- * `stored` is the handle already cached for the actor URI. A confirmed
- * handle is stamped `now`. A lookup that could not finish, or was not run,
- * keeps the stored handle and its stamp, so a WebFinger outage does not move
- * an actor off its account domain and does not make that handle look newly
- * confirmed. This guards against outages only: the URI host can always
- * answer for its own authority and so move the actor there. A definite
- * answer that the domain does not vouch for the actor falls back to the
- * URI's authority.
+ * The handle write a round trip calls for. A lookup that could not finish
+ * keeps the cached handle and its stamp, so an outage does not move an actor
+ * off its account domain and does not make that handle look newly confirmed.
+ * The round trip ends `Unavailable` only while the URI host still names the
+ * cached handle, or when that handle is the URI's own. A definite answer that
+ * the domain does not vouch for the actor falls back to the URI's authority.
  */
-const handleToCache = (
+const handleWrite = (
   confirmation: WebfingerConfirmation,
-  fromDocument: AccountHandle,
-  stored: CachedHandle | undefined,
   now: IsoInstant,
-): Result<CachedHandle, WebfingerRefusal> => {
+): Result<HandleWrite, WebfingerRefusal> => {
   switch (confirmation.kind) {
     case "Confirmed":
-      return ok({ ...confirmation.handle, webfingeredAt: now });
+      return ok({ kind: "Confirm", handle: confirmation.handle, webfingeredAt: now });
     case "Mismatch":
-      return ok(fromDocument);
+      return ok({ kind: "UriAuthority" });
     case "Unavailable":
-    case "Unchecked":
-      return ok(stored ?? fromDocument);
+      return ok({ kind: "Keep" });
     case "Refused":
       return err({ kind: "DomainRefused", host: confirmation.host });
   }
 };
 
-export const WebfingerConfirmation = { handleToCache } as const;
+export const WebfingerConfirmation = { handleWrite } as const;

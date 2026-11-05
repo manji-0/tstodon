@@ -10,7 +10,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param actorUri
  */
 export const demoteRemoteActorHandle = $runtime.makeTypedQueryFactory(
-  "UPDATE remote_actors\nSET domain = lower(uri_authority), last_webfingered_at = NULL\nWHERE lower(username) = lower($1) AND lower(domain) = lower($2) AND actor_uri <> $3",
+  "UPDATE remote_actors\nSET domain = lower(uri_authority), last_webfingered_at = NULL\nWHERE lower(username) = lower($1) AND lower(domain) = lower($2) AND actor_uri <> $3\nAND last_webfingered_at IS NOT NULL",
 ) as (
   username: string,
   domain: string,

@@ -115,7 +115,6 @@ export {
 } from "./remote-actor";
 export {
   type AccountHandle,
-  type CachedHandle,
   WebfingerConfirmation,
   type WebfingerConfirmation as WebfingerConfirmationValue,
   type WebfingerRefusal,

@@ -1,50 +1,79 @@
 import { suspendedDomains } from "./admin-domain-block-store";
-import { fetchActivityJson } from "./federated-fetch";
-import { cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
-import { listStaleRemoteActorUris, markRemoteActorsRefreshAttempted } from "./remote-actor-store";
+import { refreshRemoteActor } from "./remote-actor-fetch";
+import { claimRemoteActorRefresh, listStaleRemoteActorUris } from "./remote-actor-store";
 import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 
-/** Mastodon's `possibly_stale?` window: an actor fetched longer ago than this is refreshed. */
-const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
-
-/** How many actors one cron run re-fetches. */
-const REFRESH_BATCH = 10;
+/**
+ * How much one cron run may refresh: at most `actors` actors, none started
+ * once `ms` have passed. An actor costs at most four subrequests (its
+ * document and up to three WebFinger lookups, or, when the document fails, one
+ * lookup of its stored handle), each cut off after 5 s.
+ */
+export type RefreshBudget = Readonly<{ actors: number; ms: number }>;
 
 /**
- * Hourly cron path: re-fetch the actors that have waited longest since
- * their last refresh attempt and their last WebFinger confirmation (their
- * last fetch, when WebFinger never confirmed them), once both are over a day
- * ago, and run the round trip for each again. Rows cached before the round
- * trip carry the URI host and take the confirmed handle this way; a
- * confirmed handle whose WebFinger stopped vouching moves back to the URI
- * host. A row whose lookups fail keeps its handle and its confirmation time,
- * so it is tried again after a day. The batch is marked tried before it is
- * fetched, so an actor whose server never answers waits another day instead
- * of holding the head of the queue. A failed or refused fetch leaves the row
- * as it was.
+ * 200 actors keep a run under 800 subrequests, inside the Workers Paid limit
+ * of 1000, and refresh up to 4800 actors a day. With four at a time and none
+ * started after 45 s, a run whose servers all time out ends within about 65 s.
  */
-export const refreshStaleRemoteActors = async (env: Env): Promise<void> => {
+const RUN_BUDGET: RefreshBudget = { actors: 200, ms: 45_000 };
+
+/** Actors refreshed at a time. */
+const CONCURRENCY = 4;
+
+/** Due actors listed per query. */
+const PAGE = 25;
+
+/**
+ * Hourly cron path: re-fetch the actors due a refresh (a day after both
+ * their last WebFinger confirmation, or their last fetch when WebFinger
+ * never confirmed them, and their last refresh attempt), the longest waiting
+ * first, and run the round trip for each again, until none is due or the
+ * run's budget is spent. Each is claimed as tried just before it is fetched,
+ * so an actor whose server never answers waits another day instead of
+ * holding the head of the queue, and an actor a handle lookup refreshed
+ * meanwhile is not fetched twice. Rows cached before the round trip carry
+ * the URI host and take the confirmed handle this way; a confirmed handle
+ * whose WebFinger stopped vouching moves back to the URI host.
+ */
+export const refreshStaleRemoteActors = async (
+  env: Env,
+  budget: RefreshBudget = RUN_BUDGET,
+): Promise<void> => {
   const identity = parseInstanceIdentity(env);
   if (identity.isErr()) {
-    return;
-  }
-  const before = new Date(Date.now() - STALE_AFTER_MS).toISOString();
-  const uris = await listStaleRemoteActorUris(env.DB, before, REFRESH_BATCH);
-  if (uris.isErr() || uris.value.length === 0) {
-    return;
-  }
-  if ((await markRemoteActorsRefreshAttempted(env.DB, uris.value)).isErr()) {
     return;
   }
   const options = {
     allowHosts: await federationAllowHosts(env),
     blockedHosts: await suspendedDomains(env.DB),
   };
-  for (const actorUri of uris.value) {
-    const raw = await fetchActivityJson(identity.value, actorUri, options);
-    const actor = raw.isOk() ? remoteActorFromDocument(raw.value, actorUri) : undefined;
-    if (actor?.isOk()) {
-      await cacheFetchedActor(env.DB, identity.value, actor.value, options);
+  const deadline = Date.now() + budget.ms;
+  let started = 0;
+  const withinBudget = () => started < budget.actors && Date.now() < deadline;
+  while (withinBudget()) {
+    const listed = await listStaleRemoteActorUris(env.DB, Math.min(PAGE, budget.actors - started));
+    if (listed.isErr() || listed.value.length === 0) {
+      return;
+    }
+    const queue = [...listed.value];
+    const before = started;
+    await Promise.all(
+      Array.from({ length: CONCURRENCY }, async () => {
+        for (let uri = queue.shift(); uri !== undefined && withinBudget(); uri = queue.shift()) {
+          // Counted before the claim's await, so the workers never start more than the budget.
+          started += 1;
+          const claimed = await claimRemoteActorRefresh(env.DB, uri);
+          if (claimed.isOk() && claimed.value) {
+            await refreshRemoteActor(env.DB, identity.value, uri, options);
+          } else {
+            started -= 1;
+          }
+        }
+      }),
+    );
+    if (started === before) {
+      return;
     }
   }
 };

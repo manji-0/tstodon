@@ -5,15 +5,16 @@ import { listStatusMentions } from "./mention-store";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { remoteMentionHandles } from "./html";
 import { resolveRemoteActorByHandle } from "./remote-actor-fetch";
-import { findRemoteActorByHandle, findRemoteActorsByUris } from "./remote-actor-store";
+import { findRemoteActorsByUris } from "./remote-actor-store";
 import { allowListAdmits, federationAllowHosts } from "./runtime-config";
 
 /**
- * Remote actors a post's `@user@domain` handles name: the cached actor when
- * there is one, otherwise resolved over WebFinger. A handle on a suspended or
- * non-federating domain, a cached actor whose account domain or URI host is
- * one, or a handle that does not resolve, is left out and the post goes
- * ahead, as in Mastodon.
+ * Remote actors a post's `@user@domain` handles name, as
+ * `resolveRemoteActorByHandle` finds them: the cached actor while its
+ * confirmation is under a day old, otherwise re-confirmed or resolved over
+ * WebFinger. A handle on a suspended or non-federating domain, an actor
+ * whose account domain or URI host is one, or a handle that does not resolve,
+ * is left out and the post goes ahead, as in Mastodon.
  */
 export const resolveRemoteMentions = async (
   env: Env,
@@ -31,21 +32,18 @@ export const resolveRemoteMentions = async (
     if (blockedHosts.has(Hostname.ofAuthority(handle.domain))) {
       continue;
     }
-    const cached = await findRemoteActorByHandle(env.DB, handle.username, handle.domain);
-    if (cached.isOk() && cached.value) {
-      const hosts = RemoteActor.hostnames(cached.value);
-      if (hosts.every((host) => !blockedHosts.has(host) && allowListAdmits(allowHosts, host))) {
-        actors.set(cached.value.actorUri, cached.value);
-      }
-      continue;
-    }
     const resolved = await resolveRemoteActorByHandle(
       env.DB,
       identity,
       `${handle.username}@${handle.domain}`,
       { allowHosts, blockedHosts },
     );
-    if (resolved.isOk()) {
+    const admitted =
+      resolved.isOk() &&
+      RemoteActor.hostnames(resolved.value).every(
+        (host) => !blockedHosts.has(host) && allowListAdmits(allowHosts, host),
+      );
+    if (resolved.isOk() && admitted) {
       actors.set(resolved.value.actorUri, resolved.value);
     }
   }

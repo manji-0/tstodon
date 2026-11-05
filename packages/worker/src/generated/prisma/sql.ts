@@ -22,6 +22,8 @@ export * from "./sql/claimLocalPollExpiryNotice";
 
 export * from "./sql/claimPollUpdate";
 
+export * from "./sql/claimRemoteActorRefresh";
+
 export * from "./sql/claimRemoteOutboxBackfill";
 
 export * from "./sql/claimRemotePollExpiryNotice";
@@ -600,8 +602,6 @@ export * from "./sql/listUnindexedRemoteStatuses";
 
 export * from "./sql/markPollExpiryNotified";
 
-export * from "./sql/markRemoteActorsRefreshAttempted";
-
 export * from "./sql/markRemoteStatusTagsIndexed";
 
 export * from "./sql/muteStatus";
@@ -749,6 +749,8 @@ export * from "./sql/upsertNotificationPolicy";
 export * from "./sql/upsertPushSubscription";
 
 export * from "./sql/upsertRemoteActor";
+
+export * from "./sql/upsertRemoteActorKeepingHandle";
 
 export * from "./sql/upsertRemoteActorModeration";
 

@@ -1,4 +1,5 @@
 import {
+  type AccountHandle,
   FollowRequest,
   type Hostname,
   type InboxFollow,
@@ -24,11 +25,11 @@ import {
   releaseRemoteOutboxBackfill as releaseRemoteOutboxBackfillSql,
   deleteRemoteFollow as deleteRemoteFollowSql,
   findPendingRemoteFollowRequest as findPendingRemoteFollowRequestSql,
+  claimRemoteActorRefresh as claimRemoteActorRefreshSql,
   findRemoteActorByHandle as findRemoteActorByHandleSql,
   findRemoteActorByPublicKeyId as findRemoteActorByPublicKeyIdSql,
   findRemoteActorByUri as findRemoteActorByUriSql,
   listStaleRemoteActorUris as listStaleRemoteActorUrisSql,
-  markRemoteActorsRefreshAttempted as markRemoteActorsRefreshAttemptedSql,
   findRemoteActorsByUris as findRemoteActorsByUrisSql,
   findRemoteFollow as findRemoteFollowSql,
   listAcceptedRemoteFollowerInboxes as listAcceptedRemoteFollowerInboxesSql,
@@ -54,6 +55,7 @@ import {
   searchRemoteActors as searchRemoteActorsSql,
   setRemoteActorMovedTo as setRemoteActorMovedToSql,
   upsertRemoteActor as upsertRemoteActorSql,
+  upsertRemoteActorKeepingHandle as upsertRemoteActorKeepingHandleSql,
   upsertRemoteFollow as upsertRemoteFollowSql,
 } from "./generated/prisma/sql";
 import { parseJsonColumn } from "./json-column";
@@ -74,6 +76,11 @@ const InboxUriSharedInboxUriRow = z.object({
   shared_inbox_uri: z.string().nullable(),
 });
 const DomainRow = z.object({ domain: z.string() });
+const HandleRow = z.object({
+  username: z.string(),
+  domain: z.string(),
+  last_webfingered_at: z.string().nullable(),
+});
 const IdRow = z.object({ id: z.string() });
 const AccountIdRow = z.object({ account_id: z.string() });
 
@@ -167,26 +174,38 @@ export const findRemoteActorByUri = async (
   );
 
 /**
- * Up to `limit` actor URIs neither fetched nor tried by the refresh since
- * `before`, the longest waiting first.
+ * Mastodon's `possibly_stale?` window: an actor is due a refresh once both
+ * its last confirmation (its fetch, when WebFinger never confirmed it) and
+ * its last refresh attempt are this old.
  */
+const REFRESH_AFTER_MS = 24 * 60 * 60 * 1000;
+
+const dueBefore = (): string => new Date(Date.now() - REFRESH_AFTER_MS).toISOString();
+
+/** Up to `limit` actor URIs due a refresh, the longest waiting first. */
 export const listStaleRemoteActorUris = async (
   db: D1Database,
-  before: string,
   limit: number,
 ): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
   (
-    await runD1(async () => queryTyped(db, listStaleRemoteActorUrisSql(before, limit), ActorUriRow))
+    await runD1(async () =>
+      queryTyped(db, listStaleRemoteActorUrisSql(dueBefore(), limit), ActorUriRow),
+    )
   ).map((rows) => rows.map((row) => row.actor_uri));
 
-/** Record that the stale-actor refresh tried these actors now, whatever came of it. */
-export const markRemoteActorsRefreshAttempted = async (
+/**
+ * Mark `actorUri` tried now if it is due a refresh. One UPDATE decides, so
+ * concurrent callers refresh it once. Resolves to whether this call took it.
+ */
+export const claimRemoteActorRefresh = async (
   db: D1Database,
-  actorUris: ReadonlyArray<string>,
-): Promise<Result<void, RepositoryError>> =>
-  runD1(async () => {
-    await runTyped(db, markRemoteActorsRefreshAttemptedSql(jsonStringArray(actorUris), nowIso()));
-  });
+  actorUri: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  (
+    await runD1(async () =>
+      queryTyped(db, claimRemoteActorRefreshSql(actorUri, dueBefore(), nowIso()), ActorUriRow),
+    )
+  ).map((rows) => rows.length > 0);
 
 /** Cached remote actors keyed by actor URI; unknown or unreadable rows are left out. */
 export const findRemoteActorsByUris = async (
@@ -260,6 +279,57 @@ export const upsertRemoteActor = async (
   ).map(() => actor);
 
 /**
+ * Cache an actor read from its own document without settling its handle: a
+ * new row takes the actor's handle (its URI's authority), unconfirmed; a
+ * cached row keeps the handle and confirmation time it holds as the write
+ * runs. Returns the actor under the handle the row ends up with.
+ */
+export const upsertRemoteActorKeepingHandle = async (
+  db: D1Database,
+  actor: RemoteActor,
+): Promise<Result<RemoteActor, RepositoryError>> => {
+  const now = nowIso();
+  const written = await runD1(async () =>
+    queryTyped(
+      db,
+      upsertRemoteActorKeepingHandleSql(
+        actor.actorUri,
+        actor.username,
+        actor.domain,
+        actor.inboxUri,
+        actor.sharedInboxUri ?? null,
+        actor.publicKeyId,
+        actor.publicKeyPem,
+        actor.displayName,
+        actor.fetchedAt,
+        now,
+        now,
+        JSON.stringify(actor.profile),
+        actor.outboxUri ?? null,
+        actor.featuredUri ?? null,
+      ),
+      HandleRow,
+    ),
+  );
+  if (written.isErr()) {
+    return err(written.error);
+  }
+  const row = written.value[0];
+  const webfingeredAt = row?.last_webfingered_at
+    ? IsoInstant.parse(row.last_webfingered_at)
+    : undefined;
+  if (row === undefined || webfingeredAt?.isErr()) {
+    return err(toRepositoryError("invalid remote actor row"));
+  }
+  return RemoteActor.fromFetched({
+    ...actor,
+    username: row.username,
+    domain: row.domain,
+    webfingeredAt: webfingeredAt?.unwrapOr(undefined),
+  }).mapErr(() => toRepositoryError("invalid remote actor row"));
+};
+
+/**
  * Cache an actor under the handle WebFinger just confirmed for it, and move
  * every other row cached under that handle back to its own URI's authority,
  * in one batch, so the handle names one actor: the one confirmed last.
@@ -274,6 +344,20 @@ export const upsertConfirmedRemoteActor = async (
       upsertRemoteActorStatement(actor),
     ])
   ).map(() => actor);
+
+/**
+ * Move every confirmed row cached under `handle` but `keptBy` back to its own
+ * URI's authority: the handle's own domain said the handle is `keptBy`'s, or,
+ * without `keptBy`, nobody's.
+ */
+export const releaseRemoteActorHandle = async (
+  db: D1Database,
+  handle: AccountHandle,
+  keptBy: string | undefined,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, demoteRemoteActorHandleSql(handle.username, handle.domain, keptBy ?? ""));
+  });
 
 /** Record that `actorUri` moved to `movedTo` (the caller has verified the move), or, with `null`, that it did not. */
 export const setRemoteActorMovedTo = async (

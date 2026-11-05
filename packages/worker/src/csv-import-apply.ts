@@ -7,8 +7,7 @@ import {
   Hostname,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { parseAccountHandle } from "./account-handle";
-import { type AccountRef, remoteRef, resolveAccountHandle } from "./account-ref";
+import { type AccountRef, resolveAccountHandle } from "./account-ref";
 import { findAccountById } from "./account-store";
 import { blockAccountTarget, unblockAccountTarget } from "./account-block";
 import { muteAccount, unmuteAccount } from "./block-mute-store";
@@ -38,7 +37,7 @@ import {
   removeListMembers,
 } from "./list-store";
 import { unfollowRemoteActor } from "./outbound-follow";
-import { findRemoteActorByHandle, findRemoteActorByUri } from "./remote-actor-store";
+import { findRemoteActorByUri } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
 import { bookmarkStatus, unbookmarkStatus } from "./status-interaction-store";
 import { findStatusById } from "./status-store";
@@ -82,26 +81,16 @@ const failed = (kind: "UnknownAccount" | "Refused" | "NotFollowed" | "Unsupporte
 });
 
 /**
- * The account a handle names. A remote account already cached is used as it is,
- * so a file of accounts the server knows costs no lookups; any other is
- * resolved by WebFinger within the federation limits (see `resolveAccountHandle`).
- * `undefined` when no account answers.
+ * The account a handle names, as `resolveAccountHandle` finds it: a remote
+ * account cached and confirmed within the day is used as it is, so a file of
+ * accounts the server knows costs few lookups; any other is resolved by
+ * WebFinger within the federation limits. `undefined` when no account answers.
  */
 const resolveHandle = async (
   env: Env,
   identity: InstanceIdentity,
   handle: string,
 ): Promise<Result<AccountRef | undefined, RepositoryError>> => {
-  const parsed = parseAccountHandle(handle);
-  if (parsed?.domain !== undefined && parsed.domain !== identity.domain) {
-    const cached = await findRemoteActorByHandle(env.DB, parsed.username, parsed.domain);
-    if (cached.isErr()) {
-      return err(cached.error);
-    }
-    if (cached.value) {
-      return ok(remoteRef(cached.value));
-    }
-  }
   const resolved = await resolveAccountHandle(env, identity, handle);
   if (resolved.isOk()) {
     return ok(resolved.value);
