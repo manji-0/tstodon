@@ -27,6 +27,7 @@ import {
   findRemoteActorByPublicKeyId as findRemoteActorByPublicKeyIdSql,
   findRemoteActorByUri as findRemoteActorByUriSql,
   listStaleRemoteActorUris as listStaleRemoteActorUrisSql,
+  markRemoteActorsRefreshAttempted as markRemoteActorsRefreshAttemptedSql,
   findRemoteActorsByUris as findRemoteActorsByUrisSql,
   findRemoteFollow as findRemoteFollowSql,
   listAcceptedRemoteFollowerInboxes as listAcceptedRemoteFollowerInboxesSql,
@@ -156,7 +157,10 @@ export const findRemoteActorByUri = async (
     }),
   );
 
-/** Up to `limit` actor URIs cached at or before `before`, in random order. */
+/**
+ * Up to `limit` actor URIs neither fetched nor tried by the refresh since
+ * `before`, the longest waiting first.
+ */
 export const listStaleRemoteActorUris = async (
   db: D1Database,
   before: string,
@@ -165,6 +169,15 @@ export const listStaleRemoteActorUris = async (
   (
     await runD1(async () => queryTyped(db, listStaleRemoteActorUrisSql(before, limit), ActorUriRow))
   ).map((rows) => rows.map((row) => row.actor_uri));
+
+/** Record that the stale-actor refresh tried these actors now, whatever came of it. */
+export const markRemoteActorsRefreshAttempted = async (
+  db: D1Database,
+  actorUris: ReadonlyArray<string>,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, markRemoteActorsRefreshAttemptedSql(jsonStringArray(actorUris), nowIso()));
+  });
 
 /** Cached remote actors keyed by actor URI; unknown or unreadable rows are left out. */
 export const findRemoteActorsByUris = async (

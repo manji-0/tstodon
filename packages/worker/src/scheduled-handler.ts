@@ -1,6 +1,9 @@
 import { writeMetric } from "./metrics";
 import { refreshStaleRemoteActors } from "./remote-actor-refresh";
 
+/** The hourly entry of `app/crons/outbox-maintenance.ts`; the six-hourly one fires at the same minute. */
+const HOURLY_CRON = "17 * * * *";
+
 export const handleScheduled = (
   controller: ScheduledController,
   env: Env,
@@ -19,8 +22,9 @@ export const handleScheduled = (
       env.OUTBOX_PROCESS_QUEUE.send({ kind: "PublishScheduledStatuses" }),
       // Delete the old posts of accounts with automated post deletion on.
       env.OUTBOX_PROCESS_QUEUE.send({ kind: "CleanUpStatuses" }),
-      // Re-fetch actors cached over a day ago, under the handle WebFinger confirms.
-      refreshStaleRemoteActors(env),
+      // Re-fetch actors cached over a day ago, under the handle WebFinger
+      // confirms; once an hour, not again when the six-hourly cron fires too.
+      controller.cron === HOURLY_CRON ? refreshStaleRemoteActors(env) : undefined,
     ]).then(() => {
       writeMetric(env, "cron", [1], [controller.cron, "scheduled"]);
     }),

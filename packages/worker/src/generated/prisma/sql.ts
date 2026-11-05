@@ -598,6 +598,8 @@ export * from "./sql/listUnindexedRemoteStatuses";
 
 export * from "./sql/markPollExpiryNotified";
 
+export * from "./sql/markRemoteActorsRefreshAttempted";
+
 export * from "./sql/markRemoteStatusTagsIndexed";
 
 export * from "./sql/muteStatus";
