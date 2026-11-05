@@ -5,6 +5,7 @@ import { schemaResult } from "@tstodon/core";
 import { OutboxJob } from "@tstodon/domain";
 import { authHeaders } from "../test/auth-fixture";
 import { processOutboxJob } from "./outbox-job";
+import { loadNotePoll, recordRemotePollVote } from "./poll-store";
 
 const json = async (
   path: string,
@@ -178,6 +179,31 @@ describe("local poll expiry notifications", () => {
     ).toMatchObject({ voted: false, own_votes: [] });
     await runExpiryJob();
     expect(await pollNotifications(voter)).toEqual([]);
+  });
+
+  it("counts no remote vote refused because the poll ended while it was cast", async () => {
+    const poll = await createPoll("remote-poll-expiry-race-author@example.com");
+    await endPoll(poll.pollId);
+    const record = await loadNotePoll(env.DB, poll.statusId);
+    if (!record) {
+      throw new Error("poll not found");
+    }
+    // The store's early expiry check still sees the poll open; the write does not.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2019-12-31T23:59:00.000Z"));
+    try {
+      const recorded = await recordRemotePollVote(env.DB, record, {
+        actorUri: "https://remote.example/users/late-voter",
+        objectUri: "https://remote.example/users/late-voter/votes/1",
+        title: "yes",
+      });
+      expect(recorded.isOk() && recorded.value.kind).toBe("Expired");
+    } finally {
+      clock.mockRestore();
+    }
+    const fetched = await json(`/api/v1/polls/${poll.pollId}`);
+    expect(
+      read(z.object({ votes_count: z.number(), voters_count: z.number() }), fetched.body),
+    ).toMatchObject({ votes_count: 0, voters_count: 0 });
   });
 
   it("leaves no vote of an ended poll waiting to be announced, the author's own included", async () => {
