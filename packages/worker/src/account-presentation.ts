@@ -121,11 +121,11 @@ const suspendedAccountDocument = (
 export const presentedAccountDocument = (
   identity: InstanceIdentity,
   presentation: AccountPresentation,
-  document: Readonly<Record<string, unknown>>,
+  document: Record<string, unknown>,
 ): Record<string, unknown> | undefined => {
   switch (presentation.kind) {
     case "Shown":
-      return { ...document };
+      return document;
     case "Suspended":
       return suspendedAccountDocument(identity, document);
     case "Hidden":
