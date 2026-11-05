@@ -92,11 +92,7 @@ const signRequest = async (
     key,
     encoder.encode(signingString),
   );
-  const bytes = new Uint8Array(signature);
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
+  const binary = String.fromCharCode(...new Uint8Array(signature));
   return ok(
     `keyId="${keyId}",algorithm="rsa-sha256",headers="${headers.join(" ")}",signature="${btoa(binary)}"`,
   );
@@ -197,22 +193,11 @@ const pemToSpki = (pem: string): ArrayBuffer => {
     .replace("-----BEGIN PUBLIC KEY-----", "")
     .replace("-----END PUBLIC KEY-----", "")
     .replace(/\s/g, "");
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes.buffer;
+  return Uint8Array.from(atob(b64), (char) => char.charCodeAt(0)).buffer;
 };
 
-const bytesFromB64 = (value: string): Uint8Array => {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-};
+const bytesFromB64 = (value: string): Uint8Array =>
+  Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
 
 const verifySignature = async (
   request: Request,

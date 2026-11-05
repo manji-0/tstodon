@@ -1,12 +1,7 @@
 import { Sensitive, type SensitiveValue } from "@tstodon/core";
 
 const toPem = (label: string, der: ArrayBuffer): string => {
-  const bytes = new Uint8Array(der);
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  const b64 = btoa(binary);
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(der)));
   const wrapped = b64.match(/.{1,64}/g)?.join("\n") ?? b64;
   return `-----BEGIN ${label}-----\n${wrapped}\n-----END ${label}-----`;
 };

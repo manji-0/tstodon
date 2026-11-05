@@ -158,11 +158,9 @@ export const deliveryWorkflowId = async (activityId: string, inboxUrl: string): 
     "SHA-256",
     new TextEncoder().encode(`${activityId}\n${inboxUrl}`),
   );
-  const bytes = new Uint8Array(digest).subarray(0, 16);
-  let hex = "";
-  for (const byte of bytes) {
-    hex += byte.toString(16).padStart(2, "0");
-  }
+  const hex = [...new Uint8Array(digest).subarray(0, 16)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
   return `outbox-${hex}`;
 };
 

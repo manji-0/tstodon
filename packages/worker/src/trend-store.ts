@@ -138,13 +138,13 @@ export const listTrendingLinks = async (
     db,
     ranked.map(([url]) => url),
   );
-  const links: TrendingLink[] = [];
-  for (const [url, usage] of ranked) {
-    const preview = cached.get(url);
-    const card = preview ? cardDocument(preview) : fallbackLinkCard(url);
-    if (card) {
-      links.push({ url, uses: usage.uses, document: { ...card, history: linkHistory(usage) } });
-    }
-  }
-  return ok(links);
+  return ok(
+    ranked.flatMap(([url, usage]): TrendingLink[] => {
+      const preview = cached.get(url);
+      const card = preview ? cardDocument(preview) : fallbackLinkCard(url);
+      return card
+        ? [{ url, uses: usage.uses, document: { ...card, history: linkHistory(usage) } }]
+        : [];
+    }),
+  );
 };

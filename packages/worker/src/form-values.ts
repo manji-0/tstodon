@@ -16,12 +16,7 @@ export const stringList = (value: ReadonlyArray<string> | string | undefined): s
 
 export const numberList = (value: ReadonlyArray<number | string> | number | string): number[] => {
   const items = typeof value === "number" || typeof value === "string" ? [value] : value;
-  const out: number[] = [];
-  for (const item of items) {
-    const n = typeof item === "number" ? item : Number.parseInt(item, 10);
-    if (Number.isInteger(n)) {
-      out.push(n);
-    }
-  }
-  return out;
+  return items
+    .map((item) => (typeof item === "number" ? item : Number.parseInt(item, 10)))
+    .filter((n) => Number.isInteger(n));
 };

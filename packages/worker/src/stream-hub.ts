@@ -398,10 +398,9 @@ export class StreamHub extends DurableObject<Env> {
     if (holding.length + adding.length > MAX_SOCKET_CHANNELS) {
       return { kind: "SocketFull" };
     }
-    const tagged = new Set(this.heldChannels().filter(isTagged).map(StreamChannel.key));
-    for (const channel of adding.filter(isTagged)) {
-      tagged.add(StreamChannel.key(channel));
-    }
+    const tagged = new Set(
+      [...this.heldChannels(), ...adding].filter(isTagged).map(StreamChannel.key),
+    );
     return tagged.size > MAX_HUB_TAGGED_CHANNELS ? { kind: "HubFull" } : undefined;
   }
 

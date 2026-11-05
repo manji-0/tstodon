@@ -44,28 +44,28 @@ const votesByStatus = (
   rows: ReadonlyArray<VoteRow>,
   viewerId: string,
 ): ReadonlyMap<string, RemotePollVotes> => {
-  const grouped = new Map<string, VoteRow[]>();
-  for (const row of rows) {
-    grouped.set(row.status_id, [...(grouped.get(row.status_id) ?? []), row]);
-  }
   return new Map(
-    [...grouped].map(([statusId, votes]): [string, RemotePollVotes] => {
-      const pending = votes.filter((vote) => vote.optimistic === 1);
-      const pendingByChoice = new Map<number, number>();
-      for (const vote of pending) {
-        pendingByChoice.set(vote.choice_index, (pendingByChoice.get(vote.choice_index) ?? 0) + 1);
-      }
-      return [
-        statusId,
-        {
-          ownChoices: votes
-            .filter((vote) => vote.account_id === viewerId)
-            .map((vote) => vote.choice_index),
-          pendingByChoice,
-          pendingVoters: new Set(pending.map((vote) => vote.account_id)).size,
-        },
-      ];
-    }),
+    [...Map.groupBy(rows, (row) => row.status_id)].map(
+      ([statusId, votes]): [string, RemotePollVotes] => {
+        const pending = votes.filter((vote) => vote.optimistic === 1);
+        const pendingByChoice = new Map(
+          [...Map.groupBy(pending, (vote) => vote.choice_index)].map(([choice, voters]) => [
+            choice,
+            voters.length,
+          ]),
+        );
+        return [
+          statusId,
+          {
+            ownChoices: votes
+              .filter((vote) => vote.account_id === viewerId)
+              .map((vote) => vote.choice_index),
+            pendingByChoice,
+            pendingVoters: new Set(pending.map((vote) => vote.account_id)).size,
+          },
+        ];
+      },
+    ),
   );
 };
 

@@ -180,13 +180,9 @@ export const visibleThreadStatuses = async (
   viewerId: string | undefined,
 ): Promise<ThreadStatus[]> => {
   const suppressed = viewerId ? await listSuppressedAuthors(db, viewerId) : undefined;
-  const blockedDomains = new Set(await restrictedDomains(db));
-  if (viewerId) {
-    const own = await listBlockedDomains(db, viewerId);
-    for (const domain of own.isOk() ? own.value : []) {
-      blockedDomains.add(domain);
-    }
-  }
+  const restricted = await restrictedDomains(db);
+  const own = viewerId ? await listBlockedDomains(db, viewerId) : undefined;
+  const blockedDomains = new Set([...restricted, ...(own?.isOk() ? own.value : [])]);
   const actors = await findRemoteActorsByUris(
     db,
     statuses.flatMap((node) => (node.kind === "Remote" ? [node.status.actorUri] : [])),

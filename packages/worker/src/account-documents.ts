@@ -28,7 +28,6 @@ export const accountDocumentsByIds = async (
   identity: InstanceIdentity,
   ids: ReadonlyArray<string>,
 ): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
-  const documents = new Map<string, Record<string, unknown>>();
   const remote = new Map<string, string>();
   const local: string[] = [];
   for (const id of new Set(ids)) {
@@ -43,52 +42,53 @@ export const accountDocumentsByIds = async (
     findAccountsByIds(env.DB, local),
     findRemoteActorsByUris(env.DB, [...remote.keys()]),
   ]);
-  if (locals.isOk()) {
-    for (const [id, document] of await mastodonAccountDocuments(env, identity, [
-      ...locals.value.values(),
-    ])) {
-      documents.set(id, document);
-    }
+  const localDocuments = locals.isOk()
+    ? await mastodonAccountDocuments(env, identity, [...locals.value.values()])
+    : new Map<string, Record<string, unknown>>();
+  if (actors.isErr()) {
+    return localDocuments;
   }
-  if (actors.isOk()) {
-    const moved = await movedToDocuments(
-      env,
-      identity,
-      [...actors.value.values()].flatMap((actor) => (actor.movedTo ? [actor.movedTo] : [])),
-    );
-    for (const [actorUri, id] of remote) {
+  const moved = await movedToDocuments(
+    env,
+    identity,
+    [...actors.value.values()].flatMap((actor) => (actor.movedTo ? [actor.movedTo] : [])),
+  );
+  const remoteDocuments = [...remote].flatMap(
+    ([actorUri, id]): [string, Record<string, unknown>][] => {
       const actor = actors.value.get(actorUri);
-      if (actor) {
-        const target = actor.movedTo ? moved.get(actor.movedTo) : undefined;
-        documents.set(id, {
-          ...(target ? { moved: target } : {}),
-          ...mastodonRemoteAccount(identity, actor),
-        });
+      if (!actor) {
+        return [];
       }
-    }
-  }
-  return documents;
+      const target = actor.movedTo ? moved.get(actor.movedTo) : undefined;
+      return [
+        [id, { ...(target ? { moved: target } : {}), ...mastodonRemoteAccount(identity, actor) }],
+      ];
+    },
+  );
+  return new Map([...localDocuments, ...remoteDocuments]);
 };
 
 /** `documents`, keyed by local account id, with `moved` for the accounts that moved away. */
 const withLocalMoves = async (
   env: Env,
   identity: InstanceIdentity,
-  documents: Map<string, Record<string, unknown>>,
-): Promise<Map<string, Record<string, unknown>>> => {
+  documents: ReadonlyMap<string, Record<string, unknown>>,
+): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
   const targets = await listAccountMoveTargets(env.DB, [...documents.keys()]);
   if (targets.isErr() || targets.value.size === 0) {
     return documents;
   }
   const moved = await movedToDocuments(env, identity, [...targets.value.values()]);
-  for (const [id, targetUri] of targets.value) {
-    const document = documents.get(id);
-    const target = moved.get(targetUri);
-    if (document && target) {
-      documents.set(id, { moved: target, ...document });
-    }
-  }
-  return documents;
+  const movedTo = (id: string) => {
+    const targetUri = targets.value.get(id);
+    return targetUri === undefined ? undefined : moved.get(targetUri);
+  };
+  return new Map(
+    [...documents].map(([id, document]) => {
+      const target = movedTo(id);
+      return [id, target ? { moved: target, ...document } : document];
+    }),
+  );
 };
 
 /**
@@ -101,9 +101,8 @@ const movedToDocuments = async (
   identity: InstanceIdentity,
   actorUris: ReadonlyArray<string>,
 ): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
-  const documents = new Map<string, Record<string, unknown>>();
   if (actorUris.length === 0) {
-    return documents;
+    return new Map();
   }
   const usernames = actorUris.flatMap((uri) => {
     const username = parseLocalActorUsername(identity, uri);
@@ -116,20 +115,20 @@ const movedToDocuments = async (
       actorUris.filter((uri) => parseLocalActorUsername(identity, uri) === undefined),
     ),
   ]);
-  if (locals.isOk()) {
-    const targets = await mastodonAccountDocuments(env, identity, locals.value, false);
-    for (const document of targets.values()) {
-      if (typeof document.uri === "string") {
-        documents.set(document.uri, document);
-      }
-    }
-  }
-  if (actors.isOk()) {
-    for (const [uri, actor] of actors.value) {
-      documents.set(uri, mastodonRemoteAccount(identity, actor));
-    }
-  }
-  return documents;
+  const localTargets = locals.isOk()
+    ? [...(await mastodonAccountDocuments(env, identity, locals.value, false)).values()]
+    : [];
+  return new Map([
+    ...localTargets.flatMap((document): [string, Record<string, unknown>][] =>
+      typeof document.uri === "string" ? [[document.uri, document]] : [],
+    ),
+    ...[...(actors.isOk() ? actors.value : [])].map(
+      ([uri, actor]): [string, Record<string, unknown>] => [
+        uri,
+        mastodonRemoteAccount(identity, actor),
+      ],
+    ),
+  ]);
 };
 
 export const mastodonAccount = (
@@ -259,9 +258,8 @@ export const mastodonAccountDocuments = async (
   accounts: ReadonlyArray<LocalAccount>,
   includeMoved = true,
 ): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
-  const documents = new Map<string, Record<string, unknown>>();
   if (accounts.length === 0) {
-    return documents;
+    return new Map();
   }
   const accountIds = accounts.map((account) => account.id);
   const [counts, profiles, emojis] = await Promise.all([
@@ -269,8 +267,8 @@ export const mastodonAccountDocuments = async (
     listAccountProfiles(env.DB, accountIds),
     loadCustomEmojis(env, identity.mediaPublicBaseUrl),
   ]);
-  for (const account of accounts) {
-    documents.set(
+  const documents = new Map(
+    accounts.map((account) => [
       account.id,
       mastodonAccount(
         identity,
@@ -283,8 +281,8 @@ export const mastodonAccountDocuments = async (
         emojisInText(account.displayName, emojis),
         (profiles.isOk() ? profiles.value.get(account.id) : undefined) ?? EMPTY_ACCOUNT_PROFILE,
       ),
-    );
-  }
+    ]),
+  );
   return includeMoved ? withLocalMoves(env, identity, documents) : documents;
 };
 

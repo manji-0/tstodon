@@ -307,13 +307,12 @@ export const getV1Accounts = async (c: Context<{ Bindings: Env }, "/api/v1/accou
   ].slice(0, MULTIPLE_ACCOUNTS_LIMIT);
   // Each lookup is one query for the whole batch; unknown and suspended
   // accounts are left out rather than failing it.
-  const remoteUris = new Map<string, string>();
-  for (const id of ids) {
-    const actorUri = RemoteAccountId.decode(id);
-    if (actorUri.isOk()) {
-      remoteUris.set(id, actorUri.value);
-    }
-  }
+  const remoteUris = new Map(
+    ids.flatMap((id): [string, string][] => {
+      const actorUri = RemoteAccountId.decode(id);
+      return actorUri.isOk() ? [[id, actorUri.value]] : [];
+    }),
+  );
   const [locals, standings, remotes] = await Promise.all([
     findAccountsByIds(c.env.DB, ids),
     listAccountStandings(c.env.DB, ids),

@@ -77,14 +77,12 @@ export const mediaAttributesFromForm = (raw: unknown): ReadonlyArray<MediaAttrib
     }
     byIndex.set(index, entry);
   }
-  const attributes: MediaAttribute[] = [];
-  for (const [, entry] of [...byIndex.entries()].toSorted(([left], [right]) => left - right)) {
-    const id = entry.id;
-    if (id !== undefined && id.length > 0) {
-      attributes.push({ ...entry, id });
-    }
-  }
-  return attributes;
+  return [...byIndex.entries()]
+    .toSorted(([left], [right]) => left - right)
+    .flatMap(([, entry]): MediaAttribute[] => {
+      const id = entry.id;
+      return id !== undefined && id.length > 0 ? [{ ...entry, id }] : [];
+    });
 };
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.

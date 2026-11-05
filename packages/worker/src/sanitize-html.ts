@@ -185,10 +185,9 @@ const safeAttributes = (element: string, source: string): string => {
       kept.set(name, decodeAttribute(raw));
     }
   }
-  let out = "";
-  for (const [name, value] of kept) {
-    out += name === "reversed" ? " reversed" : ` ${name}="${escapeHtml(value)}"`;
-  }
+  const out = [...kept]
+    .map(([name, value]) => (name === "reversed" ? " reversed" : ` ${name}="${escapeHtml(value)}"`))
+    .join("");
   return element === "a" ? `${out} rel="nofollow noopener" target="_blank"` : out;
 };
 

@@ -109,24 +109,26 @@ export const getV1FollowRequests = async (
       remote.value.map((requester) => requester.remoteActorUri),
     ),
   ]);
-  const entries: Entry[] = [];
-  for (const requester of local.value) {
-    const document = localDocuments.get(requester.followerAccountId);
-    if (document) {
-      entries.push({ createdAt: requester.createdAt, document });
-    }
-  }
-  for (const requester of remote.value) {
-    const actor = actors.isOk() ? actors.value.get(requester.remoteActorUri) : undefined;
-    if (actor) {
-      entries.push({
-        createdAt: requester.createdAt,
-        document: mastodonRemoteAccount(identity.value, actor),
-      });
-    }
-  }
-  entries.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  return c.json(entries.map((entry) => entry.document));
+  const entries: Entry[] = [
+    ...local.value.flatMap((requester): Entry[] => {
+      const document = localDocuments.get(requester.followerAccountId);
+      return document ? [{ createdAt: requester.createdAt, document }] : [];
+    }),
+    ...remote.value.flatMap((requester): Entry[] => {
+      const actor = actors.isOk() ? actors.value.get(requester.remoteActorUri) : undefined;
+      return actor
+        ? [
+            {
+              createdAt: requester.createdAt,
+              document: mastodonRemoteAccount(identity.value, actor),
+            },
+          ]
+        : [];
+    }),
+  ];
+  return c.json(
+    entries.toSorted((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map((entry) => entry.document),
+  );
 };
 
 export const postV1FollowRequestsByIdAuthorize = async (

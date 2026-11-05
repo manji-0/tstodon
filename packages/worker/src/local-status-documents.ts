@@ -133,10 +133,7 @@ export const mastodonStatuses = async (
 
   const instanceEmojis = await loadCustomEmojis(env, identity.mediaPublicBaseUrl);
 
-  const byId = new Map<string, LocalStatus>();
-  for (const status of statuses) {
-    byId.set(status.id, status);
-  }
+  const byId = new Map<string, LocalStatus>(statuses.map((status) => [status.id, status]));
 
   // Resolve reblog targets (including reblog-of-reblog) and reply parents.
   for (let pass = 0; pass < 4; pass += 1) {
@@ -237,19 +234,17 @@ export const mastodonStatuses = async (
   const mediaById = mediaResult.isOk() ? mediaResult.value : new Map<string, MediaRow>();
   const sensitizedIds = sensitizedResult.isOk() ? sensitizedResult.value : new Set<string>();
   const profiles = profilesResult.isOk() ? profilesResult.value : new Map<string, AccountProfile>();
-  const cards = new Map<string, Record<string, unknown>>();
-  if (cardsResult.isOk()) {
-    for (const [statusId, raw] of cardsResult.value) {
-      const card = parseCardJson(raw);
-      if (card) {
-        cards.set(statusId, cardDocument(card));
-      }
-    }
-  }
+  const cards = new Map(
+    [...(cardsResult.isOk() ? cardsResult.value : [])].flatMap(
+      ([statusId, raw]): [string, Record<string, unknown>][] => {
+        const card = parseCardJson(raw);
+        return card ? [[statusId, cardDocument(card)]] : [];
+      },
+    ),
+  );
 
-  const accountDocs = new Map<string, Record<string, unknown>>();
-  for (const [id, account] of accounts) {
-    accountDocs.set(
+  const accountDocs = new Map(
+    [...accounts].map(([id, account]) => [
       id,
       mastodonAccount(
         identity,
@@ -258,8 +253,8 @@ export const mastodonStatuses = async (
         emojisInText(account.displayName, instanceEmojis),
         profiles.get(id) ?? EMPTY_ACCOUNT_PROFILE,
       ),
-    );
-  }
+    ]),
+  );
 
   const quoteCountsResult = await quoteCountsByStatusIds(env.DB, noteIdsOf(allStatuses));
   const quoteCounts = quoteCountsResult.isOk()
@@ -457,12 +452,8 @@ export const mastodonStatuses = async (
     };
   };
 
-  const documents: Record<string, unknown>[] = [];
-  for (const status of statuses) {
+  return statuses.flatMap((status) => {
     const document = render(status);
-    if (document) {
-      documents.push(document);
-    }
-  }
-  return documents;
+    return document ? [document] : [];
+  });
 };

@@ -168,14 +168,14 @@ const mentionedLocalUsernames = (identity: InstanceIdentity, raw: unknown): stri
     ),
     ...(note.isOk() ? [...stringList(note.value.to), ...stringList(note.value.cc)] : []),
   ];
-  const usernames = new Set<string>();
-  for (const uri of candidates) {
-    const username = parseLocalActorUsername(identity, uri);
-    if (username && InstanceIdentity.actorUrl(identity, username) === uri) {
-      usernames.add(username);
-    }
-  }
-  return [...usernames];
+  return [
+    ...new Set(
+      candidates.flatMap((uri) => {
+        const username = parseLocalActorUsername(identity, uri);
+        return username && InstanceIdentity.actorUrl(identity, username) === uri ? [username] : [];
+      }),
+    ),
+  ];
 };
 
 /**
