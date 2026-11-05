@@ -26,15 +26,20 @@ import { mutedThreadStatusIds } from "./status-mute-store";
 import { publishToAccount } from "./stream-publish";
 
 /**
- * Notification kinds that bypass the recipient's notification policy: they tell
- * admins about moderation work, tell an account of a moderation decision, or
- * tell a voter that a poll ended (Mastodon's `poll` is not filterable).
+ * Notification kinds that bypass the recipient's notification policy: the
+ * types Mastodon 4.5 marks `filterable: false` in `Notification::PROPERTIES`.
+ * Blocks and mutes still drop them.
  */
 const POLICY_EXEMPT_KINDS: ReadonlyArray<string> = [
-  "admin.report",
-  "admin.sign_up",
-  "severed_relationships",
+  "status",
   "poll",
+  "update",
+  "quoted_update",
+  "severed_relationships",
+  "moderation_warning",
+  "annual_report",
+  "admin.sign_up",
+  "admin.report",
 ];
 
 /** What delivering a notification reads and writes. */

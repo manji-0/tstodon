@@ -229,6 +229,24 @@ describe("update notifications to local boosters", () => {
     expect(await updates(reader, id)).toEqual([]);
   });
 
+  it("notifies a booster whose policy drops strangers, as `update` is not filterable", async () => {
+    const author = await remoteActor("notify-policy-author");
+    const id = await create(author, "policy", "<p>v1</p>");
+    const booster = await boosted("update-notify-strict@example.com", id);
+    const policy = await SELF.fetch("https://example.com/api/v2/notifications/policy", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...booster },
+      body: JSON.stringify({ for_not_following: "drop", for_not_followers: "drop" }),
+    });
+    expect(policy.status).toBe(200);
+    await update(
+      author,
+      "policy-1",
+      note(author, "policy", "<p>v2</p>", { updated: "2026-10-21T00:00:00.000Z" }),
+    );
+    expect(await updates(booster, id)).toEqual(["update"]);
+  });
+
   it("sends nothing to a booster who muted the author", async () => {
     const author = await remoteActor("notify-muted-author");
     const id = await create(author, "muted", "<p>v1</p>");
