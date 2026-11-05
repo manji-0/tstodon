@@ -86,6 +86,19 @@ const WEB_APP_PATHS: ReadonlyArray<RegExp> = [
 export const isWebAppPath = (path: string): boolean =>
   WEB_APP_PATHS.some((pattern) => pattern.test(path));
 
+/** A Vite output file: its name ends in an 8-character content hash. */
+const HASHED_PACK = /^\/packs\/(?:[^/]+\/)*[^/]+-[\w-]{8}\.\w+$/;
+
+/**
+ * The Cache-Control for a static asset, when it differs from the platform's
+ * revalidate-every-time default. A content-hashed pack never changes under
+ * its name, so a browser keeps it instead of revalidating the app's ~180
+ * modules (each a Worker invocation) on every page load. The build's
+ * fixed-name files, `tstodon-web.json` and `sw.js`, keep the default.
+ */
+export const packCacheControl = (pathname: string): string | undefined =>
+  HASHED_PACK.test(pathname) ? "public, max-age=31536000, immutable" : undefined;
+
 const wantsActivityJson = (accept: string | undefined): boolean =>
   /application\/(?:activity\+json|ld\+json)/.test(accept ?? "");
 

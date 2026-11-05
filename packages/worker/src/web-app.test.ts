@@ -5,7 +5,7 @@ import { accessTokenFor, authHeaders, signedInAccount } from "../test/auth-fixtu
 import { StreamEvent } from "@tstodon/domain";
 import { publishToAccount } from "./stream-publish";
 import { ORIGIN, read, signUp } from "../test/passkey-browser";
-import { isWebAppPath, webAppPage, type WebManifest } from "./web-app";
+import { isWebAppPath, packCacheControl, webAppPage, type WebManifest } from "./web-app";
 
 const MANIFEST: WebManifest = {
   ref: "test",
@@ -110,6 +110,33 @@ describe("Mastodon web app", () => {
     expect(icon.status).toBe(200);
     expect(icon.headers.get("content-type")).toBe("image/png");
   });
+
+  it("lets browsers keep the content-hashed packs and revalidate the rest", () => {
+    const immutable = "public, max-age=31536000, immutable";
+    expect(packCacheControl("/packs/common-lwvm9nKJ.js")).toBe(immutable);
+    expect(packCacheControl("/packs/ImmutablePropTypes-C_rOJ6cM.js")).toBe(immutable);
+    expect(packCacheControl("/packs/assets/themes/default-Dk-Jc7j1.css")).toBe(immutable);
+    expect(packCacheControl("/packs/tstodon-web.json")).toBeUndefined();
+    expect(packCacheControl("/packs/sw.js")).toBeUndefined();
+    expect(packCacheControl("/sw.js")).toBeUndefined();
+    expect(packCacheControl("/emoji/1f600.svg")).toBeUndefined();
+    expect(packCacheControl("/packsx/common-lwvm9nKJ.js")).toBeUndefined();
+  });
+
+  it.skipIf(!webBuilt)(
+    "serves the built packs cacheable and the manifest revalidated",
+    async () => {
+      const manifest = await SELF.fetch(`${ORIGIN}/packs/tstodon-web.json`);
+      expect(manifest.headers.get("cache-control") ?? "").not.toContain("immutable");
+      const { common } = read(
+        z.object({ common: z.object({ js: z.string() }) }),
+        await manifest.json(),
+      );
+      const pack = await SELF.fetch(`${ORIGIN}${common.js}`);
+      expect(pack.status).toBe(200);
+      expect(pack.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    },
+  );
 
   it("stores the web UI's settings", async () => {
     const headers = await authHeaders("web-settings@example.com");
