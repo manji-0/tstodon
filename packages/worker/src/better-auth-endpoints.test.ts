@@ -28,12 +28,18 @@ const sessionRows = async (userId: string) =>
   ).results;
 
 const passkeyRows = async (userId: string) =>
-  (await env.DB.prepare(`SELECT * FROM "passkey" WHERE "userId" = ? ORDER BY "id"`).bind(userId).all())
-    .results;
+  (
+    await env.DB.prepare(`SELECT * FROM "passkey" WHERE "userId" = ? ORDER BY "id"`)
+      .bind(userId)
+      .all()
+  ).results;
 
 const accountRows = async (userId: string) =>
-  (await env.DB.prepare(`SELECT * FROM "account" WHERE "userId" = ? ORDER BY "id"`).bind(userId).all())
-    .results;
+  (
+    await env.DB.prepare(`SELECT * FROM "account" WHERE "userId" = ? ORDER BY "id"`)
+      .bind(userId)
+      .all()
+  ).results;
 
 const makeAdmin = async (username: string): Promise<void> => {
   await env.DB.prepare(`UPDATE "user" SET "role" = 'admin' WHERE "id" = ?`)
@@ -137,7 +143,9 @@ describe("Better Auth endpoints tstodon does not call", () => {
   it("keeps /update-session from changing the session", async () => {
     const { fetcher } = await signUp("bae_update_session");
     const userId = await userIdOf("bae_update_session");
-    await env.DB.prepare(`UPDATE "session" SET "updatedAt" = "updatedAt" - 3600000 WHERE "userId" = ?`)
+    await env.DB.prepare(
+      `UPDATE "session" SET "updatedAt" = "updatedAt" - 3600000 WHERE "userId" = ?`,
+    )
       .bind(userId)
       .run();
     const before = await sessionRows(userId);
@@ -204,9 +212,6 @@ describe("Better Auth endpoints tstodon does not call", () => {
 
 type Target = { id: string; sessionToken: string };
 
-const shortId = (text: string): string =>
-  [...text].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) % 1_000_000, 7).toString();
-
 describe("Better Auth admin endpoints", () => {
   const adminAndTarget = async (prefix: string) => {
     const admin = await signUp(`${prefix}_admin`);
@@ -244,7 +249,9 @@ describe("Better Auth admin endpoints", () => {
     ["/admin/remove-user", (target: Target) => ({ userId: target.id })],
   ] as const)("keeps %s from changing another user or their sessions", async (path, body) => {
     // Usernames are at most 30 characters, too short for the endpoint name.
-    const { admin, target, snapshot } = await adminAndTarget(`bae_${shortId(path)}`);
+    const { admin, target, snapshot } = await adminAndTarget(
+      `bae_${crypto.randomUUID().slice(0, 8)}`,
+    );
     const before = await snapshot();
     expect(read(z.object({ role: z.string() }), before.user).role).toBe("user");
 
@@ -270,7 +277,10 @@ describe("Better Auth admin endpoints", () => {
 
   it("does not let an admin cookie list users and their sessions", async () => {
     const { admin, targetId } = await adminAndTarget("bae_admin_list");
-    const [targetSession] = read(z.array(z.object({ token: z.string() })), await sessionRows(targetId));
+    const [targetSession] = read(
+      z.array(z.object({ token: z.string() })),
+      await sessionRows(targetId),
+    );
 
     const users = await (await admin("/api/auth/admin/list-users")).text();
     const sessions = await (
@@ -291,9 +301,9 @@ describe("Better Auth endpoints the pages call", () => {
 
     const session = await second("/api/auth/get-session");
     expect(session.status).toBe(200);
-    expect(read(z.object({ user: z.object({ id: z.string() }) }), await session.json()).user.id).toBe(
-      userId,
-    );
+    expect(
+      read(z.object({ user: z.object({ id: z.string() }) }), await session.json()).user.id,
+    ).toBe(userId);
 
     const signedOut = await postJson(second, "/api/auth/sign-out", {});
     expect(signedOut.status).toBe(200);

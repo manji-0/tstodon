@@ -84,7 +84,7 @@ pnpm -C packages/worker exec wrangler d1 execute tstodon --remote --command \
   "UPDATE \"user\" SET role = 'admin' WHERE id = (SELECT auth_user_id FROM accounts WHERE username = 'alice')"
 ```
 
-After that, admins can manage roles and bans through the Better Auth admin endpoints (`/api/auth/admin/*`). The passkey step only accepts a live link token as its `context`, so no passkey (and no account) exists without a confirmed address. Username, email, and the email-domain / canonical-email sign-up blocks are checked at both steps. Intents live in `signup_intents` (token stored as a SHA-256 digest).
+Change a role the same way; admins suspend accounts on the admin accounts page (`/admin/accounts`). `app/auth.ts` closes every Better Auth endpoint the pages do not call, the admin plugin's `/api/auth/admin/*` included: they check only that a session exists (and, for the admin ones, its role), not that the sign-in is recent, so a stale or stolen cookie could end, ban, impersonate, or create users through them. The open ones are `/get-session`, `/sign-out`, and the passkey sign-in and registration endpoints. The passkey step only accepts a live link token as its `context`, so no passkey (and no account) exists without a confirmed address. Username, email, and the email-domain / canonical-email sign-up blocks are checked at both steps. Intents live in `signup_intents` (token stored as a SHA-256 digest).
 
 ```sh
 openssl rand -base64 32 | pnpm -C packages/worker exec wrangler secret put BETTER_AUTH_SECRET

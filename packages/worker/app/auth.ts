@@ -39,12 +39,27 @@ const sessionLookupKeepsCaching = {
 } satisfies BetterAuthPlugin;
 
 /**
- * The Password and security page (`/auth/edit`) is the one place a passkey is
- * removed or a session ended: it refuses the last passkey, and asks for a
- * recent sign-in. Better Auth's own endpoints would let any session skip
- * both, so they are closed (in `before` hooks: an `after` hook runs once the
- * endpoint has already deleted), and a signed-in user adding a passkey needs
- * the same recent sign-in.
+ * The Better Auth endpoints tstodon calls: Void's session lookup, the sign-in
+ * and sign-up pages' passkey ceremonies, and the sign-out button.
+ */
+const OPEN_ENDPOINTS: ReadonlySet<string> = new Set([
+  "/get-session",
+  "/sign-out",
+  "/passkey/generate-authenticate-options",
+  "/passkey/verify-authentication",
+  "/passkey/generate-register-options",
+  "/passkey/verify-registration",
+]);
+
+/**
+ * Every other Better Auth endpoint is closed. Most only check that a session
+ * exists, and the admin ones only that its user is an admin, so a stale or
+ * stolen cookie could rename the user, list every session token, or end,
+ * ban, impersonate, or create users. The Password and security page
+ * (`/auth/edit`) and the admin pages do those jobs instead, and ask for a
+ * recent sign-in where it matters. The guard is a `before` hook: an `after`
+ * hook runs once the endpoint has already made its change. A signed-in user
+ * adding a passkey needs the same recent sign-in as the page.
  */
 const PasskeyNameBodySchema = z.object({ name: z.string().optional() });
 
@@ -53,21 +68,10 @@ const securityPageGuards = {
   hooks: {
     before: [
       {
-        matcher: (ctx) =>
-          ctx.path === "/revoke-session" ||
-          ctx.path === "/revoke-sessions" ||
-          ctx.path === "/revoke-other-sessions",
+        matcher: (ctx) => !OPEN_ENDPOINTS.has(ctx.path ?? ""),
         handler: createAuthMiddleware(async () => {
           throw new APIError("FORBIDDEN", {
-            message: "End a session on the Password and security page.",
-          });
-        }),
-      },
-      {
-        matcher: (ctx) => ctx.path === "/passkey/delete-passkey",
-        handler: createAuthMiddleware(async () => {
-          throw new APIError("FORBIDDEN", {
-            message: "Remove a passkey on the Password and security page.",
+            message: "Manage your account on the Password and security page (/auth/edit).",
           });
         }),
       },
