@@ -154,14 +154,11 @@ const applyNoteUpdate = async (
   }
   if (added.length > 0) {
     const post = await remoteMentionedPost(env.DB, identity, target.raw, stored.value, mentioned);
-    if (post.isErr()) {
-      return err(post.error);
-    }
     for (const accountId of added) {
       await notifyFromRemote(
         env,
         { accountId, actorUri: signer.actorUri, kind: "mention", statusId: stored.value.id },
-        post.value,
+        post,
       );
     }
   }

@@ -215,10 +215,15 @@ export const remoteMentionedPost = async (
   raw: unknown,
   status: RemoteStatusValue,
   localAccountIds: ReadonlyArray<string>,
-): Promise<Result<MentionedPost, RepositoryError>> =>
-  (await findThreadParent(db, identity, { kind: "Remote", status })).map((parent) =>
-    mentionedPost([...localAccountIds, ...mentionHrefs(raw)], parent),
+): Promise<MentionedPost> => {
+  // The note is already stored: a failed parent read screens without the
+  // parent author rather than failing the delivery after its writes.
+  const parent = await findThreadParent(db, identity, { kind: "Remote", status });
+  return mentionedPost(
+    [...localAccountIds, ...mentionHrefs(raw)],
+    parent.isOk() ? parent.value : undefined,
   );
+};
 
 const recordMentions = async (
   env: Env,
@@ -239,14 +244,11 @@ const recordMentions = async (
   }
   if (notify && accountIds.length > 0) {
     const post = await remoteMentionedPost(env.DB, identity, raw, status, accountIds);
-    if (post.isErr()) {
-      return err(post.error);
-    }
     for (const accountId of accountIds) {
       await notifyFromRemote(
         env,
         { accountId, actorUri: actor.actorUri, kind: "mention", statusId },
-        post.value,
+        post,
       );
     }
   }
