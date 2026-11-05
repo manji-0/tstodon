@@ -59,10 +59,19 @@ const search = async (c: Context<{ Bindings: Env }>) => {
   }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
   const query = (c.req.query("q") ?? "").trim();
-  const type = c.req.query("type") ?? "all";
+  // Mastodon's `blank?`: an empty `type` is no type.
+  const requestedType = (c.req.query("type") ?? "").trim();
+  const type = requestedType.length === 0 ? "all" : requestedType;
   const limit = queryLimit(c.req.query("limit"), 5);
+  const rawOffset = (c.req.query("offset") ?? "").trim();
+  if (rawOffset.length > 0 && viewerId === undefined) {
+    return c.json(
+      { error: "Search queries pagination is not supported without authentication" },
+      401,
+    );
+  }
   // Mastodon pages by `offset` only when one result `type` is asked for.
-  const offset = c.req.query("type") === undefined ? 0 : queryOffset(c.req.query("offset"));
+  const offset = requestedType.length === 0 ? 0 : queryOffset(rawOffset);
   const resolveRaw = c.req.query("resolve");
   const resolve = resolveRaw === "true" || resolveRaw === "1";
   if (query.length === 0) {
@@ -70,34 +79,36 @@ const search = async (c: Context<{ Bindings: Env }>) => {
   }
   const accountDocs: Record<string, unknown>[] = [];
   if (type !== "statuses" && type !== "hashtags") {
+    // As Mastodon, the resolved account joins only the first page, first,
+    // and counts inside `limit`.
+    const resolved =
+      resolve && offset === 0 ? await resolveSearchActor(c.env, identity.value, query) : undefined;
+    const exact = await searchableRemoteActors(c.env, resolved ? [resolved] : []);
+    if (exact.isErr()) {
+      return jsonRepositoryError(c, exact.error.message);
+    }
     const page = await searchAccountsPage(
       c.env,
-      { localTerms: query, remoteTerms: query.replace(/^@/, ""), following: undefined },
-      limit,
+      { localTerms: query, remoteTerms: query.replace(/^@/, ""), scope: { kind: "Everyone" } },
+      limit - exact.value.length,
       offset,
     );
     if (page.isErr()) {
       return jsonRepositoryError(c, page.error.message);
     }
     const rendered = await mastodonAccountDocuments(c.env, identity.value, page.value.local);
-    accountDocs.push(
+    const seen = new Set<string>();
+    for (const document of [
+      ...exact.value.map((actor) => mastodonRemoteAccount(identity.value, actor)),
       ...documentsInOrder(
         page.value.local.map((account) => account.id),
         rendered,
       ),
       ...page.value.remote.map((actor) => mastodonRemoteAccount(identity.value, actor)),
-    );
-    // As Mastodon, the resolved account only joins the first page.
-    const resolved =
-      resolve && offset === 0 ? await resolveSearchActor(c.env, identity.value, query) : undefined;
-    const shown = await searchableRemoteActors(c.env, resolved ? [resolved] : []);
-    if (shown.isErr()) {
-      return jsonRepositoryError(c, shown.error.message);
-    }
-    const seen = new Set(accountDocs.map((document) => String(document.id)));
-    for (const actor of shown.value) {
-      const document = mastodonRemoteAccount(identity.value, actor);
-      if (!seen.has(String(document.id))) {
+    ]) {
+      const id = String(document.id);
+      if (!seen.has(id)) {
+        seen.add(id);
         accountDocs.push(document);
       }
     }

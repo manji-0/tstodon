@@ -522,9 +522,7 @@ describe("account search", () => {
         (account) => account.id,
       );
     };
-    expect(await v2("q=blanktype&type=&limit=2&offset=2")).toEqual(
-      await v2("q=blanktype&limit=2"),
-    );
+    expect(await v2("q=blanktype&type=&limit=2&offset=2")).toEqual(await v2("q=blanktype&limit=2"));
   });
 
   it("counts the resolved account inside limit and lists it first in /api/v2/search", async () => {

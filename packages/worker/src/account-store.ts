@@ -15,6 +15,7 @@ import { queryTyped, runTyped } from "./typed-sql";
 import { quotePolicyFromSql, quotePolicySql, visibilitySql } from "./sql-enums";
 import {
   countAccounts as countAccountsSql,
+  countSearchAccounts as countSearchAccountsSql,
   deleteAccount as deleteAccountSql,
   findAccountByAuthUserId as findAccountByAuthUserIdSql,
   findAccountByEmail as findAccountByEmailSql,
@@ -26,6 +27,7 @@ import {
   listDirectoryAccountsByActive as listDirectoryAccountsByActiveSql,
   listDirectoryAccountsByNew as listDirectoryAccountsByNewSql,
   searchAccounts as searchAccountsSql,
+  searchFollowedAccounts as searchFollowedAccountsSql,
   setAccountLocked as setAccountLockedSql,
   updateAccountProfile as updateAccountProfileSql,
 } from "./generated/prisma/sql";
@@ -180,22 +182,51 @@ export const findAccountByAuthUserId = async (
   return row === undefined ? ok(undefined) : accountFromRow(row);
 };
 
+/** Whose accounts a local account search lists: anyone's, or those one account follows. */
+export type LocalAccountSearchScope =
+  | Readonly<{ kind: "Everyone" }>
+  | Readonly<{ kind: "FollowedBy"; accountId: string }>;
+
+/**
+ * Local accounts whose username or display name contains `query`, by
+ * username, leaving out those search may not list (pending approval or
+ * suspended), so `offset` counts listed accounts.
+ */
 export const searchAccounts = async (
   db: D1Database,
   query: string,
+  scope: LocalAccountSearchScope,
   limit: number,
   offset: number,
 ): Promise<Result<LocalAccount[], RepositoryError>> =>
   runD1(async () => {
+    const usernameLike = `%${query.toLowerCase()}%`;
+    const displayNameLike = `%${query}%`;
     const results = await queryTyped(
       db,
-      searchAccountsSql(`%${query.toLowerCase()}%`, `%${query}%`, limit, offset),
+      scope.kind === "Everyone"
+        ? searchAccountsSql(usernameLike, displayNameLike, limit, offset)
+        : searchFollowedAccountsSql(usernameLike, displayNameLike, scope.accountId, limit, offset),
       AccountRowSchema,
     );
     return results.flatMap((row) => {
       const parsed = accountFromRow(row);
       return parsed.isOk() ? [parsed.value] : [];
     });
+  });
+
+/** How many accounts {@link searchAccounts} lists for `query` to everyone. */
+export const countSearchAccounts = async (
+  db: D1Database,
+  query: string,
+): Promise<Result<number, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped(
+      db,
+      countSearchAccountsSql(`%${query.toLowerCase()}%`, `%${query}%`),
+      CountRow,
+    );
+    return Number(rows[0]?.count ?? 0);
   });
 
 export const insertAccount = async (

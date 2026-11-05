@@ -1,5 +1,6 @@
 import {
   FollowRequest,
+  type Hostname,
   type InboxFollow,
   IsoInstant,
   RemoteActor,
@@ -424,17 +425,38 @@ export const listPeerDomains = async (db: D1Database): Promise<Result<string[], 
     return results.map((row) => row.domain);
   });
 
-/** Cached remote actors matching a username or `username@domain` substring. */
+/**
+ * The federation state that hides a remote actor's domain: the hostnames
+ * this instance suspends, and the allow list (empty when there is none).
+ */
+export type RemoteActorSearchHosts = Readonly<{
+  suspended: ReadonlySet<Hostname>;
+  allow: ReadonlySet<string>;
+}>;
+
+/**
+ * Cached remote actors matching a username or `username@domain` substring,
+ * newest URI first, leaving out those search may not list (a suspended actor,
+ * or a domain `hosts` hides), so `offset` counts listed actors. The query
+ * applies the rules `searchableRemoteActors` does.
+ */
 export const searchRemoteActors = async (
   db: D1Database,
   query: string,
+  hosts: RemoteActorSearchHosts,
   limit: number,
   offset: number,
 ): Promise<Result<RemoteActor[], RepositoryError>> =>
   runD1(async () => {
     const results = await queryTyped(
       db,
-      searchRemoteActorsSql(`%${query}%`, limit, offset),
+      searchRemoteActorsSql(
+        `%${query}%`,
+        jsonStringArray([...hosts.suspended]),
+        jsonStringArray([...hosts.allow]),
+        limit,
+        offset,
+      ),
       RemoteActorRowSchema,
     );
     return okValues(results.map((row) => remoteActorFromRow(row)));

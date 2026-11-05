@@ -201,10 +201,17 @@ export const getV1AccountsSearch = async (
       ? (handle.split("@")[0] ?? "")
       : query
     : query;
+  // As Mastodon, an exact match counts inside `limit`.
   const page = await searchAccountsPage(
     c.env,
-    { localTerms: terms, remoteTerms: query, following },
-    limit,
+    {
+      localTerms: terms,
+      remoteTerms: query,
+      scope: onlyFollowing
+        ? { kind: "FollowedBy", accountId: user.value.id }
+        : { kind: "Everyone" },
+    },
+    limit - documents.length,
     offset,
   );
   if (page.isErr()) {

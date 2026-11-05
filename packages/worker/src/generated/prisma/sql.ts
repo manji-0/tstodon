@@ -60,6 +60,8 @@ export * from "./sql/countRemoteAnnounces";
 
 export * from "./sql/countRemoteFavourites";
 
+export * from "./sql/countSearchAccounts";
+
 export * from "./sql/countStatuses";
 
 export * from "./sql/countStatusesByAccountIdsJson";
@@ -647,6 +649,8 @@ export * from "./sql/reserveStatusIdempotency";
 export * from "./sql/rewriteEditedMediaKey";
 
 export * from "./sql/searchAccounts";
+
+export * from "./sql/searchFollowedAccounts";
 
 export * from "./sql/searchRemoteActors";
 
