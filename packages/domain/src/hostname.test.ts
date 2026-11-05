@@ -19,4 +19,10 @@ describe("Hostname", () => {
     expect(Hostname.ofUri("https://Peer.Test:8792/users/bob")).toBe("peer.test");
     expect(Hostname.ofUri("not a uri")).toBeUndefined();
   });
+
+  it("names a fully qualified domain without its trailing dot", () => {
+    expect(Hostname.ofAuthority("Dot.Example.:8792")).toBe("dot.example");
+    expect(Hostname.fromInput("dot.example.")).toBe("dot.example");
+    expect(Hostname.ofUri("https://dot.example./users/d")).toBe("dot.example");
+  });
 });
