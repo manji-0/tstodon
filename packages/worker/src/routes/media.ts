@@ -51,8 +51,10 @@ type MediaMetadataError = Readonly<{ kind: "InvalidFocus" } | { kind: "Descripti
 const parseMediaMetadata = (
   body: z.infer<typeof MediaMetadataBodySchema>,
 ): Result<MediaMetadataEdit, MediaMetadataError> => {
-  const focus = body.focus == null ? undefined : parseMediaFocus(body.focus);
-  if (body.focus != null && focus === undefined) {
+  // A blank focus field is no focus at all, as some clients send it empty.
+  const focusText = body.focus == null || body.focus.trim() === "" ? undefined : body.focus;
+  const focus = focusText === undefined ? undefined : parseMediaFocus(focusText);
+  if (focusText !== undefined && focus === undefined) {
     return err({ kind: "InvalidFocus" });
   }
   if (body.description != null && !mediaDescriptionFits(body.description)) {
