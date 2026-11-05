@@ -554,6 +554,37 @@ describe("who hears a local poll's Update", () => {
     expect(await updateTargets(poll)).not.toContain(`${booster.actorUri}/inbox`);
   });
 
+  it("sends no Update to a voter who unfollowed a followers-only poll's author", async () => {
+    const poll = await pollAt("poll-reach-unfollow-author@example.com", "private");
+    const former = await remoteActor("poll-reach-unfollower", "unfollower.example");
+    const follow = { id: `${former.actorUri}/follows/1`, type: "Follow", object: poll.actorUrl };
+    expect(await former.send(follow)).toBe(202);
+    await remoteVote(former, poll, "unfollower-vote");
+    expect(
+      await former.send({
+        id: `${former.actorUri}/undo/1`,
+        type: "Undo",
+        object: { ...follow, actor: former.actorUri },
+      }),
+    ).toBe(202);
+
+    expect(await updateTargets(poll)).not.toContain(`${former.actorUri}/inbox`);
+  });
+
+  it("sends no Update to a stranger who voted before the poll was edited to followers-only", async () => {
+    const poll = await pollAt("poll-reach-narrowed-author@example.com", "public");
+    const stranger = await remoteActor("poll-reach-narrowed-voter", "narrowed.example");
+    await remoteVote(stranger, poll, "narrowed-vote");
+    const edited = await json(`/api/v1/statuses/${poll.statusId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await authHeaders(poll.email)) },
+      body: JSON.stringify({ status: "now followers-only", visibility: "private" }),
+    });
+    expect(edited.status).toBe(200);
+
+    expect(await updateTargets(poll)).not.toContain(`${stranger.actorUri}/inbox`);
+  });
+
   it("leaves out voters and boosters an admin suspended or the author blocks", async () => {
     const poll = await pollAt("poll-reach-moderated-author@example.com", "public");
     const kept = await remoteActor("poll-reach-kept", "kept.example");
