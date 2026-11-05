@@ -11,8 +11,16 @@ import { processOutboxJob } from "./outbox-job";
 const ORIGIN = "https://example.com";
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
-const LOCAL: StreamChannelValue = { kind: "Public", origin: "Local", onlyMedia: false };
-const REMOTE: StreamChannelValue = { kind: "Public", origin: "Remote", onlyMedia: false };
+const LOCAL = {
+  kind: "Public",
+  origin: "Local",
+  onlyMedia: false,
+} as const satisfies StreamChannelValue;
+const REMOTE = {
+  kind: "Public",
+  origin: "Remote",
+  onlyMedia: false,
+} as const satisfies StreamChannelValue;
 
 const json = async (email: string, path: string, init: RequestInit = {}) => {
   const response = await SELF.fetch(`${ORIGIN}${path}`, {

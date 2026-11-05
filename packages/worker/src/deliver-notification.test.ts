@@ -3,12 +3,12 @@ import { ok } from "neverthrow";
 import { describe, expect, it } from "vite-plus/test";
 import { deliverNotification } from "./notify";
 
-const mention: NewNotification = {
+const mention = {
   accountId: "100",
   fromAccountId: "200",
   kind: "mention",
   statusId: "300",
-};
+} as const satisfies NewNotification;
 
 const recording = (disposition: NotificationPolicyAction, muted: ReadonlyArray<string> = []) => {
   const events: string[] = [];

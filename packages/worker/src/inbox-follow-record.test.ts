@@ -6,7 +6,7 @@ import { recordInboxFollow } from "./inbox/follow";
 
 const actorUri = "https://remote.example/users/bob";
 const followId = "https://remote.example/follows/1";
-const failure: RepositoryError = { kind: "RepositoryError", message: "down" };
+const failure = { kind: "RepositoryError", message: "down" } as const satisfies RepositoryError;
 const unlocked = testLocalAccount("100", "alice");
 const locked = { ...unlocked, locked: true };
 

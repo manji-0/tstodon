@@ -4,16 +4,16 @@ import type { StreamChannel } from "./stream-channel";
 import { type StreamAccess, StreamSubscription, type StreamViewer } from "./stream-subscription";
 
 const accountId = AccountId.schema.parse("alice-id");
-const account: StreamViewer = { kind: "Account", accountId };
-const anonymous: StreamViewer = { kind: "Anonymous" };
-const full: StreamAccess = { statuses: true, notifications: true };
-const statusesOnly: StreamAccess = { statuses: true, notifications: false };
-const none: StreamAccess = { statuses: false, notifications: false };
+const account = { kind: "Account", accountId } as const satisfies StreamViewer;
+const anonymous = { kind: "Anonymous" } as const satisfies StreamViewer;
+const full = { statuses: true, notifications: true } as const satisfies StreamAccess;
+const statusesOnly = { statuses: true, notifications: false } as const satisfies StreamAccess;
+const none = { statuses: false, notifications: false } as const satisfies StreamAccess;
 
-const user: StreamChannel = { kind: "User" };
-const notifications: StreamChannel = { kind: "UserNotification" };
-const list: StreamChannel = { kind: "List", listId: "l1" };
-const hashtag: StreamChannel = { kind: "Hashtag", tag: "cats", localOnly: false };
+const user = { kind: "User" } as const satisfies StreamChannel;
+const notifications = { kind: "UserNotification" } as const satisfies StreamChannel;
+const list = { kind: "List", listId: "l1" } as const satisfies StreamChannel;
+const hashtag = { kind: "Hashtag", tag: "cats", localOnly: false } as const satisfies StreamChannel;
 
 const refusal = (viewer: StreamViewer, access: StreamAccess, channel: StreamChannel) => {
   const result = StreamSubscription.authorize(viewer, access, channel);

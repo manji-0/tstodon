@@ -7,21 +7,21 @@ import {
 
 const NOW = Date.parse("2026-11-04T00:00:00.000Z");
 
-const strict: NotificationPolicy = {
+const strict = {
   forNotFollowing: "filter",
   forNotFollowers: "filter",
   forNewAccounts: "filter",
   forPrivateMentions: "drop",
   forLimitedAccounts: "drop",
-};
+} as const satisfies NotificationPolicy;
 
-const acceptAll: NotificationPolicy = {
+const acceptAll = {
   forNotFollowing: "accept",
   forNotFollowers: "accept",
   forNewAccounts: "accept",
   forPrivateMentions: "accept",
   forLimitedAccounts: "accept",
-};
+} as const satisfies NotificationPolicy;
 
 const friend = {
   kind: "Local",
