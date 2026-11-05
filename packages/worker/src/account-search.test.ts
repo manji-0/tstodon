@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
@@ -49,6 +49,55 @@ const search = async (
   return read(AccountListSchema, response.body);
 };
 
+const cacheRemoteActor = async (username: string, domain: string): Promise<void> => {
+  const actorUri = `https://${domain}/users/${username}`;
+  await env.DB.prepare(
+    `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, display_name, fetched_at)
+     VALUES (?, ?, ?, ?, ?, 'pem', ?, '2026-01-01T00:00:00.000Z')`,
+  )
+    .bind(actorUri, username, domain, `${actorUri}/inbox`, `${actorUri}#main-key`, username)
+    .run();
+};
+
+const suspendDomain = async (domain: string): Promise<void> => {
+  const blocked = await json("/api/v1/admin/domain_blocks", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(await authHeaders("account-search-admin@example.com", { admin: true })),
+    },
+    body: JSON.stringify({ domain, severity: "suspend" }),
+  });
+  expect(blocked.status).toBe(200);
+};
+
+/**
+ * Two local accounts and five cached remote actors match `prefix`; the two on
+ * `<prefix>-b.example` sit between the others in the remote order and are
+ * hidden by a domain suspension.
+ */
+const seedMixedResults = async (prefix: string): Promise<void> => {
+  await credentials(`${prefix}-a@example.com`);
+  await credentials(`${prefix}-b@example.com`);
+  await cacheRemoteActor(`${prefix}_r1`, `${prefix}-c.example`);
+  await cacheRemoteActor(`${prefix}_r2`, `${prefix}-c.example`);
+  await cacheRemoteActor(`${prefix}_h1`, `${prefix}-b.example`);
+  await cacheRemoteActor(`${prefix}_h2`, `${prefix}-b.example`);
+  await cacheRemoteActor(`${prefix}_r3`, `${prefix}-a.example`);
+  await suspendDomain(`${prefix}-b.example`);
+};
+
+/** The ids of pages of two fetched at offsets 0, 2, 4 and 6. */
+const pagesOfTwo = async (
+  fetchPage: (offset: number) => Promise<ReadonlyArray<{ id: string }>>,
+): Promise<string[][]> => {
+  const pages: string[][] = [];
+  for (const offset of [0, 2, 4, 6]) {
+    pages.push((await fetchPage(offset)).map((account) => account.id));
+  }
+  return pages;
+};
+
 describe("account search", () => {
   it("finds a local account by username or display name", async () => {
     const viewer = "account-search-viewer@example.com";
@@ -89,6 +138,37 @@ describe("account search", () => {
     expect(first.map((account) => account.id)).toEqual([all[0]?.id]);
     const second = await search(viewer, "q=pager_&limit=1&offset=1");
     expect(second.map((account) => account.id)).toEqual([all[1]?.id]);
+  });
+
+  it("pages local accounts then cached remote actors without repeats or gaps", async () => {
+    const viewer = "account-search-mixed-pager@example.com";
+    await seedMixedResults("mixpage");
+
+    const all = (await search(viewer, "q=mixpage&limit=40")).map((account) => account.id);
+    expect(all.length).toBe(5);
+    const pages = await pagesOfTwo(async (offset) =>
+      search(viewer, `q=mixpage&limit=2&offset=${offset}`),
+    );
+    expect(pages.map((page) => page.length)).toEqual([2, 2, 1, 0]);
+    expect(pages.flat()).toEqual(all);
+  });
+
+  it("pages accounts in /api/v2/search with type=accounts", async () => {
+    const viewer = "account-search-v2-pager@example.com";
+    await seedMixedResults("v2page");
+    const v2 = async (query: string): Promise<{ id: string }[]> => {
+      const response = await json(`/api/v2/search?${query}`, { headers: await auth(viewer) });
+      expect(response.status).toBe(200);
+      return read(z.object({ accounts: AccountListSchema }), response.body).accounts;
+    };
+
+    const all = (await v2("q=v2page&type=accounts&limit=40")).map((account) => account.id);
+    expect(all.length).toBe(5);
+    const pages = await pagesOfTwo(async (offset) =>
+      v2(`q=v2page&type=accounts&limit=2&offset=${offset}`),
+    );
+    expect(pages.map((page) => page.length)).toEqual([2, 2, 1, 0]);
+    expect(pages.flat()).toEqual(all);
   });
 
   it("keeps only followed accounts with following=true", async () => {
