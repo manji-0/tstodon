@@ -260,10 +260,10 @@ const removedFollows = (result: D1Result | undefined): RemovedFollow[] =>
  * every state, and the account's notifications from them (Mastodon's
  * `clear_notifications!`). The account's own requests are withdrawn too,
  * where Mastodon keeps them: a later `Accept` would otherwise make a follow
- * the block forbids. The accepted follows, both ways, are recorded under `eventId` in the same batch, so a follow is
- * recorded exactly when it is removed. The event is written with the first
- * page that has a follow to record, so a severance that only drops requests
- * leaves none.
+ * the block forbids. The accepted follows, both ways, are recorded under
+ * `eventId` in the same batch, so a follow is recorded exactly when it is
+ * removed. The event is written with the first page that has a follow to
+ * record, so a severance that only drops requests leaves none.
  */
 export const severAccountPage = async (
   db: D1Database,
