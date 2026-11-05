@@ -253,8 +253,8 @@ export const insertLocalNote = async (
         note.createdAt,
       ),
     ),
-    ...note.mediaIds.map((mediaId) =>
-      d1PrepareTyped(db, attachMediaToStatusSql(note.id, mediaId, note.accountId)),
+    ...note.mediaIds.map((mediaId, position) =>
+      d1PrepareTyped(db, attachMediaToStatusSql(note.id, mediaId, note.accountId, position)),
     ),
   ];
   const batched = await runD1Batch(db, statements);
@@ -307,7 +307,7 @@ export const insertLocalReblog = async (
     );
   });
 
-/** Replace a note's media: detach the current attachments, then attach the new set. */
+/** Replace a note's media: detach the current attachments, then attach the new set in its order. */
 export const replaceStatusMedia = async (
   db: D1Database,
   statusId: string,
@@ -316,8 +316,8 @@ export const replaceStatusMedia = async (
 ): Promise<Result<void, RepositoryError>> => {
   const batched = await runD1Batch(db, [
     d1PrepareTyped(db, detachStatusMediaSql(statusId, accountId)),
-    ...mediaIds.map((mediaId) =>
-      d1PrepareTyped(db, attachMediaToStatusSql(statusId, mediaId, accountId)),
+    ...mediaIds.map((mediaId, position) =>
+      d1PrepareTyped(db, attachMediaToStatusSql(statusId, mediaId, accountId, position)),
     ),
   ]);
   if (batched.isErr()) {
@@ -415,7 +415,9 @@ export const hydrateStatusRows = async (
     return [];
   }
   const { results } = await db
-    .prepare(`SELECT status_id, id FROM media_attachments WHERE status_id ${sqlInJsonEach()}`)
+    .prepare(
+      `SELECT status_id, id FROM media_attachments WHERE status_id ${sqlInJsonEach()} ORDER BY position`,
+    )
     .bind(jsonStringArray(statusRows.map((row) => row.id)))
     .all<{ status_id: string; id: string }>();
   const mediaByStatus = Map.groupBy(

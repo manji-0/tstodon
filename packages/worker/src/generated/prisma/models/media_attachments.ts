@@ -29,11 +29,13 @@ export type AggregateMedia_attachments = {
 export type Media_attachmentsAvgAggregateOutputType = {
   focus_x: number | null;
   focus_y: number | null;
+  position: number | null;
 };
 
 export type Media_attachmentsSumAggregateOutputType = {
   focus_x: number | null;
   focus_y: number | null;
+  position: number | null;
 };
 
 export type Media_attachmentsMinAggregateOutputType = {
@@ -47,6 +49,7 @@ export type Media_attachmentsMinAggregateOutputType = {
   focus_x: number | null;
   focus_y: number | null;
   legacy_object_key: string | null;
+  position: number | null;
 };
 
 export type Media_attachmentsMaxAggregateOutputType = {
@@ -60,6 +63,7 @@ export type Media_attachmentsMaxAggregateOutputType = {
   focus_x: number | null;
   focus_y: number | null;
   legacy_object_key: string | null;
+  position: number | null;
 };
 
 export type Media_attachmentsCountAggregateOutputType = {
@@ -73,17 +77,20 @@ export type Media_attachmentsCountAggregateOutputType = {
   focus_x: number;
   focus_y: number;
   legacy_object_key: number;
+  position: number;
   _all: number;
 };
 
 export type Media_attachmentsAvgAggregateInputType = {
   focus_x?: true;
   focus_y?: true;
+  position?: true;
 };
 
 export type Media_attachmentsSumAggregateInputType = {
   focus_x?: true;
   focus_y?: true;
+  position?: true;
 };
 
 export type Media_attachmentsMinAggregateInputType = {
@@ -97,6 +104,7 @@ export type Media_attachmentsMinAggregateInputType = {
   focus_x?: true;
   focus_y?: true;
   legacy_object_key?: true;
+  position?: true;
 };
 
 export type Media_attachmentsMaxAggregateInputType = {
@@ -110,6 +118,7 @@ export type Media_attachmentsMaxAggregateInputType = {
   focus_x?: true;
   focus_y?: true;
   legacy_object_key?: true;
+  position?: true;
 };
 
 export type Media_attachmentsCountAggregateInputType = {
@@ -123,6 +132,7 @@ export type Media_attachmentsCountAggregateInputType = {
   focus_x?: true;
   focus_y?: true;
   legacy_object_key?: true;
+  position?: true;
   _all?: true;
 };
 
@@ -228,6 +238,7 @@ export type Media_attachmentsGroupByOutputType = {
   focus_x: number | null;
   focus_y: number | null;
   legacy_object_key: string | null;
+  position: number | null;
   _count: Media_attachmentsCountAggregateOutputType | null;
   _avg: Media_attachmentsAvgAggregateOutputType | null;
   _sum: Media_attachmentsSumAggregateOutputType | null;
@@ -262,6 +273,7 @@ export type media_attachmentsWhereInput = {
   focus_x?: Prisma.FloatNullableFilter<"media_attachments"> | number | null;
   focus_y?: Prisma.FloatNullableFilter<"media_attachments"> | number | null;
   legacy_object_key?: Prisma.StringNullableFilter<"media_attachments"> | string | null;
+  position?: Prisma.IntNullableFilter<"media_attachments"> | number | null;
   statuses?: Prisma.XOR<
     Prisma.StatusesNullableScalarRelationFilter,
     Prisma.statusesWhereInput
@@ -280,6 +292,7 @@ export type media_attachmentsOrderByWithRelationInput = {
   focus_x?: Prisma.SortOrderInput | Prisma.SortOrder;
   focus_y?: Prisma.SortOrderInput | Prisma.SortOrder;
   legacy_object_key?: Prisma.SortOrderInput | Prisma.SortOrder;
+  position?: Prisma.SortOrderInput | Prisma.SortOrder;
   statuses?: Prisma.statusesOrderByWithRelationInput;
   accounts?: Prisma.accountsOrderByWithRelationInput;
 };
@@ -299,6 +312,7 @@ export type media_attachmentsWhereUniqueInput = Prisma.AtLeast<
     focus_x?: Prisma.FloatNullableFilter<"media_attachments"> | number | null;
     focus_y?: Prisma.FloatNullableFilter<"media_attachments"> | number | null;
     legacy_object_key?: Prisma.StringNullableFilter<"media_attachments"> | string | null;
+    position?: Prisma.IntNullableFilter<"media_attachments"> | number | null;
     statuses?: Prisma.XOR<
       Prisma.StatusesNullableScalarRelationFilter,
       Prisma.statusesWhereInput
@@ -319,6 +333,7 @@ export type media_attachmentsOrderByWithAggregationInput = {
   focus_x?: Prisma.SortOrderInput | Prisma.SortOrder;
   focus_y?: Prisma.SortOrderInput | Prisma.SortOrder;
   legacy_object_key?: Prisma.SortOrderInput | Prisma.SortOrder;
+  position?: Prisma.SortOrderInput | Prisma.SortOrder;
   _count?: Prisma.media_attachmentsCountOrderByAggregateInput;
   _avg?: Prisma.media_attachmentsAvgOrderByAggregateInput;
   _max?: Prisma.media_attachmentsMaxOrderByAggregateInput;
@@ -347,6 +362,7 @@ export type media_attachmentsScalarWhereWithAggregatesInput = {
     | Prisma.StringNullableWithAggregatesFilter<"media_attachments">
     | string
     | null;
+  position?: Prisma.IntNullableWithAggregatesFilter<"media_attachments"> | number | null;
 };
 
 export type media_attachmentsCreateInput = {
@@ -358,6 +374,7 @@ export type media_attachmentsCreateInput = {
   focus_x?: number | null;
   focus_y?: number | null;
   legacy_object_key?: string | null;
+  position?: number | null;
   statuses?: Prisma.statusesCreateNestedOneWithoutMedia_attachmentsInput;
   accounts: Prisma.accountsCreateNestedOneWithoutMedia_attachmentsInput;
 };
@@ -373,6 +390,7 @@ export type media_attachmentsUncheckedCreateInput = {
   focus_x?: number | null;
   focus_y?: number | null;
   legacy_object_key?: string | null;
+  position?: number | null;
 };
 
 export type media_attachmentsUpdateInput = {
@@ -384,6 +402,7 @@ export type media_attachmentsUpdateInput = {
   focus_x?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   focus_y?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   legacy_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  position?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
   statuses?: Prisma.statusesUpdateOneWithoutMedia_attachmentsNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutMedia_attachmentsNestedInput;
 };
@@ -399,6 +418,7 @@ export type media_attachmentsUncheckedUpdateInput = {
   focus_x?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   focus_y?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   legacy_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  position?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
 };
 
 export type media_attachmentsCreateManyInput = {
@@ -412,6 +432,7 @@ export type media_attachmentsCreateManyInput = {
   focus_x?: number | null;
   focus_y?: number | null;
   legacy_object_key?: string | null;
+  position?: number | null;
 };
 
 export type media_attachmentsUpdateManyMutationInput = {
@@ -423,6 +444,7 @@ export type media_attachmentsUpdateManyMutationInput = {
   focus_x?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   focus_y?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   legacy_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  position?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
 };
 
 export type media_attachmentsUncheckedUpdateManyInput = {
@@ -436,6 +458,7 @@ export type media_attachmentsUncheckedUpdateManyInput = {
   focus_x?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   focus_y?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   legacy_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  position?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
 };
 
 export type Media_attachmentsListRelationFilter = {
@@ -459,11 +482,13 @@ export type media_attachmentsCountOrderByAggregateInput = {
   focus_x?: Prisma.SortOrder;
   focus_y?: Prisma.SortOrder;
   legacy_object_key?: Prisma.SortOrder;
+  position?: Prisma.SortOrder;
 };
 
 export type media_attachmentsAvgOrderByAggregateInput = {
   focus_x?: Prisma.SortOrder;
   focus_y?: Prisma.SortOrder;
+  position?: Prisma.SortOrder;
 };
 
 export type media_attachmentsMaxOrderByAggregateInput = {
@@ -477,6 +502,7 @@ export type media_attachmentsMaxOrderByAggregateInput = {
   focus_x?: Prisma.SortOrder;
   focus_y?: Prisma.SortOrder;
   legacy_object_key?: Prisma.SortOrder;
+  position?: Prisma.SortOrder;
 };
 
 export type media_attachmentsMinOrderByAggregateInput = {
@@ -490,11 +516,13 @@ export type media_attachmentsMinOrderByAggregateInput = {
   focus_x?: Prisma.SortOrder;
   focus_y?: Prisma.SortOrder;
   legacy_object_key?: Prisma.SortOrder;
+  position?: Prisma.SortOrder;
 };
 
 export type media_attachmentsSumOrderByAggregateInput = {
   focus_x?: Prisma.SortOrder;
   focus_y?: Prisma.SortOrder;
+  position?: Prisma.SortOrder;
 };
 
 export type media_attachmentsCreateNestedManyWithoutAccountsInput = {
@@ -592,6 +620,14 @@ export type media_attachmentsUncheckedUpdateManyWithoutAccountsNestedInput = {
 };
 
 export type NullableFloatFieldUpdateOperationsInput = {
+  set?: number | null;
+  increment?: number;
+  decrement?: number;
+  multiply?: number;
+  divide?: number;
+};
+
+export type NullableIntFieldUpdateOperationsInput = {
   set?: number | null;
   increment?: number;
   decrement?: number;
@@ -702,6 +738,7 @@ export type media_attachmentsCreateWithoutAccountsInput = {
   focus_x?: number | null;
   focus_y?: number | null;
   legacy_object_key?: string | null;
+  position?: number | null;
   statuses?: Prisma.statusesCreateNestedOneWithoutMedia_attachmentsInput;
 };
 
@@ -715,6 +752,7 @@ export type media_attachmentsUncheckedCreateWithoutAccountsInput = {
   focus_x?: number | null;
   focus_y?: number | null;
   legacy_object_key?: string | null;
+  position?: number | null;
 };
 
 export type media_attachmentsCreateOrConnectWithoutAccountsInput = {
@@ -773,6 +811,7 @@ export type media_attachmentsScalarWhereInput = {
   focus_x?: Prisma.FloatNullableFilter<"media_attachments"> | number | null;
   focus_y?: Prisma.FloatNullableFilter<"media_attachments"> | number | null;
   legacy_object_key?: Prisma.StringNullableFilter<"media_attachments"> | string | null;
+  position?: Prisma.IntNullableFilter<"media_attachments"> | number | null;
 };
 
 export type media_attachmentsCreateWithoutStatusesInput = {
@@ -784,6 +823,7 @@ export type media_attachmentsCreateWithoutStatusesInput = {
   focus_x?: number | null;
   focus_y?: number | null;
   legacy_object_key?: string | null;
+  position?: number | null;
   accounts: Prisma.accountsCreateNestedOneWithoutMedia_attachmentsInput;
 };
 
@@ -797,6 +837,7 @@ export type media_attachmentsUncheckedCreateWithoutStatusesInput = {
   focus_x?: number | null;
   focus_y?: number | null;
   legacy_object_key?: string | null;
+  position?: number | null;
 };
 
 export type media_attachmentsCreateOrConnectWithoutStatusesInput = {
@@ -851,6 +892,7 @@ export type media_attachmentsCreateManyAccountsInput = {
   focus_x?: number | null;
   focus_y?: number | null;
   legacy_object_key?: string | null;
+  position?: number | null;
 };
 
 export type media_attachmentsUpdateWithoutAccountsInput = {
@@ -862,6 +904,7 @@ export type media_attachmentsUpdateWithoutAccountsInput = {
   focus_x?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   focus_y?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   legacy_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  position?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
   statuses?: Prisma.statusesUpdateOneWithoutMedia_attachmentsNestedInput;
 };
 
@@ -875,6 +918,7 @@ export type media_attachmentsUncheckedUpdateWithoutAccountsInput = {
   focus_x?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   focus_y?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   legacy_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  position?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
 };
 
 export type media_attachmentsUncheckedUpdateManyWithoutAccountsInput = {
@@ -887,6 +931,7 @@ export type media_attachmentsUncheckedUpdateManyWithoutAccountsInput = {
   focus_x?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   focus_y?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   legacy_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  position?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
 };
 
 export type media_attachmentsCreateManyStatusesInput = {
@@ -899,6 +944,7 @@ export type media_attachmentsCreateManyStatusesInput = {
   focus_x?: number | null;
   focus_y?: number | null;
   legacy_object_key?: string | null;
+  position?: number | null;
 };
 
 export type media_attachmentsUpdateWithoutStatusesInput = {
@@ -910,6 +956,7 @@ export type media_attachmentsUpdateWithoutStatusesInput = {
   focus_x?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   focus_y?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   legacy_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  position?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutMedia_attachmentsNestedInput;
 };
 
@@ -923,6 +970,7 @@ export type media_attachmentsUncheckedUpdateWithoutStatusesInput = {
   focus_x?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   focus_y?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   legacy_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  position?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
 };
 
 export type media_attachmentsUncheckedUpdateManyWithoutStatusesInput = {
@@ -935,6 +983,7 @@ export type media_attachmentsUncheckedUpdateManyWithoutStatusesInput = {
   focus_x?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   focus_y?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   legacy_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  position?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
 };
 
 export type media_attachmentsSelect<
@@ -951,6 +1000,7 @@ export type media_attachmentsSelect<
     focus_x?: boolean;
     focus_y?: boolean;
     legacy_object_key?: boolean;
+    position?: boolean;
     statuses?: boolean | Prisma.media_attachments$statusesArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
@@ -971,6 +1021,7 @@ export type media_attachmentsSelectCreateManyAndReturn<
     focus_x?: boolean;
     focus_y?: boolean;
     legacy_object_key?: boolean;
+    position?: boolean;
     statuses?: boolean | Prisma.media_attachments$statusesArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
@@ -991,6 +1042,7 @@ export type media_attachmentsSelectUpdateManyAndReturn<
     focus_x?: boolean;
     focus_y?: boolean;
     legacy_object_key?: boolean;
+    position?: boolean;
     statuses?: boolean | Prisma.media_attachments$statusesArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
@@ -1008,6 +1060,7 @@ export type media_attachmentsSelectScalar = {
   focus_x?: boolean;
   focus_y?: boolean;
   legacy_object_key?: boolean;
+  position?: boolean;
 };
 
 export type media_attachmentsOmit<
@@ -1022,7 +1075,8 @@ export type media_attachmentsOmit<
   | "description"
   | "focus_x"
   | "focus_y"
-  | "legacy_object_key",
+  | "legacy_object_key"
+  | "position",
   ExtArgs["result"]["media_attachments"]
 >;
 export type media_attachmentsInclude<
@@ -1064,6 +1118,7 @@ export type $media_attachmentsPayload<
       focus_x: number | null;
       focus_y: number | null;
       legacy_object_key: string | null;
+      position: number | null;
     },
     ExtArgs["result"]["media_attachments"]
   >;
@@ -1673,6 +1728,7 @@ export interface media_attachmentsFieldRefs {
   readonly focus_x: Prisma.FieldRef<"media_attachments", "Float">;
   readonly focus_y: Prisma.FieldRef<"media_attachments", "Float">;
   readonly legacy_object_key: Prisma.FieldRef<"media_attachments", "String">;
+  readonly position: Prisma.FieldRef<"media_attachments", "Int">;
 }
 
 // Custom InputTypes

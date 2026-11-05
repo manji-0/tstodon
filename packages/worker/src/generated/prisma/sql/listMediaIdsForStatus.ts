@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param statusId
  */
 export const listMediaIdsForStatus = $runtime.makeTypedQueryFactory(
-  "SELECT id FROM media_attachments WHERE status_id = $1 ORDER BY created_at",
+  "SELECT id FROM media_attachments WHERE status_id = $1 ORDER BY position",
 ) as (
   statusId: string,
 ) => $runtime.TypedSql<listMediaIdsForStatus.Parameters, listMediaIdsForStatus.Result>;

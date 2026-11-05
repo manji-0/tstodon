@@ -8,16 +8,18 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param statusId
  * @param mediaId
  * @param accountId
+ * @param position
  */
 export const attachMediaToStatus = $runtime.makeTypedQueryFactory(
-  "UPDATE media_attachments SET status_id = $1 WHERE id = $2 AND account_id = $3",
+  "UPDATE media_attachments SET status_id = $1, position = $4 WHERE id = $2 AND account_id = $3",
 ) as (
   statusId: string,
   mediaId: string,
   accountId: string,
+  position: number,
 ) => $runtime.TypedSql<attachMediaToStatus.Parameters, attachMediaToStatus.Result>;
 
 export namespace attachMediaToStatus {
-  export type Parameters = [statusId: string, mediaId: string, accountId: string];
+  export type Parameters = [statusId: string, mediaId: string, accountId: string, position: number];
   export type Result = {};
 }
