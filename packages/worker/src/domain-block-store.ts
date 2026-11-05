@@ -15,13 +15,15 @@ const DomainRow = z.object({ domain: z.string() });
 
 const hostOfRow = (row: z.infer<typeof DomainRow>): Hostname => Hostname.ofAuthority(row.domain);
 
+/** Block `domain` for the account. Answers whether the block is new. */
 export const blockDomain = async (
   db: D1Database,
   accountId: string,
   domain: Hostname,
-): Promise<Result<void, RepositoryError>> =>
+): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(db, insertAccountDomainBlockSql(accountId, domain, nowIso()));
+    const written = await runTyped(db, insertAccountDomainBlockSql(accountId, domain, nowIso()));
+    return written.meta.changes > 0;
   });
 
 export const unblockDomain = async (

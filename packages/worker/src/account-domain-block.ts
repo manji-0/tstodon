@@ -2,17 +2,18 @@ import type { Hostname, InstanceIdentity, LocalAccount, OutboxJob } from "@tstod
 import { err, ok, type Result } from "neverthrow";
 import { findAccountById } from "./account-store";
 import type { RepositoryError } from "./d1";
-import { blockDomain } from "./domain-block-store";
+import { blockDomain, isDomainBlocked } from "./domain-block-store";
 import { newEntityId } from "./ids";
 import { measureJobPage } from "./metrics";
-import { unfollowRemoteActor } from "./outbound-follow";
+import { sendFollowUndo } from "./outbound-follow";
 import { findRemoteActorsByUris } from "./remote-actor-store";
-import { removeRemoteFollower } from "./remote-follower";
+import { sendFollowReject } from "./remote-follower";
 import { parseInstanceIdentity } from "./runtime-config";
 import {
   finishAccountSeverance,
   listDomainFollowPeers,
-  recordAccountSeverancePage,
+  type SeveredAccountPage,
+  severAccountPage,
 } from "./severed-relationship-store";
 import { notifySeverance } from "./severance";
 
@@ -24,11 +25,70 @@ type SeverJob = Extract<OutboxJob, { kind: "SeverBlockedDomainFollows" }>;
 type SeveredPage = Readonly<{ severed: number; next: SeverJob | undefined }>;
 
 /**
+ * Send the `Undo(Follow)`s and `Reject(Follow)`s for the follows a page
+ * removed. Delivery is best effort, as for any unfollow: the follows are gone,
+ * so a retry would find nothing to send.
+ */
+const federateSeverance = async (
+  env: Env,
+  identity: InstanceIdentity,
+  account: LocalAccount,
+  severed: SeveredAccountPage,
+): Promise<void> => {
+  const actors = await findRemoteActorsByUris(env.DB, [
+    ...severed.unfollowed.map((follow) => follow.actorUri),
+    ...severed.rejected.map((follow) => follow.actorUri),
+  ]);
+  if (actors.isErr()) {
+    console.error(
+      JSON.stringify({
+        kind: "DomainBlockSeveranceNotFederated",
+        accountId: account.id,
+        message: actors.error.message,
+      }),
+    );
+    return;
+  }
+  for (const follow of severed.unfollowed) {
+    const actor = actors.value.get(follow.actorUri);
+    if (actor && follow.followActivityId !== null) {
+      await sendFollowUndo(env, identity, account, actor, follow.followActivityId);
+    }
+  }
+  for (const follow of severed.rejected) {
+    const actor = actors.value.get(follow.actorUri);
+    if (actor) {
+      await sendFollowReject(
+        env,
+        identity,
+        account,
+        actor,
+        follow.followActivityId ?? actor.actorUri,
+      );
+    }
+  }
+};
+
+/** Write the account's event for the severance and notify it, unless it already was. */
+const closeSeverance = async (
+  env: Env,
+  account: LocalAccount,
+  job: SeverJob,
+): Promise<Result<void, RepositoryError>> => {
+  const finished = await finishAccountSeverance(env.DB, job.eventId, account.id);
+  if (finished.isErr()) {
+    return err(finished.error);
+  }
+  return finished.value ? notifySeverance(env, [finished.value]) : ok(undefined);
+};
+
+/**
  * Sever the next page of the account's follows with the blocked domain, as
- * Mastodon's `AfterBlockDomainFromAccountService`: record the accepted ones
- * under the `user_domain_block` event, unfollow each followed actor (an
- * `Undo(Follow)`) and remove each follower or request (a `Reject(Follow)`).
- * The last page closes the event and notifies the account.
+ * Mastodon's `AfterBlockDomainFromAccountService`: remove its accepted follows
+ * of the domain's actors and their follows and requests of it, recording the
+ * accepted ones under the `user_domain_block` event, then send an
+ * `Undo(Follow)` or `Reject(Follow)` for each. The last page closes the event
+ * and notifies the account.
  */
 const severPage = async (
   env: Env,
@@ -36,66 +96,33 @@ const severPage = async (
   account: LocalAccount,
   job: SeverJob,
 ): Promise<Result<SeveredPage, RepositoryError>> => {
-  const peers = await listDomainFollowPeers(
+  const actorUris = await listDomainFollowPeers(
     env.DB,
     account.id,
     job.domain,
     job.afterActorUri,
     SEVER_PAGE_SIZE,
   );
-  if (peers.isErr()) {
-    return err(peers.error);
+  if (actorUris.isErr()) {
+    return err(actorUris.error);
   }
-  const actorUris = peers.value.map((peer) => peer.actorUri);
-  const recorded = await recordAccountSeverancePage(env.DB, {
+  const severed = await severAccountPage(env.DB, {
     eventId: job.eventId,
     type: "user_domain_block",
     targetName: job.domain,
     accountId: account.id,
-    actorUris,
+    actorUris: actorUris.value,
   });
-  if (recorded.isErr()) {
-    return err(recorded.error);
+  if (severed.isErr()) {
+    return err(severed.error);
   }
-  const actors = await findRemoteActorsByUris(env.DB, actorUris);
-  if (actors.isErr()) {
-    return err(actors.error);
+  await federateSeverance(env, identity, account, severed.value);
+  const last = actorUris.value.at(-1);
+  if (actorUris.value.length === SEVER_PAGE_SIZE && last !== undefined) {
+    return ok({ severed: actorUris.value.length, next: { ...job, afterActorUri: last } });
   }
-  for (const peer of peers.value) {
-    const actor = actors.value.get(peer.actorUri);
-    if (!actor) {
-      continue;
-    }
-    const logFailure = (step: string, result: Result<unknown, RepositoryError>) => {
-      if (result.isErr()) {
-        console.error(
-          JSON.stringify({
-            kind: "DomainBlockFollowNotSevered",
-            step,
-            accountId: account.id,
-            actorUri: peer.actorUri,
-            message: result.error.message,
-          }),
-        );
-      }
-    };
-    if (peer.following) {
-      logFailure("Unfollow", await unfollowRemoteActor(env, identity, account, actor));
-    }
-    if (peer.follower) {
-      logFailure("RemoveFollower", await removeRemoteFollower(env, identity, account, actor));
-    }
-  }
-  const last = actorUris.at(-1);
-  if (actorUris.length === SEVER_PAGE_SIZE && last !== undefined) {
-    return ok({ severed: actorUris.length, next: { ...job, afterActorUri: last } });
-  }
-  const finished = await finishAccountSeverance(env.DB, job.eventId, account.id);
-  if (finished.isErr()) {
-    return err(finished.error);
-  }
-  const notified = finished.value ? await notifySeverance(env, [finished.value]) : ok(undefined);
-  return notified.map(() => ({ severed: actorUris.length, next: undefined }));
+  const closed = await closeSeverance(env, account, job);
+  return closed.map(() => ({ severed: actorUris.value.length, next: undefined }));
 };
 
 const queueSeverJob = async (env: Env, job: SeverJob): Promise<boolean> => {
@@ -118,7 +145,9 @@ const queueSeverJob = async (env: Env, job: SeverJob): Promise<boolean> => {
  * Block `domain` for the account and sever its follows with the domain. The
  * block row comes first and holds on its own; the first page is severed now
  * and the rest in queued pages, so the request stays bounded. A failed first
- * page is queued to run again. Unblocking restores nothing, as in Mastodon.
+ * page is queued to run again. A domain already blocked is left alone: the
+ * request that blocked it owns its severance, so a second block cannot split
+ * it across two events. Unblocking restores nothing, as in Mastodon.
  */
 export const blockAccountDomain = async (
   env: Env,
@@ -129,6 +158,9 @@ export const blockAccountDomain = async (
   const blocked = await blockDomain(env.DB, account.id, domain);
   if (blocked.isErr()) {
     return err(blocked.error);
+  }
+  if (!blocked.value) {
+    return ok(undefined);
   }
   const job: SeverJob = {
     kind: "SeverBlockedDomainFollows",
@@ -145,7 +177,10 @@ export const blockAccountDomain = async (
   return ok(undefined);
 };
 
-/** Run a page queued by {@link blockAccountDomain}. */
+/**
+ * Run a page queued by {@link blockAccountDomain}. A domain unblocked since
+ * severs nothing more: the event closes with what earlier pages removed.
+ */
 export const processSeverBlockedDomainFollowsJob = (env: Env, job: SeverJob) =>
   measureJobPage(env, job.kind, async () => {
     const stalled = (outcome: "ok" | "retry") => ({ outcome, size: -1, chained: false });
@@ -157,10 +192,23 @@ export const processSeverBlockedDomainFollowsJob = (env: Env, job: SeverJob) =>
     if (!account.value) {
       return stalled("ok");
     }
+    const blocked = await isDomainBlocked(env.DB, account.value.id, job.domain);
+    if (blocked.isErr()) {
+      return stalled("retry");
+    }
+    if (!blocked.value) {
+      const closed = await closeSeverance(env, account.value, job);
+      return stalled(closed.isOk() ? "ok" : "retry");
+    }
     const page = await severPage(env, identity.value, account.value, job);
     if (page.isErr()) {
       return stalled("retry");
     }
-    const chained = page.value.next !== undefined && (await queueSeverJob(env, page.value.next));
-    return { outcome: "ok", size: page.value.severed, chained };
+    if (page.value.next === undefined) {
+      return { outcome: "ok", size: page.value.severed, chained: false };
+    }
+    // The page's follows are gone and the job is unchanged, so running it
+    // again severs the next page.
+    const chained = await queueSeverJob(env, page.value.next);
+    return { outcome: chained ? "ok" : "retry", size: page.value.severed, chained };
   });

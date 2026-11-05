@@ -77,6 +77,13 @@ const MATCHING_ACTORS_SQL = `SELECT r.actor_uri FROM remote_actors r WHERE ${ACT
 const AccountIdRowSchema = z.object({ local_account_id: z.string() });
 
 /**
+ * A follow's row id is its record's id, so a follow recorded under an earlier
+ * event that is still live moves to the event that removes it.
+ */
+const CLAIM_SEVERED_SQL =
+  "ON CONFLICT(id) DO UPDATE SET event_id = excluded.event_id, created_at = excluded.created_at";
+
+/**
  * Record and remove the follows between local accounts and the actors in
  * `scope`: accepted follows by a local account (`outbound_follows`) and of it
  * (`remote_follows`) are written to the event first; requests that were still
@@ -145,7 +152,8 @@ export const severRelationships = async (
          SELECT o.id, ?, o.account_id, r.username || '@' || r.domain, 'active',
                 o.reblogs, o.notify, o.languages_json, ?
          FROM outbound_follows o JOIN remote_actors r ON r.actor_uri = o.actor_uri
-         WHERE o.state = 'Accepted' AND ${ACTOR_MATCH_SQL}`,
+         WHERE o.state = 'Accepted' AND ${ACTOR_MATCH_SQL}
+         ${CLAIM_SEVERED_SQL}`,
       )
       .bind(eventId, now, ...binds),
     db
@@ -155,7 +163,8 @@ export const severRelationships = async (
          SELECT f.id, ?, f.target_account_id, r.username || '@' || r.domain, 'passive',
                 NULL, NULL, NULL, ?
          FROM remote_follows f JOIN remote_actors r ON r.actor_uri = f.remote_actor_uri
-         WHERE f.follow_kind = 'Accepted' AND ${ACTOR_MATCH_SQL}`,
+         WHERE f.follow_kind = 'Accepted' AND ${ACTOR_MATCH_SQL}
+         ${CLAIM_SEVERED_SQL}`,
       )
       .bind(eventId, now, ...binds),
     ...accountEvents.map(({ id, accountId }) =>
@@ -183,22 +192,7 @@ export const severRelationships = async (
   );
 };
 
-/**
- * A remote actor on a domain an account blocked, and which follows between
- * the two the block removes: the account's accepted follow of it, and its
- * follow of the account, accepted or requested.
- */
-export type DomainFollowPeer = Readonly<{
-  actorUri: string;
-  following: boolean;
-  follower: boolean;
-}>;
-
-const DomainFollowPeerRowSchema = z.object({
-  actor_uri: z.string(),
-  following: z.number(),
-  follower: z.number(),
-});
+const ActorUriRowSchema = z.object({ actor_uri: z.string() });
 
 /**
  * The next `limit` actors on `domain` (every port of it), after `afterActorUri`
@@ -212,35 +206,27 @@ export const listDomainFollowPeers = async (
   domain: Hostname,
   afterActorUri: string,
   limit: number,
-): Promise<Result<DomainFollowPeer[], RepositoryError>> =>
+): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
     const { results } = await db
       .prepare(
-        `SELECT actor_uri, MAX(following) AS following, MAX(follower) AS follower FROM (
-           SELECT o.actor_uri, 1 AS following, 0 AS follower
+        `SELECT DISTINCT actor_uri FROM (
+           SELECT o.actor_uri
            FROM outbound_follows o JOIN remote_actors r ON r.actor_uri = o.actor_uri
            WHERE o.account_id = ? AND o.state = 'Accepted' AND r.host = ?
            UNION ALL
-           SELECT f.remote_actor_uri, 0, 1
+           SELECT f.remote_actor_uri
            FROM remote_follows f JOIN remote_actors r ON r.actor_uri = f.remote_actor_uri
            WHERE f.target_account_id = ? AND r.host = ?
          )
          WHERE actor_uri > ?
-         GROUP BY actor_uri ORDER BY actor_uri LIMIT ?`,
+         ORDER BY actor_uri LIMIT ?`,
       )
       .bind(accountId, domain, accountId, domain, afterActorUri, limit)
       .all();
     return (results ?? []).flatMap((raw) => {
-      const row = schemaResult(DomainFollowPeerRowSchema)(raw);
-      return row.isOk()
-        ? [
-            {
-              actorUri: row.value.actor_uri,
-              following: row.value.following !== 0,
-              follower: row.value.follower !== 0,
-            },
-          ]
-        : [];
+      const row = schemaResult(ActorUriRowSchema)(raw);
+      return row.isOk() ? [row.value.actor_uri] : [];
     });
   });
 
@@ -253,16 +239,40 @@ export type AccountSeverancePage = Readonly<{
   actorUris: ReadonlyArray<string>;
 }>;
 
+/** A follow a page removed: the remote actor and the `Follow` activity's id, when known. */
+export type RemovedFollow = Readonly<{ actorUri: string; followActivityId: string | null }>;
+
+/** What a page removed, for the caller to federate: the `Undo`s and the `Reject`s to send. */
+export type SeveredAccountPage = Readonly<{
+  unfollowed: ReadonlyArray<RemovedFollow>;
+  rejected: ReadonlyArray<RemovedFollow>;
+}>;
+
+const RemovedFollowRowSchema = z.object({
+  actor_uri: z.string(),
+  follow_activity_id: z.string().nullable(),
+});
+
+const removedFollows = (result: D1Result | undefined): RemovedFollow[] =>
+  (result?.results ?? []).flatMap((raw) => {
+    const row = schemaResult(RemovedFollowRowSchema)(raw);
+    return row.isOk()
+      ? [{ actorUri: row.value.actor_uri, followActivityId: row.value.follow_activity_id }]
+      : [];
+  });
+
 /**
- * Record the accepted follows between `accountId` and `actorUris`, both ways,
- * under `eventId`, before the caller removes them. The event is written with
- * the first page that has a follow to record, so a severance that only drops
- * requests leaves none. Recording a page twice keeps one row per follow.
+ * Remove the follows between `accountId` and `actorUris`: its accepted
+ * follows of them, and their follows and requests of it. The accepted ones,
+ * both ways, are recorded under `eventId` in the same batch, so a follow is
+ * recorded exactly when it is removed. The event is written with the first
+ * page that has a follow to record, so a severance that only drops requests
+ * leaves none.
  */
-export const recordAccountSeverancePage = async (
+export const severAccountPage = async (
   db: D1Database,
   page: AccountSeverancePage,
-): Promise<Result<void, RepositoryError>> => {
+): Promise<Result<SeveredAccountPage, RepositoryError>> => {
   const now = nowIso();
   const actors = jsonStringArray(page.actorUris);
   const active = `FROM outbound_follows o JOIN remote_actors r ON r.actor_uri = o.actor_uri
@@ -290,76 +300,44 @@ export const recordAccountSeverancePage = async (
       ),
     db
       .prepare(
-        `INSERT OR IGNORE INTO severed_relationships
+        `INSERT INTO severed_relationships
            (id, event_id, local_account_id, remote_acct, direction, show_reblogs, notify, languages_json, created_at)
          SELECT o.id, ?, o.account_id, r.username || '@' || r.domain, 'active',
                 o.reblogs, o.notify, o.languages_json, ?
-         ${active}`,
+         ${active}
+         ${CLAIM_SEVERED_SQL}`,
       )
       .bind(page.eventId, now, page.accountId, actors),
     db
       .prepare(
-        `INSERT OR IGNORE INTO severed_relationships
+        `INSERT INTO severed_relationships
            (id, event_id, local_account_id, remote_acct, direction, show_reblogs, notify, languages_json, created_at)
          SELECT f.id, ?, f.target_account_id, r.username || '@' || r.domain, 'passive',
                 NULL, NULL, NULL, ?
-         ${passive}`,
+         ${passive}
+         ${CLAIM_SEVERED_SQL}`,
       )
       .bind(page.eventId, now, page.accountId, actors),
-  ]);
-  return written.map(() => undefined);
-};
-
-const IdRowSchema = z.object({ id: z.string() });
-
-/**
- * Close a severance recorded with {@link recordAccountSeverancePage}: write
- * the account's event with its counts and resolve to it, for the caller to
- * notify. It resolves to none when nothing was recorded, or when an earlier
- * call already wrote the account event.
- */
-export const finishAccountSeverance = async (
-  db: D1Database,
-  eventId: string,
-  accountId: string,
-): Promise<Result<AccountSeveranceEvent | undefined, RepositoryError>> => {
-  const inserted = await runD1(async () => {
-    const { results } = await db
+    db
       .prepare(
-        `INSERT OR IGNORE INTO account_severance_events
-           (id, event_id, account_id, followers_count, following_count, created_at)
-         SELECT ?, ?, ?,
-           (SELECT COUNT(*) FROM severed_relationships
-              WHERE event_id = ? AND local_account_id = ? AND direction = 'passive'),
-           (SELECT COUNT(*) FROM severed_relationships
-              WHERE event_id = ? AND local_account_id = ? AND direction = 'active'),
-           ?
-         WHERE EXISTS (SELECT 1 FROM severed_relationships WHERE event_id = ? AND local_account_id = ?)
-         RETURNING id`,
+        `DELETE FROM outbound_follows
+         WHERE account_id = ? AND state = 'Accepted'
+           AND actor_uri IN (SELECT value FROM json_each(?))
+         RETURNING actor_uri, follow_activity_id`,
       )
-      .bind(
-        newEntityId(),
-        eventId,
-        accountId,
-        eventId,
-        accountId,
-        eventId,
-        accountId,
-        nowIso(),
-        eventId,
-        accountId,
+      .bind(page.accountId, actors),
+    db
+      .prepare(
+        `DELETE FROM remote_follows
+         WHERE target_account_id = ? AND remote_actor_uri IN (SELECT value FROM json_each(?))
+         RETURNING remote_actor_uri AS actor_uri, follow_activity_id`,
       )
-      .all();
-    return (results ?? []).flatMap((raw) => {
-      const row = schemaResult(IdRowSchema)(raw);
-      return row.isOk() ? [row.value.id] : [];
-    });
-  });
-  if (inserted.isErr()) {
-    return err(inserted.error);
-  }
-  const events = await findAccountSeveranceEvents(db, inserted.value);
-  return events.map((found) => found[0]);
+      .bind(page.accountId, actors),
+  ]);
+  return written.map((results) => ({
+    unfollowed: removedFollows(results[3]),
+    rejected: removedFollows(results[4]),
+  }));
 };
 
 const EventRowSchema = z.object({
@@ -394,6 +372,57 @@ const eventFromRow = (raw: unknown): AccountSeveranceEvent[] => {
         },
       ]
     : [];
+};
+
+/**
+ * Close a severance recorded with {@link severAccountPage}: write the
+ * account's event with its counts, once. It resolves to the event while the
+ * account has no notification of it, for the caller to notify, so a retry
+ * after a failed notification notifies again. It resolves to none when
+ * nothing was recorded.
+ */
+export const finishAccountSeverance = async (
+  db: D1Database,
+  eventId: string,
+  accountId: string,
+): Promise<Result<AccountSeveranceEvent | undefined, RepositoryError>> => {
+  const written = await runD1Batch(db, [
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO account_severance_events
+             (id, event_id, account_id, followers_count, following_count, created_at)
+           SELECT ?, ?, ?,
+             (SELECT COUNT(*) FROM severed_relationships
+                WHERE event_id = ? AND local_account_id = ? AND direction = 'passive'),
+             (SELECT COUNT(*) FROM severed_relationships
+                WHERE event_id = ? AND local_account_id = ? AND direction = 'active'),
+             ?
+           WHERE EXISTS (SELECT 1 FROM severed_relationships WHERE event_id = ? AND local_account_id = ?)`,
+      )
+      .bind(
+        newEntityId(),
+        eventId,
+        accountId,
+        eventId,
+        accountId,
+        eventId,
+        accountId,
+        nowIso(),
+        eventId,
+        accountId,
+      ),
+    db
+      .prepare(
+        `${EVENT_SELECT}
+           WHERE a.event_id = ? AND a.account_id = ?
+             AND NOT EXISTS (
+               SELECT 1 FROM notifications n
+               WHERE n.account_id = a.account_id AND n.severance_event_id = a.id
+             )`,
+      )
+      .bind(eventId, accountId),
+  ]);
+  return written.map((results) => (results[1]?.results ?? []).flatMap(eventFromRow)[0]);
 };
 
 /** Account events by id (any account's), for notifications and the entity they carry. */

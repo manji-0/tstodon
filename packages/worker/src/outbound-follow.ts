@@ -129,12 +129,24 @@ export const unfollowRemoteActor = async (
   if (removed.isErr()) {
     return err(removed.error);
   }
-  const followActivityId = removed.value;
-  if (followActivityId === undefined) {
-    return ok(undefined);
+  if (removed.value !== undefined) {
+    await sendFollowUndo(env, identity, follower, actor, removed.value);
   }
+  return ok(undefined);
+};
+
+/**
+ * Send `actor` the `Undo` of `follower`'s `Follow` of it. Delivery is best
+ * effort: the caller has already dropped the follow.
+ */
+export const sendFollowUndo = async (
+  env: Env,
+  identity: InstanceIdentity,
+  follower: LocalAccount,
+  actor: RemoteActor,
+  followActivityId: string,
+): Promise<void> => {
   const followerUrl = InstanceIdentity.actorUrl(identity, follower.username);
-  // Delivery is best effort: the follow is already gone here.
   await enqueueTargetedActivity(
     env,
     follower.id,
@@ -148,7 +160,6 @@ export const unfollowRemoteActor = async (
     },
     actor.inboxUri,
   );
-  return ok(undefined);
 };
 
 const EmbeddedFollowSchema = z.object({
