@@ -266,15 +266,15 @@ describe("notifications from remote actors", () => {
     expect(stored.results.map((row) => row.from_actor_uri)).toEqual([friend.actorUri]);
   });
 
-  it("matches a domain block on the account domain, not the actor URI's host, as Mastodon's account.domain", async () => {
-    // A WebFinger domain that serves its actors from another host (#70).
+  it("matches a domain block on the account domain or the actor URI's host", async () => {
+    // A WebFinger domain that serves its actors from another host (#70, #71).
     const remote = await remoteActor("split", "social.split-host.example", {
       accountDomain: "split-host.example",
     });
     const remoteId = RemoteAccountId.encode(remote.actorUri);
     const cases = [
       { email: "split-domain-account@example.com", blocked: "split-host.example", hit: true },
-      { email: "split-domain-uri@example.com", blocked: "social.split-host.example", hit: false },
+      { email: "split-domain-uri@example.com", blocked: "social.split-host.example", hit: true },
     ] as const;
     for (const [n, { email, blocked, hit }] of cases.entries()) {
       const headers = { "content-type": "application/json", ...(await authHeaders(email)) };

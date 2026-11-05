@@ -785,7 +785,7 @@ describe("a user's domain block on an actor's URI host", () => {
       followers: followers.length,
       follow: follow.status,
       vote: (await vote(email, pollId)).status,
-    }).toEqual({ followers: 0, follow: 422, vote: 422 });
+    }).toEqual({ followers: 0, follow: 403, vote: 422 });
   });
 });
 

@@ -8,6 +8,7 @@ WHERE p.actor_uri = $1 AND s.visibility IN ('public', 'unlisted')
   AND s.actor_uri NOT IN (
     SELECT actor_uri FROM remote_actors
     WHERE host IN (SELECT lower(domain) FROM account_domain_blocks WHERE account_id = $2)
+      OR uri_host IN (SELECT lower(domain) FROM account_domain_blocks WHERE account_id = $2)
       OR host IN (SELECT lower(domain) FROM domain_blocks WHERE severity = 'suspend')
       OR uri_host IN (SELECT lower(domain) FROM domain_blocks WHERE severity = 'suspend')
   )

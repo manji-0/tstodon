@@ -1,6 +1,5 @@
 import {
   type HasRemoteFollow,
-  Hostname,
   InstanceIdentity,
   type LocalAccount,
   type RecordInboxFollow,
@@ -12,7 +11,7 @@ import { parseLocalActorUsername } from "../activitypub";
 import { findBlock } from "../block-mute-store";
 import type { RepositoryError } from "../d1";
 import { enqueueTargetedActivity } from "../delivery";
-import { isDomainBlocked } from "../domain-block-store";
+import { isActorDomainBlocked } from "../domain-block-store";
 import { followAccount } from "../follow-store";
 import { notifyFromRemote, notifyNewFollow } from "../notify";
 import { findRemoteFollow, upsertRemoteFollow } from "../remote-actor-store";
@@ -93,7 +92,7 @@ const blocksFollower = async (
   if (blocked.isErr() || blocked.value) {
     return blocked;
   }
-  return isDomainBlocked(db, target.id, Hostname.ofAuthority(follower.domain));
+  return isActorDomainBlocked(db, target.id, follower.actorUri);
 };
 
 export const receiveRemoteFollow: InboxHandler<RemoteDelivery<"Follow">> = async ({

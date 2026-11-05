@@ -1,4 +1,4 @@
-import { InstanceIdentity, type RemoteActor, Hostname } from "@tstodon/domain";
+import { InstanceIdentity, RemoteActor, Hostname } from "@tstodon/domain";
 import { findAccountsByIds } from "./account-store";
 import type { NoteMention } from "./activitypub";
 import { listStatusMentions } from "./mention-store";
@@ -6,13 +6,14 @@ import { suspendedDomains } from "./admin-domain-block-store";
 import { remoteMentionHandles } from "./html";
 import { resolveRemoteActorByHandle } from "./remote-actor-fetch";
 import { findRemoteActorByHandle, findRemoteActorsByUris } from "./remote-actor-store";
-import { federationAllowHosts } from "./runtime-config";
+import { allowListAdmits, federationAllowHosts } from "./runtime-config";
 
 /**
  * Remote actors a post's `@user@domain` handles name: the cached actor when
  * there is one, otherwise resolved over WebFinger. A handle on a suspended or
- * non-federating domain, or one that does not resolve, is left out and the
- * post goes ahead, as in Mastodon.
+ * non-federating domain, a cached actor whose account domain or URI host is
+ * one, or a handle that does not resolve, is left out and the post goes
+ * ahead, as in Mastodon.
  */
 export const resolveRemoteMentions = async (
   env: Env,
@@ -32,7 +33,10 @@ export const resolveRemoteMentions = async (
     }
     const cached = await findRemoteActorByHandle(env.DB, handle.username, handle.domain);
     if (cached.isOk() && cached.value) {
-      actors.set(cached.value.actorUri, cached.value);
+      const hosts = RemoteActor.hostnames(cached.value);
+      if (hosts.every((host) => !blockedHosts.has(host) && allowListAdmits(allowHosts, host))) {
+        actors.set(cached.value.actorUri, cached.value);
+      }
       continue;
     }
     const resolved = await resolveRemoteActorByHandle(

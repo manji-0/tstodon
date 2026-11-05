@@ -187,7 +187,8 @@ export const severRelationships = async (
 const ActorUriRowSchema = z.object({ actor_uri: z.string() });
 
 /**
- * The next `limit` actors on `domain` (every port of it), after `afterActorUri`
+ * The next `limit` actors on `domain` (every port of it), as their account
+ * domain or their URI's host, after `afterActorUri`
  * in URI order, that `accountId` follows or asks to follow, that follow or ask
  * to follow it, or that sent it a notification.
  */
@@ -204,20 +205,20 @@ export const listDomainPeers = async (
         `SELECT DISTINCT actor_uri FROM (
            SELECT o.actor_uri
            FROM outbound_follows o JOIN remote_actors r ON r.actor_uri = o.actor_uri
-           WHERE o.account_id = ? AND r.host = ?
+           WHERE o.account_id = ?1 AND ?2 IN (r.host, r.uri_host)
            UNION ALL
            SELECT f.remote_actor_uri
            FROM remote_follows f JOIN remote_actors r ON r.actor_uri = f.remote_actor_uri
-           WHERE f.target_account_id = ? AND r.host = ?
+           WHERE f.target_account_id = ?1 AND ?2 IN (r.host, r.uri_host)
            UNION ALL
            SELECT n.from_actor_uri
            FROM notifications n JOIN remote_actors r ON r.actor_uri = n.from_actor_uri
-           WHERE n.account_id = ? AND r.host = ?
+           WHERE n.account_id = ?1 AND ?2 IN (r.host, r.uri_host)
          )
-         WHERE actor_uri > ?
-         ORDER BY actor_uri LIMIT ?`,
+         WHERE actor_uri > ?3
+         ORDER BY actor_uri LIMIT ?4`,
       )
-      .bind(accountId, domain, accountId, domain, accountId, domain, afterActorUri, limit)
+      .bind(accountId, domain, afterActorUri, limit)
       .all();
     return (results ?? []).flatMap((raw) => {
       const row = schemaResult(ActorUriRowSchema)(raw);

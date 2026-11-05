@@ -16,7 +16,7 @@ import { suspendedDomains } from "./admin-domain-block-store";
 import { findBlock } from "./block-mute-store";
 import type { RepositoryError } from "./d1";
 import { enqueueTargetedActivity } from "./delivery";
-import { isDomainBlocked } from "./domain-block-store";
+import { isActorDomainBlocked } from "./domain-block-store";
 import type { FollowOptions } from "./follow-store";
 import { newEntityId } from "./ids";
 import {
@@ -70,11 +70,7 @@ export const followRemoteActor = async (
   if (blocked.value) {
     return err({ kind: "Blocked" });
   }
-  const domainBlocked = await isDomainBlocked(
-    env.DB,
-    follower.id,
-    Hostname.ofAuthority(actor.domain),
-  );
+  const domainBlocked = await isActorDomainBlocked(env.DB, follower.id, actor.actorUri);
   if (domainBlocked.isErr()) {
     return err(domainBlocked.error);
   }

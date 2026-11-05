@@ -294,7 +294,8 @@ export const isSenderAccepted = async (
   });
 
 /**
- * Forget the senders on `domain` (every port of it) whose requests the
+ * Forget the senders on `domain` (every port of it, as their account domain
+ * or their URI's host) whose requests the
  * account accepted, as Mastodon's `clear_notification_permissions!` does when
  * the account blocks the domain. An acceptance names its sender by `r_…` id,
  * so the account's remote ones are decoded to find the domain's actors.
@@ -326,7 +327,7 @@ export const forgetDomainNotificationAcceptances = async (
          WHERE account_id = ? AND from_account_id IN (
            SELECT json_extract(s.value, '$[0]') FROM json_each(?) s
            JOIN remote_actors r ON r.actor_uri = json_extract(s.value, '$[1]')
-           WHERE r.host = ?
+           WHERE ? IN (r.host, r.uri_host)
          )`,
       )
       .bind(accountId, JSON.stringify(senders), domain)

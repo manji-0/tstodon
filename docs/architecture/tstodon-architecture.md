@@ -68,12 +68,19 @@ A use case that reads or writes storage takes each operation as a parameter. The
 
 ## Remote Actor Domains
 
-A remote actor has two hosts. Its account domain (`remote_actors.domain`, hostname in `host`) is the domain of the handle WebFinger confirms, as Mastodon's `check_webfinger!` does: `alice@example.com` can be served from `https://social.example.com/users/alice`. Its URI host (`uri_host`, migration 0107) is the host that serves the actor document and its key. Actor fetch (`cacheFetchedActor` in `packages/worker/src/remote-actor-fetch.ts`) records the round trip as a `WebfingerConfirmation` (`packages/domain/src/webfinger-confirmation.ts`): `Confirmed` stores the confirmed handle, `Mismatch` stores the URI host, `Unavailable` keeps the stored handle (the URI host for an actor not cached yet), and `Refused` refuses the actor when its claimed account domain is suspended or not on the allow list.
+A remote actor has two hosts. Its account domain (`remote_actors.domain`, hostname in `host`) is the domain of the handle WebFinger confirms, as Mastodon's `check_webfinger!` does: `alice@example.com` can be served from `https://social.example.com/users/alice`. Its URI host (`uri_host`, migration 0107) is the host that serves the actor document and its key.
 
-The two kinds of domain rule match different hosts:
+Actor fetch (`cacheFetchedActor` in `packages/worker/src/remote-actor-fetch.ts`) records the round trip as a `WebfingerConfirmation` (`packages/domain/src/webfinger-confirmation.ts`):
 
-- An instance rule (an admin's suspension, silence, `reject_media` or `reject_reports`, and the allow list) applies when it names either host. TypeScript asks `RemoteActor.hostnames` or `RemoteActor.onAnyHost`; SQL matches `host` or `uri_host`. An actor therefore cannot escape a rule on the server that serves it by confirming a domain elsewhere.
-- A user's domain block names the account domain only (`host`), as Mastodon matches `account.domain`.
+- `Confirmed` stores the confirmed handle with `last_webfingered_at` set to now, and moves every other row cached under that handle back to its own URI authority, so a handle names the actor WebFinger confirmed last.
+- `Mismatch` (an answer for another actor, a subject that does not loop back, or a 404 or 410) stores the URI authority.
+- `Unavailable` (a 5xx, a timeout, an unreadable answer) keeps the stored handle and its `last_webfingered_at`, or the URI authority for an actor not cached yet. This only rides out outages: the URI host can always answer for its own authority.
+- `Unchecked` (an actor's own `Update`, as Mastodon applies it) keeps the stored handle the same way.
+- `Refused` refuses the actor when its claimed account domain is suspended or not on the allow list.
+
+A handle lookup's own WebFinger answer only stands in for the lookup it repeats: the first step when the asked handle is the URI authority's, else the second once the URI authority names it. The stale-actor refresh re-runs the round trip a day after the last confirmation. An actor id whose authority is not printable ASCII (a Unicode host, which SQLite's `lower` cannot fold), or whose text reads otherwise than its parsed host and port, is refused, so SQL and TypeScript always read the same host.
+
+Every domain rule matches either host. An instance rule (an admin's suspension, silence, `reject_media` or `reject_reports`, and the allow list) and a user's domain block both apply when they name the account domain or the URI host. TypeScript asks `RemoteActor.hostnames` or `RemoteActor.onAnyHost`; SQL matches `host` or `uri_host`. An actor therefore cannot escape a rule on the server that serves it by confirming a domain elsewhere, and a user's block made on the URI host keeps working once the account domain is confirmed. Mastodon matches a user's block against `account.domain` only; matching both only ever blocks more.
 
 ## Authentication Model
 

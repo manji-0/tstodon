@@ -62,10 +62,12 @@ export const isDomainBlocked = async (
 };
 
 /**
- * Whether the account blocks the remote actor's account domain. The domain is
- * `remote_actors.host`, the WebFinger domain, as Mastodon matches
- * `account.domain`, and as the block's severance and the timelines do; never
- * the host of the actor URI, which can differ. An actor not cached has none.
+ * Whether the account blocks either host of the remote actor: its account
+ * domain (`remote_actors.host`, the WebFinger domain) or its URI's host
+ * (`uri_host`), as an instance rule matches and as the block's severance and
+ * the timelines do. Mastodon matches `account.domain` only; matching both
+ * only ever blocks more, and a block made before the account domain was
+ * confirmed keeps working. An actor not cached has neither.
  */
 export const isActorDomainBlocked = (
   db: D1Database,

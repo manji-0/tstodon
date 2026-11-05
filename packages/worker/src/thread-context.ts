@@ -1,6 +1,5 @@
 import {
   type FindThreadParent,
-  Hostname,
   InstanceIdentity,
   RemoteActor,
   type ThreadStatus,
@@ -198,7 +197,7 @@ export const visibleThreadStatuses = async (
     const actor = actors.isOk() ? actors.value.get(node.status.actorUri) : undefined;
     return (
       !actor ||
-      blockedDomains.has(Hostname.ofAuthority(actor.domain)) ||
+      RemoteActor.onAnyHost(actor, blockedDomains) ||
       RemoteActor.onAnyHost(actor, restricted)
     );
   };

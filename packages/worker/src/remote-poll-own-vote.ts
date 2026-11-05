@@ -1,5 +1,6 @@
 import {
   type LocalAccount,
+  RemoteActor,
   RemotePoll,
   type RemotePollChoiceError,
   Hostname,
@@ -8,14 +9,14 @@ import { err, ok, type Result } from "neverthrow";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { nowIso } from "./clock";
 import { enqueueTargetedActivity } from "./delivery";
-import { isDomainBlocked } from "./domain-block-store";
+import { isActorDomainBlocked } from "./domain-block-store";
 import { newEntityId } from "./ids";
 import { pollVoteActivity } from "./poll-vote-activity";
 import { remotePollJson } from "./poll-document";
 import { findRemoteActorByUri } from "./remote-actor-store";
 import { findRemotePollVotes, recordRemotePollVotes } from "./remote-poll-vote-store";
 import { findRemoteStatusById } from "./remote-status-store";
-import { federatesWithHost, parseInstanceIdentity } from "./runtime-config";
+import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 import { canViewRemoteStatus } from "./visibility-guard";
 
 export type RemotePollVoteError =
@@ -58,18 +59,15 @@ export const voteOnRemotePoll = async (
   if (!author.value) {
     return err({ kind: "NotFound" });
   }
-  const inboxHost =
-    Hostname.ofUri(author.value.inboxUri) ?? Hostname.ofAuthority(author.value.domain);
-  const blocked = await isDomainBlocked(
-    env.DB,
-    voter.id,
-    Hostname.ofAuthority(author.value.domain),
-  );
+  const inboxHost = Hostname.ofUri(author.value.inboxUri);
+  const hosts = [...RemoteActor.hostnames(author.value), ...(inboxHost ? [inboxHost] : [])];
+  const suspended = await suspendedDomains(env.DB);
+  const allowHosts = await federationAllowHosts(env);
+  const blocked = await isActorDomainBlocked(env.DB, voter.id, author.value.actorUri);
   if (
     blocked.isErr() ||
     blocked.value ||
-    (await suspendedDomains(env.DB)).has(inboxHost) ||
-    !(await federatesWithHost(env, inboxHost))
+    hosts.some((host) => suspended.has(host) || !allowListAdmits(allowHosts, host))
   ) {
     return err({ kind: "DomainBlocked" });
   }
