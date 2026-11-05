@@ -14,6 +14,18 @@ describe("entityIdAt", () => {
     expect([...ids].sort()).toEqual(ids);
   });
 
+  it("gives every id distinct at one instant, as a backfill of one second does", () => {
+    const at = Date.parse("2024-03-03T00:00:00.000Z");
+    const ids = Array.from({ length: 5000 }, () => entityIdAt(at));
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(new Set(ids.map((id) => BigInt(id) >> 16n)).size).toBe(1);
+  });
+
+  it("gives every id distinct in a burst that shares the clock", () => {
+    const ids = Array.from({ length: 5000 }, () => newEntityId());
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it("never sorts after now", () => {
     const future = BigInt(entityIdAt(Date.parse("2999-01-01T00:00:00.000Z"))) >> 16n;
     const later = BigInt(newEntityId()) >> 16n;
