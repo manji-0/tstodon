@@ -1,4 +1,4 @@
-import { Hostname } from "@tstodon/domain";
+import { Hostname, NotificationGroup } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { err, ok } from "neverthrow";
 import type { RepositoryError } from "./d1";
@@ -8,8 +8,7 @@ import { isDomainBlocked } from "./domain-block-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { findActiveMute, findBlock } from "./block-mute-store";
 import { mastodonNotification } from "./notification-documents";
-import { DEFAULT_GROUPED_TYPES, notificationGroupKey } from "./notification-groups";
-import { findNotificationById, insertNotification } from "./notification-store";
+import { findNotificationById, groupedEntry, insertNotification } from "./notification-store";
 import { enqueuePushDeliveries } from "./push-delivery";
 import { parseInstanceIdentity } from "./runtime-config";
 import { mutedThreadStatusIds } from "./status-mute-store";
@@ -119,7 +118,10 @@ const streamedNotification = async (
   return document
     ? {
         ...document,
-        group_key: notificationGroupKey(row.value, new Set(DEFAULT_GROUPED_TYPES)),
+        group_key: NotificationGroup.key(
+          groupedEntry(row.value),
+          new Set(NotificationGroup.defaultGroupedTypes),
+        ),
       }
     : undefined;
 };

@@ -1,3 +1,4 @@
+import type { GroupedNotificationEntry } from "@tstodon/domain";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
@@ -102,6 +103,17 @@ const NotificationQueryRowSchema = z.object({
 });
 
 export type NotificationRow = z.infer<typeof NotificationQueryRowSchema> & { id: string };
+
+/** The fields of a row `NotificationGroup` groups on. */
+export const groupedEntry = (row: NotificationRow): GroupedNotificationEntry => ({
+  id: row.id,
+  kind: row.kind,
+  fromAccountId: row.from_account_id,
+  statusId: row.status_id,
+  reportId: row.report_id,
+  severanceEventId: row.severance_event_id,
+  createdAt: row.created_at,
+});
 
 export type NotificationFilters = Readonly<{
   types?: ReadonlyArray<string>;

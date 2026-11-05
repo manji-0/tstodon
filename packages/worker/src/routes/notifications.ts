@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import type { LocalStatus } from "@tstodon/domain";
+import { type LocalStatus, NotificationGroup } from "@tstodon/domain";
 import { isTruthy } from "../form-values";
 import {
   filteredAttribute,
@@ -21,12 +21,6 @@ import { mastodonNotification, mastodonNotifications } from "../notification-doc
 import { reportDocumentsByIds } from "../report-documents";
 import { findAccountSeveranceEvents, severanceEventDocument } from "../severed-relationship-store";
 import { statusDocumentsByIds } from "../status-documents";
-import {
-  DEFAULT_GROUPED_TYPES,
-  groupNotifications,
-  notificationGroupKey,
-  type NotificationGroup,
-} from "../notification-groups";
 import { parseInstanceIdentity } from "../runtime-config";
 import {
   clearNotifications,
@@ -36,6 +30,7 @@ import {
   listNotifications,
   type NotificationFilters,
   type NotificationRow,
+  groupedEntry,
 } from "../notification-store";
 import { findStatusesByIds } from "../status-store";
 import { mutedThreadStatusIds } from "../status-mute-store";
@@ -230,7 +225,7 @@ const groupedQuery = (
   const requested = queryValues("grouped_types");
   return {
     type: "notifications",
-    groupedTypes: new Set(requested.length > 0 ? requested : DEFAULT_GROUPED_TYPES),
+    groupedTypes: new Set(requested.length > 0 ? requested : NotificationGroup.defaultGroupedTypes),
     filters: {
       types: queryValues("types"),
       excludeTypes: queryValues("exclude_types"),
@@ -269,7 +264,7 @@ const groupedNotificationPage = async (
   if (rows.isErr()) {
     return { kind: "Err", message: rows.error.message };
   }
-  const grouped = groupNotifications(rows.value, groupedTypes, limit);
+  const grouped = NotificationGroup.fold(rows.value.map(groupedEntry), groupedTypes, limit);
   return {
     kind: "Ok",
     groups: grouped.groups,
@@ -363,7 +358,7 @@ export const getV2NotificationsUnreadCount = async (
     if (markerId && row.id <= markerId) {
       continue;
     }
-    unreadKeys.add(notificationGroupKey(row, groupedTypes));
+    unreadKeys.add(NotificationGroup.key(groupedEntry(row), groupedTypes));
   }
   return c.json({ count: unreadKeys.size });
 };

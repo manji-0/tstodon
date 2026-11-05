@@ -41,6 +41,11 @@ export {
   type OutboxDelivery as OutboxDeliveryValue,
 } from "./outbox-delivery";
 export {
+  NotificationGroup,
+  type GroupedNotificationEntry,
+  type NotificationGroupPage,
+} from "./notification-group";
+export {
   NotificationPolicy,
   type LocalNotificationSender,
   type NotificationSender,
