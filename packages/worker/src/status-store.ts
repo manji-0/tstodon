@@ -26,6 +26,7 @@ import {
 } from "./d1";
 import { removedBoostsFromRows } from "./removed-boost";
 import { visibilitySql } from "./sql-enums";
+import { extractHashtags, recordTagNames } from "./hashtags";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   attachMediaToStatus as attachMediaToStatusSql,
@@ -256,6 +257,7 @@ export const insertLocalNote = async (
     ...note.mediaIds.map((mediaId, position) =>
       d1PrepareTyped(db, attachMediaToStatusSql(note.id, mediaId, note.accountId, position)),
     ),
+    recordTagNames(db, extractHashtags(note.text)),
   ];
   const batched = await runD1Batch(db, statements);
   if (batched.isErr()) {
@@ -348,7 +350,11 @@ export const updateLocalNote = async (
       ),
       IdRow,
     );
-    return rows.length > 0;
+    if (rows.length === 0) {
+      return false;
+    }
+    await recordTagNames(db, extractHashtags(note.text)).run();
+    return true;
   });
 
 /**

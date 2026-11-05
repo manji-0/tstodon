@@ -2,7 +2,7 @@ import { z } from "zod";
 import { InstanceLimits } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { runD1, runD1Batch, type RepositoryError } from "./d1";
 import {
   countAccountTagUses as countAccountTagUsesSql,
   countFeaturedTags as countFeaturedTagsSql,
@@ -12,11 +12,12 @@ import {
   isTagFollowed as isTagFollowedSql,
   listFeaturedTags as listFeaturedTagsSql,
   listFollowedTags as listFollowedTagsSql,
+  searchTags as searchTagsSql,
   unfeatureTag as unfeatureTagSql,
   unfollowTag as unfollowTagSql,
 } from "./generated/prisma/sql";
-import { extractHashtags, hashtagUses } from "./status-discovery-store";
-import { queryTyped, runTyped } from "./typed-sql";
+import { extractHashtags, hashtagUses, recordTagNames } from "./hashtags";
+import { d1PrepareTyped, queryTyped } from "./typed-sql";
 
 const TagNameRow = z.object({ tag_name: z.string() });
 const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
@@ -38,14 +39,45 @@ export const normalizeTag = (raw: string): string => raw.trim().replace(/^#+/, "
 
 export const isValidTag = (tag: string): boolean => /^[a-z0-9_]+$/.test(tag);
 
+const NameRow = z.object({ name: z.string() });
+
+/**
+ * A search term as Mastodon's `HashtagNormalizer` reads it: NFKC, lowercase,
+ * and only the characters a hashtag can hold, so `#Cat` and `cat!` are `cat`.
+ */
+export const tagSearchPrefix = (term: string): string =>
+  term
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}_\u00B7\u30FB\u200C]/gu, "");
+
+/**
+ * Stored tags whose name starts with the term, as Mastodon's `Tag.search_for`:
+ * shortest first, then by name, paged by `limit` and `offset`.
+ */
+export const searchTags = async (
+  db: D1Database,
+  term: string,
+  limit: number,
+  offset: number,
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped(db, searchTagsSql(tagSearchPrefix(term), limit, offset), NameRow);
+    return rows.map((row) => row.name);
+  });
+
 export const followTag = async (
   db: D1Database,
   accountId: string,
   tag: string,
 ): Promise<Result<void, RepositoryError>> =>
-  runD1(async () => {
-    await runTyped(db, followTagSql(accountId, tag, nowIso()));
-  });
+  // As Mastodon's `Tag.find_or_create_by_names`, the tag exists from now on.
+  (
+    await runD1Batch(db, [
+      d1PrepareTyped(db, followTagSql(accountId, tag, nowIso())),
+      recordTagNames(db, [tag]),
+    ])
+  ).map(() => undefined);
 
 export const unfollowTag = async (
   db: D1Database,
@@ -81,9 +113,13 @@ export const featureTag = async (
   accountId: string,
   tag: string,
 ): Promise<Result<void, RepositoryError>> =>
-  runD1(async () => {
-    await runTyped(db, featureTagSql(accountId, tag, nowIso()));
-  });
+  // As Mastodon's `Tag.find_or_create_by_names`, the tag exists from now on.
+  (
+    await runD1Batch(db, [
+      d1PrepareTyped(db, featureTagSql(accountId, tag, nowIso())),
+      recordTagNames(db, [tag]),
+    ])
+  ).map(() => undefined);
 
 export const unfeatureTag = async (
   db: D1Database,

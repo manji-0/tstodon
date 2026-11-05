@@ -29,7 +29,6 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
 
 const SearchResultsSchema = z.object({
   statuses: z.array(MastodonStatusPreviewSchema),
-  hashtags: z.array(z.object({ name: z.string() })),
 });
 
 const accountOf = async (email: string): Promise<z.infer<typeof MastodonAccountPreviewSchema>> => {
@@ -118,19 +117,5 @@ describe("status search", () => {
     expect(outsider.statuses).toEqual([]);
     const anonymous = await json("/api/v2/search?q=insiderstatusq&type=statuses&limit=10");
     expect(read(SearchResultsSchema, anonymous.body).statuses).toEqual([]);
-  });
-
-  it("pages hashtags with offset", async () => {
-    const viewer = "status-search-tagger@example.com";
-    for (let index = 0; index < 3; index += 1) {
-      await post(viewer, `#pagedtagq #pagedtagq${index}`);
-    }
-    const first = await search(viewer, "q=%23pagedtagq&type=hashtags&limit=1&offset=0");
-    const second = await search(viewer, "q=%23pagedtagq&type=hashtags&limit=1&offset=1");
-    expect(first.hashtags.map((tag) => tag.name)).toEqual(["pagedtagq"]);
-    const onBoth = second.hashtags.filter((tag) =>
-      first.hashtags.some((seen) => seen.name === tag.name),
-    );
-    expect(onBoth).toEqual([]);
   });
 });

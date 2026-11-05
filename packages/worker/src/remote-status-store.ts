@@ -27,6 +27,7 @@ import { removedBoostsFromRows } from "./removed-boost";
 import { parseJsonText } from "./json-column";
 import { toRepositoryError } from "./d1";
 import { visibilitySql } from "./sql-enums";
+import { recordTagNames } from "./hashtags";
 import { htmlHashtags } from "./html";
 import {
   claimRemoteStatusThreadBackfill as claimRemoteStatusThreadBackfillSql,
@@ -215,8 +216,9 @@ export const findRemoteStatusByObjectUri = async (
   );
 
 /**
- * Replace a remote status's indexed tags with the hashtags in its HTML, and
- * mark the row as indexed so the backfill job skips it.
+ * Replace a remote status's indexed tags with the hashtags in its HTML, store
+ * their names for hashtag search, and mark the row as indexed so the backfill
+ * job skips it.
  */
 const replaceRemoteStatusTags = async (
   db: D1Database,
@@ -231,6 +233,7 @@ const replaceRemoteStatusTags = async (
         .bind(statusId, tag),
     ),
     d1PrepareTyped(db, markRemoteStatusTagsIndexedSql(statusId)),
+    recordTagNames(db, tags),
   ]);
 };
 

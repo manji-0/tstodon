@@ -19,7 +19,7 @@ import { suspendedDomains } from "../admin-domain-block-store";
 import { searchableRemoteActors } from "../account-presentation";
 import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import { searchStatuses } from "../status-timeline-store";
-import { isTagFeatured, isTagFollowed, tagDailyHistory } from "../tag-store";
+import { listFeaturedTags, listFollowedTags, searchTags, tagDailyHistories } from "../tag-store";
 import type { Context } from "hono";
 
 /** The remote actor a `resolve=true` query names by handle or actor URL, fetched if not cached. */
@@ -158,19 +158,32 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     }
   }
   let hashtags: Record<string, unknown>[] = [];
-  // The one hashtag found is the query's own, so only the first page has it.
-  if (type !== "accounts" && type !== "statuses" && query.startsWith("#") && offset === 0) {
-    const name = query.replace(/^#/, "").toLowerCase();
-    const history = await tagDailyHistory(c.env.DB, name);
-    const following = viewerId ? await isTagFollowed(c.env.DB, viewerId, name) : undefined;
-    const featuring = viewerId ? await isTagFeatured(c.env.DB, viewerId, name) : undefined;
-    hashtags = [
+  if (type !== "accounts" && type !== "statuses") {
+    const found = await searchTags(c.env.DB, query, limit, offset);
+    if (found.isErr()) {
+      return jsonRepositoryError(c, found.error.message);
+    }
+    const histories = await tagDailyHistories(c.env.DB, found.value);
+    if (histories.isErr()) {
+      return jsonRepositoryError(c, histories.error.message);
+    }
+    const followed = viewerId ? await listFollowedTags(c.env.DB, viewerId) : ok([]);
+    if (followed.isErr()) {
+      return jsonRepositoryError(c, followed.error.message);
+    }
+    const featured = viewerId ? await listFeaturedTags(c.env.DB, viewerId) : ok([]);
+    if (featured.isErr()) {
+      return jsonRepositoryError(c, featured.error.message);
+    }
+    const following = new Set(followed.value);
+    const featuring = new Set(featured.value);
+    hashtags = found.value.map((name) =>
       mastodonTag(identity.value, name, {
-        history: history.isOk() ? history.value : [],
-        following: following?.unwrapOr(false) ?? false,
-        featuring: featuring?.unwrapOr(false) ?? false,
+        history: histories.value.get(name) ?? [],
+        following: following.has(name),
+        featuring: featuring.has(name),
       }),
-    ];
+    );
   }
   // doubles: [latencyMs, accountHits, statusHits]
   writeMetric(

@@ -2,6 +2,7 @@ import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { type RepositoryError, runD1 } from "./d1";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
+import { hashtagUses } from "./hashtags";
 import { hydrateStatusRows, statusSelect } from "./status-store";
 import {
   cursorFragment,
@@ -120,22 +121,6 @@ export const listLinkStatuses = async (
       .all();
     return hydrateStatusRows(db, results ?? []);
   });
-
-export const extractHashtags = (text: string): string[] => {
-  return [
-    ...new Set(
-      [...text.matchAll(/#([A-Za-z0-9_]+)/g)].flatMap(([, tag]) =>
-        tag ? [tag.toLowerCase()] : [],
-      ),
-    ),
-  ];
-};
-
-/** How many times each hashtag occurs across these texts, in first-seen order. */
-export const hashtagUses = (texts: ReadonlyArray<string>): Map<string, number> =>
-  texts
-    .flatMap(extractHashtags)
-    .reduce((uses, tag) => uses.set(tag, (uses.get(tag) ?? 0) + 1), new Map<string, number>());
 
 export const listTrendingTags = async (
   db: D1Database,

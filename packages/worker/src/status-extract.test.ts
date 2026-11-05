@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { extractHashtags } from "./status-discovery-store";
+import { extractHashtags } from "./hashtags";
 
 describe("status text extractors", () => {
   it("extracts unique lowercase hashtags", () => {
