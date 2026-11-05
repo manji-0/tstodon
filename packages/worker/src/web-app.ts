@@ -97,7 +97,7 @@ const HASHED_PACK = /^\/packs\/(?:[^/]+\/)*[^/]+-[\w-]{8}\.\w+$/;
  * fixed-name files, `tstodon-web.json` and `sw.js`, keep the default.
  */
 export const packCacheControl = (pathname: string): string | undefined =>
-  HASHED_PACK.test(pathname) ? "public, max-age=31536000, immutable" : undefined;
+  HASHED_PACK.test(pathname) ? "private, max-age=31536000, immutable" : undefined;
 
 const wantsActivityJson = (accept: string | undefined): boolean =>
   /application\/(?:activity\+json|ld\+json)/.test(accept ?? "");

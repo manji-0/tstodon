@@ -112,7 +112,7 @@ describe("Mastodon web app", () => {
   });
 
   it("lets browsers keep the content-hashed packs and revalidate the rest", () => {
-    const immutable = "public, max-age=31536000, immutable";
+    const immutable = "private, max-age=31536000, immutable";
     expect(packCacheControl("/packs/common-lwvm9nKJ.js")).toBe(immutable);
     expect(packCacheControl("/packs/ImmutablePropTypes-C_rOJ6cM.js")).toBe(immutable);
     expect(packCacheControl("/packs/assets/themes/default-Dk-Jc7j1.css")).toBe(immutable);
@@ -134,7 +134,7 @@ describe("Mastodon web app", () => {
       );
       const pack = await SELF.fetch(`${ORIGIN}${common.js}`);
       expect(pack.status).toBe(200);
-      expect(pack.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+      expect(pack.headers.get("cache-control")).toBe("private, max-age=31536000, immutable");
     },
   );
 
