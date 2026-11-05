@@ -101,6 +101,3 @@ const remoteMediaType = (mediaType: string): string => {
   }
   return "unknown";
 };
-
-export const remoteStatusVisible = (status: RemoteStatusValue): boolean =>
-  status.visibility.kind === "Public" || status.visibility.kind === "Unlisted";

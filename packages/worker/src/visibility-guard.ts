@@ -7,7 +7,6 @@ import {
   type Visibility as VisibilityValue,
 } from "@tstodon/domain";
 import { findRemoteStatusById } from "./remote-status-store";
-import { remoteStatusVisible } from "./remote-status-document";
 import { isAccountMentionedOnStatus } from "./mention-store";
 import { isAccountMentionedOnRemoteStatus } from "./mention-store";
 import { findOutboundFollow } from "./outbound-follow-store";
@@ -87,7 +86,7 @@ export const canViewRemoteStatus = async (
   status: RemoteStatus,
   viewerId: string | undefined,
 ): Promise<boolean> => {
-  if (remoteStatusVisible(status)) {
+  if (!Visibility.isRestricted(status.visibility)) {
     return true;
   }
   if (!viewerId) {

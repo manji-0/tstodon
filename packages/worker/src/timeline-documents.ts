@@ -1,4 +1,4 @@
-import { InstanceIdentity, type LocalStatus, type RemoteNote } from "@tstodon/domain";
+import { InstanceIdentity, type LocalStatus, type RemoteNote, Visibility } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "./filter-match";
@@ -9,7 +9,6 @@ import { mastodonStatuses } from "./local-status-documents";
 import { listRemoteActorPinnedStatuses } from "./remote-actor-pin-store";
 import { listActorRemoteBoosts, listFollowedRemoteBoosts } from "./remote-boost-store";
 import { remoteBoostDocuments } from "./remote-boost-documents";
-import { remoteStatusVisible } from "./remote-status-document";
 import { mastodonRemoteStatuses } from "./remote-status-documents";
 import {
   listActorRemoteStatuses,
@@ -37,7 +36,8 @@ export const remoteTimelineDocuments = async (
   remote: ReadonlyArray<RemoteNote>,
   viewerId: string | undefined,
   /** Direct notes already chosen for the viewer pass whatever their visibility. */
-  visible: (status: RemoteNote) => boolean = remoteStatusVisible,
+  visible: (status: RemoteNote) => boolean = (status) =>
+    !Visibility.isRestricted(status.visibility),
 ): Promise<
   Readonly<{
     statuses: RemoteNote[];
