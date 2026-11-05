@@ -73,6 +73,12 @@ const editRefusals = [
     status: 422,
     error: { error: "cannot edit a poll", kind: "PollEditUnsupported" },
   },
+  {
+    name: "an unknown quote approval policy",
+    body: { status: "edited", quote_approval_policy: "everyone" },
+    status: 422,
+    error: { error: "Invalid quote_approval_policy", kind: "ValidationError" },
+  },
 ] as const satisfies ReadonlyArray<RefusalCase>;
 
 const credentialRefusals = [
@@ -138,6 +144,18 @@ describe("status edit refusals", () => {
     }
     const answer = await send(`/api/v1/statuses/${id.value.id}`, "PUT", email, refusal.body);
     expect(answer).toEqual({ status: refusal.status, body: refusal.error });
+
+    // Mastodon validates the whole edit before it stores any of it.
+    const headers = await authHeaders(email);
+    const source = await SELF.fetch(`https://example.com/api/v1/statuses/${id.value.id}/source`, {
+      headers,
+    });
+    expect(await source.json()).toMatchObject({ text: "original" });
+    const history = await SELF.fetch(
+      `https://example.com/api/v1/statuses/${id.value.id}/history`,
+      { headers },
+    );
+    expect(await history.json()).toHaveLength(1);
   });
 });
 

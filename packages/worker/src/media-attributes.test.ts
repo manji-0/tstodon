@@ -1,7 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { schemaResult } from "@tstodon/core";
+import { InstanceLimits, schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
@@ -122,5 +122,62 @@ describe("media attributes", () => {
     });
     expect(foreign.status).toBe(200);
     expect(read(AttachmentSchema, foreign.body).description).toBeNull();
+  });
+
+  const overlong = "x".repeat(InstanceLimits.media.maxDescriptionCharacters + 1);
+  const tooLong = { error: "description is too long", kind: "ValidationError" };
+
+  it("refuses an overlong description at create without posting", async () => {
+    const email = "attr-long-create@example.com";
+    const mediaId = await upload(email);
+
+    const response = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(email)) },
+      body: JSON.stringify({
+        status: "never posted",
+        media_ids: [mediaId],
+        media_attributes: [{ id: mediaId, description: overlong }],
+      }),
+    });
+    expect(response).toEqual({ status: 422, body: tooLong });
+
+    const me = await json("/api/v1/accounts/verify_credentials", { headers: await auth(email) });
+    const accountId = read(z.object({ id: z.string().min(1) }), me.body).id;
+    const statuses = await json(`/api/v1/accounts/${accountId}/statuses`, {
+      headers: await auth(email),
+    });
+    expect(statuses.body).toEqual([]);
+  });
+
+  it("refuses an overlong description at edit without changing the status", async () => {
+    const email = "attr-long-edit@example.com";
+    const mediaId = await upload(email);
+    const created = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(email)) },
+      body: JSON.stringify({ status: "before edit", media_ids: [mediaId] }),
+    });
+    const statusId = read(z.object({ id: z.string().min(1) }), created.body).id;
+
+    const edited = await json(`/api/v1/statuses/${statusId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth(email)) },
+      body: JSON.stringify({
+        status: "after edit",
+        media_ids: [mediaId],
+        media_attributes: [{ id: mediaId, description: overlong }],
+      }),
+    });
+    expect(edited).toEqual({ status: 422, body: tooLong });
+
+    const source = await json(`/api/v1/statuses/${statusId}/source`, {
+      headers: await auth(email),
+    });
+    expect(source.body).toMatchObject({ text: "before edit" });
+    const history = await json(`/api/v1/statuses/${statusId}/history`, {
+      headers: await auth(email),
+    });
+    expect(history.body).toHaveLength(1);
   });
 });
