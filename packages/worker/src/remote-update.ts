@@ -207,7 +207,7 @@ const applyActorUpdate = async (
   }
   const stored = await cacheFetchedActor(env.DB, identity, refreshed.value, options);
   if (stored.isErr()) {
-    return err(stored.error);
+    return stored.error.kind === "DomainRefused" ? ok(undefined) : err(stored.error);
   }
   const movedTo = actorMovedTo(target.raw);
   if (movedTo === signer.movedTo) {

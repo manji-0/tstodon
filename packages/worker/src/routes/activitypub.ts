@@ -311,6 +311,12 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       if (remote.error.kind === "RepositoryError") {
         return jsonRepositoryError(c, remote.error.message);
       }
+      if (remote.error.kind === "DomainRefused") {
+        return c.json(
+          { error: "This instance does not federate with that domain", kind: "Forbidden" },
+          403,
+        );
+      }
       return c.json({ kind: "InvalidSignature" }, 401);
     }
     // Limited federation: an actor outside the allow list never federates here.

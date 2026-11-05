@@ -292,7 +292,7 @@ export const findMoveTarget = async (
   }
   const cached = await cacheFetchedActor(env.DB, identity, target.value, options);
   if (cached.isErr()) {
-    return err(cached.error);
+    return cached.error.kind === "DomainRefused" ? ok(undefined) : err(cached.error);
   }
   return ok({ ref: remoteRef(cached.value), aliases: actorAliases(document.value) });
 };

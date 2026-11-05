@@ -114,6 +114,12 @@ export {
   type RemoteActorProfile,
 } from "./remote-actor";
 export {
+  type AccountHandle,
+  WebfingerConfirmation,
+  type WebfingerConfirmation as WebfingerConfirmationValue,
+  type WebfingerRefusal,
+} from "./webfinger-confirmation";
+export {
   RemoteActorModeration,
   type RemoteActorModeration as RemoteActorModerationValue,
   type RemoteActorModerationAction,

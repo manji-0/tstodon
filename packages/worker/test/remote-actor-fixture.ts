@@ -18,7 +18,7 @@ export type Remote = Readonly<{
  * `host`; its account domain is `options.accountDomain`, `host` by default,
  * as a WebFinger domain that serves actors from another host. With
  * `cache: false` it is not stored, so the first delivery fetches its document.
- * `fetchedAt` is when it was cached, a month before the tests run by default.
+ * `fetchedAt` is when it was cached, 2026-10-01 by default.
  */
 export const remoteActor = async (
   username: string,

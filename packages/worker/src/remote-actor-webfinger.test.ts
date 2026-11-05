@@ -60,17 +60,17 @@ const serveRemote = (
       });
     }
     const answer = answers[url.host];
-    if (url.pathname === "/.well-known/webfinger" && answer && "status" in answer) {
-      return new Response(null, { status: answer.status });
-    }
-    if (url.pathname === "/.well-known/webfinger" && answer) {
+    if (url.pathname === "/.well-known/webfinger") {
+      if (!answer) {
+        return new Response(null, { status: 404 });
+      }
+      if ("status" in answer) {
+        return new Response(null, { status: answer.status });
+      }
       return jsonResponse({
         subject: answer.subject,
         links: [{ rel: "self", type: "application/activity+json", href: answer.self }],
       });
-    }
-    if (url.pathname === "/.well-known/webfinger") {
-      return new Response(null, { status: 404 });
     }
     return unknownStatus === undefined
       ? original(input, init)
@@ -367,7 +367,11 @@ describe("an instance rule on the URI host of an actor with another account doma
     const attached = (slug: string) =>
       note(remote, slug, {
         attachment: [
-          { type: "Document", mediaType: "image/png", url: `https://social.wf-media.example/${slug}.png` },
+          {
+            type: "Document",
+            mediaType: "image/png",
+            url: `https://social.wf-media.example/${slug}.png`,
+          },
         ],
       });
     expect(await create(remote, attached("media-before"))).toBe(202);
@@ -382,7 +386,11 @@ describe("an instance rule on the URI host of an actor with another account doma
 
   it("reject_reports ignores the reports it files", async () => {
     const remote = await splitActor("rex", "wf-reports");
-    await adminBlock({ domain: "social.wf-reports.example", severity: "noop", reject_reports: true });
+    await adminBlock({
+      domain: "social.wf-reports.example",
+      severity: "noop",
+      reject_reports: true,
+    });
     const target = await signedInAccount("wf-reported@example.com");
     expect(
       await remote.send({
