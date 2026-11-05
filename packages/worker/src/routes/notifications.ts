@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { type LocalStatus, NotificationGroup } from "@tstodon/domain";
+import { type LocalStatus, NotificationGroup, type NotificationGroupPage } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "../d1";
 import { isTruthy } from "../form-values";
@@ -262,12 +262,9 @@ const groupedNotificationPage = async (
 ): Promise<
   | Readonly<{
       kind: "Ok";
-      groups: ReadonlyArray<NotificationGroup>;
-      accountIds: ReadonlyArray<string>;
-      statusIds: ReadonlyArray<string>;
-      /** The `Link` cursors: oldest and newest notification the page covers. */
-      next: string | undefined;
-      prev: string | undefined;
+      page: NotificationGroupPage;
+      /** Where the next page reads on when every window read showed nothing. */
+      olderThan: string | undefined;
     }>
   | Readonly<{ kind: "Err"; message: string }>
 > => {
@@ -301,18 +298,59 @@ const groupedNotificationPage = async (
     olderThan = last.id;
     cursor = { ...cursor, maxId: last.id };
   }
-  const grouped = NotificationGroup.fold(visible.map(groupedEntry), groupedTypes, limit);
-  const covered = grouped.groups.flatMap((group) => group.notificationIds).toSorted();
-  return {
-    kind: "Ok",
-    groups: grouped.groups,
-    accountIds: grouped.accountIds,
-    statusIds: grouped.statusIds,
-    // Past the window bound with nothing shown, the next page reads on from
-    // the last row read instead of ending the list.
-    next: covered.at(0) ?? olderThan,
-    prev: covered.at(-1),
-  };
+  // A `min_id` read comes back oldest first; the fold takes newest first.
+  const pagesUp = filters.minId !== undefined;
+  const entries = (pagesUp ? visible.toReversed() : visible).map(groupedEntry);
+  const page = NotificationGroup.fold(entries, groupedTypes, limit, pagesUp ? "Newer" : "Older");
+  return { kind: "Ok", page, olderThan };
+};
+
+/**
+ * The visible notifications a group key names, newest first, whatever page
+ * they fall on: as Mastodon's `by_group_key`, which ignores the list's cursors,
+ * `limit` and type filters.
+ */
+const notificationsByGroupKey = async (
+  c: Context<{ Bindings: Env }>,
+  accountId: string,
+  groupKey: string,
+  includeFiltered: boolean,
+): Promise<Result<NotificationRow[], RepositoryError>> => {
+  const { groupedTypes } = groupedQuery(c);
+  const group = NotificationGroup.target(groupKey, groupedTypes);
+  if (!group) {
+    return ok([]);
+  }
+  return listNotifications(c.env.DB, accountId, ALL_ROWS, { group, includeFiltered });
+};
+
+/** One group by key, from senders that are available (Mastodon's `without_suspended`). */
+const notificationGroupByKey = async (
+  c: Context<{ Bindings: Env }>,
+  accountId: string,
+  groupKey: string,
+): Promise<Result<NotificationGroupPage, RepositoryError>> => {
+  const { groupedTypes, filters } = groupedQuery(c);
+  const rows = await notificationsByGroupKey(
+    c,
+    accountId,
+    groupKey,
+    filters.includeFiltered === true,
+  );
+  if (rows.isErr()) {
+    return err(rows.error);
+  }
+  const senders = await availableAccountIds(
+    c.env,
+    rows.value.map((row) => row.from_account_id),
+  );
+  if (senders.isErr()) {
+    return err(senders.error);
+  }
+  const entries = rows.value
+    .filter((row) => senders.value.has(row.from_account_id))
+    .map(groupedEntry);
+  return ok(NotificationGroup.fold(entries, groupedTypes, 1));
 };
 
 const groupEnvelope = async (
@@ -390,6 +428,9 @@ const NOTIFICATION_GROUP_ROW_CAP = 200;
 /** How many row windows one grouped page reads past windows with nothing to show. */
 const NOTIFICATION_GROUP_WINDOWS = 5;
 
+/** SQLite reads a negative `LIMIT` as no limit. */
+const ALL_ROWS = -1;
+
 export const getV2NotificationsUnreadCount = async (
   c: Context<{ Bindings: Env }, "/api/v2/notifications/unread_count">,
 ) => {
@@ -424,9 +465,16 @@ export const getV2Notifications = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const page = await groupedNotificationPage(c, user.value.id);
-  if (page.kind === "Err") {
-    return jsonRepositoryError(c, page.message);
+  const read = await groupedNotificationPage(c, user.value.id);
+  if (read.kind === "Err") {
+    return jsonRepositoryError(c, read.message);
+  }
+  const { page } = read;
+  if (page.kind === "Empty") {
+    // Past the window bound with nothing shown, the next page reads on from
+    // the last row read instead of ending the list.
+    setLinkHeader(c, { next: read.olderThan, prev: undefined });
+    return c.json({ accounts: [], statuses: [], notification_groups: [] });
   }
   const envelope = await groupEnvelope(
     c,
@@ -439,7 +487,7 @@ export const getV2Notifications = async (
   if (envelope.isErr()) {
     return jsonRepositoryError(c, envelope.error.message);
   }
-  setLinkHeader(c, { next: page.next, prev: page.prev });
+  setLinkHeader(c, { next: page.oldestId, prev: page.newestId });
   return c.json(envelope.value);
 };
 
@@ -450,21 +498,19 @@ export const getV2NotificationsByGroupKey = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const groupKey = c.req.param("groupKey");
-  const page = await groupedNotificationPage(c, user.value.id);
-  if (page.kind === "Err") {
-    return jsonRepositoryError(c, page.message);
+  const page = await notificationGroupByKey(c, user.value.id, c.req.param("groupKey"));
+  if (page.isErr()) {
+    return jsonRepositoryError(c, page.error.message);
   }
-  const group = page.groups.find((candidate) => candidate.groupKey === groupKey);
-  if (!group) {
+  if (page.value.kind === "Empty") {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const envelope = await groupEnvelope(
     c,
     user.value.id,
-    [group],
-    page.accountIds,
-    page.statusIds,
+    page.value.groups,
+    page.value.accountIds,
+    page.value.statusIds,
     false,
   );
   return envelope.isErr() ? jsonRepositoryError(c, envelope.error.message) : c.json(envelope.value);
@@ -481,11 +527,11 @@ export const getV2NotificationsByGroupKeyAccounts = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const page = await groupedNotificationPage(c, user.value.id);
-  if (page.kind === "Err") {
-    return jsonRepositoryError(c, page.message);
+  const page = await notificationGroupByKey(c, user.value.id, c.req.param("groupKey"));
+  if (page.isErr()) {
+    return jsonRepositoryError(c, page.error.message);
   }
-  const group = page.groups.find((candidate) => candidate.groupKey === c.req.param("groupKey"));
+  const group = page.value.kind === "Page" ? page.value.groups[0] : undefined;
   if (!group) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
@@ -503,16 +549,16 @@ export const postV2NotificationsByGroupKeyDismiss = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const groupKey = c.req.param("groupKey");
-  const page = await groupedNotificationPage(c, user.value.id);
-  if (page.kind === "Err") {
-    return jsonRepositoryError(c, page.message);
+  // As Mastodon's `by_group_key(...).destroy_all`: every notification of the
+  // group, held ones and those of unavailable senders included.
+  const rows = await notificationsByGroupKey(c, user.value.id, c.req.param("groupKey"), true);
+  if (rows.isErr()) {
+    return jsonRepositoryError(c, rows.error.message);
   }
-  const group = page.groups.find((candidate) => candidate.groupKey === groupKey);
-  if (!group) {
+  if (rows.value.length === 0) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  for (const id of group.notificationIds) {
+  for (const { id } of rows.value) {
     const dismissed = await dismissNotification(c.env.DB, user.value.id, id);
     if (dismissed.isErr()) {
       return jsonRepositoryError(c, dismissed.error.message);

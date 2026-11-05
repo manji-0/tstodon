@@ -95,7 +95,11 @@ describe("NotificationGroup.fold", () => {
     // Mastodon's `load_groups_data` bounds count and samples by the upper end only.
     const groups = groupsOf(
       NotificationGroup.fold(
-        [entry("3", "favourite", "a", "s1"), entry("2", "favourite", "b", "s2"), entry("1", "favourite", "c", "s1")],
+        [
+          entry("3", "favourite", "a", "s1"),
+          entry("2", "favourite", "b", "s2"),
+          entry("1", "favourite", "c", "s1"),
+        ],
         grouped,
         2,
       ),

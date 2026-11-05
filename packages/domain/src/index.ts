@@ -70,6 +70,8 @@ export {
   NotificationGroup,
   type GroupedNotificationEntry,
   type NotificationGroupPage,
+  type NotificationGroupTarget,
+  type NotificationPageDirection,
 } from "./notification-group";
 export {
   NotificationPolicy,

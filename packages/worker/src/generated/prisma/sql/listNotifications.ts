@@ -15,9 +15,12 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param cursorGreaterThan
  * @param ascending
  * @param includeFiltered
+ * @param notificationId
+ * @param groupType
+ * @param groupTarget
  */
 export const listNotifications = $runtime.makeTypedQueryFactory(
-  "SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at\nFROM notifications n\nWHERE n.account_id = $1\nAND n.created_at > COALESCE(\n(SELECT cleared_at FROM notification_clear_markers WHERE account_id = $1), ''\n)\nAND n.id NOT IN (\nSELECT notification_id FROM notification_dismissals WHERE account_id = $1\n)\nAND (\n$10 = 1\nOR n.id NOT IN (SELECT notification_id FROM notification_requests WHERE account_id = $1)\n)\nAND ($4 = '[]' OR n.kind IN (SELECT value FROM json_each($4)))\nAND ($5 = '[]' OR n.kind NOT IN (SELECT value FROM json_each($5)))\nAND ($6 = '' OR n.from_account_id = $6)\nAND (\n$7 = ''\nOR ($8 = 1 AND n.id > $7)\nOR ($8 = 0 AND n.id < $7)\n)\nAND n.from_account_id NOT IN (\nSELECT target_account_id FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id IS NOT NULL\nUNION\nSELECT blocker_account_id FROM blocks\nWHERE target_account_id = $1 AND blocker_account_id IS NOT NULL\nUNION\nSELECT target_account_id FROM mutes\nWHERE account_id = $1 AND target_account_id IS NOT NULL AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $2)\n)\nAND COALESCE(n.from_actor_uri, '') NOT IN (\nSELECT target_actor_uri FROM blocks WHERE blocker_account_id = $1\nUNION\nSELECT target_actor_uri FROM mutes\nWHERE account_id = $1 AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $2)\n)\nORDER BY (CASE WHEN $9 = 1 THEN n.id END) ASC, (CASE WHEN $9 = 0 THEN n.id END) DESC\nLIMIT $3",
+  "SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at\nFROM notifications n\nWHERE n.account_id = $1\nAND n.created_at > COALESCE(\n(SELECT cleared_at FROM notification_clear_markers WHERE account_id = $1), ''\n)\nAND n.id NOT IN (\nSELECT notification_id FROM notification_dismissals WHERE account_id = $1\n)\nAND (\n$10 = 1\nOR n.id NOT IN (SELECT notification_id FROM notification_requests WHERE account_id = $1)\n)\nAND ($4 = '[]' OR n.kind IN (SELECT value FROM json_each($4)))\nAND ($5 = '[]' OR n.kind NOT IN (SELECT value FROM json_each($5)))\nAND ($6 = '' OR n.from_account_id = $6)\nAND ($11 = '' OR n.id = $11)\nAND (\n$12 = ''\nOR (n.kind = $12 AND COALESCE(NULLIF(n.status_id, ''), n.from_account_id) = $13)\n)\nAND (\n$7 = ''\nOR ($8 = 1 AND n.id > $7)\nOR ($8 = 0 AND n.id < $7)\n)\nAND n.from_account_id NOT IN (\nSELECT target_account_id FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id IS NOT NULL\nUNION\nSELECT blocker_account_id FROM blocks\nWHERE target_account_id = $1 AND blocker_account_id IS NOT NULL\nUNION\nSELECT target_account_id FROM mutes\nWHERE account_id = $1 AND target_account_id IS NOT NULL AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $2)\n)\nAND COALESCE(n.from_actor_uri, '') NOT IN (\nSELECT target_actor_uri FROM blocks WHERE blocker_account_id = $1\nUNION\nSELECT target_actor_uri FROM mutes\nWHERE account_id = $1 AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $2)\n)\nORDER BY (CASE WHEN $9 = 1 THEN n.id END) ASC, (CASE WHEN $9 = 0 THEN n.id END) DESC\nLIMIT $3",
 ) as (
   accountId: string,
   now: string,
@@ -29,6 +32,9 @@ export const listNotifications = $runtime.makeTypedQueryFactory(
   cursorGreaterThan: number,
   ascending: number,
   includeFiltered: number,
+  notificationId: string,
+  groupType: string,
+  groupTarget: string,
 ) => $runtime.TypedSql<listNotifications.Parameters, listNotifications.Result>;
 
 export namespace listNotifications {
@@ -43,6 +49,9 @@ export namespace listNotifications {
     cursorGreaterThan: number,
     ascending: number,
     includeFiltered: number,
+    notificationId: string,
+    groupType: string,
+    groupTarget: string,
   ];
   export type Result = {
     id: string | null;

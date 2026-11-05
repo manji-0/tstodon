@@ -1,6 +1,7 @@
 import type {
   GroupedNotificationEntry,
   NewNotification,
+  NotificationGroupTarget,
   RemoteNotificationWithdrawal,
 } from "@tstodon/domain";
 import { z } from "zod";
@@ -105,6 +106,8 @@ export type NotificationFilters = Readonly<{
   minId?: string | undefined;
   /** Include notifications held back by the notification policy. */
   includeFiltered?: boolean | undefined;
+  /** Only the notifications a group key names. */
+  group?: NotificationGroupTarget | undefined;
 }>;
 
 /**
@@ -146,6 +149,9 @@ export const listNotifications = async (
         cursor.greaterThan,
         cursor.ascending,
         filters.includeFiltered ? 1 : 0,
+        filters.group?.kind === "Notification" ? filters.group.id : "",
+        filters.group?.kind === "Group" ? filters.group.type : "",
+        filters.group?.kind === "Group" ? filters.group.target : "",
       ),
       NotificationQueryRowSchema,
     );

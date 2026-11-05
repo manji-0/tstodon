@@ -8,6 +8,9 @@
 -- @param {Int} $8:cursorGreaterThan
 -- @param {Int} $9:ascending
 -- @param {Int} $10:includeFiltered
+-- @param {String} $11:notificationId
+-- @param {String} $12:groupType
+-- @param {String} $13:groupTarget
 SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at
 FROM notifications n
 WHERE n.account_id = $1
@@ -24,6 +27,12 @@ WHERE n.account_id = $1
   AND ($4 = '[]' OR n.kind IN (SELECT value FROM json_each($4)))
   AND ($5 = '[]' OR n.kind NOT IN (SELECT value FROM json_each($5)))
   AND ($6 = '' OR n.from_account_id = $6)
+  -- A group key's notifications, as `NotificationGroup.key` builds it.
+  AND ($11 = '' OR n.id = $11)
+  AND (
+    $12 = ''
+    OR (n.kind = $12 AND COALESCE(NULLIF(n.status_id, ''), n.from_account_id) = $13)
+  )
   AND (
     $7 = ''
     OR ($8 = 1 AND n.id > $7)
