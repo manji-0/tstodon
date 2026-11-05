@@ -66,7 +66,7 @@ export const postForm = (fetcher: Browser, path: string, fields: Record<string, 
     body: new URLSearchParams(fields).toString(),
   });
 
-const RegistrationOptionsSchema = z.object({
+export const RegistrationOptionsSchema = z.object({
   challenge: z.string(),
   rp: z.object({ id: z.string().optional() }),
 });
@@ -96,7 +96,7 @@ export const registrationOptions = (fetcher: Browser, context: string) =>
 export const signUp = async (
   username: string,
   email = `${username}@mail.example`,
-  passkeyName = "Laptop",
+  passkeyName = "Sign-up key",
 ): Promise<{ fetcher: Browser; passkey: SoftPasskey; token: string }> => {
   const fetcher = browser();
   const token = await requestSignupLink(fetcher, username, email);

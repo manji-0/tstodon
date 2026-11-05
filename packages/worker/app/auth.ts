@@ -3,6 +3,7 @@ import type { BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { admin } from "better-auth/plugins";
 import { defineAuth } from "void/auth";
+import { z } from "zod";
 
 // Void also loads this file at build time (in Node) to emit the Better Auth
 // schema, so the Worker code it calls is imported lazily, per request.
@@ -45,6 +46,8 @@ const sessionLookupKeepsCaching = {
  * endpoint has already deleted), and a signed-in user adding a passkey needs
  * the same recent sign-in.
  */
+const PasskeyNameBodySchema = z.object({ name: z.string().optional() });
+
 const securityPageGuards = {
   id: "tstodon-security-page-guards",
   hooks: {
@@ -73,6 +76,18 @@ const securityPageGuards = {
           ctx.path === "/passkey/generate-register-options" ||
           ctx.path === "/passkey/verify-registration",
         handler: createAuthMiddleware(async (ctx) => {
+          // The passkey plugin stores any name it is sent; keep the cap the
+          // rename form enforces.
+          const named = PasskeyNameBodySchema.safeParse(ctx.body);
+          if (
+            named.success &&
+            named.data.name !== undefined &&
+            named.data.name.trim().length > 60
+          ) {
+            throw new APIError("BAD_REQUEST", {
+              message: "A passkey name is at most 60 characters.",
+            });
+          }
           const session = await getSessionFromCtx(ctx);
           if (session && typeof ctx.query?.context === "string" && ctx.query.context !== "") {
             throw new APIError("FORBIDDEN", {

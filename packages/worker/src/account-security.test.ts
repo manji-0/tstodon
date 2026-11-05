@@ -9,6 +9,7 @@ import {
   postJson,
   read,
   registrationOptions,
+  RegistrationOptionsSchema,
   requestSignupLink,
   signUp,
 } from "../test/passkey-browser";
@@ -212,6 +213,23 @@ describe("Password and security: passkeys", () => {
       "Phone",
     ]);
     expect(await page(await signedIn("/auth/edit"))).toContain("<strong>Phone</strong>");
+  });
+
+  it("refuses a sign-up passkey name over 60 characters, as the rename form does", async () => {
+    const fetcher = browser();
+    const token = await requestSignupLink(fetcher, "sec_long_name", "sec_long_name@mail.example");
+    const options = await registrationOptions(fetcher, token);
+    expect(options.status).toBe(200);
+    const passkey = await softPasskey(ORIGIN);
+    const response = await passkey.register(read(RegistrationOptionsSchema, await options.json()));
+    const verified = await postJson(fetcher, "/api/auth/passkey/verify-registration", {
+      response,
+      name: "n".repeat(61),
+      createSession: true,
+    });
+    expect(verified.status).toBe(400);
+    const lookup = await SELF.fetch(`${ORIGIN}/api/v1/accounts/lookup?acct=sec_long_name`);
+    expect(lookup.status).toBe(404);
   });
 
   it("lists, adds, renames, and removes passkeys, and keeps the last one", async () => {
