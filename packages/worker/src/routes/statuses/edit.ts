@@ -216,6 +216,10 @@ const replaceMentions = async (
  * store the new one with what hangs off it (poll, quote policy, media,
  * mentions), and announce the update. Every request field is checked
  * before the first write, so a refused edit leaves the note as it was.
+ * The response is rendered after the edit is stored and announced, so a
+ * failed render answers 500 (or 404) although the edit stands. Mastodon's
+ * PUT carries the whole revision and no idempotency key: a retry with the
+ * same body leaves the note reading the same, with one more history entry.
  */
 const editNote = async (
   env: Env,
