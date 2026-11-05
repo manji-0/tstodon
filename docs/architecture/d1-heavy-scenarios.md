@@ -228,7 +228,7 @@ sequenceDiagram
 
 **In code mitigations:**
 
-- Hard limit **50** per job (A7).
+- Hard limit **50** per job (A7). A full batch that claimed at least one poll or voter queues the next `ProcessExpiredPolls` job; a run that claims nothing does not.
 - Side effects (stream publish) outside the mark write (Doc A rule 4).
 - Cron only enqueues; work runs on queue consumer.
 
