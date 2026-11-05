@@ -33,7 +33,7 @@ import {
   withoutNullFields,
 } from "../../status-body-schema";
 import { isTruthy, stringList } from "../../form-values";
-import { z } from "zod";
+import type { z } from "zod";
 import {
   completeStatusIdempotency,
   findStatusIdempotency,
@@ -233,6 +233,12 @@ type NoteRequest = Readonly<{
 }>;
 
 /**
+ * A status (or scheduled status) the request stored, and its rendering for
+ * the response. Rendering can fail after the write; the id still stands.
+ */
+type Written = Readonly<{ id: string; document: Result<Record<string, unknown>, ApiRefusal> }>;
+
+/**
  * Store the validated post for later instead of publishing it; the cron
  * publisher replays the same params through `publishLocalNote`.
  */
@@ -242,7 +248,7 @@ const scheduleStatus = async (
   accountId: string,
   scheduledRaw: string,
   note: NoteRequest,
-): Promise<Result<Record<string, unknown>, ApiRefusal>> => {
+): Promise<Result<Written, ApiRefusal>> => {
   const at = Date.parse(scheduledRaw);
   if (!Number.isFinite(at) || at < Date.now() + MIN_SCHEDULE_OFFSET_MS) {
     return err(
@@ -288,20 +294,24 @@ const scheduleStatus = async (
     stored.value.params.media_ids.length > 0
       ? await findMediaByIds(db, [...stored.value.params.media_ids])
       : undefined;
-  return ok(
-    scheduledStatusDocument(
-      stored.value,
-      media && media.isOk()
-        ? [...media.value.values()].map((attachment) => mastodonMedia(identity, attachment))
-        : [],
+  return ok({
+    id: stored.value.id,
+    document: ok(
+      scheduledStatusDocument(
+        stored.value,
+        media && media.isOk()
+          ? [...media.value.values()].map((attachment) => mastodonMedia(identity, attachment))
+          : [],
+      ),
     ),
-  );
+  });
 };
 
 /**
  * Validate a new status against the author's defaults and what it points at
  * (quote, reply), then publish it, or schedule it when `scheduled_at` is set.
  * The checks keep their order, so the first problem is the one reported.
+ * An error means nothing was stored.
  */
 const postStatus = async (
   env: Env,
@@ -309,7 +319,7 @@ const postStatus = async (
   author: LocalAccount,
   body: CreateStatusBody,
   mediaAttributes: ReadonlyArray<MediaAttribute>,
-): Promise<Result<Record<string, unknown>, ApiRefusal>> => {
+): Promise<Result<Written, ApiRefusal>> => {
   const visibility = Visibility.fromMastodon(
     body.visibility && body.visibility.length > 0
       ? body.visibility
@@ -404,25 +414,35 @@ const postStatus = async (
     return err(ApiRefusal.repository(published.error.message));
   }
   const document = await mastodonStatus(env, identity, published.value, author.id);
-  if (document.isErr()) {
-    return err(ApiRefusal.repository(document.error.message));
-  }
-  return document.value ? ok(document.value) : err(ApiRefusal.notFound);
+  return ok({
+    id: published.value.id,
+    document: document.isErr()
+      ? err(ApiRefusal.repository(document.error.message))
+      : document.value
+        ? ok(document.value)
+        : err(ApiRefusal.notFound),
+  });
 };
 
-const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
+/** The response to a create request, and the id of what it stored, if it stored anything. */
+type CreateAnswer =
+  | Readonly<{ kind: "Unwritten"; response: Response }>
+  | Readonly<{ kind: "Written"; id: string; response: Response }>;
+
+const createStatus = async (c: Context<{ Bindings: Env }>): Promise<CreateAnswer> => {
+  const unwritten = (response: Response): CreateAnswer => ({ kind: "Unwritten", response });
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
-    return c.json(identity.error, 500);
+    return unwritten(c.json(identity.error, 500));
   }
   const user = await requireFunctionalUser(c);
   if (user.isErr()) {
-    return user.error;
+    return unwritten(user.error);
   }
   const rawBody = await readUnknownBody(c);
   const body = schemaResult(CreateStatusBodySchema)(withoutNullFields(rawBody));
   if (body.isErr()) {
-    return jsonValidationError(c);
+    return unwritten(jsonValidationError(c));
   }
   const posted = await postStatus(
     c.env,
@@ -431,7 +451,15 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     body.value,
     body.value.media_attributes ?? mediaAttributesFromForm(rawBody),
   );
-  return posted.isErr() ? ApiRefusal.respond(c, posted.error) : c.json(posted.value, 200);
+  if (posted.isErr()) {
+    return unwritten(ApiRefusal.respond(c, posted.error));
+  }
+  const { id, document } = posted.value;
+  return {
+    kind: "Written",
+    id,
+    response: document.isOk() ? c.json(document.value, 200) : ApiRefusal.respond(c, document.error),
+  };
 };
 
 const statusDocumentById = async (
@@ -455,13 +483,15 @@ const statusDocumentById = async (
 /**
  * `Idempotency-Key` on POST /api/v1/statuses: Mastodon stores the response for
  * an hour, so a client retry returns the status the first attempt created
- * instead of posting again. A key still in flight answers 409, and a failed
- * create releases the key for a retry.
+ * instead of posting again. A key still in flight answers 409. The key is
+ * recorded as soon as the status is stored, even when rendering it fails, so
+ * a retry renders that status again; a create that stored nothing releases
+ * the key for a retry.
  */
 export const postV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/statuses">) => {
   const key = (c.req.header("Idempotency-Key") ?? "").trim();
   if (key.length === 0) {
-    return createStatus(c);
+    return (await createStatus(c)).response;
   }
   const user = await requireUser(c);
   if (user.isErr()) {
@@ -503,17 +533,13 @@ export const postV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/stat
     return c.json({ error: "Duplicate request in progress", kind: "Conflict" }, 409);
   }
 
-  const response = await createStatus(c);
-  if (response.ok) {
-    const body: unknown = await response.clone().json();
-    const parsed = schemaResult(z.object({ id: z.string().min(1) }))(body);
-    if (parsed.isOk()) {
-      await completeStatusIdempotency(c.env.DB, accountId, key, parsed.value.id);
-    }
+  const answer = await createStatus(c);
+  if (answer.kind === "Written") {
+    await completeStatusIdempotency(c.env.DB, accountId, key, answer.id);
   } else {
     await releaseStatusIdempotency(c.env.DB, accountId, key);
   }
-  return response;
+  return answer.response;
 };
 
 /**
