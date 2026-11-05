@@ -238,13 +238,6 @@ describe("notifications from remote actors", () => {
       .bind(friend.actorUri)
       .first<{ follow_activity_id: string }>();
     expect(
-      await friend.send({
-        id: `${friend.actorUri}/accepts/1`,
-        type: "Accept",
-        object: follow?.follow_activity_id,
-      }),
-    ).toBe(202);
-    expect(
       (
         await json("/api/v1/domain_blocks", {
           method: "POST",
@@ -253,6 +246,15 @@ describe("notifications from remote actors", () => {
         })
       ).status,
     ).toBe(200);
+    // A domain block severs accepted follows with the domain (#60) and keeps pending
+    // requests, as Mastodon does, so the follow is accepted after the block.
+    expect(
+      await friend.send({
+        id: `${friend.actorUri}/accepts/1`,
+        type: "Accept",
+        object: follow?.follow_activity_id,
+      }),
+    ).toBe(202);
     const stranger = await remoteActor("stranger", "blocked-but-followed.example");
 
     for (const [sender, slug] of [
