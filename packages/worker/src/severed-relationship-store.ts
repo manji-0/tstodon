@@ -77,13 +77,6 @@ const MATCHING_ACTORS_SQL = `SELECT r.actor_uri FROM remote_actors r WHERE ${ACT
 const AccountIdRowSchema = z.object({ local_account_id: z.string() });
 
 /**
- * A follow's row id is its record's id, so a follow recorded under an earlier
- * event that is still live moves to the event that removes it.
- */
-const CLAIM_SEVERED_SQL =
-  "ON CONFLICT(id) DO UPDATE SET event_id = excluded.event_id, created_at = excluded.created_at";
-
-/**
  * Record and remove the follows between local accounts and the actors in
  * `scope`: accepted follows by a local account (`outbound_follows`) and of it
  * (`remote_follows`) are written to the event first; requests that were still
@@ -152,8 +145,7 @@ export const severRelationships = async (
          SELECT o.id, ?, o.account_id, r.username || '@' || r.domain, 'active',
                 o.reblogs, o.notify, o.languages_json, ?
          FROM outbound_follows o JOIN remote_actors r ON r.actor_uri = o.actor_uri
-         WHERE o.state = 'Accepted' AND ${ACTOR_MATCH_SQL}
-         ${CLAIM_SEVERED_SQL}`,
+         WHERE o.state = 'Accepted' AND ${ACTOR_MATCH_SQL}`,
       )
       .bind(eventId, now, ...binds),
     db
@@ -163,8 +155,7 @@ export const severRelationships = async (
          SELECT f.id, ?, f.target_account_id, r.username || '@' || r.domain, 'passive',
                 NULL, NULL, NULL, ?
          FROM remote_follows f JOIN remote_actors r ON r.actor_uri = f.remote_actor_uri
-         WHERE f.follow_kind = 'Accepted' AND ${ACTOR_MATCH_SQL}
-         ${CLAIM_SEVERED_SQL}`,
+         WHERE f.follow_kind = 'Accepted' AND ${ACTOR_MATCH_SQL}`,
       )
       .bind(eventId, now, ...binds),
     ...accountEvents.map(({ id, accountId }) =>
@@ -304,8 +295,7 @@ export const severAccountPage = async (
            (id, event_id, local_account_id, remote_acct, direction, show_reblogs, notify, languages_json, created_at)
          SELECT o.id, ?, o.account_id, r.username || '@' || r.domain, 'active',
                 o.reblogs, o.notify, o.languages_json, ?
-         ${active}
-         ${CLAIM_SEVERED_SQL}`,
+         ${active}`,
       )
       .bind(page.eventId, now, page.accountId, actors),
     db
@@ -314,8 +304,7 @@ export const severAccountPage = async (
            (id, event_id, local_account_id, remote_acct, direction, show_reblogs, notify, languages_json, created_at)
          SELECT f.id, ?, f.target_account_id, r.username || '@' || r.domain, 'passive',
                 NULL, NULL, NULL, ?
-         ${passive}
-         ${CLAIM_SEVERED_SQL}`,
+         ${passive}`,
       )
       .bind(page.eventId, now, page.accountId, actors),
     db

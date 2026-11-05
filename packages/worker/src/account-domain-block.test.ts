@@ -196,20 +196,6 @@ const drain = async (target: Env, sent: OutboxJob[]) => {
   return outcomes;
 };
 
-const ADMIN = "dblock-sever-admin@example.com";
-
-const suspendDomain = async (domain: string) =>
-  (
-    await SELF.fetch("https://example.com/api/v1/admin/domain_blocks", {
-      method: "POST",
-      headers: {
-        ...(await authHeaders(ADMIN, { admin: true })),
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ domain, severity: "suspend" }),
-    })
-  ).status;
-
 describe("blocking a domain severs the account's follows with it", () => {
   it("drops the follows both ways, federates Undo and Reject, and records the event", async () => {
     const a = "dblock-sever-a@example.com";
@@ -329,34 +315,6 @@ describe("blocking a domain severs the account's follows with it", () => {
         type: "user_domain_block",
         target_name: "dblock-faulty.test",
         followers_count: 2,
-        following_count: 0,
-      },
-    ]);
-  });
-
-  it("lets a server suspension sever a follow already recorded under another event", async () => {
-    const a = "dblock-sever-leftover@example.com";
-    const account = await signedInAccount(a);
-    await seedFollowers(account.id, "dblock-leftover.test", 1);
-    await env.DB.batch([
-      env.DB.prepare(
-        `INSERT INTO relationship_severance_events (id, type, target_name, purged, created_at)
-         VALUES ('dblock-leftover-event', 'user_domain_block', 'dblock-leftover.test', 0, '2026-10-21T00:00:00.000Z')`,
-      ),
-      env.DB.prepare(
-        `INSERT INTO severed_relationships (id, event_id, local_account_id, remote_acct, direction, created_at)
-         VALUES ('dblock-leftover.test-0', 'dblock-leftover-event', ?, 'fan0@dblock-leftover.test', 'passive', '2026-10-21T00:00:00.000Z')`,
-      ).bind(account.id),
-    ]);
-
-    expect(await suspendDomain("dblock-leftover.test")).toBe(200);
-
-    expect(await counts(a)).toEqual({ followers_count: 0, following_count: 0 });
-    expect(await severedEvents(a)).toEqual([
-      {
-        type: "domain_block",
-        target_name: "dblock-leftover.test",
-        followers_count: 1,
         following_count: 0,
       },
     ]);
