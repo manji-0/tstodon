@@ -347,8 +347,11 @@ describe("final counts of a local poll", () => {
 describe("a backlog of ended polls", () => {
   it("queues follow-up runs until every ended poll is announced, then stops", async () => {
     const author = "local-poll-backlog-author@example.com";
-    await authHeaders(author);
-    const polls = await Promise.all(Array.from({ length: 51 }, () => createPoll(author)));
+    const polls = [];
+    // One at a time: ids made in the same millisecond can collide.
+    for (let index = 0; index < 51; index += 1) {
+      polls.push(await createPoll(author));
+    }
     await Promise.all(polls.map((poll) => endPoll(poll.pollId)));
     const followUp = { kind: "ProcessExpiredPolls" };
 
@@ -367,5 +370,5 @@ describe("a backlog of ended polls", () => {
       .bind(...polls.map((poll) => poll.pollId))
       .first("n");
     expect(unannounced).toBe(0);
-  }, 60_000);
+  }, 120_000);
 });
