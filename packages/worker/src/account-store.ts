@@ -184,7 +184,7 @@ export const searchAccounts = async (
   db: D1Database,
   query: string,
   limit: number,
-  offset: number = 0,
+  offset: number,
 ): Promise<Result<LocalAccount[], RepositoryError>> =>
   runD1(async () => {
     const results = await queryTyped(

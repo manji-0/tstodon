@@ -153,6 +153,26 @@ describe("account search", () => {
     expect(pages.flat()).toEqual(all);
   });
 
+  it("fills a page past more hidden actors than one query reads", async () => {
+    const viewer = "account-search-deep-pager@example.com";
+    for (let index = 0; index < 45; index += 1) {
+      await cacheRemoteActor(`deeppage_h${index}`, "deeppage-b.example");
+    }
+    for (const name of ["deeppage_r1", "deeppage_r2", "deeppage_r3"]) {
+      await cacheRemoteActor(name, "deeppage-a.example");
+    }
+    await suspendDomain("deeppage-b.example");
+
+    const first = await search(viewer, "q=deeppage&limit=2");
+    const second = await search(viewer, "q=deeppage&limit=2&offset=2");
+    expect([...first, ...second].map((account) => account.acct).sort()).toEqual([
+      "deeppage_r1@deeppage-a.example",
+      "deeppage_r2@deeppage-a.example",
+      "deeppage_r3@deeppage-a.example",
+    ]);
+    expect(first.length).toBe(2);
+  });
+
   it("pages accounts in /api/v2/search with type=accounts", async () => {
     const viewer = "account-search-v2-pager@example.com";
     await seedMixedResults("v2page");

@@ -7,16 +7,18 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param like
  * @param limit
+ * @param offset
  */
 export const searchRemoteActors = $runtime.makeTypedQueryFactory(
-  "SELECT actor_uri, username, domain, inbox_uri, shared_inbox_uri, public_key_id, public_key_pem, display_name, profile_json, moved_to, outbox_uri, featured_uri, fetched_at\nFROM remote_actors\nWHERE (username LIKE $1 OR (username || '@' || domain) LIKE $1)\nAND actor_uri NOT IN (SELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended')\nORDER BY actor_uri DESC LIMIT $2",
+  "SELECT actor_uri, username, domain, inbox_uri, shared_inbox_uri, public_key_id, public_key_pem, display_name, profile_json, moved_to, outbox_uri, featured_uri, fetched_at\nFROM remote_actors\nWHERE (username LIKE $1 OR (username || '@' || domain) LIKE $1)\nAND actor_uri NOT IN (SELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended')\nORDER BY actor_uri DESC LIMIT $2 OFFSET $3",
 ) as (
   like: string,
   limit: number,
+  offset: number,
 ) => $runtime.TypedSql<searchRemoteActors.Parameters, searchRemoteActors.Result>;
 
 export namespace searchRemoteActors {
-  export type Parameters = [like: string, limit: number];
+  export type Parameters = [like: string, limit: number, offset: number];
   export type Result = {
     actor_uri: string | null;
     username: string;

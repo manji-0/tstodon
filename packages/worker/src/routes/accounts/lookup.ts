@@ -5,7 +5,8 @@ import {
   type LocalAccount,
   Visibility,
 } from "@tstodon/domain";
-import { findAccountByIdOrUsername, findAccountsByIds, searchAccounts } from "../../account-store";
+import { findAccountByIdOrUsername, findAccountsByIds } from "../../account-store";
+import { searchAccountsPage } from "../../account-search";
 import {
   accountRefPresentation,
   localAccountPresentations,
@@ -24,11 +25,7 @@ import {
   mastodonRemoteAccount,
 } from "../../account-documents";
 import { mastodonRelationship } from "../../relationship-document";
-import {
-  findRemoteActorByUri,
-  findRemoteActorsByUris,
-  searchRemoteActors,
-} from "../../remote-actor-store";
+import { findRemoteActorByUri, findRemoteActorsByUris } from "../../remote-actor-store";
 import { resolveRemoteActorByHandle } from "../../remote-actor-fetch";
 import { suspendedDomains } from "../../admin-domain-block-store";
 import { federationAllowHosts } from "../../runtime-config";
@@ -136,10 +133,13 @@ export const getV1AccountsSearch = async (
   if (query.length === 0) {
     return c.json([]);
   }
-  const following = onlyFollowing ? await followingAccountIds(c.env.DB, user.value.id) : undefined;
-  if (following?.isErr()) {
-    return jsonRepositoryError(c, following.error.message);
+  const followingIds = onlyFollowing
+    ? await followingAccountIds(c.env.DB, user.value.id)
+    : undefined;
+  if (followingIds?.isErr()) {
+    return jsonRepositoryError(c, followingIds.error.message);
   }
+  const following = followingIds?.isOk() ? followingIds.value : undefined;
   const documents: Record<string, unknown>[] = [];
   const seen = new Set<string>();
   const push = (document: Record<string, unknown>): void => {
@@ -150,7 +150,7 @@ export const getV1AccountsSearch = async (
     }
   };
   const followed = (accountId: string): boolean =>
-    following === undefined || (following.isOk() && following.value.has(accountId));
+    following === undefined || following.has(accountId);
 
   // The exact match, only on the first page and only for a complete handle.
   const handle = /^[^\s@]+@[^\s@]+$/.test(query) ? query : undefined;
@@ -196,48 +196,29 @@ export const getV1AccountsSearch = async (
   }
 
   // Non-exact results: local accounts first, then cached remote actors.
-  const remaining = Math.max(limit - documents.length, 0);
   const terms = handle
     ? handle.split("@")[1] === identity.value.domain
       ? (handle.split("@")[0] ?? "")
       : query
     : query;
-  if (remaining > 0) {
-    const local = await searchAccounts(c.env.DB, terms, remaining + offset, offset);
-    if (local.isErr()) {
-      return jsonRepositoryError(c, local.error.message);
-    }
-    const shown = await searchableLocalAccounts(c.env.DB, local.value);
-    if (shown.isErr()) {
-      return jsonRepositoryError(c, shown.error.message);
-    }
-    const candidates = shown.value.filter((account) => followed(account.id));
-    const rendered = await mastodonAccountDocuments(c.env, identity.value, candidates);
-    for (const account of candidates) {
-      const document = rendered.get(account.id);
-      if (document) {
-        push(document);
-      }
-      if (documents.length >= limit) {
-        break;
-      }
-    }
+  const page = await searchAccountsPage(
+    c.env,
+    { localTerms: terms, remoteTerms: query, following },
+    limit,
+    offset,
+  );
+  if (page.isErr()) {
+    return jsonRepositoryError(c, page.error.message);
   }
-  if (following === undefined && documents.length < limit) {
-    const cached = await searchRemoteActors(c.env.DB, query, limit + offset);
-    if (cached.isErr()) {
-      return jsonRepositoryError(c, cached.error.message);
-    }
-    const remote = await searchableRemoteActors(c.env, cached.value);
-    if (remote.isErr()) {
-      return jsonRepositoryError(c, remote.error.message);
-    }
-    for (const actor of remote.value) {
-      if (documents.length >= limit) {
-        break;
-      }
-      push(mastodonRemoteAccount(identity.value, actor));
-    }
+  const rendered = await mastodonAccountDocuments(c.env, identity.value, page.value.local);
+  for (const document of documentsInOrder(
+    page.value.local.map((account) => account.id),
+    rendered,
+  )) {
+    push(document);
+  }
+  for (const actor of page.value.remote) {
+    push(mastodonRemoteAccount(identity.value, actor));
   }
   return c.json(documents.slice(0, limit));
 };

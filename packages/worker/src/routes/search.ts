@@ -1,10 +1,10 @@
 import { ok } from "neverthrow";
 import type { InstanceIdentity, RemoteActor } from "@tstodon/domain";
-import { searchAccounts } from "../account-store";
+import { searchAccountsPage } from "../account-search";
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import { authenticate } from "../auth";
 import { filteredAttribute, loadViewerFilters, matchFilters } from "../filter-match";
-import { jsonAuthError, jsonRepositoryError, queryLimit } from "../http";
+import { jsonAuthError, jsonRepositoryError, queryLimit, queryOffset } from "../http";
 import {
   documentsInOrder,
   mastodonAccountDocuments,
@@ -15,8 +15,7 @@ import { mastodonTag } from "../tag-documents";
 import { elapsedMs, writeMetric } from "../metrics";
 import { resolveRemoteActor, resolveRemoteActorByHandle } from "../remote-actor-fetch";
 import { suspendedDomains } from "../admin-domain-block-store";
-import { searchRemoteActors } from "../remote-actor-store";
-import { searchableLocalAccounts, searchableRemoteActors } from "../account-presentation";
+import { searchableRemoteActors } from "../account-presentation";
 import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import { searchStatuses } from "../status-timeline-store";
 import { isTagFeatured, isTagFollowed, tagDailyHistory } from "../tag-store";
@@ -62,6 +61,8 @@ const search = async (c: Context<{ Bindings: Env }>) => {
   const query = (c.req.query("q") ?? "").trim();
   const type = c.req.query("type") ?? "all";
   const limit = queryLimit(c.req.query("limit"), 5);
+  // Mastodon pages by `offset` only when one result `type` is asked for.
+  const offset = c.req.query("type") === undefined ? 0 : queryOffset(c.req.query("offset"));
   const resolveRaw = c.req.query("resolve");
   const resolve = resolveRaw === "true" || resolveRaw === "1";
   if (query.length === 0) {
@@ -69,38 +70,34 @@ const search = async (c: Context<{ Bindings: Env }>) => {
   }
   const accountDocs: Record<string, unknown>[] = [];
   if (type !== "statuses" && type !== "hashtags") {
-    const accounts = await searchAccounts(c.env.DB, query, limit);
-    if (accounts.isErr()) {
-      return jsonRepositoryError(c, accounts.error.message);
+    const page = await searchAccountsPage(
+      c.env,
+      { localTerms: query, remoteTerms: query.replace(/^@/, ""), following: undefined },
+      limit,
+      offset,
+    );
+    if (page.isErr()) {
+      return jsonRepositoryError(c, page.error.message);
     }
-    const locals = await searchableLocalAccounts(c.env.DB, accounts.value);
-    if (locals.isErr()) {
-      return jsonRepositoryError(c, locals.error.message);
-    }
-    const rendered = await mastodonAccountDocuments(c.env, identity.value, locals.value);
+    const rendered = await mastodonAccountDocuments(c.env, identity.value, page.value.local);
     accountDocs.push(
       ...documentsInOrder(
-        locals.value.map((account) => account.id),
+        page.value.local.map((account) => account.id),
         rendered,
       ),
+      ...page.value.remote.map((actor) => mastodonRemoteAccount(identity.value, actor)),
     );
-    const cached = await searchRemoteActors(c.env.DB, query.replace(/^@/, ""), limit);
-    if (cached.isErr()) {
-      return jsonRepositoryError(c, cached.error.message);
-    }
-    const resolved = resolve ? await resolveSearchActor(c.env, identity.value, query) : undefined;
-    const remotes = await searchableRemoteActors(c.env, [
-      ...cached.value,
-      ...(resolved ? [resolved] : []),
-    ]);
-    if (remotes.isErr()) {
-      return jsonRepositoryError(c, remotes.error.message);
+    // As Mastodon, the resolved account only joins the first page.
+    const resolved =
+      resolve && offset === 0 ? await resolveSearchActor(c.env, identity.value, query) : undefined;
+    const shown = await searchableRemoteActors(c.env, resolved ? [resolved] : []);
+    if (shown.isErr()) {
+      return jsonRepositoryError(c, shown.error.message);
     }
     const seen = new Set(accountDocs.map((document) => String(document.id)));
-    for (const actor of remotes.value) {
+    for (const actor of shown.value) {
       const document = mastodonRemoteAccount(identity.value, actor);
       if (!seen.has(String(document.id))) {
-        seen.add(String(document.id));
         accountDocs.push(document);
       }
     }

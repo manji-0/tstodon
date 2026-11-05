@@ -429,11 +429,12 @@ export const searchRemoteActors = async (
   db: D1Database,
   query: string,
   limit: number,
+  offset: number,
 ): Promise<Result<RemoteActor[], RepositoryError>> =>
   runD1(async () => {
     const results = await queryTyped(
       db,
-      searchRemoteActorsSql(`%${query}%`, limit),
+      searchRemoteActorsSql(`%${query}%`, limit, offset),
       RemoteActorRowSchema,
     );
     return okValues(results.map((row) => remoteActorFromRow(row)));
