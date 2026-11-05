@@ -1,8 +1,12 @@
 import { writeMetric } from "./metrics";
 import { refreshStaleRemoteActors } from "./remote-actor-refresh";
 
-/** The hourly entry of `app/crons/outbox-maintenance.ts`; the six-hourly one fires at the same minute. */
-const HOURLY_CRON = "17 * * * *";
+/**
+ * The hourly entry of `app/crons/outbox-maintenance.ts`, whose `cron` export
+ * must stay a literal for Void to read and is checked against this type. The
+ * six-hourly entry fires at the same minute.
+ */
+export const HOURLY_CRON = "17 * * * *";
 
 export const handleScheduled = (
   controller: ScheduledController,

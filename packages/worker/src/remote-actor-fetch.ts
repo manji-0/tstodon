@@ -13,7 +13,7 @@ import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { parseAccountHandle } from "./account-handle";
 import { nowIso } from "./clock";
-import type { RepositoryError } from "./d1";
+import { type RepositoryError, toRepositoryError } from "./d1";
 import {
   fetchActivityJson,
   fetchWebfinger,
@@ -24,6 +24,7 @@ import { ActorDocumentSchema } from "./activitypub-wire";
 import {
   findRemoteActorByPublicKeyId,
   findRemoteActorByUri,
+  upsertConfirmedRemoteActor,
   upsertRemoteActor,
 } from "./remote-actor-store";
 
@@ -121,15 +122,20 @@ export const actorMovedTo = (raw: unknown): string | undefined => {
 };
 
 /**
- * The host SQL reads from a URI's text (`remote_actors.uri_host`, migration
- * 0107): what follows `://` up to the first `/`, as `Hostname.ofAuthority`
- * reads it. An actor URI whose parsed host differs (userinfo, an IDN, a
- * backslash) is refused, so an instance rule on its host never misses it in SQL.
+ * The authority SQL reads from a URI's text (`remote_actors.uri_authority`,
+ * migration 0107): what follows `://` up to the first `/`, lower-cased, when
+ * it is printable ASCII. SQLite's `lower` folds ASCII only, so an actor whose
+ * id has another character there (a Unicode host such as the Kelvin sign
+ * `\u212A`, which the URL parser reads as `k`) is refused rather than stored
+ * under a host no SQL rule would match; so is one whose text reads otherwise
+ * than its parsed host and port (userinfo, a backslash, `%` escapes, an
+ * explicit default port, a trailing dot).
  */
-const textUriHost = (uri: string): Hostname => {
+const textAuthority = (uri: string): string | undefined => {
   const rest = uri.slice(uri.indexOf("://") + 3);
   const slash = rest.indexOf("/");
-  return Hostname.ofAuthority(slash < 0 ? rest : rest.slice(0, slash));
+  const authority = slash < 0 ? rest : rest.slice(0, slash);
+  return /^[\x21-\x7e]+$/.test(authority) ? authority.toLowerCase() : undefined;
 };
 
 /** An actor document that describes `actorUri` and holds that actor's own key. */
@@ -151,7 +157,11 @@ export const remoteActorFromDocument = (
     return err({ kind: "InvalidSignature" });
   }
   const uriHost = Hostname.ofUri(document.value.id);
-  if (uriHost === undefined || textUriHost(document.value.id) !== uriHost) {
+  if (uriHost === undefined) {
+    return err({ kind: "InvalidSignature" });
+  }
+  const domain = parsedUri.port === "" ? uriHost : `${uriHost}:${parsedUri.port}`;
+  if (textAuthority(document.value.id) !== domain) {
     return err({ kind: "InvalidSignature" });
   }
   const fetchedAt = IsoInstant.parse(nowIso());
@@ -161,7 +171,7 @@ export const remoteActorFromDocument = (
   const actor = RemoteActor.fromFetched({
     actorUri: document.value.id,
     username: document.value.preferredUsername.toLowerCase(),
-    domain: parsedUri.port === "" ? uriHost : `${uriHost}:${parsedUri.port}`,
+    domain,
     inboxUri: document.value.inbox,
     publicKeyId: document.value.publicKey.id,
     publicKeyPem: document.value.publicKey.publicKeyPem,
@@ -192,9 +202,14 @@ const domainHandle = (raw: string | undefined): AccountHandle | undefined => {
     : { username: parsed.username, domain: parsed.domain };
 };
 
-/** A WebFinger lookup: the account its `subject` names and its `self` link, or why there is none. */
+/**
+ * A WebFinger lookup: the account its `subject` names and its `self` link;
+ * `Disowned` when the server answered 404 or 410; `Failed` when nothing is
+ * known (a 5xx, a timeout, an unreadable answer).
+ */
 type WebfingerLookup =
   | Readonly<{ kind: "Answered"; subject: AccountHandle | undefined; self: string }>
+  | Readonly<{ kind: "Disowned" }>
   | Readonly<{ kind: "Failed" }>;
 
 const lookUp = async (
@@ -204,7 +219,7 @@ const lookUp = async (
 ): Promise<WebfingerLookup> => {
   const answer = await fetchWebfinger(identity, `${handle.username}@${handle.domain}`, options);
   if (answer.isErr()) {
-    return { kind: "Failed" };
+    return { kind: answer.error.kind === "NoSuchAccount" ? "Disowned" : "Failed" };
   }
   return { kind: "Answered", subject: domainHandle(answer.value.subject), self: answer.value.self };
 };
@@ -216,88 +231,123 @@ const loopsBack = (lookup: WebfingerLookup, handle: AccountHandle, actorUri: str
   sameHandle(lookup.subject, handle) &&
   lookup.self === actorUri;
 
+/** What a lookup that answered nothing usable means for the round trip. */
+const unanswered = (lookup: Exclude<WebfingerLookup, { kind: "Answered" }>) =>
+  lookup.kind === "Disowned" ? ({ kind: "Mismatch" } as const) : ({ kind: "Unavailable" } as const);
+
 /**
  * Mastodon's `check_webfinger!` for an actor read from its own document. The
- * lookup starts at the URI's authority; a `subject` on another domain is
- * taken only when WebFinger on that domain names the same account and links
- * back to the same actor, so an actor cannot claim a domain it does not
- * control. A claimed domain this instance does not federate with is
+ * lookup starts at `preferredUsername@<URI authority>`; a `subject` on another
+ * domain is taken only when WebFinger on that domain names the same account
+ * and links back to the same actor, so an actor cannot claim a domain it does
+ * not control. A claimed domain this instance does not federate with is
  * `Refused` before it is asked, as Mastodon's `domain_not_allowed?`.
- * `confirmedBy` is a handle whose own WebFinger already linked to this actor
- * (a handle lookup), which settles the round trip without asking again.
+ * `answered` is a handle whose own WebFinger already named it and linked to
+ * this actor (a handle lookup). It stands in for the step that would ask it
+ * again: the first when it is the URI authority's handle, otherwise the
+ * second, once the URI authority's answer names it. A handle on any other
+ * domain settles nothing, so a third party cannot rename another server's
+ * actor by pointing its own WebFinger at it.
  */
 const confirmHandle = async (
   identity: InstanceIdentity,
   actor: RemoteActor,
   options: FederatedFetchOptions,
-  confirmedBy: AccountHandle | undefined,
+  answered: AccountHandle | undefined,
 ): Promise<WebfingerConfirmationValue> => {
-  const refused = (handle: AccountHandle): WebfingerConfirmationValue | undefined => {
+  const confirmed = (handle: AccountHandle): WebfingerConfirmationValue => {
     const host = Hostname.ofAuthority(handle.domain);
     return isFederatedHostRefused(host, identity.domain, options)
       ? { kind: "Refused", host }
-      : undefined;
+      : { kind: "Confirmed", handle: { ...handle, username: handle.username.toLowerCase() } };
   };
-  if (confirmedBy) {
-    return refused(confirmedBy) ?? { kind: "Confirmed", handle: confirmedBy };
-  }
   const claimed = { username: actor.username, domain: actor.domain };
+  if (answered && sameHandle(answered, claimed)) {
+    return confirmed(answered);
+  }
   const first = await lookUp(identity, claimed, options);
-  if (first.kind === "Failed") {
-    return { kind: "Unavailable" };
+  if (first.kind !== "Answered") {
+    return unanswered(first);
   }
   if (first.subject === undefined) {
     return { kind: "Mismatch" };
   }
   if (sameHandle(first.subject, claimed)) {
-    return loopsBack(first, claimed, actor.actorUri)
-      ? { kind: "Confirmed", handle: claimed }
-      : { kind: "Mismatch" };
+    return loopsBack(first, claimed, actor.actorUri) ? confirmed(claimed) : { kind: "Mismatch" };
   }
   const subject = first.subject;
-  const denied = refused(subject);
-  if (denied) {
-    return denied;
+  const settled = confirmed(subject);
+  if (settled.kind === "Refused" || (answered && sameHandle(answered, subject))) {
+    return settled;
   }
   const second = await lookUp(identity, subject, options);
-  if (second.kind === "Failed") {
-    return { kind: "Unavailable" };
+  if (second.kind !== "Answered") {
+    return unanswered(second);
   }
-  return loopsBack(second, subject, actor.actorUri)
-    ? {
-        kind: "Confirmed",
-        handle: { username: subject.username.toLowerCase(), domain: subject.domain },
-      }
-    : { kind: "Mismatch" };
+  return loopsBack(second, subject, actor.actorUri) ? settled : { kind: "Mismatch" };
 };
+
+/**
+ * How {@link cacheFetchedActor} settles an actor's handle: the WebFinger
+ * round trip (`answered` as {@link confirmHandle} takes it), or the stored
+ * handle kept as it is, as Mastodon applies an actor's own `Update` under the
+ * account's stored handle without asking WebFinger.
+ */
+export type HandleCheck =
+  | Readonly<{ kind: "RoundTrip"; answered?: AccountHandle }>
+  | Readonly<{ kind: "KeepStored" }>;
 
 export type CacheFetchedActorError = RepositoryError | WebfingerRefusal;
 
 /**
  * Cache an actor read from its own document, under the handle WebFinger
- * confirms for it (`WebfingerConfirmation.handleToCache`). An actor whose
- * claimed account domain is refused is not cached.
+ * confirms for it (`WebfingerConfirmation.handleToCache`). A confirmed handle
+ * is taken from any other row that held it. An actor whose claimed account
+ * domain is refused is not cached.
  */
 export const cacheFetchedActor = async (
   db: D1Database,
   identity: InstanceIdentity,
   actor: RemoteActor,
   options: FederatedFetchOptions,
-  confirmedBy?: AccountHandle,
+  check: HandleCheck = { kind: "RoundTrip" },
 ): Promise<Result<RemoteActor, CacheFetchedActorError>> => {
   const stored = await findRemoteActorByUri(db, actor.actorUri);
+  const now = IsoInstant.parse(nowIso());
   if (stored.isErr()) {
     return err(stored.error);
   }
+  if (now.isErr()) {
+    return err(toRepositoryError("invalid clock"));
+  }
+  const confirmation: WebfingerConfirmationValue =
+    check.kind === "KeepStored"
+      ? { kind: "Unchecked" }
+      : await confirmHandle(identity, actor, options, check.answered);
   const handle = WebfingerConfirmation.handleToCache(
-    await confirmHandle(identity, actor, options, confirmedBy),
+    confirmation,
     { username: actor.username, domain: actor.domain },
-    stored.value ? { username: stored.value.username, domain: stored.value.domain } : undefined,
+    stored.value
+      ? {
+          username: stored.value.username,
+          domain: stored.value.domain,
+          ...(stored.value.webfingeredAt ? { webfingeredAt: stored.value.webfingeredAt } : {}),
+        }
+      : undefined,
+    now.value,
   );
   if (handle.isErr()) {
     return err(handle.error);
   }
-  return upsertRemoteActor(db, { ...actor, ...handle.value });
+  const { webfingeredAt, ...cachedHandle } = handle.value;
+  const cached: RemoteActor = {
+    ...actor,
+    ...cachedHandle,
+    ...(webfingeredAt ? { webfingeredAt } : {}),
+  };
+  return confirmation.kind === "Confirmed"
+    ? upsertConfirmedRemoteActor(db, cached)
+    : upsertRemoteActor(db, cached);
 };
 
 export const resolveRemoteActor = async (
@@ -306,7 +356,7 @@ export const resolveRemoteActor = async (
   keyId: string,
   actorUri: string,
   options: FederatedFetchOptions = {},
-  confirmedBy?: AccountHandle,
+  answered?: AccountHandle,
 ): Promise<Result<RemoteActor, RemoteActorResolveError>> => {
   const byKey = await findRemoteActorByPublicKeyId(db, keyId);
   if (byKey.isErr()) {
@@ -337,7 +387,13 @@ export const resolveRemoteActor = async (
   ) {
     return err({ kind: "InvalidSignature" });
   }
-  return cacheFetchedActor(db, identity, actor.value, options, confirmedBy);
+  return cacheFetchedActor(
+    db,
+    identity,
+    actor.value,
+    options,
+    answered ? { kind: "RoundTrip", answered } : { kind: "RoundTrip" },
+  );
 };
 
 /** Resolve and cache a `user@domain` handle by WebFinger, then fetch its actor. */
@@ -349,15 +405,12 @@ export const resolveRemoteActorByHandle = async (
 ): Promise<Result<RemoteActor, RemoteActorResolveError>> => {
   const answer = await fetchWebfinger(identity, handle, options);
   if (answer.isErr()) {
-    return err(answer.error);
+    return err(answer.error.kind === "NoSuchAccount" ? { kind: "InvalidSignature" } : answer.error);
   }
   const actorUri = answer.value.self;
-  // WebFinger on the handle's own domain named it and linked this actor.
+  // WebFinger on the asked handle's domain named it and linked this actor.
   const asked = domainHandle(handle);
   const subject = domainHandle(answer.value.subject);
-  const confirmedBy =
-    asked && subject && sameHandle(asked, subject)
-      ? { username: subject.username.toLowerCase(), domain: subject.domain }
-      : undefined;
-  return resolveRemoteActor(db, identity, `${actorUri}#main-key`, actorUri, options, confirmedBy);
+  const answered = asked && subject && sameHandle(asked, subject) ? subject : undefined;
+  return resolveRemoteActor(db, identity, `${actorUri}#main-key`, actorUri, options, answered);
 };

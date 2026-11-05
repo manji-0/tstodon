@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param limit
  */
 export const listStaleRemoteActorUris = $runtime.makeTypedQueryFactory(
-  "SELECT actor_uri FROM remote_actors\nWHERE max(fetched_at, coalesce(refresh_attempted_at, '')) <= $1\nORDER BY max(fetched_at, coalesce(refresh_attempted_at, ''))\nLIMIT $2",
+  "SELECT actor_uri FROM remote_actors\nWHERE max(coalesce(last_webfingered_at, fetched_at), coalesce(refresh_attempted_at, '')) <= $1\nORDER BY max(coalesce(last_webfingered_at, fetched_at), coalesce(refresh_attempted_at, ''))\nLIMIT $2",
 ) as (
   before: string,
   limit: number,

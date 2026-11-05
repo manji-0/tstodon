@@ -18,6 +18,7 @@ import { RemoteAccountId } from "./remote-account-id";
 import { removedBoostsFromRows } from "./removed-boost";
 import {
   deleteRemoteActor as deleteRemoteActorSql,
+  demoteRemoteActorHandle as demoteRemoteActorHandleSql,
   authorizeRemoteFollowRequest as authorizeRemoteFollowRequestSql,
   claimRemoteOutboxBackfill as claimRemoteOutboxBackfillSql,
   releaseRemoteOutboxBackfill as releaseRemoteOutboxBackfillSql,
@@ -90,6 +91,7 @@ export const RemoteActorRowSchema = z.object({
   outbox_uri: z.string().nullable().default(null),
   featured_uri: z.string().nullable().default(null),
   fetched_at: z.string().min(1),
+  last_webfingered_at: z.string().nullable().default(null),
 });
 
 export type RemoteActorRow = z.infer<typeof RemoteActorRowSchema>;
@@ -100,7 +102,9 @@ const profileFromJson = (raw: string) =>
 
 const remoteActorFromRow = (row: RemoteActorRow): Result<RemoteActor, RepositoryError> => {
   const fetchedAt = IsoInstant.parse(row.fetched_at);
-  if (fetchedAt.isErr()) {
+  const webfingeredAt =
+    row.last_webfingered_at === null ? undefined : IsoInstant.parse(row.last_webfingered_at);
+  if (fetchedAt.isErr() || webfingeredAt?.isErr()) {
     return err(toRepositoryError("invalid remote actor row"));
   }
   return RemoteActor.fromFetched({
@@ -113,6 +117,7 @@ const remoteActorFromRow = (row: RemoteActorRow): Result<RemoteActor, Repository
     displayName: row.display_name,
     profile: profileFromJson(row.profile_json),
     fetchedAt: fetchedAt.value,
+    webfingeredAt: webfingeredAt?.unwrapOr(undefined),
     ...(row.shared_inbox_uri ? { sharedInboxUri: row.shared_inbox_uri } : {}),
     ...(row.moved_to ? { movedTo: row.moved_to } : {}),
     ...(row.outbox_uri ? { outboxUri: row.outbox_uri } : {}),
@@ -129,7 +134,11 @@ const readRemoteActor = async (
   return queried.value === undefined ? ok(undefined) : remoteActorFromRow(queried.value);
 };
 
-/** A cached actor by its `user@domain` handle, compared without case. */
+/**
+ * A cached actor by its `user@domain` handle, compared without case. Two rows
+ * can share a handle for a while (a row cached before the round trip, or one
+ * whose server stopped answering); the one WebFinger confirmed last wins.
+ */
 export const findRemoteActorByHandle = async (
   db: D1Database,
   username: string,
@@ -219,38 +228,52 @@ export const findRemoteActorByPublicKeyId = async (
     }),
   );
 
+const upsertRemoteActorStatement = (actor: RemoteActor) => {
+  const now = nowIso();
+  return upsertRemoteActorSql(
+    actor.actorUri,
+    actor.username,
+    actor.domain,
+    actor.inboxUri,
+    actor.sharedInboxUri ?? null,
+    actor.publicKeyId,
+    actor.publicKeyPem,
+    actor.displayName,
+    actor.fetchedAt,
+    now,
+    now,
+    JSON.stringify(actor.profile),
+    actor.outboxUri ?? null,
+    actor.featuredUri ?? null,
+    actor.webfingeredAt ?? null,
+  );
+};
+
 export const upsertRemoteActor = async (
   db: D1Database,
   actor: RemoteActor,
-): Promise<Result<RemoteActor, RepositoryError>> => {
-  const written = await runD1(async () => {
-    const now = nowIso();
-    await runTyped(
-      db,
-      upsertRemoteActorSql(
-        actor.actorUri,
-        actor.username,
-        actor.domain,
-        actor.inboxUri,
-        actor.sharedInboxUri ?? null,
-        actor.publicKeyId,
-        actor.publicKeyPem,
-        actor.displayName,
-        actor.fetchedAt,
-        now,
-        now,
-        JSON.stringify(actor.profile),
-        actor.outboxUri ?? null,
-        actor.featuredUri ?? null,
-      ),
-    );
-    return actor;
-  });
-  if (written.isErr()) {
-    return err(written.error);
-  }
-  return ok(written.value);
-};
+): Promise<Result<RemoteActor, RepositoryError>> =>
+  (
+    await runD1(async () => {
+      await runTyped(db, upsertRemoteActorStatement(actor));
+    })
+  ).map(() => actor);
+
+/**
+ * Cache an actor under the handle WebFinger just confirmed for it, and move
+ * every other row cached under that handle back to its own URI's authority,
+ * in one batch, so the handle names one actor: the one confirmed last.
+ */
+export const upsertConfirmedRemoteActor = async (
+  db: D1Database,
+  actor: RemoteActor,
+): Promise<Result<RemoteActor, RepositoryError>> =>
+  (
+    await runTypedBatch(db, [
+      demoteRemoteActorHandleSql(actor.username, actor.domain, actor.actorUri),
+      upsertRemoteActorStatement(actor),
+    ])
+  ).map(() => actor);
 
 /** Record that `actorUri` moved to `movedTo` (the caller has verified the move), or, with `null`, that it did not. */
 export const setRemoteActorMovedTo = async (

@@ -12,12 +12,16 @@ const REFRESH_BATCH = 10;
 
 /**
  * Hourly cron path: re-fetch the actors that have waited longest since
- * their last fetch or refresh attempt, once that is over a day ago, so a row
- * converges on its current document and the handle WebFinger confirms for
- * it (rows cached before the round trip carry the URI host). The batch is
- * marked tried before it is fetched, so an actor whose server never answers
- * waits another day instead of holding the head of the queue. A failed or
- * refused fetch leaves the row as it was.
+ * their last refresh attempt and their last WebFinger confirmation (their
+ * last fetch, when WebFinger never confirmed them), once both are over a day
+ * ago, and run the round trip for each again. Rows cached before the round
+ * trip carry the URI host and take the confirmed handle this way; a
+ * confirmed handle whose WebFinger stopped vouching moves back to the URI
+ * host. A row whose lookups fail keeps its handle and its confirmation time,
+ * so it is tried again after a day. The batch is marked tried before it is
+ * fetched, so an actor whose server never answers waits another day instead
+ * of holding the head of the queue. A failed or refused fetch leaves the row
+ * as it was.
  */
 export const refreshStaleRemoteActors = async (env: Env): Promise<void> => {
   const identity = parseInstanceIdentity(env);

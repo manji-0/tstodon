@@ -12,11 +12,12 @@
 -- @param {String} $12:profileJson
 -- @param {String} $13:outboxUri?
 -- @param {String} $14:featuredUri?
+-- @param {String} $15:webfingeredAt?
 INSERT INTO remote_actors (
   actor_uri, username, domain, inbox_uri, shared_inbox_uri,
   public_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at, profile_json,
-  outbox_uri, featured_uri
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+  outbox_uri, featured_uri, last_webfingered_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 ON CONFLICT(actor_uri) DO UPDATE SET
   username = excluded.username,
   domain = excluded.domain,
@@ -29,4 +30,5 @@ ON CONFLICT(actor_uri) DO UPDATE SET
   outbox_uri = excluded.outbox_uri,
   featured_uri = excluded.featured_uri,
   fetched_at = excluded.fetched_at,
+  last_webfingered_at = excluded.last_webfingered_at,
   updated_at = excluded.updated_at

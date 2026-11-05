@@ -168,6 +168,8 @@ export * from "./sql/deleteStatusRemoteMentions";
 
 export * from "./sql/deleteStreamSubscription";
 
+export * from "./sql/demoteRemoteActorHandle";
+
 export * from "./sql/detachStatusMedia";
 
 export * from "./sql/dismissNotification";

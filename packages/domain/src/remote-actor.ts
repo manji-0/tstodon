@@ -48,6 +48,12 @@ const RemoteActorSchema = z.object({
   /** Its `featured` collection: the notes it pinned. */
   featuredUri: z.url().optional(),
   fetchedAt: IsoInstant.schema,
+  /**
+   * When WebFinger last confirmed `username@domain` for this actor
+   * (Mastodon's `last_webfingered_at`); absent while the handle is only the
+   * URI's authority, which the document itself proves.
+   */
+  webfingeredAt: IsoInstant.schema.optional(),
 });
 
 export type RemoteActor = z.infer<typeof RemoteActorSchema>;
@@ -80,6 +86,7 @@ export const RemoteActor = {
     outboxUri?: string | undefined;
     featuredUri?: string | undefined;
     fetchedAt: z.infer<typeof IsoInstant.schema>;
+    webfingeredAt?: z.infer<typeof IsoInstant.schema> | undefined;
   }): Result<RemoteActor, RemoteActorParseError> => {
     const parsed = parseRemoteActor({
       kind: "RemoteActor",
@@ -96,16 +103,17 @@ export const RemoteActor = {
       ...(input.movedTo ? { movedTo: input.movedTo } : {}),
       ...(input.outboxUri ? { outboxUri: input.outboxUri } : {}),
       ...(input.featuredUri ? { featuredUri: input.featuredUri } : {}),
+      ...(input.webfingeredAt ? { webfingeredAt: input.webfingeredAt } : {}),
     });
     return parsed.mapErr((): RemoteActorParseError => ({ kind: "InvalidActor" }));
   },
   deliveryInbox: (actor: RemoteActor): string => actor.sharedInboxUri ?? actor.inboxUri,
   /**
-   * The hostnames an instance rule (a suspension, silence, `reject_media`,
-   * `reject_reports`, the allow list) is checked against: the account
-   * domain's and the actor URI's. The URI host serves the actor and its key,
-   * so an account domain elsewhere never lifts a rule on it. A user's domain
-   * block names the account domain only, as Mastodon matches `account.domain`.
+   * The hostnames a domain rule is checked against: the account domain's and
+   * the actor URI's. An instance rule (a suspension, silence, `reject_media`,
+   * `reject_reports`, the allow list) and a user's domain block both apply
+   * when they name either, so an account domain elsewhere never lifts a rule
+   * on the host that serves the actor and its key.
    */
   hostnames,
   /** True when an instance rule naming any of `hosts` applies to the actor. */

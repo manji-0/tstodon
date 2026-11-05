@@ -7,6 +7,9 @@ export type FederatedFetchError =
   | Readonly<{ kind: "InvalidSignature" }>
   | Readonly<{ kind: "VerificationUnavailable" }>;
 
+/** A WebFinger lookup's failure; `NoSuchAccount` is a 404 or 410, the server's definite "no". */
+export type WebfingerFetchError = FederatedFetchError | Readonly<{ kind: "NoSuchAccount" }>;
+
 const parseWebfinger = schemaResult(RemoteWebfingerSchema);
 
 export const isBlockedFederatedHost = (
@@ -145,7 +148,7 @@ export const fetchWebfinger = async (
   identity: InstanceIdentity,
   handle: string,
   options: FederatedFetchOptions = {},
-): Promise<Result<WebfingerAnswer, FederatedFetchError>> => {
+): Promise<Result<WebfingerAnswer, WebfingerFetchError>> => {
   const trimmed = handle.replace(/^@/, "").trim();
   const atIndex = trimmed.lastIndexOf("@");
   if (atIndex <= 0 || atIndex === trimmed.length - 1) {
@@ -178,6 +181,9 @@ export const fetchWebfinger = async (
     });
     if (response.status >= 500) {
       return err({ kind: "VerificationUnavailable" });
+    }
+    if (response.status === 404 || response.status === 410) {
+      return err({ kind: "NoSuchAccount" });
     }
     if (!response.ok) {
       return err({ kind: "InvalidSignature" });
