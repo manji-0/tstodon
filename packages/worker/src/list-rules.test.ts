@@ -272,6 +272,24 @@ describe("local members' boosts", () => {
     ]);
   });
 
+  it("keep an unfollowed member's followers-only posts and boosts off the list", async () => {
+    const owner = "boost-private-owner@example.com";
+    const stranger = "boost-private-stranger@example.com";
+    const strangerId = (await signedInAccount(stranger)).id;
+    const listId = await createList(owner);
+    await addMembers(owner, listId, [strangerId]);
+
+    await post(stranger, "public post");
+    const hidden = await send(stranger, "/api/v1/statuses", "POST", {
+      status: "private post",
+      visibility: "private",
+    });
+    expect(hidden.status).toBe(200);
+    await reblog(stranger, read(StatusSchema, hidden.body).id);
+
+    expect(await labels(owner, `/api/v1/timelines/list/${listId}`)).toEqual(["public post"]);
+  });
+
   it("stay off home and the list when the owner blocks or mutes the boosted author", async () => {
     const owner = "boost-hidden-owner@example.com";
     const member = "boost-hidden-member@example.com";
