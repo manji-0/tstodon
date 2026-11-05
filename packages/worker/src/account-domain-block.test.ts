@@ -10,8 +10,8 @@ import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
 import { parseInstanceIdentity } from "./runtime-config";
 
-// The paged-severance cases took up to 11 s on a lightly loaded machine, past
-// the shared 15 s budget once several suites share the CPU (#50).
+// The paged-severance cases take up to about 7 s alone and 11 s in a full CI
+// run, and timed out at the shared 15 s budget at load 11 to 15 (#50).
 vi.setConfig({ testTimeout: 45_000 });
 
 const json = async (path: string, init?: RequestInit) => {

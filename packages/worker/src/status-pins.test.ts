@@ -8,8 +8,8 @@ import {
   MastodonStatusPreviewSchema,
 } from "../test/mastodon-preview-schemas";
 
-// The pin-limit case makes a dozen status writes; on a busy machine that
-// outgrows the shared 15 s budget (#50).
+// The pin-limit case makes a dozen status writes (2 to 5.5 s alone) and timed
+// out at the shared 15 s budget in full CI runs at load 16 to 24 (#48, #50).
 vi.setConfig({ testTimeout: 45_000 });
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);

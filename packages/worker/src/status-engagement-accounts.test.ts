@@ -9,8 +9,8 @@ import { generateAccountKeys } from "./keys";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { upsertRemoteAnnounce, upsertRemoteFavourite } from "./remote-interaction-store";
 
-// Each case makes several status writes and boosts by fresh accounts; on a
-// busy machine that outgrows the shared 15 s budget (#50).
+// Cases take 1 to 2 s alone, but this file timed out at the shared 15 s budget
+// in full CI runs at load 16 to 24 (#48, #50), where requests stall for seconds.
 vi.setConfig({ testTimeout: 45_000 });
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
