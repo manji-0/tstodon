@@ -364,6 +364,33 @@ describe("rekeying attachments stored at an id-derived key", () => {
     expect(await bytesAt(url)).toEqual(BYTES);
   });
 
+  it("points history at the new key for media an edit removed from the status", async () => {
+    const email = "media-legacy-history-removed@example.com";
+    const accountId = await accountIdOf(email);
+    const media = await upload(email);
+    const statusId = await postWithId(email, media.id);
+    const legacyKey = await storeAtLegacyKey(accountId, media.id);
+    const edited = await fetchPath(`/api/v1/statuses/${statusId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+      body: JSON.stringify({ status: "picture removed", media_ids: [] }),
+    });
+    expect(edited.status).toBe(200);
+
+    expect(await rekey(deletingLegacy())).toBe("ok");
+
+    const history = await fetchPath(`/api/v1/statuses/${statusId}/history`, {
+      headers: await authHeaders(email),
+    });
+    const urls = read(
+      z.array(z.object({ media_attachments: z.array(AttachmentSchema) })),
+      await history.json(),
+    ).flatMap((revision) => revision.media_attachments.map((attachment) => attachment.url));
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).not.toContain(legacyKey);
+    expect(await bytesAt(urls[0] ?? "")).toEqual(BYTES);
+  });
+
   it("keeps both objects when D1 loses the connection after pointing the row at the copy", async () => {
     const email = "media-legacy-lost@example.com";
     const accountId = await accountIdOf(email);

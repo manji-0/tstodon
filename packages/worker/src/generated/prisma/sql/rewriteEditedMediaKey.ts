@@ -10,7 +10,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param toKey
  */
 export const rewriteEditedMediaKey = $runtime.makeTypedQueryFactory(
-  "UPDATE status_edits\nSET snapshot_json = replace(snapshot_json, '/' || $2 || '\"', '/' || $3 || '\"')\nWHERE status_id = (\nSELECT status_id FROM media_attachments WHERE id = $1 AND object_key = $3\n)",
+  "UPDATE status_edits\nSET snapshot_json = replace(snapshot_json, '/' || $2 || '\"', '/' || $3 || '\"')\nWHERE status_id IN (\nSELECT s.id FROM statuses s\nWHERE s.account_id = (SELECT account_id FROM media_attachments WHERE id = $1)\n)\nAND instr(snapshot_json, '/' || $2 || '\"') > 0",
 ) as (
   id: string,
   fromKey: string,
