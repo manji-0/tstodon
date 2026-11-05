@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param limit
  */
 export const listEndedRemotePollVoters = $runtime.makeTypedQueryFactory(
-  "SELECT DISTINCT v.status_id, v.account_id\nFROM remote_poll_own_votes v\nJOIN remote_statuses s ON s.id = v.status_id\nWHERE v.expiry_notified_at IS NULL\nAND json_extract(s.poll_json, '$.ends.at') <= $1\nORDER BY v.status_id, v.account_id\nLIMIT $2",
+  "SELECT DISTINCT v.status_id, v.account_id, s.actor_uri\nFROM remote_poll_own_votes v\nJOIN remote_statuses s ON s.id = v.status_id\nWHERE v.expiry_notified_at IS NULL\nAND json_extract(s.poll_json, '$.ends.at') <= $1\nORDER BY v.status_id, v.account_id\nLIMIT $2",
 ) as (
   now: string,
   limit: number,
@@ -20,5 +20,6 @@ export namespace listEndedRemotePollVoters {
   export type Result = {
     status_id: string;
     account_id: string;
+    actor_uri: string;
   };
 }

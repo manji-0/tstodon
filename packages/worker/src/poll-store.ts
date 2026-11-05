@@ -8,6 +8,7 @@ import { parseJsonColumn } from "./json-column";
 import { parseRows, toRepositoryError } from "./d1";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
+  claimLocalPollExpiryNotice as claimLocalPollExpiryNoticeSql,
   claimPollUpdate as claimPollUpdateSql,
   countPollVotes as countPollVotesSql,
   findPollById as findPollByIdSql,
@@ -16,6 +17,7 @@ import {
   insertPoll as insertPollSql,
   insertPollVoteOrIgnore as insertPollVoteOrIgnoreSql,
   insertRemotePollVoteOrIgnore as insertRemotePollVoteOrIgnoreSql,
+  listEndedLocalPollVoters as listEndedLocalPollVotersSql,
   listExpiredUnnotifiedPolls as listExpiredUnnotifiedPollsSql,
   listPollVotesForAccount as listPollVotesForAccountSql,
   listRemotePollVotesForActor as listRemotePollVotesForActorSql,
@@ -425,13 +427,66 @@ export const listExpiredUnnotifiedPolls = async (
     }));
   });
 
+/** Mark the poll's end as announced; true for the one caller that marked it. */
 export const markPollExpiryNotified = async (
   db: D1Database,
   pollId: string,
   notifiedAt: string,
-): Promise<Result<void, RepositoryError>> =>
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(
+    async () =>
+      ((await runTyped(db, markPollExpiryNotifiedSql(notifiedAt, pollId))).meta.changes ?? 0) > 0,
+  );
+
+/** A local account other than the author that voted on a local poll which has since ended. */
+export type EndedLocalPollVoter = Readonly<{
+  kind: "LocalPollVoter";
+  pollId: string;
+  statusId: string;
+  accountId: string;
+  authorId: string;
+}>;
+
+const EndedLocalPollVoterRow = z.object({
+  poll_id: z.string(),
+  status_id: z.string(),
+  account_id: z.string(),
+  author_id: z.string(),
+});
+
+/** Voters of local polls that ended by `now` and have not been told. */
+export const listEndedLocalPollVoters = async (
+  db: D1Database,
+  now: string,
+  limit: number,
+): Promise<Result<EndedLocalPollVoter[], RepositoryError>> =>
   runD1(async () => {
-    await runTyped(db, markPollExpiryNotifiedSql(notifiedAt, pollId));
+    const rows = await queryTyped(
+      db,
+      listEndedLocalPollVotersSql(now, limit),
+      EndedLocalPollVoterRow,
+    );
+    return rows.map((row) => ({
+      kind: "LocalPollVoter" as const,
+      pollId: row.poll_id,
+      statusId: row.status_id,
+      accountId: row.account_id,
+      authorId: row.author_id,
+    }));
+  });
+
+/** Mark the voter as told; true for the one caller that marked it, so each voter is told once. */
+export const claimLocalPollExpiryNotice = async (
+  db: D1Database,
+  notifiedAt: string,
+  voter: EndedLocalPollVoter,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const result = await runTyped(
+      db,
+      claimLocalPollExpiryNoticeSql(notifiedAt, voter.pollId, voter.accountId),
+    );
+    return (result.meta.changes ?? 0) > 0;
   });
 
 /**

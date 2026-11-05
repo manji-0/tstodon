@@ -38,6 +38,7 @@ export type Poll_votesMinAggregateOutputType = {
   account_id: string | null;
   option_index: number | null;
   created_at: string | null;
+  expiry_notified_at: string | null;
 };
 
 export type Poll_votesMaxAggregateOutputType = {
@@ -45,6 +46,7 @@ export type Poll_votesMaxAggregateOutputType = {
   account_id: string | null;
   option_index: number | null;
   created_at: string | null;
+  expiry_notified_at: string | null;
 };
 
 export type Poll_votesCountAggregateOutputType = {
@@ -52,6 +54,7 @@ export type Poll_votesCountAggregateOutputType = {
   account_id: number;
   option_index: number;
   created_at: number;
+  expiry_notified_at: number;
   _all: number;
 };
 
@@ -68,6 +71,7 @@ export type Poll_votesMinAggregateInputType = {
   account_id?: true;
   option_index?: true;
   created_at?: true;
+  expiry_notified_at?: true;
 };
 
 export type Poll_votesMaxAggregateInputType = {
@@ -75,6 +79,7 @@ export type Poll_votesMaxAggregateInputType = {
   account_id?: true;
   option_index?: true;
   created_at?: true;
+  expiry_notified_at?: true;
 };
 
 export type Poll_votesCountAggregateInputType = {
@@ -82,6 +87,7 @@ export type Poll_votesCountAggregateInputType = {
   account_id?: true;
   option_index?: true;
   created_at?: true;
+  expiry_notified_at?: true;
   _all?: true;
 };
 
@@ -179,6 +185,7 @@ export type Poll_votesGroupByOutputType = {
   account_id: string;
   option_index: number;
   created_at: string;
+  expiry_notified_at: string | null;
   _count: Poll_votesCountAggregateOutputType | null;
   _avg: Poll_votesAvgAggregateOutputType | null;
   _sum: Poll_votesSumAggregateOutputType | null;
@@ -206,6 +213,7 @@ export type poll_votesWhereInput = {
   account_id?: Prisma.StringFilter<"poll_votes"> | string;
   option_index?: Prisma.IntFilter<"poll_votes"> | number;
   created_at?: Prisma.StringFilter<"poll_votes"> | string;
+  expiry_notified_at?: Prisma.StringNullableFilter<"poll_votes"> | string | null;
   accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
   polls?: Prisma.XOR<Prisma.PollsScalarRelationFilter, Prisma.pollsWhereInput>;
 };
@@ -215,6 +223,7 @@ export type poll_votesOrderByWithRelationInput = {
   account_id?: Prisma.SortOrder;
   option_index?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  expiry_notified_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   accounts?: Prisma.accountsOrderByWithRelationInput;
   polls?: Prisma.pollsOrderByWithRelationInput;
 };
@@ -229,6 +238,7 @@ export type poll_votesWhereUniqueInput = Prisma.AtLeast<
     account_id?: Prisma.StringFilter<"poll_votes"> | string;
     option_index?: Prisma.IntFilter<"poll_votes"> | number;
     created_at?: Prisma.StringFilter<"poll_votes"> | string;
+    expiry_notified_at?: Prisma.StringNullableFilter<"poll_votes"> | string | null;
     accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
     polls?: Prisma.XOR<Prisma.PollsScalarRelationFilter, Prisma.pollsWhereInput>;
   },
@@ -240,6 +250,7 @@ export type poll_votesOrderByWithAggregationInput = {
   account_id?: Prisma.SortOrder;
   option_index?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  expiry_notified_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   _count?: Prisma.poll_votesCountOrderByAggregateInput;
   _avg?: Prisma.poll_votesAvgOrderByAggregateInput;
   _max?: Prisma.poll_votesMaxOrderByAggregateInput;
@@ -259,11 +270,13 @@ export type poll_votesScalarWhereWithAggregatesInput = {
   account_id?: Prisma.StringWithAggregatesFilter<"poll_votes"> | string;
   option_index?: Prisma.IntWithAggregatesFilter<"poll_votes"> | number;
   created_at?: Prisma.StringWithAggregatesFilter<"poll_votes"> | string;
+  expiry_notified_at?: Prisma.StringNullableWithAggregatesFilter<"poll_votes"> | string | null;
 };
 
 export type poll_votesCreateInput = {
   option_index: number;
   created_at?: string;
+  expiry_notified_at?: string | null;
   accounts: Prisma.accountsCreateNestedOneWithoutPoll_votesInput;
   polls: Prisma.pollsCreateNestedOneWithoutPoll_votesInput;
 };
@@ -273,11 +286,13 @@ export type poll_votesUncheckedCreateInput = {
   account_id: string;
   option_index: number;
   created_at?: string;
+  expiry_notified_at?: string | null;
 };
 
 export type poll_votesUpdateInput = {
   option_index?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutPoll_votesNestedInput;
   polls?: Prisma.pollsUpdateOneRequiredWithoutPoll_votesNestedInput;
 };
@@ -287,6 +302,7 @@ export type poll_votesUncheckedUpdateInput = {
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   option_index?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type poll_votesCreateManyInput = {
@@ -294,11 +310,13 @@ export type poll_votesCreateManyInput = {
   account_id: string;
   option_index: number;
   created_at?: string;
+  expiry_notified_at?: string | null;
 };
 
 export type poll_votesUpdateManyMutationInput = {
   option_index?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type poll_votesUncheckedUpdateManyInput = {
@@ -306,6 +324,7 @@ export type poll_votesUncheckedUpdateManyInput = {
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   option_index?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type Poll_votesListRelationFilter = {
@@ -329,6 +348,7 @@ export type poll_votesCountOrderByAggregateInput = {
   account_id?: Prisma.SortOrder;
   option_index?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  expiry_notified_at?: Prisma.SortOrder;
 };
 
 export type poll_votesAvgOrderByAggregateInput = {
@@ -340,6 +360,7 @@ export type poll_votesMaxOrderByAggregateInput = {
   account_id?: Prisma.SortOrder;
   option_index?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  expiry_notified_at?: Prisma.SortOrder;
 };
 
 export type poll_votesMinOrderByAggregateInput = {
@@ -347,6 +368,7 @@ export type poll_votesMinOrderByAggregateInput = {
   account_id?: Prisma.SortOrder;
   option_index?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  expiry_notified_at?: Prisma.SortOrder;
 };
 
 export type poll_votesSumOrderByAggregateInput = {
@@ -528,6 +550,7 @@ export type poll_votesUncheckedUpdateManyWithoutPollsNestedInput = {
 export type poll_votesCreateWithoutAccountsInput = {
   option_index: number;
   created_at?: string;
+  expiry_notified_at?: string | null;
   polls: Prisma.pollsCreateNestedOneWithoutPoll_votesInput;
 };
 
@@ -535,6 +558,7 @@ export type poll_votesUncheckedCreateWithoutAccountsInput = {
   poll_id: string;
   option_index: number;
   created_at?: string;
+  expiry_notified_at?: string | null;
 };
 
 export type poll_votesCreateOrConnectWithoutAccountsInput = {
@@ -585,11 +609,13 @@ export type poll_votesScalarWhereInput = {
   account_id?: Prisma.StringFilter<"poll_votes"> | string;
   option_index?: Prisma.IntFilter<"poll_votes"> | number;
   created_at?: Prisma.StringFilter<"poll_votes"> | string;
+  expiry_notified_at?: Prisma.StringNullableFilter<"poll_votes"> | string | null;
 };
 
 export type poll_votesCreateWithoutPollsInput = {
   option_index: number;
   created_at?: string;
+  expiry_notified_at?: string | null;
   accounts: Prisma.accountsCreateNestedOneWithoutPoll_votesInput;
 };
 
@@ -597,6 +623,7 @@ export type poll_votesUncheckedCreateWithoutPollsInput = {
   account_id: string;
   option_index: number;
   created_at?: string;
+  expiry_notified_at?: string | null;
 };
 
 export type poll_votesCreateOrConnectWithoutPollsInput = {
@@ -643,11 +670,13 @@ export type poll_votesCreateManyAccountsInput = {
   poll_id: string;
   option_index: number;
   created_at?: string;
+  expiry_notified_at?: string | null;
 };
 
 export type poll_votesUpdateWithoutAccountsInput = {
   option_index?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   polls?: Prisma.pollsUpdateOneRequiredWithoutPoll_votesNestedInput;
 };
 
@@ -655,23 +684,27 @@ export type poll_votesUncheckedUpdateWithoutAccountsInput = {
   poll_id?: Prisma.StringFieldUpdateOperationsInput | string;
   option_index?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type poll_votesUncheckedUpdateManyWithoutAccountsInput = {
   poll_id?: Prisma.StringFieldUpdateOperationsInput | string;
   option_index?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type poll_votesCreateManyPollsInput = {
   account_id: string;
   option_index: number;
   created_at?: string;
+  expiry_notified_at?: string | null;
 };
 
 export type poll_votesUpdateWithoutPollsInput = {
   option_index?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutPoll_votesNestedInput;
 };
 
@@ -679,12 +712,14 @@ export type poll_votesUncheckedUpdateWithoutPollsInput = {
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   option_index?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type poll_votesUncheckedUpdateManyWithoutPollsInput = {
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
   option_index?: Prisma.IntFieldUpdateOperationsInput | number;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type poll_votesSelect<
@@ -695,6 +730,7 @@ export type poll_votesSelect<
     account_id?: boolean;
     option_index?: boolean;
     created_at?: boolean;
+    expiry_notified_at?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     polls?: boolean | Prisma.pollsDefaultArgs<ExtArgs>;
   },
@@ -709,6 +745,7 @@ export type poll_votesSelectCreateManyAndReturn<
     account_id?: boolean;
     option_index?: boolean;
     created_at?: boolean;
+    expiry_notified_at?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     polls?: boolean | Prisma.pollsDefaultArgs<ExtArgs>;
   },
@@ -723,6 +760,7 @@ export type poll_votesSelectUpdateManyAndReturn<
     account_id?: boolean;
     option_index?: boolean;
     created_at?: boolean;
+    expiry_notified_at?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     polls?: boolean | Prisma.pollsDefaultArgs<ExtArgs>;
   },
@@ -734,12 +772,13 @@ export type poll_votesSelectScalar = {
   account_id?: boolean;
   option_index?: boolean;
   created_at?: boolean;
+  expiry_notified_at?: boolean;
 };
 
 export type poll_votesOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "poll_id" | "account_id" | "option_index" | "created_at",
+  "poll_id" | "account_id" | "option_index" | "created_at" | "expiry_notified_at",
   ExtArgs["result"]["poll_votes"]
 >;
 export type poll_votesInclude<
@@ -775,6 +814,7 @@ export type $poll_votesPayload<
       account_id: string;
       option_index: number;
       created_at: string;
+      expiry_notified_at: string | null;
     },
     ExtArgs["result"]["poll_votes"]
   >;
@@ -1376,6 +1416,7 @@ export interface poll_votesFieldRefs {
   readonly account_id: Prisma.FieldRef<"poll_votes", "String">;
   readonly option_index: Prisma.FieldRef<"poll_votes", "Int">;
   readonly created_at: Prisma.FieldRef<"poll_votes", "String">;
+  readonly expiry_notified_at: Prisma.FieldRef<"poll_votes", "String">;
 }
 
 // Custom InputTypes

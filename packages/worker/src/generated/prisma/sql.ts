@@ -18,6 +18,8 @@ export * from "./sql/cancelRemoteActorDeliveries";
 
 export * from "./sql/claimAccountMove";
 
+export * from "./sql/claimLocalPollExpiryNotice";
+
 export * from "./sql/claimPollUpdate";
 
 export * from "./sql/claimRemoteOutboxBackfill";
@@ -459,6 +461,8 @@ export * from "./sql/listCustomEmojiRows";
 export * from "./sql/listDirectoryAccountsByActive";
 
 export * from "./sql/listDirectoryAccountsByNew";
+
+export * from "./sql/listEndedLocalPollVoters";
 
 export * from "./sql/listEndedRemotePollVoters";
 

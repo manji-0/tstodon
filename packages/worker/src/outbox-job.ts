@@ -1,24 +1,16 @@
 import { assertNever } from "@tstodon/core";
-import {
-  Hostname,
-  type LocalStatus,
-  OutboxJob,
-  type OutboxJob as OutboxJobValue,
-} from "@tstodon/domain";
+import { Hostname, OutboxJob, type OutboxJob as OutboxJobValue } from "@tstodon/domain";
 import { ok } from "neverthrow";
-import { nowIso } from "./clock";
-import { mastodonStatuses } from "./local-status-documents";
 import {
   ensureOutboxTarget,
   ensureOutboxTargets,
   findOutboundActivity,
   markOutboundExpanded,
 } from "./outbox-store";
-import { listExpiredUnnotifiedPolls, markPollExpiryNotified } from "./poll-store";
+import { processExpiredPolls } from "./poll-expiry";
 import { elapsedMs, measureJobPage, writeMetric } from "./metrics";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
-import { notifyEndedRemotePolls } from "./remote-poll-expiry";
 import { processDistributePollUpdateJob } from "./poll-update";
 import { processPushJob } from "./push-delivery";
 import { processFanOutHomeJob, processFanOutRemovedStatusesJob } from "./home-fan-out";
@@ -32,63 +24,8 @@ import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { cleanUpAccountStatuses, queueStatusesCleanup } from "./statuses-cleanup";
 import { findRemoteActorsByUris, listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
-import { findStatusById } from "./status-store";
-import { publishToAccount } from "./stream-publish";
 import { startOutboxDeliveryWorkflow } from "./delivery";
 import { parseJsonText } from "./json-column";
-import { documentsById } from "./documents-by-id";
-
-const processExpiredPolls = async (env: Env): Promise<void> => {
-  await notifyEndedRemotePolls(env);
-  const identity = parseInstanceIdentity(env);
-  if (identity.isErr()) {
-    return;
-  }
-  const notifiedAt = nowIso();
-  const expired = await listExpiredUnnotifiedPolls(env.DB, notifiedAt, 50);
-  if (expired.isErr()) {
-    return;
-  }
-  type Pending = Readonly<{
-    pollId: string;
-    accountId: string;
-    status: LocalStatus;
-  }>;
-  const pending: Pending[] = [];
-  for (const poll of expired.value) {
-    const status = await findStatusById(env.DB, poll.statusId);
-    if (status.isOk() && status.value) {
-      pending.push({ pollId: poll.id, accountId: poll.accountId, status: status.value });
-    } else {
-      await markPollExpiryNotified(env.DB, poll.id, notifiedAt);
-    }
-  }
-  const byOwner = new Map<string, Pending[]>();
-  for (const item of pending) {
-    const list = byOwner.get(item.accountId) ?? [];
-    list.push(item);
-    byOwner.set(item.accountId, list);
-  }
-  for (const [accountId, items] of byOwner) {
-    const documents = await mastodonStatuses(
-      env,
-      identity.value,
-      items.map((item) => item.status),
-      accountId,
-    );
-    const byStatusId = documentsById(documents);
-    for (const item of items) {
-      const document = byStatusId.get(item.status.id);
-      if (document) {
-        await publishToAccount(env, accountId, {
-          kind: "status.update",
-          payload: document,
-        });
-      }
-      await markPollExpiryNotified(env.DB, item.pollId, notifiedAt);
-    }
-  }
-};
 
 const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
 

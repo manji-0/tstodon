@@ -12,8 +12,6 @@ import {
 } from "./generated/prisma/sql";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 
-const StatusIdAccountIdRow = z.object({ status_id: z.string(), account_id: z.string() });
-
 /**
  * What local accounts have voted on one remote poll: the viewer's own
  * choices, and the votes still added on top of the author's cached counts
@@ -124,29 +122,45 @@ export const settleRemotePollVotes = async (db: D1Database, statusId: string): P
   await runTyped(db, settleRemotePollOwnVotesSql(statusId));
 };
 
-/** A local account that voted on a remote poll which has since ended. */
-export type EndedPollVoter = Readonly<{ statusId: string; accountId: string }>;
+/** A local account that voted on a remote poll which has since ended, and the poll's author. */
+export type EndedRemotePollVoter = Readonly<{
+  kind: "RemotePollVoter";
+  statusId: string;
+  accountId: string;
+  actorUri: string;
+}>;
+
+const EndedRemotePollVoterRow = z.object({
+  status_id: z.string(),
+  account_id: z.string(),
+  actor_uri: z.string(),
+});
 
 /** Voters of remote polls that ended by `now` and have not been told, oldest first. */
 export const listEndedRemotePollVoters = async (
   db: D1Database,
   now: string,
   limit: number,
-): Promise<Result<EndedPollVoter[], RepositoryError>> =>
+): Promise<Result<EndedRemotePollVoter[], RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(
       db,
       listEndedRemotePollVotersSql(now, limit),
-      StatusIdAccountIdRow,
+      EndedRemotePollVoterRow,
     );
-    return rows.map((row) => ({ statusId: row.status_id, accountId: row.account_id }));
+    return rows.map((row) => ({
+      kind: "RemotePollVoter" as const,
+      statusId: row.status_id,
+      accountId: row.account_id,
+      actorUri: row.actor_uri,
+    }));
   });
 
 /** Mark the voter as told; true for the one caller that marked it, so each voter is told once. */
 export const claimRemotePollExpiryNotice = async (
   db: D1Database,
   notifiedAt: string,
-  voter: EndedPollVoter,
+  voter: EndedRemotePollVoter,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
     const result = await runTyped(

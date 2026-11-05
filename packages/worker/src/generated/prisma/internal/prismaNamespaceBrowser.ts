@@ -673,6 +673,7 @@ export const Poll_votesScalarFieldEnum = {
   account_id: "account_id",
   option_index: "option_index",
   created_at: "created_at",
+  expiry_notified_at: "expiry_notified_at",
 } as const;
 
 export type Poll_votesScalarFieldEnum =

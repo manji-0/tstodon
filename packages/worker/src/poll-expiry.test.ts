@@ -95,7 +95,9 @@ describe("local poll expiry notifications", () => {
     // A redelivered job must not tell anyone twice.
     await runExpiryJob();
     await runExpiryJob();
-    const expected = [{ type: "poll", account: { id: poll.authorId }, status: { id: poll.statusId } }];
+    const expected = [
+      { type: "poll", account: { id: poll.authorId }, status: { id: poll.statusId } },
+    ];
     expect(await pollNotifications(author)).toMatchObject(expected);
     expect(await pollNotifications(voter)).toMatchObject(expected);
     expect(await pollNotifications(multiVoter)).toMatchObject(expected);
