@@ -24,3 +24,32 @@
 12. Re-apply Terraform with `attach_queue_consumer = true` so the outbox Queue consumer points at the deployed Worker. Keep `queue_consumer_max_concurrency` (default `1`) equal to `maxConcurrency` in `packages/worker/app/queues/tstodon-outbox-process.ts`; `wrangler deploy` writes that value too.
 
 Never commit `BETTER_AUTH_SECRET`, VAPID keys, or other private key material. Confirm the Worker placement region still matches the D1 primary.
+
+## Moving attachments off id-derived keys
+
+<!-- constrained-by ../reference/configuration.md#media-public-urls -->
+
+Before migration 0102, an attachment was stored at `attachments/<accountId>/<mediaId>`. The account id is public and a media id is its upload millisecond plus 16 random bits, so anyone who knows roughly when an attachment was uploaded can find it on the public media hostname, even on a direct post. New uploads get a random 128-bit name. Migration 0102 marks every row still at the old key in `media_attachments.legacy_object_key`.
+
+The `RekeyLegacyMedia` queue job moves the marked rows. You do not need to start it: the hourly cron queues it, and a full batch of 50 that made progress queues the next batch at once. For each row it does these steps:
+
+1. Copy the object to a new random key.
+2. Point the row's `object_key` at the copy. API documents, ActivityPub notes, and `GET /media/:id` use the new URL from then on.
+3. Delete the object at the old key, then clear `legacy_object_key`.
+
+The job never deletes the old object before the row points at a stored copy. Each row's next step follows from its two key columns, so a run that stops part way is finished by the next run. A run that stops between steps 1 and 2 can leave one unused copy at a random key; it is not reachable by guessing. While an object is still at its old key, the Worker's `/attachments/*` route serves it without the edge cache, so it stops answering once it is deleted.
+
+After you deploy:
+
+1. Wait until no marked rows remain:
+
+   ```sh
+   wrangler d1 execute <D1_DATABASE_NAME> --remote \
+     --command "SELECT COUNT(*) FROM media_attachments WHERE legacy_object_key IS NOT NULL"
+   ```
+
+   A count that stays above zero for more than an hour means the job keeps failing on some rows; read the `outbox.job.page` metric for `RekeyLegacyMedia` and the Worker logs.
+
+2. Purge the old URLs from the CDN cache of the media hostname. A deleted object can still be served from cache until then. Purge by prefix `<media hostname>/attachments/` in the dashboard (Caching, Configuration, Custom Purge), or select Purge Everything for the media zone. Do the same for the Worker hostname if `MEDIA_PUBLIC_BASE_URL` was the Worker origin.
+
+Remote servers that copied an attachment's old URL keep their own copy; Mastodon stores remote media locally when a post arrives. An old URL that a remote server fetches after the move answers 404.
