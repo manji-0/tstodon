@@ -29,27 +29,36 @@ Never commit `BETTER_AUTH_SECRET`, VAPID keys, or other private key material. Co
 
 <!-- constrained-by ../reference/configuration.md#media-public-urls -->
 
-Before migration 0102, an attachment was stored at `attachments/<accountId>/<mediaId>`. The account id is public and a media id is its upload millisecond plus 16 random bits, so anyone who knows roughly when an attachment was uploaded can find it on the public media hostname, even on a direct post. New uploads get a random 128-bit name. Migration 0102 marks every row still at the old key in `media_attachments.legacy_object_key`.
+Before migration 0102, an attachment was stored at `attachments/<accountId>/<mediaId>`. The account id is public and a media id is its upload millisecond plus 16 random bits, so anyone who knows roughly when an attachment was uploaded can find it on the public media hostname, even on a direct post. New uploads get a random 128-bit name.
 
-The `RekeyLegacyMedia` queue job moves the marked rows. You do not need to start it: the hourly cron queues it, and a full batch of 50 that made progress queues the next batch at once. For each row it does these steps:
+The `RekeyLegacyMedia` queue job finds every row whose `object_key` is still the id-derived key. It matches on the key itself, so it also finds rows that the previous Worker wrote while the deploy rolled out. You do not need to start the job: the hourly cron queues it, and a full batch of 50 queues the batch after it at once. For each row it does these steps:
 
-1. Copy the object to a new random key.
-2. Point the row's `object_key` at the copy. API documents, ActivityPub notes, and `GET /media/:id` use the new URL from then on.
-3. Delete the object at the old key, then clear `legacy_object_key`.
+1. Copy the object to a new random key, with its HTTP and custom metadata.
+2. Point the row's `object_key` at the copy and keep the old key in `legacy_object_key`. In the same D1 batch, replace the old key with the new one in the row's status's edit history. API documents, ActivityPub notes, `GET /media/:id`, and `/history` use the new URL from then on.
+3. Only when `MEDIA_REKEY_DELETE_LEGACY` is on: confirm that the copy is stored, delete the object at the old key, and clear `legacy_object_key`.
 
-The job never deletes the old object before the row points at a stored copy. Each row's next step follows from its two key columns, so a run that stops part way is finished by the next run. A run that stops between steps 1 and 2 can leave one unused copy at a random key; it is not reachable by guessing. While an object is still at its old key, the Worker's `/attachments/*` route serves it without the edge cache, so it stops answering once it is deleted.
+Deleting a stored object cannot be undone, so step 3 is off by default. While it is off, the old object stays in the bucket and **the old, guessable URL stays reachable on the public media hostname**. The move only stops new links from using it. The old URL stops answering only after you turn the flag on, the job deletes the object, and you purge the CDN cache.
+
+The job never deletes an old object before the row points at a copy that is stored. Each row's next step follows from its key columns, so a run that stops part way is finished by the next run. A row that fails is logged as `LegacyMediaNotRekeyed` and skipped, and the next hourly run tries it again. If D1 fails after the update in step 2 may have applied, the job keeps the copy. At worst that leaves an unused object at a random key, which nobody can find by guessing, and an account purge deletes it with everything else under `attachments/<accountId>/`. While an object is still at its old key, the Worker's `/attachments/*` route serves it without the edge cache.
 
 After you deploy:
 
-1. Wait until no marked rows remain:
+1. Wait until no row is at its old key:
+
+   ```sh
+   wrangler d1 execute <D1_DATABASE_NAME> --remote --command \
+     "SELECT COUNT(*) FROM media_attachments WHERE object_key = 'attachments/' || account_id || '/' || id"
+   ```
+
+   A count that stays above zero for more than an hour means the job keeps failing on some rows. Read the `outbox.job.page` metric for `RekeyLegacyMedia` and the `LegacyMediaNotRekeyed` lines in the Worker logs.
+
+2. To make the old URLs stop answering, set `MEDIA_REKEY_DELETE_LEGACY` to `true` (for example under `vars` in `wrangler.jsonc`) and deploy. Then wait until no old object is left:
 
    ```sh
    wrangler d1 execute <D1_DATABASE_NAME> --remote \
      --command "SELECT COUNT(*) FROM media_attachments WHERE legacy_object_key IS NOT NULL"
    ```
 
-   A count that stays above zero for more than an hour means the job keeps failing on some rows; read the `outbox.job.page` metric for `RekeyLegacyMedia` and the Worker logs.
+3. Purge the old URLs from the CDN cache of the media hostname. A deleted object can still be served from cache until then. Purge by prefix `<media hostname>/attachments/` in the dashboard (Caching, Configuration, Custom Purge), or select Purge Everything for the media zone. Do the same for the Worker hostname if `MEDIA_PUBLIC_BASE_URL` was the Worker origin.
 
-2. Purge the old URLs from the CDN cache of the media hostname. A deleted object can still be served from cache until then. Purge by prefix `<media hostname>/attachments/` in the dashboard (Caching, Configuration, Custom Purge), or select Purge Everything for the media zone. Do the same for the Worker hostname if `MEDIA_PUBLIC_BASE_URL` was the Worker origin.
-
-Remote servers that copied an attachment's old URL keep their own copy; Mastodon stores remote media locally when a post arrives. An old URL that a remote server fetches after the move answers 404.
+`DELETE /api/v1/media/:id` and account purges delete an old object that is still stored, whatever the flag says. Remote servers that copied an attachment's old URL keep their own copy; Mastodon stores remote media locally when a post arrives. An old URL that a remote server fetches after the old object is deleted answers 404.

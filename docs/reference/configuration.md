@@ -35,6 +35,10 @@ Media blobs live in the `MEDIA` R2 bucket. Mastodon JSON emits absolute URLs as 
 
 Object keys: `attachments/{accountId}/{name}`, `avatars/{accountId}/{blobId}`, `headers/{accountId}/{blobId}`. An attachment's `name` is 128 random bits in hex, stored in the row's `object_key` and never derived from the media id. Both hostnames serve every object without auth, so that name is what keeps media on a private or direct post private (Mastodon names its files with `SecureRandom.hex(8)` for the same reason). Avatars and headers are public in Mastodon, so their keys keep the upload's id. Attachments stored before migration 0102 sit at `attachments/{accountId}/{mediaId}` until the `RekeyLegacyMedia` job moves them; see [Moving attachments off id-derived keys](../operations/cloudflare-deploy.md#moving-attachments-off-id-derived-keys). The `IMAGES` binding is reserved for transforms; it is not used on the read path yet.
 
+| Var                         | Purpose                                                                                                                                                                                                                       |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MEDIA_REKEY_DELETE_LEGACY` | Whether the `RekeyLegacyMedia` job deletes the object left at an attachment's old, id-derived key once the row points at its copy (default off; `true` deletes). While off, the old URL stays reachable on the media hostname |
+
 `GET /media/:id` follows Mastodon's `MediaController#show`: for media attached to a local status that the signed-in browser session may see, it redirects (302) to the file URL. Unattached media, an unknown id, and a status the viewer may not see answer 404.
 
 ### CORS / allowed origins
