@@ -283,3 +283,115 @@ describe("a suspended remote actor", () => {
     expect(await idsAt(`/api/v1/accounts/${meId}/endorsements`)).not.toContain(remoteId);
   });
 });
+
+const favouritedBy = async (liker: string, author: string, times: number) => {
+  for (let index = 0; index < times; index += 1) {
+    const status = read(
+      z.object({ id: z.string() }),
+      await post(author, "/api/v1/statuses", { status: `like ${index}` }),
+    );
+    await post(liker, `/api/v1/statuses/${status.id}/favourite`);
+  }
+};
+
+describe("notification pages around hidden senders", () => {
+  it("keep paging past newest notifications from a suspended sender", async () => {
+    const me = "paging-owner@example.com";
+    const kept = "paging-kept@example.com";
+    const gone = "paging-gone@example.com";
+    const keptId = await accountIdOf(kept);
+    const goneId = await accountIdOf(gone);
+    await favouritedBy(kept, me, 1);
+    await favouritedBy(gone, me, 4);
+    await suspend(goneId);
+
+    const v1 = await SELF.fetch("https://example.com/api/v1/notifications?limit=1", {
+      headers: await authHeaders(me),
+    });
+    expect(v1.status).toBe(200);
+    expect(await v1.json()).toEqual([]);
+    expect(v1.headers.get("link") ?? "").toContain('rel="next"');
+
+    const v2 = read(
+      z.object({
+        notification_groups: z.array(z.object({ sample_account_ids: z.array(z.string()) })),
+      }),
+      await get("/api/v2/notifications?limit=1", me),
+    );
+    expect(v2.notification_groups.flatMap((group) => group.sample_account_ids)).toEqual([keptId]);
+  });
+});
+
+const ReportNotifications = z.array(
+  z.object({
+    type: z.string(),
+    report: z.object({ target_account: AccountSchema }).optional(),
+  }),
+);
+
+describe("a report against an account on a suspended domain", () => {
+  it("keeps its admin.report notification with the target stripped", async () => {
+    const remote = await remoteActor("reported", "reported-domain.example");
+    const remoteId = RemoteAccountId.encode(remote.actorUri);
+    const moderator = "report-domain-admin@example.com";
+    await signedInAccount(moderator, { admin: true });
+    await post("report-domain-reporter@example.com", "/api/v1/reports", {
+      account_id: remoteId,
+      category: "spam",
+    });
+    const reports = async () =>
+      read(
+        ReportNotifications,
+        await (async () => {
+          const response = await json("/api/v1/notifications?types[]=admin.report", {
+            headers: await authHeaders(moderator, { admin: true }),
+          });
+          expect(response.status).toBe(200);
+          return response.body;
+        })(),
+      );
+    expect((await reports()).map((entry) => entry.report?.target_account.id)).toEqual([remoteId]);
+
+    const blocked = await json("/api/v1/admin/domain_blocks", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await admin()) },
+      body: JSON.stringify({ domain: "reported-domain.example", severity: "suspend" }),
+    });
+    expect(blocked.status).toBe(200);
+
+    const [entry, ...rest] = await reports();
+    expect(rest).toEqual([]);
+    expect(entry?.report?.target_account).toMatchObject({
+      id: remoteId,
+      suspended: true,
+      display_name: "",
+    });
+  });
+});
+
+describe("a storage error while presenting accounts", () => {
+  it("answers 500 instead of leaving the accounts out", async () => {
+    const me = "storage-error-owner@example.com";
+    const viewer = await signedInAccount(me);
+    const remote = await remoteActor("storage-error-follower", "storage-error.example");
+    expect(
+      await remote.send({
+        id: `${remote.actorUri}/follows/storage-error`,
+        type: "Follow",
+        object: `https://example.com/users/${viewer.username}`,
+      }),
+    ).toBe(202);
+    const followers = `/api/v1/accounts/${viewer.id}/followers`;
+    expect(await idsAt(followers, me)).toEqual([RemoteAccountId.encode(remote.actorUri)]);
+    expect((await idsAt("/api/v1/notifications", me)).length).toBe(1);
+    await env.DB.exec("ALTER TABLE remote_actor_moderation RENAME TO remote_actor_moderation_off");
+    try {
+      for (const path of [followers, "/api/v1/notifications", "/api/v2/notifications"]) {
+        const response = await json(path, { headers: await authHeaders(me) });
+        expect(response.status, path).toBe(500);
+      }
+    } finally {
+      await env.DB.exec("ALTER TABLE remote_actor_moderation_off RENAME TO remote_actor_moderation");
+    }
+  });
+});
