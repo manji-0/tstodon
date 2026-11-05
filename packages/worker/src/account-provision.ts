@@ -1,7 +1,14 @@
 import type { SensitiveValue } from "@tstodon/core";
-import { type AccessEmail, AccountId, LocalAccount, Registration, Username } from "@tstodon/domain";
+import {
+  type AccessEmail,
+  AccountId,
+  LocalAccount,
+  LocalAccountModeration,
+  Registration,
+  Username,
+} from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { markAccountPending } from "./account-flag-store";
+import { saveLocalAccountModeration } from "./account-moderation-store";
 import { isRegistrationBlocked } from "./registration-block-store";
 import { nowInstant } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
@@ -87,7 +94,11 @@ export const provisionLocalAccount = async (
   }
   if (input.pending) {
     // Registrations that need approval start unsearchable until an admin acts.
-    const marked = await markAccountPending(db, account.id);
+    const marked = await saveLocalAccountModeration(
+      db,
+      account.id,
+      LocalAccountModeration.awaitingApproval,
+    );
     if (marked.isErr()) {
       return err(marked.error);
     }

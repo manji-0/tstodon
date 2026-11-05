@@ -6,7 +6,7 @@ import {
   findAccountsByIds,
   searchAccounts,
 } from "../../account-store";
-import { getAccountModeration, listAccountModerations } from "../../account-moderation-store";
+import { findAccountStanding, listAccountStandings } from "../../account-moderation-store";
 import { jsonAuthError, jsonRepositoryError, queryAccountsLimit, requireUser } from "../../http";
 import {
   accountDocumentsByIds,
@@ -271,8 +271,8 @@ export const lookupAccountDocument = async (
     return err(account.error);
   }
   if (account.value) {
-    const moderation = await getAccountModeration(env.DB, account.value.id);
-    if (moderation.isOk() && moderation.value === "Suspended") {
+    const standing = await findAccountStanding(env.DB, account.value.id);
+    if (standing.isOk() && standing.value.kind === "Suspended") {
       return ok({ kind: "Suspended" });
     }
     return ok({
@@ -314,22 +314,22 @@ export const getV1Accounts = async (c: Context<{ Bindings: Env }, "/api/v1/accou
       remoteUris.set(id, actorUri.value);
     }
   }
-  const [locals, moderations, remotes] = await Promise.all([
+  const [locals, standings, remotes] = await Promise.all([
     findAccountsByIds(c.env.DB, ids),
-    listAccountModerations(c.env.DB, ids),
+    listAccountStandings(c.env.DB, ids),
     findRemoteActorsByUris(c.env.DB, [...remoteUris.values()]),
   ]);
   if (locals.isErr()) {
     return jsonRepositoryError(c, locals.error.message);
   }
-  if (moderations.isErr()) {
-    return jsonRepositoryError(c, moderations.error.message);
+  if (standings.isErr()) {
+    return jsonRepositoryError(c, standings.error.message);
   }
   if (remotes.isErr()) {
     return jsonRepositoryError(c, remotes.error.message);
   }
   const visibleLocals = [...locals.value.values()].filter(
-    (account) => moderations.value.get(account.id) !== "Suspended",
+    (account) => standings.value.get(account.id)?.kind !== "Suspended",
   );
   const localDocuments = await mastodonAccountDocuments(c.env, identity.value, visibleLocals);
   return c.json(

@@ -1,4 +1,9 @@
-import { schemaResult } from "@tstodon/core";
+import {
+  AccountStanding,
+  type AccountStandingValue,
+  LocalAccountModeration,
+  type LocalAccountModerationValue,
+} from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
@@ -7,68 +12,119 @@ import {
   deleteAccountModeration as deleteAccountModerationSql,
   findAccountModeration as findAccountModerationSql,
   listAccountModerations as listAccountModerationsSql,
+  listLocalAccountModerations as listLocalAccountModerationsSql,
+  upsertAccountFlags as upsertAccountFlagsSql,
   upsertAccountModeration as upsertAccountModerationSql,
 } from "./generated/prisma/sql";
-import { queryTyped, runTyped } from "./typed-sql";
+import { queryTyped, runTypedBatch } from "./typed-sql";
 
-const ModerationRow = z.object({ moderation: z.string() });
-const AccountIdModerationRow = z.object({ account_id: z.string(), moderation: z.string() });
+/**
+ * `account_moderation.moderation`: a row exists only while the account is
+ * silenced or suspended, so public surfaces can exclude it with one clause.
+ */
+const StandingColumn = z
+  .union([z.literal("Silenced"), z.literal("Suspended")])
+  .nullable()
+  .transform((moderation): AccountStandingValue =>
+    moderation === null ? AccountStanding.inGoodStanding : { kind: moderation },
+  );
 
-export const AccountModerationSchema = z.union([z.literal("Silenced"), z.literal("Suspended")]);
+const flag = z.number().transform((value) => value !== 0);
 
-export type AccountModeration = z.infer<typeof AccountModerationSchema>;
+/**
+ * An account's `account_moderation` and `account_flags` columns, read with
+ * `LEFT JOIN`s (and `COALESCE(…, 0)` for the flags), as one moderation state.
+ */
+export const LocalAccountModerationColumns = z
+  .object({ moderation: StandingColumn, sensitized: flag, pending: flag, disabled: flag })
+  .transform((row): LocalAccountModerationValue => ({
+    standing: row.moderation,
+    sensitized: row.sensitized,
+    login: row.disabled ? { kind: "Disabled" } : { kind: "Enabled" },
+    approval: row.pending ? { kind: "Pending" } : { kind: "Approved" },
+  }));
 
-const parseModeration = schemaResult(AccountModerationSchema);
+const AccountModerationRow = z
+  .object({ account_id: z.string() })
+  .and(LocalAccountModerationColumns)
+  .transform((row) => [row.account_id, row] as const);
 
-/** `null` means the account is in good standing (no row). */
-export const getAccountModeration = async (
+const StandingRow = z.object({ moderation: StandingColumn });
+const AccountStandingRow = z.object({ account_id: z.string(), moderation: StandingColumn });
+
+/** An account's standing; an account with no row is in good standing. */
+export const findAccountStanding = async (
   db: D1Database,
   accountId: string,
-): Promise<Result<AccountModeration | null, RepositoryError>> =>
+): Promise<Result<AccountStandingValue, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, findAccountModerationSql(accountId), ModerationRow);
-    const parsed = parseModeration(rows[0]?.moderation);
-    return parsed.isOk() ? parsed.value : null;
+    const rows = await queryTyped(db, findAccountModerationSql(accountId), StandingRow);
+    return rows[0]?.moderation ?? AccountStanding.inGoodStanding;
   });
 
-export const listAccountModerations = async (
+/** The standing of each listed account that is silenced or suspended; the rest are absent. */
+export const listAccountStandings = async (
   db: D1Database,
   accountIds: ReadonlyArray<string>,
-): Promise<Result<ReadonlyMap<string, AccountModeration>, RepositoryError>> =>
+): Promise<Result<ReadonlyMap<string, AccountStandingValue>, RepositoryError>> =>
   runD1(async () => {
     const unique = [...new Set(accountIds)];
-    const moderations = new Map<string, AccountModeration>();
     if (unique.length === 0) {
-      return moderations;
+      return new Map();
     }
     const rows = await queryTyped(
       db,
       listAccountModerationsSql(jsonStringArray(unique)),
-      AccountIdModerationRow,
+      AccountStandingRow,
     );
-    for (const row of rows) {
-      const parsed = parseModeration(row.moderation);
-      if (parsed.isOk()) {
-        moderations.set(row.account_id, parsed.value);
-      }
-    }
-    return moderations;
+    return new Map(rows.map((row) => [row.account_id, row.moderation]));
   });
 
-/** Set (Silenced/Suspended) or clear (`null`) an account's moderation state. */
-export const setAccountModeration = async (
+/** The moderation state of each listed account that exists. */
+export const listLocalAccountModerations = async (
+  db: D1Database,
+  accountIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, LocalAccountModerationValue>, RepositoryError>> =>
+  runD1(async () => {
+    const unique = [...new Set(accountIds)];
+    if (unique.length === 0) {
+      return new Map();
+    }
+    const rows = await queryTyped(
+      db,
+      listLocalAccountModerationsSql(jsonStringArray(unique)),
+      AccountModerationRow,
+    );
+    return new Map(rows);
+  });
+
+/** One account's moderation state; an unknown account reads as in good standing. */
+export const findLocalAccountModeration = async (
   db: D1Database,
   accountId: string,
-  moderation: AccountModeration | null,
+): Promise<Result<LocalAccountModerationValue, RepositoryError>> => {
+  const found = await listLocalAccountModerations(db, [accountId]);
+  return found.map((states) => states.get(accountId) ?? LocalAccountModeration.inGoodStanding);
+};
+
+/** Store an account's whole moderation state, both tables in one batch. */
+export const saveLocalAccountModeration = async (
+  db: D1Database,
+  accountId: string,
+  moderation: LocalAccountModerationValue,
 ): Promise<Result<void, RepositoryError>> => {
-  if (moderation === null) {
-    const cleared = await runD1(async () => {
-      await runTyped(db, deleteAccountModerationSql(accountId));
-    });
-    return cleared.map(() => undefined);
-  }
-  const written = await runD1(async () => {
-    await runTyped(db, upsertAccountModerationSql(accountId, moderation, nowIso()));
-  });
+  const now = nowIso();
+  const written = await runTypedBatch(db, [
+    moderation.standing.kind === "InGoodStanding"
+      ? deleteAccountModerationSql(accountId)
+      : upsertAccountModerationSql(accountId, moderation.standing.kind, now),
+    upsertAccountFlagsSql(
+      accountId,
+      moderation.sensitized ? 1 : 0,
+      moderation.approval.kind === "Pending" ? 1 : 0,
+      moderation.login.kind === "Disabled" ? 1 : 0,
+      now,
+    ),
+  ]);
   return written.map(() => undefined);
 };

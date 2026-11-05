@@ -4,13 +4,12 @@ import { z } from "zod";
 import {
   AccountActionType,
   type InstanceIdentity,
+  LocalAccountModeration,
+  type LocalAccountModerationAction,
   RemoteActorModeration,
-  type RemoteActorModerationAction,
   type RemoteActorModerationValue,
   type RemoteActorValue,
 } from "@tstodon/domain";
-import { setAccountModeration } from "../../account-moderation-store";
-import { approveAccount, setAccountDisabled, setAccountSensitized } from "../../account-flag-store";
 import { findAccountById } from "../../account-store";
 import { listAdminAccounts, listAdminRemoteActorUris } from "../../account-admin-store";
 import {
@@ -18,6 +17,7 @@ import {
   adminAccountStates,
   findAdminAccount,
   findAdminRemoteActor,
+  moderateLocalAccount,
   moderateRemoteActor,
   purgeAccount,
   takeAccountAction,
@@ -84,13 +84,13 @@ const adminAccountDocument = async (
   email: state.account.accessEmail.reveal(),
   ip: null,
   role: { id: "-1", name: "user", highlighted: false },
-  approved: !state.pending,
+  approved: state.moderation.approval.kind === "Approved",
   // `disable` blocks the login; it is separate from suspension.
-  disabled: state.disabled,
-  silenced: state.moderation === "Silenced",
-  suspended: state.moderation === "Suspended",
-  limited: state.moderation !== null,
-  sensitized: state.sensitized,
+  disabled: state.moderation.login.kind === "Disabled",
+  silenced: state.moderation.standing.kind === "Silenced",
+  suspended: state.moderation.standing.kind === "Suspended",
+  limited: state.moderation.standing.kind !== "InGoodStanding",
+  sensitized: state.moderation.sensitized,
   invited_by_account_id: null,
   created_by_application_id: null,
   invite_request: null,
@@ -302,14 +302,14 @@ export const getV1AdminAccounts = async (
 
 /**
  * Change one account, then answer its `Admin::Account` as it now is. A remote
- * actor (`r_…` id) takes the change only when `remoteAction` names its
+ * actor (`r_…` id) takes the change only when the action has a remote
  * counterpart; the others (login, approval) do not exist for it.
  */
 const changeAccount = async (
   c: Context<{ Bindings: Env }>,
-  change: (db: D1Database, accountId: string) => Promise<Result<void, RepositoryError>>,
-  remoteAction?: RemoteActorModerationAction,
+  action: LocalAccountModerationAction,
 ): Promise<Response> => {
+  const remoteAction = LocalAccountModeration.remoteCounterpart(action);
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -341,7 +341,7 @@ const changeAccount = async (
   if (!account.value) {
     return notFound(c);
   }
-  const changed = await change(c.env.DB, account.value.id);
+  const changed = await moderateLocalAccount(c.env.DB, account.value.id, action);
   if (changed.isErr()) {
     return jsonRepositoryError(c, changed.error.message);
   }
@@ -351,32 +351,32 @@ const changeAccount = async (
 
 export const postV1AdminAccountsByIdSilence = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/silence">,
-) => changeAccount(c, (db, id) => setAccountModeration(db, id, "Silenced"), "silence");
+) => changeAccount(c, "silence");
 export const postV1AdminAccountsByIdUnsilence = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/unsilence">,
-) => changeAccount(c, (db, id) => setAccountModeration(db, id, null), "unsilence");
+) => changeAccount(c, "unsilence");
 export const postV1AdminAccountsByIdSuspend = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/suspend">,
-) => changeAccount(c, (db, id) => setAccountModeration(db, id, "Suspended"), "suspend");
+) => changeAccount(c, "suspend");
 export const postV1AdminAccountsByIdUnsuspend = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/unsuspend">,
-) => changeAccount(c, (db, id) => setAccountModeration(db, id, null), "unsuspend");
+) => changeAccount(c, "unsuspend");
 /**
  * `POST /:id/enable` restores a disabled login (Mastodon's `user.enable!`); it
  * does not lift a silence or a suspension: `/unsilence` and `/unsuspend` do.
  */
 export const postV1AdminAccountsByIdEnable = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/enable">,
-) => changeAccount(c, (db, id) => setAccountDisabled(db, id, false));
+) => changeAccount(c, "enable");
 export const postV1AdminAccountsByIdSensitize = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/sensitize">,
-) => changeAccount(c, (db, id) => setAccountSensitized(db, id, true), "sensitize");
+) => changeAccount(c, "sensitize");
 export const postV1AdminAccountsByIdUnsensitize = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/unsensitize">,
-) => changeAccount(c, (db, id) => setAccountSensitized(db, id, false), "unsensitize");
+) => changeAccount(c, "unsensitize");
 export const postV1AdminAccountsByIdApprove = (
   c: Context<{ Bindings: Env }, "/api/v1/admin/accounts/:id/approve">,
-) => changeAccount(c, approveAccount);
+) => changeAccount(c, "approve");
 
 /**
  * Reject the local account waiting for approval. Rejecting purges the
@@ -402,7 +402,7 @@ export const postV1AdminAccountsByIdReject = async (
   }
   const document = await adminAccountDocument(c.env, identity.value, {
     ...state.value,
-    pending: true,
+    moderation: { ...state.value.moderation, approval: { kind: "Pending" } },
   });
   const purged = await purgeAccount(c.env, state.value.account.id);
   return purged.isErr() ? jsonRepositoryError(c, purged.error.message) : c.json(document);

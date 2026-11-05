@@ -2,7 +2,16 @@ export { AccountId, type AccountId as AccountIdValue } from "./account-id";
 export { AccessEmail, type AccessEmail as AccessEmailValue } from "./access-email";
 export { Activity, ActivitySchema, type Activity as ActivityValue } from "./activity";
 export { ActivityId } from "./activity-id";
-export { AccountActionType, type RemoteAccountActionEffect } from "./account-action";
+export {
+  AccountActionType,
+  type LocalAccountActionEffect,
+  type RemoteAccountActionEffect,
+} from "./account-action";
+export {
+  AccountStanding,
+  type AccountStanding as AccountStandingValue,
+  type AccountStandingAction,
+} from "./account-standing";
 export { ContentFilter, type ContentFilterMatch, type FilteredContent } from "./content-filter";
 export {
   OutboxBackfill,
@@ -42,6 +51,11 @@ export {
 export { FediRole, type FediRole as FediRoleValue, type FediRoleName } from "./fedi-role";
 export { LocalFollow, type LocalFollow as LocalFollowValue } from "./local-follow";
 export { LocalAccount, type LocalAccount as LocalAccountValue } from "./registration";
+export {
+  LocalAccountModeration,
+  type LocalAccountModeration as LocalAccountModerationValue,
+  type LocalAccountModerationAction,
+} from "./local-account-moderation";
 export { MediaId } from "./media-id";
 export {
   OutboxDelivery,
@@ -93,7 +107,6 @@ export {
   RemoteActorModeration,
   type RemoteActorModeration as RemoteActorModerationValue,
   type RemoteActorModerationAction,
-  type RemoteActorStanding,
 } from "./remote-actor-moderation";
 export {
   RemoteBoost,

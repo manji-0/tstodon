@@ -26,8 +26,6 @@ export * from "./sql/claimRemotePollExpiryNotice";
 
 export * from "./sql/claimRemoteStatusThreadBackfill";
 
-export * from "./sql/clearAccountSensitized";
-
 export * from "./sql/clearNotifications";
 
 export * from "./sql/clearRemoteMediaForDomain";
@@ -189,8 +187,6 @@ export * from "./sql/findAccountById";
 export * from "./sql/findAccountByUsername";
 
 export * from "./sql/findAccountDomainBlock";
-
-export * from "./sql/findAccountFlag";
 
 export * from "./sql/findAccountModeration";
 
@@ -464,8 +460,6 @@ export * from "./sql/listDirectoryAccountsByActive";
 
 export * from "./sql/listDirectoryAccountsByNew";
 
-export * from "./sql/listDisabledAccountIds";
-
 export * from "./sql/listEndedRemotePollVoters";
 
 export * from "./sql/listExpiredUnnotifiedPolls";
@@ -496,6 +490,8 @@ export * from "./sql/listListsContainingRemoteActor";
 
 export * from "./sql/listListsForAccount";
 
+export * from "./sql/listLocalAccountModerations";
+
 export * from "./sql/listLocalBoostsOfRemoteActor";
 
 export * from "./sql/listLocalBoostsOfRemoteObject";
@@ -519,8 +515,6 @@ export * from "./sql/listOutboundActivities";
 export * from "./sql/listOutboundFollowsByActor";
 
 export * from "./sql/listPeerDomains";
-
-export * from "./sql/listPendingAccountIds";
 
 export * from "./sql/listPendingRemoteFollowRequesters";
 
@@ -640,8 +634,6 @@ export * from "./sql/searchAccounts";
 
 export * from "./sql/searchRemoteActors";
 
-export * from "./sql/setAccountApproved";
-
 export * from "./sql/setAccountAuthUser";
 
 export * from "./sql/setAccountLocked";
@@ -694,17 +686,13 @@ export * from "./sql/updateStatusCard";
 
 export * from "./sql/updateStatusPollId";
 
-export * from "./sql/upsertAccountDisabled";
+export * from "./sql/upsertAccountFlags";
 
 export * from "./sql/upsertAccountModeration";
 
 export * from "./sql/upsertAccountNote";
 
-export * from "./sql/upsertAccountPending";
-
 export * from "./sql/upsertAccountProfile";
-
-export * from "./sql/upsertAccountSensitized";
 
 export * from "./sql/upsertAnnouncementDismissal";
 

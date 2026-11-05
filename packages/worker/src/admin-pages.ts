@@ -133,13 +133,13 @@ export type ReportDetails = ReportSummary &
     assignedToViewer: boolean;
   }>;
 
-export const moderationSummary = (state: AdminAccountState): string => {
+export const moderationSummary = ({ moderation }: AdminAccountState): string => {
   const labels = [
-    state.moderation === "Suspended" ? "suspended" : undefined,
-    state.moderation === "Silenced" ? "limited" : undefined,
-    state.sensitized ? "media marked sensitive" : undefined,
-    state.disabled ? "login disabled" : undefined,
-    state.pending ? "waiting for approval" : undefined,
+    moderation.standing.kind === "Suspended" ? "suspended" : undefined,
+    moderation.standing.kind === "Silenced" ? "limited" : undefined,
+    moderation.sensitized ? "media marked sensitive" : undefined,
+    moderation.login.kind === "Disabled" ? "login disabled" : undefined,
+    moderation.approval.kind === "Pending" ? "waiting for approval" : undefined,
   ].filter((label) => label !== undefined);
   return labels.length === 0 ? "in good standing" : labels.join(", ");
 };

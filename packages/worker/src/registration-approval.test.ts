@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
-import { pendingAccountIds } from "./account-flag-store";
+import { findLocalAccountModeration } from "./account-moderation-store";
 import { registrationApprovalRequired } from "./runtime-config";
 import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
@@ -100,8 +100,8 @@ describe("registration approval", () => {
     expect(await searchAccountIds(username)).toContain(id);
     expect(await directoryIds()).toContain(id);
 
-    const pending = await pendingAccountIds(env.DB, [id]);
-    expect(pending.isOk() && pending.value.size).toBe(0);
+    const moderation = await findLocalAccountModeration(env.DB, id);
+    expect(moderation.isOk() && moderation.value.approval.kind).toBe("Approved");
   });
 
   it("rejects a pending account by deleting it", async () => {

@@ -1,8 +1,8 @@
 import type { FediRole, LocalAccount } from "@tstodon/domain";
 import type { Context } from "hono";
 import { getSession } from "void/auth";
-import { disabledAccountIds } from "./account-flag-store";
-import { getAccountModeration } from "./account-moderation-store";
+import { LocalAccountModeration } from "@tstodon/domain";
+import { findLocalAccountModeration } from "./account-moderation-store";
 import { findAccountByAuthUserId } from "./account-store";
 import { roleFromAuthUser } from "./auth";
 
@@ -36,14 +36,8 @@ export const browserSession = async (env: Env): Promise<BrowserSession> => {
   if (account.isErr() || !account.value) {
     return { kind: "NoAccount" };
   }
-  const [moderation, disabled] = await Promise.all([
-    getAccountModeration(env.DB, account.value.id),
-    disabledAccountIds(env.DB, [account.value.id]),
-  ]);
-  if (
-    (moderation.isOk() && moderation.value === "Suspended") ||
-    (disabled.isOk() && disabled.value.has(account.value.id))
-  ) {
+  const moderation = await findLocalAccountModeration(env.DB, account.value.id);
+  if (moderation.isOk() && LocalAccountModeration.isBarred(moderation.value)) {
     return { kind: "Barred" };
   }
   return {

@@ -1,8 +1,13 @@
-import { StatusComposition, StatusId, type ThreadStatus, Visibility } from "@tstodon/domain";
+import {
+  LocalAccountModeration,
+  StatusComposition,
+  StatusId,
+  type ThreadStatus,
+  Visibility,
+} from "@tstodon/domain";
 import { nowIso } from "./clock";
 import { findAccountById } from "./account-store";
-import { getAccountModeration } from "./account-moderation-store";
-import { disabledAccountIds } from "./account-flag-store";
+import { findLocalAccountModeration } from "./account-moderation-store";
 import { findReplyTarget } from "./reply-target";
 import { publishLocalNote } from "./local-status-publish";
 import { parseInstanceIdentity } from "./runtime-config";
@@ -31,12 +36,8 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void
     await deleteScheduledStatus(env.DB, row.accountId, row.id);
     return;
   }
-  const moderation = await getAccountModeration(env.DB, row.accountId);
-  const disabled = await disabledAccountIds(env.DB, [row.accountId]);
-  if (
-    (moderation.isOk() && moderation.value === "Suspended") ||
-    (disabled.isOk() && disabled.value.has(row.accountId))
-  ) {
+  const moderation = await findLocalAccountModeration(env.DB, row.accountId);
+  if (moderation.isOk() && LocalAccountModeration.isBarred(moderation.value)) {
     // A blocked login cannot publish; Mastodon drops the job the same way.
     await deleteScheduledStatus(env.DB, row.accountId, row.id);
     return;

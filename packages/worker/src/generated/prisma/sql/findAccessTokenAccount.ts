@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param tokenHash
  */
 export const findAccessTokenAccount = $runtime.makeTypedQueryFactory(
-  'SELECT t.id AS token_id, t.application_id, t.scopes, t.account_id,\na.id, a.username, a.access_email, a.display_name, a.locked, a.default_post_visibility,\na.default_quote_policy, a.public_key_pem, a.private_key_jwk, a.created_at,\nCOALESCE(a.bio_text, \'\') AS bio_text,\nu.role AS auth_role, m.moderation, COALESCE(f.disabled, 0) AS disabled,\nt.web_session_id, s.expiresAt AS web_session_expires_at\nFROM oauth_access_tokens t\nLEFT JOIN accounts a ON a.id = t.account_id\nLEFT JOIN "user" u ON u.id = a.auth_user_id\nLEFT JOIN account_moderation m ON m.account_id = t.account_id\nLEFT JOIN account_flags f ON f.account_id = t.account_id\nLEFT JOIN "session" s ON s.id = t.web_session_id\nWHERE t.token_hash = $1',
+  'SELECT t.id AS token_id, t.application_id, t.scopes, t.account_id,\na.id, a.username, a.access_email, a.display_name, a.locked, a.default_post_visibility,\na.default_quote_policy, a.public_key_pem, a.private_key_jwk, a.created_at,\nCOALESCE(a.bio_text, \'\') AS bio_text,\nu.role AS auth_role, m.moderation, COALESCE(f.sensitized, 0) AS sensitized,\nCOALESCE(f.pending, 0) AS pending, COALESCE(f.disabled, 0) AS disabled,\nt.web_session_id, s.expiresAt AS web_session_expires_at\nFROM oauth_access_tokens t\nLEFT JOIN accounts a ON a.id = t.account_id\nLEFT JOIN "user" u ON u.id = a.auth_user_id\nLEFT JOIN account_moderation m ON m.account_id = t.account_id\nLEFT JOIN account_flags f ON f.account_id = t.account_id\nLEFT JOIN "session" s ON s.id = t.web_session_id\nWHERE t.token_hash = $1',
 ) as (
   tokenHash: string,
 ) => $runtime.TypedSql<findAccessTokenAccount.Parameters, findAccessTokenAccount.Result>;
@@ -33,6 +33,8 @@ export namespace findAccessTokenAccount {
     bio_text: null | null;
     auth_role: string | null;
     moderation: string;
+    sensitized: null | null;
+    pending: null | null;
     disabled: null | null;
     web_session_id: string | null;
     web_session_expires_at: number;

@@ -7,6 +7,18 @@ describe("AccountActionType", () => {
     expect(AccountActionType.parse("delete").isErr()).toBe(true);
   });
 
+  it("moderates a local account with every type but none", () => {
+    expect(AccountActionType.localEffect("none")).toEqual({ kind: "Nothing" });
+    expect(AccountActionType.localEffect("sensitive")).toEqual({
+      kind: "Moderate",
+      action: "sensitize",
+    });
+    expect(AccountActionType.localEffect("disable")).toEqual({
+      kind: "Moderate",
+      action: "disable",
+    });
+  });
+
   it("moderates a remote actor, which cannot be disabled", () => {
     expect(AccountActionType.remoteEffect("none")).toEqual({ kind: "Nothing" });
     expect(AccountActionType.remoteEffect("sensitive")).toEqual({

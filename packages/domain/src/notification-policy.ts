@@ -1,5 +1,5 @@
 import { NotificationPolicyAction } from "./notification-policy-action";
-import type { RemoteActorStanding } from "./remote-actor-moderation";
+import type { AccountStanding } from "./account-standing";
 
 /** A recipient's handling of each of Mastodon's notification-policy categories. */
 export type NotificationPolicy = Readonly<{
@@ -24,7 +24,7 @@ export type LocalNotificationSender = Readonly<{
 /** What the policy needs to know about a remote sender. */
 export type RemoteNotificationSender = Readonly<{
   kind: "Remote";
-  standing: RemoteActorStanding;
+  standing: AccountStanding;
   followsRecipient: boolean;
 }>;
 

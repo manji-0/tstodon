@@ -13,7 +13,8 @@ import {
 import { authHeaders } from "../test/auth-fixture";
 import { ORIGIN, postForm, read, signUp } from "../test/passkey-browser";
 import { type Remote, remoteActor } from "../test/remote-actor-fixture";
-import { markAccountPending } from "./account-flag-store";
+import { LocalAccountModeration } from "@tstodon/domain";
+import { saveLocalAccountModeration } from "./account-moderation-store";
 import { RemoteAccountId } from "./remote-account-id";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -234,7 +235,12 @@ describe("admin content pages", () => {
       method: "POST",
       body: JSON.stringify({ account_id: target.id, category: "spam" }),
     });
-    expect((await markAccountPending(env.DB, target.id)).isOk()).toBe(true);
+    const marked = await saveLocalAccountModeration(
+      env.DB,
+      target.id,
+      LocalAccountModeration.awaitingApproval,
+    );
+    expect(marked.isOk()).toBe(true);
     const { fetcher } = await signUp("content_dash_new");
     await page(await fetcher("/settings/preferences"));
 

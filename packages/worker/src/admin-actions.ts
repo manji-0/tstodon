@@ -1,6 +1,11 @@
 import {
   AccountActionType,
   type LocalAccount,
+  type LocalAccountActionEffect,
+  LocalAccountModeration,
+  type RemoteAccountActionEffect,
+  type LocalAccountModerationAction,
+  type LocalAccountModerationValue,
   type RemoteActorValue,
   RemoteActorModeration,
   type RemoteActorModerationAction,
@@ -8,19 +13,12 @@ import {
   ReportResolution,
 } from "@tstodon/domain";
 import { nowIso } from "./clock";
-import { err, ok, Result } from "neverthrow";
+import { err, ok, type Result } from "neverthrow";
+import { mediaObjectKeysForAccount } from "./account-flag-store";
 import {
-  disabledAccountIds,
-  mediaObjectKeysForAccount,
-  pendingAccountIds,
-  sensitizedAccountIds,
-  setAccountDisabled,
-  setAccountSensitized,
-} from "./account-flag-store";
-import {
-  type AccountModeration,
-  listAccountModerations,
-  setAccountModeration,
+  findLocalAccountModeration,
+  listLocalAccountModerations,
+  saveLocalAccountModeration,
 } from "./account-moderation-store";
 import { deleteAccount, findAccountById } from "./account-store";
 import {
@@ -51,36 +49,43 @@ import {
  * pages (`/admin/*`) perform, so the two cannot drift apart.
  */
 
-/** A local account with the moderation state and flags an admin sees. */
+/** A local account with the moderation state an admin sees. */
 export type AdminAccountState = Readonly<{
   account: LocalAccount;
-  moderation: AccountModeration | null;
-  sensitized: boolean;
-  pending: boolean;
-  disabled: boolean;
+  moderation: LocalAccountModerationValue;
 }>;
 
-/** Each account's moderation state and flags, one query per table. */
+/** Each account's moderation state, in one query. */
 export const adminAccountStates = async (
   db: D1Database,
   accounts: ReadonlyArray<LocalAccount>,
 ): Promise<Result<AdminAccountState[], RepositoryError>> => {
-  const ids = accounts.map((account) => account.id);
-  const [moderations, sensitized, pending, disabled] = await Promise.all([
-    listAccountModerations(db, ids),
-    sensitizedAccountIds(db, ids),
-    pendingAccountIds(db, ids),
-    disabledAccountIds(db, ids),
-  ]);
-  return Result.combine([moderations, sensitized, pending, disabled]).map(
-    ([moderationOf, sensitizedIds, pendingIds, disabledIds]) =>
-      accounts.map((account) => ({
-        account,
-        moderation: moderationOf.get(account.id) ?? null,
-        sensitized: sensitizedIds.has(account.id),
-        pending: pendingIds.has(account.id),
-        disabled: disabledIds.has(account.id),
-      })),
+  const moderations = await listLocalAccountModerations(
+    db,
+    accounts.map((account) => account.id),
+  );
+  return moderations.map((moderationOf) =>
+    accounts.map((account) => ({
+      account,
+      moderation: moderationOf.get(account.id) ?? LocalAccountModeration.inGoodStanding,
+    })),
+  );
+};
+
+/** Apply one moderation transition to a local account and store the result. */
+export const moderateLocalAccount = async (
+  db: D1Database,
+  accountId: string,
+  action: LocalAccountModerationAction,
+): Promise<Result<void, RepositoryError>> => {
+  const current = await findLocalAccountModeration(db, accountId);
+  if (current.isErr()) {
+    return err(current.error);
+  }
+  return saveLocalAccountModeration(
+    db,
+    accountId,
+    LocalAccountModeration.apply(current.value, action),
   );
 };
 
@@ -166,24 +171,19 @@ export type AccountActionError =
   | Readonly<{ kind: "ReportNotFound" }>
   | RepositoryError;
 
-const applyAction = async (
+const applyLocalEffect = async (
   db: D1Database,
   accountId: string,
-  type: AccountActionType,
-): Promise<Result<void, RepositoryError>> => {
-  switch (type) {
-    case "none":
-      return ok(undefined);
-    case "sensitive":
-      return setAccountSensitized(db, accountId, true);
-    case "disable":
-      return setAccountDisabled(db, accountId, true);
-    case "silence":
-      return setAccountModeration(db, accountId, "Silenced");
-    case "suspend":
-      return setAccountModeration(db, accountId, "Suspended");
-  }
-};
+  effect: LocalAccountActionEffect,
+): Promise<Result<void, RepositoryError>> =>
+  effect.kind === "Moderate" ? moderateLocalAccount(db, accountId, effect.action) : ok(undefined);
+
+const applyRemoteEffect = async (
+  env: Env,
+  actorUri: string,
+  effect: RemoteAccountActionEffect,
+): Promise<Result<void, RepositoryError>> =>
+  effect.kind === "Moderate" ? moderateRemoteActor(env, actorUri, effect.action) : ok(undefined);
 
 /**
  * A moderation action on a local account or a remote actor (`r_…` id). As in
@@ -241,13 +241,10 @@ export const takeAccountAction = async (
     }
     reportIds = [report.value.id];
   }
-  const remoteEffect = AccountActionType.remoteEffect(input.type);
   const applied =
     target.kind === "Local"
-      ? await applyAction(db, target.accountId, input.type)
-      : remoteEffect.kind === "Moderate"
-        ? await moderateRemoteActor(env, target.actorUri, remoteEffect.action)
-        : ok(undefined);
+      ? await applyLocalEffect(db, target.accountId, AccountActionType.localEffect(input.type))
+      : await applyRemoteEffect(env, target.actorUri, AccountActionType.remoteEffect(input.type));
   if (applied.isErr()) {
     return err(applied.error);
   }

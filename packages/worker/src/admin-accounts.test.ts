@@ -93,6 +93,27 @@ describe("admin accounts", () => {
     ).toBe(200);
   });
 
+  it("keeps a suspension when the account is silenced or unsilenced", async () => {
+    const adminEmail = "admacct-keep-admin@example.com";
+    const targetEmail = "admacct-keep@example.com";
+    const target = await json("/api/v1/accounts/verify_credentials", {
+      headers: await auth(targetEmail),
+    });
+    const targetId = read(MastodonAccountPreviewSchema, target.body).id;
+    expect((await adminPost(adminEmail, `/api/v1/admin/accounts/${targetId}/suspend`)).status).toBe(
+      200,
+    );
+
+    for (const action of ["silence", "unsilence"]) {
+      const changed = await adminPost(adminEmail, `/api/v1/admin/accounts/${targetId}/${action}`);
+      expect(read(AdminAccountSchema, changed.body).suspended).toBe(true);
+      expect(
+        (await json("/api/v1/accounts/verify_credentials", { headers: await auth(targetEmail) }))
+          .status,
+      ).toBe(403);
+    }
+  });
+
   it("silences an account: statuses leave public timelines and the directory", async () => {
     const adminEmail = "admacct-silence-admin@example.com";
     const targetEmail = "admacct-silence@example.com";

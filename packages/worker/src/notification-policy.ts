@@ -4,7 +4,7 @@ import {
   type NotificationSender,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { getAccountModeration } from "./account-moderation-store";
+import { findAccountStanding } from "./account-moderation-store";
 import { findAccountById } from "./account-store";
 import type { RepositoryError } from "./d1";
 import { findFollowKind } from "./follow-store";
@@ -50,9 +50,9 @@ const localSender = async (
   input: DispositionInput,
   createdAt: string,
 ): Promise<Result<NotificationSender, RepositoryError>> => {
-  const moderation = await getAccountModeration(db, input.senderId);
-  if (moderation.isErr()) {
-    return err(moderation.error);
+  const standing = await findAccountStanding(db, input.senderId);
+  if (standing.isErr()) {
+    return err(standing.error);
   }
   const followed = await findFollowKind(db, input.recipientId, input.senderId);
   if (followed.isErr()) {
@@ -76,7 +76,7 @@ const localSender = async (
   return ok({
     kind: "Local",
     createdAt,
-    silenced: moderation.value === "Silenced",
+    silenced: standing.value.kind === "Silenced",
     recipientFollowsSender: followed.value === "Accepted",
     senderFollowsRecipient: follows.value === "Accepted",
     privateMention,

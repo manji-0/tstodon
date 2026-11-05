@@ -1,6 +1,12 @@
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
-import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
+import {
+  FediRole,
+  type FediRole as FediRoleValue,
+  type LocalAccount,
+  LocalAccountModeration,
+} from "@tstodon/domain";
+import { LocalAccountModerationColumns } from "./account-moderation-store";
 import { accountFromRow, AccountRowSchema } from "./account-store";
 import { parseRow, runD1, type RepositoryError } from "./d1";
 import { findAccessTokenAccount } from "./generated/prisma/sql";
@@ -60,13 +66,14 @@ const TokenRowSchema = z.object({
   scopes: z.string(),
   account_id: z.string().nullable(),
   auth_role: z.string().nullable(),
-  moderation: z.string().nullable(),
-  disabled: z.number(),
   web_session_id: z.string().nullable(),
   web_session_expires_at: z.number().nullable(),
 });
 
-/** The token row keeps the account's columns, which `AccountRowSchema` reads when it has one. */
+/**
+ * The token row keeps the account's columns, which `AccountRowSchema` and
+ * `LocalAccountModerationColumns` read when it has one.
+ */
 const TokenQueryRowSchema = TokenRowSchema.loose();
 
 /** Better Auth's admin plugin stores roles comma-separated. */
@@ -121,7 +128,11 @@ export const authenticate = async (
   if (accountRow.isErr()) {
     return err(accountRow.error);
   }
-  if (row.moderation === "Suspended" || row.disabled !== 0) {
+  const moderation = parseRow(LocalAccountModerationColumns, row);
+  if (moderation.isErr()) {
+    return err(moderation.error);
+  }
+  if (LocalAccountModeration.isBarred(moderation.value)) {
     // Mastodon's `disable` action blocks the login while the profile stays.
     return err({ kind: "Forbidden" });
   }

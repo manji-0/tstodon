@@ -2,14 +2,13 @@ import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { Context } from "hono";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
-import { approveAccount, setAccountDisabled, setAccountSensitized } from "../../account-flag-store";
-import { setAccountModeration } from "../../account-moderation-store";
 import type { RemoteActorModerationAction, RemoteActorModerationValue } from "@tstodon/domain";
 import { listAdminAccounts } from "../../account-admin-store";
 import {
   type AdminAccountState,
   type AdminRemoteActorState,
   adminAccountStates,
+  moderateLocalAccount,
   findAdminAccount,
   findAdminRemoteActor,
   moderateRemoteActor,
@@ -113,65 +112,65 @@ type AccountCommandName = z.infer<typeof AccountCommandSchema>;
 const ACCOUNT_COMMANDS: Readonly<Record<AccountCommandName, AccountCommand>> = {
   approve: {
     label: "Approve",
-    offered: (state) => state.pending,
-    run: (env, id) => approveAccount(env.DB, id),
+    offered: (state) => state.moderation.approval.kind === "Pending",
+    run: (env, id) => moderateLocalAccount(env.DB, id, "approve"),
     deletes: false,
   },
   reject: {
     label: "Reject",
-    offered: (state) => state.pending,
+    offered: (state) => state.moderation.approval.kind === "Pending",
     confirm: "Rejecting deletes the account. This cannot be undone.",
     run: purgeAccount,
     deletes: true,
   },
   silence: {
     label: "Limit",
-    offered: (state) => state.moderation === null,
-    run: (env, id) => setAccountModeration(env.DB, id, "Silenced"),
+    offered: (state) => state.moderation.standing.kind === "InGoodStanding",
+    run: (env, id) => moderateLocalAccount(env.DB, id, "silence"),
     deletes: false,
   },
   unsilence: {
     label: "Lift limit",
-    offered: (state) => state.moderation === "Silenced",
-    run: (env, id) => setAccountModeration(env.DB, id, null),
+    offered: (state) => state.moderation.standing.kind === "Silenced",
+    run: (env, id) => moderateLocalAccount(env.DB, id, "unsilence"),
     deletes: false,
   },
   suspend: {
     label: "Suspend",
-    offered: (state) => state.moderation !== "Suspended",
+    offered: (state) => state.moderation.standing.kind !== "Suspended",
     confirm:
       "Suspending hides the account and its posts and blocks its login. You can lift it later.",
-    run: (env, id) => setAccountModeration(env.DB, id, "Suspended"),
+    run: (env, id) => moderateLocalAccount(env.DB, id, "suspend"),
     deletes: false,
   },
   unsuspend: {
     label: "Unsuspend",
-    offered: (state) => state.moderation === "Suspended",
-    run: (env, id) => setAccountModeration(env.DB, id, null),
+    offered: (state) => state.moderation.standing.kind === "Suspended",
+    run: (env, id) => moderateLocalAccount(env.DB, id, "unsuspend"),
     deletes: false,
   },
   sensitize: {
     label: "Mark media as sensitive",
-    offered: (state) => !state.sensitized,
-    run: (env, id) => setAccountSensitized(env.DB, id, true),
+    offered: (state) => !state.moderation.sensitized,
+    run: (env, id) => moderateLocalAccount(env.DB, id, "sensitize"),
     deletes: false,
   },
   unsensitize: {
     label: "Stop marking media as sensitive",
-    offered: (state) => state.sensitized,
-    run: (env, id) => setAccountSensitized(env.DB, id, false),
+    offered: (state) => state.moderation.sensitized,
+    run: (env, id) => moderateLocalAccount(env.DB, id, "unsensitize"),
     deletes: false,
   },
   disable: {
     label: "Disable login",
-    offered: (state) => !state.disabled,
-    run: (env, id) => setAccountDisabled(env.DB, id, true),
+    offered: (state) => state.moderation.login.kind === "Enabled",
+    run: (env, id) => moderateLocalAccount(env.DB, id, "disable"),
     deletes: false,
   },
   enable: {
     label: "Enable login",
-    offered: (state) => state.disabled,
-    run: (env, id) => setAccountDisabled(env.DB, id, false),
+    offered: (state) => state.moderation.login.kind === "Disabled",
+    run: (env, id) => moderateLocalAccount(env.DB, id, "enable"),
     deletes: false,
   },
   delete: {

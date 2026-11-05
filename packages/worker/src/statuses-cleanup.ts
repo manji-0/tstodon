@@ -3,9 +3,9 @@ import {
   type StatusCleanupFacts,
   StatusesCleanupPolicy,
   type LocalNote,
+  LocalAccountModeration,
 } from "@tstodon/domain";
-import { disabledAccountIds } from "./account-flag-store";
-import { getAccountModeration } from "./account-moderation-store";
+import { findLocalAccountModeration } from "./account-moderation-store";
 import { findAccountById } from "./account-store";
 import { chunkArray } from "./d1";
 import { deleteLocalStatus } from "./local-status-delete";
@@ -84,14 +84,8 @@ export const cleanUpAccountStatuses = async (
   if (account.isErr() || !account.value) {
     return { scanned: 0 };
   }
-  const [moderation, disabled] = await Promise.all([
-    getAccountModeration(env.DB, accountId),
-    disabledAccountIds(env.DB, [accountId]),
-  ]);
-  if (
-    (moderation.isOk() && moderation.value === "Suspended") ||
-    (disabled.isOk() && disabled.value.has(accountId))
-  ) {
+  const moderation = await findLocalAccountModeration(env.DB, accountId);
+  if (moderation.isOk() && LocalAccountModeration.isBarred(moderation.value)) {
     return { scanned: 0 };
   }
   const now = Date.now();
