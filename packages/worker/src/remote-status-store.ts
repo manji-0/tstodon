@@ -1,11 +1,12 @@
 import {
   IsoInstant,
-  RemotePoll,
   type RemoteAttachment,
   RemoteAttachmentSchema,
   type RemoteEmoji,
   RemoteEmojiSchema,
+  RemotePoll,
   RemoteStatus,
+  type RemovedRemoteStatus,
   StatusId,
   Visibility,
 } from "@tstodon/domain";
@@ -15,7 +16,7 @@ import { z } from "zod";
 import { nowIso } from "./clock";
 import { rerollEntityId } from "./ids";
 import { jsonStringArray, parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
-import { removedBoostsFromRows, type RemovedBoost } from "./removed-boost";
+import { removedBoostsFromRows } from "./removed-boost";
 import { parseJsonText } from "./json-column";
 import { toRepositoryError } from "./d1";
 import { visibilitySql } from "./sql-enums";
@@ -365,12 +366,7 @@ export const deleteRemoteStatusByObjectUri = async (
   db: D1Database,
   objectUri: string,
   actorUri: string,
-): Promise<
-  Result<
-    Readonly<{ id: string; public: boolean; boosts: ReadonlyArray<RemovedBoost> }> | undefined,
-    RepositoryError
-  >
-> => {
+): Promise<Result<RemovedRemoteStatus | undefined, RepositoryError>> => {
   const batched = await runD1Batch(db, [
     d1PrepareTyped(db, listLocalBoostsOfRemoteObjectSql(objectUri, actorUri)),
     d1PrepareTyped(db, deleteRemoteStatusByObjectUriSql(objectUri, actorUri)),
@@ -398,12 +394,7 @@ export const deleteRemoteStatusById = async (
   db: D1Database,
   id: string,
   actorUri: string,
-): Promise<
-  Result<
-    Readonly<{ id: string; public: boolean; boosts: ReadonlyArray<RemovedBoost> }> | undefined,
-    RepositoryError
-  >
-> => {
+): Promise<Result<RemovedRemoteStatus | undefined, RepositoryError>> => {
   // The local boosts of it go with it (the FK cascade); read them first so their streams hear it.
   const batched = await runD1Batch(db, [
     db

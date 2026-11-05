@@ -1,4 +1,4 @@
-import { FollowRequest, IsoInstant, RemoteActor } from "@tstodon/domain";
+import { FollowRequest, IsoInstant, RemoteActor, type RemovedBoost } from "@tstodon/domain";
 import { warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -8,7 +8,7 @@ import { newEntityId } from "./ids";
 import { toRepositoryError } from "./d1";
 import { queryTyped, runTyped, runTypedBatch } from "./typed-sql";
 import { RemoteAccountId } from "./remote-account-id";
-import { removedBoostsFromRows, type RemovedBoost } from "./removed-boost";
+import { removedBoostsFromRows } from "./removed-boost";
 import {
   deleteRemoteActor as deleteRemoteActorSql,
   authorizeRemoteFollowRequest as authorizeRemoteFollowRequestSql,

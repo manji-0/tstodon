@@ -3,6 +3,7 @@ import {
   type InstanceIdentity,
   OutboxJob,
   type OutboxJob as OutboxJobValue,
+  type RemovedBoost,
   StatusId,
   type StreamEventValue,
 } from "@tstodon/domain";
@@ -10,7 +11,6 @@ import { err, ok, type Result } from "neverthrow";
 import { type RepositoryError, runD1 } from "./d1";
 import { listHomeFanOutAccounts } from "./generated/prisma/sql";
 import { findListForAccount } from "./list-store";
-import type { RemovedBoost } from "./removed-boost";
 import { measureJobPage, measureStreamRender } from "./metrics";
 import { parseInstanceIdentity } from "./runtime-config";
 import { publishToAccount, publishToHub } from "./stream-publish";

@@ -6,6 +6,7 @@ import {
   type LocalReblog,
   type LocalStatus as LocalStatusValue,
   MediaId,
+  type RemovedBoost,
   StatusId,
   StatusQuoteTarget,
   StatusTarget,
@@ -16,7 +17,7 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { jsonStringArray, type RepositoryError, runD1, runD1Batch, sqlInJsonEach } from "./d1";
 import { parseRow } from "./d1";
-import { type RemovedBoost, removedBoostsFromRows } from "./removed-boost";
+import { removedBoostsFromRows } from "./removed-boost";
 import { visibilitySql } from "./sql-enums";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {

@@ -66,6 +66,8 @@ export type {
   InsertNotification,
   NewNotification,
   PublishNotification,
+  RemoteNotificationWithdrawal,
+  WithdrawRemoteNotifications,
 } from "./notification-store";
 export type { FindMutedThreadStatusIds } from "./status-mute-resolver";
 export { OutboxJob, type MovePhase, type OutboxJob as OutboxJobValue } from "./outbox-job";
@@ -114,6 +116,13 @@ export {
   type RemoteEmoji,
   type RemoteStatus as RemoteStatusValue,
 } from "./remote-status";
+export type {
+  DeleteRemoteStatus,
+  PublishRemoteStatusRemoval,
+  RemoteStatusMatch,
+  RemovedBoost,
+  RemovedRemoteStatus,
+} from "./remote-status-removal";
 export {
   Registration,
   type Registration as RegistrationValue,

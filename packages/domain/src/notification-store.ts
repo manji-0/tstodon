@@ -28,5 +28,21 @@ export type HoldNotification = (
   notification: NewNotification,
 ) => Promise<Result<void, RepositoryError>>;
 
+/**
+ * What a remote actor's undone activity or deleted note had notified: its
+ * notifications of `kinds`, narrowed to one recipient and/or status when given.
+ */
+export type RemoteNotificationWithdrawal = Readonly<{
+  actorUri: string;
+  kinds: ReadonlyArray<string>;
+  accountId?: string;
+  statusId?: string;
+}>;
+
+/** Delete the withdrawn notifications; resolves to how many went. */
+export type WithdrawRemoteNotifications = (
+  withdrawal: RemoteNotificationWithdrawal,
+) => Promise<Result<number, RepositoryError>>;
+
 /** Tell the recipient's streams and push subscriptions about a delivered notification. */
 export type PublishNotification = (accountId: string, notificationId: string) => Promise<void>;

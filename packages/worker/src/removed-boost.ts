@@ -1,8 +1,6 @@
+import type { RemovedBoost } from "@tstodon/domain";
 import { z } from "zod";
 import { parseRows } from "./d1";
-
-/** A local account's boost that went away with the status it boosted. */
-export type RemovedBoost = Readonly<{ id: string; accountId: string }>;
 
 const BoostRowSchema = z.object({ id: z.string().min(1), account_id: z.string().min(1) });
 

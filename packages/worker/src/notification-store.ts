@@ -1,4 +1,8 @@
-import type { GroupedNotificationEntry, NewNotification } from "@tstodon/domain";
+import type {
+  GroupedNotificationEntry,
+  NewNotification,
+  RemoteNotificationWithdrawal,
+} from "@tstodon/domain";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
@@ -19,19 +23,10 @@ import {
 const PresentRow = z.object({ present: z.number() });
 const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
 
-/**
- * Withdraw what a remote actor's activity notified, when the activity is
- * undone or its note deleted: its notifications of `kinds`, narrowed to one
- * recipient and/or status when given. Held requests cascade with them.
- */
+/** Held requests cascade with the withdrawn notifications. */
 export const deleteRemoteNotifications = async (
   db: D1Database,
-  input: Readonly<{
-    actorUri: string;
-    kinds: ReadonlyArray<string>;
-    accountId?: string;
-    statusId?: string;
-  }>,
+  input: RemoteNotificationWithdrawal,
 ): Promise<Result<number, RepositoryError>> =>
   runD1(
     async () =>
