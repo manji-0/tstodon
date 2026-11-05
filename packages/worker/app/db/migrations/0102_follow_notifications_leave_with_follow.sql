@@ -45,32 +45,3 @@ BEGIN
     AND from_actor_uri = NEW.remote_actor_uri
     AND kind = 'follow_request';
 END;
-
--- Notifications already left behind by ended follows go now.
-DELETE FROM notifications
-WHERE from_actor_uri IS NULL
-  AND (
-    (kind = 'follow' AND NOT EXISTS (
-      SELECT 1 FROM follows f
-      WHERE f.follower_account_id = notifications.from_account_id
-        AND f.target_account_id = notifications.account_id))
-    OR (kind = 'follow_request' AND NOT EXISTS (
-      SELECT 1 FROM follows f
-      WHERE f.follower_account_id = notifications.from_account_id
-        AND f.target_account_id = notifications.account_id
-        AND f.kind = 'Pending'))
-  );
-
-DELETE FROM notifications
-WHERE from_actor_uri IS NOT NULL
-  AND (
-    (kind = 'follow' AND NOT EXISTS (
-      SELECT 1 FROM remote_follows r
-      WHERE r.remote_actor_uri = notifications.from_actor_uri
-        AND r.target_account_id = notifications.account_id))
-    OR (kind = 'follow_request' AND NOT EXISTS (
-      SELECT 1 FROM remote_follows r
-      WHERE r.remote_actor_uri = notifications.from_actor_uri
-        AND r.target_account_id = notifications.account_id
-        AND r.remote_request_kind = 'Queued'))
-  );
