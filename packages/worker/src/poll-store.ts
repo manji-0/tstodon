@@ -427,16 +427,21 @@ export const listExpiredUnnotifiedPolls = async (
     }));
   });
 
-/** Mark the poll's end as announced; true for the one caller that marked it. */
+/**
+ * Mark the poll's end as announced, and the author's own votes on it with it
+ * (the author is told as the author); true for the one caller that marked it.
+ */
 export const markPollExpiryNotified = async (
   db: D1Database,
-  pollId: string,
+  poll: ExpiredPollTarget,
   notifiedAt: string,
-): Promise<Result<boolean, RepositoryError>> =>
-  runD1(
-    async () =>
-      ((await runTyped(db, markPollExpiryNotifiedSql(notifiedAt, pollId))).meta.changes ?? 0) > 0,
-  );
+): Promise<Result<boolean, RepositoryError>> => {
+  const batched = await runD1Batch(db, [
+    d1PrepareTyped(db, markPollExpiryNotifiedSql(notifiedAt, poll.id)),
+    d1PrepareTyped(db, claimLocalPollExpiryNoticeSql(notifiedAt, poll.id, poll.accountId)),
+  ]);
+  return batched.map((results) => (results[0]?.meta.changes ?? 0) > 0);
+};
 
 /** A local account other than the author that voted on a local poll which has since ended. */
 export type EndedLocalPollVoter = Readonly<{

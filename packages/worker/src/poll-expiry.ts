@@ -107,7 +107,7 @@ const notifyEndedPollAuthors = async (env: Env, notifiedAt: string): Promise<voi
   }
   const claimed: Array<Readonly<{ accountId: string; status: LocalStatus }>> = [];
   for (const poll of expired.value) {
-    const marked = await markPollExpiryNotified(env.DB, poll.id, notifiedAt);
+    const marked = await markPollExpiryNotified(env.DB, poll, notifiedAt);
     if (marked.isErr() || !marked.value) {
       continue;
     }
