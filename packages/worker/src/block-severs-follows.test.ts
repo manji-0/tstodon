@@ -4,6 +4,8 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { blockAccountTarget } from "./account-block";
+import { parseInstanceIdentity } from "./runtime-config";
 import { RemoteAccountId } from "./remote-account-id";
 
 const json = async (path: string, init?: RequestInit) => {
@@ -275,8 +277,7 @@ describe("a Follow from an actor the local account blocks", () => {
     const a = "domain-blocked-follower-target@example.com";
     const remote = await remoteActor("domain-blocked-follower", "follow-blocked.example");
     expect(
-      (await send(a, "/api/v1/domain_blocks", "POST", { domain: "follow-blocked.example" }))
-        .status,
+      (await send(a, "/api/v1/domain_blocks", "POST", { domain: "follow-blocked.example" })).status,
     ).toBe(200);
 
     const followId = await remoteFollows(remote, a);
@@ -285,5 +286,50 @@ describe("a Follow from an actor the local account blocks", () => {
     expect(await queued(a, "Reject")).toMatchObject([
       { activity: { type: "Reject", object: { id: followId, type: "Follow" } } },
     ]);
+  });
+});
+
+describe("a block whose follow severing fails", () => {
+  it("still holds the block", async () => {
+    const a = "block-sever-failing-a@example.com";
+    const b = "block-sever-failing-b@example.com";
+    const blocker = await signedInAccount(a);
+    const target = await signedInAccount(b);
+    const bId = target.id;
+    expect((await send(a, `/api/v1/accounts/${bId}/follow`)).status).toBe(200);
+    const identity = parseInstanceIdentity(env);
+    if (identity.isErr()) {
+      throw new Error("instance identity failed to parse");
+    }
+    const failingFollowDeletes = new Proxy(env.DB, {
+      get: (db, property) => {
+        if (property === "prepare") {
+          return (query: string) => {
+            if (/DELETE FROM follows/i.test(query)) {
+              throw new Error("D1 unavailable");
+            }
+            return db.prepare(query);
+          };
+        }
+        const value: unknown = Reflect.get(db, property);
+        return typeof value === "function" ? value.bind(db) : value;
+      },
+    });
+
+    const blocked = await blockAccountTarget(
+      { ...env, DB: failingFollowDeletes },
+      identity.value,
+      blocker,
+      {
+        accountId: bId,
+        actorUri: `https://example.com/users/${target.username}`,
+      },
+    );
+    expect(blocked.isOk()).toBe(true);
+    const relationships = read(
+      z.array(Relationship),
+      (await get(a, `/api/v1/accounts/relationships?id=${bId}`)).body,
+    );
+    expect(relationships[0]?.blocking).toBe(true);
   });
 });
