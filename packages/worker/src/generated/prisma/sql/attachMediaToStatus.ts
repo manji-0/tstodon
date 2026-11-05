@@ -11,7 +11,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param position
  */
 export const attachMediaToStatus = $runtime.makeTypedQueryFactory(
-  "UPDATE media_attachments SET status_id = $1, position = $4 WHERE id = $2 AND account_id = $3",
+  "UPDATE media_attachments SET status_id = $1, position = $4 WHERE id = $2 AND account_id = $3 AND (status_id IS NULL OR status_id = $1)",
 ) as (
   statusId: string,
   mediaId: string,
