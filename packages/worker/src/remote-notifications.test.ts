@@ -266,6 +266,62 @@ describe("notifications from remote actors", () => {
     expect(stored.results.map((row) => row.from_actor_uri)).toEqual([friend.actorUri]);
   });
 
+  it("drops a remote mention alongside a blocked actor or replying to a blocked author, as blocked_mention?", async () => {
+    const email = "remote-blocked-mention@example.com";
+    const headers = { "content-type": "application/json", ...(await authHeaders(email)) };
+    const account = await me(email);
+    const actorUrl = `https://example.com/users/${account.username}`;
+    const blockedLocalEmail = "remote-blocked-mention-local@example.com";
+    const blockedLocal = await me(blockedLocalEmail);
+    const parent = await post(blockedLocalEmail, "a post the reader will not see");
+    const mentioner = await remoteActor("blocked-mention-sender", "mentions.example");
+    const blockedRemote = await remoteActor("blocked-mention-target", "mentions.example");
+    const block = (id: string, action: string) =>
+      json(`/api/v1/accounts/${id}/${action}`, { method: "POST", headers, body: "{}" });
+    // Known to the instance before it can be blocked.
+    expect(
+      await blockedRemote.send({
+        id: "https://mentions.example/activities/blocked-target-like",
+        type: "Like",
+        object: parent.uri,
+      }),
+    ).toBe(202);
+    expect((await block(RemoteAccountId.encode(blockedRemote.actorUri), "block")).status).toBe(200);
+    expect((await block(blockedLocal.id, "block")).status).toBe(200);
+    const mention = { type: "Mention", href: actorUrl, name: `@${account.username}@example.com` };
+    const note = (n: number, extra: Record<string, unknown>) => ({
+      id: `https://mentions.example/activities/create-${n}`,
+      type: "Create",
+      object: {
+        id: `https://mentions.example/notes/${n}`,
+        type: "Note",
+        attributedTo: mentioner.actorUri,
+        content: `<p>note ${n}</p>`,
+        published: "2026-10-20T00:00:00.000Z",
+        to: ["https://www.w3.org/ns/activitystreams#Public"],
+        ...extra,
+      },
+    });
+
+    expect(
+      await mentioner.send(
+        note(1, {
+          tag: [mention, { type: "Mention", href: blockedRemote.actorUri, name: "@target" }],
+        }),
+      ),
+    ).toBe(202);
+    expect(await mentioner.send(note(2, { tag: [mention], inReplyTo: parent.uri }))).toBe(202);
+    expect(await mentioner.send(note(3, { tag: [mention] }))).toBe(202);
+
+    const listed = await notifications(email);
+    const mentions = listed.filter((entry) => entry.type === "mention");
+    expect(mentions).toHaveLength(1);
+    const delivered = await env.DB.prepare("SELECT object_uri FROM remote_statuses WHERE id = ?")
+      .bind(mentions[0]?.status?.id ?? "")
+      .first<{ object_uri: string }>();
+    expect(delivered?.object_uri).toBe("https://mentions.example/notes/3");
+  });
+
   it("notifies a mention in a new remote note, once", async () => {
     const email = "remote-notify-mentioned@example.com";
     const account = await me(email);

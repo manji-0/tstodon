@@ -160,6 +160,113 @@ describe("notifications from a silenced sender", () => {
   });
 });
 
+// Mastodon's `blocked_mention?` (`FeedManager#filter_from_mentions?`): a
+// mention is dropped when the recipient blocks, or mutes notifications of, an
+// account the post mentions or the author of the post it replies to.
+describe("a mention involving an account the recipient silenced", () => {
+  it("records no mention alongside an account the recipient blocks", async () => {
+    const author = await person("blocked-mention-author@example.com");
+    const reader = await person("blocked-mention-reader@example.com");
+    const other = await person("blocked-mention-other@example.com");
+
+    await relate(reader.email, other.id, "block");
+    await post(author.email, { status: `hi @${reader.username} and @${other.username}` });
+    await relate(reader.email, other.id, "unblock");
+    expect(await notificationTypesFrom(reader.email, author.id)).toEqual([]);
+
+    // The blocked account is not the reason the author is silenced.
+    await post(author.email, { status: `hi again @${reader.username}` });
+    expect(await notificationTypesFrom(reader.email, author.id)).toEqual(["mention"]);
+  });
+
+  it("records no mention alongside an account whose notifications the recipient mutes", async () => {
+    const author = await person("muted-mention-author@example.com");
+    const reader = await person("muted-mention-reader@example.com");
+    const quiet = await person("muted-mention-quiet@example.com");
+    const loud = await person("muted-mention-loud@example.com");
+
+    await relate(reader.email, quiet.id, "mute", { notifications: true });
+    await relate(reader.email, loud.id, "mute", { notifications: false });
+    await post(author.email, { status: `hi @${reader.username} and @${quiet.username}` });
+    // A mute that keeps notifications does not drop the mention.
+    await post(author.email, { status: `hi @${reader.username} and @${loud.username}` });
+    await relate(reader.email, quiet.id, "unmute");
+    await relate(reader.email, loud.id, "unmute");
+
+    expect(await notificationTypesFrom(reader.email, author.id)).toEqual(["mention"]);
+  });
+
+  it("records no mention in a reply to an author the recipient blocks", async () => {
+    const author = await person("reply-mention-author@example.com");
+    const reader = await person("reply-mention-reader@example.com");
+    const blocked = await person("reply-mention-blocked@example.com");
+    const parent = await post(blocked.email, { status: "a post the reader will not see" });
+
+    await relate(reader.email, blocked.id, "block");
+    await post(author.email, {
+      status: `look at this @${reader.username}`,
+      in_reply_to_id: parent,
+    });
+    await relate(reader.email, blocked.id, "unblock");
+
+    expect(await notificationTypesFrom(reader.email, author.id)).toEqual([]);
+  });
+
+  it("records a staff mention alongside an account the recipient blocks, as from_staff?", async () => {
+    const moderator = await person("blocked-mention-staff@example.com", { admin: true });
+    const reader = await person("blocked-mention-staff-reader@example.com");
+    const other = await person("blocked-mention-staff-other@example.com");
+
+    await relate(reader.email, other.id, "block");
+    await post(moderator.email, { status: `a word @${reader.username} @${other.username}` });
+    await relate(reader.email, other.id, "unblock");
+
+    expect(await notificationTypesFrom(reader.email, moderator.id)).toEqual(["mention"]);
+  });
+});
+
+// Mastodon's `DropCondition#drop?` opens with `@recipient.unavailable?`: a
+// suspended account is notified of nothing, its own kinds included.
+describe("notifications to a suspended account", () => {
+  it("records nothing while the account is suspended", async () => {
+    const moderator = await person("suspended-recipient-admin@example.com", { admin: true });
+    const author = await person("suspended-recipient-author@example.com");
+    const reader = await person("suspended-recipient-reader@example.com");
+    const own = await post(reader.email, { status: "favourite me" });
+    const suspend = async (action: string, body?: Record<string, unknown>) =>
+      expect(
+        (
+          await call(moderator.email, `/api/v1/admin/accounts/${reader.id}/${action}`, {
+            method: "POST",
+            ...(body ? { body } : {}),
+          })
+        ).status,
+      ).toBe(200);
+
+    await suspend("action", { type: "suspend" });
+    await post(author.email, { status: `are you there @${reader.username}` });
+    // A suspended author's status cannot be favourited through the API, so
+    // these go straight to the notification path.
+    for (const [fromAccountId, kind] of [
+      [author.id, "favourite"],
+      [reader.id, "poll"],
+    ] as const) {
+      expect(
+        (await notifyAccount(env, { accountId: reader.id, fromAccountId, kind, statusId: own }))
+          .isOk(),
+      ).toBe(true);
+    }
+    await suspend("unsuspend");
+
+    expect(await notificationTypesFrom(reader.email, author.id)).toEqual([]);
+    expect(await notificationTypesFrom(reader.email, reader.id)).toEqual([]);
+
+    // Once reinstated, the account is notified again.
+    await post(author.email, { status: `welcome back @${reader.username}` });
+    expect(await notificationTypesFrom(reader.email, author.id)).toEqual(["mention"]);
+  });
+});
+
 describe("notifications from the recipient", () => {
   it("records none for the account's own mention, favourite, reblog or quote", async () => {
     const author = await person("self-notify-author@example.com");
