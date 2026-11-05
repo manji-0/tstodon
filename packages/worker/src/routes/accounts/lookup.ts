@@ -1,10 +1,6 @@
 import type { Context } from "hono";
 import { type InstanceIdentity, Visibility } from "@tstodon/domain";
-import {
-  findAccountByIdOrUsername,
-  findAccountsByIds,
-  searchAccounts,
-} from "../../account-store";
+import { findAccountByIdOrUsername, findAccountsByIds, searchAccounts } from "../../account-store";
 import { findAccountStanding, listAccountStandings } from "../../account-moderation-store";
 import { jsonAuthError, jsonRepositoryError, queryAccountsLimit, requireUser } from "../../http";
 import {

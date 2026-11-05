@@ -70,7 +70,11 @@ describe("account lookup", () => {
       headers: await authHeaders("lookup-local@example.com"),
     });
     const account = read(LookupSchema, me.body);
-    for (const acct of [account.username, `@${account.username}`, `${account.username}@example.com`]) {
+    for (const acct of [
+      account.username,
+      `@${account.username}`,
+      `${account.username}@example.com`,
+    ]) {
       const found = await lookup(acct);
       expect(found.status).toBe(200);
       expect(read(LookupSchema, found.body).id).toBe(account.id);
@@ -95,7 +99,9 @@ describe("account lookup", () => {
   it("answers 404 for an uncached remote handle without a WebFinger fetch", async () => {
     const fetched: string[] = [];
     globalThis.fetch = async (input: RequestInfo | URL): Promise<Response> => {
-      fetched.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      fetched.push(
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+      );
       return new Response("unexpected", { status: 500 });
     };
     expect((await lookup("nobody@uncached.example")).status).toBe(404);
