@@ -254,6 +254,116 @@ describe("blocking a domain severs the account's follows with it", () => {
     expect(await severedEvents(a)).toEqual([]);
   });
 
+  it("withdraws the account's pending requests to the domain, so a later Accept follows no one", async () => {
+    const a = "dblock-sever-requested@example.com";
+    const requested = await remoteActor("requested", "dblock-requested.test");
+    const followId = await follow(a, requested, false);
+    const relationship = async () =>
+      read(
+        z.array(z.object({ following: z.boolean(), requested: z.boolean() })),
+        (await get(a, `/api/v1/accounts/relationships?id[]=${remoteId(requested)}`)).body,
+      )[0];
+    expect(await relationship()).toMatchObject({ following: false, requested: true });
+
+    await blockDomain(a, "dblock-requested.test");
+
+    expect(await relationship()).toMatchObject({ following: false, requested: false });
+    expect(await queued(a, "Undo")).toMatchObject([
+      { activity: { type: "Undo", object: { id: followId, type: "Follow" } } },
+    ]);
+    expect(
+      await requested.send({
+        id: `${requested.actorUri}/accepts/1`,
+        type: "Accept",
+        object: followId,
+      }),
+    ).toBe(202);
+    expect(await relationship()).toMatchObject({ following: false, requested: false });
+    expect(await counts(a)).toEqual({ followers_count: 0, following_count: 0 });
+    expect(await severedEvents(a)).toEqual([]);
+  });
+
+  it("clears the account's notifications from the domain and the senders it accepted there", async () => {
+    const a = "dblock-notifications@example.com";
+    const status = read(
+      z.object({ uri: z.string() }),
+      (await send(a, "/api/v1/statuses", "POST", { status: "seen from afar" })).body,
+    );
+    const like = (remote: Remote, slug: string) =>
+      remote.send({ id: `${remote.actorUri}/likes/${slug}`, type: "Like", object: status.uri });
+    const senders = async () =>
+      read(
+        z.array(z.object({ account: z.object({ id: z.string() }) })),
+        (await get(a, "/api/v1/notifications")).body,
+      ).map((notification) => notification.account.id);
+    const requests = async () =>
+      read(
+        z.array(z.object({ id: z.string() })),
+        (await get(a, "/api/v1/notifications/requests")).body,
+      );
+    const stranger = await remoteActor("stranger", "dblock-notified.test");
+    const accepted = await remoteActor("accepted", "dblock-notified.test");
+    const elsewhere = await remoteActor("elsewhere", "dblock-unnotified.test");
+    expect(await like(stranger, "1")).toBe(202);
+    expect(await like(elsewhere, "1")).toBe(202);
+    expect(
+      (await send(a, "/api/v2/notifications/policy", "PATCH", { for_not_following: "filter" }))
+        .status,
+    ).toBe(200);
+    expect(await like(accepted, "1")).toBe(202);
+    const held = await requests();
+    expect(held).toHaveLength(1);
+    expect(
+      (await send(a, `/api/v1/notifications/requests/${held[0]?.id ?? ""}/accept`)).status,
+    ).toBe(200);
+    expect((await senders()).sort()).toEqual(
+      [remoteId(stranger), remoteId(accepted), remoteId(elsewhere)].sort(),
+    );
+
+    await blockDomain(a, "dblock-notified.test");
+
+    expect(await senders()).toEqual([remoteId(elsewhere)]);
+    expect(
+      (await send(a, "/api/v1/domain_blocks?domain=dblock-notified.test", "DELETE")).status,
+    ).toBe(200);
+    expect(await senders()).toEqual([remoteId(elsewhere)]);
+    expect(await like(accepted, "2")).toBe(202);
+    expect(await senders()).toEqual([remoteId(elsewhere)]);
+    expect(await requests()).toHaveLength(1);
+  });
+
+  it("clears notifications from more of the domain's senders than one page holds", async () => {
+    const a = "dblock-notifications-paged@example.com";
+    const account = await signedInAccount(a);
+    const total = SEVER_PAGE_SIZE + 2;
+    const senders = await Promise.all(
+      Array.from({ length: total }, (_, index) =>
+        remoteActor(`sender${index}`, "dblock-noisy.test"),
+      ),
+    );
+    await env.DB.batch(
+      senders.map((sender, index) =>
+        env.DB.prepare(
+          `INSERT INTO notifications (id, account_id, from_account_id, from_actor_uri, kind, created_at)
+           VALUES (?, ?, ?, ?, 'mention', '2026-10-21T00:00:00.000Z')`,
+        ).bind(`dblock-noisy-${index}`, account.id, remoteId(sender), sender.actorUri),
+      ),
+    );
+    const listed = async () => {
+      const body = (await get(a, "/api/v1/notifications?limit=80")).body;
+      return read(z.array(z.unknown()), body).length;
+    };
+    expect(await listed()).toBe(total);
+    const sent: OutboxJob[] = [];
+    const queueEnv = faultyEnv({ sent });
+
+    await blockAs(queueEnv, account, "dblock-noisy.test");
+    expect(await listed()).toBeGreaterThan(0);
+    await drain(queueEnv, sent);
+
+    expect(await listed()).toBe(0);
+  });
+
   it("severs a domain larger than one page through queued follow-up pages", async () => {
     const a = "dblock-sever-paged@example.com";
     const account = await signedInAccount(a);
