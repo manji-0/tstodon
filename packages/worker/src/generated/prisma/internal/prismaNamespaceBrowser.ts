@@ -256,6 +256,7 @@ export const Status_idempotencyScalarFieldEnum = {
   idempotency_key: "idempotency_key",
   status_id: "status_id",
   created_at: "created_at",
+  kind: "kind",
 } as const;
 
 export type Status_idempotencyScalarFieldEnum =

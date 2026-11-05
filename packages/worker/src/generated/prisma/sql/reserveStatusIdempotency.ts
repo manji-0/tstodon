@@ -10,7 +10,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param now
  */
 export const reserveStatusIdempotency = $runtime.makeTypedQueryFactory(
-  "INSERT INTO status_idempotency (account_id, idempotency_key, status_id, created_at)\nVALUES ($1, $2, '', $3)\nON CONFLICT(account_id, idempotency_key) DO NOTHING\nRETURNING idempotency_key",
+  "INSERT INTO status_idempotency (account_id, idempotency_key, kind, status_id, created_at)\nVALUES ($1, $2, 'Pending', '', $3)\nON CONFLICT(account_id, idempotency_key) DO NOTHING\nRETURNING idempotency_key",
 ) as (
   accountId: string,
   idempotencyKey: string,

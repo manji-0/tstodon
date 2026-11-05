@@ -36,6 +36,7 @@ import type { z } from "zod";
 import {
   completeStatusIdempotency,
   findStatusIdempotency,
+  type IdempotentRecord,
   releaseStatusIdempotency,
   reserveStatusIdempotency,
 } from "../../status-idempotency-store";
@@ -58,6 +59,7 @@ import {
 } from "../../quote-store";
 import { ApiRefusal } from "../api-refusal";
 import {
+  findScheduledStatus,
   insertScheduledStatus,
   MIN_SCHEDULE_OFFSET_MS,
   scheduledStatusDocument,
@@ -277,7 +279,10 @@ type NoteRequest = Readonly<{
  * A status (or scheduled status) the request stored, and its rendering for
  * the response. Rendering can fail after the write; the id still stands.
  */
-type Written = Readonly<{ id: string; document: Result<Record<string, unknown>, ApiRefusal> }>;
+type Written = Readonly<{
+  record: IdempotentRecord;
+  document: Result<Record<string, unknown>, ApiRefusal>;
+}>;
 
 /**
  * Store the validated post for later instead of publishing it; the cron
@@ -332,7 +337,7 @@ const scheduleStatus = async (
     return err(ApiRefusal.repository(stored.error.message));
   }
   return ok({
-    id: stored.value.id,
+    record: { kind: "ScheduledStatus", id: stored.value.id },
     document: ok(
       scheduledStatusDocument(stored.value, await scheduledStatusMedia(db, identity, stored.value)),
     ),
@@ -451,7 +456,7 @@ const postStatus = async (
   }
   const document = await mastodonStatus(env, identity, published.value, author.id);
   return ok({
-    id: published.value.id,
+    record: { kind: "Status", id: published.value.id },
     document: document.isErr()
       ? err(ApiRefusal.repository(document.error.message))
       : document.value
@@ -463,7 +468,7 @@ const postStatus = async (
 /** The response to a create request, and the id of what it stored, if it stored anything. */
 type CreateAnswer =
   | Readonly<{ kind: "Unwritten"; response: Response }>
-  | Readonly<{ kind: "Written"; id: string; response: Response }>;
+  | Readonly<{ kind: "Written"; record: IdempotentRecord; response: Response }>;
 
 const createStatus = async (c: Context<{ Bindings: Env }>): Promise<CreateAnswer> => {
   const unwritten = (response: Response): CreateAnswer => ({ kind: "Unwritten", response });
@@ -490,30 +495,49 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<CreateAnswer
   if (posted.isErr()) {
     return unwritten(ApiRefusal.respond(c, posted.error));
   }
-  const { id, document } = posted.value;
+  const { record, document } = posted.value;
   return {
     kind: "Written",
-    id,
+    record,
     response: document.isOk() ? c.json(document.value, 200) : ApiRefusal.respond(c, document.error),
   };
 };
 
-const statusDocumentById = async (
+/** The document a finished idempotent request answered with, rendered again. */
+const recordDocument = async (
   c: Context<{ Bindings: Env }>,
-  statusId: string,
+  record: IdempotentRecord,
   viewerId: string,
 ): Promise<Result<Record<string, unknown> | undefined, RepositoryError>> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return ok(undefined);
   }
-  const status = await findStatusById(c.env.DB, statusId);
-  if (status.isErr()) {
-    return err(status.error);
+  switch (record.kind) {
+    case "Status": {
+      const status = await findStatusById(c.env.DB, record.id);
+      if (status.isErr()) {
+        return err(status.error);
+      }
+      return status.value
+        ? mastodonStatus(c.env, identity.value, status.value, viewerId)
+        : ok(undefined);
+    }
+    case "ScheduledStatus": {
+      const scheduled = await findScheduledStatus(c.env.DB, viewerId, record.id);
+      if (scheduled.isErr()) {
+        return err(scheduled.error);
+      }
+      return ok(
+        scheduled.value
+          ? scheduledStatusDocument(
+              scheduled.value,
+              await scheduledStatusMedia(c.env.DB, identity.value, scheduled.value),
+            )
+          : undefined,
+      );
+    }
   }
-  return status.value
-    ? mastodonStatus(c.env, identity.value, status.value, viewerId)
-    : ok(undefined);
 };
 
 /**
@@ -540,10 +564,10 @@ export const postV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/stat
     return jsonRepositoryError(c, existing.error.message);
   }
   if (existing.value) {
-    if (!existing.value.statusId) {
+    if (existing.value.kind === "Pending") {
       return c.json({ error: "Duplicate request in progress", kind: "Conflict" }, 409);
     }
-    const document = await statusDocumentById(c, existing.value.statusId, accountId);
+    const document = await recordDocument(c, existing.value, accountId);
     if (document.isErr()) {
       return jsonRepositoryError(c, document.error.message);
     }
@@ -559,9 +583,9 @@ export const postV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/stat
   }
   if (!reserved.value) {
     const raced = await findStatusIdempotency(c.env.DB, accountId, key);
-    const racedId = raced.isOk() ? raced.value?.statusId : undefined;
-    if (racedId) {
-      const document = await statusDocumentById(c, racedId, accountId);
+    const racedRecord = raced.isOk() ? raced.value : undefined;
+    if (racedRecord && racedRecord.kind !== "Pending") {
+      const document = await recordDocument(c, racedRecord, accountId);
       if (document.isOk() && document.value) {
         return c.json(document.value);
       }
@@ -571,7 +595,7 @@ export const postV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/stat
 
   const answer = await createStatus(c);
   if (answer.kind === "Written") {
-    await completeStatusIdempotency(c.env.DB, accountId, key, answer.id);
+    await completeStatusIdempotency(c.env.DB, accountId, key, answer.record);
   } else {
     await releaseStatusIdempotency(c.env.DB, accountId, key);
   }

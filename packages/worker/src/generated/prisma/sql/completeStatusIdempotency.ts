@@ -7,18 +7,25 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param accountId
  * @param idempotencyKey
+ * @param kind
  * @param statusId
  */
 export const completeStatusIdempotency = $runtime.makeTypedQueryFactory(
-  "UPDATE status_idempotency SET status_id = $3\nWHERE account_id = $1 AND idempotency_key = $2 AND status_id = ''\nRETURNING idempotency_key",
+  "UPDATE status_idempotency SET kind = $3, status_id = $4\nWHERE account_id = $1 AND idempotency_key = $2 AND kind = 'Pending'\nRETURNING idempotency_key",
 ) as (
   accountId: string,
   idempotencyKey: string,
+  kind: string,
   statusId: string,
 ) => $runtime.TypedSql<completeStatusIdempotency.Parameters, completeStatusIdempotency.Result>;
 
 export namespace completeStatusIdempotency {
-  export type Parameters = [accountId: string, idempotencyKey: string, statusId: string];
+  export type Parameters = [
+    accountId: string,
+    idempotencyKey: string,
+    kind: string,
+    statusId: string,
+  ];
   export type Result = {
     idempotency_key: string;
   };

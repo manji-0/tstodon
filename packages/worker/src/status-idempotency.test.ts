@@ -70,6 +70,25 @@ describe("status idempotency", () => {
     expect(ids).toContain(created.id);
   });
 
+  it("returns the same scheduled status for a repeated key and schedules once", async () => {
+    const email = "idempotency-scheduled@example.com";
+    const scheduledAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const ScheduledSchema = z.object({ id: z.string().min(1), scheduled_at: z.string() });
+
+    const first = await post(email, { status: "later", scheduled_at: scheduledAt }, "key-sched");
+    expect(first.status).toBe(200);
+    const created = read(ScheduledSchema, first.body);
+
+    const retried = await post(email, { status: "later", scheduled_at: scheduledAt }, "key-sched");
+    expect(retried.status).toBe(200);
+    expect(retried.body).toEqual(first.body);
+
+    const scheduled = await json("/api/v1/scheduled_statuses", { headers: await auth(email) });
+    expect(read(z.array(ScheduledSchema), scheduled.body).map((row) => row.id)).toEqual([
+      created.id,
+    ]);
+  });
+
   it("releases the key when the create fails", async () => {
     const email = "idempotency-retry@example.com";
 

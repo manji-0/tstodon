@@ -11,15 +11,22 @@ import {
 } from "./generated/prisma/sql";
 import { d1PrepareTyped, CountedRow, queryTyped } from "./typed-sql";
 
-const StatusIdRow = z.object({ status_id: z.string() });
+/** What a finished `Idempotency-Key` request stored: a status, or a status to post later. */
+export type IdempotentRecord =
+  | Readonly<{ kind: "Status"; id: string }>
+  | Readonly<{ kind: "ScheduledStatus"; id: string }>;
+
+/** A key whose first request is still running, or the record it finished with. */
+export type IdempotentStatusLookup = Readonly<{ kind: "Pending" }> | IdempotentRecord;
+
+const IdempotencyRow = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("Pending") }),
+  z.object({ kind: z.literal("Status"), status_id: z.string().min(1) }),
+  z.object({ kind: z.literal("ScheduledStatus"), status_id: z.string().min(1) }),
+]);
 
 /** Mastodon keeps `Idempotency-Key` results for up to an hour. */
 const IDEMPOTENCY_TTL_MS = 60 * 60 * 1000;
-
-export type IdempotentStatusLookup = Readonly<{
-  /** The status created for this key, or `null` while the first request runs. */
-  statusId: string | null;
-}>;
 
 const expiredBefore = (): string => new Date(Date.now() - IDEMPOTENCY_TTL_MS).toISOString();
 
@@ -32,13 +39,13 @@ export const findStatusIdempotency = async (
     const rows = await queryTyped(
       db,
       findStatusIdempotencySql(accountId, key, expiredBefore()),
-      StatusIdRow,
+      IdempotencyRow,
     );
     const row = rows[0];
     if (!row) {
       return undefined;
     }
-    return { statusId: row.status_id.length > 0 ? row.status_id : null };
+    return row.kind === "Pending" ? row : { kind: row.kind, id: row.status_id };
   });
 
 /**
@@ -65,10 +72,14 @@ export const completeStatusIdempotency = async (
   db: D1Database,
   accountId: string,
   key: string,
-  statusId: string,
+  record: IdempotentRecord,
 ): Promise<Result<void, RepositoryError>> => {
   const written = await runD1(async () => {
-    await queryTyped(db, completeStatusIdempotencySql(accountId, key, statusId), CountedRow);
+    await queryTyped(
+      db,
+      completeStatusIdempotencySql(accountId, key, record.kind, record.id),
+      CountedRow,
+    );
   });
   return written.map(() => undefined);
 };

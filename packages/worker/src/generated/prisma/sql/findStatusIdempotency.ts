@@ -10,7 +10,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param since
  */
 export const findStatusIdempotency = $runtime.makeTypedQueryFactory(
-  "SELECT status_id FROM status_idempotency\nWHERE account_id = $1 AND idempotency_key = $2 AND created_at > $3\nLIMIT 1",
+  "SELECT kind, status_id FROM status_idempotency\nWHERE account_id = $1 AND idempotency_key = $2 AND created_at > $3\nLIMIT 1",
 ) as (
   accountId: string,
   idempotencyKey: string,
@@ -20,6 +20,7 @@ export const findStatusIdempotency = $runtime.makeTypedQueryFactory(
 export namespace findStatusIdempotency {
   export type Parameters = [accountId: string, idempotencyKey: string, since: string];
   export type Result = {
+    kind: string;
     status_id: string;
   };
 }

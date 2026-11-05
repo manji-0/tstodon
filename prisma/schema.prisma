@@ -132,6 +132,7 @@ model status_idempotency {
   idempotency_key String
   status_id       String @default("")
   created_at      String @default("CURRENT_TIMESTAMP")
+  kind            String @default("Status")
 
   @@id([account_id, idempotency_key])
   @@index([account_id, created_at], map: "idx_status_idempotency_created")

@@ -29,6 +29,7 @@ export type Status_idempotencyMinAggregateOutputType = {
   idempotency_key: string | null;
   status_id: string | null;
   created_at: string | null;
+  kind: string | null;
 };
 
 export type Status_idempotencyMaxAggregateOutputType = {
@@ -36,6 +37,7 @@ export type Status_idempotencyMaxAggregateOutputType = {
   idempotency_key: string | null;
   status_id: string | null;
   created_at: string | null;
+  kind: string | null;
 };
 
 export type Status_idempotencyCountAggregateOutputType = {
@@ -43,6 +45,7 @@ export type Status_idempotencyCountAggregateOutputType = {
   idempotency_key: number;
   status_id: number;
   created_at: number;
+  kind: number;
   _all: number;
 };
 
@@ -51,6 +54,7 @@ export type Status_idempotencyMinAggregateInputType = {
   idempotency_key?: true;
   status_id?: true;
   created_at?: true;
+  kind?: true;
 };
 
 export type Status_idempotencyMaxAggregateInputType = {
@@ -58,6 +62,7 @@ export type Status_idempotencyMaxAggregateInputType = {
   idempotency_key?: true;
   status_id?: true;
   created_at?: true;
+  kind?: true;
 };
 
 export type Status_idempotencyCountAggregateInputType = {
@@ -65,6 +70,7 @@ export type Status_idempotencyCountAggregateInputType = {
   idempotency_key?: true;
   status_id?: true;
   created_at?: true;
+  kind?: true;
   _all?: true;
 };
 
@@ -150,6 +156,7 @@ export type Status_idempotencyGroupByOutputType = {
   idempotency_key: string;
   status_id: string;
   created_at: string;
+  kind: string;
   _count: Status_idempotencyCountAggregateOutputType | null;
   _min: Status_idempotencyMinAggregateOutputType | null;
   _max: Status_idempotencyMaxAggregateOutputType | null;
@@ -176,6 +183,7 @@ export type status_idempotencyWhereInput = {
   idempotency_key?: Prisma.StringFilter<"status_idempotency"> | string;
   status_id?: Prisma.StringFilter<"status_idempotency"> | string;
   created_at?: Prisma.StringFilter<"status_idempotency"> | string;
+  kind?: Prisma.StringFilter<"status_idempotency"> | string;
 };
 
 export type status_idempotencyOrderByWithRelationInput = {
@@ -183,6 +191,7 @@ export type status_idempotencyOrderByWithRelationInput = {
   idempotency_key?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  kind?: Prisma.SortOrder;
 };
 
 export type status_idempotencyWhereUniqueInput = Prisma.AtLeast<
@@ -195,6 +204,7 @@ export type status_idempotencyWhereUniqueInput = Prisma.AtLeast<
     idempotency_key?: Prisma.StringFilter<"status_idempotency"> | string;
     status_id?: Prisma.StringFilter<"status_idempotency"> | string;
     created_at?: Prisma.StringFilter<"status_idempotency"> | string;
+    kind?: Prisma.StringFilter<"status_idempotency"> | string;
   },
   "account_id_idempotency_key"
 >;
@@ -204,6 +214,7 @@ export type status_idempotencyOrderByWithAggregationInput = {
   idempotency_key?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  kind?: Prisma.SortOrder;
   _count?: Prisma.status_idempotencyCountOrderByAggregateInput;
   _max?: Prisma.status_idempotencyMaxOrderByAggregateInput;
   _min?: Prisma.status_idempotencyMinOrderByAggregateInput;
@@ -221,6 +232,7 @@ export type status_idempotencyScalarWhereWithAggregatesInput = {
   idempotency_key?: Prisma.StringWithAggregatesFilter<"status_idempotency"> | string;
   status_id?: Prisma.StringWithAggregatesFilter<"status_idempotency"> | string;
   created_at?: Prisma.StringWithAggregatesFilter<"status_idempotency"> | string;
+  kind?: Prisma.StringWithAggregatesFilter<"status_idempotency"> | string;
 };
 
 export type status_idempotencyCreateInput = {
@@ -228,6 +240,7 @@ export type status_idempotencyCreateInput = {
   idempotency_key: string;
   status_id?: string;
   created_at?: string;
+  kind?: string;
 };
 
 export type status_idempotencyUncheckedCreateInput = {
@@ -235,6 +248,7 @@ export type status_idempotencyUncheckedCreateInput = {
   idempotency_key: string;
   status_id?: string;
   created_at?: string;
+  kind?: string;
 };
 
 export type status_idempotencyUpdateInput = {
@@ -242,6 +256,7 @@ export type status_idempotencyUpdateInput = {
   idempotency_key?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  kind?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type status_idempotencyUncheckedUpdateInput = {
@@ -249,6 +264,7 @@ export type status_idempotencyUncheckedUpdateInput = {
   idempotency_key?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  kind?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type status_idempotencyCreateManyInput = {
@@ -256,6 +272,7 @@ export type status_idempotencyCreateManyInput = {
   idempotency_key: string;
   status_id?: string;
   created_at?: string;
+  kind?: string;
 };
 
 export type status_idempotencyUpdateManyMutationInput = {
@@ -263,6 +280,7 @@ export type status_idempotencyUpdateManyMutationInput = {
   idempotency_key?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  kind?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type status_idempotencyUncheckedUpdateManyInput = {
@@ -270,6 +288,7 @@ export type status_idempotencyUncheckedUpdateManyInput = {
   idempotency_key?: Prisma.StringFieldUpdateOperationsInput | string;
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  kind?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type status_idempotencyAccount_idIdempotency_keyCompoundUniqueInput = {
@@ -282,6 +301,7 @@ export type status_idempotencyCountOrderByAggregateInput = {
   idempotency_key?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  kind?: Prisma.SortOrder;
 };
 
 export type status_idempotencyMaxOrderByAggregateInput = {
@@ -289,6 +309,7 @@ export type status_idempotencyMaxOrderByAggregateInput = {
   idempotency_key?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  kind?: Prisma.SortOrder;
 };
 
 export type status_idempotencyMinOrderByAggregateInput = {
@@ -296,6 +317,7 @@ export type status_idempotencyMinOrderByAggregateInput = {
   idempotency_key?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  kind?: Prisma.SortOrder;
 };
 
 export type status_idempotencySelect<
@@ -306,6 +328,7 @@ export type status_idempotencySelect<
     idempotency_key?: boolean;
     status_id?: boolean;
     created_at?: boolean;
+    kind?: boolean;
   },
   ExtArgs["result"]["status_idempotency"]
 >;
@@ -318,6 +341,7 @@ export type status_idempotencySelectCreateManyAndReturn<
     idempotency_key?: boolean;
     status_id?: boolean;
     created_at?: boolean;
+    kind?: boolean;
   },
   ExtArgs["result"]["status_idempotency"]
 >;
@@ -330,6 +354,7 @@ export type status_idempotencySelectUpdateManyAndReturn<
     idempotency_key?: boolean;
     status_id?: boolean;
     created_at?: boolean;
+    kind?: boolean;
   },
   ExtArgs["result"]["status_idempotency"]
 >;
@@ -339,12 +364,13 @@ export type status_idempotencySelectScalar = {
   idempotency_key?: boolean;
   status_id?: boolean;
   created_at?: boolean;
+  kind?: boolean;
 };
 
 export type status_idempotencyOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "account_id" | "idempotency_key" | "status_id" | "created_at",
+  "account_id" | "idempotency_key" | "status_id" | "created_at" | "kind",
   ExtArgs["result"]["status_idempotency"]
 >;
 
@@ -359,6 +385,7 @@ export type $status_idempotencyPayload<
       idempotency_key: string;
       status_id: string;
       created_at: string;
+      kind: string;
     },
     ExtArgs["result"]["status_idempotency"]
   >;
@@ -935,6 +962,7 @@ export interface status_idempotencyFieldRefs {
   readonly idempotency_key: Prisma.FieldRef<"status_idempotency", "String">;
   readonly status_id: Prisma.FieldRef<"status_idempotency", "String">;
   readonly created_at: Prisma.FieldRef<"status_idempotency", "String">;
+  readonly kind: Prisma.FieldRef<"status_idempotency", "String">;
 }
 
 // Custom InputTypes
