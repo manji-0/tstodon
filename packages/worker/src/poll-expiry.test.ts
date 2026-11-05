@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { OutboxJob } from "@tstodon/domain";
@@ -155,5 +155,28 @@ describe("local poll expiry notifications", () => {
     await runExpiryJob();
     expect(await pollNotifications(author)).toHaveLength(1);
     expect(await pollNotifications(voter)).toHaveLength(1);
+  });
+
+  it("keeps no trace of a vote refused because the poll ended while it was cast", async () => {
+    const author = "local-poll-expiry-race-author@example.com";
+    const voter = "local-poll-expiry-race-voter@example.com";
+    const headers = await authHeaders(voter);
+    const poll = await createPoll(author, true);
+    await endPoll(poll.pollId);
+    // The handler's early expiry check still sees the poll open; the write does not.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2019-12-31T23:59:00.000Z"));
+    try {
+      expect(
+        (await send(voter, `/api/v1/polls/${poll.pollId}/votes`, { choices: [0] })).status,
+      ).toBe(422);
+    } finally {
+      clock.mockRestore();
+    }
+    const fetched = await json(`/api/v1/polls/${poll.pollId}`, { headers });
+    expect(
+      read(z.object({ voted: z.boolean(), own_votes: z.array(z.number()) }), fetched.body),
+    ).toMatchObject({ voted: false, own_votes: [] });
+    await runExpiryJob();
+    expect(await pollNotifications(voter)).toEqual([]);
   });
 });
