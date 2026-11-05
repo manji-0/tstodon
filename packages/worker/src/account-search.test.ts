@@ -3,6 +3,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
+import { localAccountPresentations, remoteAccountPresentations } from "./account-presentation";
+import { searchAccountsPage } from "./account-search";
+import { generateAccountKeys } from "./keys";
+import { findRemoteActorsByUris } from "./remote-actor-store";
 import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
@@ -57,6 +61,36 @@ const cacheRemoteActor = async (username: string, domain: string): Promise<void>
   )
     .bind(actorUri, username, domain, `${actorUri}/inbox`, `${actorUri}#main-key`, username)
     .run();
+};
+
+const cacheRemoteActors = async (
+  actors: ReadonlyArray<Readonly<{ username: string; domain: string }>>,
+): Promise<void> => {
+  await env.DB.batch(
+    actors.map(({ username, domain }) => {
+      const actorUri = `https://${domain}/users/${username}`;
+      return env.DB.prepare(
+        `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, display_name, fetched_at)
+         VALUES (?, ?, ?, ?, ?, 'pem', ?, '2026-01-01T00:00:00.000Z')`,
+      ).bind(actorUri, username, domain, `${actorUri}/inbox`, `${actorUri}#main-key`, username);
+    }),
+  );
+};
+
+/** The test `Env` with a D1 binding that counts the statements it prepares. */
+const countingEnv = (): Readonly<{ env: Env; prepared: () => number }> => {
+  let prepared = 0;
+  const db: D1Database = {
+    prepare: (query) => {
+      prepared += 1;
+      return env.DB.prepare(query);
+    },
+    batch: (statements) => env.DB.batch(statements),
+    exec: (query) => env.DB.exec(query),
+    withSession: (constraint) => env.DB.withSession(constraint),
+    dump: () => env.DB.dump(),
+  };
+  return { env: { ...env, DB: db }, prepared: () => prepared };
 };
 
 const suspendDomain = async (domain: string): Promise<void> => {
@@ -338,5 +372,199 @@ describe("account search", () => {
       globalThis.fetch = original;
     }
     expect(calls).toBe(0);
+  });
+
+  it("reads a bounded number of D1 statements however many hidden actors match", async () => {
+    await cacheRemoteActors(
+      Array.from({ length: 300 }, (_, index) => ({
+        username: `boundpage_h${index}`,
+        domain: "boundpage-b.example",
+      })),
+    );
+    await cacheRemoteActors(
+      ["boundpage_r1", "boundpage_r2", "boundpage_r3"].map((username) => ({
+        username,
+        domain: "boundpage-a.example",
+      })),
+    );
+    await suspendDomain("boundpage-b.example");
+    const query = {
+      localTerms: "boundpage",
+      remoteTerms: "boundpage",
+      scope: { kind: "Everyone" },
+    } as const;
+
+    const pages: string[] = [];
+    for (const offset of [0, 2, 1_000_000_000]) {
+      const counted = countingEnv();
+      const page = await searchAccountsPage(counted.env, query, 2, offset);
+      expect(page.isOk()).toBe(true);
+      pages.push(...page._unsafeUnwrap().remote.map((actor) => actor.username));
+      expect(counted.prepared()).toBeLessThanOrEqual(10);
+    }
+    expect(pages.sort()).toEqual(["boundpage_r1", "boundpage_r2", "boundpage_r3"]);
+  });
+
+  it("hides in its query exactly the accounts the presenter hides", async () => {
+    const good = await credentials("pinsearch-good@example.com");
+    const silenced = await credentials("pinsearch-silenced@example.com");
+    const suspended = await credentials("pinsearch-suspended@example.com");
+    const pending = await credentials("pinsearch-pending@example.com");
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO account_moderation (account_id, moderation) VALUES (?, 'Silenced'), (?, 'Suspended')",
+      ).bind(silenced.id, suspended.id),
+      env.DB.prepare("INSERT INTO account_flags (account_id, pending) VALUES (?, 1)").bind(
+        pending.id,
+      ),
+    ]);
+    const remotes = [
+      { username: "pinsearch_good", domain: "pinsearch-allowed.example" },
+      { username: "pinsearch_port", domain: "pinsearch-allowed.example:8443" },
+      { username: "pinsearch_silenced", domain: "pinsearch-allowed.example" },
+      { username: "pinsearch_suspended", domain: "pinsearch-allowed.example" },
+      { username: "pinsearch_blocked", domain: "pinsearch-blocked.example" },
+      { username: "pinsearch_blockedport", domain: "PinSearch-Blocked.example:8443" },
+      { username: "pinsearch_ipv6", domain: "[fd00::47]:8443" },
+      { username: "pinsearch_stranger", domain: "pinsearch-stranger.example" },
+      { username: "pinsearch_lookalike", domain: "pinsearch-allowed.example.evil" },
+    ];
+    await cacheRemoteActors(remotes);
+    const uriOf = (username: string): string => {
+      const remote = remotes.find((candidate) => candidate.username === username);
+      return `https://${remote?.domain ?? ""}/users/${username}`;
+    };
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO remote_actor_moderation (actor_uri, moderation) VALUES (?, 'Silenced'), (?, 'Suspended')",
+      ).bind(uriOf("pinsearch_silenced"), uriOf("pinsearch_suspended")),
+      env.DB.prepare(
+        "INSERT INTO domain_blocks (id, domain, severity) VALUES ('pinsearch-1', 'pinsearch-blocked.example', 'suspend'), ('pinsearch-2', '[fd00::47]', 'suspend')",
+      ),
+    ]);
+    // Allow-list mode: only these domains federate.
+    const allowDomains = ["pinsearch-allowed.example", "pinsearch-blocked.example", "[fd00::47]"];
+    await env.DB.batch(
+      allowDomains.map((domain) =>
+        env.DB.prepare(
+          "INSERT INTO domain_allows (id, domain, created_at) VALUES (?, ?, '2026-01-01T00:00:00.000Z')",
+        ).bind(`pinsearch-allow-${domain}`, domain),
+      ),
+    );
+    try {
+      const query = {
+        localTerms: "pinsearch",
+        remoteTerms: "pinsearch",
+        scope: { kind: "Everyone" },
+      } as const;
+      // One account per page: a row the query keeps but the presenter drops
+      // leaves a page empty before the end.
+      const local: string[] = [];
+      const remote: string[] = [];
+      for (let offset = 0; offset < 20; offset += 1) {
+        const page = (await searchAccountsPage(env, query, 1, offset))._unsafeUnwrap();
+        local.push(...page.local.map((account) => account.id));
+        remote.push(...page.remote.map((actor) => actor.actorUri));
+        if (page.local.length + page.remote.length === 0) {
+          break;
+        }
+      }
+
+      const localPresented = (
+        await localAccountPresentations(env.DB, [good.id, silenced.id, suspended.id])
+      )._unsafeUnwrap();
+      expect(local).toEqual(
+        [good.id, silenced.id, suspended.id].filter(
+          (id) => localPresented.get(id)?.kind === "Shown",
+        ),
+      );
+      expect(local).not.toContain(pending.id);
+
+      const actors = (
+        await findRemoteActorsByUris(
+          env.DB,
+          remotes.map((candidate) => uriOf(candidate.username)),
+        )
+      )._unsafeUnwrap();
+      const remotePresented = (
+        await remoteAccountPresentations(env, [...actors.values()])
+      )._unsafeUnwrap();
+      const shownRemote = [...remotePresented]
+        .filter(([, presentation]) => presentation.kind === "Shown")
+        .map(([actorUri]) => actorUri);
+      expect([...remote].sort()).toEqual([...shownRemote].sort());
+      expect([...remote].sort()).toEqual(
+        [uriOf("pinsearch_good"), uriOf("pinsearch_port"), uriOf("pinsearch_silenced")].sort(),
+      );
+      expect(remote.length).toBe(new Set(remote).size);
+    } finally {
+      await env.DB.prepare("DELETE FROM domain_allows WHERE id LIKE 'pinsearch-allow-%'").run();
+    }
+  });
+
+  it("refuses offset without sign-in in /api/v2/search", async () => {
+    const anonymous = await json("/api/v2/search?q=anything&type=accounts&offset=1000000000");
+    expect(anonymous.status).toBe(401);
+    expect(read(z.object({ error: z.string() }), anonymous.body).error).toBe(
+      "Search queries pagination is not supported without authentication",
+    );
+    // A blank offset is no pagination, as Mastodon's `present?`.
+    expect((await json("/api/v2/search?q=anything&type=accounts&offset=")).status).toBe(200);
+  });
+
+  it("ignores offset in /api/v2/search when type is blank", async () => {
+    const viewer = "account-search-blank-type@example.com";
+    await seedMixedResults("blanktype");
+    const v2 = async (query: string): Promise<string[]> => {
+      const response = await json(`/api/v2/search?${query}`, { headers: await auth(viewer) });
+      expect(response.status).toBe(200);
+      return read(z.object({ accounts: AccountListSchema }), response.body).accounts.map(
+        (account) => account.id,
+      );
+    };
+    expect(await v2("q=blanktype&type=&limit=2&offset=2")).toEqual(
+      await v2("q=blanktype&limit=2"),
+    );
+  });
+
+  it("counts the resolved account inside limit and lists it first in /api/v2/search", async () => {
+    const viewer = "account-search-v2-resolver@example.com";
+    await cacheRemoteActor("l2a_pick", "l2res.example");
+    await cacheRemoteActor("l2b_pick", "l2res.example");
+    const actor = "https://l2res.example/users/pick";
+    const { publicKeyPem } = await generateAccountKeys();
+    const original = globalThis.fetch;
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const href =
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (href.startsWith("https://l2res.example/.well-known/webfinger")) {
+        return Response.json({
+          subject: "acct:pick@l2res.example",
+          links: [{ rel: "self", type: "application/activity+json", href: actor }],
+        });
+      }
+      if (href === actor) {
+        return Response.json({
+          id: actor,
+          type: "Person",
+          preferredUsername: "pick",
+          inbox: `${actor}/inbox`,
+          publicKey: { id: `${actor}#main-key`, owner: actor, publicKeyPem },
+        });
+      }
+      return original(input, init);
+    };
+    try {
+      const response = await json(
+        "/api/v2/search?q=pick%40l2res.example&type=accounts&resolve=true&limit=2",
+        { headers: await auth(viewer) },
+      );
+      expect(response.status).toBe(200);
+      const accounts = read(z.object({ accounts: AccountListSchema }), response.body).accounts;
+      expect(accounts[0]?.acct).toBe("pick@l2res.example");
+      expect(accounts.length).toBeLessThanOrEqual(2);
+    } finally {
+      globalThis.fetch = original;
+    }
   });
 });
