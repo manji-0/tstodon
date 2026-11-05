@@ -1,7 +1,7 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { schemaResult } from "@tstodon/core";
+import { InstanceLimits, schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
@@ -31,16 +31,42 @@ const MediaSchema = z.object({
   meta: z.object({ focus: z.object({ x: z.number(), y: z.number() }).optional() }),
 });
 
-const upload = async (email: string): Promise<z.infer<typeof MediaSchema>> => {
+const postUpload = async (
+  email: string,
+  path: "/api/v1/media" | "/api/v2/media",
+  fields: Record<string, string> = {},
+): Promise<{ status: number; body: unknown }> => {
   const form = new FormData();
   form.set("file", new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" }));
-  const response = await json("/api/v2/media", {
-    method: "POST",
-    headers: await auth(email),
-    body: form,
-  });
+  for (const [key, value] of Object.entries(fields)) {
+    form.set(key, value);
+  }
+  return json(path, { method: "POST", headers: await auth(email), body: form });
+};
+
+const upload = async (email: string): Promise<z.infer<typeof MediaSchema>> => {
+  const response = await postUpload(email, "/api/v2/media");
   expect(response.status).toBe(200);
   return read(MediaSchema, response.body);
+};
+
+const accountIdFor = async (email: string): Promise<string> => {
+  const response = await json("/api/v1/accounts/verify_credentials", {
+    headers: await auth(email),
+  });
+  expect(response.status).toBe(200);
+  return read(z.object({ id: z.string().min(1) }), response.body).id;
+};
+
+/** Rows and R2 objects the account's uploads left behind. */
+const storedUploads = async (accountId: string): Promise<{ rows: number; objects: number }> => {
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM media_attachments WHERE account_id = ?",
+  )
+    .bind(accountId)
+    .first<{ count: number }>();
+  const listed = await env.MEDIA.list({ prefix: `attachments/${accountId}/` });
+  return { rows: row?.count ?? 0, objects: listed.objects.length };
 };
 
 const updateMetadata = async (
@@ -124,6 +150,43 @@ describe("media metadata", () => {
     const edited = read(MediaSchema, updated.body);
     expect(edited.description).toBe("Alt text from JSON");
     expect(edited.meta.focus).toEqual({ x: 0, y: 0 });
+  });
+
+  it.each(["/api/v1/media", "/api/v2/media"] as const)(
+    "keeps the alt text and focus sent with the file to %s",
+    async (path) => {
+      const email = `media-upload-meta${path.replaceAll("/", "-")}@example.com`;
+      const uploaded = await postUpload(email, path, {
+        description: "Alt text sent with the file",
+        focus: "0.5,-0.25",
+      });
+      expect(uploaded.status).toBe(200);
+      const media = read(MediaSchema, uploaded.body);
+      expect(media.description).toBe("Alt text sent with the file");
+      expect(media.meta.focus).toEqual({ x: 0.5, y: -0.25 });
+
+      const stored = await json(`/api/v1/media/${media.id}`, { headers: await auth(email) });
+      expect(stored.status).toBe(200);
+      const fetched = read(MediaSchema, stored.body);
+      expect(fetched.description).toBe("Alt text sent with the file");
+      expect(fetched.meta.focus).toEqual({ x: 0.5, y: -0.25 });
+    },
+  );
+
+  it("refuses an upload with a too-long description or an invalid focus and stores nothing", async () => {
+    const email = "media-upload-refused@example.com";
+    const accountId = await accountIdFor(email);
+    const tooLong = "a".repeat(InstanceLimits.media.maxDescriptionCharacters + 1);
+    expect((await postUpload(email, "/api/v2/media", { description: tooLong })).status).toBe(422);
+    expect((await postUpload(email, "/api/v1/media", { focus: "2,0" })).status).toBe(422);
+    expect((await postUpload(email, "/api/v2/media", { focus: "nope" })).status).toBe(422);
+    expect(await storedUploads(accountId)).toEqual({ rows: 0, objects: 0 });
+
+    const fits = "a".repeat(InstanceLimits.media.maxDescriptionCharacters);
+    const accepted = await postUpload(email, "/api/v2/media", { description: fits });
+    expect(accepted.status).toBe(200);
+    expect(read(MediaSchema, accepted.body).description).toBe(fits);
+    expect(await storedUploads(accountId)).toEqual({ rows: 1, objects: 1 });
   });
 
   it("deletes unattached media", async () => {

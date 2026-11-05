@@ -51,14 +51,27 @@ export const insertMedia = async (
     accountId: string;
     objectKey: string;
     contentType: string;
+    description: string | null;
+    focus: Readonly<{ x: number; y: number }> | null;
   },
 ): Promise<Result<MediaRow, RepositoryError>> =>
   runD1(async () => {
     const createdAt = nowIso();
+    const focusX = input.focus?.x ?? null;
+    const focusY = input.focus?.y ?? null;
     // Prisma 7 exposes TypedSQL writes through $queryRawTyped (no $executeRawTyped yet).
     await runTyped(
       db,
-      insertMediaSql(input.id, input.accountId, input.objectKey, input.contentType, createdAt),
+      insertMediaSql(
+        input.id,
+        input.accountId,
+        input.objectKey,
+        input.contentType,
+        createdAt,
+        input.description,
+        focusX,
+        focusY,
+      ),
     );
     return {
       id: input.id,
@@ -67,9 +80,9 @@ export const insertMedia = async (
       object_key: input.objectKey,
       content_type: input.contentType,
       created_at: createdAt,
-      description: null,
-      focus_x: null,
-      focus_y: null,
+      description: input.description,
+      focus_x: focusX,
+      focus_y: focusY,
     };
   });
 

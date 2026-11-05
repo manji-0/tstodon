@@ -1,4 +1,5 @@
-import { InstanceLimits, characterCount } from "@tstodon/core";
+import { InstanceLimits, schemaResult } from "@tstodon/core";
+import { err, ok, type Result } from "neverthrow";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -22,12 +23,58 @@ import {
 import { parseInstanceIdentity } from "../runtime-config";
 import { newEntityId } from "../ids";
 import { browserSession } from "../browser-session";
+import { mediaDescriptionFits } from "../status-body-schema";
 import { findStatusById } from "../status-store";
 import { canViewStatus } from "../visibility-guard";
 import type { Context } from "hono";
 import { z } from "zod";
 
 const CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+/** The alt text and focal point fields, read at upload and by `PUT /api/v1/media/:id`. */
+const MediaMetadataBodySchema = z.object({
+  description: z.string().nullish(),
+  focus: z.string().nullish(),
+});
+
+/**
+ * What a request sets: `undefined` keeps the stored value, and a blank
+ * description becomes `null`, which clears it.
+ */
+type MediaMetadataEdit = Readonly<{
+  description: string | null | undefined;
+  focus: Readonly<{ x: number; y: number }> | undefined;
+}>;
+
+type MediaMetadataError = Readonly<{ kind: "InvalidFocus" } | { kind: "DescriptionTooLong" }>;
+
+const parseMediaMetadata = (
+  body: z.infer<typeof MediaMetadataBodySchema>,
+): Result<MediaMetadataEdit, MediaMetadataError> => {
+  const focus = body.focus == null ? undefined : parseMediaFocus(body.focus);
+  if (body.focus != null && focus === undefined) {
+    return err({ kind: "InvalidFocus" });
+  }
+  if (body.description != null && !mediaDescriptionFits(body.description)) {
+    return err({ kind: "DescriptionTooLong" });
+  }
+  const description =
+    body.description == null
+      ? undefined
+      : body.description.trim().length > 0
+        ? body.description
+        : null;
+  return ok({ description, focus });
+};
+
+const jsonMediaMetadataError = (c: Context<{ Bindings: Env }>, error: MediaMetadataError) =>
+  c.json(
+    {
+      error: error.kind === "InvalidFocus" ? "invalid focus" : "description is too long",
+      kind: "ValidationError",
+    },
+    422,
+  );
 
 const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
   const identity = parseInstanceIdentity(c.env);
@@ -42,6 +89,14 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
   const file = body.file;
   if (!(file instanceof File)) {
     return c.json({ error: "file is required", kind: "ValidationError" }, 400);
+  }
+  const fields = schemaResult(MediaMetadataBodySchema)(body);
+  if (fields.isErr()) {
+    return jsonValidationError(c);
+  }
+  const metadata = parseMediaMetadata(fields.value);
+  if (metadata.isErr()) {
+    return jsonMediaMetadataError(c, metadata.error);
   }
   // Only the mime types this instance advertises are accepted.
   const contentType = file.type.split(";")[0]?.trim().toLowerCase() ?? "";
@@ -65,6 +120,8 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
     accountId: user.value.id,
     objectKey,
     contentType,
+    description: metadata.value.description ?? null,
+    focus: metadata.value.focus ?? null,
   });
   if (row.isErr()) {
     return jsonRepositoryError(c, row.error.message);
@@ -185,14 +242,6 @@ export const getV1MediaById = async (c: Context<{ Bindings: Env }, "/api/v1/medi
   return c.json(mastodonMedia(identity.value, row.value));
 };
 
-const parseFocus = (raw: string): Readonly<{ x: number; y: number }> | undefined =>
-  parseMediaFocus(raw);
-
-const MediaUpdateBodySchema = z.object({
-  description: z.string().nullish(),
-  focus: z.string().nullish(),
-});
-
 export const putV1MediaById = async (c: Context<{ Bindings: Env }, "/api/v1/media/:id">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -215,41 +264,21 @@ export const putV1MediaById = async (c: Context<{ Bindings: Env }, "/api/v1/medi
   }
 
   // The web UI sends JSON; other clients send a form.
-  const body = await readOptionalBody(c, MediaUpdateBodySchema);
+  const body = await readOptionalBody(c, MediaMetadataBodySchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const descriptionRaw = body.value.description ?? undefined;
-  const focusRaw = body.value.focus ?? undefined;
-  let focusX = row.value.focus_x;
-  let focusY = row.value.focus_y;
-  if (focusRaw !== undefined) {
-    const focus = parseFocus(focusRaw);
-    if (!focus) {
-      return c.json({ error: "invalid focus", kind: "ValidationError" }, 422);
-    }
-    focusX = focus.x;
-    focusY = focus.y;
+  const metadata = parseMediaMetadata(body.value);
+  if (metadata.isErr()) {
+    return jsonMediaMetadataError(c, metadata.error);
   }
-  if (
-    descriptionRaw !== undefined &&
-    characterCount(descriptionRaw) > InstanceLimits.media.maxDescriptionCharacters
-  ) {
-    return c.json({ error: "description is too long", kind: "ValidationError" }, 422);
-  }
-  const description =
-    descriptionRaw === undefined
-      ? row.value.description
-      : descriptionRaw.trim().length > 0
-        ? descriptionRaw
-        : null;
-
+  const { description, focus } = metadata.value;
   const updated = await updateMediaMetadata(c.env.DB, {
     id,
     accountId: user.value.id,
-    description,
-    focusX,
-    focusY,
+    description: description === undefined ? row.value.description : description,
+    focusX: focus === undefined ? row.value.focus_x : focus.x,
+    focusY: focus === undefined ? row.value.focus_y : focus.y,
   });
   if (updated.isErr()) {
     return jsonRepositoryError(c, updated.error.message);

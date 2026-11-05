@@ -10,12 +10,15 @@ export const MediaAttributeSchema = z.object({
 
 export type MediaAttribute = z.infer<typeof MediaAttributeSchema>;
 
+/** Whether a media description fits the instance's limit. */
+export const mediaDescriptionFits = (description: string): boolean =>
+  characterCount(description) <= InstanceLimits.media.maxDescriptionCharacters;
+
 /** Whether every `media_attributes` description fits the instance's limit. */
 export const mediaDescriptionsFit = (attributes: ReadonlyArray<MediaAttribute>): boolean =>
   attributes.every(
     (attribute) =>
-      attribute.description === undefined ||
-      characterCount(attribute.description) <= InstanceLimits.media.maxDescriptionCharacters,
+      attribute.description === undefined || mediaDescriptionFits(attribute.description),
   );
 
 export const CreateStatusBodySchema = z.object({
