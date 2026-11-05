@@ -228,7 +228,7 @@ const streamedNotification = async (
 };
 
 /**
- * The checks of Mastodon's `DropCondition#drop?`, in its order. Blocks and
+ * The sender checks of Mastodon's `DropCondition#drop?`. Blocks and
  * mutes name a remote sender by its actor URI and a local one by its account
  * id; only a remote sender has a domain to block.
  */
