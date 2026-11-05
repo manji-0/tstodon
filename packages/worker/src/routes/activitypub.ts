@@ -28,7 +28,7 @@ import { parseJsonColumn, parseJsonText } from "../json-column";
 import { schemaResult } from "@tstodon/core";
 import { listFollowers, listFollowing } from "../follow-store";
 import { loadNoteMentions } from "../mention-resolve";
-import { loadNoteAttachments } from "../note-attachments";
+import { loadNoteMedia } from "../note-attachments";
 import { loadNoteReply } from "../reply-target";
 import { loadNotePoll } from "../poll-store";
 import { findStatusById } from "../status-store";
@@ -85,12 +85,16 @@ export const getUsersByUsernameStatusesById = async (
   ) {
     return c.json({ kind: "NotFound" }, 404);
   }
+  const media = await loadNoteMedia(c.env.DB, identity.value, status.value);
+  if (media.isErr()) {
+    return jsonRepositoryError(c, media.error.message);
+  }
   const note = noteDocument(identity.value, account.value, status.value, {
     quoteUri: await quotedStatusUri(c.env, identity.value, status.value.id),
     mentions: await loadNoteMentions(c.env.DB, identity.value, status.value.id),
     reply: await loadNoteReply(c.env.DB, identity.value, status.value),
     poll: await loadNotePoll(c.env.DB, status.value.id),
-    attachments: await loadNoteAttachments(c.env.DB, identity.value, status.value),
+    media: media.value,
   });
   const visibility = status.value.visibility.kind;
   if (visibility !== "Public" && visibility !== "Unlisted") {

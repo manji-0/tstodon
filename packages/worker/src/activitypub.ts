@@ -209,6 +209,15 @@ export type NoteAttachment = Readonly<{
 }>;
 
 /**
+ * A note's attachments, and whether its author is sensitized: Mastodon's
+ * `NoteSerializer` marks such an author's notes sensitive.
+ */
+export type NoteMedia = Readonly<{
+  attachments: ReadonlyArray<NoteAttachment>;
+  authorSensitized: boolean;
+}>;
+
+/**
  * The poll fields of a `Question`, as Mastodon reads them: `oneOf` or `anyOf`
  * options with their vote counts, `endTime`, `closed` once over, and `votersCount`.
  * A poll that hides its totals keeps them out of the document until it ends.
@@ -241,10 +250,11 @@ export const noteDocument = (
     /** A note with a poll federates as a `Question`. */
     poll?: PollRecord | undefined;
     /** The note's media in order. Required: an `Update` without them clears them remotely. */
-    attachments: ReadonlyArray<NoteAttachment>;
+    media: NoteMedia;
   }>,
 ): Record<string, unknown> => {
-  const { quoteUri, mentions = [], reply, poll, attachments } = extras;
+  const { quoteUri, mentions = [], reply, poll } = extras;
+  const { attachments, authorSensitized } = extras.media;
   const actor = InstanceIdentity.actorUrl(identity, account.username);
   const id = `${actor}/statuses/${note.id}`;
   const followers = `${actor}/followers`;
@@ -303,7 +313,7 @@ export const noteDocument = (
     published: note.createdAt,
     to,
     cc,
-    sensitive: note.sensitive,
+    sensitive: note.sensitive || (authorSensitized && attachments.length > 0),
     summary: note.spoilerText.length > 0 ? note.spoilerText : null,
     inReplyTo: reply?.inReplyTo ?? null,
     attachment: attachments.map((media) => ({

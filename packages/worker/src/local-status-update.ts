@@ -6,7 +6,7 @@ import { enqueueHomeFanOut } from "./home-fan-out";
 import { newEntityId } from "./ids";
 import { mastodonStatus } from "./local-status-documents";
 import { loadNoteMentions } from "./mention-resolve";
-import { loadNoteAttachments } from "./note-attachments";
+import { loadNoteMedia } from "./note-attachments";
 import { loadNotePoll } from "./poll-store";
 import { enqueuePublicFanOut } from "./public-fan-out";
 import { quotedStatusUri } from "./quote-uri";
@@ -19,6 +19,9 @@ import { publishToAccount } from "./stream-publish";
  * as a moderator marking it sensitive does: the `Update` that reaches remote
  * servers (when `federate`), the account's own streams, and the home and
  * public timelines. Returns the note's Mastodon document as it now reads.
+ * When the note's media cannot be read, no `Update` is sent: receivers replace
+ * a note's attachments with the `Update`'s, so one without them deletes the
+ * media remotely.
  */
 export const announceNoteUpdate = async (
   env: Env,
@@ -28,7 +31,11 @@ export const announceNoteUpdate = async (
   updatedAt: string,
   federate: boolean,
 ): Promise<Result<Record<string, unknown> | undefined, EnqueueLocalActivityError>> => {
-  if (federate) {
+  const media = federate ? await loadNoteMedia(env.DB, identity, note) : undefined;
+  if (media?.isErr()) {
+    console.error(JSON.stringify({ kind: "StatusUpdateNotFederated", statusId: note.id }));
+  }
+  if (media?.isOk()) {
     const actor = InstanceIdentity.actorUrl(identity, account.username);
     const enqueued = await enqueueLocalActivity(env, account.id, "Update", {
       "@context": "https://www.w3.org/ns/activitystreams",
@@ -41,7 +48,7 @@ export const announceNoteUpdate = async (
         mentions: await loadNoteMentions(env.DB, identity, note.id),
         reply: await loadNoteReply(env.DB, identity, note),
         poll: await loadNotePoll(env.DB, note.id),
-        attachments: await loadNoteAttachments(env.DB, identity, note),
+        media: media.value,
       }),
     });
     if (enqueued.isErr()) {

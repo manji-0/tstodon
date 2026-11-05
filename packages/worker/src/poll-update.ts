@@ -9,7 +9,7 @@ import { loadNoteMentions } from "./mention-resolve";
 import { reachesRemoteInboxes } from "./outbox-job";
 import { claimPollUpdate, findPollById, type PollRecord, releasePollUpdate } from "./poll-store";
 import { quotedStatusUri } from "./quote-uri";
-import { loadNoteAttachments } from "./note-attachments";
+import { loadNoteMedia } from "./note-attachments";
 import { loadNoteReply } from "./reply-target";
 import { parseInstanceIdentity } from "./runtime-config";
 import { findStatusById } from "./status-store";
@@ -76,6 +76,11 @@ const distributePollUpdate = async (
   if (author.isErr() || !author.value) {
     return;
   }
+  const media = await loadNoteMedia(env.DB, identity, note);
+  if (media.isErr()) {
+    console.error(JSON.stringify({ kind: "PollUpdateNotFederated", statusId: note.id }));
+    return;
+  }
   const actor = InstanceIdentity.actorUrl(identity, author.value.username);
   const update = {
     "@context": "https://www.w3.org/ns/activitystreams",
@@ -88,7 +93,7 @@ const distributePollUpdate = async (
       mentions: await loadNoteMentions(env.DB, identity, note.id),
       reply: await loadNoteReply(env.DB, identity, note),
       poll,
-      attachments: await loadNoteAttachments(env.DB, identity, note),
+      media: media.value,
     }),
   };
   if (!reachesRemoteInboxes(update, identity.domain)) {

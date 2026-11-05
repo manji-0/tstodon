@@ -11,7 +11,7 @@ import { newEntityId } from "./ids";
 import { findMediaById, parseMediaFocus, updateMediaMetadata } from "./media-store";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "./mention-store";
 import { loadNoteMentions, resolveRemoteMentions } from "./mention-resolve";
-import { loadNoteAttachments } from "./note-attachments";
+import { loadNoteMedia } from "./note-attachments";
 import { loadNoteReply } from "./reply-target";
 import { noteDocument } from "./activitypub";
 import { notifyAccount } from "./notify";
@@ -242,8 +242,15 @@ export const publishLocalNote = async (
   const actor = InstanceIdentity.actorUrl(identity, user.username);
   // A direct note goes only to the remote accounts it mentions; with none,
   // nothing leaves the instance.
+  const federates = !(note.visibility.kind === "Direct" && remoteMentions.length === 0);
+  // The note and its media are already stored, so a media read failure keeps
+  // the post local rather than federate it without its media or fail it half done.
+  const media = federates ? await loadNoteMedia(env.DB, identity, note) : undefined;
+  if (media?.isErr()) {
+    console.error(JSON.stringify({ kind: "StatusNotFederated", statusId: note.id }));
+  }
   const enqueued =
-    note.visibility.kind === "Direct" && remoteMentions.length === 0
+    media === undefined || media.isErr()
       ? ok(undefined)
       : await enqueueLocalActivity(env, user.id, "Create", {
           "@context": "https://www.w3.org/ns/activitystreams",
@@ -255,7 +262,7 @@ export const publishLocalNote = async (
             mentions: await loadNoteMentions(env.DB, identity, note.id),
             reply: await loadNoteReply(env.DB, identity, note),
             poll: await loadNotePoll(env.DB, note.id),
-            attachments: await loadNoteAttachments(env.DB, identity, note),
+            media: media.value,
           }),
         });
   if (enqueued.isErr()) {
