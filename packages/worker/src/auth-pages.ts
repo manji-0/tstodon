@@ -199,6 +199,8 @@ export const signUpPasskeyPage = (instanceName: string, username: string, token:
     `      <h1>Create your passkey</h1>
       <p>Your email address is confirmed. Create a passkey for <strong>@${escapeHtml(username)}</strong> on ${escapeHtml(instanceName)}.</p>
       <form id="form" data-token="${escapeHtml(token)}" data-username="${escapeHtml(username)}">
+        <label for="passkey-name">Name for this passkey</label>
+        <input id="passkey-name" name="name" required maxlength="60" placeholder="Laptop" autocomplete="off" />
         <button type="submit">Create passkey</button>
       </form>
       <p id="error" class="error" role="alert"></p>`,
@@ -207,7 +209,8 @@ export const signUpPasskeyPage = (instanceName: string, username: string, token:
         event.preventDefault();
         show("");
         const { token, username } = event.target.dataset;
-        const created = await registerPasskey({ context: token, name: username }, { createSession: true });
+        const name = new FormData(event.target).get("name");
+        const created = await registerPasskey({ context: token, name: username }, { name, createSession: true });
         if (created) location.assign("/");
       });`,
   );

@@ -89,6 +89,7 @@ export const signUp = async (page: Page, username: string): Promise<void> => {
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
   await page.goto(await confirmationLink(page.request, email));
   await expect(page.getByText(`@${username}`)).toBeVisible();
+  await page.getByLabel("Name for this passkey").fill("Phone");
   await page.getByRole("button", { name: "Create passkey" }).click();
   await page.waitForURL("/");
 };

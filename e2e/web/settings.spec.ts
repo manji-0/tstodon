@@ -63,6 +63,7 @@ test.describe("settings links in the web UI", () => {
     await expect(page).toHaveURL(/\/auth\/edit$/);
     await expect(page.getByRole("heading", { name: "Password and security" })).toBeVisible();
     await expect(page.getByText("This is your only passkey")).toBeVisible();
+    await expect(page.getByText("Phone", { exact: true })).toBeVisible();
     await expect(page.getByText("This browser")).toBeVisible();
 
     await replacePasskeyDevice(context, page);
