@@ -79,6 +79,7 @@ const remotePost = async (
   actor: RemoteActor,
   objectId: string,
   content: string,
+  to: ReadonlyArray<string> = ["https://www.w3.org/ns/activitystreams#Public"],
 ): Promise<string> => {
   const identity = parseInstanceIdentity(env);
   if (identity.isErr()) {
@@ -90,7 +91,7 @@ const remotePost = async (
     attributedTo: actor.actorUri,
     content,
     published: new Date().toISOString(),
-    to: ["https://www.w3.org/ns/activitystreams#Public"],
+    to,
   });
   expect(persisted.isOk()).toBe(true);
   return persisted.isOk() && persisted.value ? persisted.value.id : "";
@@ -158,6 +159,42 @@ describe("tag timeline across the fediverse", () => {
       response.body,
     );
     expect(found.hashtags.map((tag) => tag.name)).toEqual(["remotesearchtag"]);
+  });
+
+  it("does not let hashtag search find the tags or link fragments of a remote direct or followers-only note", async () => {
+    const actor = await remoteAuthor("dana", "tagsearchprivate.example");
+    const link = (url: string): string => `<a href="${url}">${url}</a>`;
+    await remotePost(
+      actor,
+      `${actor.actorUri}/statuses/1`,
+      `<p>${link("https://app.example/invite#RemoteDmFrag")} ${hashtagHtml("remotedmtag")}</p>`,
+      ["https://example.com/users/tagsearchremotedm"],
+    );
+    await remotePost(
+      actor,
+      `${actor.actorUri}/statuses/2`,
+      `<p>${link("https://app.example/join#RemotePrivFrag")} ${hashtagHtml("remoteprivtag")}</p>`,
+      [`${actor.actorUri}/followers`],
+    );
+    // A public note's link fragment is no hashtag either.
+    await remotePost(
+      actor,
+      `${actor.actorUri}/statuses/3`,
+      `<p>${link("https://app.example/page#RemotePubFrag")}</p>`,
+    );
+
+    for (const query of ["remotedm", "remotepriv", "remotepubfrag"]) {
+      const anonymous = await json(`/api/v2/search?q=${query}&type=hashtags`);
+      const signedIn = await json(`/api/v2/search?q=${query}&type=hashtags`, {
+        headers: await auth("tagsearchremotedm@example.com"),
+      });
+      for (const response of [anonymous, signedIn]) {
+        expect(response.status).toBe(200);
+        expect(read(z.object({ hashtags: z.array(z.unknown()) }), response.body).hashtags).toEqual(
+          [],
+        );
+      }
+    }
   });
 
   it("indexes older remote statuses from cron", async () => {

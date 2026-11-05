@@ -34,11 +34,11 @@ const HashtagsSchema = z.object({
   ),
 });
 
-const post = async (email: string, status: string): Promise<void> => {
+const post = async (email: string, status: string, visibility = "public"): Promise<void> => {
   const response = await json("/api/v1/statuses", {
     method: "POST",
     headers: { "content-type": "application/json", ...(await authHeaders(email)) },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, visibility }),
   });
   expect(response.status).toBe(200);
 };
@@ -120,6 +120,38 @@ describe("hashtag search", () => {
     });
     expect(edited.status).toBe(200);
     expect(await names("q=addedby&type=hashtags", viewer)).toEqual(["addedbyedit"]);
+  });
+
+  it("does not let anyone find a tag or URL fragment only a direct or followers-only note uses", async () => {
+    await post(viewer, "@nobody see https://app.example/invite#Kq8sZ2pX #dmonlytag", "direct");
+    await post(viewer, "https://app.example/join#Zr7tY1qW #privateonlytag", "private");
+
+    for (const query of ["q=kq8&type=hashtags", "q=dmonly", "q=zr7&type=hashtags", "q=privateonly"]) {
+      expect(await names(query)).toEqual([]);
+      expect(await names(query, viewer)).toEqual([]);
+    }
+  });
+
+  it("does not let anyone find a tag a followers-only note gains by an edit", async () => {
+    const created = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await authHeaders(viewer)) },
+      body: JSON.stringify({ status: "before the edit", visibility: "private" }),
+    });
+    const id = read(z.object({ id: z.string() }), created.body).id;
+    const edited = await json(`/api/v1/statuses/${id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await authHeaders(viewer)) },
+      body: JSON.stringify({ status: "after the edit #privateeditedtag" }),
+    });
+    expect(edited.status).toBe(200);
+    expect(await names("q=privateedited&type=hashtags", viewer)).toEqual([]);
+  });
+
+  it("finds the tags of an unlisted note, but not a public note's URL fragment", async () => {
+    await post(viewer, "https://app.example/page#PublicFrag #unlistedfound", "unlisted");
+    expect(await names("q=unlistedfo&type=hashtags")).toEqual(["unlistedfound"]);
+    expect(await names("q=publicfrag&type=hashtags")).toEqual([]);
   });
 
   it("keeps asking for sign-in to page", async () => {
