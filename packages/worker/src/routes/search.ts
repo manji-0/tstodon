@@ -1,3 +1,4 @@
+import { ok } from "neverthrow";
 import type { InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import { searchAccounts } from "../account-store";
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
@@ -105,9 +106,9 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     }
   }
   const statusesById = new Map<string, LocalStatusValue>();
-  const statusDocs =
+  const rendered =
     type === "accounts" || type === "hashtags"
-      ? []
+      ? ok([])
       : await (async () => {
           const statuses = await searchStatuses(c.env.DB, query, limit);
           if (statuses.isErr()) {
@@ -118,9 +119,10 @@ const search = async (c: Context<{ Bindings: Env }>) => {
           }
           return mastodonStatuses(c.env, identity.value, statuses.value, viewerId);
         })();
-  if (!Array.isArray(statusDocs)) {
-    return jsonRepositoryError(c, statusDocs.error.message);
+  if (rendered.isErr()) {
+    return jsonRepositoryError(c, rendered.error.message);
   }
+  const statusDocs = rendered.value;
   // Mastodon reports which of the viewer's filters matched each result.
   if (viewerId) {
     const filters = await loadViewerFilters(c.env.DB, viewerId);

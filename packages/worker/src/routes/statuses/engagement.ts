@@ -1,3 +1,4 @@
+import { StatusAuthors } from "../../account-presentation";
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import type { Context } from "hono";
 import { authenticate } from "../../auth";
@@ -13,7 +14,7 @@ import {
 import { availableAccountDocumentsByIds, documentsInOrder } from "../../account-documents";
 import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
 import { listStatusFavouritedBy, listStatusRebloggedBy } from "../../status-interaction-store";
-import { findVisibleStatusAnywhere, foundStatusTarget } from "../../found-status";
+import { findShownStatusAnywhere, foundStatusTarget } from "../../found-status";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { RemoteAccountId } from "../../remote-account-id";
 import { findStatusById, findStatusesByIds } from "../../status-store";
@@ -33,7 +34,7 @@ const statusEngagementAccounts = async (
     return jsonAuthError(c, auth.error);
   }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
-  const status = await findVisibleStatusAnywhere(c.env.DB, c.req.param("id") ?? "", viewerId);
+  const status = await findShownStatusAnywhere(c.env, c.req.param("id") ?? "", viewerId);
   if (status.isErr()) {
     return jsonRepositoryError(c, status.error.message);
   }
@@ -110,8 +111,12 @@ export const getV1StatusesByIdQuotes = async (
       visible.push(quoting);
     }
   }
+  const documents = await mastodonStatuses(c.env, identity.value, visible, viewerId);
+  if (documents.isErr()) {
+    return jsonRepositoryError(c, documents.error.message);
+  }
   setPaginationLinks(c, quotingIds.value, limit, { prev: "since_id" });
-  return c.json(await mastodonStatuses(c.env, identity.value, visible, viewerId));
+  return c.json(documents.value);
 };
 
 /** The quoted author withdraws a quote; the quoting status stays, unattached. */
@@ -150,7 +155,20 @@ export const postV1StatusesByIdQuotesByQuotingStatusIdRevoke = async (
   if (!revoked.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.json((await mastodonStatus(c.env, identity.value, quoting.value, user.value.id)) ?? {});
+  // As Mastodon, the quoting status answers whoever wrote it, a suspended author stripped.
+  const document = await mastodonStatus(
+    c.env,
+    identity.value,
+    quoting.value,
+    user.value.id,
+    StatusAuthors.existing,
+  );
+  if (document.isErr()) {
+    return jsonRepositoryError(c, document.error.message);
+  }
+  return document.value
+    ? c.json(document.value)
+    : c.json({ error: "Record not found", kind: "NotFound" }, 404);
 };
 
 /** Renders a local or remote status the viewer may see, or `null` when it is hidden or gone. */

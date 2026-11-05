@@ -1,5 +1,5 @@
 import type { InstanceIdentity } from "@tstodon/domain";
-import type { Result } from "neverthrow";
+import { err, type Result } from "neverthrow";
 import { accountDocumentsByIds } from "./account-documents";
 import type { RepositoryError } from "./d1";
 import type { ConversationSummary } from "./conversation-store";
@@ -29,12 +29,15 @@ export const conversationDocuments = async (
       viewerId,
     ),
   ]);
+  if (statuses.isErr()) {
+    return err(statuses.error);
+  }
   return accounts.map((byId) =>
     conversations.map((conversation) => ({
       id: conversation.id,
       unread: conversation.unread,
       accounts: conversation.accountIds.flatMap((id) => byId.get(id) ?? []),
-      last_status: statuses.get(conversation.lastStatus.status.id) ?? null,
+      last_status: statuses.value.get(conversation.lastStatus.status.id) ?? null,
     })),
   );
 };

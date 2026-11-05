@@ -333,13 +333,16 @@ const groupEnvelope = async (
   if (resolvedReports.isErr()) {
     return err(resolvedReports.error);
   }
+  if (statusDocuments.isErr()) {
+    return err(statusDocuments.error);
+  }
   const accountDocuments = resolvedAccounts.value;
   const reportDocuments = resolvedReports.value;
   const events = new Map(
     (severance.isOk() ? severance.value : []).map((event) => [event.id, event]),
   );
   const accounts = accountIds.flatMap((id) => accountDocuments.get(id) ?? []);
-  const statuses = statusIds.flatMap((id) => statusDocuments.get(id) ?? []);
+  const statuses = statusIds.flatMap((id) => statusDocuments.value.get(id) ?? []);
   return ok({
     accounts,
     statuses,

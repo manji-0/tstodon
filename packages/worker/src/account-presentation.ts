@@ -158,9 +158,10 @@ export const searchableRemoteActors = async (
  * Whose statuses a status renderer serves, by the author's presentation.
  * `available` is Mastodon's `StatusPolicy#show?`, which refuses an
  * unavailable author's status. `existing` serves any status Mastodon still
- * keeps, which is all but a suspended domain's: what a boost wraps, and the
- * status an interaction names. `any` is a moderator's report. Whichever
- * applies, an author that is not shown renders stripped.
+ * keeps, which is all but a suspended domain's: what a boost wraps. `any` is
+ * a moderator's view, and the status a route answers once it has decided the
+ * viewer may act on it. Whichever applies, an author that is not shown
+ * renders stripped.
  */
 export const StatusAuthors = {
   available: AccountPresentation.available,

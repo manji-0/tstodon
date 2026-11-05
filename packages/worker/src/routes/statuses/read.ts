@@ -25,6 +25,7 @@ import { canViewRemoteBoost, canViewRemoteStatus, canViewStatus } from "../../vi
 import { findRemoteBoostById } from "../../remote-boost-store";
 import { remoteBoostDocuments } from "../../remote-boost-documents";
 import { documentsById } from "../../documents-by-id";
+import { findShownStatusAnywhere } from "../../found-status";
 
 /** A remote actor's boost, fetched by its id as Mastodon allows for reblogs. */
 const visibleRemoteBoostDocument = async (
@@ -65,13 +66,16 @@ const visibleStatusDocument = async (
     if (!(await canViewRemoteStatus(env.DB, remote.value, viewerId))) {
       return ok(null);
     }
-    const [document] = await mastodonRemoteStatuses(env, identity, [remote.value], viewerId);
-    return ok(document ?? null);
+    return (await mastodonRemoteStatuses(env, identity, [remote.value], viewerId)).map(
+      (documents) => documents[0] ?? null,
+    );
   }
   if (!(await canViewStatus(env.DB, status.value, viewerId))) {
     return ok(null);
   }
-  return ok((await mastodonStatus(env, identity, status.value, viewerId)) ?? null);
+  return (await mastodonStatus(env, identity, status.value, viewerId)).map(
+    (document) => document ?? null,
+  );
 };
 
 /** Mastodon caps `GET /api/v1/statuses?id[]=` at 20 ids. */
@@ -126,7 +130,13 @@ export const getV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/statu
     mastodonStatuses(c.env, identity.value, visibleLocals, viewerId),
     mastodonRemoteStatuses(c.env, identity.value, visibleRemotes, viewerId),
   ]);
-  const documents = documentsById([...localDocuments, ...remoteDocuments]);
+  if (localDocuments.isErr()) {
+    return jsonRepositoryError(c, localDocuments.error.message);
+  }
+  if (remoteDocuments.isErr()) {
+    return jsonRepositoryError(c, remoteDocuments.error.message);
+  }
+  const documents = documentsById([...localDocuments.value, ...remoteDocuments.value]);
   return c.json(ids.flatMap((id) => documents.get(id) ?? []));
 };
 
@@ -163,28 +173,17 @@ export const getV1StatusesByIdContext = async (
   }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
   // The thread of a local status or a cached remote one, across both.
-  const local = await findStatusById(c.env.DB, c.req.param("id"));
-  if (local.isErr()) {
-    return jsonRepositoryError(c, local.error.message);
+  const found = await findShownStatusAnywhere(c.env, c.req.param("id"), viewerId);
+  if (found.isErr()) {
+    return jsonRepositoryError(c, found.error.message);
   }
-  let start: ThreadStatus | undefined;
-  if (local.value) {
-    start = (await canViewStatus(c.env.DB, local.value, viewerId))
-      ? { kind: "Local", status: local.value }
-      : undefined;
-  } else {
-    const remote = await findRemoteStatusById(c.env.DB, c.req.param("id"));
-    if (remote.isErr()) {
-      return jsonRepositoryError(c, remote.error.message);
-    }
-    start =
-      remote.value && (await canViewRemoteStatus(c.env.DB, remote.value, viewerId))
-        ? { kind: "Remote", status: remote.value }
-        : undefined;
-  }
-  if (!start) {
+  if (!found.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
+  const start: ThreadStatus =
+    found.value.kind === "LocalStatus"
+      ? { kind: "Local", status: found.value.status }
+      : { kind: "Remote", status: found.value.status };
   if (start.kind === "Remote") {
     await requestRemoteThreadBackfill(c.env, start.status);
   }
@@ -215,8 +214,11 @@ export const getV1StatusesByIdContext = async (
     [...visibleAncestors, ...visibleDescendants].map((node) => node.status.id),
     viewerId,
   );
+  if (documents.isErr()) {
+    return jsonRepositoryError(c, documents.error.message);
+  }
   const render = (nodes: ReadonlyArray<ThreadStatus>) =>
-    nodes.flatMap((node) => documents.get(node.status.id) ?? []);
+    nodes.flatMap((node) => documents.value.get(node.status.id) ?? []);
   return c.json({
     ancestors: render(visibleAncestors),
     descendants: render(visibleDescendants),

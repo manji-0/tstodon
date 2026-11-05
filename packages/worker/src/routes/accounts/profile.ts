@@ -148,14 +148,12 @@ export const getV1AccountsByIdStatuses = async (
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
+  const documents = await mastodonStatuses(c.env, identity.value, statuses.value, viewerId);
+  if (documents.isErr()) {
+    return jsonRepositoryError(c, documents.error.message);
+  }
   return c.json(
-    await attachFilteredToStatuses(
-      c.env.DB,
-      viewerId,
-      "public",
-      statuses.value,
-      await mastodonStatuses(c.env, identity.value, statuses.value, viewerId),
-    ),
+    await attachFilteredToStatuses(c.env.DB, viewerId, "public", statuses.value, documents.value),
   );
 };
 

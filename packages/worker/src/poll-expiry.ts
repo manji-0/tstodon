@@ -136,9 +136,8 @@ const announceEndedLocalPolls = async (env: Env, notifiedAt: string): Promise<Pa
   }
   for (const [accountId, items] of Map.groupBy(claimed, (item) => item.accountId)) {
     const statuses = items.map((item) => item.status);
-    const byStatusId = documentsById(
-      await mastodonStatuses(env, identity.value, statuses, accountId),
-    );
+    const rendered = await mastodonStatuses(env, identity.value, statuses, accountId);
+    const byStatusId = documentsById(rendered.isOk() ? rendered.value : []);
     for (const status of statuses) {
       const document = byStatusId.get(status.id);
       if (document) {

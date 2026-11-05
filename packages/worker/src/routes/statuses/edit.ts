@@ -4,6 +4,7 @@ import {
   type LocalNote,
   LocalStatus,
   type RemoteActor,
+  type RemoteStatusValue,
   StatusComposition,
   Visibility,
 } from "@tstodon/domain";
@@ -40,10 +41,9 @@ import { parseInstanceIdentity } from "../../runtime-config";
 import { notifyAccount } from "../../notify";
 import { findStatusById, replaceStatusMedia, updateLocalNote } from "../../status-store";
 import { findStatusUpdatedAt, insertStatusEdit, listStatusEdits } from "../../status-edit-store";
-import { canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
 import { availableAccountDocumentsByIds } from "../../account-documents";
 import { RemoteAccountId } from "../../remote-account-id";
-import { findRemoteStatusById } from "../../remote-status-store";
+import { findShownStatusAnywhere } from "../../found-status";
 import { remoteStatusHistory } from "../../remote-status-edit";
 import { isQuotePolicy, listAcceptedQuoteEdges, setStatusQuotePolicy } from "../../quote-store";
 import { applyMediaAttributes } from "../../local-status-publish";
@@ -70,6 +70,9 @@ export const deleteV1StatusesById = async (
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const document = await mastodonStatus(c.env, identity.value, existing.value, user.value.id);
+  if (document.isErr()) {
+    return jsonRepositoryError(c, document.error.message);
+  }
   const deleted = await deleteLocalStatus(c.env, identity.value, user.value, existing.value);
   if (deleted.isErr()) {
     return jsonRepositoryError(c, deleted.error.message);
@@ -80,7 +83,7 @@ export const deleteV1StatusesById = async (
   // Mastodon returns the raw source text so a client can delete and redraft;
   // media attachments and the poll are already part of the rendered document.
   const sourceText = existing.value.kind === "LocalNote" ? existing.value.text : "";
-  return c.json({ ...(document ?? {}), text: sourceText });
+  return c.json({ ...document.value, text: sourceText });
 };
 
 type UpdateStatusBody = z.infer<typeof CreateStatusBodySchema>;
@@ -158,13 +161,16 @@ const snapshotPreviousRevision = async (
   const revisionAt =
     priorUpdatedAt.isOk() && priorUpdatedAt.value ? priorUpdatedAt.value : note.createdAt;
   const previousDocument = await mastodonStatus(env, identity, note, viewerId);
-  if (!previousDocument) {
+  if (previousDocument.isErr()) {
+    return err(ApiRefusal.repository(previousDocument.error.message));
+  }
+  if (!previousDocument.value) {
     return ok(undefined);
   }
   const snapshotted = await insertStatusEdit(
     env.DB,
     note.id,
-    JSON.stringify({ ...previousDocument, created_at: revisionAt }),
+    JSON.stringify({ ...previousDocument.value, created_at: revisionAt }),
   );
   return snapshotted.isErr()
     ? err(ApiRefusal.repository(snapshotted.error.message))
@@ -218,7 +224,7 @@ const editNote = async (
   existing: LocalNote,
   body: UpdateStatusBody,
   mediaAttributes: ReadonlyArray<MediaAttribute>,
-): Promise<Result<Record<string, unknown> | undefined, ApiRefusal>> => {
+): Promise<Result<Record<string, unknown>, ApiRefusal>> => {
   const pollUpdate = await resolvePollEdit(env.DB, existing, author.id, body.poll);
   if (pollUpdate.isErr()) {
     return err(pollUpdate.error);
@@ -334,7 +340,7 @@ const editNote = async (
       ),
     );
   }
-  return ok(announced.value);
+  return announced.value ? ok(announced.value) : err(ApiRefusal.notFound);
 };
 
 const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
@@ -367,7 +373,7 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     body.value,
     body.value.media_attributes ?? mediaAttributesFromForm(rawBody),
   );
-  return edited.isErr() ? ApiRefusal.respond(c, edited.error) : c.json(edited.value ?? {});
+  return edited.isErr() ? ApiRefusal.respond(c, edited.error) : c.json(edited.value);
 };
 
 export const putV1StatusesById = (c: Context<{ Bindings: Env }, "/api/v1/statuses/:id">) =>
@@ -375,31 +381,22 @@ export const putV1StatusesById = (c: Context<{ Bindings: Env }, "/api/v1/statuse
 export const patchV1StatusesById = (c: Context<{ Bindings: Env }, "/api/v1/statuses/:id">) =>
   updateStatus(c);
 
-/** The history of a cached remote note the viewer may see, or 404. */
+/** The history of a cached remote note the viewer may be shown. */
 const remoteHistory = async (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/history">,
   identity: InstanceIdentity,
-  id: string,
-  viewerId: string | undefined,
+  remote: RemoteStatusValue,
 ) => {
-  const remote = await findRemoteStatusById(c.env.DB, id);
-  if (remote.isErr()) {
-    return jsonRepositoryError(c, remote.error.message);
-  }
-  if (!remote.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  const authorId = RemoteAccountId.encode(remote.value.actorUri);
+  const authorId = RemoteAccountId.encode(remote.actorUri);
   const authors = await availableAccountDocumentsByIds(c.env, identity, [authorId]);
   if (authors.isErr()) {
     return jsonRepositoryError(c, authors.error.message);
   }
-  // As Mastodon's `StatusPolicy#show?`, an unavailable author's history is not served.
   const author = authors.value.get(authorId);
-  if (!author || !(await canViewRemoteStatus(c.env.DB, remote.value, viewerId))) {
+  if (!author) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const history = await remoteStatusHistory(c.env.DB, remote.value, author);
+  const history = await remoteStatusHistory(c.env.DB, remote, author);
   return history.isErr() ? jsonRepositoryError(c, history.error.message) : c.json(history.value);
 };
 
@@ -415,31 +412,35 @@ export const getV1StatusesByIdHistory = async (
     return jsonAuthError(c, auth.error);
   }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
-  const status = await findStatusById(c.env.DB, c.req.param("id") ?? "");
-  if (status.isErr()) {
-    return jsonRepositoryError(c, status.error.message);
+  const found = await findShownStatusAnywhere(c.env, c.req.param("id") ?? "", viewerId);
+  if (found.isErr()) {
+    return jsonRepositoryError(c, found.error.message);
   }
-  if (!status.value) {
-    return remoteHistory(c, identity.value, c.req.param("id") ?? "", viewerId);
-  }
-  if (!(await canViewStatus(c.env.DB, status.value, viewerId))) {
+  if (!found.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  if (status.value.kind !== "LocalNote") {
+  if (found.value.kind === "RemoteStatus") {
+    return remoteHistory(c, identity.value, found.value.status);
+  }
+  const status = found.value.status;
+  if (status.kind !== "LocalNote") {
     return c.json([]);
   }
-  const snapshots = await listStatusEdits(c.env.DB, status.value.id);
+  const snapshots = await listStatusEdits(c.env.DB, status.id);
   if (snapshots.isErr()) {
     return jsonRepositoryError(c, snapshots.error.message);
   }
-  const updatedAt = await findStatusUpdatedAt(c.env.DB, status.value.id);
-  const current = await mastodonStatus(c.env, identity.value, status.value, viewerId);
-  if (!current) {
-    return c.json([]);
+  const updatedAt = await findStatusUpdatedAt(c.env.DB, status.id);
+  const current = await mastodonStatus(c.env, identity.value, status, viewerId);
+  if (current.isErr()) {
+    return jsonRepositoryError(c, current.error.message);
+  }
+  if (!current.value) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const revisions = [...snapshots.value].reverse();
-  const revisionAt = updatedAt.isOk() && updatedAt.value ? updatedAt.value : status.value.createdAt;
-  return c.json([...revisions, { ...current, created_at: revisionAt }]);
+  const revisionAt = updatedAt.isOk() && updatedAt.value ? updatedAt.value : status.createdAt;
+  return c.json([...revisions, { ...current.value, created_at: revisionAt }]);
 };
 
 export const getV1StatusesByIdSource = async (

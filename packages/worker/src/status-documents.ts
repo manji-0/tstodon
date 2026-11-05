@@ -1,4 +1,6 @@
 import type { InstanceIdentity } from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
+import type { RepositoryError } from "./d1";
 import { mastodonStatuses } from "./local-status-documents";
 import { mastodonRemoteStatuses } from "./remote-status-documents";
 import { findRemoteStatusesByIds } from "./remote-status-store";
@@ -16,29 +18,35 @@ export const statusDocumentsByIds = async (
   identity: InstanceIdentity,
   ids: ReadonlyArray<string>,
   viewerId: string | undefined,
-): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
+): Promise<Result<ReadonlyMap<string, Record<string, unknown>>, RepositoryError>> => {
   const unique = [...new Set(ids)];
   if (unique.length === 0) {
-    return new Map();
+    return ok(new Map());
   }
   const [locals, remotes] = await Promise.all([
     findStatusesByIds(env.DB, unique),
     findRemoteStatusesByIds(env.DB, unique),
   ]);
-  const rendered = [
-    ...(locals.isOk()
-      ? await mastodonStatuses(env, identity, [...locals.value.values()], viewerId)
-      : []),
-    ...(remotes.isOk()
-      ? await mastodonRemoteStatuses(
-          env,
-          identity,
-          [...remotes.value.values()].filter(
-            (status) => !(locals.isOk() && locals.value.has(status.id)),
-          ),
-          viewerId,
-        )
-      : []),
-  ];
-  return documentsById(rendered);
+  if (locals.isErr()) {
+    return err(locals.error);
+  }
+  if (remotes.isErr()) {
+    return err(remotes.error);
+  }
+  const [localDocuments, remoteDocuments] = await Promise.all([
+    mastodonStatuses(env, identity, [...locals.value.values()], viewerId),
+    mastodonRemoteStatuses(
+      env,
+      identity,
+      [...remotes.value.values()].filter((status) => !locals.value.has(status.id)),
+      viewerId,
+    ),
+  ]);
+  if (localDocuments.isErr()) {
+    return err(localDocuments.error);
+  }
+  if (remoteDocuments.isErr()) {
+    return err(remoteDocuments.error);
+  }
+  return ok(documentsById([...localDocuments.value, ...remoteDocuments.value]));
 };

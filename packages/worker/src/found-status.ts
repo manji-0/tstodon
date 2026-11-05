@@ -5,7 +5,9 @@ import {
   type StatusTargetValue,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
+import { availableAccountIds } from "./account-presentation";
 import type { RepositoryError } from "./d1";
+import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteStatusById } from "./remote-status-store";
 import { findStatusById } from "./status-store";
 import { canViewRemoteStatus, canViewStatus } from "./visibility-guard";
@@ -31,7 +33,7 @@ export const findStatusAnywhere = async (
   return remote.map((status) => status && { kind: "RemoteStatus", status });
 };
 
-export const canViewFoundStatus = (
+const canViewFoundStatus = (
   db: D1Database,
   found: FoundStatus,
   viewerId: string | undefined,
@@ -40,17 +42,40 @@ export const canViewFoundStatus = (
     ? canViewStatus(db, found.status, viewerId)
     : canViewRemoteStatus(db, found.status, viewerId);
 
-/** The local or cached remote status with this id, when the viewer may see it. */
-export const findVisibleStatusAnywhere = async (
-  db: D1Database,
+/**
+ * Mastodon's `StatusPolicy#show?`: the status's author is available and the
+ * viewer may see the status.
+ */
+export const showsFoundStatus = async (
+  env: Env,
+  found: FoundStatus,
+  viewerId: string | undefined,
+): Promise<Result<boolean, RepositoryError>> => {
+  const authorId =
+    found.kind === "LocalStatus"
+      ? found.status.accountId
+      : RemoteAccountId.encode(found.status.actorUri);
+  const available = await availableAccountIds(env, [authorId]);
+  if (available.isErr()) {
+    return err(available.error);
+  }
+  return ok(available.value.has(authorId) && (await canViewFoundStatus(env.DB, found, viewerId)));
+};
+
+/** The local or cached remote status with this id, when {@link showsFoundStatus}. */
+export const findShownStatusAnywhere = async (
+  env: Env,
   id: string,
   viewerId: string | undefined,
 ): Promise<Result<FoundStatus | undefined, RepositoryError>> => {
-  const found = await findStatusAnywhere(db, id);
+  const found = await findStatusAnywhere(env.DB, id);
   if (found.isErr() || !found.value) {
     return found;
   }
-  return ok((await canViewFoundStatus(db, found.value, viewerId)) ? found.value : undefined);
+  const status = found.value;
+  return (await showsFoundStatus(env, status, viewerId)).map((shown) =>
+    shown ? status : undefined,
+  );
 };
 
 export const foundStatusTarget = (found: FoundStatus): StatusTargetValue =>

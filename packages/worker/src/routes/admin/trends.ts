@@ -1,3 +1,4 @@
+import { StatusAuthors } from "../../account-presentation";
 import { mastodonTag } from "../../tag-documents";
 import type { Context } from "hono";
 import type { InstanceIdentity } from "@tstodon/domain";
@@ -154,7 +155,10 @@ export const getV1AdminTrendsStatuses = async (
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
-  return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, undefined));
+  const documents = await mastodonStatuses(c.env, identity.value, statuses.value, undefined);
+  return documents.isErr()
+    ? jsonRepositoryError(c, documents.error.message)
+    : c.json(documents.value);
 };
 
 const reviewStatus = (state: TrendState) => async (c: Context<{ Bindings: Env }>) => {
@@ -179,9 +183,17 @@ const reviewStatus = (state: TrendState) => async (c: Context<{ Bindings: Env }>
   if (found.isErr() || !found.value) {
     return notFound(c);
   }
-  return c.json(
-    (await mastodonStatus(c.env, identity.value, found.value, admin.value.account.id)) ?? {},
+  const document = await mastodonStatus(
+    c.env,
+    identity.value,
+    found.value,
+    admin.value.account.id,
+    StatusAuthors.any,
   );
+  if (document.isErr()) {
+    return jsonRepositoryError(c, document.error.message);
+  }
+  return document.value ? c.json(document.value) : notFound(c);
 };
 
 export const postV1AdminTrendsStatusesByIdApprove = reviewStatus("Approved");

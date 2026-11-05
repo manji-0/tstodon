@@ -1,5 +1,5 @@
 import { InstanceIdentity, type LocalAccount, type LocalNote } from "@tstodon/domain";
-import { ok, type Result } from "neverthrow";
+import { err, ok, type Result } from "neverthrow";
 import { noteDocument } from "./activitypub";
 import { type EnqueueLocalActivityError, enqueueLocalActivity } from "./delivery";
 import { enqueueHomeFanOut } from "./home-fan-out";
@@ -56,10 +56,11 @@ export const announceNoteUpdate = async (
     }
   }
   const latest = await findStatusById(env.DB, note.id);
-  const document =
+  const rendered =
     latest.isOk() && latest.value
       ? await mastodonStatus(env, identity, latest.value, account.id)
-      : undefined;
+      : ok(undefined);
+  const document = rendered.isOk() ? rendered.value : undefined;
   if (document) {
     await publishToAccount(env, account.id, { kind: "status.update", payload: document });
   }
@@ -71,5 +72,5 @@ export const announceNoteUpdate = async (
   if (note.visibility.kind === "Public") {
     await enqueuePublicFanOut(env, { event: "status.update", entryId: note.id });
   }
-  return ok(document);
+  return rendered.isErr() ? err(rendered.error) : ok(document);
 };

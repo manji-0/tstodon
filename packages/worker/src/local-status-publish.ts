@@ -278,8 +278,11 @@ export const publishLocalNote = async (
           },
     );
   }
-  const document = (await mastodonStatus(env, identity, note, user.id)) ?? {};
-  await publishToAccount(env, user.id, { kind: "update", payload: document });
+  // A render that fails sends no event; the caller renders the note again and reports it.
+  const document = await mastodonStatus(env, identity, note, user.id);
+  if (document.isOk() && document.value) {
+    await publishToAccount(env, user.id, { kind: "update", payload: document.value });
+  }
   if (note.visibility.kind === "Direct") {
     await publishConversationUpdate(
       env,

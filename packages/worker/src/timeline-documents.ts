@@ -39,15 +39,20 @@ export const remoteTimelineDocuments = async (
   visible: (status: RemoteNote) => boolean = (status) =>
     !Visibility.isRestricted(status.visibility),
 ): Promise<
-  Readonly<{
-    statuses: RemoteNote[];
-    documents: Record<string, unknown>[];
-  }>
-> => {
-  const documents = await mastodonRemoteStatuses(env, identity, remote.filter(visible), viewerId);
-  const rendered = new Set(documents.map((document) => document.id));
-  return { statuses: remote.filter((status) => rendered.has(status.id)), documents };
-};
+  Result<
+    Readonly<{
+      statuses: RemoteNote[];
+      documents: Record<string, unknown>[];
+    }>,
+    RepositoryError
+  >
+> =>
+  (await mastodonRemoteStatuses(env, identity, remote.filter(visible), viewerId)).map(
+    (documents) => {
+      const rendered = new Set(documents.map((document) => document.id));
+      return { statuses: remote.filter((status) => rendered.has(status.id)), documents };
+    },
+  );
 
 /** Merge local and remote timeline documents, newest first (`min_id` oldest first). */
 export const mergeTimelineDocuments = (
@@ -98,23 +103,29 @@ const publicSurfaceDocuments = async (
   if (remoteStatuses.isErr()) {
     return err(remoteStatuses.error);
   }
-  const rendered =
-    remoteStatuses.value.length === 0
-      ? { statuses: [], documents: [] }
-      : await remoteTimelineDocuments(env, identity, remoteStatuses.value, viewerId);
+  const [rendered, localDocuments] = await Promise.all([
+    remoteTimelineDocuments(env, identity, remoteStatuses.value, viewerId),
+    mastodonStatuses(env, identity, localStatuses.value, viewerId),
+  ]);
+  if (rendered.isErr()) {
+    return err(rendered.error);
+  }
+  if (localDocuments.isErr()) {
+    return err(localDocuments.error);
+  }
   const filteredLocal = await attachFilteredToStatuses(
     env.DB,
     viewerId,
     "public",
     localStatuses.value,
-    await mastodonStatuses(env, identity, localStatuses.value, viewerId),
+    localDocuments.value,
   );
   const filteredRemote = await attachFilteredToRemoteStatuses(
     env.DB,
     viewerId,
     "public",
-    rendered.statuses,
-    rendered.documents,
+    rendered.value.statuses,
+    rendered.value.documents,
   );
   return ok(mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit));
 };
@@ -218,12 +229,15 @@ const followedRemoteDocuments = async (
     viewerId,
     () => true,
   );
+  if (rendered.isErr()) {
+    return err(rendered.error);
+  }
   const filteredRemote = await attachFilteredToRemoteStatuses(
     env.DB,
     viewerId,
     "home",
-    rendered.statuses,
-    rendered.documents,
+    rendered.value.statuses,
+    rendered.value.documents,
   );
   return ok([...filteredRemote, ...boostDocuments.value]);
 };
@@ -255,12 +269,16 @@ const feedDocuments = async (
   if (visible.isErr()) {
     return err(visible.error);
   }
+  const localDocuments = await mastodonStatuses(env, identity, visible.value, viewerId);
+  if (localDocuments.isErr()) {
+    return err(localDocuments.error);
+  }
   const filteredLocal = await attachFilteredToStatuses(
     env.DB,
     viewerId,
     "home",
     visible.value,
-    await mastodonStatuses(env, identity, visible.value, viewerId),
+    localDocuments.value,
   );
   return ok(mergeTimelineDocuments(filteredLocal, remote.value, cursor, limit));
 };
@@ -306,13 +324,16 @@ export const remoteAccountPinnedDocuments = async (
     return err(pinned.error);
   }
   const rendered = await remoteTimelineDocuments(env, identity, pinned.value, viewerId, () => true);
+  if (rendered.isErr()) {
+    return err(rendered.error);
+  }
   return ok([
     ...(await attachFilteredToRemoteStatuses(
       env.DB,
       viewerId,
       "public",
-      rendered.statuses,
-      rendered.documents,
+      rendered.value.statuses,
+      rendered.value.documents,
     )),
   ]);
 };
@@ -351,12 +372,15 @@ export const remoteAccountTimelineDocuments = async (
   }
   // The query already keeps the notes the viewer may see.
   const rendered = await remoteTimelineDocuments(env, identity, notes.value, viewerId, () => true);
+  if (rendered.isErr()) {
+    return err(rendered.error);
+  }
   const filteredNotes = await attachFilteredToRemoteStatuses(
     env.DB,
     viewerId,
     "public",
-    rendered.statuses,
-    rendered.documents,
+    rendered.value.statuses,
+    rendered.value.documents,
   );
   return ok(
     mergeTimelineDocuments(

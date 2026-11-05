@@ -9,6 +9,7 @@ import {
   Visibility,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
+import type { RepositoryError } from "../../d1";
 import type { Context } from "hono";
 import { findAccountById } from "../../account-store";
 import { findComposeDefaults } from "../../account-defaults-store";
@@ -308,7 +309,7 @@ const postStatus = async (
   author: LocalAccount,
   body: CreateStatusBody,
   mediaAttributes: ReadonlyArray<MediaAttribute>,
-): Promise<Result<Record<string, unknown> | undefined, ApiRefusal>> => {
+): Promise<Result<Record<string, unknown>, ApiRefusal>> => {
   const visibility = Visibility.fromMastodon(
     body.visibility && body.visibility.length > 0
       ? body.visibility
@@ -402,7 +403,11 @@ const postStatus = async (
   if (published.isErr()) {
     return err(ApiRefusal.repository(published.error.message));
   }
-  return ok(await mastodonStatus(env, identity, published.value, author.id));
+  const document = await mastodonStatus(env, identity, published.value, author.id);
+  if (document.isErr()) {
+    return err(ApiRefusal.repository(document.error.message));
+  }
+  return document.value ? ok(document.value) : err(ApiRefusal.notFound);
 };
 
 const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
@@ -433,16 +438,18 @@ const statusDocumentById = async (
   c: Context<{ Bindings: Env }>,
   statusId: string,
   viewerId: string,
-): Promise<Record<string, unknown> | undefined> => {
+): Promise<Result<Record<string, unknown> | undefined, RepositoryError>> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
-    return undefined;
+    return ok(undefined);
   }
   const status = await findStatusById(c.env.DB, statusId);
-  if (status.isErr() || !status.value) {
-    return undefined;
+  if (status.isErr()) {
+    return err(status.error);
   }
-  return mastodonStatus(c.env, identity.value, status.value, viewerId);
+  return status.value
+    ? mastodonStatus(c.env, identity.value, status.value, viewerId)
+    : ok(undefined);
 };
 
 /**
@@ -471,10 +478,13 @@ export const postV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/stat
       return c.json({ error: "Duplicate request in progress", kind: "Conflict" }, 409);
     }
     const document = await statusDocumentById(c, existing.value.statusId, accountId);
-    if (!document) {
+    if (document.isErr()) {
+      return jsonRepositoryError(c, document.error.message);
+    }
+    if (!document.value) {
       return c.json({ error: "Record not found", kind: "NotFound" }, 404);
     }
-    return c.json(document);
+    return c.json(document.value);
   }
 
   const reserved = await reserveStatusIdempotency(c.env.DB, accountId, key);
@@ -486,8 +496,8 @@ export const postV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/stat
     const racedId = raced.isOk() ? raced.value?.statusId : undefined;
     if (racedId) {
       const document = await statusDocumentById(c, racedId, accountId);
-      if (document) {
-        return c.json(document);
+      if (document.isOk() && document.value) {
+        return c.json(document.value);
       }
     }
     return c.json({ error: "Duplicate request in progress", kind: "Conflict" }, 409);

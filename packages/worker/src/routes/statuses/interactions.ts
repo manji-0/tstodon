@@ -22,11 +22,11 @@ import {
 import type { RepositoryError } from "../../d1";
 import { enqueueLocalActivity } from "../../delivery";
 import {
-  canViewFoundStatus,
   type FoundStatus,
+  findShownStatusAnywhere,
   findStatusAnywhere,
-  findVisibleStatusAnywhere,
   foundStatusTarget,
+  showsFoundStatus,
 } from "../../found-status";
 import { enqueueHomeFanOut } from "../../home-fan-out";
 import { publishToAccount } from "../../stream-publish";
@@ -145,7 +145,12 @@ const setStatusPinned = async (c: Context<{ Bindings: Env }>, pin: boolean): Pro
   if (latest.isErr() || !latest.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
+  return answerTarget(
+    c,
+    identity.value,
+    { kind: "LocalStatus", status: latest.value },
+    user.value.id,
+  );
 };
 
 export const postV1StatusesByIdPin = (c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/pin">) =>
@@ -163,11 +168,11 @@ const setStatusMuted = async (c: Context<{ Bindings: Env }>, mute: boolean): Pro
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const found = await findStatusById(c.env.DB, c.req.param("id") ?? "");
+  const found = await findShownStatusAnywhere(c.env, c.req.param("id") ?? "", user.value.id);
   if (found.isErr()) {
     return jsonRepositoryError(c, found.error.message);
   }
-  const existing = found.value;
+  const existing = found.value?.kind === "LocalStatus" ? found.value.status : undefined;
   if (!existing || existing.kind !== "LocalNote") {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
@@ -191,14 +196,11 @@ const setStatusMuted = async (c: Context<{ Bindings: Env }>, mute: boolean): Pro
   if (latest.isErr() || !latest.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.json(
-    await mastodonStatus(
-      c.env,
-      identity.value,
-      latest.value,
-      user.value.id,
-      StatusAuthors.existing,
-    ),
+  return answerTarget(
+    c,
+    identity.value,
+    { kind: "LocalStatus", status: latest.value },
+    user.value.id,
   );
 };
 
@@ -213,27 +215,45 @@ const notFound = (c: Context<{ Bindings: Env }>) =>
   c.json({ error: "Record not found", kind: "NotFound" }, 404);
 
 /**
- * The status as the viewer sees it after an interaction, local or remote
- * alike. As Mastodon's undo actions do, a suspended author's status still
- * renders, its author stripped.
+ * Answer the status an interaction acted on, as the viewer sees it, local or
+ * remote alike. The action already decided the viewer may act on it, so an
+ * unavailable author's status renders too, its author stripped, as Mastodon's
+ * undo actions render it.
  */
-const targetDocument = async (
-  env: Env,
+const answerTarget = async (
+  c: Context<{ Bindings: Env }>,
   identity: InstanceIdentity,
   found: FoundStatus,
   viewerId: string,
-): Promise<Record<string, unknown> | undefined> =>
-  found.kind === "LocalStatus"
-    ? mastodonStatus(env, identity, found.status, viewerId, StatusAuthors.existing)
-    : (
-        await mastodonRemoteStatuses(
-          env,
-          identity,
-          [found.status],
-          viewerId,
-          StatusAuthors.existing,
-        )
-      )[0];
+): Promise<Response> => {
+  const document =
+    found.kind === "LocalStatus"
+      ? await mastodonStatus(c.env, identity, found.status, viewerId, StatusAuthors.any)
+      : (
+          await mastodonRemoteStatuses(c.env, identity, [found.status], viewerId, StatusAuthors.any)
+        ).map((documents) => documents[0]);
+  if (document.isErr()) {
+    return jsonRepositoryError(c, document.error.message);
+  }
+  return document.value ? c.json(document.value) : notFound(c);
+};
+
+/**
+ * An undo that withdrew nothing answers only for a status the viewer may be
+ * shown, as Mastodon's undo actions do; one that withdrew something answers
+ * whoever wrote the status. The refusal, if any.
+ */
+const refuseUnshownUndo = async (
+  c: Context<{ Bindings: Env }>,
+  found: FoundStatus,
+  viewerId: string,
+): Promise<Response | undefined> => {
+  const shown = await showsFoundStatus(c.env, found, viewerId);
+  if (shown.isErr()) {
+    return jsonRepositoryError(c, shown.error.message);
+  }
+  return shown.value ? undefined : notFound(c);
+};
 
 /** How ActivityPub names a status, or nothing when its local author is gone. */
 const activityObjectRef = async (
@@ -265,18 +285,18 @@ const federateRemoteInteraction = async (
 };
 
 /**
- * The status an interaction names, as the viewer may see it. With `visible`
- * off (the undo actions), a status the viewer can no longer see still resolves,
- * so an old favourite or bookmark can be withdrawn.
+ * The status an interaction names. An action needs one the viewer may be
+ * shown; an undo resolves any, so an old favourite or bookmark can be
+ * withdrawn, and {@link refuseUnshownUndo} decides when it withdrew nothing.
  */
-const interactionTarget = async (
+const interactionTarget = (
   c: Context<{ Bindings: Env }>,
   viewerId: string,
-  visible: boolean,
+  action: "do" | "undo",
 ): Promise<Result<FoundStatus | undefined, RepositoryError>> => {
   const id = c.req.param("id") ?? "";
-  return visible
-    ? findVisibleStatusAnywhere(c.env.DB, id, viewerId)
+  return action === "do"
+    ? findShownStatusAnywhere(c.env, id, viewerId)
     : findStatusAnywhere(c.env.DB, id);
 };
 
@@ -291,7 +311,7 @@ export const postV1StatusesByIdFavourite = async (
   if (user.isErr()) {
     return user.error;
   }
-  const found = await interactionTarget(c, user.value.id, true);
+  const found = await interactionTarget(c, user.value.id, "do");
   if (found.isErr()) {
     return jsonRepositoryError(c, found.error.message);
   }
@@ -322,7 +342,7 @@ export const postV1StatusesByIdFavourite = async (
       );
     }
   }
-  return c.json(await targetDocument(c.env, identity.value, target, user.value.id));
+  return answerTarget(c, identity.value, target, user.value.id);
 };
 
 export const postV1StatusesByIdUnfavourite = async (
@@ -336,7 +356,7 @@ export const postV1StatusesByIdUnfavourite = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const found = await interactionTarget(c, user.value.id, false);
+  const found = await interactionTarget(c, user.value.id, "undo");
   if (found.isErr()) {
     return jsonRepositoryError(c, found.error.message);
   }
@@ -348,6 +368,12 @@ export const postV1StatusesByIdUnfavourite = async (
   if (removed.isErr()) {
     return jsonRepositoryError(c, removed.error.message);
   }
+  if (removed.value === undefined) {
+    const refused = await refuseUnshownUndo(c, target, user.value.id);
+    if (refused) {
+      return refused;
+    }
+  }
   if (removed.value !== undefined && target.kind === "RemoteStatus") {
     const liked = { uri: target.status.objectUri, authorUri: target.status.actorUri };
     await federateRemoteInteraction(
@@ -357,7 +383,7 @@ export const postV1StatusesByIdUnfavourite = async (
       undoActivity(likeActivity(identity.value, user.value, removed.value, liked)),
     );
   }
-  return c.json(await targetDocument(c.env, identity.value, target, user.value.id));
+  return answerTarget(c, identity.value, target, user.value.id);
 };
 
 /**
@@ -385,23 +411,22 @@ const boostedStatus = async (
 
 /**
  * Mastodon's `StatusPolicy#reblog?`: never a direct status, never someone
- * else's followers-only post, and never one the viewer cannot see.
+ * else's followers-only post, and never one the viewer may not be shown.
  */
 const rebloggable = async (
-  db: D1Database,
+  env: Env,
   target: FoundStatus,
   viewerId: string,
-): Promise<boolean> => {
+): Promise<Result<boolean, RepositoryError>> => {
   if (target.kind === "LocalStatus" && target.status.kind !== "LocalNote") {
-    return false;
+    return ok(false);
   }
   const visibility = target.status.visibility.kind;
   const own = target.kind === "LocalStatus" && target.status.accountId === viewerId;
-  return (
-    visibility !== "Direct" &&
-    (visibility !== "FollowersOnly" || own) &&
-    (await canViewFoundStatus(db, target, viewerId))
-  );
+  if (visibility === "Direct" || (visibility === "FollowersOnly" && !own)) {
+    return ok(false);
+  }
+  return showsFoundStatus(env, target, viewerId);
 };
 
 /**
@@ -415,7 +440,7 @@ const publishBoost = async (
   booster: LocalAccount,
   target: FoundStatus,
   reblog: LocalReblog,
-): Promise<Result<Record<string, unknown> | undefined, ApiRefusal>> => {
+): Promise<Result<Record<string, unknown>, ApiRefusal>> => {
   const objectRef = await activityObjectRef(env.DB, identity, target);
   if (objectRef.isErr()) {
     return err(ApiRefusal.repository(objectRef.error.message));
@@ -452,16 +477,19 @@ const publishBoost = async (
       ),
     );
   }
-  const document = await mastodonStatus(env, identity, reblog, booster.id);
-  if (document) {
-    await publishToAccount(env, booster.id, { kind: "update", payload: document });
+  const document = await mastodonStatus(env, identity, reblog, booster.id, StatusAuthors.any);
+  if (document.isOk() && document.value) {
+    await publishToAccount(env, booster.id, { kind: "update", payload: document.value });
   }
   await enqueueHomeFanOut(env, {
     event: "update",
     entryId: reblog.id,
     author: { kind: "LocalAccount", accountId: booster.id },
   });
-  return ok(document);
+  if (document.isErr()) {
+    return err(ApiRefusal.repository(document.error.message));
+  }
+  return document.value ? ok(document.value) : err(ApiRefusal.notFound);
 };
 
 export const postV1StatusesByIdReblog = async (
@@ -479,7 +507,7 @@ export const postV1StatusesByIdReblog = async (
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const found = await findStatusAnywhere(c.env.DB, c.req.param("id") ?? "");
+  const found = await findShownStatusAnywhere(c.env, c.req.param("id") ?? "", user.value.id);
   if (found.isErr()) {
     return jsonRepositoryError(c, found.error.message);
   }
@@ -488,7 +516,11 @@ export const postV1StatusesByIdReblog = async (
     return jsonRepositoryError(c, boosted.error.message);
   }
   const target = boosted.value;
-  if (!target || !(await rebloggable(c.env.DB, target, user.value.id))) {
+  const allowed = target ? await rebloggable(c.env, target, user.value.id) : ok(false);
+  if (allowed.isErr()) {
+    return jsonRepositoryError(c, allowed.error.message);
+  }
+  if (!target || !allowed.value) {
     return notFound(c);
   }
   const boostTarget = foundStatusTarget(target);
@@ -502,7 +534,12 @@ export const postV1StatusesByIdReblog = async (
     if (document.isErr() || !document.value) {
       return notFound(c);
     }
-    return c.json(await mastodonStatus(c.env, identity.value, document.value, user.value.id));
+    return answerTarget(
+      c,
+      identity.value,
+      { kind: "LocalStatus", status: document.value },
+      user.value.id,
+    );
   }
   const requested = body.value.visibility;
   let requestedVisibility: Visibility | undefined;
@@ -556,6 +593,12 @@ export const postV1StatusesByIdUnreblog = async (
   if (reblogId.isErr()) {
     return jsonRepositoryError(c, reblogId.error.message);
   }
+  if (!reblogId.value) {
+    const refused = await refuseUnshownUndo(c, found.value, user.value.id);
+    if (refused) {
+      return refused;
+    }
+  }
   if (reblogId.value) {
     // The Undo carries the Announce it withdraws, so build it while the boost exists.
     const [reblog, objectRef] = await Promise.all([
@@ -582,7 +625,7 @@ export const postV1StatusesByIdUnreblog = async (
       }
     }
   }
-  return c.json(await targetDocument(c.env, identity.value, found.value, user.value.id));
+  return answerTarget(c, identity.value, found.value, user.value.id);
 };
 
 const setBookmarked = async (c: Context<{ Bindings: Env }>, bookmark: boolean) => {
@@ -594,7 +637,7 @@ const setBookmarked = async (c: Context<{ Bindings: Env }>, bookmark: boolean) =
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const found = await interactionTarget(c, user.value.id, bookmark);
+  const found = await interactionTarget(c, user.value.id, bookmark ? "do" : "undo");
   if (found.isErr()) {
     return jsonRepositoryError(c, found.error.message);
   }
@@ -602,13 +645,24 @@ const setBookmarked = async (c: Context<{ Bindings: Env }>, bookmark: boolean) =
     return notFound(c);
   }
   const target = foundStatusTarget(found.value);
-  const saved = bookmark
-    ? await bookmarkStatus(c.env.DB, user.value.id, target)
-    : await unbookmarkStatus(c.env.DB, user.value.id, target);
-  if (saved.isErr()) {
-    return jsonRepositoryError(c, saved.error.message);
+  if (bookmark) {
+    const saved = await bookmarkStatus(c.env.DB, user.value.id, target);
+    if (saved.isErr()) {
+      return jsonRepositoryError(c, saved.error.message);
+    }
+  } else {
+    const removed = await unbookmarkStatus(c.env.DB, user.value.id, target);
+    if (removed.isErr()) {
+      return jsonRepositoryError(c, removed.error.message);
+    }
+    if (removed.value === undefined) {
+      const refused = await refuseUnshownUndo(c, found.value, user.value.id);
+      if (refused) {
+        return refused;
+      }
+    }
   }
-  return c.json(await targetDocument(c.env, identity.value, found.value, user.value.id));
+  return answerTarget(c, identity.value, found.value, user.value.id);
 };
 
 export const postV1StatusesByIdBookmark = (
@@ -640,7 +694,10 @@ const engagedStatuses = async (
   const ids = targets.value.map((target) => target.statusId);
   setPaginationLinks(c, ids, limit);
   const documents = await statusDocumentsByIds(c.env, identity.value, ids, user.value.id);
-  return c.json(ids.flatMap((id) => documents.get(id) ?? []));
+  if (documents.isErr()) {
+    return jsonRepositoryError(c, documents.error.message);
+  }
+  return c.json(ids.flatMap((id) => documents.value.get(id) ?? []));
 };
 
 export const getV1Favourites = (c: Context<{ Bindings: Env }, "/api/v1/favourites">) =>

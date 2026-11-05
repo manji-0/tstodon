@@ -10,7 +10,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param remoteStatusId
  */
 export const deleteBookmark = $runtime.makeTypedQueryFactory(
-  "DELETE FROM bookmarks\nWHERE account_id = $1 AND (local_status_id = $2 OR remote_status_id = $3)",
+  "DELETE FROM bookmarks\nWHERE account_id = $1 AND (local_status_id = $2 OR remote_status_id = $3)\nRETURNING id",
 ) as (
   accountId: string,
   localStatusId: string | null,
@@ -23,5 +23,7 @@ export namespace deleteBookmark {
     localStatusId: string | null,
     remoteStatusId: string | null,
   ];
-  export type Result = {};
+  export type Result = {
+    id: string;
+  };
 }

@@ -5,6 +5,7 @@ import {
   LocalStatus,
   Visibility,
 } from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
 import { type PresentedAccount, presentedAccounts } from "./account-documents";
 import { boostedStatusAuthors, StatusAuthors } from "./account-presentation";
 import { findAccountsByIds } from "./account-store";
@@ -37,6 +38,7 @@ import { mastodonMedia } from "./media-document";
 import { pollJson } from "./poll-document";
 import { quotePolicyName } from "./quote-policy-name";
 import { documentsById } from "./documents-by-id";
+import type { RepositoryError } from "./d1";
 
 const mediaAttachmentsJson = (
   identity: InstanceIdentity,
@@ -112,10 +114,10 @@ export const mastodonStatus = async (
   status: LocalStatus,
   viewerId: string | undefined,
   authors: StatusAuthors = StatusAuthors.available,
-): Promise<Record<string, unknown> | undefined> => {
-  const documents = await mastodonStatuses(env, identity, [status], viewerId, authors);
-  return documents[0];
-};
+): Promise<Result<Record<string, unknown> | undefined, RepositoryError>> =>
+  (await mastodonStatuses(env, identity, [status], viewerId, authors)).map(
+    (documents) => documents[0],
+  );
 
 /**
  * Local statuses as Mastodon statuses rendered for the viewer, in the order
@@ -130,9 +132,9 @@ export const mastodonStatuses = async (
   statuses: ReadonlyArray<LocalStatus>,
   viewerId: string | undefined,
   authors: StatusAuthors = StatusAuthors.available,
-): Promise<Record<string, unknown>[]> => {
+): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
   if (statuses.length === 0) {
-    return [];
+    return ok([]);
   }
 
   const instanceEmojis = await loadCustomEmojis(env, identity.mediaPublicBaseUrl);
@@ -218,7 +220,10 @@ export const mastodonStatuses = async (
     listStatusCards(env.DB, noteIds),
   ]);
 
-  const accounts = accountsResult.isOk() ? accountsResult.value : new Map<string, LocalAccount>();
+  if (accountsResult.isErr()) {
+    return err(accountsResult.error);
+  }
+  const accounts = accountsResult.value;
   const interactions = interactionsResult.isOk()
     ? interactionsResult.value
     : new Map<string, StatusInteractionCounts>();
@@ -239,9 +244,8 @@ export const mastodonStatuses = async (
     quoteCountsByStatusIds(env.DB, noteIdsOf(allStatuses)),
     findStatusQuotePolicies(env.DB, noteIdsOf(allStatuses)),
   ]);
-  // A storage error leaves every status out rather than show an author unpresented.
   if (presented.isErr()) {
-    return [];
+    return err(presented.error);
   }
   const authorOf = (status: LocalStatus): PresentedAccount | undefined =>
     presented.value.get(status.accountId);
@@ -416,17 +420,19 @@ export const mastodonStatuses = async (
         : [],
     ),
   );
-  const remoteDocs = documentsById(
-    remoteTargets.isOk()
-      ? await mastodonRemoteStatuses(
-          env,
-          identity,
-          [...remoteTargets.value.values()],
-          viewerId,
-          boosted,
-        )
-      : [],
-  );
+  const remoteRendered = remoteTargets.isOk()
+    ? await mastodonRemoteStatuses(
+        env,
+        identity,
+        [...remoteTargets.value.values()],
+        viewerId,
+        boosted,
+      )
+    : ok([]);
+  if (remoteRendered.isErr()) {
+    return err(remoteRendered.error);
+  }
+  const remoteDocs = documentsById(remoteRendered.value);
 
   const render = (
     status: LocalStatus,
@@ -458,8 +464,10 @@ export const mastodonStatuses = async (
     };
   };
 
-  return statuses.flatMap((status) => {
-    const document = render(status, authors);
-    return document ? [document] : [];
-  });
+  return ok(
+    statuses.flatMap((status) => {
+      const document = render(status, authors);
+      return document ? [document] : [];
+    }),
+  );
 };

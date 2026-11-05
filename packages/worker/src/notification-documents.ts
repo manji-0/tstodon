@@ -51,6 +51,9 @@ export const mastodonNotifications = async (
   if (reported.isErr()) {
     return err(reported.error);
   }
+  if (statuses.isErr()) {
+    return err(statuses.error);
+  }
   const accounts = presented.value;
   const reports = reported.value;
   const events = new Map(
@@ -86,7 +89,7 @@ export const mastodonNotifications = async (
       type: row.kind,
       created_at: row.created_at,
       account,
-      status: row.status_id ? (statuses.get(row.status_id) ?? null) : null,
+      status: row.status_id ? (statuses.value.get(row.status_id) ?? null) : null,
       ...(target ? { target } : {}),
       ...(report ? { report } : {}),
       ...(event ? { event: severanceEventDocument(event) } : {}),

@@ -70,13 +70,19 @@ export const bookmarkStatus = async (
     );
   });
 
+/** Drop a bookmark; resolves to its id, or nothing when there was none. */
 export const unbookmarkStatus = async (
   db: D1Database,
   accountId: string,
   target: StatusTargetValue,
-): Promise<Result<void, RepositoryError>> =>
+): Promise<Result<string | undefined, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(db, deleteBookmarkSql(accountId, ...statusTargetColumns(target)));
+    const rows = await queryTyped(
+      db,
+      deleteBookmarkSql(accountId, ...statusTargetColumns(target)),
+      IdRow,
+    );
+    return rows[0]?.id;
   });
 
 const TargetRowSchema = z.object({

@@ -1,7 +1,9 @@
 import type { InstanceIdentity, RemoteStatusValue } from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
 import { presentedAccounts } from "./account-documents";
 import { StatusAuthors } from "./account-presentation";
 import { parseLocalStatusId } from "./activitypub";
+import type { RepositoryError } from "./d1";
 import { cardDocument, parseCardJson } from "./link-card";
 import { RemoteAccountId } from "./remote-account-id";
 import { listRemoteActorModerations } from "./remote-actor-moderation-store";
@@ -89,9 +91,9 @@ export const mastodonRemoteStatuses = async (
   statuses: ReadonlyArray<RemoteStatusValue>,
   viewerId: string | undefined,
   authors: StatusAuthors = StatusAuthors.available,
-): Promise<Record<string, unknown>[]> => {
+): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
   if (statuses.length === 0) {
-    return [];
+    return ok([]);
   }
   const ids = statuses.map((status) => status.id);
   const actorUris = statuses.map((status) => status.actorUri);
@@ -102,12 +104,12 @@ export const mastodonRemoteStatuses = async (
     findRemotePollVotes(env.DB, viewerId, statuses),
     statusInteractionCountsByIds(env.DB, ids, viewerId),
   ]);
-  const presented = actors.isOk()
-    ? await presentedAccounts(env, identity, [], [...actors.value.values()])
-    : undefined;
-  // A storage error leaves every status out rather than show an author unpresented.
-  if (!presented?.isOk()) {
-    return [];
+  if (actors.isErr()) {
+    return err(actors.error);
+  }
+  const presented = await presentedAccounts(env, identity, [], [...actors.value.values()]);
+  if (presented.isErr()) {
+    return err(presented.error);
   }
   const documents = statuses.flatMap((status) => {
     const author = presented.value.get(RemoteAccountId.encode(status.actorUri));
@@ -128,5 +130,5 @@ export const mastodonRemoteStatuses = async (
     return [document];
   });
   await attachRemoteReplyRefs(env.DB, identity, documents);
-  return documents;
+  return ok(documents);
 };

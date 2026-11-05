@@ -88,6 +88,9 @@ const requestDocuments = async (
   if (resolved.isErr()) {
     return err(resolved.error);
   }
+  if (statuses.isErr()) {
+    return err(statuses.error);
+  }
   const accounts = resolved.value;
   return ok(
     requests.flatMap((request) => {
@@ -100,7 +103,7 @@ const requestDocuments = async (
               updated_at: request.updatedAt,
               notifications_count: String(request.notificationsCount),
               account,
-              last_status: request.statusId ? (statuses.get(request.statusId) ?? null) : null,
+              last_status: request.statusId ? (statuses.value.get(request.statusId) ?? null) : null,
             },
           ]
         : [];

@@ -91,5 +91,8 @@ export const getV1TrendsStatuses = async (
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
-  return c.json(await mastodonStatuses(c.env, identity.value, statuses.value, undefined));
+  const documents = await mastodonStatuses(c.env, identity.value, statuses.value, undefined);
+  return documents.isErr()
+    ? jsonRepositoryError(c, documents.error.message)
+    : c.json(documents.value);
 };

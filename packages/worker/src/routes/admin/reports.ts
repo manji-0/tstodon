@@ -36,20 +36,24 @@ const adminReportDocument = async (
   // A moderator sees every reported status, a suspended author's too, stripped.
   const statuses = reported.isOk()
     ? [
-        ...(await mastodonStatuses(
-          c.env,
-          identity,
-          reported.value.local,
-          undefined,
-          StatusAuthors.any,
-        )),
-        ...(await mastodonRemoteStatuses(
-          c.env,
-          identity,
-          reported.value.remote.map(({ status }) => status),
-          undefined,
-          StatusAuthors.any,
-        )),
+        ...(
+          await mastodonStatuses(
+            c.env,
+            identity,
+            reported.value.local,
+            undefined,
+            StatusAuthors.any,
+          )
+        ).unwrapOr([]),
+        ...(
+          await mastodonRemoteStatuses(
+            c.env,
+            identity,
+            reported.value.remote.map(({ status }) => status),
+            undefined,
+            StatusAuthors.any,
+          )
+        ).unwrapOr([]),
       ]
     : [];
   return {

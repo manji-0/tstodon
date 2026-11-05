@@ -56,7 +56,13 @@ export const remoteBoostDocuments = async (
   if (boosters.isErr()) {
     return err(boosters.error);
   }
-  const documents = documentsById([...localDocuments, ...remoteDocuments]);
+  if (localDocuments.isErr()) {
+    return err(localDocuments.error);
+  }
+  if (remoteDocuments.isErr()) {
+    return err(remoteDocuments.error);
+  }
+  const documents = documentsById([...localDocuments.value, ...remoteDocuments.value]);
   return ok(
     boosts.flatMap((boost) => {
       const booster = boosters.value.get(RemoteAccountId.encode(boost.actorUri));

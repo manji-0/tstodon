@@ -204,21 +204,29 @@ export const getV1TimelinesLink = async (
   if (remote.isErr()) {
     return jsonRepositoryError(c, remote.error.message);
   }
-  const localDocuments = await mastodonStatuses(c.env, identity.value, local.value, viewerId);
-  const rendered = await remoteTimelineDocuments(c.env, identity.value, remote.value, viewerId);
+  const [localDocuments, rendered] = await Promise.all([
+    mastodonStatuses(c.env, identity.value, local.value, viewerId),
+    remoteTimelineDocuments(c.env, identity.value, remote.value, viewerId),
+  ]);
+  if (localDocuments.isErr()) {
+    return jsonRepositoryError(c, localDocuments.error.message);
+  }
+  if (rendered.isErr()) {
+    return jsonRepositoryError(c, rendered.error.message);
+  }
   const filteredLocal = await attachFilteredToStatuses(
     c.env.DB,
     viewerId,
     "public",
     local.value,
-    localDocuments,
+    localDocuments.value,
   );
   const filteredRemote = await attachFilteredToRemoteStatuses(
     c.env.DB,
     viewerId,
     "public",
-    rendered.statuses,
-    rendered.documents,
+    rendered.value.statuses,
+    rendered.value.documents,
   );
   return c.json(mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit));
 };
@@ -250,12 +258,21 @@ export const getV1TimelinesDirect = async (
   if (visible.isErr()) {
     return jsonRepositoryError(c, visible.error.message);
   }
+  const localDocuments = await mastodonStatuses(
+    c.env,
+    identity.value,
+    visible.value,
+    user.value.id,
+  );
+  if (localDocuments.isErr()) {
+    return jsonRepositoryError(c, localDocuments.error.message);
+  }
   const filteredLocal = await attachFilteredToStatuses(
     c.env.DB,
     user.value.id,
     "home",
     visible.value,
-    await mastodonStatuses(c.env, identity.value, visible.value, user.value.id),
+    localDocuments.value,
   );
   // Remote replies into a muted conversation stay out, as local ones do.
   const mutedRemote = await mutedThreadStatusIds(
@@ -274,12 +291,15 @@ export const getV1TimelinesDirect = async (
     user.value.id,
     () => true,
   );
+  if (rendered.isErr()) {
+    return jsonRepositoryError(c, rendered.error.message);
+  }
   const filteredRemote = await attachFilteredToRemoteStatuses(
     c.env.DB,
     user.value.id,
     "home",
-    rendered.statuses,
-    rendered.documents,
+    rendered.value.statuses,
+    rendered.value.documents,
   );
   return c.json(mergeTimelineDocuments(filteredLocal, filteredRemote, {}, limit));
 };

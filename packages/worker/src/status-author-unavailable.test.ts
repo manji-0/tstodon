@@ -271,10 +271,14 @@ describe("a status whose remote author is suspended", () => {
   });
 });
 
-const postAs = async (email: string, path: string, init: RequestInit = {}) =>
+const postAs = async (
+  email: string,
+  path: string,
+  init: Readonly<{ headers?: Record<string, string>; body?: string }> = {},
+) =>
   json(path, {
     method: "POST",
-    ...init,
+    ...(init.body === undefined ? {} : { body: init.body }),
     headers: { "content-type": "application/json", ...(await authHeaders(email)), ...init.headers },
   });
 

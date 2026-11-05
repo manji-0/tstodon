@@ -291,10 +291,12 @@ const removeEntry = async (
     case "Lists":
       return removeListMembers(env.DB, entry.listId, [entry.member]);
     case "Bookmarks":
-      return unbookmarkStatus(env.DB, account.id, {
-        kind: "LocalStatus",
-        statusId: entry.statusId,
-      });
+      return (
+        await unbookmarkStatus(env.DB, account.id, {
+          kind: "LocalStatus",
+          statusId: entry.statusId,
+        })
+      ).map(() => undefined);
   }
 };
 
