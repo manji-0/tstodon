@@ -1,41 +1,27 @@
 import { InstanceIdentity, type ThreadStatus, type Visibility } from "@tstodon/domain";
-import { err, ok, type Result } from "neverthrow";
+import type { Result } from "neverthrow";
 import { findAccountById } from "./account-store";
 import type { RepositoryError } from "./d1";
-import { findRemoteStatusById, findRemoteStatusByObjectUri } from "./remote-status-store";
+import { findShownStatusAnywhere } from "./found-status";
+import { findRemoteStatusByObjectUri } from "./remote-status-store";
 import { findStatusById, listStatusReplyUris } from "./status-store";
-import { canViewRemoteStatus, canViewStatus } from "./visibility-guard";
 
 /**
- * The status `in_reply_to_id` names, local or cached remote, when the author
- * may see it; `undefined` otherwise.
+ * The status `in_reply_to_id` names, local or cached remote, when Mastodon's
+ * `StatusPolicy#show?` lets the author see it; `undefined` otherwise.
  */
 export const findReplyTarget = async (
-  db: D1Database,
+  env: Env,
   id: string,
   viewerId: string,
-): Promise<Result<ThreadStatus | undefined, RepositoryError>> => {
-  const local = await findStatusById(db, id);
-  if (local.isErr()) {
-    return err(local.error);
-  }
-  if (local.value) {
-    return ok(
-      (await canViewStatus(db, local.value, viewerId))
-        ? { kind: "Local", status: local.value }
-        : undefined,
-    );
-  }
-  const remote = await findRemoteStatusById(db, id);
-  if (remote.isErr()) {
-    return err(remote.error);
-  }
-  return ok(
-    remote.value && (await canViewRemoteStatus(db, remote.value, viewerId))
-      ? { kind: "Remote", status: remote.value }
-      : undefined,
+): Promise<Result<ThreadStatus | undefined, RepositoryError>> =>
+  (await findShownStatusAnywhere(env, id, viewerId)).map((found) =>
+    found === undefined
+      ? undefined
+      : found.kind === "LocalStatus"
+        ? { kind: "Local", status: found.status }
+        : { kind: "Remote", status: found.status },
   );
-};
 
 /** How a local note federates its reply: the parent's URI, and who else to address. */
 export type NoteReply = Readonly<{

@@ -1,3 +1,4 @@
+import type { InstanceIdentity } from "@tstodon/domain";
 import type { Context } from "hono";
 import { z } from "zod";
 import { findMediaByIds } from "../media-store";
@@ -17,6 +18,7 @@ import {
   findScheduledStatus,
   listScheduledStatuses,
   scheduledStatusDocument,
+  type ScheduledStatusRow,
   updateScheduledStatusAt,
 } from "../scheduled-status-store";
 
@@ -32,23 +34,39 @@ const parseScheduledAt = (raw: string): string | undefined => {
   return new Date(at).toISOString();
 };
 
+/**
+ * The media a scheduled post will attach, in its order. Only the author's own
+ * media counts: rows stored before `media_ids` was checked can name any.
+ */
+export const scheduledStatusMedia = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  row: ScheduledStatusRow,
+): Promise<ReadonlyArray<Record<string, unknown>>> => {
+  if (row.params.media_ids.length === 0) {
+    return [];
+  }
+  const media = await findMediaByIds(db, [...row.params.media_ids]);
+  if (media.isErr()) {
+    return [];
+  }
+  return row.params.media_ids.flatMap((id) => {
+    const attachment = media.value.get(id);
+    return attachment && attachment.account_id === row.accountId
+      ? [mastodonMedia(identity, attachment)]
+      : [];
+  });
+};
+
 const scheduledDocument = async (
   c: Context<{ Bindings: Env }>,
-  row: Parameters<typeof scheduledStatusDocument>[0],
+  row: ScheduledStatusRow,
 ): Promise<Record<string, unknown> | undefined> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return undefined;
   }
-  const media =
-    row.params.media_ids.length > 0
-      ? await findMediaByIds(c.env.DB, [...row.params.media_ids])
-      : undefined;
-  const attachments =
-    media && media.isOk()
-      ? [...media.value.values()].map((attachment) => mastodonMedia(identity.value, attachment))
-      : [];
-  return scheduledStatusDocument(row, attachments);
+  return scheduledStatusDocument(row, await scheduledStatusMedia(c.env.DB, identity.value, row));
 };
 
 const notFound = (c: Context<{ Bindings: Env }>) =>

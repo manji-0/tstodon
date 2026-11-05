@@ -35,7 +35,10 @@ const createRefusals = [
     name: "a quote of a status that does not exist",
     body: { status: "quote", quoted_status_id: "missing-status" },
     status: 404,
-    error: { error: "Record not found", kind: "NotFound" },
+    error: {
+      error: "The post you are trying to quote does not appear to exist.",
+      kind: "NotFound",
+    },
   },
   {
     name: "an unknown quote approval policy",
@@ -47,7 +50,10 @@ const createRefusals = [
     name: "a reply to a status that does not exist",
     body: { status: "reply", in_reply_to_id: "missing-status" },
     status: 404,
-    error: { error: "Record not found", kind: "NotFound" },
+    error: {
+      error: "The post you are trying to reply to does not appear to exist.",
+      kind: "NotFound",
+    },
   },
   {
     name: "a schedule in the past",

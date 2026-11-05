@@ -47,7 +47,7 @@ import { findShownStatusAnywhere } from "../../found-status";
 import { remoteStatusHistory } from "../../remote-status-edit";
 import { isQuotePolicy, listAcceptedQuoteEdges, setStatusQuotePolicy } from "../../quote-store";
 import { applyMediaAttributes } from "../../local-status-publish";
-import { queueLinkCard, visibilityIsPublic } from "./create";
+import { checkAttachableMedia, queueLinkCard, visibilityIsPublic } from "./create";
 import { ApiRefusal } from "../api-refusal";
 import type { MediaAttribute } from "../../status-body-schema";
 
@@ -267,6 +267,10 @@ const editNote = async (
   if (!mediaDescriptionsFit(mediaAttributes)) {
     return err(ApiRefusal.rejected(422, "description is too long", "ValidationError"));
   }
+  const media = await checkAttachableMedia(env.DB, author.id, draft.value.mediaIds, existing.id);
+  if (media.isErr()) {
+    return err(media.error);
+  }
   const revised = LocalStatus.revise(existing, draft.value, textToHtml(draft.value.text));
 
   const snapshotted = await snapshotPreviousRevision(env, identity, existing, author.id);
@@ -311,9 +315,9 @@ const editNote = async (
       return err(ApiRefusal.repository(stored.error.message));
     }
   }
-  const media = await replaceStatusMedia(env.DB, existing.id, author.id, revised.mediaIds);
-  if (media.isErr()) {
-    return err(ApiRefusal.repository(media.error.message));
+  const replaced = await replaceStatusMedia(env.DB, existing.id, author.id, revised.mediaIds);
+  if (replaced.isErr()) {
+    return err(ApiRefusal.repository(replaced.error.message));
   }
   const attributeError = await applyMediaAttributes(env, author.id, existing.id, mediaAttributes);
   if (attributeError) {

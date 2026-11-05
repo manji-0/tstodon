@@ -119,6 +119,28 @@ export const findMediaByIds = async (
   return ok(new Map(parseRows(MediaRowSchema, queried.value.results).map((row) => [row.id, row])));
 };
 
+/**
+ * The `media_ids` a status may not attach, in request order, as Mastodon's
+ * `validate_media!` finds them: anything but the author's own media that no
+ * status holds, or that the edited status (`statusId`) already holds.
+ */
+export const findUnattachableMediaIds = async (
+  db: D1Database,
+  accountId: string,
+  mediaIds: ReadonlyArray<string>,
+  statusId: string | null,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+  (await findMediaByIds(db, mediaIds)).map((rows) =>
+    mediaIds.filter((id) => {
+      const row = rows.get(id);
+      return !row || row.account_id !== accountId || ![null, statusId].includes(row.status_id);
+    }),
+  );
+
+/** Mastodon's `media_attachments.validations.not_found` message. */
+export const mediaNotFoundMessage = (ids: ReadonlyArray<string>): string =>
+  `Media ${ids.join(", ")} not found or already attached to another post`;
+
 /** Set alt text and an optional focal point on one of the account's media rows. */
 export const updateMediaMetadata = async (
   db: D1Database,

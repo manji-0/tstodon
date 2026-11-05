@@ -9,8 +9,7 @@ import { findMediaByIds } from "./media-store";
 /**
  * A local note's media as its federated `attachment` lists them, in the note's
  * order, and whether an admin has sensitized its author. Only rows the author
- * attached to this note count: `mediaIds` of a draft are the request's
- * `media_ids`, which can name another account's media.
+ * attached to this note count.
  */
 export const loadNoteMedia = async (
   db: D1Database,

@@ -320,7 +320,7 @@ describe("note attachments", () => {
     expect(await queuedNotes(status.account.id, "Update")).toEqual([]);
   });
 
-  it("publishes a scheduled post locally without a Create when its media cannot be read", async () => {
+  it("keeps a due scheduled post for the next run while its media cannot be read", async () => {
     const email = "note-attachments-create-d1@example.com";
     const media = await upload(email, "pending.png", "image/png");
     const accountId = await accountIdOf(email);
@@ -345,13 +345,17 @@ describe("note attachments", () => {
       { ...env, DB: failingMediaLookup(env.DB) },
       { kind: "PublishScheduledStatuses" },
     );
+    const statusesPath = `/api/v1/accounts/${accountId}/statuses`;
+    const before = await json(statusesPath, { headers: await authHeaders(email) });
+    expect(read(z.array(PostedStatus), before.body)).toEqual([]);
 
-    const statuses = await json(`/api/v1/accounts/${accountId}/statuses`, {
-      headers: await authHeaders(email),
-    });
-    const [published] = read(z.array(PostedStatus), statuses.body);
+    await processOutboxJob(env, { kind: "PublishScheduledStatuses" });
+
+    const after = await json(statusesPath, { headers: await authHeaders(email) });
+    const [published] = read(z.array(PostedStatus), after.body);
     expect(published?.media_attachments.map((attachment) => attachment.id)).toEqual([media]);
-    expect(await queuedNotes(accountId, "Create")).toEqual([]);
+    const [created] = await queuedNotes(accountId, "Create");
+    expect(created?.id).toBe(published?.uri);
   });
 
   it("answers 500 for a fetched note whose media cannot be read", async () => {
@@ -375,29 +379,6 @@ describe("note attachments", () => {
     );
 
     expect(response.status).toBe(500);
-  });
-
-  it("federates none of another account's media named in media_ids", async () => {
-    const owner = "note-attachments-owner@example.com";
-    const other = "note-attachments-borrower@example.com";
-    const owned = await upload(owner, "private.png", "image/png");
-    const kept = await send(owner, "POST", "/api/v1/statuses", {
-      status: "only for followers",
-      visibility: "private",
-      media_ids: [owned],
-    });
-    expect(kept.status).toBe(200);
-
-    const posted = await send(other, "POST", "/api/v1/statuses", {
-      status: "borrowing a picture",
-      media_ids: [owned],
-    });
-    expect(posted.status).toBe(200);
-    const status = read(PostedStatus, posted.body);
-
-    const [created] = await queuedNotes(status.account.id, "Create");
-    expect(created?.id).toBe(status.uri);
-    expect(created?.attachment).toEqual([]);
   });
 
   it("marks a sensitized author's media sensitive, as Mastodon does", async () => {

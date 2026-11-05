@@ -264,22 +264,6 @@ describe("in_reply_to_id and quoted_status_id naming a status that is not shown"
     expect(await scheduledCount(replierId)).toBe(0);
   });
 
-  it("answers Mastodon's bodies for a reply or quote target that does not exist", async () => {
-    const author = "create-targets-missing@example.com";
-    const reply = await send(author, "POST", "/api/v1/statuses", {
-      status: "a reply",
-      in_reply_to_id: "999999999999999999",
-    });
-    expect(reply.status).toBe(404);
-    expect(reply.body).toMatchObject(replyNotFound);
-    const quote = await send(author, "POST", "/api/v1/statuses", {
-      status: "a quote",
-      quoted_status_id: "999999999999999999",
-    });
-    expect(quote.status).toBe(404);
-    expect(quote.body).toMatchObject(quoteNotFound);
-  });
-
   it("drops a due scheduled reply whose parent's author is suspended", async () => {
     const author = "create-targets-due-parent@example.com";
     const replier = "create-targets-due-replier@example.com";

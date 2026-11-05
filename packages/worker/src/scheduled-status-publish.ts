@@ -10,6 +10,7 @@ import { findAccountById } from "./account-store";
 import { findLocalAccountModeration } from "./account-moderation-store";
 import { findReplyTarget } from "./reply-target";
 import { publishLocalNote } from "./local-status-publish";
+import { findUnattachableMediaIds } from "./media-store";
 import { mediaDescriptionsFit } from "./status-body-schema";
 import { parseInstanceIdentity } from "./runtime-config";
 import {
@@ -65,6 +66,20 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void
     await deleteScheduledStatus(env.DB, row.accountId, row.id);
     return;
   }
+  // Mastodon checks media again when it publishes: another status may hold it by now.
+  const unattachable = await findUnattachableMediaIds(
+    env.DB,
+    row.accountId,
+    draft.value.mediaIds,
+    null,
+  );
+  if (unattachable.isErr()) {
+    return;
+  }
+  if (unattachable.value.length > 0) {
+    await deleteScheduledStatus(env.DB, row.accountId, row.id);
+    return;
+  }
   const inReplyToId =
     row.params.in_reply_to_id === null ? null : StatusId.parse(row.params.in_reply_to_id);
   if (inReplyToId !== null && inReplyToId.isErr()) {
@@ -73,7 +88,7 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void
   }
   let replyTo: ThreadStatus | null = null;
   if (inReplyToId !== null) {
-    const parent = await findReplyTarget(env.DB, inReplyToId.value, account.value.id);
+    const parent = await findReplyTarget(env, inReplyToId.value, account.value.id);
     if (parent.isErr() || !parent.value) {
       await deleteScheduledStatus(env.DB, row.accountId, row.id);
       return;

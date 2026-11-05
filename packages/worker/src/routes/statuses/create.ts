@@ -24,7 +24,6 @@ import {
   requireFunctionalUser,
   requireUser,
 } from "../../http";
-import { mastodonMedia } from "../../media-document";
 import { mastodonStatus } from "../../local-status-documents";
 import {
   CreateStatusBodySchema,
@@ -46,8 +45,9 @@ import type { MediaAttribute } from "../../status-body-schema";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { findStatusById } from "../../status-store";
 import { enqueueLinkCard } from "../../link-card";
-import { findMediaByIds } from "../../media-store";
-import { canViewStatus } from "../../visibility-guard";
+import { findUnattachableMediaIds, mediaNotFoundMessage } from "../../media-store";
+import { scheduledStatusMedia } from "../scheduled-statuses";
+import { showsFoundStatus } from "../../found-status";
 import { type PublishPoll, publishLocalNote } from "../../local-status-publish";
 import { quotePolicyName } from "../../quote-policy-name";
 import {
@@ -104,17 +104,54 @@ const parsePollRequest = (
   });
 };
 
+/**
+ * Refuse `media_ids` naming media the author may not attach (see
+ * {@link findUnattachableMediaIds}) with Mastodon's 422.
+ */
+export const checkAttachableMedia = async (
+  db: D1Database,
+  accountId: string,
+  mediaIds: ReadonlyArray<string>,
+  statusId: string | null,
+): Promise<Result<void, ApiRefusal>> => {
+  if (mediaIds.length === 0) {
+    return ok(undefined);
+  }
+  const unattachable = await findUnattachableMediaIds(db, accountId, mediaIds, statusId);
+  if (unattachable.isErr()) {
+    return err(ApiRefusal.repository(unattachable.error.message));
+  }
+  return unattachable.value.length === 0
+    ? ok(undefined)
+    : err(ApiRefusal.rejected(422, mediaNotFoundMessage(unattachable.value), "ValidationError"));
+};
+
+/** Mastodon's `statuses.errors.quoted_status_not_found`. */
+const quoteNotFound = ApiRefusal.rejected(
+  404,
+  "The post you are trying to quote does not appear to exist.",
+  "NotFound",
+);
+
+/** Mastodon's `statuses.errors.in_reply_not_found`. */
+const replyNotFound = ApiRefusal.rejected(
+  404,
+  "The post you are trying to reply to does not appear to exist.",
+  "NotFound",
+);
+
 /** The status a quote post points at, with the link the post renders for it. */
 type QuoteTarget = Readonly<{ status: LocalStatus; url: string; inlineHtml: string | null }>;
 
 /**
- * Resolve `quoted_status_id`: a status the author may see and quote. Its
- * policy is the quoted status's stored policy (else its author's default),
- * and a followers-only original clamps the quote to followers-only too, so
- * the visibility the post ends up with comes back with the target.
+ * Resolve `quoted_status_id`: a local status shown to the author that they
+ * may quote. Its policy is the quoted status's stored policy (else its
+ * author's default), and a followers-only original clamps the quote to
+ * followers-only too, so the visibility the post ends up with comes back with
+ * the target. Every refusal answers Mastodon's one 404, as `set_quoted_status`.
  */
 const resolveQuote = async (
-  db: D1Database,
+  env: Env,
   identity: InstanceIdentity,
   authorId: string,
   quotedRaw: string,
@@ -128,12 +165,13 @@ const resolveQuote = async (
   if (quotedId.isErr()) {
     return err(ApiRefusal.rejected(422, "Invalid quoted_status_id", "ValidationError"));
   }
+  const db = env.DB;
   const found = await findStatusById(db, quotedId.value);
   if (found.isErr()) {
     return err(ApiRefusal.repository(found.error.message));
   }
   if (!found.value) {
-    return err(ApiRefusal.notFound);
+    return err(quoteNotFound);
   }
   let target = found.value;
   // Quoting a boost quotes the boosted status, as Mastodon does.
@@ -143,12 +181,16 @@ const resolveQuote = async (
       return err(ApiRefusal.repository(original.error.message));
     }
     if (!original.value) {
-      return err(ApiRefusal.notFound);
+      return err(quoteNotFound);
     }
     target = original.value;
   }
-  if (!(await canViewStatus(db, target, authorId))) {
-    return err(ApiRefusal.notFound);
+  const shown = await showsFoundStatus(env, { kind: "LocalStatus", status: target }, authorId);
+  if (shown.isErr()) {
+    return err(ApiRefusal.repository(shown.error.message));
+  }
+  if (!shown.value) {
+    return err(quoteNotFound);
   }
   const targetVisibility = Visibility.toMastodon(target.visibility);
   if (targetVisibility === "direct") {
@@ -162,8 +204,7 @@ const resolveQuote = async (
       ? quotePolicyName(targetAuthor.value.defaultQuotePolicy)
       : defaultQuotePolicy(targetVisibility));
   if (policy === "nobody" && target.accountId !== authorId) {
-    // Mastodon answers 404 for a status it will not let you quote.
-    return err(ApiRefusal.notFound);
+    return err(quoteNotFound);
   }
   if (policy === "followers" && target.accountId !== authorId) {
     const follow = await findFollowKind(db, authorId, target.accountId);
@@ -171,7 +212,7 @@ const resolveQuote = async (
       return err(ApiRefusal.repository(follow.error.message));
     }
     if (follow.value !== "Accepted") {
-      return err(ApiRefusal.notFound);
+      return err(quoteNotFound);
     }
   }
   const clamped =
@@ -203,9 +244,9 @@ const resolveQuote = async (
   return ok({ quote: { status: target, url, inlineHtml }, visibility: clamped });
 };
 
-/** Resolve `in_reply_to_id`: a local status or a cached remote one the author may see. */
+/** Resolve `in_reply_to_id`: a local or cached remote status shown to the author. */
 const resolveReplyTo = async (
-  db: D1Database,
+  env: Env,
   replyRaw: string,
   authorId: string,
 ): Promise<Result<ThreadStatus | null, ApiRefusal>> => {
@@ -216,11 +257,11 @@ const resolveReplyTo = async (
   if (replyId.isErr()) {
     return err(ApiRefusal.rejected(422, "Invalid in_reply_to_id", "ValidationError"));
   }
-  const parent = await findReplyTarget(db, replyId.value, authorId);
+  const parent = await findReplyTarget(env, replyId.value, authorId);
   if (parent.isErr()) {
     return err(ApiRefusal.repository(parent.error.message));
   }
-  return parent.value ? ok(parent.value) : err(ApiRefusal.notFound);
+  return parent.value ? ok(parent.value) : err(replyNotFound);
 };
 
 /** Everything a new note carries besides its author and quote, once the request is validated. */
@@ -290,19 +331,10 @@ const scheduleStatus = async (
   if (stored.isErr()) {
     return err(ApiRefusal.repository(stored.error.message));
   }
-  const media =
-    stored.value.params.media_ids.length > 0
-      ? await findMediaByIds(db, [...stored.value.params.media_ids])
-      : undefined;
   return ok({
     id: stored.value.id,
     document: ok(
-      scheduledStatusDocument(
-        stored.value,
-        media && media.isOk()
-          ? [...media.value.values()].map((attachment) => mastodonMedia(identity, attachment))
-          : [],
-      ),
+      scheduledStatusDocument(stored.value, await scheduledStatusMedia(db, identity, stored.value)),
     ),
   });
 };
@@ -334,7 +366,7 @@ const postStatus = async (
   }
   const text = body.status ?? "";
   const quoted = await resolveQuote(
-    env.DB,
+    env,
     identity,
     author.id,
     body.quoted_status_id?.trim() ?? "",
@@ -379,9 +411,13 @@ const postStatus = async (
   if (!mediaDescriptionsFit(mediaAttributes)) {
     return err(ApiRefusal.rejected(422, "description is too long", "ValidationError"));
   }
-  const replyTo = await resolveReplyTo(env.DB, body.in_reply_to_id?.trim() ?? "", author.id);
+  const replyTo = await resolveReplyTo(env, body.in_reply_to_id?.trim() ?? "", author.id);
   if (replyTo.isErr()) {
     return err(replyTo.error);
+  }
+  const media = await checkAttachableMedia(env.DB, author.id, draft.value.mediaIds, null);
+  if (media.isErr()) {
+    return err(media.error);
   }
   const note: NoteRequest = {
     draft: draft.value,
