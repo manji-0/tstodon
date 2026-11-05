@@ -208,6 +208,94 @@ describe("grouped notifications", () => {
     }
     expect(seen).toContain(c);
   });
+
+  it("counts a group's notifications older than the page's last group", async () => {
+    const authorEmail = "group-count-author@example.com";
+    const [a, b] = [
+      await postStatus(authorEmail, { status: "count a" }),
+      await postStatus(authorEmail, { status: "count b" }),
+    ];
+    // Newest first: a, b, a. Mastodon counts both of a's on a limit=2 page.
+    await favourite("group-count-fan-a@example.com", a);
+    await favourite("group-count-fan-a@example.com", b);
+    await favourite("group-count-fan-b@example.com", a);
+
+    const page = await json("/api/v2/notifications?limit=2", { headers: await auth(authorEmail) });
+    const groups = read(EnvelopeSchema, page.body).notification_groups;
+    expect(groups.map((group) => [group.status_id, group.notifications_count])).toEqual([
+      [a, 2],
+      [b, 1],
+    ]);
+    expect(groups[0]?.sample_account_ids).toHaveLength(2);
+  });
+
+  it("returns a min_id page newest first with each group's newest notification", async () => {
+    const authorEmail = "group-min-author@example.com";
+    const [marker, p, r] = [
+      await postStatus(authorEmail, { status: "min marker" }),
+      await postStatus(authorEmail, { status: "min p" }),
+      await postStatus(authorEmail, { status: "min r" }),
+    ];
+    await favourite("group-min-fan-a@example.com", marker);
+    const before = await json("/api/v2/notifications", { headers: await auth(authorEmail) });
+    const minId = read(EnvelopeSchema, before.body).notification_groups[0]?.page_max_id ?? "";
+    await favourite("group-min-fan-a@example.com", p);
+    await favourite("group-min-fan-b@example.com", r);
+    await favourite("group-min-fan-b@example.com", p);
+
+    const v1 = await json("/api/v1/notifications", { headers: await auth(authorEmail) });
+    const newestP = read(z.array(z.object({ id: z.string() })), v1.body)[0]?.id;
+
+    const page = await json(`/api/v2/notifications?min_id=${minId}`, {
+      headers: await auth(authorEmail),
+    });
+    const groups = read(EnvelopeSchema, page.body).notification_groups;
+    // As Mastodon's `to_a_grouped_paginated_by_id`: groups ordered by their
+    // first notification after min_id, newest first.
+    expect(groups.map((group) => group.status_id)).toEqual([r, p]);
+    expect(groups[1]).toMatchObject({
+      most_recent_notification_id: newestP,
+      page_max_id: newestP,
+      notifications_count: 2,
+    });
+  });
+
+  it("acts on the whole group by key, past the request's page of groups", async () => {
+    const authorEmail = "group-key-author@example.com";
+    const p = await postStatus(authorEmail, { status: "key p" });
+    await favourite("group-key-old@example.com", p);
+    const fan = "group-key-other@example.com";
+    for (let index = 0; index < 41; index += 1) {
+      await favourite(fan, await postStatus(authorEmail, { status: `key other ${index}` }));
+    }
+    await favourite("group-key-new@example.com", p);
+    const groupKey = `favourite-${p}`;
+
+    const single = await json(`/api/v2/notifications/${groupKey}`, {
+      headers: await auth(authorEmail),
+    });
+    expect(read(EnvelopeSchema, single.body).notification_groups[0]?.notifications_count).toBe(2);
+    const accounts = await json(`/api/v2/notifications/${groupKey}/accounts`, {
+      headers: await auth(authorEmail),
+    });
+    expect(read(z.array(MastodonAccountPreviewSchema), accounts.body)).toHaveLength(2);
+
+    const dismissed = await json(`/api/v2/notifications/${groupKey}/dismiss`, {
+      method: "POST",
+      headers: await auth(authorEmail),
+    });
+    expect(dismissed.status).toBe(200);
+    const after = await json("/api/v2/notifications?limit=80", {
+      headers: await auth(authorEmail),
+    });
+    const groups = read(EnvelopeSchema, after.body).notification_groups;
+    expect(groups).toHaveLength(41);
+    expect(groups.map((group) => group.status_id)).not.toContain(p);
+    const gone = await json(`/api/v2/notifications/${groupKey}`, {
+      headers: await auth(authorEmail),
+    });
+    expect(gone.status).toBe(404);
+  });
 });
 
 const parseLinks = (header: string | null): { next?: URL; prev?: URL } =>
