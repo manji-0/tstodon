@@ -81,6 +81,7 @@ export { NotificationPolicyAction } from "./notification-policy-action";
 export type { ResolveNotificationDisposition } from "./notification-resolver";
 export type {
   HoldNotification,
+  IsSenderSilenced,
   InsertNotification,
   NewNotification,
   PublishNotification,

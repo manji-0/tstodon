@@ -10,11 +10,17 @@ const mention = {
   statusId: "300",
 } as const satisfies NewNotification;
 
-const recording = (disposition: NotificationPolicyAction, muted: ReadonlyArray<string> = []) => {
+const recording = (
+  disposition: NotificationPolicyAction,
+  muted: ReadonlyArray<string> = [],
+  silencedSenders: ReadonlyArray<string> = [],
+) => {
   const events: string[] = [];
   return {
     events,
     contracts: {
+      isSenderSilenced: async (notification: NewNotification) =>
+        ok(silencedSenders.includes(notification.fromAccountId)),
       resolveDisposition: async () => {
         events.push("disposition");
         return ok(disposition);
@@ -69,5 +75,13 @@ describe("deliverNotification", () => {
       kind: "admin.sign_up",
     });
     expect(store.events).toEqual(["insert admin.sign_up", "publish 100 n1"]);
+  });
+
+  it("records nothing of any kind from a silenced sender", async () => {
+    for (const kind of ["mention", "status", "quoted_update", "admin.sign_up"]) {
+      const store = recording("accept", [], ["200"]);
+      await deliverNotification(store.contracts, { ...mention, kind });
+      expect(store.events).toEqual([]);
+    }
   });
 });

@@ -17,6 +17,14 @@ export type NewNotification = Readonly<{
   severanceEventId?: string;
 }>;
 
+/**
+ * Does the recipient block the notification's sender or mute its
+ * notifications, or block the domain of a remote sender?
+ */
+export type IsSenderSilenced = (
+  notification: NewNotification,
+) => Promise<Result<boolean, RepositoryError>>;
+
 /** Record the notification; resolves to its new id. */
 export type InsertNotification = (
   notification: NewNotification,

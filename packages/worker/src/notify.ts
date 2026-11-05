@@ -3,6 +3,7 @@ import {
   type HoldNotification,
   Hostname,
   type InsertNotification,
+  type IsSenderSilenced,
   LocalFollow,
   type NewNotification,
   NotificationGroup,
@@ -28,7 +29,7 @@ import { publishToAccount } from "./stream-publish";
 /**
  * Notification kinds that bypass the recipient's notification policy: the
  * types Mastodon 4.5 marks `filterable: false` in `Notification::PROPERTIES`.
- * Blocks and mutes still drop them.
+ * A silenced sender still drops them (`deliverNotification`).
  */
 const POLICY_EXEMPT_KINDS: ReadonlyArray<string> = [
   "status",
@@ -44,6 +45,7 @@ const POLICY_EXEMPT_KINDS: ReadonlyArray<string> = [
 
 /** What delivering a notification reads and writes. */
 export type NotifyContracts = Readonly<{
+  isSenderSilenced: IsSenderSilenced;
   resolveDisposition: ResolveNotificationDisposition;
   findMutedThreadStatusIds: FindMutedThreadStatusIds;
   insertNotification: InsertNotification;
@@ -53,13 +55,21 @@ export type NotifyContracts = Readonly<{
 
 /**
  * Record a notification as the recipient's policy decides: delivered, held
- * back as a request, or dropped outright. Mastodon's moderation notifications
- * bypass the policy: a new sign-up is always "new" and "not followed".
+ * back as a request, or dropped outright. As Mastodon's NotifyService, nothing
+ * of any kind comes from a sender the recipient blocks or mutes notifications
+ * of; the non-filterable kinds then bypass the policy.
  */
 export const deliverNotification = async (
   contracts: NotifyContracts,
   input: NewNotification,
 ): Promise<Result<void, RepositoryError>> => {
+  const silenced = await contracts.isSenderSilenced(input);
+  if (silenced.isErr()) {
+    return err(silenced.error);
+  }
+  if (silenced.value) {
+    return ok(undefined);
+  }
   const disposition = POLICY_EXEMPT_KINDS.includes(input.kind)
     ? ok("accept" as const)
     : await contracts.resolveDisposition({
@@ -100,6 +110,7 @@ export const deliverNotification = async (
 const notifyContracts = (env: Env): NotifyContracts => {
   const identity = parseInstanceIdentity(env);
   return {
+    isSenderSilenced: (notification) => isSenderSilenced(env.DB, notification),
     resolveDisposition: (notification) => notificationDisposition(env.DB, notification),
     findMutedThreadStatusIds: (accountId, statusIds) =>
       identity.isOk()
@@ -171,12 +182,16 @@ const streamedNotification = async (
     : undefined;
 };
 
-/** Does the recipient block `sender` (an account id or actor URI) or mute its notifications? */
-const silencesSender = async (
+/**
+ * Blocks and mutes name a remote sender by its actor URI and a local one by
+ * its account id; only a remote sender has a domain to block.
+ */
+const isSenderSilenced = async (
   db: D1Database,
-  recipientId: string,
-  sender: string,
+  notification: NewNotification,
 ): Promise<Result<boolean, RepositoryError>> => {
+  const recipientId = notification.accountId;
+  const sender = notification.fromActorUri ?? notification.fromAccountId;
   const blocked = await findBlock(db, recipientId, sender);
   if (blocked.isErr()) {
     return err(blocked.error);
@@ -185,31 +200,15 @@ const silencesSender = async (
   if (muted.isErr()) {
     return err(muted.error);
   }
-  return ok(blocked.value || (muted.value?.notifications ?? false));
-};
-
-/**
- * A notification from a local account, unless the recipient blocks it or
- * mutes its notifications.
- */
-export const notifyFromLocal = async (
-  env: Env,
-  input: NewNotification,
-): Promise<Result<void, RepositoryError>> => {
-  const silenced = await silencesSender(env.DB, input.accountId, input.fromAccountId);
-  if (silenced.isErr()) {
-    return err(silenced.error);
+  if (blocked.value || muted.value?.notifications) {
+    return ok(true);
   }
-  return silenced.value ? ok(undefined) : notifyAccount(env, input);
+  const domain = notification.fromActorUri ? Hostname.ofUri(notification.fromActorUri) : undefined;
+  return domain ? isDomainBlocked(db, recipientId, domain) : ok(false);
 };
 
-/**
- * A notification from a remote actor. Its sender id is the actor's `r_…`
- * account id; a recipient who blocks the actor, mutes its notifications, or
- * blocks its domain gets none (blocks and mutes also hide earlier ones when
- * the list is read).
- */
-export const notifyFromRemote = async (
+/** A notification from a remote actor, whose sender id is the actor's `r_…` account id. */
+export const notifyFromRemote = (
   env: Env,
   input: Readonly<{
     accountId: string;
@@ -218,20 +217,8 @@ export const notifyFromRemote = async (
     statusId?: string;
     targetAccountId?: string;
   }>,
-): Promise<Result<void, RepositoryError>> => {
-  const silenced = await silencesSender(env.DB, input.accountId, input.actorUri);
-  if (silenced.isErr()) {
-    return err(silenced.error);
-  }
-  const domain = Hostname.ofUri(input.actorUri);
-  const domainBlocked = domain ? await isDomainBlocked(env.DB, input.accountId, domain) : ok(false);
-  if (domainBlocked.isErr()) {
-    return err(domainBlocked.error);
-  }
-  if (silenced.value || domainBlocked.value) {
-    return ok(undefined);
-  }
-  return notifyAccount(env, {
+): Promise<Result<void, RepositoryError>> =>
+  notifyAccount(env, {
     accountId: input.accountId,
     fromAccountId: RemoteAccountId.encode(input.actorUri),
     fromActorUri: input.actorUri,
@@ -239,4 +226,3 @@ export const notifyFromRemote = async (
     ...(input.statusId ? { statusId: input.statusId } : {}),
     ...(input.targetAccountId ? { targetAccountId: input.targetAccountId } : {}),
   });
-};

@@ -6,7 +6,7 @@ import type { RepositoryError } from "./d1";
 import { documentsById } from "./documents-by-id";
 import { mastodonStatuses } from "./local-status-documents";
 import { measureJobPage } from "./metrics";
-import { notifyFromLocal, notifyFromRemote } from "./notify";
+import { notifyAccount, notifyFromRemote } from "./notify";
 import { scheduleFinalPollUpdate } from "./poll-update";
 import {
   claimLocalPollExpiryNotice,
@@ -52,7 +52,7 @@ const notifyPollEnded = (
 ): Promise<Result<void, RepositoryError>> => {
   switch (voter.kind) {
     case "LocalPollVoter":
-      return notifyFromLocal(env, {
+      return notifyAccount(env, {
         accountId: voter.accountId,
         fromAccountId: voter.authorId,
         kind: "poll",
@@ -144,7 +144,7 @@ const announceEndedLocalPolls = async (env: Env, notifiedAt: string): Promise<Pa
       if (document) {
         await publishToAccount(env, accountId, { kind: "status.update", payload: document });
       }
-      await notifyFromLocal(env, {
+      await notifyAccount(env, {
         accountId,
         fromAccountId: accountId,
         kind: "poll",
