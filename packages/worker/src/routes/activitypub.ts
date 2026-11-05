@@ -1,25 +1,8 @@
 import { authorityHost } from "../domain-block-store";
-import {
-  ActivityId,
-  InboxActivity,
-  InstanceIdentity,
-  LocalStatus,
-  RemoteActor,
-  StatusId,
-  StatusTarget,
-  Visibility,
-  reblogVisibility,
-  type LocalAccount,
-  type RemoteActor as RemoteActorValue,
-} from "@tstodon/domain";
+import { ActivityId, InboxActivity, InstanceIdentity, type LocalAccount } from "@tstodon/domain";
 import type { Context } from "hono";
 import { findAccountByUsername, findAccountsByIds } from "../account-store";
-import {
-  activityPayloadFromJson,
-  noteDocument,
-  parseLocalActorUsername,
-  parseLocalStatusId,
-} from "../activitypub";
+import { activityPayloadFromJson, noteDocument, parseLocalActorUsername } from "../activitypub";
 import { jsonRepositoryError, queryLimit } from "../http";
 import { verifyInboxRequest, parseSignatureHeader } from "../http-signature";
 import { localActorDocument } from "../local-actor";
@@ -27,58 +10,25 @@ import { suspendedDomains } from "../admin-domain-block-store";
 import { getRemoteActorModeration } from "../remote-actor-moderation-store";
 import { signedFetchActor } from "../signed-fetch";
 import { inboxActivityExists, insertInboxActivity } from "../inbox-store";
+import { dispatchInbox } from "../inbox/dispatch";
+import type { InboxSigner } from "../inbox/handler";
 import { listPublicOutboxActivities } from "../outbox-store";
 import { resolveRemoteActor } from "../remote-actor-fetch";
-import {
-  deleteRemoteFollow,
-  findRemoteActorByUri,
-  findRemoteFollow,
-  upsertRemoteFollow,
-} from "../remote-actor-store";
+import { findRemoteActorByUri, findRemoteFollow } from "../remote-actor-store";
 import { RemoteDeleteTarget } from "../remote-delete";
-import { applyRemoteUpdate } from "../remote-update";
-import { persistAnnouncedObject, persistRemoteObject } from "../remote-status-persist";
-import { enqueueHomeFanOut } from "../home-fan-out";
-import { purgeRemoteActorAndAnnounce } from "../remote-actor-purge";
-import { enqueuePublicFanOut } from "../public-fan-out";
-import { recordRemoteBoost } from "../remote-boost";
-import { deleteRemoteBoostByActivity } from "../remote-boost-store";
-import { handleRemotePollVote } from "../remote-poll-vote";
-import { removeRemoteStatus } from "../remote-status-delete";
-import {
-  deleteRemoteAnnounce,
-  deleteRemoteFavourite,
-  upsertRemoteAnnounce,
-  upsertRemoteFavourite,
-} from "../remote-interaction-store";
-import { enqueueTargetedActivity } from "../delivery";
 import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import { quotedStatusUri } from "../quote-uri";
-import {
-  ActivityJsonSchema,
-  JsonObjectSchema,
-  NestedActivityObjectSchema,
-} from "../activitypub-wire";
+import { ActivityJsonSchema, JsonObjectSchema } from "../activitypub-wire";
 import { parseJsonColumn, parseJsonText } from "../json-column";
 import { schemaResult } from "@tstodon/core";
-import { deleteRemoteNotifications } from "../notification-store";
-import { favouriteStatus } from "../status-interaction-store";
-import { followAccount, listFollowers, listFollowing, unfollowAccount } from "../follow-store";
+import { listFollowers, listFollowing } from "../follow-store";
 import { loadNoteMentions } from "../mention-resolve";
 import { loadNoteReply } from "../reply-target";
 import { loadNotePoll } from "../poll-store";
-import { notifyAccount, notifyFromRemote } from "../notify";
-import { findStatusById, insertLocalReblog } from "../status-store";
-import { nowInstant } from "../clock";
-import { newEntityId } from "../ids";
-import { outboundFollowAnswer } from "../outbound-follow";
-import { acceptOutboundFollow, rejectOutboundFollow } from "../outbound-follow-store";
+import { findStatusById } from "../status-store";
 import { RemoteAccountId } from "../remote-account-id";
-import { applyRemoteMove } from "../remote-move";
-import { receiveRemoteFlag } from "../remote-flag";
 import { instanceActorDocument, instanceActorKeys } from "../instance-actor";
 
-const parseNestedActivityObject = schemaResult(NestedActivityObjectSchema);
 const parseActivityJson = schemaResult(ActivityJsonSchema);
 
 const jsonLd = {
@@ -290,17 +240,6 @@ export const getUsersByUsernameFollowing = async (
   return c.json(collection(`${actor}/following`, items), 200, jsonLd);
 };
 
-const objectUriOf = (value: string | Readonly<{ id: string }>): string =>
-  typeof value === "string" ? value : value.id;
-
-const nestedActivityTarget = (raw: unknown): { type: string; objectUri: string } | undefined => {
-  const parsed = parseNestedActivityObject(raw);
-  if (parsed.isErr()) {
-    return undefined;
-  }
-  return { type: parsed.value.type, objectUri: objectUriOf(parsed.value.object) };
-};
-
 const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -320,13 +259,14 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     return c.json({ kind: "InvalidSignature" }, 401);
   }
   const suspended = await suspendedDomains(c.env.DB);
+  const allowHosts = await federationAllowHosts(c.env);
   const payload = activityPayloadFromJson(activityJson.value);
   const actorUri = String(payload.actor);
   const actorUsername = parseLocalActorUsername(identity.value, actorUri);
-  const deleteTarget = RemoteDeleteTarget.of(actorUri, String(payload.object));
-  let signer:
-    | { kind: "Local"; account: LocalAccount }
-    | { kind: "Remote"; actor: RemoteActorValue };
+  const deletesSigner =
+    payload.kind === "Delete" &&
+    RemoteDeleteTarget.of(actorUri, String(payload.object)).kind === "ActorDelete";
+  let signer: InboxSigner;
   if (actorUsername) {
     const actorAccount = await findAccountByUsername(c.env.DB, actorUsername);
     if (actorAccount.isErr()) {
@@ -339,7 +279,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   } else {
     // A repeated account Delete from an actor already purged: there is nothing
     // to remove and its key can no longer be fetched.
-    if (payload.kind === "Delete" && deleteTarget.kind === "ActorDelete") {
+    if (deletesSigner) {
       const cached = await findRemoteActorByUri(c.env.DB, actorUri);
       if (cached.isErr()) {
         return jsonRepositoryError(c, cached.error.message);
@@ -348,7 +288,6 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         return c.body(null, 202);
       }
     }
-    const allowHosts = await federationAllowHosts(c.env);
     const remote = await resolveRemoteActor(c.env.DB, identity.value, signature.keyId, actorUri, {
       allowHosts,
       blockedHosts: suspended,
@@ -377,10 +316,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     if (moderation.isErr()) {
       return jsonRepositoryError(c, moderation.error.message);
     }
-    if (
-      moderation.value.standing.kind === "Suspended" &&
-      !(payload.kind === "Delete" && deleteTarget.kind === "ActorDelete")
-    ) {
+    if (moderation.value.standing.kind === "Suspended" && !deletesSigner) {
       return c.json({ error: "This actor is suspended on this instance", kind: "Forbidden" }, 403);
     }
     signer = { kind: "Remote", actor: remote.value };
@@ -422,318 +358,22 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   if (received.kind !== "Dispatched") {
     return c.body(null, 202);
   }
-  const activity = received.activity;
-  if (signer.kind === "Remote") {
-    // The actor answers a local account's `Follow` of it.
-    if (activity.kind === "Accept" || activity.kind === "Reject") {
-      const answer = await outboundFollowAnswer(
-        c.env.DB,
-        identity.value,
-        signer.actor,
-        activity.object,
-        activityJson.value.object,
-      );
-      if (answer.isErr()) {
-        return jsonRepositoryError(c, answer.error.message);
-      }
-      const answered =
-        activity.kind === "Accept"
-          ? await acceptOutboundFollow(c.env.DB, answer.value)
-          : await rejectOutboundFollow(c.env.DB, answer.value);
-      if (answered.isErr()) {
-        return jsonRepositoryError(c, answered.error.message);
-      }
-    }
-    if (activity.kind === "Flag") {
-      const flagged = await receiveRemoteFlag(c.env, identity.value, signer.actor, json.value);
-      if (flagged.isErr()) {
-        return jsonRepositoryError(c, flagged.error.message);
-      }
-    }
-    if (activity.kind === "Move") {
-      const moved = await applyRemoteMove(c.env, identity.value, signer.actor, activityJson.value, {
-        allowHosts: await federationAllowHosts(c.env),
-        blockedHosts: suspended,
-      });
-      if (moved.isErr()) {
-        return jsonRepositoryError(c, moved.error.message);
-      }
-    }
-    if (activity.kind === "Follow") {
-      const targetUsername = parseLocalActorUsername(identity.value, activity.object);
-      const target = targetUsername
-        ? await findAccountByUsername(c.env.DB, targetUsername)
-        : undefined;
-      if (target?.isOk() && target.value) {
-        // A redelivered Follow keeps its row and must not notify again.
-        const existing = await findRemoteFollow(c.env.DB, target.value.id, signer.actor.actorUri);
-        const followed = await upsertRemoteFollow(
-          c.env.DB,
-          signer.actor.actorUri,
-          target.value.id,
-          target.value.locked,
-          activity.id,
-        );
-        if (followed.isOk() && existing.isOk() && !existing.value) {
-          await notifyFromRemote(c.env, {
-            accountId: target.value.id,
-            actorUri: signer.actor.actorUri,
-            kind: target.value.locked ? "follow_request" : "follow",
-          });
-        }
-        // Unlocked accounts auto-accept: send Accept to the follower's inbox.
-        if (!target.value.locked) {
-          const acceptActor = InstanceIdentity.actorUrl(identity.value, target.value.username);
-          const followerInbox = RemoteActor.deliveryInbox(signer.actor);
-          await enqueueTargetedActivity(
-            c.env,
-            target.value.id,
-            "Accept",
-            {
-              "@context": "https://www.w3.org/ns/activitystreams",
-              id: `${acceptActor}/activities/accept-${activity.id}`,
-              type: "Accept",
-              actor: acceptActor,
-              object: {
-                id: activity.id,
-                type: "Follow",
-                actor: signer.actor.actorUri,
-                object: activity.object,
-              },
-            },
-            followerInbox,
-          );
-        }
-      }
-    }
-    if (activity.kind === "Undo") {
-      const nested = nestedActivityTarget(activityJson.value.object);
-      const targetUsername = parseLocalActorUsername(
-        identity.value,
-        nested?.type === "Follow" ? nested.objectUri : activity.object,
-      );
-      const target = targetUsername
-        ? await findAccountByUsername(c.env.DB, targetUsername)
-        : undefined;
-      if (target?.isOk() && target.value) {
-        await deleteRemoteFollow(c.env.DB, signer.actor.actorUri, target.value.id);
-        await deleteRemoteNotifications(c.env.DB, {
-          actorUri: signer.actor.actorUri,
-          kinds: ["follow", "follow_request"],
-          accountId: target.value.id,
-        });
-      }
-      const statusUri =
-        nested && (nested.type === "Like" || nested.type === "Announce")
-          ? nested.objectUri
-          : undefined;
-      const statusId = statusUri ? parseLocalStatusId(identity.value, statusUri) : undefined;
-      if (statusId && nested?.type === "Like") {
-        await deleteRemoteFavourite(c.env.DB, signer.actor.actorUri, statusId);
-        await deleteRemoteNotifications(c.env.DB, {
-          actorUri: signer.actor.actorUri,
-          kinds: ["favourite"],
-          statusId,
-        });
-      }
-      // The boost row is keyed by the Announce id, whether the Undo embeds it or names it.
-      const undone = await deleteRemoteBoostByActivity(
-        c.env.DB,
-        objectUriOf(activityJson.value.object),
-        signer.actor.actorUri,
-      );
-      if (undone.isErr()) {
-        return jsonRepositoryError(c, undone.error.message);
-      }
-      if (undone.value) {
-        await enqueueHomeFanOut(c.env, {
-          event: "delete",
-          entryId: undone.value,
-          author: { kind: "RemoteActor", actorUri: signer.actor.actorUri },
-        });
-      }
-      if (statusId && nested?.type === "Announce") {
-        await deleteRemoteAnnounce(c.env.DB, signer.actor.actorUri, statusId);
-        await deleteRemoteNotifications(c.env.DB, {
-          actorUri: signer.actor.actorUri,
-          kinds: ["reblog"],
-          statusId,
-        });
-      }
-    }
-    if (activity.kind === "Like") {
-      const statusId = parseLocalStatusId(identity.value, activity.object);
-      if (statusId) {
-        const liked = await upsertRemoteFavourite(c.env.DB, signer.actor.actorUri, statusId);
-        if (liked.isOk() && liked.value) {
-          await notifyStatusAuthor(c.env, signer.actor.actorUri, statusId, "favourite");
-        }
-      }
-    }
-    if (activity.kind === "Delete") {
-      if (deleteTarget.kind === "ActorDelete") {
-        const purged = await purgeRemoteActorAndAnnounce(c.env, deleteTarget.actorUri);
-        if (purged.isErr()) {
-          return jsonRepositoryError(c, purged.error.message);
-        }
-      } else if (!parseLocalStatusId(identity.value, deleteTarget.objectUri)) {
-        // Remote note delete (object is remote URI we may have cached).
-        await removeRemoteStatus(c.env, signer.actor.actorUri, {
-          kind: "ObjectUri",
-          objectUri: deleteTarget.objectUri,
-        });
-      }
-    }
-    if (activity.kind === "Update") {
-      await applyRemoteUpdate(c.env, identity.value, signer.actor, activityJson.value.object, {
-        allowHosts: await federationAllowHosts(c.env),
-      });
-    }
-    const pollVote =
-      activity.kind === "Create"
-        ? await handleRemotePollVote(c.env, identity.value, signer.actor, activityJson.value.object)
-        : undefined;
-    if (pollVote?.kind === "NotAVote") {
-      const created = await persistRemoteObject(
-        c.env,
-        identity.value,
-        signer.actor,
-        activityJson.value.object,
-        { allowHosts: await federationAllowHosts(c.env), notifyMentions: true },
-      );
-      // A redelivered Create finds the note cached and tells followers again,
-      // which clients take as the same status.
-      if (created.isOk() && created.value?.actorUri === signer.actor.actorUri) {
-        await enqueueHomeFanOut(c.env, {
-          event: "update",
-          entryId: created.value.id,
-          author: { kind: "RemoteActor", actorUri: signer.actor.actorUri },
-        });
-        if (created.value.visibility.kind === "Public") {
-          await enqueuePublicFanOut(c.env, { event: "update", entryId: created.value.id });
-        }
-      }
-    }
-    if (activity.kind === "Announce") {
-      const announced = await persistAnnouncedObject(
-        c.env,
-        identity.value,
-        signer.actor,
-        activityJson.value.object,
-        { allowHosts: await federationAllowHosts(c.env), blockedHosts: suspended },
-      );
-      if (announced.isErr()) {
-        return jsonRepositoryError(c, announced.error.message);
-      }
-      const boosted = await recordRemoteBoost(
-        c.env.DB,
-        identity.value,
-        signer.actor.actorUri,
-        activity,
-        activityJson.value,
-        announced.value,
-      );
-      if (boosted.isErr()) {
-        return jsonRepositoryError(c, boosted.error.message);
-      }
-      if (boosted.value) {
-        await enqueueHomeFanOut(c.env, {
-          event: "update",
-          entryId: boosted.value.id,
-          author: { kind: "RemoteActor", actorUri: signer.actor.actorUri },
-        });
-      }
-      const statusId = parseLocalStatusId(identity.value, activity.object);
-      if (statusId) {
-        const counted = await upsertRemoteAnnounce(
-          c.env.DB,
-          signer.actor.actorUri,
-          statusId,
-          activity.id,
-        );
-        if (counted.isOk() && counted.value) {
-          await notifyStatusAuthor(c.env, signer.actor.actorUri, statusId, "reblog");
-        }
-      }
-    }
-    return c.body(null, 202);
-  }
-  const actor = signer.account;
-  if (activity.kind === "Follow") {
-    const targetUsername = parseLocalActorUsername(identity.value, activity.object);
-    const target = targetUsername
-      ? await findAccountByUsername(c.env.DB, targetUsername)
-      : undefined;
-    if (target?.isOk() && target.value) {
-      const followed = await followAccount(
-        c.env.DB,
-        actor.id,
-        target.value.id,
-        target.value.locked,
-      );
-      if (
-        followed.isOk() &&
-        followed.value.kind === "LocalFollower" &&
-        followed.value.follow.kind !== "None"
-      ) {
-        await notifyAccount(c.env, {
-          accountId: target.value.id,
-          fromAccountId: actor.id,
-          kind: followed.value.follow.kind === "Pending" ? "follow_request" : "follow",
-        });
-      }
-    }
-  }
-  if (activity.kind === "Undo") {
-    const targetUsername = parseLocalActorUsername(identity.value, activity.object);
-    const target = targetUsername
-      ? await findAccountByUsername(c.env.DB, targetUsername)
-      : undefined;
-    if (target?.isOk() && target.value) {
-      await unfollowAccount(c.env.DB, actor.id, target.value.id);
-    }
-  }
-  if (activity.kind === "Like") {
-    const statusId = StatusId.parse(parseLocalStatusId(identity.value, activity.object) ?? "");
-    if (statusId.isOk()) {
-      await favouriteStatus(c.env.DB, actor.id, StatusTarget.local(statusId.value));
-    }
-  }
-  if (activity.kind === "Announce") {
-    const statusId = parseLocalStatusId(identity.value, activity.object);
-    const parsedStatusId = statusId ? StatusId.parse(statusId) : undefined;
-    if (parsedStatusId?.isOk()) {
-      // The boost shares the original's visibility when that one is restricted.
-      const target = await findStatusById(c.env.DB, parsedStatusId.value);
-      const reblogId = StatusId.parse(newEntityId());
-      if (reblogId.isOk() && target.isOk() && target.value) {
-        await insertLocalReblog(
-          c.env.DB,
-          LocalStatus.reblog(
-            reblogId.value,
-            actor.id,
-            StatusTarget.local(parsedStatusId.value),
-            nowInstant(),
-            reblogVisibility(target.value.visibility, undefined, Visibility.Public),
-          ),
-        );
-      }
-    }
+  const applied = await dispatchInbox(
+    {
+      env: c.env,
+      identity: identity.value,
+      activity: received.activity,
+      received: activityJson.value,
+      body: json.value,
+      allowHosts,
+      blockedHosts: suspended,
+    },
+    signer,
+  );
+  if (applied.isErr()) {
+    return jsonRepositoryError(c, applied.error.message);
   }
   return c.body(null, 202);
-};
-
-/** Tell a local status's author about a remote actor's Like or Announce of it. */
-const notifyStatusAuthor = async (
-  env: Env,
-  actorUri: string,
-  statusId: string,
-  kind: "favourite" | "reblog",
-): Promise<void> => {
-  const status = await findStatusById(env.DB, statusId);
-  if (status.isOk() && status.value?.kind === "LocalNote") {
-    await notifyFromRemote(env, { accountId: status.value.accountId, actorUri, kind, statusId });
-  }
 };
 
 export const postUsersByUsernameInbox = (c: Context<{ Bindings: Env }, "/users/:username/inbox">) =>
