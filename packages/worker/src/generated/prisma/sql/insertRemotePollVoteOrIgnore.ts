@@ -12,7 +12,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param createdAt
  */
 export const insertRemotePollVoteOrIgnore = $runtime.makeTypedQueryFactory(
-  "INSERT OR IGNORE INTO remote_poll_votes (poll_id, actor_uri, option_index, object_uri, created_at)\nVALUES ($1, $2, $3, $4, $5)",
+  "INSERT OR IGNORE INTO remote_poll_votes (poll_id, actor_uri, option_index, object_uri, created_at)\nSELECT $1, $2, $3, $4, $5\nWHERE EXISTS (SELECT 1 FROM polls WHERE id = $1 AND expires_at > $5)",
 ) as (
   pollId: string,
   actorUri: string,
