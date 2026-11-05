@@ -4,6 +4,7 @@ import { searchAccountsPage } from "../account-search";
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import { authenticate } from "../auth";
 import { filteredAttribute, loadViewerFilters, matchFilters } from "../filter-match";
+import { isTruthy } from "../form-values";
 import { jsonAuthError, jsonRepositoryError, queryLimit, queryOffset } from "../http";
 import {
   documentsInOrder,
@@ -70,10 +71,19 @@ const search = async (c: Context<{ Bindings: Env }>) => {
       401,
     );
   }
+  const resolve = isTruthy(c.req.query("resolve"));
+  // Resolving makes this instance fetch from other servers on the caller's behalf.
+  if (resolve && viewerId === undefined) {
+    return c.json(
+      {
+        error:
+          "Search queries that resolve remote resources are not supported without authentication",
+      },
+      401,
+    );
+  }
   // Mastodon pages by `offset` only when one result `type` is asked for.
   const offset = requestedType.length === 0 ? 0 : queryOffset(rawOffset);
-  const resolveRaw = c.req.query("resolve");
-  const resolve = resolveRaw === "true" || resolveRaw === "1";
   if (query.length === 0) {
     return c.json({ accounts: [], statuses: [], hashtags: [], collections: [] });
   }
@@ -118,7 +128,7 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     type === "accounts" || type === "hashtags"
       ? ok([])
       : await (async () => {
-          const statuses = await searchStatuses(c.env.DB, query, limit);
+          const statuses = await searchStatuses(c.env.DB, viewerId, query, limit, offset);
           if (statuses.isErr()) {
             return statuses;
           }
@@ -148,7 +158,8 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     }
   }
   let hashtags: Record<string, unknown>[] = [];
-  if (type !== "accounts" && type !== "statuses" && query.startsWith("#")) {
+  // The one hashtag found is the query's own, so only the first page has it.
+  if (type !== "accounts" && type !== "statuses" && query.startsWith("#") && offset === 0) {
     const name = query.replace(/^#/, "").toLowerCase();
     const history = await tagDailyHistory(c.env.DB, name);
     const following = viewerId ? await isTagFollowed(c.env.DB, viewerId, name) : undefined;

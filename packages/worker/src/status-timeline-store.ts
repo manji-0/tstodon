@@ -140,17 +140,38 @@ export const listAccountStatusesFiltered = async (
     return hydrateStatusRows(db, results ?? []);
   });
 
+/**
+ * Local notes whose text contains `query`, newest first, kept in SQL to the
+ * ones `viewerId` may see (as `canViewStatus`, without its direct reply
+ * chains) so that `offset` skips only visible results.
+ */
 export const searchStatuses = async (
   db: D1Database,
+  viewerId: string | undefined,
   query: string,
   limit: number,
+  offset: number,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
+    const viewer = viewerId ?? "";
     const { results } = await db
       .prepare(
-        `SELECT ${statusSelect} FROM statuses WHERE kind = 'LocalNote' ${MODERATED_ACCOUNTS_SQL} AND content_text LIKE ? ORDER BY id DESC LIMIT ?`,
+        `SELECT ${statusSelect} FROM statuses
+         WHERE kind = 'LocalNote' ${MODERATED_ACCOUNTS_SQL} AND content_text LIKE ?
+           AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
+           AND (
+             visibility IN ('public', 'unlisted')
+             OR account_id = ?
+             OR (visibility = 'private' AND account_id IN (
+               SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
+             ))
+             OR (visibility = 'direct' AND id IN (
+               SELECT status_id FROM status_mentions WHERE account_id = ?
+             ))
+           )
+         ORDER BY id DESC LIMIT ? OFFSET ?`,
       )
-      .bind(`%${query}%`, limit)
+      .bind(`%${query}%`, ...suppressedBinds(viewerId), viewer, viewer, viewer, limit, offset)
       .all();
     return hydrateStatusRows(db, results ?? []);
   });
