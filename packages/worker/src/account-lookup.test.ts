@@ -7,7 +7,7 @@ import { authHeaders } from "../test/auth-fixture";
 import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 import { nowIso } from "./clock";
 import { generateAccountKeys } from "./keys";
-import { upsertRemoteActor } from "./remote-actor-store";
+import { setRemoteActorMovedTo, upsertRemoteActor } from "./remote-actor-store";
 
 const json = async (
   path: string,
@@ -300,5 +300,111 @@ describe("a suspended account", () => {
         account.username,
       );
     }
+  });
+});
+
+const MovedSchema = LookupSchema.extend({ moved: SuspendedAccountSchema.optional() });
+
+describe("an account that moved to an unavailable account", () => {
+  const instanceThumbnail = async (): Promise<string> =>
+    read(
+      z.object({ thumbnail: z.object({ url: z.string() }) }),
+      (await json("/api/v2/instance")).body,
+    ).thumbnail.url;
+
+  /** The `moved` that lookup and `GET /accounts/:id` answer for `acct`, which must agree. */
+  const movedOf = async (acct: string) => {
+    const looked = await lookup(acct);
+    expect(looked.status).toBe(200);
+    const account = read(MovedSchema, looked.body);
+    const byId = await json(`/api/v1/accounts/${account.id}`);
+    expect(byId.status).toBe(200);
+    expect(read(MovedSchema, byId.body).moved).toEqual(account.moved);
+    return account.moved;
+  };
+
+  const expectStripped = (
+    moved: z.infer<typeof SuspendedAccountSchema> | undefined,
+    thumbnail: string,
+  ) => {
+    expect(moved?.suspended).toBe(true);
+    expect(moved?.display_name).toBe("");
+    expect(moved?.note).toBe("");
+    expect(moved?.avatar).toBe(thumbnail);
+    expect(moved?.header).toBe(thumbnail);
+    expect(moved?.locked).toBe(false);
+    expect(moved?.bot).toBe(false);
+    expect(moved?.fields).toEqual([]);
+  };
+
+  it("renders a suspended local target stripped", async () => {
+    const source = await cacheActor("mover-local", "moved-from-local.example");
+    const target = read(
+      LookupSchema,
+      (
+        await json("/api/v1/accounts/verify_credentials", {
+          headers: await authHeaders("moved-target-local@example.com"),
+        })
+      ).body,
+    );
+    expect((await setRemoteActorMovedTo(env.DB, source.actorUri, target.url)).isOk()).toBe(true);
+    expect((await movedOf("mover-local@moved-from-local.example"))?.id).toBe(target.id);
+
+    const suspended = await json(`/api/v1/admin/accounts/${target.id}/suspend`, {
+      method: "POST",
+      headers: await admin(),
+    });
+    expect(suspended.status).toBe(200);
+
+    const moved = await movedOf("mover-local@moved-from-local.example");
+    expect(moved?.id).toBe(target.id);
+    expectStripped(moved, await instanceThumbnail());
+  });
+
+  it("renders a suspended remote target stripped", async () => {
+    const source = await cacheActor("mover-remote", "moved-from-remote.example");
+    const target = await cacheActor("gone", "moved-to-suspended.example", {
+      note: "New home",
+      avatarUrl: "https://moved-to-suspended.example/avatar.png",
+      headerUrl: "https://moved-to-suspended.example/header.png",
+      locked: true,
+      bot: true,
+    });
+    expect((await setRemoteActorMovedTo(env.DB, source.actorUri, target.actorUri)).isOk()).toBe(
+      true,
+    );
+    const before = await movedOf("mover-remote@moved-from-remote.example");
+    expect(before?.avatar).toBe("https://moved-to-suspended.example/avatar.png");
+    expect(before?.suspended).toBeUndefined();
+
+    const suspended = await json(`/api/v1/admin/accounts/${before?.id}/suspend`, {
+      method: "POST",
+      headers: await admin(),
+    });
+    expect(suspended.status).toBe(200);
+
+    const moved = await movedOf("mover-remote@moved-from-remote.example");
+    expect(moved?.acct).toBe("gone@moved-to-suspended.example");
+    expectStripped(moved, await instanceThumbnail());
+  });
+
+  it("leaves out a target on a suspended domain", async () => {
+    const source = await cacheActor("mover-hidden", "moved-from-hidden.example");
+    const target = await cacheActor("hidden", "moved-to-hidden.example");
+    expect((await setRemoteActorMovedTo(env.DB, source.actorUri, target.actorUri)).isOk()).toBe(
+      true,
+    );
+    expect((await movedOf("mover-hidden@moved-from-hidden.example"))?.acct).toBe(
+      "hidden@moved-to-hidden.example",
+    );
+
+    const blocked = await json("/api/v1/admin/domain_blocks", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await admin()) },
+      body: JSON.stringify({ domain: "moved-to-hidden.example", severity: "suspend" }),
+    });
+    expect(blocked.status).toBe(200);
+
+    expect(await movedOf("mover-hidden@moved-from-hidden.example")).toBeUndefined();
   });
 });
