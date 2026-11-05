@@ -11,6 +11,7 @@ import {
   deleteMute as deleteMuteSql,
   findActiveMute as findActiveMuteSql,
   findBlock as findBlockSql,
+  findSilencingOfAnyJson as findSilencingOfAnyJsonSql,
   upsertBlock as upsertBlockSql,
   upsertMute as upsertMuteSql,
 } from "./generated/prisma/sql";
@@ -195,6 +196,28 @@ export const findActiveMute = async (
     const row = rows[0];
     return row ? { notifications: Number(row.notifications) !== 0 } : undefined;
   });
+
+/**
+ * Does `accountId` block, or mute notifications of, any of `targets` (local
+ * account ids or remote actor URIs)? One query however many targets.
+ */
+export const silencesAnyOf = async (
+  db: D1Database,
+  accountId: string,
+  targets: ReadonlyArray<string>,
+): Promise<Result<boolean, RepositoryError>> =>
+  targets.length === 0
+    ? ok(false)
+    : runD1(
+        async () =>
+          (
+            await queryTyped(
+              db,
+              findSilencingOfAnyJsonSql(accountId, JSON.stringify([...new Set(targets)]), nowIso()),
+              CountedRow,
+            )
+          ).length > 0,
+      );
 
 /**
  * SQL fragment selecting the account ids a viewer must not see: accounts the

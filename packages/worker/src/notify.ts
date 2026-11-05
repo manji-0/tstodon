@@ -6,7 +6,9 @@ import {
   type HoldNotification,
   Hostname,
   type InsertNotification,
+  AccountPresentation,
   LocalFollow,
+  type MentionedPost,
   type NewNotification,
   NotificationGroup,
   type NotificationPolicyAction,
@@ -14,6 +16,7 @@ import {
   type ResolveNotificationDisposition,
   type ScreenSender,
   type SenderScreening,
+  type ThreadStatus,
 } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { err, ok } from "neverthrow";
@@ -25,7 +28,8 @@ import { findOutboundFollow } from "./outbound-follow-store";
 import { notificationDisposition } from "./notification-policy";
 import { isDomainBlocked } from "./domain-block-store";
 import { RemoteAccountId } from "./remote-account-id";
-import { findActiveMute, findBlock } from "./block-mute-store";
+import { localAccountPresentations } from "./account-presentation";
+import { findActiveMute, findBlock, silencesAnyOf } from "./block-mute-store";
 import { mastodonNotification } from "./notification-documents";
 import { findNotificationById, groupedEntry, insertNotification } from "./notification-store";
 import { enqueuePushDeliveries } from "./push-delivery";
@@ -78,15 +82,18 @@ export type NotifyContracts = Readonly<{
 /**
  * Record a notification as the recipient's policy decides: delivered, held
  * back as a request, or dropped outright. As Mastodon's NotifyService, the
- * sender is screened first: nothing of any kind comes from the recipient
- * itself or a sender it silenced, and a staff mention skips every filter.
+ * sender is screened first: a suspended recipient is notified of nothing,
+ * nothing of any kind comes from the recipient itself or a sender it
+ * silenced, and a staff mention skips every filter. A mention also needs its
+ * post (`mentionedPost`) to be screened as Mastodon's `blocked_mention?`.
  * The non-filterable kinds then bypass the policy.
  */
 export const deliverNotification = async (
   contracts: NotifyContracts,
   input: NewNotification,
+  mentionedPost?: MentionedPost,
 ): Promise<Result<void, RepositoryError>> => {
-  const screening = await contracts.screenSender(input);
+  const screening = await contracts.screenSender(input, mentionedPost);
   if (screening.isErr()) {
     return err(screening.error);
   }
@@ -154,7 +161,8 @@ const recordNotification = async (
 const notifyContracts = (env: Env): NotifyContracts => {
   const identity = parseInstanceIdentity(env);
   return {
-    screenSender: (notification) => screenSender(env.DB, notification),
+    screenSender: (notification, mentionedPost) =>
+      screenSender(env.DB, notification, mentionedPost),
     resolveDisposition: (notification) => notificationDisposition(env.DB, notification),
     findMutedThreadStatusIds: (accountId, statusIds) =>
       identity.isOk()
@@ -182,7 +190,25 @@ const notifyContracts = (env: Env): NotifyContracts => {
 export const notifyAccount = (
   env: Env,
   input: NewNotification,
-): Promise<Result<void, RepositoryError>> => deliverNotification(notifyContracts(env), input);
+  mentionedPost?: MentionedPost,
+): Promise<Result<void, RepositoryError>> =>
+  deliverNotification(notifyContracts(env), input, mentionedPost);
+
+/**
+ * The `MentionedPost` of a post that mentions `mentioned` (local account ids
+ * and remote actor URIs) and replies to `replyTo`.
+ */
+export const mentionedPost = (
+  mentioned: ReadonlyArray<string>,
+  replyTo: ThreadStatus | undefined,
+): MentionedPost => ({
+  involvedAccounts: [
+    ...mentioned,
+    ...(replyTo === undefined
+      ? []
+      : [replyTo.kind === "Local" ? replyTo.status.accountId : replyTo.status.actorUri]),
+  ],
+});
 
 /** Notify the target of a follow `followAccount` created; following again does not notify. */
 export const notifyNewFollow = async (
@@ -228,15 +254,25 @@ const streamedNotification = async (
 };
 
 /**
- * The sender checks of Mastodon's `DropCondition#drop?`. Blocks and
- * mutes name a remote sender by its actor URI and a local one by its account
- * id; only a remote sender has a domain to block.
+ * The recipient and sender checks of Mastodon's `DropCondition#drop?`, with
+ * `blocked_mention?` for a mention. Blocks and mutes name a remote account by
+ * its actor URI and a local one by its account id; only a remote sender has
+ * a domain to block.
  */
 const screenSender = async (
   db: D1Database,
   notification: NewNotification,
+  mentionedPost: MentionedPost | undefined,
 ): Promise<Result<SenderScreening, RepositoryError>> => {
   const recipientId = notification.accountId;
+  const recipient = await localAccountPresentations(db, [recipientId]);
+  if (recipient.isErr()) {
+    return err(recipient.error);
+  }
+  const presentation = recipient.value.get(recipientId);
+  if (presentation && !AccountPresentation.available(presentation)) {
+    return ok(DROP);
+  }
   if (notification.fromAccountId === recipientId) {
     return ok(SELF_NOTIFIED_KINDS.includes(notification.kind) ? SCREEN : DROP);
   }
@@ -263,6 +299,15 @@ const screenSender = async (
   }
   if (blocked.value || muted.value?.notifications) {
     return ok(DROP);
+  }
+  if (notification.kind === "mention" && mentionedPost) {
+    const involved = await silencesAnyOf(db, recipientId, mentionedPost.involvedAccounts);
+    if (involved.isErr()) {
+      return err(involved.error);
+    }
+    if (involved.value) {
+      return ok(DROP);
+    }
   }
   const actorUri = notification.fromActorUri;
   const domain = actorUri ? Hostname.ofUri(actorUri) : undefined;
@@ -309,12 +354,17 @@ export const notifyFromRemote = (
     statusId?: string;
     targetAccountId?: string;
   }>,
+  mentionedPost?: MentionedPost,
 ): Promise<Result<void, RepositoryError>> =>
-  notifyAccount(env, {
-    accountId: input.accountId,
-    fromAccountId: RemoteAccountId.encode(input.actorUri),
-    fromActorUri: input.actorUri,
-    kind: input.kind,
-    ...(input.statusId ? { statusId: input.statusId } : {}),
-    ...(input.targetAccountId ? { targetAccountId: input.targetAccountId } : {}),
-  });
+  notifyAccount(
+    env,
+    {
+      accountId: input.accountId,
+      fromAccountId: RemoteAccountId.encode(input.actorUri),
+      fromActorUri: input.actorUri,
+      kind: input.kind,
+      ...(input.statusId ? { statusId: input.statusId } : {}),
+      ...(input.targetAccountId ? { targetAccountId: input.targetAccountId } : {}),
+    },
+    mentionedPost,
+  );

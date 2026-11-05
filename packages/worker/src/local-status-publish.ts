@@ -14,7 +14,7 @@ import { loadNoteMentions, resolveRemoteMentions } from "./mention-resolve";
 import { loadNoteMedia } from "./note-attachments";
 import { loadNoteReply } from "./reply-target";
 import { noteDocument } from "./activitypub";
-import { notifyAccount } from "./notify";
+import { mentionedPost, notifyAccount } from "./notify";
 import { insertPoll, loadNotePoll } from "./poll-store";
 import { enqueueLinkCard } from "./link-card";
 import type { MediaAttribute } from "./status-body-schema";
@@ -211,16 +211,22 @@ export const publishLocalNote = async (
   if (remoteSaved.isErr()) {
     return err(remoteSaved.error);
   }
+  const post = mentionedPost(
+    [
+      ...mentionedAccounts.value.map((account) => account.id),
+      ...remoteMentions.map((actor) => actor.actorUri),
+    ],
+    input.replyTo ?? undefined,
+  );
   for (const mentioned of mentionedAccounts.value) {
     if (mentioned.id === user.id) {
       continue;
     }
-    await notifyAccount(env, {
-      accountId: mentioned.id,
-      fromAccountId: user.id,
-      kind: "mention",
-      statusId: note.id,
-    });
+    await notifyAccount(
+      env,
+      { accountId: mentioned.id, fromAccountId: user.id, kind: "mention", statusId: note.id },
+      post,
+    );
   }
   // Followers who asked for notifications on this account's posts get a
   // `status` notification; the notification policy still decides delivery.

@@ -300,6 +300,8 @@ export * from "./sql/findRemoteStatusesByIds";
 
 export * from "./sql/findSignupIntent";
 
+export * from "./sql/findSilencingOfAnyJson";
+
 export * from "./sql/findStatusById";
 
 export * from "./sql/findStatusIdempotency";

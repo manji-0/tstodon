@@ -29,12 +29,24 @@ export type SenderScreening =
   | Readonly<{ kind: "Screen" }>;
 
 /**
- * Screen the notification's sender: the recipient itself, staff, a sender
- * the recipient blocks or mutes notifications of, or a remote sender the
- * recipient does not follow on a domain it blocks.
+ * What Mastodon's `FeedManager#filter_from_mentions?` reads of the post a
+ * mention notification is about: the accounts it mentions and the author of
+ * the post it replies to, local accounts by id and remote ones by actor URI,
+ * as blocks and mutes name them. Loaded once per post, however many accounts
+ * it notifies.
+ */
+export type MentionedPost = Readonly<{ involvedAccounts: ReadonlyArray<string> }>;
+
+/**
+ * Screen the notification: a recipient that is unavailable (suspended), the
+ * recipient itself, staff, a sender the recipient blocks or mutes
+ * notifications of, a remote sender the recipient does not follow on a
+ * domain it blocks, and for a `mention`, an account of `mentionedPost` the
+ * recipient blocks or mutes notifications of.
  */
 export type ScreenSender = (
   notification: NewNotification,
+  mentionedPost?: MentionedPost,
 ) => Promise<Result<SenderScreening, RepositoryError>>;
 
 /** Record the notification; resolves to its new id. */

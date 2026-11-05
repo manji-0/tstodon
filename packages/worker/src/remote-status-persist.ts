@@ -8,6 +8,7 @@ import {
   type RemoteActor,
   type RemoteStatus as RemoteStatusValue,
   Hostname,
+  type MentionedPost,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
@@ -21,7 +22,8 @@ import { parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
 import { findAccountByUsername } from "./account-store";
 import { mediaRejectedDomains } from "./admin-domain-block-store";
 import { enqueueLinkCard } from "./link-card";
-import { notifyFromRemote } from "./notify";
+import { mentionedPost, notifyFromRemote } from "./notify";
+import { findThreadParent } from "./thread-context";
 import { findRemoteStatusByObjectUri, upsertRemoteStatus } from "./remote-status-store";
 import { publishConversationUpdate } from "./conversation-stream";
 import { recordRemoteStatusMentions } from "./mention-store";
@@ -155,17 +157,22 @@ const MentionTagsSchema = z.object({
     .optional(),
 });
 
+/** The `href` of each `Mention` tag of a note document. */
+const mentionHrefs = (raw: unknown): string[] => {
+  const tags = schemaResult(MentionTagsSchema)(raw);
+  return (tags.isOk() ? (tags.value.tag ?? []) : []).flatMap((entry) =>
+    entry.type === "Mention" && entry.href ? [entry.href] : [],
+  );
+};
+
 /**
  * Local accounts a remote note addresses: its `Mention` tags plus its
  * `to`/`cc` audience, kept to exact local actor URLs.
  */
 const mentionedLocalUsernames = (identity: InstanceIdentity, raw: unknown): string[] => {
-  const tags = schemaResult(MentionTagsSchema)(raw);
   const note = parseNoteDocument(raw);
   const candidates = [
-    ...(tags.isOk() ? (tags.value.tag ?? []) : []).flatMap((entry) =>
-      entry.type === "Mention" && entry.href ? [entry.href] : [],
-    ),
+    ...mentionHrefs(raw),
     ...(note.isOk() ? [...stringList(note.value.to), ...stringList(note.value.cc)] : []),
   ];
   return [
@@ -197,6 +204,22 @@ export const mentionedLocalAccountIds = async (
   return accountIds;
 };
 
+/**
+ * The `MentionedPost` of a stored remote note: the local accounts it
+ * addresses, the actors its `Mention` tags name, and the author of the
+ * stored status it replies to.
+ */
+export const remoteMentionedPost = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  raw: unknown,
+  status: RemoteStatusValue,
+  localAccountIds: ReadonlyArray<string>,
+): Promise<Result<MentionedPost, RepositoryError>> =>
+  (await findThreadParent(db, identity, { kind: "Remote", status })).map((parent) =>
+    mentionedPost([...localAccountIds, ...mentionHrefs(raw)], parent),
+  );
+
 const recordMentions = async (
   env: Env,
   identity: InstanceIdentity,
@@ -214,14 +237,17 @@ const recordMentions = async (
   if (status.visibility.kind === "Direct") {
     await publishConversationUpdate(env, identity, accountIds, statusId);
   }
-  if (notify) {
+  if (notify && accountIds.length > 0) {
+    const post = await remoteMentionedPost(env.DB, identity, raw, status, accountIds);
+    if (post.isErr()) {
+      return err(post.error);
+    }
     for (const accountId of accountIds) {
-      await notifyFromRemote(env, {
-        accountId,
-        actorUri: actor.actorUri,
-        kind: "mention",
-        statusId,
-      });
+      await notifyFromRemote(
+        env,
+        { accountId, actorUri: actor.actorUri, kind: "mention", statusId },
+        post.value,
+      );
     }
   }
   return ok(undefined);

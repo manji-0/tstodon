@@ -252,8 +252,9 @@ describe("notifications to a suspended account", () => {
       [reader.id, "poll"],
     ] as const) {
       expect(
-        (await notifyAccount(env, { accountId: reader.id, fromAccountId, kind, statusId: own }))
-          .isOk(),
+        (
+          await notifyAccount(env, { accountId: reader.id, fromAccountId, kind, statusId: own })
+        ).isOk(),
       ).toBe(true);
     }
     await suspend("unsuspend");

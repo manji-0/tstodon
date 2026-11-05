@@ -24,6 +24,7 @@ import { snapshotRemoteRevision } from "./remote-status-edit";
 import {
   applyMediaPolicy,
   mentionedLocalAccountIds,
+  remoteMentionedPost,
   noteFromUnknown,
   parseNoteDocument,
 } from "./remote-status-persist";
@@ -151,13 +152,18 @@ const applyNoteUpdate = async (
   if (recorded.isErr()) {
     return err(recorded.error);
   }
-  for (const accountId of added) {
-    await notifyFromRemote(env, {
-      accountId,
-      actorUri: signer.actorUri,
-      kind: "mention",
-      statusId: stored.value.id,
-    });
+  if (added.length > 0) {
+    const post = await remoteMentionedPost(env.DB, identity, target.raw, stored.value, mentioned);
+    if (post.isErr()) {
+      return err(post.error);
+    }
+    for (const accountId of added) {
+      await notifyFromRemote(
+        env,
+        { accountId, actorUri: signer.actorUri, kind: "mention", statusId: stored.value.id },
+        post.value,
+      );
+    }
   }
   await enqueueLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);
   if (edited) {
