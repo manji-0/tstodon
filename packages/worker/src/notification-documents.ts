@@ -1,5 +1,7 @@
 import { AccountPresentation, type InstanceIdentity } from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
 import { presentedAccountsByIds } from "./account-documents";
+import type { RepositoryError } from "./d1";
 import { reportDocumentsByIds } from "./report-documents";
 import { findAccountSeveranceEvents, severanceEventDocument } from "./severed-relationship-store";
 import type { NotificationRow } from "./notification-store";
@@ -8,15 +10,16 @@ import { statusDocumentsByIds } from "./status-documents";
 /**
  * Mastodon Notification documents keyed by notification id. A notification
  * whose sender no longer resolves or is not available is left out; a status
- * that no longer resolves renders as `status: null`.
+ * that no longer resolves renders as `status: null`. A storage error while
+ * resolving the accounts or reports fails the whole page.
  */
 export const mastodonNotifications = async (
   env: Env,
   identity: InstanceIdentity,
   rows: ReadonlyArray<NotificationRow>,
   viewerId: string,
-): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
-  const [accounts, statuses, reports, severance] = await Promise.all([
+): Promise<Result<ReadonlyMap<string, Record<string, unknown>>, RepositoryError>> => {
+  const [presented, statuses, reported, severance] = await Promise.all([
     presentedAccountsByIds(
       env,
       identity,
@@ -42,6 +45,14 @@ export const mastodonNotifications = async (
       rows.flatMap((row) => (row.severance_event_id ? [row.severance_event_id] : [])),
     ),
   ]);
+  if (presented.isErr()) {
+    return err(presented.error);
+  }
+  if (reported.isErr()) {
+    return err(reported.error);
+  }
+  const accounts = presented.value;
+  const reports = reported.value;
   const events = new Map(
     (severance.isOk() ? severance.value : []).map((event) => [event.id, event]),
   );
@@ -81,7 +92,7 @@ export const mastodonNotifications = async (
       ...(event ? { event: severanceEventDocument(event) } : {}),
     });
   }
-  return documents;
+  return ok(documents);
 };
 
 export const mastodonNotification = async (
@@ -89,5 +100,7 @@ export const mastodonNotification = async (
   identity: InstanceIdentity,
   row: NotificationRow,
   viewerId: string,
-): Promise<Record<string, unknown> | undefined> =>
-  (await mastodonNotifications(env, identity, [row], viewerId)).get(row.id);
+): Promise<Result<Record<string, unknown> | undefined, RepositoryError>> =>
+  (await mastodonNotifications(env, identity, [row], viewerId)).map((documents) =>
+    documents.get(row.id),
+  );

@@ -170,7 +170,8 @@ const streamedNotification = async (
   if (identity.isErr() || row.isErr() || !row.value) {
     return undefined;
   }
-  const document = await mastodonNotification(env, identity.value, row.value, recipientId);
+  const rendered = await mastodonNotification(env, identity.value, row.value, recipientId);
+  const document = rendered.isOk() ? rendered.value : undefined;
   return document
     ? {
         ...document,

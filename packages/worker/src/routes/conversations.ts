@@ -30,9 +30,15 @@ export const getV1Conversations = async (
   if (conversations.isErr()) {
     return jsonRepositoryError(c, conversations.error.message);
   }
-  return c.json(
-    await conversationDocuments(c.env, identity.value, user.value.id, conversations.value),
+  const documents = await conversationDocuments(
+    c.env,
+    identity.value,
+    user.value.id,
+    conversations.value,
   );
+  return documents.isErr()
+    ? jsonRepositoryError(c, documents.error.message)
+    : c.json(documents.value);
 };
 
 export const postV1ConversationsByIdRead = async (

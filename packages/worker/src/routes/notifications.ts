@@ -1,5 +1,7 @@
 import type { Context } from "hono";
 import { type LocalStatus, NotificationGroup } from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
+import type { RepositoryError } from "../d1";
 import { isTruthy } from "../form-values";
 import {
   filteredAttribute,
@@ -99,9 +101,12 @@ export const getV1Notifications = async (
     (row) => !(row.status_id && mutedStatuses.value.has(row.status_id)),
   );
   const rendered = await mastodonNotifications(c.env, identity.value, visibleRows, user.value.id);
+  if (rendered.isErr()) {
+    return jsonRepositoryError(c, rendered.error.message);
+  }
   const documents: Record<string, unknown>[] = [];
   for (const row of visibleRows) {
-    const found = rendered.get(row.id);
+    const found = rendered.value.get(row.id);
     if (!found) {
       continue;
     }
@@ -116,10 +121,11 @@ export const getV1Notifications = async (
     }
     documents.push(document);
   }
-  // Mastodon pages the notification list by notification id.
+  // Mastodon pages the notification list by notification id, over the rows
+  // the page read: rows left out here do not end the list.
   setPaginationLinks(
     c,
-    documents.map((document) => String(document.id)),
+    rows.value.map((row) => row.id),
     limit,
   );
   return c.json(documents);
@@ -162,7 +168,11 @@ export const getV1NotificationsById = async (
   if (!row.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const document = await mastodonNotification(c.env, identity.value, row.value, user.value.id);
+  const rendered = await mastodonNotification(c.env, identity.value, row.value, user.value.id);
+  if (rendered.isErr()) {
+    return jsonRepositoryError(c, rendered.error.message);
+  }
+  const document = rendered.value;
   if (!document) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
@@ -241,7 +251,9 @@ const groupedQuery = (
 /**
  * `limit` counts groups, so fetch a wider page of notifications and fold it.
  * Mastodon caps a page at 80 groups; the row window is capped to keep D1 work
- * bounded.
+ * bounded. A full window whose senders are all unavailable is not the end of
+ * the list (the web app stops paging at an empty page), so reading older
+ * windows goes on, up to {@link NOTIFICATION_GROUP_WINDOWS}.
  */
 const groupedNotificationPage = async (
   c: Context<{ Bindings: Env }>,
@@ -256,28 +268,32 @@ const groupedNotificationPage = async (
   | Readonly<{ kind: "Err"; message: string }>
 > => {
   const { groupedTypes, filters, limit } = groupedQuery(c);
-  const rows = await listNotifications(
-    c.env.DB,
-    accountId,
-    Math.min(Math.max(limit, 1) * 4, NOTIFICATION_GROUP_ROW_CAP),
-    filters,
-  );
-  if (rows.isErr()) {
-    return { kind: "Err", message: rows.error.message };
+  const window = Math.min(Math.max(limit, 1) * 4, NOTIFICATION_GROUP_ROW_CAP);
+  // Only a page read downwards (`max_id`, or none) has older windows to read on.
+  const pagesDown = filters.minId === undefined && filters.sinceId === undefined;
+  const visible: NotificationRow[] = [];
+  let cursor = filters;
+  for (let read = 0; read < NOTIFICATION_GROUP_WINDOWS; read += 1) {
+    const rows = await listNotifications(c.env.DB, accountId, window, cursor);
+    if (rows.isErr()) {
+      return { kind: "Err", message: rows.error.message };
+    }
+    // As Mastodon's `without_suspended`, notifications from senders that are not available are left out.
+    const senders = await availableAccountIds(
+      c.env,
+      rows.value.map((row) => row.from_account_id),
+    );
+    if (senders.isErr()) {
+      return { kind: "Err", message: senders.error.message };
+    }
+    visible.push(...rows.value.filter((row) => senders.value.has(row.from_account_id)));
+    const last = rows.value.at(-1);
+    if (visible.length > 0 || !pagesDown || !last || rows.value.length < window) {
+      break;
+    }
+    cursor = { ...cursor, maxId: last.id };
   }
-  // As Mastodon's `without_suspended`, notifications from senders that are not available are left out.
-  const senders = await availableAccountIds(
-    c.env,
-    rows.value.map((row) => row.from_account_id),
-  );
-  if (senders.isErr()) {
-    return { kind: "Err", message: senders.error.message };
-  }
-  const grouped = NotificationGroup.fold(
-    rows.value.filter((row) => senders.value.has(row.from_account_id)).map(groupedEntry),
-    groupedTypes,
-    limit,
-  );
+  const grouped = NotificationGroup.fold(visible.map(groupedEntry), groupedTypes, limit);
   return {
     kind: "Ok",
     groups: grouped.groups,
@@ -293,12 +309,12 @@ const groupEnvelope = async (
   accountIds: ReadonlyArray<string>,
   statusIds: ReadonlyArray<string>,
   withPageIds: boolean,
-): Promise<Record<string, unknown>> => {
+): Promise<Result<Record<string, unknown>, RepositoryError>> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
-    return { accounts: [], statuses: [], notification_groups: [] };
+    return ok({ accounts: [], statuses: [], notification_groups: [] });
   }
-  const [accountDocuments, statusDocuments, reportDocuments, severance] = await Promise.all([
+  const [resolvedAccounts, statusDocuments, resolvedReports, severance] = await Promise.all([
     accountDocumentsByIds(c.env, identity.value, accountIds),
     statusDocumentsByIds(c.env, identity.value, statusIds, accountId),
     reportDocumentsByIds(
@@ -311,12 +327,20 @@ const groupEnvelope = async (
       groups.flatMap((group) => (group.severanceEventId ? [group.severanceEventId] : [])),
     ),
   ]);
+  if (resolvedAccounts.isErr()) {
+    return err(resolvedAccounts.error);
+  }
+  if (resolvedReports.isErr()) {
+    return err(resolvedReports.error);
+  }
+  const accountDocuments = resolvedAccounts.value;
+  const reportDocuments = resolvedReports.value;
   const events = new Map(
     (severance.isOk() ? severance.value : []).map((event) => [event.id, event]),
   );
   const accounts = accountIds.flatMap((id) => accountDocuments.get(id) ?? []);
   const statuses = statusIds.flatMap((id) => statusDocuments.get(id) ?? []);
-  return {
+  return ok({
     accounts,
     statuses,
     notification_groups: groups.map((group) => {
@@ -341,11 +365,14 @@ const groupEnvelope = async (
         ...(event ? { event: severanceEventDocument(event) } : {}),
       };
     }),
-  };
+  });
 };
 
 /** Mastodon caps a grouped page at 80 groups; keep the row window bounded too. */
 const NOTIFICATION_GROUP_ROW_CAP = 200;
+
+/** How many row windows one grouped page reads past windows with nothing to show. */
+const NOTIFICATION_GROUP_WINDOWS = 5;
 
 export const getV2NotificationsUnreadCount = async (
   c: Context<{ Bindings: Env }, "/api/v2/notifications/unread_count">,
@@ -385,9 +412,15 @@ export const getV2Notifications = async (
   if (page.kind === "Err") {
     return jsonRepositoryError(c, page.message);
   }
-  return c.json(
-    await groupEnvelope(c, user.value.id, page.groups, page.accountIds, page.statusIds, true),
+  const envelope = await groupEnvelope(
+    c,
+    user.value.id,
+    page.groups,
+    page.accountIds,
+    page.statusIds,
+    true,
   );
+  return envelope.isErr() ? jsonRepositoryError(c, envelope.error.message) : c.json(envelope.value);
 };
 
 export const getV2NotificationsByGroupKey = async (
@@ -406,9 +439,15 @@ export const getV2NotificationsByGroupKey = async (
   if (!group) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.json(
-    await groupEnvelope(c, user.value.id, [group], page.accountIds, page.statusIds, false),
+  const envelope = await groupEnvelope(
+    c,
+    user.value.id,
+    [group],
+    page.accountIds,
+    page.statusIds,
+    false,
   );
+  return envelope.isErr() ? jsonRepositoryError(c, envelope.error.message) : c.json(envelope.value);
 };
 
 export const getV2NotificationsByGroupKeyAccounts = async (
@@ -431,7 +470,10 @@ export const getV2NotificationsByGroupKeyAccounts = async (
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const documents = await accountDocumentsByIds(c.env, identity.value, group.fromAccountIds);
-  return c.json(group.fromAccountIds.flatMap((id) => documents.get(id) ?? []));
+  if (documents.isErr()) {
+    return jsonRepositoryError(c, documents.error.message);
+  }
+  return c.json(group.fromAccountIds.flatMap((id) => documents.value.get(id) ?? []));
 };
 
 export const postV2NotificationsByGroupKeyDismiss = async (

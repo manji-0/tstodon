@@ -8,7 +8,7 @@ import {
 import { err, ok, type Result } from "neverthrow";
 import { accountCounts, accountCountsByIds } from "./account-count-store";
 import {
-  accountRefPresentation,
+  embeddedAccountDocument,
   localAccountPresentations,
   presentedAccountDocument,
   remoteAccountPresentations,
@@ -33,23 +33,28 @@ import { textToHtml } from "./html";
 import { mediaUrl } from "./media-document";
 import { quotePolicyName } from "./quote-policy-name";
 
-/** A rendered account a read path may name, with the presentation it rendered under. */
+/**
+ * A rendered account another record names, with the presentation it rendered
+ * under: a shown account in full, a suspended or hidden one stripped.
+ */
 export type PresentedAccount = Readonly<{
   presentation: AccountPresentation;
   document: Record<string, unknown>;
 }>;
 
+type PresentedAccounts = Result<ReadonlyMap<string, PresentedAccount>, RepositoryError>;
+
 /**
  * Accounts keyed by account id, for ids that may be local accounts or remote
- * actors (`r_…`), through the presentation rule: a shown account in full, a
- * suspended one stripped, a hidden one left out. Each side loads in one
- * query, and ids that no longer resolve are left out.
+ * actors (`r_…`), each with its presentation. Each side loads in one query,
+ * and ids that no longer resolve are left out. A storage error fails the
+ * whole lookup rather than leaving accounts out.
  */
 export const presentedAccountsByIds = async (
   env: Env,
   identity: InstanceIdentity,
   ids: ReadonlyArray<string>,
-): Promise<ReadonlyMap<string, PresentedAccount>> => {
+): Promise<PresentedAccounts> => {
   const remote = new Map<string, string>();
   const local: string[] = [];
   for (const id of new Set(ids)) {
@@ -64,8 +69,14 @@ export const presentedAccountsByIds = async (
     findAccountsByIds(env.DB, local),
     findRemoteActorsByUris(env.DB, [...remote.keys()]),
   ]);
-  const localAccounts = locals.isOk() ? [...locals.value.values()] : [];
-  const remoteActors = actors.isOk() ? [...actors.value.values()] : [];
+  if (locals.isErr()) {
+    return err(locals.error);
+  }
+  if (actors.isErr()) {
+    return err(actors.error);
+  }
+  const localAccounts = [...locals.value.values()];
+  const remoteActors = [...actors.value.values()];
   const [localDocuments, localPresentations, remotePresentations, moved] = await Promise.all([
     mastodonAccountDocuments(env, identity, localAccounts),
     localAccountPresentations(
@@ -79,65 +90,94 @@ export const presentedAccountsByIds = async (
       remoteActors.flatMap((actor) => (actor.movedTo ? [actor.movedTo] : [])),
     ),
   ]);
+  if (localPresentations.isErr()) {
+    return err(localPresentations.error);
+  }
+  if (remotePresentations.isErr()) {
+    return err(remotePresentations.error);
+  }
   const presented = (
     id: string,
     presentation: AccountPresentation | undefined,
     document: Record<string, unknown> | undefined,
-  ): [string, PresentedAccount][] => {
-    const shown =
-      presentation && document && presentedAccountDocument(identity, presentation, document);
-    return presentation && shown ? [[id, { presentation, document: shown }]] : [];
-  };
-  return new Map([
-    ...localAccounts.flatMap((account) =>
-      presented(
-        account.id,
-        localPresentations.isOk() ? localPresentations.value.get(account.id) : undefined,
-        localDocuments.get(account.id),
+  ): [string, PresentedAccount][] =>
+    presentation && document
+      ? [
+          [
+            id,
+            { presentation, document: embeddedAccountDocument(identity, presentation, document) },
+          ],
+        ]
+      : [];
+  return ok(
+    new Map([
+      ...localAccounts.flatMap((account) =>
+        presented(
+          account.id,
+          localPresentations.value.get(account.id),
+          localDocuments.get(account.id),
+        ),
       ),
-    ),
-    ...remoteActors.flatMap((actor) => {
-      const target = actor.movedTo ? moved.get(actor.movedTo) : undefined;
-      return presented(
-        RemoteAccountId.encode(actor.actorUri),
-        remotePresentations.isOk() ? remotePresentations.value.get(actor.actorUri) : undefined,
-        { ...(target ? { moved: target } : {}), ...mastodonRemoteAccount(identity, actor) },
-      );
-    }),
-  ]);
+      ...remoteActors.flatMap((actor) => {
+        const target = actor.movedTo ? moved.get(actor.movedTo) : undefined;
+        return presented(
+          RemoteAccountId.encode(actor.actorUri),
+          remotePresentations.value.get(actor.actorUri),
+          { ...(target ? { moved: target } : {}), ...mastodonRemoteAccount(identity, actor) },
+        );
+      }),
+    ]),
+  );
 };
+
+const documentsWhere = async (
+  accounts: Promise<PresentedAccounts>,
+  keep: (presentation: AccountPresentation) => boolean,
+): Promise<Result<ReadonlyMap<string, Record<string, unknown>>, RepositoryError>> =>
+  (await accounts).map(
+    (byId) =>
+      new Map(
+        [...byId].flatMap(([id, account]) =>
+          keep(account.presentation) ? [[id, account.document]] : [],
+        ),
+      ),
+  );
 
 /**
  * Account documents keyed by account id, as Mastodon's `REST::AccountSerializer`
  * renders an account another record names: a suspended account stripped, a
  * hidden one left out. See {@link presentedAccountsByIds}.
  */
-export const accountDocumentsByIds = async (
+export const accountDocumentsByIds = (
   env: Env,
   identity: InstanceIdentity,
   ids: ReadonlyArray<string>,
-): Promise<ReadonlyMap<string, Record<string, unknown>>> =>
-  new Map(
-    [...(await presentedAccountsByIds(env, identity, ids))].map(([id, account]) => [
-      id,
-      account.document,
-    ]),
+) =>
+  documentsWhere(
+    presentedAccountsByIds(env, identity, ids),
+    (presentation) => presentation.kind !== "Hidden",
   );
 
 /**
  * Account documents keyed by account id for a list of accounts, as Mastodon's
  * `Account.without_suspended`: only available accounts.
  */
-export const availableAccountDocumentsByIds = async (
+export const availableAccountDocumentsByIds = (
   env: Env,
   identity: InstanceIdentity,
   ids: ReadonlyArray<string>,
-): Promise<ReadonlyMap<string, Record<string, unknown>>> =>
-  new Map(
-    [...(await presentedAccountsByIds(env, identity, ids))].flatMap(([id, account]) =>
-      AccountPresentation.available(account.presentation) ? [[id, account.document]] : [],
-    ),
-  );
+) => documentsWhere(presentedAccountsByIds(env, identity, ids), AccountPresentation.available);
+
+/**
+ * Account documents keyed by account id for the account a record is about
+ * (a report target), which Mastodon renders even when its domain is
+ * suspended: a hidden account renders stripped, as a suspended one.
+ */
+export const embeddedAccountDocumentsByIds = (
+  env: Env,
+  identity: InstanceIdentity,
+  ids: ReadonlyArray<string>,
+) => documentsWhere(presentedAccountsByIds(env, identity, ids), () => true);
 
 /** `documents`, keyed by local account id, with `moved` for the accounts that moved away. */
 const withLocalMoves = async (
@@ -429,13 +469,6 @@ export const accountRefDocument = async (
   identity: InstanceIdentity,
   ref: AccountRef,
 ): Promise<Result<Record<string, unknown> | undefined, RepositoryError>> => {
-  const presentation = await accountRefPresentation(env, ref);
-  if (presentation.isErr()) {
-    return err(presentation.error);
-  }
-  if (presentation.value.kind === "Hidden") {
-    return ok(undefined);
-  }
   const id = refAccountId(ref);
-  return ok((await accountDocumentsByIds(env, identity, [id])).get(id));
+  return (await accountDocumentsByIds(env, identity, [id])).map((documents) => documents.get(id));
 };

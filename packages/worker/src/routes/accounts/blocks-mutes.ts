@@ -166,7 +166,10 @@ export const getV1Blocks = async (c: Context<{ Bindings: Env }, "/api/v1/blocks"
     identity.value,
     rows.value.map((row) => row.accountId),
   );
-  const documents = rows.value.flatMap((row) => resolved.get(row.accountId) ?? []);
+  if (resolved.isErr()) {
+    return jsonRepositoryError(c, resolved.error.message);
+  }
+  const documents = rows.value.flatMap((row) => resolved.value.get(row.accountId) ?? []);
   setPaginationLinks(
     c,
     rows.value.map((row) => row.id),
@@ -194,7 +197,10 @@ export const getV1Mutes = async (c: Context<{ Bindings: Env }, "/api/v1/mutes">)
     identity.value,
     rows.value.map((row) => row.accountId),
   );
-  return c.json(rows.value.flatMap((row) => resolved.get(row.accountId) ?? []));
+  if (resolved.isErr()) {
+    return jsonRepositoryError(c, resolved.error.message);
+  }
+  return c.json(rows.value.flatMap((row) => resolved.value.get(row.accountId) ?? []));
 };
 
 /**

@@ -178,7 +178,10 @@ export const processPushJob = async (
     return "ok";
   }
   const rendered = await mastodonNotification(env, identity.value, row.value, job.accountId);
-  const document = schemaResult(RenderedNotificationSchema)(rendered);
+  if (rendered.isErr()) {
+    return "retry";
+  }
+  const document = schemaResult(RenderedNotificationSchema)(rendered.value);
   if (document.isErr()) {
     return "ok";
   }

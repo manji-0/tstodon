@@ -14,7 +14,9 @@ import {
   readBody,
   requireUser,
 } from "../http";
+import { err, ok, type Result } from "neverthrow";
 import { accountDocumentsByIds, availableAccountDocumentsByIds } from "../account-documents";
+import type { RepositoryError } from "../d1";
 import { statusDocumentsByIds } from "../status-documents";
 import {
   acceptNotificationRequests,
@@ -68,9 +70,9 @@ const requestDocuments = async (
   accountId: string,
   requests: ReadonlyArray<NotificationRequest>,
   senders: typeof accountDocumentsByIds,
-): Promise<Record<string, unknown>[]> => {
+): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
   // The status stored with the held notification is the exact one.
-  const [accounts, statuses] = await Promise.all([
+  const [resolved, statuses] = await Promise.all([
     senders(
       c.env,
       identity,
@@ -83,21 +85,27 @@ const requestDocuments = async (
       accountId,
     ),
   ]);
-  return requests.flatMap((request) => {
-    const account = accounts.get(request.fromAccountId);
-    return account
-      ? [
-          {
-            id: request.id,
-            created_at: request.createdAt,
-            updated_at: request.updatedAt,
-            notifications_count: String(request.notificationsCount),
-            account,
-            last_status: request.statusId ? (statuses.get(request.statusId) ?? null) : null,
-          },
-        ]
-      : [];
-  });
+  if (resolved.isErr()) {
+    return err(resolved.error);
+  }
+  const accounts = resolved.value;
+  return ok(
+    requests.flatMap((request) => {
+      const account = accounts.get(request.fromAccountId);
+      return account
+        ? [
+            {
+              id: request.id,
+              created_at: request.createdAt,
+              updated_at: request.updatedAt,
+              notifications_count: String(request.notificationsCount),
+              account,
+              last_status: request.statusId ? (statuses.get(request.statusId) ?? null) : null,
+            },
+          ]
+        : [];
+    }),
+  );
 };
 
 const policyDocument = async (
@@ -219,15 +227,16 @@ export const getV1NotificationsRequests = async (
     return jsonRepositoryError(c, requests.error.message);
   }
   // As Mastodon, the list leaves out requests from accounts that are not available.
-  return c.json(
-    await requestDocuments(
-      c,
-      identity.value,
-      user.value.id,
-      requests.value,
-      availableAccountDocumentsByIds,
-    ),
+  const documents = await requestDocuments(
+    c,
+    identity.value,
+    user.value.id,
+    requests.value,
+    availableAccountDocumentsByIds,
   );
+  return documents.isErr()
+    ? jsonRepositoryError(c, documents.error.message)
+    : c.json(documents.value);
 };
 
 export const getV1NotificationsRequestsMerged = (
@@ -252,13 +261,17 @@ export const getV1NotificationsRequestsById = async (
   if (!request.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const [document] = await requestDocuments(
+  const documents = await requestDocuments(
     c,
     identity.value,
     user.value.id,
     [request.value],
     accountDocumentsByIds,
   );
+  if (documents.isErr()) {
+    return jsonRepositoryError(c, documents.error.message);
+  }
+  const [document] = documents.value;
   return document ? c.json(document) : c.json({ error: "Record not found", kind: "NotFound" }, 404);
 };
 

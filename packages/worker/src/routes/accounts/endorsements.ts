@@ -123,10 +123,11 @@ const endorsementDocuments = async (
     return jsonRepositoryError(c, rows.error.message);
   }
   const ids = rows.value.map((row) => row.accountId ?? RemoteAccountId.encode(row.actorUri));
-  const documents = documentsInOrder(
-    ids,
-    await availableAccountDocumentsByIds(c.env, identity, ids),
-  );
+  const resolved = await availableAccountDocumentsByIds(c.env, identity, ids);
+  if (resolved.isErr()) {
+    return jsonRepositoryError(c, resolved.error.message);
+  }
+  const documents = documentsInOrder(ids, resolved.value);
   setPaginationLinks(
     c,
     rows.value.map((row) => row.id),

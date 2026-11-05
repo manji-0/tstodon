@@ -37,7 +37,12 @@ const publishConversation = async (
       if (!conversation) {
         continue;
       }
-      const [payload] = await conversationDocuments(env, identity, accountId, [conversation]);
+      const documents = await conversationDocuments(env, identity, accountId, [conversation]);
+      if (documents.isErr()) {
+        console.error(JSON.stringify({ kind: "ConversationNotPublished", accountId }));
+        continue;
+      }
+      const [payload] = documents.value;
       await publishToHub(env, accountId, {
         channels: [{ kind: "Direct" }],
         event: { kind: "conversation", payload },

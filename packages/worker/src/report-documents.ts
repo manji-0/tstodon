@@ -5,11 +5,11 @@ import type {
   RemoteStatus,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { accountDocumentsByIds } from "./account-documents";
+import { embeddedAccountDocumentsByIds } from "./account-documents";
 import type { RepositoryError } from "./d1";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { findRemoteStatusesByIds } from "./remote-status-store";
-import { findReportById, ReportParty } from "./report-store";
+import { findReportById, ReportParty, type ReportRow } from "./report-store";
 import { findStatusesByIds } from "./status-store";
 
 /** The posts attached to a report: local ones, and remote ones with their author. */
@@ -51,20 +51,33 @@ export const reportedStatuses = async (
 /**
  * Mastodon's `Report` entity, as an `admin.report` notification carries it.
  * Reports that no longer exist, or whose target no longer resolves, are left
- * out.
+ * out; a target on a suspended domain renders stripped.
  */
 export const reportDocumentsByIds = async (
   env: Env,
   identity: InstanceIdentity,
   ids: ReadonlyArray<string>,
-): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
-  const reports = await Promise.all([...new Set(ids)].map((id) => findReportById(env.DB, id)));
-  const rows = reports.flatMap((found) => (found.isOk() && found.value ? [found.value] : []));
-  const targets = await accountDocumentsByIds(
+): Promise<Result<ReadonlyMap<string, Record<string, unknown>>, RepositoryError>> => {
+  const rows: ReportRow[] = [];
+  for (const found of await Promise.all(
+    [...new Set(ids)].map((id) => findReportById(env.DB, id)),
+  )) {
+    if (found.isErr()) {
+      return err(found.error);
+    }
+    if (found.value) {
+      rows.push(found.value);
+    }
+  }
+  const resolved = await embeddedAccountDocumentsByIds(
     env,
     identity,
     rows.map((row) => ReportParty.accountId(row.target)),
   );
+  if (resolved.isErr()) {
+    return err(resolved.error);
+  }
+  const targets = resolved.value;
   const documents = new Map<string, Record<string, unknown>>();
   for (const row of rows) {
     const target = targets.get(ReportParty.accountId(row.target));
@@ -84,5 +97,5 @@ export const reportDocumentsByIds = async (
       target_account: target,
     });
   }
-  return documents;
+  return ok(documents);
 };

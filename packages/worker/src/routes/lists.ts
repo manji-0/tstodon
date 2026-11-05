@@ -161,7 +161,10 @@ export const getV1ListsByIdAccounts = async (
   }
   const memberIds = members.value.map(ListMember.accountId);
   const byId = await availableAccountDocumentsByIds(c.env, identity.value, memberIds);
-  return c.json(documentsInOrder(memberIds, byId));
+  if (byId.isErr()) {
+    return jsonRepositoryError(c, byId.error.message);
+  }
+  return c.json(documentsInOrder(memberIds, byId.value));
 };
 
 export const postV1ListsByIdAccounts = async (

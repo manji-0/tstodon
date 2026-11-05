@@ -112,8 +112,11 @@ export const getV1FollowRequests = async (
     identity.value,
     requesters.map((requester) => requester.accountId),
   );
+  if (documents.isErr()) {
+    return jsonRepositoryError(c, documents.error.message);
+  }
   const entries = requesters.flatMap((requester): Entry[] => {
-    const document = documents.get(requester.accountId);
+    const document = documents.value.get(requester.accountId);
     return document ? [{ createdAt: requester.createdAt, document }] : [];
   });
   return c.json(

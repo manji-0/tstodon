@@ -391,7 +391,9 @@ describe("a storage error while presenting accounts", () => {
         expect(response.status, path).toBe(500);
       }
     } finally {
-      await env.DB.exec("ALTER TABLE remote_actor_moderation_off RENAME TO remote_actor_moderation");
+      await env.DB.exec(
+        "ALTER TABLE remote_actor_moderation_off RENAME TO remote_actor_moderation",
+      );
     }
   });
 });

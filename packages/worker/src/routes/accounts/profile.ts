@@ -209,9 +209,12 @@ const accountList = async (c: Context<{ Bindings: Env }>, kind: "followers" | "f
     identity.value,
     edges.value.map((edge) => edge.accountId),
   );
+  if (byId.isErr()) {
+    return jsonRepositoryError(c, byId.error.message);
+  }
   const documents = documentsInOrder(
     edges.value.map((edge) => edge.accountId),
-    byId,
+    byId.value,
   );
   // Follow row ids are not in the documents, so the Link header carries them.
   setPaginationLinks(

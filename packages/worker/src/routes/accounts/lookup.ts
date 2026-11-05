@@ -299,11 +299,8 @@ const familiarFollowerDocuments = async (
   if (followerIds.isErr()) {
     return err(followerIds.error);
   }
-  return ok(
-    documentsInOrder(
-      followerIds.value,
-      await accountDocumentsByIds(env, identity, followerIds.value),
-    ),
+  return (await accountDocumentsByIds(env, identity, followerIds.value)).map((documents) =>
+    documentsInOrder(followerIds.value, documents),
   );
 };
 

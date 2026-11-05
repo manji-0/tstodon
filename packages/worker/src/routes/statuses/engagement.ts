@@ -52,10 +52,11 @@ const statusEngagementAccounts = async (
   const ids = engaged.value.map((booster) =>
     booster.kind === "Local" ? booster.accountId : RemoteAccountId.encode(booster.actorUri),
   );
-  const documents = documentsInOrder(
-    ids,
-    await availableAccountDocumentsByIds(c.env, identity.value, ids),
-  );
+  const resolved = await availableAccountDocumentsByIds(c.env, identity.value, ids);
+  if (resolved.isErr()) {
+    return jsonRepositoryError(c, resolved.error.message);
+  }
+  const documents = documentsInOrder(ids, resolved.value);
   // The documents are accounts; the engagement row ids live in the header.
   setPaginationLinks(
     c,

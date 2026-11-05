@@ -185,6 +185,17 @@ const suspendedAccountDocument = (
 });
 
 /**
+ * The document a record that names an account embeds for it: a shown account
+ * in full, any other stripped.
+ */
+export const embeddedAccountDocument = (
+  identity: InstanceIdentity,
+  presentation: AccountPresentation,
+  document: Record<string, unknown>,
+): Record<string, unknown> =>
+  presentation.kind === "Shown" ? document : suspendedAccountDocument(identity, document);
+
+/**
  * The document an account read path answers for a rendered account, or
  * `undefined` when the account is hidden.
  */

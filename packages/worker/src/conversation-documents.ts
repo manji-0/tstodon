@@ -1,5 +1,7 @@
 import type { InstanceIdentity } from "@tstodon/domain";
+import type { Result } from "neverthrow";
 import { accountDocumentsByIds } from "./account-documents";
+import type { RepositoryError } from "./d1";
 import type { ConversationSummary } from "./conversation-store";
 import { statusDocumentsByIds } from "./status-documents";
 
@@ -13,7 +15,7 @@ export const conversationDocuments = async (
   identity: InstanceIdentity,
   viewerId: string,
   conversations: ReadonlyArray<ConversationSummary>,
-): Promise<Record<string, unknown>[]> => {
+): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
   const [accounts, statuses] = await Promise.all([
     accountDocumentsByIds(
       env,
@@ -27,10 +29,12 @@ export const conversationDocuments = async (
       viewerId,
     ),
   ]);
-  return conversations.map((conversation) => ({
-    id: conversation.id,
-    unread: conversation.unread,
-    accounts: conversation.accountIds.flatMap((id) => accounts.get(id) ?? []),
-    last_status: statuses.get(conversation.lastStatus.status.id) ?? null,
-  }));
+  return accounts.map((byId) =>
+    conversations.map((conversation) => ({
+      id: conversation.id,
+      unread: conversation.unread,
+      accounts: conversation.accountIds.flatMap((id) => byId.get(id) ?? []),
+      last_status: statuses.get(conversation.lastStatus.status.id) ?? null,
+    })),
+  );
 };
