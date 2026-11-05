@@ -10,7 +10,9 @@ import { err, ok, type Result } from "neverthrow";
 const PREFIX = "r_";
 
 const encodeBase64Url = (value: string): string => {
-  const binary = String.fromCharCode(...new TextEncoder().encode(value));
+  const binary = Array.from(new TextEncoder().encode(value), (byte) =>
+    String.fromCharCode(byte),
+  ).join("");
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 };
 
