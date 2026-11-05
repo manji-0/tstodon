@@ -153,4 +153,67 @@ describe("grouped notifications", () => {
 
     expect((await json("/api/v2/notifications")).status).toBe(401);
   });
+
+  it("links the next and previous pages from the page bounds", async () => {
+    const authorEmail = "group-link-author@example.com";
+    const older = await postStatus(authorEmail, { status: "link older" });
+    const newer = await postStatus(authorEmail, { status: "link newer" });
+    await favourite("group-link-fan-a@example.com", older);
+    await favourite("group-link-fan-b@example.com", newer);
+
+    const response = await SELF.fetch(
+      "https://example.com/api/v2/notifications?limit=1&types[]=favourite",
+      { headers: await auth(authorEmail) },
+    );
+    const [group] = read(EnvelopeSchema, await response.json()).notification_groups;
+    expect(group?.status_id).toBe(newer);
+    const links = parseLinks(response.headers.get("link"));
+    expect(links.next?.searchParams.get("max_id")).toBe(group?.page_min_id);
+    expect(links.prev?.searchParams.get("min_id")).toBe(group?.page_max_id);
+    expect(links.next?.searchParams.get("limit")).toBe("1");
+    expect(links.next?.searchParams.getAll("types[]")).toEqual(["favourite"]);
+
+    const next = await json(`${links.next?.pathname ?? ""}${links.next?.search ?? ""}`, {
+      headers: await auth(authorEmail),
+    });
+    expect(read(EnvelopeSchema, next.body).notification_groups.map((g) => g.status_id)).toEqual([
+      older,
+    ]);
+  });
+
+  it("does not page past groups left off a full page", async () => {
+    const authorEmail = "group-link-full-author@example.com";
+    const [a, b, c] = [
+      await postStatus(authorEmail, { status: "full a" }),
+      await postStatus(authorEmail, { status: "full b" }),
+      await postStatus(authorEmail, { status: "full c" }),
+    ];
+    // Newest first: a, b, c, b. With limit=2 the page holds a and b; c sits
+    // between b's two notifications and must still be reachable.
+    await favourite("group-link-full-fan-a@example.com", b);
+    await favourite("group-link-full-fan-a@example.com", c);
+    await favourite("group-link-full-fan-b@example.com", b);
+    await favourite("group-link-full-fan-a@example.com", a);
+
+    const seen: Array<string | undefined> = [];
+    let path: string | undefined = "/api/v2/notifications?limit=2";
+    for (let pages = 0; path && pages < 5; pages += 1) {
+      const response: Response = await SELF.fetch(`https://example.com${path}`, {
+        headers: await auth(authorEmail),
+      });
+      const body = schemaResult(EnvelopeSchema)(await response.json());
+      seen.push(...(body.isOk() ? body.value.notification_groups.map((g) => g.status_id) : []));
+      const next = parseLinks(response.headers.get("link")).next;
+      path = next ? `${next.pathname}${next.search}` : undefined;
+    }
+    expect(seen).toContain(c);
+  });
 });
+
+const parseLinks = (header: string | null): { next?: URL; prev?: URL } =>
+  Object.fromEntries(
+    (header ?? "").split(",").flatMap((part) => {
+      const match = /<([^>]+)>;\s*rel="(next|prev)"/.exec(part.trim());
+      return match?.[1] && match[2] ? [[match[2], new URL(match[1])]] : [];
+    }),
+  );

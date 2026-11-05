@@ -312,13 +312,27 @@ describe("notification pages around hidden senders", () => {
     expect(await v1.json()).toEqual([]);
     expect(v1.headers.get("link") ?? "").toContain('rel="next"');
 
+    const v2Response = await SELF.fetch("https://example.com/api/v2/notifications?limit=1", {
+      headers: await authHeaders(me),
+    });
     const v2 = read(
       z.object({
-        notification_groups: z.array(z.object({ sample_account_ids: z.array(z.string()) })),
+        notification_groups: z.array(
+          z.object({
+            sample_account_ids: z.array(z.string()),
+            page_min_id: z.string(),
+            page_max_id: z.string(),
+          }),
+        ),
       }),
-      await get("/api/v2/notifications?limit=1", me),
+      await v2Response.json(),
     );
     expect(v2.notification_groups.flatMap((group) => group.sample_account_ids)).toEqual([keptId]);
+    // The windows of hidden rows read past do not move the page bounds.
+    const [group] = v2.notification_groups;
+    const v2Link = v2Response.headers.get("link") ?? "";
+    expect(v2Link).toContain(`max_id=${group?.page_min_id ?? "-"}>; rel="next"`);
+    expect(v2Link).toContain(`min_id=${group?.page_max_id ?? "-"}>; rel="prev"`);
   });
 });
 
