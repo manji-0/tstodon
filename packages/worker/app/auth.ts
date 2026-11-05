@@ -51,6 +51,8 @@ const OPEN_ENDPOINTS: ReadonlySet<string> = new Set([
   "/passkey/verify-registration",
 ]);
 
+const PasskeyNameBodySchema = z.object({ name: z.string().optional() });
+
 /**
  * Every other Better Auth endpoint is closed. Most only check that a session
  * exists, and the admin ones only that its user is an admin, so a stale or
@@ -61,8 +63,6 @@ const OPEN_ENDPOINTS: ReadonlySet<string> = new Set([
  * hook runs once the endpoint has already made its change. A signed-in user
  * adding a passkey needs the same recent sign-in as the page.
  */
-const PasskeyNameBodySchema = z.object({ name: z.string().optional() });
-
 const securityPageGuards = {
   id: "tstodon-security-page-guards",
   hooks: {
