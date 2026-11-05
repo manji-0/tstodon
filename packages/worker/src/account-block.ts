@@ -19,32 +19,13 @@ const blockActivity = (actorUrl: string, blockId: string, target: string) => ({
   object: target,
 });
 
-/** Log a severing step that failed: the block holds without it. */
-const logUnsevered = (
-  step: string,
-  blocker: LocalAccount,
-  target: BlockTarget,
-  result: Result<unknown, RepositoryError>,
-): void => {
-  if (result.isErr()) {
-    console.error(
-      JSON.stringify({
-        kind: "BlockFollowNotSevered",
-        step,
-        blockerId: blocker.id,
-        targetActorUri: target.actorUri,
-        message: result.error.message,
-      }),
-    );
-  }
-};
-
 /**
  * Drop the follows both ways, as `UnfollowService` and `RejectFollowService`
  * do inside Mastodon's `BlockService`: the blocker's follow or request of the
  * target (an `Undo(Follow)` to a remote one), and the target's follow or
  * request of the blocker (a `Reject(Follow)` to a remote one). Each step is
- * best effort and runs whether or not the other failed.
+ * best effort: the block already holds, so a failed step is logged and the
+ * other still runs.
  */
 const severFollows = async (
   env: Env,
@@ -53,36 +34,31 @@ const severFollows = async (
   target: BlockTarget,
   actor: RemoteActor | undefined,
 ): Promise<void> => {
-  if (target.accountId !== null) {
-    logUnsevered(
-      "Unfollow",
-      blocker,
-      target,
-      await unfollowAccount(env.DB, blocker.id, target.accountId),
-    );
-    logUnsevered(
-      "RemoveFollower",
-      blocker,
-      target,
-      await unfollowAccount(env.DB, target.accountId, blocker.id),
-    );
-    return;
+  const steps: ReadonlyArray<readonly [string, Result<unknown, RepositoryError>]> =
+    target.accountId !== null
+      ? [
+          ["Unfollow", await unfollowAccount(env.DB, blocker.id, target.accountId)],
+          ["RemoveFollower", await unfollowAccount(env.DB, target.accountId, blocker.id)],
+        ]
+      : actor
+        ? [
+            ["Unfollow", await unfollowRemoteActor(env, identity, blocker, actor)],
+            ["RemoveFollower", await removeRemoteFollower(env, identity, blocker, actor)],
+          ]
+        : [];
+  for (const [step, result] of steps) {
+    if (result.isErr()) {
+      console.error(
+        JSON.stringify({
+          kind: "BlockFollowNotSevered",
+          step,
+          blockerId: blocker.id,
+          targetActorUri: target.actorUri,
+          message: result.error.message,
+        }),
+      );
+    }
   }
-  if (!actor) {
-    return;
-  }
-  logUnsevered(
-    "Unfollow",
-    blocker,
-    target,
-    await unfollowRemoteActor(env, identity, blocker, actor),
-  );
-  logUnsevered(
-    "RemoveFollower",
-    blocker,
-    target,
-    await removeRemoteFollower(env, identity, blocker, actor),
-  );
 };
 
 /** The cached actor of a remote target; a local target or an uncached actor has none. */
