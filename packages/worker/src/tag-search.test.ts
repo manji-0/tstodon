@@ -126,7 +126,12 @@ describe("hashtag search", () => {
     await post(viewer, "@nobody see https://app.example/invite#Kq8sZ2pX #dmonlytag", "direct");
     await post(viewer, "https://app.example/join#Zr7tY1qW #privateonlytag", "private");
 
-    for (const query of ["q=kq8&type=hashtags", "q=dmonly", "q=zr7&type=hashtags", "q=privateonly"]) {
+    for (const query of [
+      "q=kq8&type=hashtags",
+      "q=dmonly",
+      "q=zr7&type=hashtags",
+      "q=privateonly",
+    ]) {
       expect(await names(query)).toEqual([]);
       expect(await names(query, viewer)).toEqual([]);
     }

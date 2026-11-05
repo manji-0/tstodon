@@ -27,8 +27,7 @@ import { removedBoostsFromRows } from "./removed-boost";
 import { parseJsonText } from "./json-column";
 import { toRepositoryError } from "./d1";
 import { visibilitySql } from "./sql-enums";
-import { recordTagNames } from "./hashtags";
-import { htmlHashtags } from "./html";
+import { htmlHashtags, recordTagNames, searchableTagNames } from "./hashtags";
 import {
   claimRemoteStatusThreadBackfill as claimRemoteStatusThreadBackfillSql,
   releaseRemoteStatusThreadBackfill as releaseRemoteStatusThreadBackfillSql,
@@ -51,7 +50,11 @@ const IdObjectUriActorUriRow = z.object({
   object_uri: z.string(),
   actor_uri: z.string(),
 });
-const IdContentHtmlRow = z.object({ id: z.string(), content_html: z.string() });
+const UnindexedRemoteStatusRow = z.object({
+  id: z.string(),
+  content_html: z.string(),
+  visibility: z.string(),
+});
 
 export const RemoteStatusRowSchema = z.object({
   id: z.string().min(1),
@@ -217,14 +220,16 @@ export const findRemoteStatusByObjectUri = async (
 
 /**
  * Replace a remote status's indexed tags with the hashtags in its HTML, store
- * their names for hashtag search, and mark the row as indexed so the backfill
- * job skips it.
+ * their names for hashtag search when its visibility lets anyone read them,
+ * and mark the row as indexed so the backfill job skips it.
  */
 const replaceRemoteStatusTags = async (
   db: D1Database,
   statusId: string,
-  tags: ReadonlyArray<string>,
+  visibility: Visibility,
+  contentHtml: string,
 ): Promise<void> => {
+  const tags = htmlHashtags(contentHtml);
   await runD1Batch(db, [
     db.prepare("DELETE FROM remote_status_tags WHERE status_id = ?").bind(statusId),
     ...tags.map((tag) =>
@@ -233,7 +238,7 @@ const replaceRemoteStatusTags = async (
         .bind(statusId, tag),
     ),
     d1PrepareTyped(db, markRemoteStatusTagsIndexedSql(statusId)),
-    recordTagNames(db, tags),
+    ...recordTagNames(db, searchableTagNames(visibility, tags)),
   ]);
 };
 
@@ -305,7 +310,7 @@ export const upsertRemoteStatus = async (
       }
     }
     // The row has to exist before its tags (the index holds a foreign key).
-    await replaceRemoteStatusTags(db, persisted.id, htmlHashtags(persisted.contentHtml));
+    await replaceRemoteStatusTags(db, persisted.id, persisted.visibility, persisted.contentHtml);
     // A changed tally is the author's count of every vote it has seen, ours included.
     if (
       existing.value &&
@@ -356,13 +361,15 @@ export const indexMissingRemoteTags = async (
   limit: number = 100,
 ): Promise<void> => {
   const rows = await runD1(async () =>
-    queryTyped(db, listUnindexedRemoteStatusesSql(limit), IdContentHtmlRow),
+    queryTyped(db, listUnindexedRemoteStatusesSql(limit), UnindexedRemoteStatusRow),
   );
   if (rows.isErr()) {
     return;
   }
   for (const row of rows.value) {
-    await replaceRemoteStatusTags(db, row.id, htmlHashtags(row.content_html));
+    // An unreadable visibility keeps the names out of search, as a direct note's.
+    const visibility = Visibility.fromMastodon(row.visibility).unwrapOr(Visibility.Direct);
+    await replaceRemoteStatusTags(db, row.id, visibility, row.content_html);
   }
 };
 

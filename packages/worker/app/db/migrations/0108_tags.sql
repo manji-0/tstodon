@@ -1,7 +1,9 @@
 -- Hashtag search needs the names of the tags this server knows, as Mastodon's
--- `tags` table: a tag is stored when a local or remote note uses it, or an
--- account follows or features it, and is never removed. Names are stored as
--- the tag timelines match them: lowercase, without the `#`.
+-- `tags` table: a tag is stored when a public or unlisted note, local or
+-- remote, uses it, or an account follows or features it, and is never
+-- removed. A direct or followers-only note's tags are left out, since search
+-- shows every name to anyone. Names are stored as the tag timelines match
+-- them: lowercase, without the `#`.
 
 CREATE TABLE IF NOT EXISTS tags (
     name TEXT NOT NULL PRIMARY KEY,
@@ -10,7 +12,10 @@ CREATE TABLE IF NOT EXISTS tags (
 
 -- Backfill from what is stored. Remote notes the cron has not indexed yet
 -- add their tags when it does.
-INSERT OR IGNORE INTO tags (name) SELECT DISTINCT tag FROM remote_status_tags;
+INSERT OR IGNORE INTO tags (name)
+SELECT DISTINCT t.tag FROM remote_status_tags t
+JOIN remote_statuses s ON s.id = t.status_id
+WHERE s.visibility IN ('public', 'unlisted');
 INSERT OR IGNORE INTO tags (name) SELECT DISTINCT tag_name FROM followed_tags;
 INSERT OR IGNORE INTO tags (name) SELECT DISTINCT tag_name FROM featured_tags;
 

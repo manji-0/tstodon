@@ -75,7 +75,7 @@ export const followTag = async (
   (
     await runD1Batch(db, [
       d1PrepareTyped(db, followTagSql(accountId, tag, nowIso())),
-      recordTagNames(db, [tag]),
+      ...recordTagNames(db, [tag]),
     ])
   ).map(() => undefined);
 
@@ -117,7 +117,7 @@ export const featureTag = async (
   (
     await runD1Batch(db, [
       d1PrepareTyped(db, featureTagSql(accountId, tag, nowIso())),
-      recordTagNames(db, [tag]),
+      ...recordTagNames(db, [tag]),
     ])
   ).map(() => undefined);
 

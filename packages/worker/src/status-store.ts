@@ -26,7 +26,7 @@ import {
 } from "./d1";
 import { removedBoostsFromRows } from "./removed-boost";
 import { visibilitySql } from "./sql-enums";
-import { extractHashtags, recordTagNames } from "./hashtags";
+import { extractHashtags, recordTagNames, searchableTagNames } from "./hashtags";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   attachMediaToStatus as attachMediaToStatusSql,
@@ -257,7 +257,7 @@ export const insertLocalNote = async (
     ...note.mediaIds.map((mediaId, position) =>
       d1PrepareTyped(db, attachMediaToStatusSql(note.id, mediaId, note.accountId, position)),
     ),
-    recordTagNames(db, extractHashtags(note.text)),
+    ...recordTagNames(db, searchableTagNames(note.visibility, extractHashtags(note.text))),
   ];
   const batched = await runD1Batch(db, statements);
   if (batched.isErr()) {
@@ -328,14 +328,17 @@ export const replaceStatusMedia = async (
   return ok(undefined);
 };
 
-/** Apply an edited note to its status row. False when the row is not the author's. */
+/**
+ * Apply an edited note to its status row, and store the tag names it now
+ * uses in the same batch. False when the row is not the author's.
+ */
 export const updateLocalNote = async (
   db: D1Database,
   note: LocalNote,
   updatedAt: string,
-): Promise<Result<boolean, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(
+): Promise<Result<boolean, RepositoryError>> => {
+  const batched = await runD1Batch(db, [
+    d1PrepareTyped(
       db,
       updateLocalNoteSql(
         note.id,
@@ -348,14 +351,11 @@ export const updateLocalNote = async (
         updatedAt,
         note.accountId,
       ),
-      IdRow,
-    );
-    if (rows.length === 0) {
-      return false;
-    }
-    await recordTagNames(db, extractHashtags(note.text)).run();
-    return true;
-  });
+    ),
+    ...recordTagNames(db, searchableTagNames(note.visibility, extractHashtags(note.text))),
+  ]);
+  return batched.map((results) => (results[0]?.results ?? []).length > 0);
+};
 
 /**
  * Delete the account's own status along with the local boosts of it (the

@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param limit
  */
 export const listUnindexedRemoteStatuses = $runtime.makeTypedQueryFactory(
-  "SELECT id, content_html FROM remote_statuses\nWHERE tags_indexed = 0\nORDER BY id DESC\nLIMIT $1",
+  "SELECT id, content_html, visibility FROM remote_statuses\nWHERE tags_indexed = 0\nORDER BY id DESC\nLIMIT $1",
 ) as (
   limit: number,
 ) => $runtime.TypedSql<listUnindexedRemoteStatuses.Parameters, listUnindexedRemoteStatuses.Result>;
@@ -18,5 +18,6 @@ export namespace listUnindexedRemoteStatuses {
   export type Result = {
     id: string | null;
     content_html: string;
+    visibility: string;
   };
 }

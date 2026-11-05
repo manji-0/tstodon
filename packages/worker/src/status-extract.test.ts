@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { extractHashtags } from "./hashtags";
-import { htmlHashtags } from "./html";
+import { extractHashtags, htmlHashtags } from "./hashtags";
 
 describe("status text extractors", () => {
   it("extracts unique lowercase hashtags", () => {
@@ -23,5 +22,12 @@ describe("status text extractors", () => {
           `<a class="mention hashtag" rel="tag" href="https://remote.example/tags/real">#<span>Real</span></a> #plain</p>`,
       ),
     ).toEqual(["real", "plain"]);
+    // Mastodon splits a long link's text across spans, here right at the `#`.
+    expect(
+      htmlHashtags(
+        `<p><a href="${url}"><span class="invisible">https://</span><span class="ellipsis">app.example/invite</span>` +
+          `<span class="invisible">#Kq8sZ2pX</span></a></p>`,
+      ),
+    ).toEqual([]);
   });
 });
