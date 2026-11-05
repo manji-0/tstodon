@@ -1,9 +1,9 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { OutboxJob } from "@tstodon/domain";
-import { attemptInboxDelivery, enqueueInstanceActorActivity } from "./delivery";
+import { deliverTarget } from "../test/delivery-fixture";
+import { enqueueInstanceActorActivity } from "./delivery";
 import { verifyInboxRequest } from "./http-signature";
 
 const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
@@ -73,24 +73,7 @@ describe("instance actor", () => {
     )
       .bind(inbox)
       .first<{ id: string }>();
-    const job = OutboxJob.parse({ kind: "DeliverTarget", activityId: row?.id, inboxUrl: inbox });
-    if (job.isErr() || job.value.kind !== "DeliverTarget") {
-      throw new Error("deliver job rejected");
-    }
-    const sent: Request[] = [];
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      sent.push(new Request(input, init));
-      return new Response(null, { status: 202 });
-    });
-    try {
-      expect((await attemptInboxDelivery(env, job.value)).kind).toBe("Success");
-    } finally {
-      fetchSpy.mockRestore();
-    }
-    const request = sent[0];
-    if (!request) {
-      throw new Error("nothing was delivered");
-    }
+    const request = await deliverTarget(row?.id ?? "", inbox);
     expect(request.url).toBe(inbox);
     expect(request.headers.get("Signature")).toContain(
       'keyId="https://example.com/actor#main-key"',

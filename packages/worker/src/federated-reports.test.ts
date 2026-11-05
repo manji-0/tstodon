@@ -1,11 +1,10 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { deliverTarget } from "../test/delivery-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
-import { OutboxJob } from "@tstodon/domain";
-import { attemptInboxDelivery } from "./delivery";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteActorByUri } from "./remote-actor-store";
 import { receiveRemoteFlag } from "./remote-flag";
@@ -270,29 +269,6 @@ const queuedFlags = async (inbox: string) => {
   }));
 };
 
-/** Deliver a queued activity, returning the signed request that went out. */
-const deliver = async (activityId: string, inbox: string): Promise<Request> => {
-  const job = OutboxJob.parse({ kind: "DeliverTarget", activityId, inboxUrl: inbox });
-  if (job.isErr() || job.value.kind !== "DeliverTarget") {
-    throw new Error("deliver job rejected");
-  }
-  const sent: Request[] = [];
-  const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    sent.push(new Request(input, init));
-    return new Response(null, { status: 202 });
-  });
-  try {
-    expect((await attemptInboxDelivery(env, job.value)).kind).toBe("Success");
-  } finally {
-    fetchSpy.mockRestore();
-  }
-  const [request] = sent;
-  if (!request) {
-    throw new Error("nothing was delivered");
-  }
-  return request;
-};
-
 describe("forwarding reports", () => {
   it("forwards a report on a remote account as a Flag from the instance actor", async () => {
     const target = await remoteActor("forward-target", "forward.example");
@@ -319,7 +295,7 @@ describe("forwarding reports", () => {
         object: [target.actorUri, `${target.actorUri}/notes/forward-1`],
       },
     });
-    const request = await deliver(queued[0]?.activityId ?? "", inbox);
+    const request = await deliverTarget(queued[0]?.activityId ?? "", inbox);
     expect(request.headers.get("Signature")).toContain(
       'keyId="https://example.com/actor#main-key"',
     );

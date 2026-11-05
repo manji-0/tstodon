@@ -1,8 +1,9 @@
 import { env } from "cloudflare:test";
 import { OutboxJob } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
-import { expect } from "vite-plus/test";
+import { expect, vi } from "vite-plus/test";
 import { z } from "zod";
+import { attemptInboxDelivery } from "../src/delivery";
 import { processOutboxJob } from "../src/outbox-job";
 import { listOutboundActivities } from "../src/outbox-store";
 
@@ -49,4 +50,52 @@ export const deliveredCreate = async (accountId: string, noteUri: string) => {
     activity: activity.value,
     inboxes: (results ?? []).map((target) => target.inbox_url),
   };
+};
+
+type SentRequest = Readonly<{
+  url: string;
+  method: string;
+  headers: [string, string][];
+  body: string;
+}>;
+
+/**
+ * Delivers a queued activity to `inboxUrl` and returns the signed request
+ * that went out.
+ *
+ * The `fetch` spy is isolate-wide, so the `OutboxDeliveryWorkflow` started
+ * for the same activity can post through it too, from its own Durable
+ * Object. A request body is an I/O object bound to the context that made
+ * it, so the spy reads each body there and the caller gets a copy it owns.
+ */
+export const deliverTarget = async (activityId: string, inboxUrl: string): Promise<Request> => {
+  const job = OutboxJob.parse({ kind: "DeliverTarget", activityId, inboxUrl });
+  if (job.isErr() || job.value.kind !== "DeliverTarget") {
+    throw new Error("deliver job rejected");
+  }
+  const sent: SentRequest[] = [];
+  const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const request = new Request(input, init);
+    sent.push({
+      url: request.url,
+      method: request.method,
+      headers: [...request.headers],
+      body: await request.text(),
+    });
+    return new Response(null, { status: 202 });
+  });
+  try {
+    expect((await attemptInboxDelivery(env, job.value)).kind).toBe("Success");
+  } finally {
+    fetchSpy.mockRestore();
+  }
+  const [first] = sent;
+  if (!first) {
+    throw new Error("nothing was delivered");
+  }
+  return new Request(first.url, {
+    method: first.method,
+    headers: first.headers,
+    body: first.body,
+  });
 };
