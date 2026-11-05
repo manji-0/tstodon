@@ -66,7 +66,14 @@ export {
   type OutboundFollow as OutboundFollowValue,
   type OutboundFollowState,
 } from "./outbound-follow";
+export type {
+  AcceptOutboundFollow,
+  OutboundFollowAnswer,
+  RejectOutboundFollow,
+} from "./outbound-follow-store";
+export type { FindLocalAccountByUsername } from "./local-account-resolver";
 export { QuoteApprovalPolicy } from "./quote-approval-policy";
+export type { RepositoryError } from "./repository-error";
 export {
   RemoteActor,
   type RemoteActor as RemoteActorValue,

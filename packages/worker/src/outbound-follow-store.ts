@@ -1,4 +1,4 @@
-import { OutboundFollow } from "@tstodon/domain";
+import { OutboundFollow, type OutboundFollowAnswer } from "@tstodon/domain";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
@@ -134,18 +134,6 @@ export const updateOutboundFollowOptions = async (
     );
   });
 
-/**
- * The follow an `Accept` or `Reject` from `actorUri` answers: the one whose
- * `Follow` id it names, or, when the answer embeds a `Follow` from a local
- * account, that account's follow of the actor.
- */
-export type OutboundFollowAnswer = Readonly<{
-  actorUri: string;
-  followActivityId: string;
-  accountId: string | undefined;
-}>;
-
-/** Mark the answered follow `Accepted`. Resolves to true when a follow matched. */
 export const acceptOutboundFollow = async (
   db: D1Database,
   answer: OutboundFollowAnswer,
@@ -159,7 +147,6 @@ export const acceptOutboundFollow = async (
     return rows.length > 0;
   });
 
-/** Drop the answered follow. Resolves to true when a follow matched. */
 export const rejectOutboundFollow = async (
   db: D1Database,
   answer: OutboundFollowAnswer,

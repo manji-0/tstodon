@@ -1,5 +1,6 @@
 import { err, ok, type Result } from "neverthrow";
 import { schemaResult } from "@tstodon/core";
+import type { RepositoryError } from "@tstodon/domain";
 import { type z } from "zod";
 
 export const toRepositoryError = (message: string): RepositoryError => ({
@@ -20,10 +21,8 @@ export const parseRows = <T>(schema: z.ZodType<T>, rows: ReadonlyArray<unknown> 
     return parsed.isOk() ? [parsed.value] : [];
   });
 
-export type RepositoryError = Readonly<{
-  kind: "RepositoryError";
-  message: string;
-}>;
+/** The failure every D1 adapter maps its errors to; the domain's contracts name it. */
+export type { RepositoryError };
 
 /** Soft cap for `db.batch` size — stay clear of statement/parameter platform limits. */
 export const D1_BATCH_CHUNK_SIZE = 100;

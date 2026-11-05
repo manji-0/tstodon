@@ -1,29 +1,23 @@
-import { err, ok } from "neverthrow";
-import { outboundFollowAnswer } from "../outbound-follow";
+import { findAccountByUsername } from "../account-store";
+import { answerOutboundFollow } from "../outbound-follow";
 import { acceptOutboundFollow, rejectOutboundFollow } from "../outbound-follow-store";
 import type { InboxHandler, RemoteDelivery } from "./handler";
 
 /** The remote actor answers a local account's `Follow` of it. */
-export const receiveFollowAnswer: InboxHandler<RemoteDelivery<"Accept" | "Reject">> = async ({
+export const receiveFollowAnswer: InboxHandler<RemoteDelivery<"Accept" | "Reject">> = ({
   env,
   identity,
   signer,
   activity,
   received,
-}) => {
-  const answer = await outboundFollowAnswer(
-    env.DB,
+}) =>
+  answerOutboundFollow(
+    {
+      findAccountByUsername: (username) => findAccountByUsername(env.DB, username),
+      acceptOutboundFollow: (answer) => acceptOutboundFollow(env.DB, answer),
+      rejectOutboundFollow: (answer) => rejectOutboundFollow(env.DB, answer),
+    },
     identity,
     signer,
-    activity.object,
-    received.object,
+    { kind: activity.kind, objectId: activity.object, object: received.object },
   );
-  if (answer.isErr()) {
-    return err(answer.error);
-  }
-  const answered =
-    activity.kind === "Accept"
-      ? await acceptOutboundFollow(env.DB, answer.value)
-      : await rejectOutboundFollow(env.DB, answer.value);
-  return answered.isErr() ? err(answered.error) : ok(undefined);
-};

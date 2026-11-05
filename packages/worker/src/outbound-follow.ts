@@ -1,8 +1,16 @@
-import { Hostname, InstanceIdentity, type LocalAccount, type RemoteActor } from "@tstodon/domain";
+import {
+  type AcceptOutboundFollow,
+  type FindLocalAccountByUsername,
+  Hostname,
+  InstanceIdentity,
+  type LocalAccount,
+  type OutboundFollowAnswer,
+  type RejectOutboundFollow,
+  type RemoteActor,
+} from "@tstodon/domain";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
-import { findAccountByUsername } from "./account-store";
 import { parseLocalActorUsername } from "./activitypub";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { findBlock } from "./block-mute-store";
@@ -14,7 +22,6 @@ import { newEntityId } from "./ids";
 import {
   deleteOutboundFollow,
   insertOutboundFollow,
-  type OutboundFollowAnswer,
   updateOutboundFollowOptions,
 } from "./outbound-follow-store";
 import { federatesWithHost } from "./runtime-config";
@@ -152,21 +159,31 @@ const EmbeddedFollowSchema = z.object({
 
 const parseEmbeddedFollow = schemaResult(EmbeddedFollowSchema);
 
+/** An `Accept` or `Reject` as received: the id it names and the object it carries. */
+export type ReceivedFollowAnswer = Readonly<{
+  kind: "Accept" | "Reject";
+  objectId: string;
+  object: unknown;
+}>;
+
 /**
  * Which follow an `Accept` or `Reject` signed by `signer` answers: the one
  * whose `Follow` id is `objectId`. The signer can only answer follows of
  * itself. An embedded `Follow` of the signer by a local actor also names that
  * account's follow, for servers that do not echo our `Follow` id.
  */
-export const outboundFollowAnswer = async (
-  db: D1Database,
+const outboundFollowAnswer = async (
+  findAccountByUsername: FindLocalAccountByUsername,
   identity: InstanceIdentity,
   signer: RemoteActor,
-  objectId: string,
-  object: unknown,
+  received: ReceivedFollowAnswer,
 ): Promise<Result<OutboundFollowAnswer, RepositoryError>> => {
-  const answer = { actorUri: signer.actorUri, followActivityId: objectId, accountId: undefined };
-  const embedded = parseEmbeddedFollow(object);
+  const answer = {
+    actorUri: signer.actorUri,
+    followActivityId: received.objectId,
+    accountId: undefined,
+  };
+  const embedded = parseEmbeddedFollow(received.object);
   if (embedded.isErr()) {
     return ok(answer);
   }
@@ -176,11 +193,38 @@ export const outboundFollowAnswer = async (
   if (followed !== signer.actorUri || !username) {
     return ok(answer);
   }
-  const follower = await findAccountByUsername(db, username);
+  const follower = await findAccountByUsername(username);
   if (follower.isErr()) {
     return err(follower.error);
   }
   return ok({ ...answer, accountId: follower.value?.id });
+};
+
+/** Record the remote actor's answer to a local account's `Follow` of it. */
+export const answerOutboundFollow = async (
+  contracts: Readonly<{
+    findAccountByUsername: FindLocalAccountByUsername;
+    acceptOutboundFollow: AcceptOutboundFollow;
+    rejectOutboundFollow: RejectOutboundFollow;
+  }>,
+  identity: InstanceIdentity,
+  signer: RemoteActor,
+  received: ReceivedFollowAnswer,
+): Promise<Result<void, RepositoryError>> => {
+  const answer = await outboundFollowAnswer(
+    contracts.findAccountByUsername,
+    identity,
+    signer,
+    received,
+  );
+  if (answer.isErr()) {
+    return err(answer.error);
+  }
+  const answered =
+    received.kind === "Accept"
+      ? await contracts.acceptOutboundFollow(answer.value)
+      : await contracts.rejectOutboundFollow(answer.value);
+  return answered.map(() => undefined);
 };
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
