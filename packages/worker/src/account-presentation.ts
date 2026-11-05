@@ -7,9 +7,7 @@ import {
   type RemoteActor,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { accountDocumentsByIds, mastodonAccountDocument } from "./account-documents";
 import { listAccountStandings } from "./account-moderation-store";
-import { type AccountRef, refAccountId } from "./account-ref";
 import { suspendedDomains } from "./admin-domain-block-store";
 import type { RepositoryError } from "./d1";
 import { listRemoteActorModerations } from "./remote-actor-moderation-store";
@@ -131,31 +129,4 @@ export const presentedAccountDocument = (
     case "Hidden":
       return undefined;
   }
-};
-
-/** One account's document as lookup and `GET /accounts/:id` answer it; `undefined` when hidden. */
-export const accountRefDocument = async (
-  env: Env,
-  identity: InstanceIdentity,
-  ref: AccountRef,
-): Promise<Result<Record<string, unknown> | undefined, RepositoryError>> => {
-  const id = refAccountId(ref);
-  const presentations =
-    ref.kind === "LocalAccount"
-      ? await localAccountPresentations(env.DB, [id])
-      : await remoteAccountPresentations(env, [ref.actor]);
-  if (presentations.isErr()) {
-    return err(presentations.error);
-  }
-  const presentation = presentations.value.get(
-    ref.kind === "LocalAccount" ? id : ref.actor.actorUri,
-  );
-  if (presentation === undefined || presentation.kind === "Hidden") {
-    return ok(undefined);
-  }
-  const document =
-    ref.kind === "LocalAccount"
-      ? await mastodonAccountDocument(env, identity, ref.account)
-      : (await accountDocumentsByIds(env, identity, [id])).get(id);
-  return ok(document && presentedAccountDocument(identity, presentation, document));
 };

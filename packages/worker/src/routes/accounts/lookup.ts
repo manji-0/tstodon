@@ -2,7 +2,6 @@ import type { Context } from "hono";
 import { type InstanceIdentity, Visibility } from "@tstodon/domain";
 import { findAccountByIdOrUsername, findAccountsByIds, searchAccounts } from "../../account-store";
 import {
-  accountRefDocument,
   localAccountPresentations,
   presentedAccountDocument,
   remoteAccountPresentations,
@@ -12,6 +11,7 @@ import {
 import { jsonAuthError, jsonRepositoryError, queryAccountsLimit, requireUser } from "../../http";
 import {
   accountDocumentsByIds,
+  accountRefDocument,
   documentsInOrder,
   mastodonAccountDocument,
   mastodonAccountDocuments,

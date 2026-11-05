@@ -1,5 +1,19 @@
-import { InstanceIdentity, type LocalAccount, type RemoteActor, Visibility } from "@tstodon/domain";
+import {
+  type AccountPresentation,
+  InstanceIdentity,
+  type LocalAccount,
+  type RemoteActor,
+  Visibility,
+} from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
 import { accountCounts, accountCountsByIds } from "./account-count-store";
+import {
+  localAccountPresentations,
+  presentedAccountDocument,
+  remoteAccountPresentations,
+} from "./account-presentation";
+import { type AccountRef, refAccountId } from "./account-ref";
+import type { RepositoryError } from "./d1";
 import { listAccountMoveTargets } from "./account-move-store";
 import { findAccountsByIds, findAccountsByUsernames } from "./account-store";
 import { parseLocalActorUsername } from "./activitypub";
@@ -93,8 +107,10 @@ const withLocalMoves = async (
 
 /**
  * The accounts that moved accounts point at, keyed by actor URI, as Mastodon
- * renders them under `moved`: a local account or a cached remote actor. One
- * level deep; a target's own `moved` is left out.
+ * renders them under `moved`: a local account or a cached remote actor,
+ * through the same presentation rule as the account read paths, so a
+ * suspended target is stripped and a hidden one is left out. One level deep;
+ * a target's own `moved` is left out.
  */
 const movedToDocuments = async (
   env: Env,
@@ -115,18 +131,39 @@ const movedToDocuments = async (
       actorUris.filter((uri) => parseLocalActorUsername(identity, uri) === undefined),
     ),
   ]);
-  const localTargets = locals.isOk()
-    ? [...(await mastodonAccountDocuments(env, identity, locals.value, false)).values()]
-    : [];
-  return new Map([
-    ...localTargets.flatMap((document): [string, Record<string, unknown>][] =>
-      typeof document.uri === "string" ? [[document.uri, document]] : [],
+  const localAccounts = locals.isOk() ? locals.value : [];
+  const remoteActors = actors.isOk() ? [...actors.value.values()] : [];
+  const [localDocuments, localPresentations, remotePresentations] = await Promise.all([
+    mastodonAccountDocuments(env, identity, localAccounts, false),
+    localAccountPresentations(
+      env.DB,
+      localAccounts.map((account) => account.id),
     ),
-    ...[...(actors.isOk() ? actors.value : [])].map(
-      ([uri, actor]): [string, Record<string, unknown>] => [
-        uri,
+    remoteAccountPresentations(env, remoteActors),
+  ]);
+  const presented = (
+    uri: string,
+    presentation: AccountPresentation | undefined,
+    document: Record<string, unknown> | undefined,
+  ): [string, Record<string, unknown>][] => {
+    const shown =
+      presentation && document && presentedAccountDocument(identity, presentation, document);
+    return shown ? [[uri, shown]] : [];
+  };
+  return new Map([
+    ...localAccounts.flatMap((account) =>
+      presented(
+        InstanceIdentity.actorUrl(identity, account.username),
+        localPresentations.isOk() ? localPresentations.value.get(account.id) : undefined,
+        localDocuments.get(account.id),
+      ),
+    ),
+    ...remoteActors.flatMap((actor) =>
+      presented(
+        actor.actorUri,
+        remotePresentations.isOk() ? remotePresentations.value.get(actor.actorUri) : undefined,
         mastodonRemoteAccount(identity, actor),
-      ],
+      ),
     ),
   ]);
 };
@@ -327,4 +364,31 @@ export const mastodonRemoteAccount = (
     emojis: [],
     fields: [],
   };
+};
+
+/** One account's document as lookup and `GET /accounts/:id` answer it; `undefined` when hidden. */
+export const accountRefDocument = async (
+  env: Env,
+  identity: InstanceIdentity,
+  ref: AccountRef,
+): Promise<Result<Record<string, unknown> | undefined, RepositoryError>> => {
+  const id = refAccountId(ref);
+  const presentations =
+    ref.kind === "LocalAccount"
+      ? await localAccountPresentations(env.DB, [id])
+      : await remoteAccountPresentations(env, [ref.actor]);
+  if (presentations.isErr()) {
+    return err(presentations.error);
+  }
+  const presentation = presentations.value.get(
+    ref.kind === "LocalAccount" ? id : ref.actor.actorUri,
+  );
+  if (presentation === undefined || presentation.kind === "Hidden") {
+    return ok(undefined);
+  }
+  const document =
+    ref.kind === "LocalAccount"
+      ? await mastodonAccountDocument(env, identity, ref.account)
+      : (await accountDocumentsByIds(env, identity, [id])).get(id);
+  return ok(document && presentedAccountDocument(identity, presentation, document));
 };
