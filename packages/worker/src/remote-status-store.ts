@@ -291,13 +291,11 @@ export const upsertRemoteStatus = async (
       } catch (error) {
         // A new row whose id another isolate already stored (same instant, same
         // random low bits): retry at the same instant with new random low bits.
+        if (existing.value || attempt >= ID_COLLISION_RETRIES || !isIdCollision(error)) {
+          throw error;
+        }
         const rerolled = StatusId.parse(rerollEntityId(persisted.id));
-        if (
-          existing.value ||
-          attempt >= ID_COLLISION_RETRIES ||
-          !isIdCollision(error) ||
-          rerolled.isErr()
-        ) {
+        if (rerolled.isErr()) {
           throw error;
         }
         persisted = { ...persisted, id: rerolled.value };

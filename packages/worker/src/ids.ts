@@ -6,13 +6,17 @@ const LOW_MASK = (1n << LOW_BITS) - 1n;
 const LOW_VALUES = 1 << Number(LOW_BITS);
 
 /**
- * How many low values this isolate remembers across instants. Past it, the
- * instants it first drew at longest ago are forgotten, never the one being
- * drawn, so at most 65,536 numbers are held. A forgotten instant is usually
- * one the clock has moved past; drawing at it again only risks the 1 in
- * 65,536 match that ids from another isolate already carry.
+ * How much this isolate remembers: at most 65,536 low values and at most 256
+ * instants, whichever limit is hit first. Past either, the instants it first
+ * drew at longest ago are forgotten, never the one being drawn. With ids on
+ * distinct milliseconds the instant cap keeps the map to a few hundred small
+ * entries instead of 65,536 one-value sets (about 15 MB in a long-lived
+ * isolate). A forgotten instant is usually one the clock has moved past;
+ * drawing at it again only risks the 1 in 65,536 match that ids from another
+ * isolate already carry.
  */
 const REMEMBERED_LOW_VALUES = LOW_VALUES;
+const REMEMBERED_INSTANTS = 256;
 
 /** Low values handed out per instant, in the order each instant was first drawn. */
 const usedLowValues = new Map<bigint, Set<number>>();
@@ -22,7 +26,9 @@ const randomLowValue = (): number => crypto.getRandomValues(new Uint16Array(1))[
 
 const forgetOldInstants = (keep: bigint): void => {
   for (const [at, used] of usedLowValues) {
-    if (rememberedCount <= REMEMBERED_LOW_VALUES) return;
+    if (rememberedCount <= REMEMBERED_LOW_VALUES && usedLowValues.size <= REMEMBERED_INSTANTS) {
+      return;
+    }
     if (at === keep) continue;
     usedLowValues.delete(at);
     rememberedCount -= used.size;
