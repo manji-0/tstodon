@@ -1,4 +1,5 @@
 import { writeMetric } from "./metrics";
+import { refreshStaleRemoteActors } from "./remote-actor-refresh";
 
 export const handleScheduled = (
   controller: ScheduledController,
@@ -18,6 +19,8 @@ export const handleScheduled = (
       env.OUTBOX_PROCESS_QUEUE.send({ kind: "PublishScheduledStatuses" }),
       // Delete the old posts of accounts with automated post deletion on.
       env.OUTBOX_PROCESS_QUEUE.send({ kind: "CleanUpStatuses" }),
+      // Re-fetch actors cached over a day ago, under the handle WebFinger confirms.
+      refreshStaleRemoteActors(env),
     ]).then(() => {
       writeMetric(env, "cron", [1], [controller.cron, "scheduled"]);
     }),

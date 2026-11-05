@@ -26,6 +26,7 @@ import {
   findRemoteActorByHandle as findRemoteActorByHandleSql,
   findRemoteActorByPublicKeyId as findRemoteActorByPublicKeyIdSql,
   findRemoteActorByUri as findRemoteActorByUriSql,
+  listStaleRemoteActorUris as listStaleRemoteActorUrisSql,
   findRemoteActorsByUris as findRemoteActorsByUrisSql,
   findRemoteFollow as findRemoteFollowSql,
   listAcceptedRemoteFollowerInboxes as listAcceptedRemoteFollowerInboxesSql,
@@ -154,6 +155,16 @@ export const findRemoteActorByUri = async (
       return rows[0];
     }),
   );
+
+/** Up to `limit` actor URIs cached at or before `before`, in random order. */
+export const listStaleRemoteActorUris = async (
+  db: D1Database,
+  before: string,
+  limit: number,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+  (
+    await runD1(async () => queryTyped(db, listStaleRemoteActorUrisSql(before, limit), ActorUriRow))
+  ).map((rows) => rows.map((row) => row.actor_uri));
 
 /** Cached remote actors keyed by actor URI; unknown or unreadable rows are left out. */
 export const findRemoteActorsByUris = async (

@@ -5,6 +5,7 @@ import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
+import { refreshStaleRemoteActors } from "./remote-actor-refresh";
 
 const call = (path: string, init?: RequestInit) => SELF.fetch(`https://example.com${path}`, init);
 
@@ -150,5 +151,20 @@ describe("a remote actor whose WebFinger domain differs from its URI host", () =
     ).run();
 
     expect(await like(remote, "wf-suspended", "wf-suspended-viewer@example.com")).toBe(403);
+  });
+});
+
+describe("an actor cached before the WebFinger round trip", () => {
+  it("takes the confirmed domain when the cron re-fetches it", async () => {
+    const remote = await remoteActor("carol", "social.wf-stale.example");
+    expect(await acctOf(remote.actorUri)).toBe("carol@social.wf-stale.example");
+    serveRemote(remote, "carol", {
+      "social.wf-stale.example": { subject: "acct:carol@wf-stale.example", self: remote.actorUri },
+      "wf-stale.example": { subject: "acct:carol@wf-stale.example", self: remote.actorUri },
+    });
+
+    await refreshStaleRemoteActors(env);
+
+    expect(await acctOf(remote.actorUri)).toBe("carol@wf-stale.example");
   });
 });

@@ -574,6 +574,8 @@ export * from "./sql/listSensitizedAccountIds";
 
 export * from "./sql/listStaleLinkCards";
 
+export * from "./sql/listStaleRemoteActorUris";
+
 export * from "./sql/listStatusCards";
 
 export * from "./sql/listStatusEditSnapshots";
