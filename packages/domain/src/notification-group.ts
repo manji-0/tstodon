@@ -25,7 +25,13 @@ export type NotificationGroup = Readonly<{
   reportId: string | null;
   /** The account's severance event a `severed_relationships` group reports. */
   severanceEventId: string | null;
-  fromAccountIds: ReadonlyArray<string>;
+}>;
+
+/** A group read by key in SQL: its newest notification, count and oldest id. */
+export type NotificationGroupSummary = Readonly<{
+  newest: GroupedNotificationEntry;
+  notificationsCount: number;
+  oldestId: string;
 }>;
 
 /**
@@ -87,6 +93,28 @@ const target = (
     : undefined;
 };
 
+/**
+ * A group from its summary and its senders' account ids, newest first: the
+ * first {@link SAMPLE_ACCOUNT_LIMIT} distinct senders are its sample.
+ */
+const summarized = (
+  groupKey: string,
+  summary: NotificationGroupSummary,
+  senders: ReadonlyArray<string>,
+): NotificationGroup => ({
+  groupKey,
+  type: summary.newest.kind,
+  notificationsCount: summary.notificationsCount,
+  mostRecentNotificationId: summary.newest.id,
+  pageMinId: summary.oldestId,
+  pageMaxId: summary.newest.id,
+  latestPageNotificationAt: summary.newest.createdAt,
+  sampleAccountIds: [...new Set(senders)].slice(0, SAMPLE_ACCOUNT_LIMIT),
+  statusId: statusOf(summary.newest),
+  reportId: summary.newest.reportId,
+  severanceEventId: summary.newest.severanceEventId,
+});
+
 /** One group from its notifications, newest first, within the page range. */
 const group = (
   groupKey: string,
@@ -94,26 +122,17 @@ const group = (
   rangeStart: string | undefined,
 ): NotificationGroup | undefined => {
   const [mostRecent] = members;
-  const inRange = members.filter((entry) => rangeStart === undefined || entry.id >= rangeStart);
-  const pageMin = inRange.at(-1);
+  const pageMin = members.findLast(
+    (entry) => rangeStart === undefined || entry.id >= rangeStart,
+  );
   if (!mostRecent || !pageMin) {
     return undefined;
   }
-  const senders = [...new Set(members.map((entry) => entry.fromAccountId))];
-  return {
+  return summarized(
     groupKey,
-    type: mostRecent.kind,
-    notificationsCount: members.length,
-    mostRecentNotificationId: mostRecent.id,
-    pageMinId: pageMin.id,
-    pageMaxId: mostRecent.id,
-    latestPageNotificationAt: mostRecent.createdAt,
-    sampleAccountIds: senders.slice(0, SAMPLE_ACCOUNT_LIMIT),
-    statusId: members.map(statusOf).find((id) => id !== null) ?? null,
-    reportId: mostRecent.reportId,
-    severanceEventId: mostRecent.severanceEventId,
-    fromAccountIds: senders,
-  };
+    { newest: mostRecent, notificationsCount: members.length, oldestId: pageMin.id },
+    members.map((entry) => entry.fromAccountId),
+  );
 };
 
 /**
@@ -163,12 +182,14 @@ const fold = (
   const newestId = direction === "Newer" ? (end ?? first.id) : first.id;
 
   const order = direction === "Older" ? [...met.keys()] : [...met.keys()].toReversed();
-  const groups = order.flatMap((groupKey) => {
+  const folded = order.flatMap((groupKey) => {
     const members = (byKey.get(groupKey) ?? []).filter((entry) => entry.id <= newestId);
-    return group(groupKey, members, oldestId) ?? [];
+    const built = group(groupKey, members, oldestId);
+    return built ? [{ group: built, senders: members.map((entry) => entry.fromAccountId) }] : [];
   });
-  const accountIds = new Set(groups.flatMap((folded) => folded.fromAccountIds));
-  const statusIds = new Set(groups.flatMap((folded) => (folded.statusId ? [folded.statusId] : [])));
+  const groups = folded.map((entry) => entry.group);
+  const accountIds = new Set(folded.flatMap((entry) => entry.senders));
+  const statusIds = new Set(groups.flatMap((built) => (built.statusId ? [built.statusId] : [])));
   return {
     kind: "Page",
     groups,
@@ -183,5 +204,6 @@ export const NotificationGroup = {
   defaultGroupedTypes,
   key,
   target,
+  summarized,
   fold,
 } as const;

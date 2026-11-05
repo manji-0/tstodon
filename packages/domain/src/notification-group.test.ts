@@ -62,7 +62,6 @@ describe("NotificationGroup.fold", () => {
       pageMinId: "4",
       latestPageNotificationAt: "2026-11-04T00:00:09.000Z",
       sampleAccountIds: ["a", "b", "c"],
-      fromAccountIds: ["a", "b", "c", "d"],
     });
   });
 
@@ -166,5 +165,28 @@ describe("NotificationGroup.target", () => {
     });
     expect(NotificationGroup.target("mention-s1", grouped)).toBeUndefined();
     expect(NotificationGroup.target("favourite-", grouped)).toBeUndefined();
+  });
+});
+
+describe("NotificationGroup.summarized", () => {
+  it("builds a group from its count, oldest id, newest notification and senders", () => {
+    const group = NotificationGroup.summarized(
+      "favourite-s1",
+      { newest: entry("9", "favourite", "a", "s1"), notificationsCount: 120, oldestId: "1" },
+      ["a", "b", "a", "c", "d"],
+    );
+    expect(group).toEqual({
+      groupKey: "favourite-s1",
+      type: "favourite",
+      notificationsCount: 120,
+      mostRecentNotificationId: "9",
+      pageMinId: "1",
+      pageMaxId: "9",
+      latestPageNotificationAt: "2026-11-04T00:00:09.000Z",
+      sampleAccountIds: ["a", "b", "c"],
+      statusId: "s1",
+      reportId: null,
+      severanceEventId: null,
+    });
   });
 });
