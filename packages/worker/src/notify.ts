@@ -1,17 +1,23 @@
+import { assertNever } from "@tstodon/core";
 import {
+  FediRole,
+  type FediRoleValue,
   type FindMutedThreadStatusIds,
   type HoldNotification,
   Hostname,
   type InsertNotification,
-  type IsSenderSilenced,
   LocalFollow,
   type NewNotification,
   NotificationGroup,
+  type NotificationPolicyAction,
   type PublishNotification,
   type ResolveNotificationDisposition,
+  type ScreenSender,
+  type SenderScreening,
 } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { err, ok } from "neverthrow";
+import { listAdminAccountIds } from "./account-admin-store";
 import type { RepositoryError } from "./d1";
 import type { FollowWrite } from "./follow-store";
 import { holdNotification } from "./notification-policy-store";
@@ -43,9 +49,24 @@ const POLICY_EXEMPT_KINDS: ReadonlyArray<string> = [
   "admin.report",
 ];
 
+/**
+ * The kinds an account is still notified of about itself, as Mastodon's
+ * `DropCondition#drop?` exempts them from `from_self?`.
+ */
+const SELF_NOTIFIED_KINDS: ReadonlyArray<string> = [
+  "poll",
+  "severed_relationships",
+  "moderation_warning",
+  "annual_report",
+];
+
+const DROP = { kind: "Drop" } as const satisfies SenderScreening;
+const BYPASS = { kind: "Bypass" } as const satisfies SenderScreening;
+const SCREEN = { kind: "Screen" } as const satisfies SenderScreening;
+
 /** What delivering a notification reads and writes. */
 export type NotifyContracts = Readonly<{
-  isSenderSilenced: IsSenderSilenced;
+  screenSender: ScreenSender;
   resolveDisposition: ResolveNotificationDisposition;
   findMutedThreadStatusIds: FindMutedThreadStatusIds;
   insertNotification: InsertNotification;
@@ -55,21 +76,35 @@ export type NotifyContracts = Readonly<{
 
 /**
  * Record a notification as the recipient's policy decides: delivered, held
- * back as a request, or dropped outright. As Mastodon's NotifyService, nothing
- * of any kind comes from a sender the recipient blocks or mutes notifications
- * of; the non-filterable kinds then bypass the policy.
+ * back as a request, or dropped outright. As Mastodon's NotifyService, the
+ * sender is screened first: nothing of any kind comes from the recipient
+ * itself or a sender it silenced, and a staff mention skips every filter.
+ * The non-filterable kinds then bypass the policy.
  */
 export const deliverNotification = async (
   contracts: NotifyContracts,
   input: NewNotification,
 ): Promise<Result<void, RepositoryError>> => {
-  const silenced = await contracts.isSenderSilenced(input);
-  if (silenced.isErr()) {
-    return err(silenced.error);
+  const screening = await contracts.screenSender(input);
+  if (screening.isErr()) {
+    return err(screening.error);
   }
-  if (silenced.value) {
-    return ok(undefined);
+  switch (screening.value.kind) {
+    case "Drop":
+      return ok(undefined);
+    case "Bypass":
+      return recordNotification(contracts, input, "accept");
+    case "Screen":
+      return deliverScreened(contracts, input);
+    default:
+      return assertNever(screening.value);
   }
+};
+
+const deliverScreened = async (
+  contracts: NotifyContracts,
+  input: NewNotification,
+): Promise<Result<void, RepositoryError>> => {
   const disposition = POLICY_EXEMPT_KINDS.includes(input.kind)
     ? ok("accept" as const)
     : await contracts.resolveDisposition({
@@ -95,11 +130,19 @@ export const deliverNotification = async (
       return ok(undefined);
     }
   }
+  return recordNotification(contracts, input, disposition.value);
+};
+
+const recordNotification = async (
+  contracts: NotifyContracts,
+  input: NewNotification,
+  disposition: Exclude<NotificationPolicyAction, "drop">,
+): Promise<Result<void, RepositoryError>> => {
   const inserted = await contracts.insertNotification(input);
   if (inserted.isErr()) {
     return err(inserted.error);
   }
-  if (disposition.value === "filter") {
+  if (disposition === "filter") {
     return contracts.holdNotification(inserted.value, input);
   }
   await contracts.publishNotification(input.accountId, inserted.value);
@@ -110,7 +153,7 @@ export const deliverNotification = async (
 const notifyContracts = (env: Env): NotifyContracts => {
   const identity = parseInstanceIdentity(env);
   return {
-    isSenderSilenced: (notification) => isSenderSilenced(env.DB, notification),
+    screenSender: (notification) => screenSender(env.DB, notification),
     resolveDisposition: (notification) => notificationDisposition(env.DB, notification),
     findMutedThreadStatusIds: (accountId, statusIds) =>
       identity.isOk()
@@ -184,14 +227,27 @@ const streamedNotification = async (
 };
 
 /**
- * Blocks and mutes name a remote sender by its actor URI and a local one by
- * its account id; only a remote sender has a domain to block.
+ * The checks of Mastodon's `DropCondition#drop?`, in its order. Blocks and
+ * mutes name a remote sender by its actor URI and a local one by its account
+ * id; only a remote sender has a domain to block.
  */
-const isSenderSilenced = async (
+const screenSender = async (
   db: D1Database,
   notification: NewNotification,
-): Promise<Result<boolean, RepositoryError>> => {
+): Promise<Result<SenderScreening, RepositoryError>> => {
   const recipientId = notification.accountId;
+  if (notification.fromAccountId === recipientId) {
+    return ok(SELF_NOTIFIED_KINDS.includes(notification.kind) ? SCREEN : DROP);
+  }
+  if (notification.kind === "mention" && !notification.fromActorUri) {
+    const staff = await isStaffSender(db, notification.fromAccountId, recipientId);
+    if (staff.isErr()) {
+      return err(staff.error);
+    }
+    if (staff.value) {
+      return ok(BYPASS);
+    }
+  }
   const sender = notification.fromActorUri ?? notification.fromAccountId;
   // Every notification pays for this check, so the two lookups run together.
   const [blocked, muted] = await Promise.all([
@@ -205,10 +261,32 @@ const isSenderSilenced = async (
     return err(muted.error);
   }
   if (blocked.value || muted.value?.notifications) {
-    return ok(true);
+    return ok(DROP);
   }
   const domain = notification.fromActorUri ? Hostname.ofUri(notification.fromActorUri) : undefined;
-  return domain ? isDomainBlocked(db, recipientId, domain) : ok(false);
+  if (!domain) {
+    return ok(SCREEN);
+  }
+  const domainBlocked = await isDomainBlocked(db, recipientId, domain);
+  return domainBlocked.map((isBlocked) => (isBlocked ? DROP : SCREEN));
+};
+
+/**
+ * Mastodon's `from_staff?`: a local sender whose role bypasses the
+ * recipient's blocks. Roles come from the sign-in user's `role` column,
+ * which `ADMIN_USERNAMES` seeds.
+ */
+const isStaffSender = async (
+  db: D1Database,
+  senderId: string,
+  recipientId: string,
+): Promise<Result<boolean, RepositoryError>> => {
+  const admins = await listAdminAccountIds(db);
+  const roleOf = (ids: ReadonlyArray<string>, id: string): FediRoleValue =>
+    ids.includes(id) ? FediRole.Admin : FediRole.User;
+  return admins.map((ids) =>
+    FediRole.bypassesBlock(roleOf(ids, senderId), roleOf(ids, recipientId)),
+  );
 };
 
 /** A notification from a remote actor, whose sender id is the actor's `r_…` account id. */

@@ -1,4 +1,4 @@
-import type { NewNotification, NotificationPolicyAction } from "@tstodon/domain";
+import type { NewNotification, NotificationPolicyAction, SenderScreening } from "@tstodon/domain";
 import { ok } from "neverthrow";
 import { describe, expect, it } from "vite-plus/test";
 import { deliverNotification } from "./notify";
@@ -13,14 +13,13 @@ const mention = {
 const recording = (
   disposition: NotificationPolicyAction,
   muted: ReadonlyArray<string> = [],
-  silencedSenders: ReadonlyArray<string> = [],
+  screening: SenderScreening = { kind: "Screen" },
 ) => {
   const events: string[] = [];
   return {
     events,
     contracts: {
-      isSenderSilenced: async (notification: NewNotification) =>
-        ok(silencedSenders.includes(notification.fromAccountId)),
+      screenSender: async () => ok(screening),
       resolveDisposition: async () => {
         events.push("disposition");
         return ok(disposition);
@@ -77,11 +76,17 @@ describe("deliverNotification", () => {
     expect(store.events).toEqual(["insert admin.sign_up", "publish 100 n1"]);
   });
 
-  it("records nothing of any kind from a silenced sender", async () => {
+  it("records nothing of any kind from a sender screened out", async () => {
     for (const kind of ["mention", "status", "quoted_update", "admin.sign_up"]) {
-      const store = recording("accept", [], ["200"]);
+      const store = recording("accept", [], { kind: "Drop" });
       await deliverNotification(store.contracts, { ...mention, kind });
       expect(store.events).toEqual([]);
     }
+  });
+
+  it("delivers a bypassing sender's notification past a dropping policy and a muted conversation", async () => {
+    const store = recording("drop", ["300"], { kind: "Bypass" });
+    await deliverNotification(store.contracts, mention);
+    expect(store.events).toEqual(["insert mention", "publish 100 n1"]);
   });
 });

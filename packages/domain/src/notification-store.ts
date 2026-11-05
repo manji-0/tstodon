@@ -18,12 +18,24 @@ export type NewNotification = Readonly<{
 }>;
 
 /**
- * Does the recipient block the notification's sender or mute its
- * notifications, or block the domain of a remote sender?
+ * What the sender's standing with the recipient decides before the
+ * recipient's policy, as Mastodon's `NotifyService::DropCondition`. `Drop`
+ * records nothing. `Bypass`, a mention from staff who outrank the recipient,
+ * skips the policy and muted conversations. `Screen` leaves it to them.
  */
-export type IsSenderSilenced = (
+export type SenderScreening =
+  | Readonly<{ kind: "Drop" }>
+  | Readonly<{ kind: "Bypass" }>
+  | Readonly<{ kind: "Screen" }>;
+
+/**
+ * Screen the notification's sender: the recipient itself, staff, a sender
+ * the recipient blocks or mutes notifications of, or a remote sender on a
+ * domain the recipient blocks.
+ */
+export type ScreenSender = (
   notification: NewNotification,
-) => Promise<Result<boolean, RepositoryError>>;
+) => Promise<Result<SenderScreening, RepositoryError>>;
 
 /** Record the notification; resolves to its new id. */
 export type InsertNotification = (

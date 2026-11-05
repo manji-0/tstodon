@@ -1,8 +1,12 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { notifyAccount } from "./notify";
+
+/** Accounts signed in as admins; every request they make keeps the role. */
+const admins = new Set<string>();
 
 const call = async (
   email: string,
@@ -13,7 +17,7 @@ const call = async (
     method: init.method ?? "GET",
     headers: {
       ...(init.body ? { "content-type": "application/json" } : {}),
-      ...(await authHeaders(email)),
+      ...(await authHeaders(email, { admin: admins.has(email) })),
     },
     ...(init.body ? { body: JSON.stringify(init.body) } : {}),
   });
@@ -49,8 +53,11 @@ const notificationTypesFrom = async (email: string, senderId: string): Promise<s
     .map((notification) => notification.type);
 };
 
-const person = async (email: string) => {
-  const account = await signedInAccount(email);
+const person = async (email: string, options: Readonly<{ admin?: boolean }> = {}) => {
+  if (options.admin) {
+    admins.add(email);
+  }
+  const account = await signedInAccount(email, { admin: admins.has(email) });
   return { email, id: account.id, username: account.username };
 };
 
@@ -101,5 +108,106 @@ describe("notifications from a silenced sender", () => {
     expect(await notificationTypesFrom(reader.email, author.id)).toEqual(
       expect.arrayContaining(["status", "mention"]),
     );
+  });
+
+  it("records a mention from staff the recipient blocks or mutes, as Mastodon's from_staff?", async () => {
+    const moderator = await person("silence-staff-admin@example.com", { admin: true });
+    const reader = await person("silence-staff-reader@example.com");
+
+    await relate(reader.email, moderator.id, "block");
+    await post(moderator.email, { status: `a word from the staff @${reader.username}` });
+    await relate(reader.email, moderator.id, "unblock");
+    expect(await notificationTypesFrom(reader.email, moderator.id)).toEqual(["mention"]);
+
+    await relate(reader.email, moderator.id, "mute", { notifications: true });
+    await post(moderator.email, { status: `another word @${reader.username}` });
+    await relate(reader.email, moderator.id, "unmute");
+    expect(await notificationTypesFrom(reader.email, moderator.id)).toEqual(["mention", "mention"]);
+
+    // Only a mention gets through: a reblog from the blocked moderator does not.
+    const own = await post(reader.email, { status: "boost me" });
+    await relate(reader.email, moderator.id, "block");
+    expect(
+      (await call(moderator.email, `/api/v1/statuses/${own}/reblog`, { method: "POST" })).status,
+    ).toBe(200);
+    await relate(reader.email, moderator.id, "unblock");
+    expect(await notificationTypesFrom(reader.email, moderator.id)).toEqual(["mention", "mention"]);
+  });
+
+  it("files a staff mention past the recipient's notification policy", async () => {
+    const moderator = await person("silence-staff-policy-admin@example.com", { admin: true });
+    const reader = await person("silence-staff-policy-reader@example.com");
+    const policy = await call(reader.email, "/api/v2/notifications/policy", {
+      method: "PATCH",
+      body: { for_not_following: "filter" },
+    });
+    expect(policy.status).toBe(200);
+
+    await post(moderator.email, { status: `please read this @${reader.username}` });
+
+    expect(await notificationTypesFrom(reader.email, moderator.id)).toEqual(["mention"]);
+  });
+
+  it("drops a mention from an admin the admin recipient blocks: neither outranks the other", async () => {
+    const sender = await person("silence-peer-admin-sender@example.com", { admin: true });
+    const reader = await person("silence-peer-admin-reader@example.com", { admin: true });
+
+    await relate(reader.email, sender.id, "block");
+    await post(sender.email, { status: `between admins @${reader.username}` });
+    await relate(reader.email, sender.id, "unblock");
+
+    expect(await notificationTypesFrom(reader.email, sender.id)).toEqual([]);
+  });
+});
+
+describe("notifications from the recipient", () => {
+  it("records none for the account's own mention, favourite, reblog or quote", async () => {
+    const author = await person("self-notify-author@example.com");
+    const own = await post(author.email, { status: "my own post" });
+
+    await post(author.email, { status: `talking to myself @${author.username}` });
+    expect(
+      (await call(author.email, `/api/v1/statuses/${own}/favourite`, { method: "POST" })).status,
+    ).toBe(200);
+    expect(
+      (await call(author.email, `/api/v1/statuses/${own}/reblog`, { method: "POST" })).status,
+    ).toBe(200);
+    await post(author.email, { status: "quoting myself", quoted_status_id: own });
+
+    expect(await notificationTypesFrom(author.email, author.id)).toEqual([]);
+  });
+
+  it("records only poll, severed_relationships, moderation_warning and annual_report", async () => {
+    const account = await person("self-notify-kinds@example.com");
+    const kinds = [
+      "mention",
+      "favourite",
+      "reblog",
+      "admin.report",
+      "poll",
+      "severed_relationships",
+      "moderation_warning",
+      "annual_report",
+    ];
+    for (const kind of kinds) {
+      const notified = await notifyAccount(env, {
+        accountId: account.id,
+        fromAccountId: account.id,
+        kind,
+      });
+      expect(notified.isOk()).toBe(true);
+    }
+
+    const stored = await env.DB.prepare(
+      "SELECT kind FROM notifications WHERE account_id = ? ORDER BY kind",
+    )
+      .bind(account.id)
+      .all<{ kind: string }>();
+    expect(stored.results.map((row) => row.kind)).toEqual([
+      "annual_report",
+      "moderation_warning",
+      "poll",
+      "severed_relationships",
+    ]);
   });
 });

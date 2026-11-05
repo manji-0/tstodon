@@ -82,4 +82,11 @@ export const FediRole = {
     }
   },
   isAdmin: (role: FediRole): boolean => role.kind === "Admin",
+  /**
+   * Mastodon's `UserRole#bypass_block?`: a highlighted role with moderation
+   * permissions that outranks the recipient's. Only Admin is such a role
+   * here, and one admin does not outrank another.
+   */
+  bypassesBlock: (sender: FediRole, recipient: FediRole): boolean =>
+    sender.kind === "Admin" && recipient.kind !== "Admin",
 } as const;
