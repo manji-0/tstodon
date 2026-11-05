@@ -20,6 +20,7 @@ import { processMoveFollowsJob } from "./remote-move";
 import { processBackfillRemoteOutboxJob } from "./remote-outbox-backfill";
 import { processBackfillRemoteThreadJob } from "./remote-thread-backfill";
 import { indexMissingRemoteTags } from "./remote-status-store";
+import { rekeyLegacyMediaBatch } from "./media-rekey";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { cleanUpAccountStatuses, queueStatusesCleanup } from "./statuses-cleanup";
 import { findRemoteActorsByUris, listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
@@ -106,6 +107,14 @@ export const processOutboxJob = async (
     case "BackfillRemoteTags":
       await indexMissingRemoteTags(env.DB);
       return "ok";
+    case "RekeyLegacyMedia":
+      return measureJobPage(env, job.kind, async () => {
+        const batch = await rekeyLegacyMediaBatch(env);
+        if (batch.more) {
+          await env.OUTBOX_PROCESS_QUEUE.send({ kind: "RekeyLegacyMedia" });
+        }
+        return { outcome: "ok", size: batch.scanned, chained: batch.more };
+      });
     case "CleanUpStatuses":
       await queueStatusesCleanup(env);
       return "ok";

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   avatarObjectKey,
   headerObjectKey,
+  isLegacyAttachmentObjectKey,
   mediaPublicUrl,
   newAttachmentObjectKey,
   parseMediaObjectKey,
@@ -29,6 +30,9 @@ describe("media-keys", () => {
   it("builds stable object keys and public URLs", () => {
     expect(newAttachmentObjectKey("acct-1")).toMatch(/^attachments\/acct-1\/[0-9a-f]{32}$/);
     expect(newAttachmentObjectKey("acct-1")).not.toBe(newAttachmentObjectKey("acct-1"));
+    expect(isLegacyAttachmentObjectKey(newAttachmentObjectKey("acct-1"))).toBe(false);
+    expect(isLegacyAttachmentObjectKey("attachments/acct-1/117563206245684194")).toBe(true);
+    expect(isLegacyAttachmentObjectKey("avatars/acct-1/117563206245684194")).toBe(false);
     expect(avatarObjectKey("acct-1", "blob-1")).toBe("avatars/acct-1/blob-1");
     expect(headerObjectKey("acct-1", "blob-2")).toBe("headers/acct-1/blob-2");
     expect(mediaPublicUrl(identity, "attachments/acct-1/media-1")).toBe(

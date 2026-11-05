@@ -23,6 +23,13 @@ const randomObjectName = (): string =>
 export const newAttachmentObjectKey = (accountId: string): string =>
   `${MediaObjectKind.Attachment}/${accountId}/${randomObjectName()}`;
 
+const RANDOM_ATTACHMENT_KEY_RE = /^attachments\/[^/]+\/[0-9a-f]{32}$/;
+
+/** An attachment key from before random names, which the rekey job moves. */
+export const isLegacyAttachmentObjectKey = (objectKey: string): boolean =>
+  objectKey.startsWith(`${MediaObjectKind.Attachment}/`) &&
+  !RANDOM_ATTACHMENT_KEY_RE.test(objectKey);
+
 export const avatarObjectKey = (accountId: string, blobId: string): string =>
   `${MediaObjectKind.Avatar}/${accountId}/${blobId}`;
 

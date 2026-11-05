@@ -28,6 +28,8 @@ export * from "./sql/claimRemotePollExpiryNotice";
 
 export * from "./sql/claimRemoteStatusThreadBackfill";
 
+export * from "./sql/clearLegacyMediaKey";
+
 export * from "./sql/clearNotifications";
 
 export * from "./sql/clearRemoteMediaForDomain";
@@ -482,6 +484,8 @@ export * from "./sql/listFollowingAccountIds";
 
 export * from "./sql/listHomeFanOutAccounts";
 
+export * from "./sql/listLegacyMedia";
+
 export * from "./sql/listLinkCards";
 
 export * from "./sql/listListMembers";
@@ -617,6 +621,8 @@ export * from "./sql/rejectFollowRequest";
 export * from "./sql/rejectOutboundFollow";
 
 export * from "./sql/rejectRemoteFollowRequest";
+
+export * from "./sql/rekeyLegacyMedia";
 
 export * from "./sql/releasePollUpdate";
 

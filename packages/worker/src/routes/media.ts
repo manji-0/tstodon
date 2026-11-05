@@ -14,7 +14,11 @@ import {
   parseMediaFocus,
   updateMediaMetadata,
 } from "../media-store";
-import { newAttachmentObjectKey, parseMediaObjectKey } from "../media-keys";
+import {
+  isLegacyAttachmentObjectKey,
+  newAttachmentObjectKey,
+  parseMediaObjectKey,
+} from "../media-keys";
 import { parseInstanceIdentity } from "../runtime-config";
 import { newEntityId } from "../ids";
 import { browserSession } from "../browser-session";
@@ -68,14 +72,19 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
   return c.json(mastodonMedia(identity.value, row.value), 200);
 };
 
+/**
+ * Serve an object from R2 through the edge cache. An attachment at a legacy,
+ * id-derived key bypasses the cache, so it stops answering as soon as the
+ * rekey job deletes it.
+ */
 const serveR2Object = async (
   c: Context<{ Bindings: Env }>,
   objectKey: string,
-  contentTypeFallback: string,
 ): Promise<Response> => {
+  const cacheable = !isLegacyAttachmentObjectKey(objectKey);
   const cache = caches.default;
   const cacheKey = new Request(c.req.url, { method: "GET" });
-  const cached = await cache.match(cacheKey);
+  const cached = cacheable ? await cache.match(cacheKey) : undefined;
   if (cached) {
     return cached;
   }
@@ -86,14 +95,16 @@ const serveR2Object = async (
   const contentType =
     object.httpMetadata?.contentType && object.httpMetadata.contentType.length > 0
       ? object.httpMetadata.contentType
-      : contentTypeFallback;
+      : "application/octet-stream";
   const response = new Response(object.body, {
     headers: {
       "content-type": contentType,
-      "cache-control": CACHE_CONTROL,
+      "cache-control": cacheable ? CACHE_CONTROL : "no-store",
     },
   });
-  c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()));
+  if (cacheable) {
+    c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()));
+  }
   return response;
 };
 
@@ -138,7 +149,7 @@ const serveObjectKeyPath = async (c: Context<{ Bindings: Env }>) => {
   if (!key) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return serveR2Object(c, key, "application/octet-stream");
+  return serveR2Object(c, key);
 };
 
 export const getAttachmentsByAccountIdByBlobId = (
@@ -273,8 +284,8 @@ export const deleteV1MediaById = async (c: Context<{ Bindings: Env }, "/api/v1/m
   if (removed.isErr()) {
     return jsonRepositoryError(c, removed.error.message);
   }
-  if (removed.value) {
-    await c.env.MEDIA.delete(removed.value);
+  if (removed.value.length > 0) {
+    await c.env.MEDIA.delete([...removed.value]);
   }
   return c.json({});
 };

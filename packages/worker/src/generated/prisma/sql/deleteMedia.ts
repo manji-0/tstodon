@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  */
 export const deleteMedia = $runtime.makeTypedQueryFactory(
-  "DELETE FROM media_attachments WHERE id = $1 AND account_id = $2\nRETURNING object_key",
+  "DELETE FROM media_attachments WHERE id = $1 AND account_id = $2\nRETURNING object_key, legacy_object_key",
 ) as (
   id: string,
   accountId: string,
@@ -19,5 +19,6 @@ export namespace deleteMedia {
   export type Parameters = [id: string, accountId: string];
   export type Result = {
     object_key: string;
+    legacy_object_key: string | null;
   };
 }

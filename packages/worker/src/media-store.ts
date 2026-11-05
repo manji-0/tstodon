@@ -5,14 +5,16 @@ import { queryTyped, runTyped } from "./typed-sql";
 import { nowIso } from "./clock";
 import { parseRows } from "./d1";
 import {
+  clearLegacyMediaKey as clearLegacyMediaKeySql,
   deleteMedia as deleteMediaSql,
   findMediaById as findMediaByIdSql,
   insertMedia as insertMediaSql,
+  listLegacyMedia as listLegacyMediaSql,
+  rekeyLegacyMedia as rekeyLegacyMediaSql,
   updateMediaMetadata as updateMediaMetadataSql,
 } from "./generated/prisma/sql";
 
 const IdRow = z.object({ id: z.string() });
-const ObjectKeyRow = z.object({ object_key: z.string() });
 
 export const MediaRowSchema = z.object({
   id: z.string().min(1),
@@ -127,13 +129,87 @@ export const updateMediaMetadata = async (
     return rows.length > 0;
   });
 
-/** Delete a media row, returning its object key so the caller can drop the object. */
+const DeletedMediaRow = z.object({
+  object_key: z.string(),
+  legacy_object_key: z.string().nullable(),
+});
+
+/**
+ * Delete a media row, returning the object keys it held (its key, and a
+ * legacy key not yet removed) so the caller can drop the objects.
+ */
 export const deleteMedia = async (
   db: D1Database,
   id: string,
   accountId: string,
-): Promise<Result<string | undefined, RepositoryError>> =>
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, deleteMediaSql(id, accountId), ObjectKeyRow);
-    return rows[0]?.object_key;
+    const rows = await queryTyped(db, deleteMediaSql(id, accountId), DeletedMediaRow);
+    return [
+      ...new Set(
+        rows.flatMap((row) =>
+          row.legacy_object_key === null
+            ? [row.object_key]
+            : [row.object_key, row.legacy_object_key],
+        ),
+      ),
+    ];
+  });
+
+const LegacyMediaRowSchema = z.object({
+  id: z.string().min(1),
+  account_id: z.string().min(1),
+  object_key: z.string().min(1),
+  legacy_object_key: z.string().min(1),
+});
+
+/**
+ * An attachment still tied to a key guessable from its id: `Copy` while the
+ * row still points at the legacy key, `DropLegacy` once it points at a fresh
+ * key and only the legacy object is left to delete.
+ */
+export type LegacyMedia =
+  | Readonly<{ kind: "Copy"; id: string; accountId: string; legacyObjectKey: string }>
+  | Readonly<{ kind: "DropLegacy"; id: string; legacyObjectKey: string }>;
+
+const legacyMediaOf = (row: z.infer<typeof LegacyMediaRowSchema>): LegacyMedia =>
+  row.object_key === row.legacy_object_key
+    ? {
+        kind: "Copy",
+        id: row.id,
+        accountId: row.account_id,
+        legacyObjectKey: row.legacy_object_key,
+      }
+    : { kind: "DropLegacy", id: row.id, legacyObjectKey: row.legacy_object_key };
+
+export const listLegacyMedia = async (
+  db: D1Database,
+  limit: number,
+): Promise<Result<ReadonlyArray<LegacyMedia>, RepositoryError>> =>
+  runD1(async () =>
+    (await queryTyped(db, listLegacyMediaSql(limit), LegacyMediaRowSchema)).map(legacyMediaOf),
+  );
+
+/** Point a row still at its legacy key to `objectKey`; false when the row moved on or is gone. */
+export const rekeyLegacyMedia = async (
+  db: D1Database,
+  input: Readonly<{ id: string; legacyObjectKey: string; objectKey: string }>,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped(
+      db,
+      rekeyLegacyMediaSql(input.id, input.legacyObjectKey, input.objectKey),
+      IdRow,
+    );
+    return rows.length > 0;
+  });
+
+/** Forget a legacy key whose object is gone. */
+export const clearLegacyMediaKey = async (
+  db: D1Database,
+  id: string,
+  legacyObjectKey: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await queryTyped(db, clearLegacyMediaKeySql(id, legacyObjectKey), IdRow);
   });

@@ -611,6 +611,7 @@ export const Media_attachmentsScalarFieldEnum = {
   description: "description",
   focus_x: "focus_x",
   focus_y: "focus_y",
+  legacy_object_key: "legacy_object_key",
 } as const;
 
 export type Media_attachmentsScalarFieldEnum =
