@@ -1,4 +1,10 @@
-import { InstanceIdentity, RemoteActor, type LocalAccount } from "@tstodon/domain";
+import {
+  type HasRemoteFollow,
+  InstanceIdentity,
+  type LocalAccount,
+  type RecordInboxFollow,
+  RemoteActor,
+} from "@tstodon/domain";
 import { ok } from "neverthrow";
 import { findAccountByUsername } from "../account-store";
 import { parseLocalActorUsername } from "../activitypub";
@@ -36,6 +42,39 @@ export const localAccountAt = async (
   return target?.isOk() ? target.value : undefined;
 };
 
+/** What follows from recording a remote actor's `Follow`. */
+export type InboxFollowOutcome = Readonly<{
+  /** The notification the followed account gets, if any. */
+  notify: "follow" | "follow_request" | undefined;
+  /** An unlocked account accepts at once. */
+  sendAccept: boolean;
+}>;
+
+/**
+ * Record a remote actor's `Follow` of `target`. A redelivered Follow keeps
+ * its row and must not notify again; nothing is notified when the follow
+ * could not be recorded.
+ */
+export const recordInboxFollow = async (
+  contracts: Readonly<{ hasRemoteFollow: HasRemoteFollow; recordInboxFollow: RecordInboxFollow }>,
+  target: LocalAccount,
+  actorUri: string,
+  followActivityId: string,
+): Promise<InboxFollowOutcome> => {
+  const existing = await contracts.hasRemoteFollow(target.id, actorUri);
+  const followed = await contracts.recordInboxFollow({
+    actorUri,
+    targetAccountId: target.id,
+    targetLocked: target.locked,
+    followActivityId,
+  });
+  const firstFollow = followed.isOk() && existing.isOk() && !existing.value;
+  return {
+    notify: firstFollow ? (target.locked ? "follow_request" : "follow") : undefined,
+    sendAccept: !target.locked,
+  };
+};
+
 export const receiveRemoteFollow: InboxHandler<RemoteDelivery<"Follow">> = async ({
   env,
   identity,
@@ -46,23 +85,26 @@ export const receiveRemoteFollow: InboxHandler<RemoteDelivery<"Follow">> = async
   if (!target) {
     return ok(undefined);
   }
-  // A redelivered Follow keeps its row and must not notify again.
-  const existing = await findRemoteFollow(env.DB, target.id, signer.actorUri);
-  const followed = await upsertRemoteFollow(
-    env.DB,
+  const outcome = await recordInboxFollow(
+    {
+      hasRemoteFollow: async (targetAccountId, actorUri) =>
+        (await findRemoteFollow(env.DB, targetAccountId, actorUri)).map(
+          (follow) => follow !== undefined,
+        ),
+      recordInboxFollow: (follow) => upsertRemoteFollow(env.DB, follow),
+    },
+    target,
     signer.actorUri,
-    target.id,
-    target.locked,
     activity.id,
   );
-  if (followed.isOk() && existing.isOk() && !existing.value) {
+  if (outcome.notify) {
     await notifyFromRemote(env, {
       accountId: target.id,
       actorUri: signer.actorUri,
-      kind: target.locked ? "follow_request" : "follow",
+      kind: outcome.notify,
     });
   }
-  if (!target.locked) {
+  if (outcome.sendAccept) {
     await enqueueTargetedActivity(
       env,
       target.id,

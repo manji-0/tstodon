@@ -1,4 +1,10 @@
-import { FollowRequest, IsoInstant, RemoteActor, type RemovedBoost } from "@tstodon/domain";
+import {
+  FollowRequest,
+  type InboxFollow,
+  IsoInstant,
+  RemoteActor,
+  type RemovedBoost,
+} from "@tstodon/domain";
 import { warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -264,12 +270,9 @@ export const releaseRemoteOutboxBackfill = async (
 
 export const upsertRemoteFollow = async (
   db: D1Database,
-  remoteActorUri: string,
-  targetAccountId: string,
-  targetLocked: boolean,
-  followActivityId: string | null,
+  follow: InboxFollow,
 ): Promise<Result<void, RepositoryError>> => {
-  const state = FollowRequest.initial("RemoteFollower", targetLocked);
+  const state = FollowRequest.initial("RemoteFollower", follow.targetLocked);
   if (state.kind !== "RemoteFollower") {
     return err(toRepositoryError("expected remote follower"));
   }
@@ -278,11 +281,11 @@ export const upsertRemoteFollow = async (
       db,
       upsertRemoteFollowSql(
         newEntityId(),
-        remoteActorUri,
-        targetAccountId,
+        follow.actorUri,
+        follow.targetAccountId,
         state.remoteRequest.kind,
         state.follow.kind,
-        followActivityId,
+        follow.followActivityId,
         nowIso(),
       ),
     );
