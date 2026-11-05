@@ -36,8 +36,7 @@ export const deleteRemoteNotifications = async (
           deleteRemoteNotificationsSql(
             input.actorUri,
             jsonStringArray(input.kinds),
-            input.accountId ?? "",
-            input.statusId ?? "",
+            input.statusId,
           ),
           CountedRow,
         )

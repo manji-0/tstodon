@@ -7,25 +7,18 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param fromActorUri
  * @param kindsJson
- * @param accountId
  * @param statusId
  */
 export const deleteRemoteNotifications = $runtime.makeTypedQueryFactory(
-  "DELETE FROM notifications\nWHERE from_actor_uri = $1\nAND kind IN (SELECT value FROM json_each($2))\nAND ($3 = '' OR account_id = $3)\nAND ($4 = '' OR status_id = $4)\nRETURNING id",
+  "DELETE FROM notifications\nWHERE from_actor_uri = $1\nAND kind IN (SELECT value FROM json_each($2))\nAND status_id = $3\nRETURNING id",
 ) as (
   fromActorUri: string,
   kindsJson: string,
-  accountId: string,
   statusId: string,
 ) => $runtime.TypedSql<deleteRemoteNotifications.Parameters, deleteRemoteNotifications.Result>;
 
 export namespace deleteRemoteNotifications {
-  export type Parameters = [
-    fromActorUri: string,
-    kindsJson: string,
-    accountId: string,
-    statusId: string,
-  ];
+  export type Parameters = [fromActorUri: string, kindsJson: string, statusId: string];
   export type Result = {
     id: string;
   };

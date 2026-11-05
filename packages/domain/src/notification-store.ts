@@ -38,13 +38,12 @@ export type HoldNotification = (
 
 /**
  * What a remote actor's undone activity or deleted note had notified: its
- * notifications of `kinds`, narrowed to one recipient and/or status when given.
+ * notifications of `kinds` about one status.
  */
 export type RemoteNotificationWithdrawal = Readonly<{
   actorUri: string;
   kinds: ReadonlyArray<string>;
-  accountId?: string;
-  statusId?: string;
+  statusId: string;
 }>;
 
 /** Delete the withdrawn notifications; resolves to how many went. */

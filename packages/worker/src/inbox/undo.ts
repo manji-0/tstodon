@@ -60,11 +60,6 @@ export const receiveRemoteUndo: InboxHandler<RemoteDelivery<"Undo">> = async ({
   const followed = await localAccountAt(env, identity, targets.followedUri);
   if (followed) {
     await deleteRemoteFollow(env.DB, actorUri, followed.id);
-    await deleteRemoteNotifications(env.DB, {
-      actorUri,
-      kinds: ["follow", "follow_request"],
-      accountId: followed.id,
-    });
   }
   if (targets.favouritedStatusId) {
     const statusId = targets.favouritedStatusId;
