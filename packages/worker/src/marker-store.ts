@@ -112,17 +112,11 @@ export const getConversationRead = async (
 
 export const parseMarkerTimelines = (raw: unknown): MarkerTimeline[] => {
   const values = Array.isArray(raw) ? raw : raw == null || raw === "" ? [] : [raw];
-  const timelines: MarkerTimeline[] = [];
-  for (const value of values) {
-    if (typeof value !== "string") {
-      continue;
-    }
-    const parsed = compiledMarkerTimelineSchema.safeParse(value);
-    if (parsed.success) {
-      timelines.push(parsed.data);
-    }
-  }
-  return timelines;
+  return values.flatMap((value): MarkerTimeline[] => {
+    const parsed =
+      typeof value === "string" ? compiledMarkerTimelineSchema.safeParse(value) : undefined;
+    return parsed?.success ? [parsed.data] : [];
+  });
 };
 
 export const markerBodySchema = z.object({

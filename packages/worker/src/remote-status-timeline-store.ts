@@ -50,18 +50,11 @@ export const listRemoteDirectStatusesForAccount = async (
       )
       .bind(...binds)
       .all();
-    const statuses: RemoteStatus[] = [];
-    for (const raw of results ?? []) {
-      const row = parseRemoteStatusRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const parsed = remoteStatusFromRow(row.value);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
+    return okValues(
+      (results ?? []).map((raw) =>
+        parseRemoteStatusRow(raw).andThen((row) => remoteStatusFromRow(row)),
+      ),
+    );
   });
 
 /**
@@ -117,18 +110,11 @@ export const listFollowedRemoteStatuses = async (
         limit,
       )
       .all();
-    const statuses: RemoteStatus[] = [];
-    for (const raw of results ?? []) {
-      const row = parseRemoteStatusRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const parsed = remoteStatusFromRow(row.value);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
+    return okValues(
+      (results ?? []).map((raw) =>
+        parseRemoteStatusRow(raw).andThen((row) => remoteStatusFromRow(row)),
+      ),
+    );
   });
 
 /**
@@ -182,18 +168,11 @@ export const listActorRemoteStatuses = async (
         filters.limit,
       )
       .all();
-    const statuses: RemoteStatus[] = [];
-    for (const raw of results ?? []) {
-      const row = parseRemoteStatusRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const parsed = remoteStatusFromRow(row.value);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
+    return okValues(
+      (results ?? []).map((raw) =>
+        parseRemoteStatusRow(raw).andThen((row) => remoteStatusFromRow(row)),
+      ),
+    );
   });
 
 /**
@@ -282,18 +261,11 @@ export const listTagRemoteStatuses = async (
       )
       .bind(...binds, ...cursorBinds, limit)
       .all();
-    const statuses: RemoteStatus[] = [];
-    for (const raw of results ?? []) {
-      const row = parseRemoteStatusRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const parsed = remoteStatusFromRow(row.value);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
+    return okValues(
+      (results ?? []).map((raw) =>
+        parseRemoteStatusRow(raw).andThen((row) => remoteStatusFromRow(row)),
+      ),
+    );
   });
 
 /**
@@ -335,16 +307,9 @@ export const listLinkRemoteStatuses = async (
         limit,
       )
       .all();
-    const statuses: RemoteStatus[] = [];
-    for (const raw of results ?? []) {
-      const row = parseRemoteStatusRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const parsed = remoteStatusFromRow(row.value);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
+    return okValues(
+      (results ?? []).map((raw) =>
+        parseRemoteStatusRow(raw).andThen((row) => remoteStatusFromRow(row)),
+      ),
+    );
   });

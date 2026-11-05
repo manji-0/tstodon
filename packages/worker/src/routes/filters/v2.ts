@@ -122,19 +122,18 @@ const keywordsFromBody = (
     ),
     ...extra,
   ];
-  const keywords: FilterKeyword[] = [];
-  for (const entry of entries) {
+  return entries.flatMap((entry): FilterKeyword[] => {
     const keyword = entry.keyword?.trim() ?? "";
-    if (keyword.length === 0) {
-      continue;
-    }
-    keywords.push({
-      id: entry.id && entry.id.length > 0 ? entry.id : newEntityId(),
-      keyword,
-      whole_word: entry.whole_word !== undefined ? isTruthy(entry.whole_word) : false,
-    });
-  }
-  return keywords;
+    return keyword.length === 0
+      ? []
+      : [
+          {
+            id: entry.id && entry.id.length > 0 ? entry.id : newEntityId(),
+            keyword,
+            whole_word: entry.whole_word !== undefined ? isTruthy(entry.whole_word) : false,
+          },
+        ];
+  });
 };
 
 /** The v2 Filter document, with the FilterStatus entries it is narrowed to. */

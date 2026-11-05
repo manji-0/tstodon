@@ -353,13 +353,11 @@ export const getV2NotificationsUnreadCount = async (
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
-  const unreadKeys = new Set<string>();
-  for (const row of rows.value) {
-    if (markerId && row.id <= markerId) {
-      continue;
-    }
-    unreadKeys.add(NotificationGroup.key(groupedEntry(row), groupedTypes));
-  }
+  const unreadKeys = new Set(
+    rows.value
+      .filter((row) => !(markerId && row.id <= markerId))
+      .map((row) => NotificationGroup.key(groupedEntry(row), groupedTypes)),
+  );
   return c.json({ count: unreadKeys.size });
 };
 

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { type LocalAccount } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
-import { type RepositoryError, runD1 } from "./d1";
+import { okValues, type RepositoryError, runD1 } from "./d1";
 import { queryTyped } from "./typed-sql";
 import { listAdminAccountIds as listAdminAccountIdsSql } from "./generated/prisma/sql";
 import { accountFromRow, parseAccountRow, STATUS_SQL } from "./account-store";
@@ -76,18 +76,9 @@ export const listAdminAccounts = async (
         ...(filters.cursor === undefined ? [filters.offset] : []),
       )
       .all();
-    const accounts: LocalAccount[] = [];
-    for (const raw of results ?? []) {
-      const row = parseAccountRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const account = accountFromRow(row.value);
-      if (account.isOk()) {
-        accounts.push(account.value);
-      }
-    }
-    return accounts;
+    return okValues(
+      (results ?? []).map((raw) => parseAccountRow(raw).andThen((row) => accountFromRow(row))),
+    );
   });
 
 /** Ids of the local accounts whose sign-in user holds the admin role. */

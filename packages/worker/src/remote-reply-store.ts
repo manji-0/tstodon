@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { type RemoteStatus } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
+import { jsonStringArray, okValues, type RepositoryError, runD1 } from "./d1";
 import {
   findRemoteStatusReplyTargetByObjectUri as findRemoteStatusReplyTargetByObjectUriSql,
   findRemoteStatusReplyTargets as findRemoteStatusReplyTargetsSql,
@@ -28,18 +28,11 @@ export const listRemoteRepliesToUris = async (
       )
       .bind(jsonStringArray([...new Set(uris)]), limit)
       .all();
-    const statuses: RemoteStatus[] = [];
-    for (const raw of results ?? []) {
-      const row = parseRemoteStatusRow(raw);
-      if (row.isErr()) {
-        continue;
-      }
-      const parsed = remoteStatusFromRow(row.value);
-      if (parsed.isOk()) {
-        statuses.push(parsed.value);
-      }
-    }
-    return statuses;
+    return okValues(
+      (results ?? []).map((raw) =>
+        parseRemoteStatusRow(raw).andThen((row) => remoteStatusFromRow(row)),
+      ),
+    );
   });
 };
 
