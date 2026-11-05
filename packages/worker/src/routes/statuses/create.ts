@@ -1,11 +1,14 @@
 import {
   InstanceIdentity,
+  type LocalAccount,
   type LocalStatus,
   StatusComposition,
   StatusId,
   type ThreadStatus,
+  type ValidatedStatusDraft,
   Visibility,
 } from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
 import type { Context } from "hono";
 import { findAccountById } from "../../account-store";
 import { findComposeDefaults } from "../../account-defaults-store";
@@ -48,7 +51,7 @@ import {
   updateMediaMetadata,
 } from "../../media-store";
 import { canViewStatus } from "../../visibility-guard";
-import { publishLocalNote } from "../../local-status-publish";
+import { type PublishPoll, publishLocalNote } from "../../local-status-publish";
 import { quotePolicyName } from "../../quote-policy-name";
 import {
   defaultQuotePolicy,
@@ -56,6 +59,7 @@ import {
   isQuotePolicy,
   type QuotePolicy,
 } from "../../quote-store";
+import { StatusRefusal } from "./refusal";
 import {
   insertScheduledStatus,
   MIN_SCHEDULE_OFFSET_MS,
@@ -123,6 +127,338 @@ export const queueLinkCard = async (env: Env, statusId: string, text: string): P
 export const visibilityIsPublic = (visibility: Visibility): boolean =>
   visibility.kind === "Public" || visibility.kind === "Unlisted";
 
+type CreateStatusBody = z.infer<typeof CreateStatusBodySchema>;
+
+/** The poll a new status asks for, with its options trimmed and within the instance limits. */
+const parsePollRequest = (
+  poll: CreateStatusBody["poll"],
+): Result<PublishPoll | null, StatusRefusal> => {
+  if (!poll) {
+    return ok(null);
+  }
+  const options = [...poll.options]
+    .map((option) => option.trim())
+    .filter((option) => option.length > 0);
+  if (
+    options.length < InstanceLimits.poll.minOptions ||
+    options.length > InstanceLimits.poll.maxOptions
+  ) {
+    return err(
+      StatusRefusal.rejected(422, "poll options must be between 2 and 4", "PollOptionsOutOfRange"),
+    );
+  }
+  if (options.some((option) => characterCount(option) > InstanceLimits.poll.maxOptionCharacters)) {
+    return err(StatusRefusal.rejected(422, "poll option is too long", "PollOptionTooLong"));
+  }
+  return ok({
+    options,
+    expiresIn: Number(poll.expires_in ?? 86400),
+    multiple: isTruthy(poll.multiple),
+    hideTotals: isTruthy(poll.hide_totals),
+  });
+};
+
+/** The status a quote post points at, with the link the post renders for it. */
+type QuoteTarget = Readonly<{ status: LocalStatus; url: string; inlineHtml: string | null }>;
+
+/**
+ * Resolve `quoted_status_id`: a status the author may see and quote. Its
+ * policy is the quoted status's stored policy (else its author's default),
+ * and a followers-only original clamps the quote to followers-only too, so
+ * the visibility the post ends up with comes back with the target.
+ */
+const resolveQuote = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  authorId: string,
+  quotedRaw: string,
+  text: string,
+  visibility: Visibility,
+): Promise<
+  Result<Readonly<{ quote: QuoteTarget | null; visibility: Visibility }>, StatusRefusal>
+> => {
+  if (quotedRaw.length === 0) {
+    return ok({ quote: null, visibility });
+  }
+  const quotedId = StatusId.parse(quotedRaw);
+  if (quotedId.isErr()) {
+    return err(StatusRefusal.rejected(422, "Invalid quoted_status_id", "ValidationError"));
+  }
+  const found = await findStatusById(db, quotedId.value);
+  if (found.isErr()) {
+    return err(StatusRefusal.repository(found.error.message));
+  }
+  if (!found.value) {
+    return err(StatusRefusal.notFound);
+  }
+  let target = found.value;
+  // Quoting a boost quotes the boosted status, as Mastodon does.
+  if (target.kind === "LocalReblog") {
+    const original = await findStatusById(db, target.target.statusId);
+    if (original.isErr()) {
+      return err(StatusRefusal.repository(original.error.message));
+    }
+    if (!original.value) {
+      return err(StatusRefusal.notFound);
+    }
+    target = original.value;
+  }
+  if (!(await canViewStatus(db, target, authorId))) {
+    return err(StatusRefusal.notFound);
+  }
+  const targetVisibility = Visibility.toMastodon(target.visibility);
+  if (targetVisibility === "direct") {
+    return err(StatusRefusal.rejected(422, "Direct messages cannot be quoted", "QuoteNotAllowed"));
+  }
+  const targetAuthor = await findAccountById(db, target.accountId);
+  const storedPolicy = await findStatusQuotePolicy(db, target.id);
+  const policy: QuotePolicy =
+    (storedPolicy.isOk() ? storedPolicy.value : undefined) ??
+    (targetAuthor.isOk() && targetAuthor.value
+      ? quotePolicyName(targetAuthor.value.defaultQuotePolicy)
+      : defaultQuotePolicy(targetVisibility));
+  if (policy === "nobody" && target.accountId !== authorId) {
+    // Mastodon answers 404 for a status it will not let you quote.
+    return err(StatusRefusal.notFound);
+  }
+  if (policy === "followers" && target.accountId !== authorId) {
+    const follow = await findFollowKind(db, authorId, target.accountId);
+    if (follow.isErr()) {
+      return err(StatusRefusal.repository(follow.error.message));
+    }
+    if (follow.value !== "Accepted") {
+      return err(StatusRefusal.notFound);
+    }
+  }
+  const clamped =
+    targetVisibility === "private" && visibilityIsPublic(visibility)
+      ? Visibility.FollowersOnly
+      : visibility;
+  if (clamped.kind === "Direct" && targetAuthor.isOk() && targetAuthor.value) {
+    const mentioned = mentionUsernames(text, identity.domain).includes(
+      targetAuthor.value.username.toLowerCase(),
+    );
+    if (!mentioned) {
+      return err(
+        StatusRefusal.rejected(
+          422,
+          "Quoted status author must be mentioned in a direct quote",
+          "QuoteNotAllowed",
+        ),
+      );
+    }
+  }
+  const url =
+    targetAuthor.isOk() && targetAuthor.value
+      ? `${InstanceIdentity.actorUrl(identity, targetAuthor.value.username)}/statuses/${target.id}`
+      : "";
+  const inlineHtml =
+    url.length > 0 && !text.includes(url)
+      ? `<p class="quote-inline">RE: <a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p>`
+      : null;
+  return ok({ quote: { status: target, url, inlineHtml }, visibility: clamped });
+};
+
+/** Resolve `in_reply_to_id`: a local status or a cached remote one the author may see. */
+const resolveReplyTo = async (
+  db: D1Database,
+  replyRaw: string,
+  authorId: string,
+): Promise<Result<ThreadStatus | null, StatusRefusal>> => {
+  if (replyRaw.length === 0) {
+    return ok(null);
+  }
+  const replyId = StatusId.parse(replyRaw);
+  if (replyId.isErr()) {
+    return err(StatusRefusal.rejected(422, "Invalid in_reply_to_id", "ValidationError"));
+  }
+  const parent = await findReplyTarget(db, replyId.value, authorId);
+  if (parent.isErr()) {
+    return err(StatusRefusal.repository(parent.error.message));
+  }
+  return parent.value ? ok(parent.value) : err(StatusRefusal.notFound);
+};
+
+/** Everything a new note carries besides its author and quote, once the request is validated. */
+type NoteRequest = Readonly<{
+  draft: ValidatedStatusDraft;
+  mediaAttributes: ReadonlyArray<MediaAttribute>;
+  poll: PublishPoll | null;
+  replyTo: ThreadStatus | null;
+  quotePolicy: QuotePolicy;
+}>;
+
+/**
+ * Store the validated post for later instead of publishing it; the cron
+ * publisher replays the same params through `publishLocalNote`.
+ */
+const scheduleStatus = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  accountId: string,
+  scheduledRaw: string,
+  note: NoteRequest,
+): Promise<Result<Record<string, unknown>, StatusRefusal>> => {
+  const at = Date.parse(scheduledRaw);
+  if (!Number.isFinite(at) || at < Date.now() + MIN_SCHEDULE_OFFSET_MS) {
+    return err(
+      StatusRefusal.rejected(
+        422,
+        "scheduled_at must be at least 5 minutes in the future",
+        "InvalidScheduledAt",
+      ),
+    );
+  }
+  const { draft } = note;
+  const stored = await insertScheduledStatus(db, {
+    accountId,
+    scheduledAt: new Date(at).toISOString(),
+    params: {
+      text: draft.text,
+      visibility: Visibility.toMastodon(draft.visibility),
+      spoiler_text: draft.spoilerText,
+      sensitive: draft.sensitive,
+      language: draft.language.kind === "Present" ? draft.language.value : null,
+      media_ids: [...draft.mediaIds],
+      media_attributes: note.mediaAttributes.map((attribute) => ({
+        id: attribute.id,
+        ...(attribute.description === undefined ? {} : { description: attribute.description }),
+        ...(attribute.focus === undefined ? {} : { focus: attribute.focus }),
+      })),
+      poll: note.poll
+        ? {
+            options: [...note.poll.options],
+            expires_in: note.poll.expiresIn,
+            multiple: note.poll.multiple,
+            hide_totals: note.poll.hideTotals,
+          }
+        : null,
+      in_reply_to_id: note.replyTo === null ? null : note.replyTo.status.id,
+      quote_policy: note.quotePolicy,
+    },
+  });
+  if (stored.isErr()) {
+    return err(StatusRefusal.repository(stored.error.message));
+  }
+  const media =
+    stored.value.params.media_ids.length > 0
+      ? await findMediaByIds(db, [...stored.value.params.media_ids])
+      : undefined;
+  return ok(
+    scheduledStatusDocument(
+      stored.value,
+      media && media.isOk()
+        ? [...media.value.values()].map((attachment) => mastodonMedia(identity, attachment))
+        : [],
+    ),
+  );
+};
+
+/**
+ * Validate a new status against the author's defaults and what it points at
+ * (quote, reply), then publish it, or schedule it when `scheduled_at` is set.
+ * The checks keep their order, so the first problem is the one reported.
+ */
+const postStatus = async (
+  env: Env,
+  identity: InstanceIdentity,
+  author: LocalAccount,
+  body: CreateStatusBody,
+  mediaAttributes: ReadonlyArray<MediaAttribute>,
+): Promise<Result<Record<string, unknown> | undefined, StatusRefusal>> => {
+  const visibility = Visibility.fromMastodon(
+    body.visibility && body.visibility.length > 0
+      ? body.visibility
+      : Visibility.toMastodon(author.defaultPostVisibility),
+  );
+  if (visibility.isErr()) {
+    return err(StatusRefusal.rejected(400, "Invalid visibility", "Unknown"));
+  }
+  const poll = parsePollRequest(body.poll);
+  if (poll.isErr()) {
+    return err(poll.error);
+  }
+  const text = body.status ?? "";
+  const quoted = await resolveQuote(
+    env.DB,
+    identity,
+    author.id,
+    body.quoted_status_id?.trim() ?? "",
+    text,
+    visibility.value,
+  );
+  if (quoted.isErr()) {
+    return err(quoted.error);
+  }
+  const { quote } = quoted.value;
+  // The account's posting defaults fill in what the request omits.
+  const composeDefaultsResult = await findComposeDefaults(env.DB, author.id);
+  const composeDefaults = composeDefaultsResult.isOk()
+    ? composeDefaultsResult.value
+    : { language: null, sensitive: false };
+  const draft = StatusComposition.validate(
+    StatusComposition.composing({
+      text,
+      visibility: quoted.value.visibility,
+      ...(quote ? { quote: { kind: "Quoted" as const, statusId: quote.status.id } } : {}),
+      spoilerText: body.spoiler_text ?? "",
+      sensitive:
+        body.sensitive === undefined ? composeDefaults.sensitive : isTruthy(body.sensitive),
+      language:
+        body.language && body.language.length > 0
+          ? { kind: "Present", value: body.language }
+          : composeDefaults.language !== null
+            ? { kind: "Present", value: composeDefaults.language }
+            : { kind: "None" },
+      mediaIds: stringList(body.media_ids),
+      poll: poll.value ? { kind: "Present" } : { kind: "None" },
+    }),
+  );
+  if (draft.isErr()) {
+    return err(StatusRefusal.rejected(422, draft.error.kind, draft.error.kind));
+  }
+  const policyRaw = (body.quote_approval_policy ?? "").trim().toLowerCase();
+  const requestedPolicy = isQuotePolicy(policyRaw) ? policyRaw : undefined;
+  if (policyRaw.length > 0 && requestedPolicy === undefined) {
+    return err(StatusRefusal.rejected(422, "Invalid quote_approval_policy", "ValidationError"));
+  }
+  const replyTo = await resolveReplyTo(env.DB, body.in_reply_to_id?.trim() ?? "", author.id);
+  if (replyTo.isErr()) {
+    return err(replyTo.error);
+  }
+  const note: NoteRequest = {
+    draft: draft.value,
+    mediaAttributes,
+    poll: poll.value,
+    replyTo: replyTo.value,
+    // Direct and followers-only posts are never quotable by anyone else.
+    quotePolicy: visibilityIsPublic(draft.value.visibility)
+      ? (requestedPolicy ?? quotePolicyName(author.defaultQuotePolicy))
+      : "nobody",
+  };
+  const scheduledRaw = body.scheduled_at?.trim() ?? "";
+  if (scheduledRaw.length > 0) {
+    return quote
+      ? err(StatusRefusal.rejected(422, "Scheduled posts cannot quote a status", "QuoteNotAllowed"))
+      : scheduleStatus(env.DB, identity, author.id, scheduledRaw, note);
+  }
+  const published = await publishLocalNote(env, identity, author, {
+    ...note,
+    quote: quote
+      ? {
+          quotedStatusId: quote.status.id,
+          quotedAccountId: quote.status.accountId,
+          inlineHtml: quote.inlineHtml ?? "",
+          uri: quote.url,
+        }
+      : null,
+  });
+  if (published.isErr()) {
+    return err(StatusRefusal.repository(published.error.message));
+  }
+  return ok(await mastodonStatus(env, identity, published.value, author.id));
+};
+
 const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -133,272 +469,18 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     return user.error;
   }
   const rawBody = await readUnknownBody(c);
-  const body = schemaResult(CreateStatusBodySchema)(withoutNullFields(rawBody)).mapErr(() => ({
-    kind: "ValidationError" as const,
-  }));
+  const body = schemaResult(CreateStatusBodySchema)(withoutNullFields(rawBody));
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const mediaAttributes = body.value.media_attributes ?? mediaAttributesFromForm(rawBody);
-  const visibilityRaw =
-    body.value.visibility && body.value.visibility.length > 0
-      ? body.value.visibility
-      : Visibility.toMastodon(user.value.defaultPostVisibility);
-  const visibility = Visibility.fromMastodon(visibilityRaw);
-  if (visibility.isErr()) {
-    return c.json({ error: "Invalid visibility", kind: "Unknown" }, 400);
-  }
-  const pollRaw = body.value.poll;
-  const pollOptions = pollRaw
-    ? [...pollRaw.options].map((option) => option.trim()).filter((option) => option.length > 0)
-    : [];
-  if (pollRaw) {
-    if (
-      pollOptions.length < InstanceLimits.poll.minOptions ||
-      pollOptions.length > InstanceLimits.poll.maxOptions
-    ) {
-      return c.json(
-        { error: "poll options must be between 2 and 4", kind: "PollOptionsOutOfRange" },
-        422,
-      );
-    }
-    if (
-      pollOptions.some((option) => characterCount(option) > InstanceLimits.poll.maxOptionCharacters)
-    ) {
-      return c.json({ error: "poll option is too long", kind: "PollOptionTooLong" }, 422);
-    }
-  }
-  // A quote post points at another status the author may see. Its policy is
-  // the quoted status's stored policy (else its author's default), and a
-  // followers-only original clamps the quote to followers-only too.
-  let quotedStatus: LocalStatus | undefined;
-  let statusVisibility = visibility.value;
-  let quoteInlineHtml: string | null = null;
-  let quotedUrl = "";
-  const quotedRaw = body.value.quoted_status_id?.trim() ?? "";
-  if (quotedRaw.length > 0) {
-    const quotedId = StatusId.parse(quotedRaw);
-    if (quotedId.isErr()) {
-      return c.json({ error: "Invalid quoted_status_id", kind: "ValidationError" }, 422);
-    }
-    const found = await findStatusById(c.env.DB, quotedId.value);
-    if (found.isErr()) {
-      return jsonRepositoryError(c, found.error.message);
-    }
-    if (!found.value) {
-      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-    }
-    let target = found.value;
-    // Quoting a boost quotes the boosted status, as Mastodon does.
-    if (target.kind === "LocalReblog") {
-      const original = await findStatusById(c.env.DB, target.target.statusId);
-      if (original.isErr()) {
-        return jsonRepositoryError(c, original.error.message);
-      }
-      if (!original.value) {
-        return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-      }
-      target = original.value;
-    }
-    if (!(await canViewStatus(c.env.DB, target, user.value.id))) {
-      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-    }
-    const targetVisibility = Visibility.toMastodon(target.visibility);
-    if (targetVisibility === "direct") {
-      return c.json({ error: "Direct messages cannot be quoted", kind: "QuoteNotAllowed" }, 422);
-    }
-    const targetAuthor = await findAccountById(c.env.DB, target.accountId);
-    const storedPolicy = await findStatusQuotePolicy(c.env.DB, target.id);
-    const policy: QuotePolicy =
-      (storedPolicy.isOk() ? storedPolicy.value : undefined) ??
-      (targetAuthor.isOk() && targetAuthor.value
-        ? quotePolicyName(targetAuthor.value.defaultQuotePolicy)
-        : defaultQuotePolicy(targetVisibility));
-    if (policy === "nobody" && target.accountId !== user.value.id) {
-      // Mastodon answers 404 for a status it will not let you quote.
-      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-    }
-    if (policy === "followers" && target.accountId !== user.value.id) {
-      const follow = await findFollowKind(c.env.DB, user.value.id, target.accountId);
-      if (follow.isErr()) {
-        return jsonRepositoryError(c, follow.error.message);
-      }
-      if (follow.value !== "Accepted") {
-        return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-      }
-    }
-    if (targetVisibility === "private" && visibilityIsPublic(statusVisibility)) {
-      statusVisibility = Visibility.FollowersOnly;
-    }
-    if (statusVisibility.kind === "Direct" && targetAuthor.isOk() && targetAuthor.value) {
-      const mentioned = mentionUsernames(body.value.status ?? "", identity.value.domain).includes(
-        targetAuthor.value.username.toLowerCase(),
-      );
-      if (!mentioned) {
-        return c.json(
-          {
-            error: "Quoted status author must be mentioned in a direct quote",
-            kind: "QuoteNotAllowed",
-          },
-          422,
-        );
-      }
-    }
-    quotedStatus = target;
-    quotedUrl =
-      targetAuthor.isOk() && targetAuthor.value
-        ? `${InstanceIdentity.actorUrl(identity.value, targetAuthor.value.username)}/statuses/${target.id}`
-        : "";
-    if (quotedUrl.length > 0 && !(body.value.status ?? "").includes(quotedUrl)) {
-      quoteInlineHtml = `<p class="quote-inline">RE: <a href="${escapeHtml(quotedUrl)}">${escapeHtml(quotedUrl)}</a></p>`;
-    }
-  }
-  // The account's posting defaults fill in what the request omits.
-  const composeDefaultsResult = await findComposeDefaults(c.env.DB, user.value.id);
-  const composeDefaults = composeDefaultsResult.isOk()
-    ? composeDefaultsResult.value
-    : { language: null, sensitive: false };
-  const composing = StatusComposition.composing({
-    text: body.value.status ?? "",
-    visibility: statusVisibility,
-    ...(quotedStatus ? { quote: { kind: "Quoted" as const, statusId: quotedStatus.id } } : {}),
-    spoilerText: body.value.spoiler_text ?? "",
-    sensitive:
-      body.value.sensitive === undefined
-        ? composeDefaults.sensitive
-        : isTruthy(body.value.sensitive),
-    language:
-      body.value.language && body.value.language.length > 0
-        ? { kind: "Present", value: body.value.language }
-        : composeDefaults.language !== null
-          ? { kind: "Present", value: composeDefaults.language }
-          : { kind: "None" },
-    mediaIds: stringList(body.value.media_ids),
-    poll: pollOptions.length >= 2 ? { kind: "Present" } : { kind: "None" },
-  });
-  const draft = StatusComposition.validate(composing);
-  if (draft.isErr()) {
-    return c.json({ error: draft.error.kind, kind: draft.error.kind }, 422);
-  }
-  const policyRaw = (body.value.quote_approval_policy ?? "").trim().toLowerCase();
-  const requestedPolicy = isQuotePolicy(policyRaw) ? policyRaw : undefined;
-  if (policyRaw.length > 0 && requestedPolicy === undefined) {
-    return c.json({ error: "Invalid quote_approval_policy", kind: "ValidationError" }, 422);
-  }
-  // Direct and followers-only posts are never quotable by anyone else.
-  const statusQuotePolicy: QuotePolicy = visibilityIsPublic(draft.value.visibility)
-    ? (requestedPolicy ?? quotePolicyName(user.value.defaultQuotePolicy))
-    : "nobody";
-  let replyTo: ThreadStatus | null = null;
-  const replyRaw = body.value.in_reply_to_id?.trim() ?? "";
-  if (replyRaw.length > 0) {
-    const replyId = StatusId.parse(replyRaw);
-    if (replyId.isErr()) {
-      return c.json({ error: "Invalid in_reply_to_id", kind: "ValidationError" }, 422);
-    }
-    // A local status or a cached remote one the author may see.
-    const parent = await findReplyTarget(c.env.DB, replyId.value, user.value.id);
-    if (parent.isErr()) {
-      return jsonRepositoryError(c, parent.error.message);
-    }
-    if (!parent.value) {
-      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-    }
-    replyTo = parent.value;
-  }
-  // `scheduled_at` stores the validated post instead of publishing it; the
-  // cron publisher replays the same params through `publishLocalNote`.
-  const scheduledRaw = body.value.scheduled_at?.trim() ?? "";
-  if (scheduledRaw.length > 0) {
-    if (quotedStatus) {
-      return c.json(
-        { error: "Scheduled posts cannot quote a status", kind: "QuoteNotAllowed" },
-        422,
-      );
-    }
-    const at = Date.parse(scheduledRaw);
-    if (!Number.isFinite(at) || at < Date.now() + MIN_SCHEDULE_OFFSET_MS) {
-      return c.json(
-        {
-          error: "scheduled_at must be at least 5 minutes in the future",
-          kind: "InvalidScheduledAt",
-        },
-        422,
-      );
-    }
-    const stored = await insertScheduledStatus(c.env.DB, {
-      accountId: user.value.id,
-      scheduledAt: new Date(at).toISOString(),
-      params: {
-        text: draft.value.text,
-        visibility: Visibility.toMastodon(draft.value.visibility),
-        spoiler_text: draft.value.spoilerText,
-        sensitive: draft.value.sensitive,
-        language: draft.value.language.kind === "Present" ? draft.value.language.value : null,
-        media_ids: [...draft.value.mediaIds],
-        media_attributes: mediaAttributes.map((attribute) => ({
-          id: attribute.id,
-          ...(attribute.description === undefined ? {} : { description: attribute.description }),
-          ...(attribute.focus === undefined ? {} : { focus: attribute.focus }),
-        })),
-        poll:
-          pollOptions.length >= 2
-            ? {
-                options: [...pollOptions],
-                expires_in: Number(pollRaw?.expires_in ?? 86400),
-                multiple: isTruthy(pollRaw?.multiple),
-                hide_totals: isTruthy(pollRaw?.hide_totals),
-              }
-            : null,
-        in_reply_to_id: replyTo === null ? null : replyTo.status.id,
-        quote_policy: statusQuotePolicy,
-      },
-    });
-    if (stored.isErr()) {
-      return jsonRepositoryError(c, stored.error.message);
-    }
-    const media =
-      stored.value.params.media_ids.length > 0
-        ? await findMediaByIds(c.env.DB, [...stored.value.params.media_ids])
-        : undefined;
-    return c.json(
-      scheduledStatusDocument(
-        stored.value,
-        media && media.isOk()
-          ? [...media.value.values()].map((attachment) => mastodonMedia(identity.value, attachment))
-          : [],
-      ),
-      200,
-    );
-  }
-  const published = await publishLocalNote(c.env, identity.value, user.value, {
-    draft: draft.value,
-    replyTo,
-    quote: quotedStatus
-      ? {
-          quotedStatusId: quotedStatus.id,
-          quotedAccountId: quotedStatus.accountId,
-          inlineHtml: quoteInlineHtml ?? "",
-          uri: quotedUrl,
-        }
-      : null,
-    quotePolicy: statusQuotePolicy,
-    mediaAttributes,
-    poll:
-      pollOptions.length >= 2
-        ? {
-            options: pollOptions,
-            expiresIn: Number(pollRaw?.expires_in ?? 86400),
-            multiple: isTruthy(pollRaw?.multiple),
-            hideTotals: isTruthy(pollRaw?.hide_totals),
-          }
-        : null,
-  });
-  if (published.isErr()) {
-    return jsonRepositoryError(c, published.error.message);
-  }
-  const document = await mastodonStatus(c.env, identity.value, published.value, user.value.id);
-  return c.json(document, 200);
+  const posted = await postStatus(
+    c.env,
+    identity.value,
+    user.value,
+    body.value,
+    body.value.media_attributes ?? mediaAttributesFromForm(rawBody),
+  );
+  return posted.isErr() ? StatusRefusal.respond(c, posted.error) : c.json(posted.value, 200);
 };
 
 const statusDocumentById = async (
