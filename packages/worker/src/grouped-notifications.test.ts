@@ -446,4 +446,61 @@ describe("a notification group by key", () => {
     });
     expect(await notificationIds(authorEmail, "&include_filtered=true")).toEqual([]);
   });
+
+  it("lists a held notification under a key that dismisses it", async () => {
+    const authorEmail = "group-held-listed-author@example.com";
+    const p = await postStatus(authorEmail, { status: "held listed p" });
+    await favourite("group-held-listed-fan-a@example.com", p);
+    const policy = await json("/api/v2/notifications/policy", {
+      method: "PATCH",
+      headers: { ...(await auth(authorEmail)), "content-type": "application/json" },
+      body: JSON.stringify({ for_not_following: "filter" }),
+    });
+    expect(policy.status).toBe(200);
+    await favourite("group-held-listed-fan-b@example.com", p);
+    const [held] = await notificationIds(authorEmail, "&include_filtered=true");
+
+    const listed = read(
+      EnvelopeSchema,
+      (await json("/api/v2/notifications?include_filtered=true", { headers: await auth(authorEmail) }))
+        .body,
+    ).notification_groups;
+    const heldGroup = listed.find((group) => group.most_recent_notification_id === held);
+    expect(heldGroup?.notifications_count).toBe(1);
+
+    const dismissed = await json(`/api/v2/notifications/${heldGroup?.group_key ?? ""}/dismiss`, {
+      method: "POST",
+      headers: await auth(authorEmail),
+    });
+    expect(dismissed.status).toBe(200);
+    expect(await notificationIds(authorEmail, "&include_filtered=true")).not.toContain(held);
+  });
+
+  it("reads a group by key whatever grouped_types the request lists", async () => {
+    const authorEmail = "group-key-types-author@example.com";
+    const p = await postStatus(authorEmail, { status: "key types p" });
+    await favourite("group-key-types-fan@example.com", p);
+    const groupKey = `favourite-${p}`;
+    const query = "grouped_types[]=reblog";
+
+    const single = await json(`/api/v2/notifications/${groupKey}?${query}`, {
+      headers: await auth(authorEmail),
+    });
+    expect(single.status).toBe(200);
+    expect(read(EnvelopeSchema, single.body).notification_groups[0]?.group_key).toBe(groupKey);
+    const accounts = await json(`/api/v2/notifications/${groupKey}/accounts?${query}`, {
+      headers: await auth(authorEmail),
+    });
+    expect(read(z.array(MastodonAccountPreviewSchema), accounts.body)).toHaveLength(1);
+
+    await json(`/api/v2/notifications/${groupKey}/dismiss?${query}`, {
+      method: "POST",
+      headers: await auth(authorEmail),
+    });
+    expect(await notificationIds(authorEmail, "")).toEqual([]);
+    const unknown = await json(`/api/v2/notifications/nonsense-${p}`, {
+      headers: await auth(authorEmail),
+    });
+    expect(unknown.status).toBe(404);
+  });
 });
