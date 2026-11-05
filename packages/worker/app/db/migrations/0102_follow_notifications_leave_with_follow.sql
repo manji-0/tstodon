@@ -8,6 +8,9 @@
 -- leaves the pending state. A local sender is named by account id, a remote
 -- one by actor URI.
 
+-- The local triggers look a notification up by recipient and sender.
+CREATE INDEX idx_notifications_account_from ON notifications (account_id, from_account_id);
+
 CREATE TRIGGER follow_notifications_leave_with_follow
 AFTER DELETE ON follows
 BEGIN
