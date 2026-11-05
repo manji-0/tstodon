@@ -249,3 +249,41 @@ describe("a remote actor's Block of a local account", () => {
     ]);
   });
 });
+
+describe("a Follow from an actor the local account blocks", () => {
+  const notifications = async (email: string) =>
+    read(z.array(z.object({ type: z.string() })), (await get(email, "/api/v1/notifications")).body);
+
+  it("is refused with Reject(Follow) when the account blocks the actor", async () => {
+    const a = "blocked-follower-target@example.com";
+    const remote = await remoteActor("blocked-follower");
+    await block(a, remoteId(remote));
+
+    const followId = await remoteFollows(remote, a);
+    expect(await counts(a)).toEqual({ followers_count: 0, following_count: 0 });
+    expect(await notifications(a)).toEqual([]);
+    expect(await queued(a, "Accept")).toEqual([]);
+    expect(await queued(a, "Reject")).toMatchObject([
+      {
+        inbox: `${remote.actorUri}/inbox`,
+        activity: { type: "Reject", object: { id: followId, type: "Follow" } },
+      },
+    ]);
+  });
+
+  it("is refused with Reject(Follow) when the account blocks the actor's domain", async () => {
+    const a = "domain-blocked-follower-target@example.com";
+    const remote = await remoteActor("domain-blocked-follower", "follow-blocked.example");
+    expect(
+      (await send(a, "/api/v1/domain_blocks", "POST", { domain: "follow-blocked.example" }))
+        .status,
+    ).toBe(200);
+
+    const followId = await remoteFollows(remote, a);
+    expect(await counts(a)).toEqual({ followers_count: 0, following_count: 0 });
+    expect(await queued(a, "Accept")).toEqual([]);
+    expect(await queued(a, "Reject")).toMatchObject([
+      { activity: { type: "Reject", object: { id: followId, type: "Follow" } } },
+    ]);
+  });
+});

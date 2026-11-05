@@ -121,6 +121,30 @@ describe("inbox activities signed by a local account", () => {
     ).toEqual(["follow"]);
   });
 
+  it("refuses a Follow of an account that blocks the follower", async () => {
+    const target = await signedInAccount("ls-blocking-target@example.com");
+    const follower = await signedInAccount("ls-blocked-follower@example.com");
+    const blocked = await json(`/api/v1/accounts/${follower.id}/block`, {
+      method: "POST",
+      headers: await authHeaders("ls-blocking-target@example.com"),
+    });
+    expect(blocked.status).toBe(200);
+
+    expect(
+      await postSignedBy("ls-blocked-follower@example.com", {
+        id: "https://example.com/activities/ls-blocked-follow",
+        type: "Follow",
+        object: `https://example.com/users/${target.username}`,
+      }),
+    ).toBe(202);
+    const relationships = await json(`/api/v1/accounts/relationships?id=${target.id}`, {
+      headers: await authHeaders("ls-blocked-follower@example.com"),
+    });
+    expect(read(MastodonRelationshipListPreviewSchema, relationships.body)[0]?.following).toBe(
+      false,
+    );
+  });
+
   it("favourites a local status on Like", async () => {
     const status = await postStatus("ls-like-author@example.com", "like me");
     expect(
