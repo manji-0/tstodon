@@ -63,8 +63,19 @@ describe("NotificationGroup.fold", () => {
   it("counts the limit in groups and collects only their accounts and statuses", () => {
     const folded = NotificationGroup.fold(page, grouped, 2);
     expect(folded.groups).toHaveLength(2);
-    expect(folded.accountIds).toEqual(["a", "b", "c", "d"]);
+    expect(folded.accountIds).toEqual(["a", "b"]);
     expect(folded.statusIds).toEqual(["s1", "s2"]);
     expect(NotificationGroup.fold(page, grouped, -1).groups).toEqual([]);
+  });
+
+  it("ends a full page at the last group's first notification", () => {
+    // As Mastodon's pagination range: the older notifications of a group on a
+    // full page belong to the next page, which also holds the groups left off.
+    const { groups } = NotificationGroup.fold(page, grouped, 2);
+    expect(groups.map((group) => [group.groupKey, group.pageMinId, group.pageMaxId])).toEqual([
+      ["favourite-s1", "9", "9"],
+      ["ungrouped-8", "8", "8"],
+    ]);
+    expect(groups[0]?.notificationsCount).toBe(1);
   });
 });

@@ -52,10 +52,28 @@ const key = (entry: GroupedNotificationEntry, groupedTypes: ReadonlySet<string>)
     ? `${entry.kind}-${statusOf(entry) ?? entry.fromAccountId}`
     : `ungrouped-${entry.id}`;
 
+/** How many entries a page of `limit` groups covers: up to the first one of the last group. */
+const pageLength = (
+  entries: ReadonlyArray<GroupedNotificationEntry>,
+  groupedTypes: ReadonlySet<string>,
+  limit: number,
+): number => {
+  const seen = new Set<string>();
+  for (const [index, entry] of entries.entries()) {
+    if (seen.size >= limit) {
+      return index;
+    }
+    seen.add(key(entry, groupedTypes));
+  }
+  return entries.length;
+};
+
 /**
  * Fold a newest-first page of notifications into groups, preserving that order
- * and stopping after `limit` groups (Mastodon counts `limit` in groups). Every
- * entry is folded in first so a group's counts cover the whole page.
+ * and stopping after `limit` groups (Mastodon counts `limit` in groups). A page
+ * that reaches `limit` groups ends at the last group's first notification, as
+ * Mastodon's pagination range does: the older notifications of its groups
+ * belong to the next page, so paging from the page bounds skips no group.
  */
 const fold = (
   entries: ReadonlyArray<GroupedNotificationEntry>,
@@ -67,7 +85,7 @@ const fold = (
   const samples = new Map<string, string[]>();
   const senders = new Map<string, string[]>();
 
-  for (const entry of entries) {
+  for (const entry of entries.slice(0, pageLength(entries, groupedTypes, limit))) {
     const groupKey = key(entry, groupedTypes);
     const existing = byKey.get(groupKey);
     if (!existing) {
@@ -112,7 +130,7 @@ const fold = (
     });
   }
 
-  const groups = order.slice(0, Math.max(limit, 0)).flatMap((groupKey) => {
+  const groups = order.flatMap((groupKey) => {
     const group = byKey.get(groupKey);
     return group ? [group] : [];
   });
