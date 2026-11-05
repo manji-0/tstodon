@@ -4,6 +4,12 @@ export { Activity, ActivitySchema, type Activity as ActivityValue } from "./acti
 export { ActivityId } from "./activity-id";
 export { ContentFilter, type ContentFilterMatch, type FilteredContent } from "./content-filter";
 export {
+  OutboxBackfill,
+  type OutboxBackfillDecision,
+  type OutboxBackfillItem,
+  type OutboxBackfillObject,
+} from "./outbox-backfill";
+export {
   DeliveryAttemptOutcome,
   type DeliveryAttemptOutcome as DeliveryAttemptOutcomeValue,
 } from "./delivery-attempt-outcome";

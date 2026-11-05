@@ -1,9 +1,9 @@
 import {
   ActivityId,
   type InstanceIdentity,
+  OutboxBackfill,
   OutboxJob,
   type OutboxJob as OutboxJobValue,
-  RemoteStatus,
   type RemoteActor,
   Hostname,
 } from "@tstodon/domain";
@@ -77,20 +77,10 @@ const OutboxItemSchema = z.object({
 
 const parseOutboxItem = schemaResult(OutboxItemSchema);
 
-const urlHost = (href: string): string | undefined => {
-  try {
-    return new URL(href).host.toLowerCase();
-  } catch {
-    return undefined;
-  }
-};
-
 /**
- * Store one outbox item: a public `Create` of the actor's own note, or a
- * public `Announce` as a boost. Ids sort at the item's publish time, and
- * nothing fans out or notifies, since these are old posts. An embedded
- * object is trusted only when it comes from the actor's host; an announced
- * note from elsewhere is fetched with the boost path's origin checks.
+ * Store one outbox item as `OutboxBackfill.decide` says: a `Create` as a
+ * note, an `Announce` as a boost. Ids sort at the item's publish time, and
+ * nothing fans out or notifies, since these are old posts.
  */
 const backfillOutboxItem = async (
   env: Env,
@@ -100,38 +90,38 @@ const backfillOutboxItem = async (
   options: FederatedFetchOptions,
 ): Promise<void> => {
   const item = parseOutboxItem(raw);
-  if (item.isErr() || item.value.actor !== actor.actorUri) {
+  if (item.isErr()) {
     return;
   }
-  const actorHost = urlHost(actor.actorUri);
-  const object = item.value.object;
-  // A `Create` is as visible as its note, as Mastodon reads it; servers
-  // (tstodon among them) may address only the note.
-  const audience = item.value.type === "Create" && typeof object !== "string" ? object : item.value;
-  const visibility = RemoteStatus.visibilityFromAudience(
-    stringList(audience.to),
-    stringList(audience.cc),
-  );
-  if (
-    urlHost(item.value.id) !== actorHost ||
-    (visibility.kind !== "Public" && visibility.kind !== "Unlisted")
-  ) {
-    return;
-  }
+  const { object } = item.value;
   const objectUri = typeof object === "string" ? object : object.id;
-  const fromActorHost = urlHost(objectUri) === actorHost;
+  const decision = OutboxBackfill.decide(actor.actorUri, {
+    type: item.value.type,
+    id: item.value.id,
+    actor: item.value.actor,
+    object:
+      typeof object === "string"
+        ? { kind: "Uri", uri: object }
+        : {
+            kind: "Embedded",
+            uri: object.id,
+            audience: { to: stringList(object.to), cc: stringList(object.cc) },
+          },
+    audience: { to: stringList(item.value.to), cc: stringList(item.value.cc) },
+  });
   const persist = { ...options, idClock: "Published" } as const;
-  if (item.value.type === "Create") {
-    if (fromActorHost) {
-      await persistRemoteObject(env, identity, actor, object, persist);
-    }
+  if (decision.kind === "Ignore") {
+    return;
+  }
+  if (decision.kind === "StoreNote") {
+    await persistRemoteObject(env, identity, actor, object, persist);
     return;
   }
   const announced = await persistAnnouncedObject(
     env,
     identity,
     actor,
-    fromActorHost ? object : objectUri,
+    decision.kind === "StoreBoost" ? object : objectUri,
     persist,
   );
   if (announced.isOk()) {
@@ -193,10 +183,9 @@ const backfillRemoteOutbox = async (env: Env, job: BackfillRemoteOutbox): Promis
   // A later page is a link taken from the remote's document; it must stay on
   // the actor's host, like the items it holds.
   if (from.kind === "Page") {
-    const page =
-      urlHost(from.pageUri) === urlHost(cached.value.actorUri)
-        ? await fetchCollectionPage(identity.value, from.pageUri, options)
-        : undefined;
+    const page = OutboxBackfill.onActorHost(from.pageUri, cached.value.actorUri)
+      ? await fetchCollectionPage(identity.value, from.pageUri, options)
+      : undefined;
     const chained = page
       ? await backfillPage(env, identity.value, cached.value, page, from.depth, options)
       : false;
@@ -269,7 +258,6 @@ const backfillPins = async (
   items: ReadonlyArray<unknown>,
   options: FederatedFetchOptions,
 ): Promise<void> => {
-  const actorHost = urlHost(actor.actorUri);
   const statusIds: string[] = [];
   for (const raw of items) {
     const item = parseObjectReference(raw);
@@ -277,7 +265,7 @@ const backfillPins = async (
       continue;
     }
     const uri = typeof item.value === "string" ? item.value : item.value.id;
-    if (urlHost(uri) !== actorHost) {
+    if (!OutboxBackfill.onActorHost(uri, actor.actorUri)) {
       continue;
     }
     const stored = await persistRemoteObject(env, identity, actor, item.value, {
