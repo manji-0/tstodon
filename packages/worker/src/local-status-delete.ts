@@ -30,6 +30,7 @@ export const deleteLocalStatus = async (
           noteDocument(identity, account, status, {
             mentions: await loadNoteMentions(env.DB, identity, status.id),
             reply: await loadNoteReply(env.DB, identity, status),
+            attachments: [],
           }),
         )
       : undefined;

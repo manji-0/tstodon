@@ -11,6 +11,7 @@ import { newEntityId } from "./ids";
 import { findMediaById, parseMediaFocus, updateMediaMetadata } from "./media-store";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "./mention-store";
 import { loadNoteMentions, resolveRemoteMentions } from "./mention-resolve";
+import { loadNoteAttachments } from "./note-attachments";
 import { loadNoteReply } from "./reply-target";
 import { noteDocument } from "./activitypub";
 import { notifyAccount } from "./notify";
@@ -254,6 +255,7 @@ export const publishLocalNote = async (
             mentions: await loadNoteMentions(env.DB, identity, note.id),
             reply: await loadNoteReply(env.DB, identity, note),
             poll: await loadNotePoll(env.DB, note.id),
+            attachments: await loadNoteAttachments(env.DB, identity, note),
           }),
         });
   if (enqueued.isErr()) {

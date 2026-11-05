@@ -9,6 +9,7 @@ import { loadNoteMentions } from "./mention-resolve";
 import { reachesRemoteInboxes } from "./outbox-job";
 import { claimPollUpdate, findPollById, type PollRecord, releasePollUpdate } from "./poll-store";
 import { quotedStatusUri } from "./quote-uri";
+import { loadNoteAttachments } from "./note-attachments";
 import { loadNoteReply } from "./reply-target";
 import { parseInstanceIdentity } from "./runtime-config";
 import { findStatusById } from "./status-store";
@@ -87,6 +88,7 @@ const distributePollUpdate = async (
       mentions: await loadNoteMentions(env.DB, identity, note.id),
       reply: await loadNoteReply(env.DB, identity, note),
       poll,
+      attachments: await loadNoteAttachments(env.DB, identity, note),
     }),
   };
   if (!reachesRemoteInboxes(update, identity.domain)) {

@@ -28,6 +28,7 @@ import { parseJsonColumn, parseJsonText } from "../json-column";
 import { schemaResult } from "@tstodon/core";
 import { listFollowers, listFollowing } from "../follow-store";
 import { loadNoteMentions } from "../mention-resolve";
+import { loadNoteAttachments } from "../note-attachments";
 import { loadNoteReply } from "../reply-target";
 import { loadNotePoll } from "../poll-store";
 import { findStatusById } from "../status-store";
@@ -89,6 +90,7 @@ export const getUsersByUsernameStatusesById = async (
     mentions: await loadNoteMentions(c.env.DB, identity.value, status.value.id),
     reply: await loadNoteReply(c.env.DB, identity.value, status.value),
     poll: await loadNotePoll(c.env.DB, status.value.id),
+    attachments: await loadNoteAttachments(c.env.DB, identity.value, status.value),
   });
   const visibility = status.value.visibility.kind;
   if (visibility !== "Public" && visibility !== "Unlisted") {

@@ -6,6 +6,7 @@ import { enqueueHomeFanOut } from "./home-fan-out";
 import { newEntityId } from "./ids";
 import { mastodonStatus } from "./local-status-documents";
 import { loadNoteMentions } from "./mention-resolve";
+import { loadNoteAttachments } from "./note-attachments";
 import { loadNotePoll } from "./poll-store";
 import { enqueuePublicFanOut } from "./public-fan-out";
 import { quotedStatusUri } from "./quote-uri";
@@ -40,6 +41,7 @@ export const announceNoteUpdate = async (
         mentions: await loadNoteMentions(env.DB, identity, note.id),
         reply: await loadNoteReply(env.DB, identity, note),
         poll: await loadNotePoll(env.DB, note.id),
+        attachments: await loadNoteAttachments(env.DB, identity, note),
       }),
     });
     if (enqueued.isErr()) {

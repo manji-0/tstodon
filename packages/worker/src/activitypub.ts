@@ -198,6 +198,17 @@ export const undoActivity = (
 export type NoteMention = Readonly<{ href: string; name: string }>;
 
 /**
+ * A media attachment as Mastodon federates it, a `Document`: its type, public
+ * URL, description as `name`, and focal point when one is set.
+ */
+export type NoteAttachment = Readonly<{
+  mediaType: string;
+  url: string;
+  name: string | null;
+  focalPoint: readonly [number, number] | undefined;
+}>;
+
+/**
  * The poll fields of a `Question`, as Mastodon reads them: `oneOf` or `anyOf`
  * options with their vote counts, `endTime`, `closed` once over, and `votersCount`.
  * A poll that hides its totals keeps them out of the document until it ends.
@@ -229,9 +240,11 @@ export const noteDocument = (
     reply?: Readonly<{ inReplyTo: string; addressAuthor: string | undefined }> | undefined;
     /** A note with a poll federates as a `Question`. */
     poll?: PollRecord | undefined;
-  }> = {},
+    /** The note's media in order. Required: an `Update` without them clears them remotely. */
+    attachments: ReadonlyArray<NoteAttachment>;
+  }>,
 ): Record<string, unknown> => {
-  const { quoteUri, mentions = [], reply, poll } = extras;
+  const { quoteUri, mentions = [], reply, poll, attachments } = extras;
   const actor = InstanceIdentity.actorUrl(identity, account.username);
   const id = `${actor}/statuses/${note.id}`;
   const followers = `${actor}/followers`;
@@ -267,7 +280,14 @@ export const noteDocument = (
           _misskey_quote: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
         }
       : {}),
-    ...(poll ? { toot: "http://joinmastodon.org/ns#", votersCount: "toot:votersCount" } : {}),
+    ...(poll || attachments.length > 0 ? { toot: "http://joinmastodon.org/ns#" } : {}),
+    ...(poll ? { votersCount: "toot:votersCount" } : {}),
+    ...(attachments.length > 0
+      ? {
+          blurhash: "toot:blurhash",
+          focalPoint: { "@container": "@list", "@id": "toot:focalPoint" },
+        }
+      : {}),
   };
   return {
     "@context":
@@ -286,6 +306,14 @@ export const noteDocument = (
     sensitive: note.sensitive,
     summary: note.spoilerText.length > 0 ? note.spoilerText : null,
     inReplyTo: reply?.inReplyTo ?? null,
+    attachment: attachments.map((media) => ({
+      type: "Document",
+      mediaType: media.mediaType,
+      url: media.url,
+      name: media.name,
+      blurhash: null,
+      ...(media.focalPoint ? { focalPoint: media.focalPoint } : {}),
+    })),
     tag: mentions.map((mention) => ({ type: "Mention", href: mention.href, name: mention.name })),
   };
 };
