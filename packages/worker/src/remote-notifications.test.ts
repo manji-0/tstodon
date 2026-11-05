@@ -222,6 +222,58 @@ describe("notifications from remote actors", () => {
     expect(await notifications(other)).toEqual([]);
   });
 
+  it("notifies from a followed actor on a blocked domain, as Mastodon's domain_blocking? && not_following?", async () => {
+    const email = "remote-notify-domain-follower@example.com";
+    const headers = { "content-type": "application/json", ...(await authHeaders(email)) };
+    const status = await post(email, "followed across a domain block");
+    const friend = await remoteActor("friend", "blocked-but-followed.example");
+    const friendId = RemoteAccountId.encode(friend.actorUri);
+    expect(
+      (await json(`/api/v1/accounts/${friendId}/follow`, { method: "POST", headers, body: "{}" }))
+        .status,
+    ).toBe(200);
+    const follow = await env.DB.prepare(
+      "SELECT follow_activity_id FROM outbound_follows WHERE actor_uri = ?",
+    )
+      .bind(friend.actorUri)
+      .first<{ follow_activity_id: string }>();
+    expect(
+      await friend.send({
+        id: `${friend.actorUri}/accepts/1`,
+        type: "Accept",
+        object: follow?.follow_activity_id,
+      }),
+    ).toBe(202);
+    expect(
+      (
+        await json("/api/v1/domain_blocks", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ domain: "blocked-but-followed.example" }),
+        })
+      ).status,
+    ).toBe(200);
+    const stranger = await remoteActor("stranger", "blocked-but-followed.example");
+
+    for (const [sender, slug] of [
+      [friend, "friend-like"],
+      [stranger, "stranger-like"],
+    ] as const) {
+      expect(
+        await sender.send({
+          id: `https://blocked-but-followed.example/activities/${slug}`,
+          type: "Like",
+          object: status.uri,
+        }),
+      ).toBe(202);
+    }
+
+    const stored = await env.DB.prepare(
+      "SELECT from_actor_uri FROM notifications WHERE kind = 'favourite' AND from_actor_uri LIKE 'https://blocked-but-followed.example/%'",
+    ).all<{ from_actor_uri: string }>();
+    expect(stored.results.map((row) => row.from_actor_uri)).toEqual([friend.actorUri]);
+  });
+
   it("notifies a mention in a new remote note, once", async () => {
     const email = "remote-notify-mentioned@example.com";
     const account = await me(email);

@@ -30,8 +30,8 @@ export type SenderScreening =
 
 /**
  * Screen the notification's sender: the recipient itself, staff, a sender
- * the recipient blocks or mutes notifications of, or a remote sender on a
- * domain the recipient blocks.
+ * the recipient blocks or mutes notifications of, or a remote sender the
+ * recipient does not follow on a domain it blocks.
  */
 export type ScreenSender = (
   notification: NewNotification,

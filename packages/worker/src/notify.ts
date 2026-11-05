@@ -21,6 +21,7 @@ import { listAdminAccountIds } from "./account-admin-store";
 import type { RepositoryError } from "./d1";
 import type { FollowWrite } from "./follow-store";
 import { holdNotification } from "./notification-policy-store";
+import { findOutboundFollow } from "./outbound-follow-store";
 import { notificationDisposition } from "./notification-policy";
 import { isDomainBlocked } from "./domain-block-store";
 import { RemoteAccountId } from "./remote-account-id";
@@ -263,12 +264,21 @@ const screenSender = async (
   if (blocked.value || muted.value?.notifications) {
     return ok(DROP);
   }
-  const domain = notification.fromActorUri ? Hostname.ofUri(notification.fromActorUri) : undefined;
-  if (!domain) {
+  const actorUri = notification.fromActorUri;
+  const domain = actorUri ? Hostname.ofUri(actorUri) : undefined;
+  if (!actorUri || !domain) {
     return ok(SCREEN);
   }
   const domainBlocked = await isDomainBlocked(db, recipientId, domain);
-  return domainBlocked.map((isBlocked) => (isBlocked ? DROP : SCREEN));
+  if (domainBlocked.isErr()) {
+    return err(domainBlocked.error);
+  }
+  if (!domainBlocked.value) {
+    return ok(SCREEN);
+  }
+  // The recipient's own follow outweighs its block of the sender's domain.
+  const follow = await findOutboundFollow(db, recipientId, actorUri);
+  return follow.map((found) => (found?.state.kind === "Accepted" ? SCREEN : DROP));
 };
 
 /**
