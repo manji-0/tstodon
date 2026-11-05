@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
+import { newEntityId } from "./ids";
 import { RemoteAccountId } from "./remote-account-id";
 
 const json = async (
@@ -23,6 +24,8 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   }
   return parsed.value;
 };
+
+const CAP_STAMP = "2026-01-01T00:00:00.000Z";
 
 const IdSchema = z.object({ id: z.string().min(1) });
 const IdListSchema = z.array(IdSchema);
@@ -72,11 +75,18 @@ describe("multiple lookups", () => {
   });
 
   it("caps the status batch at twenty ids", async () => {
-    const email = "multi-status-cap@example.com";
-    const ids: string[] = [];
-    for (let index = 0; index < 21; index += 1) {
-      ids.push(await post(email, `cap ${index}`, "public"));
-    }
+    // Posting 21 statuses through the API took most of this test's time;
+    // the cap is on the lookup, so store the rows directly.
+    const accountId = await verify("multi-status-cap@example.com");
+    const ids = Array.from({ length: 21 }, () => newEntityId());
+    await env.DB.batch(
+      ids.map((id, index) =>
+        env.DB.prepare(
+          `INSERT INTO statuses (id, account_id, kind, content_text, content_html, visibility, created_at, updated_at)
+           VALUES (?, ?, 'LocalNote', ?, ?, 'public', ?, ?)`,
+        ).bind(id, accountId, `cap ${index}`, `<p>cap ${index}</p>`, CAP_STAMP, CAP_STAMP),
+      ),
+    );
     const listed = await json(`/api/v1/statuses?${ids.map((id) => `id[]=${id}`).join("&")}`);
     expect(read(IdListSchema, listed.body).map((status) => status.id)).toEqual(ids.slice(0, 20));
   });
