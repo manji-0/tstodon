@@ -1,4 +1,4 @@
-import { FollowRequest, LocalFollow } from "@tstodon/domain";
+import { LocalFollow } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { parseRows, type RepositoryError, runD1 } from "./d1";
@@ -22,8 +22,7 @@ import {
 } from "./generated/prisma/sql";
 
 const IdRow = z.object({ id: z.string() });
-const Row2 = z.object({
-  kind: z.string(),
+const OptionsRow = z.object({
   reblogs: z.number(),
   notify: z.number(),
   languages_json: z.string(),
@@ -39,31 +38,32 @@ export type FollowOptions = Readonly<{
   languages?: ReadonlyArray<string>;
 }>;
 
+/** What `followAccount` did: inserted the follow row, or found one already there. */
+export type FollowWrite =
+  | Readonly<{ kind: "Created"; follow: LocalFollow }>
+  | Readonly<{ kind: "Existing" }>;
+
 export const followAccount = async (
   db: D1Database,
   followerId: string,
   targetId: string,
   targetLocked: boolean,
   options: FollowOptions = {},
-): Promise<Result<FollowRequest, RepositoryError>> =>
+): Promise<Result<FollowWrite, RepositoryError>> =>
   runD1(async () => {
-    const state = FollowRequest.initial("LocalFollower", targetLocked);
-    const followKind = state.kind === "LocalFollower" ? state.follow.kind : "Pending";
-    if (followKind === "None") {
-      return state;
-    }
+    const follow = LocalFollow.initial(targetLocked);
     const inserted = await queryTyped(
       db,
-      insertFollowOrIgnoreSql(newEntityId(), followerId, targetId, followKind, nowIso()),
+      insertFollowOrIgnoreSql(newEntityId(), followerId, targetId, follow.kind, nowIso()),
       IdRow,
     );
-    const existing = await queryTyped(db, findFollowKindSql(followerId, targetId), Row2);
-    const row = existing[0];
     if (
       options.reblogs !== undefined ||
       options.notify !== undefined ||
       options.languages !== undefined
     ) {
+      const existing = await queryTyped(db, findFollowKindSql(followerId, targetId), OptionsRow);
+      const row = existing[0];
       // Following again updates the existing row, as Mastodon does.
       await runTyped(
         db,
@@ -79,14 +79,7 @@ export const followAccount = async (
         ),
       );
     }
-    if (inserted.length > 0) {
-      return state;
-    }
-    return FollowRequest.parse({
-      kind: "LocalFollower",
-      targetLocked,
-      follow: row?.kind === "Accepted" ? LocalFollow.Accepted : LocalFollow.Pending,
-    }).unwrapOr(state);
+    return inserted.length > 0 ? { kind: "Created", follow } : { kind: "Existing" };
   });
 
 export const unfollowAccount = async (

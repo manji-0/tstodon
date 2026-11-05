@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { z } from "zod";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import {
+  MastodonNotificationListPreviewSchema,
   MastodonRelationshipListPreviewSchema,
   MastodonStatusPreviewSchema,
 } from "../test/mastodon-preview-schemas";
@@ -98,6 +99,26 @@ describe("inbox activities signed by a local account", () => {
       }),
     ).toBe(202);
     expect(await following()).toBe(false);
+  });
+
+  it("notifies once when the same Follow arrives under a second activity id", async () => {
+    const target = await signedInAccount("ls-refollow-target@example.com");
+    const targetUri = `https://example.com/users/${target.username}`;
+    for (const id of ["ls-refollow-1", "ls-refollow-2"]) {
+      expect(
+        await postSignedBy("ls-refollower@example.com", {
+          id: `https://example.com/activities/${id}`,
+          type: "Follow",
+          object: targetUri,
+        }),
+      ).toBe(202);
+    }
+    const notifications = await json("/api/v1/notifications", {
+      headers: await authHeaders("ls-refollow-target@example.com"),
+    });
+    expect(
+      read(MastodonNotificationListPreviewSchema, notifications.body).map((n) => n.type),
+    ).toEqual(["follow"]);
   });
 
   it("favourites a local status on Like", async () => {

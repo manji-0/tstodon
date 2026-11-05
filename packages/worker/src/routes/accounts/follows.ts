@@ -22,7 +22,7 @@ import { RemoteAccountId } from "../../remote-account-id";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { followAccount, type FollowOptions, unfollowAccount } from "../../follow-store";
 import { relationshipFlags } from "../../relationship-store";
-import { notifyAccount } from "../../notify";
+import { notifyNewFollow } from "../../notify";
 import { followRemoteActor, unfollowRemoteActor } from "../../outbound-follow";
 import { isTruthy, stringList } from "../../form-values";
 import { z } from "zod";
@@ -139,7 +139,6 @@ export const postV1AccountsByIdFollow = async (
   if (!followOptions) {
     return jsonValidationError(c);
   }
-  const prior = await relationshipFlags(c.env.DB, user.value.id, target.value.id);
   const followed = await followAccount(
     c.env.DB,
     user.value.id,
@@ -150,18 +149,7 @@ export const postV1AccountsByIdFollow = async (
   if (followed.isErr()) {
     return jsonRepositoryError(c, followed.error.message);
   }
-  const alreadyRelated = prior.isOk() && (prior.value.following || prior.value.requested);
-  if (
-    !alreadyRelated &&
-    followed.value.kind === "LocalFollower" &&
-    followed.value.follow.kind !== "None"
-  ) {
-    await notifyAccount(c.env, {
-      accountId: target.value.id,
-      fromAccountId: user.value.id,
-      kind: followed.value.follow.kind === "Pending" ? "follow_request" : "follow",
-    });
-  }
+  await notifyNewFollow(c.env, user.value.id, target.value.id, followed.value);
   const flags = await relationshipFlags(c.env.DB, user.value.id, target.value.id);
   if (flags.isErr()) {
     return jsonRepositoryError(c, flags.error.message);

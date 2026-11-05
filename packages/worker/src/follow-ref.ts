@@ -4,7 +4,7 @@ import type { AccountRef } from "./account-ref";
 import { findBlock } from "./block-mute-store";
 import type { RepositoryError } from "./d1";
 import { findFollowKind, followAccount, type FollowOptions } from "./follow-store";
-import { notifyAccount } from "./notify";
+import { notifyNewFollow } from "./notify";
 import { followRemoteActor } from "./outbound-follow";
 import { findOutboundFollow } from "./outbound-follow-store";
 
@@ -73,16 +73,6 @@ export const followAccountRef = async (
   if (followed.isErr()) {
     return err(followed.error);
   }
-  if (
-    existing.value === undefined &&
-    followed.value.kind === "LocalFollower" &&
-    followed.value.follow.kind !== "None"
-  ) {
-    await notifyAccount(env, {
-      accountId: target.id,
-      fromAccountId: follower.id,
-      kind: followed.value.follow.kind === "Pending" ? "follow_request" : "follow",
-    });
-  }
+  await notifyNewFollow(env, follower.id, target.id, followed.value);
   return ok(true);
 };

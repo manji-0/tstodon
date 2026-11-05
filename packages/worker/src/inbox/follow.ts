@@ -10,7 +10,7 @@ import { findAccountByUsername } from "../account-store";
 import { parseLocalActorUsername } from "../activitypub";
 import { enqueueTargetedActivity } from "../delivery";
 import { followAccount } from "../follow-store";
-import { notifyAccount, notifyFromRemote } from "../notify";
+import { notifyFromRemote, notifyNewFollow } from "../notify";
 import { findRemoteFollow, upsertRemoteFollow } from "../remote-actor-store";
 import type { ActivityOf, InboxHandler, LocalDelivery, RemoteDelivery } from "./handler";
 
@@ -127,16 +127,8 @@ export const receiveLocalFollow: InboxHandler<LocalDelivery<"Follow">> = async (
     return ok(undefined);
   }
   const followed = await followAccount(env.DB, signer.id, target.id, target.locked);
-  if (
-    followed.isOk() &&
-    followed.value.kind === "LocalFollower" &&
-    followed.value.follow.kind !== "None"
-  ) {
-    await notifyAccount(env, {
-      accountId: target.id,
-      fromAccountId: signer.id,
-      kind: followed.value.follow.kind === "Pending" ? "follow_request" : "follow",
-    });
+  if (followed.isOk()) {
+    await notifyNewFollow(env, signer.id, target.id, followed.value);
   }
   return ok(undefined);
 };

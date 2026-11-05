@@ -3,6 +3,7 @@ import {
   type HoldNotification,
   Hostname,
   type InsertNotification,
+  LocalFollow,
   type NewNotification,
   NotificationGroup,
   type PublishNotification,
@@ -11,6 +12,7 @@ import {
 import type { Result } from "neverthrow";
 import { err, ok } from "neverthrow";
 import type { RepositoryError } from "./d1";
+import type { FollowWrite } from "./follow-store";
 import { holdNotification } from "./notification-policy-store";
 import { notificationDisposition } from "./notification-policy";
 import { isDomainBlocked } from "./domain-block-store";
@@ -121,6 +123,21 @@ export const notifyAccount = (
   env: Env,
   input: NewNotification,
 ): Promise<Result<void, RepositoryError>> => deliverNotification(notifyContracts(env), input);
+
+/** Notify the target of a follow `followAccount` created; following again does not notify. */
+export const notifyNewFollow = async (
+  env: Env,
+  followerId: string,
+  targetId: string,
+  written: FollowWrite,
+): Promise<Result<void, RepositoryError>> =>
+  written.kind === "Created"
+    ? notifyAccount(env, {
+        accountId: targetId,
+        fromAccountId: followerId,
+        kind: LocalFollow.notificationKind(written.follow),
+      })
+    : ok(undefined);
 
 /**
  * The Notification entity the streaming API sends, as `GET
