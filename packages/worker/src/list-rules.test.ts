@@ -173,44 +173,60 @@ const walk = async (email: string, path: string): Promise<string[]> => {
 };
 
 describe("exclusive lists", () => {
-  it("keep their members' posts and boosts off home, paged by id", async () => {
+  it("keep their local members' posts and boosts off home, paged by id", async () => {
     const owner = "excl-owner@example.com";
     const member = "excl-member@example.com";
     const other = "excl-other@example.com";
-    const remoteMember = await remoteActor("excl-remote-member", "excl-member.example");
-    const remoteOther = await remoteActor("excl-remote-other", "excl-other.example");
     const memberId = await followLocal(owner, member);
     await followLocal(owner, other);
-    await followRemote(owner, remoteMember, "excl-remote-member");
-    await followRemote(owner, remoteOther, "excl-remote-other");
     const listId = await createList(owner, { exclusive: true });
-    await addMembers(owner, listId, [memberId, remoteId(remoteMember)]);
+    await addMembers(owner, listId, [memberId]);
 
     await post(member, "member post");
     const otherPost = await post(other, "other post");
     await reblog(member, otherPost.id);
-    await note(remoteMember, "remote-member-note");
-    const otherNote = await note(remoteOther, "remote-other-note");
-    await announce(remoteMember, otherNote, "remote-member-boost");
+    await post(other, "other later");
 
-    expect(await labels(owner, "/api/v1/timelines/home")).toEqual([
-      "remote-other-note",
-      "other post",
-    ]);
-    expect(await walk(owner, "/api/v1/timelines/home")).toEqual([
-      "remote-other-note",
-      "other post",
-    ]);
+    const home = ["other later", "other post"];
+    expect(await labels(owner, "/api/v1/timelines/home")).toEqual(home);
+    expect(await walk(owner, "/api/v1/timelines/home")).toEqual(home);
     const { body } = await get(owner, "/api/v1/timelines/home?limit=1");
     const newest = read(z.array(StatusSchema), body)[0]?.id ?? "";
     expect(await labels(owner, `/api/v1/timelines/home?limit=1&max_id=${newest}`)).toEqual([
       "other post",
     ]);
     expect(await labels(owner, `/api/v1/timelines/list/${listId}`)).toEqual([
-      "boost:remote-other-note",
-      "remote-member-note",
       "boost:other post",
       "member post",
+    ]);
+
+    await setList(owner, listId, { exclusive: false });
+    expect(await walk(owner, "/api/v1/timelines/home")).toEqual([
+      "other later",
+      "boost:other post",
+      "other post",
+      "member post",
+    ]);
+  });
+
+  it("keep their remote members' notes and boosts off home, paged by id", async () => {
+    const owner = "excl-remote-owner@example.com";
+    const remoteMember = await remoteActor("excl-remote-member", "excl-member.example");
+    const remoteOther = await remoteActor("excl-remote-other", "excl-other.example");
+    await followRemote(owner, remoteMember, "excl-remote-member");
+    await followRemote(owner, remoteOther, "excl-remote-other");
+    const listId = await createList(owner, { exclusive: true });
+    await addMembers(owner, listId, [remoteId(remoteMember)]);
+
+    await note(remoteMember, "remote-member-note");
+    const otherNote = await note(remoteOther, "remote-other-note");
+    await announce(remoteMember, otherNote, "remote-member-boost");
+
+    expect(await labels(owner, "/api/v1/timelines/home")).toEqual(["remote-other-note"]);
+    expect(await walk(owner, "/api/v1/timelines/home")).toEqual(["remote-other-note"]);
+    expect(await labels(owner, `/api/v1/timelines/list/${listId}`)).toEqual([
+      "boost:remote-other-note",
+      "remote-member-note",
     ]);
 
     await setList(owner, listId, { exclusive: false });
@@ -218,9 +234,6 @@ describe("exclusive lists", () => {
       "boost:remote-other-note",
       "remote-other-note",
       "remote-member-note",
-      "boost:other post",
-      "other post",
-      "member post",
     ]);
   });
 });
@@ -233,6 +246,10 @@ const cachedId = async (noteUri: string): Promise<string> =>
       .bind(noteUri)
       .first(),
   ).id;
+
+/** The boosts among what `email` sees at `path`. */
+const boosts = async (email: string, path: string): Promise<string[]> =>
+  (await labels(email, path)).filter((entry) => entry.startsWith("boost:"));
 
 describe("local members' boosts", () => {
   it("show on the list, paged by id, unless the owner's follow hides the booster's reblogs", async () => {
@@ -272,16 +289,13 @@ describe("local members' boosts", () => {
     ]);
   });
 
-  it("stay off home and the list when the owner blocks or mutes the boosted author", async () => {
+  it("stay off home and the list when the owner blocks or mutes the local boosted author", async () => {
     const owner = "boost-hidden-owner@example.com";
     const member = "boost-hidden-member@example.com";
     const blocked = "boost-hidden-blocked@example.com";
     const muted = "boost-hidden-muted@example.com";
     const blocker = "boost-hidden-blocker@example.com";
     const shown = "boost-hidden-shown@example.com";
-    const blockedRemote = await remoteActor("boost-hidden-rblocked", "boost-rblocked.example");
-    const mutedRemote = await remoteActor("boost-hidden-rmuted", "boost-rmuted.example");
-    const domainRemote = await remoteActor("boost-hidden-rdomain", "boost-rdomain.example");
     const memberId = await followLocal(owner, member);
     const listId = await createList(owner);
     await addMembers(owner, listId, [memberId]);
@@ -290,31 +304,50 @@ describe("local members' boosts", () => {
     for (const email of [blocked, muted, blocker, shown]) {
       await reblog(member, (await post(email, `${email.split("@")[0]} post`)).id);
     }
-    for (const remote of [blockedRemote, mutedRemote, domainRemote]) {
-      const slug = new URL(remote.actorUri).hostname.split(".")[0] ?? "";
-      await reblog(member, await cachedId(await note(remote, slug)));
-    }
     await reblog(member, ownerPost.id);
     const ownerId = (await signedInAccount(owner)).id;
     for (const [email, path] of [
       [owner, `/api/v1/accounts/${(await signedInAccount(blocked)).id}/block`],
       [owner, `/api/v1/accounts/${(await signedInAccount(muted)).id}/mute`],
       [blocker, `/api/v1/accounts/${ownerId}/block`],
-      [owner, `/api/v1/accounts/${remoteId(blockedRemote)}/block`],
-      [owner, `/api/v1/accounts/${remoteId(mutedRemote)}/mute`],
     ] as const) {
       expect((await send(email, path, "POST", {})).status).toBe(200);
+    }
+
+    const kept = ["boost:owner post", "boost:boost-hidden-shown post"];
+    expect(await boosts(owner, "/api/v1/timelines/home")).toEqual(kept);
+    expect(await boosts(owner, `/api/v1/timelines/list/${listId}`)).toEqual(kept);
+  });
+
+  it("stay off home and the list when the owner blocks or mutes the remote boosted author or its domain", async () => {
+    const owner = "boost-rhidden-owner@example.com";
+    const member = "boost-rhidden-member@example.com";
+    const blockedRemote = await remoteActor("boost-hidden-rblocked", "boost-rblocked.example");
+    const mutedRemote = await remoteActor("boost-hidden-rmuted", "boost-rmuted.example");
+    const domainRemote = await remoteActor("boost-hidden-rdomain", "boost-rdomain.example");
+    const shownRemote = await remoteActor("boost-hidden-rshown", "boost-rshown.example");
+    const memberId = await followLocal(owner, member);
+    const listId = await createList(owner);
+    await addMembers(owner, listId, [memberId]);
+
+    for (const remote of [blockedRemote, mutedRemote, domainRemote, shownRemote]) {
+      const slug = new URL(remote.actorUri).hostname.split(".")[0] ?? "";
+      await reblog(member, await cachedId(await note(remote, slug)));
+    }
+    for (const path of [
+      `/api/v1/accounts/${remoteId(blockedRemote)}/block`,
+      `/api/v1/accounts/${remoteId(mutedRemote)}/mute`,
+    ]) {
+      expect((await send(owner, path, "POST", {})).status).toBe(200);
     }
     expect(
       (await send(owner, "/api/v1/domain_blocks", "POST", { domain: "boost-rdomain.example" }))
         .status,
     ).toBe(200);
 
-    const boosts = async (path: string) =>
-      (await labels(owner, path)).filter((entry) => entry.startsWith("boost:"));
-    const kept = ["boost:owner post", "boost:boost-hidden-shown post"];
-    expect(await boosts("/api/v1/timelines/home")).toEqual(kept);
-    expect(await boosts(`/api/v1/timelines/list/${listId}`)).toEqual(kept);
+    const kept = ["boost:boost-rshown"];
+    expect(await boosts(owner, "/api/v1/timelines/home")).toEqual(kept);
+    expect(await boosts(owner, `/api/v1/timelines/list/${listId}`)).toEqual(kept);
   });
 });
 
