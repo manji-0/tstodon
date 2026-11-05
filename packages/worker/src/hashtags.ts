@@ -7,9 +7,11 @@ import { d1PrepareTyped } from "./typed-sql";
 /**
  * A `#` and the tag name after it. As Mastodon's `HASHTAG_RE`, a `#` right
  * after a letter, a digit, `=`, `/` or `)` starts no tag, so a URL fragment
- * (`/invite#Kq8sZ2pX`) or `word#token` is not one.
+ * (`/invite#Kq8sZ2pX`) or `word#token` is not one, and a name needs a letter
+ * (`#2024` is none). A `#` after `&` starts none either, so an undecoded
+ * numeric entity (`&#8217;`, `&#x27;`) in a remote note is no tag.
  */
-const HASHTAG = /(?<![=/)\p{Alphabetic}\p{Nd}])#([A-Za-z0-9_]+)/gu;
+const HASHTAG = /(?<![=/)&\p{Alphabetic}\p{Nd}])#([A-Za-z0-9_]*[A-Za-z][A-Za-z0-9_]*)/gu;
 
 /** The unique hashtags in a local note's text, lowercase and without the `#`. */
 export const extractHashtags = (text: string): string[] => [

@@ -30,4 +30,11 @@ describe("status text extractors", () => {
       ),
     ).toEqual([]);
   });
+
+  it("needs a letter in a tag and reads no tag from an HTML entity, as Mastodon", () => {
+    expect(extractHashtags("#123 #2024 #a1 #1a #_x")).toEqual(["a1", "1a", "_x"]);
+    expect(htmlHashtags("<p>it&#8217;s &#x27;quoted&#x27; &#8220;x&#8221; #ok</p>")).toEqual([
+      "ok",
+    ]);
+  });
 });
