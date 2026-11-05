@@ -1,4 +1,4 @@
-import type { InstanceIdentity } from "@tstodon/domain";
+import type { InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import { searchAccounts } from "../account-store";
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import { authenticate } from "../auth";
@@ -15,18 +15,18 @@ import { elapsedMs, writeMetric } from "../metrics";
 import { resolveRemoteActor, resolveRemoteActorByHandle } from "../remote-actor-fetch";
 import { suspendedDomains } from "../admin-domain-block-store";
 import { searchRemoteActors } from "../remote-actor-store";
-import { getRemoteActorModeration } from "../remote-actor-moderation-store";
-import { RemoteAccountId } from "../remote-account-id";
+import { searchableLocalAccounts, searchableRemoteActors } from "../account-presentation";
 import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import { searchStatuses } from "../status-timeline-store";
 import { isTagFeatured, isTagFollowed, tagDailyHistory } from "../tag-store";
 import type { Context } from "hono";
 
-const resolveSearchAccount = async (
+/** The remote actor a `resolve=true` query names by handle or actor URL, fetched if not cached. */
+const resolveSearchActor = async (
   env: Env,
   identity: InstanceIdentity,
   query: string,
-): Promise<Record<string, unknown> | undefined> => {
+): Promise<RemoteActor | undefined> => {
   const bare = query.replace(/^@/, "").trim();
   const allowHosts = await federationAllowHosts(env);
   const blockedHosts = await suspendedDomains(env.DB);
@@ -35,14 +35,14 @@ const resolveSearchAccount = async (
       allowHosts,
       blockedHosts,
     });
-    return actor.isOk() ? mastodonRemoteAccount(identity, actor.value) : undefined;
+    return actor.isOk() ? actor.value : undefined;
   }
   if (bare.startsWith("http://") || bare.startsWith("https://")) {
     const actor = await resolveRemoteActor(env.DB, identity, `${bare}#main-key`, bare, {
       allowHosts,
       blockedHosts,
     });
-    return actor.isOk() ? mastodonRemoteAccount(identity, actor.value) : undefined;
+    return actor.isOk() ? actor.value : undefined;
   }
   return undefined;
 };
@@ -72,37 +72,35 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     if (accounts.isErr()) {
       return jsonRepositoryError(c, accounts.error.message);
     }
-    const rendered = await mastodonAccountDocuments(c.env, identity.value, accounts.value);
+    const locals = await searchableLocalAccounts(c.env.DB, accounts.value);
+    if (locals.isErr()) {
+      return jsonRepositoryError(c, locals.error.message);
+    }
+    const rendered = await mastodonAccountDocuments(c.env, identity.value, locals.value);
     accountDocs.push(
       ...documentsInOrder(
-        accounts.value.map((account) => account.id),
+        locals.value.map((account) => account.id),
         rendered,
       ),
     );
-    const seen = new Set(accountDocs.map((document) => String(document.id)));
-    const remoteActors = await searchRemoteActors(c.env.DB, query.replace(/^@/, ""), limit);
-    if (remoteActors.isErr()) {
-      return jsonRepositoryError(c, remoteActors.error.message);
+    const cached = await searchRemoteActors(c.env.DB, query.replace(/^@/, ""), limit);
+    if (cached.isErr()) {
+      return jsonRepositoryError(c, cached.error.message);
     }
-    for (const actor of remoteActors.value) {
+    const resolved = resolve ? await resolveSearchActor(c.env, identity.value, query) : undefined;
+    const remotes = await searchableRemoteActors(c.env, [
+      ...cached.value,
+      ...(resolved ? [resolved] : []),
+    ]);
+    if (remotes.isErr()) {
+      return jsonRepositoryError(c, remotes.error.message);
+    }
+    const seen = new Set(accountDocs.map((document) => String(document.id)));
+    for (const actor of remotes.value) {
       const document = mastodonRemoteAccount(identity.value, actor);
       if (!seen.has(String(document.id))) {
         seen.add(String(document.id));
         accountDocs.push(document);
-      }
-    }
-    if (resolve) {
-      const resolved = await resolveSearchAccount(c.env, identity.value, query);
-      const resolvedActor = resolved ? RemoteAccountId.decode(String(resolved.id)) : undefined;
-      const resolvedStanding =
-        resolvedActor?.isOk() === true
-          ? await getRemoteActorModeration(c.env.DB, resolvedActor.value)
-          : undefined;
-      const suspended =
-        resolvedStanding?.isOk() === true && resolvedStanding.value.standing.kind === "Suspended";
-      if (resolved && !suspended && !seen.has(String(resolved.id))) {
-        seen.add(String(resolved.id));
-        accountDocs.push(resolved);
       }
     }
   }

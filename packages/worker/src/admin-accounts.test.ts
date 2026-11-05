@@ -61,7 +61,7 @@ describe("admin accounts", () => {
     ).toBe(403);
   });
 
-  it("suspends an account: API is forbidden and the profile is gone", async () => {
+  it("suspends an account: API is forbidden and the profile renders suspended", async () => {
     const adminEmail = "admacct-suspend-admin@example.com";
     const targetEmail = "admacct-suspend@example.com";
     const target = await json("/api/v1/accounts/verify_credentials", {
@@ -82,7 +82,9 @@ describe("admin accounts", () => {
     });
     expect(forbidden.status).toBe(403);
 
-    expect((await json(`/api/v1/accounts/${targetId}`)).status).toBe(410);
+    const profile = await json(`/api/v1/accounts/${targetId}`);
+    expect(profile.status).toBe(200);
+    expect(read(z.object({ suspended: z.literal(true) }), profile.body).suspended).toBe(true);
 
     const restored = await adminPost(adminEmail, `/api/v1/admin/accounts/${targetId}/unsuspend`);
     expect(restored.status).toBe(200);

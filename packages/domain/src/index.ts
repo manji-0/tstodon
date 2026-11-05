@@ -12,6 +12,10 @@ export {
   type AccountStanding as AccountStandingValue,
   type AccountStandingAction,
 } from "./account-standing";
+export {
+  AccountPresentation,
+  type AccountPresentation as AccountPresentationValue,
+} from "./account-presentation";
 export { ContentFilter, type ContentFilterMatch, type FilteredContent } from "./content-filter";
 export {
   OutboxBackfill,

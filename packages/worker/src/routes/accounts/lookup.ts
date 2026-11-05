@@ -1,7 +1,14 @@
 import type { Context } from "hono";
 import { type InstanceIdentity, Visibility } from "@tstodon/domain";
 import { findAccountByIdOrUsername, findAccountsByIds, searchAccounts } from "../../account-store";
-import { findAccountStanding, listAccountStandings } from "../../account-moderation-store";
+import {
+  accountRefDocument,
+  localAccountPresentations,
+  presentedAccountDocument,
+  remoteAccountPresentations,
+  searchableLocalAccounts,
+  searchableRemoteActors,
+} from "../../account-presentation";
 import { jsonAuthError, jsonRepositoryError, queryAccountsLimit, requireUser } from "../../http";
 import {
   accountDocumentsByIds,
@@ -11,7 +18,11 @@ import {
   mastodonRemoteAccount,
 } from "../../account-documents";
 import { mastodonRelationship } from "../../relationship-document";
-import { findRemoteActorsByUris, searchRemoteActors } from "../../remote-actor-store";
+import {
+  findRemoteActorByUri,
+  findRemoteActorsByUris,
+  searchRemoteActors,
+} from "../../remote-actor-store";
 import { resolveRemoteActorByHandle } from "../../remote-actor-fetch";
 import { suspendedDomains } from "../../admin-domain-block-store";
 import { federationAllowHosts } from "../../runtime-config";
@@ -22,7 +33,7 @@ import { parseInstanceIdentity } from "../../runtime-config";
 import { familiarFollowerIds, followingAccountIds } from "../../follow-store";
 import { relationshipFlags } from "../../relationship-store";
 import { isTruthy } from "../../form-values";
-import { findKnownAccountHandle } from "../../account-ref";
+import { findKnownAccountHandle, localRef, remoteRef } from "../../account-ref";
 
 export const getV1AccountsLookup = async (
   c: Context<{ Bindings: Env }, "/api/v1/accounts/lookup">,
@@ -37,11 +48,13 @@ export const getV1AccountsLookup = async (
       ? jsonRepositoryError(c, ref.error.message)
       : c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.json(
-    ref.value.kind === "LocalAccount"
-      ? await mastodonAccountDocument(c.env, identity.value, ref.value.account)
-      : mastodonRemoteAccount(identity.value, ref.value.actor),
-  );
+  const document = await accountRefDocument(c.env, identity.value, ref.value);
+  if (document.isErr()) {
+    return jsonRepositoryError(c, document.error.message);
+  }
+  return document.value
+    ? c.json(document.value)
+    : c.json({ error: "Record not found", kind: "NotFound" }, 404);
 };
 
 export const getV1AccountsRelationships = async (
@@ -142,8 +155,12 @@ export const getV1AccountsSearch = async (
       if (local.isErr()) {
         return jsonRepositoryError(c, local.error.message);
       }
-      if (local.value && followed(local.value.id)) {
-        push(await mastodonAccountDocument(c.env, identity.value, local.value));
+      const shown = await searchableLocalAccounts(c.env.DB, local.value ? [local.value] : []);
+      if (shown.isErr()) {
+        return jsonRepositoryError(c, shown.error.message);
+      }
+      for (const account of shown.value.filter((found) => followed(found.id))) {
+        push(await mastodonAccountDocument(c.env, identity.value, account));
       }
     } else if (following === undefined) {
       const resolved = resolve
@@ -151,23 +168,23 @@ export const getV1AccountsSearch = async (
             allowHosts: await federationAllowHosts(c.env),
             blockedHosts: await suspendedDomains(c.env.DB),
           })
-        : await (async () => {
-            // Without `resolve` only the actor cache is consulted.
-            const cached = await searchRemoteActors(c.env.DB, handle, 1);
-            const exact = cached.isOk()
-              ? cached.value.find(
-                  (actor) =>
-                    `${actor.username}@${actor.domain}`.toLowerCase() === handle.toLowerCase(),
-                )
-              : undefined;
-            return exact ? ok(exact) : err({ kind: "InvalidSignature" as const });
-          })();
+        : // Without `resolve` only the actor cache is consulted.
+          (await findKnownAccountHandle(c.env, identity.value, handle)).andThen((ref) =>
+            ref.kind === "RemoteActor" ? ok(ref.actor) : err({ kind: "AccountNotFound" as const }),
+          );
       if (resolved.isErr() && resolve && resolved.error.kind === "VerificationUnavailable") {
         // Mastodon's documented 503 for a domain that is not currently live.
         return c.json({ error: "Remote data could not be fetched" }, 503);
       }
-      if (resolved.isOk()) {
-        push(mastodonRemoteAccount(identity.value, resolved.value));
+      if (resolved.isErr() && resolved.error.kind === "RepositoryError") {
+        return jsonRepositoryError(c, resolved.error.message);
+      }
+      const shown = await searchableRemoteActors(c.env, resolved.isOk() ? [resolved.value] : []);
+      if (shown.isErr()) {
+        return jsonRepositoryError(c, shown.error.message);
+      }
+      for (const actor of shown.value) {
+        push(mastodonRemoteAccount(identity.value, actor));
       }
     }
   }
@@ -184,7 +201,11 @@ export const getV1AccountsSearch = async (
     if (local.isErr()) {
       return jsonRepositoryError(c, local.error.message);
     }
-    const candidates = local.value.filter((account) => followed(account.id));
+    const shown = await searchableLocalAccounts(c.env.DB, local.value);
+    if (shown.isErr()) {
+      return jsonRepositoryError(c, shown.error.message);
+    }
+    const candidates = shown.value.filter((account) => followed(account.id));
     const rendered = await mastodonAccountDocuments(c.env, identity.value, candidates);
     for (const account of candidates) {
       const document = rendered.get(account.id);
@@ -197,7 +218,11 @@ export const getV1AccountsSearch = async (
     }
   }
   if (following === undefined && documents.length < limit) {
-    const remote = await searchRemoteActors(c.env.DB, query, limit + offset);
+    const cached = await searchRemoteActors(c.env.DB, query, limit + offset);
+    if (cached.isErr()) {
+      return jsonRepositoryError(c, cached.error.message);
+    }
+    const remote = await searchableRemoteActors(c.env, cached.value);
     if (remote.isErr()) {
       return jsonRepositoryError(c, remote.error.message);
     }
@@ -253,38 +278,31 @@ export const getV1AccountsFamiliarFollowers = async (
   return c.json(groups);
 };
 
-type AccountLookup =
-  | Readonly<{ kind: "Found"; document: Record<string, unknown> }>
-  | Readonly<{ kind: "Suspended" }>
-  | Readonly<{ kind: "NotFound" }>;
-
-/** Resolves a local account id/username or a `r_` remote account id to its document. */
+/**
+ * A local account id/username or a `r_` remote account id's document;
+ * `undefined` when no account a read path may show has that id.
+ */
 export const lookupAccountDocument = async (
   env: Env,
   identity: InstanceIdentity,
   id: string,
-): Promise<Result<AccountLookup, RepositoryError>> => {
+): Promise<Result<Record<string, unknown> | undefined, RepositoryError>> => {
   const account = await findAccountByIdOrUsername(env.DB, id);
   if (account.isErr()) {
     return err(account.error);
   }
   if (account.value) {
-    const standing = await findAccountStanding(env.DB, account.value.id);
-    if (standing.isOk() && standing.value.kind === "Suspended") {
-      return ok({ kind: "Suspended" });
-    }
-    return ok({
-      kind: "Found",
-      document: await mastodonAccountDocument(env, identity, account.value),
-    });
+    return accountRefDocument(env, identity, localRef(identity, account.value));
   }
-  if (RemoteAccountId.decode(id).isOk()) {
-    const document = (await accountDocumentsByIds(env, identity, [id])).get(id);
-    if (document) {
-      return ok({ kind: "Found", document });
-    }
+  const actorUri = RemoteAccountId.decode(id);
+  if (actorUri.isErr()) {
+    return ok(undefined);
   }
-  return ok({ kind: "NotFound" });
+  const actor = await findRemoteActorByUri(env.DB, actorUri.value);
+  if (actor.isErr()) {
+    return err(actor.error);
+  }
+  return actor.value ? accountRefDocument(env, identity, remoteRef(actor.value)) : ok(undefined);
 };
 
 /** Mastodon caps `GET /api/v1/accounts?id[]=` at 40 ids. */
@@ -303,41 +321,56 @@ export const getV1Accounts = async (c: Context<{ Bindings: Env }, "/api/v1/accou
       ),
     ),
   ].slice(0, MULTIPLE_ACCOUNTS_LIMIT);
-  // Each lookup is one query for the whole batch; unknown and suspended
-  // accounts are left out rather than failing it.
+  // Each lookup is one query for the whole batch; unknown and hidden accounts
+  // are left out rather than failing it.
   const remoteUris = new Map(
     ids.flatMap((id): [string, string][] => {
       const actorUri = RemoteAccountId.decode(id);
       return actorUri.isOk() ? [[id, actorUri.value]] : [];
     }),
   );
-  const [locals, standings, remotes] = await Promise.all([
+  const [locals, localPresentations, remotes] = await Promise.all([
     findAccountsByIds(c.env.DB, ids),
-    listAccountStandings(c.env.DB, ids),
+    localAccountPresentations(c.env.DB, ids),
     findRemoteActorsByUris(c.env.DB, [...remoteUris.values()]),
   ]);
   if (locals.isErr()) {
     return jsonRepositoryError(c, locals.error.message);
   }
-  if (standings.isErr()) {
-    return jsonRepositoryError(c, standings.error.message);
+  if (localPresentations.isErr()) {
+    return jsonRepositoryError(c, localPresentations.error.message);
   }
   if (remotes.isErr()) {
     return jsonRepositoryError(c, remotes.error.message);
   }
-  const visibleLocals = [...locals.value.values()].filter(
-    (account) => standings.value.get(account.id)?.kind !== "Suspended",
-  );
-  const localDocuments = await mastodonAccountDocuments(c.env, identity.value, visibleLocals);
+  const remotePresentations = await remoteAccountPresentations(c.env, [...remotes.value.values()]);
+  if (remotePresentations.isErr()) {
+    return jsonRepositoryError(c, remotePresentations.error.message);
+  }
+  const localDocuments = await mastodonAccountDocuments(c.env, identity.value, [
+    ...locals.value.values(),
+  ]);
   return c.json(
     ids.flatMap((id) => {
       const local = localDocuments.get(id);
-      if (local) {
-        return [local];
+      const localPresentation = localPresentations.value.get(id);
+      if (local && localPresentation) {
+        const document = presentedAccountDocument(identity.value, localPresentation, local);
+        return document ? [document] : [];
       }
       const actorUri = remoteUris.get(id);
       const actor = actorUri === undefined ? undefined : remotes.value.get(actorUri);
-      return actor ? [mastodonRemoteAccount(identity.value, actor)] : [];
+      const remotePresentation =
+        actorUri === undefined ? undefined : remotePresentations.value.get(actorUri);
+      if (!actor || !remotePresentation) {
+        return [];
+      }
+      const document = presentedAccountDocument(
+        identity.value,
+        remotePresentation,
+        mastodonRemoteAccount(identity.value, actor),
+      );
+      return document ? [document] : [];
     }),
   );
 };

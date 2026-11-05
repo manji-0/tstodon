@@ -81,7 +81,7 @@ describe("multiple lookups", () => {
     expect(read(IdListSchema, listed.body).map((status) => status.id)).toEqual(ids.slice(0, 20));
   });
 
-  it("includes remote accounts and statuses and leaves out suspended accounts", async () => {
+  it("includes remote accounts and statuses and renders suspended accounts suspended", async () => {
     const actorUri = "https://remote.example/users/multi";
     await env.DB.prepare(
       `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, display_name, fetched_at)
@@ -118,9 +118,15 @@ describe("multiple lookups", () => {
     const accounts = await json(
       `/api/v1/accounts?id[]=${remoteId}&id[]=${suspended}&id[]=${local}`,
     );
-    expect(read(IdListSchema, accounts.body).map((account) => account.id)).toEqual([
-      remoteId,
-      local,
+    // As Mastodon's `set_accounts`, a suspended account is listed, rendered suspended.
+    const listed = read(
+      z.array(z.object({ id: z.string(), suspended: z.boolean().optional() })),
+      accounts.body,
+    );
+    expect(listed.map((account) => [account.id, account.suspended ?? false])).toEqual([
+      [remoteId, false],
+      [suspended, true],
+      [local, false],
     ]);
 
     const localStatus = await post("multi-mixed@example.com", "mixed local", "public");

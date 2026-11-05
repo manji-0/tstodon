@@ -203,12 +203,11 @@ describe("account search hides actors lookup hides", () => {
     const { id } = read(z.object({ id: z.string() }), allowed.body);
     const email = "search-allow-list@example.com";
     try {
-      for (const domain of ["stranger-search.example", "friend-search.example"]) {
-        for (const path of searchesFor("yorick", domain)) {
-          const accts = await searchAccts(path, email);
-          expect(accts).not.toContain("yorick@stranger-search.example");
-          expect(accts).toContain("yorick@friend-search.example");
-        }
+      for (const path of searchesFor("yorick", "stranger-search.example")) {
+        expect(await searchAccts(path, email)).not.toContain("yorick@stranger-search.example");
+      }
+      for (const path of searchesFor("yorick", "friend-search.example")) {
+        expect(await searchAccts(path, email)).toContain("yorick@friend-search.example");
       }
     } finally {
       await json(`/api/v1/admin/domain_allows/${id}`, { method: "DELETE", headers: await admin() });
@@ -291,5 +290,15 @@ describe("a suspended account", () => {
     const byId = await json(`/api/v1/accounts/${account.id}`);
     expect(byId.status).toBe(200);
     expectSuspended(byId.body, instance.thumbnail.url);
+
+    for (const path of [
+      `/api/v1/accounts/search?q=${account.username}`,
+      `/api/v1/accounts/search?q=${account.username}@example.com`,
+      `/api/v2/search?type=accounts&q=${account.username}`,
+    ]) {
+      expect(await searchAccts(path, "search-suspended-local@example.com")).not.toContain(
+        account.username,
+      );
+    }
   });
 });

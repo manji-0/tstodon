@@ -1,4 +1,4 @@
-import { Hostname, InstanceIdentity, type LocalAccount, type RemoteActor } from "@tstodon/domain";
+import { InstanceIdentity, type LocalAccount, type RemoteActor } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountByUsername } from "./account-store";
 import { parseLocalActorUsername } from "./activitypub";
@@ -7,7 +7,7 @@ import type { RepositoryError } from "./d1";
 import { RemoteAccountId } from "./remote-account-id";
 import { resolveRemoteActorByHandle } from "./remote-actor-fetch";
 import { findRemoteActorByHandle, findRemoteActorByUri } from "./remote-actor-store";
-import { federatesWithHost, federationAllowHosts } from "./runtime-config";
+import { federationAllowHosts } from "./runtime-config";
 
 /**
  * An account on either side of a move: a local account, or a cached remote
@@ -88,7 +88,7 @@ const findLocalRef = async (
  * The account a handle names among those this server already knows, as
  * Mastodon's `ResolveAccountService` with `skip_webfinger`: a bare username or
  * one at this instance's domain is local, anything else a cached remote actor.
- * A domain outside the allow list or suspended names no account.
+ * Whether a read path may show it is `accountRefDocument`'s call.
  */
 export const findKnownAccountHandle = async (
   env: Env,
@@ -102,12 +102,6 @@ export const findKnownAccountHandle = async (
   const { username, domain } = handle;
   if (domain === undefined || domain === identity.domain) {
     return findLocalRef(env.DB, identity, username);
-  }
-  if (
-    !(await federatesWithHost(env, domain)) ||
-    (await suspendedDomains(env.DB)).has(Hostname.ofAuthority(domain))
-  ) {
-    return err({ kind: "AccountNotFound" });
   }
   const actor = await findRemoteActorByHandle(env.DB, username, domain);
   if (actor.isErr()) {

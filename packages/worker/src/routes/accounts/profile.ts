@@ -1,5 +1,4 @@
 import { Hostname } from "@tstodon/domain";
-import { assertNever } from "@tstodon/core";
 import type { Context } from "hono";
 import { findAccountByIdOrUsername } from "../../account-store";
 import { findAccountProfile } from "../../account-profile-store";
@@ -44,16 +43,9 @@ export const getV1AccountsById = async (c: Context<{ Bindings: Env }, "/api/v1/a
   if (found.isErr()) {
     return jsonRepositoryError(c, found.error.message);
   }
-  switch (found.value.kind) {
-    case "Found":
-      return c.json(found.value.document);
-    case "Suspended":
-      return c.json({ error: "This account is suspended", kind: "AccountSuspended" }, 410);
-    case "NotFound":
-      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-    default:
-      return assertNever(found.value);
-  }
+  return found.value
+    ? c.json(found.value)
+    : c.json({ error: "Record not found", kind: "NotFound" }, 404);
 };
 
 /**
