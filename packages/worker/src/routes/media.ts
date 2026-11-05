@@ -6,7 +6,7 @@ import {
   readOptionalBody,
   requireUser,
 } from "../http";
-import { mastodonMedia } from "../media-document";
+import { mastodonMedia, mediaUrl } from "../media-document";
 import {
   deleteMedia,
   findMediaById,
@@ -14,9 +14,12 @@ import {
   parseMediaFocus,
   updateMediaMetadata,
 } from "../media-store";
-import { attachmentObjectKey, parseMediaObjectKey } from "../media-keys";
+import { newAttachmentObjectKey, parseMediaObjectKey } from "../media-keys";
 import { parseInstanceIdentity } from "../runtime-config";
 import { newEntityId } from "../ids";
+import { browserSession } from "../browser-session";
+import { findStatusById } from "../status-store";
+import { canViewStatus } from "../visibility-guard";
 import type { Context } from "hono";
 import { z } from "zod";
 
@@ -49,7 +52,7 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
     );
   }
   const id = newEntityId();
-  const objectKey = attachmentObjectKey(user.value.id, id);
+  const objectKey = newAttachmentObjectKey(user.value.id);
   await c.env.MEDIA.put(objectKey, await file.arrayBuffer(), {
     httpMetadata: { contentType },
   });
@@ -97,16 +100,33 @@ const serveR2Object = async (
 export const postV1Media = (c: Context<{ Bindings: Env }, "/api/v1/media">) => uploadMedia(c);
 export const postV2Media = (c: Context<{ Bindings: Env }, "/api/v2/media">) => uploadMedia(c);
 
-/** Attachment-id convenience lookup (local-core); production clients use MEDIA_PUBLIC_BASE_URL. */
+/**
+ * `GET /media/:id`, as Mastodon's MediaController#show: a local attachment on
+ * a status the signed-in viewer may see redirects to its file; anything else,
+ * unattached media included, answers 404.
+ */
 export const getMediaById = async (c: Context<{ Bindings: Env }, "/media/:id">) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
   const row = await findMediaById(c.env.DB, c.req.param("id"));
   if (row.isErr()) {
     return jsonRepositoryError(c, row.error.message);
   }
-  if (!row.value) {
+  if (!row.value?.status_id) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return serveR2Object(c, row.value.object_key, row.value.content_type);
+  const status = await findStatusById(c.env.DB, row.value.status_id);
+  if (status.isErr()) {
+    return jsonRepositoryError(c, status.error.message);
+  }
+  const session = await browserSession(c.env);
+  const viewerId = session.kind === "Account" ? session.account.id : undefined;
+  if (!status.value || !(await canViewStatus(c.env.DB, status.value, viewerId))) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  return c.redirect(mediaUrl(identity.value, row.value.object_key), 302);
 };
 
 /**

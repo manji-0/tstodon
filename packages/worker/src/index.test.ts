@@ -265,7 +265,6 @@ describe("worker http", () => {
     const media = read(MastodonMediaPreviewSchema, await mediaResponse.json());
     expect(media.id).toBeTruthy();
     expect(media.url).toContain("/attachments/");
-    expect(media.url.endsWith(`/${media.id}`)).toBe(true);
     expect(media.preview_url).toBe(media.url);
 
     const mediaGet = await SELF.fetch(media.url, {
@@ -306,10 +305,6 @@ describe("worker http", () => {
       },
     });
     expect(apiDenied.headers.get("access-control-allow-origin")).toBeNull();
-
-    const byId = await SELF.fetch(`https://example.com/media/${media.id}`);
-    expect(byId.status).toBe(200);
-    expect([...new Uint8Array(await byId.arrayBuffer())]).toEqual([137, 80, 78, 71]);
 
     const avatarForm = new FormData();
     avatarForm.set("display_name", "Alice Avatar");

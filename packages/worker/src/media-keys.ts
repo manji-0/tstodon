@@ -9,8 +9,19 @@ export const MediaObjectKind = {
 
 export type MediaObjectKind = (typeof MediaObjectKind)[keyof typeof MediaObjectKind];
 
-export const attachmentObjectKey = (accountId: string, mediaId: string): string =>
-  `${MediaObjectKind.Attachment}/${accountId}/${mediaId}`;
+/** 128 random bits as hex; Mastodon names a stored file with `SecureRandom.hex(8)`. */
+const randomObjectName = (): string =>
+  [...crypto.getRandomValues(new Uint8Array(16))]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+
+/**
+ * A fresh, unguessable key for an attachment. The public media domain serves
+ * every object without auth, so the random name is what keeps an attachment
+ * on a private or direct post private; it is never derived from the media id.
+ */
+export const newAttachmentObjectKey = (accountId: string): string =>
+  `${MediaObjectKind.Attachment}/${accountId}/${randomObjectName()}`;
 
 export const avatarObjectKey = (accountId: string, blobId: string): string =>
   `${MediaObjectKind.Avatar}/${accountId}/${blobId}`;

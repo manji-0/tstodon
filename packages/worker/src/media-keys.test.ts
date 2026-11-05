@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
-  attachmentObjectKey,
   avatarObjectKey,
   headerObjectKey,
   mediaPublicUrl,
+  newAttachmentObjectKey,
   parseMediaObjectKey,
 } from "./media-keys";
 import { InstanceIdentity } from "@tstodon/domain";
@@ -27,7 +27,8 @@ const identity = parsedIdentity.value;
 
 describe("media-keys", () => {
   it("builds stable object keys and public URLs", () => {
-    expect(attachmentObjectKey("acct-1", "media-1")).toBe("attachments/acct-1/media-1");
+    expect(newAttachmentObjectKey("acct-1")).toMatch(/^attachments\/acct-1\/[0-9a-f]{32}$/);
+    expect(newAttachmentObjectKey("acct-1")).not.toBe(newAttachmentObjectKey("acct-1"));
     expect(avatarObjectKey("acct-1", "blob-1")).toBe("avatars/acct-1/blob-1");
     expect(headerObjectKey("acct-1", "blob-2")).toBe("headers/acct-1/blob-2");
     expect(mediaPublicUrl(identity, "attachments/acct-1/media-1")).toBe(

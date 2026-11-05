@@ -43,11 +43,9 @@ const remember = (at: bigint, used: Set<number>, low: number): void => {
 };
 
 /**
- * A uniformly random low value this isolate has not yet used at `at`. The low
- * bits stay unpredictable because an id is the only secret guarding a media
- * attachment (`attachments/<accountId>/<mediaId>`). Throws once all 65,536 are
- * used, rather than move the id to another instant: a later instant could pass
- * `Date.now()`, which workerd holds still between I/O.
+ * A uniformly random low value this isolate has not yet used at `at`. Throws
+ * once all 65,536 are used, rather than move the id to another instant: a
+ * later instant could pass `Date.now()`, which workerd holds still between I/O.
  */
 const freshLowValue = (at: bigint, taken?: number): bigint => {
   let used = usedLowValues.get(at);
