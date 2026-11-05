@@ -1,7 +1,8 @@
 import { Hostname } from "@tstodon/domain";
 import type { Context } from "hono";
 import { z } from "zod";
-import { blockDomain, listBlockedDomains, unblockDomain } from "../domain-block-store";
+import { blockAccountDomain } from "../account-domain-block";
+import { listBlockedDomains, unblockDomain } from "../domain-block-store";
 import { jsonAuthError, jsonRepositoryError, readBody, requireUser } from "../http";
 import { parseInstanceIdentity } from "../runtime-config";
 
@@ -41,7 +42,7 @@ export const postV1DomainBlocks = async (
   if (domain === identity.value.domain.toLowerCase()) {
     return c.json({ error: "You cannot block your own domain", kind: "ValidationError" }, 422);
   }
-  const blocked = await blockDomain(c.env.DB, user.value.id, domain);
+  const blocked = await blockAccountDomain(c.env, identity.value, user.value, domain);
   if (blocked.isErr()) {
     return jsonRepositoryError(c, blocked.error.message);
   }

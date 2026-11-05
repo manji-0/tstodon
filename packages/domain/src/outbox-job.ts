@@ -2,6 +2,7 @@ import { schemaResult, unitKind } from "@tstodon/core";
 import { z } from "zod";
 import { AccountId } from "./account-id";
 import { ActivityId } from "./activity-id";
+import { Hostname } from "./hostname";
 import { StatusId } from "./status-id";
 
 const ExpandFollowersSchema = z.object({
@@ -99,6 +100,20 @@ const ProcessCsvImportSchema = z.object({
 });
 
 /**
+ * Remove the next page of an account's follows with a domain it blocked: the
+ * actors on `domain` after `afterActorUri` in URI order. The follows are
+ * recorded under the `user_domain_block` severance event `eventId`, which the
+ * last page closes and notifies.
+ */
+const SeverBlockedDomainFollowsSchema = z.object({
+  kind: z.literal("SeverBlockedDomainFollows"),
+  accountId: AccountId.schema,
+  domain: Hostname.schema,
+  eventId: z.string().min(1),
+  afterActorUri: z.string(),
+});
+
+/**
  * Store the recent public notes and boosts in a remote actor's outbox, and its
  * pinned notes. `from` says which page: the collection's first (`Start`, which
  * also reads the pins), or a later one an earlier job found by following
@@ -187,6 +202,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   BackfillRemoteOutboxSchema,
   BackfillRemoteThreadSchema,
   ProcessCsvImportSchema,
+  SeverBlockedDomainFollowsSchema,
 ]);
 
 export type OutboxJob = z.infer<typeof OutboxJobSchema>;

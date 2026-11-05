@@ -28,7 +28,8 @@ import {
   rowsNaming,
 } from "./csv-import-store";
 import type { RepositoryError } from "./d1";
-import { blockDomain, unblockDomain } from "./domain-block-store";
+import { blockAccountDomain } from "./account-domain-block";
+import { unblockDomain } from "./domain-block-store";
 import { followAccountRef } from "./follow-ref";
 import { type JobPage, measureJobPage } from "./metrics";
 import { unfollowAccount } from "./follow-store";
@@ -211,7 +212,7 @@ export const applyImportRow = async (
       if (domain === undefined || domain === identity.domain.toLowerCase()) {
         return ok(unresolved(failed("Refused")));
       }
-      const blocked = await blockDomain(env.DB, account.id, domain);
+      const blocked = await blockAccountDomain(env, identity, account, domain);
       return blocked.map(() => unresolved(applied));
     }
     case "Lists":

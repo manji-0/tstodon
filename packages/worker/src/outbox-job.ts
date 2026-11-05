@@ -16,6 +16,7 @@ import { processPushJob } from "./push-delivery";
 import { processFanOutHomeJob, processFanOutRemovedStatusesJob } from "./home-fan-out";
 import { processFanOutPublicJob } from "./public-fan-out";
 import { processCsvImportJob } from "./csv-import-apply";
+import { processSeverBlockedDomainFollowsJob } from "./account-domain-block";
 import { processMoveFollowsJob } from "./remote-move";
 import { processBackfillRemoteOutboxJob } from "./remote-outbox-backfill";
 import { processBackfillRemoteThreadJob } from "./remote-thread-backfill";
@@ -146,6 +147,8 @@ export const processOutboxJob = async (
       return processMoveFollowsJob(env, job);
     case "ProcessCsvImport":
       return processCsvImportJob(env, job);
+    case "SeverBlockedDomainFollows":
+      return processSeverBlockedDomainFollowsJob(env, job);
     case "FanOutHome":
       return processFanOutHomeJob(env, job);
     case "FanOutRemovedStatuses":

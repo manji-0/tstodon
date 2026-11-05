@@ -2,9 +2,13 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
+import { Hostname, OutboxJob } from "@tstodon/domain";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { blockAccountDomain, SEVER_PAGE_SIZE } from "./account-domain-block";
+import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
+import { parseInstanceIdentity } from "./runtime-config";
 
 const json = async (path: string, init?: RequestInit) => {
   const response = await SELF.fetch(`https://example.com${path}`, init);
@@ -166,6 +170,68 @@ describe("blocking a domain severs the account's follows with it", () => {
       { activity: { type: "Reject", object: { id: requestId, type: "Follow" } } },
     ]);
     expect(await severedEvents(a)).toEqual([]);
+  });
+
+  it("severs a domain larger than one page through queued follow-up pages", async () => {
+    const a = "dblock-sever-paged@example.com";
+    const account = await signedInAccount(a);
+    const total = SEVER_PAGE_SIZE + 2;
+    const fans = await Promise.all(
+      Array.from({ length: total }, (_, index) => remoteActor(`fan${index}`, "dblock-paged.test")),
+    );
+    await env.DB.batch(
+      fans.map((fan, index) =>
+        env.DB.prepare(
+          `INSERT INTO remote_follows (id, remote_actor_uri, target_account_id, follow_activity_id, remote_request_kind, follow_kind, created_at)
+           VALUES (?, ?, ?, ?, 'Fulfilled', 'Accepted', '2026-10-21T00:00:00.000Z')`,
+        ).bind(`dblock-paged-${index}`, fan.actorUri, account.id, `${fan.actorUri}/follows/1`),
+      ),
+    );
+    expect(await counts(a)).toEqual({ followers_count: total, following_count: 0 });
+
+    const sent: OutboxJob[] = [];
+    const queueEnv = new Proxy(env, {
+      get: (target, key) =>
+        key === "OUTBOX_PROCESS_QUEUE"
+          ? {
+              send: async (message: unknown) => {
+                const job = OutboxJob.parse(message);
+                if (job.isOk()) {
+                  sent.push(job.value);
+                }
+              },
+            }
+          : Reflect.get(target, key),
+    });
+    const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+    expect(
+      (
+        await blockAccountDomain(
+          queueEnv,
+          identity,
+          account,
+          Hostname.ofAuthority("dblock-paged.test"),
+        )
+      ).isOk(),
+    ).toBe(true);
+    expect(sent).toHaveLength(1);
+    expect((await counts(a)).followers_count).toBeGreaterThan(0);
+    expect(await severedEvents(a)).toEqual([]);
+
+    for (let job = sent.shift(); job !== undefined; job = sent.shift()) {
+      expect(await processOutboxJob(queueEnv, job)).toBe("ok");
+    }
+
+    expect(await counts(a)).toEqual({ followers_count: 0, following_count: 0 });
+    expect(await queued(a, "Reject")).toHaveLength(total);
+    expect(await severedEvents(a)).toEqual([
+      {
+        type: "user_domain_block",
+        target_name: "dblock-paged.test",
+        followers_count: total,
+        following_count: 0,
+      },
+    ]);
   });
 
   it("restores nothing when the domain is unblocked", async () => {
