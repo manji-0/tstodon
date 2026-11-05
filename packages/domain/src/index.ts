@@ -60,6 +60,14 @@ export {
   type RemoteNotificationSender,
 } from "./notification-policy";
 export { NotificationPolicyAction } from "./notification-policy-action";
+export type { ResolveNotificationDisposition } from "./notification-resolver";
+export type {
+  HoldNotification,
+  InsertNotification,
+  NewNotification,
+  PublishNotification,
+} from "./notification-store";
+export type { FindMutedThreadStatusIds } from "./status-mute-resolver";
 export { OutboxJob, type MovePhase, type OutboxJob as OutboxJobValue } from "./outbox-job";
 export {
   OutboundFollow,

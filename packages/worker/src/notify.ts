@@ -1,4 +1,13 @@
-import { Hostname, NotificationGroup } from "@tstodon/domain";
+import {
+  type FindMutedThreadStatusIds,
+  type HoldNotification,
+  Hostname,
+  type InsertNotification,
+  type NewNotification,
+  NotificationGroup,
+  type PublishNotification,
+  type ResolveNotificationDisposition,
+} from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { err, ok } from "neverthrow";
 import type { RepositoryError } from "./d1";
@@ -24,29 +33,27 @@ const ADMIN_KINDS: ReadonlyArray<string> = [
   "severed_relationships",
 ];
 
-export const notifyAccount = async (
-  env: Env,
-  input: {
-    accountId: string;
-    fromAccountId: string;
-    /** The sender's actor URI when it is a remote account. */
-    fromActorUri?: string;
-    kind: string;
-    statusId?: string;
-    /** The account a `move` notification points at: where the sender moved to. */
-    targetAccountId?: string;
-    /** The report an `admin.report` notification points at. */
-    reportId?: string;
-    /** The account's severance event a `severed_relationships` notification reports. */
-    severanceEventId?: string;
-  },
+/** What delivering a notification reads and writes. */
+export type NotifyContracts = Readonly<{
+  resolveDisposition: ResolveNotificationDisposition;
+  findMutedThreadStatusIds: FindMutedThreadStatusIds;
+  insertNotification: InsertNotification;
+  holdNotification: HoldNotification;
+  publishNotification: PublishNotification;
+}>;
+
+/**
+ * Record a notification as the recipient's policy decides: delivered, held
+ * back as a request, or dropped outright. Mastodon's moderation notifications
+ * bypass the policy: a new sign-up is always "new" and "not followed".
+ */
+export const deliverNotification = async (
+  contracts: NotifyContracts,
+  input: NewNotification,
 ): Promise<Result<void, RepositoryError>> => {
-  // The recipient's notification policy decides whether this is delivered,
-  // held back as a request, or dropped outright. Mastodon's moderation
-  // notifications bypass it: a new sign-up is always "new" and "not followed".
   const disposition = ADMIN_KINDS.includes(input.kind)
     ? ok("accept" as const)
-    : await notificationDisposition(env.DB, {
+    : await contracts.resolveDisposition({
         recipientId: input.accountId,
         senderId: input.fromAccountId,
         kind: input.kind,
@@ -61,43 +68,57 @@ export const notifyAccount = async (
   // As Mastodon's NotifyService: nothing about a status in a conversation the
   // recipient muted, so the list, groups, unread count, and push all agree.
   if (input.statusId) {
-    const identity = parseInstanceIdentity(env);
-    if (identity.isOk()) {
-      const muted = await mutedThreadStatusIds(env.DB, identity.value, input.accountId, [
-        input.statusId,
-      ]);
-      if (muted.isErr()) {
-        return err(muted.error);
-      }
-      if (muted.value.has(input.statusId)) {
-        return ok(undefined);
-      }
+    const muted = await contracts.findMutedThreadStatusIds(input.accountId, [input.statusId]);
+    if (muted.isErr()) {
+      return err(muted.error);
+    }
+    if (muted.value.has(input.statusId)) {
+      return ok(undefined);
     }
   }
-  const inserted = await insertNotification(env.DB, input);
+  const inserted = await contracts.insertNotification(input);
   if (inserted.isErr()) {
     return err(inserted.error);
   }
   if (disposition.value === "filter") {
-    const held = await holdNotification(
-      env.DB,
-      inserted.value,
-      input.accountId,
-      input.fromAccountId,
-      input.statusId,
-    );
-    if (held.isErr()) {
-      return err(held.error);
-    }
-    return ok(undefined);
+    return contracts.holdNotification(inserted.value, input);
   }
-  const streamed = await streamedNotification(env, input.accountId, inserted.value);
-  if (streamed) {
-    await publishToAccount(env, input.accountId, { kind: "notification", payload: streamed });
-  }
-  await enqueuePushDeliveries(env, input.accountId, inserted.value);
+  await contracts.publishNotification(input.accountId, inserted.value);
   return ok(undefined);
 };
+
+/** The D1, stream and push adapters behind `NotifyContracts`. */
+const notifyContracts = (env: Env): NotifyContracts => {
+  const identity = parseInstanceIdentity(env);
+  return {
+    resolveDisposition: (notification) => notificationDisposition(env.DB, notification),
+    findMutedThreadStatusIds: (accountId, statusIds) =>
+      identity.isOk()
+        ? mutedThreadStatusIds(env.DB, identity.value, accountId, statusIds)
+        : Promise.resolve(ok(new Set())),
+    insertNotification: (notification) => insertNotification(env.DB, notification),
+    holdNotification: (notificationId, notification) =>
+      holdNotification(
+        env.DB,
+        notificationId,
+        notification.accountId,
+        notification.fromAccountId,
+        notification.statusId,
+      ),
+    publishNotification: async (accountId, notificationId) => {
+      const streamed = await streamedNotification(env, accountId, notificationId);
+      if (streamed) {
+        await publishToAccount(env, accountId, { kind: "notification", payload: streamed });
+      }
+      await enqueuePushDeliveries(env, accountId, notificationId);
+    },
+  };
+};
+
+export const notifyAccount = (
+  env: Env,
+  input: NewNotification,
+): Promise<Result<void, RepositoryError>> => deliverNotification(notifyContracts(env), input);
 
 /**
  * The Notification entity the streaming API sends, as `GET

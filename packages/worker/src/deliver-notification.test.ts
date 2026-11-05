@@ -1,0 +1,73 @@
+import type { NewNotification, NotificationPolicyAction } from "@tstodon/domain";
+import { ok } from "neverthrow";
+import { describe, expect, it } from "vite-plus/test";
+import { deliverNotification } from "./notify";
+
+const mention: NewNotification = {
+  accountId: "100",
+  fromAccountId: "200",
+  kind: "mention",
+  statusId: "300",
+};
+
+const recording = (disposition: NotificationPolicyAction, muted: ReadonlyArray<string> = []) => {
+  const events: string[] = [];
+  return {
+    events,
+    contracts: {
+      resolveDisposition: async () => {
+        events.push("disposition");
+        return ok(disposition);
+      },
+      findMutedThreadStatusIds: async (_accountId: string, statusIds: ReadonlyArray<string>) =>
+        ok(new Set(statusIds.filter((id) => muted.includes(id)))),
+      insertNotification: async (notification: NewNotification) => {
+        events.push(`insert ${notification.kind}`);
+        return ok("n1");
+      },
+      holdNotification: async (notificationId: string) => {
+        events.push(`hold ${notificationId}`);
+        return ok(undefined);
+      },
+      publishNotification: async (accountId: string, notificationId: string) => {
+        events.push(`publish ${accountId} ${notificationId}`);
+      },
+    },
+  };
+};
+
+describe("deliverNotification", () => {
+  it("records and publishes a notification the policy accepts", async () => {
+    const store = recording("accept");
+    expect((await deliverNotification(store.contracts, mention)).isOk()).toBe(true);
+    expect(store.events).toEqual(["disposition", "insert mention", "publish 100 n1"]);
+  });
+
+  it("holds a filtered notification as a request without publishing it", async () => {
+    const store = recording("filter");
+    await deliverNotification(store.contracts, mention);
+    expect(store.events).toEqual(["disposition", "insert mention", "hold n1"]);
+  });
+
+  it("records nothing the policy drops", async () => {
+    const store = recording("drop");
+    await deliverNotification(store.contracts, mention);
+    expect(store.events).toEqual(["disposition"]);
+  });
+
+  it("records nothing about a status in a muted conversation", async () => {
+    const store = recording("accept", ["300"]);
+    await deliverNotification(store.contracts, mention);
+    expect(store.events).toEqual(["disposition"]);
+  });
+
+  it("delivers moderation notifications past a dropping policy", async () => {
+    const store = recording("drop");
+    await deliverNotification(store.contracts, {
+      accountId: "100",
+      fromAccountId: "200",
+      kind: "admin.sign_up",
+    });
+    expect(store.events).toEqual(["insert admin.sign_up", "publish 100 n1"]);
+  });
+});

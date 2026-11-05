@@ -1,4 +1,4 @@
-import type { GroupedNotificationEntry } from "@tstodon/domain";
+import type { GroupedNotificationEntry, NewNotification } from "@tstodon/domain";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
@@ -51,20 +51,7 @@ export const deleteRemoteNotifications = async (
 
 export const insertNotification = async (
   db: D1Database,
-  input: {
-    accountId: string;
-    fromAccountId: string;
-    /** The sender's actor URI when it is a remote account. */
-    fromActorUri?: string;
-    kind: string;
-    statusId?: string;
-    /** The account a `move` notification points at: where the sender moved to. */
-    targetAccountId?: string;
-    /** The report an `admin.report` notification points at. */
-    reportId?: string;
-    /** The account's severance event a `severed_relationships` notification reports. */
-    severanceEventId?: string;
-  },
+  input: NewNotification,
 ): Promise<Result<string, RepositoryError>> => {
   const id = newEntityId();
   const written = await runD1(async () => {
