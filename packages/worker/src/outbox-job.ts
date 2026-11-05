@@ -1,6 +1,7 @@
 import { assertNever } from "@tstodon/core";
 import { Hostname, OutboxJob, type OutboxJob as OutboxJobValue } from "@tstodon/domain";
-import { ok } from "neverthrow";
+import { ok, type Result } from "neverthrow";
+import type { RepositoryError } from "./d1";
 import {
   ensureOutboxTarget,
   ensureOutboxTargets,
@@ -34,7 +35,7 @@ import {
 import { startOutboxDeliveryWorkflow } from "./delivery";
 import { parseJsonText } from "./json-column";
 import { parseLocalStatusId } from "./activitypub";
-import { listPollInteractorUris } from "./remote-interaction-store";
+import { listPollInteractorInboxes } from "./remote-interaction-store";
 
 const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -114,6 +115,24 @@ export const outboundAudience = (
     ),
   ];
   return { followers, actorUris, updatedQuestion };
+};
+
+/** A failed recipient lookup leaves those recipients out; say so in the logs. */
+const logExpandLookupFailure = (
+  activityId: string,
+  lookup: "followers" | "pollInteractors",
+  found: Result<unknown, RepositoryError>,
+): void => {
+  if (found.isErr()) {
+    console.error(
+      JSON.stringify({
+        kind: "OutboxExpandLookupFailed",
+        activityId,
+        lookup,
+        message: found.error.message,
+      }),
+    );
+  }
 };
 
 /** Would {@link outboundAudience} find any remote recipient for this activity? */
@@ -205,13 +224,13 @@ export const processOutboxJob = async (
           ? parseLocalStatusId(identity.value, audience.updatedQuestion)
           : undefined;
       const interactors =
-        pollStatusId === undefined ? ok([]) : await listPollInteractorUris(env.DB, pollStatusId);
-      const addressed = await findRemoteActorsByUris(env.DB, [
-        ...audience.actorUris,
-        ...(interactors.isOk() ? interactors.value : []),
-      ]);
+        pollStatusId === undefined ? ok([]) : await listPollInteractorInboxes(env.DB, pollStatusId);
+      logExpandLookupFailure(job.activityId, "followers", remoteFollowers);
+      logExpandLookupFailure(job.activityId, "pollInteractors", interactors);
+      const addressed = await findRemoteActorsByUris(env.DB, audience.actorUris);
       const candidateInboxes = [
         ...(remoteFollowers.isOk() ? remoteFollowers.value : []),
+        ...(interactors.isOk() ? interactors.value : []),
         ...(addressed.isOk() ? [...addressed.value.values()] : []).map(
           (actor) => actor.sharedInboxUri ?? actor.inboxUri,
         ),

@@ -20,6 +20,18 @@ export const receiveRemoteAnnounce: InboxHandler<RemoteDelivery<"Announce">> = a
   allowHosts,
   blockedHosts,
 }) => {
+  // As Mastodon's `announceable?`, a remote actor may share a local status
+  // only when it is public or unlisted; otherwise the Announce is dropped.
+  const statusId = parseLocalStatusId(identity, activity.object);
+  if (statusId) {
+    const target = await findStatusById(env.DB, statusId);
+    if (target.isErr()) {
+      return err(target.error);
+    }
+    if (!target.value || Visibility.isRestricted(target.value.visibility)) {
+      return ok(undefined);
+    }
+  }
   const announced = await persistAnnouncedObject(env, identity, signer, received.object, {
     allowHosts,
     blockedHosts,
@@ -45,7 +57,6 @@ export const receiveRemoteAnnounce: InboxHandler<RemoteDelivery<"Announce">> = a
       author: { kind: "RemoteActor", actorUri: signer.actorUri },
     });
   }
-  const statusId = parseLocalStatusId(identity, activity.object);
   if (statusId) {
     const counted = await upsertRemoteAnnounce(env.DB, signer.actorUri, statusId, activity.id);
     if (counted.isOk() && counted.value) {

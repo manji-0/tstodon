@@ -557,7 +557,10 @@ describe("who hears a local poll's Update", () => {
   it("leaves out voters and boosters an admin suspended or the author blocks", async () => {
     const poll = await pollAt("poll-reach-moderated-author@example.com", "public");
     const kept = await remoteActor("poll-reach-kept", "kept.example");
-    const suspendedVoter = await remoteActor("poll-reach-suspended-voter", "suspended-voter.example");
+    const suspendedVoter = await remoteActor(
+      "poll-reach-suspended-voter",
+      "suspended-voter.example",
+    );
     const suspendedBooster = await remoteActor(
       "poll-reach-suspended-booster",
       "suspended-booster.example",
