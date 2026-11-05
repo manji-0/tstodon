@@ -27,12 +27,10 @@ The metrics these items wait on are written (see "Answering the D1 open question
 
 Mastodon's web app links to Rails pages that tstodon answers with a "not available on this server" page (`src/routes/unsupported-pages.ts`). Each is a gap a user can reach from the menu.
 
-| ID    | Item                        | Notes                                                    |
-| ----- | --------------------------- | -------------------------------------------------------- |
-| WEB-3 | `/settings/export`, imports | No CSV export or import of follows, lists, blocks, mutes |
-
+| ID    | Item                              | Notes                                                                                                                                                                                               |
+| ----- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | WEB-5 | `/admin/*` beyond the pages built | Software updates, rules, roles, webhooks, relays, server settings, and the `/admin/tags` list reach the notice. Per-post moderation has no admin REST counterpart, so it runs only through the page |
-| WEB-6 | `/disputes/*` | No appeals: the server has no strikes or moderation warnings to appeal, so the notice stays |
+| WEB-6 | `/disputes/*`                     | No appeals: the server has no strikes or moderation warnings to appeal, so the notice stays                                                                                                         |
 
 ## Done recently (do not re-open)
 
