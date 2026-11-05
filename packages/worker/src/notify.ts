@@ -192,11 +192,14 @@ const isSenderSilenced = async (
 ): Promise<Result<boolean, RepositoryError>> => {
   const recipientId = notification.accountId;
   const sender = notification.fromActorUri ?? notification.fromAccountId;
-  const blocked = await findBlock(db, recipientId, sender);
+  // Every notification pays for this check, so the two lookups run together.
+  const [blocked, muted] = await Promise.all([
+    findBlock(db, recipientId, sender),
+    findActiveMute(db, recipientId, sender),
+  ]);
   if (blocked.isErr()) {
     return err(blocked.error);
   }
-  const muted = await findActiveMute(db, recipientId, sender);
   if (muted.isErr()) {
     return err(muted.error);
   }
