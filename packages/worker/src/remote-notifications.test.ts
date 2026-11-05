@@ -266,6 +266,49 @@ describe("notifications from remote actors", () => {
     expect(stored.results.map((row) => row.from_actor_uri)).toEqual([friend.actorUri]);
   });
 
+  it("matches a domain block on the account domain, not the actor URI's host, as Mastodon's account.domain", async () => {
+    // A WebFinger domain that serves its actors from another host (#70).
+    const remote = await remoteActor("split", "social.split-host.example", {
+      accountDomain: "split-host.example",
+    });
+    const remoteId = RemoteAccountId.encode(remote.actorUri);
+    const cases = [
+      { email: "split-domain-account@example.com", blocked: "split-host.example", hit: true },
+      { email: "split-domain-uri@example.com", blocked: "social.split-host.example", hit: false },
+    ] as const;
+    for (const [n, { email, blocked, hit }] of cases.entries()) {
+      const headers = { "content-type": "application/json", ...(await authHeaders(email)) };
+      const status = await post(email, `split host ${n}`);
+      expect(
+        (
+          await json("/api/v1/domain_blocks", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ domain: blocked }),
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        await remote.send({
+          id: `https://social.split-host.example/activities/split-like-${n}`,
+          type: "Like",
+          object: status.uri,
+        }),
+      ).toBe(202);
+      const relationships = await json(`/api/v1/accounts/relationships?id[]=${remoteId}`, {
+        headers,
+      });
+      expect({
+        blocked,
+        notified: (await notifications(email)).map((entry) => entry.type),
+        domainBlocking: read(
+          z.array(z.object({ domain_blocking: z.boolean() })),
+          relationships.body,
+        )[0]?.domain_blocking,
+      }).toEqual({ blocked, notified: hit ? [] : ["favourite"], domainBlocking: hit });
+    }
+  });
+
   it("drops a remote mention alongside a blocked actor or replying to a blocked author, as blocked_mention?", async () => {
     const email = "remote-blocked-mention@example.com";
     const headers = { "content-type": "application/json", ...(await authHeaders(email)) };

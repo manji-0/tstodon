@@ -13,13 +13,17 @@ export type Remote = Readonly<{
   fetch: (path: string) => Promise<Response>;
 }>;
 
-/** A cached remote actor that can sign inbox deliveries. */
+/**
+ * A cached remote actor that can sign inbox deliveries. Its URI is on
+ * `host`; its account domain is `options.accountDomain`, `host` by default,
+ * as a WebFinger domain that serves actors from another host.
+ */
 export const remoteActor = async (
   username: string,
-  domain: string = "remote.example",
-  options: Readonly<{ sharedInboxUri?: string }> = {},
+  host: string = "remote.example",
+  options: Readonly<{ sharedInboxUri?: string; accountDomain?: string }> = {},
 ): Promise<Remote> => {
-  const actorUri = `https://${domain}/users/${username}`;
+  const actorUri = `https://${host}/users/${username}`;
   const keys = await generateAccountKeys();
   const fetchedAt = IsoInstant.parse("2026-10-01T00:00:00.000Z");
   if (fetchedAt.isErr()) {
@@ -28,7 +32,7 @@ export const remoteActor = async (
   const actor = RemoteActor.fromFetched({
     actorUri,
     username,
-    domain,
+    domain: options.accountDomain ?? host,
     inboxUri: `${actorUri}/inbox`,
     sharedInboxUri: options.sharedInboxUri,
     publicKeyId: `${actorUri}#main-key`,
