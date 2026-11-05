@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param actorUri
  */
 export const findActorDomainBlock = $runtime.makeTypedQueryFactory(
-  "SELECT domain FROM account_domain_blocks\nWHERE account_id = $1\nAND lower(domain) = (SELECT host FROM remote_actors WHERE actor_uri = $2)\nLIMIT 1",
+  "SELECT domain FROM account_domain_blocks\nWHERE account_id = $1\nAND domain = (SELECT host FROM remote_actors WHERE actor_uri = $2)\nLIMIT 1",
 ) as (
   accountId: string,
   actorUri: string,
