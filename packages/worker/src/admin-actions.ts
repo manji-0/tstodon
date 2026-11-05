@@ -15,6 +15,7 @@ import {
 import { nowIso } from "./clock";
 import { err, ok, type Result } from "neverthrow";
 import { mediaObjectKeysForAccount } from "./account-flag-store";
+import { MediaObjectKind } from "./media-keys";
 import {
   findLocalAccountModeration,
   listLocalAccountModerations,
@@ -258,10 +259,25 @@ export const takeAccountAction = async (
   return ok(undefined);
 };
 
+/** Delete every bucket object under `prefix`, a page of up to 1,000 at a time. */
+const deleteObjectsUnder = async (bucket: R2Bucket, prefix: string): Promise<void> => {
+  let cursor: string | undefined;
+  do {
+    const page = await bucket.list(cursor === undefined ? { prefix } : { prefix, cursor });
+    if (page.objects.length > 0) {
+      await bucket.delete(page.objects.map((object) => object.key));
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor !== undefined);
+};
+
 /**
  * Delete a local account and everything it owns (Mastodon's
  * `DeleteAccountService`): its bucket objects first, then the rows, which
- * cascade from `accounts`. `false` when there was no such account.
+ * cascade from `accounts`. `false` when there was no such account. Last, it
+ * deletes whatever is left under the account's attachment prefix: a copy the
+ * rekey job pointed a row at after the keys were listed, or one it could not
+ * confirm. A copy the job makes after the rows are gone, it deletes itself.
  */
 export const purgeAccount = async (
   env: Env,
@@ -274,7 +290,11 @@ export const purgeAccount = async (
   for (const objectKey of objects.value) {
     await env.MEDIA.delete(objectKey);
   }
-  return deleteAccount(env.DB, accountId);
+  const deleted = await deleteAccount(env.DB, accountId);
+  if (deleted.isOk()) {
+    await deleteObjectsUnder(env.MEDIA, `${MediaObjectKind.Attachment}/${accountId}/`);
+  }
+  return deleted;
 };
 
 export type DomainBlockSettings = Omit<DomainBlockInput, "domain">;
