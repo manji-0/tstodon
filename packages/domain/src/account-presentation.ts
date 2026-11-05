@@ -7,11 +7,12 @@ const SuspendedSchema = z.object({ kind: z.literal("Suspended") });
 const HiddenSchema = z.object({ kind: z.literal("Hidden") });
 
 /**
- * How the account read paths (search, lookup, `GET /accounts/:id`, the
- * `id[]` batch) treat an account, as Mastodon does. `Shown` renders in full.
- * `Suspended` renders with `suspended: true` and its profile stripped, and
- * search leaves it out. `Hidden` is an account on a domain this instance
- * suspends or keeps off its allow list: no read path names it.
+ * How the read paths treat an account, as Mastodon does. `Shown` renders in
+ * full. `Suspended` renders with `suspended: true` and its profile stripped
+ * where another record names it (a follower, a conversation participant, a
+ * report target), and is left out of search and of lists of accounts.
+ * `Hidden` is an account on a domain this instance suspends or keeps off its
+ * allow list: no read path names it.
  */
 const schema = z.discriminatedUnion("kind", [ShownSchema, SuspendedSchema, HiddenSchema]);
 
@@ -34,6 +35,10 @@ export const AccountPresentation = {
     input: Readonly<{ federates: boolean; domainSuspended: boolean; standing: AccountStanding }>,
   ): AccountPresentation =>
     !input.federates || input.domainSuspended ? hidden : ofStanding(input.standing),
-  /** Whether account search may list the account. */
-  searchable: (presentation: AccountPresentation): boolean => presentation.kind === "Shown",
+  /**
+   * The opposite of Mastodon's `unavailable?`: search and lists of accounts
+   * include the account, and its own statuses, followers, following, featured
+   * tags and endorsements show.
+   */
+  available: (presentation: AccountPresentation): boolean => presentation.kind === "Shown",
 } as const;

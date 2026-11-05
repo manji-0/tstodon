@@ -1,4 +1,4 @@
-import { InstanceIdentity } from "@tstodon/domain";
+import { AccountPresentation, InstanceIdentity } from "@tstodon/domain";
 import type { Context } from "hono";
 import { z } from "zod";
 import { findAccountByIdOrUsername } from "../../account-store";
@@ -12,9 +12,10 @@ import {
   requireUser,
   setPaginationLinks,
 } from "../../http";
-import { accountDocumentsByIds, mastodonRemoteAccount } from "../../account-documents";
+import { availableAccountDocumentsByIds, documentsInOrder } from "../../account-documents";
+import { accountRefPresentation } from "../../account-presentation";
+import { localRef } from "../../account-ref";
 import { mastodonRelationship } from "../../relationship-document";
-import { findRemoteActorsByUris } from "../../remote-actor-store";
 import { RemoteAccountId } from "../../remote-account-id";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { endorseAccount, listEndorsements, unendorseAccount } from "../../endorsement-store";
@@ -121,26 +122,11 @@ const endorsementDocuments = async (
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
-  // A local endorsement renders the account; anything else falls back to the stored actor.
-  const [locals, actors] = await Promise.all([
-    accountDocumentsByIds(
-      c.env,
-      identity,
-      rows.value.flatMap((row) => (row.accountId ? [row.accountId] : [])),
-    ),
-    findRemoteActorsByUris(
-      c.env.DB,
-      rows.value.map((row) => row.actorUri),
-    ),
-  ]);
-  const documents = rows.value.flatMap((row) => {
-    const local = row.accountId ? locals.get(row.accountId) : undefined;
-    if (local) {
-      return [local];
-    }
-    const actor = actors.isOk() ? actors.value.get(row.actorUri) : undefined;
-    return actor ? [mastodonRemoteAccount(identity, actor)] : [];
-  });
+  const ids = rows.value.map((row) => row.accountId ?? RemoteAccountId.encode(row.actorUri));
+  const documents = documentsInOrder(
+    ids,
+    await availableAccountDocumentsByIds(c.env, identity, ids),
+  );
   setPaginationLinks(
     c,
     rows.value.map((row) => row.id),
@@ -174,6 +160,13 @@ export const getV1AccountsByIdEndorsements = async (
   }
   if (!account.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const presentation = await accountRefPresentation(c.env, localRef(identity.value, account.value));
+  if (presentation.isErr()) {
+    return jsonRepositoryError(c, presentation.error.message);
+  }
+  if (!AccountPresentation.available(presentation.value)) {
+    return c.json([]);
   }
   return endorsementDocuments(c, identity.value, account.value.id);
 };

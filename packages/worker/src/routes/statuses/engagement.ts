@@ -10,12 +10,12 @@ import {
   requireUser,
   setPaginationLinks,
 } from "../../http";
-import { accountDocumentsByIds, mastodonRemoteAccount } from "../../account-documents";
+import { availableAccountDocumentsByIds, documentsInOrder } from "../../account-documents";
 import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
 import { listStatusFavouritedBy, listStatusRebloggedBy } from "../../status-interaction-store";
 import { findVisibleStatusAnywhere, foundStatusTarget } from "../../found-status";
 import { parseInstanceIdentity } from "../../runtime-config";
-import { findRemoteActorsByUris } from "../../remote-actor-store";
+import { RemoteAccountId } from "../../remote-account-id";
 import { findStatusById, findStatusesByIds } from "../../status-store";
 import { canViewStatus } from "../../visibility-guard";
 import { listQuotingStatusIds, revokeStatusQuote } from "../../quote-store";
@@ -49,25 +49,13 @@ const statusEngagementAccounts = async (
   if (engaged.isErr()) {
     return jsonRepositoryError(c, engaged.error.message);
   }
-  const [locals, actors] = await Promise.all([
-    accountDocumentsByIds(
-      c.env,
-      identity.value,
-      engaged.value.flatMap((booster) => (booster.kind === "Local" ? [booster.accountId] : [])),
-    ),
-    findRemoteActorsByUris(
-      c.env.DB,
-      engaged.value.flatMap((booster) => (booster.kind === "Local" ? [] : [booster.actorUri])),
-    ),
-  ]);
-  const documents = engaged.value.flatMap((booster): Record<string, unknown>[] => {
-    if (booster.kind === "Local") {
-      const local = locals.get(booster.accountId);
-      return local ? [local] : [];
-    }
-    const actor = actors.isOk() ? actors.value.get(booster.actorUri) : undefined;
-    return actor ? [mastodonRemoteAccount(identity.value, actor)] : [];
-  });
+  const ids = engaged.value.map((booster) =>
+    booster.kind === "Local" ? booster.accountId : RemoteAccountId.encode(booster.actorUri),
+  );
+  const documents = documentsInOrder(
+    ids,
+    await availableAccountDocumentsByIds(c.env, identity.value, ids),
+  );
   // The documents are accounts; the engagement row ids live in the header.
   setPaginationLinks(
     c,

@@ -24,7 +24,7 @@ import {
   toMastodonList,
   updateList,
 } from "../list-store";
-import { accountDocumentsByIds, documentsInOrder } from "../account-documents";
+import { availableAccountDocumentsByIds, documentsInOrder } from "../account-documents";
 import { writeTimelineMetric } from "../metrics";
 import { parseInstanceIdentity } from "../runtime-config";
 import { listTimelineDocuments } from "../timeline-documents";
@@ -160,7 +160,7 @@ export const getV1ListsByIdAccounts = async (
     return jsonRepositoryError(c, members.error.message);
   }
   const memberIds = members.value.map(ListMember.accountId);
-  const byId = await accountDocumentsByIds(c.env, identity.value, memberIds);
+  const byId = await availableAccountDocumentsByIds(c.env, identity.value, memberIds);
   return c.json(documentsInOrder(memberIds, byId));
 };
 

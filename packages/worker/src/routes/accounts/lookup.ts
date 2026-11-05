@@ -1,7 +1,13 @@
 import type { Context } from "hono";
-import { type InstanceIdentity, Visibility } from "@tstodon/domain";
+import {
+  AccountPresentation,
+  type InstanceIdentity,
+  type LocalAccount,
+  Visibility,
+} from "@tstodon/domain";
 import { findAccountByIdOrUsername, findAccountsByIds, searchAccounts } from "../../account-store";
 import {
+  accountRefPresentation,
   localAccountPresentations,
   presentedAccountDocument,
   remoteAccountPresentations,
@@ -259,23 +265,46 @@ export const getV1AccountsFamiliarFollowers = async (
     if (account.isErr()) {
       return jsonRepositoryError(c, account.error.message);
     }
-    const accounts: Record<string, unknown>[] = [];
-    if (account.value) {
-      const followerIds = await familiarFollowerIds(
-        c.env.DB,
-        user.value.id,
-        account.value.id,
-        FAMILIAR_FOLLOWERS_LIMIT,
-      );
-      if (followerIds.isErr()) {
-        return jsonRepositoryError(c, followerIds.error.message);
-      }
-      const byId = await accountDocumentsByIds(c.env, identity.value, followerIds.value);
-      accounts.push(...documentsInOrder(followerIds.value, byId));
+    const accounts = account.value
+      ? await familiarFollowerDocuments(c.env, identity.value, user.value.id, account.value)
+      : ok([]);
+    if (accounts.isErr()) {
+      return jsonRepositoryError(c, accounts.error.message);
     }
-    groups.push({ id: requestedId, accounts });
+    groups.push({ id: requestedId, accounts: accounts.value });
   }
   return c.json(groups);
+};
+
+/** The viewer's follows that follow `account`; none when `account` is not available. */
+const familiarFollowerDocuments = async (
+  env: Env,
+  identity: InstanceIdentity,
+  viewerId: string,
+  account: LocalAccount,
+): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+  const presentation = await accountRefPresentation(env, localRef(identity, account));
+  if (presentation.isErr()) {
+    return err(presentation.error);
+  }
+  if (!AccountPresentation.available(presentation.value)) {
+    return ok([]);
+  }
+  const followerIds = await familiarFollowerIds(
+    env.DB,
+    viewerId,
+    account.id,
+    FAMILIAR_FOLLOWERS_LIMIT,
+  );
+  if (followerIds.isErr()) {
+    return err(followerIds.error);
+  }
+  return ok(
+    documentsInOrder(
+      followerIds.value,
+      await accountDocumentsByIds(env, identity, followerIds.value),
+    ),
+  );
 };
 
 /**

@@ -11,7 +11,7 @@ import {
   setPaginationLinks,
 } from "../../http";
 import { mastodonRelationship } from "../../relationship-document";
-import { accountDocumentsByIds } from "../../account-documents";
+import { availableAccountDocumentsByIds } from "../../account-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
 import {
   blockAccount,
@@ -161,7 +161,7 @@ export const getV1Blocks = async (c: Context<{ Bindings: Env }, "/api/v1/blocks"
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
-  const resolved = await accountDocumentsByIds(
+  const resolved = await availableAccountDocumentsByIds(
     c.env,
     identity.value,
     rows.value.map((row) => row.accountId),
@@ -189,7 +189,7 @@ export const getV1Mutes = async (c: Context<{ Bindings: Env }, "/api/v1/mutes">)
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
-  const resolved = await accountDocumentsByIds(
+  const resolved = await availableAccountDocumentsByIds(
     c.env,
     identity.value,
     rows.value.map((row) => row.accountId),

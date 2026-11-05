@@ -17,6 +17,7 @@ import {
 } from "../http";
 import { getMarkers } from "../marker-store";
 import { accountDocumentsByIds } from "../account-documents";
+import { availableAccountIds } from "../account-presentation";
 import { mastodonNotification, mastodonNotifications } from "../notification-documents";
 import { reportDocumentsByIds } from "../report-documents";
 import { findAccountSeveranceEvents, severanceEventDocument } from "../severed-relationship-store";
@@ -264,7 +265,19 @@ const groupedNotificationPage = async (
   if (rows.isErr()) {
     return { kind: "Err", message: rows.error.message };
   }
-  const grouped = NotificationGroup.fold(rows.value.map(groupedEntry), groupedTypes, limit);
+  // As Mastodon's `without_suspended`, notifications from senders that are not available are left out.
+  const senders = await availableAccountIds(
+    c.env,
+    rows.value.map((row) => row.from_account_id),
+  );
+  if (senders.isErr()) {
+    return { kind: "Err", message: senders.error.message };
+  }
+  const grouped = NotificationGroup.fold(
+    rows.value.filter((row) => senders.value.has(row.from_account_id)).map(groupedEntry),
+    groupedTypes,
+    limit,
+  );
   return {
     kind: "Ok",
     groups: grouped.groups,

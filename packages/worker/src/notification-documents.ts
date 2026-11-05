@@ -1,5 +1,5 @@
-import type { InstanceIdentity } from "@tstodon/domain";
-import { accountDocumentsByIds } from "./account-documents";
+import { AccountPresentation, type InstanceIdentity } from "@tstodon/domain";
+import { presentedAccountsByIds } from "./account-documents";
 import { reportDocumentsByIds } from "./report-documents";
 import { findAccountSeveranceEvents, severanceEventDocument } from "./severed-relationship-store";
 import type { NotificationRow } from "./notification-store";
@@ -7,8 +7,8 @@ import { statusDocumentsByIds } from "./status-documents";
 
 /**
  * Mastodon Notification documents keyed by notification id. A notification
- * whose sender no longer resolves is left out; a status that no longer
- * resolves renders as `status: null`.
+ * whose sender no longer resolves or is not available is left out; a status
+ * that no longer resolves renders as `status: null`.
  */
 export const mastodonNotifications = async (
   env: Env,
@@ -17,7 +17,7 @@ export const mastodonNotifications = async (
   viewerId: string,
 ): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
   const [accounts, statuses, reports, severance] = await Promise.all([
-    accountDocumentsByIds(
+    presentedAccountsByIds(
       env,
       identity,
       rows.flatMap((row) =>
@@ -47,11 +47,15 @@ export const mastodonNotifications = async (
   );
   const documents = new Map<string, Record<string, unknown>>();
   for (const row of rows) {
-    const account = accounts.get(row.from_account_id);
-    if (!account) {
+    const sender = accounts.get(row.from_account_id);
+    // As Mastodon's `without_suspended`, a sender that is not available hides the notification.
+    if (!sender || !AccountPresentation.available(sender.presentation)) {
       continue;
     }
-    const target = row.target_account_id ? accounts.get(row.target_account_id) : undefined;
+    const account = sender.document;
+    const target = row.target_account_id
+      ? accounts.get(row.target_account_id)?.document
+      : undefined;
     // A `move` without its new account to show is left out, as one whose sender is gone.
     if (row.kind === "move" && !target) {
       continue;

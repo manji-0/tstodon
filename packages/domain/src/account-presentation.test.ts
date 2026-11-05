@@ -27,9 +27,9 @@ describe("AccountPresentation", () => {
     ).toBe("Suspended");
   });
 
-  it("lets search list only shown accounts", () => {
-    expect(AccountPresentation.searchable({ kind: "Shown" })).toBe(true);
-    expect(AccountPresentation.searchable({ kind: "Suspended" })).toBe(false);
-    expect(AccountPresentation.searchable({ kind: "Hidden" })).toBe(false);
+  it("counts only shown accounts as available", () => {
+    expect(AccountPresentation.available({ kind: "Shown" })).toBe(true);
+    expect(AccountPresentation.available({ kind: "Suspended" })).toBe(false);
+    expect(AccountPresentation.available({ kind: "Hidden" })).toBe(false);
   });
 });

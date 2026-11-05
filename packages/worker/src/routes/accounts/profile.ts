@@ -1,4 +1,4 @@
-import { Hostname } from "@tstodon/domain";
+import { AccountPresentation } from "@tstodon/domain";
 import type { Context } from "hono";
 import { findAccountByIdOrUsername } from "../../account-store";
 import { findAccountProfile } from "../../account-profile-store";
@@ -21,7 +21,8 @@ import {
   listAccountStatusesFiltered,
 } from "../../status-timeline-store";
 import type { InstanceIdentity } from "@tstodon/domain";
-import { suspendedDomains } from "../../admin-domain-block-store";
+import { accountRefPresentation } from "../../account-presentation";
+import { localRef, remoteRef } from "../../account-ref";
 import { RemoteAccountId } from "../../remote-account-id";
 import { findRemoteActorByUri } from "../../remote-actor-store";
 import { requestRemoteOutboxBackfill } from "../../remote-outbox-backfill";
@@ -50,7 +51,7 @@ export const getV1AccountsById = async (c: Context<{ Bindings: Env }, "/api/v1/a
 
 /**
  * A cached remote actor's statuses. As in Mastodon, the list is empty when the
- * viewer blocks the actor or its domain, or the instance suspends that domain.
+ * viewer blocks the actor or its domain, or the actor is not available.
  * `pinned=true` lists the notes of its `featured` collection. A view queues a
  * backfill of the actor's outbox and pins when it has not run lately; this
  * response shows what is cached already.
@@ -78,11 +79,14 @@ const remoteAccountStatuses = async (
     return jsonRepositoryError(c, flags.error.message);
   }
   const blocks = flags?.unwrapOr(undefined);
-  const hidden =
-    blocks?.blocking === true ||
-    blocks?.domainBlocking === true ||
-    (await suspendedDomains(c.env.DB)).has(Hostname.ofAuthority(actor.value.domain));
-  if (hidden) {
+  if (blocks?.blocking === true || blocks?.domainBlocking === true) {
+    return c.json([]);
+  }
+  const presentation = await accountRefPresentation(c.env, remoteRef(actor.value));
+  if (presentation.isErr()) {
+    return jsonRepositoryError(c, presentation.error.message);
+  }
+  if (!AccountPresentation.available(presentation.value)) {
     return c.json([]);
   }
   await requestRemoteOutboxBackfill(c.env, actor.value.actorUri);
@@ -130,6 +134,13 @@ export const getV1AccountsByIdStatuses = async (
   if (!account.value) {
     return remoteAccountStatuses(c, identity.value, viewerId, id, filters);
   }
+  const presentation = await accountRefPresentation(c.env, localRef(identity.value, account.value));
+  if (presentation.isErr()) {
+    return jsonRepositoryError(c, presentation.error.message);
+  }
+  if (!AccountPresentation.available(presentation.value)) {
+    return c.json([]);
+  }
   const statuses =
     c.req.query("pinned") === "true"
       ? await listPinnedStatuses(c.env.DB, account.value.id)
@@ -174,9 +185,16 @@ const accountList = async (c: Context<{ Bindings: Env }>, kind: "followers" | "f
   if (!account.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
+  const presentation = await accountRefPresentation(c.env, localRef(identity.value, account.value));
+  if (presentation.isErr()) {
+    return jsonRepositoryError(c, presentation.error.message);
+  }
   const limit = queryAccountsLimit(c.req.query("limit"));
   // `hide_collections` clears the lists for everyone but the account itself.
-  if (!(await showsCollections(c, account.value.id))) {
+  if (
+    !AccountPresentation.available(presentation.value) ||
+    !(await showsCollections(c, account.value.id))
+  ) {
     return c.json([]);
   }
   const edges =

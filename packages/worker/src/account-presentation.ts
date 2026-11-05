@@ -8,31 +8,33 @@ import {
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { listAccountStandings } from "./account-moderation-store";
+import type { AccountRef } from "./account-ref";
+import { findAccountsByIds } from "./account-store";
 import { suspendedDomains } from "./admin-domain-block-store";
 import type { RepositoryError } from "./d1";
+import { RemoteAccountId } from "./remote-account-id";
 import { listRemoteActorModerations } from "./remote-actor-moderation-store";
+import { findRemoteActorsByUris } from "./remote-actor-store";
 import { allowListAdmits, federationAllowHosts } from "./runtime-config";
 
-/** Each local account's presentation, keyed by account id. */
-export const localAccountPresentations = async (
+/** How a local account among `accountIds` presents. */
+const localPresenter = async (
   db: D1Database,
   accountIds: ReadonlyArray<string>,
-): Promise<Result<ReadonlyMap<string, AccountPresentation>, RepositoryError>> =>
+): Promise<Result<(accountId: string) => AccountPresentation, RepositoryError>> =>
   (await listAccountStandings(db, accountIds)).map(
-    (standings) =>
-      new Map(
-        accountIds.map((id) => [
-          id,
-          AccountPresentation.ofLocal(standings.get(id) ?? AccountStanding.inGoodStanding),
-        ]),
-      ),
+    (standings) => (accountId) =>
+      AccountPresentation.ofLocal(standings.get(accountId) ?? AccountStanding.inGoodStanding),
   );
 
-/** Each cached remote actor's presentation, keyed by actor URI. */
-export const remoteAccountPresentations = async (
+/** How a remote actor among `actors` presents. */
+const remotePresenter = async (
   env: Env,
   actors: ReadonlyArray<RemoteActor>,
-): Promise<Result<ReadonlyMap<string, AccountPresentation>, RepositoryError>> => {
+): Promise<Result<(actor: RemoteActor) => AccountPresentation, RepositoryError>> => {
+  if (actors.length === 0) {
+    return ok(() => AccountPresentation.ofLocal(AccountStanding.inGoodStanding));
+  }
   const [allowHosts, blockedHosts, moderations] = await Promise.all([
     federationAllowHosts(env),
     suspendedDomains(env.DB),
@@ -41,21 +43,91 @@ export const remoteAccountPresentations = async (
       actors.map((actor) => actor.actorUri),
     ),
   ]);
-  if (moderations.isErr()) {
-    return err(moderations.error);
+  return moderations.map(
+    (byUri) => (actor) =>
+      AccountPresentation.ofRemote({
+        federates: allowListAdmits(allowHosts, actor.domain),
+        domainSuspended: blockedHosts.has(Hostname.ofAuthority(actor.domain)),
+        standing: byUri.get(actor.actorUri)?.standing ?? AccountStanding.inGoodStanding,
+      }),
+  );
+};
+
+/** Each local account's presentation, keyed by account id. */
+export const localAccountPresentations = async (
+  db: D1Database,
+  accountIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, AccountPresentation>, RepositoryError>> =>
+  (await localPresenter(db, accountIds)).map(
+    (present) => new Map(accountIds.map((id) => [id, present(id)])),
+  );
+
+/** Each cached remote actor's presentation, keyed by actor URI. */
+export const remoteAccountPresentations = async (
+  env: Env,
+  actors: ReadonlyArray<RemoteActor>,
+): Promise<Result<ReadonlyMap<string, AccountPresentation>, RepositoryError>> =>
+  (await remotePresenter(env, actors)).map(
+    (present) => new Map(actors.map((actor) => [actor.actorUri, present(actor)])),
+  );
+
+/** One account's presentation. */
+export const accountRefPresentation = async (
+  env: Env,
+  ref: AccountRef,
+): Promise<Result<AccountPresentation, RepositoryError>> =>
+  ref.kind === "LocalAccount"
+    ? (await localPresenter(env.DB, [ref.account.id])).map((present) => present(ref.account.id))
+    : (await remotePresenter(env, [ref.actor])).map((present) => present(ref.actor));
+
+/**
+ * The ids among `accountIds` (local ids or `r_…` ids) whose accounts are
+ * available, as Mastodon's `Account.without_suspended`; ids that do not
+ * resolve are left out.
+ */
+export const availableAccountIds = async (
+  env: Env,
+  accountIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlySet<string>, RepositoryError>> => {
+  const local: string[] = [];
+  const remote: string[] = [];
+  for (const id of new Set(accountIds)) {
+    const actorUri = RemoteAccountId.decode(id);
+    if (actorUri.isOk()) {
+      remote.push(actorUri.value);
+    } else {
+      local.push(id);
+    }
+  }
+  const [locals, actors] = await Promise.all([
+    findAccountsByIds(env.DB, local),
+    findRemoteActorsByUris(env.DB, remote),
+  ]);
+  if (locals.isErr()) {
+    return err(locals.error);
+  }
+  if (actors.isErr()) {
+    return err(actors.error);
+  }
+  const [localPresent, remotePresent] = await Promise.all([
+    localPresenter(env.DB, [...locals.value.keys()]),
+    remotePresenter(env, [...actors.value.values()]),
+  ]);
+  if (localPresent.isErr()) {
+    return err(localPresent.error);
+  }
+  if (remotePresent.isErr()) {
+    return err(remotePresent.error);
   }
   return ok(
-    new Map(
-      actors.map((actor) => [
-        actor.actorUri,
-        AccountPresentation.ofRemote({
-          federates: allowListAdmits(allowHosts, actor.domain),
-          domainSuspended: blockedHosts.has(Hostname.ofAuthority(actor.domain)),
-          standing:
-            moderations.value.get(actor.actorUri)?.standing ?? AccountStanding.inGoodStanding,
-        }),
-      ]),
-    ),
+    new Set([
+      ...[...locals.value.keys()].filter((id) =>
+        AccountPresentation.available(localPresent.value(id)),
+      ),
+      ...[...actors.value.values()]
+        .filter((actor) => AccountPresentation.available(remotePresent.value(actor)))
+        .map((actor) => RemoteAccountId.encode(actor.actorUri)),
+    ]),
   );
 };
 
@@ -70,7 +142,7 @@ export const searchableLocalAccounts = async (
       accounts.map((account) => account.id),
     )
   ).map((presentations) =>
-    accounts.filter((account) => isSearchable(presentations.get(account.id))),
+    accounts.filter((account) => isAvailable(presentations.get(account.id))),
   );
 
 /** The cached remote actors account search may list, in order. */
@@ -79,11 +151,11 @@ export const searchableRemoteActors = async (
   actors: ReadonlyArray<RemoteActor>,
 ): Promise<Result<RemoteActor[], RepositoryError>> =>
   (await remoteAccountPresentations(env, actors)).map((presentations) =>
-    actors.filter((actor) => isSearchable(presentations.get(actor.actorUri))),
+    actors.filter((actor) => isAvailable(presentations.get(actor.actorUri))),
   );
 
-const isSearchable = (presentation: AccountPresentation | undefined): boolean =>
-  presentation !== undefined && AccountPresentation.searchable(presentation);
+const isAvailable = (presentation: AccountPresentation | undefined): boolean =>
+  presentation !== undefined && AccountPresentation.available(presentation);
 
 /**
  * A rendered account as Mastodon's `REST::AccountSerializer` renders an

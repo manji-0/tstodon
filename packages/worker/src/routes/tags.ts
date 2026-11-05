@@ -1,6 +1,8 @@
 import type { Context } from "hono";
 import { z } from "zod";
-import type { InstanceIdentity } from "@tstodon/domain";
+import { AccountPresentation, type InstanceIdentity } from "@tstodon/domain";
+import { accountRefPresentation } from "../account-presentation";
+import { localRef } from "../account-ref";
 import { findAccountById } from "../account-store";
 import { authenticate } from "../auth";
 import {
@@ -394,6 +396,13 @@ export const getV1AccountsByIdFeaturedTags = async (
   }
   if (!account.value) {
     return tagNotFound(c);
+  }
+  const presentation = await accountRefPresentation(c.env, localRef(identity.value, account.value));
+  if (presentation.isErr()) {
+    return jsonRepositoryError(c, presentation.error.message);
+  }
+  if (!AccountPresentation.available(presentation.value)) {
+    return c.json([]);
   }
   const built = await buildFeaturedTagDocuments(
     c.env,

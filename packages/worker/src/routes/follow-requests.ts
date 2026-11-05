@@ -9,13 +9,12 @@ import {
   queryCursor,
   requireUser,
 } from "../http";
-import { accountDocumentsByIds, mastodonRemoteAccount } from "../account-documents";
+import { availableAccountDocumentsByIds } from "../account-documents";
 import { mastodonRelationship } from "../relationship-document";
 import {
   authorizeRemoteFollowRequest,
   findPendingRemoteFollowRequest,
   findRemoteActorByUri,
-  findRemoteActorsByUris,
   listPendingRemoteFollowRequesters,
   rejectRemoteFollowRequest,
 } from "../remote-actor-store";
@@ -98,34 +97,25 @@ export const getV1FollowRequests = async (
   }
 
   type Entry = Readonly<{ createdAt: string; document: Record<string, unknown> }>;
-  const [localDocuments, actors] = await Promise.all([
-    accountDocumentsByIds(
-      c.env,
-      identity.value,
-      local.value.map((requester) => requester.followerAccountId),
-    ),
-    findRemoteActorsByUris(
-      c.env.DB,
-      remote.value.map((requester) => requester.remoteActorUri),
-    ),
-  ]);
-  const entries: Entry[] = [
-    ...local.value.flatMap((requester): Entry[] => {
-      const document = localDocuments.get(requester.followerAccountId);
-      return document ? [{ createdAt: requester.createdAt, document }] : [];
-    }),
-    ...remote.value.flatMap((requester): Entry[] => {
-      const actor = actors.isOk() ? actors.value.get(requester.remoteActorUri) : undefined;
-      return actor
-        ? [
-            {
-              createdAt: requester.createdAt,
-              document: mastodonRemoteAccount(identity.value, actor),
-            },
-          ]
-        : [];
-    }),
+  const requesters = [
+    ...local.value.map((requester) => ({
+      createdAt: requester.createdAt,
+      accountId: requester.followerAccountId,
+    })),
+    ...remote.value.map((requester) => ({
+      createdAt: requester.createdAt,
+      accountId: RemoteAccountId.encode(requester.remoteActorUri),
+    })),
   ];
+  const documents = await availableAccountDocumentsByIds(
+    c.env,
+    identity.value,
+    requesters.map((requester) => requester.accountId),
+  );
+  const entries = requesters.flatMap((requester): Entry[] => {
+    const document = documents.get(requester.accountId);
+    return document ? [{ createdAt: requester.createdAt, document }] : [];
+  });
   return c.json(
     entries.toSorted((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map((entry) => entry.document),
   );

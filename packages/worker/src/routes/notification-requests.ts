@@ -14,7 +14,7 @@ import {
   readBody,
   requireUser,
 } from "../http";
-import { accountDocumentsByIds } from "../account-documents";
+import { accountDocumentsByIds, availableAccountDocumentsByIds } from "../account-documents";
 import { statusDocumentsByIds } from "../status-documents";
 import {
   acceptNotificationRequests,
@@ -57,17 +57,21 @@ export const NotificationRequestIdsBodySchema = z.object({
  * `:groupKey` routes registered there.
  */
 
-/** Mastodon's NotificationRequest document for one held-back sender. */
-/** Request documents for a page, with one account batch and one status batch. */
+/**
+ * Request documents for a page, with one account batch and one status batch.
+ * `senders` renders the senders; a request whose sender it leaves out is left
+ * out too.
+ */
 const requestDocuments = async (
   c: Context<{ Bindings: Env }>,
   identity: InstanceIdentity,
   accountId: string,
   requests: ReadonlyArray<NotificationRequest>,
+  senders: typeof accountDocumentsByIds,
 ): Promise<Record<string, unknown>[]> => {
   // The status stored with the held notification is the exact one.
   const [accounts, statuses] = await Promise.all([
-    accountDocumentsByIds(
+    senders(
       c.env,
       identity,
       requests.map((request) => request.fromAccountId),
@@ -79,14 +83,21 @@ const requestDocuments = async (
       accountId,
     ),
   ]);
-  return requests.map((request) => ({
-    id: request.id,
-    created_at: request.createdAt,
-    updated_at: request.updatedAt,
-    notifications_count: String(request.notificationsCount),
-    account: accounts.get(request.fromAccountId) ?? null,
-    last_status: request.statusId ? (statuses.get(request.statusId) ?? null) : null,
-  }));
+  return requests.flatMap((request) => {
+    const account = accounts.get(request.fromAccountId);
+    return account
+      ? [
+          {
+            id: request.id,
+            created_at: request.createdAt,
+            updated_at: request.updatedAt,
+            notifications_count: String(request.notificationsCount),
+            account,
+            last_status: request.statusId ? (statuses.get(request.statusId) ?? null) : null,
+          },
+        ]
+      : [];
+  });
 };
 
 const policyDocument = async (
@@ -207,7 +218,16 @@ export const getV1NotificationsRequests = async (
   if (requests.isErr()) {
     return jsonRepositoryError(c, requests.error.message);
   }
-  return c.json(await requestDocuments(c, identity.value, user.value.id, requests.value));
+  // As Mastodon, the list leaves out requests from accounts that are not available.
+  return c.json(
+    await requestDocuments(
+      c,
+      identity.value,
+      user.value.id,
+      requests.value,
+      availableAccountDocumentsByIds,
+    ),
+  );
 };
 
 export const getV1NotificationsRequestsMerged = (
@@ -232,8 +252,14 @@ export const getV1NotificationsRequestsById = async (
   if (!request.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const [document] = await requestDocuments(c, identity.value, user.value.id, [request.value]);
-  return c.json(document);
+  const [document] = await requestDocuments(
+    c,
+    identity.value,
+    user.value.id,
+    [request.value],
+    accountDocumentsByIds,
+  );
+  return document ? c.json(document) : c.json({ error: "Record not found", kind: "NotFound" }, 404);
 };
 
 const resolveRequest = async (
