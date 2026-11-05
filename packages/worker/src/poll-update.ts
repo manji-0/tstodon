@@ -37,18 +37,31 @@ export const schedulePollUpdate = async (env: Env, poll: PollRecord): Promise<vo
   if (poll.hideTotals) {
     return;
   }
-  const claimed = await claimPollUpdate(env.DB, poll.id);
+  await queuePollUpdate(env, poll.id, pollUpdateDelaySeconds(env));
+};
+
+/**
+ * Queue the `Update(Question)` with a poll's final counts, as Mastodon's
+ * `PollExpirationNotifyWorker` does once a local poll ends. No debounce: no
+ * vote can follow. A job a vote already queued runs after the end and sends
+ * the final counts itself.
+ */
+export const scheduleFinalPollUpdate = (env: Env, pollId: string): Promise<void> =>
+  queuePollUpdate(env, pollId, 0);
+
+const queuePollUpdate = async (env: Env, pollId: string, delaySeconds: number): Promise<void> => {
+  const claimed = await claimPollUpdate(env.DB, pollId);
   if (claimed.isErr() || !claimed.value) {
     return;
   }
   try {
     await env.OUTBOX_PROCESS_QUEUE.send(
-      { kind: "DistributePollUpdate", pollId: poll.id },
-      { delaySeconds: pollUpdateDelaySeconds(env) },
+      { kind: "DistributePollUpdate", pollId },
+      delaySeconds > 0 ? { delaySeconds } : undefined,
     );
   } catch {
-    await releasePollUpdate(env.DB, poll.id);
-    console.error(JSON.stringify({ kind: "PollUpdateNotQueued", pollId: poll.id }));
+    await releasePollUpdate(env.DB, pollId);
+    console.error(JSON.stringify({ kind: "PollUpdateNotQueued", pollId }));
   }
 };
 
@@ -87,7 +100,8 @@ const distributePollUpdate = async (
 
 /**
  * Queue handler: federate the poll's current counts. The slot is freed first,
- * so a vote that lands while this runs queues the next job.
+ * so a vote that lands while this runs queues the next job. A poll that hides
+ * its totals shows them once it has ended, as Mastodon's `show_totals_now?`.
  */
 export const processDistributePollUpdateJob = async (
   env: Env,
@@ -98,7 +112,10 @@ export const processDistributePollUpdateJob = async (
     await releasePollUpdate(env.DB, job.pollId);
     const identity = parseInstanceIdentity(env);
     const found = await findPollById(env.DB, job.pollId, undefined);
-    if (identity.isErr() || found.isErr() || !found.value || found.value.hideTotals) {
+    if (identity.isErr() || found.isErr() || !found.value) {
+      return { outcome: "ok", size: 0, chained: false };
+    }
+    if (found.value.hideTotals && Date.parse(found.value.expiresAt) > Date.now()) {
       return { outcome: "ok", size: 0, chained: false };
     }
     const status = await findStatusById(env.DB, found.value.statusId);

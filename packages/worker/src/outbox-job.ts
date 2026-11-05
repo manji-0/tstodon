@@ -99,8 +99,7 @@ export const processOutboxJob = async (
 ): Promise<OutboxJobOutcome> => {
   switch (job.kind) {
     case "ProcessExpiredPolls":
-      await processExpiredPolls(env);
-      return "ok";
+      return processExpiredPolls(env);
     case "RefreshLinkCards":
       await refreshStaleLinkCards(env);
       return "ok";

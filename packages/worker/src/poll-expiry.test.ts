@@ -4,6 +4,8 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { OutboxJob } from "@tstodon/domain";
 import { authHeaders } from "../test/auth-fixture";
+import { deliverTarget } from "../test/delivery-fixture";
+import { remoteActor } from "../test/remote-actor-fixture";
 import { processOutboxJob } from "./outbox-job";
 import { loadNotePoll, recordRemotePollVote } from "./poll-store";
 
@@ -35,18 +37,25 @@ const send = async (email: string, path: string, body: Record<string, unknown> =
 
 const PostedPoll = z.object({
   id: z.string(),
-  account: z.object({ id: z.string() }),
+  uri: z.string(),
+  account: z.object({ id: z.string(), username: z.string() }),
   poll: z.object({ id: z.string() }),
 });
 
-const createPoll = async (email: string, multiple = false) => {
+const createPoll = async (email: string, multiple = false, hideTotals = false) => {
   const response = await send(email, "/api/v1/statuses", {
     status: "poll",
-    poll: { options: ["yes", "no"], expires_in: 3600, multiple },
+    poll: { options: ["yes", "no"], expires_in: 3600, multiple, hide_totals: hideTotals },
   });
   expect(response.status).toBe(200);
   const posted = read(PostedPoll, response.body);
-  return { statusId: posted.id, pollId: posted.poll.id, authorId: posted.account.id };
+  return {
+    statusId: posted.id,
+    statusUri: posted.uri,
+    pollId: posted.poll.id,
+    authorId: posted.account.id,
+    authorUsername: posted.account.username,
+  };
 };
 
 const vote = async (email: string, pollId: string, choices: number[] = [0]) =>
@@ -57,12 +66,59 @@ const endPoll = (pollId: string) =>
     .bind("2020-01-01T00:00:00.000Z", pollId)
     .run();
 
-const runExpiryJob = async () => {
-  const job = OutboxJob.parse({ kind: "ProcessExpiredPolls" });
+const runJob = async (on: Env, value: unknown) => {
+  const job = OutboxJob.parse(value);
   if (job.isErr()) {
-    throw new Error("expired polls job rejected");
+    throw new Error("outbox job rejected");
   }
-  await processOutboxJob(env, job.value);
+  await processOutboxJob(on, job.value);
+};
+
+const runExpiryJob = (on: Env = env) => runJob(on, { kind: "ProcessExpiredPolls" });
+
+/** The Worker's env with a queue that records each job sent to it. */
+const recordingEnv = () => {
+  const sent: unknown[] = [];
+  const queue = {
+    send: async (message: unknown) => {
+      sent.push(message);
+    },
+    sendBatch: async (messages: ReadonlyArray<{ body: unknown }>) => {
+      sent.push(...messages.map((message) => message.body));
+    },
+  };
+  const proxied = new Proxy(env, {
+    get: (target, key) => (key === "OUTBOX_PROCESS_QUEUE" ? queue : Reflect.get(target, key)),
+  });
+  return { env: proxied, sent };
+};
+
+const sentJobs = (sent: ReadonlyArray<unknown>, job: Record<string, unknown>) =>
+  sent.filter((message) => JSON.stringify(message) === JSON.stringify(job));
+
+const QuestionUpdate = z.object({
+  type: z.literal("Update"),
+  object: z.object({
+    id: z.string(),
+    type: z.literal("Question"),
+    endTime: z.string(),
+    closed: z.string().optional(),
+    votersCount: z.number().optional(),
+    oneOf: z.array(z.object({ name: z.string(), replies: z.object({ totalItems: z.number() }) })),
+  }),
+});
+
+/** The `Update(Question)` activities queued for the author, oldest first. */
+const questionUpdates = async (authorId: string) => {
+  const rows = await env.DB.prepare(
+    "SELECT id, payload_json FROM outbound_activities WHERE account_id = ? AND kind = 'Update' ORDER BY rowid",
+  )
+    .bind(authorId)
+    .all<{ id: string; payload_json: string }>();
+  return rows.results.map((row) => ({
+    activityId: row.id,
+    activity: read(QuestionUpdate, JSON.parse(row.payload_json)),
+  }));
 };
 
 const pollNotifications = async (email: string) =>
@@ -221,4 +277,95 @@ describe("local poll expiry notifications", () => {
       .first("n");
     expect(pending).toBe(0);
   });
+});
+
+describe("final counts of a local poll", () => {
+  it("delivers one Update(Question) with the final counts to remote followers once it ends", async () => {
+    const poll = await createPoll("local-poll-final-author@example.com");
+    const fan = await remoteActor("poll-final-fan", "fans.example");
+    expect(
+      await fan.send({
+        id: `${fan.actorUri}/follows/poll-final`,
+        type: "Follow",
+        object: `https://example.com/users/${poll.authorUsername}`,
+      }),
+    ).toBe(202);
+    await vote("local-poll-final-voter@example.com", poll.pollId, [1]);
+    // The vote's debounced Update has gone out by the time the poll ends.
+    await runJob(env, { kind: "DistributePollUpdate", pollId: poll.pollId });
+    const before = await questionUpdates(poll.authorId);
+
+    await endPoll(poll.pollId);
+    const recording = recordingEnv();
+    await runExpiryJob(recording.env);
+    await runExpiryJob(recording.env);
+    const job = { kind: "DistributePollUpdate", pollId: poll.pollId };
+    expect(sentJobs(recording.sent, job)).toHaveLength(1);
+
+    await runJob(env, job);
+    const [queued, ...extra] = (await questionUpdates(poll.authorId)).slice(before.length);
+    expect(extra).toEqual([]);
+    if (!queued) {
+      throw new Error("no final Update queued");
+    }
+    await runJob(env, { kind: "ExpandFollowers", activityId: queued.activityId });
+    const delivered = await deliverTarget(queued.activityId, `${fan.actorUri}/inbox`);
+    expect(read(QuestionUpdate, await delivered.json()).object).toMatchObject({
+      id: poll.statusUri,
+      endTime: "2020-01-01T00:00:00.000Z",
+      closed: "2020-01-01T00:00:00.000Z",
+      votersCount: 1,
+      oneOf: [
+        { name: "yes", replies: { totalItems: 0 } },
+        { name: "no", replies: { totalItems: 1 } },
+      ],
+    });
+  });
+
+  it("federates the counts of a poll that hid them until it ended", async () => {
+    const poll = await createPoll("local-poll-final-hidden@example.com", false, true);
+    await vote("local-poll-final-hidden-voter@example.com", poll.pollId, [0]);
+    await endPoll(poll.pollId);
+    const recording = recordingEnv();
+    await runExpiryJob(recording.env);
+    const job = { kind: "DistributePollUpdate", pollId: poll.pollId };
+    expect(sentJobs(recording.sent, job)).toHaveLength(1);
+
+    await runJob(env, job);
+    expect(
+      (await questionUpdates(poll.authorId)).map((update) => update.activity.object),
+    ).toMatchObject([
+      {
+        closed: "2020-01-01T00:00:00.000Z",
+        votersCount: 1,
+        oneOf: [{ replies: { totalItems: 1 } }, { replies: { totalItems: 0 } }],
+      },
+    ]);
+  });
+});
+
+describe("a backlog of ended polls", () => {
+  it("queues follow-up runs until every ended poll is announced, then stops", async () => {
+    const author = "local-poll-backlog-author@example.com";
+    await authHeaders(author);
+    const polls = await Promise.all(Array.from({ length: 51 }, () => createPoll(author)));
+    await Promise.all(polls.map((poll) => endPoll(poll.pollId)));
+    const followUp = { kind: "ProcessExpiredPolls" };
+
+    let run = recordingEnv();
+    await runExpiryJob(run.env);
+    expect(sentJobs(run.sent, followUp)).toHaveLength(1);
+    for (let runs = 0; runs < 5 && sentJobs(run.sent, followUp).length > 0; runs += 1) {
+      run = recordingEnv();
+      await runExpiryJob(run.env);
+    }
+    expect(sentJobs(run.sent, followUp)).toEqual([]);
+
+    const unannounced = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM polls WHERE expiry_notified_at IS NULL AND id IN (${polls.map(() => "?").join(", ")})`,
+    )
+      .bind(...polls.map((poll) => poll.pollId))
+      .first("n");
+    expect(unannounced).toBe(0);
+  }, 60_000);
 });

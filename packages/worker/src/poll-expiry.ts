@@ -5,7 +5,9 @@ import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { documentsById } from "./documents-by-id";
 import { mastodonStatuses } from "./local-status-documents";
+import { measureJobPage } from "./metrics";
 import { notifyFromLocal, notifyFromRemote } from "./notify";
+import { scheduleFinalPollUpdate } from "./poll-update";
 import {
   claimLocalPollExpiryNotice,
   type EndedLocalPollVoter,
@@ -22,7 +24,7 @@ import { parseInstanceIdentity } from "./runtime-config";
 import { findStatusById } from "./status-store";
 import { publishToAccount } from "./stream-publish";
 
-/** Polls, and separately voters, handled per run; the rest wait for the next one. */
+/** Polls, and separately voters, handled per run; a full batch queues the next run. */
 const BATCH = 50;
 
 /** A local account to tell that a poll it voted on has ended. */
@@ -69,48 +71,64 @@ const notifyPollEnded = (
 };
 
 /**
+ * What one pass over a batch did: how many it claimed, and whether the batch
+ * was full, so more may be waiting.
+ */
+type Pass = Readonly<{ claimed: number; full: boolean }>;
+
+const NOTHING: Pass = { claimed: 0, full: false };
+
+/**
  * Tell local accounts that a poll they voted on has ended, local or remote.
  * Remote voters of a local poll hear it from their own servers. Each voter is
  * told once: the claim comes before the notification, so a redelivered job
  * finds nobody left to tell.
  */
-const notifyEndedPollVoters = async (env: Env, notifiedAt: string): Promise<void> => {
+const notifyEndedPollVoters = async (env: Env, notifiedAt: string): Promise<Pass> => {
   const [remote, local] = await Promise.all([
     listEndedRemotePollVoters(env.DB, notifiedAt, BATCH),
     listEndedLocalPollVoters(env.DB, notifiedAt, BATCH),
   ]);
-  const voters: ReadonlyArray<EndedPollVoter> = [
-    ...(remote.isOk() ? remote.value : []),
-    ...(local.isOk() ? local.value : []),
-  ];
-  for (const voter of voters) {
+  const remoteVoters = remote.isOk() ? remote.value : [];
+  const localVoters = local.isOk() ? local.value : [];
+  let claimedCount = 0;
+  for (const voter of [...remoteVoters, ...localVoters]) {
     const claimed = await claimNotice(env, notifiedAt, voter);
     if (claimed.isOk() && claimed.value) {
+      claimedCount += 1;
       await notifyPollEnded(env, voter);
     }
   }
+  return {
+    claimed: claimedCount,
+    full: remoteVoters.length >= BATCH || localVoters.length >= BATCH,
+  };
 };
 
 /**
- * Announce each local poll that has ended to its author: the status with its
- * final counts on the author's stream, and a `poll` notification from
- * themselves. The claim on the poll comes first, so the author is told once.
+ * Announce each local poll that has ended: to its author, the status with its
+ * final counts on their stream and a `poll` notification from themselves; to
+ * remote servers, an `Update(Question)` with the final counts. The claim on
+ * the poll comes first, so each is sent once.
  */
-const notifyEndedPollAuthors = async (env: Env, notifiedAt: string): Promise<void> => {
+const announceEndedLocalPolls = async (env: Env, notifiedAt: string): Promise<Pass> => {
   const identity = parseInstanceIdentity(env);
   if (identity.isErr()) {
-    return;
+    return NOTHING;
   }
   const expired = await listExpiredUnnotifiedPolls(env.DB, notifiedAt, BATCH);
   if (expired.isErr()) {
-    return;
+    return NOTHING;
   }
   const claimed: Array<Readonly<{ accountId: string; status: LocalStatus }>> = [];
+  let claimedCount = 0;
   for (const poll of expired.value) {
     const marked = await markPollExpiryNotified(env.DB, poll, notifiedAt);
     if (marked.isErr() || !marked.value) {
       continue;
     }
+    claimedCount += 1;
+    await scheduleFinalPollUpdate(env, poll.id);
     const status = await findStatusById(env.DB, poll.statusId);
     if (status.isOk() && status.value) {
       claimed.push({ accountId: poll.accountId, status: status.value });
@@ -134,11 +152,31 @@ const notifyEndedPollAuthors = async (env: Env, notifiedAt: string): Promise<voi
       });
     }
   }
+  return { claimed: claimedCount, full: expired.value.length >= BATCH };
 };
 
-/** The `ProcessExpiredPolls` job, as Mastodon's `PollExpirationNotifyWorker`. */
-export const processExpiredPolls = async (env: Env): Promise<void> => {
-  const notifiedAt = nowIso();
-  await notifyEndedPollVoters(env, notifiedAt);
-  await notifyEndedPollAuthors(env, notifiedAt);
-};
+/**
+ * The `ProcessExpiredPolls` job, as Mastodon's `PollExpirationNotifyWorker`.
+ * A full batch queues the next run at once rather than waiting for the hourly
+ * cron. Only a run that claimed something chains, so a batch that keeps
+ * failing waits for the cron instead of looping.
+ */
+export const processExpiredPolls = (env: Env): Promise<"ok" | "retry"> =>
+  measureJobPage(env, "ProcessExpiredPolls", async () => {
+    const notifiedAt = nowIso();
+    const passes = [
+      await notifyEndedPollVoters(env, notifiedAt),
+      await announceEndedLocalPolls(env, notifiedAt),
+    ];
+    const size = passes.reduce((sum, pass) => sum + pass.claimed, 0);
+    if (!passes.some((pass) => pass.full && pass.claimed > 0)) {
+      return { outcome: "ok", size, chained: false };
+    }
+    try {
+      await env.OUTBOX_PROCESS_QUEUE.send({ kind: "ProcessExpiredPolls" });
+    } catch {
+      console.error(JSON.stringify({ kind: "ExpiredPollsFollowUpNotQueued" }));
+      return { outcome: "ok", size, chained: false };
+    }
+    return { outcome: "ok", size, chained: true };
+  });
