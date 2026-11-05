@@ -89,7 +89,11 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void
   let replyTo: ThreadStatus | null = null;
   if (inReplyToId !== null) {
     const parent = await findReplyTarget(env, inReplyToId.value, account.value.id);
-    if (parent.isErr() || !parent.value) {
+    // A failed read keeps the post for the next run, as the media check does.
+    if (parent.isErr()) {
+      return;
+    }
+    if (!parent.value) {
       await deleteScheduledStatus(env.DB, row.accountId, row.id);
       return;
     }
