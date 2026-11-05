@@ -14,7 +14,8 @@ const json = async (
 ): Promise<{ status: number; body: unknown }> => {
   const response = await SELF.fetch(`https://example.com${path}`, init);
   const contentType = response.headers.get("content-type") ?? "";
-  const body = contentType.includes("json") ? await response.json() : await response.text();
+  const text = await response.text();
+  const body: unknown = contentType.includes("json") && text.length > 0 ? JSON.parse(text) : text;
   return { status: response.status, body };
 };
 
@@ -267,5 +268,166 @@ describe("a status whose remote author is suspended", () => {
       display_name: "",
       suspended: true,
     });
+  });
+});
+
+const postAs = async (email: string, path: string, init: RequestInit = {}) =>
+  json(path, {
+    method: "POST",
+    ...init,
+    headers: { "content-type": "application/json", ...(await authHeaders(email)), ...init.headers },
+  });
+
+const favouriteRows = async (email: string, statusId: string): Promise<number> => {
+  const accountId = (await signedInAccount(email)).id;
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM favourites WHERE account_id = ?1 AND (local_status_id = ?2 OR remote_status_id = ?2)",
+  )
+    .bind(accountId, statusId)
+    .first<{ n: number }>();
+  return row?.n ?? -1;
+};
+
+const expectStripped = (body: unknown, statusId: string) => {
+  const status = read(Status, body);
+  expect(status.id).toBe(statusId);
+  expect(status.account).toMatchObject({ display_name: "", suspended: true });
+};
+
+describe("acting on a status whose local author is suspended", () => {
+  it("is refused, except withdrawing what the viewer already did", async () => {
+    const author = "sa-act-author@example.com";
+    const fan = "sa-act-fan@example.com";
+    const stranger = "sa-act-stranger@example.com";
+    const authorId = (await signedInAccount(author)).id;
+    const statusId = await posted(author, { status: "act on me" });
+    for (const action of ["favourite", "bookmark", "reblog"]) {
+      await post(fan, `/api/v1/statuses/${statusId}/${action}`);
+    }
+
+    await suspend(authorId);
+
+    for (const action of ["favourite", "bookmark", "reblog", "mute", "unmute"]) {
+      const response = await postAs(stranger, `/api/v1/statuses/${statusId}/${action}`);
+      expect(response.status, action).toBe(404);
+    }
+    expect(await favouriteRows(stranger, statusId)).toBe(0);
+    for (const action of ["unfavourite", "unbookmark", "unreblog"]) {
+      const response = await postAs(stranger, `/api/v1/statuses/${statusId}/${action}`);
+      expect(response.status, action).toBe(404);
+    }
+    for (const path of ["favourited_by", "reblogged_by", "history", "context"]) {
+      const response = await getAs(`/api/v1/statuses/${statusId}/${path}`, stranger);
+      expect(response.status, path).toBe(404);
+    }
+
+    for (const action of ["unfavourite", "unbookmark", "unreblog"]) {
+      const response = await postAs(fan, `/api/v1/statuses/${statusId}/${action}`);
+      expect(response.status, action).toBe(200);
+      expectStripped(response.body, statusId);
+    }
+    expect(await favouriteRows(fan, statusId)).toBe(0);
+  });
+
+  it("answers the quoting status, author stripped, when its quote is revoked", async () => {
+    const author = "sa-revoke-author@example.com";
+    const quoter = "sa-revoke-quoter@example.com";
+    const statusId = await posted(author, { status: "quote me, then not" });
+    const quoteId = await posted(quoter, { status: "quoting", quoted_status_id: statusId });
+
+    await suspend((await signedInAccount(quoter)).id);
+
+    const response = await postAs(author, `/api/v1/statuses/${statusId}/quotes/${quoteId}/revoke`);
+    expect(response.status).toBe(200);
+    expectStripped(response.body, quoteId);
+  });
+});
+
+describe("acting on a status of a remote author on a suspended domain", () => {
+  it("refuses a favourite and answers each withdrawal with the status", async () => {
+    const fan = "sa-hidden-fan@example.com";
+    const stranger = "sa-hidden-stranger@example.com";
+    const author = await remoteActor("sa-hidden-author", "sa-hidden.example");
+    const statusId = await remoteNote(
+      author,
+      "https://sa-hidden.example/notes/one",
+      "2026-10-22T00:00:00.000Z",
+    );
+    await post(fan, `/api/v1/statuses/${statusId}/favourite`);
+    await post(fan, `/api/v1/statuses/${statusId}/bookmark`);
+    const blocked = await json("/api/v1/admin/domain_blocks", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await admin()) },
+      body: JSON.stringify({ domain: "sa-hidden.example", severity: "suspend" }),
+    });
+    expect(blocked.status).toBe(200);
+
+    const refused = await postAs(stranger, `/api/v1/statuses/${statusId}/favourite`);
+    expect(refused.status).toBe(404);
+    expect(await favouriteRows(stranger, statusId)).toBe(0);
+    for (const action of ["unfavourite", "unbookmark"]) {
+      const response = await postAs(fan, `/api/v1/statuses/${statusId}/${action}`);
+      expect(response.status, action).toBe(200);
+      expectStripped(response.body, statusId);
+    }
+  });
+});
+
+describe("a storage error while presenting a status's author", () => {
+  // Reading this one account's standing fails; every other account's reads as before.
+  const unreadableStanding = async <T>(accountId: string, run: () => Promise<T>): Promise<T> => {
+    await env.DB.exec("ALTER TABLE account_moderation RENAME TO account_moderation_kept");
+    await env.DB.prepare(
+      "INSERT INTO account_moderation_kept (account_id, moderation) VALUES (?, 'Silenced')",
+    )
+      .bind(accountId)
+      .run();
+    await env.DB.exec(
+      `CREATE VIEW account_moderation AS SELECT account_id, CASE WHEN account_id = '${accountId}' THEN json('{') ELSE moderation END AS moderation, created_at, updated_at FROM account_moderation_kept`,
+    );
+    try {
+      return await run();
+    } finally {
+      await env.DB.exec("DROP VIEW account_moderation");
+      await env.DB.exec("ALTER TABLE account_moderation_kept RENAME TO account_moderation");
+      await env.DB.prepare("DELETE FROM account_moderation WHERE account_id = ?")
+        .bind(accountId)
+        .run();
+    }
+  };
+
+  it("answers 500, and leaves the write undone or retryable", async () => {
+    const quoted = "sa-storage-quoted@example.com";
+    const me = "sa-storage-me@example.com";
+    const quotedId = (await signedInAccount(quoted)).id;
+    const theirs = await posted(quoted, { status: "theirs" });
+    const mine = await posted(me, { status: "the original text", quoted_status_id: theirs });
+    const key = { "Idempotency-Key": "sa-storage-key" };
+    const create = () =>
+      postAs(me, "/api/v1/statuses", {
+        headers: key,
+        body: JSON.stringify({ status: "with a key", quoted_status_id: theirs }),
+      });
+
+    const [byId, favourite, edit, created] = await unreadableStanding(quotedId, async () => [
+      await getAs(`/api/v1/statuses/${theirs}`, me),
+      await postAs(me, `/api/v1/statuses/${theirs}/favourite`),
+      await json(`/api/v1/statuses/${mine}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", ...(await authHeaders(me)) },
+        body: JSON.stringify({ status: "an edit" }),
+      }),
+      await create(),
+    ]);
+    expect([byId, favourite, edit, created].map((response) => response.status)).toEqual([
+      500, 500, 500, 500,
+    ]);
+    expect(await favouriteRows(me, theirs)).toBe(0);
+
+    const history = await getAs(`/api/v1/statuses/${mine}/history`, me);
+    expect(read(z.array(z.object({ content: z.string() })), history.body)).toEqual([
+      expect.objectContaining({ content: expect.stringContaining("the original text") }),
+    ]);
+    expect((await create()).status).toBe(200);
   });
 });
