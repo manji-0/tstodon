@@ -1,3 +1,5 @@
+import { SUPPRESSED_ACCOUNT_IDS_SQL, SUPPRESSED_ACTOR_URIS_SQL } from "./block-mute-store";
+import { DOMAIN_SUSPENDED_ACTORS_SQL } from "./domain-hidden-actors";
 import { ENTITY_ID_DIGITS } from "./ids";
 import type { ListRepliesPolicy } from "./list-store";
 
@@ -27,6 +29,44 @@ export const EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL = `(
   JOIN account_lists l ON l.id = m.list_id
   WHERE l.account_id = ? AND l.exclusive <> 0
 )`;
+
+/**
+ * The local boosts (`LocalReblog` rows of `statuses`) a feed of the viewer
+ * keeps, by Mastodon's `FeedManager`: the viewer's own always; another's
+ * unless the viewer's follow of the booster hides its reblogs, or the viewer
+ * does not see the boosted status's author (blocks either way and mutes of a
+ * local one, blocks, mutes and domain blocks of a remote one). Notes pass.
+ */
+export const feedLocalReblogsSql = (viewerId: string, now: string): SqlFragment => {
+  const remoteAuthor =
+    "COALESCE((SELECT r.actor_uri FROM remote_statuses r WHERE r.id = statuses.reblog_of_remote_id), '')";
+  return {
+    sql: `AND (
+      statuses.kind <> 'LocalReblog' OR statuses.account_id = ? OR (
+        statuses.account_id NOT IN (
+          SELECT target_account_id FROM follows
+          WHERE follower_account_id = ? AND kind = 'Accepted' AND reblogs = 0
+        )
+        AND COALESCE((SELECT t.account_id FROM statuses t WHERE t.id = statuses.reblog_of_id), '')
+          NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
+        AND ${remoteAuthor} NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
+        AND ${remoteAuthor} NOT IN ${DOMAIN_SUSPENDED_ACTORS_SQL}
+      )
+    )`,
+    binds: [
+      viewerId,
+      viewerId,
+      viewerId,
+      viewerId,
+      viewerId,
+      now,
+      viewerId,
+      viewerId,
+      now,
+      viewerId,
+    ],
+  };
+};
 
 /**
  * Narrows the follow `f` to the feed's follows: a list's members, and for

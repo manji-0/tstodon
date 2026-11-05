@@ -10,7 +10,7 @@ import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import { hydrateStatusRows, STATUS_SELECT } from "./status-store";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import { RemoteAccountId } from "./remote-account-id";
-import { feedLocalRepliesSql, type ListFeed } from "./followed-feed";
+import { feedLocalReblogsSql, feedLocalRepliesSql, type ListFeed } from "./followed-feed";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import {
   createList as createListSql,
@@ -312,13 +312,16 @@ export const listListTimelineStatuses = async (
   runD1(async () => {
     // The reply policy's SQL depends on the list, so this stays on D1 prepare.
     const replies = feedLocalRepliesSql(input.feed, input.ownerAccountId);
+    const now = nowIso();
+    const reblogs = feedLocalReblogsSql(input.ownerAccountId, now);
     const { where, order, binds: cursorBinds } = idCursorFragment(input.cursor);
     const binds = [
       input.feed.listId,
       input.ownerAccountId,
       input.ownerAccountId,
       input.ownerAccountId,
-      nowIso(),
+      now,
+      ...reblogs.binds,
       ...replies.binds,
       ...cursorBinds,
       input.limit,
@@ -326,10 +329,10 @@ export const listListTimelineStatuses = async (
     const { results } = await db
       .prepare(
         `SELECT ${STATUS_SELECT} FROM statuses
-         WHERE kind = 'LocalNote'
-           AND visibility != 'direct'
+         WHERE visibility != 'direct'
            AND account_id IN (SELECT member_account_id FROM account_list_members WHERE list_id = ?)
            AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
+           ${reblogs.sql}
            ${replies.sql}
            ${where} ${order}
          LIMIT ?`,

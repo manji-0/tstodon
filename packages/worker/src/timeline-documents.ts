@@ -370,7 +370,7 @@ export const remoteAccountTimelineDocuments = async (
 
 /**
  * One of the viewer's lists as a timeline, under home's rules: its local
- * members' statuses (by the list's `replies_policy`) and the notes and boosts
+ * members' statuses (by the list's `replies_policy`) and boosts, and the notes and boosts
  * of its remote members, which the viewer follows.
  */
 export const listTimelineDocuments = async (

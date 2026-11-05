@@ -3,7 +3,7 @@ import type { Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { type RepositoryError, runD1 } from "./d1";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
-import { EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL } from "./followed-feed";
+import { EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL, feedLocalReblogsSql } from "./followed-feed";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { hydrateStatusRows, statusSelect } from "./status-store";
 
@@ -62,21 +62,16 @@ export const listHomeStatuses = async (
     const suppressed = `AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
          AND account_id NOT IN ${EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL}`;
     const { where, order, binds } = cursorFragment(cursor);
-    // Followers who turned reblogs off keep their own boosts out of the feed,
-    // and a follow with `languages[]` only keeps statuses in those languages
+    const now = nowIso();
+    const reblogs = feedLocalReblogsSql(accountId, now);
+    // A follow with `languages[]` only keeps statuses in those languages
     // (statuses without a language still pass, as in Mastodon).
     const sql = `SELECT ${statusSelect} FROM statuses
          WHERE visibility != 'direct' AND (account_id = ? OR account_id IN (
            SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
          ))
          ${suppressed}
-         AND (
-           account_id = ? OR kind <> 'LocalReblog'
-           OR account_id NOT IN (
-             SELECT target_account_id FROM follows
-             WHERE follower_account_id = ? AND kind = 'Accepted' AND reblogs = 0
-           )
-         )
+         ${reblogs.sql}
          AND NOT EXISTS (
            SELECT 1 FROM follows f
            WHERE f.follower_account_id = ? AND f.kind = 'Accepted'
@@ -95,12 +90,10 @@ export const listHomeStatuses = async (
         accountId,
         accountId,
         accountId,
-        nowIso(),
+        now,
         // Exclusive lists: the viewer.
         accountId,
-        // Reblogs off: the viewer, then the follows being checked.
-        accountId,
-        accountId,
+        ...reblogs.binds,
         // Languages: the follow whose list is checked.
         accountId,
         ...binds,
