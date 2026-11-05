@@ -1,6 +1,7 @@
 import type {
   GroupedNotificationEntry,
   NewNotification,
+  NotificationGroupSummary,
   NotificationGroupTarget,
   RemoteNotificationWithdrawal,
 } from "@tstodon/domain";
@@ -15,10 +16,12 @@ import {
   countUnreadNotifications as countUnreadNotificationsSql,
   deleteRemoteNotifications as deleteRemoteNotificationsSql,
   dismissNotification as dismissNotificationSql,
+  dismissNotificationGroup as dismissNotificationGroupSql,
   findNotificationById as findNotificationByIdSql,
   findNotificationOwned as findNotificationOwnedSql,
   insertNotification as insertNotificationSql,
   listNotifications as listNotificationsSql,
+  summarizeNotificationGroup as summarizeNotificationGroupSql,
 } from "./generated/prisma/sql";
 
 const PresentRow = z.object({ present: z.number() });
@@ -128,6 +131,17 @@ const notificationCursor = (
   return { id: filters.maxId ?? "", greaterThan: 0, ascending: 0 };
 };
 
+/**
+ * The `notificationId`, `groupType`, `groupTarget` SQL parameters naming a
+ * group key's notifications; all empty for no group.
+ */
+const groupParameters = (group: NotificationGroupTarget | undefined): [string, string, string] => {
+  if (!group) {
+    return ["", "", ""];
+  }
+  return group.kind === "Notification" ? [group.id, "", ""] : ["", group.type, group.target];
+};
+
 export const listNotifications = async (
   db: D1Database,
   accountId: string,
@@ -149,9 +163,7 @@ export const listNotifications = async (
         cursor.greaterThan,
         cursor.ascending,
         filters.includeFiltered ? 1 : 0,
-        filters.group?.kind === "Notification" ? filters.group.id : "",
-        filters.group?.kind === "Group" ? filters.group.type : "",
-        filters.group?.kind === "Group" ? filters.group.target : "",
+        ...groupParameters(filters.group),
       ),
       NotificationQueryRowSchema,
     );
@@ -215,6 +227,58 @@ export const dismissNotification = async (
     }
     await runTyped(db, dismissNotificationSql(accountId, notificationId, nowIso()));
     return true;
+  });
+
+/** Hide every notification a group key names, in one statement whatever the group's size. */
+export const dismissNotificationGroup = async (
+  db: D1Database,
+  accountId: string,
+  group: NotificationGroupTarget,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, dismissNotificationGroupSql(accountId, nowIso(), ...groupParameters(group)));
+  });
+
+const NotificationGroupSummaryRowSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  from_account_id: z.string(),
+  status_id: z.string().nullable(),
+  report_id: z.string().nullable(),
+  severance_event_id: z.string().nullable(),
+  created_at: z.string(),
+  notifications_count: z.number(),
+  oldest_id: z.string(),
+});
+
+/** A group key's count, oldest id and newest notification; undefined when it names nothing visible. */
+export const summarizeNotificationGroup = async (
+  db: D1Database,
+  accountId: string,
+  group: NotificationGroupTarget,
+): Promise<Result<NotificationGroupSummary | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const [row] = await queryTyped(
+      db,
+      summarizeNotificationGroupSql(accountId, nowIso(), ...groupParameters(group)),
+      NotificationGroupSummaryRowSchema,
+    );
+    if (!row) {
+      return undefined;
+    }
+    return {
+      newest: {
+        id: row.id,
+        kind: row.kind,
+        fromAccountId: row.from_account_id,
+        statusId: row.status_id,
+        reportId: row.report_id,
+        severanceEventId: row.severance_event_id,
+        createdAt: row.created_at,
+      },
+      notificationsCount: row.notifications_count,
+      oldestId: row.oldest_id,
+    };
   });
 
 /** Hide every current notification for an account by moving the clear marker. */

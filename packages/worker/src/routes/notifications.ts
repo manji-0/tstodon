@@ -1,5 +1,10 @@
 import type { Context } from "hono";
-import { type LocalStatus, NotificationGroup, type NotificationGroupPage } from "@tstodon/domain";
+import {
+  type LocalStatus,
+  NotificationGroup,
+  type NotificationGroupPage,
+  type NotificationGroupTarget,
+} from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "../d1";
 import { isTruthy } from "../form-values";
@@ -12,6 +17,7 @@ import {
 import {
   jsonAuthError,
   jsonRepositoryError,
+  queryAccountsLimit,
   queryCursor,
   queryNotificationsLimit,
   setLinkHeader,
@@ -30,11 +36,13 @@ import {
   clearNotifications,
   countUnreadNotifications,
   dismissNotification,
+  dismissNotificationGroup,
   findNotificationById,
   listNotifications,
   type NotificationFilters,
   type NotificationRow,
   groupedEntry,
+  summarizeNotificationGroup,
 } from "../notification-store";
 import { findStatusesByIds } from "../status-store";
 import { mutedThreadStatusIds } from "../status-mute-store";
@@ -306,51 +314,55 @@ const groupedNotificationPage = async (
 };
 
 /**
- * The visible notifications a group key names, newest first, whatever page
- * they fall on: as Mastodon's `by_group_key`, which ignores the list's cursors,
- * `limit` and type filters.
+ * Mastodon's `by_group_key` for one account. A type and target key leaves out
+ * the notifications the policy holds, which Mastodon gives no group key; an
+ * `ungrouped-<id>` key names its notification held or not. The list's cursors,
+ * `limit` and type filters do not apply.
  */
-const notificationsByGroupKey = async (
+const groupTarget = (
   c: Context<{ Bindings: Env }>,
-  accountId: string,
   groupKey: string,
-  includeFiltered: boolean,
-): Promise<Result<NotificationRow[], RepositoryError>> => {
-  const { groupedTypes } = groupedQuery(c);
-  const group = NotificationGroup.target(groupKey, groupedTypes);
-  if (!group) {
-    return ok([]);
-  }
-  return listNotifications(c.env.DB, accountId, ALL_ROWS, { group, includeFiltered });
+): Readonly<{ group: NotificationGroupTarget; includeFiltered: boolean }> | undefined => {
+  const group = NotificationGroup.target(groupKey, groupedQuery(c).groupedTypes);
+  return group ? { group, includeFiltered: group.kind === "Notification" } : undefined;
 };
 
-/** One group by key, from senders that are available (Mastodon's `without_suspended`). */
+/**
+ * One group by key, as Mastodon's `show`: the count and bounds come from SQL,
+ * the sample from the newest senders that are available (`without_suspended`).
+ * Undefined when the key names no notification from an available sender.
+ */
 const notificationGroupByKey = async (
   c: Context<{ Bindings: Env }>,
   accountId: string,
   groupKey: string,
-): Promise<Result<NotificationGroupPage, RepositoryError>> => {
-  const { groupedTypes, filters } = groupedQuery(c);
-  const rows = await notificationsByGroupKey(
-    c,
-    accountId,
-    groupKey,
-    filters.includeFiltered === true,
-  );
+): Promise<Result<NotificationGroup | undefined, RepositoryError>> => {
+  const target = groupTarget(c, groupKey);
+  if (!target) {
+    return ok(undefined);
+  }
+  const summary = await summarizeNotificationGroup(c.env.DB, accountId, target.group);
+  if (summary.isErr()) {
+    return err(summary.error);
+  }
+  if (!summary.value) {
+    return ok(undefined);
+  }
+  const rows = await listNotifications(c.env.DB, accountId, GROUP_SENDER_WINDOW, target);
   if (rows.isErr()) {
     return err(rows.error);
   }
-  const senders = await availableAccountIds(
-    c.env,
-    rows.value.map((row) => row.from_account_id),
-  );
-  if (senders.isErr()) {
-    return err(senders.error);
+  const senderIds = rows.value.map((row) => row.from_account_id);
+  const available = await availableAccountIds(c.env, senderIds);
+  if (available.isErr()) {
+    return err(available.error);
   }
-  const entries = rows.value
-    .filter((row) => senders.value.has(row.from_account_id))
-    .map(groupedEntry);
-  return ok(NotificationGroup.fold(entries, groupedTypes, 1));
+  const senders = senderIds.filter((id) => available.value.has(id));
+  return ok(
+    senders.length === 0
+      ? undefined
+      : NotificationGroup.summarized(groupKey, summary.value, senders),
+  );
 };
 
 const groupEnvelope = async (
@@ -428,8 +440,12 @@ const NOTIFICATION_GROUP_ROW_CAP = 200;
 /** How many row windows one grouped page reads past windows with nothing to show. */
 const NOTIFICATION_GROUP_WINDOWS = 5;
 
-/** SQLite reads a negative `LIMIT` as no limit. */
-const ALL_ROWS = -1;
+/**
+ * How many of a group's newest notifications a read by key takes its sample
+ * senders from. Mastodon reads the sample in SQL; availability is decided
+ * here, so the read is bounded instead.
+ */
+const GROUP_SENDER_WINDOW = 40;
 
 export const getV2NotificationsUnreadCount = async (
   c: Context<{ Bindings: Env }, "/api/v2/notifications/unread_count">,
@@ -498,19 +514,20 @@ export const getV2NotificationsByGroupKey = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const page = await notificationGroupByKey(c, user.value.id, c.req.param("groupKey"));
-  if (page.isErr()) {
-    return jsonRepositoryError(c, page.error.message);
+  const group = await notificationGroupByKey(c, user.value.id, c.req.param("groupKey"));
+  if (group.isErr()) {
+    return jsonRepositoryError(c, group.error.message);
   }
-  if (page.value.kind === "Empty") {
+  if (!group.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
+  // As Mastodon's `show`, the envelope carries the sample accounts only.
   const envelope = await groupEnvelope(
     c,
     user.value.id,
-    page.value.groups,
-    page.value.accountIds,
-    page.value.statusIds,
+    [group.value],
+    group.value.sampleAccountIds,
+    group.value.statusId ? [group.value.statusId] : [],
     false,
   );
   return envelope.isErr() ? jsonRepositoryError(c, envelope.error.message) : c.json(envelope.value);
@@ -527,19 +544,35 @@ export const getV2NotificationsByGroupKeyAccounts = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const page = await notificationGroupByKey(c, user.value.id, c.req.param("groupKey"));
-  if (page.isErr()) {
-    return jsonRepositoryError(c, page.error.message);
+  // As Mastodon's `Notifications::AccountsController`: one sender per
+  // notification of the group, newest first, paged by notification id.
+  const limit = queryAccountsLimit(c.req.query("limit"));
+  const cursor = queryCursor(c);
+  const target = groupTarget(c, c.req.param("groupKey"));
+  const rows = target
+    ? await listNotifications(c.env.DB, user.value.id, limit, { ...target, ...cursor })
+    : ok([]);
+  if (rows.isErr()) {
+    return jsonRepositoryError(c, rows.error.message);
   }
-  const group = page.value.kind === "Page" ? page.value.groups[0] : undefined;
-  if (!group) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  // A `min_id` read comes back oldest first.
+  const page = cursor.minId === undefined ? rows.value : rows.value.toReversed();
+  const senderIds = page.map((row) => row.from_account_id);
+  const available = await availableAccountIds(c.env, senderIds);
+  if (available.isErr()) {
+    return jsonRepositoryError(c, available.error.message);
   }
-  const documents = await accountDocumentsByIds(c.env, identity.value, group.fromAccountIds);
+  const shown = senderIds.filter((id) => available.value.has(id));
+  const documents = await accountDocumentsByIds(c.env, identity.value, shown);
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }
-  return c.json(group.fromAccountIds.flatMap((id) => documents.value.get(id) ?? []));
+  setPaginationLinks(
+    c,
+    page.map((row) => row.id),
+    limit,
+  );
+  return c.json(shown.flatMap((id) => documents.value.get(id) ?? []));
 };
 
 export const postV2NotificationsByGroupKeyDismiss = async (
@@ -549,17 +582,12 @@ export const postV2NotificationsByGroupKeyDismiss = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  // As Mastodon's `by_group_key(...).destroy_all`: every notification of the
-  // group, held ones and those of unavailable senders included.
-  const rows = await notificationsByGroupKey(c, user.value.id, c.req.param("groupKey"), true);
-  if (rows.isErr()) {
-    return jsonRepositoryError(c, rows.error.message);
-  }
-  if (rows.value.length === 0) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  for (const { id } of rows.value) {
-    const dismissed = await dismissNotification(c.env.DB, user.value.id, id);
+  // As Mastodon's `by_group_key(...).destroy_all` and `render_empty`: every
+  // notification the key names, whoever sent it, and 200 even when it names
+  // none.
+  const target = groupTarget(c, c.req.param("groupKey"));
+  if (target) {
+    const dismissed = await dismissNotificationGroup(c.env.DB, user.value.id, target.group);
     if (dismissed.isErr()) {
       return jsonRepositoryError(c, dismissed.error.message);
     }

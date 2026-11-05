@@ -172,6 +172,8 @@ export * from "./sql/detachStatusMedia";
 
 export * from "./sql/dismissNotification";
 
+export * from "./sql/dismissNotificationGroup";
+
 export * from "./sql/dismissSuggestion";
 
 export * from "./sql/emailDomainAccountHistory";
@@ -669,6 +671,8 @@ export * from "./sql/setRemoteStatusCard";
 export * from "./sql/setStatusReplyUri";
 
 export * from "./sql/settleRemotePollOwnVotes";
+
+export * from "./sql/summarizeNotificationGroup";
 
 export * from "./sql/unfeatureTag";
 

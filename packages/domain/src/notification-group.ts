@@ -122,9 +122,7 @@ const group = (
   rangeStart: string | undefined,
 ): NotificationGroup | undefined => {
   const [mostRecent] = members;
-  const pageMin = members.findLast(
-    (entry) => rangeStart === undefined || entry.id >= rangeStart,
-  );
+  const pageMin = members.findLast((entry) => rangeStart === undefined || entry.id >= rangeStart);
   if (!mostRecent || !pageMin) {
     return undefined;
   }
