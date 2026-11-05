@@ -236,24 +236,18 @@ export const emailDomainHistory = async (
     const startOfToday = new Date();
     startOfToday.setUTCHours(0, 0, 0, 0);
     const since = new Date(startOfToday.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
-    const counts = new Map<string, number>();
     const rows = await queryTyped(
       db,
       emailDomainAccountHistorySql(domain, since.toISOString()),
       DayAccountsRow,
     );
-    for (const row of rows) {
-      counts.set(row.day, Number(row.accounts));
-    }
-    const history: Array<{ day: string; accounts: string; uses: string }> = [];
-    for (let index = 0; index < days; index += 1) {
+    const counts = new Map(rows.map((row) => [row.day, Number(row.accounts)]));
+    return Array.from({ length: Math.max(0, Math.ceil(days)) }, (_, index) => {
       const day = new Date(since.getTime() + index * 24 * 60 * 60 * 1000);
-      const key = day.toISOString().slice(0, 10);
-      history.push({
+      return {
         day: String(Math.floor(day.getTime() / 1000)),
-        accounts: String(counts.get(key) ?? 0),
+        accounts: String(counts.get(day.toISOString().slice(0, 10)) ?? 0),
         uses: "0",
-      });
-    }
-    return history.toReversed();
+      };
+    }).toReversed();
   });

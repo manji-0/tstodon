@@ -36,12 +36,8 @@ export const accountCountsByIds = async (
   accountIds: ReadonlyArray<string>,
 ): Promise<Result<Map<string, AccountCounts>, RepositoryError>> => {
   const unique = [...new Set(accountIds.filter((id) => id.length > 0))];
-  const counts = new Map<string, AccountCounts>();
-  for (const id of unique) {
-    counts.set(id, { followers: 0, following: 0, statuses: 0 });
-  }
   if (unique.length === 0) {
-    return ok(counts);
+    return ok(new Map<string, AccountCounts>());
   }
   const idsJson = jsonStringArray(unique);
   const queried = await runD1Batch(db, [
@@ -53,21 +49,21 @@ export const accountCountsByIds = async (
     return err(queried.error);
   }
   const AccountCountRowSchema = z.object({ account_id: z.string(), count: z.number() });
-  const apply = (
-    result: D1Result | undefined,
-    key: "followers" | "following" | "statuses",
-  ): void => {
-    for (const row of parseRows(AccountCountRowSchema, result?.results)) {
-      const current = counts.get(row.account_id) ?? {
-        followers: 0,
-        following: 0,
-        statuses: 0,
-      };
-      counts.set(row.account_id, { ...current, [key]: row.count });
-    }
-  };
-  apply(queried.value[0], "followers");
-  apply(queried.value[1], "following");
-  apply(queried.value[2], "statuses");
-  return ok(counts);
+  const countsOf = (result: D1Result | undefined): ReadonlyMap<string, number> =>
+    new Map(
+      parseRows(AccountCountRowSchema, result?.results).map((row) => [row.account_id, row.count]),
+    );
+  const [followers, following, statuses] = queried.value.map(countsOf);
+  return ok(
+    new Map(
+      unique.map((id) => [
+        id,
+        {
+          followers: followers?.get(id) ?? 0,
+          following: following?.get(id) ?? 0,
+          statuses: statuses?.get(id) ?? 0,
+        },
+      ]),
+    ),
+  );
 };

@@ -31,14 +31,10 @@ export const listStatusEdits = async (
 ): Promise<Result<Record<string, unknown>[], RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(db, listStatusEditSnapshotsSql(statusId), SnapshotJsonRow);
-    const snapshots: Record<string, unknown>[] = [];
-    for (const row of rows) {
+    return rows.flatMap((row): Record<string, unknown>[] => {
       const parsed = parseJsonText(row.snapshot_json).unwrapOr(undefined);
-      if (parsed !== null && typeof parsed === "object") {
-        snapshots.push({ ...parsed });
-      }
-    }
-    return snapshots;
+      return parsed !== null && typeof parsed === "object" ? [{ ...parsed }] : [];
+    });
   });
 
 export const findStatusUpdatedAt = async (

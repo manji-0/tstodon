@@ -53,9 +53,8 @@ export const listRemoteStatusMentions = async (
   db: D1Database,
   statusIds: ReadonlyArray<string>,
 ): Promise<Result<ReadonlyMap<string, ReadonlyArray<string>>, RepositoryError>> => {
-  const mentions = new Map<string, string[]>();
   if (statusIds.length === 0) {
-    return ok(mentions);
+    return ok(new Map<string, string[]>());
   }
   const rows = await runD1(async () =>
     queryTyped(
@@ -67,12 +66,14 @@ export const listRemoteStatusMentions = async (
   if (rows.isErr()) {
     return err(rows.error);
   }
-  for (const row of rows.value) {
-    const bucket = mentions.get(row.status_id) ?? [];
-    bucket.push(row.account_id);
-    mentions.set(row.status_id, bucket);
-  }
-  return ok(mentions);
+  return ok(
+    new Map(
+      [...Map.groupBy(rows.value, (row) => row.status_id)].map(([statusId, mentioned]) => [
+        statusId,
+        mentioned.map((row) => row.account_id),
+      ]),
+    ),
+  );
 };
 
 export const replaceStatusMentions = async (
@@ -132,10 +133,9 @@ export const listStatusMentions = async (
   db: D1Database,
   statusIds: ReadonlyArray<string>,
 ): Promise<Result<ReadonlyMap<string, StatusMentions>, RepositoryError>> => {
-  const mentions = new Map<string, { accountIds: string[]; actorUris: string[] }>();
   const unique = [...new Set(statusIds)];
   if (unique.length === 0) {
-    return ok(mentions);
+    return ok(new Map<string, StatusMentions>());
   }
   const queried = await runD1(async () =>
     Promise.all([
@@ -146,21 +146,19 @@ export const listStatusMentions = async (
   if (queried.isErr()) {
     return err(queried.error);
   }
-  const entry = (statusId: string) => {
-    const existing = mentions.get(statusId);
-    if (existing) {
-      return existing;
-    }
-    const created = { accountIds: [], actorUris: [] };
-    mentions.set(statusId, created);
-    return created;
-  };
   const [locals, remotes] = queried.value;
-  for (const row of locals) {
-    entry(row.status_id).accountIds.push(row.account_id);
-  }
-  for (const row of remotes) {
-    entry(row.status_id).actorUris.push(row.actor_uri);
-  }
-  return ok(mentions);
+  const localsByStatus = Map.groupBy(locals, (row) => row.status_id);
+  const remotesByStatus = Map.groupBy(remotes, (row) => row.status_id);
+  const mentioning = new Set([...localsByStatus.keys(), ...remotesByStatus.keys()]);
+  return ok(
+    new Map(
+      [...mentioning].map((statusId): [string, StatusMentions] => [
+        statusId,
+        {
+          accountIds: (localsByStatus.get(statusId) ?? []).map((row) => row.account_id),
+          actorUris: (remotesByStatus.get(statusId) ?? []).map((row) => row.actor_uri),
+        },
+      ]),
+    ),
+  );
 };

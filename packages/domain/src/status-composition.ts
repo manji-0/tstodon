@@ -224,4 +224,5 @@ export const LocalStatus = {
     createdAt: note.createdAt,
     editedAt: note.editedAt,
   }),
+  isNote: (status: LocalStatus) => status.kind === "LocalNote",
 } as const;

@@ -71,9 +71,8 @@ export const findRemoteStatusReplyTargets = async (
   db: D1Database,
   statusIds: ReadonlyArray<string>,
 ): Promise<Result<ReadonlyMap<string, RemoteReplyTarget>, RepositoryError>> => {
-  const targets = new Map<string, RemoteReplyTarget>();
   if (statusIds.length === 0) {
-    return ok(targets);
+    return ok(new Map<string, RemoteReplyTarget>());
   }
   const rows = await runD1(async () =>
     queryTyped(
@@ -85,10 +84,7 @@ export const findRemoteStatusReplyTargets = async (
   if (rows.isErr()) {
     return err(rows.error);
   }
-  for (const row of rows.value) {
-    targets.set(row.id, replyTargetFromRow(row));
-  }
-  return ok(targets);
+  return ok(new Map(rows.value.map((row) => [row.id, replyTargetFromRow(row)])));
 };
 
 export const findRemoteStatusReplyTargetByObjectUri = async (

@@ -21,13 +21,11 @@ export const listTrendReviews = async (
       .prepare("SELECT target, state FROM trend_reviews WHERE kind = ?")
       .bind(kind)
       .all<{ target: string; state: string }>();
-    const states = new Map<string, TrendState>();
-    for (const row of results ?? []) {
-      if (row.state === "Approved" || row.state === "Rejected") {
-        states.set(row.target, row.state);
-      }
-    }
-    return states;
+    return new Map(
+      (results ?? []).flatMap(({ target, state }): [string, TrendState][] =>
+        state === "Approved" || state === "Rejected" ? [[target, state]] : [],
+      ),
+    );
   });
 
 /** The rejected targets of one family, for the public trends lists. */

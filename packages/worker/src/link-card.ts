@@ -309,14 +309,12 @@ export const listCachedLinkCards = async (
   if (queried.isErr()) {
     return new Map<string, LinkCard>();
   }
-  const cards = new Map<string, LinkCard>();
-  for (const row of queried.value) {
-    const card = parseCardJson(row.card_json);
-    if (card) {
-      cards.set(row.url, card);
-    }
-  }
-  return cards;
+  return new Map(
+    queried.value.flatMap((row): [string, LinkCard][] => {
+      const card = parseCardJson(row.card_json);
+      return card ? [[row.url, card]] : [];
+    }),
+  );
 };
 
 /**

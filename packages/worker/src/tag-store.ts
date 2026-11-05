@@ -15,7 +15,7 @@ import {
   unfeatureTag as unfeatureTagSql,
   unfollowTag as unfollowTagSql,
 } from "./generated/prisma/sql";
-import { extractHashtags } from "./status-discovery-store";
+import { extractHashtags, hashtagUses } from "./status-discovery-store";
 import { queryTyped, runTyped } from "./typed-sql";
 
 const TagNameRow = z.object({ tag_name: z.string() });
@@ -149,9 +149,8 @@ export const tagDailyHistories = async (
 ): Promise<Result<ReadonlyMap<string, TagHistoryEntry[]>, RepositoryError>> =>
   runD1(async () => {
     const wanted = new Set(tags);
-    const histories = new Map<string, TagHistoryEntry[]>();
     if (wanted.size === 0) {
-      return histories;
+      return new Map<string, TagHistoryEntry[]>();
     }
     const since = new Date(Date.now() - TAG_HISTORY_DAYS * SECONDS_PER_DAY * 1000).toISOString();
     const { results } = await db
@@ -186,19 +185,19 @@ export const tagDailyHistories = async (
       }
     }
     const today = Math.floor(Date.now() / 1000 / SECONDS_PER_DAY) * SECONDS_PER_DAY;
-    for (const tag of wanted) {
-      const entries: TagHistoryEntry[] = [];
-      for (let offset = 0; offset < TAG_HISTORY_DAYS; offset += 1) {
-        const key = String(today - offset * SECONDS_PER_DAY);
-        entries.push({
-          day: key,
-          uses: String(uses.get(tag)?.get(key) ?? 0),
-          accounts: String(accounts.get(tag)?.get(key)?.size ?? 0),
-        });
-      }
-      histories.set(tag, entries);
-    }
-    return histories;
+    const days = Array.from({ length: TAG_HISTORY_DAYS }, (_, offset) =>
+      String(today - offset * SECONDS_PER_DAY),
+    );
+    return new Map(
+      [...wanted].map((tag): [string, TagHistoryEntry[]] => [
+        tag,
+        days.map((day) => ({
+          day,
+          uses: String(uses.get(tag)?.get(day) ?? 0),
+          accounts: String(accounts.get(tag)?.get(day)?.size ?? 0),
+        })),
+      ]),
+    );
   });
 
 /** {@link tagDailyHistories} for a single tag. */
@@ -228,12 +227,7 @@ export const featuredTagSuggestions = async (
       )
       .bind(accountId)
       .all<{ content_text: string }>();
-    const counts = new Map<string, number>();
-    for (const row of results ?? []) {
-      for (const tag of extractHashtags(row.content_text)) {
-        counts.set(tag, (counts.get(tag) ?? 0) + 1);
-      }
-    }
+    const counts = hashtagUses((results ?? []).map((row) => row.content_text));
     return [...counts.entries()]
       .toSorted((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
       .map(([tag]) => tag);

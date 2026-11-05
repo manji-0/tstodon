@@ -165,18 +165,9 @@ export const statusInteractionCountsByIds = async (
   viewerId: string | undefined,
 ): Promise<Result<Map<string, StatusInteractionCounts>, RepositoryError>> => {
   const unique = [...new Set(statusIds.filter((id) => id.length > 0))];
-  const counts = new Map<string, StatusInteractionCounts>();
-  for (const id of unique) {
-    counts.set(id, NO_STATUS_INTERACTIONS);
-  }
   if (unique.length === 0) {
-    return ok(counts);
+    return ok(new Map<string, StatusInteractionCounts>());
   }
-
-  const bump = (statusId: string, patch: Partial<StatusInteractionCounts>): void => {
-    const current = counts.get(statusId) ?? NO_STATUS_INTERACTIONS;
-    counts.set(statusId, { ...current, ...patch });
-  };
 
   const idsJson = jsonStringArray(unique);
   const inList = sqlInJsonEach();
@@ -246,38 +237,35 @@ export const statusInteractionCountsByIds = async (
   const idRows = (index: number) =>
     parseRows(z.object({ status_id: z.string() }), batched.value[index]?.results);
 
-  for (const row of countRows(0)) {
-    bump(row.status_id, {
-      favourites: (counts.get(row.status_id)?.favourites ?? 0) + row.count,
-    });
-  }
-  for (const row of countRows(2)) {
-    bump(row.status_id, {
-      favourites: (counts.get(row.status_id)?.favourites ?? 0) + row.count,
-    });
-  }
-  for (const row of countRows(1)) {
-    bump(row.status_id, {
-      reblogs: (counts.get(row.status_id)?.reblogs ?? 0) + row.count,
-    });
-  }
-  for (const row of countRows(3)) {
-    bump(row.status_id, {
-      reblogs: (counts.get(row.status_id)?.reblogs ?? 0) + row.count,
-    });
-  }
-  if (viewerId) {
-    for (const row of idRows(4)) {
-      bump(row.status_id, { favourited: true });
-    }
-    for (const row of idRows(5)) {
-      bump(row.status_id, { reblogged: true });
-    }
-    for (const row of idRows(6)) {
-      bump(row.status_id, { bookmarked: true });
-    }
-  }
-  return ok(counts);
+  // Local and remote targets are counted by separate statements; their counts add up.
+  const totals = (...indexes: number[]): ReadonlyMap<string, number> =>
+    indexes
+      .flatMap(countRows)
+      .reduce(
+        (sums, row) => sums.set(row.status_id, (sums.get(row.status_id) ?? 0) + row.count),
+        new Map<string, number>(),
+      );
+  const viewerSet = (index: number): ReadonlySet<string> =>
+    new Set(viewerId ? idRows(index).map((row) => row.status_id) : []);
+  const favourites = totals(0, 2);
+  const reblogs = totals(1, 3);
+  const favourited = viewerSet(4);
+  const reblogged = viewerSet(5);
+  const bookmarked = viewerSet(6);
+  return ok(
+    new Map(
+      unique.map((id): [string, StatusInteractionCounts] => [
+        id,
+        {
+          favourites: favourites.get(id) ?? 0,
+          reblogs: reblogs.get(id) ?? 0,
+          favourited: favourited.has(id),
+          reblogged: reblogged.has(id),
+          bookmarked: bookmarked.has(id),
+        },
+      ]),
+    ),
+  );
 };
 
 /**

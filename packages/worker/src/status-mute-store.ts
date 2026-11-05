@@ -33,11 +33,7 @@ const listStatusReplyLinks = async (
       listStatusReplyLinksSql(jsonStringArray(ids)),
       IdInReplyToIdRow,
     );
-    const links = new Map<string, string | null>();
-    for (const row of rows) {
-      links.set(row.id, row.in_reply_to_id);
-    }
-    return links;
+    return new Map(rows.map((row) => [row.id, row.in_reply_to_id]));
   });
 
 /** Resolve the thread root for each status by walking reply parents transitively. */
@@ -45,17 +41,15 @@ export const resolveThreadRootStatusIds = async (
   db: D1Database,
   statuses: ReadonlyArray<LocalStatus>,
 ): Promise<Result<ReadonlyMap<string, string>, RepositoryError>> => {
-  const parentById = new Map<string, string | null>();
-  for (const status of statuses) {
-    parentById.set(status.id, status.kind === "LocalNote" ? status.inReplyToId : null);
-  }
+  const parentById = new Map<string, string | null>(
+    statuses.map((status) => [status.id, status.kind === "LocalNote" ? status.inReplyToId : null]),
+  );
   for (let pass = 0; pass < 20; pass += 1) {
-    const missing = new Set<string>();
-    for (const parent of parentById.values()) {
-      if (parent !== null && parent.length > 0 && !parentById.has(parent)) {
-        missing.add(parent);
-      }
-    }
+    const missing = new Set(
+      [...parentById.values()].flatMap((parent) =>
+        parent !== null && parent.length > 0 && !parentById.has(parent) ? [parent] : [],
+      ),
+    );
     if (missing.size === 0) {
       break;
     }
@@ -218,15 +212,15 @@ export const mutedThreadStatusIds = async (
   if (roots.isErr()) {
     return err(roots.error);
   }
-  const muted = new Set<string>();
-  for (const statusId of statusIds) {
-    const localId = loaded.value.has(statusId) ? statusId : ancestors.value.get(statusId);
-    const root = localId === undefined ? undefined : roots.value.get(localId);
-    if (root !== undefined && mutedRoots.value.has(root)) {
-      muted.add(statusId);
-    }
-  }
-  return ok(muted);
+  return ok(
+    new Set(
+      statusIds.filter((statusId) => {
+        const localId = loaded.value.has(statusId) ? statusId : ancestors.value.get(statusId);
+        const root = localId === undefined ? undefined : roots.value.get(localId);
+        return root !== undefined && mutedRoots.value.has(root);
+      }),
+    ),
+  );
 };
 
 export const filterMutedThreads = async (

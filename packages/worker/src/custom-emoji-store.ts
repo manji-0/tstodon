@@ -156,18 +156,18 @@ export const loadCustomEmojis = async (
   env: Env,
   mediaPublicBaseUrl: string,
 ): Promise<ReadonlyArray<CustomEmoji>> => {
-  const merged = new Map<string, CustomEmoji>();
-  for (const emoji of configuredCustomEmojis(env)) {
-    merged.set(emoji.shortcode.toLowerCase(), emoji);
-  }
   const rows = await listCustomEmojiRows(env.DB);
-  if (rows.isErr()) {
-    return [...merged.values()];
-  }
-  for (const row of rows.value) {
-    merged.set(row.shortcode.toLowerCase(), customEmojiFromRow(row, mediaPublicBaseUrl));
-  }
-  return [...merged.values()];
+  const byShortcode = new Map<string, CustomEmoji>([
+    ...configuredCustomEmojis(env).map((emoji): [string, CustomEmoji] => [
+      emoji.shortcode.toLowerCase(),
+      emoji,
+    ]),
+    ...(rows.isOk() ? rows.value : []).map((row): [string, CustomEmoji] => [
+      row.shortcode.toLowerCase(),
+      customEmojiFromRow(row, mediaPublicBaseUrl),
+    ]),
+  ]);
+  return [...byShortcode.values()];
 };
 
 /** Normalize an admin-supplied shortcode: drop colons, lowercase. */

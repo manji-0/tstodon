@@ -1,5 +1,5 @@
 import { err, ok, type Result } from "neverthrow";
-import { ContentFilter, type LocalStatus } from "@tstodon/domain";
+import { ContentFilter, LocalStatus } from "@tstodon/domain";
 import type { RepositoryError } from "./d1";
 import { htmlToText } from "./html";
 import { mastodonFilterV2 } from "./filter-documents";
@@ -106,12 +106,9 @@ export const attachFilteredToStatuses = async <T extends Record<string, unknown>
   if (filters.isErr() || filters.value.length === 0) {
     return documents;
   }
-  const texts = new Map<string, string>();
-  for (const status of statuses) {
-    if (status.kind === "LocalNote") {
-      texts.set(status.id, status.text);
-    }
-  }
+  const texts = new Map<string, string>(
+    statuses.filter(LocalStatus.isNote).map((note) => [note.id, note.text]),
+  );
   return documents.map((document) => {
     const id = typeof document.id === "string" ? document.id : "";
     const text = texts.get(id);
@@ -141,10 +138,7 @@ export const attachFilteredToRemoteStatuses = async <T extends Record<string, un
   if (filters.isErr() || filters.value.length === 0) {
     return documents;
   }
-  const texts = new Map<string, string>();
-  for (const status of statuses) {
-    texts.set(status.id, htmlToText(status.contentHtml));
-  }
+  const texts = new Map(statuses.map((status) => [status.id, htmlToText(status.contentHtml)]));
   return documents.map((document) => {
     const id = typeof document.id === "string" ? document.id : "";
     const text = texts.get(id);

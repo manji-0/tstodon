@@ -49,15 +49,12 @@ export const getMarkers = async (
       getMarkersByTimelinesSql(accountId, timelineA, timelineB),
       MarkerRowSchema,
     );
-    const markers: Record<string, MarkerDocument> = {};
-    for (const row of results) {
-      markers[row.timeline] = {
-        last_read_id: row.last_read_id,
-        version: row.version,
-        updated_at: row.updated_at,
-      };
-    }
-    return markers;
+    return Object.fromEntries(
+      results.map((row): [string, MarkerDocument] => [
+        row.timeline,
+        { last_read_id: row.last_read_id, version: row.version, updated_at: row.updated_at },
+      ]),
+    );
   });
 };
 

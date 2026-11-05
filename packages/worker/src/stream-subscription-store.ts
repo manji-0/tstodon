@@ -111,11 +111,12 @@ export const listPublicStreamSubscriptions = async (
   if (rows.isErr()) {
     return err(rows.error);
   }
-  const hubs = new Map<string, StreamChannelValue[]>();
-  for (const row of rows.value) {
-    const channel = channelOfRow(row);
-    hubs.set(row.hub, [...(hubs.get(row.hub) ?? []), ...(channel ? [channel] : [])]);
-  }
-  const page = [...hubs].map(([hub, channels]) => ({ hub, channels }));
+  const page = [...Map.groupBy(rows.value, (row) => row.hub)].map(([hub, hubRows]) => ({
+    hub,
+    channels: hubRows.flatMap((row) => {
+      const channel = channelOfRow(row);
+      return channel ? [channel] : [];
+    }),
+  }));
   return ok({ hubs: page, next: page.length >= input.limit ? page.at(-1)?.hub : undefined });
 };

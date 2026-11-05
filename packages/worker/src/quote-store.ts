@@ -93,9 +93,8 @@ export const findQuotesByStatusIds = async (
   statusIds: ReadonlyArray<string>,
 ): Promise<Result<ReadonlyMap<string, QuoteRow>, RepositoryError>> =>
   runD1(async () => {
-    const quotes = new Map<string, QuoteRow>();
     if (statusIds.length === 0) {
-      return quotes;
+      return new Map<string, QuoteRow>();
     }
     const { results } = await db
       .prepare(
@@ -104,11 +103,12 @@ export const findQuotesByStatusIds = async (
       )
       .bind(...statusIds)
       .all<Parameters<typeof toRow>[0]>();
-    for (const row of results ?? []) {
-      const quote = toRow(row);
-      quotes.set(quote.statusId, quote);
-    }
-    return quotes;
+    return new Map(
+      (results ?? []).map((row) => {
+        const quote = toRow(row);
+        return [quote.statusId, quote];
+      }),
+    );
   });
 
 /** How many accepted quotes each of these statuses has. */
@@ -117,9 +117,8 @@ export const quoteCountsByStatusIds = async (
   statusIds: ReadonlyArray<string>,
 ): Promise<Result<ReadonlyMap<string, number>, RepositoryError>> =>
   runD1(async () => {
-    const counts = new Map<string, number>();
     if (statusIds.length === 0) {
-      return counts;
+      return new Map<string, number>();
     }
     const { results } = await db
       .prepare(
@@ -129,10 +128,7 @@ export const quoteCountsByStatusIds = async (
       )
       .bind(...statusIds)
       .all<{ quoted_status_id: string; count: number }>();
-    for (const row of results ?? []) {
-      counts.set(row.quoted_status_id, Number(row.count));
-    }
-    return counts;
+    return new Map((results ?? []).map((row) => [row.quoted_status_id, Number(row.count)]));
   });
 
 /** Accepted quoting statuses of one status, newest first. */
@@ -210,9 +206,8 @@ export const findStatusQuotePolicies = async (
   statusIds: ReadonlyArray<string>,
 ): Promise<Result<ReadonlyMap<string, QuotePolicy>, RepositoryError>> =>
   runD1(async () => {
-    const policies = new Map<string, QuotePolicy>();
     if (statusIds.length === 0) {
-      return policies;
+      return new Map<string, QuotePolicy>();
     }
     const { results } = await db
       .prepare(
@@ -221,12 +216,11 @@ export const findStatusQuotePolicies = async (
       )
       .bind(...statusIds)
       .all<{ status_id: string; policy: string }>();
-    for (const row of results ?? []) {
-      if (isQuotePolicy(row.policy)) {
-        policies.set(row.status_id, row.policy);
-      }
-    }
-    return policies;
+    return new Map(
+      (results ?? []).flatMap(({ status_id, policy }): [string, QuotePolicy][] =>
+        isQuotePolicy(policy) ? [[status_id, policy]] : [],
+      ),
+    );
   });
 
 /** Store (or replace) a status's quote policy. */

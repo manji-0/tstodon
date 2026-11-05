@@ -2,7 +2,7 @@ import {
   InstanceIdentity,
   type LocalAccount,
   type LocalNote,
-  type LocalStatus,
+  LocalStatus,
   Visibility,
 } from "@tstodon/domain";
 import { type AccountCounts, accountCountsByIds } from "./account-count-store";
@@ -180,9 +180,7 @@ export const mastodonStatuses = async (
   // Quotes point at another note; load the quoted statuses so the quote can be
   // rendered, then read every quote of the loaded notes.
   const noteIdsOf = (statuses: Iterable<LocalStatus>): string[] =>
-    [...statuses]
-      .filter((status): status is LocalNote => status.kind === "LocalNote")
-      .map((status) => status.id);
+    [...statuses].filter(LocalStatus.isNote).map((status) => status.id);
   const loadQuotes = async (ids: ReadonlyArray<string>) => {
     const result = await findQuotesByStatusIds(env.DB, ids);
     return result.isOk() ? result.value : new Map<string, never>();
@@ -193,19 +191,15 @@ export const mastodonStatuses = async (
   ].filter((id) => !byId.has(id));
   if (quotedMissing.length > 0) {
     const loaded = await findStatusesByIds(env.DB, quotedMissing);
-    if (loaded.isOk()) {
-      for (const [id, status] of loaded.value) {
-        byId.set(id, status);
-      }
+    for (const [id, status] of loaded.isOk() ? loaded.value : []) {
+      byId.set(id, status);
     }
   }
   quotes = await loadQuotes(noteIdsOf(byId.values()));
 
   const allStatuses = [...byId.values()];
   const accountIds = [...new Set(allStatuses.map((status) => status.accountId))];
-  const noteIds = allStatuses
-    .filter((status): status is LocalNote => status.kind === "LocalNote")
-    .map((status) => status.id);
+  const noteIds = allStatuses.filter(LocalStatus.isNote).map((status) => status.id);
   const mediaIds = [
     ...new Set(
       allStatuses.flatMap((status) => (status.kind === "LocalNote" ? [...status.mediaIds] : [])),

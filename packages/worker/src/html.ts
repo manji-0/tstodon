@@ -56,16 +56,12 @@ export const remoteMentionHandles = (
   localDomain: string,
 ): ReadonlyArray<Readonly<{ username: string; domain: string }>> => {
   const own = localDomain.toLowerCase();
-  const seen = new Map<string, { username: string; domain: string }>();
-  for (const handle of mentionHandles(text)) {
-    if (handle.domain !== undefined && handle.domain !== own) {
-      seen.set(`${handle.username}@${handle.domain}`, {
-        username: handle.username,
-        domain: handle.domain,
-      });
-    }
-  }
-  return [...seen.values()];
+  const remote = mentionHandles(text).flatMap(({ username, domain }) =>
+    domain !== undefined && domain !== own ? [{ username, domain }] : [],
+  );
+  return [
+    ...new Map(remote.map((handle) => [`${handle.username}@${handle.domain}`, handle])).values(),
+  ];
 };
 
 /** Decode the entities our own renderers produce (and the common ones). */
@@ -84,15 +80,14 @@ export const decodeHtmlEntities = (value: string): string =>
  * split the `#` from the name; these forms are matched directly.
  */
 export const htmlHashtags = (html: string): string[] => {
-  const tags = new Set<string>();
   const decoded = decodeHtmlEntities(html);
-  for (const match of decoded.matchAll(/#(?:<span[^>]*>)?([A-Za-z0-9_]+)/g)) {
-    const tag = match[1];
-    if (tag) {
-      tags.add(tag.toLowerCase());
-    }
-  }
-  return [...tags];
+  return [
+    ...new Set(
+      [...decoded.matchAll(/#(?:<span[^>]*>)?([A-Za-z0-9_]+)/g)].flatMap(([, tag]) =>
+        tag ? [tag.toLowerCase()] : [],
+      ),
+    ),
+  ];
 };
 
 /** Plain text of an HTML fragment, for keyword matching against remote posts. */

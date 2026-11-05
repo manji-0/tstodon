@@ -122,15 +122,20 @@ export const listLinkStatuses = async (
   });
 
 export const extractHashtags = (text: string): string[] => {
-  const tags = new Set<string>();
-  for (const match of text.matchAll(/#([A-Za-z0-9_]+)/g)) {
-    const tag = match[1];
-    if (tag) {
-      tags.add(tag.toLowerCase());
-    }
-  }
-  return [...tags];
+  return [
+    ...new Set(
+      [...text.matchAll(/#([A-Za-z0-9_]+)/g)].flatMap(([, tag]) =>
+        tag ? [tag.toLowerCase()] : [],
+      ),
+    ),
+  ];
 };
+
+/** How many times each hashtag occurs across these texts, in first-seen order. */
+export const hashtagUses = (texts: ReadonlyArray<string>): Map<string, number> =>
+  texts
+    .flatMap(extractHashtags)
+    .reduce((uses, tag) => uses.set(tag, (uses.get(tag) ?? 0) + 1), new Map<string, number>());
 
 export const listTrendingTags = async (
   db: D1Database,
@@ -147,12 +152,7 @@ export const listTrendingTags = async (
       )
       .bind(since)
       .all<{ content_text: string }>();
-    const counts = new Map<string, number>();
-    for (const row of results ?? []) {
-      for (const tag of extractHashtags(row.content_text)) {
-        counts.set(tag, (counts.get(tag) ?? 0) + 1);
-      }
-    }
+    const counts = hashtagUses((results ?? []).map((row) => row.content_text));
     const offset = options.offset ?? 0;
     return [...counts.entries()]
       .filter(([name]) => !options.excluded?.has(name))
