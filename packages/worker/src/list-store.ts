@@ -320,6 +320,8 @@ export const listListTimelineStatuses = async (
       input.ownerAccountId,
       input.ownerAccountId,
       input.ownerAccountId,
+      input.ownerAccountId,
+      input.ownerAccountId,
       now,
       ...reblogs.binds,
       ...replies.binds,
@@ -331,6 +333,10 @@ export const listListTimelineStatuses = async (
         `SELECT ${STATUS_SELECT} FROM statuses
          WHERE visibility != 'direct'
            AND account_id IN (SELECT member_account_id FROM account_list_members WHERE list_id = ?)
+           -- A local member need not be followed; home's followers-only rule still holds.
+           AND (visibility <> 'private' OR account_id = ? OR account_id IN (
+             SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
+           ))
            AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
            ${reblogs.sql}
            ${replies.sql}
