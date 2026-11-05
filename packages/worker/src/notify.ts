@@ -4,7 +4,6 @@ import {
   type FediRoleValue,
   type FindMutedThreadStatusIds,
   type HoldNotification,
-  Hostname,
   type InsertNotification,
   AccountPresentation,
   LocalFollow,
@@ -26,7 +25,7 @@ import type { FollowWrite } from "./follow-store";
 import { holdNotification } from "./notification-policy-store";
 import { findOutboundFollow } from "./outbound-follow-store";
 import { notificationDisposition } from "./notification-policy";
-import { isDomainBlocked } from "./domain-block-store";
+import { isActorDomainBlocked } from "./domain-block-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { localAccountPresentations } from "./account-presentation";
 import { findActiveMute, findBlock, silencesAnyOf } from "./block-mute-store";
@@ -310,11 +309,10 @@ const screenSender = async (
     }
   }
   const actorUri = notification.fromActorUri;
-  const domain = actorUri ? Hostname.ofUri(actorUri) : undefined;
-  if (!actorUri || !domain) {
+  if (!actorUri) {
     return ok(SCREEN);
   }
-  const domainBlocked = await isDomainBlocked(db, recipientId, domain);
+  const domainBlocked = await isActorDomainBlocked(db, recipientId, actorUri);
   if (domainBlocked.isErr()) {
     return err(domainBlocked.error);
   }

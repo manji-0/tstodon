@@ -2,14 +2,14 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
 import { nowIso } from "./clock";
-import { OutboundFollow, Hostname } from "@tstodon/domain";
+import { OutboundFollow } from "@tstodon/domain";
 import { RemoteAccountId } from "./remote-account-id";
 import { outboundFollowFromRow } from "./outbound-follow-store";
 import { parseJsonColumn } from "./json-column";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   deleteAccountNote as deleteAccountNoteSql,
-  findAccountDomainBlock as findAccountDomainBlockSql,
+  findActorDomainBlock as findActorDomainBlockSql,
   findAccountNote as findAccountNoteSql,
   findActiveMute as findActiveMuteSql,
   findBlock as findBlockSql,
@@ -56,7 +56,6 @@ export const relationshipFlags = async (
   targetId: string,
 ): Promise<Result<RelationshipFlags, RepositoryError>> => {
   const targetActorUri = RemoteAccountId.decode(targetId);
-  const targetDomain = targetActorUri.isOk() ? Hostname.ofUri(targetActorUri.value) : undefined;
   const batched = await runD1Batch(db, [
     d1PrepareTyped(db, findFollowKindSql(viewerId, targetId)),
     d1PrepareTyped(db, findFollowKindSql(targetId, viewerId)),
@@ -66,7 +65,7 @@ export const relationshipFlags = async (
     d1PrepareTyped(db, findActiveMuteSql(viewerId, targetActorUri.unwrapOr(targetId), nowIso())),
     d1PrepareTyped(db, findEndorsementSql(viewerId, targetId)),
     d1PrepareTyped(db, findAccountNoteSql(viewerId, targetActorUri.unwrapOr(targetId))),
-    d1PrepareTyped(db, findAccountDomainBlockSql(viewerId, targetDomain ?? "")),
+    d1PrepareTyped(db, findActorDomainBlockSql(viewerId, targetActorUri.unwrapOr(""))),
     d1PrepareTyped(db, findOutboundFollowSql(viewerId, targetActorUri.unwrapOr(""))),
   ]);
   if (batched.isErr()) {

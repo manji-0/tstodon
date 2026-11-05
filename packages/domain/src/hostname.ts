@@ -39,7 +39,11 @@ export const Hostname = {
     );
     return host.length > 0 ? host : undefined;
   },
-  /** The host of an ActivityPub URI, when it parses. */
+  /**
+   * The host of an ActivityPub URI, when it parses. Not an actor's account
+   * domain, which can differ: an account's domain blocks match
+   * `ofAuthority(actor.domain)`, as Mastodon matches `account.domain`.
+   */
   ofUri: (uri: string): Hostname | undefined => {
     try {
       return schema.parse(new URL(uri).hostname.toLowerCase());

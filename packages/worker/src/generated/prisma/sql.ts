@@ -206,6 +206,8 @@ export * from "./sql/findAccountsByUsernamesJson";
 
 export * from "./sql/findActiveMute";
 
+export * from "./sql/findActorDomainBlock";
+
 export * from "./sql/findAnnouncementById";
 
 export * from "./sql/findBlock";
