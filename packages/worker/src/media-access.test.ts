@@ -4,6 +4,7 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { signUp } from "../test/passkey-browser";
+import { purgeAccount } from "./admin-actions";
 import { processOutboxJob } from "./outbox-job";
 
 const BYTES = [137, 80, 78, 71, 1, 2, 3];
@@ -135,11 +136,15 @@ const storedKeys = async (
   return row === null ? undefined : read(StoredKeysSchema, row);
 };
 
-/** Put an upload back where attachments were stored before random keys, as migration 0102 finds it. */
+/**
+ * Put an upload back at the id-derived key it had before random keys. `AtLegacyKey`
+ * is a row as the old Worker wrote it; `MovedKeepingLegacy` is a row already
+ * pointed at its copy while the legacy object is still stored.
+ */
 const storeAtLegacyKey = async (
   accountId: string,
   mediaId: string,
-  rowObjectKey?: string,
+  layout: "AtLegacyKey" | "MovedKeepingLegacy" = "AtLegacyKey",
 ): Promise<string> => {
   const legacyKey = `attachments/${accountId}/${mediaId}`;
   const current = await storedKeys(mediaId);
@@ -152,14 +157,19 @@ const storeAtLegacyKey = async (
   }
   await env.MEDIA.put(legacyKey, await object.arrayBuffer(), {
     httpMetadata: object.httpMetadata ?? {},
+    customMetadata: { origin: "legacy" },
   });
-  if (rowObjectKey === undefined) {
+  if (layout === "AtLegacyKey") {
     await env.MEDIA.delete(current.object_key);
   }
   await env.DB.prepare(
     "UPDATE media_attachments SET object_key = ?, legacy_object_key = ? WHERE id = ?",
   )
-    .bind(rowObjectKey ?? legacyKey, legacyKey, mediaId)
+    .bind(
+      layout === "AtLegacyKey" ? legacyKey : current.object_key,
+      layout === "AtLegacyKey" ? null : legacyKey,
+      mediaId,
+    )
     .run();
   return legacyKey;
 };
@@ -187,8 +197,84 @@ const postWithId = async (email: string, mediaId: string): Promise<string> => {
   return read(z.object({ id: z.string().min(1) }), await response.json()).id;
 };
 
+const rekey = (jobEnv: Env = env): Promise<unknown> =>
+  processOutboxJob(jobEnv, { kind: "RekeyLegacyMedia", afterId: "" });
+
+const deletingLegacy = (base: Env = env): Env => ({ ...base, MEDIA_REKEY_DELETE_LEGACY: "true" });
+
+const NETWORK_LOST = "D1_ERROR: Network connection lost.";
+
+/** A D1 binding whose statements matching `matches` commit and then report a lost connection. */
+const lostAfterCommit = (db: D1Database, matches: (sql: string) => boolean): D1Database => {
+  const inner = new WeakMap<object, D1PreparedStatement>();
+  const sqlOf = new WeakMap<object, string>();
+  const wrap = (statement: D1PreparedStatement, sql: string): D1PreparedStatement => {
+    const outer = new Proxy(statement, {
+      get(target, prop) {
+        if (prop === "bind") {
+          return (...values: unknown[]) => wrap(target.bind(...values), sql);
+        }
+        const value: unknown = Reflect.get(target, prop);
+        if (typeof value !== "function") {
+          return value;
+        }
+        if (matches(sql) && (prop === "all" || prop === "run" || prop === "first")) {
+          return async (...args: unknown[]) => {
+            await Reflect.apply(value, target, args);
+            throw new Error(NETWORK_LOST);
+          };
+        }
+        return (...args: unknown[]) => Reflect.apply(value, target, args);
+      },
+    });
+    inner.set(outer, statement);
+    sqlOf.set(outer, sql);
+    return outer;
+  };
+  return new Proxy(db, {
+    get(target, prop) {
+      if (prop === "prepare") {
+        return (sql: string) => wrap(target.prepare(sql), sql);
+      }
+      if (prop === "batch") {
+        return async (statements: D1PreparedStatement[]) => {
+          const results = await target.batch(statements.map((s) => inner.get(s) ?? s));
+          if (statements.some((s) => matches(sqlOf.get(s) ?? ""))) {
+            throw new Error(NETWORK_LOST);
+          }
+          return results;
+        };
+      }
+      const value: unknown = Reflect.get(target, prop);
+      return typeof value === "function"
+        ? (...args: unknown[]) => Reflect.apply(value, target, args)
+        : value;
+    },
+  });
+};
+
+/** An R2 binding that throws when asked for the object at `key`. */
+const unreadableAt = (bucket: R2Bucket, key: string): R2Bucket =>
+  new Proxy(bucket, {
+    get(target, prop) {
+      const value: unknown = Reflect.get(target, prop);
+      if (typeof value !== "function") {
+        return value;
+      }
+      return (...args: unknown[]) => {
+        if (prop === "get" && args[0] === key) {
+          throw new Error("R2 get failed");
+        }
+        return Reflect.apply(value, target, args);
+      };
+    },
+  });
+
+const RANDOM_KEY = (accountId: string): RegExp =>
+  new RegExp(`^attachments/${accountId}/[0-9a-f]{32}$`);
+
 describe("rekeying attachments stored at an id-derived key", () => {
-  it("moves the object to a random key and removes the guessable one", async () => {
+  it("copies the object to a random key and keeps the guessable one by default", async () => {
     const email = "media-legacy@example.com";
     const accountId = await accountIdOf(email);
     const media = await upload(email);
@@ -197,19 +283,40 @@ describe("rekeying attachments stored at an id-derived key", () => {
     expect(await statusAttachmentUrl(email, statusId)).toMatch(
       new RegExp(`/attachments/${accountId}/${media.id}$`),
     );
-    expect((await fetchPath(`/attachments/${accountId}/${media.id}`)).status).toBe(200);
 
-    expect(await processOutboxJob(env, { kind: "RekeyLegacyMedia" })).toBe("ok");
+    expect(await rekey()).toBe("ok");
+
+    const url = await statusAttachmentUrl(email, statusId);
+    expect(new URL(url).pathname.slice(1)).toMatch(RANDOM_KEY(accountId));
+    expect(await bytesAt(url)).toEqual(BYTES);
+    const keys = await storedKeys(media.id);
+    expect(keys?.legacy_object_key).toBe(legacyKey);
+    expect((await env.MEDIA.head(keys?.object_key ?? ""))?.customMetadata).toEqual({
+      origin: "legacy",
+    });
+    expect(await env.MEDIA.head(legacyKey)).not.toBeNull();
+
+    expect(await rekey()).toBe("ok");
+    expect(await statusAttachmentUrl(email, statusId)).toBe(url);
+    expect(await env.MEDIA.head(legacyKey)).not.toBeNull();
+  });
+
+  it("deletes the guessable object once MEDIA_REKEY_DELETE_LEGACY is on", async () => {
+    const email = "media-legacy-drop@example.com";
+    const accountId = await accountIdOf(email);
+    const media = await upload(email);
+    const statusId = await postWithId(email, media.id);
+    const legacyKey = await storeAtLegacyKey(accountId, media.id);
+    expect(await rekey()).toBe("ok");
+    const url = await statusAttachmentUrl(email, statusId);
+
+    expect(await rekey(deletingLegacy())).toBe("ok");
 
     expect(await env.MEDIA.head(legacyKey)).toBeNull();
     expect((await fetchPath(`/attachments/${accountId}/${media.id}`)).status).toBe(404);
-    const url = await statusAttachmentUrl(email, statusId);
-    expect(new URL(url).pathname).toMatch(new RegExp(`^/attachments/${accountId}/[0-9a-f]{32}$`));
+    expect(await statusAttachmentUrl(email, statusId)).toBe(url);
     expect(await bytesAt(url)).toEqual(BYTES);
     expect((await storedKeys(media.id))?.legacy_object_key).toBeNull();
-
-    expect(await processOutboxJob(env, { kind: "RekeyLegacyMedia" })).toBe("ok");
-    expect(await statusAttachmentUrl(email, statusId)).toBe(url);
   });
 
   it("finishes a move that stopped after the row took its new key", async () => {
@@ -217,14 +324,93 @@ describe("rekeying attachments stored at an id-derived key", () => {
     const accountId = await accountIdOf(email);
     const media = await upload(email);
     const newKey = (await storedKeys(media.id))?.object_key;
-    await storeAtLegacyKey(accountId, media.id, newKey);
-    expect((await fetchPath(`/attachments/${accountId}/${media.id}`)).status).toBe(200);
+    await storeAtLegacyKey(accountId, media.id, "MovedKeepingLegacy");
 
-    expect(await processOutboxJob(env, { kind: "RekeyLegacyMedia" })).toBe("ok");
+    expect(await rekey(deletingLegacy())).toBe("ok");
 
     expect((await fetchPath(`/attachments/${accountId}/${media.id}`)).status).toBe(404);
     expect(await storedKeys(media.id)).toEqual({ object_key: newKey, legacy_object_key: null });
     expect(await bytesAt(media.url)).toEqual(BYTES);
+  });
+
+  it("points the status's edit history at the new key", async () => {
+    const email = "media-legacy-history@example.com";
+    const accountId = await accountIdOf(email);
+    const media = await upload(email);
+    const statusId = await postWithId(email, media.id);
+    await storeAtLegacyKey(accountId, media.id);
+    const edited = await fetchPath(`/api/v1/statuses/${statusId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+      body: JSON.stringify({ status: "old picture, edited", media_ids: [media.id] }),
+    });
+    expect(edited.status).toBe(200);
+
+    expect(await rekey(deletingLegacy())).toBe("ok");
+
+    const url = await statusAttachmentUrl(email, statusId);
+    const history = await fetchPath(`/api/v1/statuses/${statusId}/history`, {
+      headers: await authHeaders(email),
+    });
+    const revisions = read(
+      z.array(z.object({ media_attachments: z.array(AttachmentSchema) })),
+      await history.json(),
+    );
+    expect(revisions.length).toBeGreaterThan(1);
+    for (const revision of revisions) {
+      expect(revision.media_attachments.map((attachment) => attachment.url)).toEqual([url]);
+    }
+    expect(await bytesAt(url)).toEqual(BYTES);
+  });
+
+  it("keeps both objects when D1 loses the connection after pointing the row at the copy", async () => {
+    const email = "media-legacy-lost@example.com";
+    const accountId = await accountIdOf(email);
+    const media = await upload(email);
+    const statusId = await postWithId(email, media.id);
+    const legacyKey = await storeAtLegacyKey(accountId, media.id);
+    const flaky = {
+      ...deletingLegacy(),
+      DB: lostAfterCommit(env.DB, (sql) => sql.includes("UPDATE media_attachments SET object_key")),
+    };
+
+    await rekey(flaky);
+
+    const moved = await storedKeys(media.id);
+    expect(moved?.object_key).toMatch(RANDOM_KEY(accountId));
+    expect(await env.MEDIA.head(moved?.object_key ?? "")).not.toBeNull();
+    expect(await env.MEDIA.head(legacyKey)).not.toBeNull();
+
+    expect(await rekey(deletingLegacy())).toBe("ok");
+    expect(await env.MEDIA.head(legacyKey)).toBeNull();
+    expect(await bytesAt(await statusAttachmentUrl(email, statusId))).toEqual(BYTES);
+  });
+
+  it("keeps the guessable object while the row's own object is missing", async () => {
+    const email = "media-legacy-missing@example.com";
+    const accountId = await accountIdOf(email);
+    const media = await upload(email);
+    const legacyKey = await storeAtLegacyKey(accountId, media.id, "MovedKeepingLegacy");
+    await env.MEDIA.delete((await storedKeys(media.id))?.object_key ?? "");
+
+    expect(await rekey(deletingLegacy())).toBe("ok");
+
+    expect(await env.MEDIA.head(legacyKey)).not.toBeNull();
+    expect((await storedKeys(media.id))?.legacy_object_key).toBe(legacyKey);
+  });
+
+  it("moves the other rows when one row's object cannot be read", async () => {
+    const email = "media-legacy-unreadable@example.com";
+    const accountId = await accountIdOf(email);
+    const stuck = await upload(email);
+    const movable = await upload(email);
+    const stuckKey = await storeAtLegacyKey(accountId, stuck.id);
+    await storeAtLegacyKey(accountId, movable.id);
+
+    expect(await rekey({ ...env, MEDIA: unreadableAt(env.MEDIA, stuckKey) })).toBe("ok");
+
+    expect((await storedKeys(stuck.id))?.object_key).toBe(stuckKey);
+    expect((await storedKeys(movable.id))?.object_key).toMatch(RANDOM_KEY(accountId));
   });
 
   it("deletes both objects of unattached media removed before its move", async () => {
@@ -232,7 +418,7 @@ describe("rekeying attachments stored at an id-derived key", () => {
     const accountId = await accountIdOf(email);
     const media = await upload(email);
     const newKey = (await storedKeys(media.id))?.object_key ?? "";
-    const legacyKey = await storeAtLegacyKey(accountId, media.id, newKey);
+    const legacyKey = await storeAtLegacyKey(accountId, media.id, "MovedKeepingLegacy");
 
     const removed = await fetchPath(`/api/v1/media/${media.id}`, {
       method: "DELETE",
@@ -241,5 +427,19 @@ describe("rekeying attachments stored at an id-derived key", () => {
     expect(removed.status).toBe(200);
     expect(await env.MEDIA.head(legacyKey)).toBeNull();
     expect(await env.MEDIA.head(newKey)).toBeNull();
+  });
+
+  it("purges copies under the account's prefix that no row names", async () => {
+    const email = "media-legacy-purge@example.com";
+    const accountId = await accountIdOf(email);
+    const media = await upload(email);
+    const rowKey = (await storedKeys(media.id))?.object_key ?? "";
+    const orphan = `attachments/${accountId}/${"0".repeat(32)}`;
+    await env.MEDIA.put(orphan, new Uint8Array(BYTES));
+
+    expect((await purgeAccount(env, accountId)).isOk()).toBe(true);
+
+    expect(await env.MEDIA.head(rowKey)).toBeNull();
+    expect(await env.MEDIA.head(orphan)).toBeNull();
   });
 });
