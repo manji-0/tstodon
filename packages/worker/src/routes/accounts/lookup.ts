@@ -2,7 +2,6 @@ import type { Context } from "hono";
 import { type InstanceIdentity, Visibility } from "@tstodon/domain";
 import {
   findAccountByIdOrUsername,
-  findAccountByUsername,
   findAccountsByIds,
   searchAccounts,
 } from "../../account-store";
@@ -27,6 +26,7 @@ import { parseInstanceIdentity } from "../../runtime-config";
 import { familiarFollowerIds, followingAccountIds } from "../../follow-store";
 import { relationshipFlags } from "../../relationship-store";
 import { isTruthy } from "../../form-values";
+import { findKnownAccountHandle } from "../../account-ref";
 
 export const getV1AccountsLookup = async (
   c: Context<{ Bindings: Env }, "/api/v1/accounts/lookup">,
@@ -35,15 +35,17 @@ export const getV1AccountsLookup = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const acct = (c.req.query("acct") ?? "").split("@")[0] ?? "";
-  const account = await findAccountByUsername(c.env.DB, acct);
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
+  const ref = await findKnownAccountHandle(c.env, identity.value, c.req.query("acct") ?? "");
+  if (ref.isErr()) {
+    return ref.error.kind === "RepositoryError"
+      ? jsonRepositoryError(c, ref.error.message)
+      : c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  if (!account.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-  }
-  return c.json(await mastodonAccountDocument(c.env, identity.value, account.value));
+  return c.json(
+    ref.value.kind === "LocalAccount"
+      ? await mastodonAccountDocument(c.env, identity.value, ref.value.account)
+      : mastodonRemoteAccount(identity.value, ref.value.actor),
+  );
 };
 
 export const getV1AccountsRelationships = async (

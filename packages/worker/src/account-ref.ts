@@ -1,4 +1,4 @@
-import { InstanceIdentity, type LocalAccount, type RemoteActor } from "@tstodon/domain";
+import { Hostname, InstanceIdentity, type LocalAccount, type RemoteActor } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountByUsername } from "./account-store";
 import { parseLocalActorUsername } from "./activitypub";
@@ -6,8 +6,8 @@ import { suspendedDomains } from "./admin-domain-block-store";
 import type { RepositoryError } from "./d1";
 import { RemoteAccountId } from "./remote-account-id";
 import { resolveRemoteActorByHandle } from "./remote-actor-fetch";
-import { findRemoteActorByUri } from "./remote-actor-store";
-import { federationAllowHosts } from "./runtime-config";
+import { findRemoteActorByHandle, findRemoteActorByUri } from "./remote-actor-store";
+import { federatesWithHost, federationAllowHosts } from "./runtime-config";
 
 /**
  * An account on either side of a move: a local account, or a cached remote
@@ -72,6 +72,50 @@ export const parseAccountHandle = (
   return match && username ? { username, domain: match[2]?.toLowerCase() } : undefined;
 };
 
+const findLocalRef = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  username: string,
+): Promise<Result<AccountRef, ResolveHandleError>> => {
+  const account = await findAccountByUsername(db, username);
+  if (account.isErr()) {
+    return err(account.error);
+  }
+  return account.value ? ok(localRef(identity, account.value)) : err({ kind: "AccountNotFound" });
+};
+
+/**
+ * The account a handle names among those this server already knows, as
+ * Mastodon's `ResolveAccountService` with `skip_webfinger`: a bare username or
+ * one at this instance's domain is local, anything else a cached remote actor.
+ * A domain outside the allow list or suspended names no account.
+ */
+export const findKnownAccountHandle = async (
+  env: Env,
+  identity: InstanceIdentity,
+  raw: string,
+): Promise<Result<AccountRef, ResolveHandleError>> => {
+  const handle = parseAccountHandle(raw);
+  if (!handle) {
+    return err({ kind: "InvalidHandle" });
+  }
+  const { username, domain } = handle;
+  if (domain === undefined || domain === identity.domain) {
+    return findLocalRef(env.DB, identity, username);
+  }
+  if (
+    !(await federatesWithHost(env, domain)) ||
+    (await suspendedDomains(env.DB)).has(Hostname.ofAuthority(domain))
+  ) {
+    return err({ kind: "AccountNotFound" });
+  }
+  const actor = await findRemoteActorByHandle(env.DB, username, domain);
+  if (actor.isErr()) {
+    return err(actor.error);
+  }
+  return actor.value ? ok(remoteRef(actor.value)) : err({ kind: "AccountNotFound" });
+};
+
 /**
  * The account a handle names, as Mastodon's `ResolveAccountService`: a bare
  * username or one at this instance's domain is local; anything else is looked
@@ -88,11 +132,7 @@ export const resolveAccountHandle = async (
   }
   const { username, domain } = handle;
   if (domain === undefined || domain === identity.domain) {
-    const account = await findAccountByUsername(env.DB, username);
-    if (account.isErr()) {
-      return err(account.error);
-    }
-    return account.value ? ok(localRef(identity, account.value)) : err({ kind: "AccountNotFound" });
+    return findLocalRef(env.DB, identity, username);
   }
   const actor = await resolveRemoteActorByHandle(env.DB, identity, `${username}@${domain}`, {
     allowHosts: await federationAllowHosts(env),
