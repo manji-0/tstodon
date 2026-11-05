@@ -142,7 +142,7 @@ const suspend = async (id: string, domain: string): Promise<void> => {
 
 const scheduled = async (cron: string): Promise<void> => {
   const ctx = createExecutionContext();
-  handleScheduled({ cron, scheduledTime: Date.now(), noRetry: () => undefined }, env, ctx);
+  await handleScheduled({ cron, scheduledTime: Date.now(), noRetry: () => undefined }, env, ctx);
   await waitOnExecutionContext(ctx);
 };
 
