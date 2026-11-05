@@ -197,6 +197,7 @@ describe("remote accounts on lists", () => {
     const owner = "list-remote-owner@example.com";
     const local = await signedInAccount("list-remote-local@example.com");
     await acceptedFollow(owner, remote, "list-member");
+    expect((await send(owner, `/api/v1/accounts/${local.id}/follow`, "POST", {})).status).toBe(200);
     const listId = await createList(owner, "Mixed");
 
     const added = await send(owner, `/api/v1/lists/${listId}/accounts`, "POST", {

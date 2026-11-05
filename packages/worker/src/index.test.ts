@@ -964,6 +964,11 @@ describe("worker http", () => {
     );
     expect(list.title).toBe("Friends");
 
+    const followed = await json(`/api/v1/accounts/${memberAccount.id}/follow`, {
+      method: "POST",
+      headers: await auth("list-owner@example.com"),
+    });
+    expect(followed.status).toBe(200);
     const addMembers = await json(`/api/v1/lists/${list.id}/accounts`, {
       method: "POST",
       headers: { "content-type": "application/json", ...(await auth("list-owner@example.com")) },

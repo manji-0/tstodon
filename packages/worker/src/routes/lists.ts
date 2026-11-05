@@ -14,7 +14,7 @@ import {
   createList,
   deleteList,
   findListForAccount,
-  findUnfollowedRemoteMember,
+  findUnfollowedMember,
   ListMember,
   ListRepliesPolicySchema,
   listListMembers,
@@ -190,21 +190,21 @@ export const postV1ListsByIdAccounts = async (
   if (found.isErr()) {
     return jsonRepositoryError(c, found.error.message);
   }
-  // As in Mastodon, a remote account goes on a list only while it is followed,
-  // and one that is not refuses the whole request.
-  const unfollowed = await findUnfollowedRemoteMember(c.env.DB, user.value.id, members);
+  const existing = members.filter(
+    (member) => member.kind === "RemoteActor" || found.value.has(member.accountId),
+  );
+  // As in Mastodon, an account goes on a list only while it is followed, and
+  // one that is not refuses the whole request.
+  const unfollowed = await findUnfollowedMember(c.env.DB, user.value.id, existing);
   if (unfollowed.isErr()) {
     return jsonRepositoryError(c, unfollowed.error.message);
   }
   if (unfollowed.value) {
     return c.json(
-      { error: "Validation failed: Account has not been followed", kind: "NotFollowed" },
+      { error: "Validation failed: Account must be a followed account", kind: "NotFollowed" },
       422,
     );
   }
-  const existing = members.filter(
-    (member) => member.kind === "RemoteActor" || found.value.has(member.accountId),
-  );
   const added = await addListMembers(c.env.DB, list.value.id, existing);
   if (added.isErr()) {
     return jsonRepositoryError(c, added.error.message);

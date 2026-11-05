@@ -308,7 +308,7 @@ describe("data export and import", () => {
       { kind: "LocalAccount", accountId: bob.id },
       { kind: "RemoteActor", actorUri: remoteFriend.actorUri },
     ]);
-    await addListMembers(env.DB, news.value.id, [{ kind: "LocalAccount", accountId: dave.id }]);
+    await addListMembers(env.DB, news.value.id, [{ kind: "LocalAccount", accountId: bob.id }]);
     const first = await seedNote(bob);
     const second = await seedNote(bob);
     await bookmarkStatus(env.DB, alice.id, {
@@ -347,7 +347,7 @@ describe("data export and import", () => {
     expect(lines(files.lists).sort()).toEqual([
       '"Close, ""best"" friends",rt_bob@example.com',
       '"Close, ""best"" friends",rt_friend@remote.example',
-      "News,rt_dave@example.com",
+      "News,rt_bob@example.com",
     ]);
     expect(lines(files.bookmarks).sort()).toEqual(
       [statusUri(bob, first), statusUri(bob, second)].sort(),
@@ -457,6 +457,8 @@ describe("data export and import", () => {
     ]);
 
     // Lists: an overwrite empties only the lists the file names.
+    await followAccount(env.DB, owner.id, bob.id, false, {});
+    await followAccount(env.DB, owner.id, carol.id, false, {});
     await runImport(owner, "Lists", "Merge", "Friends,ow_bob\nFriends,ow_carol\nOther,ow_bob\n");
     expect(await keysOf(owner, "Lists")).toEqual([
       "Friends\u001fow_bob@example.com",
@@ -552,6 +554,7 @@ describe("data export and import", () => {
     );
     const listFailures = await listFailedRows(env.DB, noFollow, 10);
     expect(listFailures.isOk() && listFailures.value.map((row) => row.failure.kind)).toEqual([
+      "NotFollowed",
       "NotFollowed",
     ]);
   });

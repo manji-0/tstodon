@@ -5,6 +5,7 @@ import { OutboundFollow, type LocalStatus as LocalStatusValue } from "@tstodon/d
 import { nowIso } from "./clock";
 import { runD1, runD1BatchChunked, type RepositoryError } from "./d1";
 import { newEntityId } from "./ids";
+import { findFollowKind } from "./follow-store";
 import { findOutboundFollow } from "./outbound-follow-store";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import { hydrateStatusRows, STATUS_SELECT } from "./status-store";
@@ -224,27 +225,43 @@ const deleteMemberSql = (listId: string, member: ListMember) =>
     : deleteListRemoteMemberSql(listId, member.actorUri);
 
 /**
- * The first remote member among `members` that `ownerId` does not follow, as
- * Mastodon requires of a list account; `undefined` when the owner follows all.
+ * The first of `members` that `ownerId` may not put on a list, as Mastodon's
+ * `ListAccount` requires a followed account: a local one the owner follows
+ * or has asked to follow (or the owner itself), a remote one the owner
+ * follows; `undefined` when every member may go on.
  */
-export const findUnfollowedRemoteMember = async (
+export const findUnfollowedMember = async (
   db: D1Database,
   ownerId: string,
   members: ReadonlyArray<ListMember>,
 ): Promise<Result<ListMember | undefined, RepositoryError>> => {
   for (const member of members) {
-    if (member.kind !== "RemoteActor") {
-      continue;
+    const followed = await isFollowedMember(db, ownerId, member);
+    if (followed.isErr()) {
+      return err(followed.error);
     }
-    const follow = await findOutboundFollow(db, ownerId, member.actorUri);
-    if (follow.isErr()) {
-      return err(follow.error);
-    }
-    if (!OutboundFollow.relationship(follow.value).following) {
+    if (!followed.value) {
       return ok(member);
     }
   }
   return ok(undefined);
+};
+
+const isFollowedMember = async (
+  db: D1Database,
+  ownerId: string,
+  member: ListMember,
+): Promise<Result<boolean, RepositoryError>> => {
+  switch (member.kind) {
+    case "LocalAccount":
+      return member.accountId === ownerId
+        ? ok(true)
+        : (await findFollowKind(db, ownerId, member.accountId)).map((kind) => kind !== undefined);
+    case "RemoteActor":
+      return (await findOutboundFollow(db, ownerId, member.actorUri)).map(
+        (follow) => OutboundFollow.relationship(follow).following,
+      );
+  }
 };
 
 /**
@@ -339,8 +356,8 @@ export const listListTimelineStatuses = async (
         `SELECT ${STATUS_SELECT} FROM statuses
          WHERE visibility != 'direct'
            AND account_id IN (SELECT member_account_id FROM account_list_members WHERE list_id = ?)
-           -- A local member need not be followed; home's followers-only rule still holds.
-           AND (visibility <> 'private' OR account_id = ? OR account_id IN (
+           -- Mastodon feeds a list only from members the owner follows (accepted) and the owner.
+           AND (account_id = ? OR account_id IN (
              SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
            ))
            AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}

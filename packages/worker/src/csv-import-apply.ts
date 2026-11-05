@@ -34,7 +34,7 @@ import { unfollowAccount } from "./follow-store";
 import {
   addListMembers,
   createList,
-  findUnfollowedRemoteMember,
+  findUnfollowedMember,
   type ListMember,
   listListsForAccount,
   removeListMembers,
@@ -225,7 +225,7 @@ export const applyImportRow = async (
             return ok(failed("Refused"));
           }
           const member = memberOf(ref);
-          const unfollowed = await findUnfollowedRemoteMember(env.DB, account.id, [member]);
+          const unfollowed = await findUnfollowedMember(env.DB, account.id, [member]);
           if (unfollowed.isErr()) {
             return err(unfollowed.error);
           }

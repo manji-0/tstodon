@@ -384,17 +384,17 @@ describe("a list's local members", () => {
   it("leave the owner's lists when the follow ends", async () => {
     const owner = "member-leave-owner@example.com";
     const unfollowed = "member-leave-unfollowed@example.com";
-    const blocked = "member-leave-blocked@example.com";
+    const removing = "member-leave-removing@example.com";
     const rejecting = "member-leave-rejecting@example.com";
     const kept = "member-leave-kept@example.com";
     await lock(rejecting);
     const ids = [
       await followLocal(owner, unfollowed),
-      await followLocal(owner, blocked),
+      await followLocal(owner, removing),
       await followLocal(owner, rejecting),
       await followLocal(owner, kept),
     ];
-    const [unfollowedId, blockedId, , keptId] = ids;
+    const [unfollowedId, , , keptId] = ids;
     const lists = [await createList(owner), await createList(owner)];
     for (const listId of lists) {
       await addMembers(owner, listId, ids);
@@ -403,7 +403,7 @@ describe("a list's local members", () => {
     const ownerId = (await signedInAccount(owner)).id;
     for (const [email, path] of [
       [owner, `/api/v1/accounts/${unfollowedId}/unfollow`],
-      [owner, `/api/v1/accounts/${blockedId}/block`],
+      [removing, `/api/v1/accounts/${ownerId}/remove_from_followers`],
       [rejecting, `/api/v1/follow_requests/${ownerId}/reject`],
     ] as const) {
       expect((await send(email, path, "POST", {})).status).toBe(200);
@@ -457,7 +457,7 @@ describe("a list's replies policy", () => {
     const followed = "reply-local-followed@example.com";
     const stranger = "reply-local-stranger@example.com";
     const memberId = await followLocal(owner, member);
-    const fellowId = await signedInAccount(fellow).then((account) => account.id);
+    const fellowId = await followLocal(owner, fellow);
     await followLocal(owner, followed);
     const listId = await createList(owner);
     await addMembers(owner, listId, [memberId, fellowId]);
@@ -480,7 +480,12 @@ describe("a list's replies policy", () => {
     await setList(owner, listId, { replies_policy: "none" });
     expect(await replies()).toEqual(["reply to owner", "reply to self"]);
     await setList(owner, listId, { replies_policy: "followed" });
-    expect(await replies()).toEqual(["reply to followed", "reply to owner", "reply to self"]);
+    expect(await replies()).toEqual([
+      "reply to fellow",
+      "reply to followed",
+      "reply to owner",
+      "reply to self",
+    ]);
     await setList(owner, listId, { replies_policy: "list" });
     expect(await replies()).toEqual(["reply to fellow", "reply to owner", "reply to self"]);
   });
@@ -495,7 +500,7 @@ describe("a list's replies policy", () => {
     const strangerRemote = await remoteActor("reply-remote-stranger", "reply-stranger.example");
     await followRemote(owner, member, "reply-remote-member");
     await followRemote(owner, followedRemote, "reply-remote-followed");
-    const listerId = await signedInAccount(lister).then((account) => account.id);
+    const listerId = await followLocal(owner, lister);
     await followLocal(owner, followed);
     const listId = await createList(owner);
     await addMembers(owner, listId, [remoteId(member), listerId]);
@@ -526,6 +531,7 @@ describe("a list's replies policy", () => {
       "r-root",
       "r-to-followed-local",
       "r-to-followed-remote",
+      "r-to-lister",
       "r-to-owner",
       "r-to-self",
     ]);
