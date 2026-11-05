@@ -33,6 +33,8 @@ import {
 } from "./runtime-config";
 import { startOutboxDeliveryWorkflow } from "./delivery";
 import { parseJsonText } from "./json-column";
+import { parseLocalStatusId } from "./activitypub";
+import { listPollInteractorUris } from "./remote-interaction-store";
 
 const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -49,26 +51,49 @@ const audienceOf = (value: unknown): string[] => {
   );
 };
 
+/** The `Question` an `Update` carries, by URI: a poll's new counts or an edit of it. */
+const updatedQuestionOf = (payload: unknown, object: unknown): string | undefined => {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    Reflect.get(payload, "type") !== "Update" ||
+    typeof object !== "object" ||
+    object === null ||
+    Reflect.get(object, "type") !== "Question"
+  ) {
+    return undefined;
+  }
+  const id: unknown = Reflect.get(object, "id");
+  return typeof id === "string" ? id : undefined;
+};
+
 /**
  * Who an outbound activity goes to, read from its addressing (the object's
  * `to`/`cc` and the activity's own): followers when it addresses the public
  * or this instance's followers collection, and each remote actor it names.
  * An activity without addressing (a boost) goes to followers.
+ * `updatedQuestion` is the poll an `Update(Question)` carries, whose voters
+ * and boosters hear it too.
  */
 export const outboundAudience = (
   payloadJson: string,
   localHost: string,
-): Readonly<{ followers: boolean; actorUris: ReadonlyArray<string> }> => {
+): Readonly<{
+  followers: boolean;
+  actorUris: ReadonlyArray<string>;
+  updatedQuestion: string | undefined;
+}> => {
   const parsed = parseJsonText(payloadJson);
   if (parsed.isErr()) {
-    return { followers: true, actorUris: [] };
+    return { followers: true, actorUris: [], updatedQuestion: undefined };
   }
   const payload = parsed.value;
   const object: unknown =
     typeof payload === "object" && payload !== null ? Reflect.get(payload, "object") : undefined;
+  const updatedQuestion = updatedQuestionOf(payload, object);
   const audience = [...audienceOf(payload), ...audienceOf(object)];
   if (audience.length === 0) {
-    return { followers: true, actorUris: [] };
+    return { followers: true, actorUris: [], updatedQuestion };
   }
   // `localHost` may carry a port, as the follower filter below compares hosts.
   const isLocal = (uri: string): boolean => {
@@ -88,7 +113,7 @@ export const outboundAudience = (
       ),
     ),
   ];
-  return { followers, actorUris };
+  return { followers, actorUris, updatedQuestion };
 };
 
 /** Would {@link outboundAudience} find any remote recipient for this activity? */
@@ -173,7 +198,18 @@ export const processOutboxJob = async (
         audience.followers && activity.value.account_id !== null
           ? await listAcceptedRemoteFollowerInboxes(env.DB, activity.value.account_id)
           : ok([]);
-      const addressed = await findRemoteActorsByUris(env.DB, audience.actorUris);
+      // As Mastodon's `DistributePollUpdateWorker`, a local poll's `Update`
+      // also goes to its remote voters and boosters, followers or not.
+      const pollStatusId =
+        audience.updatedQuestion !== undefined && identity.isOk()
+          ? parseLocalStatusId(identity.value, audience.updatedQuestion)
+          : undefined;
+      const interactors =
+        pollStatusId === undefined ? ok([]) : await listPollInteractorUris(env.DB, pollStatusId);
+      const addressed = await findRemoteActorsByUris(env.DB, [
+        ...audience.actorUris,
+        ...(interactors.isOk() ? interactors.value : []),
+      ]);
       const candidateInboxes = [
         ...(remoteFollowers.isOk() ? remoteFollowers.value : []),
         ...(addressed.isOk() ? [...addressed.value.values()] : []).map(

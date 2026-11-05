@@ -534,6 +534,8 @@ export * from "./sql/listPendingRemoteFollowRequesters";
 
 export * from "./sql/listPinnedStatuses";
 
+export * from "./sql/listPollInteractorUris";
+
 export * from "./sql/listPollVotesForAccount";
 
 export * from "./sql/listPublicDomainBlocks";
