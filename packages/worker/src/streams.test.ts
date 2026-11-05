@@ -144,6 +144,34 @@ describe("streaming subscriptions", () => {
     socket.close();
   });
 
+  it("carry a list member's boost to the list's stream", async () => {
+    const owner = "st-boost-owner@example.com";
+    const member = "st-boost-member@example.com";
+    await follow(owner, member);
+    const listId = await createList(owner, "boosts");
+    const added = await json(owner, `/api/v1/lists/${listId}/accounts`, {
+      method: "POST",
+      body: JSON.stringify({ account_ids: [(await signedInAccount(member)).id] }),
+    });
+    expect(added.status).toBe(200);
+    const boosted = await post("st-boost-author@example.com", "boosted on the list");
+    const socket = await openStream({ email: owner });
+    await socket.subscribe({ stream: "list", list: listId });
+
+    const reblogged = await json(member, `/api/v1/statuses/${boosted}/reblog`, {
+      method: "POST",
+      body: "{}",
+    });
+    expect(reblogged.status).toBe(200);
+    const heard = await socket.next();
+    expect(heard).toMatchObject({ stream: ["list", listId], event: "update" });
+    expect(JSON.parse(heard.payload)).toMatchObject({
+      id: idOf(reblogged.body),
+      reblog: { id: boosted },
+    });
+    socket.close();
+  });
+
   it("let only the list's owner subscribe to it", async () => {
     const owner = "st-list-owner@example.com";
     const listId = await createList(owner, "mine");

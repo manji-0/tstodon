@@ -209,6 +209,7 @@ describe("exclusive lists", () => {
     expect(await labels(owner, `/api/v1/timelines/list/${listId}`)).toEqual([
       "boost:remote-other-note",
       "remote-member-note",
+      "boost:other post",
       "member post",
     ]);
 
@@ -221,6 +222,99 @@ describe("exclusive lists", () => {
       "other post",
       "member post",
     ]);
+  });
+});
+
+/** The local id of a remote note this instance cached. */
+const cachedId = async (noteUri: string): Promise<string> =>
+  read(
+    z.object({ id: z.string() }),
+    await env.DB.prepare("SELECT id FROM remote_statuses WHERE object_uri = ?")
+      .bind(noteUri)
+      .first(),
+  ).id;
+
+describe("local members' boosts", () => {
+  it("show on the list, paged by id, unless the owner's follow hides the booster's reblogs", async () => {
+    const owner = "boost-list-owner@example.com";
+    const member = "boost-list-member@example.com";
+    const quiet = "boost-list-quiet@example.com";
+    const author = "boost-list-author@example.com";
+    const remote = await remoteActor("boost-list-remote", "boost-list.example");
+    const memberId = await followLocal(owner, member);
+    const quietId = (await signedInAccount(quiet)).id;
+    expect(
+      (await send(owner, `/api/v1/accounts/${quietId}/follow`, "POST", { reblogs: false })).status,
+    ).toBe(200);
+    const listId = await createList(owner);
+    await addMembers(owner, listId, [memberId, quietId]);
+
+    const authored = await post(author, "author post");
+    const remoteNote = await note(remote, "boost-list-note");
+    await post(member, "member post");
+    await reblog(member, authored.id);
+    await reblog(quiet, authored.id);
+    await reblog(member, await cachedId(remoteNote));
+    await post(quiet, "quiet post");
+
+    const path = `/api/v1/timelines/list/${listId}`;
+    const newestFirst = ["quiet post", "boost:boost-list-note", "boost:author post", "member post"];
+    expect(await labels(owner, path)).toEqual(newestFirst);
+    expect(await walk(owner, path)).toEqual(newestFirst);
+    const ids = read(z.array(StatusSchema), (await get(owner, path)).body).map((entry) => entry.id);
+    expect(await labels(owner, `${path}?min_id=${ids[3]}&limit=2`)).toEqual([
+      "boost:author post",
+      "boost:boost-list-note",
+    ]);
+    expect(await labels(owner, `${path}?since_id=${ids[2]}`)).toEqual([
+      "quiet post",
+      "boost:boost-list-note",
+    ]);
+  });
+
+  it("stay off home and the list when the owner blocks or mutes the boosted author", async () => {
+    const owner = "boost-hidden-owner@example.com";
+    const member = "boost-hidden-member@example.com";
+    const blocked = "boost-hidden-blocked@example.com";
+    const muted = "boost-hidden-muted@example.com";
+    const blocker = "boost-hidden-blocker@example.com";
+    const shown = "boost-hidden-shown@example.com";
+    const blockedRemote = await remoteActor("boost-hidden-rblocked", "boost-rblocked.example");
+    const mutedRemote = await remoteActor("boost-hidden-rmuted", "boost-rmuted.example");
+    const domainRemote = await remoteActor("boost-hidden-rdomain", "boost-rdomain.example");
+    const memberId = await followLocal(owner, member);
+    const listId = await createList(owner);
+    await addMembers(owner, listId, [memberId]);
+
+    const ownerPost = await post(owner, "owner post");
+    for (const email of [blocked, muted, blocker, shown]) {
+      await reblog(member, (await post(email, `${email.split("@")[0]} post`)).id);
+    }
+    for (const remote of [blockedRemote, mutedRemote, domainRemote]) {
+      const slug = new URL(remote.actorUri).hostname.split(".")[0] ?? "";
+      await reblog(member, await cachedId(await note(remote, slug)));
+    }
+    await reblog(member, ownerPost.id);
+    const ownerId = (await signedInAccount(owner)).id;
+    for (const [email, path] of [
+      [owner, `/api/v1/accounts/${(await signedInAccount(blocked)).id}/block`],
+      [owner, `/api/v1/accounts/${(await signedInAccount(muted)).id}/mute`],
+      [blocker, `/api/v1/accounts/${ownerId}/block`],
+      [owner, `/api/v1/accounts/${remoteId(blockedRemote)}/block`],
+      [owner, `/api/v1/accounts/${remoteId(mutedRemote)}/mute`],
+    ] as const) {
+      expect((await send(email, path, "POST", {})).status).toBe(200);
+    }
+    expect(
+      (await send(owner, "/api/v1/domain_blocks", "POST", { domain: "boost-rdomain.example" }))
+        .status,
+    ).toBe(200);
+
+    const boosts = async (path: string) =>
+      (await labels(owner, path)).filter((entry) => entry.startsWith("boost:"));
+    const kept = ["boost:owner post", "boost:boost-hidden-shown post"];
+    expect(await boosts("/api/v1/timelines/home")).toEqual(kept);
+    expect(await boosts(`/api/v1/timelines/list/${listId}`)).toEqual(kept);
   });
 });
 
