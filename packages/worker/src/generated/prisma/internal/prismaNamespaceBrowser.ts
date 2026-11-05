@@ -85,6 +85,7 @@ export const ModelName = {
   status_mutes: "status_mutes",
   followed_tags: "followed_tags",
   featured_tags: "featured_tags",
+  tags: "tags",
   custom_emojis: "custom_emojis",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
@@ -555,6 +556,13 @@ export const Featured_tagsScalarFieldEnum = {
 
 export type Featured_tagsScalarFieldEnum =
   (typeof Featured_tagsScalarFieldEnum)[keyof typeof Featured_tagsScalarFieldEnum];
+
+export const TagsScalarFieldEnum = {
+  name: "name",
+  created_at: "created_at",
+} as const;
+
+export type TagsScalarFieldEnum = (typeof TagsScalarFieldEnum)[keyof typeof TagsScalarFieldEnum];
 
 export const Custom_emojisScalarFieldEnum = {
   id: "id",

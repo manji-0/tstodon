@@ -202,6 +202,11 @@ export type followed_tags = Prisma.followed_tagsModel;
  */
 export type featured_tags = Prisma.featured_tagsModel;
 /**
+ * Model tags
+ *
+ */
+export type tags = Prisma.tagsModel;
+/**
  * Model custom_emojis
  *
  */

@@ -426,6 +426,8 @@ export * from "./sql/insertStatusRemoteMention";
 
 export * from "./sql/insertStreamSubscription";
 
+export * from "./sql/insertTagNames";
+
 export * from "./sql/isAccountMentionedOnRemoteStatus";
 
 export * from "./sql/isAccountMentionedOnStatus";
@@ -663,6 +665,8 @@ export * from "./sql/searchAccounts";
 export * from "./sql/searchFollowedAccounts";
 
 export * from "./sql/searchRemoteActors";
+
+export * from "./sql/searchTags";
 
 export * from "./sql/setAccountAuthUser";
 

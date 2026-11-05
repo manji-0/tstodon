@@ -153,7 +153,10 @@ describe("tag timeline across the fediverse", () => {
     );
     const response = await json("/api/v2/search?q=remotesearch&type=hashtags");
     expect(response.status).toBe(200);
-    const found = read(z.object({ hashtags: z.array(z.object({ name: z.string() })) }), response.body);
+    const found = read(
+      z.object({ hashtags: z.array(z.object({ name: z.string() })) }),
+      response.body,
+    );
     expect(found.hashtags.map((tag) => tag.name)).toEqual(["remotesearchtag"]);
   });
 

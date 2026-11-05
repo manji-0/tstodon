@@ -428,6 +428,7 @@ export const ModelName = {
   status_mutes: "status_mutes",
   followed_tags: "followed_tags",
   featured_tags: "featured_tags",
+  tags: "tags",
   custom_emojis: "custom_emojis",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
@@ -522,6 +523,7 @@ export type TypeMap<
       | "status_mutes"
       | "followed_tags"
       | "featured_tags"
+      | "tags"
       | "custom_emojis"
       | "inbox_activities"
       | "instance_settings"
@@ -3355,6 +3357,80 @@ export type TypeMap<
           result:
             | runtime.Types.Utils.Optional<Prisma.Featured_tagsCountAggregateOutputType>
             | number;
+        };
+      };
+    };
+    tags: {
+      payload: Prisma.$tagsPayload<ExtArgs>;
+      fields: Prisma.tagsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.tagsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$tagsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.tagsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$tagsPayload>;
+        };
+        findFirst: {
+          args: Prisma.tagsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$tagsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.tagsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$tagsPayload>;
+        };
+        findMany: {
+          args: Prisma.tagsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$tagsPayload>[];
+        };
+        create: {
+          args: Prisma.tagsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$tagsPayload>;
+        };
+        createMany: {
+          args: Prisma.tagsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.tagsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$tagsPayload>[];
+        };
+        delete: {
+          args: Prisma.tagsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$tagsPayload>;
+        };
+        update: {
+          args: Prisma.tagsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$tagsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.tagsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.tagsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.tagsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$tagsPayload>[];
+        };
+        upsert: {
+          args: Prisma.tagsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$tagsPayload>;
+        };
+        aggregate: {
+          args: Prisma.TagsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateTags>;
+        };
+        groupBy: {
+          args: Prisma.tagsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.TagsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.tagsCountArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.TagsCountAggregateOutputType> | number;
         };
       };
     };
@@ -6617,6 +6693,13 @@ export const Featured_tagsScalarFieldEnum = {
 export type Featured_tagsScalarFieldEnum =
   (typeof Featured_tagsScalarFieldEnum)[keyof typeof Featured_tagsScalarFieldEnum];
 
+export const TagsScalarFieldEnum = {
+  name: "name",
+  created_at: "created_at",
+} as const;
+
+export type TagsScalarFieldEnum = (typeof TagsScalarFieldEnum)[keyof typeof TagsScalarFieldEnum];
+
 export const Custom_emojisScalarFieldEnum = {
   id: "id",
   shortcode: "shortcode",
@@ -7310,6 +7393,7 @@ export type GlobalOmitConfig = {
   status_mutes?: Prisma.status_mutesOmit;
   followed_tags?: Prisma.followed_tagsOmit;
   featured_tags?: Prisma.featured_tagsOmit;
+  tags?: Prisma.tagsOmit;
   custom_emojis?: Prisma.custom_emojisOmit;
   inbox_activities?: Prisma.inbox_activitiesOmit;
   instance_settings?: Prisma.instance_settingsOmit;

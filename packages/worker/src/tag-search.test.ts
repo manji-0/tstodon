@@ -71,9 +71,7 @@ describe("hashtag search", () => {
     expect(await names("q=cat", viewer)).toEqual(["cats", "catsofmastodon"]);
 
     expect(await names("q=cat&type=hashtags&limit=1&offset=0", viewer)).toEqual(["cats"]);
-    expect(await names("q=cat&type=hashtags&limit=1&offset=1", viewer)).toEqual([
-      "catsofmastodon",
-    ]);
+    expect(await names("q=cat&type=hashtags&limit=1&offset=1", viewer)).toEqual(["catsofmastodon"]);
     expect(await names("q=cat&type=hashtags&limit=1&offset=2", viewer)).toEqual([]);
   });
 
