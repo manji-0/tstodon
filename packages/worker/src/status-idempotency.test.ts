@@ -1,9 +1,11 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
+import { Hono } from "hono";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { authHeaders } from "../test/auth-fixture";
+import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
+import { postV1Statuses } from "./routes/statuses/create";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -88,5 +90,66 @@ describe("status idempotency", () => {
     expect(alices.status).toBe(200);
     expect(bobs.status).toBe(200);
     expect(read(StatusSchema, bobs.body).id).not.toBe(read(StatusSchema, alices.body).id);
+  });
+
+  it("records the key once the status exists, even when rendering it fails", async () => {
+    const email = "idempotency-unrendered@example.com";
+    const account = await signedInAccount(email);
+    // During the first request, author-presentation reads fail once the status
+    // row is written: every render of the new status fails, the checks before
+    // the write do not.
+    let firstRequest = true;
+    let statusWritten = false;
+    let renderFailed = false;
+    const failingFirstRender = new Proxy(env.DB, {
+      get: (db, property) => {
+        if (property === "prepare") {
+          return (query: string) => {
+            if (/INSERT INTO statuses/i.test(query)) {
+              statusWritten = true;
+            }
+            if (firstRequest && statusWritten && /FROM account_moderation/i.test(query)) {
+              renderFailed = true;
+              throw new Error("D1 unavailable");
+            }
+            return db.prepare(query);
+          };
+        }
+        const value: unknown = Reflect.get(db, property);
+        return typeof value === "function" ? value.bind(db) : value;
+      },
+    });
+    const app = new Hono<{ Bindings: Env }>().post("/api/v1/statuses", postV1Statuses);
+    const create = async (): Promise<{ status: number; body: unknown }> => {
+      const response = await app.request(
+        "https://example.com/api/v1/statuses",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "Idempotency-Key": "key-unrendered",
+            ...(await auth(email)),
+          },
+          body: JSON.stringify({ status: "posted once" }),
+        },
+        { ...env, DB: failingFirstRender },
+      );
+      return { status: response.status, body: await response.json() };
+    };
+
+    const first = await create();
+    firstRequest = false;
+    expect(renderFailed).toBe(true);
+    expect(first.status).toBe(500);
+
+    const retried = await create();
+    expect(retried.status).toBe(200);
+    const created = read(StatusSchema, retried.body);
+    expect(created.content).toContain("posted once");
+
+    const statuses = await json(`/api/v1/accounts/${account.id}/statuses`);
+    expect(read(z.array(StatusSchema), statuses.body).map((status) => status.id)).toEqual([
+      created.id,
+    ]);
   });
 });
