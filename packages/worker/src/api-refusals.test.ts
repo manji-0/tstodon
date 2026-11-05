@@ -75,9 +75,36 @@ const editRefusals = [
   },
 ] as const satisfies ReadonlyArray<RefusalCase>;
 
+const credentialRefusals = [
+  {
+    name: "a malformed default language",
+    body: { source: { language: "not a language" } },
+    status: 422,
+    error: { error: "Invalid source[language]", kind: "ValidationError" },
+  },
+  {
+    name: "an unknown default privacy",
+    body: { source: { privacy: "everyone" } },
+    status: 422,
+    error: { error: "Invalid source[privacy]", kind: "ValidationError" },
+  },
+  {
+    name: "an unknown default quote policy",
+    body: { source: { quote_policy: "everyone" } },
+    status: 422,
+    error: { error: "Invalid source[quote_policy]", kind: "ValidationError" },
+  },
+  {
+    name: "an avatar that is not a file",
+    body: { avatar: "not-a-file" },
+    status: 422,
+    error: { error: "avatar must be sent as a file", kind: "ValidationError" },
+  },
+] as const satisfies ReadonlyArray<RefusalCase>;
+
 const send = async (
   path: string,
-  method: "POST" | "PUT",
+  method: "POST" | "PUT" | "PATCH",
   email: string,
   payload: unknown,
 ): Promise<{ status: number; body: unknown }> => {
@@ -110,6 +137,18 @@ describe("status edit refusals", () => {
       throw new Error("create returned no status id");
     }
     const answer = await send(`/api/v1/statuses/${id.value.id}`, "PUT", email, refusal.body);
+    expect(answer).toEqual({ status: refusal.status, body: refusal.error });
+  });
+});
+
+describe("update_credentials refusals", () => {
+  it.each(credentialRefusals)("answers $name with its Mastodon error", async (refusal) => {
+    const answer = await send(
+      "/api/v1/accounts/update_credentials",
+      "PATCH",
+      "refusal-credentials@example.com",
+      refusal.body,
+    );
     expect(answer).toEqual({ status: refusal.status, body: refusal.error });
   });
 });

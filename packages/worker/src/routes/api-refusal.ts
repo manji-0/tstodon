@@ -1,16 +1,16 @@
 import type { Context } from "hono";
-import { jsonRepositoryError } from "../../http";
+import { jsonRepositoryError } from "../http";
 
 /**
- * Why a status request is turned away: a Mastodon error body with its HTTP
+ * Why an API request is turned away: a Mastodon error body with its HTTP
  * status, or a storage failure (answered as `RepositoryError`, 500).
  */
-export type StatusRefusal =
+export type ApiRefusal =
   | Readonly<{ kind: "Rejected"; status: 400 | 404 | 422; error: string; errorKind: string }>
   | Readonly<{ kind: "RepositoryFailed"; message: string }>;
 
-export const StatusRefusal = {
-  rejected: (status: 400 | 404 | 422, error: string, errorKind: string): StatusRefusal => ({
+export const ApiRefusal = {
+  rejected: (status: 400 | 404 | 422, error: string, errorKind: string): ApiRefusal => ({
     kind: "Rejected",
     status,
     error,
@@ -22,9 +22,9 @@ export const StatusRefusal = {
     status: 404,
     error: "Record not found",
     errorKind: "NotFound",
-  } as const satisfies StatusRefusal,
-  repository: (message: string): StatusRefusal => ({ kind: "RepositoryFailed", message }),
-  respond: (c: Context<{ Bindings: Env }>, refusal: StatusRefusal): Response =>
+  } as const satisfies ApiRefusal,
+  repository: (message: string): ApiRefusal => ({ kind: "RepositoryFailed", message }),
+  respond: (c: Context<{ Bindings: Env }>, refusal: ApiRefusal): Response =>
     refusal.kind === "Rejected"
       ? c.json({ error: refusal.error, kind: refusal.errorKind }, refusal.status)
       : jsonRepositoryError(c, refusal.message),

@@ -7,6 +7,7 @@ import {
   type LocalAccount,
 } from "@tstodon/domain";
 import { InstanceLimits, schemaResult, warmSchemas } from "@tstodon/core";
+import { err, ok, type Result } from "neverthrow";
 import { type Context } from "hono";
 import { findAccountById, setAccountLocked, updateAccountProfile } from "../../account-store";
 import { findComposeDefaults, updateAccountDefaults } from "../../account-defaults-store";
@@ -28,6 +29,7 @@ import { parseInstanceIdentity } from "../../runtime-config";
 import { isTruthy } from "../../form-values";
 import { newEntityId } from "../../ids";
 import { avatarObjectKey, headerObjectKey } from "../../media-keys";
+import { ApiRefusal } from "../api-refusal";
 import { buildFeaturedTagDocuments } from "../tags";
 import { z } from "zod";
 import { booleanish } from "../../form-values";
@@ -139,6 +141,218 @@ const storeProfileImage = async (
   return { kind: "Ok", objectKey, contentType };
 };
 
+type UpdateCredentialsBody = z.infer<typeof UpdateCredentialsBodySchema>;
+
+type AccountDefaultsUpdate = Parameters<typeof updateAccountDefaults>[2];
+
+/**
+ * The posting defaults the request changes, from `source[...]`: flat form
+ * keys or a JSON `source` object. Undefined when it names none; an invalid
+ * value comes back as the 422 message Mastodon answers with.
+ */
+const parseSourceDefaults = (
+  rawBody: unknown,
+  source: UpdateCredentialsBody["source"],
+): Result<AccountDefaultsUpdate | undefined, string> => {
+  const flat: Record<string, unknown> = schemaResult(z.record(z.string(), z.unknown()))(
+    rawBody,
+  ).unwrapOr({});
+  const sourceKey = (key: "privacy" | "quote_policy"): string | undefined => {
+    const flatValue = flat[`source[${key}]`];
+    if (typeof flatValue === "string" && flatValue.trim().length > 0) {
+      return flatValue.trim();
+    }
+    return source?.[key]?.trim();
+  };
+  const privacyRaw = sourceKey("privacy");
+  const quotePolicyRaw = sourceKey("quote_policy");
+  const sensitiveRaw =
+    flat["source[sensitive]"] !== undefined ? flat["source[sensitive]"] : source?.sensitive;
+  const languageRaw =
+    typeof flat["source[language]"] === "string" ? flat["source[language]"] : source?.language;
+  const languageValue =
+    typeof languageRaw === "string"
+      ? languageRaw.trim().length === 0
+        ? null
+        : languageRaw.trim().toLowerCase()
+      : undefined;
+  if (
+    languageValue !== undefined &&
+    languageValue !== null &&
+    !/^[a-z]{2,3}(-[a-z0-9]+)?$/.test(languageValue)
+  ) {
+    return err("Invalid source[language]");
+  }
+  const sourceVisibility =
+    privacyRaw === undefined ? undefined : Visibility.fromMastodon(privacyRaw);
+  if (sourceVisibility?.isErr()) {
+    return err("Invalid source[privacy]");
+  }
+  if (
+    quotePolicyRaw !== undefined &&
+    quotePolicyRaw !== "public" &&
+    quotePolicyRaw !== "followers" &&
+    quotePolicyRaw !== "nobody"
+  ) {
+    return err("Invalid source[quote_policy]");
+  }
+  if (
+    !sourceVisibility &&
+    quotePolicyRaw === undefined &&
+    sensitiveRaw === undefined &&
+    languageValue === undefined
+  ) {
+    return ok(undefined);
+  }
+  return ok({
+    ...(sourceVisibility?.isOk() ? { visibility: sourceVisibility.value } : {}),
+    ...(quotePolicyRaw === undefined
+      ? {}
+      : {
+          quotePolicy:
+            quotePolicyRaw === "followers"
+              ? QuoteApprovalPolicy.Followers
+              : quotePolicyRaw === "nobody"
+                ? QuoteApprovalPolicy.Nobody
+                : QuoteApprovalPolicy.Public,
+        }),
+    ...(sensitiveRaw === undefined
+      ? {}
+      : {
+          sensitive: isTruthy(
+            typeof sensitiveRaw === "boolean" || typeof sensitiveRaw === "number"
+              ? sensitiveRaw
+              : String(sensitiveRaw),
+          ),
+        }),
+    ...(languageValue === undefined ? {} : { language: languageValue }),
+  });
+};
+
+/**
+ * Store the bio, profile fields, flags, and avatar/header uploads beside the
+ * account row; an omitted value keeps the stored one, and a replaced image is
+ * deleted from the media bucket once the new one is saved.
+ */
+const saveProfile = async (
+  env: Env,
+  accountId: string,
+  body: UpdateCredentialsBody,
+): Promise<Result<void, ApiRefusal>> => {
+  const existingProfile = await findAccountProfile(env.DB, accountId);
+  if (existingProfile.isErr()) {
+    return err(ApiRefusal.repository(existingProfile.error.message));
+  }
+  const existing = existingProfile.value;
+  const fields = body.fields
+    ?.flatMap((field) => {
+      const name = field.name?.trim() ?? "";
+      const value = field.value?.trim() ?? "";
+      return name.length > 0 && value.length > 0 ? [{ name, value }] : [];
+    })
+    // Mastodon keeps only the first few profile fields.
+    .slice(0, InstanceLimits.account.maxProfileFields);
+  // Avatar / header uploads land in the media bucket like any other object.
+  const avatar = await storeProfileImage(env, accountId, "avatar", body.avatar);
+  if (avatar.kind === "Err") {
+    return err(ApiRefusal.rejected(422, avatar.message, "ValidationError"));
+  }
+  const header = await storeProfileImage(env, accountId, "header", body.header);
+  if (header.kind === "Err") {
+    return err(ApiRefusal.rejected(422, header.message, "ValidationError"));
+  }
+  const flag = (value: UpdateCredentialsBody["bot"], stored: boolean): boolean =>
+    value === undefined ? stored : isTruthy(value);
+  const saved = await upsertAccountProfile(env.DB, accountId, {
+    note: body.note === undefined ? existing.note : body.note,
+    fields: fields === undefined ? existing.fields : fields,
+    bot: flag(body.bot, existing.bot),
+    discoverable: flag(body.discoverable, existing.discoverable),
+    indexable: flag(body.indexable, existing.indexable),
+    hideCollections: flag(body.hide_collections, existing.hideCollections),
+    avatarObjectKey: avatar.objectKey ?? existing.avatarObjectKey,
+    avatarContentType: avatar.contentType ?? existing.avatarContentType,
+    headerObjectKey: header.objectKey ?? existing.headerObjectKey,
+    headerContentType: header.contentType ?? existing.headerContentType,
+  });
+  if (saved.isErr()) {
+    return err(ApiRefusal.repository(saved.error.message));
+  }
+  const replaced = [
+    avatar.objectKey === null ? null : existing.avatarObjectKey,
+    header.objectKey === null ? null : existing.headerObjectKey,
+  ].filter((key): key is string => key !== null);
+  if (replaced.length > 0) {
+    await env.MEDIA.delete(replaced);
+  }
+  return ok(undefined);
+};
+
+/**
+ * Apply `update_credentials`: posting defaults, display name, profile, and
+ * the locked flag, in that order, then read the account back.
+ */
+const updateCredentials = async (
+  env: Env,
+  account: LocalAccount,
+  rawBody: unknown,
+  body: UpdateCredentialsBody,
+): Promise<Result<LocalAccount, ApiRefusal>> => {
+  const defaults = parseSourceDefaults(rawBody, body.source);
+  if (defaults.isErr()) {
+    return err(ApiRefusal.rejected(422, defaults.error, "ValidationError"));
+  }
+  if (defaults.value) {
+    const stored = await updateAccountDefaults(env.DB, account.id, defaults.value);
+    if (stored.isErr()) {
+      return err(ApiRefusal.repository(stored.error.message));
+    }
+  }
+  const displayName =
+    body.display_name && body.display_name.trim().length > 0
+      ? body.display_name.trim()
+      : account.displayName;
+  const updated = await updateAccountProfile(env.DB, account.id, displayName);
+  if (updated.isErr()) {
+    return err(ApiRefusal.repository(updated.error.message));
+  }
+  const profile = await saveProfile(env, account.id, body);
+  if (profile.isErr()) {
+    return err(profile.error);
+  }
+  if (body.locked !== undefined) {
+    const locked = await setAccountLocked(env.DB, account.id, isTruthy(body.locked));
+    if (locked.isErr()) {
+      return err(ApiRefusal.repository(locked.error.message));
+    }
+  }
+  const latest = await findAccountById(env.DB, account.id);
+  return latest.isErr() || !latest.value
+    ? err(ApiRefusal.repository("account missing after update"))
+    : ok(latest.value);
+};
+
+/** The account document with its `source`, as its owner sees it after a change. */
+const ownAccountDocument = async (
+  env: Env,
+  identity: InstanceIdentity,
+  account: LocalAccount,
+): Promise<Record<string, unknown>> => {
+  const [document, profile, defaults] = await Promise.all([
+    mastodonAccountDocument(env, identity, account),
+    findAccountProfile(env.DB, account.id),
+    findComposeDefaults(env.DB, account.id),
+  ]);
+  return {
+    ...document,
+    source: accountSource(
+      account,
+      profile.isOk() ? profile.value : EMPTY_ACCOUNT_PROFILE,
+      defaults.isOk() ? defaults.value : { language: null, sensitive: false },
+    ),
+  };
+};
+
 export const patchV1AccountsUpdateCredentials = async (
   c: Context<{ Bindings: Env }, "/api/v1/accounts/update_credentials">,
 ) => {
@@ -151,178 +365,14 @@ export const patchV1AccountsUpdateCredentials = async (
     return jsonAuthError(c, user.error);
   }
   const rawBody = await readUnknownBody(c);
-  const body = schemaResult(UpdateCredentialsBodySchema)(rawBody).mapErr(() => ({
-    kind: "ValidationError" as const,
-  }));
+  const body = schemaResult(UpdateCredentialsBodySchema)(rawBody);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  // `source[privacy]` and `source[quote_policy]` arrive as flat form keys or
-  // nested in a JSON `source` object.
-  const flat: Record<string, unknown> = schemaResult(z.record(z.string(), z.unknown()))(
-    rawBody,
-  ).unwrapOr({});
-  const sourceKey = (key: "privacy" | "quote_policy"): string | undefined => {
-    const flatValue = flat[`source[${key}]`];
-    if (typeof flatValue === "string" && flatValue.trim().length > 0) {
-      return flatValue.trim();
-    }
-    return body.value.source?.[key]?.trim();
-  };
-  const privacyRaw = sourceKey("privacy");
-  const quotePolicyRaw = sourceKey("quote_policy");
-  const sensitiveRaw =
-    flat["source[sensitive]"] !== undefined
-      ? flat["source[sensitive]"]
-      : body.value.source?.sensitive;
-  const languageRaw =
-    typeof flat["source[language]"] === "string"
-      ? flat["source[language]"]
-      : body.value.source?.language;
-  const languageValue =
-    typeof languageRaw === "string"
-      ? languageRaw.trim().length === 0
-        ? null
-        : languageRaw.trim().toLowerCase()
-      : undefined;
-  if (
-    languageValue !== undefined &&
-    languageValue !== null &&
-    !/^[a-z]{2,3}(-[a-z0-9]+)?$/.test(languageValue)
-  ) {
-    return c.json({ error: "Invalid source[language]", kind: "ValidationError" }, 422);
-  }
-  const sourceVisibility =
-    privacyRaw === undefined ? undefined : Visibility.fromMastodon(privacyRaw);
-  if (sourceVisibility?.isErr()) {
-    return c.json({ error: "Invalid source[privacy]", kind: "ValidationError" }, 422);
-  }
-  if (
-    quotePolicyRaw !== undefined &&
-    quotePolicyRaw !== "public" &&
-    quotePolicyRaw !== "followers" &&
-    quotePolicyRaw !== "nobody"
-  ) {
-    return c.json({ error: "Invalid source[quote_policy]", kind: "ValidationError" }, 422);
-  }
-  if (
-    sourceVisibility ||
-    quotePolicyRaw !== undefined ||
-    sensitiveRaw !== undefined ||
-    languageValue !== undefined
-  ) {
-    const defaults = await updateAccountDefaults(c.env.DB, user.value.id, {
-      ...(sourceVisibility?.isOk() ? { visibility: sourceVisibility.value } : {}),
-      ...(quotePolicyRaw === undefined
-        ? {}
-        : {
-            quotePolicy:
-              quotePolicyRaw === "followers"
-                ? QuoteApprovalPolicy.Followers
-                : quotePolicyRaw === "nobody"
-                  ? QuoteApprovalPolicy.Nobody
-                  : QuoteApprovalPolicy.Public,
-          }),
-      ...(sensitiveRaw === undefined
-        ? {}
-        : {
-            sensitive: isTruthy(
-              typeof sensitiveRaw === "boolean" || typeof sensitiveRaw === "number"
-                ? sensitiveRaw
-                : String(sensitiveRaw),
-            ),
-          }),
-      ...(languageValue === undefined ? {} : { language: languageValue }),
-    });
-    if (defaults.isErr()) {
-      return jsonRepositoryError(c, defaults.error.message);
-    }
-  }
-  const displayName =
-    body.value.display_name && body.value.display_name.trim().length > 0
-      ? body.value.display_name.trim()
-      : user.value.displayName;
-  const updated = await updateAccountProfile(c.env.DB, user.value.id, displayName);
-  if (updated.isErr()) {
-    return jsonRepositoryError(c, updated.error.message);
-  }
-
-  // Bio, profile fields, and the bot/discoverable flags live beside the row.
-  const existingProfile = await findAccountProfile(c.env.DB, user.value.id);
-  if (existingProfile.isErr()) {
-    return jsonRepositoryError(c, existingProfile.error.message);
-  }
-  const fields = body.value.fields
-    ?.flatMap((field) => {
-      const name = field.name?.trim() ?? "";
-      const value = field.value?.trim() ?? "";
-      return name.length > 0 && value.length > 0 ? [{ name, value }] : [];
-    })
-    // Mastodon keeps only the first few profile fields.
-    .slice(0, InstanceLimits.account.maxProfileFields);
-  // Avatar / header uploads land in the media bucket like any other object.
-  const uploaded = await storeProfileImage(c.env, user.value.id, "avatar", body.value.avatar);
-  if (uploaded.kind === "Err") {
-    return c.json({ error: uploaded.message, kind: "ValidationError" }, 422);
-  }
-  const header = await storeProfileImage(c.env, user.value.id, "header", body.value.header);
-  if (header.kind === "Err") {
-    return c.json({ error: header.message, kind: "ValidationError" }, 422);
-  }
-  const saved = await upsertAccountProfile(c.env.DB, user.value.id, {
-    note: body.value.note === undefined ? existingProfile.value.note : body.value.note,
-    fields: fields === undefined ? existingProfile.value.fields : fields,
-    bot: body.value.bot === undefined ? existingProfile.value.bot : isTruthy(body.value.bot),
-    discoverable:
-      body.value.discoverable === undefined
-        ? existingProfile.value.discoverable
-        : isTruthy(body.value.discoverable),
-    indexable:
-      body.value.indexable === undefined
-        ? existingProfile.value.indexable
-        : isTruthy(body.value.indexable),
-    hideCollections:
-      body.value.hide_collections === undefined
-        ? existingProfile.value.hideCollections
-        : isTruthy(body.value.hide_collections),
-    avatarObjectKey: uploaded.objectKey ?? existingProfile.value.avatarObjectKey,
-    avatarContentType: uploaded.contentType ?? existingProfile.value.avatarContentType,
-    headerObjectKey: header.objectKey ?? existingProfile.value.headerObjectKey,
-    headerContentType: header.contentType ?? existingProfile.value.headerContentType,
-  });
-  if (saved.isErr()) {
-    return jsonRepositoryError(c, saved.error.message);
-  }
-  const replaced = [
-    uploaded.objectKey === null ? null : existingProfile.value.avatarObjectKey,
-    header.objectKey === null ? null : existingProfile.value.headerObjectKey,
-  ].filter((key): key is string => key !== null);
-  if (replaced.length > 0) {
-    await c.env.MEDIA.delete(replaced);
-  }
-  if (body.value.locked !== undefined) {
-    const locked = await setAccountLocked(c.env.DB, user.value.id, isTruthy(body.value.locked));
-    if (locked.isErr()) {
-      return jsonRepositoryError(c, locked.error.message);
-    }
-  }
-  const latest = await findAccountById(c.env.DB, user.value.id);
-  if (latest.isErr() || !latest.value) {
-    return jsonRepositoryError(c, "account missing after update");
-  }
-  const [document, profileAfter, defaultsAfter] = await Promise.all([
-    mastodonAccountDocument(c.env, identity.value, latest.value),
-    findAccountProfile(c.env.DB, user.value.id),
-    findComposeDefaults(c.env.DB, user.value.id),
-  ]);
-  return c.json({
-    ...document,
-    source: accountSource(
-      latest.value,
-      profileAfter.isOk() ? profileAfter.value : EMPTY_ACCOUNT_PROFILE,
-      defaultsAfter.isOk() ? defaultsAfter.value : { language: null, sensitive: false },
-    ),
-  });
+  const updated = await updateCredentials(c.env, user.value, rawBody, body.value);
+  return updated.isErr()
+    ? ApiRefusal.respond(c, updated.error)
+    : c.json(await ownAccountDocument(c.env, identity.value, updated.value));
 };
 
 /** `DELETE /api/v1/profile/avatar|header`: drop the image and answer the credential account. */
@@ -357,19 +407,7 @@ const deleteProfileImage = async (
     }
     await c.env.MEDIA.delete(objectKey);
   }
-  const [document, profileAfter, defaults] = await Promise.all([
-    mastodonAccountDocument(c.env, identity.value, user.value),
-    findAccountProfile(c.env.DB, user.value.id),
-    findComposeDefaults(c.env.DB, user.value.id),
-  ]);
-  return c.json({
-    ...document,
-    source: accountSource(
-      user.value,
-      profileAfter.isOk() ? profileAfter.value : EMPTY_ACCOUNT_PROFILE,
-      defaults.isOk() ? defaults.value : { language: null, sensitive: false },
-    ),
-  });
+  return c.json(await ownAccountDocument(c.env, identity.value, user.value));
 };
 
 export const deleteV1ProfileAvatar = (c: Context<{ Bindings: Env }, "/api/v1/profile/avatar">) =>

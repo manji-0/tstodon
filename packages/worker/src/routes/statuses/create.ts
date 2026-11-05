@@ -59,7 +59,7 @@ import {
   isQuotePolicy,
   type QuotePolicy,
 } from "../../quote-store";
-import { StatusRefusal } from "./refusal";
+import { ApiRefusal } from "../api-refusal";
 import {
   insertScheduledStatus,
   MIN_SCHEDULE_OFFSET_MS,
@@ -132,7 +132,7 @@ type CreateStatusBody = z.infer<typeof CreateStatusBodySchema>;
 /** The poll a new status asks for, with its options trimmed and within the instance limits. */
 const parsePollRequest = (
   poll: CreateStatusBody["poll"],
-): Result<PublishPoll | null, StatusRefusal> => {
+): Result<PublishPoll | null, ApiRefusal> => {
   if (!poll) {
     return ok(null);
   }
@@ -144,11 +144,11 @@ const parsePollRequest = (
     options.length > InstanceLimits.poll.maxOptions
   ) {
     return err(
-      StatusRefusal.rejected(422, "poll options must be between 2 and 4", "PollOptionsOutOfRange"),
+      ApiRefusal.rejected(422, "poll options must be between 2 and 4", "PollOptionsOutOfRange"),
     );
   }
   if (options.some((option) => characterCount(option) > InstanceLimits.poll.maxOptionCharacters)) {
-    return err(StatusRefusal.rejected(422, "poll option is too long", "PollOptionTooLong"));
+    return err(ApiRefusal.rejected(422, "poll option is too long", "PollOptionTooLong"));
   }
   return ok({
     options,
@@ -174,41 +174,39 @@ const resolveQuote = async (
   quotedRaw: string,
   text: string,
   visibility: Visibility,
-): Promise<
-  Result<Readonly<{ quote: QuoteTarget | null; visibility: Visibility }>, StatusRefusal>
-> => {
+): Promise<Result<Readonly<{ quote: QuoteTarget | null; visibility: Visibility }>, ApiRefusal>> => {
   if (quotedRaw.length === 0) {
     return ok({ quote: null, visibility });
   }
   const quotedId = StatusId.parse(quotedRaw);
   if (quotedId.isErr()) {
-    return err(StatusRefusal.rejected(422, "Invalid quoted_status_id", "ValidationError"));
+    return err(ApiRefusal.rejected(422, "Invalid quoted_status_id", "ValidationError"));
   }
   const found = await findStatusById(db, quotedId.value);
   if (found.isErr()) {
-    return err(StatusRefusal.repository(found.error.message));
+    return err(ApiRefusal.repository(found.error.message));
   }
   if (!found.value) {
-    return err(StatusRefusal.notFound);
+    return err(ApiRefusal.notFound);
   }
   let target = found.value;
   // Quoting a boost quotes the boosted status, as Mastodon does.
   if (target.kind === "LocalReblog") {
     const original = await findStatusById(db, target.target.statusId);
     if (original.isErr()) {
-      return err(StatusRefusal.repository(original.error.message));
+      return err(ApiRefusal.repository(original.error.message));
     }
     if (!original.value) {
-      return err(StatusRefusal.notFound);
+      return err(ApiRefusal.notFound);
     }
     target = original.value;
   }
   if (!(await canViewStatus(db, target, authorId))) {
-    return err(StatusRefusal.notFound);
+    return err(ApiRefusal.notFound);
   }
   const targetVisibility = Visibility.toMastodon(target.visibility);
   if (targetVisibility === "direct") {
-    return err(StatusRefusal.rejected(422, "Direct messages cannot be quoted", "QuoteNotAllowed"));
+    return err(ApiRefusal.rejected(422, "Direct messages cannot be quoted", "QuoteNotAllowed"));
   }
   const targetAuthor = await findAccountById(db, target.accountId);
   const storedPolicy = await findStatusQuotePolicy(db, target.id);
@@ -219,15 +217,15 @@ const resolveQuote = async (
       : defaultQuotePolicy(targetVisibility));
   if (policy === "nobody" && target.accountId !== authorId) {
     // Mastodon answers 404 for a status it will not let you quote.
-    return err(StatusRefusal.notFound);
+    return err(ApiRefusal.notFound);
   }
   if (policy === "followers" && target.accountId !== authorId) {
     const follow = await findFollowKind(db, authorId, target.accountId);
     if (follow.isErr()) {
-      return err(StatusRefusal.repository(follow.error.message));
+      return err(ApiRefusal.repository(follow.error.message));
     }
     if (follow.value !== "Accepted") {
-      return err(StatusRefusal.notFound);
+      return err(ApiRefusal.notFound);
     }
   }
   const clamped =
@@ -240,7 +238,7 @@ const resolveQuote = async (
     );
     if (!mentioned) {
       return err(
-        StatusRefusal.rejected(
+        ApiRefusal.rejected(
           422,
           "Quoted status author must be mentioned in a direct quote",
           "QuoteNotAllowed",
@@ -264,19 +262,19 @@ const resolveReplyTo = async (
   db: D1Database,
   replyRaw: string,
   authorId: string,
-): Promise<Result<ThreadStatus | null, StatusRefusal>> => {
+): Promise<Result<ThreadStatus | null, ApiRefusal>> => {
   if (replyRaw.length === 0) {
     return ok(null);
   }
   const replyId = StatusId.parse(replyRaw);
   if (replyId.isErr()) {
-    return err(StatusRefusal.rejected(422, "Invalid in_reply_to_id", "ValidationError"));
+    return err(ApiRefusal.rejected(422, "Invalid in_reply_to_id", "ValidationError"));
   }
   const parent = await findReplyTarget(db, replyId.value, authorId);
   if (parent.isErr()) {
-    return err(StatusRefusal.repository(parent.error.message));
+    return err(ApiRefusal.repository(parent.error.message));
   }
-  return parent.value ? ok(parent.value) : err(StatusRefusal.notFound);
+  return parent.value ? ok(parent.value) : err(ApiRefusal.notFound);
 };
 
 /** Everything a new note carries besides its author and quote, once the request is validated. */
@@ -298,11 +296,11 @@ const scheduleStatus = async (
   accountId: string,
   scheduledRaw: string,
   note: NoteRequest,
-): Promise<Result<Record<string, unknown>, StatusRefusal>> => {
+): Promise<Result<Record<string, unknown>, ApiRefusal>> => {
   const at = Date.parse(scheduledRaw);
   if (!Number.isFinite(at) || at < Date.now() + MIN_SCHEDULE_OFFSET_MS) {
     return err(
-      StatusRefusal.rejected(
+      ApiRefusal.rejected(
         422,
         "scheduled_at must be at least 5 minutes in the future",
         "InvalidScheduledAt",
@@ -338,7 +336,7 @@ const scheduleStatus = async (
     },
   });
   if (stored.isErr()) {
-    return err(StatusRefusal.repository(stored.error.message));
+    return err(ApiRefusal.repository(stored.error.message));
   }
   const media =
     stored.value.params.media_ids.length > 0
@@ -365,14 +363,14 @@ const postStatus = async (
   author: LocalAccount,
   body: CreateStatusBody,
   mediaAttributes: ReadonlyArray<MediaAttribute>,
-): Promise<Result<Record<string, unknown> | undefined, StatusRefusal>> => {
+): Promise<Result<Record<string, unknown> | undefined, ApiRefusal>> => {
   const visibility = Visibility.fromMastodon(
     body.visibility && body.visibility.length > 0
       ? body.visibility
       : Visibility.toMastodon(author.defaultPostVisibility),
   );
   if (visibility.isErr()) {
-    return err(StatusRefusal.rejected(400, "Invalid visibility", "Unknown"));
+    return err(ApiRefusal.rejected(400, "Invalid visibility", "Unknown"));
   }
   const poll = parsePollRequest(body.poll);
   if (poll.isErr()) {
@@ -415,12 +413,12 @@ const postStatus = async (
     }),
   );
   if (draft.isErr()) {
-    return err(StatusRefusal.rejected(422, draft.error.kind, draft.error.kind));
+    return err(ApiRefusal.rejected(422, draft.error.kind, draft.error.kind));
   }
   const policyRaw = (body.quote_approval_policy ?? "").trim().toLowerCase();
   const requestedPolicy = isQuotePolicy(policyRaw) ? policyRaw : undefined;
   if (policyRaw.length > 0 && requestedPolicy === undefined) {
-    return err(StatusRefusal.rejected(422, "Invalid quote_approval_policy", "ValidationError"));
+    return err(ApiRefusal.rejected(422, "Invalid quote_approval_policy", "ValidationError"));
   }
   const replyTo = await resolveReplyTo(env.DB, body.in_reply_to_id?.trim() ?? "", author.id);
   if (replyTo.isErr()) {
@@ -439,7 +437,7 @@ const postStatus = async (
   const scheduledRaw = body.scheduled_at?.trim() ?? "";
   if (scheduledRaw.length > 0) {
     return quote
-      ? err(StatusRefusal.rejected(422, "Scheduled posts cannot quote a status", "QuoteNotAllowed"))
+      ? err(ApiRefusal.rejected(422, "Scheduled posts cannot quote a status", "QuoteNotAllowed"))
       : scheduleStatus(env.DB, identity, author.id, scheduledRaw, note);
   }
   const published = await publishLocalNote(env, identity, author, {
@@ -454,7 +452,7 @@ const postStatus = async (
       : null,
   });
   if (published.isErr()) {
-    return err(StatusRefusal.repository(published.error.message));
+    return err(ApiRefusal.repository(published.error.message));
   }
   return ok(await mastodonStatus(env, identity, published.value, author.id));
 };
@@ -480,7 +478,7 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     body.value,
     body.value.media_attributes ?? mediaAttributesFromForm(rawBody),
   );
-  return posted.isErr() ? StatusRefusal.respond(c, posted.error) : c.json(posted.value, 200);
+  return posted.isErr() ? ApiRefusal.respond(c, posted.error) : c.json(posted.value, 200);
 };
 
 const statusDocumentById = async (
