@@ -22,6 +22,8 @@ The browser UI is Mastodon's own web app: `pnpm web:build` builds it from a pinn
 
 Hono handlers are a boundary: parse with Zod, call domain companions, map `Result` error `kind`s to HTTP. Domain transitions stay pure.
 
+A use case that reads or writes storage takes each operation as a function-typed contract from `packages/domain` (beside its concept, e.g. `outbound-follow-store.ts`, `notification-resolver.ts`; no `ports/` directory), and the caller wires the D1 store function to it. See `docs/architecture/tstodon-architecture.md#read-and-write-contracts`.
+
 ## Zod discriminant conventions
 
 - Discriminator property is always `kind`.
