@@ -8,10 +8,15 @@
 // renders the HTML shell itself (src/web-app.ts) from packs/tstodon-web.json,
 // the compact manifest this script writes.
 //
+// A build takes over a minute, so it is skipped when the assets are the output
+// of this script at this ref: `.cache/mastodon-web/assets.stamp` holds a digest
+// of the ref, this script, and the manifest it wrote. `--force` rebuilds.
+//
 // Mastodon is AGPL-3.0-or-later, as tstodon is; the build output carries its
 // license notices.
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   copyFileSync,
   cpSync,
@@ -32,6 +37,27 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ref = process.env.MASTODON_WEB_REF ?? DEFAULT_REF;
 const source = path.join(root, ".cache", "mastodon-web", ref);
 const assets = path.join(root, "packages", "worker", "assets");
+const compactManifest = path.join(assets, "packs", "tstodon-web.json");
+const stamp = path.join(root, ".cache", "mastodon-web", "assets.stamp");
+
+/** The digest of what produced the current assets, or undefined before a build. */
+const assetsDigest = () =>
+  existsSync(compactManifest)
+    ? createHash("sha256")
+        .update(ref)
+        .update(readFileSync(fileURLToPath(import.meta.url)))
+        .update(readFileSync(compactManifest))
+        .digest("hex")
+    : undefined;
+
+if (
+  !process.argv.includes("--force") &&
+  existsSync(stamp) &&
+  readFileSync(stamp, "utf8") === assetsDigest()
+) {
+  console.log(`Mastodon web ${ref} is up to date in ${path.relative(root, assets)}`);
+  process.exit(0);
+}
 
 const run = (command, args, cwd) =>
   execFileSync(command, args, {
@@ -136,8 +162,6 @@ const compact = {
   remoteInteractionHelper: entry("entrypoints/remote_interaction_helper.ts"),
   locales,
 };
-writeFileSync(
-  path.join(assets, "packs", "tstodon-web.json"),
-  `${JSON.stringify(compact, null, 2)}\n`,
-);
+writeFileSync(compactManifest, `${JSON.stringify(compact, null, 2)}\n`);
+writeFileSync(stamp, assetsDigest());
 console.log(`Mastodon web ${ref} written to ${path.relative(root, assets)}`);

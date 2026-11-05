@@ -11,7 +11,7 @@ Drive Mastodon's own web UI, served by this Worker, through the basic things a p
 ## Run
 
 ```sh
-pnpm web:build   # once, and after changing MASTODON_WEB_REF
+pnpm web:build   # does nothing when the assets are already built for MASTODON_WEB_REF
 pnpm e2e:web     # node e2e/web/database.mjs && playwright test -c e2e/web/playwright.config.ts
 pnpm e2e:web -g "follows"   # one scenario
 ```
