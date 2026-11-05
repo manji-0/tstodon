@@ -195,6 +195,19 @@ describe("Password and security: signing up while signed in", () => {
 });
 
 describe("Password and security: passkeys", () => {
+  it("names the passkey created at sign-up, as the sign-up page asks", async () => {
+    const fetcher = browser();
+    const token = await requestSignupLink(fetcher, "sec_signup_name", "sec_signup_name@mail.example");
+    const shown = await page(
+      await fetcher(`/auth/sign_up/verify?${new URLSearchParams({ token }).toString()}`),
+    );
+    expect(shown).toMatch(/<input id="passkey-name" name="name" required maxlength="60"/);
+
+    const { fetcher: signedIn } = await signUp("sec_signup_named", undefined, "Phone");
+    expect((await passkeysOf("sec_signup_named")).map((passkey) => passkey.name)).toEqual(["Phone"]);
+    expect(await page(await signedIn("/auth/edit"))).toContain("<strong>Phone</strong>");
+  });
+
   it("lists, adds, renames, and removes passkeys, and keeps the last one", async () => {
     const { fetcher } = await signUp("sec_passkeys");
     const shown = await page(await fetcher("/auth/edit"));

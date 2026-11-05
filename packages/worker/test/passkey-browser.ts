@@ -96,6 +96,7 @@ export const registrationOptions = (fetcher: Browser, context: string) =>
 export const signUp = async (
   username: string,
   email = `${username}@mail.example`,
+  passkeyName = "Laptop",
 ): Promise<{ fetcher: Browser; passkey: SoftPasskey; token: string }> => {
   const fetcher = browser();
   const token = await requestSignupLink(fetcher, username, email);
@@ -108,6 +109,7 @@ export const signUp = async (
   const response = await passkey.register(read(RegistrationOptionsSchema, await options.json()));
   const verified = await postJson(fetcher, "/api/auth/passkey/verify-registration", {
     response,
+    name: passkeyName,
     createSession: true,
   });
   expect(verified.status).toBe(200);
