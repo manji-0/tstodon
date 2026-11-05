@@ -322,6 +322,70 @@ describe("final counts of a local poll", () => {
     });
   });
 
+  it("delivers the final Update(Question) to remote voters and boosters who do not follow the author, once per shared inbox", async () => {
+    const poll = await createPoll("local-poll-final-reach@example.com");
+    const actorUrl = `https://example.com/users/${poll.authorUsername}`;
+    const sharedInboxUri = "https://voters.example/inbox";
+    const voter = await remoteActor("poll-reach-voter", "voters.example", { sharedInboxUri });
+    const neighbour = await remoteActor("poll-reach-neighbour", "voters.example", {
+      sharedInboxUri,
+    });
+    const booster = await remoteActor("poll-reach-booster", "boosters.example");
+    const voteUri = `${voter.actorUri}/notes/poll-reach-vote`;
+    expect(
+      await voter.send({
+        id: `${voteUri}/activity`,
+        type: "Create",
+        to: [actorUrl],
+        object: {
+          id: voteUri,
+          type: "Note",
+          attributedTo: voter.actorUri,
+          to: [actorUrl],
+          inReplyTo: poll.statusUri,
+          name: "yes",
+        },
+      }),
+    ).toBe(202);
+    for (const actor of [neighbour, booster]) {
+      expect(
+        await actor.send({
+          id: `${actor.actorUri}/announces/poll-reach`,
+          type: "Announce",
+          to: ["https://www.w3.org/ns/activitystreams#Public"],
+          cc: [`${actor.actorUri}/followers`],
+          object: poll.statusUri,
+        }),
+      ).toBe(202);
+    }
+    await runJob(env, { kind: "DistributePollUpdate", pollId: poll.pollId });
+    const before = await questionUpdates(poll.authorId);
+
+    await endPoll(poll.pollId);
+    await runExpiryJob();
+    await runJob(env, { kind: "DistributePollUpdate", pollId: poll.pollId });
+    const [queued] = (await questionUpdates(poll.authorId)).slice(before.length);
+    if (!queued) {
+      throw new Error("no final Update queued");
+    }
+    await runJob(env, { kind: "ExpandFollowers", activityId: queued.activityId });
+    const targets = await env.DB.prepare(
+      "SELECT inbox_url FROM outbox_deliveries WHERE activity_id = ? AND inbox_url IS NOT NULL ORDER BY inbox_url",
+    )
+      .bind(queued.activityId)
+      .all<{ inbox_url: string }>();
+    expect(targets.results.map((row) => row.inbox_url)).toEqual([
+      `${booster.actorUri}/inbox`,
+      sharedInboxUri,
+    ]);
+    const delivered = await deliverTarget(queued.activityId, sharedInboxUri);
+    expect(read(QuestionUpdate, await delivered.json()).object).toMatchObject({
+      id: poll.statusUri,
+      closed: "2020-01-01T00:00:00.000Z",
+      votersCount: 1,
+    });
+  });
+
   it("federates the counts of a poll that hid them until it ended", async () => {
     const poll = await createPoll("local-poll-final-hidden@example.com", false, true);
     await vote("local-poll-final-hidden-voter@example.com", poll.pollId, [0]);
