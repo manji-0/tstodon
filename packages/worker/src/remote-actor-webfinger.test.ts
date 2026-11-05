@@ -2,10 +2,13 @@ import { SELF, createExecutionContext, env, waitOnExecutionContext } from "cloud
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
+import { Hostname } from "@tstodon/domain";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
+import { remoteActorFromDocument } from "./remote-actor-fetch";
 import { refreshStaleRemoteActors } from "./remote-actor-refresh";
+import { upsertRemoteActor } from "./remote-actor-store";
 import { handleScheduled } from "./scheduled-handler";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -32,32 +35,39 @@ type WebfingerAnswers = Readonly<
   Record<string, Readonly<{ subject: string; self: string }> | Readonly<{ status: number }>>
 >;
 
+type Served = Readonly<{ remote: Remote; username: string; name?: string }>;
+
+const actorDocument = ({ remote, username, name }: Served) => ({
+  id: remote.actorUri,
+  type: "Person",
+  preferredUsername: username,
+  ...(name === undefined ? {} : { name }),
+  inbox: `${remote.actorUri}/inbox`,
+  publicKey: {
+    id: `${remote.actorUri}#main-key`,
+    owner: remote.actorUri,
+    publicKeyPem: remote.publicKeyPem,
+  },
+});
+
 /**
- * Serves `remote`'s actor document from its URI and the WebFinger answers by
+ * Serves each actor's document from its URI and the WebFinger answers by
  * host, as the remote servers would. Any other URL goes to the network, or
- * answers `unknownStatus` when one is given.
+ * answers `unknownStatus` when one is given. Calling it again replaces what
+ * is served.
  */
-const serveRemote = (
-  remote: Remote,
-  username: string,
+const serveRemotes = (
+  actors: ReadonlyArray<Served>,
   answers: WebfingerAnswers,
   unknownStatus?: number,
 ): void => {
+  vi.restoreAllMocks();
   const original = globalThis.fetch;
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = new URL(new Request(input, init).url);
-    if (url.href === remote.actorUri) {
-      return jsonResponse({
-        id: remote.actorUri,
-        type: "Person",
-        preferredUsername: username,
-        inbox: `${remote.actorUri}/inbox`,
-        publicKey: {
-          id: `${remote.actorUri}#main-key`,
-          owner: remote.actorUri,
-          publicKeyPem: remote.publicKeyPem,
-        },
-      });
+    const served = actors.find((actor) => new URL(actor.remote.actorUri).href === url.href);
+    if (served) {
+      return jsonResponse(actorDocument(served));
     }
     const answer = answers[url.host];
     if (url.pathname === "/.well-known/webfinger") {
@@ -77,6 +87,13 @@ const serveRemote = (
       : new Response(null, { status: unknownStatus });
   });
 };
+
+const serveRemote = (
+  remote: Remote,
+  username: string,
+  answers: WebfingerAnswers,
+  unknownStatus?: number,
+): void => serveRemotes([{ remote, username }], answers, unknownStatus);
 
 const post = async (email: string, status: string) =>
   read(
@@ -206,7 +223,6 @@ describe("an actor cached before the WebFinger round trip", () => {
 describe("a re-fetch whose WebFinger confirmation cannot complete", () => {
   it.each([
     ["the account domain answers 503", "blip", { "wf-blip.example": { status: 503 } }],
-    ["the account domain answers 404", "gone", { "wf-gone.example": { status: 404 } }],
     ["the URI host answers 503", "down", { "social.wf-down.example": { status: 503 } }],
   ] as const)("keeps the stored account domain when %s", async (_, slug, failures) => {
     const host = `social.wf-${slug}.example`;
@@ -225,6 +241,25 @@ describe("a re-fetch whose WebFinger confirmation cannot complete", () => {
 
     expect(await acctOf(remote.actorUri)).toBe(`dave@wf-${slug}.example`);
   });
+
+  it.each([404, 410])(
+    "moves the actor to its URI host when the account domain answers %i",
+    async (status) => {
+      const host = `social.wf-gone${status}.example`;
+      const remote = await remoteActor("dave", host, {
+        accountDomain: `wf-gone${status}.example`,
+        fetchedAt: EPOCH,
+      });
+      serveRemote(remote, "dave", {
+        [host]: { subject: `acct:dave@wf-gone${status}.example`, self: remote.actorUri },
+        [`wf-gone${status}.example`]: { status },
+      });
+
+      await refreshStaleRemoteActors(env);
+
+      expect(await acctOf(remote.actorUri)).toBe(`dave@${host}`);
+    },
+  );
 
   it("keeps refusing an actor whose suspended account domain refuses the lookup", async () => {
     const remote = await remoteActor("sam", "social.wf-susp-acct.example", {
@@ -438,7 +473,7 @@ describe("an instance rule on the URI host of an actor with another account doma
     );
   });
 
-  it("a user's block on the URI host does not screen it", async () => {
+  it("a user's block on the URI host screens it", async () => {
     const remote = await splitActor("uma", "wf-user-host");
     const blocker = "wf-user-host-blocker@example.com";
     const blocked = await call("/api/v1/domain_blocks", {
@@ -450,6 +485,365 @@ describe("an instance rule on the URI host of an actor with another account doma
 
     expect(await like(remote, "wf-user-host", blocker)).toBe(202);
 
-    expect(await favouritedBy(blocker)).toEqual(["uma@wf-user-host.example"]);
+    expect(await favouritedBy(blocker)).toEqual([]);
+  });
+});
+
+const signedIn = async (email: string) => ({
+  "content-type": "application/json",
+  ...(await authHeaders(email)),
+});
+
+const blockDomain = async (email: string, domain: string): Promise<void> => {
+  const blocked = await call("/api/v1/domain_blocks", {
+    method: "POST",
+    headers: await signedIn(email),
+    body: JSON.stringify({ domain }),
+  });
+  expect(blocked.status).toBe(200);
+};
+
+const lookUpHandle = async (acct: string): Promise<string> =>
+  (
+    await read(
+      z.object({ id: z.string() }),
+      await call(`/api/v1/accounts/lookup?acct=${encodeURIComponent(acct)}`),
+    )
+  ).id;
+
+describe("a handle lookup answered by a third party", () => {
+  it("does not move another server's actor onto the asked domain", async () => {
+    const victim = await remoteActor("bob", "wf-victim-i.example", { cache: false });
+    serveRemote(victim, "bob", {
+      "wf-evil-i.example": { subject: "acct:alice@wf-evil-i.example", self: victim.actorUri },
+      "wf-victim-i.example": { subject: "acct:bob@wf-victim-i.example", self: victim.actorUri },
+    });
+
+    const searched = await call("/api/v2/search?q=@alice@wf-evil-i.example&resolve=true", {
+      headers: await authHeaders("wf-evil-i-searcher@example.com"),
+    });
+    expect(searched.status).toBe(200);
+
+    expect(await acctOf(victim.actorUri)).toBe("bob@wf-victim-i.example");
+  });
+
+  it("still confirms a split domain the URI host names", async () => {
+    const remote = await remoteActor("cat", "social.wf-asked.example", { cache: false });
+    const confirmed = { subject: "acct:cat@wf-asked.example", self: remote.actorUri };
+    serveRemote(remote, "cat", {
+      "social.wf-asked.example": confirmed,
+      "wf-asked.example": confirmed,
+    });
+
+    const searched = await call("/api/v2/search?q=@cat@wf-asked.example&resolve=true", {
+      headers: await authHeaders("wf-asked-searcher@example.com"),
+    });
+    expect(searched.status).toBe(200);
+
+    expect(await acctOf(remote.actorUri)).toBe("cat@wf-asked.example");
+  });
+});
+
+describe("an account domain that WebFinger moves to another actor", () => {
+  it("names the actor WebFinger confirms last, while the old one keeps answering 503", async () => {
+    const old = await remoteActor("alice", "wf-old-owner.example", { cache: false });
+    const next = await remoteActor("alice", "wf-new-owner.example", { cache: false });
+    const actors = [
+      { remote: old, username: "alice" },
+      { remote: next, username: "alice" },
+    ];
+    serveRemotes(actors, {
+      "wf-old-owner.example": { subject: "acct:alice@wf-moved.example", self: old.actorUri },
+      "wf-moved.example": { subject: "acct:alice@wf-moved.example", self: old.actorUri },
+    });
+    expect(await like(old, "wf-moved-old", "wf-moved-viewer@example.com")).toBe(202);
+    expect(await acctOf(old.actorUri)).toBe("alice@wf-moved.example");
+
+    serveRemotes(actors, {
+      "wf-old-owner.example": { status: 503 },
+      "wf-new-owner.example": { subject: "acct:alice@wf-moved.example", self: next.actorUri },
+      "wf-moved.example": { subject: "acct:alice@wf-moved.example", self: next.actorUri },
+    });
+    expect(await like(next, "wf-moved-next", "wf-moved-viewer@example.com")).toBe(202);
+    expect(
+      await old.send({
+        id: `${old.actorUri}#updates/1`,
+        type: "Update",
+        object: actorDocument({ remote: old, username: "alice" }),
+      }),
+    ).toBe(202);
+
+    expect({
+      lookup: await lookUpHandle("alice@wf-moved.example"),
+      old: await acctOf(old.actorUri),
+    }).toEqual({
+      lookup: RemoteAccountId.encode(next.actorUri),
+      old: "alice@wf-old-owner.example",
+    });
+  });
+});
+
+describe("an actor's own Update", () => {
+  it("applies the document under its stored handle without asking WebFinger, as Mastodon", async () => {
+    const remote = await splitActor("ida", "wf-own-update");
+    serveRemote(remote, "ida", {});
+
+    expect(
+      await remote.send({
+        id: `${remote.actorUri}#updates/1`,
+        type: "Update",
+        object: actorDocument({ remote, username: "ida", name: "Ida Renamed" }),
+      }),
+    ).toBe(202);
+
+    expect(
+      await read(
+        z.object({ acct: z.string(), display_name: z.string() }),
+        await call(`/api/v1/accounts/${RemoteAccountId.encode(remote.actorUri)}`),
+      ),
+    ).toEqual({ acct: "ida@wf-own-update.example", display_name: "Ida Renamed" });
+  });
+});
+
+describe("an actor URI whose host SQL would read differently", () => {
+  const tricky = [
+    "https://Ksil-k.example/users/a",
+    "https://bücher.example/users/a",
+    "https://xn--bcher-kva.example/users/a",
+    "https://Upper.Example/users/a",
+    "https://port.example:8443/users/a",
+    "https://port.example:443/users/a",
+    "https://dot.example./users/a",
+    "https://user@userinfo.example/users/a",
+    "https://ex%61mple.example/users/a",
+    "https://[fd00::71]:8443/users/a",
+    "https://[FD00:0::71]/users/a",
+    "https://evil.example\\@victim.example/users/a",
+    "https://ıdotless.example/users/a",
+    "https://ﬀlig.example/users/a",
+  ];
+
+  it("is refused unless SQL reads the host and authority the actor is stored under", async () => {
+    const accepted: string[] = [];
+    for (const uri of tricky) {
+      const actor = remoteActorFromDocument(
+        {
+          id: uri,
+          type: "Person",
+          preferredUsername: "a",
+          inbox: `${uri}/inbox`,
+          publicKey: { id: `${uri}#main-key`, owner: uri, publicKeyPem: "pem" },
+        },
+        uri,
+      );
+      if (actor.isErr()) {
+        continue;
+      }
+      accepted.push(uri);
+      expect((await upsertRemoteActor(env.DB, actor.value)).isOk()).toBe(true);
+      const row = await env.DB.prepare(
+        "SELECT uri_host, lower(uri_authority) AS authority FROM remote_actors WHERE actor_uri = ?",
+      )
+        .bind(uri)
+        .first();
+      expect({ uri, ...row }).toEqual({
+        uri,
+        uri_host: Hostname.ofUri(uri),
+        authority: actor.value.domain,
+      });
+    }
+    expect(accepted).not.toContain("https://Ksil-k.example/users/a");
+  });
+
+  it("keeps a Kelvin-sign host's posts off the timeline its silenced host is kept off", async () => {
+    const remote = await remoteActor("m", "Ksil-k.example", { cache: false });
+    await adminBlock({ domain: "ksil-k.example", severity: "silence" });
+    const confirmed = { subject: "acct:m@wf-alt-k.example", self: remote.actorUri };
+    serveRemote(remote, "m", { "ksil-k.example": confirmed, "wf-alt-k.example": confirmed });
+    const posted = {
+      ...note(remote, "kelvin"),
+      id: "https://ksil-k.example/users/m/statuses/kelvin",
+    };
+    await create(remote, posted);
+
+    const uris = (await publicTimeline("/api/v1/timelines/public?remote=true")).map(
+      (status) => status.uri,
+    );
+    expect(uris).not.toContain(posted.id);
+  });
+});
+
+describe("the stale actor refresh batch", () => {
+  it("fetches the REFRESH_BATCH longest waiting actors", async () => {
+    const hosts = Array.from({ length: 12 }, (_, index) => `wf-batch${index}.example`);
+    for (const [index, host] of hosts.entries()) {
+      await remoteActor("b", host, {
+        fetchedAt: `1970-01-01T00:00:${String(index).padStart(2, "0")}.000Z`,
+      });
+    }
+    const fetched: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      fetched.push(new URL(new Request(input, init).url).host);
+      return new Response(null, { status: 503 });
+    });
+
+    await refreshStaleRemoteActors(env);
+
+    expect(fetched.filter((host) => hosts.includes(host)).toSorted()).toEqual(
+      hosts.slice(0, 10).toSorted(),
+    );
+  });
+});
+
+describe("a user's domain block on an actor's URI host", () => {
+  it("keeps screening an actor cached before the cron confirms its account domain", async () => {
+    const remote = await remoteActor("pia", "social.wf-preblock.example", { fetchedAt: EPOCH });
+    const blocker = "wf-preblock-blocker@example.com";
+    await blockDomain(blocker, "social.wf-preblock.example");
+    const confirmed = { subject: "acct:pia@wf-preblock.example", self: remote.actorUri };
+    serveRemote(remote, "pia", {
+      "social.wf-preblock.example": confirmed,
+      "wf-preblock.example": confirmed,
+    });
+    await refreshStaleRemoteActors(env);
+    expect(await acctOf(remote.actorUri)).toBe("pia@wf-preblock.example");
+    const posted = note(remote, "preblock");
+    expect(await create(remote, posted)).toBe(202);
+    expect(await like(remote, "wf-preblock", blocker)).toBe(202);
+
+    const relationship = await read(
+      z.array(z.object({ domain_blocking: z.boolean() })),
+      await call(`/api/v1/accounts/relationships?id[]=${RemoteAccountId.encode(remote.actorUri)}`, {
+        headers: await authHeaders(blocker),
+      }),
+    );
+    const timeline = await read(
+      z.array(RemoteStatusSchema),
+      await call("/api/v1/timelines/public?remote=true&limit=40", {
+        headers: await authHeaders(blocker),
+      }),
+    );
+    expect({
+      favouritedBy: await favouritedBy(blocker),
+      domainBlocking: relationship.map((entry) => entry.domain_blocking),
+      onTimeline: timeline.some((status) => status.uri === posted.id),
+    }).toEqual({ favouritedBy: [], domainBlocking: [true], onTimeline: false });
+  });
+
+  it("severs the actor's follows when the block is made", async () => {
+    const remote = await splitActor("sev", "wf-user-sever");
+    const email = "wf-user-sever-followed@example.com";
+    const account = await signedInAccount(email);
+    expect(
+      await remote.send({
+        id: `${remote.actorUri}/follows/1`,
+        type: "Follow",
+        object: `https://example.com/users/${account.username}`,
+      }),
+    ).toBe(202);
+
+    await blockDomain(email, "social.wf-user-sever.example");
+
+    const events = (
+      await read(
+        z.array(z.object({ event: z.object({ type: z.string(), followers_count: z.number() }) })),
+        await call("/api/v1/notifications?types[]=severed_relationships", {
+          headers: await authHeaders(email),
+        }),
+      )
+    ).map((notification) => notification.event);
+    expect(events).toEqual([{ type: "user_domain_block", followers_count: 1 }]);
+  });
+
+  it("refuses the actor's Follow, a follow of it and a vote on its poll", async () => {
+    const remote = await splitActor("fol", "wf-user-follow");
+    const email = "wf-user-follow-blocker@example.com";
+    const account = await signedInAccount(email);
+    await blockDomain(email, "social.wf-user-follow.example");
+    expect(
+      await remote.send({
+        id: `${remote.actorUri}/follows/1`,
+        type: "Follow",
+        object: `https://example.com/users/${account.username}`,
+      }),
+    ).toBe(202);
+    const pollId = await storedPoll(remote, "wf-user-follow");
+
+    const followers = await read(
+      z.array(z.unknown()),
+      await call(`/api/v1/accounts/${account.id}/followers`, { headers: await authHeaders(email) }),
+    );
+    const follow = await call(
+      `/api/v1/accounts/${RemoteAccountId.encode(remote.actorUri)}/follow`,
+      {
+        method: "POST",
+        headers: await signedIn(email),
+        body: "{}",
+      },
+    );
+    expect({
+      followers: followers.length,
+      follow: follow.status,
+      vote: (await vote(email, pollId)).status,
+    }).toEqual({ followers: 0, follow: 422, vote: 422 });
+  });
+});
+
+const storedPoll = async (remote: Remote, slug: string): Promise<string> => {
+  const object = {
+    id: `${remote.actorUri}/questions/${slug}`,
+    type: "Question",
+    attributedTo: remote.actorUri,
+    content: "<p>Which one?</p>",
+    published: new Date().toISOString(),
+    endTime: "2099-01-01T00:00:00Z",
+    to: [PUBLIC],
+    oneOf: [
+      { type: "Note", name: "cats", replies: { type: "Collection", totalItems: 0 } },
+      { type: "Note", name: "dogs", replies: { type: "Collection", totalItems: 0 } },
+    ],
+  };
+  expect(await create(remote, object)).toBe(202);
+  const row = schemaResult(z.object({ id: z.string() }))(
+    await env.DB.prepare("SELECT id FROM remote_statuses WHERE object_uri = ?")
+      .bind(object.id)
+      .first(),
+  );
+  if (row.isErr()) {
+    throw new Error("remote question was not stored");
+  }
+  return row.value.id;
+};
+
+const vote = async (email: string, pollId: string) =>
+  call(`/api/v1/polls/remote-${pollId}/votes`, {
+    method: "POST",
+    headers: await signedIn(email),
+    body: JSON.stringify({ choices: [0] }),
+  });
+
+describe("an instance rule on either host of a poll's or a mention's actor", () => {
+  it("refuses a vote once the poll author's account domain is suspended", async () => {
+    const remote = await splitActor("pol", "wf-poll-acct");
+    const pollId = await storedPoll(remote, "wf-poll-acct");
+    await adminBlock({ domain: "wf-poll-acct.example", severity: "suspend" });
+
+    expect((await vote("wf-poll-acct-voter@example.com", pollId)).status).toBe(422);
+  });
+
+  it("leaves out a cached mention whose URI host is suspended", async () => {
+    await splitActor("ann", "wf-mention-host");
+    await adminBlock({ domain: "social.wf-mention-host.example", severity: "suspend" });
+    serveRemotes([], {});
+
+    const posted = await read(
+      z.object({ mentions: z.array(z.object({ acct: z.string() })) }),
+      await call("/api/v1/statuses", {
+        method: "POST",
+        headers: await signedIn("wf-mention-host-author@example.com"),
+        body: JSON.stringify({ status: "hi @ann@wf-mention-host.example" }),
+      }),
+    );
+    expect(posted.mentions).toEqual([]);
   });
 });
