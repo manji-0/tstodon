@@ -179,4 +179,20 @@ describe("local poll expiry notifications", () => {
     await runExpiryJob();
     expect(await pollNotifications(voter)).toEqual([]);
   });
+
+  it("leaves no vote of an ended poll waiting to be announced, the author's own included", async () => {
+    const author = "local-poll-pending-author@example.com";
+    const voter = "local-poll-pending-voter@example.com";
+    const poll = await createPoll(author, true);
+    await vote(author, poll.pollId, [0, 1]);
+    await vote(voter, poll.pollId, [1]);
+    await endPoll(poll.pollId);
+    await runExpiryJob();
+    const pending = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM poll_votes WHERE poll_id = ? AND expiry_notified_at IS NULL",
+    )
+      .bind(poll.pollId)
+      .first("n");
+    expect(pending).toBe(0);
+  });
 });
