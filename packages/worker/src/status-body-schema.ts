@@ -1,4 +1,4 @@
-import { warmSchemas } from "@tstodon/core";
+import { characterCount, InstanceLimits, warmSchemas } from "@tstodon/core";
 import { z } from "zod";
 import { booleanish } from "./form-values";
 
@@ -9,6 +9,14 @@ export const MediaAttributeSchema = z.object({
 });
 
 export type MediaAttribute = z.infer<typeof MediaAttributeSchema>;
+
+/** Whether every `media_attributes` description fits the instance's limit. */
+export const mediaDescriptionsFit = (attributes: ReadonlyArray<MediaAttribute>): boolean =>
+  attributes.every(
+    (attribute) =>
+      attribute.description === undefined ||
+      characterCount(attribute.description) <= InstanceLimits.media.maxDescriptionCharacters,
+  );
 
 export const CreateStatusBodySchema = z.object({
   status: z.string().optional(),

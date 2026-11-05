@@ -151,10 +151,9 @@ describe("status edit refusals", () => {
       headers,
     });
     expect(await source.json()).toMatchObject({ text: "original" });
-    const history = await SELF.fetch(
-      `https://example.com/api/v1/statuses/${id.value.id}/history`,
-      { headers },
-    );
+    const history = await SELF.fetch(`https://example.com/api/v1/statuses/${id.value.id}/history`, {
+      headers,
+    });
     expect(await history.json()).toHaveLength(1);
   });
 });

@@ -1,4 +1,4 @@
-import { InstanceLimits, characterCount } from "@tstodon/core";
+import { InstanceLimits } from "@tstodon/core";
 import type { LocalAccount, LocalNote, ThreadStatus, ValidatedStatusDraft } from "@tstodon/domain";
 import { InstanceIdentity, LocalStatus, StatusId } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
@@ -53,7 +53,10 @@ export type PublishNoteInput = Readonly<{
   quotePolicy: QuotePolicy | null;
 }>;
 
-/** Apply `media_attributes` to media already attached to this status. */
+/**
+ * Apply `media_attributes` to media already attached to this status. The
+ * caller has checked each description against the limit (`mediaDescriptionsFit`).
+ */
 export const applyMediaAttributes = async (
   env: Env,
   accountId: string,
@@ -77,12 +80,6 @@ export const applyMediaAttributes = async (
         focusX = focus.x;
         focusY = focus.y;
       }
-    }
-    if (
-      attribute.description !== undefined &&
-      characterCount(attribute.description) > InstanceLimits.media.maxDescriptionCharacters
-    ) {
-      return "media description is too long";
     }
     const description =
       attribute.description === undefined

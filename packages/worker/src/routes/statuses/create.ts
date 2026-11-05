@@ -28,6 +28,7 @@ import { mastodonStatus } from "../../local-status-documents";
 import {
   CreateStatusBodySchema,
   mediaAttributesFromForm,
+  mediaDescriptionsFit,
   withoutNullFields,
 } from "../../status-body-schema";
 import { isTruthy, stringList } from "../../form-values";
@@ -44,12 +45,7 @@ import type { MediaAttribute } from "../../status-body-schema";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { findStatusById } from "../../status-store";
 import { enqueueLinkCard } from "../../link-card";
-import {
-  findMediaById,
-  findMediaByIds,
-  parseMediaFocus,
-  updateMediaMetadata,
-} from "../../media-store";
+import { findMediaByIds } from "../../media-store";
 import { canViewStatus } from "../../visibility-guard";
 import { type PublishPoll, publishLocalNote } from "../../local-status-publish";
 import { quotePolicyName } from "../../quote-policy-name";
@@ -65,57 +61,6 @@ import {
   MIN_SCHEDULE_OFFSET_MS,
   scheduledStatusDocument,
 } from "../../scheduled-status-store";
-
-/** Apply `media_attributes` to media already attached to this status. */
-export const applyMediaAttributes = async (
-  env: Env,
-  accountId: string,
-  statusId: string,
-  attributes: ReadonlyArray<MediaAttribute>,
-): Promise<string | undefined> => {
-  for (const attribute of attributes) {
-    const found = await findMediaById(env.DB, attribute.id);
-    if (found.isErr()) {
-      return found.error.message;
-    }
-    const media = found.value;
-    if (!media || media.account_id !== accountId || media.status_id !== statusId) {
-      continue;
-    }
-    let focusX = media.focus_x;
-    let focusY = media.focus_y;
-    if (attribute.focus !== undefined) {
-      const focus = parseMediaFocus(attribute.focus);
-      if (focus) {
-        focusX = focus.x;
-        focusY = focus.y;
-      }
-    }
-    if (
-      attribute.description !== undefined &&
-      characterCount(attribute.description) > InstanceLimits.media.maxDescriptionCharacters
-    ) {
-      return "media description is too long";
-    }
-    const description =
-      attribute.description === undefined
-        ? media.description
-        : attribute.description.trim().length > 0
-          ? attribute.description
-          : null;
-    const updated = await updateMediaMetadata(env.DB, {
-      id: media.id,
-      accountId,
-      description,
-      focusX,
-      focusY,
-    });
-    if (updated.isErr()) {
-      return updated.error.message;
-    }
-  }
-  return undefined;
-};
 
 /** Queue the link preview for a status; the request never waits on it. */
 export const queueLinkCard = async (env: Env, statusId: string, text: string): Promise<void> => {
@@ -419,6 +364,9 @@ const postStatus = async (
   const requestedPolicy = isQuotePolicy(policyRaw) ? policyRaw : undefined;
   if (policyRaw.length > 0 && requestedPolicy === undefined) {
     return err(ApiRefusal.rejected(422, "Invalid quote_approval_policy", "ValidationError"));
+  }
+  if (!mediaDescriptionsFit(mediaAttributes)) {
+    return err(ApiRefusal.rejected(422, "description is too long", "ValidationError"));
   }
   const replyTo = await resolveReplyTo(env.DB, body.in_reply_to_id?.trim() ?? "", author.id);
   if (replyTo.isErr()) {

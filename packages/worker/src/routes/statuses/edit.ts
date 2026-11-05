@@ -31,6 +31,7 @@ import { countPollVotes, findPollByStatusId, replacePollOptions } from "../../po
 import {
   CreateStatusBodySchema,
   mediaAttributesFromForm,
+  mediaDescriptionsFit,
   withoutNullFields,
 } from "../../status-body-schema";
 import { isTruthy, stringList } from "../../form-values";
@@ -44,7 +45,8 @@ import { findRemoteActorByUri } from "../../remote-actor-store";
 import { findRemoteStatusById } from "../../remote-status-store";
 import { remoteStatusHistory } from "../../remote-status-edit";
 import { isQuotePolicy, listAcceptedQuoteEdges, setStatusQuotePolicy } from "../../quote-store";
-import { applyMediaAttributes, queueLinkCard, visibilityIsPublic } from "./create";
+import { applyMediaAttributes } from "../../local-status-publish";
+import { queueLinkCard, visibilityIsPublic } from "./create";
 import { ApiRefusal } from "../api-refusal";
 import type { MediaAttribute } from "../../status-body-schema";
 
@@ -205,8 +207,8 @@ const replaceMentions = async (
 /**
  * Revise the author's note from the request, keep the previous revision,
  * store the new one with what hangs off it (poll, quote policy, media,
- * mentions), and announce the update. The steps keep their order, so a
- * refusal leaves exactly what it left before.
+ * mentions), and announce the update. Every request field is checked
+ * before the first write, so a refused edit leaves the note as it was.
  */
 const editNote = async (
   env: Env,
@@ -246,6 +248,14 @@ const editNote = async (
   if (draft.isErr()) {
     return err(ApiRefusal.rejected(422, draft.error.kind, draft.error.kind));
   }
+  const policyRaw = (body.quote_approval_policy ?? "").trim().toLowerCase();
+  const policyEdit = isQuotePolicy(policyRaw) ? policyRaw : undefined;
+  if (policyRaw.length > 0 && policyEdit === undefined) {
+    return err(ApiRefusal.rejected(422, "Invalid quote_approval_policy", "ValidationError"));
+  }
+  if (!mediaDescriptionsFit(mediaAttributes)) {
+    return err(ApiRefusal.rejected(422, "description is too long", "ValidationError"));
+  }
   const revised = LocalStatus.revise(existing, draft.value, textToHtml(draft.value.text));
 
   const snapshotted = await snapshotPreviousRevision(env, identity, existing, author.id);
@@ -280,11 +290,7 @@ const editNote = async (
       return err(ApiRefusal.repository(poll.error.message));
     }
   }
-  const policyEdit = (body.quote_approval_policy ?? "").trim().toLowerCase();
-  if (policyEdit.length > 0) {
-    if (!isQuotePolicy(policyEdit)) {
-      return err(ApiRefusal.rejected(422, "Invalid quote_approval_policy", "ValidationError"));
-    }
+  if (policyEdit !== undefined) {
     const stored = await setStatusQuotePolicy(
       env.DB,
       existing.id,
