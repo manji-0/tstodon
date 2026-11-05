@@ -75,6 +75,12 @@ describe("hashtag search", () => {
     expect(await names("q=cat&type=hashtags&limit=1&offset=2", viewer)).toEqual([]);
   });
 
+  it("finds no tag for a term with no tag characters", async () => {
+    await post(viewer, "a #termless note");
+    expect(await names("q=%23&type=hashtags", viewer)).toEqual([]);
+    expect(await names("q=!!!&type=hashtags")).toEqual([]);
+  });
+
   it("does not answer with a tag nobody has used or followed", async () => {
     expect(await names("q=%23nobodyeverusedthistag&type=hashtags", viewer)).toEqual([]);
   });

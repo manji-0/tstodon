@@ -53,18 +53,24 @@ export const tagSearchPrefix = (term: string): string =>
 
 /**
  * Stored tags whose name starts with the term, as Mastodon's `Tag.search_for`:
- * shortest first, then by name, paged by `limit` and `offset`.
+ * shortest first, then by name, paged by `limit` and `offset`. A term with no
+ * tag characters (`#`, `!!!`) finds none, where Mastodon lists every tag.
  */
 export const searchTags = async (
   db: D1Database,
   term: string,
   limit: number,
   offset: number,
-): Promise<Result<string[], RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(db, searchTagsSql(tagSearchPrefix(term), limit, offset), NameRow);
+): Promise<Result<string[], RepositoryError>> => {
+  const prefix = tagSearchPrefix(term);
+  if (prefix.length === 0) {
+    return ok([]);
+  }
+  return runD1(async () => {
+    const rows = await queryTyped(db, searchTagsSql(prefix, limit, offset), NameRow);
     return rows.map((row) => row.name);
   });
+};
 
 export const followTag = async (
   db: D1Database,

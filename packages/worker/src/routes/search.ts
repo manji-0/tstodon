@@ -167,11 +167,12 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     if (histories.isErr()) {
       return jsonRepositoryError(c, histories.error.message);
     }
-    const followed = viewerId ? await listFollowedTags(c.env.DB, viewerId) : ok([]);
+    const viewerTags = viewerId !== undefined && found.value.length > 0;
+    const followed = viewerTags ? await listFollowedTags(c.env.DB, viewerId) : ok([]);
     if (followed.isErr()) {
       return jsonRepositoryError(c, followed.error.message);
     }
-    const featured = viewerId ? await listFeaturedTags(c.env.DB, viewerId) : ok([]);
+    const featured = viewerTags ? await listFeaturedTags(c.env.DB, viewerId) : ok([]);
     if (featured.isErr()) {
       return jsonRepositoryError(c, featured.error.message);
     }
