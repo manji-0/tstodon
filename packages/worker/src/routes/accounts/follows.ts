@@ -1,9 +1,8 @@
 import type { Context } from "hono";
 import { ok } from "neverthrow";
 import { assertNever, warmSchemas } from "@tstodon/core";
-import { InstanceIdentity, type LocalAccount, RemoteActor } from "@tstodon/domain";
+import type { LocalAccount } from "@tstodon/domain";
 import { findAccountByIdOrUsername } from "../../account-store";
-import { enqueueTargetedActivity } from "../../delivery";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -13,11 +12,8 @@ import {
   requireUser,
 } from "../../http";
 import { mastodonRelationship } from "../../relationship-document";
-import {
-  deleteRemoteFollow,
-  findRemoteActorByUri,
-  findRemoteFollow,
-} from "../../remote-actor-store";
+import { findRemoteActorByUri } from "../../remote-actor-store";
+import { removeRemoteFollower } from "../../remote-follower";
 import { RemoteAccountId } from "../../remote-account-id";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { followAccount, type FollowOptions, unfollowAccount } from "../../follow-store";
@@ -250,35 +246,13 @@ export const postV1AccountsByIdRemoveFromFollowers = async (
   if (!actor.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const existing = await findRemoteFollow(c.env.DB, user.value.id, actorUri.value);
-  if (existing.isErr()) {
-    return jsonRepositoryError(c, existing.error.message);
+  const removed = await removeRemoteFollower(c.env, identity.value, user.value, actor.value);
+  if (removed.isErr()) {
+    return jsonRepositoryError(c, removed.error.message);
   }
-  if (!existing.value) {
+  if (!removed.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const dropped = await deleteRemoteFollow(c.env.DB, actorUri.value, user.value.id);
-  if (dropped.isErr()) {
-    return jsonRepositoryError(c, dropped.error.message);
-  }
-
-  // Tell the remote follower it no longer follows; delivery is best effort.
-  const actorUrl = InstanceIdentity.actorUrl(identity.value, user.value.username);
-  const followObjectId = existing.value.followActivityId ?? actorUri.value;
-  await enqueueTargetedActivity(
-    c.env,
-    user.value.id,
-    "Reject",
-    {
-      "@context": "https://www.w3.org/ns/activitystreams",
-      id: `${actorUrl}/activities/reject-${followObjectId}`,
-      type: "Reject",
-      actor: actorUrl,
-      object: { id: followObjectId, type: "Follow", actor: actorUri.value, object: actorUrl },
-    },
-    RemoteActor.deliveryInbox(actor.value),
-  );
-
   const flags = await relationshipFlags(c.env.DB, user.value.id, actorUri.value);
   if (flags.isErr()) {
     return jsonRepositoryError(c, flags.error.message);

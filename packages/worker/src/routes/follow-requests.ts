@@ -18,6 +18,7 @@ import {
   listPendingRemoteFollowRequesters,
   rejectRemoteFollowRequest,
 } from "../remote-actor-store";
+import { sendFollowReject } from "../remote-follower";
 import { parseInstanceIdentity } from "../runtime-config";
 import { RemoteAccountId } from "../remote-account-id";
 import {
@@ -257,27 +258,8 @@ export const postV1FollowRequestsByIdReject = async (
   if (!rejected.value) {
     return notFound(c);
   }
-  const rejectActor = InstanceIdentity.actorUrl(identity.value, user.value.username);
   if (followActivityId.value) {
-    const followerInbox = RemoteActor.deliveryInbox(remote.actor);
-    await enqueueTargetedActivity(
-      c.env,
-      user.value.id,
-      "Reject",
-      {
-        "@context": "https://www.w3.org/ns/activitystreams",
-        id: `${rejectActor}/activities/reject-${followActivityId.value}`,
-        type: "Reject",
-        actor: rejectActor,
-        object: {
-          id: followActivityId.value,
-          type: "Follow",
-          actor: remote.actorUri,
-          object: rejectActor,
-        },
-      },
-      followerInbox,
-    );
+    await sendFollowReject(c.env, identity.value, user.value, remote.actor, followActivityId.value);
   }
   return c.json(mastodonRelationship(id, remoteFollowerFlags(false)));
 };
