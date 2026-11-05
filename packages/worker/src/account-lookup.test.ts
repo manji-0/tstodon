@@ -33,7 +33,11 @@ const LookupSchema = MastodonAccountPreviewSchema.extend({ acct: z.string(), url
 const lookup = (acct: string): Promise<{ status: number; body: unknown }> =>
   json(`/api/v1/accounts/lookup?acct=${encodeURIComponent(acct)}`);
 
-const cacheActor = async (username: string, domain: string): Promise<RemoteActor> => {
+const cacheActor = async (
+  username: string,
+  domain: string,
+  profile: Partial<RemoteActor["profile"]> = {},
+): Promise<RemoteActor> => {
   const actorUri = `https://${domain}/users/${username}`;
   const keys = await generateAccountKeys();
   const fetchedAt = IsoInstant.parse(nowIso());
@@ -48,6 +52,7 @@ const cacheActor = async (username: string, domain: string): Promise<RemoteActor
     publicKeyId: `${actorUri}#main-key`,
     publicKeyPem: keys.publicKeyPem,
     displayName: username,
+    profile: { ...RemoteActor.emptyProfile, ...profile },
     fetchedAt: fetchedAt.value,
   });
   if (actor.isErr()) {
@@ -136,5 +141,155 @@ describe("account lookup", () => {
     } finally {
       await json(`/api/v1/admin/domain_allows/${id}`, { method: "DELETE", headers: await admin() });
     }
+  });
+});
+
+const SuspendedAccountSchema = LookupSchema.extend({
+  display_name: z.string(),
+  note: z.string(),
+  avatar: z.string(),
+  header: z.string(),
+  locked: z.boolean(),
+  bot: z.boolean(),
+  emojis: z.array(z.unknown()),
+  fields: z.array(z.unknown()),
+  suspended: z.boolean().optional(),
+});
+
+const searchAccts = async (path: string, email: string): Promise<string[]> => {
+  const found = await json(path, { headers: await authHeaders(email) });
+  expect(found.status).toBe(200);
+  const accounts = path.startsWith("/api/v2/")
+    ? read(z.object({ accounts: z.array(LookupSchema) }), found.body).accounts
+    : read(z.array(LookupSchema), found.body);
+  return accounts.map((account) => account.acct);
+};
+
+/** Every account search the actor could turn up in: exact and partial, v1 and v2. */
+const searchesFor = (username: string, domain: string): string[] => [
+  `/api/v1/accounts/search?q=${encodeURIComponent(`${username}@${domain}`)}`,
+  `/api/v1/accounts/search?q=${encodeURIComponent(username)}`,
+  `/api/v2/search?type=accounts&q=${encodeURIComponent(`${username}@${domain}`)}`,
+  `/api/v2/search?type=accounts&q=${encodeURIComponent(username)}`,
+];
+
+describe("account search hides actors lookup hides", () => {
+  it("drops a cached actor on a suspended domain", async () => {
+    await cacheActor("zelda", "suspended-search.example");
+    const email = "search-suspended-domain@example.com";
+    for (const path of searchesFor("zelda", "suspended-search.example")) {
+      expect(await searchAccts(path, email)).toContain("zelda@suspended-search.example");
+    }
+    const blocked = await json("/api/v1/admin/domain_blocks", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await admin()) },
+      body: JSON.stringify({ domain: "suspended-search.example", severity: "suspend" }),
+    });
+    expect(blocked.status).toBe(200);
+    for (const path of searchesFor("zelda", "suspended-search.example")) {
+      expect(await searchAccts(path, email)).not.toContain("zelda@suspended-search.example");
+    }
+  });
+
+  it("drops a cached actor outside the allow list", async () => {
+    await cacheActor("yorick", "stranger-search.example");
+    await cacheActor("yorick", "friend-search.example");
+    const allowed = await json("/api/v1/admin/domain_allows", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await admin()) },
+      body: JSON.stringify({ domain: "friend-search.example" }),
+    });
+    expect(allowed.status).toBe(200);
+    const { id } = read(z.object({ id: z.string() }), allowed.body);
+    const email = "search-allow-list@example.com";
+    try {
+      for (const domain of ["stranger-search.example", "friend-search.example"]) {
+        for (const path of searchesFor("yorick", domain)) {
+          const accts = await searchAccts(path, email);
+          expect(accts).not.toContain("yorick@stranger-search.example");
+          expect(accts).toContain("yorick@friend-search.example");
+        }
+      }
+    } finally {
+      await json(`/api/v1/admin/domain_allows/${id}`, { method: "DELETE", headers: await admin() });
+    }
+  });
+});
+
+describe("a suspended account", () => {
+  const expectSuspended = (body: unknown, thumbnail: string): void => {
+    const account = read(SuspendedAccountSchema, body);
+    expect(account.suspended).toBe(true);
+    expect(account.display_name).toBe("");
+    expect(account.note).toBe("");
+    expect(account.avatar).toBe(thumbnail);
+    expect(account.header).toBe(thumbnail);
+    expect(account.locked).toBe(false);
+    expect(account.bot).toBe(false);
+    expect(account.emojis).toEqual([]);
+    expect(account.fields).toEqual([]);
+  };
+
+  it("renders a suspended remote actor stripped on lookup and by id, and leaves search", async () => {
+    const actor = await cacheActor("ursula", "suspended-actor.example", {
+      note: "Sea witch",
+      avatarUrl: "https://suspended-actor.example/avatar.png",
+      headerUrl: "https://suspended-actor.example/header.png",
+      locked: true,
+      bot: true,
+    });
+    const before = await lookup("ursula@suspended-actor.example");
+    expect(before.status).toBe(200);
+    const { id } = read(LookupSchema, before.body);
+    const shown = read(SuspendedAccountSchema, before.body);
+    expect(shown.suspended).toBeUndefined();
+    expect(shown.avatar).toBe("https://suspended-actor.example/avatar.png");
+
+    const suspended = await json(`/api/v1/admin/accounts/${id}/suspend`, {
+      method: "POST",
+      headers: await admin(),
+    });
+    expect(suspended.status).toBe(200);
+
+    const instance = read(
+      z.object({ thumbnail: z.object({ url: z.string() }) }),
+      (await json("/api/v2/instance")).body,
+    );
+    const looked = await lookup("ursula@suspended-actor.example");
+    expect(looked.status).toBe(200);
+    expectSuspended(looked.body, instance.thumbnail.url);
+    const byId = await json(`/api/v1/accounts/${id}`);
+    expect(byId.status).toBe(200);
+    expectSuspended(byId.body, instance.thumbnail.url);
+    expect(read(LookupSchema, byId.body).acct).toBe(`${actor.username}@${actor.domain}`);
+
+    for (const path of searchesFor("ursula", "suspended-actor.example")) {
+      expect(await searchAccts(path, "search-suspended-actor@example.com")).not.toContain(
+        "ursula@suspended-actor.example",
+      );
+    }
+  });
+
+  it("renders a suspended local account stripped on lookup and by id", async () => {
+    const me = await json("/api/v1/accounts/verify_credentials", {
+      headers: await authHeaders("lookup-suspended-local@example.com"),
+    });
+    const account = read(LookupSchema, me.body);
+    const suspended = await json(`/api/v1/admin/accounts/${account.id}/suspend`, {
+      method: "POST",
+      headers: await admin(),
+    });
+    expect(suspended.status).toBe(200);
+    const instance = read(
+      z.object({ thumbnail: z.object({ url: z.string() }) }),
+      (await json("/api/v2/instance")).body,
+    );
+
+    const looked = await lookup(account.username);
+    expect(looked.status).toBe(200);
+    expectSuspended(looked.body, instance.thumbnail.url);
+    const byId = await json(`/api/v1/accounts/${account.id}`);
+    expect(byId.status).toBe(200);
+    expectSuspended(byId.body, instance.thumbnail.url);
   });
 });
