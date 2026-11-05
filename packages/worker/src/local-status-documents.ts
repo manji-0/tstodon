@@ -137,24 +137,19 @@ export const mastodonStatuses = async (
 
   // Resolve reblog targets (including reblog-of-reblog) and reply parents.
   for (let pass = 0; pass < 4; pass += 1) {
-    const missing = new Set<string>();
-    for (const status of byId.values()) {
-      if (
-        status.kind === "LocalReblog" &&
-        status.target.kind === "LocalStatus" &&
-        !byId.has(status.target.statusId)
-      ) {
-        missing.add(status.target.statusId);
-      }
-      if (
-        status.kind === "LocalNote" &&
-        status.inReplyToId &&
-        status.inReplyToId.length > 0 &&
-        !byId.has(status.inReplyToId)
-      ) {
-        missing.add(status.inReplyToId);
-      }
-    }
+    // The status each loaded one points at: a boost's local target, a note's parent.
+    const pointedAt = (status: LocalStatus): string | null =>
+      status.kind === "LocalReblog"
+        ? status.target.kind === "LocalStatus"
+          ? status.target.statusId
+          : null
+        : status.inReplyToId;
+    const missing = new Set(
+      [...byId.values()].flatMap((status) => {
+        const id = pointedAt(status);
+        return id && id.length > 0 && !byId.has(id) ? [id] : [];
+      }),
+    );
     if (missing.size === 0) {
       break;
     }

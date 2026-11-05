@@ -194,24 +194,22 @@ export const listConversationsForAccount = async (
     if (!lastStatus) {
       continue;
     }
-    const participantIds = new Set<string>();
-    for (const entry of ordered) {
-      if (entry.kind === "Remote") {
-        participantIds.add(RemoteAccountId.encode(entry.status.actorUri));
-        for (const mentioned of remoteMentions.value.get(entry.status.id) ?? []) {
-          participantIds.add(mentioned);
+    const participantIds = new Set(
+      ordered.flatMap((entry) => {
+        if (entry.kind === "Remote") {
+          return [
+            RemoteAccountId.encode(entry.status.actorUri),
+            ...(remoteMentions.value.get(entry.status.id) ?? []),
+          ];
         }
-        continue;
-      }
-      participantIds.add(entry.status.accountId);
-      const mentions = localMentions.value.get(entry.status.id);
-      for (const mentioned of mentions?.accountIds ?? []) {
-        participantIds.add(mentioned);
-      }
-      for (const actorUri of mentions?.actorUris ?? []) {
-        participantIds.add(RemoteAccountId.encode(actorUri));
-      }
-    }
+        const mentions = localMentions.value.get(entry.status.id);
+        return [
+          entry.status.accountId,
+          ...(mentions?.accountIds ?? []),
+          ...(mentions?.actorUris ?? []).map((actorUri) => RemoteAccountId.encode(actorUri)),
+        ];
+      }),
+    );
     const hidden = await conversationHiddenStatusId(db, accountId, conversationId);
     if (hidden.isErr()) {
       return err(hidden.error);
