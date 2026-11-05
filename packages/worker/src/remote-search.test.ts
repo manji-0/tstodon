@@ -1,12 +1,16 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
-import type { z } from "zod";
+import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
+import { authHeaders } from "../test/auth-fixture";
 import { generateAccountKeys } from "./keys";
 import { MastodonSearchPreviewSchema } from "../test/mastodon-preview-schemas";
 
-const json = async (path: string): Promise<{ status: number; body: unknown }> => {
-  const response = await SELF.fetch(`https://example.com${path}`);
+const json = async (
+  path: string,
+  init?: RequestInit,
+): Promise<{ status: number; body: unknown }> => {
+  const response = await SELF.fetch(`https://example.com${path}`, init);
   const contentType = response.headers.get("content-type") ?? "";
   const body = contentType.includes("json") ? await response.json() : await response.text();
   return { status: response.status, body };
@@ -77,7 +81,9 @@ describe("remote search resolution", () => {
         return undefined;
       },
       async () => {
-        const resolved = await json("/api/v2/search?q=@remote@remote.example&resolve=true");
+        const resolved = await json("/api/v2/search?q=@remote@remote.example&resolve=true", {
+          headers: await authHeaders("remote-search-resolver@example.com"),
+        });
         expect(resolved.status).toBe(200);
         expect(
           read(MastodonSearchPreviewSchema, resolved.body).accounts.map((account) => account.acct),
@@ -90,6 +96,34 @@ describe("remote search resolution", () => {
       },
     );
     expect(webfingerCalls).toBe(1);
+  });
+
+  it("refuses to resolve without sign-in", async () => {
+    let calls = 0;
+    await withFetchStub(
+      () => {
+        calls += 1;
+        return undefined;
+      },
+      async () => {
+        for (const path of [
+          "/api/v2/search?q=@anon@anon-resolve.example&resolve=true",
+          "/api/v2/search?q=https://anon-resolve.example/users/anon&resolve=1&type=accounts",
+        ]) {
+          const refused = await json(path);
+          expect(refused.status).toBe(401);
+          expect(read(z.object({ error: z.string() }), refused.body).error).toBe(
+            "Search queries that resolve remote resources are not supported without authentication",
+          );
+        }
+        const v1 = await json("/api/v1/accounts/search?q=anon@anon-resolve.example&resolve=true");
+        expect(v1.status).toBe(401);
+        expect(
+          (await json("/api/v2/search?q=@anon@anon-resolve.example&resolve=false")).status,
+        ).toBe(200);
+      },
+    );
+    expect(calls).toBe(0);
   });
 
   it("does not fetch for a plain query", async () => {
