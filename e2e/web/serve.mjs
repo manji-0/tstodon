@@ -1,13 +1,11 @@
-// Playwright's web server for the browser e2e suite: a fresh local database,
-// migrated, then the Worker in Void's dev server on http://localhost:8793
-// with e2e/web.wrangler.jsonc (mail captured in APP_CACHE).
-import { execFileSync, spawn } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+// Playwright's web server for the browser e2e suite: a fresh copy of the
+// migrated database (database.mjs), then the Worker in Void's dev server on
+// http://localhost:8793 with e2e/web.wrangler.jsonc (mail captured in APP_CACHE).
+import { spawn } from "node:child_process";
+import { cpSync, existsSync, rmSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { config, migratedDatabase, root } from "./database.mjs";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const config = "e2e/web.wrangler.jsonc";
 const state = ".wrangler/e2e-web";
 
 if (!existsSync(path.join(root, "packages/worker/assets/packs/tstodon-web.json"))) {
@@ -15,24 +13,10 @@ if (!existsSync(path.join(root, "packages/worker/assets/packs/tstodon-web.json")
   process.exit(1);
 }
 
-rmSync(path.join(root, state), { recursive: true, force: true });
-execFileSync(
-  "pnpm",
-  [
-    "exec",
-    "wrangler",
-    "d1",
-    "migrations",
-    "apply",
-    "tstodon-e2e-web",
-    "--local",
-    "--config",
-    config,
-    "--persist-to",
-    state,
-  ],
-  { cwd: root, stdio: "inherit" },
-);
+// Only `v3`, the Worker's local storage, is replaced. `vite` beside it is
+// Vite's dependency cache, which takes about a minute to rebuild.
+rmSync(path.join(root, state, "v3"), { recursive: true, force: true });
+cpSync(path.join(migratedDatabase(), "v3"), path.join(root, state, "v3"), { recursive: true });
 
 const server = spawn(
   "pnpm",

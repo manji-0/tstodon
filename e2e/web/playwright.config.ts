@@ -2,7 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 /**
  * Browser e2e: Mastodon's web UI against the Worker in Void's dev server.
- * Needs `pnpm web:build`; run with `pnpm e2e:web`.
+ * Needs `pnpm web:build`; run with `pnpm e2e:web`, which migrates the
+ * database first (database.mjs).
  */
 export default defineConfig({
   testDir: ".",
@@ -30,7 +31,11 @@ export default defineConfig({
       command: "node e2e/web/serve.mjs",
       cwd: "../..",
       url: "http://localhost:8793/healthz",
-      timeout: 180_000,
+      // Migrations are applied before Playwright starts (database.mjs). With a
+      // warm Vite cache the server answers in about 30 s; with a cold one
+      // (fresh clone, dependency change) in up to about 90 s on a loaded
+      // 4-CPU machine.
+      timeout: 150_000,
       reuseExistingServer: false,
       stdout: "ignore",
       stderr: "pipe",

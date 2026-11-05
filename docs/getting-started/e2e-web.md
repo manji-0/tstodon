@@ -12,11 +12,13 @@ Drive Mastodon's own web UI, served by this Worker, through the basic things a p
 
 ```sh
 pnpm web:build   # once, and after changing MASTODON_WEB_REF
-pnpm e2e:web     # playwright test -c e2e/web/playwright.config.ts
+pnpm e2e:web     # node e2e/web/database.mjs && playwright test -c e2e/web/playwright.config.ts
 pnpm e2e:web -g "follows"   # one scenario
 ```
 
-Playwright starts the server itself (`e2e/web/serve.mjs`): it deletes `.wrangler/e2e-web`, applies the D1 migrations, and runs Void's dev server on `http://localhost:8793` with `e2e/web.wrangler.jsonc`. The host is `localhost`, not `127.0.0.1`, because WebAuthn does not accept an IP address as the relying party. Nothing else may listen on port 8793.
+`pnpm e2e:web` first runs `e2e/web/database.mjs`, which applies the D1 migrations to a database under `.cache/e2e-web/d1/<digest>`. The digest covers `e2e/web.wrangler.jsonc` and every migration file, so the migrations run again only after one of them changes. Wrangler applies each migration in its own step, which takes about a minute on a loaded machine.
+
+Then Playwright starts the server itself (`e2e/web/serve.mjs`): it replaces the local storage in `.wrangler/e2e-web/v3` with a copy of that database and runs Void's dev server on `http://localhost:8793` with `e2e/web.wrangler.jsonc`. It keeps Vite's dependency cache in `.wrangler/e2e-web/vite`. With that cache the server answers in about 30 seconds. Without it, after a fresh clone or a dependency change, it takes up to about 90 seconds on a loaded 4-CPU machine. The start-up budget in `playwright.config.ts` is 150 seconds. If you run `playwright test` directly, `serve.mjs` applies missing migrations itself, inside that budget. The host is `localhost`, not `127.0.0.1`, because WebAuthn does not accept an IP address as the relying party. Nothing else may listen on port 8793.
 
 It also starts `e2e/web/remote-server.mjs` on `http://127.0.0.1:8794`: a stand-in remote Mastodon server with one account, `remote_alice`, served the way Mastodon serves it (WebFinger, an ActivityPub `Person` with a key, bio and avatar, an outbox with one public note). It accepts and drops inbox deliveries and does not check signatures. `e2e/web.wrangler.jsonc` lists `127.0.0.1` in `FEDERATION_ALLOW_HOSTS`, which lets the instance fetch it over plain HTTP. Port 8794 must be free too.
 
