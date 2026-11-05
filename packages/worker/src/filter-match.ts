@@ -1,5 +1,5 @@
 import { err, ok, type Result } from "neverthrow";
-import type { LocalStatus } from "@tstodon/domain";
+import { ContentFilter, type LocalStatus } from "@tstodon/domain";
 import type { RepositoryError } from "./d1";
 import { htmlToText } from "./html";
 import { mastodonFilterV2 } from "./filter-documents";
@@ -16,6 +16,7 @@ import {
 export type FilterWithStatuses = Readonly<{
   row: FilterRow;
   statuses: ReadonlyArray<FilterStatus>;
+  filter: ContentFilter;
 }>;
 
 export type FilterMatch = Readonly<{
@@ -24,6 +25,20 @@ export type FilterMatch = Readonly<{
   keywordMatches: ReadonlyArray<string>;
   statusMatches: ReadonlyArray<string>;
 }>;
+
+/** A row and its statuses as `ContentFilter`; unreadable contexts apply nowhere. */
+const contentFilter = (row: FilterRow, statuses: ReadonlyArray<FilterStatus>): ContentFilter => {
+  const contexts = parseJsonColumn(FilterContextSchema, row.context_json);
+  return {
+    contexts: contexts.isOk() ? contexts.value : [],
+    expiresAt: row.expires_at,
+    keywords: filterKeywords(row).map((keyword) => ({
+      keyword: keyword.keyword,
+      wholeWord: keyword.whole_word,
+    })),
+    statusIds: statuses.map((status) => status.status_id),
+  };
+};
 
 /** Every filter the viewer owns, with the statuses each is narrowed to. */
 export const loadViewerFilters = async (
@@ -40,29 +55,14 @@ export const loadViewerFilters = async (
     if (statuses.isErr()) {
       return err(statuses.error);
     }
-    filters.push({ row, statuses: statuses.value });
+    filters.push({ row, statuses: statuses.value, filter: contentFilter(row, statuses.value) });
   }
   return ok(filters);
 };
 
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-const keywordHits = (keyword: string, wholeWord: boolean, text: string): boolean => {
-  const lowered = text.toLowerCase();
-  const needle = keyword.toLowerCase();
-  if (!wholeWord) {
-    return lowered.includes(needle);
-  }
-  return new RegExp(
-    `(?:^|[^\\p{L}\\p{N}_])${escapeRegExp(needle)}(?:$|[^\\p{L}\\p{N}_])`,
-    "iu",
-  ).test(text);
-};
-
 /**
- * Filters matching a context (Mastodon's `home`/`notifications`/`public`/...):
- * a filter matches when one of its keywords appears in `text` or when it is
- * narrowed to this status. Expired filters are ignored.
+ * Filters matching a context (Mastodon's `home`/`notifications`/`public`/...);
+ * `ContentFilter.match` decides each.
  */
 export const matchFilters = (
   filters: ReadonlyArray<FilterWithStatuses>,
@@ -71,29 +71,10 @@ export const matchFilters = (
   statusId: string | null,
 ): ReadonlyArray<FilterMatch> => {
   const now = Date.now();
-  const matches: FilterMatch[] = [];
-  for (const filter of filters) {
-    const expiresAt = filter.row.expires_at;
-    if (expiresAt !== null && Date.parse(expiresAt) <= now) {
-      continue;
-    }
-    const contexts = parseJsonColumn(FilterContextSchema, filter.row.context_json);
-    if (!contexts.isOk() || !contexts.value.includes(context)) {
-      continue;
-    }
-    const statusMatches =
-      statusId !== null && filter.statuses.some((entry) => entry.status_id === statusId)
-        ? [statusId]
-        : [];
-    const keywordMatches = filterKeywords(filter.row)
-      .filter((keyword) => keywordHits(keyword.keyword, keyword.whole_word, text))
-      .map((keyword) => keyword.keyword);
-    if (keywordMatches.length === 0 && statusMatches.length === 0) {
-      continue;
-    }
-    matches.push({ row: filter.row, statuses: filter.statuses, keywordMatches, statusMatches });
-  }
-  return matches;
+  return filters.flatMap(({ row, statuses, filter }) => {
+    const match = ContentFilter.match(filter, { context, text, statusId }, now);
+    return match ? [{ row, statuses, ...match }] : [];
+  });
 };
 
 /** The `filtered` array Mastodon attaches to statuses and notifications. */

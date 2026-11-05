@@ -2,6 +2,7 @@ export { AccountId, type AccountId as AccountIdValue } from "./account-id";
 export { AccessEmail, type AccessEmail as AccessEmailValue } from "./access-email";
 export { Activity, ActivitySchema, type Activity as ActivityValue } from "./activity";
 export { ActivityId } from "./activity-id";
+export { ContentFilter, type ContentFilterMatch, type FilteredContent } from "./content-filter";
 export {
   DeliveryAttemptOutcome,
   type DeliveryAttemptOutcome as DeliveryAttemptOutcomeValue,
