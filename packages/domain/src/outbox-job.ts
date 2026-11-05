@@ -20,6 +20,11 @@ const RefreshLinkCardsSchema = unitKind("RefreshLinkCards");
 /** Index the tags of remote statuses written before the tag index (cron). */
 const BackfillRemoteTagsSchema = unitKind("BackfillRemoteTags");
 /**
+ * Store the tag names of the next page of stored local notes, from the
+ * `local_note_tags` cursor (cron, self-chaining, stops once complete).
+ */
+const BackfillLocalNoteTagsSchema = unitKind("BackfillLocalNoteTags");
+/**
  * Move the next batch of attachments after `afterId` (empty for the first)
  * that are still at an id-derived key to a random key (cron, self-chaining).
  */
@@ -188,6 +193,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ProcessExpiredPollsSchema,
   RefreshLinkCardsSchema,
   BackfillRemoteTagsSchema,
+  BackfillLocalNoteTagsSchema,
   RekeyLegacyMediaSchema,
   PublishScheduledStatusesSchema,
   CleanUpStatusesSchema,

@@ -451,6 +451,12 @@ model tags {
   created_at String @default("CURRENT_TIMESTAMP")
 }
 
+model backfill_cursors {
+  name         String  @id
+  after_id     String  @default("")
+  completed_at String?
+}
+
 model custom_emojis {
   id                String  @id
   shortcode         String  @unique

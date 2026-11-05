@@ -429,6 +429,7 @@ export const ModelName = {
   followed_tags: "followed_tags",
   featured_tags: "featured_tags",
   tags: "tags",
+  backfill_cursors: "backfill_cursors",
   custom_emojis: "custom_emojis",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
@@ -524,6 +525,7 @@ export type TypeMap<
       | "followed_tags"
       | "featured_tags"
       | "tags"
+      | "backfill_cursors"
       | "custom_emojis"
       | "inbox_activities"
       | "instance_settings"
@@ -3431,6 +3433,82 @@ export type TypeMap<
         count: {
           args: Prisma.tagsCountArgs<ExtArgs>;
           result: runtime.Types.Utils.Optional<Prisma.TagsCountAggregateOutputType> | number;
+        };
+      };
+    };
+    backfill_cursors: {
+      payload: Prisma.$backfill_cursorsPayload<ExtArgs>;
+      fields: Prisma.backfill_cursorsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.backfill_cursorsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$backfill_cursorsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.backfill_cursorsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$backfill_cursorsPayload>;
+        };
+        findFirst: {
+          args: Prisma.backfill_cursorsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$backfill_cursorsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.backfill_cursorsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$backfill_cursorsPayload>;
+        };
+        findMany: {
+          args: Prisma.backfill_cursorsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$backfill_cursorsPayload>[];
+        };
+        create: {
+          args: Prisma.backfill_cursorsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$backfill_cursorsPayload>;
+        };
+        createMany: {
+          args: Prisma.backfill_cursorsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.backfill_cursorsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$backfill_cursorsPayload>[];
+        };
+        delete: {
+          args: Prisma.backfill_cursorsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$backfill_cursorsPayload>;
+        };
+        update: {
+          args: Prisma.backfill_cursorsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$backfill_cursorsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.backfill_cursorsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.backfill_cursorsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.backfill_cursorsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$backfill_cursorsPayload>[];
+        };
+        upsert: {
+          args: Prisma.backfill_cursorsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$backfill_cursorsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Backfill_cursorsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateBackfill_cursors>;
+        };
+        groupBy: {
+          args: Prisma.backfill_cursorsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Backfill_cursorsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.backfill_cursorsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Backfill_cursorsCountAggregateOutputType>
+            | number;
         };
       };
     };
@@ -6700,6 +6778,15 @@ export const TagsScalarFieldEnum = {
 
 export type TagsScalarFieldEnum = (typeof TagsScalarFieldEnum)[keyof typeof TagsScalarFieldEnum];
 
+export const Backfill_cursorsScalarFieldEnum = {
+  name: "name",
+  after_id: "after_id",
+  completed_at: "completed_at",
+} as const;
+
+export type Backfill_cursorsScalarFieldEnum =
+  (typeof Backfill_cursorsScalarFieldEnum)[keyof typeof Backfill_cursorsScalarFieldEnum];
+
 export const Custom_emojisScalarFieldEnum = {
   id: "id",
   shortcode: "shortcode",
@@ -7394,6 +7481,7 @@ export type GlobalOmitConfig = {
   followed_tags?: Prisma.followed_tagsOmit;
   featured_tags?: Prisma.featured_tagsOmit;
   tags?: Prisma.tagsOmit;
+  backfill_cursors?: Prisma.backfill_cursorsOmit;
   custom_emojis?: Prisma.custom_emojisOmit;
   inbox_activities?: Prisma.inbox_activitiesOmit;
   instance_settings?: Prisma.instance_settingsOmit;

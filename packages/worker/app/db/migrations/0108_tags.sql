@@ -19,35 +19,15 @@ WHERE s.visibility IN ('public', 'unlisted');
 INSERT OR IGNORE INTO tags (name) SELECT DISTINCT tag_name FROM followed_tags;
 INSERT OR IGNORE INTO tags (name) SELECT DISTINCT tag_name FROM featured_tags;
 
--- Local notes keep no tag index, so their tags are read from the text as
--- `extractHashtags` (src/status-discovery-store.ts) reads them: each `#`
--- followed by the longest run of ASCII letters, digits and `_`, lowercased.
--- `after_hash` holds the text after each `#`; `run` grows the tag one
--- character at a time while the next character is a tag character.
-INSERT OR IGNORE INTO tags (name)
-WITH RECURSIVE
-  after_hash(rest) AS (
-    SELECT substr(content_text, instr(content_text, '#') + 1)
-    FROM statuses
-    WHERE kind = 'LocalNote' AND instr(content_text, '#') > 0
-    UNION ALL
-    SELECT substr(rest, instr(rest, '#') + 1) FROM after_hash WHERE instr(rest, '#') > 0
-  ),
-  run(tag, rest) AS (
-    SELECT '', rest FROM after_hash
-    UNION ALL
-    SELECT tag || substr(rest, 1, 1), substr(rest, 2)
-    FROM run
-    WHERE substr(rest, 1, 1) BETWEEN 'a' AND 'z'
-       OR substr(rest, 1, 1) BETWEEN 'A' AND 'Z'
-       OR substr(rest, 1, 1) BETWEEN '0' AND '9'
-       OR substr(rest, 1, 1) = '_'
-  )
-SELECT DISTINCT lower(tag) FROM run
-WHERE tag <> ''
-  AND NOT (
-    substr(rest, 1, 1) BETWEEN 'a' AND 'z'
-    OR substr(rest, 1, 1) BETWEEN 'A' AND 'Z'
-    OR substr(rest, 1, 1) BETWEEN '0' AND '9'
-    OR substr(rest, 1, 1) = '_'
-  );
+-- Local notes keep no tag index, so the `BackfillLocalNoteTags` job reads
+-- their text a page at a time (src/local-tag-backfill.ts) instead of one
+-- unbounded statement here, which could pass D1's query limits on a large
+-- instance and hold the writer. Its cursor is the last note id read; once a
+-- page comes back short, `completed_at` is set and the job stops.
+CREATE TABLE IF NOT EXISTS backfill_cursors (
+    name TEXT NOT NULL PRIMARY KEY,
+    after_id TEXT NOT NULL DEFAULT '',
+    completed_at TEXT
+) WITHOUT ROWID;
+
+INSERT OR IGNORE INTO backfill_cursors (name) VALUES ('local_note_tags');

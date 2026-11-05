@@ -6,6 +6,8 @@ export * from "./sql/acceptOutboundFollow";
 
 export * from "./sql/accountCounts";
 
+export * from "./sql/advanceBackfillCursor";
+
 export * from "./sql/attachMediaToStatus";
 
 export * from "./sql/authorizeFollowRequest";
@@ -518,6 +520,8 @@ export * from "./sql/listLocalBoostsOfRemoteActor";
 
 export * from "./sql/listLocalBoostsOfRemoteObject";
 
+export * from "./sql/listLocalNoteTextsAfter";
+
 export * from "./sql/listMediaIdsForStatus";
 
 export * from "./sql/listMediaObjectKeysForAccount";
@@ -633,6 +637,8 @@ export * from "./sql/purgeRemoteActorRequestAcceptances";
 export * from "./sql/purgeRemoteActorRequestGroups";
 
 export * from "./sql/purgeRemoteActorStatusMutes";
+
+export * from "./sql/readBackfillCursor";
 
 export * from "./sql/rejectFollowRequest";
 

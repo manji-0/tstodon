@@ -23,6 +23,7 @@ import { processBackfillRemoteOutboxJob } from "./remote-outbox-backfill";
 import { processBackfillRemoteThreadJob } from "./remote-thread-backfill";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { rekeyLegacyMediaBatch } from "./media-rekey";
+import { backfillLocalNoteTags } from "./local-tag-backfill";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { cleanUpAccountStatuses, queueStatusesCleanup } from "./statuses-cleanup";
 import { findRemoteActorsByUris, listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
@@ -157,6 +158,17 @@ export const processOutboxJob = async (
     case "BackfillRemoteTags":
       await indexMissingRemoteTags(env.DB);
       return "ok";
+    case "BackfillLocalNoteTags":
+      return measureJobPage(env, job.kind, async () => {
+        const page = await backfillLocalNoteTags(env.DB);
+        if (page.isErr()) {
+          return { outcome: "retry", size: 0, chained: false };
+        }
+        if (page.value.chained) {
+          await env.OUTBOX_PROCESS_QUEUE.send({ kind: "BackfillLocalNoteTags" });
+        }
+        return { outcome: "ok", size: page.value.scanned, chained: page.value.chained };
+      });
     case "RekeyLegacyMedia":
       return measureJobPage(env, job.kind, async () => {
         const batch = await rekeyLegacyMediaBatch(env, legacyMediaPolicy(env), job.afterId);

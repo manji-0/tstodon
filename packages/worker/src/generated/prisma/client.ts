@@ -232,6 +232,11 @@ export type featured_tags = Prisma.featured_tagsModel;
  */
 export type tags = Prisma.tagsModel;
 /**
+ * Model backfill_cursors
+ *
+ */
+export type backfill_cursors = Prisma.backfill_cursorsModel;
+/**
  * Model custom_emojis
  *
  */

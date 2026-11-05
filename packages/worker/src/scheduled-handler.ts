@@ -22,6 +22,9 @@ export const handleScheduled = (
     env.OUTBOX_PROCESS_QUEUE.send({ kind: "RefreshLinkCards" }),
     // Index the tags of remote statuses written before the tag index.
     env.OUTBOX_PROCESS_QUEUE.send({ kind: "BackfillRemoteTags" }),
+    // Store the tag names of local notes written before the tags table; a
+    // single read once the cursor is complete.
+    env.OUTBOX_PROCESS_QUEUE.send({ kind: "BackfillLocalNoteTags" }),
     // Move attachments stored at an id-derived key to a random one.
     env.OUTBOX_PROCESS_QUEUE.send({ kind: "RekeyLegacyMedia", afterId: "" }),
     // Publish the scheduled posts whose time has come.

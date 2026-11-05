@@ -45,6 +45,7 @@ export type * from "./models/status_mutes";
 export type * from "./models/followed_tags";
 export type * from "./models/featured_tags";
 export type * from "./models/tags";
+export type * from "./models/backfill_cursors";
 export type * from "./models/custom_emojis";
 export type * from "./models/inbox_activities";
 export type * from "./models/instance_settings";

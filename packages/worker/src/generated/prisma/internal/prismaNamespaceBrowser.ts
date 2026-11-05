@@ -86,6 +86,7 @@ export const ModelName = {
   followed_tags: "followed_tags",
   featured_tags: "featured_tags",
   tags: "tags",
+  backfill_cursors: "backfill_cursors",
   custom_emojis: "custom_emojis",
   inbox_activities: "inbox_activities",
   instance_settings: "instance_settings",
@@ -563,6 +564,15 @@ export const TagsScalarFieldEnum = {
 } as const;
 
 export type TagsScalarFieldEnum = (typeof TagsScalarFieldEnum)[keyof typeof TagsScalarFieldEnum];
+
+export const Backfill_cursorsScalarFieldEnum = {
+  name: "name",
+  after_id: "after_id",
+  completed_at: "completed_at",
+} as const;
+
+export type Backfill_cursorsScalarFieldEnum =
+  (typeof Backfill_cursorsScalarFieldEnum)[keyof typeof Backfill_cursorsScalarFieldEnum];
 
 export const Custom_emojisScalarFieldEnum = {
   id: "id",
