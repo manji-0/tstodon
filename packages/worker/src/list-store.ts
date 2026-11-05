@@ -10,7 +10,12 @@ import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import { hydrateStatusRows, STATUS_SELECT } from "./status-store";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import { RemoteAccountId } from "./remote-account-id";
-import { feedLocalReblogsSql, feedLocalRepliesSql, type ListFeed } from "./followed-feed";
+import {
+  FEED_LANGUAGES_SQL,
+  feedLocalReblogsSql,
+  feedLocalRepliesSql,
+  type ListFeed,
+} from "./followed-feed";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import {
   createList as createListSql,
@@ -324,6 +329,7 @@ export const listListTimelineStatuses = async (
       input.ownerAccountId,
       now,
       ...reblogs.binds,
+      input.ownerAccountId,
       ...replies.binds,
       ...cursorBinds,
       input.limit,
@@ -339,6 +345,7 @@ export const listListTimelineStatuses = async (
            ))
            AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
            ${reblogs.sql}
+           ${FEED_LANGUAGES_SQL}
            ${replies.sql}
            ${where} ${order}
          LIMIT ?`,

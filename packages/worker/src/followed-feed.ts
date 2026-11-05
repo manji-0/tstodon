@@ -69,6 +69,21 @@ export const feedLocalReblogsSql = (viewerId: string, now: string): SqlFragment 
 };
 
 /**
+ * The local `statuses` rows a feed of the viewer keeps by the viewer's follow
+ * of their author: a follow with `languages[]` keeps statuses in those
+ * languages and ones without a language, as Mastodon's `FeedManager` does on
+ * home and lists. Takes the viewer id once.
+ */
+export const FEED_LANGUAGES_SQL = `AND NOT EXISTS (
+  SELECT 1 FROM follows f
+  WHERE f.follower_account_id = ? AND f.kind = 'Accepted'
+    AND f.target_account_id = statuses.account_id
+    AND f.languages_json <> '[]'
+    AND COALESCE(statuses.language, '') <> ''
+    AND statuses.language NOT IN (SELECT value FROM json_each(f.languages_json))
+)`;
+
+/**
  * Narrows the follow `f` to the feed's follows: a list's members, and for
  * home all but those on one of the viewer's exclusive lists.
  */

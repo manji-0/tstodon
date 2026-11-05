@@ -3,7 +3,11 @@ import type { Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { type RepositoryError, runD1 } from "./d1";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
-import { EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL, feedLocalReblogsSql } from "./followed-feed";
+import {
+  EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL,
+  FEED_LANGUAGES_SQL,
+  feedLocalReblogsSql,
+} from "./followed-feed";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { hydrateStatusRows, statusSelect } from "./status-store";
 
@@ -64,22 +68,13 @@ export const listHomeStatuses = async (
     const { where, order, binds } = cursorFragment(cursor);
     const now = nowIso();
     const reblogs = feedLocalReblogsSql(accountId, now);
-    // A follow with `languages[]` only keeps statuses in those languages
-    // (statuses without a language still pass, as in Mastodon).
     const sql = `SELECT ${statusSelect} FROM statuses
          WHERE visibility != 'direct' AND (account_id = ? OR account_id IN (
            SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
          ))
          ${suppressed}
          ${reblogs.sql}
-         AND NOT EXISTS (
-           SELECT 1 FROM follows f
-           WHERE f.follower_account_id = ? AND f.kind = 'Accepted'
-             AND f.target_account_id = statuses.account_id
-             AND f.languages_json <> '[]'
-             AND COALESCE(statuses.language, '') <> ''
-             AND statuses.language NOT IN (SELECT value FROM json_each(f.languages_json))
-         )
+         ${FEED_LANGUAGES_SQL}
          ${where} ${order} LIMIT ?`;
     const { results } = await db
       .prepare(sql)
@@ -94,7 +89,7 @@ export const listHomeStatuses = async (
         // Exclusive lists: the viewer.
         accountId,
         ...reblogs.binds,
-        // Languages: the follow whose list is checked.
+        // `FEED_LANGUAGES_SQL`: the viewer.
         accountId,
         ...binds,
         limit,
