@@ -1,4 +1,10 @@
-import type { ActivityValue, InstanceIdentity, LocalAccount, RemoteActor } from "@tstodon/domain";
+import type {
+  ActivityValue,
+  Hostname,
+  InstanceIdentity,
+  LocalAccount,
+  RemoteActor,
+} from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import type { z } from "zod";
 import type { ActivityJsonSchema } from "../activitypub-wire";
@@ -21,7 +27,7 @@ export type InboxReceipt = Readonly<{
   /** The request body as parsed JSON, before `received` narrowed a list `object` to its first entry. */
   body: unknown;
   allowHosts: ReadonlySet<string>;
-  blockedHosts: ReadonlySet<string>;
+  blockedHosts: ReadonlySet<Hostname>;
 }>;
 
 export type InboxDelivery<Signer, K extends ActivityValue["kind"]> = Readonly<

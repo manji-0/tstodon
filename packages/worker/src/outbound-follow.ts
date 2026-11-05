@@ -1,4 +1,4 @@
-import { InstanceIdentity, type LocalAccount, type RemoteActor } from "@tstodon/domain";
+import { Hostname, InstanceIdentity, type LocalAccount, type RemoteActor } from "@tstodon/domain";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -8,7 +8,7 @@ import { suspendedDomains } from "./admin-domain-block-store";
 import { findBlock } from "./block-mute-store";
 import type { RepositoryError } from "./d1";
 import { enqueueTargetedActivity } from "./delivery";
-import { authorityHost, hostnameOf, isDomainBlocked } from "./domain-block-store";
+import { isDomainBlocked } from "./domain-block-store";
 import type { FollowOptions } from "./follow-store";
 import { newEntityId } from "./ids";
 import {
@@ -48,8 +48,8 @@ export const followRemoteActor = async (
   actor: RemoteActor,
   options: FollowOptions,
 ): Promise<Result<void, FollowRemoteActorError>> => {
-  const domain = authorityHost(actor.domain);
-  const inboxHost = hostnameOf(actor.inboxUri) ?? domain;
+  const domain = Hostname.ofAuthority(actor.domain);
+  const inboxHost = Hostname.ofUri(actor.inboxUri) ?? domain;
   const suspended = await suspendedDomains(env.DB);
   if (
     suspended.has(domain) ||

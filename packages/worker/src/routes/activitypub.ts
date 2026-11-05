@@ -1,5 +1,10 @@
-import { authorityHost } from "../domain-block-store";
-import { ActivityId, InboxActivity, InstanceIdentity, type LocalAccount } from "@tstodon/domain";
+import {
+  ActivityId,
+  Hostname,
+  InboxActivity,
+  InstanceIdentity,
+  type LocalAccount,
+} from "@tstodon/domain";
 import type { Context } from "hono";
 import { findAccountByUsername, findAccountsByIds } from "../account-store";
 import { activityPayloadFromJson, noteDocument, parseLocalActorUsername } from "../activitypub";
@@ -303,7 +308,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       return c.json({ kind: "InvalidSignature" }, 401);
     }
     // Limited federation: an actor outside the allow list never federates here.
-    const remoteHost = authorityHost(remote.value.domain);
+    const remoteHost = Hostname.ofAuthority(remote.value.domain);
     if (suspended.has(remoteHost) || !allowListAdmits(allowHosts, remoteHost)) {
       return c.json(
         { error: "This instance does not federate with that domain", kind: "Forbidden" },

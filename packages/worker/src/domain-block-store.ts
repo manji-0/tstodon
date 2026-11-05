@@ -15,13 +15,6 @@ const DomainRow = z.object({ domain: z.string() });
 
 const hostOfRow = (row: z.infer<typeof DomainRow>): Hostname => Hostname.ofAuthority(row.domain);
 
-/**
- * Aliases for the inbox handlers still importing them (`outbound-follow.ts`,
- * `remote-flag.ts`, `routes/activitypub.ts`); delete once those call `Hostname`.
- */
-export const authorityHost = Hostname.ofAuthority;
-export const hostnameOf = Hostname.ofUri;
-
 export const blockDomain = async (
   db: D1Database,
   accountId: string,
