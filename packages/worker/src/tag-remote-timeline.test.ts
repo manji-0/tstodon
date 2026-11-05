@@ -144,6 +144,19 @@ describe("tag timeline across the fediverse", () => {
     expect(await idsAt("/api/v1/timelines/tag/fedtwo?remote=true&only_media=true")).toEqual([]);
   });
 
+  it("lets hashtag search find a remote note's tags", async () => {
+    const actor = await remoteAuthor("sam", "tagsearch.example");
+    await remotePost(
+      actor,
+      `${actor.actorUri}/statuses/1`,
+      `<p>${hashtagHtml("remotesearchtag")}</p>`,
+    );
+    const response = await json("/api/v2/search?q=remotesearch&type=hashtags");
+    expect(response.status).toBe(200);
+    const found = read(z.object({ hashtags: z.array(z.object({ name: z.string() })) }), response.body);
+    expect(found.hashtags.map((tag) => tag.name)).toEqual(["remotesearchtag"]);
+  });
+
   it("indexes older remote statuses from cron", async () => {
     const actor = await remoteAuthor("tess", "tagbackfill.example");
     const id = await remotePost(
