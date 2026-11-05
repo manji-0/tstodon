@@ -40,6 +40,19 @@ const MastodonStatusSchema = z
 
 export type MastodonStatus = z.infer<typeof MastodonStatusSchema>;
 
+/** A Mastodon API status with the media fields the federation e2e compares across instances. */
+const MastodonStatusMediaSchema = z.object({
+  id: z.string().min(1),
+  media_attachments: z.array(
+    z.object({ type: z.string(), url: z.string(), description: z.string().nullable() }),
+  ),
+});
+
+export const MastodonStatusMedia = {
+  schema: MastodonStatusMediaSchema,
+  parse: schemaResult(MastodonStatusMediaSchema),
+} as const;
+
 export const MastodonStatus = {
   schema: MastodonStatusSchema,
   parse: schemaResult(MastodonStatusSchema),

@@ -13,6 +13,7 @@ import {
   A_DOMAIN,
   B_DOMAIN,
   accountPrivateKeyJwk,
+  api,
   asString,
   authHeaders,
   d1Rows,
@@ -29,6 +30,7 @@ import {
 import {
   ApWireActivity,
   MastodonStatus,
+  MastodonStatusMedia,
   OutboundActivityRow,
   OutboxDeliveryRow,
   RemoteFollowRow,
@@ -96,10 +98,21 @@ const main = async (): Promise<void> => {
   }
   console.log("ok remote_follows Accepted on A");
 
+  const form = new FormData();
+  form.set("file", new File([new Uint8Array([9, 9, 9])], "alice.png", { type: "image/png" }));
+  const uploaded = await getJsonParsed(`${A}/api/v2/media`, MastodonStatus.parse, "alice upload", {
+    method: "POST",
+    headers: aliceHeaders,
+    body: form,
+  });
+  if (uploaded.status !== 200) {
+    return fail("alice upload media", uploaded);
+  }
+
   const statusText = `hello bob from alice e2e ${Date.now()}`;
   const created = await getJsonParsed(
     `${A}/api/v1/statuses`,
-    MastodonStatus.parse,
+    MastodonStatusMedia.parse,
     "alice create status",
     {
       method: "POST",
@@ -107,13 +120,19 @@ const main = async (): Promise<void> => {
       body: JSON.stringify({
         status: statusText,
         visibility: "public",
+        media_ids: [uploaded.body.id],
+        media_attributes: [{ id: uploaded.body.id, description: "alice's e2e picture" }],
       }),
     },
   );
   if (created.status !== 200) {
     return fail("alice create status", created);
   }
-  console.log(`ok alice created status ${created.body.id}`);
+  const aliceMedia = created.body.media_attachments;
+  if (aliceMedia.length !== 1 || aliceMedia[0]?.description !== "alice's e2e picture") {
+    return fail("alice status lacks its media", created.body);
+  }
+  console.log(`ok alice created status ${created.body.id} with media`);
 
   let targetRow: OutboxDeliveryRow | undefined;
   for (let i = 0; i < 30; i += 1) {
@@ -212,6 +231,23 @@ const main = async (): Promise<void> => {
     });
   }
   console.log(`ok remote Create Note on B (${deliveryMode}-delivered)`, remoteNote.object_uri);
+
+  const seenByBob = await api(
+    B,
+    bobHeaders,
+    `/api/v1/statuses/${remoteNote.id}`,
+    MastodonStatusMedia.parse,
+    "bob reads alice's status",
+  );
+  const bobMedia = seenByBob.media_attachments.map(({ type, url, description }) => ({
+    type,
+    url,
+    description,
+  }));
+  if (JSON.stringify(bobMedia) !== JSON.stringify(aliceMedia)) {
+    return fail("B does not show A's media as A does", { onA: aliceMedia, onB: bobMedia });
+  }
+  console.log("ok B shows A's image", bobMedia[0]?.url);
   console.log("PASS federation follow→create");
 };
 
