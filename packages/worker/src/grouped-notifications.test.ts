@@ -295,7 +295,7 @@ describe("grouped notifications", () => {
       headers: await auth(authorEmail),
     });
     expect(gone.status).toBe(404);
-  });
+  }, 90_000);
 });
 
 const parseLinks = (header: string | null): { next?: URL; prev?: URL } =>
@@ -305,3 +305,145 @@ const parseLinks = (header: string | null): { next?: URL; prev?: URL } =>
       return match?.[1] && match[2] ? [[match[2], new URL(match[1])]] : [];
     }),
   );
+
+const notificationIds = async (email: string, query: string): Promise<string[]> => {
+  const response = await json(`/api/v1/notifications?limit=80${query}`, {
+    headers: await auth(email),
+  });
+  return read(z.array(z.object({ id: z.string() })), response.body).map((entry) => entry.id);
+};
+
+const favouriteFrom = async (prefix: string, count: number, statusId: string): Promise<void> => {
+  for (let index = 0; index < count; index += 1) {
+    await favourite(`${prefix}-${index}@example.com`, statusId);
+  }
+};
+
+describe("a notification group by key", () => {
+  it("shows a large group from its sample accounts and pages its senders", async () => {
+    const authorEmail = "group-large-author@example.com";
+    const p = await postStatus(authorEmail, { status: "large p" });
+    await favouriteFrom("group-large-fan", 45, p);
+    const groupKey = `favourite-${p}`;
+
+    const single = read(
+      EnvelopeSchema,
+      (await json(`/api/v2/notifications/${groupKey}`, { headers: await auth(authorEmail) })).body,
+    );
+    const [group] = single.notification_groups;
+    expect(group?.notifications_count).toBe(45);
+    expect(group?.sample_account_ids).toHaveLength(3);
+    expect(single.accounts.map((account) => account.id)).toEqual(group?.sample_account_ids);
+    const newest = (await notificationIds(authorEmail, "&types[]=favourite"))[0];
+    expect(group?.most_recent_notification_id).toBe(newest);
+
+    const first = await SELF.fetch(
+      `https://example.com/api/v2/notifications/${groupKey}/accounts`,
+      {
+        headers: await auth(authorEmail),
+      },
+    );
+    const firstPage = read(z.array(MastodonAccountPreviewSchema), await first.json());
+    expect(firstPage).toHaveLength(40);
+    expect(firstPage[0]?.username).toBe("group_large_fan_44");
+    const next = parseLinks(first.headers.get("link")).next;
+    expect(next?.searchParams.get("max_id")).toBeTruthy();
+    const second = await SELF.fetch(
+      `https://example.com${next?.pathname ?? ""}${next?.search ?? ""}`,
+      {
+        headers: await auth(authorEmail),
+      },
+    );
+    const secondPage = read(z.array(MastodonAccountPreviewSchema), await second.json());
+    expect(secondPage.map((account) => account.username)).toEqual(
+      [4, 3, 2, 1, 0].map((index) => `group_large_fan_${index}`),
+    );
+    expect(parseLinks(second.headers.get("link")).next).toBeUndefined();
+
+    const capped = await json(`/api/v2/notifications/${groupKey}/accounts?limit=200`, {
+      headers: await auth(authorEmail),
+    });
+    expect(read(z.array(MastodonAccountPreviewSchema), capped.body)).toHaveLength(45);
+    const small = await json(`/api/v2/notifications/${groupKey}/accounts?limit=2`, {
+      headers: await auth(authorEmail),
+    });
+    expect(read(z.array(MastodonAccountPreviewSchema), small.body)).toHaveLength(2);
+  }, 90_000);
+
+  it("dismisses every notification of a group larger than 50, muted senders included", async () => {
+    const authorEmail = "group-dismiss-author@example.com";
+    const p = await postStatus(authorEmail, { status: "dismiss p" });
+    const other = await postStatus(authorEmail, { status: "dismiss other" });
+    await favouriteFrom("group-dismiss-fan", 60, p);
+    await favourite("group-dismiss-fan-0@example.com", other);
+    const muted = await credentials("group-dismiss-fan-7@example.com");
+    const mute = await json(`/api/v1/accounts/${muted.id}/mute`, {
+      method: "POST",
+      headers: await auth(authorEmail),
+    });
+    expect(mute.status).toBe(200);
+
+    const dismissed = await json(`/api/v2/notifications/favourite-${p}/dismiss`, {
+      method: "POST",
+      headers: await auth(authorEmail),
+    });
+    expect(dismissed.status).toBe(200);
+    await json(`/api/v1/accounts/${muted.id}/unmute`, {
+      method: "POST",
+      headers: await auth(authorEmail),
+    });
+
+    const groups = read(
+      EnvelopeSchema,
+      (await json("/api/v2/notifications", { headers: await auth(authorEmail) })).body,
+    ).notification_groups;
+    expect(groups.map((group) => [group.status_id, group.notifications_count])).toEqual([
+      [other, 1],
+    ]);
+    expect(await notificationIds(authorEmail, "&include_filtered=true")).toHaveLength(1);
+    const gone = await json(`/api/v2/notifications/favourite-${p}`, {
+      headers: await auth(authorEmail),
+    });
+    expect(gone.status).toBe(404);
+  }, 90_000);
+
+  it("answers a dismiss with 200 whether or not anything matched", async () => {
+    const authorEmail = "group-dismiss-twice-author@example.com";
+    const p = await postStatus(authorEmail, { status: "twice p" });
+    await favourite("group-dismiss-twice-fan@example.com", p);
+    for (const groupKey of [`favourite-${p}`, `favourite-${p}`, "ungrouped-0", "nonsense"]) {
+      const dismissed = await json(`/api/v2/notifications/${groupKey}/dismiss`, {
+        method: "POST",
+        headers: await auth(authorEmail),
+      });
+      expect(dismissed.status).toBe(200);
+    }
+  });
+
+  it("leaves held notifications out of a type and target key, but not out of their own key", async () => {
+    const authorEmail = "group-held-author@example.com";
+    const p = await postStatus(authorEmail, { status: "held p" });
+    await favourite("group-held-fan-a@example.com", p);
+    const policy = await json("/api/v2/notifications/policy", {
+      method: "PATCH",
+      headers: { ...(await auth(authorEmail)), "content-type": "application/json" },
+      body: JSON.stringify({ for_not_following: "filter" }),
+    });
+    expect(policy.status).toBe(200);
+    await favourite("group-held-fan-b@example.com", p);
+    const [held] = await notificationIds(authorEmail, "&include_filtered=true");
+    expect(await notificationIds(authorEmail, "")).not.toContain(held);
+
+    await json(`/api/v2/notifications/favourite-${p}/dismiss`, {
+      method: "POST",
+      headers: await auth(authorEmail),
+    });
+    expect(await notificationIds(authorEmail, "&include_filtered=true")).toEqual([held]);
+
+    await json(`/api/v2/notifications/ungrouped-${held ?? ""}/dismiss`, {
+      method: "POST",
+      headers: await auth(authorEmail),
+    });
+    expect(await notificationIds(authorEmail, "&include_filtered=true")).toEqual([]);
+  });
+});
