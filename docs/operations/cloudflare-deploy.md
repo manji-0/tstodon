@@ -29,7 +29,7 @@ Never commit `BETTER_AUTH_SECRET`, VAPID keys, or other private key material. Co
 
 <!-- constrained-by ../reference/configuration.md#media-public-urls -->
 
-Before migration 0102, an attachment was stored at `attachments/<accountId>/<mediaId>`. The account id is public and a media id is its upload millisecond plus 16 random bits, so anyone who knows roughly when an attachment was uploaded can find it on the public media hostname, even on a direct post. New uploads get a random 128-bit name.
+Before migration 0103, an attachment was stored at `attachments/<accountId>/<mediaId>`. The account id is public and a media id is its upload millisecond plus 16 random bits, so anyone who knows roughly when an attachment was uploaded can find it on the public media hostname, even on a direct post. New uploads get a random 128-bit name.
 
 The `RekeyLegacyMedia` queue job finds every row whose `object_key` is still the id-derived key. It matches on the key itself, so it also finds rows that the previous Worker wrote while the deploy rolled out. You do not need to start the job: the hourly cron queues it, and a full batch of 50 queues the batch after it at once. For each row it does these steps:
 
