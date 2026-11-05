@@ -1,7 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { schemaResult } from "@tstodon/core";
+import { InstanceLimits, schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { processOutboxJob } from "./outbox-job";
 import { insertScheduledStatus } from "./scheduled-status-store";
@@ -160,6 +160,46 @@ describe("scheduled statuses", () => {
     const statuses = read(z.array(z.object({ id: z.string(), content: z.string() })), home.body);
     expect(statuses.map((status) => status.content).join(" ")).toContain("published by cron");
     // The row is gone once published.
+    expect(await scheduledList(email)).toEqual([]);
+  });
+
+  it("drops a due post whose stored media description is over the limit", async () => {
+    const email = "scheduled-long-description@example.com";
+    const credentials = await json("/api/v1/accounts/verify_credentials", {
+      headers: await auth(email),
+    });
+    const accountId = read(z.object({ id: z.string().min(1) }), credentials.body).id;
+
+    // Rows stored before descriptions were checked at create time can hold one.
+    const stored = await insertScheduledStatus(env.DB, {
+      accountId,
+      scheduledAt: new Date(Date.now() - 60_000).toISOString(),
+      params: {
+        text: "never published",
+        visibility: "public",
+        spoiler_text: "",
+        sensitive: false,
+        language: null,
+        media_ids: [],
+        media_attributes: [
+          {
+            id: "1",
+            description: "d".repeat(InstanceLimits.media.maxDescriptionCharacters + 1),
+          },
+        ],
+        poll: null,
+        in_reply_to_id: null,
+      },
+    });
+    expect(stored.isOk()).toBe(true);
+
+    expect(await processOutboxJob(env, { kind: "PublishScheduledStatuses" })).toBe("ok");
+    expect(await processOutboxJob(env, { kind: "PublishScheduledStatuses" })).toBe("ok");
+
+    const statuses = await json(`/api/v1/accounts/${accountId}/statuses`, {
+      headers: await auth(email),
+    });
+    expect(read(z.array(z.object({ id: z.string() })), statuses.body)).toEqual([]);
     expect(await scheduledList(email)).toEqual([]);
   });
 });

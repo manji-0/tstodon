@@ -10,6 +10,7 @@ import { findAccountById } from "./account-store";
 import { findLocalAccountModeration } from "./account-moderation-store";
 import { findReplyTarget } from "./reply-target";
 import { publishLocalNote } from "./local-status-publish";
+import { mediaDescriptionsFit } from "./status-body-schema";
 import { parseInstanceIdentity } from "./runtime-config";
 import {
   deleteScheduledStatus,
@@ -60,7 +61,7 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void
     poll: row.params.poll ? { kind: "Present" } : { kind: "None" },
   });
   const draft = StatusComposition.validate(composing);
-  if (draft.isErr()) {
+  if (draft.isErr() || !mediaDescriptionsFit(row.params.media_attributes)) {
     await deleteScheduledStatus(env.DB, row.accountId, row.id);
     return;
   }
