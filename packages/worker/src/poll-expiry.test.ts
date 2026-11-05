@@ -8,6 +8,7 @@ import { deliverTarget } from "../test/delivery-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { processOutboxJob } from "./outbox-job";
 import { loadNotePoll, recordRemotePollVote } from "./poll-store";
+import { RemoteAccountId } from "./remote-account-id";
 
 const json = async (
   path: string,
@@ -432,4 +433,166 @@ describe("a backlog of ended polls", () => {
       .first("n");
     expect(unannounced).toBe(0);
   }, 60_000);
+});
+
+describe("who hears a local poll's Update", () => {
+  const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
+
+  const pollAt = async (email: string, visibility: string, text = "poll") => {
+    const response = await send(email, "/api/v1/statuses", {
+      status: text,
+      visibility,
+      poll: { options: ["yes", "no"], expires_in: 3600 },
+    });
+    expect(response.status).toBe(200);
+    const posted = read(PostedPoll, response.body);
+    return {
+      email,
+      statusId: posted.id,
+      statusUri: posted.uri,
+      pollId: posted.poll.id,
+      authorId: posted.account.id,
+      actorUrl: `https://example.com/users/${posted.account.username}`,
+    };
+  };
+
+  type Poll = Awaited<ReturnType<typeof pollAt>>;
+  type Actor = Awaited<ReturnType<typeof remoteActor>>;
+
+  const announce = (actor: Actor, poll: Poll, slug: string) =>
+    actor.send({
+      id: `${actor.actorUri}/announces/${slug}`,
+      type: "Announce",
+      to: [PUBLIC],
+      cc: [`${actor.actorUri}/followers`],
+      object: poll.statusUri,
+    });
+
+  const remoteVote = async (actor: Actor, poll: Poll, slug: string) => {
+    const voteUri = `${actor.actorUri}/notes/${slug}`;
+    expect(
+      await actor.send({
+        id: `${voteUri}/activity`,
+        type: "Create",
+        to: [poll.actorUrl],
+        object: {
+          id: voteUri,
+          type: "Note",
+          attributedTo: actor.actorUri,
+          to: [poll.actorUrl],
+          inReplyTo: poll.statusUri,
+          name: "yes",
+        },
+      }),
+    ).toBe(202);
+  };
+
+  /** The inboxes the poll's next `Update(Question)` is expanded to. */
+  const updateTargets = async (poll: Poll): Promise<string[]> => {
+    const before = await questionUpdates(poll.authorId);
+    await runJob(env, { kind: "DistributePollUpdate", pollId: poll.pollId });
+    const [queued] = (await questionUpdates(poll.authorId)).slice(before.length);
+    if (!queued) {
+      throw new Error("no Update queued");
+    }
+    await runJob(env, { kind: "ExpandFollowers", activityId: queued.activityId });
+    const targets = await env.DB.prepare(
+      "SELECT inbox_url FROM outbox_deliveries WHERE activity_id = ? AND inbox_url IS NOT NULL ORDER BY inbox_url",
+    )
+      .bind(queued.activityId)
+      .all<{ inbox_url: string }>();
+    return targets.results.map((row) => row.inbox_url);
+  };
+
+  const reblogsCount = async (poll: Poll): Promise<number> => {
+    const response = await json(`/api/v1/statuses/${poll.statusId}`, {
+      headers: await authHeaders(poll.email),
+    });
+    expect(response.status).toBe(200);
+    return read(z.object({ reblogs_count: z.number() }), response.body).reblogs_count;
+  };
+
+  const reblogNotifications = async (email: string) =>
+    (await json("/api/v1/notifications?types[]=reblog", { headers: await authHeaders(email) }))
+      .body;
+
+  for (const visibility of ["private", "direct"]) {
+    it(`drops a stranger's Announce of a ${visibility} poll and sends the stranger no Update`, async () => {
+      const mentioned = await remoteActor(`announce-${visibility}-mentioned`, "mentioned.example");
+      const poll = await pollAt(
+        `announce-${visibility}-author@example.com`,
+        visibility,
+        `secret @announce-${visibility}-mentioned@mentioned.example`,
+      );
+      const stranger = await remoteActor(`announce-${visibility}-stranger`, "stranger.example");
+
+      expect(await announce(stranger, poll, `${visibility}-poll`)).toBe(202);
+
+      const stored = await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM remote_announces WHERE status_id = ?",
+      )
+        .bind(poll.statusId)
+        .first<{ count: number }>();
+      expect(stored?.count).toBe(0);
+      expect(await reblogsCount(poll)).toBe(0);
+      expect(await reblogNotifications(poll.email)).toEqual([]);
+      const targets = await updateTargets(poll);
+      expect(targets).toContain(`${mentioned.actorUri}/inbox`);
+      expect(targets).not.toContain(`${stranger.actorUri}/inbox`);
+    });
+  }
+
+  it("sends no Update to a booster of a followers-only poll recorded before Announces were checked", async () => {
+    const poll = await pollAt("announce-legacy-author@example.com", "private");
+    const booster = await remoteActor("announce-legacy-booster", "legacy.example");
+    await env.DB.prepare(
+      "INSERT INTO remote_announces (remote_actor_uri, status_id, activity_id) VALUES (?, ?, ?)",
+    )
+      .bind(booster.actorUri, poll.statusId, `${booster.actorUri}/announces/legacy`)
+      .run();
+
+    expect(await updateTargets(poll)).not.toContain(`${booster.actorUri}/inbox`);
+  });
+
+  it("leaves out voters and boosters an admin suspended or the author blocks", async () => {
+    const poll = await pollAt("poll-reach-moderated-author@example.com", "public");
+    const kept = await remoteActor("poll-reach-kept", "kept.example");
+    const suspendedVoter = await remoteActor("poll-reach-suspended-voter", "suspended-voter.example");
+    const suspendedBooster = await remoteActor(
+      "poll-reach-suspended-booster",
+      "suspended-booster.example",
+    );
+    const blockedVoter = await remoteActor("poll-reach-blocked-voter", "blocked-voter.example");
+    const blockedBooster = await remoteActor(
+      "poll-reach-blocked-booster",
+      "blocked-booster.example",
+    );
+    await remoteVote(kept, poll, "kept-vote");
+    await remoteVote(suspendedVoter, poll, "suspended-vote");
+    await remoteVote(blockedVoter, poll, "blocked-vote");
+    expect(await announce(suspendedBooster, poll, "suspended")).toBe(202);
+    expect(await announce(blockedBooster, poll, "blocked")).toBe(202);
+
+    const admin = await authHeaders("poll-reach-admin@example.com", { admin: true });
+    for (const actor of [suspendedVoter, suspendedBooster]) {
+      const suspended = await SELF.fetch(
+        `https://example.com/api/v1/admin/accounts/${RemoteAccountId.encode(actor.actorUri)}/action`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", ...admin },
+          body: JSON.stringify({ type: "suspend" }),
+        },
+      );
+      expect(suspended.status).toBe(200);
+    }
+    for (const actor of [blockedVoter, blockedBooster]) {
+      const blocked = await send(
+        poll.email,
+        `/api/v1/accounts/${RemoteAccountId.encode(actor.actorUri)}/block`,
+      );
+      expect(blocked.status).toBe(200);
+    }
+
+    expect(await updateTargets(poll)).toEqual([`${kept.actorUri}/inbox`]);
+  });
 });
