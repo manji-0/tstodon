@@ -89,13 +89,37 @@ export const deliverTarget = async (activityId: string, inboxUrl: string): Promi
   } finally {
     fetchSpy.mockRestore();
   }
-  const [first] = sent;
-  if (!first) {
-    throw new Error("nothing was delivered");
+  // Other deliveries in the isolate hit the spy too: pick the one for this
+  // activity and inbox.
+  const queued = await env.DB.prepare("SELECT payload_json FROM outbound_activities WHERE id = ?")
+    .bind(activityId)
+    .first();
+  const payload = schemaResult(PayloadIdSchema)(
+    JSON.parse(
+      schemaResult(PayloadRowSchema)(queued)
+        .map((row) => row.payload_json)
+        .unwrapOr("{}"),
+    ),
+  );
+  if (payload.isErr()) {
+    throw new Error("queued activity not found");
   }
-  return new Request(first.url, {
-    method: first.method,
-    headers: first.headers,
-    body: first.body,
+  const delivered = sent.find(
+    (request) =>
+      request.url === inboxUrl &&
+      schemaResult(PayloadIdSchema)(JSON.parse(request.body))
+        .map((body) => body.id)
+        .unwrapOr("") === payload.value.id,
+  );
+  if (!delivered) {
+    throw new Error("the activity was not delivered to the inbox");
+  }
+  return new Request(delivered.url, {
+    method: delivered.method,
+    headers: delivered.headers,
+    body: delivered.body,
   });
 };
+
+const PayloadRowSchema = z.object({ payload_json: z.string() });
+const PayloadIdSchema = z.object({ id: z.string().min(1) });
