@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { Hostname, OutboxJob } from "@tstodon/domain";
+import { Hostname, type LocalAccount, OutboxJob } from "@tstodon/domain";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { blockAccountDomain, SEVER_PAGE_SIZE } from "./account-domain-block";
@@ -114,6 +114,102 @@ const severedEvents = async (email: string) =>
 const blockDomain = async (email: string, domain: string) =>
   expect((await send(email, "/api/v1/domain_blocks", "POST", { domain })).status).toBe(200);
 
+type Faults = Readonly<{
+  /** Where queued jobs go. */
+  sent: OutboxJob[];
+  /** Statements whose SQL matches fail when they run. */
+  failSql?: RegExp;
+  /** Queueing a job throws. */
+  failQueue?: boolean;
+}>;
+
+/** `env` with its outbox queue captured and, optionally, some D1 statements or the queue failing. */
+const faultyEnv = ({ sent, failSql, failQueue = false }: Faults): Env => {
+  const db = new Proxy(env.DB, {
+    get: (target, key) => {
+      if (key === "prepare") {
+        return (sql: string) =>
+          target.prepare(failSql?.test(sql) ? "SELECT * FROM fault_injected_table" : sql);
+      }
+      const value: unknown = Reflect.get(target, key);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const queue = {
+    send: async (message: unknown) => {
+      if (failQueue) {
+        throw new Error("queue unavailable");
+      }
+      const job = OutboxJob.parse(message);
+      if (job.isOk()) {
+        sent.push(job.value);
+      }
+    },
+  };
+  return new Proxy(env, {
+    get: (target, key) =>
+      key === "DB" ? db : key === "OUTBOX_PROCESS_QUEUE" ? queue : Reflect.get(target, key),
+  });
+};
+
+/** `count` accepted followers of `account` on `domain`, written directly. */
+const seedFollowers = async (accountId: string, domain: string, count: number) => {
+  const fans = await Promise.all(
+    Array.from({ length: count }, (_, index) => remoteActor(`fan${index}`, domain)),
+  );
+  await env.DB.batch(
+    fans.map((fan, index) =>
+      env.DB.prepare(
+        `INSERT INTO remote_follows (id, remote_actor_uri, target_account_id, follow_activity_id, remote_request_kind, follow_kind, created_at)
+         VALUES (?, ?, ?, ?, 'Fulfilled', 'Accepted', '2026-10-21T00:00:00.000Z')`,
+      ).bind(`${domain}-${index}`, fan.actorUri, accountId, `${fan.actorUri}/follows/1`),
+    ),
+  );
+  return fans;
+};
+
+const blockAs = (target: Env, account: LocalAccount, domain: string) =>
+  blockAccountDomain(
+    target,
+    parseInstanceIdentity(env)._unsafeUnwrap(),
+    account,
+    Hostname.ofAuthority(domain),
+  );
+
+/** Follows of the account that are both still live and already recorded as severed. */
+const recordedButLive = async (accountId: string) =>
+  (
+    await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM severed_relationships s
+       WHERE s.local_account_id = ?
+         AND (s.id IN (SELECT id FROM remote_follows) OR s.id IN (SELECT id FROM outbound_follows))`,
+    )
+      .bind(accountId)
+      .first<{ n: number }>()
+  )?.n;
+
+const drain = async (target: Env, sent: OutboxJob[]) => {
+  const outcomes: string[] = [];
+  for (let job = sent.shift(); job !== undefined; job = sent.shift()) {
+    outcomes.push(await processOutboxJob(target, job));
+  }
+  return outcomes;
+};
+
+const ADMIN = "dblock-sever-admin@example.com";
+
+const suspendDomain = async (domain: string) =>
+  (
+    await SELF.fetch("https://example.com/api/v1/admin/domain_blocks", {
+      method: "POST",
+      headers: {
+        ...(await authHeaders(ADMIN, { admin: true })),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ domain, severity: "suspend" }),
+    })
+  ).status;
+
 describe("blocking a domain severs the account's follows with it", () => {
   it("drops the follows both ways, federates Undo and Reject, and records the event", async () => {
     const a = "dblock-sever-a@example.com";
@@ -176,51 +272,17 @@ describe("blocking a domain severs the account's follows with it", () => {
     const a = "dblock-sever-paged@example.com";
     const account = await signedInAccount(a);
     const total = SEVER_PAGE_SIZE + 2;
-    const fans = await Promise.all(
-      Array.from({ length: total }, (_, index) => remoteActor(`fan${index}`, "dblock-paged.test")),
-    );
-    await env.DB.batch(
-      fans.map((fan, index) =>
-        env.DB.prepare(
-          `INSERT INTO remote_follows (id, remote_actor_uri, target_account_id, follow_activity_id, remote_request_kind, follow_kind, created_at)
-           VALUES (?, ?, ?, ?, 'Fulfilled', 'Accepted', '2026-10-21T00:00:00.000Z')`,
-        ).bind(`dblock-paged-${index}`, fan.actorUri, account.id, `${fan.actorUri}/follows/1`),
-      ),
-    );
+    await seedFollowers(account.id, "dblock-paged.test", total);
     expect(await counts(a)).toEqual({ followers_count: total, following_count: 0 });
 
     const sent: OutboxJob[] = [];
-    const queueEnv = new Proxy(env, {
-      get: (target, key) =>
-        key === "OUTBOX_PROCESS_QUEUE"
-          ? {
-              send: async (message: unknown) => {
-                const job = OutboxJob.parse(message);
-                if (job.isOk()) {
-                  sent.push(job.value);
-                }
-              },
-            }
-          : Reflect.get(target, key),
-    });
-    const identity = parseInstanceIdentity(env)._unsafeUnwrap();
-    expect(
-      (
-        await blockAccountDomain(
-          queueEnv,
-          identity,
-          account,
-          Hostname.ofAuthority("dblock-paged.test"),
-        )
-      ).isOk(),
-    ).toBe(true);
+    const queueEnv = faultyEnv({ sent });
+    expect((await blockAs(queueEnv, account, "dblock-paged.test")).isOk()).toBe(true);
     expect(sent).toHaveLength(1);
     expect((await counts(a)).followers_count).toBeGreaterThan(0);
     expect(await severedEvents(a)).toEqual([]);
 
-    for (let job = sent.shift(); job !== undefined; job = sent.shift()) {
-      expect(await processOutboxJob(queueEnv, job)).toBe("ok");
-    }
+    expect(await drain(queueEnv, sent)).toEqual(["ok"]);
 
     expect(await counts(a)).toEqual({ followers_count: 0, following_count: 0 });
     expect(await queued(a, "Reject")).toHaveLength(total);
@@ -243,5 +305,140 @@ describe("blocking a domain severs the account's follows with it", () => {
       (await send(a, "/api/v1/domain_blocks?domain=dblock-unblock.test", "DELETE")).status,
     ).toBe(200);
     expect(await counts(a)).toEqual({ followers_count: 0, following_count: 0 });
+  });
+
+  it("never records a follow it failed to remove, and severs it on the retry", async () => {
+    const a = "dblock-sever-faulty@example.com";
+    const account = await signedInAccount(a);
+    await seedFollowers(account.id, "dblock-faulty.test", 2);
+    const sent: OutboxJob[] = [];
+
+    const blocked = await blockAs(
+      faultyEnv({ sent, failSql: /^\s*DELETE FROM remote_follows/ }),
+      account,
+      "dblock-faulty.test",
+    );
+
+    expect(blocked.isOk()).toBe(true);
+    expect(await recordedButLive(account.id)).toBe(0);
+    expect(sent).toHaveLength(1);
+    expect(await drain(faultyEnv({ sent }), sent)).toEqual(["ok"]);
+    expect(await counts(a)).toEqual({ followers_count: 0, following_count: 0 });
+    expect(await severedEvents(a)).toEqual([
+      {
+        type: "user_domain_block",
+        target_name: "dblock-faulty.test",
+        followers_count: 2,
+        following_count: 0,
+      },
+    ]);
+  });
+
+  it("lets a server suspension sever a follow already recorded under another event", async () => {
+    const a = "dblock-sever-leftover@example.com";
+    const account = await signedInAccount(a);
+    await seedFollowers(account.id, "dblock-leftover.test", 1);
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO relationship_severance_events (id, type, target_name, purged, created_at)
+         VALUES ('dblock-leftover-event', 'user_domain_block', 'dblock-leftover.test', 0, '2026-10-21T00:00:00.000Z')`,
+      ),
+      env.DB.prepare(
+        `INSERT INTO severed_relationships (id, event_id, local_account_id, remote_acct, direction, created_at)
+         VALUES ('dblock-leftover.test-0', 'dblock-leftover-event', ?, 'fan0@dblock-leftover.test', 'passive', '2026-10-21T00:00:00.000Z')`,
+      ).bind(account.id),
+    ]);
+
+    expect(await suspendDomain("dblock-leftover.test")).toBe(200);
+
+    expect(await counts(a)).toEqual({ followers_count: 0, following_count: 0 });
+    expect(await severedEvents(a)).toEqual([
+      {
+        type: "domain_block",
+        target_name: "dblock-leftover.test",
+        followers_count: 1,
+        following_count: 0,
+      },
+    ]);
+  });
+
+  it("retries a page whose follow-up page could not be queued", async () => {
+    const a = "dblock-sever-requeue@example.com";
+    const account = await signedInAccount(a);
+    await seedFollowers(account.id, "dblock-requeue.test", SEVER_PAGE_SIZE * 2 + 1);
+    const sent: OutboxJob[] = [];
+    await blockAs(faultyEnv({ sent }), account, "dblock-requeue.test");
+    expect(sent).toHaveLength(1);
+
+    expect(await drain(faultyEnv({ sent, failQueue: true }), sent)).toEqual(["retry"]);
+  });
+
+  it("notifies the account on the retry when the notification failed", async () => {
+    const a = "dblock-sever-notify@example.com";
+    const account = await signedInAccount(a);
+    await seedFollowers(account.id, "dblock-notify.test", 1);
+    const sent: OutboxJob[] = [];
+
+    await blockAs(
+      faultyEnv({ sent, failSql: /^\s*INSERT INTO notifications/ }),
+      account,
+      "dblock-notify.test",
+    );
+    expect(await severedEvents(a)).toEqual([]);
+    expect(await drain(faultyEnv({ sent }), sent)).toEqual(["ok"]);
+
+    expect(await severedEvents(a)).toEqual([
+      {
+        type: "user_domain_block",
+        target_name: "dblock-notify.test",
+        followers_count: 1,
+        following_count: 0,
+      },
+    ]);
+  });
+
+  it("stops severing when the domain is unblocked before a queued page runs", async () => {
+    const a = "dblock-sever-stop@example.com";
+    const account = await signedInAccount(a);
+    await seedFollowers(account.id, "dblock-stop.test", SEVER_PAGE_SIZE + 2);
+    const sent: OutboxJob[] = [];
+    await blockAs(faultyEnv({ sent }), account, "dblock-stop.test");
+    expect((await send(a, "/api/v1/domain_blocks?domain=dblock-stop.test", "DELETE")).status).toBe(
+      200,
+    );
+
+    expect(await drain(faultyEnv({ sent }), sent)).toEqual(["ok"]);
+
+    expect(await counts(a)).toEqual({ followers_count: 2, following_count: 0 });
+    expect(await severedEvents(a)).toEqual([
+      {
+        type: "user_domain_block",
+        target_name: "dblock-stop.test",
+        followers_count: SEVER_PAGE_SIZE,
+        following_count: 0,
+      },
+    ]);
+  });
+
+  it("keeps one event when the domain is blocked again while a severance runs", async () => {
+    const a = "dblock-sever-twice@example.com";
+    const account = await signedInAccount(a);
+    await seedFollowers(account.id, "dblock-twice.test", SEVER_PAGE_SIZE + 2);
+    const sent: OutboxJob[] = [];
+    const target = faultyEnv({ sent });
+
+    await blockAs(target, account, "dblock-twice.test");
+    await blockAs(target, account, "dblock-twice.test");
+    await drain(target, sent);
+
+    expect(await counts(a)).toEqual({ followers_count: 0, following_count: 0 });
+    expect(await severedEvents(a)).toEqual([
+      {
+        type: "user_domain_block",
+        target_name: "dblock-twice.test",
+        followers_count: SEVER_PAGE_SIZE + 2,
+        following_count: 0,
+      },
+    ]);
   });
 });
