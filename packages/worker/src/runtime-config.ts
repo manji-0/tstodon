@@ -290,6 +290,23 @@ export const registrationsOpen = (env: Readonly<{ REGISTRATIONS_OPEN?: string }>
   return !["0", "false", "no", "off"].includes(raw);
 };
 
+/**
+ * What the rekey job does with the object left under an attachment's legacy,
+ * id-derived key once its row points at a random copy: keep it (the default;
+ * deleting stored objects cannot be undone) or delete it.
+ */
+export type LegacyMediaPolicy =
+  | Readonly<{ kind: "KeepLegacy" }>
+  | Readonly<{ kind: "DeleteLegacy" }>;
+
+/** `MEDIA_REKEY_DELETE_LEGACY`: off unless set to a true value. */
+export const legacyMediaPolicy = (env: Env): LegacyMediaPolicy =>
+  ["1", "true", "yes", "on"].includes(
+    optionalEnvString(env, "MEDIA_REKEY_DELETE_LEGACY").trim().toLowerCase(),
+  )
+    ? { kind: "DeleteLegacy" }
+    : { kind: "KeepLegacy" };
+
 export const parseInstanceIdentity = (env: Env): Result<InstanceIdentity, ValidationError> =>
   parseEnv(env).andThen((vars) => {
     const publicOrigin =

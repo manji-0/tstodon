@@ -23,6 +23,10 @@ const randomObjectName = (): string =>
 export const newAttachmentObjectKey = (accountId: string): string =>
   `${MediaObjectKind.Attachment}/${accountId}/${randomObjectName()}`;
 
+/** The id-derived key attachments were stored at before random names. */
+export const legacyAttachmentObjectKey = (accountId: string, mediaId: string): string =>
+  `${MediaObjectKind.Attachment}/${accountId}/${mediaId}`;
+
 const RANDOM_ATTACHMENT_KEY_RE = /^attachments\/[^/]+\/[0-9a-f]{32}$/;
 
 /** An attachment key from before random names, which the rekey job moves. */

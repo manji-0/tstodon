@@ -200,7 +200,8 @@ const postWithId = async (email: string, mediaId: string): Promise<string> => {
 const rekey = (jobEnv: Env = env): Promise<unknown> =>
   processOutboxJob(jobEnv, { kind: "RekeyLegacyMedia", afterId: "" });
 
-const deletingLegacy = (base: Env = env): Env => ({ ...base, MEDIA_REKEY_DELETE_LEGACY: "true" });
+const deletingLegacy = (base: Env = env): Env =>
+  Object.assign({}, base, { MEDIA_REKEY_DELETE_LEGACY: "true" });
 
 const NETWORK_LOST = "D1_ERROR: Network connection lost.";
 

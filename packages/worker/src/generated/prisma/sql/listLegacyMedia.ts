@@ -5,14 +5,20 @@
 import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
+ * @param afterId
+ * @param includeKept
  * @param limit
  */
 export const listLegacyMedia = $runtime.makeTypedQueryFactory(
-  "SELECT id, account_id, object_key, legacy_object_key\nFROM media_attachments\nWHERE legacy_object_key IS NOT NULL\nORDER BY id\nLIMIT $1",
-) as (limit: number) => $runtime.TypedSql<listLegacyMedia.Parameters, listLegacyMedia.Result>;
+  "SELECT id, account_id, object_key, legacy_object_key\nFROM media_attachments\nWHERE id > $1\nAND (object_key = 'attachments/' || account_id || '/' || id\nOR ($2 = 1 AND legacy_object_key IS NOT NULL))\nORDER BY id\nLIMIT $3",
+) as (
+  afterId: string,
+  includeKept: number,
+  limit: number,
+) => $runtime.TypedSql<listLegacyMedia.Parameters, listLegacyMedia.Result>;
 
 export namespace listLegacyMedia {
-  export type Parameters = [limit: number];
+  export type Parameters = [afterId: string, includeKept: number, limit: number];
   export type Result = {
     id: string | null;
     account_id: string;

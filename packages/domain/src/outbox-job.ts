@@ -18,8 +18,14 @@ const ProcessExpiredPollsSchema = unitKind("ProcessExpiredPolls");
 const RefreshLinkCardsSchema = unitKind("RefreshLinkCards");
 /** Index the tags of remote statuses written before the tag index (cron). */
 const BackfillRemoteTagsSchema = unitKind("BackfillRemoteTags");
-/** Move a batch of attachments still at an id-derived key to a random key (cron, self-chaining). */
-const RekeyLegacyMediaSchema = unitKind("RekeyLegacyMedia");
+/**
+ * Move the next batch of attachments after `afterId` (empty for the first)
+ * that are still at an id-derived key to a random key (cron, self-chaining).
+ */
+const RekeyLegacyMediaSchema = z.object({
+  kind: z.literal("RekeyLegacyMedia"),
+  afterId: z.string(),
+});
 /** Publish the scheduled statuses whose time has come (cron). */
 const PublishScheduledStatusesSchema = unitKind("PublishScheduledStatuses");
 /** Queue one `CleanUpAccountStatuses` per account with automated post deletion on (cron). */

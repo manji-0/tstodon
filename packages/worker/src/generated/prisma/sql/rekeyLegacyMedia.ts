@@ -8,17 +8,24 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param id
  * @param legacyObjectKey
  * @param objectKey
+ * @param legacyStored
  */
 export const rekeyLegacyMedia = $runtime.makeTypedQueryFactory(
-  "UPDATE media_attachments SET object_key = $3\nWHERE id = $1 AND object_key = $2 AND legacy_object_key = $2\nRETURNING id",
+  "UPDATE media_attachments SET object_key = $3,\nlegacy_object_key = CASE WHEN $4 = 1 THEN $2 END\nWHERE id = $1 AND object_key = $2\nRETURNING id",
 ) as (
   id: string,
   legacyObjectKey: string,
   objectKey: string,
+  legacyStored: number,
 ) => $runtime.TypedSql<rekeyLegacyMedia.Parameters, rekeyLegacyMedia.Result>;
 
 export namespace rekeyLegacyMedia {
-  export type Parameters = [id: string, legacyObjectKey: string, objectKey: string];
+  export type Parameters = [
+    id: string,
+    legacyObjectKey: string,
+    objectKey: string,
+    legacyStored: number,
+  ];
   export type Result = {
     id: string | null;
   };

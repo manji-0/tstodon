@@ -24,7 +24,12 @@ import { rekeyLegacyMediaBatch } from "./media-rekey";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { cleanUpAccountStatuses, queueStatusesCleanup } from "./statuses-cleanup";
 import { findRemoteActorsByUris, listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
-import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
+import {
+  allowListAdmits,
+  federationAllowHosts,
+  legacyMediaPolicy,
+  parseInstanceIdentity,
+} from "./runtime-config";
 import { startOutboxDeliveryWorkflow } from "./delivery";
 import { parseJsonText } from "./json-column";
 
@@ -109,11 +114,14 @@ export const processOutboxJob = async (
       return "ok";
     case "RekeyLegacyMedia":
       return measureJobPage(env, job.kind, async () => {
-        const batch = await rekeyLegacyMediaBatch(env);
-        if (batch.more) {
-          await env.OUTBOX_PROCESS_QUEUE.send({ kind: "RekeyLegacyMedia" });
+        const batch = await rekeyLegacyMediaBatch(env, legacyMediaPolicy(env), job.afterId);
+        if (batch.nextAfterId !== undefined) {
+          await env.OUTBOX_PROCESS_QUEUE.send({
+            kind: "RekeyLegacyMedia",
+            afterId: batch.nextAfterId,
+          });
         }
-        return { outcome: "ok", size: batch.scanned, chained: batch.more };
+        return { outcome: "ok", size: batch.scanned, chained: batch.nextAfterId !== undefined };
       });
     case "CleanUpStatuses":
       await queueStatusesCleanup(env);

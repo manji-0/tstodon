@@ -1,7 +1,9 @@
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { jsonStringArray, runD1, sqlInJsonEach, type RepositoryError } from "./d1";
-import { queryTyped, runTyped } from "./typed-sql";
+import { queryTyped, runTyped, runTypedBatch } from "./typed-sql";
+import { legacyAttachmentObjectKey } from "./media-keys";
+import type { LegacyMediaPolicy } from "./runtime-config";
 import { nowIso } from "./clock";
 import { parseRows } from "./d1";
 import {
@@ -11,6 +13,7 @@ import {
   insertMedia as insertMediaSql,
   listLegacyMedia as listLegacyMediaSql,
   rekeyLegacyMedia as rekeyLegacyMediaSql,
+  rewriteEditedMediaKey as rewriteEditedMediaKeySql,
   updateMediaMetadata as updateMediaMetadataSql,
 } from "./generated/prisma/sql";
 
@@ -160,48 +163,97 @@ const LegacyMediaRowSchema = z.object({
   id: z.string().min(1),
   account_id: z.string().min(1),
   object_key: z.string().min(1),
-  legacy_object_key: z.string().min(1),
+  legacy_object_key: z.string().min(1).nullable(),
 });
 
 /**
- * An attachment still tied to a key guessable from its id: `Copy` while the
- * row still points at the legacy key, `DropLegacy` once it points at a fresh
- * key and only the legacy object is left to delete.
+ * An attachment the rekey job still has work on: `AtLegacyKey` while the row
+ * points at its id-derived key, `LegacyKept` once it points at a random key
+ * and the object under the legacy key is still stored.
  */
 export type LegacyMedia =
-  | Readonly<{ kind: "Copy"; id: string; accountId: string; legacyObjectKey: string }>
-  | Readonly<{ kind: "DropLegacy"; id: string; legacyObjectKey: string }>;
+  | Readonly<{ kind: "AtLegacyKey"; id: string; accountId: string; legacyObjectKey: string }>
+  | Readonly<{ kind: "LegacyKept"; id: string; objectKey: string; legacyObjectKey: string }>;
 
-const legacyMediaOf = (row: z.infer<typeof LegacyMediaRowSchema>): LegacyMedia =>
-  row.object_key === row.legacy_object_key
-    ? {
-        kind: "Copy",
+const legacyMediaOf = (row: z.infer<typeof LegacyMediaRowSchema>): ReadonlyArray<LegacyMedia> => {
+  if (row.object_key === legacyAttachmentObjectKey(row.account_id, row.id)) {
+    return [
+      {
+        kind: "AtLegacyKey",
         id: row.id,
         accountId: row.account_id,
-        legacyObjectKey: row.legacy_object_key,
-      }
-    : { kind: "DropLegacy", id: row.id, legacyObjectKey: row.legacy_object_key };
+        legacyObjectKey: row.object_key,
+      },
+    ];
+  }
+  return row.legacy_object_key === null
+    ? []
+    : [
+        {
+          kind: "LegacyKept",
+          id: row.id,
+          objectKey: row.object_key,
+          legacyObjectKey: row.legacy_object_key,
+        },
+      ];
+};
 
+/**
+ * The next rows after `afterId`, in id order, that the job has work on under
+ * `policy`: every row at its legacy key, and, when legacy objects are to be
+ * deleted, every row that still keeps one. Rows are matched by their key, so
+ * one written by the previous Worker during a deploy is found too.
+ */
 export const listLegacyMedia = async (
   db: D1Database,
+  policy: LegacyMediaPolicy,
+  afterId: string,
   limit: number,
-): Promise<Result<ReadonlyArray<LegacyMedia>, RepositoryError>> =>
-  runD1(async () =>
-    (await queryTyped(db, listLegacyMediaSql(limit), LegacyMediaRowSchema)).map(legacyMediaOf),
+): Promise<Result<ReadonlyArray<LegacyMedia>, RepositoryError>> => {
+  const includeKept = policy.kind === "DeleteLegacy" ? 1 : 0;
+  return runD1(async () =>
+    (
+      await queryTyped(db, listLegacyMediaSql(afterId, includeKept, limit), LegacyMediaRowSchema)
+    ).flatMap(legacyMediaOf),
   );
+};
 
-/** Point a row still at its legacy key to `objectKey`; false when the row moved on or is gone. */
+/**
+ * Point a row still at its legacy key to `objectKey`, and its status's edit
+ * history with it, in one batch. `legacyStored` says whether an object is
+ * left under the legacy key to remember. False when the row moved on or is gone.
+ */
 export const rekeyLegacyMedia = async (
   db: D1Database,
-  input: Readonly<{ id: string; legacyObjectKey: string; objectKey: string }>,
-): Promise<Result<boolean, RepositoryError>> =>
+  input: Readonly<{
+    id: string;
+    legacyObjectKey: string;
+    objectKey: string;
+    legacyStored: boolean;
+  }>,
+): Promise<Result<boolean, RepositoryError>> => {
+  const batch = await runTypedBatch(db, [
+    rekeyLegacyMediaSql(
+      input.id,
+      input.legacyObjectKey,
+      input.objectKey,
+      input.legacyStored ? 1 : 0,
+    ),
+    rewriteEditedMediaKeySql(input.id, input.legacyObjectKey, input.objectKey),
+  ]);
+  return batch.map((results) => parseRows(IdRow, results[0]?.results).length > 0);
+};
+
+/**
+ * Replace the URL of a row's legacy key with its current one in its status's
+ * edit history, which stores each revision's rendered document. A no-op once done.
+ */
+export const rewriteEditedMediaKey = async (
+  db: D1Database,
+  media: Readonly<{ id: string; legacyObjectKey: string; objectKey: string }>,
+): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(
-      db,
-      rekeyLegacyMediaSql(input.id, input.legacyObjectKey, input.objectKey),
-      IdRow,
-    );
-    return rows.length > 0;
+    await runTyped(db, rewriteEditedMediaKeySql(media.id, media.legacyObjectKey, media.objectKey));
   });
 
 /** Forget a legacy key whose object is gone. */

@@ -13,7 +13,7 @@ export const handleScheduled = (
       // Index the tags of remote statuses written before the tag index.
       env.OUTBOX_PROCESS_QUEUE.send({ kind: "BackfillRemoteTags" }),
       // Move attachments stored at an id-derived key to a random one.
-      env.OUTBOX_PROCESS_QUEUE.send({ kind: "RekeyLegacyMedia" }),
+      env.OUTBOX_PROCESS_QUEUE.send({ kind: "RekeyLegacyMedia", afterId: "" }),
       // Publish the scheduled posts whose time has come.
       env.OUTBOX_PROCESS_QUEUE.send({ kind: "PublishScheduledStatuses" }),
       // Delete the old posts of accounts with automated post deletion on.

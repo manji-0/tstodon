@@ -640,6 +640,8 @@ export * from "./sql/replacePollOptions";
 
 export * from "./sql/reserveStatusIdempotency";
 
+export * from "./sql/rewriteEditedMediaKey";
+
 export * from "./sql/searchAccounts";
 
 export * from "./sql/searchRemoteActors";
