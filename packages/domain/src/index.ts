@@ -40,6 +40,13 @@ export {
   DELIVERY_MAX_ATTEMPTS,
   type OutboxDelivery as OutboxDeliveryValue,
 } from "./outbox-delivery";
+export {
+  NotificationPolicy,
+  type LocalNotificationSender,
+  type NotificationSender,
+  type RemoteNotificationSender,
+} from "./notification-policy";
+export { NotificationPolicyAction } from "./notification-policy-action";
 export { OutboxJob, type MovePhase, type OutboxJob as OutboxJobValue } from "./outbox-job";
 export {
   OutboundFollow,

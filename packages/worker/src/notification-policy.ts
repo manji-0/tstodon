@@ -1,116 +1,59 @@
-import type { Result } from "neverthrow";
+import {
+  NotificationPolicy,
+  type NotificationPolicyAction,
+  type NotificationSender,
+} from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
 import { getAccountModeration } from "./account-moderation-store";
 import { findAccountById } from "./account-store";
-import { err, ok } from "neverthrow";
 import type { RepositoryError } from "./d1";
-import {
-  findNotificationPolicy,
-  isSenderAccepted,
-  type NotificationPolicy,
-  type NotificationPolicyAction,
-} from "./notification-policy-store";
+import { findFollowKind } from "./follow-store";
+import { findNotificationPolicy, isSenderAccepted } from "./notification-policy-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { getRemoteActorModeration } from "./remote-actor-moderation-store";
 import { findRemoteFollow } from "./remote-actor-store";
-import { findFollowKind } from "./follow-store";
 import { findStatusById } from "./status-store";
 
 export type NotificationDisposition = NotificationPolicyAction;
 
-const NEW_ACCOUNT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+type DispositionInput = Readonly<{
+  recipientId: string;
+  senderId: string;
+  kind: string;
+  statusId?: string | undefined;
+}>;
 
-const mostRestrictive = (
-  actions: ReadonlyArray<NotificationPolicyAction>,
-): NotificationDisposition => {
-  if (actions.includes("drop")) {
-    return "drop";
-  }
-  if (actions.includes("filter")) {
-    return "filter";
-  }
-  return "accept";
-};
-
-/**
- * The policy for a remote sender (`r_…` id). Local accounts cannot follow
- * remote ones here, so `for_not_following` always applies; `for_not_followers`
- * reads the remote follow. `for_private_mentions` is not applied: its
- * exemption is "the recipient follows the sender", which a remote sender can
- * never meet, so the `drop` default would discard every remote direct message.
- * `for_new_accounts` needs local account state. An actor an admin limited
- * counts under `for_limited_accounts`; a suspended one is dropped.
- */
-const remoteDisposition = async (
+/** What `NotificationPolicy.disposition` needs to know about a remote (`r_…`) sender. */
+const remoteSender = async (
   db: D1Database,
   recipientId: string,
-  senderId: string,
-  policy: NotificationPolicy,
-): Promise<Result<NotificationDisposition, RepositoryError>> => {
-  const actorUri = RemoteAccountId.decode(senderId);
-  if (actorUri.isErr()) {
-    return ok("accept");
-  }
-  const follow = await findRemoteFollow(db, recipientId, actorUri.value);
+  actorUri: string,
+): Promise<Result<NotificationSender, RepositoryError>> => {
+  const follow = await findRemoteFollow(db, recipientId, actorUri);
   if (follow.isErr()) {
     return err(follow.error);
   }
-  const moderation = await getRemoteActorModeration(db, actorUri.value);
+  const moderation = await getRemoteActorModeration(db, actorUri);
   if (moderation.isErr()) {
     return err(moderation.error);
   }
-  const actions: NotificationPolicyAction[] = [policy.forNotFollowing];
-  if (moderation.value.standing.kind === "Silenced") {
-    actions.push(policy.forLimitedAccounts);
-  }
-  if (moderation.value.standing.kind === "Suspended") {
-    actions.push("drop");
-  }
-  if (follow.value?.requestKind !== "Fulfilled") {
-    actions.push(policy.forNotFollowers);
-  }
-  return ok(mostRestrictive(actions));
+  return ok({
+    kind: "Remote",
+    standing: moderation.value.standing,
+    followsRecipient: follow.value?.requestKind === "Fulfilled",
+  });
 };
 
-/**
- * Which of Mastodon's notification-policy categories apply to this
- * notification, resolved to the most restrictive action. An accepted sender
- * always gets through, and a private mention from an account the recipient
- * follows is exempt (Mastodon's documented exception).
- */
-export const notificationDisposition = async (
+/** What `NotificationPolicy.disposition` needs to know about a local sender. */
+const localSender = async (
   db: D1Database,
-  input: Readonly<{
-    recipientId: string;
-    senderId: string;
-    kind: string;
-    statusId?: string | undefined;
-  }>,
-): Promise<Result<NotificationDisposition, RepositoryError>> => {
-  const accepted = await isSenderAccepted(db, input.recipientId, input.senderId);
-  if (accepted.isErr()) {
-    return err(accepted.error);
-  }
-  if (accepted.value) {
-    return ok("accept");
-  }
-
-  const policy = await findNotificationPolicy(db, input.recipientId);
-  if (policy.isErr()) {
-    return err(policy.error);
-  }
-  const sender = await findAccountById(db, input.senderId);
-  if (sender.isErr()) {
-    return err(sender.error);
-  }
-  if (!sender.value) {
-    return remoteDisposition(db, input.recipientId, input.senderId, policy.value);
-  }
-
+  input: DispositionInput,
+  createdAt: string,
+): Promise<Result<NotificationSender, RepositoryError>> => {
   const moderation = await getAccountModeration(db, input.senderId);
   if (moderation.isErr()) {
     return err(moderation.error);
   }
-
   const followed = await findFollowKind(db, input.recipientId, input.senderId);
   if (followed.isErr()) {
     return err(followed.error);
@@ -119,38 +62,60 @@ export const notificationDisposition = async (
   if (follows.isErr()) {
     return err(follows.error);
   }
-  const recipientFollowsSender = followed.value === "Accepted";
-
-  let isPrivateMention = false;
+  let privateMention = false;
   if (input.kind === "mention" && input.statusId) {
     const status = await findStatusById(db, input.statusId);
     if (status.isErr()) {
       return err(status.error);
     }
-    isPrivateMention =
+    privateMention =
       status.value !== undefined &&
       status.value.kind === "LocalNote" &&
       status.value.visibility.kind === "Direct";
   }
+  return ok({
+    kind: "Local",
+    createdAt,
+    silenced: moderation.value === "Silenced",
+    recipientFollowsSender: followed.value === "Accepted",
+    senderFollowsRecipient: follows.value === "Accepted",
+    privateMention,
+  });
+};
 
-  const created = Date.parse(sender.value.createdAt);
-  const fresh = Number.isFinite(created) && Date.now() - created < NEW_ACCOUNT_WINDOW_MS;
-
-  const actions: NotificationPolicyAction[] = [];
-  if (isPrivateMention && !recipientFollowsSender) {
-    actions.push(policy.value.forPrivateMentions);
+/**
+ * The recipient's notification policy applied to this notification. An
+ * accepted sender always gets through, and a sender id that is neither a
+ * local account nor a remote one is accepted.
+ */
+export const notificationDisposition = async (
+  db: D1Database,
+  input: DispositionInput,
+): Promise<Result<NotificationDisposition, RepositoryError>> => {
+  const accepted = await isSenderAccepted(db, input.recipientId, input.senderId);
+  if (accepted.isErr()) {
+    return err(accepted.error);
   }
-  if (moderation.value === "Silenced") {
-    actions.push(policy.value.forLimitedAccounts);
+  if (accepted.value) {
+    return ok("accept");
   }
-  if (fresh) {
-    actions.push(policy.value.forNewAccounts);
+  const policy = await findNotificationPolicy(db, input.recipientId);
+  if (policy.isErr()) {
+    return err(policy.error);
   }
-  if (!recipientFollowsSender) {
-    actions.push(policy.value.forNotFollowing);
+  const account = await findAccountById(db, input.senderId);
+  if (account.isErr()) {
+    return err(account.error);
   }
-  if (follows.value !== "Accepted") {
-    actions.push(policy.value.forNotFollowers);
+  let sender: Result<NotificationSender, RepositoryError>;
+  if (account.value) {
+    sender = await localSender(db, input, account.value.createdAt);
+  } else {
+    const actorUri = RemoteAccountId.decode(input.senderId);
+    if (actorUri.isErr()) {
+      return ok("accept");
+    }
+    sender = await remoteSender(db, input.recipientId, actorUri.value);
   }
-  return ok(mostRestrictive(actions));
+  return sender.map((facts) => NotificationPolicy.disposition(policy.value, facts, Date.now()));
 };

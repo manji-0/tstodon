@@ -1,4 +1,5 @@
 import { schemaResult } from "@tstodon/core";
+import { NotificationPolicy, NotificationPolicyAction } from "@tstodon/domain";
 import { nowIso } from "./clock";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -20,34 +21,6 @@ const RequestsNotificationsRow = z.object({ requests: z.number(), notifications:
 const NotificationIdRow = z.object({ notification_id: z.string() });
 const FromAccountIdRow = z.object({ from_account_id: z.string() });
 
-/** Mastodon's `accept` / `filter` / `drop` handling for a notification category. */
-export const NotificationPolicyActionSchema = z.union([
-  z.literal("accept"),
-  z.literal("filter"),
-  z.literal("drop"),
-]);
-
-export type NotificationPolicyAction = z.infer<typeof NotificationPolicyActionSchema>;
-
-export type NotificationPolicy = Readonly<{
-  forNotFollowing: NotificationPolicyAction;
-  forNotFollowers: NotificationPolicyAction;
-  forNewAccounts: NotificationPolicyAction;
-  forPrivateMentions: NotificationPolicyAction;
-  forLimitedAccounts: NotificationPolicyAction;
-}>;
-
-/** Mastodon's defaults: private mentions are dropped, limited accounts filtered. */
-export const DEFAULT_NOTIFICATION_POLICY: NotificationPolicy = {
-  forNotFollowing: "accept",
-  forNotFollowers: "accept",
-  forNewAccounts: "accept",
-  forPrivateMentions: "drop",
-  forLimitedAccounts: "filter",
-};
-
-const parseAction = schemaResult(NotificationPolicyActionSchema);
-
 const PolicyRowSchema = z.object({
   for_not_following: z.string(),
   for_not_followers: z.string(),
@@ -57,7 +30,7 @@ const PolicyRowSchema = z.object({
 });
 
 const action = (raw: string, fallback: NotificationPolicyAction): NotificationPolicyAction => {
-  const parsed = parseAction(raw);
+  const parsed = NotificationPolicyAction.parse(raw);
   return parsed.isOk() ? parsed.value : fallback;
 };
 
@@ -68,19 +41,19 @@ export const findNotificationPolicy = async (
   runD1(async () => {
     const [row] = await queryTyped(db, findNotificationPolicySql(accountId), PolicyRowSchema);
     if (row === undefined) {
-      return { ...DEFAULT_NOTIFICATION_POLICY };
+      return { ...NotificationPolicy.default };
     }
     return {
-      forNotFollowing: action(row.for_not_following, DEFAULT_NOTIFICATION_POLICY.forNotFollowing),
-      forNotFollowers: action(row.for_not_followers, DEFAULT_NOTIFICATION_POLICY.forNotFollowers),
-      forNewAccounts: action(row.for_new_accounts, DEFAULT_NOTIFICATION_POLICY.forNewAccounts),
+      forNotFollowing: action(row.for_not_following, NotificationPolicy.default.forNotFollowing),
+      forNotFollowers: action(row.for_not_followers, NotificationPolicy.default.forNotFollowers),
+      forNewAccounts: action(row.for_new_accounts, NotificationPolicy.default.forNewAccounts),
       forPrivateMentions: action(
         row.for_private_mentions,
-        DEFAULT_NOTIFICATION_POLICY.forPrivateMentions,
+        NotificationPolicy.default.forPrivateMentions,
       ),
       forLimitedAccounts: action(
         row.for_limited_accounts,
-        DEFAULT_NOTIFICATION_POLICY.forLimitedAccounts,
+        NotificationPolicy.default.forLimitedAccounts,
       ),
     };
   });

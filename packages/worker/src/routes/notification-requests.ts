@@ -1,6 +1,10 @@
 import { type Context } from "hono";
-import { schemaResult, warmSchemas } from "@tstodon/core";
-import type { InstanceIdentity } from "@tstodon/domain";
+import { warmSchemas } from "@tstodon/core";
+import {
+  type InstanceIdentity,
+  type NotificationPolicy,
+  NotificationPolicyAction,
+} from "@tstodon/domain";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -19,9 +23,6 @@ import {
   findNotificationPolicy,
   findNotificationRequest,
   listNotificationRequests,
-  type NotificationPolicy,
-  type NotificationPolicyAction,
-  NotificationPolicyActionSchema,
   type NotificationRequest,
   saveNotificationPolicy,
 } from "../notification-policy-store";
@@ -143,7 +144,7 @@ export const patchV2NotificationsPolicy = async (
     fallback: NotificationPolicyAction,
   ): NotificationPolicyAction => {
     if (raw !== undefined) {
-      const parsed = schemaResult(NotificationPolicyActionSchema)(raw.trim().toLowerCase());
+      const parsed = NotificationPolicyAction.parse(raw.trim().toLowerCase());
       return parsed.isOk() ? parsed.value : fallback;
     }
     if (legacy !== undefined) {
