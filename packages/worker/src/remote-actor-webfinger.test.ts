@@ -2,7 +2,7 @@ import { SELF, createExecutionContext, env, waitOnExecutionContext } from "cloud
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { Hostname, RemoteActor } from "@tstodon/domain";
+import { Hostname, IsoInstant, RemoteActor } from "@tstodon/domain";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { generateAccountKeys } from "./keys";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
@@ -1053,7 +1053,7 @@ describe("a legacy row whose actor URI the authority check would refuse", () => 
       publicKeyId: `${legacy}#main-key`,
       publicKeyPem: keys.publicKeyPem,
       displayName: "Legacy alice",
-      fetchedAt: EPOCH,
+      fetchedAt: IsoInstant.parse(EPOCH)._unsafeUnwrap(),
     });
     expect(legacyActor.isOk()).toBe(true);
     if (legacyActor.isOk()) {
@@ -1075,5 +1075,111 @@ describe("a legacy row whose actor URI the authority check would refuse", () => 
       lookup: RemoteAccountId.encode(next.actorUri),
       legacy: "alice@wf-legacy.example",
     });
+  });
+});
+
+describe("a former holder of a handle whose account domain is down", () => {
+  it("keeps the account domain while that domain fails too", async () => {
+    const host = "old.wf-n1-down-both.example";
+    const remote = await remoteActor("alice", host, {
+      accountDomain: "wf-n1-down-both.example",
+      fetchedAt: EPOCH,
+    });
+    serveRemote(remote, "alice", {
+      [host]: { status: 503 },
+      "wf-n1-down-both.example": { status: 503 },
+    });
+
+    await refreshStaleRemoteActors(env);
+
+    expect(await acctOf(remote.actorUri)).toBe("alice@wf-n1-down-both.example");
+  });
+});
+
+describe("a former holder of a handle whose URI host serves no document", () => {
+  it("loses the account domain that answers 404", async () => {
+    const host = "old.wf-n1-nodoc.example";
+    const remote = await remoteActor("alice", host, {
+      accountDomain: "wf-n1-nodoc.example",
+      fetchedAt: EPOCH,
+    });
+    serveRemotes([], { [host]: { status: 503 }, "wf-n1-nodoc.example": { status: 404 } }, 503);
+
+    await refreshStaleRemoteActors(env);
+
+    expect(await acctOf(remote.actorUri)).toBe(`alice@${host}`);
+  });
+
+  it("keeps it while the account domain still links the handle to it", async () => {
+    const host = "old.wf-n1-nodoc-kept.example";
+    const remote = await remoteActor("alice", host, {
+      accountDomain: "wf-n1-nodoc-kept.example",
+      fetchedAt: EPOCH,
+    });
+    serveRemotes(
+      [],
+      {
+        [host]: { status: 503 },
+        "wf-n1-nodoc-kept.example": {
+          subject: "acct:alice@wf-n1-nodoc-kept.example",
+          self: remote.actorUri,
+        },
+      },
+      503,
+    );
+
+    await refreshStaleRemoteActors(env);
+
+    expect(await acctOf(remote.actorUri)).toBe("alice@wf-n1-nodoc-kept.example");
+  });
+});
+
+describe("a refresh run's budget", () => {
+  it("stops at its actor budget, the longest waiting first", async () => {
+    const hosts = Array.from({ length: 8 }, (_, index) => `wf-budget${index}.example`);
+    for (const [index, host] of hosts.entries()) {
+      await remoteActor("b", host, { fetchedAt: `0001-01-01T00:00:0${index}.000Z` });
+    }
+    const fetched: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      fetched.push(new URL(new Request(input, init).url).host);
+      return new Response(null, { status: 503 });
+    });
+
+    await refreshStaleRemoteActors(env, { actors: 5, ms: 60_000 });
+
+    expect(new Set(fetched.filter((host) => hosts.includes(host)))).toEqual(
+      new Set(hosts.slice(0, 5)),
+    );
+  });
+});
+
+describe("a mention of a handle whose servers are down", () => {
+  it("asks WebFinger again only once the day is over", async () => {
+    const remote = await remoteActor("alice", "social.wf-once-mention.example", {
+      accountDomain: "wf-once-mention.example",
+      fetchedAt: EPOCH,
+    });
+    serveRemote(remote, "alice", {
+      "social.wf-once-mention.example": { status: 503 },
+      "wf-once-mention.example": { status: 503 },
+    });
+    await mentioned("wf-once-mention@example.com", "hi @alice@wf-once-mention.example");
+    const asked: string[] = [];
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = new URL(new Request(input, init).url);
+      if (url.pathname === "/.well-known/webfinger") {
+        asked.push(url.host);
+      }
+      return new Response(null, { status: 503 });
+    });
+
+    expect(
+      await mentioned("wf-once-mention@example.com", "again @alice@wf-once-mention.example"),
+    ).toEqual([
+      { id: RemoteAccountId.encode(remote.actorUri), acct: "alice@wf-once-mention.example" },
+    ]);
+    expect(asked.filter((host) => host.includes("wf-once-mention"))).toEqual([]);
   });
 });
