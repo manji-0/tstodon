@@ -197,14 +197,20 @@ describe("Password and security: signing up while signed in", () => {
 describe("Password and security: passkeys", () => {
   it("names the passkey created at sign-up, as the sign-up page asks", async () => {
     const fetcher = browser();
-    const token = await requestSignupLink(fetcher, "sec_signup_name", "sec_signup_name@mail.example");
+    const token = await requestSignupLink(
+      fetcher,
+      "sec_signup_name",
+      "sec_signup_name@mail.example",
+    );
     const shown = await page(
       await fetcher(`/auth/sign_up/verify?${new URLSearchParams({ token }).toString()}`),
     );
     expect(shown).toMatch(/<input id="passkey-name" name="name" required maxlength="60"/);
 
     const { fetcher: signedIn } = await signUp("sec_signup_named", undefined, "Phone");
-    expect((await passkeysOf("sec_signup_named")).map((passkey) => passkey.name)).toEqual(["Phone"]);
+    expect((await passkeysOf("sec_signup_named")).map((passkey) => passkey.name)).toEqual([
+      "Phone",
+    ]);
     expect(await page(await signedIn("/auth/edit"))).toContain("<strong>Phone</strong>");
   });
 
@@ -347,7 +353,9 @@ describe("Password and security: browser sessions", () => {
     const { fetcher, passkey } = await signUp("sec_builtin_revoke");
     const other = await signInAgain(passkey);
     await ageSessions("sec_builtin_revoke");
-    const tokens = await env.DB.prepare(`SELECT "token" FROM "session" WHERE "userId" = ? ORDER BY "createdAt"`)
+    const tokens = await env.DB.prepare(
+      `SELECT "token" FROM "session" WHERE "userId" = ? ORDER BY "createdAt"`,
+    )
       .bind(await userIdOf("sec_builtin_revoke"))
       .all();
     const otherToken = read(z.array(z.object({ token: z.string() })), tokens.results)[1]?.token;
