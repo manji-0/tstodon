@@ -1,4 +1,6 @@
 import type { InstanceIdentity, RemoteStatusValue } from "@tstodon/domain";
+import { presentedAccounts } from "./account-documents";
+import { StatusAuthors } from "./account-presentation";
 import { parseLocalStatusId } from "./activitypub";
 import { cardDocument, parseCardJson } from "./link-card";
 import { RemoteAccountId } from "./remote-account-id";
@@ -77,14 +79,16 @@ export const attachRemoteReplyRefs = async (
  * order given: author, preview card, the viewer's poll votes, local accounts'
  * favourites and boosts with the viewer's own, and reply refs. A status with
  * media is marked sensitive when an admin marked its author's media sensitive,
- * as Mastodon does for a remote account. A status whose author is not cached
- * is left out. No visibility check is made here.
+ * as Mastodon does for a remote account. A status whose author is not cached,
+ * or whose author's presentation `authors` refuses, is left out; an author
+ * that is not shown renders stripped. No visibility check is made here.
  */
 export const mastodonRemoteStatuses = async (
   env: Env,
   identity: InstanceIdentity,
   statuses: ReadonlyArray<RemoteStatusValue>,
   viewerId: string | undefined,
+  authors: StatusAuthors = StatusAuthors.available,
 ): Promise<Record<string, unknown>[]> => {
   if (statuses.length === 0) {
     return [];
@@ -98,14 +102,21 @@ export const mastodonRemoteStatuses = async (
     findRemotePollVotes(env.DB, viewerId, statuses),
     statusInteractionCountsByIds(env.DB, ids, viewerId),
   ]);
+  const presented = actors.isOk()
+    ? await presentedAccounts(env, identity, [], [...actors.value.values()])
+    : undefined;
+  // A storage error leaves every status out rather than show an author unpresented.
+  if (!presented?.isOk()) {
+    return [];
+  }
   const documents = statuses.flatMap((status) => {
-    const actor = actors.isOk() ? actors.value.get(status.actorUri) : undefined;
-    if (!actor) {
+    const author = presented.value.get(RemoteAccountId.encode(status.actorUri));
+    if (!author || !authors(author.presentation)) {
       return [];
     }
     const rawCard = cards.isOk() ? cards.value.get(status.id) : undefined;
     const card = rawCard ? parseCardJson(rawCard) : undefined;
-    const document = mastodonRemoteStatus(identity, status, actor, {
+    const document = mastodonRemoteStatus(status, author.document, {
       card: card ? cardDocument(card) : null,
       pollVotes: pollVotes.get(status.id),
       interactions: interactions.isOk() ? interactions.value.get(status.id) : undefined,

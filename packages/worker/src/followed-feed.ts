@@ -21,6 +21,15 @@ export type ListFeed = Readonly<{
 type SqlFragment = Readonly<{ sql: string; binds: string[] }>;
 
 /**
+ * Leaves out the local `statuses` rows of suspended authors before a feed's
+ * `LIMIT`, as Mastodon unmerges a suspended account's statuses and boosts
+ * from its followers' feeds. Others' boosts of them stay.
+ */
+export const FEED_SUSPENDED_AUTHORS_SQL = `AND account_id NOT IN (
+  SELECT account_id FROM account_moderation WHERE moderation = 'Suspended'
+)`;
+
+/**
  * Local accounts on one of the viewer's exclusive lists, which Mastodon keeps
  * off the viewer's home. Takes the viewer id once.
  */

@@ -6,6 +6,7 @@ import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import {
   EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL,
   FEED_LANGUAGES_SQL,
+  FEED_SUSPENDED_AUTHORS_SQL,
   feedLocalReblogsSql,
 } from "./followed-feed";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
@@ -64,7 +65,8 @@ export const listHomeStatuses = async (
   runD1(async () => {
     // Members of the viewer's exclusive lists show on those lists only.
     const suppressed = `AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
-         AND account_id NOT IN ${EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL}`;
+         AND account_id NOT IN ${EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL}
+         ${FEED_SUSPENDED_AUTHORS_SQL}`;
     const { where, order, binds } = cursorFragment(cursor);
     const now = nowIso();
     const reblogs = feedLocalReblogsSql(accountId, now);

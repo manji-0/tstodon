@@ -1,10 +1,4 @@
-import {
-  type InstanceIdentity,
-  type RemoteActor,
-  type RemoteStatus as RemoteStatusValue,
-  Visibility,
-} from "@tstodon/domain";
-import { mastodonRemoteAccount } from "./account-documents";
+import { type RemoteStatus as RemoteStatusValue, Visibility } from "@tstodon/domain";
 import { remotePollJson } from "./poll-document";
 import { NO_REMOTE_POLL_VOTES, type RemotePollVotes } from "./remote-poll-vote-store";
 import { remoteEmojisJson } from "./remote-emoji-document";
@@ -19,10 +13,10 @@ export type RemoteStatusExtras = Readonly<{
   interactions?: StatusInteractionCounts | undefined;
 }>;
 
+/** A remote status with `account`, its author as the reader is shown it. */
 export const mastodonRemoteStatus = (
-  identity: InstanceIdentity,
   status: RemoteStatusValue,
-  actor: RemoteActor,
+  account: Record<string, unknown>,
   extras: RemoteStatusExtras = {},
 ): Record<string, unknown> => {
   const card = extras.card ?? null;
@@ -50,7 +44,7 @@ export const mastodonRemoteStatus = (
     bookmarked: interactions.bookmarked,
     content: sanitizeRemoteHtml(status.contentHtml),
     reblog: null,
-    account: mastodonRemoteAccount(identity, actor),
+    account,
     // Ids follow the stored order; an attachment that is not an http(s) URL is left out.
     media_attachments: status.media.flatMap((attachment, index) =>
       httpUrl(attachment.url) === undefined

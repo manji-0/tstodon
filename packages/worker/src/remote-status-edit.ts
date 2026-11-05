@@ -1,10 +1,8 @@
 import {
-  type InstanceIdentity,
   IsoInstant,
   RemoteAttachmentSchema,
   RemoteEmojiSchema,
   RemotePollSchema,
-  type RemoteActor,
   type RemoteStatusValue,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
@@ -49,13 +47,11 @@ export const snapshotRemoteRevision = (
 
 /** The `StatusEdit` entity of one version of `status`. */
 const statusEditJson = (
-  identity: InstanceIdentity,
   status: RemoteStatusValue,
-  actor: RemoteActor,
+  account: Record<string, unknown>,
   revision: RemoteRevision,
 ): Record<string, unknown> => {
   const document = mastodonRemoteStatus(
-    identity,
     {
       ...status,
       contentHtml: revision.contentHtml,
@@ -65,7 +61,7 @@ const statusEditJson = (
       poll: revision.poll,
       emojis: revision.emojis,
     },
-    actor,
+    account,
   );
   return {
     content: document.content,
@@ -85,13 +81,13 @@ const statusEditJson = (
 /**
  * `GET /api/v1/statuses/:id/history` for a remote note: every version it held,
  * the original first and the current one last. A note edited before versions
- * were kept shows only its current one.
+ * were kept shows only its current one. `account` is its author as the reader
+ * is shown it.
  */
 export const remoteStatusHistory = async (
   db: D1Database,
-  identity: InstanceIdentity,
   status: RemoteStatusValue,
-  actor: RemoteActor,
+  account: Record<string, unknown>,
 ): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
   const stored = await listRemoteStatusEdits(db, status.id);
   if (stored.isErr()) {
@@ -102,8 +98,6 @@ export const remoteStatusHistory = async (
     return revision.isOk() ? [revision.value] : [];
   });
   return ok(
-    [...replaced, revisionOf(status)].map((revision) =>
-      statusEditJson(identity, status, actor, revision),
-    ),
+    [...replaced, revisionOf(status)].map((revision) => statusEditJson(status, account, revision)),
   );
 };

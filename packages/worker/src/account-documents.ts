@@ -75,8 +75,20 @@ export const presentedAccountsByIds = async (
   if (actors.isErr()) {
     return err(actors.error);
   }
-  const localAccounts = [...locals.value.values()];
-  const remoteActors = [...actors.value.values()];
+  return presentedAccounts(env, identity, [...locals.value.values()], [...actors.value.values()]);
+};
+
+/**
+ * {@link presentedAccountsByIds} for accounts and actors already loaded, keyed
+ * by local account id and `r_…` id: counts, profiles, moves and standings
+ * load in one batch each.
+ */
+export const presentedAccounts = async (
+  env: Env,
+  identity: InstanceIdentity,
+  localAccounts: ReadonlyArray<LocalAccount>,
+  remoteActors: ReadonlyArray<RemoteActor>,
+): Promise<PresentedAccounts> => {
   const [localDocuments, localPresentations, remotePresentations, moved] = await Promise.all([
     mastodonAccountDocuments(env, identity, localAccounts),
     localAccountPresentations(

@@ -21,7 +21,8 @@ import {
   updateReport,
 } from "../../report-store";
 import { reportedStatuses } from "../../report-documents";
-import { mastodonRemoteStatus } from "../../remote-status-document";
+import { mastodonRemoteStatuses } from "../../remote-status-documents";
+import { StatusAuthors } from "../../account-presentation";
 import { schemaResult } from "@tstodon/core";
 import { adminAccountFor, adminPartyFor } from "./accounts";
 import { nowIso } from "../../clock";
@@ -32,14 +33,23 @@ const adminReportDocument = async (
   report: ReportRow,
 ): Promise<Record<string, unknown>> => {
   const reported = await reportedStatuses(c.env.DB, report.statusIds);
+  // A moderator sees every reported status, a suspended author's too, stripped.
   const statuses = reported.isOk()
     ? [
-        ...(reported.value.local.length > 0
-          ? await mastodonStatuses(c.env, identity, [...reported.value.local], undefined)
-          : []),
-        ...reported.value.remote.map(({ status, actor }) =>
-          mastodonRemoteStatus(identity, status, actor),
-        ),
+        ...(await mastodonStatuses(
+          c.env,
+          identity,
+          reported.value.local,
+          undefined,
+          StatusAuthors.any,
+        )),
+        ...(await mastodonRemoteStatuses(
+          c.env,
+          identity,
+          reported.value.remote.map(({ status }) => status),
+          undefined,
+          StatusAuthors.any,
+        )),
       ]
     : [];
   return {

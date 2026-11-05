@@ -154,6 +154,26 @@ export const searchableRemoteActors = async (
     actors.filter((actor) => isAvailable(presentations.get(actor.actorUri))),
   );
 
+/**
+ * Whose statuses a status renderer serves, by the author's presentation.
+ * `available` is Mastodon's `StatusPolicy#show?`, which refuses an
+ * unavailable author's status. `existing` serves any status Mastodon still
+ * keeps, which is all but a suspended domain's: what a boost wraps, and the
+ * status an interaction names. `any` is a moderator's report. Whichever
+ * applies, an author that is not shown renders stripped.
+ */
+export const StatusAuthors = {
+  available: AccountPresentation.available,
+  existing: (presentation: AccountPresentation): boolean => presentation.kind !== "Hidden",
+  any: (): boolean => true,
+} as const satisfies Record<string, (presentation: AccountPresentation) => boolean>;
+
+export type StatusAuthors = (typeof StatusAuthors)[keyof typeof StatusAuthors];
+
+/** The rule for the status a boost served under `authors` wraps. */
+export const boostedStatusAuthors = (authors: StatusAuthors): StatusAuthors =>
+  authors === StatusAuthors.any ? StatusAuthors.any : StatusAuthors.existing;
+
 const isAvailable = (presentation: AccountPresentation | undefined): boolean =>
   presentation !== undefined && AccountPresentation.available(presentation);
 

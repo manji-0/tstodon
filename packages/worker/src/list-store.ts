@@ -13,6 +13,7 @@ import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import { RemoteAccountId } from "./remote-account-id";
 import {
   FEED_LANGUAGES_SQL,
+  FEED_SUSPENDED_AUTHORS_SQL,
   feedLocalReblogsSql,
   feedLocalRepliesSql,
   type ListFeed,
@@ -361,6 +362,7 @@ export const listListTimelineStatuses = async (
              SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
            ))
            AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
+           ${FEED_SUSPENDED_AUTHORS_SQL}
            ${reblogs.sql}
            ${FEED_LANGUAGES_SQL}
            ${replies.sql}

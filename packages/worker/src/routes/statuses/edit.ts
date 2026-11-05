@@ -41,7 +41,8 @@ import { notifyAccount } from "../../notify";
 import { findStatusById, replaceStatusMedia, updateLocalNote } from "../../status-store";
 import { findStatusUpdatedAt, insertStatusEdit, listStatusEdits } from "../../status-edit-store";
 import { canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
-import { findRemoteActorByUri } from "../../remote-actor-store";
+import { availableAccountDocumentsByIds } from "../../account-documents";
+import { RemoteAccountId } from "../../remote-account-id";
 import { findRemoteStatusById } from "../../remote-status-store";
 import { remoteStatusHistory } from "../../remote-status-edit";
 import { isQuotePolicy, listAcceptedQuoteEdges, setStatusQuotePolicy } from "../../quote-store";
@@ -388,14 +389,17 @@ const remoteHistory = async (
   if (!remote.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const actor = await findRemoteActorByUri(c.env.DB, remote.value.actorUri);
-  if (actor.isErr()) {
-    return jsonRepositoryError(c, actor.error.message);
+  const authorId = RemoteAccountId.encode(remote.value.actorUri);
+  const authors = await availableAccountDocumentsByIds(c.env, identity, [authorId]);
+  if (authors.isErr()) {
+    return jsonRepositoryError(c, authors.error.message);
   }
-  if (!actor.value || !(await canViewRemoteStatus(c.env.DB, remote.value, viewerId))) {
+  // As Mastodon's `StatusPolicy#show?`, an unavailable author's history is not served.
+  const author = authors.value.get(authorId);
+  if (!author || !(await canViewRemoteStatus(c.env.DB, remote.value, viewerId))) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const history = await remoteStatusHistory(c.env.DB, identity, remote.value, actor.value);
+  const history = await remoteStatusHistory(c.env.DB, remote.value, author);
   return history.isErr() ? jsonRepositoryError(c, history.error.message) : c.json(history.value);
 };
 

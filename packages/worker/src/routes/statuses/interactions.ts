@@ -9,6 +9,7 @@ import {
 } from "@tstodon/domain";
 import { type Context } from "hono";
 import { err, ok, type Result } from "neverthrow";
+import { StatusAuthors } from "../../account-presentation";
 import { nowInstant } from "../../clock";
 import { findAccountById } from "../../account-store";
 import {
@@ -190,7 +191,15 @@ const setStatusMuted = async (c: Context<{ Bindings: Env }>, mute: boolean): Pro
   if (latest.isErr() || !latest.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.json(await mastodonStatus(c.env, identity.value, latest.value, user.value.id));
+  return c.json(
+    await mastodonStatus(
+      c.env,
+      identity.value,
+      latest.value,
+      user.value.id,
+      StatusAuthors.existing,
+    ),
+  );
 };
 
 export const postV1StatusesByIdMute = (
@@ -203,7 +212,11 @@ export const postV1StatusesByIdUnmute = (
 const notFound = (c: Context<{ Bindings: Env }>) =>
   c.json({ error: "Record not found", kind: "NotFound" }, 404);
 
-/** The status as the viewer sees it after an interaction, local or remote alike. */
+/**
+ * The status as the viewer sees it after an interaction, local or remote
+ * alike. As Mastodon's undo actions do, a suspended author's status still
+ * renders, its author stripped.
+ */
 const targetDocument = async (
   env: Env,
   identity: InstanceIdentity,
@@ -211,8 +224,16 @@ const targetDocument = async (
   viewerId: string,
 ): Promise<Record<string, unknown> | undefined> =>
   found.kind === "LocalStatus"
-    ? mastodonStatus(env, identity, found.status, viewerId)
-    : (await mastodonRemoteStatuses(env, identity, [found.status], viewerId))[0];
+    ? mastodonStatus(env, identity, found.status, viewerId, StatusAuthors.existing)
+    : (
+        await mastodonRemoteStatuses(
+          env,
+          identity,
+          [found.status],
+          viewerId,
+          StatusAuthors.existing,
+        )
+      )[0];
 
 /** How ActivityPub names a status, or nothing when its local author is gone. */
 const activityObjectRef = async (

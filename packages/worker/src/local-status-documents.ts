@@ -5,7 +5,8 @@ import {
   LocalStatus,
   Visibility,
 } from "@tstodon/domain";
-import { type AccountCounts, accountCountsByIds } from "./account-count-store";
+import { type PresentedAccount, presentedAccounts } from "./account-documents";
+import { boostedStatusAuthors, StatusAuthors } from "./account-presentation";
 import { findAccountsByIds } from "./account-store";
 import { findPollsByStatusIds, type PollRecord } from "./poll-store";
 import {
@@ -27,17 +28,11 @@ import {
   statusInteractionCountsByIds,
 } from "./status-interaction-store";
 import { findMediaByIds, type MediaRow } from "./media-store";
-import { type CustomEmoji, customEmojiJson, emojisInText, emojisInTexts } from "./emoji";
-import {
-  type AccountProfile,
-  EMPTY_ACCOUNT_PROFILE,
-  listAccountProfiles,
-} from "./account-profile-store";
+import { type CustomEmoji, customEmojiJson, emojisInTexts } from "./emoji";
 import { sensitizedAccountIds } from "./account-flag-store";
 import { loadCustomEmojis } from "./custom-emoji-store";
 import { listStatusMuteRoots, resolveThreadRootStatusIds } from "./status-mute-store";
 import { cardDocument, parseCardJson } from "./link-card";
-import { mastodonAccount } from "./account-documents";
 import { mastodonMedia } from "./media-document";
 import { pollJson } from "./poll-document";
 import { quotePolicyName } from "./quote-policy-name";
@@ -116,16 +111,25 @@ export const mastodonStatus = async (
   identity: InstanceIdentity,
   status: LocalStatus,
   viewerId: string | undefined,
+  authors: StatusAuthors = StatusAuthors.available,
 ): Promise<Record<string, unknown> | undefined> => {
-  const documents = await mastodonStatuses(env, identity, [status], viewerId);
+  const documents = await mastodonStatuses(env, identity, [status], viewerId, authors);
   return documents[0];
 };
 
+/**
+ * Local statuses as Mastodon statuses rendered for the viewer, in the order
+ * given. A status whose author's presentation `authors` refuses is left out,
+ * as is a boost whose booster it refuses; a boost wraps a suspended author's
+ * status with the author stripped, and a quote of an unavailable author's
+ * status is `unauthorized`, as Mastodon's `StatusFilter` renders it.
+ */
 export const mastodonStatuses = async (
   env: Env,
   identity: InstanceIdentity,
   statuses: ReadonlyArray<LocalStatus>,
   viewerId: string | undefined,
+  authors: StatusAuthors = StatusAuthors.available,
 ): Promise<Record<string, unknown>[]> => {
   if (statuses.length === 0) {
     return [];
@@ -200,35 +204,27 @@ export const mastodonStatuses = async (
 
   const [
     accountsResult,
-    countsResult,
     interactionsResult,
     pollsResult,
     mediaResult,
     sensitizedResult,
-    profilesResult,
     cardsResult,
   ] = await Promise.all([
     findAccountsByIds(env.DB, accountIds),
-    accountCountsByIds(env.DB, accountIds),
     statusInteractionCountsByIds(env.DB, noteIds, viewerId),
     findPollsByStatusIds(env.DB, noteIds, viewerId),
     findMediaByIds(env.DB, mediaIds),
     sensitizedAccountIds(env.DB, accountIds),
-    listAccountProfiles(env.DB, accountIds),
     listStatusCards(env.DB, noteIds),
   ]);
 
   const accounts = accountsResult.isOk() ? accountsResult.value : new Map<string, LocalAccount>();
-  const accountCountsMap = countsResult.isOk()
-    ? countsResult.value
-    : new Map<string, AccountCounts>();
   const interactions = interactionsResult.isOk()
     ? interactionsResult.value
     : new Map<string, StatusInteractionCounts>();
   const polls = pollsResult.isOk() ? pollsResult.value : new Map<string, PollRecord>();
   const mediaById = mediaResult.isOk() ? mediaResult.value : new Map<string, MediaRow>();
   const sensitizedIds = sensitizedResult.isOk() ? sensitizedResult.value : new Set<string>();
-  const profiles = profilesResult.isOk() ? profilesResult.value : new Map<string, AccountProfile>();
   const cards = new Map(
     [...(cardsResult.isOk() ? cardsResult.value : [])].flatMap(
       ([statusId, raw]): [string, Record<string, unknown>][] => {
@@ -238,24 +234,20 @@ export const mastodonStatuses = async (
     ),
   );
 
-  const accountDocs = new Map(
-    [...accounts].map(([id, account]) => [
-      id,
-      mastodonAccount(
-        identity,
-        account,
-        accountCountsMap.get(id) ?? { followers: 0, following: 0, statuses: 0 },
-        emojisInText(account.displayName, instanceEmojis),
-        profiles.get(id) ?? EMPTY_ACCOUNT_PROFILE,
-      ),
-    ]),
-  );
-
-  const quoteCountsResult = await quoteCountsByStatusIds(env.DB, noteIdsOf(allStatuses));
+  const [presented, quoteCountsResult, policiesResult] = await Promise.all([
+    presentedAccounts(env, identity, [...accounts.values()], []),
+    quoteCountsByStatusIds(env.DB, noteIdsOf(allStatuses)),
+    findStatusQuotePolicies(env.DB, noteIdsOf(allStatuses)),
+  ]);
+  // A storage error leaves every status out rather than show an author unpresented.
+  if (presented.isErr()) {
+    return [];
+  }
+  const authorOf = (status: LocalStatus): PresentedAccount | undefined =>
+    presented.value.get(status.accountId);
   const quoteCounts = quoteCountsResult.isOk()
     ? quoteCountsResult.value
     : new Map<string, number>();
-  const policiesResult = await findStatusQuotePolicies(env.DB, noteIdsOf(allStatuses));
   const quotePolicies = policiesResult.isOk()
     ? policiesResult.value
     : new Map<string, QuotePolicy>();
@@ -273,8 +265,8 @@ export const mastodonStatuses = async (
       continue;
     }
     const account = accounts.get(status.accountId);
-    const accountDoc = accountDocs.get(status.accountId);
-    if (!account || !accountDoc) {
+    const author = authorOf(status);
+    if (!account || !author) {
       continue;
     }
     const parent = status.inReplyToId ? byId.get(status.inReplyToId) : undefined;
@@ -285,7 +277,7 @@ export const mastodonStatuses = async (
         identity,
         status,
         account,
-        accountDoc,
+        author.document,
         interactions.get(status.id) ?? {
           favourites: 0,
           reblogs: 0,
@@ -383,7 +375,16 @@ export const mastodonStatuses = async (
     const quote = quotes.get(status.id);
     if (quote) {
       const target = noteDocs.get(quote.quotedStatusId);
-      const state = quote.state === "revoked" ? "revoked" : target ? "accepted" : "deleted";
+      const quoted = byId.get(quote.quotedStatusId);
+      const quotedAuthor = quoted && authorOf(quoted);
+      const state =
+        quote.state === "revoked"
+          ? "revoked"
+          : !target || !quotedAuthor
+            ? "deleted"
+            : StatusAuthors.available(quotedAuthor.presentation)
+              ? "accepted"
+              : "unauthorized";
       document.quote = {
         state,
         quoted_status: state === "accepted" ? (target ?? null) : null,
@@ -405,7 +406,8 @@ export const mastodonStatuses = async (
     };
   }
 
-  // Boosts of cached remote statuses wrap the remote status as the viewer sees it.
+  // Boosts wrap the boosted status as the viewer sees it, a suspended author's too.
+  const boosted = boostedStatusAuthors(authors);
   const remoteTargets = await findRemoteStatusesByIds(
     env.DB,
     allStatuses.flatMap((status) =>
@@ -416,23 +418,32 @@ export const mastodonStatuses = async (
   );
   const remoteDocs = documentsById(
     remoteTargets.isOk()
-      ? await mastodonRemoteStatuses(env, identity, [...remoteTargets.value.values()], viewerId)
+      ? await mastodonRemoteStatuses(
+          env,
+          identity,
+          [...remoteTargets.value.values()],
+          viewerId,
+          boosted,
+        )
       : [],
   );
 
-  const render = (status: LocalStatus): Record<string, unknown> | undefined => {
+  const render = (
+    status: LocalStatus,
+    rule: StatusAuthors,
+  ): Record<string, unknown> | undefined => {
+    const author = authorOf(status);
+    if (!author || !rule(author.presentation)) {
+      return undefined;
+    }
     if (status.kind === "LocalNote") {
       return noteDocs.get(status.id);
-    }
-    const accountDoc = accountDocs.get(status.accountId);
-    if (!accountDoc) {
-      return undefined;
     }
     const local = byId.get(status.target.statusId);
     const wrapped =
       status.target.kind === "RemoteStatus"
         ? remoteDocs.get(status.target.statusId)
-        : local && render(local);
+        : local && render(local, boosted);
     if (!wrapped) {
       return undefined;
     }
@@ -440,7 +451,7 @@ export const mastodonStatuses = async (
       ...wrapped,
       id: status.id,
       reblog: wrapped,
-      account: accountDoc,
+      account: author.document,
       created_at: status.createdAt,
       // The boost's own visibility, which may be narrower than the original's.
       visibility: Visibility.toMastodon(status.visibility),
@@ -448,7 +459,7 @@ export const mastodonStatuses = async (
   };
 
   return statuses.flatMap((status) => {
-    const document = render(status);
+    const document = render(status, authors);
     return document ? [document] : [];
   });
 };
