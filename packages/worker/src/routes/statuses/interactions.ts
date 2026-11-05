@@ -1,5 +1,7 @@
 import {
   type InstanceIdentity,
+  type LocalAccount,
+  type LocalReblog,
   LocalStatus,
   reblogVisibility,
   StatusId,
@@ -40,6 +42,7 @@ import {
   setPaginationLinks,
 } from "../../http";
 import { newEntityId } from "../../ids";
+import { ApiRefusal } from "../api-refusal";
 import { mastodonStatus } from "../../local-status-documents";
 import { mastodonRemoteStatuses } from "../../remote-status-documents";
 import { statusDocumentsByIds } from "../../status-documents";
@@ -380,6 +383,66 @@ const rebloggable = async (
   );
 };
 
+/**
+ * Store a new boost and tell everyone who hears of it: the boosted local
+ * author, followers through the `Announce`, and the booster's own streams and
+ * home timelines. Answers the boost as the booster sees it.
+ */
+const publishBoost = async (
+  env: Env,
+  identity: InstanceIdentity,
+  booster: LocalAccount,
+  target: FoundStatus,
+  reblog: LocalReblog,
+): Promise<Result<Record<string, unknown> | undefined, ApiRefusal>> => {
+  const objectRef = await activityObjectRef(env.DB, identity, target);
+  if (objectRef.isErr()) {
+    return err(ApiRefusal.repository(objectRef.error.message));
+  }
+  if (!objectRef.value) {
+    return err(ApiRefusal.notFound);
+  }
+  const inserted = await insertLocalReblog(env.DB, reblog);
+  if (inserted.isErr()) {
+    return err(ApiRefusal.repository(inserted.error.message));
+  }
+  if (target.kind === "LocalStatus" && target.status.accountId !== booster.id) {
+    await notifyAccount(env, {
+      accountId: target.status.accountId,
+      fromAccountId: booster.id,
+      kind: "reblog",
+      statusId: target.status.id,
+    });
+  }
+  const enqueued = await enqueueLocalActivity(
+    env,
+    booster.id,
+    "Announce",
+    announceActivity(identity, booster, reblog, objectRef.value),
+  );
+  if (enqueued.isErr()) {
+    return err(
+      ApiRefusal.repository(
+        enqueued.error.kind === "RepositoryError"
+          ? enqueued.error.message
+          : enqueued.error.kind === "QueueSendFailed"
+            ? enqueued.error.message
+            : "invalid activity id",
+      ),
+    );
+  }
+  const document = await mastodonStatus(env, identity, reblog, booster.id);
+  if (document) {
+    await publishToAccount(env, booster.id, { kind: "update", payload: document });
+  }
+  await enqueueHomeFanOut(env, {
+    event: "update",
+    entryId: reblog.id,
+    author: { kind: "LocalAccount", accountId: booster.id },
+  });
+  return ok(document);
+};
+
 export const postV1StatusesByIdReblog = async (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/reblog">,
 ) => {
@@ -445,51 +508,8 @@ export const postV1StatusesByIdReblog = async (
       user.value.defaultPostVisibility,
     ),
   );
-  const objectRef = await activityObjectRef(c.env.DB, identity.value, target);
-  if (objectRef.isErr()) {
-    return jsonRepositoryError(c, objectRef.error.message);
-  }
-  if (!objectRef.value) {
-    return notFound(c);
-  }
-  const inserted = await insertLocalReblog(c.env.DB, reblog);
-  if (inserted.isErr()) {
-    return jsonRepositoryError(c, inserted.error.message);
-  }
-  if (target.kind === "LocalStatus" && target.status.accountId !== user.value.id) {
-    await notifyAccount(c.env, {
-      accountId: target.status.accountId,
-      fromAccountId: user.value.id,
-      kind: "reblog",
-      statusId: target.status.id,
-    });
-  }
-  const enqueued = await enqueueLocalActivity(
-    c.env,
-    user.value.id,
-    "Announce",
-    announceActivity(identity.value, user.value, reblog, objectRef.value),
-  );
-  if (enqueued.isErr()) {
-    return jsonRepositoryError(
-      c,
-      enqueued.error.kind === "RepositoryError"
-        ? enqueued.error.message
-        : enqueued.error.kind === "QueueSendFailed"
-          ? enqueued.error.message
-          : "invalid activity id",
-    );
-  }
-  const document = await mastodonStatus(c.env, identity.value, reblog, user.value.id);
-  if (document) {
-    await publishToAccount(c.env, user.value.id, { kind: "update", payload: document });
-  }
-  await enqueueHomeFanOut(c.env, {
-    event: "update",
-    entryId: reblog.id,
-    author: { kind: "LocalAccount", accountId: user.value.id },
-  });
-  return c.json(document);
+  const published = await publishBoost(c.env, identity.value, user.value, target, reblog);
+  return published.isErr() ? ApiRefusal.respond(c, published.error) : c.json(published.value);
 };
 
 export const postV1StatusesByIdUnreblog = async (
