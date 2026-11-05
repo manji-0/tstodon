@@ -10,7 +10,8 @@
 //
 // A build takes over a minute, so it is skipped when the assets are the output
 // of this script at this ref: `.cache/mastodon-web/assets.stamp` holds a digest
-// of the ref, this script, and the manifest it wrote. `--force` rebuilds.
+// of the ref, this script, and the manifest it wrote, and every file that
+// manifest names must exist. `--force` rebuilds.
 //
 // Mastodon is AGPL-3.0-or-later, as tstodon is; the build output carries its
 // license notices.
@@ -29,6 +30,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 
 const DEFAULT_REF = "v4.7.3";
 const REPOSITORY = "https://github.com/mastodon/mastodon.git";
@@ -44,16 +46,62 @@ const stamp = path.join(root, ".cache", "mastodon-web", "assets.stamp");
 const assetsDigest = () =>
   existsSync(compactManifest)
     ? createHash("sha256")
-        .update(ref)
+        .update(`${ref}\0`)
         .update(readFileSync(fileURLToPath(import.meta.url)))
+        .update("\0")
         .update(readFileSync(compactManifest))
         .digest("hex")
     : undefined;
 
+const EntrySchema = z.object({
+  js: z.string(),
+  css: z.array(z.string()),
+  preload: z.array(z.string()),
+});
+const CompactManifestSchema = z.object({
+  ref: z.literal(ref),
+  polyfills: z.string(),
+  themeSelection: z.string(),
+  inert: z.string(),
+  theme: z.string(),
+  favicon: z.string(),
+  common: EntrySchema,
+  application: EntrySchema,
+  remoteInteractionHelper: EntrySchema,
+  locales: z.array(z.string()),
+});
+
+/** Every file the compact manifest names, and the static files copied beside packs/, exist. */
+const assetsPresent = () => {
+  let json;
+  try {
+    json = JSON.parse(readFileSync(compactManifest, "utf8"));
+  } catch {
+    return false;
+  }
+  const parsed = CompactManifestSchema.safeParse(json);
+  if (!parsed.success) {
+    return false;
+  }
+  const m = parsed.data;
+  const files = [
+    ...[m.polyfills, m.themeSelection, m.inert, m.theme, m.favicon],
+    ...[m.common, m.application, m.remoteInteractionHelper].flatMap((entry) => [
+      entry.js,
+      ...entry.css,
+      ...entry.preload,
+    ]),
+  ].map((url) => url.replace(/^\//, ""));
+  return [...files, "emoji", "sounds", "sw.js"].every((file) =>
+    existsSync(path.join(assets, file)),
+  );
+};
+
 if (
   !process.argv.includes("--force") &&
   existsSync(stamp) &&
-  readFileSync(stamp, "utf8") === assetsDigest()
+  readFileSync(stamp, "utf8") === assetsDigest() &&
+  assetsPresent()
 ) {
   console.log(`Mastodon web ${ref} is up to date in ${path.relative(root, assets)}`);
   process.exit(0);
