@@ -13,7 +13,7 @@ import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 export type RefreshBudget = Readonly<{ actors: number; ms: number }>;
 
 /**
- * 200 actors keep a run under 2600 fetches and about 610 D1 queries, inside
+ * 200 actors keep a run at most 2600 fetches and about 610 D1 queries, inside
  * the Workers Paid limits of 10,000 subrequests and 1000 D1 queries per
  * invocation, and refresh up to 4800 actors a day. With four at a time and
  * none started after 45 s, a run whose servers all time out ends within about
