@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param statusId
  */
 export const listPollInteractorInboxes = $runtime.makeTypedQueryFactory(
-  "SELECT DISTINCT COALESCE(a.shared_inbox_uri, a.inbox_uri) AS inbox_uri\nFROM statuses s\nJOIN (\nSELECT p.status_id, v.actor_uri\nFROM remote_poll_votes v\nJOIN polls p ON p.id = v.poll_id\nWHERE p.status_id = $1\nUNION\nSELECT r.status_id, r.remote_actor_uri AS actor_uri\nFROM remote_announces r\nJOIN statuses boosted ON boosted.id = r.status_id\nWHERE r.status_id = $1 AND boosted.visibility IN ('public', 'unlisted')\n) i ON i.status_id = s.id\nJOIN remote_actors a ON a.actor_uri = i.actor_uri\nWHERE s.id = $1\nAND i.actor_uri NOT IN (SELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended')\nAND i.actor_uri NOT IN (SELECT target_actor_uri FROM blocks WHERE blocker_account_id = s.account_id)",
+  "SELECT DISTINCT COALESCE(a.shared_inbox_uri, a.inbox_uri) AS inbox_uri\nFROM statuses s\nJOIN (\nSELECT p.status_id, v.actor_uri\nFROM remote_poll_votes v\nJOIN polls p ON p.id = v.poll_id\nWHERE p.status_id = $1\nUNION\nSELECT r.status_id, r.remote_actor_uri AS actor_uri\nFROM remote_announces r\nWHERE r.status_id = $1\n) i ON i.status_id = s.id\nJOIN remote_actors a ON a.actor_uri = i.actor_uri\nWHERE s.id = $1\nAND s.visibility IN ('public', 'unlisted')\nAND i.actor_uri NOT IN (SELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended')\nAND i.actor_uri NOT IN (SELECT target_actor_uri FROM blocks WHERE blocker_account_id = s.account_id)",
 ) as (
   statusId: string,
 ) => $runtime.TypedSql<listPollInteractorInboxes.Parameters, listPollInteractorInboxes.Result>;
