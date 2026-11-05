@@ -1,9 +1,13 @@
-import { InstanceIdentity, Hostname } from "@tstodon/domain";
+import {
+  type FindThreadParent,
+  Hostname,
+  InstanceIdentity,
+  type ThreadStatus,
+} from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountsByIds } from "./account-store";
 import { parseLocalStatusId } from "./activitypub";
 import type { RepositoryError } from "./d1";
-import type { ReplyTarget } from "./reply-target";
 import { findRemoteStatusByObjectUri } from "./remote-status-store";
 import { findRemoteStatusReplyTargets, listRemoteRepliesToUris } from "./remote-reply-store";
 import {
@@ -18,10 +22,8 @@ import { listBlockedDomains } from "./domain-block-store";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { listSuppressedAuthors } from "./block-mute-store";
 
-/** A status in a thread: a local one or a cached remote one. */
-export type ThreadStatus = ReplyTarget;
-
-const parentOf = async (
+/** The D1 lookup behind `FindThreadParent`. */
+export const findThreadParent = async (
   db: D1Database,
   identity: InstanceIdentity,
   node: ThreadStatus,
@@ -73,8 +75,7 @@ const parentOf = async (
  * remote parents. A status seen twice (a forged `inReplyTo` loop) ends it.
  */
 export const listThreadAncestors = async (
-  db: D1Database,
-  identity: InstanceIdentity,
+  findParent: FindThreadParent,
   start: ThreadStatus,
   depth: number,
 ): Promise<Result<ThreadStatus[], RepositoryError>> => {
@@ -82,7 +83,7 @@ export const listThreadAncestors = async (
   const seen = new Set<string>([start.status.id]);
   let current = start;
   for (let step = 0; step < depth; step += 1) {
-    const parent = await parentOf(db, identity, current);
+    const parent = await findParent(current);
     if (parent.isErr()) {
       return err(parent.error);
     }

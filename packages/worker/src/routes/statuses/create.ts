@@ -3,13 +3,14 @@ import {
   type LocalStatus,
   StatusComposition,
   StatusId,
+  type ThreadStatus,
   Visibility,
 } from "@tstodon/domain";
 import type { Context } from "hono";
 import { findAccountById } from "../../account-store";
 import { findComposeDefaults } from "../../account-defaults-store";
 import { escapeHtml, mentionUsernames } from "../../html";
-import { findReplyTarget, type ReplyTarget } from "../../reply-target";
+import { findReplyTarget } from "../../reply-target";
 import { findFollowKind } from "../../follow-store";
 import {
   jsonAuthError,
@@ -288,7 +289,7 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   const statusQuotePolicy: QuotePolicy = visibilityIsPublic(draft.value.visibility)
     ? (requestedPolicy ?? quotePolicyName(user.value.defaultQuotePolicy))
     : "nobody";
-  let replyTo: ReplyTarget | null = null;
+  let replyTo: ThreadStatus | null = null;
   const replyRaw = body.value.in_reply_to_id?.trim() ?? "";
   if (replyRaw.length > 0) {
     const replyId = StatusId.parse(replyRaw);

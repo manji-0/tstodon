@@ -1,9 +1,4 @@
-import {
-  InstanceIdentity,
-  type LocalStatus,
-  type RemoteStatus,
-  type Visibility,
-} from "@tstodon/domain";
+import { InstanceIdentity, type ThreadStatus, type Visibility } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountById } from "./account-store";
 import type { RepositoryError } from "./d1";
@@ -11,17 +6,15 @@ import { findRemoteStatusById, findRemoteStatusByObjectUri } from "./remote-stat
 import { findStatusById, listStatusReplyUris } from "./status-store";
 import { canViewRemoteStatus, canViewStatus } from "./visibility-guard";
 
-/** The status a new local note answers: a local one, or a cached remote one. */
-export type ReplyTarget =
-  | Readonly<{ kind: "Local"; status: LocalStatus }>
-  | Readonly<{ kind: "Remote"; status: RemoteStatus }>;
-
-/** The status `in_reply_to_id` names, when the author may see it; `undefined` otherwise. */
+/**
+ * The status `in_reply_to_id` names, local or cached remote, when the author
+ * may see it; `undefined` otherwise.
+ */
 export const findReplyTarget = async (
   db: D1Database,
   id: string,
   viewerId: string,
-): Promise<Result<ReplyTarget | undefined, RepositoryError>> => {
+): Promise<Result<ThreadStatus | undefined, RepositoryError>> => {
   const local = await findStatusById(db, id);
   if (local.isErr()) {
     return err(local.error);

@@ -1,11 +1,15 @@
 import type { Context } from "hono";
-import { type InstanceIdentity, type LocalStatus as LocalStatusValue } from "@tstodon/domain";
+import {
+  type InstanceIdentity,
+  type LocalStatus as LocalStatusValue,
+  type ThreadStatus,
+} from "@tstodon/domain";
 import { authenticate } from "../../auth";
 import { statusDocumentsByIds } from "../../status-documents";
 import {
+  findThreadParent,
   listThreadAncestors,
   listThreadDescendants,
-  type ThreadStatus,
   visibleThreadStatuses,
 } from "../../thread-context";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../../http";
@@ -189,7 +193,11 @@ export const getV1StatusesByIdContext = async (
     await requestRemoteThreadBackfill(c.env, start.status);
   }
   const limits = viewerId ? ContextLimits.authenticated : ContextLimits.anonymous;
-  const ancestors = await listThreadAncestors(c.env.DB, identity.value, start, limits.depth);
+  const ancestors = await listThreadAncestors(
+    (status) => findThreadParent(c.env.DB, identity.value, status),
+    start,
+    limits.depth,
+  );
   if (ancestors.isErr()) {
     return jsonRepositoryError(c, ancestors.error.message);
   }

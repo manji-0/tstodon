@@ -1,9 +1,9 @@
-import { StatusComposition, StatusId, Visibility } from "@tstodon/domain";
+import { StatusComposition, StatusId, type ThreadStatus, Visibility } from "@tstodon/domain";
 import { nowIso } from "./clock";
 import { findAccountById } from "./account-store";
 import { getAccountModeration } from "./account-moderation-store";
 import { disabledAccountIds } from "./account-flag-store";
-import { findReplyTarget, type ReplyTarget } from "./reply-target";
+import { findReplyTarget } from "./reply-target";
 import { publishLocalNote } from "./local-status-publish";
 import { parseInstanceIdentity } from "./runtime-config";
 import {
@@ -69,7 +69,7 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void
     await deleteScheduledStatus(env.DB, row.accountId, row.id);
     return;
   }
-  let replyTo: ReplyTarget | null = null;
+  let replyTo: ThreadStatus | null = null;
   if (inReplyToId !== null) {
     const parent = await findReplyTarget(env.DB, inReplyToId.value, account.value.id);
     if (parent.isErr() || !parent.value) {

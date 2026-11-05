@@ -1,5 +1,5 @@
 import { InstanceLimits, characterCount } from "@tstodon/core";
-import type { LocalAccount, LocalNote, ValidatedStatusDraft } from "@tstodon/domain";
+import type { LocalAccount, LocalNote, ThreadStatus, ValidatedStatusDraft } from "@tstodon/domain";
 import { InstanceIdentity, LocalStatus, StatusId } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountsByUsernames } from "./account-store";
@@ -11,7 +11,7 @@ import { newEntityId } from "./ids";
 import { findMediaById, parseMediaFocus, updateMediaMetadata } from "./media-store";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "./mention-store";
 import { loadNoteMentions, resolveRemoteMentions } from "./mention-resolve";
-import { loadNoteReply, type ReplyTarget } from "./reply-target";
+import { loadNoteReply } from "./reply-target";
 import { noteDocument } from "./activitypub";
 import { notifyAccount } from "./notify";
 import { insertPoll, loadNotePoll } from "./poll-store";
@@ -39,7 +39,7 @@ export type PublishPoll = Readonly<{
 export type PublishNoteInput = Readonly<{
   draft: ValidatedStatusDraft;
   /** The status answered, local or cached remote. */
-  replyTo: ReplyTarget | null;
+  replyTo: ThreadStatus | null;
   mediaAttributes: ReadonlyArray<MediaAttribute>;
   poll: PublishPoll | null;
   /** The quoted status, with its URI and the `quote-inline` paragraph. */

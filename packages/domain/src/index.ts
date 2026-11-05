@@ -120,6 +120,7 @@ export {
   type ValidatedStatusDraft,
 } from "./status-composition";
 export { StatusDraftError } from "./status-draft-error";
+export type { FindThreadParent, ThreadStatus } from "./thread-status";
 export { StatusId, type StatusId as StatusIdValue } from "./status-id";
 export { StatusTarget, type StatusTarget as StatusTargetValue } from "./status-target";
 export {
