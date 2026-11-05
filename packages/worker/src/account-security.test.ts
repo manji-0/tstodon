@@ -330,6 +330,26 @@ describe("Password and security: browser sessions", () => {
     expect((await victim.fetcher("/auth/edit")).status).toBe(200);
   });
 
+  it("keeps Better Auth's own revoke endpoints from ending other sessions", async () => {
+    const { fetcher, passkey } = await signUp("sec_builtin_revoke");
+    const other = await signInAgain(passkey);
+    await ageSessions("sec_builtin_revoke");
+    const tokens = await env.DB.prepare(`SELECT "token" FROM "session" WHERE "userId" = ? ORDER BY "createdAt"`)
+      .bind(await userIdOf("sec_builtin_revoke"))
+      .all();
+    const otherToken = read(z.array(z.object({ token: z.string() })), tokens.results)[1]?.token;
+
+    for (const [path, body] of [
+      ["/api/auth/revoke-session", { token: otherToken }],
+      ["/api/auth/revoke-sessions", {}],
+      ["/api/auth/revoke-other-sessions", {}],
+    ] as const) {
+      expect((await postJson(fetcher, path, body)).status, path).toBe(403);
+    }
+    expect(await sessionsOf("sec_builtin_revoke")).toHaveLength(2);
+    expect((await other("/auth/edit")).status).toBe(200);
+  });
+
   it("refuses to end a session when the sign-in is stale", async () => {
     const { fetcher, passkey } = await signUp("sec_session_stale");
     await signInAgain(passkey);
