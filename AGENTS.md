@@ -31,7 +31,7 @@ A use case that reads or writes storage takes each operation as a function-typed
 - Compose nested `z.discriminatedUnion` instead of optional fields.
 - Look up a variant with `z.getDiscriminatedOption(union, kind)`.
 - Companion objects own `schema` and `parse`.
-- Parse unknown input with `schemaResult`; do not use `as` except `as const` and `as const satisfies Type` (`pnpm lint` fails on any other). `queryTyped` takes the row schema; JSON columns go through `parseJsonColumn` / `parseJsonText` in `src/json-column.ts`.
+- Parse unknown input with `schemaResult`; do not use `as` except `as const` and `as const satisfies Type` (`pnpm lint` fails on any other). `queryTyped` takes the row schema; JSON columns go through `parseJsonColumn` / `parseJsonText` in `src/json-column.ts`. A raw D1 call parses its rows the same way (`parseRows` from `src/d1.ts`): a type argument on `.all` / `.first` / `.raw` is an unchecked cast, and `scripts/check-d1-type-arguments.mjs` (run by `pnpm lint`, `pnpm check` and CI) fails on one outside tests.
 
 ## Development Commands
 
