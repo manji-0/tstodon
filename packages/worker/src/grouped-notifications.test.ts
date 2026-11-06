@@ -547,3 +547,73 @@ describe("a notification group by key", () => {
     expect(unknown.status).toBe(404);
   });
 });
+
+const groupsAt = async (
+  email: string,
+  path: string,
+): Promise<{ groups: z.infer<typeof EnvelopeSchema>["notification_groups"]; prev?: URL }> => {
+  const response = await SELF.fetch(`https://example.com${path}`, { headers: await auth(email) });
+  expect(response.status).toBe(200);
+  return {
+    groups: read(EnvelopeSchema, await response.json()).notification_groups,
+    prev: parseLinks(response.headers.get("link")).prev,
+  };
+};
+
+describe("grouped notification pages over long runs", () => {
+  it("reaches an older group past a long run of one group by following page_max_id", async () => {
+    const authorEmail = "group-run-author@example.com";
+    const older = await postStatus(authorEmail, { status: "run older" });
+    const p = await postStatus(authorEmail, { status: "run p" });
+    await favourite("group-run-fan@example.com", older);
+    await favouriteFrom(authorEmail, "group_run_fan", 20, p, "92");
+
+    const reached: Array<string | undefined> = [];
+    let path = "/api/v2/notifications?limit=2";
+    for (let request = 0; request < 2 && !reached.includes(older); request += 1) {
+      const { groups } = await groupsAt(authorEmail, path);
+      reached.push(...groups.map((group) => group.status_id));
+      path = `/api/v2/notifications?limit=2&max_id=${groups.at(-1)?.page_max_id ?? ""}`;
+    }
+    expect(reached).toContain(older);
+  });
+
+  it("pages up past more than one window of unavailable senders", async () => {
+    const authorEmail = "group-up-author@example.com";
+    const marker = await postStatus(authorEmail, { status: "up marker" });
+    const hidden = await postStatus(authorEmail, { status: "up hidden" });
+    const shown = await postStatus(authorEmail, { status: "up shown" });
+    await favourite("group-up-fan@example.com", marker);
+    const [minId] = await notificationIds(authorEmail, "");
+    const senders = await favouriteFrom(authorEmail, "group_up_gone", 10, hidden, "93");
+    await env.DB.batch(
+      senders.map((sender) =>
+        env.DB.prepare(
+          "INSERT INTO account_moderation (account_id, moderation) VALUES (?, 'Suspended')",
+        ).bind(sender),
+      ),
+    );
+    await favouriteFrom(authorEmail, "group_up_kept", 1, shown, "94");
+
+    const reached: Array<string | undefined> = [];
+    let path: string | undefined = `/api/v2/notifications?limit=1&min_id=${minId ?? ""}`;
+    for (let request = 0; path && request < 3 && !reached.includes(shown); request += 1) {
+      const page = await groupsAt(authorEmail, path);
+      reached.push(...page.groups.map((group) => group.status_id));
+      path = page.prev ? `${page.prev.pathname}${page.prev.search}` : undefined;
+    }
+    expect(reached).toContain(shown);
+    expect(reached).not.toContain(hidden);
+  });
+
+  it("counts a group larger than one page the same in the list and by key", async () => {
+    const authorEmail = "group-big-author@example.com";
+    const p = await postStatus(authorEmail, { status: "big p" });
+    await favouriteFrom(authorEmail, "group_big_fan", 12, p, "95");
+
+    const { groups } = await groupsAt(authorEmail, "/api/v2/notifications?limit=1");
+    const single = await groupsAt(authorEmail, `/api/v2/notifications/favourite-${p}`);
+    expect(groups.map((group) => group.notifications_count)).toEqual([12]);
+    expect(single.groups.map((group) => group.notifications_count)).toEqual([12]);
+  });
+});
