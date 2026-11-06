@@ -77,5 +77,9 @@ export const noteQuote = async (
   const ref = await statusTargetRef(env, identity, quoted);
   return ref === undefined
     ? undefined
-    : { uri: ref.uri, authorization: approvalUri(state, quoted, ref, id) };
+    : {
+        uri: ref.uri,
+        authorization: approvalUri(state, quoted, ref, id),
+        addressAuthor: quoted.kind === "RemoteStatus" ? ref.authorUri : undefined,
+      };
 };

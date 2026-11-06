@@ -197,6 +197,33 @@ export const findQuoteById = async (
     return parseRows(QuoteDbRow, results).flatMap(toQuote)[0];
   });
 
+const findQuoteWhere = async (
+  db: D1Database,
+  column: "activity_uri" | "approval_uri",
+  value: string,
+): Promise<Result<QuoteValue | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(`SELECT ${SELECT} FROM status_quotes WHERE ${column} = ? LIMIT 1`)
+      .bind(value)
+      .all();
+    return parseRows(QuoteDbRow, results).flatMap(toQuote)[0];
+  });
+
+/** The quote a `QuoteRequest` asked for, by the request's id. */
+export const findQuoteByActivityUri = (
+  db: D1Database,
+  uri: string,
+): Promise<Result<QuoteValue | undefined, RepositoryError>> =>
+  findQuoteWhere(db, "activity_uri", uri);
+
+/** The quote a remote quoted author's stamp approved, by the stamp's URI. */
+export const findQuoteByApprovalUri = (
+  db: D1Database,
+  uri: string,
+): Promise<Result<QuoteValue | undefined, RepositoryError>> =>
+  findQuoteWhere(db, "approval_uri", uri);
+
 /** How many accepted quotes each of these statuses has, keyed by status id. */
 export const quoteCountsByQuoted = async (
   db: D1Database,

@@ -4,7 +4,8 @@ import {
   type LocalNote,
   type LocalReblog,
 } from "@tstodon/domain";
-import type { z } from "zod";
+import { schemaResult } from "@tstodon/core";
+import { z } from "zod";
 import type { ActivityJsonSchema } from "./activitypub-wire";
 import type { PollRecord } from "./poll-store";
 import type { QuotePolicy } from "./quote-store";
@@ -240,10 +241,16 @@ const questionFields = (poll: PollRecord): Record<string, unknown> => {
 };
 
 /**
- * The status a note quotes, as its `quote` property names it, and the quoted
- * author's stamp once the quote is accepted (`quoteAuthorization`).
+ * The status a note quotes, as its `quote` property names it, the quoted
+ * author's stamp once the quote is accepted (`quoteAuthorization`), and a
+ * remote quoted author to address, as Mastodon's silent mention
+ * (`Quote#ensure_quoted_access`).
  */
-export type NoteQuote = Readonly<{ uri: string; authorization: string | undefined }>;
+export type NoteQuote = Readonly<{
+  uri: string;
+  authorization: string | undefined;
+  addressAuthor: string | undefined;
+}>;
 
 export const noteDocument = (
   identity: InstanceIdentity,
@@ -271,6 +278,7 @@ export const noteDocument = (
     ...new Set([
       ...mentions.map((mention) => mention.href),
       ...(reply?.addressAuthor ? [reply.addressAuthor] : []),
+      ...(quote?.addressAuthor ? [quote.addressAuthor] : []),
     ]),
   ];
   // Mastodon's addressing: mentioned accounts are `cc`, except that a direct
@@ -350,5 +358,34 @@ export const noteDocument = (
     })),
     tag: mentions.map((mention) => ({ type: "Mention", href: mention.href, name: mention.name })),
     interactionPolicy: { canQuote: { automaticApproval } },
+  };
+};
+
+/**
+ * The `QuoteRequest` a local author sends the remote quoted author, as
+ * Mastodon's `QuoteRequestSerializer` with `allow_post_inlining`: the quoting
+ * note rides along inline as `instrument`, so the quoted server need not fetch it.
+ */
+export const quoteRequestActivity = (
+  id: string,
+  actor: string,
+  quotedUri: string,
+  note: Readonly<Record<string, unknown>>,
+): Record<string, unknown> => {
+  const { "@context": noteContext, ...instrument } = note;
+  const noteTerms = schemaResult(z.array(z.unknown()))(noteContext)
+    .unwrapOr([])
+    .filter((entry) => entry !== "https://www.w3.org/ns/activitystreams");
+  return {
+    "@context": [
+      "https://www.w3.org/ns/activitystreams",
+      { QuoteRequest: "https://w3id.org/fep/044f#QuoteRequest" },
+      ...noteTerms,
+    ],
+    id,
+    type: "QuoteRequest",
+    actor,
+    object: quotedUri,
+    instrument,
   };
 };

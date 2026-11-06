@@ -88,7 +88,7 @@ export const attachRemoteReplyRefs = async (
  * How the viewer and each author follow each other, keyed by actor URI; empty
  * for no viewer. A failed read counts as no follow, so it only withholds quoting.
  */
-const quoteViewerRelations = async (
+export const quoteViewerRelations = async (
   db: D1Database,
   viewerId: string | undefined,
   actorUris: ReadonlyArray<string>,

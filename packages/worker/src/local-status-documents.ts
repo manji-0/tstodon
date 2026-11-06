@@ -5,6 +5,7 @@ import {
   LocalStatus,
   type QuoteState,
   StatusTarget,
+  type StatusTargetValue,
   Visibility,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
@@ -383,6 +384,59 @@ export const mastodonStatuses = async (
     ];
   }
 
+  // Boosts wrap the boosted status as the viewer sees it, a suspended author's
+  // too; a quote shows a remote status only while its author is available.
+  const boosted = boostedStatusAuthors(authors);
+  const boostedRemoteIds = allStatuses.flatMap((status) =>
+    status.kind === "LocalReblog" && status.target.kind === "RemoteStatus"
+      ? [status.target.statusId]
+      : [],
+  );
+  const quotedRemoteIds = [...quotes.values()].flatMap(({ quoted }) =>
+    quoted.kind === "RemoteStatus" ? [quoted.statusId] : [],
+  );
+  const remoteTargets = await findRemoteStatusesByIds(env.DB, [
+    ...new Set([...boostedRemoteIds, ...quotedRemoteIds]),
+  ]);
+  if (remoteTargets.isErr()) {
+    return err(remoteTargets.error);
+  }
+  const remotesOf = (ids: ReadonlyArray<string>) =>
+    ids.flatMap((id) => {
+      const status = remoteTargets.value.get(id);
+      return status ? [status] : [];
+    });
+  const [remoteRendered, quotedRemoteRendered] = await Promise.all([
+    mastodonRemoteStatuses(env, identity, remotesOf(boostedRemoteIds), viewerId, boosted),
+    mastodonRemoteStatuses(env, identity, remotesOf(quotedRemoteIds), viewerId),
+  ]);
+  if (remoteRendered.isErr()) {
+    return err(remoteRendered.error);
+  }
+  if (quotedRemoteRendered.isErr()) {
+    return err(quotedRemoteRendered.error);
+  }
+  const remoteDocs = documentsById(remoteRendered.value);
+  const quotedRemoteDocs = documentsById(quotedRemoteRendered.value);
+  /** The quoted status as rendered, `Unauthorized` when its author is not shown, `undefined` when gone. */
+  const quotedDocument = (
+    quoted: StatusTargetValue,
+  ): Record<string, unknown> | "Unauthorized" | undefined => {
+    if (quoted.kind === "RemoteStatus") {
+      return (
+        quotedRemoteDocs.get(quoted.statusId) ??
+        (remoteTargets.value.has(quoted.statusId) ? "Unauthorized" : undefined)
+      );
+    }
+    const target = noteDocs.get(quoted.statusId);
+    const local = byId.get(quoted.statusId);
+    const author = local && authorOf(local);
+    if (!target || !author) {
+      return undefined;
+    }
+    return StatusAuthors.available(author.presentation) ? target : "Unauthorized";
+  };
+
   for (const status of allStatuses) {
     if (status.kind !== "LocalNote") {
       continue;
@@ -394,20 +448,19 @@ export const mastodonStatuses = async (
     }
     const quote = quotes.get(status.id);
     if (quote) {
-      const target = noteDocs.get(quote.quoted.statusId);
-      const quoted = byId.get(quote.quoted.statusId);
-      const quotedAuthor = quoted && authorOf(quoted);
+      // Mastodon's `BaseQuoteSerializer`: only an accepted quote shows its status.
+      const target = quote.state.kind === "Accepted" ? quotedDocument(quote.quoted) : undefined;
       const state =
         quote.state.kind !== "Accepted"
           ? QUOTE_STATE_NAMES[quote.state.kind]
-          : !target || !quotedAuthor
+          : target === undefined
             ? "deleted"
-            : StatusAuthors.available(quotedAuthor.presentation)
-              ? "accepted"
-              : "unauthorized";
+            : target === "Unauthorized"
+              ? "unauthorized"
+              : "accepted";
       document.quote = {
         state,
-        quoted_status: state === "accepted" ? (target ?? null) : null,
+        quoted_status: typeof target === "object" ? target : null,
       };
     }
     document.quotes_count = quoteCounts.get(status.id) ?? 0;
@@ -425,30 +478,6 @@ export const mastodonStatuses = async (
             : "denied",
     };
   }
-
-  // Boosts wrap the boosted status as the viewer sees it, a suspended author's too.
-  const boosted = boostedStatusAuthors(authors);
-  const remoteTargets = await findRemoteStatusesByIds(
-    env.DB,
-    allStatuses.flatMap((status) =>
-      status.kind === "LocalReblog" && status.target.kind === "RemoteStatus"
-        ? [status.target.statusId]
-        : [],
-    ),
-  );
-  const remoteRendered = remoteTargets.isOk()
-    ? await mastodonRemoteStatuses(
-        env,
-        identity,
-        [...remoteTargets.value.values()],
-        viewerId,
-        boosted,
-      )
-    : ok([]);
-  if (remoteRendered.isErr()) {
-    return err(remoteRendered.error);
-  }
-  const remoteDocs = documentsById(remoteRendered.value);
 
   const render = (
     status: LocalStatus,

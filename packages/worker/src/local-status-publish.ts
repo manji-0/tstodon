@@ -2,6 +2,7 @@ import { InstanceLimits } from "@tstodon/core";
 import type {
   LocalAccount,
   LocalNote,
+  RemoteActor,
   StatusTargetValue,
   ThreadStatus,
   ValidatedStatusDraft,
@@ -11,7 +12,7 @@ import { err, ok, type Result } from "neverthrow";
 import { findAccountsByUsernames } from "./account-store";
 import { nowInstant } from "./clock";
 import type { RepositoryError } from "./d1";
-import { enqueueLocalActivity } from "./delivery";
+import { enqueueLocalActivity, enqueueTargetedActivity } from "./delivery";
 import { mentionUsernames, textToHtml } from "./html";
 import { newEntityId } from "./ids";
 import { findMediaById, parseMediaFocus, updateMediaMetadata } from "./media-store";
@@ -19,7 +20,7 @@ import { replaceStatusMentions, replaceStatusRemoteMentions } from "./mention-st
 import { loadNoteMentions, resolveRemoteMentions } from "./mention-resolve";
 import { loadNoteMedia } from "./note-attachments";
 import { loadNoteReply } from "./reply-target";
-import { noteDocument } from "./activitypub";
+import { noteDocument, quoteRequestActivity } from "./activitypub";
 import { mentionedPost, notifyAccount } from "./notify";
 import { insertPoll, loadNotePoll } from "./poll-store";
 import { enqueueLinkCard } from "./link-card";
@@ -45,16 +46,24 @@ export type PublishPoll = Readonly<{
   hideTotals: boolean;
 }>;
 
+/**
+ * Who wrote a quoted status: a local account, whose acceptance is implicit, or
+ * a remote actor, who is asked with a `QuoteRequest`.
+ */
+export type QuotedAuthor =
+  | Readonly<{ kind: "Local"; accountId: string }>
+  | Readonly<{ kind: "Remote"; actor: RemoteActor }>;
+
 export type PublishNoteInput = Readonly<{
   draft: ValidatedStatusDraft;
   /** The status answered, local or cached remote. */
   replyTo: ThreadStatus | null;
   mediaAttributes: ReadonlyArray<MediaAttribute>;
   poll: PublishPoll | null;
-  /** The quoted status and the `quote-inline` paragraph. */
+  /** The quoted status, its author, and the `quote-inline` paragraph. */
   quote: Readonly<{
     quoted: StatusTargetValue;
-    quotedAccountId: string;
+    quotedAuthor: QuotedAuthor;
     inlineHtml: string;
   }> | null;
   /** Who may quote the new status; `null` keeps the account default. */
@@ -145,28 +154,39 @@ export const publishLocalNote = async (
       return err(linked.error);
     }
   }
+  const actor = InstanceIdentity.actorUrl(identity, user.username);
+  // A local quoted author's acceptance is implicit; a remote one is asked, by
+  // a `QuoteRequest` whose id the quote keeps to match the answer.
+  const quoteId = newEntityId();
+  const quotedAuthor = input.quote?.quotedAuthor;
   if (input.quote) {
     const quote = await insertStatusQuote(env.DB, {
-      id: newEntityId(),
+      id: quoteId,
       quoting: StatusTarget.local(note.id),
       quoted: input.quote.quoted,
-      state: { kind: "Accepted", approval: { kind: "Implicit" } },
-      activityUri: undefined,
+      state:
+        input.quote.quotedAuthor.kind === "Local"
+          ? { kind: "Accepted", approval: { kind: "Implicit" } }
+          : { kind: "Pending" },
+      activityUri:
+        input.quote.quotedAuthor.kind === "Local"
+          ? undefined
+          : `${actor}/quote_requests/${quoteId}`,
       createdAt: nowInstant(),
     });
     if (quote.isErr()) {
       return err(quote.error);
     }
-    if (input.quote.quotedAccountId !== user.id) {
-      const notified = await notifyAccount(env, {
-        accountId: input.quote.quotedAccountId,
-        fromAccountId: user.id,
-        kind: "quote",
-        statusId: note.id,
-      });
-      if (notified.isErr()) {
-        return err(notified.error);
-      }
+  }
+  if (quotedAuthor?.kind === "Local" && quotedAuthor.accountId !== user.id) {
+    const notified = await notifyAccount(env, {
+      accountId: quotedAuthor.accountId,
+      fromAccountId: user.id,
+      kind: "quote",
+      statusId: note.id,
+    });
+    if (notified.isErr()) {
+      return err(notified.error);
     }
   }
   // The policy is frozen with the status, so a later account default change
@@ -259,32 +279,40 @@ export const publishLocalNote = async (
       statusId: note.id,
     });
   }
-  const actor = InstanceIdentity.actorUrl(identity, user.username);
-  // A direct note goes only to the remote accounts it mentions; with none,
-  // nothing leaves the instance.
-  const federates = !(note.visibility.kind === "Direct" && remoteMentions.length === 0);
+  // A direct note goes only to the remote accounts it mentions or quotes; with
+  // none, nothing leaves the instance.
+  const federates = !(
+    note.visibility.kind === "Direct" &&
+    remoteMentions.length === 0 &&
+    quotedAuthor?.kind !== "Remote"
+  );
   // The note and its media are already stored, so a media read failure keeps
   // the post local rather than federate it without its media or fail it half done.
   const media = federates ? await loadNoteMedia(env.DB, identity, note) : undefined;
   if (media?.isErr()) {
     console.error(JSON.stringify({ kind: "StatusNotFederated", statusId: note.id }));
   }
-  const enqueued =
+  const quote = input.quote ? await noteQuote(env, identity, note.id) : undefined;
+  const object =
     media === undefined || media.isErr()
+      ? undefined
+      : noteDocument(identity, user, note, {
+          quote,
+          mentions: await loadNoteMentions(env.DB, identity, note.id),
+          reply: await loadNoteReply(env.DB, identity, note),
+          poll: await loadNotePoll(env.DB, note.id),
+          media: media.value,
+          quotePolicy: await loadNoteQuotePolicy(env.DB, user, note),
+        });
+  const enqueued =
+    object === undefined
       ? ok(undefined)
       : await enqueueLocalActivity(env, user.id, "Create", {
           "@context": "https://www.w3.org/ns/activitystreams",
           id: `${actor}/statuses/${note.id}/activity`,
           type: "Create",
           actor,
-          object: noteDocument(identity, user, note, {
-            quote: input.quote ? await noteQuote(env, identity, note.id) : undefined,
-            mentions: await loadNoteMentions(env.DB, identity, note.id),
-            reply: await loadNoteReply(env.DB, identity, note),
-            poll: await loadNotePoll(env.DB, note.id),
-            media: media.value,
-            quotePolicy: await loadNoteQuotePolicy(env.DB, user, note),
-          }),
+          object,
         });
   if (enqueued.isErr()) {
     return err(
@@ -298,6 +326,19 @@ export const publishLocalNote = async (
                 : "invalid activity id",
           },
     );
+  }
+  // Mastodon's `QuoteRequestWorker` retries; this is sent once.
+  if (object !== undefined && quote !== undefined && quotedAuthor?.kind === "Remote") {
+    const requested = await enqueueTargetedActivity(
+      env,
+      user.id,
+      "QuoteRequest",
+      quoteRequestActivity(`${actor}/quote_requests/${quoteId}`, actor, quote.uri, object),
+      quotedAuthor.actor.inboxUri,
+    );
+    if (requested.isErr()) {
+      console.error(JSON.stringify({ kind: "QuoteRequestNotSent", statusId: note.id }));
+    }
   }
   // A render that fails sends no event; the caller renders the note again and reports it.
   const document = await mastodonStatus(env, identity, note, user.id);

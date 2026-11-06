@@ -6,11 +6,11 @@ import { receiveRemoteFlag } from "../remote-flag";
 import { applyRemoteMove } from "../remote-move";
 import { applyRemoteUpdate } from "../remote-update";
 import { receiveLocalAnnounce, receiveRemoteAnnounce } from "./announce";
+import { receiveAnswer } from "./answer";
 import { receiveRemoteBlock } from "./block";
 import { receiveRemoteCreate } from "./create";
 import { receiveRemoteDelete } from "./delete";
 import { receiveLocalFollow, receiveRemoteFollow } from "./follow";
-import { receiveFollowAnswer } from "./follow-answer";
 import type { InboxReceipt, InboxSigner } from "./handler";
 import { receiveLocalLike, receiveRemoteLike } from "./like";
 import { receiveLocalUndo, receiveRemoteUndo } from "./undo";
@@ -36,7 +36,7 @@ const dispatchRemote = async (receipt: InboxReceipt, signer: RemoteActor): Dispa
       return receiveRemoteUndo({ ...delivery, activity });
     case "Accept":
     case "Reject":
-      return receiveFollowAnswer({ ...delivery, activity });
+      return receiveAnswer({ ...delivery, activity });
     case "Block":
       return receiveRemoteBlock({ ...delivery, activity });
     case "Move":

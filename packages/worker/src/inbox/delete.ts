@@ -6,6 +6,7 @@ import { purgeRemoteActorAndAnnounce } from "../remote-actor-purge";
 import { RemoteDeleteTarget } from "../remote-delete";
 import { removeRemoteStatus } from "../remote-status-delete";
 import type { ActivityOf, InboxHandler, RemoteDelivery } from "./handler";
+import { revokeQuoteStamp } from "./quote-answer";
 
 /** What a remote actor's `Delete` removes on this server. */
 type RemoteDeleteEffect =
@@ -43,12 +44,21 @@ export const receiveRemoteDelete: InboxHandler<RemoteDelivery<"Delete">> = async
       const purged = await purgeRemoteActorAndAnnounce(env, effect.actorUri);
       return purged.isErr() ? err(purged.error) : ok(undefined);
     }
-    case "RemoveRemoteStatus":
+    case "RemoveRemoteStatus": {
+      // A status URI never names a stamp, so a stamp found by it is what goes.
+      const revoked = await revokeQuoteStamp(env, identity, signer, effect.objectUri);
+      if (revoked.isErr()) {
+        return err(revoked.error);
+      }
+      if (revoked.value) {
+        return ok(undefined);
+      }
       await removeRemoteStatus(env, signer.actorUri, {
         kind: "ObjectUri",
         objectUri: effect.objectUri,
       });
       return ok(undefined);
+    }
     case "Ignore":
       return ok(undefined);
     default:
