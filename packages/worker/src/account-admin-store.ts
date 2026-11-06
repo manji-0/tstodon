@@ -2,11 +2,12 @@ import { z } from "zod";
 import { type LocalAccount } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
-import { okValues, type RepositoryError, runD1 } from "./d1";
+import { okValues, parseRows, type RepositoryError, runD1 } from "./d1";
 import { queryTyped } from "./typed-sql";
 import { listAdminAccountIds as listAdminAccountIdsSql } from "./generated/prisma/sql";
 import { accountFromRow, parseAccountRow, STATUS_SQL } from "./account-store";
 
+const ActorUriRow = z.object({ actor_uri: z.string() });
 const IdRow = z.object({ id: z.string().nullable() });
 
 /**
@@ -148,6 +149,6 @@ export const listAdminRemoteActorUris = async (
          ORDER BY a.username, a.domain, a.actor_uri LIMIT ? OFFSET ?`,
       )
       .bind(...binds, filters.limit, filters.offset)
-      .all<{ actor_uri: string }>();
-    return (results ?? []).map((row) => row.actor_uri);
+      .all();
+    return parseRows(ActorUriRow, results).map((row) => row.actor_uri);
   });

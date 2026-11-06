@@ -48,6 +48,7 @@ import {
 const NullableIdRow = z.object({ id: z.string().nullable() });
 const IdInReplyToUriRow = z.object({ id: z.string(), in_reply_to_uri: z.string() });
 const IdRow = z.object({ id: z.string() });
+const MediaRow = z.object({ status_id: z.string(), id: z.string() });
 const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
 
 export const StatusRowSchema = z.object({
@@ -425,10 +426,10 @@ export const hydrateStatusRows = async (
       `SELECT status_id, id FROM media_attachments WHERE status_id ${sqlInJsonEach()} ORDER BY position`,
     )
     .bind(jsonStringArray(statusRows.map((row) => row.id)))
-    .all<{ status_id: string; id: string }>();
+    .all();
   const mediaByStatus = Map.groupBy(
     okValues(
-      (results ?? []).map((media) =>
+      parseRows(MediaRow, results).map((media) =>
         MediaId.parse(media.id).map((id) => ({ statusId: media.status_id, id })),
       ),
     ),

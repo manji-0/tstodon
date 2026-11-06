@@ -1,8 +1,14 @@
 import { type QuoteApprovalPolicy, type Visibility } from "@tstodon/domain";
 import type { Result } from "neverthrow";
+import { z } from "zod";
 import { nowIso } from "./clock";
-import { type RepositoryError, runD1 } from "./d1";
+import { parseRows, type RepositoryError, runD1 } from "./d1";
 import { quotePolicySql, visibilitySql } from "./sql-enums";
+
+const ComposeDefaultsRow = z.object({
+  default_language: z.string().nullable(),
+  default_sensitive: z.number(),
+});
 
 /** The posting defaults a new status inherits when it omits them. */
 export type ComposeDefaults = Readonly<{
@@ -15,10 +21,11 @@ export const findComposeDefaults = async (
   accountId: string,
 ): Promise<Result<ComposeDefaults, RepositoryError>> =>
   runD1(async () => {
-    const row = await db
+    const found = await db
       .prepare("SELECT default_language, default_sensitive FROM accounts WHERE id = ? LIMIT 1")
       .bind(accountId)
-      .first<{ default_language: string | null; default_sensitive: number }>();
+      .first();
+    const row = parseRows(ComposeDefaultsRow, [found])[0];
     return {
       language:
         row?.default_language !== null &&

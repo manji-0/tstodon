@@ -1,6 +1,7 @@
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import type { Result } from "neverthrow";
-import { type RepositoryError, runD1 } from "./d1";
+import { z } from "zod";
+import { parseRows, type RepositoryError, runD1 } from "./d1";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import { hashtagUses } from "./hashtags";
 import { hydrateStatusRows, statusSelect } from "./status-store";
@@ -122,6 +123,10 @@ export const listLinkStatuses = async (
     return hydrateStatusRows(db, results ?? []);
   });
 
+const ContentTextRow = z.object({ content_text: z.string() });
+const StatusWeekRow = z.object({ week: z.string(), statuses: z.number() });
+const RegistrationWeekRow = z.object({ week: z.string(), registrations: z.number() });
+
 export const listTrendingTags = async (
   db: D1Database,
   limit: number,
@@ -136,8 +141,8 @@ export const listTrendingTags = async (
          ORDER BY id DESC LIMIT 500`,
       )
       .bind(since)
-      .all<{ content_text: string }>();
-    const counts = hashtagUses((results ?? []).map((row) => row.content_text));
+      .all();
+    const counts = hashtagUses(parseRows(ContentTextRow, results).map((row) => row.content_text));
     const offset = options.offset ?? 0;
     return [...counts.entries()]
       .filter(([name]) => !options.excluded?.has(name))
@@ -187,7 +192,7 @@ export const listWeeklyStatusActivity = async (
          LIMIT ?`,
       )
       .bind(`-${weeks * 7} days`, weeks)
-      .all<{ week: string; statuses: number }>();
+      .all();
     const { results: registrationRows } = await db
       .prepare(
         `SELECT strftime('%s', date(created_at, '-6 days', 'weekday 1')) AS week, COUNT(*) AS registrations
@@ -196,11 +201,14 @@ export const listWeeklyStatusActivity = async (
          GROUP BY week`,
       )
       .bind(`-${weeks * 7} days`)
-      .all<{ week: string; registrations: number }>();
+      .all();
     const registrations = new Map(
-      (registrationRows ?? []).map((row) => [row.week, Number(row.registrations)]),
+      parseRows(RegistrationWeekRow, registrationRows).map((row) => [
+        row.week,
+        Number(row.registrations),
+      ]),
     );
-    return (statusRows ?? []).map((row) => ({
+    return parseRows(StatusWeekRow, statusRows).map((row) => ({
       week: row.week,
       statuses: Number(row.statuses),
       registrations: registrations.get(row.week) ?? 0,

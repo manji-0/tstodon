@@ -40,7 +40,8 @@ export const PollOptionSchema = z.object({
 
 export const PollOptionsSchema = z.array(PollOptionSchema);
 
-export const PollRowSchema = z.object({
+export const ViewerVoteRow = z.object({ poll_id: z.string(), option_index: z.number() });
+const PollRowSchema = z.object({
   id: z.string().min(1),
   status_id: z.string().min(1),
   multiple: z.number(),
@@ -251,9 +252,9 @@ export const findPollsByStatusIds = async (
              WHERE account_id = ? AND poll_id ${sqlInJsonEach()}`,
             )
             .bind(viewerId, jsonStringArray(rows.map((row) => row.id)))
-            .all<{ poll_id: string; option_index: number }>(),
+            .all(),
         )
-      ).map(({ results }) => results ?? [])
+      ).map(({ results }) => parseRows(ViewerVoteRow, results))
     : ok([]);
   if (viewerVotes.isErr()) {
     return err(viewerVotes.error);

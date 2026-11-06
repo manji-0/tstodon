@@ -2,7 +2,7 @@ import { z } from "zod";
 import { InstanceLimits } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
-import { runD1, runD1Batch, type RepositoryError } from "./d1";
+import { parseRows, runD1, runD1Batch, type RepositoryError } from "./d1";
 import {
   countAccountTagUses as countAccountTagUsesSql,
   countFeaturedTags as countFeaturedTagsSql,
@@ -39,6 +39,12 @@ export const normalizeTag = (raw: string): string => raw.trim().replace(/^#+/, "
 
 export const isValidTag = (tag: string): boolean => /^[a-z0-9_]+$/.test(tag);
 
+const ContentTextRow = z.object({ content_text: z.string() });
+const StatusUseRow = z.object({
+  content_text: z.string(),
+  created_at: z.string(),
+  account_id: z.string(),
+});
 const NameRow = z.object({ name: z.string() });
 
 /**
@@ -202,11 +208,11 @@ export const tagDailyHistories = async (
          ORDER BY id DESC LIMIT 1000`,
       )
       .bind(since)
-      .all<{ content_text: string; created_at: string; account_id: string }>();
+      .all();
     // Keyed by tag, then by UTC day (epoch seconds).
     const uses = new Map<string, Map<string, number>>();
     const accounts = new Map<string, Map<string, Set<string>>>();
-    for (const row of results ?? []) {
+    for (const row of parseRows(StatusUseRow, results)) {
       const day = Math.floor(Date.parse(row.created_at) / 1000 / SECONDS_PER_DAY) * SECONDS_PER_DAY;
       if (!Number.isFinite(day)) {
         continue;
@@ -268,8 +274,8 @@ export const featuredTagSuggestions = async (
          ORDER BY id DESC LIMIT 200`,
       )
       .bind(accountId)
-      .all<{ content_text: string }>();
-    const counts = hashtagUses((results ?? []).map((row) => row.content_text));
+      .all();
+    const counts = hashtagUses(parseRows(ContentTextRow, results).map((row) => row.content_text));
     return [...counts.entries()]
       .toSorted((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
       .map(([tag]) => tag);

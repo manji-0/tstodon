@@ -1,6 +1,7 @@
 import type { Result } from "neverthrow";
+import { z } from "zod";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { parseRows, runD1, type RepositoryError } from "./d1";
 import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { newEntityId } from "./ids";
 
@@ -12,7 +13,12 @@ export type DomainAllowRow = Readonly<{
 
 const SELECT = "id, domain, created_at";
 
-const toRow = (row: { id: string; domain: string; created_at: string }): DomainAllowRow => ({
+const DomainAllowDbRow = z.object({ id: z.string(), domain: z.string(), created_at: z.string() });
+
+const IdRow = z.object({ id: z.string() });
+const DomainRow = z.object({ domain: z.string() });
+
+const toRow = (row: z.infer<typeof DomainAllowDbRow>): DomainAllowRow => ({
   id: row.id,
   domain: row.domain,
   createdAt: row.created_at,
@@ -28,8 +34,8 @@ export const listDomainAllows = async (
     const { results } = await db
       .prepare(`SELECT ${SELECT} FROM domain_allows ${where} ${order} LIMIT ?`)
       .bind(...binds, limit)
-      .all<{ id: string; domain: string; created_at: string }>();
-    return (results ?? []).map(toRow);
+      .all();
+    return parseRows(DomainAllowDbRow, results).map(toRow);
   });
 
 export const findDomainAllowById = async (
@@ -40,8 +46,8 @@ export const findDomainAllowById = async (
     const { results } = await db
       .prepare(`SELECT ${SELECT} FROM domain_allows WHERE id = ? LIMIT 1`)
       .bind(id)
-      .all<{ id: string; domain: string; created_at: string }>();
-    const row = results?.[0];
+      .all();
+    const row = parseRows(DomainAllowDbRow, results)[0];
     return row ? toRow(row) : undefined;
   });
 
@@ -61,8 +67,8 @@ export const insertDomainAllow = async (
          RETURNING ${SELECT}`,
       )
       .bind(newEntityId(), domain, nowIso())
-      .all<{ id: string; domain: string; created_at: string }>();
-    const row = results?.[0];
+      .all();
+    const row = parseRows(DomainAllowDbRow, results)[0];
     if (!row) {
       throw new Error("domain allow insert returned no row");
     }
@@ -77,8 +83,8 @@ export const deleteDomainAllow = async (
     const { results } = await db
       .prepare("DELETE FROM domain_allows WHERE id = ? RETURNING id")
       .bind(id)
-      .all<{ id: string }>();
-    return (results?.length ?? 0) > 0;
+      .all();
+    return parseRows(IdRow, results).length > 0;
   });
 
 /** Every allowed host, for the federation allow list. */
@@ -86,8 +92,6 @@ export const domainAllowHosts = async (
   db: D1Database,
 ): Promise<Result<ReadonlySet<string>, RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare("SELECT domain FROM domain_allows")
-      .all<{ domain: string }>();
-    return new Set((results ?? []).map((row) => row.domain));
+    const { results } = await db.prepare("SELECT domain FROM domain_allows").all();
+    return new Set(parseRows(DomainRow, results).map((row) => row.domain));
   });

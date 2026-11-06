@@ -12,6 +12,7 @@ import { RemoteAccountId } from "./remote-account-id";
 import { insertReport as insertReportSql } from "./generated/prisma/sql";
 
 const IdRow = z.object({ id: z.string() });
+const AcctRow = z.object({ acct: z.string() });
 
 /** Mastodon's report categories. */
 export const ReportCategorySchema = z.union([
@@ -339,8 +340,8 @@ export const listOpenReportIdsForTarget = async (
         `SELECT id FROM reports WHERE ${column} = ? AND action_taken_at IS NULL ORDER BY id DESC`,
       )
       .bind(value)
-      .all<{ id: string }>();
-    return (results ?? []).map((row) => row.id);
+      .all();
+    return parseRows(IdRow, results).map((row) => row.id);
   });
 
 /**
@@ -360,8 +361,8 @@ export const findRemoteActorAcct = async (
          LIMIT 1`,
       )
       .bind(actorUri, actorUri)
-      .first<{ acct: string }>();
-    return row?.acct;
+      .first();
+    return parseRows(AcctRow, [row])[0]?.acct;
   });
 
 /** Resolve or reopen a report; `false` when there is no such report. */

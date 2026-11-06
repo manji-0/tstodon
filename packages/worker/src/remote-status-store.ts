@@ -45,6 +45,7 @@ import { settleRemotePollVotes } from "./remote-poll-vote-store";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 
 const IdRow = z.object({ id: z.string() });
+const VisibilityRow = z.object({ visibility: z.string() });
 const IdObjectUriActorUriRow = z.object({
   id: z.string(),
   object_uri: z.string(),
@@ -449,12 +450,13 @@ export const setRemoteStatusSensitive = async (
   sensitive: boolean,
 ): Promise<Result<Readonly<{ public: boolean }> | undefined, RepositoryError>> =>
   runD1(async () => {
-    const row = await db
+    const found = await db
       .prepare(
         "UPDATE remote_statuses SET sensitive = ? WHERE id = ? AND actor_uri = ? RETURNING visibility",
       )
       .bind(sensitive ? 1 : 0, id, actorUri)
-      .first<{ visibility: string }>();
+      .first();
+    const row = parseRows(VisibilityRow, [found])[0];
     return row ? { public: row.visibility === "public" } : undefined;
   });
 

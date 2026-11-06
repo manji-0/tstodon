@@ -17,6 +17,7 @@ import {
 } from "./generated/prisma/sql";
 
 const IdRow = z.object({ id: z.string() });
+const UriRow = z.object({ uri: z.string() });
 const TargetActorUriRow = z.object({ target_actor_uri: z.string() });
 const NotificationsRow = z.object({ notifications: z.union([z.number(), z.bigint()]) });
 
@@ -266,11 +267,11 @@ export const listSuppressedAuthors = async (
       db
         .prepare(`SELECT id FROM accounts WHERE id IN ${SUPPRESSED_ACCOUNT_IDS_SQL}`)
         .bind(viewerId, viewerId, viewerId, now)
-        .all<{ id: string }>(),
+        .all(),
       db
         .prepare(`SELECT target_actor_uri AS uri FROM ${SUPPRESSED_ACTOR_URIS_SQL}`)
         .bind(viewerId, viewerId, now)
-        .all<{ uri: string }>(),
+        .all(),
     ]),
   );
   if (rows.isErr()) {
@@ -278,7 +279,7 @@ export const listSuppressedAuthors = async (
   }
   const [accounts, actors] = rows.value;
   return ok({
-    accountIds: new Set((accounts.results ?? []).map((row) => row.id)),
-    actorUris: new Set((actors.results ?? []).map((row) => row.uri)),
+    accountIds: new Set(parseRows(IdRow, accounts.results).map((row) => row.id)),
+    actorUris: new Set(parseRows(UriRow, actors.results).map((row) => row.uri)),
   });
 };

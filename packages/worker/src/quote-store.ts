@@ -1,6 +1,7 @@
 import type { Result } from "neverthrow";
+import { z } from "zod";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { parseRows, runD1, type RepositoryError } from "./d1";
 import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { newEntityId } from "./ids";
 
@@ -32,13 +33,20 @@ export const defaultQuotePolicy = (visibility: string): QuotePolicy => {
 export const isQuotePolicy = (raw: string): raw is QuotePolicy =>
   QuotePolicySchema.some((policy) => policy === raw);
 
-const toRow = (row: {
-  id: string;
-  status_id: string;
-  quoted_status_id: string;
-  state: string;
-  created_at: string;
-}): QuoteRow => ({
+const QuoteDbRow = z.object({
+  id: z.string(),
+  status_id: z.string(),
+  quoted_status_id: z.string(),
+  state: z.string(),
+  created_at: z.string(),
+});
+const QuoteCountRow = z.object({ quoted_status_id: z.string(), count: z.number() });
+const IdRow = z.object({ id: z.string() });
+const QuoteEdgeRow = z.object({ status_id: z.string(), account_id: z.string() });
+const PolicyRow = z.object({ policy: z.string() });
+const StatusPolicyRow = z.object({ status_id: z.string(), policy: z.string() });
+
+const toRow = (row: z.infer<typeof QuoteDbRow>): QuoteRow => ({
   id: row.id,
   statusId: row.status_id,
   quotedStatusId: row.quoted_status_id,
@@ -82,8 +90,8 @@ export const findQuoteByStatusId = async (
     const { results } = await db
       .prepare(`SELECT ${SELECT} FROM status_quotes WHERE status_id = ? LIMIT 1`)
       .bind(statusId)
-      .all<Parameters<typeof toRow>[0]>();
-    const row = results?.[0];
+      .all();
+    const row = parseRows(QuoteDbRow, results)[0];
     return row ? toRow(row) : undefined;
   });
 
@@ -102,9 +110,9 @@ export const findQuotesByStatusIds = async (
          WHERE status_id IN (${statusIds.map(() => "?").join(", ")})`,
       )
       .bind(...statusIds)
-      .all<Parameters<typeof toRow>[0]>();
+      .all();
     return new Map(
-      (results ?? []).map((row) => {
+      parseRows(QuoteDbRow, results).map((row) => {
         const quote = toRow(row);
         return [quote.statusId, quote];
       }),
@@ -127,8 +135,10 @@ export const quoteCountsByStatusIds = async (
          GROUP BY quoted_status_id`,
       )
       .bind(...statusIds)
-      .all<{ quoted_status_id: string; count: number }>();
-    return new Map((results ?? []).map((row) => [row.quoted_status_id, Number(row.count)]));
+      .all();
+    return new Map(
+      parseRows(QuoteCountRow, results).map((row) => [row.quoted_status_id, Number(row.count)]),
+    );
   });
 
 /** Accepted quoting statuses of one status, newest first. */
@@ -147,8 +157,8 @@ export const listQuotingStatusIds = async (
          WHERE q.quoted_status_id = ? AND q.state = 'accepted' ${where} ${order} LIMIT ?`,
       )
       .bind(quotedStatusId, ...binds, limit)
-      .all<{ id: string }>();
-    return (results ?? []).map((row) => row.id);
+      .all();
+    return parseRows(IdRow, results).map((row) => row.id);
   });
 
 /** The authors and statuses of the accepted quotes of one status. */
@@ -164,8 +174,11 @@ export const listAcceptedQuoteEdges = async (
          WHERE q.quoted_status_id = ? AND q.state = 'accepted'`,
       )
       .bind(quotedStatusId)
-      .all<{ status_id: string; account_id: string }>();
-    return (results ?? []).map((row) => ({ statusId: row.status_id, accountId: row.account_id }));
+      .all();
+    return parseRows(QuoteEdgeRow, results).map((row) => ({
+      statusId: row.status_id,
+      accountId: row.account_id,
+    }));
   });
 
 /** Revoke one quote; only the quoted author's route calls this. */
@@ -182,8 +195,8 @@ export const revokeStatusQuote = async (
          RETURNING id`,
       )
       .bind(nowIso(), quotedStatusId, quotingStatusId)
-      .all<{ id: string }>();
-    return (results?.length ?? 0) > 0;
+      .all();
+    return parseRows(IdRow, results).length > 0;
   });
 
 /** The stored quote policy of a status, when its author set one. */
@@ -195,8 +208,8 @@ export const findStatusQuotePolicy = async (
     const { results } = await db
       .prepare("SELECT policy FROM status_quote_policies WHERE status_id = ? LIMIT 1")
       .bind(statusId)
-      .all<{ policy: string }>();
-    const policy = results?.[0]?.policy;
+      .all();
+    const policy = parseRows(PolicyRow, results)[0]?.policy;
     return policy !== undefined && isQuotePolicy(policy) ? policy : undefined;
   });
 
@@ -215,10 +228,11 @@ export const findStatusQuotePolicies = async (
          WHERE status_id IN (${statusIds.map(() => "?").join(", ")})`,
       )
       .bind(...statusIds)
-      .all<{ status_id: string; policy: string }>();
+      .all();
     return new Map(
-      (results ?? []).flatMap(({ status_id, policy }): [string, QuotePolicy][] =>
-        isQuotePolicy(policy) ? [[status_id, policy]] : [],
+      parseRows(StatusPolicyRow, results).flatMap(
+        ({ status_id, policy }): [string, QuotePolicy][] =>
+          isQuotePolicy(policy) ? [[status_id, policy]] : [],
       ),
     );
   });

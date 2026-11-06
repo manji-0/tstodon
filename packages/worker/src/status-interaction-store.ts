@@ -22,6 +22,7 @@ import {
 } from "./generated/prisma/sql";
 
 const IdRow = z.object({ id: z.string() });
+const AccountIdRow = z.object({ account_id: z.string() });
 
 /** Favourite a status; resolves to the new favourite's id, or nothing when it was already one. */
 export const favouriteStatus = async (
@@ -282,7 +283,8 @@ export type StatusBooster =
   | Readonly<{ kind: "Local"; id: string; accountId: string; createdAt: string }>
   | Readonly<{ kind: "Remote"; id: string; actorUri: string; createdAt: string }>;
 
-type BoosterRow = Readonly<{ id: string; actor: string; created_at: string }>;
+const BoosterRow = z.object({ id: z.string(), actor: z.string(), created_at: z.string() });
+type BoosterRow = z.infer<typeof BoosterRow>;
 
 /**
  * Merge both halves of an engagement count around the cursor. Each side is
@@ -326,17 +328,17 @@ export const listStatusFavouritedBy = async (
          WHERE (local_status_id = ? OR remote_status_id = ?) ${where} ${order} LIMIT ?`,
       )
       .bind(...statusTargetColumns(target), ...binds, limit)
-      .all<BoosterRow>();
+      .all();
     const remote = await db
       .prepare(
         `SELECT id, remote_actor_uri AS actor, created_at FROM remote_favourites
          WHERE status_id = ? ${where} ${order} LIMIT ?`,
       )
       .bind(target.statusId, ...binds, limit)
-      .all<BoosterRow>();
+      .all();
     return mergeStatusBoosters(
-      local.results ?? [],
-      remote.results ?? [],
+      parseRows(BoosterRow, local.results),
+      parseRows(BoosterRow, remote.results),
       limit,
       cursorAscending(cursor),
     );
@@ -357,17 +359,17 @@ export const listStatusRebloggedBy = async (
          ${where} ${order} LIMIT ?`,
       )
       .bind(...statusTargetColumns(target), ...binds, limit)
-      .all<BoosterRow>();
+      .all();
     const remote = await db
       .prepare(
         `SELECT id, remote_actor_uri AS actor, created_at FROM remote_announces
          WHERE status_id = ? ${where} ${order} LIMIT ?`,
       )
       .bind(target.statusId, ...binds, limit)
-      .all<BoosterRow>();
+      .all();
     return mergeStatusBoosters(
-      local.results ?? [],
-      remote.results ?? [],
+      parseRows(BoosterRow, local.results),
+      parseRows(BoosterRow, remote.results),
       limit,
       cursorAscending(cursor),
     );
@@ -385,6 +387,6 @@ export const listLocalBoosterAccountIds = async (
          WHERE kind = 'LocalReblog' AND (reblog_of_id = ? OR reblog_of_remote_id = ?)`,
       )
       .bind(...statusTargetColumns(target))
-      .all<{ account_id: string }>();
-    return (rows.results ?? []).map((row) => row.account_id);
+      .all();
+    return parseRows(AccountIdRow, rows.results).map((row) => row.account_id);
   });

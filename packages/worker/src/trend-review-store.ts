@@ -1,10 +1,13 @@
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { z } from "zod";
+import { parseRows, runD1, type RepositoryError } from "./d1";
 
 /** The three trend families Mastodon lets a moderator review. */
 export const TrendKinds = ["Tag", "Link", "Status"] as const;
 export type TrendKind = (typeof TrendKinds)[number];
+
+const TrendReviewRow = z.object({ target: z.string(), state: z.string() });
 
 export type TrendState = "Approved" | "Rejected";
 
@@ -20,9 +23,9 @@ export const listTrendReviews = async (
     const { results } = await db
       .prepare("SELECT target, state FROM trend_reviews WHERE kind = ?")
       .bind(kind)
-      .all<{ target: string; state: string }>();
+      .all();
     return new Map(
-      (results ?? []).flatMap(({ target, state }): [string, TrendState][] =>
+      parseRows(TrendReviewRow, results).flatMap(({ target, state }): [string, TrendState][] =>
         state === "Approved" || state === "Rejected" ? [[target, state]] : [],
       ),
     );
