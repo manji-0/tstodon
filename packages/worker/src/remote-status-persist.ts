@@ -32,6 +32,7 @@ import { isTruthy, stringList } from "./form-values";
 import { NoteDocumentSchema } from "./activitypub-wire";
 import { remoteEmojisInTexts } from "./remote-emoji-document";
 import { remotePollFromDocument } from "./remote-poll-parse";
+import { syncRemoteQuote } from "./remote-quote";
 
 export const parseNoteDocument = schemaResult(NoteDocumentSchema);
 
@@ -418,6 +419,10 @@ const storeRemoteNote = async (
   );
   if (mentions.isErr()) {
     return err(mentions.error);
+  }
+  const quote = await syncRemoteQuote(env.DB, identity, stored.value, raw);
+  if (quote.isErr()) {
+    return err(quote.error);
   }
   // Preview cards are built off the request path like for local posts.
   await enqueueLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);

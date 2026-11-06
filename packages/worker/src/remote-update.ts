@@ -28,6 +28,7 @@ import {
   noteFromUnknown,
   parseNoteDocument,
 } from "./remote-status-persist";
+import { syncRemoteQuote } from "./remote-quote";
 import { listLocalBoosterAccountIds } from "./status-interaction-store";
 import { findRemoteStatusByObjectUri, upsertRemoteStatus } from "./remote-status-store";
 
@@ -151,6 +152,10 @@ const applyNoteUpdate = async (
   const recorded = await recordRemoteStatusMentions(env.DB, stored.value.id, mentioned);
   if (recorded.isErr()) {
     return err(recorded.error);
+  }
+  const quote = await syncRemoteQuote(env.DB, identity, stored.value, target.raw);
+  if (quote.isErr()) {
+    return err(quote.error);
   }
   if (added.length > 0) {
     const post = await remoteMentionedPost(env.DB, identity, target.raw, stored.value, mentioned);

@@ -11,6 +11,7 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { findAccountById } from "../account-store";
 import { localNoteRef } from "../activitypub";
+import { refId } from "../activitypub-wire";
 import { nowIso } from "../clock";
 import type { RepositoryError } from "../d1";
 import { announceNoteUpdate } from "../local-status-update";
@@ -107,17 +108,6 @@ const httpsHost = (uri: string): string | undefined => {
   }
 };
 
-const RefSchema = z.union([z.string().min(1), z.object({ id: z.string().min(1) })]);
-
-const idOf = (value: unknown): string | undefined => {
-  const parsed = schemaResult(RefSchema)(value);
-  return parsed.isOk()
-    ? typeof parsed.value === "string"
-      ? parsed.value
-      : parsed.value.id
-    : undefined;
-};
-
 const InlineStampSchema = z.object({
   id: z.string().min(1),
   type: z.union([z.string(), z.array(z.string())]),
@@ -139,7 +129,7 @@ const acceptedStamp = (
   quoting: SignerQuote,
 ): string | undefined => {
   const first: unknown = Array.isArray(result) ? result[0] : result;
-  const uri = idOf(first);
+  const uri = refId(first);
   const signerHost = httpsHost(signer.actorUri);
   if (uri === undefined || signerHost === undefined || httpsHost(uri) !== signerHost) {
     return undefined;
@@ -153,9 +143,9 @@ const acceptedStamp = (
   }
   const types = typeof stamp.value.type === "string" ? [stamp.value.type] : stamp.value.type;
   return types.includes("QuoteAuthorization") &&
-    idOf(stamp.value.attributedTo) === signer.actorUri &&
-    idOf(stamp.value.interactingObject) === quoting.quotingUri &&
-    idOf(stamp.value.interactionTarget) === quoting.quotedUri
+    refId(stamp.value.attributedTo) === signer.actorUri &&
+    refId(stamp.value.interactingObject) === quoting.quotingUri &&
+    refId(stamp.value.interactionTarget) === quoting.quotedUri
     ? uri
     : undefined;
 };

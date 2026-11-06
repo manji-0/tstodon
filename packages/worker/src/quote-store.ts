@@ -154,6 +154,20 @@ export const saveQuoteState = async (
       .run();
   });
 
+/** Forget the quote a status makes, as when its author drops the quote in an edit. */
+export const deleteQuoteByQuoting = async (
+  db: D1Database,
+  target: StatusTargetValue,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await db
+      .prepare(
+        `DELETE FROM status_quotes WHERE ${target.kind === "LocalStatus" ? "status_id" : "remote_status_id"} = ?`,
+      )
+      .bind(target.statusId)
+      .run();
+  });
+
 /** The quotes made by several quoting statuses, keyed by quoting status id. */
 export const findQuotesByQuoting = async (
   db: D1Database,

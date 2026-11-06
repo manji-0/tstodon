@@ -3,7 +3,6 @@ import {
   type LocalAccount,
   type LocalNote,
   LocalStatus,
-  type QuoteState,
   StatusTarget,
   type StatusTargetValue,
   Visibility,
@@ -23,6 +22,7 @@ import { listStatusMentions } from "./mention-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { mastodonRemoteStatuses } from "./remote-status-documents";
+import { mastodonQuote, type QuotedDocument } from "./quote-document";
 import { findRemoteStatusesByIds, findRemoteStatusRefsByObjectUris } from "./remote-status-store";
 import { findStatusesByIds, listStatusReplyUris } from "./status-store";
 import { listStatusCards } from "./status-card-store";
@@ -110,14 +110,6 @@ const buildLocalNoteDocument = (
     tagged_collections: [],
   };
 };
-
-/** Mastodon's `quote.state` for a quote that is not accepted. */
-const QUOTE_STATE_NAMES = {
-  Pending: "pending",
-  Rejected: "rejected",
-  Revoked: "revoked",
-  Deleted: "deleted",
-} as const satisfies Record<Exclude<QuoteState["kind"], "Accepted">, string>;
 
 export const mastodonStatus = async (
   env: Env,
@@ -408,7 +400,14 @@ export const mastodonStatuses = async (
     });
   const [remoteRendered, quotedRemoteRendered] = await Promise.all([
     mastodonRemoteStatuses(env, identity, remotesOf(boostedRemoteIds), viewerId, boosted),
-    mastodonRemoteStatuses(env, identity, remotesOf(quotedRemoteIds), viewerId),
+    mastodonRemoteStatuses(
+      env,
+      identity,
+      remotesOf(quotedRemoteIds),
+      viewerId,
+      StatusAuthors.available,
+      "Shallow",
+    ),
   ]);
   if (remoteRendered.isErr()) {
     return err(remoteRendered.error);
@@ -418,10 +417,7 @@ export const mastodonStatuses = async (
   }
   const remoteDocs = documentsById(remoteRendered.value);
   const quotedRemoteDocs = documentsById(quotedRemoteRendered.value);
-  /** The quoted status as rendered, `Unauthorized` when its author is not shown, `undefined` when gone. */
-  const quotedDocument = (
-    quoted: StatusTargetValue,
-  ): Record<string, unknown> | "Unauthorized" | undefined => {
+  const quotedDocument = (quoted: StatusTargetValue): QuotedDocument => {
     if (quoted.kind === "RemoteStatus") {
       return (
         quotedRemoteDocs.get(quoted.statusId) ??
@@ -448,20 +444,7 @@ export const mastodonStatuses = async (
     }
     const quote = quotes.get(status.id);
     if (quote) {
-      // Mastodon's `BaseQuoteSerializer`: only an accepted quote shows its status.
-      const target = quote.state.kind === "Accepted" ? quotedDocument(quote.quoted) : undefined;
-      const state =
-        quote.state.kind !== "Accepted"
-          ? QUOTE_STATE_NAMES[quote.state.kind]
-          : target === undefined
-            ? "deleted"
-            : target === "Unauthorized"
-              ? "unauthorized"
-              : "accepted";
-      document.quote = {
-        state,
-        quoted_status: typeof target === "object" ? target : null,
-      };
+      document.quote = mastodonQuote(quote.state, () => quotedDocument(quote.quoted));
     }
     document.quotes_count = quoteCounts.get(status.id) ?? 0;
     const policy = quotePolicies.get(status.id) ?? quotePolicyName(account.defaultQuotePolicy);

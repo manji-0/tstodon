@@ -1,4 +1,4 @@
-import { warmSchemas } from "@tstodon/core";
+import { schemaResult, warmSchemas } from "@tstodon/core";
 import { z } from "zod";
 import { booleanish } from "./form-values";
 
@@ -8,6 +8,20 @@ const ObjectReferenceSchema = z.union([
   z.string().min(1),
   z.object({ id: z.string().min(1) }).passthrough(),
 ]);
+
+const parseRef = schemaResult(ObjectReferenceSchema);
+
+/**
+ * The id a property names, as Mastodon's `value_or_id(as_array(value).first)`:
+ * a URI, or the `id` of an embedded object, the first one of a list.
+ */
+export const refId = (value: unknown): string | undefined => {
+  const parsed = parseRef(Array.isArray(value) ? value[0] : value);
+  if (parsed.isErr()) {
+    return undefined;
+  }
+  return typeof parsed.value === "string" ? parsed.value : parsed.value.id;
+};
 
 export const ActivityJsonSchema = z
   .object({

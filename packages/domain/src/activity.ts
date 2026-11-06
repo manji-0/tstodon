@@ -84,6 +84,17 @@ const FlagSchema = z.object({
   object: z.string().min(1),
 });
 
+/**
+ * FEP-044f: the actor asks to quote `object`; the quoting note is the
+ * `instrument`, read from the raw activity.
+ */
+const QuoteRequestSchema = z.object({
+  kind: z.literal("QuoteRequest"),
+  id: ActivityId.schema,
+  actor: z.string().min(1),
+  object: z.string().min(1),
+});
+
 const RelationshipActivitySchema = z.discriminatedUnion("kind", [
   FollowSchema,
   UndoSchema,
@@ -101,6 +112,7 @@ export const ActivitySchema = z.discriminatedUnion("kind", [
   LikeSchema,
   AnnounceSchema,
   FlagSchema,
+  QuoteRequestSchema,
 ]);
 
 export type Activity = z.infer<typeof ActivitySchema>;

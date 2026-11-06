@@ -4,7 +4,7 @@ import {
   type LocalAccount,
   type LocalStatus as LocalStatusValue,
   Quote,
-  StatusTarget,
+  type RemoteStatusValue,
 } from "@tstodon/domain";
 import type { Context } from "hono";
 import { authenticate } from "../../auth";
@@ -20,11 +20,19 @@ import {
 import { availableAccountDocumentsByIds, documentsInOrder } from "../../account-documents";
 import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
 import { listStatusFavouritedBy, listStatusRebloggedBy } from "../../status-interaction-store";
-import { findShownStatusAnywhere, foundStatusTarget } from "../../found-status";
+import {
+  findShownStatusAnywhere,
+  findStatusAnywhere,
+  type FoundStatus,
+  foundStatusTarget,
+} from "../../found-status";
+import { documentsById } from "../../documents-by-id";
+import { mastodonRemoteStatuses } from "../../remote-status-documents";
+import { findRemoteStatusesByIds } from "../../remote-status-store";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { RemoteAccountId } from "../../remote-account-id";
 import { findStatusById, findStatusesByIds } from "../../status-store";
-import { canViewStatus } from "../../visibility-guard";
+import { canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
 import { findQuoteByQuoting, listQuotingTargets, saveQuoteState } from "../../quote-store";
 import { localNoteRef } from "../../activitypub";
 import { enqueueActivityToInboxes } from "../../delivery";
@@ -33,7 +41,7 @@ import {
   localQuoteAuthorization,
 } from "../../quote-authorization-document";
 import { statusTargetRef } from "../../quote-uri";
-import { listAcceptedRemoteFollowerInboxes } from "../../remote-actor-store";
+import { findRemoteActorByUri, listAcceptedRemoteFollowerInboxes } from "../../remote-actor-store";
 
 const statusEngagementAccounts = async (
   c: Context<{ Bindings: Env }>,
@@ -89,7 +97,7 @@ export const getV1StatusesByIdRebloggedBy = (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/reblogged_by">,
 ) => statusEngagementAccounts(c, "reblogged_by");
 
-/** Quotes of a status: accepted local quotes the viewer may see, newest first. */
+/** Quotes of a status: accepted quotes, local or remote, the viewer may see, newest first. */
 export const getV1StatusesByIdQuotes = async (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/quotes">,
 ) => {
@@ -102,85 +110,108 @@ export const getV1StatusesByIdQuotes = async (
     return jsonAuthError(c, auth.error);
   }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
-  const status = await findStatusById(c.env.DB, c.req.param("id") ?? "");
+  const status = await findShownStatusAnywhere(c.env, c.req.param("id") ?? "", viewerId);
   if (status.isErr()) {
     return jsonRepositoryError(c, status.error.message);
   }
-  if (!status.value || !(await canViewStatus(c.env.DB, status.value, viewerId))) {
+  if (!status.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const limit = queryLimit(c.req.query("limit"));
   const quoting = await listQuotingTargets(
     c.env.DB,
-    StatusTarget.local(status.value.id),
+    foundStatusTarget(status.value),
     limit,
     queryCursor(c),
   );
   if (quoting.isErr()) {
     return jsonRepositoryError(c, quoting.error.message);
   }
-  const quotingIds = quoting.value.map((target) => target.statusId);
-  // Only local statuses quote yet, so only they are rendered.
-  const loaded = await findStatusesByIds(
-    c.env.DB,
-    quoting.value.flatMap((target) => (target.kind === "LocalStatus" ? [target.statusId] : [])),
-  );
-  if (loaded.isErr()) {
-    return jsonRepositoryError(c, loaded.error.message);
+  const idsOf = (kind: "LocalStatus" | "RemoteStatus") =>
+    quoting.value.flatMap((target) => (target.kind === kind ? [target.statusId] : []));
+  const [locals, remotes] = await Promise.all([
+    findStatusesByIds(c.env.DB, idsOf("LocalStatus")),
+    findRemoteStatusesByIds(c.env.DB, idsOf("RemoteStatus")),
+  ]);
+  if (locals.isErr()) {
+    return jsonRepositoryError(c, locals.error.message);
   }
-  const visible: LocalStatusValue[] = [];
-  for (const id of quotingIds) {
-    const quoting = loaded.value.get(id);
-    if (quoting && (await canViewStatus(c.env.DB, quoting, viewerId))) {
-      visible.push(quoting);
+  if (remotes.isErr()) {
+    return jsonRepositoryError(c, remotes.error.message);
+  }
+  const visibleLocals: LocalStatusValue[] = [];
+  for (const local of locals.value.values()) {
+    if (await canViewStatus(c.env.DB, local, viewerId)) {
+      visibleLocals.push(local);
     }
   }
-  const documents = await mastodonStatuses(c.env, identity.value, visible, viewerId);
-  if (documents.isErr()) {
-    return jsonRepositoryError(c, documents.error.message);
+  const visibleRemotes: RemoteStatusValue[] = [];
+  for (const remote of remotes.value.values()) {
+    if (await canViewRemoteStatus(c.env.DB, remote, viewerId)) {
+      visibleRemotes.push(remote);
+    }
   }
+  const [localDocuments, remoteDocuments] = await Promise.all([
+    mastodonStatuses(c.env, identity.value, visibleLocals, viewerId),
+    mastodonRemoteStatuses(c.env, identity.value, visibleRemotes, viewerId),
+  ]);
+  if (localDocuments.isErr()) {
+    return jsonRepositoryError(c, localDocuments.error.message);
+  }
+  if (remoteDocuments.isErr()) {
+    return jsonRepositoryError(c, remoteDocuments.error.message);
+  }
+  const quotingIds = quoting.value.map((target) => target.statusId);
   setPaginationLinks(c, quotingIds, limit, { prev: "since_id" });
-  return c.json(documents.value);
+  return c.json(
+    documentsInOrder(
+      quotingIds,
+      documentsById([...localDocuments.value, ...remoteDocuments.value]),
+    ),
+  );
 };
 
 /**
  * Withdraw the stamp of a revoked quote, as Mastodon's `RevokeQuoteService`.
  * Mastodon sends the `Delete` to the reach of both statuses; this sends it to
- * the remote followers of each author whose status is not direct, which is
- * the part of that reach stored here. Best effort: the revoke stands either way.
+ * the remote followers of each local author whose status is not direct, and
+ * to the inbox of a remote quoting author, which is the part of that reach
+ * stored here. Best effort: the revoke stands either way.
  */
 const federateStampDeletion = async (
   env: Env,
   identity: InstanceIdentity,
   quotedAuthor: LocalAccount,
   quoted: LocalStatusValue,
-  quoting: LocalStatusValue,
+  quoting: FoundStatus,
   quoteId: string,
 ): Promise<void> => {
   const target = localNoteRef(identity, quotedAuthor, quoted.id);
-  const interacting = await statusTargetRef(env, identity, StatusTarget.local(quoting.id));
+  const interacting = await statusTargetRef(env, identity, foundStatusTarget(quoting));
   if (!interacting) {
     return;
   }
   const audiences = [
     ...(quoted.visibility.kind === "Direct" ? [] : [quotedAuthor.id]),
-    ...(quoting.visibility.kind === "Direct" ? [] : [quoting.accountId]),
+    ...(quoting.kind === "LocalStatus" && quoting.status.visibility.kind !== "Direct"
+      ? [quoting.status.accountId]
+      : []),
   ];
   const inboxes: string[] = [];
   for (const accountId of new Set(audiences)) {
     const found = await listAcceptedRemoteFollowerInboxes(env.DB, accountId);
     inboxes.push(...(found.isOk() ? found.value : []));
   }
+  if (quoting.kind === "RemoteStatus") {
+    const author = await findRemoteActorByUri(env.DB, quoting.status.actorUri);
+    inboxes.push(...(author.isOk() && author.value ? [author.value.inboxUri] : []));
+  }
   const activity = quoteAuthorizationDeleteActivity(
     localQuoteAuthorization(target, quoteId, interacting.uri),
   );
-  const enqueued = await enqueueActivityToInboxes(
-    env,
-    quotedAuthor.id,
-    "Delete",
-    activity,
-    inboxes,
-  );
+  const enqueued = await enqueueActivityToInboxes(env, quotedAuthor.id, "Delete", activity, [
+    ...new Set(inboxes),
+  ]);
   if (enqueued.isErr()) {
     console.error(JSON.stringify({ kind: "QuoteStampDeleteNotFederated", quoteId }));
   }
@@ -208,14 +239,14 @@ export const postV1StatusesByIdQuotesByQuotingStatusIdRevoke = async (
   if (quoted.value.accountId !== user.value.id) {
     return c.json({ error: "This action is not allowed", kind: "Forbidden" }, 403);
   }
-  const quoting = await findStatusById(c.env.DB, c.req.param("quoting_status_id") ?? "");
+  const quoting = await findStatusAnywhere(c.env.DB, c.req.param("quoting_status_id") ?? "");
   if (quoting.isErr()) {
     return jsonRepositoryError(c, quoting.error.message);
   }
   if (!quoting.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const quote = await findQuoteByQuoting(c.env.DB, StatusTarget.local(quoting.value.id));
+  const quote = await findQuoteByQuoting(c.env.DB, foundStatusTarget(quoting.value));
   if (quote.isErr()) {
     return jsonRepositoryError(c, quote.error.message);
   }
@@ -238,13 +269,24 @@ export const postV1StatusesByIdQuotesByQuotingStatusIdRevoke = async (
     revoked.value.id,
   );
   // As Mastodon, the quoting status answers whoever wrote it, a suspended author stripped.
-  const document = await mastodonStatus(
-    c.env,
-    identity.value,
-    quoting.value,
-    user.value.id,
-    StatusAuthors.existing,
-  );
+  const document =
+    quoting.value.kind === "LocalStatus"
+      ? await mastodonStatus(
+          c.env,
+          identity.value,
+          quoting.value.status,
+          user.value.id,
+          StatusAuthors.existing,
+        )
+      : (
+          await mastodonRemoteStatuses(
+            c.env,
+            identity.value,
+            [quoting.value.status],
+            user.value.id,
+            StatusAuthors.existing,
+          )
+        ).map((documents) => documents[0]);
   if (document.isErr()) {
     return jsonRepositoryError(c, document.error.message);
   }

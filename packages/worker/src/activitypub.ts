@@ -389,3 +389,33 @@ export const quoteRequestActivity = (
     instrument,
   };
 };
+
+/** A remote `QuoteRequest` as an answer names it back, the quoting note by URI. */
+export type QuoteRequestRef = Readonly<{
+  id: string;
+  actor: string;
+  object: string;
+  instrument: string;
+}>;
+
+/**
+ * A local quoted author's answer to a `QuoteRequest`, as Mastodon's
+ * `AcceptQuoteRequestSerializer`, whose `result` is the stamp, and
+ * `RejectQuoteRequestSerializer`. Both are numbered by the quote.
+ */
+export const quoteRequestAnswerActivity = (
+  answer: Readonly<{ kind: "Accept"; stamp: string }> | Readonly<{ kind: "Reject" }>,
+  quotedAuthorUri: string,
+  quoteId: string,
+  request: QuoteRequestRef,
+): Record<string, unknown> => ({
+  "@context": [
+    "https://www.w3.org/ns/activitystreams",
+    { QuoteRequest: "https://w3id.org/fep/044f#QuoteRequest" },
+  ],
+  id: `${quotedAuthorUri}#${answer.kind === "Accept" ? "accepts" : "rejects"}/quote_requests/${quoteId}`,
+  type: answer.kind,
+  actor: quotedAuthorUri,
+  ...(answer.kind === "Accept" ? { result: answer.stamp } : {}),
+  object: { type: "QuoteRequest", ...request },
+});
