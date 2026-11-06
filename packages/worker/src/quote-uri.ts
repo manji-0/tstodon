@@ -1,40 +1,65 @@
 import {
-  InstanceIdentity,
+  type InstanceIdentity,
+  type QuoteState,
   type StatusIdValue,
   StatusTarget,
   type StatusTargetValue,
 } from "@tstodon/domain";
-import type { NoteQuote } from "./activitypub";
+import { type ActivityObjectRef, localNoteRef, type NoteQuote } from "./activitypub";
 import { findAccountById } from "./account-store";
+import { quoteAuthorizationUri } from "./quote-authorization-document";
 import { findQuoteByQuoting } from "./quote-store";
 import { findRemoteStatusById } from "./remote-status-store";
 import { findStatusById } from "./status-store";
 
-/** The ActivityPub URI of a quoted status that still exists. */
-const quotedUri = async (
+/** A status's ActivityPub URI and its author's, while both still exist. */
+export const statusTargetRef = async (
   env: Env,
   identity: InstanceIdentity,
-  quoted: StatusTargetValue,
-): Promise<string | undefined> => {
-  if (quoted.kind === "RemoteStatus") {
-    const remote = await findRemoteStatusById(env.DB, quoted.statusId);
-    return remote.isOk() ? remote.value?.objectUri : undefined;
+  target: StatusTargetValue,
+): Promise<ActivityObjectRef | undefined> => {
+  if (target.kind === "RemoteStatus") {
+    const remote = await findRemoteStatusById(env.DB, target.statusId);
+    return remote.isOk() && remote.value
+      ? { uri: remote.value.objectUri, authorUri: remote.value.actorUri }
+      : undefined;
   }
-  const target = await findStatusById(env.DB, quoted.statusId);
-  if (target.isErr() || !target.value) {
+  const status = await findStatusById(env.DB, target.statusId);
+  if (status.isErr() || !status.value) {
     return undefined;
   }
-  const author = await findAccountById(env.DB, target.value.accountId);
+  const author = await findAccountById(env.DB, status.value.accountId);
   if (author.isErr() || !author.value) {
     return undefined;
   }
-  return `${InstanceIdentity.actorUrl(identity, author.value.username)}/statuses/${target.value.id}`;
+  return localNoteRef(identity, author.value, status.value.id);
 };
 
 /**
- * The status a local note quotes, for its `quote` property. A pending or
- * accepted quote names it; an absent, rejected, revoked, or dangling one does
- * not.
+ * The stamp an accepted quote carries, as Mastodon's `approval_uri_for`: the
+ * remote quoted author's, or one this server mints for a local quoted status.
+ */
+const approvalUri = (
+  state: QuoteState,
+  quoted: StatusTargetValue,
+  quotedRef: ActivityObjectRef,
+  quoteId: string,
+): string | undefined => {
+  if (state.kind !== "Accepted") {
+    return undefined;
+  }
+  if (state.approval.kind === "Stamp") {
+    return state.approval.uri;
+  }
+  return quoted.kind === "LocalStatus"
+    ? quoteAuthorizationUri(quotedRef.authorUri, quoteId)
+    : undefined;
+};
+
+/**
+ * The status a local note quotes, for its `quote` and `quoteAuthorization`
+ * properties. A pending or accepted quote names it; an absent, rejected,
+ * revoked, or dangling one does not.
  */
 export const noteQuote = async (
   env: Env,
@@ -45,10 +70,12 @@ export const noteQuote = async (
   if (quote.isErr() || !quote.value) {
     return undefined;
   }
-  const { state, quoted } = quote.value;
+  const { id, state, quoted } = quote.value;
   if (state.kind !== "Pending" && state.kind !== "Accepted") {
     return undefined;
   }
-  const uri = await quotedUri(env, identity, quoted);
-  return uri === undefined ? undefined : { uri };
+  const ref = await statusTargetRef(env, identity, quoted);
+  return ref === undefined
+    ? undefined
+    : { uri: ref.uri, authorization: approvalUri(state, quoted, ref, id) };
 };

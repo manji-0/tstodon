@@ -448,7 +448,6 @@ const postStatus = async (
           quoted: StatusTarget.local(quote.status.id),
           quotedAccountId: quote.status.accountId,
           inlineHtml: quote.inlineHtml ?? "",
-          uri: quote.url,
         }
       : null,
   });

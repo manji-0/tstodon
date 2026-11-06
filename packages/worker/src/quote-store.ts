@@ -184,6 +184,19 @@ export const findQuoteByQuoting = async (
 ): Promise<Result<QuoteValue | undefined, RepositoryError>> =>
   (await findQuotesByQuoting(db, [target])).map((quotes) => quotes.get(target.statusId));
 
+/** A quote by its id, as its stamp URI names it. */
+export const findQuoteById = async (
+  db: D1Database,
+  id: string,
+): Promise<Result<QuoteValue | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(`SELECT ${SELECT} FROM status_quotes WHERE id = ? LIMIT 1`)
+      .bind(id)
+      .all();
+    return parseRows(QuoteDbRow, results).flatMap(toQuote)[0];
+  });
+
 /** How many accepted quotes each of these statuses has, keyed by status id. */
 export const quoteCountsByQuoted = async (
   db: D1Database,

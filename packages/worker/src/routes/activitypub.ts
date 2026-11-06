@@ -7,7 +7,12 @@ import {
 } from "@tstodon/domain";
 import type { Context } from "hono";
 import { findAccountByUsername, findAccountsByIds } from "../account-store";
-import { activityPayloadFromJson, noteDocument, parseLocalActorUsername } from "../activitypub";
+import {
+  activityPayloadFromJson,
+  localNoteRef,
+  noteDocument,
+  parseLocalActorUsername,
+} from "../activitypub";
 import { jsonRepositoryError, queryLimit } from "../http";
 import { verifyInboxRequest, parseSignatureHeader } from "../http-signature";
 import { localActorDocument } from "../local-actor";
@@ -23,7 +28,12 @@ import { findRemoteActorByUri, findRemoteFollow } from "../remote-actor-store";
 import { RemoteDeleteTarget } from "../remote-delete";
 import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import { loadNoteQuotePolicy } from "../quote-policy-name";
-import { noteQuote } from "../quote-uri";
+import { noteQuote, statusTargetRef } from "../quote-uri";
+import { findQuoteById } from "../quote-store";
+import {
+  quoteAuthorizationDocument,
+  localQuoteAuthorization,
+} from "../quote-authorization-document";
 import { ActivityJsonSchema, JsonObjectSchema } from "../activitypub-wire";
 import { parseJsonColumn, parseJsonText } from "../json-column";
 import { schemaResult } from "@tstodon/core";
@@ -110,6 +120,54 @@ export const getUsersByUsernameStatusesById = async (
     c.header("Vary", "Signature");
   }
   return c.json(note, 200, jsonLd);
+};
+
+/**
+ * The stamp of an accepted quote of one of this account's public or unlisted
+ * statuses, as Mastodon's `QuoteAuthorizationsController`; 404 otherwise.
+ */
+export const getUsersByUsernameQuoteAuthorizationsById = async (
+  c: Context<{ Bindings: Env }, "/users/:username/quote_authorizations/:id">,
+) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
+  if (account.isErr()) {
+    return jsonRepositoryError(c, account.error.message);
+  }
+  const quote = await findQuoteById(c.env.DB, c.req.param("id"));
+  if (quote.isErr()) {
+    return jsonRepositoryError(c, quote.error.message);
+  }
+  if (
+    !account.value ||
+    !quote.value ||
+    quote.value.state.kind !== "Accepted" ||
+    quote.value.quoted.kind !== "LocalStatus"
+  ) {
+    return c.json({ kind: "NotFound" }, 404);
+  }
+  const quoted = await findStatusById(c.env.DB, quote.value.quoted.statusId);
+  if (quoted.isErr()) {
+    return jsonRepositoryError(c, quoted.error.message);
+  }
+  const visibility = quoted.value?.visibility.kind;
+  const quoting = await statusTargetRef(c.env, identity.value, quote.value.quoting);
+  if (
+    !quoted.value ||
+    quoted.value.accountId !== account.value.id ||
+    (visibility !== "Public" && visibility !== "Unlisted") ||
+    !quoting
+  ) {
+    return c.json({ kind: "NotFound" }, 404);
+  }
+  const target = localNoteRef(identity.value, account.value, quoted.value.id);
+  const document = quoteAuthorizationDocument(
+    localQuoteAuthorization(target, quote.value.id, quoting.uri),
+  );
+  return c.json(document, 200, jsonLd);
 };
 
 /**

@@ -239,8 +239,11 @@ const questionFields = (poll: PollRecord): Record<string, unknown> => {
   };
 };
 
-/** The status a note quotes, as its `quote` property names it. */
-export type NoteQuote = Readonly<{ uri: string }>;
+/**
+ * The status a note quotes, as its `quote` property names it, and the quoted
+ * author's stamp once the quote is accepted (`quoteAuthorization`).
+ */
+export type NoteQuote = Readonly<{ uri: string; authorization: string | undefined }>;
 
 export const noteDocument = (
   identity: InstanceIdentity,
@@ -303,6 +306,10 @@ export const noteDocument = (
           quote: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
           quote_uri: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
           _misskey_quote: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
+          quoteAuthorization: {
+            "@id": "https://w3id.org/fep/044f#quoteAuthorization",
+            "@type": "@id",
+          },
         }
       : {}),
     ...(poll || attachments.length > 0 ? { toot: "http://joinmastodon.org/ns#" } : {}),
@@ -321,6 +328,7 @@ export const noteDocument = (
   return {
     "@context": ["https://www.w3.org/ns/activitystreams", terms],
     ...(quotes ? { quote: quoteUri, quote_uri: quoteUri, _misskey_quote: quoteUri } : {}),
+    ...(quotes && quote?.authorization ? { quoteAuthorization: quote.authorization } : {}),
     ...(poll ? questionFields(poll) : {}),
     id,
     type: poll ? "Question" : "Note",

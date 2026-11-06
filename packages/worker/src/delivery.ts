@@ -14,7 +14,7 @@ import type { RepositoryError } from "./d1";
 import { signInboxRequest } from "./http-signature";
 import { instanceActorKeyId, instanceActorKeys } from "./instance-actor";
 import {
-  ensureOutboxTarget,
+  ensureOutboxTargets,
   findOutboundActivity,
   insertOutboundActivity,
   type OutboundSigner,
@@ -93,7 +93,20 @@ export const enqueueTargetedActivity = (
   payload: unknown,
   inboxUrl: string,
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
-  enqueueSignedActivity(env, { kind: "Account", accountId }, kind, payload, inboxUrl);
+  enqueueSignedActivity(env, { kind: "Account", accountId }, kind, payload, [inboxUrl]);
+
+/**
+ * {@link enqueueTargetedActivity} to several inboxes as one activity, for an
+ * audience that is not the signer's followers.
+ */
+export const enqueueActivityToInboxes = (
+  env: Env,
+  accountId: string,
+  kind: string,
+  payload: unknown,
+  inboxUrls: ReadonlyArray<string>,
+): Promise<Result<void, EnqueueLocalActivityError>> =>
+  enqueueSignedActivity(env, { kind: "Account", accountId }, kind, payload, inboxUrls);
 
 /** {@link enqueueTargetedActivity}, signed by the instance actor rather than a user. */
 export const enqueueInstanceActorActivity = (
@@ -102,22 +115,26 @@ export const enqueueInstanceActorActivity = (
   payload: unknown,
   inboxUrl: string,
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
-  enqueueSignedActivity(env, { kind: "InstanceActor" }, kind, payload, inboxUrl);
+  enqueueSignedActivity(env, { kind: "InstanceActor" }, kind, payload, [inboxUrl]);
 
 const enqueueSignedActivity = async (
   env: Env,
   signer: OutboundSigner,
   kind: string,
   payload: unknown,
-  inboxUrl: string,
+  inboxUrls: ReadonlyArray<string>,
 ): Promise<Result<void, EnqueueLocalActivityError>> => {
   // A suspended domain, or one outside the federation allow list, is never
   // contacted; the activity is dropped quietly.
-  const inboxHost = Hostname.ofUri(inboxUrl);
-  if (
-    inboxHost &&
-    ((await suspendedDomains(env.DB)).has(inboxHost) || !(await federatesWithHost(env, inboxHost)))
-  ) {
+  const suspended = await suspendedDomains(env.DB);
+  const admitted: string[] = [];
+  for (const inboxUrl of new Set(inboxUrls)) {
+    const inboxHost = Hostname.ofUri(inboxUrl);
+    if (!inboxHost || (!suspended.has(inboxHost) && (await federatesWithHost(env, inboxHost)))) {
+      admitted.push(inboxUrl);
+    }
+  }
+  if (admitted.length === 0) {
     return ok(undefined);
   }
   const inserted = await insertOutboundActivity(env.DB, { signer, kind, payload });
@@ -136,19 +153,21 @@ const enqueueSignedActivity = async (
   if (activityId.isErr()) {
     return err({ kind: "InvalidActivityId" });
   }
-  const target = await ensureOutboxTarget(env.DB, activityId.value, inboxUrl);
-  if (target.isErr()) {
-    return err(target.error);
+  const targets = await ensureOutboxTargets(env.DB, activityId.value, admitted);
+  if (targets.isErr()) {
+    return err(targets.error);
   }
-  const deliver = OutboxJob.parse({
-    kind: "DeliverTarget",
-    activityId: activityId.value,
-    inboxUrl,
-  });
-  if (deliver.isErr() || deliver.value.kind !== "DeliverTarget") {
-    return err({ kind: "InvalidActivityId" });
+  for (const inboxUrl of admitted) {
+    const deliver = OutboxJob.parse({
+      kind: "DeliverTarget",
+      activityId: activityId.value,
+      inboxUrl,
+    });
+    if (deliver.isErr() || deliver.value.kind !== "DeliverTarget") {
+      return err({ kind: "InvalidActivityId" });
+    }
+    await startOutboxDeliveryWorkflow(env, deliver.value);
   }
-  await startOutboxDeliveryWorkflow(env, deliver.value);
   writeMetric(env, "outbox.enqueue", [1], [kind, "targeted"]);
   return ok(undefined);
 };

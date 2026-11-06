@@ -27,6 +27,7 @@ import type { MediaAttribute } from "./status-body-schema";
 import { notifyingFollowerIds } from "./follow-store";
 import { mastodonStatus } from "./local-status-documents";
 import { loadNoteQuotePolicy } from "./quote-policy-name";
+import { noteQuote } from "./quote-uri";
 import { insertStatusQuote, setStatusQuotePolicy, type QuotePolicy } from "./quote-store";
 import { insertLocalNote, setStatusReplyUri } from "./status-store";
 import { enqueueHomeFanOut } from "./home-fan-out";
@@ -50,12 +51,11 @@ export type PublishNoteInput = Readonly<{
   replyTo: ThreadStatus | null;
   mediaAttributes: ReadonlyArray<MediaAttribute>;
   poll: PublishPoll | null;
-  /** The quoted status, with its URI and the `quote-inline` paragraph. */
+  /** The quoted status and the `quote-inline` paragraph. */
   quote: Readonly<{
     quoted: StatusTargetValue;
     quotedAccountId: string;
     inlineHtml: string;
-    uri: string;
   }> | null;
   /** Who may quote the new status; `null` keeps the account default. */
   quotePolicy: QuotePolicy | null;
@@ -278,7 +278,7 @@ export const publishLocalNote = async (
           type: "Create",
           actor,
           object: noteDocument(identity, user, note, {
-            quote: input.quote ? { uri: input.quote.uri } : undefined,
+            quote: input.quote ? await noteQuote(env, identity, note.id) : undefined,
             mentions: await loadNoteMentions(env.DB, identity, note.id),
             reply: await loadNoteReply(env.DB, identity, note),
             poll: await loadNotePoll(env.DB, note.id),
