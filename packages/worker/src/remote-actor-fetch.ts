@@ -403,12 +403,20 @@ export const cacheFetchedActor = async (
   }
 };
 
+/**
+ * `checkSignature` is given the public key of an actor fetched because it was
+ * not cached, before its WebFinger round trip or caching; `false` stops both,
+ * so an unsigned or forged request reaches no URL but the key's.
+ */
+export type KeyResolveOptions = FederatedFetchOptions &
+  Readonly<{ checkSignature?: (publicKeyPem: string) => Promise<boolean> }>;
+
 export const resolveRemoteActor = async (
   db: D1Database,
   identity: InstanceIdentity,
   keyId: string,
   actorUri: string,
-  options: FederatedFetchOptions = {},
+  options: KeyResolveOptions = {},
 ): Promise<Result<RemoteActor, RemoteActorResolveError>> => {
   const byKey = await findRemoteActorByPublicKeyId(db, keyId);
   if (byKey.isErr()) {
@@ -437,6 +445,9 @@ export const resolveRemoteActor = async (
     actor.value.actorUri !== keyId &&
     `${actor.value.actorUri}#main-key` !== keyId
   ) {
+    return err({ kind: "InvalidSignature" });
+  }
+  if (options.checkSignature && !(await options.checkSignature(actor.value.publicKeyPem))) {
     return err({ kind: "InvalidSignature" });
   }
   return cacheFetchedActor(db, identity, actor.value, options);

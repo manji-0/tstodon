@@ -32,6 +32,7 @@ export const signedFetchActor = async (
   const actor = await resolveRemoteActor(env.DB, identity, parsed.keyId, actorUri, {
     allowHosts,
     blockedHosts: suspended,
+    checkSignature: (publicKeyPem) => verifySignedFetch(request, parsed, publicKeyPem),
   });
   if (actor.isErr()) {
     return undefined;

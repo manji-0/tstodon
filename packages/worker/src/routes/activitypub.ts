@@ -302,6 +302,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     const remote = await resolveRemoteActor(c.env.DB, identity.value, signature.keyId, actorUri, {
       allowHosts,
       blockedHosts: suspended,
+      checkSignature: (publicKeyPem) => verifyInboxRequest(c.req.raw, publicKeyPem, bodyText),
     });
     if (remote.isErr()) {
       if (remote.error.kind === "VerificationUnavailable") {
