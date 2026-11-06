@@ -13,7 +13,7 @@ import { refId } from "../activitypub-wire";
 import { nowIso } from "../clock";
 import type { RepositoryError } from "../d1";
 import { announceNoteUpdate } from "../local-status-update";
-import { findQuoteByApprovalUri, saveQuoteState } from "../quote-store";
+import { findQuotesByApprovalUri, saveQuoteState } from "../quote-store";
 import { stampAuthorizes } from "../remote-quote-verify";
 import { findRemoteStatusById } from "../remote-status-store";
 import { findStatusById } from "../status-store";
@@ -143,7 +143,7 @@ const acceptedStamp = (
  * `accept_quote!` and `reject_quote!`. An `Accept` of a pending quote stores
  * the stamp and federates the note again with `quoteAuthorization`. A
  * `Reject` rejects the quote, or revokes an accepted one, and federates
- * nothing, as Mastodon.
+ * nothing, as Mastodon; a `Reject` that changes nothing is not announced.
  */
 export const receiveQuoteAnswer = async (
   { env, identity, signer, activity, received }: RemoteDelivery<"Accept" | "Reject">,
@@ -154,7 +154,10 @@ export const receiveQuoteAnswer = async (
     return quoting.map(() => undefined);
   }
   if (activity.kind === "Reject") {
-    return settle(env, identity, quoting.value, Quote.reject(quote), false);
+    const rejected = Quote.reject(quote);
+    return rejected.state.kind === quote.state.kind
+      ? ok(undefined)
+      : settle(env, identity, quoting.value, rejected, false);
   }
   const stamp = acceptedStamp(received.result, signer, quoting.value);
   const accepted =
@@ -166,8 +169,9 @@ export const receiveQuoteAnswer = async (
 
 /**
  * The quoted author deleted the stamp of a quote, as Mastodon's
- * `Delete#revoke_quote`: the quote is revoked. `false` when `uri` is no
- * stamp the signer gave, so the `Delete` is for something else.
+ * `Delete#revoke_quote`: the local quote it approved is revoked, past any
+ * other quote naming the same URI. `false` when `uri` is no stamp the signer
+ * gave a local quote, so the `Delete` is for something else.
  */
 export const revokeQuoteStamp = async (
   env: Env,
@@ -175,24 +179,23 @@ export const revokeQuoteStamp = async (
   signer: RemoteActor,
   uri: string,
 ): Promise<Result<boolean, RepositoryError>> => {
-  const quote = await findQuoteByApprovalUri(env.DB, uri);
-  if (quote.isErr()) {
-    return err(quote.error);
+  const quotes = await findQuotesByApprovalUri(env.DB, uri);
+  if (quotes.isErr()) {
+    return err(quotes.error);
   }
-  if (
-    !quote.value ||
-    (quote.value.state.kind !== "Pending" && quote.value.state.kind !== "Accepted")
-  ) {
-    return ok(false);
+  for (const quote of quotes.value) {
+    if (quote.state.kind !== "Pending" && quote.state.kind !== "Accepted") {
+      continue;
+    }
+    const quoting = await signerQuote(env.DB, identity, quote, signer);
+    if (quoting.isErr()) {
+      return err(quoting.error);
+    }
+    if (quoting.value) {
+      return (await settle(env, identity, quoting.value, Quote.reject(quote), false)).map(
+        () => true,
+      );
+    }
   }
-  const quoting = await signerQuote(env.DB, identity, quote.value, signer);
-  if (quoting.isErr()) {
-    return err(quoting.error);
-  }
-  if (!quoting.value) {
-    return ok(false);
-  }
-  return (await settle(env, identity, quoting.value, Quote.reject(quote.value), false)).map(
-    () => true,
-  );
+  return ok(false);
 };

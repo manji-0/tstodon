@@ -31,11 +31,12 @@ import { notifyFromRemote } from "../notify";
 import { enqueuePublicFanOut } from "../public-fan-out";
 import { quoteAuthorizationUri } from "../quote-authorization-document";
 import { loadNoteQuotePolicy } from "../quote-policy-name";
-import { findQuoteByQuoting, saveQuoteState } from "../quote-store";
+import { findQuoteByActivityUri, findQuoteByQuoting, saveQuoteState } from "../quote-store";
 import { remoteFollowerActorUris } from "../remote-actor-store";
 import { persistRemoteObject } from "../remote-status-persist";
 import { findRemoteStatusByObjectUri } from "../remote-status-store";
 import { findStatusById } from "../status-store";
+import { canViewRemoteStatus } from "../visibility-guard";
 import type { RemoteDelivery } from "./handler";
 
 const urlHost = (href: string): string | undefined => {
@@ -178,6 +179,20 @@ const quoteOf = async (
 };
 
 /**
+ * Whether another quote already holds the request id, as when another actor
+ * on the signer's host reuses it. Such a request is dropped unanswered rather
+ * than failing on the unique `activity_uri`.
+ */
+const requestIdTaken = async (
+  db: D1Database,
+  requestId: string,
+  quote: QuoteValue,
+): Promise<Result<boolean, RepositoryError>> =>
+  (await findQuoteByActivityUri(db, requestId)).map(
+    (holder) => holder !== undefined && holder.id !== quote.id,
+  );
+
+/**
  * Refuse the request, as Mastodon's `reject_quote_request!`, without
  * fetching the quoting note. A quote already stored is rejected, or revoked
  * when it was accepted.
@@ -198,6 +213,10 @@ const rejectQuoteRequest = async (
     return err(quote.error);
   }
   if (owned && quote.value) {
+    const taken = await requestIdTaken(env.DB, request.id, quote.value);
+    if (taken.isErr() || taken.value) {
+      return taken.map(() => undefined);
+    }
     const rejected = Quote.reject({ ...quote.value, activityUri: request.id });
     const saved = await saveQuoteState(env.DB, rejected);
     if (saved.isErr()) {
@@ -227,7 +246,8 @@ const rejectQuoteRequest = async (
  * `QuoteRequest#perform`. A request for a note others may not quote, or whose
  * id is not on the signer's host, is dropped without an answer. Otherwise the
  * author's policy decides: an `Accept` carries the stamp as `result`, accepts
- * the stored quote and notifies the author; a `Reject` refuses it.
+ * the stored quote and notifies the author when they may see the quoting
+ * note; a `Reject` refuses it.
  */
 export const receiveQuoteRequest = async (
   delivery: RemoteDelivery<"QuoteRequest">,
@@ -270,6 +290,10 @@ export const receiveQuoteRequest = async (
   if (!quoting.value || !quote.value) {
     return ok(undefined);
   }
+  const taken = await requestIdTaken(env.DB, activity.id, quote.value);
+  if (taken.isErr() || taken.value) {
+    return taken.map(() => undefined);
+  }
   const requested = { ...quote.value, activityUri: activity.id };
   const accepted =
     requested.state.kind === "Accepted"
@@ -298,6 +322,12 @@ export const receiveQuoteRequest = async (
     return ok(undefined);
   }
   await announceQuoteChange(env, quoting.value);
+  // Mastodon also mentions the quoted author silently (`ensure_quoted_access`)
+  // so a narrower note reaches them; without silent mentions, an author who
+  // may not see the note is not told about it.
+  if (!(await canViewRemoteStatus(env.DB, quoting.value, quoted.value.author.id))) {
+    return ok(undefined);
+  }
   return notifyFromRemote(env, {
     accountId: quoted.value.author.id,
     actorUri: signer.actorUri,

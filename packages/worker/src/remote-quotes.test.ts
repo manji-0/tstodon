@@ -5,6 +5,7 @@ import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { deliveredCreate } from "../test/delivery-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { openStream } from "../test/stream-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -246,6 +247,66 @@ describe("quoting a remote status", () => {
       }),
     ).toBe(202);
     expect((await quoteOf(revoked.email, revoked.quotingId)).state).toBe("revoked");
+  });
+
+  it("settles a repeated Reject once", async () => {
+    const quote = await quoteBob("rq-reject-again");
+    const socket = await openStream({ email: quote.email, query: "?stream=user" });
+    const reject = (n: number) =>
+      quote.bob.send({
+        id: `${quote.bob.actorUri}#rejects/${n}`,
+        type: "Reject",
+        object: quote.request.body.id,
+      });
+
+    expect(await reject(1)).toBe(202);
+    expect(await socket.next()).toMatchObject({ event: "status.update" });
+    expect(await socket.heardNothing()).toBe(true);
+
+    expect(await reject(2)).toBe(202);
+    expect(await socket.heardNothing()).toBe(true);
+    expect((await quoteOf(quote.email, quote.quotingId)).state).toBe("rejected");
+    socket.close();
+  });
+
+  it("revokes the local quote a shared stamp approved, past a remote quote naming it too", async () => {
+    const email = "rq-shared-stamp-alice@example.com";
+    const alice = await signedInAccount(email);
+    const bob = await remoteActor("rq-shared-stamp-bob");
+    const dave = await remoteActor("rq-shared-stamp-dave");
+    const bobNote = await remoteNote(bob, "rq-shared-stamp");
+    const daveNote = await remoteNote(dave, "rq-shared-stamp-dave");
+    const stamp = `${bob.actorUri}/stamps/shared`;
+    await env.DB.prepare(
+      `INSERT INTO status_quotes (id, remote_status_id, quoted_remote_status_id, state,
+         approval_uri, created_at, updated_at)
+       VALUES (?, ?, ?, 'accepted', ?, '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z')`,
+    )
+      .bind(`${daveNote.id}0`, daveNote.id, bobNote.id, stamp)
+      .run();
+    const posted = await postQuote(email, bobNote.id);
+    expect(posted.status).toBe(200);
+    const quotingId = read(QuoteDocumentSchema, posted.body).id;
+    const [request] = await queued(alice.id, "QuoteRequest");
+    expect(
+      await bob.send({
+        id: `${bob.actorUri}#accepts/shared`,
+        type: "Accept",
+        object: read(QuoteRequestSchema, request?.payload).id,
+        result: stamp,
+      }),
+    ).toBe(202);
+    expect((await quoteOf(email, quotingId)).state).toBe("accepted");
+
+    expect(
+      await bob.send({
+        id: `${stamp}#delete`,
+        type: "Delete",
+        object: { id: stamp, type: "QuoteAuthorization" },
+      }),
+    ).toBe(202);
+
+    expect((await quoteOf(email, quotingId)).state).toBe("revoked");
   });
 
   it("revokes the quote when the quoted author deletes the stamp, keeping the note", async () => {

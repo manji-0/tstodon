@@ -205,6 +205,33 @@ describe("answering a remote QuoteRequest for a local status", () => {
     });
   });
 
+  it.each([
+    ["a direct note that does not address the author", "direct", { to: [], cc: [] }, false],
+    ["a followers-only note of an author they do not follow", "private", {}, false],
+    ["a followers-only note of an author they follow", "followed", {}, true],
+  ])(
+    "accepts a quote from %s, notifying only an author who may see it",
+    async (_label, slug, audience, notified) => {
+      const quote = await setup(`rqr-audience-${slug}`);
+      if (notified) {
+        await env.DB.prepare(
+          `INSERT INTO outbound_follows (id, account_id, actor_uri, follow_activity_id, state)
+           VALUES (?, ?, ?, ?, 'Accepted')`,
+        )
+          .bind(slug, quote.alice.id, quote.bob.actorUri, `https://example.com/follows/${slug}`)
+          .run();
+      }
+      expect(
+        await quote.request({
+          instrument: quote.note({ to: [`${quote.bob.actorUri}/followers`], cc: [], ...audience }),
+        }),
+      ).toBe(202);
+
+      expect((await answers(quote.alice.id)).accepts).toHaveLength(1);
+      expect((await notificationsOf(quote.email)).some((n) => n.type === "quote")).toBe(notified);
+    },
+  );
+
   it("rejects under a nobody policy and notifies nobody", async () => {
     const quote = await setup("rqr-nobody", { quote_approval_policy: "nobody" });
     expect(await quote.request()).toBe(202);
@@ -257,6 +284,35 @@ describe("answering a remote QuoteRequest for a local status", () => {
       await quote.request({ id: "https://elsewhere.example/quote_requests/rqr-forged-id" }),
     ).toBe(202);
     expect(await answers(quote.alice.id)).toEqual({ accepts: [], rejects: [] });
+  });
+
+  it("drops without an answer a request reusing another actor's request id", async () => {
+    const quote = await setup("rqr-reused-id");
+    expect(await quote.request()).toBe(202);
+    const eve = await remoteActor("rqr-reused-id-eve");
+    const eveNote = `https://remote.example/notes/rqr-reused-id-eve`;
+    // As if both deliveries had passed the inbox's duplicate check at once.
+    await env.DB.prepare("DELETE FROM inbox_activities WHERE activity_id = ?")
+      .bind(quote.requestId)
+      .run();
+
+    expect(
+      await eve.send({
+        id: quote.requestId,
+        type: "QuoteRequest",
+        object: quote.statusUri,
+        instrument: quote.note({ id: eveNote, attributedTo: eve.actorUri }),
+      }),
+    ).toBe(202);
+
+    expect(await answers(quote.alice.id)).toEqual({
+      accepts: [expect.anything()],
+      rejects: [],
+    });
+    expect(await quoteOf(quote.email, await remoteStatusId(eveNote))).toEqual({
+      state: "pending",
+      quoted_status: null,
+    });
   });
 
   it("rejects a request from an actor the author blocks", async () => {

@@ -211,32 +211,35 @@ export const findQuoteById = async (
     return parseRows(QuoteDbRow, results).flatMap(toQuote)[0];
   });
 
-const findQuoteWhere = async (
+const findQuotesWhere = async (
   db: D1Database,
   column: "activity_uri" | "approval_uri",
   value: string,
-): Promise<Result<QuoteValue | undefined, RepositoryError>> =>
+): Promise<Result<QuoteValue[], RepositoryError>> =>
   runD1(async () => {
     const { results } = await db
-      .prepare(`SELECT ${SELECT} FROM status_quotes WHERE ${column} = ? LIMIT 1`)
+      .prepare(`SELECT ${SELECT} FROM status_quotes WHERE ${column} = ? ORDER BY id`)
       .bind(value)
       .all();
-    return parseRows(QuoteDbRow, results).flatMap(toQuote)[0];
+    return parseRows(QuoteDbRow, results).flatMap(toQuote);
   });
 
 /** The quote a `QuoteRequest` asked for, by the request's id. */
-export const findQuoteByActivityUri = (
+export const findQuoteByActivityUri = async (
   db: D1Database,
   uri: string,
 ): Promise<Result<QuoteValue | undefined, RepositoryError>> =>
-  findQuoteWhere(db, "activity_uri", uri);
+  (await findQuotesWhere(db, "activity_uri", uri)).map((quotes) => quotes[0]);
 
-/** The quote a remote quoted author's stamp approved, by the stamp's URI. */
-export const findQuoteByApprovalUri = (
+/**
+ * The quotes a remote quoted author's stamp approved, by the stamp's URI.
+ * Several quotes may name one URI (as on Mastodon, it is not unique), so the
+ * caller picks the one the stamp's author may answer for.
+ */
+export const findQuotesByApprovalUri = (
   db: D1Database,
   uri: string,
-): Promise<Result<QuoteValue | undefined, RepositoryError>> =>
-  findQuoteWhere(db, "approval_uri", uri);
+): Promise<Result<QuoteValue[], RepositoryError>> => findQuotesWhere(db, "approval_uri", uri);
 
 /** How many accepted quotes each of these statuses has, keyed by status id. */
 export const quoteCountsByQuoted = async (
