@@ -82,6 +82,9 @@ export type NotificationGroupTarget =
  */
 const defaultGroupedTypes: ReadonlyArray<string> = ["favourite", "reblog", "follow"];
 
+/** Mastodon's `GROUPABLE_NOTIFICATION_TYPES`: a request's `grouped_types` keeps only these. */
+const groupableTypes: ReadonlySet<string> = new Set([...defaultGroupedTypes, "admin.sign_up"]);
+
 /** Mastodon's `Notification::TYPES`: the types a `{type}-{target}` key can name. */
 const notificationTypes: ReadonlySet<string> = new Set([
   "mention",
@@ -204,6 +207,7 @@ const page = (
 
 export const NotificationGroup = {
   defaultGroupedTypes,
+  groupableTypes,
   key,
   target,
   summarized,

@@ -248,7 +248,11 @@ const groupedQuery = (
   const requested = queryValues("grouped_types");
   return {
     type: "notifications",
-    groupedTypes: new Set(requested.length > 0 ? requested : NotificationGroup.defaultGroupedTypes),
+    groupedTypes: new Set(
+      (requested.length > 0 ? requested : NotificationGroup.defaultGroupedTypes).filter((type) =>
+        NotificationGroup.groupableTypes.has(type),
+      ),
+    ),
     filters: {
       types: queryValues("types"),
       excludeTypes: queryValues("exclude_types"),
@@ -279,7 +283,7 @@ const groupedNotificationPage = async (
   accountId: string,
 ): Promise<Result<NotificationGroupPage, RepositoryError>> => {
   const { groupedTypes, filters, limit } = groupedQuery(c);
-  const direction = filters.minId === undefined ? "Older" : "Newer";
+  const direction = filters.minId ? "Newer" : "Older";
   const hosts = await hidingHosts(c.env);
   const representatives = await pageNotificationGroups(
     c.env.DB,
