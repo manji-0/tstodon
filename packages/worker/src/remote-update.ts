@@ -27,6 +27,7 @@ import {
   remoteMentionedPost,
   noteFromUnknown,
   parseNoteDocument,
+  remoteQuoteContext,
 } from "./remote-status-persist";
 import { syncRemoteQuote } from "./remote-quote";
 import { listLocalBoosterAccountIds } from "./status-interaction-store";
@@ -90,6 +91,7 @@ const applyNoteUpdate = async (
   identity: InstanceIdentity,
   signer: RemoteActor,
   target: Extract<UpdateTarget, { kind: "NoteUpdate" }>,
+  options: FederatedFetchOptions,
 ): Promise<Result<void, RepositoryError>> => {
   const cached = await findRemoteStatusByObjectUri(env.DB, target.objectUri);
   if (cached.isErr()) {
@@ -153,7 +155,13 @@ const applyNoteUpdate = async (
   if (recorded.isErr()) {
     return err(recorded.error);
   }
-  const quote = await syncRemoteQuote(env.DB, identity, stored.value, target.raw);
+  const quote = await syncRemoteQuote(
+    env,
+    identity,
+    stored.value,
+    target.raw,
+    remoteQuoteContext(env, identity, signer, options),
+  );
   if (quote.isErr()) {
     return err(quote.error);
   }
@@ -262,7 +270,7 @@ export const applyRemoteUpdate = async (
   const target = classifyUpdateObject(raw);
   switch (target.kind) {
     case "NoteUpdate":
-      return applyNoteUpdate(env, identity, signer, target);
+      return applyNoteUpdate(env, identity, signer, target, options);
     case "ActorUpdate":
       return applyActorUpdate(env, identity, signer, target, options);
     case "Unsupported":

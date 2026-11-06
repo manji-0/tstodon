@@ -32,7 +32,7 @@ import { isTruthy, stringList } from "./form-values";
 import { NoteDocumentSchema } from "./activitypub-wire";
 import { remoteEmojisInTexts } from "./remote-emoji-document";
 import { remotePollFromDocument } from "./remote-poll-parse";
-import { syncRemoteQuote } from "./remote-quote";
+import { type RemoteQuoteContext, syncRemoteQuote } from "./remote-quote";
 
 export const parseNoteDocument = schemaResult(NoteDocumentSchema);
 
@@ -285,6 +285,8 @@ type PersistOptions = Readonly<{
   notifyMentions?: boolean;
   /** Which instant a newly stored note's id sorts at; `Received` by default. */
   idClock?: IdClock;
+  /** Fetch a quoted note that is not cached; `false` for a note fetched as one, so quotes resolve one level deep. */
+  fetchQuoted?: boolean;
 }>;
 
 type ObjectReference = string | Readonly<{ id: string } & Record<string, unknown>>;
@@ -381,6 +383,31 @@ export const persistAnnouncedObject = async (
   return storeRemoteNote(env, identity, author.value, raw.value, options);
 };
 
+/**
+ * How a note `actor` wrote reaches the note it quotes and that quote's stamp.
+ * An uncached quoted note is fetched as an announced one, unless
+ * `options.fetchQuoted` is `false`.
+ */
+export const remoteQuoteContext = (
+  env: Env,
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+  options: PersistOptions,
+): RemoteQuoteContext => ({
+  fetchOptions: options,
+  resolveQuoted: async (uri) => {
+    const cached = await findRemoteStatusByObjectUri(env.DB, uri);
+    if (cached.isErr() || cached.value || options.fetchQuoted === false) {
+      return cached;
+    }
+    return persistAnnouncedObject(env, identity, actor, uri, {
+      ...options,
+      notifyMentions: false,
+      fetchQuoted: false,
+    });
+  },
+});
+
 const urlHost = (href: string): string | undefined => {
   try {
     return new URL(href).host.toLowerCase();
@@ -420,7 +447,13 @@ const storeRemoteNote = async (
   if (mentions.isErr()) {
     return err(mentions.error);
   }
-  const quote = await syncRemoteQuote(env.DB, identity, stored.value, raw);
+  const quote = await syncRemoteQuote(
+    env,
+    identity,
+    stored.value,
+    raw,
+    remoteQuoteContext(env, identity, actor, options),
+  );
   if (quote.isErr()) {
     return err(quote.error);
   }

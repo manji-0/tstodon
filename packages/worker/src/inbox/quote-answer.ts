@@ -1,4 +1,3 @@
-import { schemaResult } from "@tstodon/core";
 import {
   type InstanceIdentity,
   type LocalAccount,
@@ -8,7 +7,6 @@ import {
   type RemoteActor,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { z } from "zod";
 import { findAccountById } from "../account-store";
 import { localNoteRef } from "../activitypub";
 import { refId } from "../activitypub-wire";
@@ -16,6 +14,7 @@ import { nowIso } from "../clock";
 import type { RepositoryError } from "../d1";
 import { announceNoteUpdate } from "../local-status-update";
 import { findQuoteByApprovalUri, saveQuoteState } from "../quote-store";
+import { stampAuthorizes } from "../remote-quote-verify";
 import { findRemoteStatusById } from "../remote-status-store";
 import { findStatusById } from "../status-store";
 import type { RemoteDelivery } from "./handler";
@@ -108,14 +107,6 @@ const httpsHost = (uri: string): string | undefined => {
   }
 };
 
-const InlineStampSchema = z.object({
-  id: z.string().min(1),
-  type: z.union([z.string(), z.array(z.string())]),
-  attributedTo: z.unknown(),
-  interactingObject: z.unknown(),
-  interactionTarget: z.unknown(),
-});
-
 /**
  * The stamp an `Accept` names in `result`, when it can be the signer's stamp
  * for this quote: an https URI on the signer's host, as Mastodon's
@@ -137,15 +128,12 @@ const acceptedStamp = (
   if (typeof first === "string") {
     return uri;
   }
-  const stamp = schemaResult(InlineStampSchema)(first);
-  if (stamp.isErr()) {
-    return undefined;
-  }
-  const types = typeof stamp.value.type === "string" ? [stamp.value.type] : stamp.value.type;
-  return types.includes("QuoteAuthorization") &&
-    refId(stamp.value.attributedTo) === signer.actorUri &&
-    refId(stamp.value.interactingObject) === quoting.quotingUri &&
-    refId(stamp.value.interactionTarget) === quoting.quotedUri
+  return stampAuthorizes(first, {
+    uri,
+    quotingUri: quoting.quotingUri,
+    quotedUri: quoting.quotedUri,
+    quotedActorUri: signer.actorUri,
+  })
     ? uri
     : undefined;
 };
