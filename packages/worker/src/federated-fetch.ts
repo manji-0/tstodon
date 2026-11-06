@@ -12,39 +12,70 @@ export type WebfingerFetchError = FederatedFetchError | Readonly<{ kind: "NoSuch
 
 const parseWebfinger = schemaResult(RemoteWebfingerSchema);
 
+/** IPv4 blocks no federated fetch may reach: `[network, prefix length]`. */
+const REFUSED_IPV4_BLOCKS: ReadonlyArray<readonly [string, number]> = [
+  ["0.0.0.0", 8],
+  ["10.0.0.0", 8],
+  ["100.64.0.0", 10],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
+  ["172.16.0.0", 12],
+  ["192.168.0.0", 16],
+  ["224.0.0.0", 3],
+];
+
+const PRIVATE_NAME_SUFFIXES: ReadonlyArray<string> = ["localhost", "internal", "local"];
+
+const ipv4Number = (address: string): number =>
+  address.split(".").reduce((value, octet) => value * 256 + Number(octet), 0);
+
+const inIpv4Block = (address: number, [network, prefix]: readonly [string, number]): boolean => {
+  const size = 2 ** (32 - prefix);
+  return Math.floor(address / size) === Math.floor(ipv4Number(network) / size);
+};
+
+/**
+ * The host as a URL would name it: lower case, no trailing dot, IPv4 in
+ * dotted decimal whatever form it was written in (`2130706433`, `0x7f.1`,
+ * `0177.0.0.1`), IPv6 in brackets. Undefined when no URL could name it.
+ */
+const urlHostname = (hostname: string): string | undefined => {
+  const host = hostname.trim().toLowerCase().replace(/\.+$/, "");
+  const literal = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  return URL.parse(`http://${literal}/`)?.hostname.replace(/\.+$/, "");
+};
+
+/** True when the list names the host; an IPv6 literal may be listed without brackets. */
+const namedIn = (hosts: ReadonlySet<string>, host: string): boolean =>
+  hosts.has(host) || hosts.has(host.replace(/^\[(.*)\]$/, "$1"));
+
+/**
+ * True when a fetch must not reach the host: this instance itself, an IPv4
+ * address in a loopback, private, shared, link-local or reserved block, any
+ * IPv6 literal, or a `localhost`, `.internal` or `.local` name, unless
+ * `allowHosts` names it. Workers cannot see what a name resolves to, so a
+ * public name that resolves to a private address is not caught here.
+ */
 export const isBlockedFederatedHost = (
   hostname: string,
   instanceDomain: string,
   allowHosts: ReadonlySet<string> = new Set(),
 ): boolean => {
-  const host = hostname.toLowerCase();
-  if (allowHosts.has(host)) {
+  const host = urlHostname(hostname);
+  if (host === undefined) {
+    return true;
+  }
+  if (namedIn(allowHosts, host)) {
     return false;
   }
-  if (host === instanceDomain.toLowerCase()) {
+  if (host === urlHostname(Hostname.ofAuthority(instanceDomain)) || host.startsWith("[")) {
     return true;
   }
-  if (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "0.0.0.0" ||
-    host === "::1" ||
-    host === "[::1]" ||
-    host.endsWith(".localhost")
-  ) {
-    return true;
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+    const address = ipv4Number(host);
+    return REFUSED_IPV4_BLOCKS.some((block) => inIpv4Block(address, block));
   }
-  if (host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("169.254.")) {
-    return true;
-  }
-  const octets = host.split(".");
-  if (octets.length === 4 && octets[0] === "172") {
-    const second = Number.parseInt(octets[1] ?? "", 10);
-    if (second >= 16 && second <= 31) {
-      return true;
-    }
-  }
-  return false;
+  return PRIVATE_NAME_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
 };
 
 /** Options shared by every outbound federation fetch. */
@@ -64,9 +95,9 @@ export const isFederatedHostRefused = (
   instanceDomain: string,
   options: FederatedFetchOptions = {},
 ): boolean => {
-  const host = hostname.toLowerCase();
   const allowHosts = options.allowHosts;
-  if (allowHosts && allowHosts.size > 0 && !allowHosts.has(host)) {
+  const host = urlHostname(hostname);
+  if (allowHosts && allowHosts.size > 0 && (host === undefined || !namedIn(allowHosts, host))) {
     return true;
   }
   return (
