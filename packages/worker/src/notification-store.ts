@@ -1,9 +1,13 @@
-import type {
-  GroupedNotificationEntry,
-  NewNotification,
-  NotificationGroupSummary,
-  NotificationGroupTarget,
-  RemoteNotificationWithdrawal,
+import {
+  type GroupedNotificationEntry,
+  type NewNotification,
+  NotificationGroup,
+  type NotificationGroupRepresentative,
+  type NotificationGroupSummary,
+  type NotificationGroupTarget,
+  type NotificationPageDirection,
+  type NotificationPageRange,
+  type RemoteNotificationWithdrawal,
 } from "@tstodon/domain";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
@@ -21,8 +25,11 @@ import {
   findNotificationOwned as findNotificationOwnedSql,
   insertNotification as insertNotificationSql,
   listNotifications as listNotificationsSql,
-  summarizeNotificationGroup as summarizeNotificationGroupSql,
+  pageNotificationGroupsNewer as pageNotificationGroupsNewerSql,
+  pageNotificationGroupsOlder as pageNotificationGroupsOlderSql,
+  summarizeNotificationGroups as summarizeNotificationGroupsSql,
 } from "./generated/prisma/sql";
+import type { RemoteActorSearchHosts } from "./remote-actor-store";
 
 const PresentRow = z.object({ present: z.number() });
 const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
@@ -247,7 +254,50 @@ export const dismissNotificationGroup = async (
     await runTyped(db, dismissNotificationGroupSql(accountId, nowIso(), ...groupParameters(group)));
   });
 
+const RepresentativeRowSchema = z.object({ id: z.string(), group_key: z.string() });
+
+/**
+ * The representatives of the first `limit` groups past the cursor, newest
+ * first, as Mastodon's `paginate_groups`: `Older` reads down from `max_id`
+ * (above `since_id`), `Newer` up from `min_id` (below `max_id`). Only
+ * notifications from available senders count; `hosts` is the federation state
+ * that hides a remote sender.
+ */
+export const pageNotificationGroups = async (
+  db: D1Database,
+  accountId: string,
+  limit: number,
+  filters: NotificationFilters,
+  groupedTypes: ReadonlySet<string>,
+  hosts: RemoteActorSearchHosts,
+  direction: NotificationPageDirection,
+): Promise<Result<ReadonlyArray<NotificationGroupRepresentative>, RepositoryError>> =>
+  runD1(async () => {
+    const page =
+      direction === "Older" ? pageNotificationGroupsOlderSql : pageNotificationGroupsNewerSql;
+    const rows = await queryTyped(
+      db,
+      page(
+        accountId,
+        nowIso(),
+        limit,
+        jsonStringArray(filters.types ?? []),
+        jsonStringArray(filters.excludeTypes ?? []),
+        filters.fromAccountId ?? "",
+        filters.includeFiltered ? 1 : 0,
+        jsonStringArray([...groupedTypes]),
+        jsonStringArray([...hosts.suspended]),
+        jsonStringArray([...hosts.allow]),
+        filters.maxId ?? "",
+        (direction === "Older" ? filters.sinceId : filters.minId) ?? "",
+      ),
+      RepresentativeRowSchema,
+    );
+    return rows.map((row) => ({ id: row.id, groupKey: row.group_key }));
+  });
+
 const NotificationGroupSummaryRowSchema = z.object({
+  group_key: z.string(),
   id: z.string(),
   kind: z.string(),
   from_account_id: z.string(),
@@ -257,39 +307,77 @@ const NotificationGroupSummaryRowSchema = z.object({
   created_at: z.string(),
   held: z.number(),
   notifications_count: z.number(),
-  oldest_id: z.string(),
+  page_min_id: z.string(),
+  sample_1: z.string().nullable(),
+  sample_2: z.string().nullable(),
+  sample_3: z.string().nullable(),
 });
 
-/** A group key's count, oldest id and newest notification; undefined when it names nothing visible. */
-export const summarizeNotificationGroup = async (
+/** A group key as `summarizeNotificationGroups` reads it: `{key, id}` or `{key, type, target}`. */
+const groupJson = (groupKey: string, target: NotificationGroupTarget) =>
+  target.kind === "Notification"
+    ? { key: groupKey, id: target.id }
+    : { key: groupKey, type: target.type, target: target.target };
+
+/**
+ * Each group key's summary within `range`, as Mastodon's `load_groups_data`,
+ * in one statement; a key that names nothing visible, or no group at all, has
+ * no entry. Counts and samples take only available senders.
+ */
+export const summarizeNotificationGroups = async (
   db: D1Database,
   accountId: string,
-  group: NotificationGroupTarget,
-): Promise<Result<NotificationGroupSummary | undefined, RepositoryError>> =>
-  runD1(async () => {
-    const [row] = await queryTyped(
+  groupKeys: ReadonlyArray<string>,
+  range: NotificationPageRange,
+  hosts: RemoteActorSearchHosts,
+): Promise<Result<ReadonlyMap<string, NotificationGroupSummary>, RepositoryError>> => {
+  const groups = groupKeys.flatMap((groupKey) => {
+    const target = NotificationGroup.target(groupKey);
+    return target ? [groupJson(groupKey, target)] : [];
+  });
+  if (groups.length === 0) {
+    return ok(new Map());
+  }
+  return runD1(async () => {
+    const rows = await queryTyped(
       db,
-      summarizeNotificationGroupSql(accountId, nowIso(), ...groupParameters(group)),
+      summarizeNotificationGroupsSql(
+        accountId,
+        nowIso(),
+        JSON.stringify(groups),
+        jsonStringArray([...hosts.suspended]),
+        jsonStringArray([...hosts.allow]),
+        range.upper?.id ?? "",
+        range.upper?.inclusive ? 1 : 0,
+        range.lower?.id ?? "",
+        range.lower?.inclusive ? 1 : 0,
+      ),
       NotificationGroupSummaryRowSchema,
     );
-    if (!row) {
-      return undefined;
-    }
-    return {
-      newest: {
-        id: row.id,
-        kind: row.kind,
-        fromAccountId: row.from_account_id,
-        statusId: row.status_id,
-        reportId: row.report_id,
-        severanceEventId: row.severance_event_id,
-        createdAt: row.created_at,
-        held: row.held !== 0,
-      },
-      notificationsCount: row.notifications_count,
-      oldestId: row.oldest_id,
-    };
+    return new Map(
+      rows.map((row) => [
+        row.group_key,
+        {
+          newest: {
+            id: row.id,
+            kind: row.kind,
+            fromAccountId: row.from_account_id,
+            statusId: row.status_id,
+            reportId: row.report_id,
+            severanceEventId: row.severance_event_id,
+            createdAt: row.created_at,
+            held: row.held !== 0,
+          },
+          notificationsCount: row.notifications_count,
+          pageMinId: row.page_min_id,
+          sampleAccountIds: [row.sample_1, row.sample_2, row.sample_3].flatMap((id) =>
+            id === null ? [] : [id],
+          ),
+        },
+      ]),
+    );
   });
+};
 
 /** Hide every current notification for an account by moving the clear marker. */
 export const clearNotifications = async (

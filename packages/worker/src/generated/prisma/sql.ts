@@ -612,6 +612,10 @@ export * from "./sql/markRemoteStatusTagsIndexed";
 
 export * from "./sql/muteStatus";
 
+export * from "./sql/pageNotificationGroupsNewer";
+
+export * from "./sql/pageNotificationGroupsOlder";
+
 export * from "./sql/pinStatus";
 
 export * from "./sql/pruneStatusIdempotency";
@@ -688,7 +692,7 @@ export * from "./sql/setStatusReplyUri";
 
 export * from "./sql/settleRemotePollOwnVotes";
 
-export * from "./sql/summarizeNotificationGroup";
+export * from "./sql/summarizeNotificationGroups";
 
 export * from "./sql/unfeatureTag";
 

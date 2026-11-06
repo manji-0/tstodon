@@ -5,6 +5,7 @@ import {
   type NotificationGroupPage,
   type NotificationGroupTarget,
 } from "@tstodon/domain";
+import { suspendedDomains } from "../admin-domain-block-store";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "../d1";
 import { isTruthy } from "../form-values";
@@ -31,7 +32,8 @@ import { mastodonNotification, mastodonNotifications } from "../notification-doc
 import { reportDocumentsByIds } from "../report-documents";
 import { findAccountSeveranceEvents, severanceEventDocument } from "../severed-relationship-store";
 import { statusDocumentsByIds } from "../status-documents";
-import { parseInstanceIdentity } from "../runtime-config";
+import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
+import type { RemoteActorSearchHosts } from "../remote-actor-store";
 import {
   clearNotifications,
   countUnreadNotifications,
@@ -42,7 +44,8 @@ import {
   type NotificationFilters,
   type NotificationRow,
   groupedEntry,
-  summarizeNotificationGroup,
+  pageNotificationGroups,
+  summarizeNotificationGroups,
 } from "../notification-store";
 import { findStatusesByIds } from "../status-store";
 import { mutedThreadStatusIds } from "../status-mute-store";
@@ -257,60 +260,47 @@ const groupedQuery = (
   };
 };
 
+/** The federation state that hides a remote sender. */
+const hidingHosts = async (env: Env): Promise<RemoteActorSearchHosts> => {
+  const [allow, suspended] = await Promise.all([
+    federationAllowHosts(env),
+    suspendedDomains(env.DB),
+  ]);
+  return { suspended, allow };
+};
+
 /**
- * `limit` counts groups, so fetch a wider page of notifications and fold it.
- * Mastodon caps a page at 80 groups; the row window is capped to keep D1 work
- * bounded. A full window whose senders are all unavailable is not the end of
- * the list (the web app stops paging at an empty page), so reading older
- * windows goes on, up to {@link NOTIFICATION_GROUP_WINDOWS}.
+ * One page of groups, as Mastodon's `index`: SQL picks the representatives of
+ * the first `limit` groups past the cursor, from available senders only, then
+ * reads those groups within the page range.
  */
 const groupedNotificationPage = async (
   c: Context<{ Bindings: Env }>,
   accountId: string,
-): Promise<
-  | Readonly<{
-      kind: "Ok";
-      page: NotificationGroupPage;
-      /** Where the next page reads on when every window read showed nothing. */
-      olderThan: string | undefined;
-    }>
-  | Readonly<{ kind: "Err"; message: string }>
-> => {
+): Promise<Result<NotificationGroupPage, RepositoryError>> => {
   const { groupedTypes, filters, limit } = groupedQuery(c);
-  const window = Math.min(Math.max(limit, 1) * 4, NOTIFICATION_GROUP_ROW_CAP);
-  // Only a page read downwards (`max_id`, or none) has older windows to read on.
-  const pagesDown = filters.minId === undefined && filters.sinceId === undefined;
-  const visible: NotificationRow[] = [];
-  let cursor = filters;
-  // Set while the windows read so far were full and showed nothing.
-  let olderThan: string | undefined;
-  for (let read = 0; read < NOTIFICATION_GROUP_WINDOWS; read += 1) {
-    const rows = await listNotifications(c.env.DB, accountId, window, cursor);
-    if (rows.isErr()) {
-      return { kind: "Err", message: rows.error.message };
-    }
-    // As Mastodon's `without_suspended`, notifications from senders that are not available are left out.
-    const senders = await availableAccountIds(
-      c.env,
-      rows.value.map((row) => row.from_account_id),
-    );
-    if (senders.isErr()) {
-      return { kind: "Err", message: senders.error.message };
-    }
-    visible.push(...rows.value.filter((row) => senders.value.has(row.from_account_id)));
-    const last = rows.value.at(-1);
-    if (visible.length > 0 || !pagesDown || !last || rows.value.length < window) {
-      olderThan = undefined;
-      break;
-    }
-    olderThan = last.id;
-    cursor = { ...cursor, maxId: last.id };
+  const direction = filters.minId === undefined ? "Older" : "Newer";
+  const hosts = await hidingHosts(c.env);
+  const representatives = await pageNotificationGroups(
+    c.env.DB,
+    accountId,
+    limit,
+    filters,
+    groupedTypes,
+    hosts,
+    direction,
+  );
+  if (representatives.isErr()) {
+    return err(representatives.error);
   }
-  // A `min_id` read comes back oldest first; the fold takes newest first.
-  const pagesUp = filters.minId !== undefined;
-  const entries = (pagesUp ? visible.toReversed() : visible).map(groupedEntry);
-  const page = NotificationGroup.fold(entries, groupedTypes, limit, pagesUp ? "Newer" : "Older");
-  return { kind: "Ok", page, olderThan };
+  const summaries = await summarizeNotificationGroups(
+    c.env.DB,
+    accountId,
+    representatives.value.map((representative) => representative.groupKey),
+    NotificationGroup.pageRange(representatives.value, limit, direction, filters),
+    hosts,
+  );
+  return summaries.map((byKey) => NotificationGroup.page(representatives.value, byKey));
 };
 
 /**
@@ -327,41 +317,26 @@ const groupTarget = (
 };
 
 /**
- * One group by key, as Mastodon's `show`: the count and bounds come from SQL,
- * the sample from the newest senders that are available (`without_suspended`).
- * Undefined when the key names no notification from an available sender.
+ * One group by key, as Mastodon's `show`: its count, bounds and sample in one
+ * statement, from available senders only. Undefined when the key names no
+ * notification from an available sender.
  */
 const notificationGroupByKey = async (
   c: Context<{ Bindings: Env }>,
   accountId: string,
   groupKey: string,
 ): Promise<Result<NotificationGroup | undefined, RepositoryError>> => {
-  const target = groupTarget(groupKey);
-  if (!target) {
-    return ok(undefined);
-  }
-  const summary = await summarizeNotificationGroup(c.env.DB, accountId, target.group);
-  if (summary.isErr()) {
-    return err(summary.error);
-  }
-  if (!summary.value) {
-    return ok(undefined);
-  }
-  const rows = await listNotifications(c.env.DB, accountId, GROUP_SENDER_WINDOW, target);
-  if (rows.isErr()) {
-    return err(rows.error);
-  }
-  const senderIds = rows.value.map((row) => row.from_account_id);
-  const available = await availableAccountIds(c.env, senderIds);
-  if (available.isErr()) {
-    return err(available.error);
-  }
-  const senders = senderIds.filter((id) => available.value.has(id));
-  return ok(
-    senders.length === 0
-      ? undefined
-      : NotificationGroup.summarized(groupKey, summary.value, senders),
+  const summaries = await summarizeNotificationGroups(
+    c.env.DB,
+    accountId,
+    [groupKey],
+    { lower: undefined, upper: undefined },
+    await hidingHosts(c.env),
   );
+  return summaries.map((byKey) => {
+    const summary = byKey.get(groupKey);
+    return summary ? NotificationGroup.summarized(groupKey, summary) : undefined;
+  });
 };
 
 const groupEnvelope = async (
@@ -433,18 +408,8 @@ const groupEnvelope = async (
   });
 };
 
-/** Mastodon caps a grouped page at 80 groups; keep the row window bounded too. */
+/** How many of the newest notifications the grouped unread count reads. */
 const NOTIFICATION_GROUP_ROW_CAP = 200;
-
-/** How many row windows one grouped page reads past windows with nothing to show. */
-const NOTIFICATION_GROUP_WINDOWS = 5;
-
-/**
- * How many of a group's newest notifications a read by key takes its sample
- * senders from. Mastodon reads the sample in SQL; availability is decided
- * here, so the read is bounded instead.
- */
-const GROUP_SENDER_WINDOW = 40;
 
 export const getV2NotificationsUnreadCount = async (
   c: Context<{ Bindings: Env }, "/api/v2/notifications/unread_count">,
@@ -481,14 +446,11 @@ export const getV2Notifications = async (
     return jsonAuthError(c, user.error);
   }
   const read = await groupedNotificationPage(c, user.value.id);
-  if (read.kind === "Err") {
-    return jsonRepositoryError(c, read.message);
+  if (read.isErr()) {
+    return jsonRepositoryError(c, read.error.message);
   }
-  const { page } = read;
+  const page = read.value;
   if (page.kind === "Empty") {
-    // Past the window bound with nothing shown, the next page reads on from
-    // the last row read instead of ending the list.
-    setLinkHeader(c, { next: read.olderThan, prev: undefined });
     return c.json({ accounts: [], statuses: [], notification_groups: [] });
   }
   const envelope = await groupEnvelope(

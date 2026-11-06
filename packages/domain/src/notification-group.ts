@@ -29,15 +29,32 @@ export type NotificationGroup = Readonly<{
   severanceEventId: string | null;
 }>;
 
-/** A group read by key in SQL: its newest notification, count and oldest id. */
+/**
+ * A group read in SQL, as Mastodon's `load_groups_data`: its newest
+ * notification, count and newest distinct senders up to the page range's upper
+ * end, and its oldest notification from the range's lower end.
+ */
 export type NotificationGroupSummary = Readonly<{
   newest: GroupedNotificationEntry;
   notificationsCount: number;
-  oldestId: string;
+  pageMinId: string;
+  sampleAccountIds: ReadonlyArray<string>;
+}>;
+
+/** The notification that brings a group onto a page, as `paginate_groups` picks it. */
+export type NotificationGroupRepresentative = Readonly<{ id: string; groupKey: string }>;
+
+/** One end of a page range. */
+export type NotificationRangeEnd = Readonly<{ id: string; inclusive: boolean }>;
+
+/** An `undefined` end is open. */
+export type NotificationPageRange = Readonly<{
+  lower: NotificationRangeEnd | undefined;
+  upper: NotificationRangeEnd | undefined;
 }>;
 
 /**
- * A folded page. `oldestId` / `newestId` bound the notifications it covers:
+ * A page. `oldestId` / `newestId` are its oldest and newest representatives:
  * the `Link` header pages on from them.
  */
 export type NotificationGroupPage =
@@ -118,108 +135,70 @@ const target = (groupKey: string): NotificationGroupTarget | undefined => {
     : undefined;
 };
 
-/**
- * A group from its summary and its senders' account ids, newest first: the
- * first {@link SAMPLE_ACCOUNT_LIMIT} distinct senders are its sample.
- */
-const summarized = (
-  groupKey: string,
-  summary: NotificationGroupSummary,
-  senders: ReadonlyArray<string>,
-): NotificationGroup => ({
+const summarized = (groupKey: string, summary: NotificationGroupSummary): NotificationGroup => ({
   groupKey,
   type: summary.newest.kind,
   notificationsCount: summary.notificationsCount,
   mostRecentNotificationId: summary.newest.id,
-  pageMinId: summary.oldestId,
+  pageMinId: summary.pageMinId,
   pageMaxId: summary.newest.id,
   latestPageNotificationAt: summary.newest.createdAt,
-  sampleAccountIds: [...new Set(senders)].slice(0, SAMPLE_ACCOUNT_LIMIT),
+  sampleAccountIds: summary.sampleAccountIds.slice(0, SAMPLE_ACCOUNT_LIMIT),
   statusId: statusOf(summary.newest),
   reportId: summary.newest.reportId,
   severanceEventId: summary.newest.severanceEventId,
 });
 
-/** One group from its notifications, newest first, within the page range. */
-const group = (
-  groupKey: string,
-  members: ReadonlyArray<GroupedNotificationEntry>,
-  rangeStart: string | undefined,
-): NotificationGroup | undefined => {
-  const [mostRecent] = members;
-  const pageMin = members.findLast((entry) => rangeStart === undefined || entry.id >= rangeStart);
-  if (!mostRecent || !pageMin) {
-    return undefined;
+/**
+ * The range a page's groups are read within, as Mastodon's
+ * `load_grouped_notifications`: from the oldest to the newest representative
+ * (newest first in `representatives`). A page with fewer than `limit` groups
+ * is the last one its way, so the range stays open on that side, up to
+ * `max_id` when paging up and down to `since_id` when paging down.
+ */
+const pageRange = (
+  representatives: ReadonlyArray<NotificationGroupRepresentative>,
+  limit: number,
+  direction: NotificationPageDirection,
+  cursor: Readonly<{ maxId?: string | undefined; sinceId?: string | undefined }>,
+): NotificationPageRange => {
+  const newest = representatives.at(0);
+  const oldest = representatives.at(-1);
+  const lower = oldest ? { id: oldest.id, inclusive: true } : undefined;
+  const upper = newest ? { id: newest.id, inclusive: true } : undefined;
+  if (representatives.length >= limit) {
+    return { lower, upper };
   }
-  return summarized(
-    groupKey,
-    { newest: mostRecent, notificationsCount: members.length, oldestId: pageMin.id },
-    members.map((entry) => entry.fromAccountId),
-  );
+  return direction === "Newer"
+    ? { lower, upper: cursor.maxId ? { id: cursor.maxId, inclusive: false } : undefined }
+    : { lower: cursor.sinceId ? { id: cursor.sinceId, inclusive: false } : undefined, upper };
 };
 
 /**
- * Fold a newest-first window of notifications into at most `limit` groups, as
- * Mastodon's `paginate_groups` and `NotificationGroup.from_notifications`.
- *
- * The page takes the first `limit` groups met reading away from the cursor:
- * from the newest end for `Older`, from the oldest end for `Newer`, each group
- * met at its first notification on that side. A full page's range ends at the
- * last group met; with fewer groups it spans the window. As Mastodon's
- * `load_groups_data`, only `pageMinId` is bounded by the range's oldest end:
- * counts, samples and the most recent notification take every notification of
- * the group up to the range's newest end. Groups come back newest first,
- * ordered by the notification each was met at.
+ * A page from its representatives, newest first, and the summaries of their
+ * groups. A group without a summary (nothing of it is visible any more) is
+ * left out. The envelope carries the groups' sample accounts and statuses.
  */
-const fold = (
-  entries: ReadonlyArray<GroupedNotificationEntry>,
-  groupedTypes: ReadonlySet<string>,
-  limit: number,
-  direction: NotificationPageDirection = "Older",
+const page = (
+  representatives: ReadonlyArray<NotificationGroupRepresentative>,
+  summaries: ReadonlyMap<string, NotificationGroupSummary>,
 ): NotificationGroupPage => {
-  const byKey = new Map<string, GroupedNotificationEntry[]>();
-  for (const entry of entries) {
-    const groupKey = key(entry, groupedTypes);
-    byKey.set(groupKey, [...(byKey.get(groupKey) ?? []), entry]);
-  }
-
-  const met = new Map<string, GroupedNotificationEntry>();
-  for (const entry of direction === "Older" ? entries : entries.toReversed()) {
-    const groupKey = key(entry, groupedTypes);
-    if (met.has(groupKey)) {
-      continue;
-    }
-    if (met.size >= limit) {
-      break;
-    }
-    met.set(groupKey, entry);
-  }
-
-  const first = entries.at(0);
-  const last = entries.at(-1);
-  if (met.size === 0 || !first || !last) {
+  const groups = representatives.flatMap((representative) => {
+    const summary = summaries.get(representative.groupKey);
+    return summary ? [summarized(representative.groupKey, summary)] : [];
+  });
+  const newest = representatives.at(0);
+  const oldest = representatives.at(-1);
+  if (groups.length === 0 || !newest || !oldest) {
     return { kind: "Empty" };
   }
-  const end = met.size === limit ? [...met.values()].at(-1)?.id : undefined;
-  const oldestId = direction === "Older" ? (end ?? last.id) : last.id;
-  const newestId = direction === "Newer" ? (end ?? first.id) : first.id;
-
-  const order = direction === "Older" ? [...met.keys()] : [...met.keys()].toReversed();
-  const folded = order.flatMap((groupKey) => {
-    const members = (byKey.get(groupKey) ?? []).filter((entry) => entry.id <= newestId);
-    const built = group(groupKey, members, oldestId);
-    return built ? [{ group: built, senders: members.map((entry) => entry.fromAccountId) }] : [];
-  });
-  const groups = folded.map((entry) => entry.group);
-  const accountIds = new Set(folded.flatMap((entry) => entry.senders));
-  const statusIds = new Set(groups.flatMap((built) => (built.statusId ? [built.statusId] : [])));
   return {
     kind: "Page",
     groups,
-    accountIds: [...accountIds],
-    statusIds: [...statusIds],
-    oldestId,
-    newestId,
+    accountIds: [...new Set(groups.flatMap((group) => group.sampleAccountIds))],
+    statusIds: [...new Set(groups.flatMap((group) => (group.statusId ? [group.statusId] : [])))],
+    oldestId: oldest.id,
+    newestId: newest.id,
   };
 };
 
@@ -228,5 +207,6 @@ export const NotificationGroup = {
   key,
   target,
   summarized,
-  fold,
+  pageRange,
+  page,
 } as const;

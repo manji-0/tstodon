@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import {
-  type GroupedNotificationEntry,
-  NotificationGroup,
-  type NotificationGroupPage,
-} from "./notification-group";
+import { type GroupedNotificationEntry, NotificationGroup } from "./notification-group";
 
 const grouped = new Set(NotificationGroup.defaultGroupedTypes);
 
@@ -41,122 +37,82 @@ describe("NotificationGroup.key", () => {
   });
 });
 
-describe("NotificationGroup.fold", () => {
-  const page = [
-    entry("9", "favourite", "a", "s1"),
-    entry("8", "mention", "b", "s2"),
-    entry("7", "favourite", "b", "s1"),
-    entry("6", "favourite", "c", "s1"),
-    entry("5", "favourite", "d", "s1"),
-    entry("4", "favourite", "a", "s1"),
-    entry("3", "follow", "e"),
+describe("NotificationGroup.pageRange", () => {
+  const representatives = [
+    { id: "9", groupKey: "favourite-s1" },
+    { id: "5", groupKey: "ungrouped-5" },
   ];
 
-  const groupsOf = (folded: NotificationGroupPage): ReadonlyArray<NotificationGroup> =>
-    folded.kind === "Page" ? folded.groups : [];
+  it("spans a full page from its oldest to its newest representative", () => {
+    expect(NotificationGroup.pageRange(representatives, 2, "Older", {})).toEqual({
+      lower: { id: "5", inclusive: true },
+      upper: { id: "9", inclusive: true },
+    });
+    expect(NotificationGroup.pageRange(representatives, 2, "Newer", { maxId: "20" })).toEqual({
+      lower: { id: "5", inclusive: true },
+      upper: { id: "9", inclusive: true },
+    });
+  });
 
-  it("folds a newest-first page into groups in first-seen order", () => {
-    const groups = groupsOf(NotificationGroup.fold(page, grouped, 40));
-    expect(groups.map((group) => group.groupKey)).toEqual([
+  it("leaves the far side of a last page open, down to since_id or up to max_id", () => {
+    expect(NotificationGroup.pageRange(representatives, 40, "Older", {})).toEqual({
+      lower: undefined,
+      upper: { id: "9", inclusive: true },
+    });
+    expect(NotificationGroup.pageRange(representatives, 40, "Older", { sinceId: "2" })).toEqual({
+      lower: { id: "2", inclusive: false },
+      upper: { id: "9", inclusive: true },
+    });
+    expect(NotificationGroup.pageRange(representatives, 40, "Newer", {})).toEqual({
+      lower: { id: "5", inclusive: true },
+      upper: undefined,
+    });
+    expect(NotificationGroup.pageRange(representatives, 40, "Newer", { maxId: "20" })).toEqual({
+      lower: { id: "5", inclusive: true },
+      upper: { id: "20", inclusive: false },
+    });
+  });
+});
+
+describe("NotificationGroup.page", () => {
+  const summary = (newest: GroupedNotificationEntry, senders: ReadonlyArray<string>) => ({
+    newest,
+    notificationsCount: senders.length,
+    pageMinId: newest.id,
+    sampleAccountIds: senders,
+  });
+
+  it("orders groups by representative and carries their samples and statuses", () => {
+    const page = NotificationGroup.page(
+      [
+        { id: "9", groupKey: "favourite-s1" },
+        { id: "8", groupKey: "ungrouped-8" },
+        { id: "3", groupKey: "follow-e" },
+      ],
+      new Map([
+        ["follow-e", summary(entry("3", "follow", "e"), ["e"])],
+        ["favourite-s1", summary(entry("9", "favourite", "a", "s1"), ["a", "b"])],
+        ["ungrouped-8", summary(entry("8", "mention", "b", "s2"), ["b"])],
+      ]),
+    );
+    expect(page).toMatchObject({
+      kind: "Page",
+      accountIds: ["a", "b", "e"],
+      statusIds: ["s1", "s2"],
+      oldestId: "3",
+      newestId: "9",
+    });
+    expect(page.kind === "Page" ? page.groups.map((group) => group.groupKey) : []).toEqual([
       "favourite-s1",
       "ungrouped-8",
       "follow-e",
     ]);
-    const favourites = groups[0];
-    expect(favourites).toMatchObject({
-      notificationsCount: 5,
-      mostRecentNotificationId: "9",
-      pageMaxId: "9",
-      pageMinId: "4",
-      latestPageNotificationAt: "2026-11-04T00:00:09.000Z",
-      sampleAccountIds: ["a", "b", "c"],
-    });
   });
 
-  it("counts the limit in groups and collects only their accounts and statuses", () => {
-    const folded = NotificationGroup.fold(page, grouped, 2);
-    expect(folded).toMatchObject({
-      kind: "Page",
-      accountIds: ["a", "b", "c", "d"],
-      statusIds: ["s1", "s2"],
-    });
-    expect(groupsOf(folded)).toHaveLength(2);
-    expect(NotificationGroup.fold(page, grouped, -1)).toEqual({ kind: "Empty" });
-    expect(NotificationGroup.fold([], grouped, 40)).toEqual({ kind: "Empty" });
-  });
-
-  it("ends a full page at the last group's first notification", () => {
-    // As Mastodon's pagination range: only `page_min_id` is bounded by the
-    // range start, so the next page reads on from the last group's first one.
-    const folded = NotificationGroup.fold(page, grouped, 2);
-    expect(folded).toMatchObject({ kind: "Page", oldestId: "8", newestId: "9" });
-    expect(
-      groupsOf(folded).map((group) => [group.groupKey, group.pageMinId, group.pageMaxId]),
-    ).toEqual([
-      ["favourite-s1", "9", "9"],
-      ["ungrouped-8", "8", "8"],
-    ]);
-  });
-
-  it("counts a group's notifications older than the page range start", () => {
-    // Mastodon's `load_groups_data` bounds count and samples by the upper end only.
-    const groups = groupsOf(
-      NotificationGroup.fold(
-        [
-          entry("3", "favourite", "a", "s1"),
-          entry("2", "favourite", "b", "s2"),
-          entry("1", "favourite", "c", "s1"),
-        ],
-        grouped,
-        2,
-      ),
-    );
-    expect(groups.map((group) => [group.groupKey, group.notificationsCount])).toEqual([
-      ["favourite-s1", 2],
-      ["favourite-s2", 1],
-    ]);
-    expect(groups[0]).toMatchObject({ pageMinId: "3", sampleAccountIds: ["a", "c"] });
-  });
-
-  describe("paging up from min_id", () => {
-    // Newest first, as the route hands them over after reversing a `min_id` read.
-    const upward = [
-      entry("4", "favourite", "c", "s3"),
-      entry("3", "favourite", "a", "s1"),
-      entry("2", "favourite", "b", "s2"),
-      entry("1", "favourite", "a", "s1"),
-    ];
-
-    it("takes the groups next to min_id and returns them newest first", () => {
-      const folded = NotificationGroup.fold(upward, grouped, 2, "Newer");
-      expect(folded).toMatchObject({ kind: "Page", oldestId: "1", newestId: "2" });
-      expect(
-        groupsOf(folded).map((group) => [
-          group.groupKey,
-          group.mostRecentNotificationId,
-          group.notificationsCount,
-        ]),
-      ).toEqual([
-        ["favourite-s2", "2", 1],
-        ["favourite-s1", "1", 1],
-      ]);
-    });
-
-    it("reports each group's newest notification as its most recent", () => {
-      const groups = groupsOf(NotificationGroup.fold(upward, grouped, 40, "Newer"));
-      expect(
-        groups.map((group) => [
-          group.groupKey,
-          group.mostRecentNotificationId,
-          group.pageMaxId,
-          group.pageMinId,
-        ]),
-      ).toEqual([
-        ["favourite-s3", "4", "4", "4"],
-        ["favourite-s2", "2", "2", "2"],
-        ["favourite-s1", "3", "3", "1"],
-      ]);
-    });
+  it("leaves out a group with no summary, and is empty with none", () => {
+    const representatives = [{ id: "9", groupKey: "favourite-s1" }];
+    expect(NotificationGroup.page(representatives, new Map())).toEqual({ kind: "Empty" });
+    expect(NotificationGroup.page([], new Map())).toEqual({ kind: "Empty" });
   });
 });
 
@@ -182,12 +138,13 @@ describe("NotificationGroup.target", () => {
 });
 
 describe("NotificationGroup.summarized", () => {
-  it("builds a group from its count, oldest id, newest notification and senders", () => {
-    const group = NotificationGroup.summarized(
-      "favourite-s1",
-      { newest: entry("9", "favourite", "a", "s1"), notificationsCount: 120, oldestId: "1" },
-      ["a", "b", "a", "c", "d"],
-    );
+  it("builds a group from its count, page bounds, newest notification and samples", () => {
+    const group = NotificationGroup.summarized("favourite-s1", {
+      newest: entry("9", "favourite", "a", "s1"),
+      notificationsCount: 120,
+      pageMinId: "1",
+      sampleAccountIds: ["a", "b", "c", "d"],
+    });
     expect(group).toEqual({
       groupKey: "favourite-s1",
       type: "favourite",

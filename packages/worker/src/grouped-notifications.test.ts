@@ -551,7 +551,10 @@ describe("a notification group by key", () => {
 const groupsAt = async (
   email: string,
   path: string,
-): Promise<{ groups: z.infer<typeof EnvelopeSchema>["notification_groups"]; prev?: URL }> => {
+): Promise<{
+  groups: z.infer<typeof EnvelopeSchema>["notification_groups"];
+  prev: URL | undefined;
+}> => {
   const response = await SELF.fetch(`https://example.com${path}`, { headers: await auth(email) });
   expect(response.status).toBe(200);
   return {
@@ -566,7 +569,7 @@ describe("grouped notification pages over long runs", () => {
     const older = await postStatus(authorEmail, { status: "run older" });
     const p = await postStatus(authorEmail, { status: "run p" });
     await favourite("group-run-fan@example.com", older);
-    await favouriteFrom(authorEmail, "group_run_fan", 20, p, "92");
+    await favouriteFrom(authorEmail, "group_run_fan", 20, p, "96");
 
     const reached: Array<string | undefined> = [];
     let path = "/api/v2/notifications?limit=2";

@@ -12,7 +12,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param groupTarget
  */
 export const dismissNotificationGroup = $runtime.makeTypedQueryFactory(
-  "INSERT INTO notification_dismissals (account_id, notification_id, created_at)\nSELECT $1, n.id, $2\nFROM notifications n\nWHERE n.account_id = $1\nAND ($3 <> '' OR $4 <> '')\nAND ($3 = '' OR n.id = $3)\nAND (\n$4 = ''\nOR (\nn.kind = $4\nAND COALESCE(NULLIF(n.status_id, ''), n.from_account_id) = $5\nAND n.id NOT IN (SELECT notification_id FROM notification_requests WHERE account_id = $1)\n)\n)\nON CONFLICT(account_id, notification_id) DO NOTHING",
+  "INSERT INTO notification_dismissals (account_id, notification_id, created_at)\nSELECT $1, n.id, $2 FROM notifications n\nWHERE n.account_id = $1 AND n.id = $3\nUNION ALL\nSELECT $1, n.id, $2 FROM notifications n\nWHERE n.account_id = $1 AND n.status_id = $5 AND n.status_id <> '' AND n.kind = $4\nAND n.id NOT IN (SELECT notification_id FROM notification_requests WHERE account_id = $1)\nUNION ALL\nSELECT $1, n.id, $2 FROM notifications n\nWHERE n.account_id = $1 AND n.from_account_id = $5 AND COALESCE(n.status_id, '') = ''\nAND n.kind = $4\nAND n.id NOT IN (SELECT notification_id FROM notification_requests WHERE account_id = $1)\nON CONFLICT(account_id, notification_id) DO NOTHING",
 ) as (
   accountId: string,
   createdAt: string,
