@@ -103,6 +103,29 @@ export const canViewRemoteStatus = async (
 };
 
 /**
+ * The ids among `locals` and `remotes` the viewer may see, each checked as
+ * {@link canViewStatus} and {@link canViewRemoteStatus} check it.
+ */
+export const viewableStatusIds = async (
+  db: D1Database,
+  locals: ReadonlyArray<LocalStatus>,
+  remotes: ReadonlyArray<RemoteStatus>,
+  viewerId: string | undefined,
+): Promise<ReadonlySet<string>> => {
+  const checked = await Promise.all([
+    ...locals.map(async (status) => ({
+      id: status.id,
+      viewable: await canViewStatus(db, status, viewerId),
+    })),
+    ...remotes.map(async (status) => ({
+      id: status.id,
+      viewable: await canViewRemoteStatus(db, status, viewerId),
+    })),
+  ]);
+  return new Set(checked.flatMap(({ id, viewable }) => (viewable ? [id] : [])));
+};
+
+/**
  * A remote boost: a followers-only one is shown to the booster's accepted
  * local followers, and the boosted status must be visible to the viewer too.
  */

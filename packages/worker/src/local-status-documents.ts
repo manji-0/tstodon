@@ -41,6 +41,7 @@ import { mastodonMedia } from "./media-document";
 import { pollJson } from "./poll-document";
 import { quotePolicyName } from "./quote-policy-name";
 import { documentsById } from "./documents-by-id";
+import { viewableStatusIds } from "./visibility-guard";
 import type { RepositoryError } from "./d1";
 
 const mediaAttachmentsJson = (
@@ -127,7 +128,8 @@ export const mastodonStatus = async (
  * given. A status whose author's presentation `authors` refuses is left out,
  * as is a boost whose booster it refuses; a boost wraps a suspended author's
  * status with the author stripped, and a quote of an unavailable author's
- * status is `unauthorized`, as Mastodon's `StatusFilter` renders it.
+ * status, or of one the viewer may not see, is `unauthorized`, as Mastodon's
+ * `StatusFilter` renders it.
  */
 export const mastodonStatuses = async (
   env: Env,
@@ -377,7 +379,8 @@ export const mastodonStatuses = async (
   }
 
   // Boosts wrap the boosted status as the viewer sees it, a suspended author's
-  // too; a quote shows a remote status only while its author is available.
+  // too; a quote shows its status only while the viewer may see it and its
+  // author is available.
   const boosted = boostedStatusAuthors(authors);
   const boostedRemoteIds = allStatuses.flatMap((status) =>
     status.kind === "LocalReblog" && status.target.kind === "RemoteStatus"
@@ -398,12 +401,22 @@ export const mastodonStatuses = async (
       const status = remoteTargets.value.get(id);
       return status ? [status] : [];
     });
+  const quotedLocals = [...quotes.values()].flatMap(({ quoted }) => {
+    const status = quoted.kind === "LocalStatus" ? byId.get(quoted.statusId) : undefined;
+    return status ? [status] : [];
+  });
+  const viewableQuoted = await viewableStatusIds(
+    env.DB,
+    quotedLocals,
+    remotesOf(quotedRemoteIds),
+    viewerId,
+  );
   const [remoteRendered, quotedRemoteRendered] = await Promise.all([
     mastodonRemoteStatuses(env, identity, remotesOf(boostedRemoteIds), viewerId, boosted),
     mastodonRemoteStatuses(
       env,
       identity,
-      remotesOf(quotedRemoteIds),
+      remotesOf(quotedRemoteIds).filter((status) => viewableQuoted.has(status.id)),
       viewerId,
       StatusAuthors.available,
       "Shallow",
@@ -419,10 +432,10 @@ export const mastodonStatuses = async (
   const quotedRemoteDocs = documentsById(quotedRemoteRendered.value);
   const quotedDocument = (quoted: StatusTargetValue): QuotedDocument => {
     if (quoted.kind === "RemoteStatus") {
-      return (
-        quotedRemoteDocs.get(quoted.statusId) ??
-        (remoteTargets.value.has(quoted.statusId) ? "Unauthorized" : undefined)
-      );
+      if (!remoteTargets.value.has(quoted.statusId)) {
+        return undefined;
+      }
+      return quotedRemoteDocs.get(quoted.statusId) ?? "Unauthorized";
     }
     const target = noteDocs.get(quoted.statusId);
     const local = byId.get(quoted.statusId);
@@ -430,7 +443,9 @@ export const mastodonStatuses = async (
     if (!target || !author) {
       return undefined;
     }
-    return StatusAuthors.available(author.presentation) ? target : "Unauthorized";
+    return StatusAuthors.available(author.presentation) && viewableQuoted.has(quoted.statusId)
+      ? target
+      : "Unauthorized";
   };
 
   for (const status of allStatuses) {

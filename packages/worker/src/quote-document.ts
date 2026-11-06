@@ -9,10 +9,20 @@ const QUOTE_STATE_NAMES = {
 } as const satisfies Record<Exclude<QuoteState["kind"], "Accepted">, string>;
 
 /**
- * A quoted status as rendered for the viewer: `Unauthorized` when its author
- * is not shown, `undefined` when it is gone.
+ * A quoted status as rendered for the viewer: `Unauthorized` when the viewer
+ * may not see it or its author is not shown, `undefined` when it is gone.
  */
 export type QuotedDocument = Record<string, unknown> | "Unauthorized" | undefined;
+
+/** What the viewer is shown of an accepted quote's status, as {@link QuotedDocument} without the document. */
+export type QuotedStatusAccess = "Shown" | "Unauthorized" | "Gone";
+
+/** Mastodon's `quote.state` for an accepted quote, as `StatusFilter#filter_state_for_quote` amends it. */
+const ACCEPTED_STATE_NAMES = {
+  Shown: "accepted",
+  Unauthorized: "unauthorized",
+  Gone: "deleted",
+} as const satisfies Record<QuotedStatusAccess, string>;
 
 /**
  * A status's `quote`, as Mastodon's `BaseQuoteSerializer`: only an accepted
@@ -27,11 +37,11 @@ export const mastodonQuote = (
   }
   const document = quoted();
   if (document === undefined) {
-    return { state: "deleted", quoted_status: null };
+    return { state: ACCEPTED_STATE_NAMES.Gone, quoted_status: null };
   }
   return document === "Unauthorized"
-    ? { state: "unauthorized", quoted_status: null }
-    : { state: "accepted", quoted_status: document };
+    ? { state: ACCEPTED_STATE_NAMES.Unauthorized, quoted_status: null }
+    : { state: ACCEPTED_STATE_NAMES.Shown, quoted_status: document };
 };
 
 /**
@@ -42,7 +52,14 @@ export const mastodonQuote = (
 export const mastodonShallowQuote = (
   state: QuoteState,
   quotedStatusId: string,
-): Record<string, unknown> =>
-  state.kind === "Accepted"
-    ? { state: "accepted", quoted_status_id: quotedStatusId }
-    : { state: QUOTE_STATE_NAMES[state.kind], quoted_status_id: null };
+  access: () => QuotedStatusAccess,
+): Record<string, unknown> => {
+  if (state.kind !== "Accepted") {
+    return { state: QUOTE_STATE_NAMES[state.kind], quoted_status_id: null };
+  }
+  const shown = access();
+  return {
+    state: ACCEPTED_STATE_NAMES[shown],
+    quoted_status_id: shown === "Shown" ? quotedStatusId : null,
+  };
+};

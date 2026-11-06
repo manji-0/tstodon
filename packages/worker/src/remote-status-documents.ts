@@ -1,5 +1,6 @@
 import {
   type InstanceIdentity,
+  type LocalStatus,
   type QuoteValue,
   type QuoteViewerRelation,
   RemoteQuotePolicy,
@@ -14,7 +15,12 @@ import type { RepositoryError } from "./d1";
 import { cardDocument, parseCardJson } from "./link-card";
 import { RemoteAccountId } from "./remote-account-id";
 import { mastodonStatuses } from "./local-status-documents";
-import { mastodonQuote, mastodonShallowQuote, type QuotedDocument } from "./quote-document";
+import {
+  mastodonQuote,
+  mastodonShallowQuote,
+  type QuotedDocument,
+  type QuotedStatusAccess,
+} from "./quote-document";
 import { findQuotesByQuoting, quoteCountsByQuoted } from "./quote-store";
 import { listRemoteActorModerations } from "./remote-actor-moderation-store";
 import { findRemoteActorsByUris, remoteFollowerActorUris } from "./remote-actor-store";
@@ -27,6 +33,7 @@ import { findRemoteStatusesByIds, findRemoteStatusRefsByObjectUris } from "./rem
 import { listRemoteStatusCards } from "./status-card-store";
 import { statusInteractionCountsByIds } from "./status-interaction-store";
 import { findStatusesByIds } from "./status-store";
+import { viewableStatusIds } from "./visibility-guard";
 
 /**
  * Fill `in_reply_to_id` and `in_reply_to_account_id` on remote status
@@ -122,21 +129,30 @@ export const quoteViewerRelations = async (
 export type QuoteNesting = "Full" | "Shallow";
 
 /**
- * The statuses `quotes` quote, rendered for the viewer and keyed by id. A
- * quoted remote status shows its own quote shallow, which ends the recursion.
+ * The statuses accepted `quotes` quote, as stored, with which of them the
+ * viewer may see, as Mastodon's `StatusFilter#filter_state_for_quote` asks
+ * `StatusPolicy#show?`.
  */
-const quotedDocuments = async (
-  env: Env,
-  identity: InstanceIdentity,
+const quotedStatuses = async (
+  db: D1Database,
   quotes: ReadonlyArray<QuoteValue>,
   viewerId: string | undefined,
-): Promise<Result<(quote: QuoteValue) => QuotedDocument, RepositoryError>> => {
+): Promise<
+  Result<
+    Readonly<{
+      locals: LocalStatus[];
+      remotes: RemoteStatusValue[];
+      access: (quote: QuoteValue) => QuotedStatusAccess;
+    }>,
+    RepositoryError
+  >
+> => {
   const accepted = quotes.filter((quote) => quote.state.kind === "Accepted");
   const idsOf = (kind: "LocalStatus" | "RemoteStatus") =>
     accepted.flatMap(({ quoted }) => (quoted.kind === kind ? [quoted.statusId] : []));
   const [locals, remotes] = await Promise.all([
-    findStatusesByIds(env.DB, idsOf("LocalStatus")),
-    findRemoteStatusesByIds(env.DB, idsOf("RemoteStatus")),
+    findStatusesByIds(db, idsOf("LocalStatus")),
+    findRemoteStatusesByIds(db, idsOf("RemoteStatus")),
   ]);
   if (locals.isErr()) {
     return err(locals.error);
@@ -144,16 +160,45 @@ const quotedDocuments = async (
   if (remotes.isErr()) {
     return err(remotes.error);
   }
+  const viewable = await viewableStatusIds(
+    db,
+    [...locals.value.values()],
+    [...remotes.value.values()],
+    viewerId,
+  );
+  const access = ({ quoted }: QuoteValue): QuotedStatusAccess => {
+    const stored = quoted.kind === "LocalStatus" ? locals.value : remotes.value;
+    if (!stored.has(quoted.statusId)) {
+      return "Gone";
+    }
+    return viewable.has(quoted.statusId) ? "Shown" : "Unauthorized";
+  };
+  return ok({
+    locals: [...locals.value.values()].filter((status) => viewable.has(status.id)),
+    remotes: [...remotes.value.values()].filter((status) => viewable.has(status.id)),
+    access,
+  });
+};
+
+/**
+ * The statuses `quotes` quote, rendered for the viewer: the ones the viewer
+ * may see, a quoted remote one showing its own quote shallow, which ends the
+ * recursion.
+ */
+const quotedDocuments = async (
+  env: Env,
+  identity: InstanceIdentity,
+  quotes: ReadonlyArray<QuoteValue>,
+  viewerId: string | undefined,
+): Promise<Result<(quote: QuoteValue) => QuotedDocument, RepositoryError>> => {
+  const quoted = await quotedStatuses(env.DB, quotes, viewerId);
+  if (quoted.isErr()) {
+    return err(quoted.error);
+  }
+  const { locals, remotes, access } = quoted.value;
   const [localDocuments, remoteDocuments] = await Promise.all([
-    mastodonStatuses(env, identity, [...locals.value.values()], viewerId),
-    mastodonRemoteStatuses(
-      env,
-      identity,
-      [...remotes.value.values()],
-      viewerId,
-      StatusAuthors.available,
-      "Shallow",
-    ),
+    mastodonStatuses(env, identity, locals, viewerId),
+    mastodonRemoteStatuses(env, identity, remotes, viewerId, StatusAuthors.available, "Shallow"),
   ]);
   if (localDocuments.isErr()) {
     return err(localDocuments.error);
@@ -162,12 +207,36 @@ const quotedDocuments = async (
     return err(remoteDocuments.error);
   }
   const rendered = documentsById([...localDocuments.value, ...remoteDocuments.value]);
-  return ok(({ quoted }) => {
-    const stored = quoted.kind === "LocalStatus" ? locals.value : remotes.value;
-    return (
-      rendered.get(quoted.statusId) ?? (stored.has(quoted.statusId) ? "Unauthorized" : undefined)
-    );
+  return ok((quote) => {
+    switch (access(quote)) {
+      case "Gone":
+        return undefined;
+      case "Unauthorized":
+        return "Unauthorized";
+      case "Shown":
+        return rendered.get(quote.quoted.statusId) ?? "Unauthorized";
+    }
   });
+};
+
+/** How each of `quotes` renders as its quoting status's `quote`, nested as `nesting` says. */
+const quoteRenderer = async (
+  env: Env,
+  identity: InstanceIdentity,
+  quotes: ReadonlyArray<QuoteValue>,
+  viewerId: string | undefined,
+  nesting: QuoteNesting,
+): Promise<Result<(quote: QuoteValue) => Record<string, unknown>, RepositoryError>> => {
+  if (nesting === "Shallow") {
+    return (await quotedStatuses(env.DB, quotes, viewerId)).map(
+      ({ access }) =>
+        (quote) =>
+          mastodonShallowQuote(quote.state, quote.quoted.statusId, () => access(quote)),
+    );
+  }
+  return (await quotedDocuments(env, identity, quotes, viewerId)).map(
+    (documentOf) => (quote) => mastodonQuote(quote.state, () => documentOf(quote)),
+  );
 };
 
 /**
@@ -178,7 +247,8 @@ const quotedDocuments = async (
  * media is marked sensitive when an admin marked its author's media sensitive,
  * as Mastodon does for a remote account. A status whose author is not cached,
  * or whose author's presentation `authors` refuses, is left out; an author
- * that is not shown renders stripped. No visibility check is made here.
+ * that is not shown renders stripped. The statuses themselves get no
+ * visibility check here; a quoted one the viewer may not see is `unauthorized`.
  */
 export const mastodonRemoteStatuses = async (
   env: Env,
@@ -211,12 +281,15 @@ export const mastodonRemoteStatuses = async (
   if (quotes.isErr()) {
     return err(quotes.error);
   }
-  const quoted =
-    nesting === "Full"
-      ? await quotedDocuments(env, identity, [...quotes.value.values()], viewerId)
-      : undefined;
-  if (quoted?.isErr()) {
-    return err(quoted.error);
+  const renderQuote = await quoteRenderer(
+    env,
+    identity,
+    [...quotes.value.values()],
+    viewerId,
+    nesting,
+  );
+  if (renderQuote.isErr()) {
+    return err(renderQuote.error);
   }
   const presented = await presentedAccounts(env, identity, [], [...actors.value.values()]);
   if (presented.isErr()) {
@@ -242,9 +315,7 @@ export const mastodonRemoteStatuses = async (
     });
     const quote = quotes.value.get(status.id);
     if (quote) {
-      document.quote = quoted?.isOk()
-        ? mastodonQuote(quote.state, () => quoted.value(quote))
-        : mastodonShallowQuote(quote.state, quote.quoted.statusId);
+      document.quote = renderQuote.value(quote);
     }
     const sensitized = moderations.isOk() && moderations.value.get(status.actorUri)?.sensitized;
     if (sensitized && status.media.length > 0) {
