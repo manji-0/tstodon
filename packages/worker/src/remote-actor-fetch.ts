@@ -493,6 +493,13 @@ const settleHandleHolder = async (
 };
 
 /**
+ * `mayLookUp` is asked right before a handle goes to the network, and a
+ * `false` answer settles it from the cache alone: the cached holder, even
+ * one due a refresh, or `VerificationUnavailable` when none is cached.
+ */
+export type HandleResolveOptions = FederatedFetchOptions & Readonly<{ mayLookUp?: () => boolean }>;
+
+/**
  * The actor a `user@domain` handle names, as Mastodon's
  * `ResolveAccountService`. A cached holder of the handle is used as it is
  * until it is due a refresh (a day after its last confirmation and its last
@@ -507,7 +514,7 @@ export const resolveRemoteActorByHandle = async (
   db: D1Database,
   identity: InstanceIdentity,
   handle: string,
-  options: FederatedFetchOptions = {},
+  options: HandleResolveOptions = {},
 ): Promise<Result<RemoteActor, RemoteActorResolveError>> => {
   const asked = domainHandle(handle);
   if (asked === undefined) {
@@ -526,6 +533,9 @@ export const resolveRemoteActorByHandle = async (
     if (!due.value) {
       return ok(holder);
     }
+  }
+  if (options.mayLookUp?.() === false) {
+    return holder ? ok(holder) : err({ kind: "VerificationUnavailable" });
   }
   const lookup = await lookUp(identity, asked, options);
   if (lookup.kind === "Failed") {

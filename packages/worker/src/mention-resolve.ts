@@ -8,13 +8,19 @@ import { resolveRemoteActorByHandle } from "./remote-actor-fetch";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { allowListAdmits, federationAllowHosts } from "./runtime-config";
 
+const MAX_MENTION_LOOKUPS = 20;
+
 /**
  * Remote actors a post's `@user@domain` handles name, as
  * `resolveRemoteActorByHandle` finds them: the cached actor while its
  * confirmation is under a day old, otherwise re-confirmed or resolved over
  * WebFinger. A handle on a suspended or non-federating domain, an actor
  * whose account domain or URI host is one, or a handle that does not resolve,
- * is left out and the post goes ahead, as in Mastodon.
+ * is left out and the post goes ahead, as in Mastodon. Unlike Mastodon, at
+ * most `MAX_MENTION_LOOKUPS` handles go to the network per post; one lookup
+ * can chain several WebFinger and actor fetches, so a post naming many
+ * uncached handles would otherwise run for minutes. Handles past the cap
+ * resolve from the cache only.
  */
 export const resolveRemoteMentions = async (
   env: Env,
@@ -27,6 +33,14 @@ export const resolveRemoteMentions = async (
   }
   const blockedHosts = await suspendedDomains(env.DB);
   const allowHosts = await federationAllowHosts(env);
+  let lookUpsLeft = MAX_MENTION_LOOKUPS;
+  const mayLookUp = (): boolean => {
+    if (lookUpsLeft === 0) {
+      return false;
+    }
+    lookUpsLeft -= 1;
+    return true;
+  };
   const actors = new Map<string, RemoteActor>();
   for (const handle of handles) {
     if (blockedHosts.has(Hostname.ofAuthority(handle.domain))) {
@@ -36,7 +50,7 @@ export const resolveRemoteMentions = async (
       env.DB,
       identity,
       `${handle.username}@${handle.domain}`,
-      { allowHosts, blockedHosts },
+      { allowHosts, blockedHosts, mayLookUp },
     );
     const admitted =
       resolved.isOk() &&
