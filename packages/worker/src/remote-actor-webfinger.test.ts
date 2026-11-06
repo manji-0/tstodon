@@ -150,6 +150,24 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("an inbox delivery from an actor not yet cached", () => {
+  it("checks the signature against the fetched key before any WebFinger lookup", async () => {
+    const owner = await remoteActor("eve", "wf-forged.example", { cache: false });
+    const forger = await remoteActor("eve", "wf-forged.example", { cache: false });
+    const requested: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = new URL(new Request(input, init).url);
+      requested.push(url.pathname);
+      return url.href === owner.actorUri
+        ? jsonResponse(actorDocument({ remote: owner, username: "eve" }))
+        : new Response(null, { status: 404 });
+    });
+
+    expect(await like(forger, "wf-forged", "wf-forged-viewer@example.com")).toBe(401);
+    expect(requested).toEqual(["/users/eve"]);
+  });
+});
+
 describe("a remote actor whose WebFinger domain differs from its URI host", () => {
   it("stores the domain WebFinger confirms, and a block on that domain screens it", async () => {
     const remote = await remoteActor("alice", "social.wf-split.example", { cache: false });
