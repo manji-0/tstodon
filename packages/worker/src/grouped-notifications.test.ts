@@ -619,4 +619,20 @@ describe("grouped notification pages over long runs", () => {
     expect(groups.map((group) => group.notifications_count)).toEqual([12]);
     expect(single.groups.map((group) => group.notifications_count)).toEqual([12]);
   });
+
+  it("groups only groupable types whatever grouped_types lists, and reads an empty min_id as none", async () => {
+    const authorEmail = "group-types-author@example.com";
+    const author = await credentials(authorEmail);
+    await credentials("group-types-mentioner@example.com");
+    const older = await postStatus(authorEmail, { status: "types older" });
+    await favourite("group-types-fan@example.com", older);
+    await postStatus("group-types-mentioner@example.com", { status: `@${author.username} hi` });
+
+    const mentions = await groupsAt(authorEmail, "/api/v2/notifications?grouped_types[]=mention");
+    expect(mentions.groups.find((group) => group.type === "mention")?.group_key).toMatch(
+      /^ungrouped-/,
+    );
+    const empty = await groupsAt(authorEmail, "/api/v2/notifications?limit=1&min_id=");
+    expect(empty.groups.map((group) => group.type)).toEqual(["mention"]);
+  });
 });
