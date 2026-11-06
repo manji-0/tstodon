@@ -143,6 +143,9 @@ const applyNoteUpdate = async (
   if (stored.isErr()) {
     return err(stored.error);
   }
+  if (stored.value === undefined) {
+    return ok(undefined);
+  }
   const mentioned = await mentionedLocalAccountIds(env, identity, target.raw);
   const added: string[] = [];
   for (const accountId of mentioned) {

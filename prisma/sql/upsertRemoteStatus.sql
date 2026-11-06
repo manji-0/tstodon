@@ -36,3 +36,4 @@ ON CONFLICT(object_uri) DO UPDATE SET
   quote_policy_json = excluded.quote_policy_json,
   edited_at = coalesce(excluded.edited_at, edited_at),
   updated_at = excluded.updated_at
+WHERE remote_statuses.actor_uri = excluded.actor_uri

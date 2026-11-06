@@ -319,12 +319,29 @@ export const persistRemoteObject = async (
   if (cached.value) {
     return ok(cached.value.kind === "Local" ? undefined : cached.value);
   }
-  const raw =
-    typeof object === "string" ? await fetchActivityJson(identity, object, options) : ok(object);
-  if (raw.isErr()) {
+  if (typeof object !== "string") {
+    return storeRemoteNote(env, identity, actor, object, options);
+  }
+  const raw = await fetchActivityJson(identity, object, options);
+  if (raw.isErr() || !fetchedAsItself(raw.value, object)) {
     return ok(undefined);
   }
   return storeRemoteNote(env, identity, actor, raw.value, options);
+};
+
+/**
+ * Whether a note fetched from `uri` names `uri` as its id and sits on its
+ * author's host, as Mastodon's `FetchRemoteStatusService` requires (and
+ * {@link persistAnnouncedObject} of another actor's note): a document served
+ * under one URI cannot claim another.
+ */
+const fetchedAsItself = (raw: unknown, uri: string): boolean => {
+  const note = parseNoteDocument(raw);
+  if (note.isErr() || note.value.id !== uri) {
+    return false;
+  }
+  const host = urlHost(uri);
+  return host !== undefined && host === urlHost(note.value.attributedTo);
 };
 
 /**
@@ -432,7 +449,7 @@ const storeRemoteNote = async (
   const note = parseNoteDocument(raw);
   const inReplyTo = note.isOk() ? (note.value.inReplyTo ?? undefined) : undefined;
   const stored = await upsertRemoteStatus(env.DB, status, inReplyTo);
-  if (stored.isErr()) {
+  if (stored.isErr() || stored.value === undefined) {
     return stored;
   }
   // Mention rows exist before the notifications that point at them.

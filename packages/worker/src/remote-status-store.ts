@@ -291,15 +291,23 @@ const ID_COLLISION_RETRIES = 4;
 const isIdCollision = (error: unknown): boolean =>
   error instanceof Error && /UNIQUE constraint failed: remote_statuses\.id/.test(error.message);
 
+/**
+ * Store a remote status, or update the one cached at its object URI. A URI
+ * cached as another actor's note is left alone and gives `undefined`: only
+ * its author rewrites a note.
+ */
 export const upsertRemoteStatus = async (
   db: D1Database,
   status: RemoteStatus,
   /** The note's `inReplyTo`, kept to group direct conversations. */
   inReplyToUri?: string,
-): Promise<Result<RemoteStatus, RepositoryError>> => {
+): Promise<Result<RemoteStatus | undefined, RepositoryError>> => {
   const existing = await findRemoteStatusByObjectUri(db, status.objectUri);
   if (existing.isErr()) {
     return err(existing.error);
+  }
+  if (existing.value && existing.value.actorUri !== status.actorUri) {
+    return ok(undefined);
   }
   let persisted = existing.value
     ? { ...status, id: existing.value.id, kind: "RemoteNote" as const }
