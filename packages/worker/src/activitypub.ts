@@ -239,12 +239,15 @@ const questionFields = (poll: PollRecord): Record<string, unknown> => {
   };
 };
 
+/** The status a note quotes, as its `quote` property names it. */
+export type NoteQuote = Readonly<{ uri: string }>;
+
 export const noteDocument = (
   identity: InstanceIdentity,
   account: LocalAccount,
   note: LocalNote,
   extras: Readonly<{
-    quoteUri?: string | undefined;
+    quote?: NoteQuote | undefined;
     mentions?: ReadonlyArray<NoteMention>;
     /** The parent's URI, and a remote parent author to address alongside the mentions. */
     reply?: Readonly<{ inReplyTo: string; addressAuthor: string | undefined }> | undefined;
@@ -256,7 +259,7 @@ export const noteDocument = (
     quotePolicy: QuotePolicy;
   }>,
 ): Record<string, unknown> => {
-  const { quoteUri, mentions = [], reply, poll, quotePolicy } = extras;
+  const { quote, mentions = [], reply, poll, quotePolicy } = extras;
   const { attachments, authorSensitized } = extras.media;
   const actor = InstanceIdentity.actorUrl(identity, account.username);
   const id = `${actor}/statuses/${note.id}`;
@@ -283,7 +286,8 @@ export const noteDocument = (
         : note.visibility.kind === "FollowersOnly"
           ? mentioned
           : [];
-  const quotes = quoteUri !== undefined && quoteUri.length > 0;
+  const quoteUri = quote?.uri ?? "";
+  const quotes = quoteUri.length > 0;
   // Mastodon's `NoteSerializer#interaction_policy`: outgoing policies are
   // automatic only, and one that lets nobody quote names the author alone.
   const automaticApproval =

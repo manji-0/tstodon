@@ -27,8 +27,12 @@ export type AggregateStatus_quotes = {
 export type Status_quotesMinAggregateOutputType = {
   id: string | null;
   status_id: string | null;
+  remote_status_id: string | null;
   quoted_status_id: string | null;
+  quoted_remote_status_id: string | null;
   state: string | null;
+  approval_uri: string | null;
+  activity_uri: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -36,8 +40,12 @@ export type Status_quotesMinAggregateOutputType = {
 export type Status_quotesMaxAggregateOutputType = {
   id: string | null;
   status_id: string | null;
+  remote_status_id: string | null;
   quoted_status_id: string | null;
+  quoted_remote_status_id: string | null;
   state: string | null;
+  approval_uri: string | null;
+  activity_uri: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -45,8 +53,12 @@ export type Status_quotesMaxAggregateOutputType = {
 export type Status_quotesCountAggregateOutputType = {
   id: number;
   status_id: number;
+  remote_status_id: number;
   quoted_status_id: number;
+  quoted_remote_status_id: number;
   state: number;
+  approval_uri: number;
+  activity_uri: number;
   created_at: number;
   updated_at: number;
   _all: number;
@@ -55,8 +67,12 @@ export type Status_quotesCountAggregateOutputType = {
 export type Status_quotesMinAggregateInputType = {
   id?: true;
   status_id?: true;
+  remote_status_id?: true;
   quoted_status_id?: true;
+  quoted_remote_status_id?: true;
   state?: true;
+  approval_uri?: true;
+  activity_uri?: true;
   created_at?: true;
   updated_at?: true;
 };
@@ -64,8 +80,12 @@ export type Status_quotesMinAggregateInputType = {
 export type Status_quotesMaxAggregateInputType = {
   id?: true;
   status_id?: true;
+  remote_status_id?: true;
   quoted_status_id?: true;
+  quoted_remote_status_id?: true;
   state?: true;
+  approval_uri?: true;
+  activity_uri?: true;
   created_at?: true;
   updated_at?: true;
 };
@@ -73,8 +93,12 @@ export type Status_quotesMaxAggregateInputType = {
 export type Status_quotesCountAggregateInputType = {
   id?: true;
   status_id?: true;
+  remote_status_id?: true;
   quoted_status_id?: true;
+  quoted_remote_status_id?: true;
   state?: true;
+  approval_uri?: true;
+  activity_uri?: true;
   created_at?: true;
   updated_at?: true;
   _all?: true;
@@ -159,9 +183,13 @@ export type status_quotesGroupByArgs<
 
 export type Status_quotesGroupByOutputType = {
   id: string;
-  status_id: string;
-  quoted_status_id: string;
+  status_id: string | null;
+  remote_status_id: string | null;
+  quoted_status_id: string | null;
+  quoted_remote_status_id: string | null;
   state: string;
+  approval_uri: string | null;
+  activity_uri: string | null;
   created_at: string;
   updated_at: string;
   _count: Status_quotesCountAggregateOutputType | null;
@@ -187,45 +215,76 @@ export type status_quotesWhereInput = {
   OR?: Prisma.status_quotesWhereInput[];
   NOT?: Prisma.status_quotesWhereInput | Prisma.status_quotesWhereInput[];
   id?: Prisma.StringFilter<"status_quotes"> | string;
-  status_id?: Prisma.StringFilter<"status_quotes"> | string;
-  quoted_status_id?: Prisma.StringFilter<"status_quotes"> | string;
+  status_id?: Prisma.StringNullableFilter<"status_quotes"> | string | null;
+  remote_status_id?: Prisma.StringNullableFilter<"status_quotes"> | string | null;
+  quoted_status_id?: Prisma.StringNullableFilter<"status_quotes"> | string | null;
+  quoted_remote_status_id?: Prisma.StringNullableFilter<"status_quotes"> | string | null;
   state?: Prisma.StringFilter<"status_quotes"> | string;
+  approval_uri?: Prisma.StringNullableFilter<"status_quotes"> | string | null;
+  activity_uri?: Prisma.StringNullableFilter<"status_quotes"> | string | null;
   created_at?: Prisma.StringFilter<"status_quotes"> | string;
   updated_at?: Prisma.StringFilter<"status_quotes"> | string;
-  statuses?: Prisma.XOR<Prisma.StatusesScalarRelationFilter, Prisma.statusesWhereInput>;
+  statuses?: Prisma.XOR<
+    Prisma.StatusesNullableScalarRelationFilter,
+    Prisma.statusesWhereInput
+  > | null;
+  remote_statuses?: Prisma.XOR<
+    Prisma.Remote_statusesNullableScalarRelationFilter,
+    Prisma.remote_statusesWhereInput
+  > | null;
 };
 
 export type status_quotesOrderByWithRelationInput = {
   id?: Prisma.SortOrder;
-  status_id?: Prisma.SortOrder;
-  quoted_status_id?: Prisma.SortOrder;
+  status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  remote_status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  quoted_status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  quoted_remote_status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   state?: Prisma.SortOrder;
+  approval_uri?: Prisma.SortOrderInput | Prisma.SortOrder;
+  activity_uri?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   statuses?: Prisma.statusesOrderByWithRelationInput;
+  remote_statuses?: Prisma.remote_statusesOrderByWithRelationInput;
 };
 
 export type status_quotesWhereUniqueInput = Prisma.AtLeast<
   {
     id?: string;
     status_id?: string;
+    remote_status_id?: string;
+    activity_uri?: string;
     AND?: Prisma.status_quotesWhereInput | Prisma.status_quotesWhereInput[];
     OR?: Prisma.status_quotesWhereInput[];
     NOT?: Prisma.status_quotesWhereInput | Prisma.status_quotesWhereInput[];
-    quoted_status_id?: Prisma.StringFilter<"status_quotes"> | string;
+    quoted_status_id?: Prisma.StringNullableFilter<"status_quotes"> | string | null;
+    quoted_remote_status_id?: Prisma.StringNullableFilter<"status_quotes"> | string | null;
     state?: Prisma.StringFilter<"status_quotes"> | string;
+    approval_uri?: Prisma.StringNullableFilter<"status_quotes"> | string | null;
     created_at?: Prisma.StringFilter<"status_quotes"> | string;
     updated_at?: Prisma.StringFilter<"status_quotes"> | string;
-    statuses?: Prisma.XOR<Prisma.StatusesScalarRelationFilter, Prisma.statusesWhereInput>;
+    statuses?: Prisma.XOR<
+      Prisma.StatusesNullableScalarRelationFilter,
+      Prisma.statusesWhereInput
+    > | null;
+    remote_statuses?: Prisma.XOR<
+      Prisma.Remote_statusesNullableScalarRelationFilter,
+      Prisma.remote_statusesWhereInput
+    > | null;
   },
-  "id" | "status_id"
+  "id" | "status_id" | "remote_status_id" | "activity_uri"
 >;
 
 export type status_quotesOrderByWithAggregationInput = {
   id?: Prisma.SortOrder;
-  status_id?: Prisma.SortOrder;
-  quoted_status_id?: Prisma.SortOrder;
+  status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  remote_status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  quoted_status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  quoted_remote_status_id?: Prisma.SortOrderInput | Prisma.SortOrder;
   state?: Prisma.SortOrder;
+  approval_uri?: Prisma.SortOrderInput | Prisma.SortOrder;
+  activity_uri?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   _count?: Prisma.status_quotesCountOrderByAggregateInput;
@@ -242,80 +301,123 @@ export type status_quotesScalarWhereWithAggregatesInput = {
     | Prisma.status_quotesScalarWhereWithAggregatesInput
     | Prisma.status_quotesScalarWhereWithAggregatesInput[];
   id?: Prisma.StringWithAggregatesFilter<"status_quotes"> | string;
-  status_id?: Prisma.StringWithAggregatesFilter<"status_quotes"> | string;
-  quoted_status_id?: Prisma.StringWithAggregatesFilter<"status_quotes"> | string;
+  status_id?: Prisma.StringNullableWithAggregatesFilter<"status_quotes"> | string | null;
+  remote_status_id?: Prisma.StringNullableWithAggregatesFilter<"status_quotes"> | string | null;
+  quoted_status_id?: Prisma.StringNullableWithAggregatesFilter<"status_quotes"> | string | null;
+  quoted_remote_status_id?:
+    | Prisma.StringNullableWithAggregatesFilter<"status_quotes">
+    | string
+    | null;
   state?: Prisma.StringWithAggregatesFilter<"status_quotes"> | string;
+  approval_uri?: Prisma.StringNullableWithAggregatesFilter<"status_quotes"> | string | null;
+  activity_uri?: Prisma.StringNullableWithAggregatesFilter<"status_quotes"> | string | null;
   created_at?: Prisma.StringWithAggregatesFilter<"status_quotes"> | string;
   updated_at?: Prisma.StringWithAggregatesFilter<"status_quotes"> | string;
 };
 
 export type status_quotesCreateInput = {
   id: string;
-  quoted_status_id: string;
+  quoted_status_id?: string | null;
+  quoted_remote_status_id?: string | null;
   state: string;
+  approval_uri?: string | null;
+  activity_uri?: string | null;
   created_at: string;
   updated_at: string;
-  statuses: Prisma.statusesCreateNestedOneWithoutStatus_quotesInput;
+  statuses?: Prisma.statusesCreateNestedOneWithoutStatus_quotesInput;
+  remote_statuses?: Prisma.remote_statusesCreateNestedOneWithoutStatus_quotesInput;
 };
 
 export type status_quotesUncheckedCreateInput = {
   id: string;
-  status_id: string;
-  quoted_status_id: string;
+  status_id?: string | null;
+  remote_status_id?: string | null;
+  quoted_status_id?: string | null;
+  quoted_remote_status_id?: string | null;
   state: string;
+  approval_uri?: string | null;
+  activity_uri?: string | null;
   created_at: string;
   updated_at: string;
 };
 
 export type status_quotesUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
-  quoted_status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  quoted_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  quoted_remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   state?: Prisma.StringFieldUpdateOperationsInput | string;
+  approval_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  activity_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
-  statuses?: Prisma.statusesUpdateOneRequiredWithoutStatus_quotesNestedInput;
+  statuses?: Prisma.statusesUpdateOneWithoutStatus_quotesNestedInput;
+  remote_statuses?: Prisma.remote_statusesUpdateOneWithoutStatus_quotesNestedInput;
 };
 
 export type status_quotesUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
-  status_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  quoted_status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  quoted_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  quoted_remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   state?: Prisma.StringFieldUpdateOperationsInput | string;
+  approval_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  activity_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type status_quotesCreateManyInput = {
   id: string;
-  status_id: string;
-  quoted_status_id: string;
+  status_id?: string | null;
+  remote_status_id?: string | null;
+  quoted_status_id?: string | null;
+  quoted_remote_status_id?: string | null;
   state: string;
+  approval_uri?: string | null;
+  activity_uri?: string | null;
   created_at: string;
   updated_at: string;
 };
 
 export type status_quotesUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
-  quoted_status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  quoted_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  quoted_remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   state?: Prisma.StringFieldUpdateOperationsInput | string;
+  approval_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  activity_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type status_quotesUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
-  status_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  quoted_status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  quoted_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  quoted_remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   state?: Prisma.StringFieldUpdateOperationsInput | string;
+  approval_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  activity_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+};
+
+export type Status_quotesNullableScalarRelationFilter = {
+  is?: Prisma.status_quotesWhereInput | null;
+  isNot?: Prisma.status_quotesWhereInput | null;
 };
 
 export type status_quotesCountOrderByAggregateInput = {
   id?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
+  remote_status_id?: Prisma.SortOrder;
   quoted_status_id?: Prisma.SortOrder;
+  quoted_remote_status_id?: Prisma.SortOrder;
   state?: Prisma.SortOrder;
+  approval_uri?: Prisma.SortOrder;
+  activity_uri?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
@@ -323,8 +425,12 @@ export type status_quotesCountOrderByAggregateInput = {
 export type status_quotesMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
+  remote_status_id?: Prisma.SortOrder;
   quoted_status_id?: Prisma.SortOrder;
+  quoted_remote_status_id?: Prisma.SortOrder;
   state?: Prisma.SortOrder;
+  approval_uri?: Prisma.SortOrder;
+  activity_uri?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
@@ -332,15 +438,70 @@ export type status_quotesMaxOrderByAggregateInput = {
 export type status_quotesMinOrderByAggregateInput = {
   id?: Prisma.SortOrder;
   status_id?: Prisma.SortOrder;
+  remote_status_id?: Prisma.SortOrder;
   quoted_status_id?: Prisma.SortOrder;
+  quoted_remote_status_id?: Prisma.SortOrder;
   state?: Prisma.SortOrder;
+  approval_uri?: Prisma.SortOrder;
+  activity_uri?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
 
-export type Status_quotesNullableScalarRelationFilter = {
-  is?: Prisma.status_quotesWhereInput | null;
-  isNot?: Prisma.status_quotesWhereInput | null;
+export type status_quotesCreateNestedOneWithoutRemote_statusesInput = {
+  create?: Prisma.XOR<
+    Prisma.status_quotesCreateWithoutRemote_statusesInput,
+    Prisma.status_quotesUncheckedCreateWithoutRemote_statusesInput
+  >;
+  connectOrCreate?: Prisma.status_quotesCreateOrConnectWithoutRemote_statusesInput;
+  connect?: Prisma.status_quotesWhereUniqueInput;
+};
+
+export type status_quotesUncheckedCreateNestedOneWithoutRemote_statusesInput = {
+  create?: Prisma.XOR<
+    Prisma.status_quotesCreateWithoutRemote_statusesInput,
+    Prisma.status_quotesUncheckedCreateWithoutRemote_statusesInput
+  >;
+  connectOrCreate?: Prisma.status_quotesCreateOrConnectWithoutRemote_statusesInput;
+  connect?: Prisma.status_quotesWhereUniqueInput;
+};
+
+export type status_quotesUpdateOneWithoutRemote_statusesNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.status_quotesCreateWithoutRemote_statusesInput,
+    Prisma.status_quotesUncheckedCreateWithoutRemote_statusesInput
+  >;
+  connectOrCreate?: Prisma.status_quotesCreateOrConnectWithoutRemote_statusesInput;
+  upsert?: Prisma.status_quotesUpsertWithoutRemote_statusesInput;
+  disconnect?: Prisma.status_quotesWhereInput | boolean;
+  delete?: Prisma.status_quotesWhereInput | boolean;
+  connect?: Prisma.status_quotesWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.status_quotesUpdateToOneWithWhereWithoutRemote_statusesInput,
+      Prisma.status_quotesUpdateWithoutRemote_statusesInput
+    >,
+    Prisma.status_quotesUncheckedUpdateWithoutRemote_statusesInput
+  >;
+};
+
+export type status_quotesUncheckedUpdateOneWithoutRemote_statusesNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.status_quotesCreateWithoutRemote_statusesInput,
+    Prisma.status_quotesUncheckedCreateWithoutRemote_statusesInput
+  >;
+  connectOrCreate?: Prisma.status_quotesCreateOrConnectWithoutRemote_statusesInput;
+  upsert?: Prisma.status_quotesUpsertWithoutRemote_statusesInput;
+  disconnect?: Prisma.status_quotesWhereInput | boolean;
+  delete?: Prisma.status_quotesWhereInput | boolean;
+  connect?: Prisma.status_quotesWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.status_quotesUpdateToOneWithWhereWithoutRemote_statusesInput,
+      Prisma.status_quotesUpdateWithoutRemote_statusesInput
+    >,
+    Prisma.status_quotesUncheckedUpdateWithoutRemote_statusesInput
+  >;
 };
 
 export type status_quotesCreateNestedOneWithoutStatusesInput = {
@@ -399,18 +560,102 @@ export type status_quotesUncheckedUpdateOneWithoutStatusesNestedInput = {
   >;
 };
 
-export type status_quotesCreateWithoutStatusesInput = {
+export type status_quotesCreateWithoutRemote_statusesInput = {
   id: string;
-  quoted_status_id: string;
+  quoted_status_id?: string | null;
+  quoted_remote_status_id?: string | null;
   state: string;
+  approval_uri?: string | null;
+  activity_uri?: string | null;
+  created_at: string;
+  updated_at: string;
+  statuses?: Prisma.statusesCreateNestedOneWithoutStatus_quotesInput;
+};
+
+export type status_quotesUncheckedCreateWithoutRemote_statusesInput = {
+  id: string;
+  status_id?: string | null;
+  quoted_status_id?: string | null;
+  quoted_remote_status_id?: string | null;
+  state: string;
+  approval_uri?: string | null;
+  activity_uri?: string | null;
   created_at: string;
   updated_at: string;
 };
 
+export type status_quotesCreateOrConnectWithoutRemote_statusesInput = {
+  where: Prisma.status_quotesWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.status_quotesCreateWithoutRemote_statusesInput,
+    Prisma.status_quotesUncheckedCreateWithoutRemote_statusesInput
+  >;
+};
+
+export type status_quotesUpsertWithoutRemote_statusesInput = {
+  update: Prisma.XOR<
+    Prisma.status_quotesUpdateWithoutRemote_statusesInput,
+    Prisma.status_quotesUncheckedUpdateWithoutRemote_statusesInput
+  >;
+  create: Prisma.XOR<
+    Prisma.status_quotesCreateWithoutRemote_statusesInput,
+    Prisma.status_quotesUncheckedCreateWithoutRemote_statusesInput
+  >;
+  where?: Prisma.status_quotesWhereInput;
+};
+
+export type status_quotesUpdateToOneWithWhereWithoutRemote_statusesInput = {
+  where?: Prisma.status_quotesWhereInput;
+  data: Prisma.XOR<
+    Prisma.status_quotesUpdateWithoutRemote_statusesInput,
+    Prisma.status_quotesUncheckedUpdateWithoutRemote_statusesInput
+  >;
+};
+
+export type status_quotesUpdateWithoutRemote_statusesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  quoted_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  quoted_remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  state?: Prisma.StringFieldUpdateOperationsInput | string;
+  approval_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  activity_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  statuses?: Prisma.statusesUpdateOneWithoutStatus_quotesNestedInput;
+};
+
+export type status_quotesUncheckedUpdateWithoutRemote_statusesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  quoted_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  quoted_remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  state?: Prisma.StringFieldUpdateOperationsInput | string;
+  approval_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  activity_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+};
+
+export type status_quotesCreateWithoutStatusesInput = {
+  id: string;
+  quoted_status_id?: string | null;
+  quoted_remote_status_id?: string | null;
+  state: string;
+  approval_uri?: string | null;
+  activity_uri?: string | null;
+  created_at: string;
+  updated_at: string;
+  remote_statuses?: Prisma.remote_statusesCreateNestedOneWithoutStatus_quotesInput;
+};
+
 export type status_quotesUncheckedCreateWithoutStatusesInput = {
   id: string;
-  quoted_status_id: string;
+  remote_status_id?: string | null;
+  quoted_status_id?: string | null;
+  quoted_remote_status_id?: string | null;
   state: string;
+  approval_uri?: string | null;
+  activity_uri?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -445,16 +690,24 @@ export type status_quotesUpdateToOneWithWhereWithoutStatusesInput = {
 
 export type status_quotesUpdateWithoutStatusesInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
-  quoted_status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  quoted_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  quoted_remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   state?: Prisma.StringFieldUpdateOperationsInput | string;
+  approval_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  activity_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  remote_statuses?: Prisma.remote_statusesUpdateOneWithoutStatus_quotesNestedInput;
 };
 
 export type status_quotesUncheckedUpdateWithoutStatusesInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
-  quoted_status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  quoted_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  quoted_remote_status_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   state?: Prisma.StringFieldUpdateOperationsInput | string;
+  approval_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  activity_uri?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
@@ -465,11 +718,16 @@ export type status_quotesSelect<
   {
     id?: boolean;
     status_id?: boolean;
+    remote_status_id?: boolean;
     quoted_status_id?: boolean;
+    quoted_remote_status_id?: boolean;
     state?: boolean;
+    approval_uri?: boolean;
+    activity_uri?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
-    statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+    statuses?: boolean | Prisma.status_quotes$statusesArgs<ExtArgs>;
+    remote_statuses?: boolean | Prisma.status_quotes$remote_statusesArgs<ExtArgs>;
   },
   ExtArgs["result"]["status_quotes"]
 >;
@@ -480,11 +738,16 @@ export type status_quotesSelectCreateManyAndReturn<
   {
     id?: boolean;
     status_id?: boolean;
+    remote_status_id?: boolean;
     quoted_status_id?: boolean;
+    quoted_remote_status_id?: boolean;
     state?: boolean;
+    approval_uri?: boolean;
+    activity_uri?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
-    statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+    statuses?: boolean | Prisma.status_quotes$statusesArgs<ExtArgs>;
+    remote_statuses?: boolean | Prisma.status_quotes$remote_statusesArgs<ExtArgs>;
   },
   ExtArgs["result"]["status_quotes"]
 >;
@@ -495,11 +758,16 @@ export type status_quotesSelectUpdateManyAndReturn<
   {
     id?: boolean;
     status_id?: boolean;
+    remote_status_id?: boolean;
     quoted_status_id?: boolean;
+    quoted_remote_status_id?: boolean;
     state?: boolean;
+    approval_uri?: boolean;
+    activity_uri?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
-    statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+    statuses?: boolean | Prisma.status_quotes$statusesArgs<ExtArgs>;
+    remote_statuses?: boolean | Prisma.status_quotes$remote_statusesArgs<ExtArgs>;
   },
   ExtArgs["result"]["status_quotes"]
 >;
@@ -507,8 +775,12 @@ export type status_quotesSelectUpdateManyAndReturn<
 export type status_quotesSelectScalar = {
   id?: boolean;
   status_id?: boolean;
+  remote_status_id?: boolean;
   quoted_status_id?: boolean;
+  quoted_remote_status_id?: boolean;
   state?: boolean;
+  approval_uri?: boolean;
+  activity_uri?: boolean;
   created_at?: boolean;
   updated_at?: boolean;
 };
@@ -516,23 +788,35 @@ export type status_quotesSelectScalar = {
 export type status_quotesOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "id" | "status_id" | "quoted_status_id" | "state" | "created_at" | "updated_at",
+  | "id"
+  | "status_id"
+  | "remote_status_id"
+  | "quoted_status_id"
+  | "quoted_remote_status_id"
+  | "state"
+  | "approval_uri"
+  | "activity_uri"
+  | "created_at"
+  | "updated_at",
   ExtArgs["result"]["status_quotes"]
 >;
 export type status_quotesInclude<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+  statuses?: boolean | Prisma.status_quotes$statusesArgs<ExtArgs>;
+  remote_statuses?: boolean | Prisma.status_quotes$remote_statusesArgs<ExtArgs>;
 };
 export type status_quotesIncludeCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+  statuses?: boolean | Prisma.status_quotes$statusesArgs<ExtArgs>;
+  remote_statuses?: boolean | Prisma.status_quotes$remote_statusesArgs<ExtArgs>;
 };
 export type status_quotesIncludeUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
+  statuses?: boolean | Prisma.status_quotes$statusesArgs<ExtArgs>;
+  remote_statuses?: boolean | Prisma.status_quotes$remote_statusesArgs<ExtArgs>;
 };
 
 export type $status_quotesPayload<
@@ -540,14 +824,19 @@ export type $status_quotesPayload<
 > = {
   name: "status_quotes";
   objects: {
-    statuses: Prisma.$statusesPayload<ExtArgs>;
+    statuses: Prisma.$statusesPayload<ExtArgs> | null;
+    remote_statuses: Prisma.$remote_statusesPayload<ExtArgs> | null;
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
       id: string;
-      status_id: string;
-      quoted_status_id: string;
+      status_id: string | null;
+      remote_status_id: string | null;
+      quoted_status_id: string | null;
+      quoted_remote_status_id: string | null;
       state: string;
+      approval_uri: string | null;
+      activity_uri: string | null;
       created_at: string;
       updated_at: string;
     },
@@ -1089,17 +1378,29 @@ export interface Prisma__status_quotesClient<
   GlobalOmitOptions = {},
 > extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise";
-  statuses<T extends Prisma.statusesDefaultArgs<ExtArgs> = {}>(
-    args?: Prisma.Subset<T, Prisma.statusesDefaultArgs<ExtArgs>>,
+  statuses<T extends Prisma.status_quotes$statusesArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.status_quotes$statusesArgs<ExtArgs>>,
   ): Prisma.Prisma__statusesClient<
-    | runtime.Types.Result.GetResult<
-        Prisma.$statusesPayload<ExtArgs>,
-        T,
-        "findUniqueOrThrow",
-        GlobalOmitOptions
-      >
-    | Null,
-    Null,
+    runtime.Types.Result.GetResult<
+      Prisma.$statusesPayload<ExtArgs>,
+      T,
+      "findUniqueOrThrow",
+      GlobalOmitOptions
+    > | null,
+    null,
+    ExtArgs,
+    GlobalOmitOptions
+  >;
+  remote_statuses<T extends Prisma.status_quotes$remote_statusesArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.status_quotes$remote_statusesArgs<ExtArgs>>,
+  ): Prisma.Prisma__remote_statusesClient<
+    runtime.Types.Result.GetResult<
+      Prisma.$remote_statusesPayload<ExtArgs>,
+      T,
+      "findUniqueOrThrow",
+      GlobalOmitOptions
+    > | null,
+    null,
     ExtArgs,
     GlobalOmitOptions
   >;
@@ -1136,8 +1437,12 @@ export interface Prisma__status_quotesClient<
 export interface status_quotesFieldRefs {
   readonly id: Prisma.FieldRef<"status_quotes", "String">;
   readonly status_id: Prisma.FieldRef<"status_quotes", "String">;
+  readonly remote_status_id: Prisma.FieldRef<"status_quotes", "String">;
   readonly quoted_status_id: Prisma.FieldRef<"status_quotes", "String">;
+  readonly quoted_remote_status_id: Prisma.FieldRef<"status_quotes", "String">;
   readonly state: Prisma.FieldRef<"status_quotes", "String">;
+  readonly approval_uri: Prisma.FieldRef<"status_quotes", "String">;
+  readonly activity_uri: Prisma.FieldRef<"status_quotes", "String">;
   readonly created_at: Prisma.FieldRef<"status_quotes", "String">;
   readonly updated_at: Prisma.FieldRef<"status_quotes", "String">;
 }
@@ -1575,6 +1880,48 @@ export type status_quotesDeleteManyArgs<
    * Limit how many status_quotes to delete.
    */
   limit?: number;
+};
+
+/**
+ * status_quotes.statuses
+ */
+export type status_quotes$statusesArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the statuses
+   */
+  select?: Prisma.statusesSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the statuses
+   */
+  omit?: Prisma.statusesOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.statusesInclude<ExtArgs> | null;
+  where?: Prisma.statusesWhereInput;
+};
+
+/**
+ * status_quotes.remote_statuses
+ */
+export type status_quotes$remote_statusesArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the remote_statuses
+   */
+  select?: Prisma.remote_statusesSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the remote_statuses
+   */
+  omit?: Prisma.remote_statusesOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.remote_statusesInclude<ExtArgs> | null;
+  where?: Prisma.remote_statusesWhereInput;
 };
 
 /**

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { StatusComposition } from "./status-composition";
 import { StatusId } from "./status-id";
 import { StatusQuoteTarget } from "./status-quote-target";
+import { StatusTarget } from "./status-target";
 import { Visibility } from "./visibility";
 
 describe("StatusComposition", () => {
@@ -39,7 +40,7 @@ describe("StatusComposition", () => {
     const composing = StatusComposition.composing({
       text: "quote",
       visibility: Visibility.Public,
-      quote: { kind: "Quoted", statusId: statusId.value },
+      quote: { kind: "Quoted", target: StatusTarget.local(statusId.value) },
       mediaIds: ["media-1"],
     });
     const validated = StatusComposition.validate(composing);

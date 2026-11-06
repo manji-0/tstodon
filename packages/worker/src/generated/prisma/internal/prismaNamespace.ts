@@ -7151,8 +7151,12 @@ export type Trend_reviewsScalarFieldEnum =
 export const Status_quotesScalarFieldEnum = {
   id: "id",
   status_id: "status_id",
+  remote_status_id: "remote_status_id",
   quoted_status_id: "quoted_status_id",
+  quoted_remote_status_id: "quoted_remote_status_id",
   state: "state",
+  approval_uri: "approval_uri",
+  activity_uri: "activity_uri",
   created_at: "created_at",
   updated_at: "updated_at",
 } as const;

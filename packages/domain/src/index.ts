@@ -189,6 +189,13 @@ export type { FindThreadParent, ThreadStatus } from "./thread-status";
 export { StatusId, type StatusId as StatusIdValue } from "./status-id";
 export { StatusTarget, type StatusTarget as StatusTargetValue } from "./status-target";
 export {
+  Quote,
+  type Quote as QuoteValue,
+  type QuoteApproval,
+  type QuoteState,
+  type QuoteTransitionError,
+} from "./quote";
+export {
   StatusQuoteTarget,
   type StatusQuoteTarget as StatusQuoteTargetValue,
 } from "./status-quote-target";

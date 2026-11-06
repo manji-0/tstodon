@@ -1162,13 +1162,15 @@ export type statusesCreateNestedOneWithoutStatus_quotesInput = {
   connect?: Prisma.statusesWhereUniqueInput;
 };
 
-export type statusesUpdateOneRequiredWithoutStatus_quotesNestedInput = {
+export type statusesUpdateOneWithoutStatus_quotesNestedInput = {
   create?: Prisma.XOR<
     Prisma.statusesCreateWithoutStatus_quotesInput,
     Prisma.statusesUncheckedCreateWithoutStatus_quotesInput
   >;
   connectOrCreate?: Prisma.statusesCreateOrConnectWithoutStatus_quotesInput;
   upsert?: Prisma.statusesUpsertWithoutStatus_quotesInput;
+  disconnect?: Prisma.statusesWhereInput | boolean;
+  delete?: Prisma.statusesWhereInput | boolean;
   connect?: Prisma.statusesWhereUniqueInput;
   update?: Prisma.XOR<
     Prisma.XOR<

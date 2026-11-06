@@ -1,11 +1,11 @@
 import { schemaResult, unitKind } from "@tstodon/core";
 import { z } from "zod";
-import { StatusId } from "./status-id";
+import { StatusTargetSchema } from "./status-target";
 
 const NoneSchema = unitKind("None");
 const QuotedSchema = z.object({
   kind: z.literal("Quoted"),
-  statusId: StatusId.schema,
+  target: StatusTargetSchema,
 });
 
 export const StatusQuoteTargetSchema = z.discriminatedUnion("kind", [NoneSchema, QuotedSchema]);

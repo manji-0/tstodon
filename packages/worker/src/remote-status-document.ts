@@ -17,6 +17,8 @@ export type RemoteStatusExtras = Readonly<{
   interactions?: StatusInteractionCounts | undefined;
   /** Whether the viewer may quote it; no viewer may when unset, as Mastodon answers an anonymous one. */
   quoteApproval?: QuoteApprovalForViewer | undefined;
+  /** Accepted quotes by statuses on this instance; remote totals are not kept. */
+  quotesCount?: number | undefined;
 }>;
 
 /** A remote status with `account`, its author as the reader is shown it. */
@@ -78,7 +80,7 @@ export const mastodonRemoteStatus = (
         ? null
         : remotePollJson(status.id, status.poll, pollVotes, status.emojis),
     quote: null,
-    quotes_count: 0,
+    quotes_count: extras.quotesCount ?? 0,
     quote_approval: {
       automatic: status.quotePolicy.automatic,
       manual: status.quotePolicy.manual,

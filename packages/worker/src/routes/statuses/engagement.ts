@@ -1,5 +1,5 @@
 import { StatusAuthors } from "../../account-presentation";
-import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
+import { type LocalStatus as LocalStatusValue, Quote, StatusTarget } from "@tstodon/domain";
 import type { Context } from "hono";
 import { authenticate } from "../../auth";
 import {
@@ -19,7 +19,7 @@ import { parseInstanceIdentity } from "../../runtime-config";
 import { RemoteAccountId } from "../../remote-account-id";
 import { findStatusById, findStatusesByIds } from "../../status-store";
 import { canViewStatus } from "../../visibility-guard";
-import { listQuotingStatusIds, revokeStatusQuote } from "../../quote-store";
+import { findQuoteByQuoting, listQuotingTargets, saveQuoteState } from "../../quote-store";
 
 const statusEngagementAccounts = async (
   c: Context<{ Bindings: Env }>,
@@ -96,16 +96,26 @@ export const getV1StatusesByIdQuotes = async (
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const limit = queryLimit(c.req.query("limit"));
-  const quotingIds = await listQuotingStatusIds(c.env.DB, status.value.id, limit, queryCursor(c));
-  if (quotingIds.isErr()) {
-    return jsonRepositoryError(c, quotingIds.error.message);
+  const quoting = await listQuotingTargets(
+    c.env.DB,
+    StatusTarget.local(status.value.id),
+    limit,
+    queryCursor(c),
+  );
+  if (quoting.isErr()) {
+    return jsonRepositoryError(c, quoting.error.message);
   }
-  const loaded = await findStatusesByIds(c.env.DB, quotingIds.value);
+  const quotingIds = quoting.value.map((target) => target.statusId);
+  // Only local statuses quote yet, so only they are rendered.
+  const loaded = await findStatusesByIds(
+    c.env.DB,
+    quoting.value.flatMap((target) => (target.kind === "LocalStatus" ? [target.statusId] : [])),
+  );
   if (loaded.isErr()) {
     return jsonRepositoryError(c, loaded.error.message);
   }
   const visible: LocalStatusValue[] = [];
-  for (const id of quotingIds.value) {
+  for (const id of quotingIds) {
     const quoting = loaded.value.get(id);
     if (quoting && (await canViewStatus(c.env.DB, quoting, viewerId))) {
       visible.push(quoting);
@@ -115,7 +125,7 @@ export const getV1StatusesByIdQuotes = async (
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }
-  setPaginationLinks(c, quotingIds.value, limit, { prev: "since_id" });
+  setPaginationLinks(c, quotingIds, limit, { prev: "since_id" });
   return c.json(documents.value);
 };
 
@@ -148,12 +158,19 @@ export const postV1StatusesByIdQuotesByQuotingStatusIdRevoke = async (
   if (!quoting.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const revoked = await revokeStatusQuote(c.env.DB, quoted.value.id, quoting.value.id);
-  if (revoked.isErr()) {
-    return jsonRepositoryError(c, revoked.error.message);
+  const quote = await findQuoteByQuoting(c.env.DB, StatusTarget.local(quoting.value.id));
+  if (quote.isErr()) {
+    return jsonRepositoryError(c, quote.error.message);
   }
-  if (!revoked.value) {
+  const quotesThis =
+    quote.value?.quoted.kind === "LocalStatus" && quote.value.quoted.statusId === quoted.value.id;
+  const revoked = quote.value && quotesThis ? Quote.revoke(quote.value) : undefined;
+  if (!revoked || revoked.isErr()) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const saved = await saveQuoteState(c.env.DB, revoked.value);
+  if (saved.isErr()) {
+    return jsonRepositoryError(c, saved.error.message);
   }
   // As Mastodon, the quoting status answers whoever wrote it, a suspended author stripped.
   const document = await mastodonStatus(

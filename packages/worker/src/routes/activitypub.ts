@@ -23,7 +23,7 @@ import { findRemoteActorByUri, findRemoteFollow } from "../remote-actor-store";
 import { RemoteDeleteTarget } from "../remote-delete";
 import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import { loadNoteQuotePolicy } from "../quote-policy-name";
-import { quotedStatusUri } from "../quote-uri";
+import { noteQuote } from "../quote-uri";
 import { ActivityJsonSchema, JsonObjectSchema } from "../activitypub-wire";
 import { parseJsonColumn, parseJsonText } from "../json-column";
 import { schemaResult } from "@tstodon/core";
@@ -91,7 +91,7 @@ export const getUsersByUsernameStatusesById = async (
     return jsonRepositoryError(c, media.error.message);
   }
   const note = noteDocument(identity.value, account.value, status.value, {
-    quoteUri: await quotedStatusUri(c.env, identity.value, status.value.id),
+    quote: await noteQuote(c.env, identity.value, status.value.id),
     mentions: await loadNoteMentions(c.env.DB, identity.value, status.value.id),
     reply: await loadNoteReply(c.env.DB, identity.value, status.value),
     poll: await loadNotePoll(c.env.DB, status.value.id),

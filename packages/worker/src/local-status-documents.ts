@@ -3,6 +3,8 @@ import {
   type LocalAccount,
   type LocalNote,
   LocalStatus,
+  type QuoteState,
+  StatusTarget,
   Visibility,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
@@ -11,9 +13,9 @@ import { boostedStatusAuthors, StatusAuthors } from "./account-presentation";
 import { findAccountsByIds } from "./account-store";
 import { findPollsByStatusIds, type PollRecord } from "./poll-store";
 import {
-  findQuotesByStatusIds,
+  findQuotesByQuoting,
   findStatusQuotePolicies,
-  quoteCountsByStatusIds,
+  quoteCountsByQuoted,
   type QuotePolicy,
 } from "./quote-store";
 import { listStatusMentions } from "./mention-store";
@@ -108,6 +110,14 @@ const buildLocalNoteDocument = (
   };
 };
 
+/** Mastodon's `quote.state` for a quote that is not accepted. */
+const QUOTE_STATE_NAMES = {
+  Pending: "pending",
+  Rejected: "rejected",
+  Revoked: "revoked",
+  Deleted: "deleted",
+} as const satisfies Record<Exclude<QuoteState["kind"], "Accepted">, string>;
+
 export const mastodonStatus = async (
   env: Env,
   identity: InstanceIdentity,
@@ -179,13 +189,19 @@ export const mastodonStatuses = async (
   // rendered, then read every quote of the loaded notes.
   const noteIdsOf = (statuses: Iterable<LocalStatus>): string[] =>
     [...statuses].filter(LocalStatus.isNote).map((status) => status.id);
-  const loadQuotes = async (ids: ReadonlyArray<string>) => {
-    const result = await findQuotesByStatusIds(env.DB, ids);
+  const noteTargetsOf = (statuses: Iterable<LocalStatus>) =>
+    [...statuses].filter(LocalStatus.isNote).map((status) => StatusTarget.local(status.id));
+  const loadQuotes = async (statuses: Iterable<LocalStatus>) => {
+    const result = await findQuotesByQuoting(env.DB, noteTargetsOf(statuses));
     return result.isOk() ? result.value : new Map<string, never>();
   };
-  let quotes = await loadQuotes(noteIdsOf(byId.values()));
+  let quotes = await loadQuotes(byId.values());
   const quotedMissing = [
-    ...new Set([...quotes.values()].map((quote) => quote.quotedStatusId)),
+    ...new Set(
+      [...quotes.values()].flatMap(({ quoted }) =>
+        quoted.kind === "LocalStatus" ? [quoted.statusId] : [],
+      ),
+    ),
   ].filter((id) => !byId.has(id));
   if (quotedMissing.length > 0) {
     const loaded = await findStatusesByIds(env.DB, quotedMissing);
@@ -193,7 +209,7 @@ export const mastodonStatuses = async (
       byId.set(id, status);
     }
   }
-  quotes = await loadQuotes(noteIdsOf(byId.values()));
+  quotes = await loadQuotes(byId.values());
 
   const allStatuses = [...byId.values()];
   const accountIds = [...new Set(allStatuses.map((status) => status.accountId))];
@@ -241,7 +257,7 @@ export const mastodonStatuses = async (
 
   const [presented, quoteCountsResult, policiesResult] = await Promise.all([
     presentedAccounts(env, identity, [...accounts.values()], []),
-    quoteCountsByStatusIds(env.DB, noteIdsOf(allStatuses)),
+    quoteCountsByQuoted(env.DB, noteTargetsOf(allStatuses)),
     findStatusQuotePolicies(env.DB, noteIdsOf(allStatuses)),
   ]);
   if (presented.isErr()) {
@@ -378,12 +394,12 @@ export const mastodonStatuses = async (
     }
     const quote = quotes.get(status.id);
     if (quote) {
-      const target = noteDocs.get(quote.quotedStatusId);
-      const quoted = byId.get(quote.quotedStatusId);
+      const target = noteDocs.get(quote.quoted.statusId);
+      const quoted = byId.get(quote.quoted.statusId);
       const quotedAuthor = quoted && authorOf(quoted);
       const state =
-        quote.state === "revoked"
-          ? "revoked"
+        quote.state.kind !== "Accepted"
+          ? QUOTE_STATE_NAMES[quote.state.kind]
           : !target || !quotedAuthor
             ? "deleted"
             : StatusAuthors.available(quotedAuthor.presentation)

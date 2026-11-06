@@ -10,7 +10,7 @@ import { loadNoteMedia } from "./note-attachments";
 import { loadNotePoll } from "./poll-store";
 import { enqueuePublicFanOut } from "./public-fan-out";
 import { loadNoteQuotePolicy } from "./quote-policy-name";
-import { quotedStatusUri } from "./quote-uri";
+import { noteQuote } from "./quote-uri";
 import { loadNoteReply } from "./reply-target";
 import { findStatusById } from "./status-store";
 import { publishToAccount } from "./stream-publish";
@@ -45,7 +45,7 @@ export const announceNoteUpdate = async (
       actor,
       published: updatedAt,
       object: noteDocument(identity, account, note, {
-        quoteUri: await quotedStatusUri(env, identity, note.id),
+        quote: await noteQuote(env, identity, note.id),
         mentions: await loadNoteMentions(env.DB, identity, note.id),
         reply: await loadNoteReply(env.DB, identity, note),
         poll: await loadNotePoll(env.DB, note.id),

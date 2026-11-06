@@ -1,6 +1,12 @@
 import { InstanceLimits } from "@tstodon/core";
-import type { LocalAccount, LocalNote, ThreadStatus, ValidatedStatusDraft } from "@tstodon/domain";
-import { InstanceIdentity, LocalStatus, StatusId } from "@tstodon/domain";
+import type {
+  LocalAccount,
+  LocalNote,
+  StatusTargetValue,
+  ThreadStatus,
+  ValidatedStatusDraft,
+} from "@tstodon/domain";
+import { InstanceIdentity, LocalStatus, StatusId, StatusTarget } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountsByUsernames } from "./account-store";
 import { nowInstant } from "./clock";
@@ -46,7 +52,7 @@ export type PublishNoteInput = Readonly<{
   poll: PublishPoll | null;
   /** The quoted status, with its URI and the `quote-inline` paragraph. */
   quote: Readonly<{
-    quotedStatusId: string;
+    quoted: StatusTargetValue;
     quotedAccountId: string;
     inlineHtml: string;
     uri: string;
@@ -140,7 +146,14 @@ export const publishLocalNote = async (
     }
   }
   if (input.quote) {
-    const quote = await insertStatusQuote(env.DB, note.id, input.quote.quotedStatusId);
+    const quote = await insertStatusQuote(env.DB, {
+      id: newEntityId(),
+      quoting: StatusTarget.local(note.id),
+      quoted: input.quote.quoted,
+      state: { kind: "Accepted", approval: { kind: "Implicit" } },
+      activityUri: undefined,
+      createdAt: nowInstant(),
+    });
     if (quote.isErr()) {
       return err(quote.error);
     }
@@ -265,7 +278,7 @@ export const publishLocalNote = async (
           type: "Create",
           actor,
           object: noteDocument(identity, user, note, {
-            quoteUri: input.quote?.uri,
+            quote: input.quote ? { uri: input.quote.uri } : undefined,
             mentions: await loadNoteMentions(env.DB, identity, note.id),
             reply: await loadNoteReply(env.DB, identity, note),
             poll: await loadNotePoll(env.DB, note.id),

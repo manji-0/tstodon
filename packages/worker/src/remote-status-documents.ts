@@ -3,6 +3,7 @@ import {
   type QuoteViewerRelation,
   RemoteQuotePolicy,
   type RemoteStatusValue,
+  StatusTarget,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { presentedAccounts } from "./account-documents";
@@ -11,6 +12,7 @@ import { parseLocalStatusId } from "./activitypub";
 import type { RepositoryError } from "./d1";
 import { cardDocument, parseCardJson } from "./link-card";
 import { RemoteAccountId } from "./remote-account-id";
+import { quoteCountsByQuoted } from "./quote-store";
 import { listRemoteActorModerations } from "./remote-actor-moderation-store";
 import { findRemoteActorsByUris, remoteFollowerActorUris } from "./remote-actor-store";
 import { acceptedOutboundFollowActorUris } from "./outbound-follow-store";
@@ -131,14 +133,19 @@ export const mastodonRemoteStatuses = async (
   }
   const ids = statuses.map((status) => status.id);
   const actorUris = statuses.map((status) => status.actorUri);
-  const [cards, actors, moderations, pollVotes, interactions, relations] = await Promise.all([
-    listRemoteStatusCards(env.DB, ids),
-    findRemoteActorsByUris(env.DB, actorUris),
-    listRemoteActorModerations(env.DB, actorUris),
-    findRemotePollVotes(env.DB, viewerId, statuses),
-    statusInteractionCountsByIds(env.DB, ids, viewerId),
-    quoteViewerRelations(env.DB, viewerId, actorUris),
-  ]);
+  const [cards, actors, moderations, pollVotes, interactions, relations, quoteCounts] =
+    await Promise.all([
+      listRemoteStatusCards(env.DB, ids),
+      findRemoteActorsByUris(env.DB, actorUris),
+      listRemoteActorModerations(env.DB, actorUris),
+      findRemotePollVotes(env.DB, viewerId, statuses),
+      statusInteractionCountsByIds(env.DB, ids, viewerId),
+      quoteViewerRelations(env.DB, viewerId, actorUris),
+      quoteCountsByQuoted(
+        env.DB,
+        statuses.map((status) => StatusTarget.remote(status.id)),
+      ),
+    ]);
   if (actors.isErr()) {
     return err(actors.error);
   }
@@ -157,6 +164,7 @@ export const mastodonRemoteStatuses = async (
       card: card ? cardDocument(card) : null,
       pollVotes: pollVotes.get(status.id),
       interactions: interactions.isOk() ? interactions.value.get(status.id) : undefined,
+      quotesCount: quoteCounts.isOk() ? quoteCounts.value.get(status.id) : undefined,
       quoteApproval: RemoteQuotePolicy.forViewer(
         status.quotePolicy,
         status.visibility,

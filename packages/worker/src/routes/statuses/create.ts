@@ -4,6 +4,7 @@ import {
   type LocalStatus,
   StatusComposition,
   StatusId,
+  StatusTarget,
   type ThreadStatus,
   type ValidatedStatusDraft,
   Visibility,
@@ -391,7 +392,7 @@ const postStatus = async (
     StatusComposition.composing({
       text,
       visibility: quoted.value.visibility,
-      ...(quote ? { quote: { kind: "Quoted" as const, statusId: quote.status.id } } : {}),
+      ...(quote ? { quote: { kind: "Quoted", target: StatusTarget.local(quote.status.id) } } : {}),
       spoilerText: body.spoiler_text ?? "",
       sensitive:
         body.sensitive === undefined ? composeDefaults.sensitive : isTruthy(body.sensitive),
@@ -444,7 +445,7 @@ const postStatus = async (
     ...note,
     quote: quote
       ? {
-          quotedStatusId: quote.status.id,
+          quoted: StatusTarget.local(quote.status.id),
           quotedAccountId: quote.status.accountId,
           inlineHtml: quote.inlineHtml ?? "",
           uri: quote.url,

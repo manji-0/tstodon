@@ -1,23 +1,20 @@
+import {
+  Quote,
+  type QuoteState,
+  type QuoteValue,
+  StatusTarget,
+  type StatusTargetValue,
+} from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { parseRows, runD1, type RepositoryError } from "./d1";
+import { jsonStringArray, parseRows, runD1, sqlInJsonEach, type RepositoryError } from "./d1";
 import { idCursorFragment, type IdCursor } from "./id-cursor";
-import { newEntityId } from "./ids";
+import { statusTargetColumns } from "./status-store";
 
 /** Who may quote a status, as Mastodon's `quote_approval_policy` names it. */
 export const QuotePolicySchema = ["public", "followers", "nobody"] as const;
 export type QuotePolicy = (typeof QuotePolicySchema)[number];
-
-export type QuoteState = "accepted" | "revoked";
-
-export type QuoteRow = Readonly<{
-  id: string;
-  statusId: string;
-  quotedStatusId: string;
-  state: QuoteState;
-  createdAt: string;
-}>;
 
 /** Direct posts are never quotable; followers-only posts default to followers. */
 export const defaultQuotePolicy = (visibility: string): QuotePolicy => {
@@ -35,133 +32,207 @@ export const isQuotePolicy = (raw: string): raw is QuotePolicy =>
 
 const QuoteDbRow = z.object({
   id: z.string(),
-  status_id: z.string(),
-  quoted_status_id: z.string(),
+  status_id: z.string().nullable(),
+  remote_status_id: z.string().nullable(),
+  quoted_status_id: z.string().nullable(),
+  quoted_remote_status_id: z.string().nullable(),
   state: z.string(),
+  approval_uri: z.string().nullable(),
+  activity_uri: z.string().nullable(),
   created_at: z.string(),
 });
-const QuoteCountRow = z.object({ quoted_status_id: z.string(), count: z.number() });
-const IdRow = z.object({ id: z.string() });
+const QuoteCountRow = z.object({ quoted_id: z.string(), count: z.number() });
+const TargetRow = z.object({
+  status_id: z.string().nullable(),
+  remote_status_id: z.string().nullable(),
+});
 const QuoteEdgeRow = z.object({ status_id: z.string(), account_id: z.string() });
 const PolicyRow = z.object({ policy: z.string() });
 const StatusPolicyRow = z.object({ status_id: z.string(), policy: z.string() });
 
-const toRow = (row: z.infer<typeof QuoteDbRow>): QuoteRow => ({
-  id: row.id,
-  statusId: row.status_id,
-  quotedStatusId: row.quoted_status_id,
-  state: row.state === "revoked" ? "revoked" : "accepted",
-  createdAt: row.created_at,
-});
+const targetOf = (local: string | null, remote: string | null) =>
+  local !== null
+    ? { kind: "LocalStatus", statusId: local }
+    : { kind: "RemoteStatus", statusId: remote };
 
-const SELECT = "id, status_id, quoted_status_id, state, created_at";
+const stateOf = (state: string, approvalUri: string | null) => {
+  switch (state) {
+    case "accepted":
+      return {
+        kind: "Accepted",
+        approval: approvalUri === null ? { kind: "Implicit" } : { kind: "Stamp", uri: approvalUri },
+      };
+    case "pending":
+      return { kind: "Pending" };
+    case "rejected":
+      return { kind: "Rejected" };
+    case "revoked":
+      return { kind: "Revoked" };
+    case "deleted":
+      return { kind: "Deleted" };
+    default:
+      return undefined;
+  }
+};
 
-/** Record the quote behind a just-published status. */
+/** A stored row as a quote; a row that does not parse is left out. */
+const toQuote = (row: z.infer<typeof QuoteDbRow>): QuoteValue[] => {
+  const quote = Quote.parse({
+    id: row.id,
+    quoting: targetOf(row.status_id, row.remote_status_id),
+    quoted: targetOf(row.quoted_status_id, row.quoted_remote_status_id),
+    state: stateOf(row.state, row.approval_uri),
+    activityUri: row.activity_uri ?? undefined,
+    createdAt: row.created_at,
+  });
+  return quote.isOk() ? [quote.value] : [];
+};
+
+const stateColumns = (state: QuoteState): readonly [state: string, approvalUri: string | null] => {
+  switch (state.kind) {
+    case "Accepted":
+      return ["accepted", state.approval.kind === "Stamp" ? state.approval.uri : null];
+    case "Pending":
+      return ["pending", null];
+    case "Rejected":
+      return ["rejected", null];
+    case "Revoked":
+      return ["revoked", null];
+    case "Deleted":
+      return ["deleted", null];
+  }
+};
+
+/** The local and the remote ids among `targets`, as two {@link sqlInJsonEach} binds. */
+const targetIdBinds = (targets: ReadonlyArray<StatusTargetValue>): readonly [string, string] => [
+  jsonStringArray(targets.filter((t) => t.kind === "LocalStatus").map((t) => t.statusId)),
+  jsonStringArray(targets.filter((t) => t.kind === "RemoteStatus").map((t) => t.statusId)),
+];
+
+const SELECT =
+  "id, status_id, remote_status_id, quoted_status_id, quoted_remote_status_id, state, approval_uri, activity_uri, created_at";
+
+/** Record a quote. */
 export const insertStatusQuote = async (
   db: D1Database,
-  statusId: string,
-  quotedStatusId: string,
-  state: QuoteState = "accepted",
-): Promise<Result<QuoteRow, RepositoryError>> =>
+  quote: QuoteValue,
+): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    const now = nowIso();
-    const row: QuoteRow = {
-      id: newEntityId(),
-      statusId,
-      quotedStatusId,
-      state,
-      createdAt: now,
-    };
+    const [state, approvalUri] = stateColumns(quote.state);
     await db
       .prepare(
-        `INSERT INTO status_quotes (id, status_id, quoted_status_id, state, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO status_quotes (id, status_id, remote_status_id, quoted_status_id,
+           quoted_remote_status_id, state, approval_uri, activity_uri, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .bind(row.id, statusId, quotedStatusId, state, now, now)
+      .bind(
+        quote.id,
+        ...statusTargetColumns(quote.quoting),
+        ...statusTargetColumns(quote.quoted),
+        state,
+        approvalUri,
+        quote.activityUri ?? null,
+        quote.createdAt,
+        quote.createdAt,
+      )
       .run();
-    return row;
   });
 
-export const findQuoteByStatusId = async (
+/** Write a quote's state, approval, and activity after a transition. */
+export const saveQuoteState = async (
   db: D1Database,
-  statusId: string,
-): Promise<Result<QuoteRow | undefined, RepositoryError>> =>
+  quote: QuoteValue,
+): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    const { results } = await db
-      .prepare(`SELECT ${SELECT} FROM status_quotes WHERE status_id = ? LIMIT 1`)
-      .bind(statusId)
-      .all();
-    const row = parseRows(QuoteDbRow, results)[0];
-    return row ? toRow(row) : undefined;
+    const [state, approvalUri] = stateColumns(quote.state);
+    await db
+      .prepare(
+        `UPDATE status_quotes SET state = ?, approval_uri = ?, activity_uri = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .bind(state, approvalUri, quote.activityUri ?? null, nowIso(), quote.id)
+      .run();
   });
 
-/** The quote rows of several quoting statuses, keyed by quoting status id. */
-export const findQuotesByStatusIds = async (
+/** The quotes made by several quoting statuses, keyed by quoting status id. */
+export const findQuotesByQuoting = async (
   db: D1Database,
-  statusIds: ReadonlyArray<string>,
-): Promise<Result<ReadonlyMap<string, QuoteRow>, RepositoryError>> =>
+  targets: ReadonlyArray<StatusTargetValue>,
+): Promise<Result<ReadonlyMap<string, QuoteValue>, RepositoryError>> =>
   runD1(async () => {
-    if (statusIds.length === 0) {
-      return new Map<string, QuoteRow>();
+    if (targets.length === 0) {
+      return new Map<string, QuoteValue>();
     }
     const { results } = await db
       .prepare(
         `SELECT ${SELECT} FROM status_quotes
-         WHERE status_id IN (${statusIds.map(() => "?").join(", ")})`,
+         WHERE status_id ${sqlInJsonEach()} OR remote_status_id ${sqlInJsonEach()}`,
       )
-      .bind(...statusIds)
+      .bind(...targetIdBinds(targets))
       .all();
     return new Map(
-      parseRows(QuoteDbRow, results).map((row) => {
-        const quote = toRow(row);
-        return [quote.statusId, quote];
-      }),
+      parseRows(QuoteDbRow, results)
+        .flatMap(toQuote)
+        .map((quote) => [quote.quoting.statusId, quote]),
     );
   });
 
-/** How many accepted quotes each of these statuses has. */
-export const quoteCountsByStatusIds = async (
+/** The quote a status makes, if it quotes one. */
+export const findQuoteByQuoting = async (
   db: D1Database,
-  statusIds: ReadonlyArray<string>,
+  target: StatusTargetValue,
+): Promise<Result<QuoteValue | undefined, RepositoryError>> =>
+  (await findQuotesByQuoting(db, [target])).map((quotes) => quotes.get(target.statusId));
+
+/** How many accepted quotes each of these statuses has, keyed by status id. */
+export const quoteCountsByQuoted = async (
+  db: D1Database,
+  targets: ReadonlyArray<StatusTargetValue>,
 ): Promise<Result<ReadonlyMap<string, number>, RepositoryError>> =>
   runD1(async () => {
-    if (statusIds.length === 0) {
+    if (targets.length === 0) {
       return new Map<string, number>();
     }
     const { results } = await db
       .prepare(
-        `SELECT quoted_status_id, COUNT(*) AS count FROM status_quotes
-         WHERE state = 'accepted' AND quoted_status_id IN (${statusIds.map(() => "?").join(", ")})
-         GROUP BY quoted_status_id`,
+        `SELECT COALESCE(quoted_status_id, quoted_remote_status_id) AS quoted_id, COUNT(*) AS count
+         FROM status_quotes
+         WHERE state = 'accepted'
+           AND (quoted_status_id ${sqlInJsonEach()} OR quoted_remote_status_id ${sqlInJsonEach()})
+         GROUP BY quoted_id`,
       )
-      .bind(...statusIds)
+      .bind(...targetIdBinds(targets))
       .all();
-    return new Map(
-      parseRows(QuoteCountRow, results).map((row) => [row.quoted_status_id, Number(row.count)]),
-    );
+    return new Map(parseRows(QuoteCountRow, results).map((row) => [row.quoted_id, row.count]));
   });
 
-/** Accepted quoting statuses of one status, newest first. */
-export const listQuotingStatusIds = async (
+/** The statuses that quote one status with an accepted quote, by quoting status id under the cursor. */
+export const listQuotingTargets = async (
   db: D1Database,
-  quotedStatusId: string,
+  quoted: StatusTargetValue,
   limit: number,
   cursor: IdCursor = {},
-): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+): Promise<Result<ReadonlyArray<StatusTargetValue>, RepositoryError>> =>
   runD1(async () => {
     const { where, order, binds } = idCursorFragment(cursor);
     const { results } = await db
       .prepare(
-        `SELECT s.id AS id FROM status_quotes q
-         JOIN statuses s ON s.id = q.status_id
-         WHERE q.quoted_status_id = ? AND q.state = 'accepted' ${where} ${order} LIMIT ?`,
+        `SELECT status_id, remote_status_id FROM (
+           SELECT COALESCE(status_id, remote_status_id) AS id, status_id, remote_status_id
+           FROM status_quotes
+           WHERE ${quoted.kind === "LocalStatus" ? "quoted_status_id" : "quoted_remote_status_id"} = ?
+             AND state = 'accepted'
+         ) WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )
-      .bind(quotedStatusId, ...binds, limit)
+      .bind(quoted.statusId, ...binds, limit)
       .all();
-    return parseRows(IdRow, results).map((row) => row.id);
+    return parseRows(TargetRow, results).flatMap((row) => {
+      const target = StatusTarget.parse(targetOf(row.status_id, row.remote_status_id));
+      return target.isOk() ? [target.value] : [];
+    });
   });
 
-/** The authors and statuses of the accepted quotes of one status. */
+/** The local authors and statuses of the accepted quotes of one local status. */
 export const listAcceptedQuoteEdges = async (
   db: D1Database,
   quotedStatusId: string,
@@ -179,24 +250,6 @@ export const listAcceptedQuoteEdges = async (
       statusId: row.status_id,
       accountId: row.account_id,
     }));
-  });
-
-/** Revoke one quote; only the quoted author's route calls this. */
-export const revokeStatusQuote = async (
-  db: D1Database,
-  quotedStatusId: string,
-  quotingStatusId: string,
-): Promise<Result<boolean, RepositoryError>> =>
-  runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `UPDATE status_quotes SET state = 'revoked', updated_at = ?
-         WHERE quoted_status_id = ? AND status_id = ? AND state = 'accepted'
-         RETURNING id`,
-      )
-      .bind(nowIso(), quotedStatusId, quotingStatusId)
-      .all();
-    return parseRows(IdRow, results).length > 0;
   });
 
 /** The stored quote policy of a status, when its author set one. */

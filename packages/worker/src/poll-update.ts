@@ -9,7 +9,7 @@ import { loadNoteMentions } from "./mention-resolve";
 import { reachesRemoteInboxes } from "./outbox-job";
 import { claimPollUpdate, findPollById, type PollRecord, releasePollUpdate } from "./poll-store";
 import { loadNoteQuotePolicy } from "./quote-policy-name";
-import { quotedStatusUri } from "./quote-uri";
+import { noteQuote } from "./quote-uri";
 import { loadNoteMedia } from "./note-attachments";
 import { loadNoteReply } from "./reply-target";
 import { parseInstanceIdentity } from "./runtime-config";
@@ -90,7 +90,7 @@ const distributePollUpdate = async (
     actor,
     published: nowIso(),
     object: noteDocument(identity, author.value, note, {
-      quoteUri: await quotedStatusUri(env, identity, note.id),
+      quote: await noteQuote(env, identity, note.id),
       mentions: await loadNoteMentions(env.DB, identity, note.id),
       reply: await loadNoteReply(env.DB, identity, note),
       poll,

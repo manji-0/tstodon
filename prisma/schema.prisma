@@ -707,6 +707,7 @@ model remote_statuses {
   favourites    favourites[]
   bookmarks     bookmarks[]
   statuses      statuses[]
+  status_quotes status_quotes?
 
   @@index([actor_uri, published_at(sort: Desc)], map: "idx_remote_statuses_actor_published")
   @@index([visibility, published_at(sort: Desc)], map: "idx_remote_statuses_visibility_published")
@@ -838,15 +839,22 @@ model trend_reviews {
 }
 
 model status_quotes {
-  id               String @id
-  status_id        String @unique
-  quoted_status_id String
-  state            String
-  created_at       String
-  updated_at       String
-  statuses         statuses @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                      String           @id
+  status_id               String?          @unique
+  remote_status_id        String?          @unique
+  quoted_status_id        String?
+  quoted_remote_status_id String?
+  state                   String
+  approval_uri            String?
+  activity_uri            String?          @unique
+  created_at              String
+  updated_at              String
+  statuses                statuses?        @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  remote_statuses         remote_statuses? @relation(fields: [remote_status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@index([quoted_status_id, state, status_id(sort: Desc)], map: "idx_status_quotes_quoted")
+  @@index([quoted_status_id, state], map: "idx_status_quotes_quoted")
+  @@index([quoted_remote_status_id, state], map: "idx_status_quotes_quoted_remote")
+  @@index([approval_uri], map: "idx_status_quotes_approval")
 }
 
 model status_quote_policies {
