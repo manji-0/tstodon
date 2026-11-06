@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
@@ -47,6 +47,10 @@ const post = async (email: string, status: string, visibility: string) =>
   );
 
 describe("mentions of remote accounts in local notes", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("addresses a direct note to the mentioned remote account only", async () => {
     const email = "remote-mention-author@example.com";
     const account = await me(email);
@@ -127,5 +131,28 @@ describe("mentions of remote accounts in local notes", () => {
     const note = await post(email, "@nobody@unresolvable.invalid hello", "direct");
     expect(note.mentions).toEqual([]);
     expect(await deliveredCreate(account.id, note.uri)).toBeUndefined();
+  });
+
+  it("looks up at most 20 uncached handles per post, still using cached ones", async () => {
+    const email = "remote-mention-cap@example.com";
+    await me(email);
+    const cached = await remoteActor("mention-cap-cached");
+    const lookedUp: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      lookedUp.push(new URL(new Request(input, init).url).host);
+      return new Response(null, { status: 404 });
+    });
+    const unknown = Array.from({ length: 25 }, (_, index) => `@u@h${index}.test`);
+
+    const note = await post(
+      email,
+      `${unknown.join(" ")} @mention-cap-cached@remote.example`,
+      "public",
+    );
+
+    expect(lookedUp).toHaveLength(20);
+    expect(note.mentions.map((mention) => mention.id)).toEqual([
+      RemoteAccountId.encode(cached.actorUri),
+    ]);
   });
 });
