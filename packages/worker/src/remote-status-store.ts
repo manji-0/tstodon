@@ -5,7 +5,7 @@ import {
   type RemoteEmoji,
   RemoteEmojiSchema,
   RemotePoll,
-  RemoteQuotePolicy,
+  QuoteInteractionPolicy,
   RemoteStatus,
   type RemovedRemoteStatus,
   StatusId,
@@ -101,10 +101,10 @@ const pollFromJson = (raw: string | null): RemotePoll => {
 };
 
 /** A missing or unreadable policy column reads as no policy: only the author may quote. */
-const quotePolicyFromJson = (raw: string | null): RemoteQuotePolicy =>
+const quotePolicyFromJson = (raw: string | null): QuoteInteractionPolicy =>
   raw === null
-    ? RemoteQuotePolicy.none
-    : parseJsonColumn(RemoteQuotePolicy.schema, raw).unwrapOr(RemoteQuotePolicy.none);
+    ? QuoteInteractionPolicy.none
+    : parseJsonColumn(QuoteInteractionPolicy.schema, raw).unwrapOr(QuoteInteractionPolicy.none);
 
 export const remoteStatusFromRow = (
   row: RemoteStatusRow,

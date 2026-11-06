@@ -2,7 +2,7 @@ import {
   InstanceIdentity,
   IsoInstant,
   RemoteEmojiSchema,
-  RemoteQuotePolicy,
+  QuoteInteractionPolicy,
   RemoteStatus,
   StatusId,
   type RemoteEmoji,
@@ -157,7 +157,7 @@ export const noteFromUnknown = (
       document.value.summary ?? "",
       ...(poll.kind === "NoPoll" ? [] : poll.options.map((option) => option.title)),
     ]),
-    quotePolicy: RemoteQuotePolicy.fromCanQuote(canQuoteOf(document.value.interactionPolicy), {
+    quotePolicy: QuoteInteractionPolicy.fromCanQuote(canQuoteOf(document.value.interactionPolicy), {
       actorUri,
     }),
     ...(document.value.url ? { url: document.value.url } : {}),

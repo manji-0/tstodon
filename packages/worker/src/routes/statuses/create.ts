@@ -2,7 +2,7 @@ import {
   InstanceIdentity,
   type LocalAccount,
   type LocalStatus,
-  RemoteQuotePolicy,
+  QuoteInteractionPolicy,
   type RemoteStatusValue,
   StatusComposition,
   StatusId,
@@ -333,7 +333,7 @@ const resolveRemoteQuote = async (
     return err(quoteNotFound);
   }
   const relations = await quoteViewerRelations(env.DB, authorId, [target.actorUri]);
-  const approval = RemoteQuotePolicy.forViewer(
+  const approval = QuoteInteractionPolicy.forViewer(
     target.quotePolicy,
     target.visibility,
     relations.get(target.actorUri),

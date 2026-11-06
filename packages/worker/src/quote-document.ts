@@ -9,24 +9,46 @@ const QUOTE_STATE_NAMES = {
 } as const satisfies Record<Exclude<QuoteState["kind"], "Accepted">, string>;
 
 /**
- * A quoted status as rendered for the viewer: `Unauthorized` when the viewer
- * may not see it or its author is not shown, `undefined` when it is gone.
+ * What the viewer is shown of an accepted quote's status, as Mastodon's
+ * `StatusFilter#filter_state_for_quote` decides it: the status itself, the
+ * status under a label for the viewer's block, domain block or mute of its
+ * author, nothing when the viewer may not see it (`Unauthorized`), or nothing
+ * when it is gone.
  */
-export type QuotedDocument = Record<string, unknown> | "Unauthorized" | undefined;
+export type QuotedStatusAccess =
+  | "Shown"
+  | "BlockedDomain"
+  | "BlockedAccount"
+  | "MutedAccount"
+  | "Unauthorized"
+  | "Gone";
 
-/** What the viewer is shown of an accepted quote's status, as {@link QuotedDocument} without the document. */
-export type QuotedStatusAccess = "Shown" | "Unauthorized" | "Gone";
+/** An access under which the quoted status is still rendered. */
+export type QuotedStatusShown = Exclude<QuotedStatusAccess, "Unauthorized" | "Gone">;
+
+export const isQuotedStatusShown = (access: QuotedStatusAccess): access is QuotedStatusShown =>
+  access !== "Unauthorized" && access !== "Gone";
+
+/** A quoted status as rendered for the viewer, with the access it is shown under. */
+export type QuotedDocument =
+  | Readonly<{ access: QuotedStatusShown; document: Record<string, unknown> }>
+  | "Unauthorized"
+  | undefined;
 
 /** Mastodon's `quote.state` for an accepted quote, as `StatusFilter#filter_state_for_quote` amends it. */
 const ACCEPTED_STATE_NAMES = {
   Shown: "accepted",
+  BlockedDomain: "blocked_domain",
+  BlockedAccount: "blocked_account",
+  MutedAccount: "muted_account",
   Unauthorized: "unauthorized",
   Gone: "deleted",
 } as const satisfies Record<QuotedStatusAccess, string>;
 
 /**
  * A status's `quote`, as Mastodon's `BaseQuoteSerializer`: only an accepted
- * quote shows its status, and only while the status is there to show.
+ * quote shows its status, and only while the status is there and the viewer
+ * may see it.
  */
 export const mastodonQuote = (
   state: QuoteState,
@@ -41,7 +63,7 @@ export const mastodonQuote = (
   }
   return document === "Unauthorized"
     ? { state: ACCEPTED_STATE_NAMES.Unauthorized, quoted_status: null }
-    : { state: ACCEPTED_STATE_NAMES.Shown, quoted_status: document };
+    : { state: ACCEPTED_STATE_NAMES[document.access], quoted_status: document.document };
 };
 
 /**
@@ -60,6 +82,6 @@ export const mastodonShallowQuote = (
   const shown = access();
   return {
     state: ACCEPTED_STATE_NAMES[shown],
-    quoted_status_id: shown === "Shown" ? quotedStatusId : null,
+    quoted_status_id: isQuotedStatusShown(shown) ? quotedStatusId : null,
   };
 };

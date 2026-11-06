@@ -3,7 +3,7 @@ import {
   type LocalStatus,
   type QuoteValue,
   type QuoteViewerRelation,
-  RemoteQuotePolicy,
+  QuoteInteractionPolicy,
   type RemoteStatusValue,
   StatusTarget,
 } from "@tstodon/domain";
@@ -16,6 +16,7 @@ import { cardDocument, parseCardJson } from "./link-card";
 import { RemoteAccountId } from "./remote-account-id";
 import { mastodonStatuses } from "./local-status-documents";
 import {
+  isQuotedStatusShown,
   mastodonQuote,
   mastodonShallowQuote,
   type QuotedDocument,
@@ -33,7 +34,7 @@ import { findRemoteStatusesByIds, findRemoteStatusRefsByObjectUris } from "./rem
 import { listRemoteStatusCards } from "./status-card-store";
 import { statusInteractionCountsByIds } from "./status-interaction-store";
 import { findStatusesByIds } from "./status-store";
-import { viewableStatusIds } from "./visibility-guard";
+import { quotedStatusAccess } from "./quoted-status-access";
 
 /**
  * Fill `in_reply_to_id` and `in_reply_to_account_id` on remote status
@@ -96,8 +97,9 @@ export const attachRemoteReplyRefs = async (
 };
 
 /**
- * How the viewer and each author follow each other, keyed by actor URI; empty
- * for no viewer. A failed read counts as no follow, so it only withholds quoting.
+ * How the viewer and each remote author follow each other, keyed by actor
+ * URI; empty for no viewer. A local viewer is never a remote author. A
+ * failed read counts as no follow, so it only withholds quoting.
  */
 export const quoteViewerRelations = async (
   db: D1Database,
@@ -115,6 +117,7 @@ export const quoteViewerRelations = async (
     actorUris.map((actorUri) => [
       actorUri,
       {
+        viewerIsAuthor: false,
         viewerFollowsAuthor: following.isOk() && following.value.has(actorUri),
         authorFollowsViewer: followers.isOk() && followers.value.has(actorUri),
       },
@@ -129,9 +132,8 @@ export const quoteViewerRelations = async (
 export type QuoteNesting = "Full" | "Shallow";
 
 /**
- * The statuses accepted `quotes` quote, as stored, with which of them the
- * viewer may see, as Mastodon's `StatusFilter#filter_state_for_quote` asks
- * `StatusPolicy#show?`.
+ * The statuses accepted `quotes` quote, as stored, with what the viewer is
+ * shown of each, as Mastodon's `StatusFilter#filter_state_for_quote`.
  */
 const quotedStatuses = async (
   db: D1Database,
@@ -160,22 +162,23 @@ const quotedStatuses = async (
   if (remotes.isErr()) {
     return err(remotes.error);
   }
-  const viewable = await viewableStatusIds(
+  const accessOf = await quotedStatusAccess(
     db,
     [...locals.value.values()],
     [...remotes.value.values()],
     viewerId,
   );
-  const access = ({ quoted }: QuoteValue): QuotedStatusAccess => {
-    const stored = quoted.kind === "LocalStatus" ? locals.value : remotes.value;
-    if (!stored.has(quoted.statusId)) {
-      return "Gone";
-    }
-    return viewable.has(quoted.statusId) ? "Shown" : "Unauthorized";
-  };
+  if (accessOf.isErr()) {
+    return err(accessOf.error);
+  }
+  const access = ({ quoted }: QuoteValue): QuotedStatusAccess => accessOf.value(quoted);
   return ok({
-    locals: [...locals.value.values()].filter((status) => viewable.has(status.id)),
-    remotes: [...remotes.value.values()].filter((status) => viewable.has(status.id)),
+    locals: [...locals.value.values()].filter((status) =>
+      isQuotedStatusShown(accessOf.value(StatusTarget.local(status.id))),
+    ),
+    remotes: [...remotes.value.values()].filter((status) =>
+      isQuotedStatusShown(accessOf.value(StatusTarget.remote(status.id))),
+    ),
     access,
   });
 };
@@ -208,14 +211,15 @@ const quotedDocuments = async (
   }
   const rendered = documentsById([...localDocuments.value, ...remoteDocuments.value]);
   return ok((quote) => {
-    switch (access(quote)) {
-      case "Gone":
-        return undefined;
-      case "Unauthorized":
-        return "Unauthorized";
-      case "Shown":
-        return rendered.get(quote.quoted.statusId) ?? "Unauthorized";
+    const shown = access(quote);
+    if (shown === "Gone") {
+      return undefined;
     }
+    if (!isQuotedStatusShown(shown)) {
+      return "Unauthorized";
+    }
+    const document = rendered.get(quote.quoted.statusId);
+    return document ? { access: shown, document } : "Unauthorized";
   });
 };
 
@@ -307,7 +311,7 @@ export const mastodonRemoteStatuses = async (
       pollVotes: pollVotes.get(status.id),
       interactions: interactions.isOk() ? interactions.value.get(status.id) : undefined,
       quotesCount: quoteCounts.isOk() ? quoteCounts.value.get(status.id) : undefined,
-      quoteApproval: RemoteQuotePolicy.forViewer(
+      quoteApproval: QuoteInteractionPolicy.forViewer(
         status.quotePolicy,
         status.visibility,
         relations.get(status.actorUri),

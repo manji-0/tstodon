@@ -3,6 +3,7 @@ import {
   type LocalAccount,
   type LocalNote,
   LocalStatus,
+  QuoteInteractionPolicy,
   StatusTarget,
   type StatusTargetValue,
   Visibility,
@@ -22,7 +23,8 @@ import { listStatusMentions } from "./mention-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { mastodonRemoteStatuses } from "./remote-status-documents";
-import { mastodonQuote, type QuotedDocument } from "./quote-document";
+import { isQuotedStatusShown, mastodonQuote, type QuotedDocument } from "./quote-document";
+import { quotedStatusAccess } from "./quoted-status-access";
 import { findRemoteStatusesByIds, findRemoteStatusRefsByObjectUris } from "./remote-status-store";
 import { findStatusesByIds, listStatusReplyUris } from "./status-store";
 import { listStatusCards } from "./status-card-store";
@@ -39,9 +41,8 @@ import { listStatusMuteRoots, resolveThreadRootStatusIds } from "./status-mute-s
 import { cardDocument, parseCardJson } from "./link-card";
 import { mastodonMedia } from "./media-document";
 import { pollJson } from "./poll-document";
-import { quotePolicyName } from "./quote-policy-name";
+import { noteQuotePolicy, quoteInteractionPolicy } from "./quote-policy-name";
 import { documentsById } from "./documents-by-id";
-import { viewableStatusIds } from "./visibility-guard";
 import type { RepositoryError } from "./d1";
 
 const mediaAttachmentsJson = (
@@ -106,7 +107,7 @@ const buildLocalNoteDocument = (
     poll: poll ? pollJson(poll) : null,
     quote: null,
     quotes_count: 0,
-    quote_approval: { automatic: [], manual: [], current_user: "unknown" },
+    quote_approval: { automatic: [], manual: [], current_user: "denied" },
     // Mastodon 4.7 collections; none are kept here.
     tagged_collections: [],
   };
@@ -128,7 +129,8 @@ export const mastodonStatus = async (
  * given. A status whose author's presentation `authors` refuses is left out,
  * as is a boost whose booster it refuses; a boost wraps a suspended author's
  * status with the author stripped, and a quote of an unavailable author's
- * status, or of one the viewer may not see, is `unauthorized`, as Mastodon's
+ * status, or of one the viewer may not see, is `unauthorized`, and one of an
+ * author the viewer blocks or mutes is labelled so, as Mastodon's
  * `StatusFilter` renders it.
  */
 export const mastodonStatuses = async (
@@ -405,18 +407,24 @@ export const mastodonStatuses = async (
     const status = quoted.kind === "LocalStatus" ? byId.get(quoted.statusId) : undefined;
     return status ? [status] : [];
   });
-  const viewableQuoted = await viewableStatusIds(
+  const quotedAccess = await quotedStatusAccess(
     env.DB,
     quotedLocals,
     remotesOf(quotedRemoteIds),
     viewerId,
   );
+  if (quotedAccess.isErr()) {
+    return err(quotedAccess.error);
+  }
+  const accessOf = quotedAccess.value;
   const [remoteRendered, quotedRemoteRendered] = await Promise.all([
     mastodonRemoteStatuses(env, identity, remotesOf(boostedRemoteIds), viewerId, boosted),
     mastodonRemoteStatuses(
       env,
       identity,
-      remotesOf(quotedRemoteIds).filter((status) => viewableQuoted.has(status.id)),
+      remotesOf(quotedRemoteIds).filter((status) =>
+        isQuotedStatusShown(accessOf(StatusTarget.remote(status.id))),
+      ),
       viewerId,
       StatusAuthors.available,
       "Shallow",
@@ -431,21 +439,22 @@ export const mastodonStatuses = async (
   const remoteDocs = documentsById(remoteRendered.value);
   const quotedRemoteDocs = documentsById(quotedRemoteRendered.value);
   const quotedDocument = (quoted: StatusTargetValue): QuotedDocument => {
-    if (quoted.kind === "RemoteStatus") {
-      if (!remoteTargets.value.has(quoted.statusId)) {
-        return undefined;
-      }
-      return quotedRemoteDocs.get(quoted.statusId) ?? "Unauthorized";
-    }
-    const target = noteDocs.get(quoted.statusId);
-    const local = byId.get(quoted.statusId);
-    const author = local && authorOf(local);
-    if (!target || !author) {
+    const access = accessOf(quoted);
+    if (access === "Gone") {
       return undefined;
     }
-    return StatusAuthors.available(author.presentation) && viewableQuoted.has(quoted.statusId)
-      ? target
-      : "Unauthorized";
+    if (!isQuotedStatusShown(access)) {
+      return "Unauthorized";
+    }
+    const local = quoted.kind === "LocalStatus" ? byId.get(quoted.statusId) : undefined;
+    const author = local && authorOf(local);
+    const document =
+      quoted.kind === "RemoteStatus"
+        ? quotedRemoteDocs.get(quoted.statusId)
+        : author && StatusAuthors.available(author.presentation)
+          ? noteDocs.get(quoted.statusId)
+          : undefined;
+    return document ? { access, document } : "Unauthorized";
   };
 
   for (const status of allStatuses) {
@@ -462,18 +471,24 @@ export const mastodonStatuses = async (
       document.quote = mastodonQuote(quote.state, () => quotedDocument(quote.quoted));
     }
     document.quotes_count = quoteCounts.get(status.id) ?? 0;
-    const policy = quotePolicies.get(status.id) ?? quotePolicyName(account.defaultQuotePolicy);
+    const policy = quoteInteractionPolicy(
+      noteQuotePolicy(account, status, quotePolicies.get(status.id)),
+    );
     document.quote_approval = {
-      automatic: [],
-      manual: [],
-      current_user:
+      automatic: policy.automatic,
+      manual: policy.manual,
+      current_user: QuoteInteractionPolicy.forViewer(
+        policy,
+        status.visibility,
         viewerId === undefined
-          ? "unknown"
-          : viewerId === status.accountId ||
-              policy === "public" ||
-              (policy === "followers" && followedByIds.has(status.accountId))
-            ? "automatic"
-            : "denied",
+          ? undefined
+          : {
+              viewerIsAuthor: viewerId === status.accountId,
+              viewerFollowsAuthor: followedByIds.has(status.accountId),
+              // A local policy never names the author's `following`.
+              authorFollowsViewer: false,
+            },
+      ),
     };
   }
 

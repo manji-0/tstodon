@@ -566,6 +566,8 @@ export * from "./sql/listPublishedAnnouncements";
 
 export * from "./sql/listPushSubscriptions";
 
+export * from "./sql/listQuoteFilterRelationsJson";
+
 export * from "./sql/listRemoteActorHomeEntryIds";
 
 export * from "./sql/listRemoteActorModerations";

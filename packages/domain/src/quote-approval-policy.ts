@@ -32,19 +32,23 @@ export const QuoteAudienceSchema = z.union([
 
 export type QuoteAudience = z.infer<typeof QuoteAudienceSchema>;
 
-/** Who may quote a remote note, as its `interactionPolicy.canQuote` says. */
-export const RemoteQuotePolicySchema = z.object({
+/**
+ * Who may quote a note, as Mastodon's `quote_interaction_policy`: a remote
+ * note's `interactionPolicy.canQuote`, or a local note's own policy.
+ */
+export const QuoteInteractionPolicySchema = z.object({
   automatic: z.array(QuoteAudienceSchema),
   manual: z.array(QuoteAudienceSchema),
 });
 
-export type RemoteQuotePolicy = z.infer<typeof RemoteQuotePolicySchema>;
+export type QuoteInteractionPolicy = z.infer<typeof QuoteInteractionPolicySchema>;
 
 /** Mastodon's `current_user` answer: whether the viewer may quote, and how. */
 export type QuoteApprovalForViewer = "automatic" | "manual" | "unknown" | "denied";
 
-/** How the viewer and the remote author follow each other; `undefined` for no viewer. */
+/** Who the viewer is to the note's author; `undefined` for no viewer. */
 export type QuoteViewerRelation = Readonly<{
+  viewerIsAuthor: boolean;
   viewerFollowsAuthor: boolean;
   authorFollowsViewer: boolean;
 }>;
@@ -121,15 +125,18 @@ const allows = (audiences: ReadonlyArray<QuoteAudience>, relation: QuoteViewerRe
   (audiences.includes("followers") && relation.viewerFollowsAuthor) ||
   (audiences.includes("following") && relation.authorFollowsViewer);
 
-const none: RemoteQuotePolicy = { automatic: [], manual: [] };
+const none: QuoteInteractionPolicy = { automatic: [], manual: [] };
 
-export const RemoteQuotePolicy = {
-  schema: RemoteQuotePolicySchema,
-  parse: schemaResult(RemoteQuotePolicySchema),
+export const QuoteInteractionPolicy = {
+  schema: QuoteInteractionPolicySchema,
+  parse: schemaResult(QuoteInteractionPolicySchema),
   /** No policy advertised: Mastodon lets nobody but the author quote. */
   none,
   /** Read a note's `interactionPolicy.canQuote`, as Mastodon's status parser does. */
-  fromCanQuote: (canQuote: unknown, author: Readonly<{ actorUri: string }>): RemoteQuotePolicy => {
+  fromCanQuote: (
+    canQuote: unknown,
+    author: Readonly<{ actorUri: string }>,
+  ): QuoteInteractionPolicy => {
     const parsed = parseCanQuote(canQuote);
     if (parsed.isErr()) {
       return none;
@@ -139,16 +146,19 @@ export const RemoteQuotePolicy = {
       manual: subpolicy(parsed.value.manualApproval, author.actorUri),
     };
   },
-  /** Mastodon's `quote_policy_for_account`, for a local viewer of a remote note. */
+  /**
+   * Mastodon's `quote_policy_for_account`: no viewer and a direct note are
+   * denied, the author may always quote their own note, then the policy.
+   */
   forViewer: (
-    policy: RemoteQuotePolicy,
+    policy: QuoteInteractionPolicy,
     visibility: Visibility,
     relation: QuoteViewerRelation | undefined,
   ): QuoteApprovalForViewer => {
     if (relation === undefined || visibility.kind === "Direct") {
       return "denied";
     }
-    if (allows(policy.automatic, relation)) {
+    if (relation.viewerIsAuthor || allows(policy.automatic, relation)) {
       return "automatic";
     }
     if (allows(policy.manual, relation)) {

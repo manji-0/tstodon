@@ -113,8 +113,8 @@ export {
   type QuoteApprovalForViewer,
   type QuoteAudience,
   type QuoteViewerRelation,
-  RemoteQuotePolicy,
-  RemoteQuotePolicySchema,
+  QuoteInteractionPolicy,
+  QuoteInteractionPolicySchema,
 } from "./quote-approval-policy";
 export type { RepositoryError } from "./repository-error";
 export {
