@@ -7,6 +7,7 @@ import {
 import type { z } from "zod";
 import type { ActivityJsonSchema } from "./activitypub-wire";
 import type { PollRecord } from "./poll-store";
+import type { QuotePolicy } from "./quote-store";
 
 /**
  * A local account's `Person`. As Mastodon's `ActorSerializer`, `alsoKnownAs`
@@ -251,9 +252,11 @@ export const noteDocument = (
     poll?: PollRecord | undefined;
     /** The note's media in order. Required: an `Update` without them clears them remotely. */
     media: NoteMedia;
+    /** Who may quote the note, federated as `interactionPolicy.canQuote`. */
+    quotePolicy: QuotePolicy;
   }>,
 ): Record<string, unknown> => {
-  const { quoteUri, mentions = [], reply, poll } = extras;
+  const { quoteUri, mentions = [], reply, poll, quotePolicy } = extras;
   const { attachments, authorSensitized } = extras.media;
   const actor = InstanceIdentity.actorUrl(identity, account.username);
   const id = `${actor}/statuses/${note.id}`;
@@ -281,6 +284,14 @@ export const noteDocument = (
           ? mentioned
           : [];
   const quotes = quoteUri !== undefined && quoteUri.length > 0;
+  // Mastodon's `NoteSerializer#interaction_policy`: outgoing policies are
+  // automatic only, and one that lets nobody quote names the author alone.
+  const automaticApproval =
+    quotePolicy === "public"
+      ? [PUBLIC_COLLECTION]
+      : quotePolicy === "followers"
+        ? [followers]
+        : [actor];
   const terms = {
     // FEP-044f names the `quote` property for a quote post.
     ...(quotes
@@ -298,12 +309,13 @@ export const noteDocument = (
           focalPoint: { "@container": "@list", "@id": "toot:focalPoint" },
         }
       : {}),
+    gts: "https://gotosocial.org/ns#",
+    interactionPolicy: { "@id": "gts:interactionPolicy", "@type": "@id" },
+    canQuote: { "@id": "gts:canQuote", "@type": "@id" },
+    automaticApproval: { "@id": "gts:automaticApproval", "@type": "@id" },
   };
   return {
-    "@context":
-      Object.keys(terms).length > 0
-        ? ["https://www.w3.org/ns/activitystreams", terms]
-        : "https://www.w3.org/ns/activitystreams",
+    "@context": ["https://www.w3.org/ns/activitystreams", terms],
     ...(quotes ? { quote: quoteUri, quote_uri: quoteUri, _misskey_quote: quoteUri } : {}),
     ...(poll ? questionFields(poll) : {}),
     id,
@@ -325,5 +337,6 @@ export const noteDocument = (
       ...(media.focalPoint ? { focalPoint: media.focalPoint } : {}),
     })),
     tag: mentions.map((mention) => ({ type: "Mention", href: mention.href, name: mention.name })),
+    interactionPolicy: { canQuote: { automaticApproval } },
   };
 };

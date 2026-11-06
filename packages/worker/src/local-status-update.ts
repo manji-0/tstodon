@@ -9,6 +9,7 @@ import { loadNoteMentions } from "./mention-resolve";
 import { loadNoteMedia } from "./note-attachments";
 import { loadNotePoll } from "./poll-store";
 import { enqueuePublicFanOut } from "./public-fan-out";
+import { loadNoteQuotePolicy } from "./quote-policy-name";
 import { quotedStatusUri } from "./quote-uri";
 import { loadNoteReply } from "./reply-target";
 import { findStatusById } from "./status-store";
@@ -49,6 +50,7 @@ export const announceNoteUpdate = async (
         reply: await loadNoteReply(env.DB, identity, note),
         poll: await loadNotePoll(env.DB, note.id),
         media: media.value,
+        quotePolicy: await loadNoteQuotePolicy(env.DB, account, note),
       }),
     });
     if (enqueued.isErr()) {

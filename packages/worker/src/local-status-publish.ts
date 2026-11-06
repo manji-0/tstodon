@@ -20,6 +20,7 @@ import { enqueueLinkCard } from "./link-card";
 import type { MediaAttribute } from "./status-body-schema";
 import { notifyingFollowerIds } from "./follow-store";
 import { mastodonStatus } from "./local-status-documents";
+import { loadNoteQuotePolicy } from "./quote-policy-name";
 import { insertStatusQuote, setStatusQuotePolicy, type QuotePolicy } from "./quote-store";
 import { insertLocalNote, setStatusReplyUri } from "./status-store";
 import { enqueueHomeFanOut } from "./home-fan-out";
@@ -269,6 +270,7 @@ export const publishLocalNote = async (
             reply: await loadNoteReply(env.DB, identity, note),
             poll: await loadNotePoll(env.DB, note.id),
             media: media.value,
+            quotePolicy: await loadNoteQuotePolicy(env.DB, user, note),
           }),
         });
   if (enqueued.isErr()) {

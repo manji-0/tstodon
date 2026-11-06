@@ -22,6 +22,7 @@ import { resolveRemoteActor } from "../remote-actor-fetch";
 import { findRemoteActorByUri, findRemoteFollow } from "../remote-actor-store";
 import { RemoteDeleteTarget } from "../remote-delete";
 import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
+import { loadNoteQuotePolicy } from "../quote-policy-name";
 import { quotedStatusUri } from "../quote-uri";
 import { ActivityJsonSchema, JsonObjectSchema } from "../activitypub-wire";
 import { parseJsonColumn, parseJsonText } from "../json-column";
@@ -95,6 +96,7 @@ export const getUsersByUsernameStatusesById = async (
     reply: await loadNoteReply(c.env.DB, identity.value, status.value),
     poll: await loadNotePoll(c.env.DB, status.value.id),
     media: media.value,
+    quotePolicy: await loadNoteQuotePolicy(c.env.DB, account.value, status.value),
   });
   const visibility = status.value.visibility.kind;
   if (visibility !== "Public" && visibility !== "Unlisted") {

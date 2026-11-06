@@ -34,6 +34,7 @@ import {
   findRemoteFollow as findRemoteFollowSql,
   listAcceptedRemoteFollowerInboxes as listAcceptedRemoteFollowerInboxesSql,
   listAcceptedRemoteFollowerUris as listAcceptedRemoteFollowerUrisSql,
+  listAcceptedRemoteFollowerActors as listAcceptedRemoteFollowerActorsSql,
   listPeerDomains as listPeerDomainsSql,
   listPendingRemoteFollowRequesters as listPendingRemoteFollowRequestersSql,
   cancelRemoteActorDeliveries as cancelRemoteActorDeliveriesSql,
@@ -548,6 +549,27 @@ export const listAcceptedRemoteFollowerUris = async (
       RemoteActorUriRow,
     );
     return results.map((row) => row.remote_actor_uri);
+  });
+
+/** Which of `actorUris` follow the local account, accepted follows only. */
+export const remoteFollowerActorUris = async (
+  db: D1Database,
+  targetAccountId: string,
+  actorUris: ReadonlyArray<string>,
+): Promise<Result<ReadonlySet<string>, RepositoryError>> =>
+  runD1(async () => {
+    if (actorUris.length === 0) {
+      return new Set<string>();
+    }
+    const results = await queryTyped(
+      db,
+      listAcceptedRemoteFollowerActorsSql(
+        targetAccountId,
+        jsonStringArray([...new Set(actorUris)]),
+      ),
+      RemoteActorUriRow,
+    );
+    return new Set(results.map((row) => row.remote_actor_uri));
   });
 
 export const listPeerDomains = async (db: D1Database): Promise<Result<string[], RepositoryError>> =>

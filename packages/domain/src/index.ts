@@ -108,7 +108,14 @@ export type {
   RejectOutboundFollow,
 } from "./outbound-follow-store";
 export type { FindLocalAccountByUsername } from "./local-account-resolver";
-export { QuoteApprovalPolicy } from "./quote-approval-policy";
+export {
+  QuoteApprovalPolicy,
+  type QuoteApprovalForViewer,
+  type QuoteAudience,
+  type QuoteViewerRelation,
+  RemoteQuotePolicy,
+  RemoteQuotePolicySchema,
+} from "./quote-approval-policy";
 export type { RepositoryError } from "./repository-error";
 export {
   RemoteActor,

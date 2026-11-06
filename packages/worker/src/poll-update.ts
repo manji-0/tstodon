@@ -8,6 +8,7 @@ import { measureJobPage } from "./metrics";
 import { loadNoteMentions } from "./mention-resolve";
 import { reachesRemoteInboxes } from "./outbox-job";
 import { claimPollUpdate, findPollById, type PollRecord, releasePollUpdate } from "./poll-store";
+import { loadNoteQuotePolicy } from "./quote-policy-name";
 import { quotedStatusUri } from "./quote-uri";
 import { loadNoteMedia } from "./note-attachments";
 import { loadNoteReply } from "./reply-target";
@@ -94,6 +95,7 @@ const distributePollUpdate = async (
       reply: await loadNoteReply(env.DB, identity, note),
       poll,
       media: media.value,
+      quotePolicy: await loadNoteQuotePolicy(env.DB, author.value, note),
     }),
   };
   if (!reachesRemoteInboxes(update, identity.domain)) {

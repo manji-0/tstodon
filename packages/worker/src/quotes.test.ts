@@ -327,6 +327,71 @@ describe("quote posts", () => {
     ).toBeUndefined();
   });
 
+  it("federates who may quote as interactionPolicy.canQuote", async () => {
+    const author = "quote-ap-policy@example.com";
+    const { username } = await account(author);
+    const actor = `https://example.com/users/${username}`;
+    const automaticApproval = async (body: Record<string, unknown>): Promise<string[]> => {
+      const status = await create(author, body);
+      const note = await json(`/users/${username}/statuses/${status.id}`, {
+        headers: { accept: "application/activity+json" },
+      });
+      expect(note.status).toBe(200);
+      return read(
+        z.object({
+          "@context": z.array(z.unknown()),
+          interactionPolicy: z.object({
+            canQuote: z.object({ automaticApproval: z.array(z.string()) }),
+          }),
+        }),
+        note.body,
+      ).interactionPolicy.canQuote.automaticApproval;
+    };
+
+    expect(await automaticApproval({ status: "anyone", quote_approval_policy: "public" })).toEqual([
+      "https://www.w3.org/ns/activitystreams#Public",
+    ]);
+    expect(
+      await automaticApproval({ status: "followers", quote_approval_policy: "followers" }),
+    ).toEqual([`${actor}/followers`]);
+    expect(await automaticApproval({ status: "nobody", quote_approval_policy: "nobody" })).toEqual([
+      actor,
+    ]);
+    // An unlisted note keeps its policy.
+    expect(
+      await automaticApproval({
+        status: "unlisted",
+        visibility: "unlisted",
+        quote_approval_policy: "public",
+      }),
+    ).toEqual(["https://www.w3.org/ns/activitystreams#Public"]);
+
+    // A followers-only note is the author's alone to quote, whatever was asked.
+    const followersOnly = await create(author, {
+      status: "followers only",
+      visibility: "private",
+      quote_approval_policy: "public",
+    });
+    const row = await env.DB.prepare(
+      "SELECT payload_json FROM outbound_activities WHERE account_id = ? AND kind = 'Create' ORDER BY rowid DESC LIMIT 1",
+    )
+      .bind((await account(author)).id)
+      .first<{ payload_json: string }>();
+    const created = read(
+      z.object({
+        object: z.object({
+          id: z.string(),
+          interactionPolicy: z.object({
+            canQuote: z.object({ automaticApproval: z.array(z.string()) }),
+          }),
+        }),
+      }),
+      JSON.parse(row?.payload_json ?? "{}"),
+    );
+    expect(created.object.id).toBe(`${actor}/statuses/${followersOnly.id}`);
+    expect(created.object.interactionPolicy.canQuote.automaticApproval).toEqual([actor]);
+  });
+
   it("notifies the quoted author and the quoter on an edit", async () => {
     const author = "quote-notify-author@example.com";
     const quoter = "quote-notify-quoter@example.com";

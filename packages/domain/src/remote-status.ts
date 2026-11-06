@@ -3,6 +3,7 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import { IsoInstant } from "./iso-instant";
 import { RemotePoll, RemotePollSchema } from "./remote-poll";
+import { RemoteQuotePolicy, RemoteQuotePolicySchema } from "./quote-approval-policy";
 import { StatusId } from "./status-id";
 import { Visibility } from "./visibility";
 import type { StatusLanguage } from "./status-quote-target";
@@ -49,6 +50,8 @@ const RemoteNoteSchema = z.object({
   poll: RemotePollSchema,
   /** The emoji the content, spoiler or poll options use. */
   emojis: z.array(RemoteEmojiSchema),
+  /** Who the author lets quote the note, from its `interactionPolicy.canQuote`. */
+  quotePolicy: RemoteQuotePolicySchema,
 });
 
 export const RemoteStatusSchema = z.discriminatedUnion("kind", [RemoteNoteSchema]);
@@ -117,6 +120,7 @@ export const RemoteStatus = {
     editedAt?: z.infer<typeof IsoInstant.schema> | undefined;
     poll?: RemotePoll | undefined;
     emojis?: ReadonlyArray<RemoteEmoji> | undefined;
+    quotePolicy?: RemoteQuotePolicy | undefined;
   }): Result<RemoteStatus, RemoteStatusParseError> => {
     const parsed = parseRemoteStatus({
       kind: "RemoteNote",
@@ -134,6 +138,7 @@ export const RemoteStatus = {
       media: (input.media ?? []).slice(0, 4),
       poll: input.poll ?? RemotePoll.none,
       emojis: input.emojis ?? [],
+      quotePolicy: input.quotePolicy ?? RemoteQuotePolicy.none,
       ...(input.url ? { url: input.url } : {}),
     });
     return parsed.mapErr((): RemoteStatusParseError => ({ kind: "InvalidObject" }));

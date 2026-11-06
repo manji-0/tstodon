@@ -804,6 +804,7 @@ export const Remote_statusesScalarFieldEnum = {
   emojis_json: "emojis_json",
   created_at: "created_at",
   updated_at: "updated_at",
+  quote_policy_json: "quote_policy_json",
 } as const;
 
 export type Remote_statusesScalarFieldEnum =

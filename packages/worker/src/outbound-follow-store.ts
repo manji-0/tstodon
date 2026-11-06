@@ -3,7 +3,7 @@ import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { type RepositoryError, runD1 } from "./d1";
+import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
 import type { FollowOptions } from "./follow-store";
 import { parseJsonColumn } from "./json-column";
 import { CountedRow, queryTyped, runTyped } from "./typed-sql";
@@ -12,12 +12,14 @@ import {
   deleteOutboundFollow as deleteOutboundFollowSql,
   findOutboundFollow as findOutboundFollowSql,
   insertOutboundFollow as insertOutboundFollowSql,
+  listAcceptedOutboundFollowActors as listAcceptedOutboundFollowActorsSql,
   listOutboundFollowsByActor as listOutboundFollowsByActorSql,
   rejectOutboundFollow as rejectOutboundFollowSql,
   updateOutboundFollowOptions as updateOutboundFollowOptionsSql,
 } from "./generated/prisma/sql";
 
 const FollowActivityIdRow = z.object({ follow_activity_id: z.string() });
+const ActorUriRow = z.object({ actor_uri: z.string() });
 
 const OutboundFollowRowSchema = z.object({
   id: z.string(),
@@ -68,6 +70,24 @@ export const findOutboundFollow = async (
       OutboundFollowRowSchema,
     );
     return row === undefined ? undefined : followFromRow(row);
+  });
+
+/** Which of `actorUris` the account follows, accepted follows only. */
+export const acceptedOutboundFollowActorUris = async (
+  db: D1Database,
+  accountId: string,
+  actorUris: ReadonlyArray<string>,
+): Promise<Result<ReadonlySet<string>, RepositoryError>> =>
+  runD1(async () => {
+    if (actorUris.length === 0) {
+      return new Set<string>();
+    }
+    const rows = await queryTyped(
+      db,
+      listAcceptedOutboundFollowActorsSql(accountId, jsonStringArray([...new Set(actorUris)])),
+      ActorUriRow,
+    );
+    return new Set(rows.map((row) => row.actor_uri));
   });
 
 /** Up to `limit` follows of `actorUri` with an id after `afterId`, in id order. */

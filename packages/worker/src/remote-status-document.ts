@@ -1,4 +1,8 @@
-import { type RemoteStatus as RemoteStatusValue, Visibility } from "@tstodon/domain";
+import {
+  type QuoteApprovalForViewer,
+  type RemoteStatus as RemoteStatusValue,
+  Visibility,
+} from "@tstodon/domain";
 import { remotePollJson } from "./poll-document";
 import { NO_REMOTE_POLL_VOTES, type RemotePollVotes } from "./remote-poll-vote-store";
 import { remoteEmojisJson } from "./remote-emoji-document";
@@ -11,6 +15,8 @@ export type RemoteStatusExtras = Readonly<{
   pollVotes?: RemotePollVotes | undefined;
   /** Local accounts' favourites and boosts only; remote totals are not kept. */
   interactions?: StatusInteractionCounts | undefined;
+  /** Whether the viewer may quote it; no viewer may when unset, as Mastodon answers an anonymous one. */
+  quoteApproval?: QuoteApprovalForViewer | undefined;
 }>;
 
 /** A remote status with `account`, its author as the reader is shown it. */
@@ -73,7 +79,11 @@ export const mastodonRemoteStatus = (
         : remotePollJson(status.id, status.poll, pollVotes, status.emojis),
     quote: null,
     quotes_count: 0,
-    quote_approval: { automatic: [], manual: [], current_user: "unknown" },
+    quote_approval: {
+      automatic: status.quotePolicy.automatic,
+      manual: status.quotePolicy.manual,
+      current_user: extras.quoteApproval ?? "denied",
+    },
     // Mastodon 4.7 collections; none are kept here.
     tagged_collections: [],
   };

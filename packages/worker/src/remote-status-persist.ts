@@ -2,6 +2,7 @@ import {
   InstanceIdentity,
   IsoInstant,
   RemoteEmojiSchema,
+  RemoteQuotePolicy,
   RemoteStatus,
   StatusId,
   type RemoteEmoji,
@@ -45,6 +46,14 @@ const noteLanguage = (
 };
 
 const parseRemoteEmoji = schemaResult(RemoteEmojiSchema);
+
+const parseInteractionPolicy = schemaResult(z.object({ canQuote: z.unknown().optional() }));
+
+/** The `canQuote` of a note's `interactionPolicy`, when it has one. */
+const canQuoteOf = (interactionPolicy: unknown): unknown => {
+  const parsed = parseInteractionPolicy(interactionPolicy);
+  return parsed.isOk() ? parsed.value.canQuote : undefined;
+};
 
 const EmojiTagsSchema = z.object({
   tag: z
@@ -147,6 +156,9 @@ export const noteFromUnknown = (
       document.value.summary ?? "",
       ...(poll.kind === "NoPoll" ? [] : poll.options.map((option) => option.title)),
     ]),
+    quotePolicy: RemoteQuotePolicy.fromCanQuote(canQuoteOf(document.value.interactionPolicy), {
+      actorUri,
+    }),
     ...(document.value.url ? { url: document.value.url } : {}),
   });
 };

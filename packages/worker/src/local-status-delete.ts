@@ -9,6 +9,7 @@ import { reachesRemoteInboxes } from "./outbox-job";
 import { enqueuePublicFanOut } from "./public-fan-out";
 import { loadNoteReply } from "./reply-target";
 import { deleteStatus } from "./status-store";
+import { loadNoteQuotePolicy } from "./quote-policy-name";
 import { publishToAccount } from "./stream-publish";
 
 /**
@@ -31,6 +32,7 @@ export const deleteLocalStatus = async (
             mentions: await loadNoteMentions(env.DB, identity, status.id),
             reply: await loadNoteReply(env.DB, identity, status),
             media: { attachments: [], authorSensitized: false },
+            quotePolicy: await loadNoteQuotePolicy(env.DB, account, status),
           }),
         )
       : undefined;

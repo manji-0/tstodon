@@ -444,6 +444,10 @@ export * from "./sql/listAcceptedFollowerIds";
 
 export * from "./sql/listAcceptedFollowsPage";
 
+export * from "./sql/listAcceptedOutboundFollowActors";
+
+export * from "./sql/listAcceptedRemoteFollowerActors";
+
 export * from "./sql/listAcceptedRemoteFollowerInboxes";
 
 export * from "./sql/listAcceptedRemoteFollowerUris";

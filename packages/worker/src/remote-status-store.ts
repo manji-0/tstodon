@@ -5,6 +5,7 @@ import {
   type RemoteEmoji,
   RemoteEmojiSchema,
   RemotePoll,
+  RemoteQuotePolicy,
   RemoteStatus,
   type RemovedRemoteStatus,
   StatusId,
@@ -24,7 +25,7 @@ import {
   runD1Batch,
 } from "./d1";
 import { removedBoostsFromRows } from "./removed-boost";
-import { parseJsonText } from "./json-column";
+import { parseJsonColumn, parseJsonText } from "./json-column";
 import { toRepositoryError } from "./d1";
 import { visibilitySql } from "./sql-enums";
 import { htmlHashtags, recordTagNames, searchableTagNames } from "./hashtags";
@@ -73,6 +74,7 @@ export const RemoteStatusRowSchema = z.object({
   card_json: z.string().nullable(),
   poll_json: z.string().nullable(),
   emojis_json: z.string(),
+  quote_policy_json: z.string().nullable(),
 });
 
 export type RemoteStatusRow = z.infer<typeof RemoteStatusRowSchema>;
@@ -97,6 +99,12 @@ const pollFromJson = (raw: string | null): RemotePoll => {
   const parsed = RemotePoll.parse(parseJsonText(raw).unwrapOr(null));
   return parsed.isOk() ? parsed.value : RemotePoll.none;
 };
+
+/** A missing or unreadable policy column reads as no policy: only the author may quote. */
+const quotePolicyFromJson = (raw: string | null): RemoteQuotePolicy =>
+  raw === null
+    ? RemoteQuotePolicy.none
+    : parseJsonColumn(RemoteQuotePolicy.schema, raw).unwrapOr(RemoteQuotePolicy.none);
 
 export const remoteStatusFromRow = (
   row: RemoteStatusRow,
@@ -125,6 +133,7 @@ export const remoteStatusFromRow = (
     media: mediaFromJson(row.media_json),
     poll: pollFromJson(row.poll_json),
     emojis: emojisFromJson(row.emojis_json),
+    quotePolicy: quotePolicyFromJson(row.quote_policy_json),
     ...(row.url ? { url: row.url } : {}),
   }).mapErr(() => toRepositoryError("invalid remote status row"));
 };
@@ -269,6 +278,9 @@ const writeRemoteStatusRow = async (
       row.editedAt.kind === "Edited" ? row.editedAt.at : null,
       row.poll.kind === "NoPoll" ? null : JSON.stringify(row.poll),
       JSON.stringify(row.emojis),
+      row.quotePolicy.automatic.length === 0 && row.quotePolicy.manual.length === 0
+        ? null
+        : JSON.stringify(row.quotePolicy),
     ),
   );
 };

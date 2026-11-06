@@ -121,6 +121,8 @@ export const NoteDocumentSchema = z
         }),
       )
       .optional(),
+    /** FEP-044f / GoToSocial interaction policy; read leniently, a malformed one is no policy. */
+    interactionPolicy: z.unknown().optional(),
   })
   .passthrough();
 

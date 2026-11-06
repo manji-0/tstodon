@@ -1,4 +1,9 @@
-import type { InstanceIdentity, RemoteStatusValue } from "@tstodon/domain";
+import {
+  type InstanceIdentity,
+  type QuoteViewerRelation,
+  RemoteQuotePolicy,
+  type RemoteStatusValue,
+} from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { presentedAccounts } from "./account-documents";
 import { StatusAuthors } from "./account-presentation";
@@ -7,7 +12,8 @@ import type { RepositoryError } from "./d1";
 import { cardDocument, parseCardJson } from "./link-card";
 import { RemoteAccountId } from "./remote-account-id";
 import { listRemoteActorModerations } from "./remote-actor-moderation-store";
-import { findRemoteActorsByUris } from "./remote-actor-store";
+import { findRemoteActorsByUris, remoteFollowerActorUris } from "./remote-actor-store";
+import { acceptedOutboundFollowActorUris } from "./outbound-follow-store";
 import { findRemotePollVotes } from "./remote-poll-vote-store";
 import { findRemoteStatusReplyTargets } from "./remote-reply-store";
 import { mastodonRemoteStatus } from "./remote-status-document";
@@ -77,9 +83,37 @@ export const attachRemoteReplyRefs = async (
 };
 
 /**
+ * How the viewer and each author follow each other, keyed by actor URI; empty
+ * for no viewer. A failed read counts as no follow, so it only withholds quoting.
+ */
+const quoteViewerRelations = async (
+  db: D1Database,
+  viewerId: string | undefined,
+  actorUris: ReadonlyArray<string>,
+): Promise<ReadonlyMap<string, QuoteViewerRelation>> => {
+  if (viewerId === undefined) {
+    return new Map();
+  }
+  const [following, followers] = await Promise.all([
+    acceptedOutboundFollowActorUris(db, viewerId, actorUris),
+    remoteFollowerActorUris(db, viewerId, actorUris),
+  ]);
+  return new Map(
+    actorUris.map((actorUri) => [
+      actorUri,
+      {
+        viewerFollowsAuthor: following.isOk() && following.value.has(actorUri),
+        authorFollowsViewer: followers.isOk() && followers.value.has(actorUri),
+      },
+    ]),
+  );
+};
+
+/**
  * Cached remote statuses as Mastodon statuses rendered for the viewer, in the
  * order given: author, preview card, the viewer's poll votes, local accounts'
- * favourites and boosts with the viewer's own, and reply refs. A status with
+ * favourites and boosts with the viewer's own, whether the viewer may quote
+ * it, and reply refs. A status with
  * media is marked sensitive when an admin marked its author's media sensitive,
  * as Mastodon does for a remote account. A status whose author is not cached,
  * or whose author's presentation `authors` refuses, is left out; an author
@@ -97,12 +131,13 @@ export const mastodonRemoteStatuses = async (
   }
   const ids = statuses.map((status) => status.id);
   const actorUris = statuses.map((status) => status.actorUri);
-  const [cards, actors, moderations, pollVotes, interactions] = await Promise.all([
+  const [cards, actors, moderations, pollVotes, interactions, relations] = await Promise.all([
     listRemoteStatusCards(env.DB, ids),
     findRemoteActorsByUris(env.DB, actorUris),
     listRemoteActorModerations(env.DB, actorUris),
     findRemotePollVotes(env.DB, viewerId, statuses),
     statusInteractionCountsByIds(env.DB, ids, viewerId),
+    quoteViewerRelations(env.DB, viewerId, actorUris),
   ]);
   if (actors.isErr()) {
     return err(actors.error);
@@ -122,6 +157,11 @@ export const mastodonRemoteStatuses = async (
       card: card ? cardDocument(card) : null,
       pollVotes: pollVotes.get(status.id),
       interactions: interactions.isOk() ? interactions.value.get(status.id) : undefined,
+      quoteApproval: RemoteQuotePolicy.forViewer(
+        status.quotePolicy,
+        status.visibility,
+        relations.get(status.actorUri),
+      ),
     });
     const sensitized = moderations.isOk() && moderations.value.get(status.actorUri)?.sensitized;
     if (sensitized && status.media.length > 0) {
