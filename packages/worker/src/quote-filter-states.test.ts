@@ -117,6 +117,8 @@ const quotes = async (slug: string) => {
   return {
     viewer,
     viewerId: viewerAccount.id,
+    viewerUsername: viewerAccount.username,
+    remote,
     quotedAuthor,
     localAuthorId: local.id,
     remoteAuthorId: RemoteAccountId.encode(remote.actorUri),
@@ -199,5 +201,44 @@ describe("a quoted status filtered for the viewer", () => {
     });
     await expectState(undefined, q.ofLocal, "accepted", q.localQuoted);
     await expectState(q.viewer, q.ofRemote, "accepted", q.remoteQuoted);
+  });
+
+  it("is unauthorized when a remote author blocks the viewer, until they undo it", async () => {
+    const q = await quotes("qf-remote-blocked-by");
+    const viewerUri = `https://example.com/users/${q.viewerUsername}`;
+    expect(
+      await q.remote.send({
+        id: `${q.remote.actorUri}#blocks/1`,
+        type: "Block",
+        object: viewerUri,
+      }),
+    ).toBe(202);
+
+    await expectState(q.viewer, q.ofRemote, "unauthorized", null);
+    await expectState(q.viewer, q.ofLocal, "accepted", q.localQuoted);
+    const relationships = await SELF.fetch(
+      `https://example.com/api/v1/accounts/relationships?id[]=${q.remoteAuthorId}`,
+      { headers: await authHeaders(q.viewer) },
+    );
+    expect(relationships.status).toBe(200);
+    expect(await relationships.json()).toEqual([
+      expect.objectContaining({ id: q.remoteAuthorId, blocked_by: true }),
+    ]);
+
+    expect(
+      await q.remote.send({
+        id: `${q.remote.actorUri}#undo-block/1`,
+        type: "Undo",
+        object: { id: `${q.remote.actorUri}#blocks/1`, type: "Block", object: viewerUri },
+      }),
+    ).toBe(202);
+    await expectState(q.viewer, q.ofRemote, "accepted", q.remoteQuoted);
+    const after = await SELF.fetch(
+      `https://example.com/api/v1/accounts/relationships?id[]=${q.remoteAuthorId}`,
+      { headers: await authHeaders(q.viewer) },
+    );
+    expect(await after.json()).toEqual([
+      expect.objectContaining({ id: q.remoteAuthorId, blocked_by: false }),
+    ]);
   });
 });

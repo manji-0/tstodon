@@ -58,8 +58,10 @@ const approvalUri = (
 
 /**
  * The status a local note quotes, for its `quote` and `quoteAuthorization`
- * properties. A pending or accepted quote names it; an absent, rejected,
- * revoked, or dangling one does not.
+ * properties. A pending, accepted, rejected, or revoked quote names it, as
+ * Mastodon's `NoteSerializer` keeps `quote` after a refusal; only an accepted
+ * quote carries `quoteAuthorization`. An absent, deleted, or dangling one
+ * does not.
  */
 export const noteQuote = async (
   env: Env,
@@ -71,7 +73,12 @@ export const noteQuote = async (
     return undefined;
   }
   const { id, state, quoted } = quote.value;
-  if (state.kind !== "Pending" && state.kind !== "Accepted") {
+  if (
+    state.kind !== "Pending" &&
+    state.kind !== "Accepted" &&
+    state.kind !== "Rejected" &&
+    state.kind !== "Revoked"
+  ) {
     return undefined;
   }
   const ref = await statusTargetRef(env, identity, quoted);
@@ -79,7 +86,7 @@ export const noteQuote = async (
     ? undefined
     : {
         uri: ref.uri,
-        authorization: approvalUri(state, quoted, ref, id),
+        authorization: state.kind === "Accepted" ? approvalUri(state, quoted, ref, id) : undefined,
         addressAuthor: quoted.kind === "RemoteStatus" ? ref.authorUri : undefined,
       };
 };

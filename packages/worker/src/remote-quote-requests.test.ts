@@ -206,14 +206,14 @@ describe("answering a remote QuoteRequest for a local status", () => {
   });
 
   it.each([
-    ["a direct note that does not address the author", "direct", { to: [], cc: [] }, false],
-    ["a followers-only note of an author they do not follow", "private", {}, false],
-    ["a followers-only note of an author they follow", "followed", {}, true],
+    ["a direct note that does not address the author", "direct", { to: [], cc: [] }],
+    ["a followers-only note of an author they do not follow", "private", {}],
+    ["a followers-only note of an author they follow", "followed", {}],
   ])(
-    "accepts a quote from %s, notifying only an author who may see it",
-    async (_label, slug, audience, notified) => {
+    "accepts a quote from %s and shows it to the quoted author",
+    async (_label, slug, audience) => {
       const quote = await setup(`rqr-audience-${slug}`);
-      if (notified) {
+      if (slug === "followed") {
         await env.DB.prepare(
           `INSERT INTO outbound_follows (id, account_id, actor_uri, follow_activity_id, state)
            VALUES (?, ?, ?, ?, 'Accepted')`,
@@ -228,7 +228,15 @@ describe("answering a remote QuoteRequest for a local status", () => {
       ).toBe(202);
 
       expect((await answers(quote.alice.id)).accepts).toHaveLength(1);
-      expect((await notificationsOf(quote.email)).some((n) => n.type === "quote")).toBe(notified);
+      const notifications = await notificationsOf(quote.email);
+      expect(notifications.some((n) => n.type === "quote")).toBe(true);
+      expect(notifications.some((n) => n.type === "mention")).toBe(false);
+      const bobNoteId = await remoteStatusId(quote.noteUri);
+      expect(await quoteOf(quote.email, bobNoteId)).toEqual({
+        state: "accepted",
+        quoted_status: expect.objectContaining({ id: quote.statusId }),
+      });
+      expect((await json(`/api/v1/statuses/${bobNoteId}`)).status).toBe(404);
     },
   );
 

@@ -6,6 +6,8 @@ import {
   deleteStatusMentions as deleteStatusMentionsSql,
   deleteStatusRemoteMentions as deleteStatusRemoteMentionsSql,
   insertRemoteStatusMention as insertRemoteStatusMentionSql,
+  insertSilentRemoteStatusMention as insertSilentRemoteStatusMentionSql,
+  isActiveRemoteStatusMention as isActiveRemoteStatusMentionSql,
   insertStatusMention as insertStatusMentionSql,
   insertStatusRemoteMention as insertStatusRemoteMentionSql,
   isAccountMentionedOnRemoteStatus as isAccountMentionedOnRemoteStatusSql,
@@ -35,6 +37,34 @@ export const recordRemoteStatusMentions = async (
     ),
   );
   return batched.isErr() ? err(batched.error) : ok(undefined);
+};
+
+/**
+ * Grant `accountId` access to a remote note without a mention notification,
+ * as Mastodon's `Quote#ensure_quoted_access` (a silent mention). A mention
+ * the note already addressed them with is left as it is.
+ */
+export const recordSilentRemoteStatusMention = async (
+  db: D1Database,
+  statusId: string,
+  accountId: string,
+): Promise<Result<void, RepositoryError>> => {
+  const batched = await runD1Batch(db, [
+    d1PrepareTyped(db, insertSilentRemoteStatusMentionSql(statusId, accountId)),
+  ]);
+  return batched.isErr() ? err(batched.error) : ok(undefined);
+};
+
+/** A mention the note addressed the account with, not one that only grants access. */
+export const isActiveRemoteStatusMention = async (
+  db: D1Database,
+  statusId: string,
+  accountId: string,
+): Promise<Result<boolean, RepositoryError>> => {
+  const rows = await runD1(async () =>
+    queryTyped(db, isActiveRemoteStatusMentionSql(statusId, accountId), CountedRow),
+  );
+  return rows.isErr() ? err(rows.error) : ok(rows.value.length > 0);
 };
 
 export const isAccountMentionedOnRemoteStatus = async (

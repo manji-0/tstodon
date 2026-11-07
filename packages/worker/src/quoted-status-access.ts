@@ -58,11 +58,10 @@ const viewerRelations = async (
  * Mastodon's `StatusFilter#filter_state_for_quote` for the quoted statuses
  * `locals` and `remotes` as the viewer sees them: their author sees them
  * as they are; a status the viewer may not see (`StatusPolicy#show?`,
- * including a public or unlisted one whose local author blocks the viewer)
- * is `Unauthorized`; then the viewer's domain block, block and mute of the
- * author label it, in that order. A target in neither list is `Gone`.
- * Remote blocks of local accounts are not recorded, so a remote author
- * never hides a status this way.
+ * including a public or unlisted one whose author blocks the viewer, local
+ * or remote) is `Unauthorized`; then the viewer's domain block, block and
+ * mute of the author label it, in that order. A target in neither list is
+ * `Gone`.
  */
 export const quotedStatusAccess = async (
   db: D1Database,

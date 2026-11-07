@@ -7,6 +7,8 @@ import {
 } from "@tstodon/domain";
 import type { Context } from "hono";
 import { findAccountByUsername, findAccountsByIds } from "../account-store";
+import { findBlock } from "../block-mute-store";
+import { isActorDomainBlocked } from "../domain-block-store";
 import {
   activityPayloadFromJson,
   localNoteRef,
@@ -164,9 +166,29 @@ export const getUsersByUsernameQuoteAuthorizationsById = async (
     return c.json({ kind: "NotFound" }, 404);
   }
   const target = localNoteRef(identity.value, account.value, quoted.value.id);
+  // Mastodon's `authorize quoted_status, :show?`: a signed fetcher the author
+  // blocks, or whose domain the author blocks, is refused. An unsigned fetch
+  // of a public or unlisted stamp is served, as public fetch mode.
+  const signer = await signedFetchActor(c.env, identity.value, c.req.raw);
+  if (signer) {
+    const [blocked, domainBlocked] = await Promise.all([
+      findBlock(c.env.DB, account.value.id, signer.actorUri),
+      isActorDomainBlocked(c.env.DB, account.value.id, signer.actorUri),
+    ]);
+    if (blocked.isErr()) {
+      return jsonRepositoryError(c, blocked.error.message);
+    }
+    if (domainBlocked.isErr()) {
+      return jsonRepositoryError(c, domainBlocked.error.message);
+    }
+    if (blocked.value || domainBlocked.value) {
+      return c.json({ kind: "NotFound" }, 404);
+    }
+  }
   const document = quoteAuthorizationDocument(
     localQuoteAuthorization(target, quote.value.id, quoting.uri),
   );
+  c.header("Cache-Control", "max-age=30, public");
   return c.json(document, 200, jsonLd);
 };
 

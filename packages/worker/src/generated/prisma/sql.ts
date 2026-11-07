@@ -152,6 +152,8 @@ export * from "./sql/deleteRemoteActorPins";
 
 export * from "./sql/deleteRemoteAnnounce";
 
+export * from "./sql/deleteRemoteBlock";
+
 export * from "./sql/deleteRemoteBoostByActivity";
 
 export * from "./sql/deleteRemoteFavourite";
@@ -294,6 +296,8 @@ export * from "./sql/findRemoteActorModeration";
 
 export * from "./sql/findRemoteActorsByUris";
 
+export * from "./sql/findRemoteBlock";
+
 export * from "./sql/findRemoteBoostById";
 
 export * from "./sql/findRemoteFollow";
@@ -406,6 +410,8 @@ export * from "./sql/insertPollVoteOrIgnore";
 
 export * from "./sql/insertRemoteActorPin";
 
+export * from "./sql/insertRemoteBlock";
+
 export * from "./sql/insertRemoteBoost";
 
 export * from "./sql/insertRemotePollOwnVote";
@@ -420,6 +426,8 @@ export * from "./sql/insertReport";
 
 export * from "./sql/insertSignupIntent";
 
+export * from "./sql/insertSilentRemoteStatusMention";
+
 export * from "./sql/insertStatusEdit";
 
 export * from "./sql/insertStatusMention";
@@ -433,6 +441,8 @@ export * from "./sql/insertTagNames";
 export * from "./sql/isAccountMentionedOnRemoteStatus";
 
 export * from "./sql/isAccountMentionedOnStatus";
+
+export * from "./sql/isActiveRemoteStatusMention";
 
 export * from "./sql/isStatusPinned";
 

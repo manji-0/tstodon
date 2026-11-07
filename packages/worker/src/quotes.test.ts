@@ -315,7 +315,7 @@ describe("quote posts", () => {
     );
     expect(document.quote).toBe(quotedUri);
 
-    // After a revoke the note no longer points at the original.
+    // After a revoke the note still names the original, without a stamp.
     const revoked = await json(`/api/v1/statuses/${original.id}/quotes/${quoting.id}/revoke`, {
       method: "POST",
       headers: await auth(author),
@@ -323,8 +323,11 @@ describe("quote posts", () => {
     expect(revoked.status).toBe(200);
     const afterRevoke = await json(`/users/${quotterAccount.username}/statuses/${quoting.id}`);
     expect(
-      read(z.object({ quote: z.string().optional().nullable() }), afterRevoke.body).quote,
-    ).toBeUndefined();
+      read(
+        z.object({ quote: z.string(), quoteAuthorization: z.string().optional() }),
+        afterRevoke.body,
+      ),
+    ).toEqual({ quote: quotedUri });
   });
 
   it("federates who may quote as interactionPolicy.canQuote", async () => {
