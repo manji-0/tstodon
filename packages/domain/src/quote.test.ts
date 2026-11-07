@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { IsoInstant } from "./iso-instant";
-import { Quote, type QuoteState } from "./quote";
+import { Quote, QuotedTarget, type QuoteState } from "./quote";
 import { StatusId } from "./status-id";
 
 const quoteIn = (state: QuoteState): Quote => {
@@ -15,6 +15,7 @@ const quoteIn = (state: QuoteState): Quote => {
     quoting: { kind: "LocalStatus", statusId: quoting.value },
     quoted: { kind: "RemoteStatus", statusId: quoted.value },
     state,
+    legacy: false,
     activityUri: "https://local.example/users/alice/statuses/200/quote_request",
     createdAt: createdAt.value,
   };
@@ -60,4 +61,30 @@ describe("Quote", () => {
       expect(Quote.revoke(quoteIn(state))._unsafeUnwrapErr()).toEqual({ kind: "NotAccepted" });
     },
   );
+
+  it("shows a legacy quote only once it is accepted, as Mastodon's acceptable?", () => {
+    expect(Quote.isShown({ ...quoteIn({ kind: "Pending" }), legacy: true })).toBe(false);
+    expect(Quote.isShown({ ...quoteIn(accepted), legacy: true })).toBe(true);
+    expect(Quote.isShown(quoteIn({ kind: "Pending" }))).toBe(true);
+  });
+
+  it("parses an unresolved quoted note by its URI", () => {
+    const quote = Quote.parse({
+      ...quoteIn({ kind: "Pending" }),
+      quoted: QuotedTarget.unresolved("https://remote.example/notes/9"),
+    });
+    expect(quote._unsafeUnwrap().quoted).toEqual({
+      kind: "Unresolved",
+      uri: "https://remote.example/notes/9",
+    });
+    expect(QuotedTarget.parse({ kind: "Unresolved", uri: "not a uri" }).isErr()).toBe(true);
+  });
+
+  it("compares quoted targets by status or by unresolved URI", () => {
+    const unresolved = QuotedTarget.unresolved("https://remote.example/notes/9");
+    const remote = quoteIn({ kind: "Pending" }).quoted;
+    expect(QuotedTarget.equals(unresolved, unresolved)).toBe(true);
+    expect(QuotedTarget.equals(unresolved, remote)).toBe(false);
+    expect(QuotedTarget.equals(remote, { ...remote })).toBe(true);
+  });
 });

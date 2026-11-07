@@ -194,6 +194,8 @@ export {
   type QuoteApproval,
   type QuoteState,
   type QuoteTransitionError,
+  QuotedTarget,
+  type QuotedTarget as QuotedTargetValue,
 } from "./quote";
 export {
   StatusQuoteTarget,

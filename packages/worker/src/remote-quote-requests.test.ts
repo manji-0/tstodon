@@ -366,6 +366,44 @@ describe("remote notes that quote a local status", () => {
     });
   });
 
+  it.each(["_misskey_quote", "quoteUrl", "quoteUri"])(
+    "stores a legacy quote named by %s hidden, then accepts it on a QuoteRequest",
+    async (key) => {
+      const quote = await setup(`rqr-legacy-${key.replace(/_/g, "")}`);
+      const legacy = quote.note({ quote: undefined, [key]: quote.statusUri });
+      expect(
+        await quote.bob.send({ id: `${quote.noteUri}/activity`, type: "Create", object: legacy }),
+      ).toBe(202);
+      const bobNoteId = await remoteStatusId(quote.noteUri);
+      expect(await quoteOf(quote.email, bobNoteId)).toBeNull();
+
+      expect(await quote.request({ instrument: quote.noteUri })).toBe(202);
+
+      const { accepts, rejects } = await answers(quote.alice.id);
+      expect(rejects).toEqual([]);
+      expect(accepts).toHaveLength(1);
+      expect(await quoteOf(quote.email, bobNoteId)).toEqual({
+        state: "accepted",
+        quoted_status: expect.objectContaining({ id: quote.statusId }),
+      });
+    },
+  );
+
+  it("accepts a QuoteRequest whose inlined instrument names the quote only by a legacy key", async () => {
+    const quote = await setup("rqr-legacy-inline");
+
+    expect(
+      await quote.request({
+        instrument: quote.note({ quote: undefined, quoteUrl: quote.statusUri }),
+      }),
+    ).toBe(202);
+
+    expect((await answers(quote.alice.id)).accepts).toHaveLength(1);
+    expect((await quoteOf(quote.email, await remoteStatusId(quote.noteUri)))?.state).toBe(
+      "accepted",
+    );
+  });
+
   it("keeps an accepted quote through an edit and forgets it when the edit drops it", async () => {
     const quote = await setup("rqr-update");
     expect(await quote.request()).toBe(202);

@@ -1,5 +1,6 @@
 import {
   Quote,
+  type QuotedTargetValue,
   type QuoteState,
   type QuoteValue,
   StatusTarget,
@@ -36,9 +37,11 @@ const QuoteDbRow = z.object({
   remote_status_id: z.string().nullable(),
   quoted_status_id: z.string().nullable(),
   quoted_remote_status_id: z.string().nullable(),
+  quoted_uri: z.string().nullable(),
   state: z.string(),
   approval_uri: z.string().nullable(),
   activity_uri: z.string().nullable(),
+  legacy: z.number(),
   created_at: z.string(),
 });
 const QuoteCountRow = z.object({ quoted_id: z.string(), count: z.number() });
@@ -54,6 +57,17 @@ const targetOf = (local: string | null, remote: string | null) =>
   local !== null
     ? { kind: "LocalStatus", statusId: local }
     : { kind: "RemoteStatus", statusId: remote };
+
+const quotedOf = (row: z.infer<typeof QuoteDbRow>) =>
+  row.quoted_uri !== null
+    ? { kind: "Unresolved", uri: row.quoted_uri }
+    : targetOf(row.quoted_status_id, row.quoted_remote_status_id);
+
+/** The quoted end as its three columns: a local status, a remote one, or an unresolved URI. */
+const quotedColumns = (
+  quoted: QuotedTargetValue,
+): readonly [local: string | null, remote: string | null, uri: string | null] =>
+  quoted.kind === "Unresolved" ? [null, null, quoted.uri] : [...statusTargetColumns(quoted), null];
 
 const stateOf = (state: string, approvalUri: string | null) => {
   switch (state) {
@@ -80,8 +94,9 @@ const toQuote = (row: z.infer<typeof QuoteDbRow>): QuoteValue[] => {
   const quote = Quote.parse({
     id: row.id,
     quoting: targetOf(row.status_id, row.remote_status_id),
-    quoted: targetOf(row.quoted_status_id, row.quoted_remote_status_id),
+    quoted: quotedOf(row),
     state: stateOf(row.state, row.approval_uri),
+    legacy: row.legacy === 1,
     activityUri: row.activity_uri ?? undefined,
     createdAt: row.created_at,
   });
@@ -110,7 +125,7 @@ const targetIdBinds = (targets: ReadonlyArray<StatusTargetValue>): readonly [str
 ];
 
 const SELECT =
-  "id, status_id, remote_status_id, quoted_status_id, quoted_remote_status_id, state, approval_uri, activity_uri, created_at";
+  "id, status_id, remote_status_id, quoted_status_id, quoted_remote_status_id, quoted_uri, state, approval_uri, activity_uri, legacy, created_at";
 
 /** Record a quote. */
 export const insertStatusQuote = async (
@@ -122,23 +137,29 @@ export const insertStatusQuote = async (
     await db
       .prepare(
         `INSERT INTO status_quotes (id, status_id, remote_status_id, quoted_status_id,
-           quoted_remote_status_id, state, approval_uri, activity_uri, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           quoted_remote_status_id, quoted_uri, state, approval_uri, activity_uri, legacy,
+           created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         quote.id,
         ...statusTargetColumns(quote.quoting),
-        ...statusTargetColumns(quote.quoted),
+        ...quotedColumns(quote.quoted),
         state,
         approvalUri,
         quote.activityUri ?? null,
+        quote.legacy ? 1 : 0,
         quote.createdAt,
         quote.createdAt,
       )
       .run();
   });
 
-/** Write a quote's state, approval, and activity after a transition. */
+/**
+ * Write a quote's state, approval, and activity after a transition, with its
+ * quoted end and `legacy` flag, which change when an unresolved quoted note
+ * is resolved or a note is edited.
+ */
 export const saveQuoteState = async (
   db: D1Database,
   quote: QuoteValue,
@@ -147,10 +168,19 @@ export const saveQuoteState = async (
     const [state, approvalUri] = stateColumns(quote.state);
     await db
       .prepare(
-        `UPDATE status_quotes SET state = ?, approval_uri = ?, activity_uri = ?, updated_at = ?
+        `UPDATE status_quotes SET quoted_status_id = ?, quoted_remote_status_id = ?, quoted_uri = ?,
+           state = ?, approval_uri = ?, activity_uri = ?, legacy = ?, updated_at = ?
          WHERE id = ?`,
       )
-      .bind(state, approvalUri, quote.activityUri ?? null, nowIso(), quote.id)
+      .bind(
+        ...quotedColumns(quote.quoted),
+        state,
+        approvalUri,
+        quote.activityUri ?? null,
+        quote.legacy ? 1 : 0,
+        nowIso(),
+        quote.id,
+      )
       .run();
   });
 

@@ -468,7 +468,10 @@ export const mastodonStatuses = async (
     }
     const quote = quotes.get(status.id);
     if (quote) {
-      document.quote = mastodonQuote(quote.state, () => quotedDocument(quote.quoted));
+      const { quoted } = quote;
+      document.quote = mastodonQuote(quote.state, () =>
+        quoted.kind === "Unresolved" ? undefined : quotedDocument(quoted),
+      );
     }
     document.quotes_count = quoteCounts.get(status.id) ?? 0;
     const policy = quoteInteractionPolicy(

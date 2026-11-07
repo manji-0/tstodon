@@ -73,7 +73,7 @@ export const mastodonQuote = (
  */
 export const mastodonShallowQuote = (
   state: QuoteState,
-  quotedStatusId: string,
+  quotedStatusId: string | null,
   access: () => QuotedStatusAccess,
 ): Record<string, unknown> => {
   if (state.kind !== "Accepted") {

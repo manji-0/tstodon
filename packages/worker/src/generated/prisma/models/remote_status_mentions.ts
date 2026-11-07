@@ -20,39 +20,63 @@ export type remote_status_mentionsModel =
 
 export type AggregateRemote_status_mentions = {
   _count: Remote_status_mentionsCountAggregateOutputType | null;
+  _avg: Remote_status_mentionsAvgAggregateOutputType | null;
+  _sum: Remote_status_mentionsSumAggregateOutputType | null;
   _min: Remote_status_mentionsMinAggregateOutputType | null;
   _max: Remote_status_mentionsMaxAggregateOutputType | null;
+};
+
+export type Remote_status_mentionsAvgAggregateOutputType = {
+  silent: number | null;
+};
+
+export type Remote_status_mentionsSumAggregateOutputType = {
+  silent: number | null;
 };
 
 export type Remote_status_mentionsMinAggregateOutputType = {
   status_id: string | null;
   account_id: string | null;
+  silent: number | null;
 };
 
 export type Remote_status_mentionsMaxAggregateOutputType = {
   status_id: string | null;
   account_id: string | null;
+  silent: number | null;
 };
 
 export type Remote_status_mentionsCountAggregateOutputType = {
   status_id: number;
   account_id: number;
+  silent: number;
   _all: number;
+};
+
+export type Remote_status_mentionsAvgAggregateInputType = {
+  silent?: true;
+};
+
+export type Remote_status_mentionsSumAggregateInputType = {
+  silent?: true;
 };
 
 export type Remote_status_mentionsMinAggregateInputType = {
   status_id?: true;
   account_id?: true;
+  silent?: true;
 };
 
 export type Remote_status_mentionsMaxAggregateInputType = {
   status_id?: true;
   account_id?: true;
+  silent?: true;
 };
 
 export type Remote_status_mentionsCountAggregateInputType = {
   status_id?: true;
   account_id?: true;
+  silent?: true;
   _all?: true;
 };
 
@@ -98,6 +122,18 @@ export type Remote_status_mentionsAggregateArgs<
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    *
+   * Select which fields to average
+   **/
+  _avg?: Remote_status_mentionsAvgAggregateInputType;
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
+   * Select which fields to sum
+   **/
+  _sum?: Remote_status_mentionsSumAggregateInputType;
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
    * Select which fields to find the minimum value
    **/
   _min?: Remote_status_mentionsMinAggregateInputType;
@@ -130,6 +166,8 @@ export type remote_status_mentionsGroupByArgs<
   take?: number;
   skip?: number;
   _count?: Remote_status_mentionsCountAggregateInputType | true;
+  _avg?: Remote_status_mentionsAvgAggregateInputType;
+  _sum?: Remote_status_mentionsSumAggregateInputType;
   _min?: Remote_status_mentionsMinAggregateInputType;
   _max?: Remote_status_mentionsMaxAggregateInputType;
 };
@@ -137,7 +175,10 @@ export type remote_status_mentionsGroupByArgs<
 export type Remote_status_mentionsGroupByOutputType = {
   status_id: string;
   account_id: string;
+  silent: number;
   _count: Remote_status_mentionsCountAggregateOutputType | null;
+  _avg: Remote_status_mentionsAvgAggregateOutputType | null;
+  _sum: Remote_status_mentionsSumAggregateOutputType | null;
   _min: Remote_status_mentionsMinAggregateOutputType | null;
   _max: Remote_status_mentionsMaxAggregateOutputType | null;
 };
@@ -161,6 +202,7 @@ export type remote_status_mentionsWhereInput = {
   NOT?: Prisma.remote_status_mentionsWhereInput | Prisma.remote_status_mentionsWhereInput[];
   status_id?: Prisma.StringFilter<"remote_status_mentions"> | string;
   account_id?: Prisma.StringFilter<"remote_status_mentions"> | string;
+  silent?: Prisma.IntFilter<"remote_status_mentions"> | number;
   accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
   remote_statuses?: Prisma.XOR<
     Prisma.Remote_statusesScalarRelationFilter,
@@ -171,6 +213,7 @@ export type remote_status_mentionsWhereInput = {
 export type remote_status_mentionsOrderByWithRelationInput = {
   status_id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
+  silent?: Prisma.SortOrder;
   accounts?: Prisma.accountsOrderByWithRelationInput;
   remote_statuses?: Prisma.remote_statusesOrderByWithRelationInput;
 };
@@ -183,6 +226,7 @@ export type remote_status_mentionsWhereUniqueInput = Prisma.AtLeast<
     NOT?: Prisma.remote_status_mentionsWhereInput | Prisma.remote_status_mentionsWhereInput[];
     status_id?: Prisma.StringFilter<"remote_status_mentions"> | string;
     account_id?: Prisma.StringFilter<"remote_status_mentions"> | string;
+    silent?: Prisma.IntFilter<"remote_status_mentions"> | number;
     accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
     remote_statuses?: Prisma.XOR<
       Prisma.Remote_statusesScalarRelationFilter,
@@ -195,9 +239,12 @@ export type remote_status_mentionsWhereUniqueInput = Prisma.AtLeast<
 export type remote_status_mentionsOrderByWithAggregationInput = {
   status_id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
+  silent?: Prisma.SortOrder;
   _count?: Prisma.remote_status_mentionsCountOrderByAggregateInput;
+  _avg?: Prisma.remote_status_mentionsAvgOrderByAggregateInput;
   _max?: Prisma.remote_status_mentionsMaxOrderByAggregateInput;
   _min?: Prisma.remote_status_mentionsMinOrderByAggregateInput;
+  _sum?: Prisma.remote_status_mentionsSumOrderByAggregateInput;
 };
 
 export type remote_status_mentionsScalarWhereWithAggregatesInput = {
@@ -210,9 +257,11 @@ export type remote_status_mentionsScalarWhereWithAggregatesInput = {
     | Prisma.remote_status_mentionsScalarWhereWithAggregatesInput[];
   status_id?: Prisma.StringWithAggregatesFilter<"remote_status_mentions"> | string;
   account_id?: Prisma.StringWithAggregatesFilter<"remote_status_mentions"> | string;
+  silent?: Prisma.IntWithAggregatesFilter<"remote_status_mentions"> | number;
 };
 
 export type remote_status_mentionsCreateInput = {
+  silent?: number;
   accounts: Prisma.accountsCreateNestedOneWithoutRemote_status_mentionsInput;
   remote_statuses: Prisma.remote_statusesCreateNestedOneWithoutRemote_status_mentionsInput;
 };
@@ -220,9 +269,11 @@ export type remote_status_mentionsCreateInput = {
 export type remote_status_mentionsUncheckedCreateInput = {
   status_id: string;
   account_id: string;
+  silent?: number;
 };
 
 export type remote_status_mentionsUpdateInput = {
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutRemote_status_mentionsNestedInput;
   remote_statuses?: Prisma.remote_statusesUpdateOneRequiredWithoutRemote_status_mentionsNestedInput;
 };
@@ -230,18 +281,23 @@ export type remote_status_mentionsUpdateInput = {
 export type remote_status_mentionsUncheckedUpdateInput = {
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type remote_status_mentionsCreateManyInput = {
   status_id: string;
   account_id: string;
+  silent?: number;
 };
 
-export type remote_status_mentionsUpdateManyMutationInput = {};
+export type remote_status_mentionsUpdateManyMutationInput = {
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
+};
 
 export type remote_status_mentionsUncheckedUpdateManyInput = {
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type Remote_status_mentionsListRelationFilter = {
@@ -262,16 +318,27 @@ export type remote_status_mentionsStatus_idAccount_idCompoundUniqueInput = {
 export type remote_status_mentionsCountOrderByAggregateInput = {
   status_id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
+  silent?: Prisma.SortOrder;
+};
+
+export type remote_status_mentionsAvgOrderByAggregateInput = {
+  silent?: Prisma.SortOrder;
 };
 
 export type remote_status_mentionsMaxOrderByAggregateInput = {
   status_id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
+  silent?: Prisma.SortOrder;
 };
 
 export type remote_status_mentionsMinOrderByAggregateInput = {
   status_id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
+  silent?: Prisma.SortOrder;
+};
+
+export type remote_status_mentionsSumOrderByAggregateInput = {
+  silent?: Prisma.SortOrder;
 };
 
 export type remote_status_mentionsCreateNestedManyWithoutAccountsInput = {
@@ -495,11 +562,13 @@ export type remote_status_mentionsUncheckedUpdateManyWithoutRemote_statusesNeste
 };
 
 export type remote_status_mentionsCreateWithoutAccountsInput = {
+  silent?: number;
   remote_statuses: Prisma.remote_statusesCreateNestedOneWithoutRemote_status_mentionsInput;
 };
 
 export type remote_status_mentionsUncheckedCreateWithoutAccountsInput = {
   status_id: string;
+  silent?: number;
 };
 
 export type remote_status_mentionsCreateOrConnectWithoutAccountsInput = {
@@ -554,14 +623,17 @@ export type remote_status_mentionsScalarWhereInput = {
     | Prisma.remote_status_mentionsScalarWhereInput[];
   status_id?: Prisma.StringFilter<"remote_status_mentions"> | string;
   account_id?: Prisma.StringFilter<"remote_status_mentions"> | string;
+  silent?: Prisma.IntFilter<"remote_status_mentions"> | number;
 };
 
 export type remote_status_mentionsCreateWithoutRemote_statusesInput = {
+  silent?: number;
   accounts: Prisma.accountsCreateNestedOneWithoutRemote_status_mentionsInput;
 };
 
 export type remote_status_mentionsUncheckedCreateWithoutRemote_statusesInput = {
   account_id: string;
+  silent?: number;
 };
 
 export type remote_status_mentionsCreateOrConnectWithoutRemote_statusesInput = {
@@ -608,34 +680,42 @@ export type remote_status_mentionsUpdateManyWithWhereWithoutRemote_statusesInput
 
 export type remote_status_mentionsCreateManyAccountsInput = {
   status_id: string;
+  silent?: number;
 };
 
 export type remote_status_mentionsUpdateWithoutAccountsInput = {
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
   remote_statuses?: Prisma.remote_statusesUpdateOneRequiredWithoutRemote_status_mentionsNestedInput;
 };
 
 export type remote_status_mentionsUncheckedUpdateWithoutAccountsInput = {
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type remote_status_mentionsUncheckedUpdateManyWithoutAccountsInput = {
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type remote_status_mentionsCreateManyRemote_statusesInput = {
   account_id: string;
+  silent?: number;
 };
 
 export type remote_status_mentionsUpdateWithoutRemote_statusesInput = {
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutRemote_status_mentionsNestedInput;
 };
 
 export type remote_status_mentionsUncheckedUpdateWithoutRemote_statusesInput = {
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type remote_status_mentionsUncheckedUpdateManyWithoutRemote_statusesInput = {
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type remote_status_mentionsSelect<
@@ -644,6 +724,7 @@ export type remote_status_mentionsSelect<
   {
     status_id?: boolean;
     account_id?: boolean;
+    silent?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     remote_statuses?: boolean | Prisma.remote_statusesDefaultArgs<ExtArgs>;
   },
@@ -656,6 +737,7 @@ export type remote_status_mentionsSelectCreateManyAndReturn<
   {
     status_id?: boolean;
     account_id?: boolean;
+    silent?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     remote_statuses?: boolean | Prisma.remote_statusesDefaultArgs<ExtArgs>;
   },
@@ -668,6 +750,7 @@ export type remote_status_mentionsSelectUpdateManyAndReturn<
   {
     status_id?: boolean;
     account_id?: boolean;
+    silent?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     remote_statuses?: boolean | Prisma.remote_statusesDefaultArgs<ExtArgs>;
   },
@@ -677,12 +760,13 @@ export type remote_status_mentionsSelectUpdateManyAndReturn<
 export type remote_status_mentionsSelectScalar = {
   status_id?: boolean;
   account_id?: boolean;
+  silent?: boolean;
 };
 
 export type remote_status_mentionsOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "status_id" | "account_id",
+  "status_id" | "account_id" | "silent",
   ExtArgs["result"]["remote_status_mentions"]
 >;
 export type remote_status_mentionsInclude<
@@ -716,6 +800,7 @@ export type $remote_status_mentionsPayload<
     {
       status_id: string;
       account_id: string;
+      silent: number;
     },
     ExtArgs["result"]["remote_status_mentions"]
   >;
@@ -1318,6 +1403,7 @@ export interface Prisma__remote_status_mentionsClient<
 export interface remote_status_mentionsFieldRefs {
   readonly status_id: Prisma.FieldRef<"remote_status_mentions", "String">;
   readonly account_id: Prisma.FieldRef<"remote_status_mentions", "String">;
+  readonly silent: Prisma.FieldRef<"remote_status_mentions", "Int">;
 }
 
 // Custom InputTypes

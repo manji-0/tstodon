@@ -199,7 +199,7 @@ describe("a remote note quoting another remote note", () => {
     });
   });
 
-  it("does not fetch past the quoted note's own quote", async () => {
+  it("fetches the quoted note's own quoted note", async () => {
     const q = await setup("rqq-depth", { cacheQuoted: false });
     const deeper = "https://other.example/notes/rqq-depth-deeper";
     const fetched = stubFetch({
@@ -210,18 +210,18 @@ describe("a remote note quoting another remote note", () => {
 
     expect(await create(q.bob, q.bobNote())).toBe(202);
 
-    expect(fetched).not.toContain(deeper);
-    expect(await remoteStatusId(deeper)).toBeUndefined();
+    expect(fetched).toContain(deeper);
+    expect(await remoteStatusId(deeper)).toBeDefined();
     expect((await q.quote())?.state).toBe("accepted");
   });
 
-  it("keeps no quote when the quoted note cannot be fetched", async () => {
+  it("keeps a pending quote with no status when the quoted note cannot be fetched", async () => {
     const q = await setup("rqq-unfetchable", { cacheQuoted: false });
     stubFetch({ [q.stampUri]: q.stamp() });
 
     expect(await create(q.bob, q.bobNote())).toBe(202);
 
-    expect(await q.quote()).toBeNull();
+    expect(await q.quote()).toEqual({ state: "pending", quoted_status: null });
   });
 
   it("accepts a self-quote without fetching anything", async () => {
@@ -274,10 +274,14 @@ describe("a remote note quoting another remote note", () => {
     expect((await q.quote())?.state).toBe("accepted");
   });
 
-  it("keeps no legacy-only quote", async () => {
+  it("keeps a legacy-only quote, hidden until accepted", async () => {
     const q = await setup("rqq-legacy");
-    const fetched = stubFetch({ [q.stampUri]: q.stamp() });
-    const legacy = q.bobNote({ quote: undefined, _misskey_quote: q.carolNote.id });
+    const fetched = stubFetch({});
+    const legacy = q.bobNote({
+      quote: undefined,
+      quoteAuthorization: undefined,
+      _misskey_quote: q.carolNote.id,
+    });
 
     expect(await create(q.bob, legacy)).toBe(202);
 

@@ -81,6 +81,10 @@ export const noteQuote = async (
   ) {
     return undefined;
   }
+  // A local note's quoted status is always resolved; only remote notes name unresolved ones.
+  if (quoted.kind === "Unresolved") {
+    return undefined;
+  }
   const ref = await statusTargetRef(env, identity, quoted);
   return ref === undefined
     ? undefined
