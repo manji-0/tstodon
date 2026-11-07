@@ -21,7 +21,7 @@ import {
   type FederatedFetchOptions,
   isFederatedHostRefused,
 } from "./federated-fetch";
-import { ActorDocumentSchema } from "./activitypub-wire";
+import { ActorDocumentSchema, refId } from "./activitypub-wire";
 import {
   claimRemoteActorRefresh,
   findRemoteActorByHandle,
@@ -143,6 +143,29 @@ const textAuthority = (uri: string): string | undefined => {
   return /^[\x21-\x7e]+$/.test(authority) ? authority.toLowerCase() : undefined;
 };
 
+/**
+ * A collection the actor document names (`followers`, `following`), as
+ * Mastodon's `valid_collection_uri`: a URI, an object's `id`, or the first of
+ * a list, when it is http(s). Unlike Mastodon, it must also be on the actor's
+ * own host, so an actor cannot have a quote policy (`canQuote`) match
+ * another server's collection as its own.
+ */
+const ownCollectionUri = (value: unknown, actorUri: URL): string | undefined => {
+  const uri = refId(value);
+  if (uri === undefined) {
+    return undefined;
+  }
+  try {
+    const parsed = new URL(uri);
+    return (parsed.protocol === "https:" || parsed.protocol === "http:") &&
+      parsed.host === actorUri.host
+      ? uri
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 /** An actor document that describes `actorUri` and holds that actor's own key. */
 export const remoteActorFromDocument = (
   raw: unknown,
@@ -188,6 +211,8 @@ export const remoteActorFromDocument = (
       : {}),
     outboxUri: linkUrl(document.value.outbox) ?? undefined,
     featuredUri: linkUrl(document.value.featured) ?? undefined,
+    followersUri: ownCollectionUri(document.value.followers, parsedUri),
+    followingUri: ownCollectionUri(document.value.following, parsedUri),
   });
   if (actor.isErr()) {
     return err({ kind: "InvalidSignature" });

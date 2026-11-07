@@ -112,6 +112,7 @@ export {
   QuoteApprovalPolicy,
   type QuoteApprovalForViewer,
   type QuoteAudience,
+  type QuotePolicyAuthor,
   type QuoteViewerRelation,
   QuoteInteractionPolicy,
   QuoteInteractionPolicySchema,

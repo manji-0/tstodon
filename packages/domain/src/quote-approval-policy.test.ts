@@ -27,6 +27,33 @@ describe("QuoteInteractionPolicy.fromCanQuote", () => {
     ).toEqual({ automatic: ["followers"], manual: ["following"] });
   });
 
+  it("matches only the collection URIs the author's actor document named", () => {
+    const named = {
+      ...author,
+      followersUri: "https://remote.example/ap/bob/fans",
+      followingUri: "https://remote.example/users/bob/following",
+    };
+    expect(
+      QuoteInteractionPolicy.fromCanQuote(
+        {
+          automaticApproval: ["https://remote.example/ap/bob/fans"],
+          manualApproval: ["https://REMOTE.example/users/bob/following"],
+        },
+        named,
+      ),
+    ).toEqual({ automatic: ["followers"], manual: ["following"] });
+    // A lookalike path on the author's host is someone else's collection.
+    expect(
+      QuoteInteractionPolicy.fromCanQuote(
+        {
+          automaticApproval: ["https://remote.example/users/bob/followers"],
+          manualApproval: ["https://remote.example/users/eve/following/x/following"],
+        },
+        named,
+      ),
+    ).toEqual({ automatic: ["unsupported_policy"], manual: ["unsupported_policy"] });
+  });
+
   it("drops the author's own URI", () => {
     expect(
       QuoteInteractionPolicy.fromCanQuote({ automaticApproval: [author.actorUri] }, author),
