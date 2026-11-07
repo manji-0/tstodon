@@ -3,7 +3,7 @@ import { getSession } from "void/auth";
 import { z } from "zod";
 import { InstanceLimits, Languages, schemaResult } from "@tstodon/core";
 import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
-import { browserSession, pageOrigin } from "./browser-session";
+import { browserFacingOrigin, browserSession } from "./browser-session";
 import { runD1 } from "./d1";
 import {
   ensureWebAccessToken,
@@ -207,7 +207,12 @@ const initialState = async (
   viewer: Viewer | undefined,
 ): Promise<Record<string, unknown>> => {
   const identity = parseInstanceIdentity(env);
-  const origin = pageOrigin(env, request);
+  // The stream is on the host that served this page, which is not
+  // INSTANCE_PUBLIC_ORIGIN under `pnpm dev` (that defaults to https://example.com).
+  const origin = browserFacingOrigin(
+    request.url,
+    request.headers.get("X-Forwarded-Proto") ?? undefined,
+  );
   const meta: Record<string, unknown> = {
     access_token: viewer?.token ?? null,
     activity_api_enabled: true,
