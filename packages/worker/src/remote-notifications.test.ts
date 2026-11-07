@@ -527,4 +527,27 @@ describe("notifications from remote actors", () => {
       .first<{ n: number }>();
     expect(left?.n).toBe(0);
   });
+
+  it("drops a notification from a remote actor who blocked the account", async () => {
+    const email = "remote-notify-blocked-by@example.com";
+    const account = await me(email);
+    const status = await post(email, "do not tell me");
+    const remote = await remoteActor("blocker-notifier");
+    expect(
+      await remote.send({
+        id: `${remote.actorUri}#blocks/1`,
+        type: "Block",
+        object: `https://example.com/users/${account.username}`,
+      }),
+    ).toBe(202);
+    expect(
+      await remote.send({
+        id: `${remote.actorUri}/likes/1`,
+        type: "Like",
+        object: status.uri,
+      }),
+    ).toBe(202);
+
+    expect((await notifications(email)).filter((entry) => entry.type === "favourite")).toEqual([]);
+  });
 });

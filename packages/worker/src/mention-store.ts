@@ -21,7 +21,10 @@ const StatusIdAccountIdRow = z.object({ status_id: z.string(), account_id: z.str
 const OkRow = z.object({ ok: z.number() });
 const StatusIdActorUriRow = z.object({ status_id: z.string(), actor_uri: z.string() });
 
-/** Record the local accounts a cached remote note addresses. */
+/**
+ * Record the local accounts a cached remote note addresses. A silent mention
+ * written so the account can see the note becomes a real one.
+ */
 export const recordRemoteStatusMentions = async (
   db: D1Database,
   statusId: string,

@@ -5,6 +5,7 @@ import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { openStream } from "../test/stream-fixture";
+import { RemoteAccountId } from "./remote-account-id";
 
 const json = async (
   path: string,
@@ -122,6 +123,7 @@ describe("quote stamps for local statuses", () => {
       activityJson,
     );
     expect(stampResponse.headers.get("cache-control")).toBe("max-age=30, public");
+    expect(stampResponse.headers.get("vary")).toBe("Signature");
     const stamp = { status: stampResponse.status, body: await stampResponse.json() };
     expect(stamp.status).toBe(200);
     expect(stamp.body).toEqual({
@@ -156,6 +158,56 @@ describe("quote stamps for local statuses", () => {
       ).status,
     ).toBe(404);
     expect((await json(`/users/nobody-here/quote_authorizations/${quoteId}`)).status).toBe(404);
+  });
+
+  const stampPathOf = async (author: string, quoter: string) => {
+    const quote = await localQuote(author, quoter);
+    const note = await json(
+      `/users/${quote.bob.username}/statuses/${quote.quotingId}`,
+      activityJson,
+    );
+    return new URL(read(NoteSchema, note.body).quoteAuthorization).pathname;
+  };
+
+  it("answers 404 to a signed fetcher the author blocks", async () => {
+    const path = await stampPathOf("stamp-block-alice@example.com", "stamp-block-bob@example.com");
+    const carol = await remoteActor("stamp-blocked");
+    expect((await carol.fetch(path)).status).toBe(200);
+    expect(
+      (
+        await json(`/api/v1/accounts/${RemoteAccountId.encode(carol.actorUri)}/block`, {
+          method: "POST",
+          headers: await authHeaders("stamp-block-alice@example.com"),
+        })
+      ).status,
+    ).toBe(200);
+
+    expect((await carol.fetch(path)).status).toBe(404);
+    expect((await json(path, activityJson)).status).toBe(200);
+  });
+
+  it("answers 404 to a signed fetcher whose domain the author blocks", async () => {
+    const path = await stampPathOf(
+      "stamp-domain-alice@example.com",
+      "stamp-domain-bob@example.com",
+    );
+    const carol = await remoteActor("stamp-domain-blocked", "blocked-stamp.example");
+    expect((await carol.fetch(path)).status).toBe(200);
+    expect(
+      (
+        await json("/api/v1/domain_blocks", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(await authHeaders("stamp-domain-alice@example.com")),
+          },
+          body: JSON.stringify({ domain: "blocked-stamp.example" }),
+        })
+      ).status,
+    ).toBe(200);
+
+    expect((await carol.fetch(path)).status).toBe(404);
+    expect((await json(path, activityJson)).status).toBe(200);
   });
 
   it("withdraws the stamp with a Delete to both authors' remote followers on revoke", async () => {

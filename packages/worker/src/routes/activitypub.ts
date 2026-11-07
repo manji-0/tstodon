@@ -189,6 +189,8 @@ export const getUsersByUsernameQuoteAuthorizationsById = async (
     localQuoteAuthorization(target, quote.value.id, quoting.uri),
   );
   c.header("Cache-Control", "max-age=30, public");
+  // The body is public, but a signed fetcher the author blocks is refused.
+  c.header("Vary", "Signature");
   return c.json(document, 200, jsonLd);
 };
 

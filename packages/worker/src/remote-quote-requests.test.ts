@@ -4,6 +4,7 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { openStream } from "../test/stream-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -321,6 +322,16 @@ describe("answering a remote QuoteRequest for a local status", () => {
       state: "pending",
       quoted_status: null,
     });
+  });
+
+  it("publishes a conversation update for a direct quote", async () => {
+    const quote = await setup("rqr-direct-stream");
+    const socket = await openStream({ email: quote.email, query: "?stream=direct" });
+
+    expect(await quote.request({ instrument: quote.note({ to: [], cc: [] }) })).toBe(202);
+
+    expect(await socket.next()).toMatchObject({ stream: ["direct"], event: "conversation" });
+    socket.close();
   });
 
   it("rejects a request from an actor the author blocks", async () => {
