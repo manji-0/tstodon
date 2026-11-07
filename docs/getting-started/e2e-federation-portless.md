@@ -16,12 +16,12 @@ Run the two local Workers from [Federation e2e](./e2e-federation.md) on public H
 
 tstodon signs `(request-target) host date digest` (`packages/worker/src/http-signature.ts`). Verification rebuilds that string from the path on `request.url`, the `Host` header, `Date`, and a SHA-256 of the body.
 
-| Piece              | Through portless                                                                                                                                   |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `(request-target)` | Path only. The proxy does not rewrite it.                                                                                                         |
-| `host`             | `url.host` of `https://b.tstodon.localhost/…` is `b.tstodon.localhost` (no port on 443). The proxy leaves that `Host` in place.                    |
-| `digest`           | Body bytes are forwarded as-is.                                                                                                                    |
-| `keyId`            | `${INSTANCE_PUBLIC_ORIGIN}/users/<name>#main-key`, so `https://a.tstodon.localhost/users/alice#main-key`. The peer fetches that URL.               |
+| Piece              | Through portless                                                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `(request-target)` | Path only. The proxy does not rewrite it.                                                                                            |
+| `host`             | `url.host` of `https://b.tstodon.localhost/…` is `b.tstodon.localhost` (no port on 443). The proxy leaves that `Host` in place.      |
+| `digest`           | Body bytes are forwarded as-is.                                                                                                      |
+| `keyId`            | `${INSTANCE_PUBLIC_ORIGIN}/users/<name>#main-key`, so `https://a.tstodon.localhost/users/alice#main-key`. The peer fetches that URL. |
 
 `request.url` inside the Worker is `http://a.tstodon.localhost/…` when the client used HTTPS. `@cloudflare/vite-plugin` builds the URL from the plain socket to Vite and ignores `X-Forwarded-Proto`. The signing string has no scheme, and actor ids come from `INSTANCE_PUBLIC_ORIGIN`, so verification still holds. Passkey sign-up can disagree: the client data and `Origin` are `https://`, while `request.url` is `http://`. If that check rejects the ceremony, the signed delivery is still the thing under test. Do not switch the proxy to HTTP to change the origin.
 
