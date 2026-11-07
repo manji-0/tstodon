@@ -138,11 +138,11 @@ const main = async (): Promise<void> => {
   for (let i = 0; i < 30; i += 1) {
     const rows = d1Rows(
       "a",
-      `SELECT activity_id, inbox_url, kind FROM outbox_deliveries WHERE inbox_url LIKE '%8792%' ORDER BY created_at DESC LIMIT 10`,
+      `SELECT activity_id, inbox_url, kind FROM outbox_deliveries WHERE inbox_url LIKE '%${B_DOMAIN.replaceAll("'", "''")}%' ORDER BY created_at DESC LIMIT 10`,
       OutboxDeliveryRow.parseMany,
       "outbox_deliveries poll",
     );
-    targetRow = rows.find((row) => row.inbox_url.includes("8792"));
+    targetRow = rows.find((row) => row.inbox_url.includes(B_DOMAIN));
     if (targetRow) {
       break;
     }

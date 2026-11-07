@@ -23,7 +23,16 @@ tstodon signs `(request-target) host date digest` (`packages/worker/src/http-sig
 | `digest`           | Body bytes are forwarded as-is.                                                                                                      |
 | `keyId`            | `${INSTANCE_PUBLIC_ORIGIN}/users/<name>#main-key`, so `https://a.tstodon.localhost/users/alice#main-key`. The peer fetches that URL. |
 
-`request.url` inside the Worker is `http://a.tstodon.localhost/…` when the client used HTTPS. `@cloudflare/vite-plugin` builds the URL from the plain socket to Vite and ignores `X-Forwarded-Proto`. The signing string has no scheme, and actor ids come from `INSTANCE_PUBLIC_ORIGIN`, so verification still holds. Passkey sign-up can disagree: the client data and `Origin` are `https://`, while `request.url` is `http://`. If that check rejects the ceremony, the signed delivery is still the thing under test. Do not switch the proxy to HTTP to change the origin.
+`request.url` inside the Worker is `http://a.tstodon.localhost/…` when the client used HTTPS. `@cloudflare/vite-plugin` builds that URL from the plain socket to Vite and does not apply `X-Forwarded-Proto` to it. The signing string has no scheme, so the signature still holds. Actor ids come from `INSTANCE_PUBLIC_ORIGIN`.
+
+## Sign-up behind the proxy
+
+<!-- constrained-by ../reference/configuration.md#authentication -->
+<!-- derived-from #why-the-signature-matches -->
+
+Every federation script signs up before it delivers anything. `signUpBrowser` (`e2e/lib.ts`) posts `/oauth/authorize` with `Origin` set to the https public origin. The dev server's `request.url` is still `http://…`, and `isSameOriginPost` (`packages/worker/src/browser-session.ts`) used to compare that `Origin` to `new URL(request.url).origin`. The post was a 403 (`Authorization must be confirmed on this site.`), so the run never reached a signed delivery.
+
+The check now accepts the post when `Origin` equals the request origin after `X-Forwarded-Proto` is applied, and when `Origin` equals `INSTANCE_PUBLIC_ORIGIN`. `pageOrigin` uses that public origin for the web UI's streaming URL (`web-app.ts`) and for the OAuth metadata fallback (`oauth.ts`), which used to copy `request.url` as well. Keep the proxy on HTTPS. `--no-tls` makes WebFinger ask for `https://` names that nothing is serving.
 
 ## What has to be set
 
@@ -54,7 +63,7 @@ Start the proxy (HTTPS on 443; a failed bind exits):
 portless proxy start
 ```
 
-Export the run’s environment from the example, then set a secret locally:
+Each `portless … vp dev` process stays in the foreground, so A and B are two terminals. A new terminal does not inherit the variables. In each terminal that starts an instance, source the example and set a secret after that (the example leaves `BETTER_AUTH_SECRET` empty, so sourcing it clears a secret you already exported):
 
 ```sh
 set -a
@@ -63,7 +72,7 @@ set +a
 export BETTER_AUTH_SECRET="$(openssl rand -base64 32)"
 ```
 
-Instance A. `--app-port` is the port `vp dev` binds. Instance B is the same command with `b.tstodon`, port `8792`, `e2e/portless-b.wrangler.jsonc`, and `.wrangler/e2e-b`.
+Instance A. `--app-port` is the port `vp dev` binds.
 
 ```sh
 portless --app-port 8791 a.tstodon -- \
@@ -75,15 +84,17 @@ portless --app-port 8791 a.tstodon -- \
   pnpm exec vp -C packages/worker dev --port 8791 --strictPort --host 127.0.0.1
 ```
 
-`e2e/lib.ts` reads `E2E_*_ORIGIN` and `E2E_*_DOMAIN`. `openStream` turns `https://` into `wss://`, and portless proxies WebSockets.
+Instance B, in the other terminal, after the same `source` and a new `BETTER_AUTH_SECRET`: `b.tstodon`, port `8792`, `e2e/portless-b.wrangler.jsonc`, and `.wrangler/e2e-b`.
+
+In a third terminal, source the example again (the test process needs `NODE_EXTRA_CA_CERTS` and the `E2E_*` variables, not the auth secret). Wait until both instances answer, then run a script. The scripts read `E2E_*_ORIGIN` and `E2E_*_DOMAIN`. Deliveries are matched on `B_DOMAIN`, so the same variables cover every `pnpm e2e:federation:*` script. `openStream` turns `https://` into `wss://`, and portless proxies WebSockets.
 
 ```sh
-NODE_EXTRA_CA_CERTS="${NODE_EXTRA_CA_CERTS}" \
-E2E_A_ORIGIN="${E2E_A_ORIGIN}" \
-E2E_B_ORIGIN="${E2E_B_ORIGIN}" \
-E2E_A_DOMAIN="${E2E_A_DOMAIN}" \
-E2E_B_DOMAIN="${E2E_B_DOMAIN}" \
+set -a
+source e2e/portless.env.example
+set +a
+curl --cacert "${HOME}/.portless/ca.pem" -fsS https://a.tstodon.localhost/.well-known/nodeinfo
+curl --cacert "${HOME}/.portless/ca.pem" -fsS https://b.tstodon.localhost/.well-known/nodeinfo
 pnpm e2e:federation:remote-follow
 ```
 
-Any other `pnpm e2e:federation:*` script uses the same variables. The loopback `process-compose` processes keep `e2e/a.wrangler.jsonc` and `e2e/b.wrangler.jsonc`. Do not run both pairs at once: they share ports 8791 and 8792 and the same persist dirs.
+The loopback `process-compose` processes keep `e2e/a.wrangler.jsonc` and `e2e/b.wrangler.jsonc`. Do not run both pairs at once: they share ports 8791 and 8792 and the same persist dirs.

@@ -69,8 +69,6 @@ Behind an HTTP proxy (`HTTPS_PROXY` set), start the instances with `NO_PROXY=127
 
 ### HTTPS hostnames (portless)
 
-<!-- constrained-by ./e2e-federation-portless.md -->
-
 The loopback pair speaks plain HTTP. To sign and verify through `https://a.tstodon.localhost` and `https://b.tstodon.localhost`, follow [Federation e2e over portless](./e2e-federation-portless.md). That run uses `e2e/portless-a.wrangler.jsonc` and `e2e/portless-b.wrangler.jsonc` and the same persist dirs. Leave these loopback configs as they are.
 
 ### Not covered locally

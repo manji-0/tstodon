@@ -93,7 +93,7 @@ const main = async (): Promise<void> => {
 
   const targets = await waitRows(
     "a",
-    `SELECT inbox_url FROM outbox_deliveries WHERE inbox_url LIKE '%8792%' ORDER BY created_at DESC LIMIT 10`,
+    `SELECT inbox_url FROM outbox_deliveries WHERE inbox_url LIKE '%${B_DOMAIN.replaceAll("'", "''")}%' ORDER BY created_at DESC LIMIT 10`,
     OutboxDeliveryRow.parseMany,
     (rows) => rows.some((r) => r.inbox_url === bobSharedInbox),
     "ExpandFollowers did not select shared inbox",
