@@ -1,18 +1,8 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import {
-  browser,
-  ORIGIN,
-  postForm,
-  postJson,
-  read,
-  registrationOptions,
-  requestSignupLink,
-  signUp,
-  type Browser,
-} from "../test/passkey-browser";
-import { mailboxKey } from "./mailer";
+import { browser, ORIGIN, postForm, read, signUp, type Browser } from "../test/passkey-browser";
+import { signAccessJwt } from "../test/access-jwt-fixture";
 import { pkceS256 } from "./oauth-store";
 
 const CALLBACK = "https://client.example/callback";
@@ -98,8 +88,8 @@ const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 const me = (token: string) =>
   SELF.fetch(`${ORIGIN}/api/v1/accounts/verify_credentials`, { headers: bearer(token) });
 
-describe("passkey sign-up and Mastodon OAuth", () => {
-  it("signs up with a passkey and authorizes an app with PKCE", async () => {
+describe("Access sign-in and Mastodon OAuth", () => {
+  it("signs in through Access and authorizes an app with PKCE", async () => {
     const { fetcher } = await signUp("passkey_alice");
     const app = await registerApp();
     const verifier = "a-code-verifier-that-is-long-enough-for-pkce-0123456789";
@@ -131,74 +121,42 @@ describe("passkey sign-up and Mastodon OAuth", () => {
     expect(read(z.object({ error: z.string() }), await replay.json()).error).toBe("invalid_grant");
   });
 
-  it("signs back in with the same passkey", async () => {
-    const { passkey } = await signUp("passkey_bob");
-    const fetcher = browser();
-    const options = await fetcher("/api/auth/passkey/generate-authenticate-options");
-    expect(options.status).toBe(200);
-    const response = await passkey.authenticate(
-      read(z.object({ challenge: z.string(), rpId: z.string().optional() }), await options.json()),
-    );
-    const verified = await postJson(fetcher, "/api/auth/passkey/verify-authentication", {
-      response,
-    });
-    expect(verified.status).toBe(200);
-    const page = await fetcher("/auth/sign_in");
+  it("signs back in with the same Access identity and does not open passkey registration", async () => {
+    await signUp("passkey_bob");
+    const again = browser(await signAccessJwt({ email: "passkey_bob@mail.example" }));
+    const page = await again("/auth/sign_in");
+    expect(page.status).toBe(200);
     expect(await page.text()).toContain("@passkey_bob");
+    expect((await again("/api/auth/passkey/generate-authenticate-options")).status).not.toBe(200);
+    const accounts = await env.DB.prepare(`SELECT COUNT(*) AS n FROM accounts WHERE username = ?`)
+      .bind("passkey_bob")
+      .first("n");
+    expect(accounts).toBe(1);
   });
 
-  it("creates a passkey only from a confirmed email link, once", async () => {
-    const fetcher = browser();
-    // Without the emailed token there is no passkey step.
-    expect((await registrationOptions(fetcher, "passkey_hank")).status).toBe(400);
-    expect((await registrationOptions(fetcher, "not-a-token")).status).toBe(400);
-    expect((await fetcher("/auth/sign_up/verify?token=not-a-token")).status).toBe(400);
-
-    const { token } = await signUp("passkey_hank", "Hank@Mail.Example");
+  it("provisions the account from the Access email, once", async () => {
+    const fetcher = browser(await signAccessJwt({ email: "Hank@Mail.Example" }));
+    const page = await fetcher("/auth/sign_in");
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain("@hank");
     const row = await env.DB.prepare(
-      `SELECT u.email, u.emailVerified AS verified, a.access_email
-       FROM accounts a JOIN "user" u ON u.id = a.auth_user_id WHERE a.username = ?`,
+      `SELECT u.email, u.emailVerified AS verified, a.access_email, a.username
+       FROM accounts a JOIN "user" u ON u.id = a.auth_user_id WHERE a.access_email = ?`,
     )
-      .bind("passkey_hank")
+      .bind("hank@mail.example")
       .first();
     expect(row).toEqual({
       email: "hank@mail.example",
       verified: 1,
       access_email: "hank@mail.example",
+      username: "hank",
     });
-    // The link is spent.
-    expect((await registrationOptions(browser(), token)).status).toBe(400);
-  });
-
-  it("refuses taken, malformed, and blocked sign-ups at the form", async () => {
-    await signUp("passkey_carol", "carol@mail.example");
-    await env.APP_CACHE.delete(mailboxKey("carol@mail.example"));
-    const fetcher = browser();
-    for (const [username, email] of [
-      ["passkey_carol", "carol2@mail.example"],
-      ["passkey_carol2", "carol@mail.example"],
-      ["not-valid", "x@mail.example"],
-      ["x".repeat(31), "y@mail.example"],
-      ["passkey_carol3", "not-an-email"],
-    ] as const) {
-      const response = await postForm(fetcher, "/auth/sign_up", { username, email });
-      expect(response.status).toBe(422);
-      expect(await env.APP_CACHE.get(mailboxKey(email))).toBeNull();
-    }
-  });
-
-  it("sends one link a minute per address", async () => {
-    const fetcher = browser();
-    const first = await requestSignupLink(fetcher, "passkey_ivy", "ivy@mail.example");
-    await env.APP_CACHE.delete(mailboxKey("ivy@mail.example"));
-    const again = await postForm(fetcher, "/auth/sign_up", {
-      username: "passkey_ivy",
-      email: "ivy@mail.example",
-    });
-    expect(again.status).toBe(200);
-    expect(await env.APP_CACHE.get(mailboxKey("ivy@mail.example"))).toBeNull();
-    // The first link still works.
-    expect((await registrationOptions(fetcher, first)).status).toBe(200);
+    await fetcher("/auth/sign_in");
+    const count = await env.DB.prepare(`SELECT COUNT(*) AS n FROM accounts WHERE access_email = ?`)
+      .bind("hank@mail.example")
+      .first("n");
+    expect(count).toBe(1);
+    expect(await (await browser()("/auth/sign_in")).text()).not.toContain("@hank");
   });
 
   it("enforces scopes and revokes tokens", async () => {

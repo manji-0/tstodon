@@ -1,6 +1,12 @@
 import path from "node:path";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vite-plus";
+import {
+  LOCAL_ACCESS_ADMIN_GROUP,
+  LOCAL_ACCESS_AUD,
+  LOCAL_ACCESS_JWKS_JSON,
+  LOCAL_ACCESS_TEAM_DOMAIN,
+} from "./packages/worker/test/access-jwt-fixture";
 
 const migrations = await readD1Migrations(
   path.join(import.meta.dirname, "packages/worker/app/db/migrations"),
@@ -42,6 +48,12 @@ export default defineConfig({
                 // Test-only Better Auth signing secret (example.com is not a
                 // local host, so Void's dev fallback does not apply).
                 BETTER_AUTH_SECRET: "tstodon-test-only-better-auth-secret-0123456789",
+                // Test-only Cloudflare Access trust (public key). The matching
+                // private key lives in the test fixture and signs assertions.
+                CF_ACCESS_TEAM_DOMAIN: LOCAL_ACCESS_TEAM_DOMAIN,
+                CF_ACCESS_AUD: LOCAL_ACCESS_AUD,
+                CF_ACCESS_JWKS_JSON: LOCAL_ACCESS_JWKS_JSON,
+                CF_ACCESS_ADMIN_GROUPS: LOCAL_ACCESS_ADMIN_GROUP,
                 // Sign-up mail lands in APP_CACHE, where tests read the link.
                 EMAIL_TRANSPORT: "capture",
               },

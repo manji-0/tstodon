@@ -1,31 +1,13 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import {
-  browser,
-  type Browser,
-  ORIGIN,
-  postForm,
-  postJson,
-  read,
-  registrationOptions,
-  RegistrationOptionsSchema,
-  requestSignupLink,
-  signUp,
-} from "../test/passkey-browser";
-import { softPasskey, type SoftPasskey } from "../test/soft-passkey";
+import { browser, ORIGIN, postForm, postJson, read, signUp } from "../test/passkey-browser";
 import { signedInAccount } from "../test/auth-fixture";
 import { findAccountByUsername } from "./account-store";
-import { listPasskeys, listSessions } from "./account-security-store";
+import { listSessions } from "./account-security-store";
 import { ensureWebAccessToken, ensureWebApplication } from "./generated/prisma/sql";
 import { issueAccessToken, registerOauthApplication, sha256Hex } from "./oauth-store";
 import { runTypedBatch } from "./typed-sql";
-
-const OptionsSchema = z.object({
-  challenge: z.string(),
-  rp: z.object({ id: z.string().optional() }),
-});
-const AuthOptionsSchema = z.object({ challenge: z.string(), rpId: z.string().optional() });
 
 const account = async (username: string) => {
   const found = await findAccountByUsername(env.DB, username);
@@ -42,44 +24,12 @@ const userIdOf = async (username: string): Promise<string> => {
   return read(z.string(), row);
 };
 
-const passkeysOf = async (username: string) => {
-  const found = await listPasskeys(env.DB, await userIdOf(username));
-  if (found.isErr()) {
-    throw new Error(found.error.message);
-  }
-  return found.value;
-};
-
 const sessionsOf = async (username: string) => {
   const found = await listSessions(env.DB, await userIdOf(username));
   if (found.isErr()) {
     throw new Error(found.error.message);
   }
   return found.value;
-};
-
-/** A new browser session for the passkey's user, as the sign-in page makes one. */
-const signInAgain = async (passkey: SoftPasskey): Promise<Browser> => {
-  const fetcher = browser();
-  const options = await fetcher("/api/auth/passkey/generate-authenticate-options");
-  expect(options.status).toBe(200);
-  const response = await passkey.authenticate(read(AuthOptionsSchema, await options.json()));
-  const verified = await postJson(fetcher, "/api/auth/passkey/verify-authentication", { response });
-  expect(verified.status).toBe(200);
-  return fetcher;
-};
-
-/** Add a passkey the way the page's script does: Better Auth's registration endpoints. */
-const addPasskey = async (fetcher: Browser, name: string) => {
-  const options = await fetcher(
-    `/api/auth/passkey/generate-register-options?${new URLSearchParams({ name }).toString()}`,
-  );
-  if (options.status !== 200) {
-    return options;
-  }
-  const passkey = await softPasskey(ORIGIN);
-  const response = await passkey.register(read(OptionsSchema, await options.json()));
-  return postJson(fetcher, "/api/auth/passkey/verify-registration", { response, name });
 };
 
 /** Make every session of `username` look like it started an hour ago. */
@@ -125,8 +75,6 @@ describe("Password and security: who may use it", () => {
     expect(signedOut.status).toBe(302);
     expect(signedOut.headers.get("location")).toBe("/auth/sign_in?return_to=%2Fauth%2Fedit");
     for (const path of [
-      "/auth/edit/passkeys/rename",
-      "/auth/edit/passkeys/remove",
       "/auth/edit/sessions/revoke",
       "/auth/edit/authorized_applications/revoke",
     ]) {
@@ -138,9 +86,6 @@ describe("Password and security: who may use it", () => {
 
   it("refuses an action posted from another site, and changes nothing", async () => {
     const { fetcher } = await signUp("sec_cross_site");
-    const second = await addPasskey(fetcher, "Second");
-    expect(second.status).toBe(200);
-    const passkeyId = (await passkeysOf("sec_cross_site"))[0]?.id ?? "";
     const sessionId = (await sessionsOf("sec_cross_site"))[0]?.id ?? "";
     const app = await authorizeApp("Cross Site App", "sec_cross_site");
 
@@ -154,206 +99,46 @@ describe("Password and security: who may use it", () => {
         body: new URLSearchParams(fields).toString(),
       });
     for (const [path, fields] of [
-      ["/auth/edit/passkeys/rename", { id: passkeyId, name: "Hijacked" }],
-      ["/auth/edit/passkeys/remove", { id: passkeyId }],
       ["/auth/edit/sessions/revoke", { id: sessionId }],
       ["/auth/edit/authorized_applications/revoke", { id: app.applicationId }],
     ] as const) {
       expect((await crossSite(path, fields)).status, path).toBe(403);
     }
 
-    expect(await passkeysOf("sec_cross_site")).toHaveLength(2);
-    expect((await passkeysOf("sec_cross_site"))[0]?.name).not.toBe("Hijacked");
     expect(await sessionsOf("sec_cross_site")).toHaveLength(1);
     expect((await verifyCredentials(app.token)).status).toBe(200);
   });
 });
 
-describe("Password and security: signing up while signed in", () => {
-  it("refuses a sign-up link in a signed-in browser instead of adding a passkey to that account", async () => {
-    const { fetcher } = await signUp("sec_signup_owner");
-    const before = await passkeysOf("sec_signup_owner");
-    const token = await requestSignupLink(
-      browser(),
-      "sec_signup_new",
-      "sec_signup_new@mail.example",
-    );
-
-    const page = await fetcher(`/auth/sign_up/verify?${new URLSearchParams({ token }).toString()}`);
-    expect(page.status).toBe(403);
-    expect(await page.text()).toContain("Sign out first");
-    expect((await registrationOptions(fetcher, token)).status).toBe(403);
-
-    expect(await passkeysOf("sec_signup_owner")).toHaveLength(before.length);
-    const created = await findAccountByUsername(env.DB, "sec_signup_new");
-    expect(created.isOk() && created.value).toBeFalsy();
-    // The link is still good for a signed-out browser.
-    const fresh = await browser()(
-      `/auth/sign_up/verify?${new URLSearchParams({ token }).toString()}`,
-    );
-    expect(fresh.status).toBe(200);
-  });
-});
-
-describe("Password and security: passkeys", () => {
-  it("names the passkey created at sign-up, as the sign-up page asks", async () => {
-    const fetcher = browser();
-    const token = await requestSignupLink(
-      fetcher,
-      "sec_signup_name",
-      "sec_signup_name@mail.example",
-    );
-    const shown = await page(
-      await fetcher(`/auth/sign_up/verify?${new URLSearchParams({ token }).toString()}`),
-    );
-    expect(shown).toMatch(/<input id="passkey-name" name="name" required maxlength="60"/);
-
-    const { fetcher: signedIn } = await signUp("sec_signup_named", undefined, "Phone");
-    expect((await passkeysOf("sec_signup_named")).map((passkey) => passkey.name)).toEqual([
-      "Phone",
-    ]);
-    expect(await page(await signedIn("/auth/edit"))).toContain("<strong>Phone</strong>");
-  });
-
-  it("refuses a sign-up passkey name over 60 characters, as the rename form does", async () => {
-    const fetcher = browser();
-    const token = await requestSignupLink(fetcher, "sec_long_name", "sec_long_name@mail.example");
-    const options = await registrationOptions(fetcher, token);
-    expect(options.status).toBe(200);
-    const passkey = await softPasskey(ORIGIN);
-    const response = await passkey.register(read(RegistrationOptionsSchema, await options.json()));
-    const verified = await postJson(fetcher, "/api/auth/passkey/verify-registration", {
-      response,
-      name: "n".repeat(61),
-      createSession: true,
-    });
-    expect(verified.status).toBe(400);
-    const lookup = await SELF.fetch(`${ORIGIN}/api/v1/accounts/lookup?acct=sec_long_name`);
-    expect(lookup.status).toBe(404);
-  });
-
-  it("lists, adds, renames, and removes passkeys, and keeps the last one", async () => {
-    const { fetcher } = await signUp("sec_passkeys");
+describe("Password and security: Access owns passkeys", () => {
+  it("tells the signed-in user that passkeys live in Access", async () => {
+    const { fetcher } = await signUp("sec_access_passkeys");
     const shown = await page(await fetcher("/auth/edit"));
-    expect(shown).toContain("<h1>Password and security</h1>");
-    expect(shown).toContain("This is your only passkey");
+    expect(shown).toContain("Cloudflare Access");
+    expect(shown).not.toContain("Create passkey");
     expect(shown).not.toContain('action="/auth/edit/passkeys/remove"');
-
-    const added = await addPasskey(fetcher, "Laptop");
-    expect(added.status).toBe(200);
-    const [first, second] = await passkeysOf("sec_passkeys");
-    expect(second?.name).toBe("Laptop");
-    expect(await page(await fetcher("/auth/edit"))).toContain("Laptop");
-
-    const renamed = await postForm(fetcher, "/auth/edit/passkeys/rename", {
-      id: second?.id ?? "",
-      name: "  Work laptop ",
-    });
-    expect(renamed.status).toBe(200);
-    expect(await page(renamed)).toContain("Passkey renamed.");
-    expect((await passkeysOf("sec_passkeys"))[1]?.name).toBe("Work laptop");
-    const blank = await postForm(fetcher, "/auth/edit/passkeys/rename", {
-      id: second?.id ?? "",
-      name: "  ",
-    });
-    expect(blank.status).toBe(422);
-
-    const removed = await postForm(fetcher, "/auth/edit/passkeys/remove", { id: second?.id ?? "" });
-    expect(removed.status).toBe(200);
-    expect(await page(removed)).toContain("Passkey removed.");
-    expect(await passkeysOf("sec_passkeys")).toHaveLength(1);
-
-    const last = await postForm(fetcher, "/auth/edit/passkeys/remove", { id: first?.id ?? "" });
-    expect(last.status).toBe(422);
-    expect(await page(last)).toContain("This is your only passkey");
-    expect(await passkeysOf("sec_passkeys")).toHaveLength(1);
-  });
-
-  it("keeps Better Auth's own delete endpoint from skipping the last-passkey rule", async () => {
-    const { fetcher } = await signUp("sec_builtin_delete");
-    const only = (await passkeysOf("sec_builtin_delete"))[0]?.id ?? "";
-    const refused = await postJson(fetcher, "/api/auth/passkey/delete-passkey", { id: only });
-    expect(refused.status).toBe(403);
-    expect(await passkeysOf("sec_builtin_delete")).toHaveLength(1);
-  });
-
-  it("does not let one user rename or remove another user's passkey", async () => {
-    const owner = await signUp("sec_owner");
-    expect((await addPasskey(owner.fetcher, "Spare")).status).toBe(200);
-    const [ownerKey] = await passkeysOf("sec_owner");
-    const { fetcher: attacker } = await signUp("sec_attacker");
-    expect((await addPasskey(attacker, "Spare")).status).toBe(200);
-
-    const rename = await postForm(attacker, "/auth/edit/passkeys/rename", {
-      id: ownerKey?.id ?? "",
-      name: "Stolen",
-    });
-    expect(rename.status).toBe(404);
-    const remove = await postForm(attacker, "/auth/edit/passkeys/remove", {
-      id: ownerKey?.id ?? "",
-    });
-    expect(remove.status).toBe(404);
-    expect((await passkeysOf("sec_owner")).map((passkey) => passkey.name)).not.toContain("Stolen");
-    expect(await passkeysOf("sec_owner")).toHaveLength(2);
-    expect(await passkeysOf("sec_attacker")).toHaveLength(2);
-  });
-
-  it("asks for a recent sign-in before it removes or adds a passkey", async () => {
-    const { fetcher } = await signUp("sec_stale");
-    expect((await addPasskey(fetcher, "Spare")).status).toBe(200);
-    const [first, second] = await passkeysOf("sec_stale");
-    await ageSessions("sec_stale");
-
-    const shown = await page(await fetcher("/auth/edit"));
-    expect(shown).toContain("signInWithPasskey");
-    expect(shown).not.toContain('action="/auth/edit/passkeys/remove"');
-    expect(shown).not.toContain('id="add-passkey"');
-
-    const removed = await postForm(fetcher, "/auth/edit/passkeys/remove", { id: first?.id ?? "" });
-    expect(removed.status).toBe(403);
-    expect(await passkeysOf("sec_stale")).toHaveLength(2);
-    expect((await addPasskey(fetcher, "Late")).status).toBe(403);
-    expect(await passkeysOf("sec_stale")).toHaveLength(2);
-
-    // Renaming is not a destructive action.
-    const renamed = await postForm(fetcher, "/auth/edit/passkeys/rename", {
-      id: second?.id ?? "",
-      name: "Renamed while stale",
-    });
-    expect(renamed.status).toBe(200);
+    expect((await fetcher("/api/auth/passkey/generate-register-options")).status).not.toBe(200);
   });
 });
 
 describe("Password and security: browser sessions", () => {
-  it("lists sessions, ends another one, and signs this browser out when it ends its own", async () => {
-    const { fetcher, passkey } = await signUp("sec_sessions");
-    await env.DB.prepare(`UPDATE "session" SET "createdAt" = "createdAt" - 5000 WHERE "userId" = ?`)
-      .bind(await userIdOf("sec_sessions"))
-      .run();
-    const other = await signInAgain(passkey);
+  it("lists the Access session and sends this browser to Access logout", async () => {
+    const { fetcher } = await signUp("sec_sessions");
     const sessions = await sessionsOf("sec_sessions");
-    expect(sessions).toHaveLength(2);
+    expect(sessions).toHaveLength(1);
     const shown = await page(await fetcher("/auth/edit"));
     expect(shown.match(/This browser/g)).toHaveLength(1);
 
-    // The newest session is the second sign-in; the first is `fetcher`'s.
-    const [otherSession, ownSession] = sessions;
-    const ended = await postForm(fetcher, "/auth/edit/sessions/revoke", {
-      id: otherSession?.id ?? "",
+    const own = await postForm(fetcher, "/auth/edit/sessions/revoke", {
+      id: sessions[0]?.id ?? "",
     });
-    expect(ended.status).toBe(200);
-    expect(await page(ended)).toContain("Session ended.");
-    expect(await sessionsOf("sec_sessions")).toHaveLength(1);
-    const gone = await other("/auth/edit");
-    expect(gone.status).toBe(302);
-    expect(gone.headers.get("location")).toContain("/auth/sign_in");
-
-    const own = await postForm(fetcher, "/auth/edit/sessions/revoke", { id: ownSession?.id ?? "" });
     expect(own.status).toBe(303);
-    expect(own.headers.get("location")).toBe("/auth/sign_in");
+    expect(own.headers.get("location")).toBe("/cdn-cgi/access/logout");
     expect(own.headers.getSetCookie().join("\n")).toMatch(/session_token=; .*Max-Age=0/);
     expect(await sessionsOf("sec_sessions")).toHaveLength(0);
-    expect((await fetcher("/auth/edit")).status).toBe(302);
+    // The assertion is still on the request, so the next view signs in again.
+    expect((await fetcher("/auth/edit")).status).toBe(200);
+    expect((await browser()("/auth/edit")).status).toBe(302);
   });
 
   it("does not let a user end another user's session", async () => {
@@ -367,37 +152,38 @@ describe("Password and security: browser sessions", () => {
     expect((await victim.fetcher("/auth/edit")).status).toBe(200);
   });
 
-  it("keeps Better Auth's own revoke endpoints from ending other sessions", async () => {
-    const { fetcher, passkey } = await signUp("sec_builtin_revoke");
-    const other = await signInAgain(passkey);
-    await ageSessions("sec_builtin_revoke");
-    const tokens = await env.DB.prepare(
-      `SELECT "token" FROM "session" WHERE "userId" = ? ORDER BY "createdAt"`,
-    )
-      .bind(await userIdOf("sec_builtin_revoke"))
-      .all();
-    const otherToken = read(z.array(z.object({ token: z.string() })), tokens.results)[1]?.token;
+  it("keeps Better Auth's own revoke endpoints from ending the Access session", async () => {
+    const { fetcher } = await signUp("sec_builtin_revoke");
+    const token = read(
+      z.object({ token: z.string() }),
+      await env.DB.prepare(`SELECT "token" FROM "session" WHERE "userId" = ?`)
+        .bind(await userIdOf("sec_builtin_revoke"))
+        .first(),
+    ).token;
 
     for (const [path, body] of [
-      ["/api/auth/revoke-session", { token: otherToken }],
+      ["/api/auth/revoke-session", { token }],
       ["/api/auth/revoke-sessions", {}],
       ["/api/auth/revoke-other-sessions", {}],
     ] as const) {
       expect((await postJson(fetcher, path, body)).status, path).toBe(403);
     }
-    expect(await sessionsOf("sec_builtin_revoke")).toHaveLength(2);
-    expect((await other("/auth/edit")).status).toBe(200);
+    expect(await sessionsOf("sec_builtin_revoke")).toHaveLength(1);
+    expect((await fetcher("/auth/edit")).status).toBe(200);
   });
 
   it("refuses to end a session when the sign-in is stale", async () => {
-    const { fetcher, passkey } = await signUp("sec_session_stale");
-    await signInAgain(passkey);
+    const { fetcher } = await signUp("sec_session_stale");
     await ageSessions("sec_session_stale");
     const target = (await sessionsOf("sec_session_stale"))[0]?.id ?? "";
 
+    const shown = await page(await fetcher("/auth/edit"));
+    expect(shown).toContain("sign in again through Cloudflare Access");
+    expect(shown).not.toContain('action="/auth/edit/sessions/revoke"');
+
     const refused = await postForm(fetcher, "/auth/edit/sessions/revoke", { id: target });
     expect(refused.status).toBe(403);
-    expect(await sessionsOf("sec_session_stale")).toHaveLength(2);
+    expect(await sessionsOf("sec_session_stale")).toHaveLength(1);
   });
 });
 

@@ -1,10 +1,10 @@
 import type { Page } from "@playwright/test";
-import { expect, signIn, signUp, test } from "./fixtures";
+import { dropAccessLogin, expect, signIn, signUp, test } from "./fixtures";
 
 /**
  * Basic operations in Mastodon's web UI against this server: visiting signed
- * out, signing up and in with a passkey, posting, favouriting and
- * bookmarking, following, replying, notifications, and editing the profile.
+ * out, signing in through Access, posting, favouriting and bookmarking,
+ * following, replying, notifications, and editing the profile.
  */
 
 /** A username no earlier run of the suite has used (the database is fresh per run anyway). */
@@ -111,17 +111,18 @@ test.describe("Mastodon web UI", () => {
     await expect(authorPage.getByText("thanks for the news")).toBeVisible();
   });
 
-  test("signs out and signs back in with the passkey", async ({ page }) => {
+  test("signs out of the local session and signs back in through Access", async ({ page }) => {
     const me = person("returning");
     await signUp(page, me);
     await page.goto("/auth/sign_in");
     await expect(page.getByText(`@${me}`)).toBeVisible();
     await page.getByRole("button", { name: "Sign out" }).click();
-    await page.waitForLoadState("networkidle");
+    // Access logout is what ends the login. Dropping the assertion is that step.
+    await dropAccessLogin(page);
     await page.goto("/");
     await expect(page.getByRole("link", { name: "Login" })).toBeVisible();
 
-    await signIn(page);
+    await signIn(page, me);
     await expect(page.getByRole("link", { name: `${me} @${me}` }).first()).toBeVisible();
     await post(page, "back again");
     await expect(status(page, "back again")).toBeVisible();

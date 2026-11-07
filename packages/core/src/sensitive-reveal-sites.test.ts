@@ -8,24 +8,20 @@ import { describe, expect, it } from "vite-plus/test";
  * test until it is added here, so each one shows up in review with its reason.
  */
 const REVEAL_SITES: Readonly<Record<string, number>> = {
-  // Hands the confirmed address to Better Auth's `createUser`.
-  "packages/worker/app/auth.ts": 1,
+  // Writes the Access email onto the linked Better Auth user row.
+  "packages/worker/src/access-session.ts": 1,
   // Writes the address and private key, and looks an account up by address.
   "packages/worker/src/account-store.ts": 3,
   // Shows a user the IP address of their own sessions.
   "packages/worker/src/account-security-pages.ts": 1,
   // The admin account list and page show the address (Mastodon's `/admin/accounts`).
   "packages/worker/src/admin-pages.ts": 2,
-  // Echoes the address back to the person signing up.
-  "packages/worker/src/auth-pages.ts": 2,
   // Imports the RSA key to sign a delivery.
   "packages/worker/src/http-signature.ts": 1,
   // Stores a newly generated instance actor key.
   "packages/worker/src/instance-actor.ts": 1,
   // The recipient of an outgoing email.
   "packages/worker/src/mailer.ts": 1,
-  // Validates the submitted address, then binds it into the sign-up intent queries.
-  "packages/worker/src/passkey-signup.ts": 2,
   // Domain and canonical-hash sign-up block checks.
   "packages/worker/src/registration-block-store.ts": 2,
   // The admin API's `Admin::Account#email`.

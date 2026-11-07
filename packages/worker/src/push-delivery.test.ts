@@ -4,7 +4,7 @@ import { z } from "zod";
 import { importJWK, jwtVerify } from "jose";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount, signupEmail } from "../test/auth-fixture";
-import { createSignupAccount } from "./passkey-signup";
+import { createSignupAccount } from "./account-provision";
 import { processPushJob } from "./push-delivery";
 import { RemoteAccountId } from "./remote-account-id";
 import { base64UrlToBytes, bytesToBase64Url } from "./vapid";

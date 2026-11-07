@@ -5,13 +5,13 @@ import {
   type StatusesCleanupPolicyValue,
 } from "@tstodon/domain";
 import type { AccountAlias } from "./account-alias-store";
-import { page, PASSKEY_SIGN_IN, WEBAUTHN_HELPERS } from "./auth-pages";
+import { page } from "./auth-pages";
 import { escapeHtml } from "./html";
 
 /**
  * Account settings that Mastodon keeps in Rails pages, not in its web app:
  * the settings index (`/settings/preferences`), posting defaults, privacy
- * and reach, passkeys and sessions (`/auth/edit`, in `account-security-pages.ts`), the "moving from" aliases (`/settings/aliases`) and the move to
+ * and reach, sessions (`/auth/edit`, in `account-security-pages.ts`), the "moving from" aliases (`/settings/aliases`) and the move to
  * another account (`/settings/migration`). Plain forms in the style of the
  * sign-in pages, posted back to this origin with the session cookie.
  */
@@ -199,7 +199,7 @@ export type MigrationState = Readonly<{
 
 /**
  * Mastodon's `/settings/migration`. Moving needs a recent sign-in: when the
- * session is older than that, the form signs in again with the passkey
+ * session is older than that, the form asks for a fresh Cloudflare Access login
  * before it posts.
  */
 export const migrationPage = (
@@ -228,18 +228,10 @@ export const migrationPage = (
         <label for="acct">Handle of the new account</label>
         <input id="acct" name="acct" required placeholder="username@domain" autocomplete="off" />
         <button type="submit">Move followers</button>
-      </form>${state.reauthRequired ? `\n      <p class="muted">You confirm with your passkey before the move starts.</p>` : ""}`
+      </form>${state.reauthRequired ? `\n      <p class="muted">You sign in again through Cloudflare Access before the move starts.</p>` : ""}`
           : `<p class="muted">You can move to a different account again after ${escapeHtml(state.nextMoveAt.toISOString())}.</p>`
       }
 ${messageLine(message)}`,
-    state.nextMoveAt === undefined && state.reauthRequired
-      ? `${WEBAUTHN_HELPERS}${PASSKEY_SIGN_IN}
-      document.getElementById("move").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        show("");
-        if (await signInWithPasskey()) event.target.submit();
-      });`
-      : "",
   );
 
 export const options = (

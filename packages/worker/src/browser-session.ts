@@ -1,16 +1,13 @@
 import type { FediRole, LocalAccount } from "@tstodon/domain";
 import type { Context } from "hono";
-import { getSession } from "void/auth";
-import { LocalAccountModeration } from "@tstodon/domain";
-import { findLocalAccountModeration } from "./account-moderation-store";
-import { findAccountByAuthUserId } from "./account-store";
-import { roleFromAuthUser } from "./auth";
+import { accessLogin } from "./access-session";
 
 /**
- * Who a browser request acts as, from its Better Auth session cookie: the
- * server-rendered pages (OAuth consent, account settings) use this, not a
- * bearer token. `signedInAt` is when the session was created, which a page
- * that asks for a recent sign-in compares against.
+ * Who a browser request acts as, from its Cloudflare Access JWT: the
+ * server-rendered pages (OAuth consent, account settings, the web app) use
+ * this, not a bearer token. `signedInAt` is when that Access login was
+ * issued, which a page that asks for a recent sign-in compares against.
+ * `sessionToken` is the secret the web app's OAuth token is derived from.
  */
 export type BrowserSession =
   | Readonly<{ kind: "SignedOut" }>
@@ -21,33 +18,25 @@ export type BrowserSession =
       account: LocalAccount;
       role: FediRole;
       signedInAt: Date;
-      /** The Better Auth user and session behind the cookie. */
+      /** The Better Auth user linked to the Access email, and its session row. */
       userId: string;
       sessionId: string;
+      sessionToken: string;
     }>;
 
-/** The signed-in user's local account, if it may use the API. */
-export const browserSession = async (env: Env): Promise<BrowserSession> => {
-  const state = getSession();
-  if (!state) {
-    return { kind: "SignedOut" };
+/** The signed-in user's local account, if Access authenticated this request. */
+export const browserSession = async (request: Request, env: Env): Promise<BrowserSession> => {
+  const login = await accessLogin(request, env);
+  switch (login.kind) {
+    case "None":
+      return { kind: "SignedOut" };
+    case "NoAccount":
+      return { kind: "NoAccount" };
+    case "Barred":
+      return { kind: "Barred" };
+    case "Account":
+      return login;
   }
-  const account = await findAccountByAuthUserId(env.DB, state.user.id);
-  if (account.isErr() || !account.value) {
-    return { kind: "NoAccount" };
-  }
-  const moderation = await findLocalAccountModeration(env.DB, account.value.id);
-  if (moderation.isOk() && LocalAccountModeration.isBarred(moderation.value)) {
-    return { kind: "Barred" };
-  }
-  return {
-    kind: "Account",
-    account: account.value,
-    role: roleFromAuthUser(Reflect.get(state.user, "role")),
-    signedInAt: state.session.createdAt,
-    userId: state.user.id,
-    sessionId: state.session.id,
-  };
 };
 
 /**

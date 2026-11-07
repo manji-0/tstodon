@@ -43,7 +43,7 @@ export const settingsAccount = async (
       ),
     };
   }
-  const session = await browserSession(c.env);
+  const session = await browserSession(c.req.raw, c.env);
   switch (session.kind) {
     case "Account":
       return session;
@@ -232,7 +232,7 @@ export const postSettingsMigration = async (
       c,
       account,
       signedInAt,
-      { kind: "error", text: "Confirm with your passkey to move your account." },
+      { kind: "error", text: "Sign in again through Cloudflare Access to move your account." },
       403,
     );
   }

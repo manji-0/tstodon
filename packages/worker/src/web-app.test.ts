@@ -168,7 +168,7 @@ describe("Mastodon web app", () => {
       headers: { Accept: "application/json" },
     });
     expect(out.status).toBe(200);
-    expect(await out.json()).toEqual({ redirect_to: "/" });
+    expect(await out.json()).toEqual({ redirect_to: "/cdn-cgi/access/logout" });
     const sessions = await env.DB.prepare(
       `SELECT COUNT(*) AS n FROM "session" s JOIN accounts a ON a.auth_user_id = s.userId WHERE a.username = 'web_signout'`,
     ).first<{ n: number }>();
