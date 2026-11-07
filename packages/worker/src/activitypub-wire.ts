@@ -60,6 +60,9 @@ export const ActorDocumentSchema = z
     inbox: z.string().min(1),
     outbox: z.string().min(1).optional(),
     featured: z.string().min(1).optional(),
+    /** Its `followers` / `following` collections: a URI, an object with an id, or a list of them. */
+    followers: z.unknown().optional(),
+    following: z.unknown().optional(),
     publicKey: ActorPublicKeySchema,
     name: z.string().optional(),
     endpoints: z

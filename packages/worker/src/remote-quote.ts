@@ -30,6 +30,8 @@ import {
   verifyRemoteQuote,
 } from "./remote-quote-verify";
 import { findStatusById } from "./status-store";
+import { findAccountById } from "./account-store";
+import { federateStampDeletion } from "./quote-stamp-revoke";
 
 /** The keys a note may name its quoted status by, in Mastodon's order; all but `quote` predate FEP-044f. */
 const QUOTE_KEYS = ["quote", "_misskey_quote", "quoteUrl", "quoteUri"] as const;
@@ -280,7 +282,7 @@ const syncRemoteQuoted = async (
  * Mastodon never shows one until it is accepted, and for a local status a
  * `QuoteRequest` accepts it.
  */
-export const syncRemoteQuote = async (
+const reconcileRemoteQuote = async (
   env: Env,
   identity: InstanceIdentity,
   status: RemoteStatusValue,
@@ -301,4 +303,75 @@ export const syncRemoteQuote = async (
     return syncRemoteQuoted(env, identity, status, existing.value, ref, context);
   }
   return forget(env.DB, quoting, existing.value);
+};
+
+/**
+ * Withdraw the stamp of an accepted quote of a local status that the note no
+ * longer makes (`before` is the quote before the sync, `after` what the sync
+ * left), as Mastodon's `update_quote!` runs `RevokeQuoteService` when the
+ * quoted status changes. A note that drops its quote is revoked the same
+ * way, where Mastodon only destroys the quote, so the servers that saw the
+ * stamp hear it is gone. The quote row itself is already replaced or gone.
+ */
+const withdrawDroppedStamp = async (
+  env: Env,
+  identity: InstanceIdentity,
+  status: RemoteStatusValue,
+  before: QuoteValue | undefined,
+  after: QuoteValue | undefined,
+): Promise<void> => {
+  if (
+    before?.quoted.kind !== "LocalStatus" ||
+    before.state.kind !== "Accepted" ||
+    after?.id === before.id
+  ) {
+    return;
+  }
+  const quoted = await findStatusById(env.DB, before.quoted.statusId);
+  if (quoted.isErr() || quoted.value === undefined) {
+    return;
+  }
+  const author = await findAccountById(env.DB, quoted.value.accountId);
+  if (author.isErr() || author.value === undefined) {
+    return;
+  }
+  await federateStampDeletion(
+    env,
+    identity,
+    author.value,
+    quoted.value,
+    { kind: "RemoteStatus", status },
+    before.id,
+  );
+};
+
+/**
+ * {@link reconcileRemoteQuote}, then {@link withdrawDroppedStamp} when an
+ * accepted quote of a local status went away with the edit.
+ */
+export const syncRemoteQuote = async (
+  env: Env,
+  identity: InstanceIdentity,
+  status: RemoteStatusValue,
+  raw: unknown,
+  context: RemoteQuoteContext,
+): Promise<Result<void, RepositoryError>> => {
+  const quoting = StatusTarget.remote(status.id);
+  const before = await findQuoteByQuoting(env.DB, quoting);
+  if (before.isErr()) {
+    return err(before.error);
+  }
+  const synced = await reconcileRemoteQuote(env, identity, status, raw, context);
+  if (synced.isErr()) {
+    return synced;
+  }
+  const accepted =
+    before.value?.quoted.kind === "LocalStatus" && before.value.state.kind === "Accepted";
+  if (accepted) {
+    const after = await findQuoteByQuoting(env.DB, quoting);
+    if (after.isOk()) {
+      await withdrawDroppedStamp(env, identity, status, before.value, after.value);
+    }
+  }
+  return synced;
 };

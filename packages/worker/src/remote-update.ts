@@ -100,7 +100,7 @@ const applyNoteUpdate = async (
   if (!cached.value || cached.value.actorUri !== signer.actorUri) {
     return ok(undefined);
   }
-  const parsed = noteFromUnknown(target.raw, signer.actorUri);
+  const parsed = noteFromUnknown(target.raw, signer);
   if (parsed.isErr()) {
     return parsed.error.kind === "RepositoryError" ? err(parsed.error) : ok(undefined);
   }

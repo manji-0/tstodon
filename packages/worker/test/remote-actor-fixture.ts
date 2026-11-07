@@ -30,6 +30,8 @@ export const remoteActor = async (
     accountDomain?: string;
     cache?: false;
     fetchedAt?: string;
+    followersUri?: string;
+    followingUri?: string;
   }> = {},
 ): Promise<Remote> => {
   const actorUri = `https://${host}/users/${username}`;
@@ -44,6 +46,8 @@ export const remoteActor = async (
     domain: options.accountDomain ?? host,
     inboxUri: `${actorUri}/inbox`,
     sharedInboxUri: options.sharedInboxUri,
+    followersUri: options.followersUri,
+    followingUri: options.followingUri,
     publicKeyId: `${actorUri}#main-key`,
     publicKeyPem: keys.publicKeyPem,
     displayName: `Remote ${username}`,

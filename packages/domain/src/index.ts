@@ -112,6 +112,7 @@ export {
   QuoteApprovalPolicy,
   type QuoteApprovalForViewer,
   type QuoteAudience,
+  type QuotePolicyAuthor,
   type QuoteViewerRelation,
   QuoteInteractionPolicy,
   QuoteInteractionPolicySchema,
@@ -186,6 +187,12 @@ export {
 } from "./status-composition";
 export { StatusDraftError } from "./status-draft-error";
 export type { FindThreadParent, ThreadStatus } from "./thread-status";
+export type {
+  FindRemoteActorInbox,
+  ListLocalBoosterAccountIds,
+  ListRemoteFollowerInboxes,
+  ListStatusInteractorInboxes,
+} from "./status-reach-resolver";
 export { StatusId, type StatusId as StatusIdValue } from "./status-id";
 export { StatusTarget, type StatusTarget as StatusTargetValue } from "./status-target";
 export {

@@ -1,7 +1,6 @@
 import { StatusAuthors } from "../../account-presentation";
 import {
   type InstanceIdentity,
-  type LocalAccount,
   type LocalStatus as LocalStatusValue,
   Quote,
   type RemoteStatusValue,
@@ -34,19 +33,12 @@ import { RemoteAccountId } from "../../remote-account-id";
 import { findStatusById, findStatusesByIds } from "../../status-store";
 import { canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
 import { findQuoteByQuoting, listQuotingTargets, saveQuoteState } from "../../quote-store";
-import { localNoteRef } from "../../activitypub";
-import { enqueueActivityToInboxes } from "../../delivery";
-import {
-  quoteAuthorizationDeleteActivity,
-  localQuoteAuthorization,
-} from "../../quote-authorization-document";
-import { statusTargetRef } from "../../quote-uri";
+import { federateStampDeletion } from "../../quote-stamp-revoke";
 import { findAccountById } from "../../account-store";
 import { nowIso } from "../../clock";
 import { enqueueHomeFanOut } from "../../home-fan-out";
 import { announceNoteUpdate } from "../../local-status-update";
 import { enqueuePublicFanOut } from "../../public-fan-out";
-import { findRemoteActorByUri, listAcceptedRemoteFollowerInboxes } from "../../remote-actor-store";
 
 const statusEngagementAccounts = async (
   c: Context<{ Bindings: Env }>,
@@ -174,52 +166,6 @@ export const getV1StatusesByIdQuotes = async (
       documentsById([...localDocuments.value, ...remoteDocuments.value]),
     ),
   );
-};
-
-/**
- * Withdraw the stamp of a revoked quote, as Mastodon's `RevokeQuoteService`.
- * Mastodon sends the `Delete` to the reach of both statuses; this sends it to
- * the remote followers of each local author whose status is not direct, and
- * to the inbox of a remote quoting author, which is the part of that reach
- * stored here. Best effort: the revoke stands either way.
- */
-const federateStampDeletion = async (
-  env: Env,
-  identity: InstanceIdentity,
-  quotedAuthor: LocalAccount,
-  quoted: LocalStatusValue,
-  quoting: FoundStatus,
-  quoteId: string,
-): Promise<void> => {
-  const target = localNoteRef(identity, quotedAuthor, quoted.id);
-  const interacting = await statusTargetRef(env, identity, foundStatusTarget(quoting));
-  if (!interacting) {
-    return;
-  }
-  const audiences = [
-    ...(quoted.visibility.kind === "Direct" ? [] : [quotedAuthor.id]),
-    ...(quoting.kind === "LocalStatus" && quoting.status.visibility.kind !== "Direct"
-      ? [quoting.status.accountId]
-      : []),
-  ];
-  const inboxes: string[] = [];
-  for (const accountId of new Set(audiences)) {
-    const found = await listAcceptedRemoteFollowerInboxes(env.DB, accountId);
-    inboxes.push(...(found.isOk() ? found.value : []));
-  }
-  if (quoting.kind === "RemoteStatus") {
-    const author = await findRemoteActorByUri(env.DB, quoting.status.actorUri);
-    inboxes.push(...(author.isOk() && author.value ? [author.value.inboxUri] : []));
-  }
-  const activity = quoteAuthorizationDeleteActivity(
-    localQuoteAuthorization(target, quoteId, interacting.uri),
-  );
-  const enqueued = await enqueueActivityToInboxes(env, quotedAuthor.id, "Delete", activity, [
-    ...new Set(inboxes),
-  ]);
-  if (enqueued.isErr()) {
-    console.error(JSON.stringify({ kind: "QuoteStampDeleteNotFederated", quoteId }));
-  }
 };
 
 /**

@@ -10,6 +10,7 @@ import {
   type RemoteStatus as RemoteStatusValue,
   type Hostname,
   type MentionedPost,
+  type QuotePolicyAuthor,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
@@ -101,9 +102,10 @@ export const noteEmojis = (
 
 export const noteFromUnknown = (
   raw: unknown,
-  actorUri: string,
+  author: QuotePolicyAuthor,
   idClock: IdClock = "Received",
 ): Result<RemoteStatusValue, { kind: "InvalidObject" } | RepositoryError> => {
+  const actorUri = author.actorUri;
   const document = parseNoteDocument(raw);
   if (document.isErr()) {
     return err({ kind: "InvalidObject" });
@@ -157,9 +159,10 @@ export const noteFromUnknown = (
       document.value.summary ?? "",
       ...(poll.kind === "NoPoll" ? [] : poll.options.map((option) => option.title)),
     ]),
-    quotePolicy: QuoteInteractionPolicy.fromCanQuote(canQuoteOf(document.value.interactionPolicy), {
-      actorUri,
-    }),
+    quotePolicy: QuoteInteractionPolicy.fromCanQuote(
+      canQuoteOf(document.value.interactionPolicy),
+      author,
+    ),
     ...(document.value.url ? { url: document.value.url } : {}),
   });
 };
@@ -505,7 +508,7 @@ const storeRemoteNote = async (
   raw: unknown,
   options: PersistOptions,
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
-  const parsed = noteFromUnknown(raw, actor.actorUri, options.idClock);
+  const parsed = noteFromUnknown(raw, actor, options.idClock);
   if (parsed.isErr()) {
     return parsed.error.kind === "RepositoryError" ? err(parsed.error) : ok(undefined);
   }

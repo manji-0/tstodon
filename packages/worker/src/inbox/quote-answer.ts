@@ -17,6 +17,7 @@ import { enqueueHomeFanOut } from "../home-fan-out";
 import { announceNoteUpdate } from "../local-status-update";
 import { enqueuePublicFanOut } from "../public-fan-out";
 import { findQuotesByApprovalUri, saveQuoteState } from "../quote-store";
+import { forwardStampDelete } from "../quote-stamp-revoke";
 import { stampAuthorizes } from "../remote-quote-verify";
 import { findRemoteStatusById } from "../remote-status-store";
 import { findStatusById } from "../status-store";
@@ -186,14 +187,17 @@ const publishRemoteQuoteUpdate = async (env: Env, status: RemoteStatusValue): Pr
  * The quoted author deleted the stamp of a quote, as Mastodon's
  * `Delete#revoke_quote`: every pending or accepted quote that stamp approved
  * is revoked, whether the quoting status is local or remote. A local quoting
- * status is announced on its author's streams. `false` when `uri` is no stamp
- * the signer gave, so the `Delete` is for something else.
+ * status is announced on its author's streams. `body`, the `Delete` as
+ * received, is forwarded to each quoting status's audience here
+ * (`forwardStampDelete`, Mastodon's `ActivityPub::Forwarder`). `false` when
+ * `uri` is no stamp the signer gave, so the `Delete` is for something else.
  */
 export const revokeQuoteStamp = async (
   env: Env,
   identity: InstanceIdentity,
   signer: RemoteActor,
   uri: string,
+  body: unknown,
 ): Promise<Result<boolean, RepositoryError>> => {
   const quotes = await findQuotesByApprovalUri(env.DB, uri);
   if (quotes.isErr()) {
@@ -213,6 +217,10 @@ export const revokeQuoteStamp = async (
       if (settled.isErr()) {
         return err(settled.error);
       }
+      await forwardStampDelete(env, identity, signer, body, {
+        kind: "Local",
+        status: quoting.value.note,
+      });
       revoked = true;
       continue;
     }
@@ -236,6 +244,10 @@ export const revokeQuoteStamp = async (
     }
     if (remoteQuoting.value) {
       await publishRemoteQuoteUpdate(env, remoteQuoting.value);
+      await forwardStampDelete(env, identity, signer, body, {
+        kind: "Remote",
+        status: remoteQuoting.value,
+      });
     }
     revoked = true;
   }

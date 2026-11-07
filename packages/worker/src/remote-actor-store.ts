@@ -98,6 +98,8 @@ export const RemoteActorRowSchema = z.object({
   moved_to: z.string().nullable().default(null),
   outbox_uri: z.string().nullable().default(null),
   featured_uri: z.string().nullable().default(null),
+  followers_uri: z.string().nullable().default(null),
+  following_uri: z.string().nullable().default(null),
   fetched_at: z.string().min(1),
   last_webfingered_at: z.string().nullable().default(null),
 });
@@ -130,6 +132,8 @@ const remoteActorFromRow = (row: RemoteActorRow): Result<RemoteActor, Repository
     ...(row.moved_to ? { movedTo: row.moved_to } : {}),
     ...(row.outbox_uri ? { outboxUri: row.outbox_uri } : {}),
     ...(row.featured_uri ? { featuredUri: row.featured_uri } : {}),
+    ...(row.followers_uri ? { followersUri: row.followers_uri } : {}),
+    ...(row.following_uri ? { followingUri: row.following_uri } : {}),
   }).mapErr(() => toRepositoryError("invalid remote actor row"));
 };
 
@@ -266,6 +270,8 @@ const upsertRemoteActorStatement = (actor: RemoteActor) => {
     actor.outboxUri ?? null,
     actor.featuredUri ?? null,
     actor.webfingeredAt ?? null,
+    actor.followersUri ?? null,
+    actor.followingUri ?? null,
   );
 };
 
@@ -308,6 +314,8 @@ export const upsertRemoteActorKeepingHandle = async (
         JSON.stringify(actor.profile),
         actor.outboxUri ?? null,
         actor.featuredUri ?? null,
+        actor.followersUri ?? null,
+        actor.followingUri ?? null,
       ),
       HandleRow,
     ),
