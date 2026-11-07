@@ -11,6 +11,12 @@ import { signAccessJwt } from "./access-jwt-fixture";
 
 export const ORIGIN = "https://example.com";
 
+/**
+ * The test Access key is refused off a local host. Browser pages are fetched
+ * here; {@link ORIGIN} stays the instance URL tests compare against.
+ */
+const REQUEST_ORIGIN = "http://127.0.0.1";
+
 export const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   const parsed = schemaResult(schema)(body);
   if (parsed.isErr()) {
@@ -36,9 +42,13 @@ export const browser = (assertion?: string) => {
       headers.set("cookie", [...cookies].map(([name, value]) => `${name}=${value}`).join("; "));
     }
     if (init.method !== undefined && init.method !== "GET" && !headers.has("origin")) {
-      headers.set("origin", ORIGIN);
+      headers.set("origin", REQUEST_ORIGIN);
     }
-    const response = await SELF.fetch(`${ORIGIN}${path}`, { ...init, headers, redirect: "manual" });
+    const response = await SELF.fetch(`${REQUEST_ORIGIN}${path}`, {
+      ...init,
+      headers,
+      redirect: "manual",
+    });
     for (const line of response.headers.getSetCookie()) {
       const [pair = ""] = line.split(";");
       const separator = pair.indexOf("=");

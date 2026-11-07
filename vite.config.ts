@@ -2,7 +2,6 @@ import path from "node:path";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vite-plus";
 import {
-  LOCAL_ACCESS_ADMIN_GROUP,
   LOCAL_ACCESS_AUD,
   LOCAL_ACCESS_JWKS_JSON,
   LOCAL_ACCESS_TEAM_DOMAIN,
@@ -53,7 +52,9 @@ export default defineConfig({
                 CF_ACCESS_TEAM_DOMAIN: LOCAL_ACCESS_TEAM_DOMAIN,
                 CF_ACCESS_AUD: LOCAL_ACCESS_AUD,
                 CF_ACCESS_JWKS_JSON: LOCAL_ACCESS_JWKS_JSON,
-                CF_ACCESS_ADMIN_GROUPS: LOCAL_ACCESS_ADMIN_GROUP,
+                // Leave CF_ACCESS_ADMIN_GROUPS unset. A non-empty list is the
+                // role on every Access login, which would undo a role a test
+                // sets on the user row.
                 // Sign-up mail lands in APP_CACHE, where tests read the link.
                 EMAIL_TRANSPORT: "capture",
               },

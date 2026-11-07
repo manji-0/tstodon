@@ -16,6 +16,7 @@ const signInAs = async (page: Page, email: string): Promise<void> => {
 /** Provision `username` from an Access login and open the web app as that person. */
 export const signUp = async (page: Page, username: string): Promise<void> => {
   await signInAs(page, `${username}@mail.example`);
+  await page.goto("/auth/sign_in");
   await page.goto("/");
   await expect(page.getByRole("link", { name: `${username} @${username}` }).first()).toBeVisible();
 };

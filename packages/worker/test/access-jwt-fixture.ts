@@ -65,8 +65,8 @@ export const accessAuthHeaders = async (
 ): Promise<Record<string, string>> => {
   const groups = options?.admin ? [LOCAL_ACCESS_ADMIN_GROUP] : [];
   const token = await signAccessJwt({ email, groups });
-  if (options?.via === "assertion") {
-    return { "Cf-Access-Jwt-Assertion": token };
+  if (options?.via === "bearer") {
+    return { Authorization: `Bearer ${token}` };
   }
-  return { Authorization: `Bearer ${token}` };
+  return { "Cf-Access-Jwt-Assertion": token };
 };

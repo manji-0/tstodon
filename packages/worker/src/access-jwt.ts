@@ -50,42 +50,48 @@ const AccessJwtClaimsSchema = z
   })
   .loose();
 
-const copyJwkField = (
-  jwk: JWK,
-  field: "kid" | "n" | "e" | "crv" | "x" | "y" | "d" | "k",
-  value: string | undefined,
-): void => {
+const copyJwkField = (jwk: JWK, field: "kid" | "n" | "e", value: string | undefined): void => {
   if (value !== undefined) {
     jwk[field] = value;
   }
 };
 
-/** A JWK jose can use, built field by field from the parsed JWKS. */
+/**
+ * RSA keys only. Access signs with RS256; other `kty` values in a pasted JWKS
+ * are ignored so they cannot verify a token.
+ */
 const accessJwk = (key: z.infer<typeof JsonWebKeySchema>): JWK | undefined => {
-  if (
-    key.kty !== "RSA" &&
-    key.kty !== "EC" &&
-    key.kty !== "OKP" &&
-    key.kty !== "oct" &&
-    key.kty !== "AKP"
-  ) {
+  if (key.kty !== "RSA" || (key.alg !== undefined && key.alg !== "RS256")) {
     return undefined;
   }
-  const jwk: JWK = { kty: key.kty };
+  const jwk: JWK = { kty: "RSA" };
   copyJwkField(jwk, "kid", key.kid);
   copyJwkField(jwk, "n", key.n);
   copyJwkField(jwk, "e", key.e);
-  copyJwkField(jwk, "crv", key.crv);
-  copyJwkField(jwk, "x", key.x);
-  copyJwkField(jwk, "y", key.y);
   if (key.use === "sig" || key.use === "enc") {
     jwk.use = key.use;
   }
-  if (key.alg === "RS256" || key.alg === "ES256") {
-    jwk.alg = key.alg;
+  if (key.alg === "RS256") {
+    jwk.alg = "RS256";
   }
   return jwk;
 };
+
+/** Published in the test fixture. A production host must not accept it. */
+const LOCAL_ACCESS_KID = "tstodon-local-access";
+
+/** Same hosts Void treats as local, plus IPv6 loopback. */
+const isLocalAccessHost = (hostname: string): boolean => {
+  const host = hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "");
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host.endsWith(".local");
+};
+
+/** Issuer, with surrounding whitespace and a trailing slash removed. */
+const accessTeamDomain = (env: Env): string =>
+  optionalEnvString(env, "CF_ACCESS_TEAM_DOMAIN").trim().replace(/\/+$/, "");
 
 const parseJoseErrorCode = schemaResult(JoseErrorCodeSchema);
 const parseAccessJwks = schemaResult(AccessJwksSchema);
@@ -170,7 +176,7 @@ const accessJwks = (env: Env): Result<JWTVerifyGetKey, AccessJwtError> => {
   }
 
   const override = optionalEnvString(env, "CF_ACCESS_JWKS_URL").trim();
-  const teamDomain = optionalEnvString(env, "CF_ACCESS_TEAM_DOMAIN").replace(/\/$/, "");
+  const teamDomain = accessTeamDomain(env);
   const url =
     override.length > 0
       ? override
@@ -191,8 +197,7 @@ const accessJwks = (env: Env): Result<JWTVerifyGetKey, AccessJwtError> => {
 
 /** Whether this Worker has the issuer and audience it needs to trust Access. */
 export const accessConfigured = (env: Env): boolean =>
-  optionalEnvString(env, "CF_ACCESS_TEAM_DOMAIN").trim().length > 0 &&
-  optionalEnvString(env, "CF_ACCESS_AUD").trim().length > 0;
+  accessTeamDomain(env).length > 0 && optionalEnvString(env, "CF_ACCESS_AUD").trim().length > 0;
 
 /**
  * Verify an Access JWT. `CF_ACCESS_TEAM_DOMAIN` is the issuer
@@ -203,8 +208,9 @@ export const accessConfigured = (env: Env): boolean =>
 export const accessIdentity = async (
   token: string,
   env: Env,
+  hostname: string,
 ): Promise<Result<AccessIdentity, AccessJwtError>> => {
-  const teamDomain = optionalEnvString(env, "CF_ACCESS_TEAM_DOMAIN").replace(/\/$/, "");
+  const teamDomain = accessTeamDomain(env);
   const audience = optionalEnvString(env, "CF_ACCESS_AUD").trim();
   if (teamDomain.length === 0 || audience.length === 0) {
     return err({ kind: "NotConfigured" });
@@ -217,8 +223,12 @@ export const accessIdentity = async (
     const verified = await jwtVerify(token, jwks.value, {
       issuer: teamDomain,
       audience,
+      algorithms: ["RS256"],
       clockTolerance: 5,
     });
+    if (verified.protectedHeader.kid === LOCAL_ACCESS_KID && !isLocalAccessHost(hostname)) {
+      return err({ kind: "InvalidToken" });
+    }
     const claims = parseAccessJwtClaims(verified.payload);
     if (claims.isErr() || claims.value.email === undefined) {
       return err({ kind: "InvalidToken" });

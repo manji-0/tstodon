@@ -25,7 +25,7 @@ import {
 } from "../oauth-store";
 import { DEFAULT_SCOPES, parseScopes, scopesWithin } from "../oauth-scope";
 import { parseInstanceIdentity } from "../runtime-config";
-import { signInRedirect as pageSignInRedirect } from "../page-redirect";
+import { pageRedirect, signInRedirect as pageSignInRedirect } from "../page-redirect";
 
 export const OOB_REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob";
 
@@ -158,12 +158,16 @@ export const getOauthAuthorize = async (c: Context<{ Bindings: Env }, "/oauth/au
     return answerCheck(c, check);
   }
   if (params.value.force_login === "true" || params.value.force_login === "1") {
-    // Access still holds the browser until its own logout. Sending the person
-    // there is what makes the next visit a new login.
-    return c.redirect(ACCESS_LOGOUT_PATH);
+    // Access still holds the browser until its own logout. The authorize
+    // request comes back with the JWT after that logout; dropping it here
+    // would discard the client's redirect, state, and PKCE.
+    const back = new URL(c.req.url);
+    back.searchParams.delete("force_login");
+    const returnTo = `${back.origin}${back.pathname}${back.search}`;
+    return pageRedirect(c, `${ACCESS_LOGOUT_PATH}?redirect_url=${encodeURIComponent(returnTo)}`);
   }
   const signedIn = await browserSession(c.req.raw, c.env);
-  if (signedIn.kind === "SignedOut") {
+  if (signedIn.kind === "SignedOut" || signedIn.kind === "NoAccount") {
     return signInRedirect(c);
   }
   if (signedIn.kind !== "Account") {
@@ -393,11 +397,11 @@ const returnTo = (c: Context<{ Bindings: Env }>): string => {
 };
 
 export const getAuthSignIn = async (c: Context<{ Bindings: Env }, "/auth/sign_in">) => {
-  const signedIn = await browserSession(c.req.raw, c.env);
+  const signedIn = await browserSession(c.req.raw, c.env, { provision: true });
   return c.html(
     signInPage(
       instanceName(c.env),
-      returnTo(c),
+      signedIn.kind === "NoAccount" ? "/" : returnTo(c),
       signedIn.kind === "Account" ? signedIn.account.username : undefined,
     ),
   );

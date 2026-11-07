@@ -43,7 +43,6 @@
     "CF_ACCESS_TEAM_DOMAIN": "https://tstodon.cloudflareaccess.com",
     "CF_ACCESS_AUD": "tstodon-local-aud",
     "CF_ACCESS_JWKS_JSON": "{\"keys\":[{\"kty\":\"RSA\",\"n\":\"qHE50MFXgxUeSKwP4ChF1TRN7gvR1z4bRcTIc7Jcr6qTrccio5BjeveN7dxj8pP985tYQMVI9sx81vEA7v38KzY0Q9UqEgZzd7VP_TGJEm4fxaP7dZSVQWTvrTxNpqCCPml4rc3nNgABRWniSgwCWR1A7d7mpOTicxXG6PApWAPDuRGdBNq2hnkm2fkFSKKf_oyaXjlRZJMYiMR8pOoCb9xrSUKTzrUjK_AvSmt3CcnJwMqMMVn_ZP7-nRi-OogwkOjW0NyUzIle7KQkMYDhHGRMUnZjj6Qwo0yBzvJXXuBjusHTPYHPlSVnY4k9uxA2SojnCUgrM20tGLsmUofpFw\",\"e\":\"AQAB\",\"kid\":\"tstodon-local-access\",\"alg\":\"RS256\",\"use\":\"sig\"}]}",
-    "CF_ACCESS_ADMIN_GROUPS": "tstodon-admins",
     "POLL_UPDATE_DELAY_SECONDS": "5",
   },
   "d1_databases": [

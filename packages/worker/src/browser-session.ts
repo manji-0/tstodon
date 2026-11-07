@@ -5,9 +5,10 @@ import { accessLogin } from "./access-session";
 /**
  * Who a browser request acts as, from its Cloudflare Access JWT: the
  * server-rendered pages (OAuth consent, account settings, the web app) use
- * this, not a bearer token. `signedInAt` is when that Access login was
- * issued, which a page that asks for a recent sign-in compares against.
- * `sessionToken` is the secret the web app's OAuth token is derived from.
+ * this, not a bearer token. `signedInAt` is the Access JWT `iat`. Access can
+ * re-issue an app token from a still-valid org session, so that time is not
+ * always a fresh human sign-in. `sessionToken` is the secret the web app's
+ * OAuth token is derived from.
  */
 export type BrowserSession =
   | Readonly<{ kind: "SignedOut" }>
@@ -24,9 +25,16 @@ export type BrowserSession =
       sessionToken: string;
     }>;
 
-/** The signed-in user's local account, if Access authenticated this request. */
-export const browserSession = async (request: Request, env: Env): Promise<BrowserSession> => {
-  const login = await accessLogin(request, env);
+/**
+ * The signed-in user's local account, if Access authenticated this request.
+ * `provision` creates an account; only the sign-in page turns that on.
+ */
+export const browserSession = async (
+  request: Request,
+  env: Env,
+  options?: Readonly<{ provision?: boolean }>,
+): Promise<BrowserSession> => {
+  const login = await accessLogin(request, env, options);
   switch (login.kind) {
     case "None":
       return { kind: "SignedOut" };
