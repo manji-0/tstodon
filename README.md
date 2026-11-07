@@ -39,7 +39,7 @@ pnpm dev
 
 Local routes that depend on D1 or R2 need matching local or remote bindings. Start with [Clone And Run](docs/getting-started/clone-and-run.md). For media URLs and CORS vars, see [Configuration](docs/reference/configuration.md#media-public-urls).
 
-Two-instance federation smoke (process-compose): [e2e federation](docs/getting-started/e2e-federation.md).
+Two-instance federation smoke (process-compose): [e2e federation](docs/getting-started/e2e-federation.md). HTTPS hostnames for the same pair: [portless](docs/getting-started/e2e-federation-portless.md).
 
 ## Documentation
 
