@@ -345,6 +345,15 @@ model blocks {
   @@index([target_account_id], map: "idx_blocks_target_account_id")
 }
 
+model remote_blocks {
+  actor_uri  String
+  account_id String
+  created_at String
+
+  @@id([actor_uri, account_id])
+  @@index([account_id, actor_uri], map: "idx_remote_blocks_account")
+}
+
 model mutes {
   id                 String? @unique
   account_id        String
@@ -758,6 +767,7 @@ model reports {
 model remote_status_mentions {
   status_id       String
   account_id      String
+  silent          Int             @default(0)
   accounts        accounts        @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   remote_statuses remote_statuses @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 

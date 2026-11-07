@@ -5,6 +5,7 @@ import {
   Quote,
   type QuoteValue,
   type RemoteActor,
+  type RemoteStatusValue,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountById } from "../account-store";
@@ -12,7 +13,9 @@ import { localNoteRef } from "../activitypub";
 import { refId } from "../activitypub-wire";
 import { nowIso } from "../clock";
 import type { RepositoryError } from "../d1";
+import { enqueueHomeFanOut } from "../home-fan-out";
 import { announceNoteUpdate } from "../local-status-update";
+import { enqueuePublicFanOut } from "../public-fan-out";
 import { findQuotesByApprovalUri, saveQuoteState } from "../quote-store";
 import { stampAuthorizes } from "../remote-quote-verify";
 import { findRemoteStatusById } from "../remote-status-store";
@@ -167,11 +170,24 @@ export const receiveQuoteAnswer = async (
     : ok(undefined);
 };
 
+/** Tell local timelines that show a remote quoting note that its quote changed. */
+const publishRemoteQuoteUpdate = async (env: Env, status: RemoteStatusValue): Promise<void> => {
+  await enqueueHomeFanOut(env, {
+    event: "status.update",
+    entryId: status.id,
+    author: { kind: "RemoteActor", actorUri: status.actorUri },
+  });
+  if (status.visibility.kind === "Public") {
+    await enqueuePublicFanOut(env, { event: "status.update", entryId: status.id });
+  }
+};
+
 /**
  * The quoted author deleted the stamp of a quote, as Mastodon's
- * `Delete#revoke_quote`: the local quote it approved is revoked, past any
- * other quote naming the same URI. `false` when `uri` is no stamp the signer
- * gave a local quote, so the `Delete` is for something else.
+ * `Delete#revoke_quote`: every pending or accepted quote that stamp approved
+ * is revoked, whether the quoting status is local or remote. A local quoting
+ * status is announced on its author's streams. `false` when `uri` is no stamp
+ * the signer gave, so the `Delete` is for something else.
  */
 export const revokeQuoteStamp = async (
   env: Env,
@@ -183,6 +199,7 @@ export const revokeQuoteStamp = async (
   if (quotes.isErr()) {
     return err(quotes.error);
   }
+  let revoked = false;
   for (const quote of quotes.value) {
     if (quote.state.kind !== "Pending" && quote.state.kind !== "Accepted") {
       continue;
@@ -192,10 +209,35 @@ export const revokeQuoteStamp = async (
       return err(quoting.error);
     }
     if (quoting.value) {
-      return (await settle(env, identity, quoting.value, Quote.reject(quote), false)).map(
-        () => true,
-      );
+      const settled = await settle(env, identity, quoting.value, Quote.reject(quote), false);
+      if (settled.isErr()) {
+        return err(settled.error);
+      }
+      revoked = true;
+      continue;
     }
+    if (quote.quoting.kind !== "RemoteStatus" || quote.quoted.kind !== "RemoteStatus") {
+      continue;
+    }
+    const quoted = await findRemoteStatusById(env.DB, quote.quoted.statusId);
+    if (quoted.isErr()) {
+      return err(quoted.error);
+    }
+    if (quoted.value?.actorUri !== signer.actorUri) {
+      continue;
+    }
+    const saved = await saveQuoteState(env.DB, Quote.reject(quote));
+    if (saved.isErr()) {
+      return err(saved.error);
+    }
+    const remoteQuoting = await findRemoteStatusById(env.DB, quote.quoting.statusId);
+    if (remoteQuoting.isErr()) {
+      return err(remoteQuoting.error);
+    }
+    if (remoteQuoting.value) {
+      await publishRemoteQuoteUpdate(env, remoteQuoting.value);
+    }
+    revoked = true;
   }
-  return ok(false);
+  return ok(revoked);
 };

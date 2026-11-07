@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  */
 export const insertRemoteStatusMention = $runtime.makeTypedQueryFactory(
-  "INSERT OR IGNORE INTO remote_status_mentions (status_id, account_id) VALUES ($1, $2)",
+  "INSERT INTO remote_status_mentions (status_id, account_id, silent)\nVALUES ($1, $2, 0)\nON CONFLICT(status_id, account_id) DO UPDATE SET silent = 0",
 ) as (
   statusId: string,
   accountId: string,

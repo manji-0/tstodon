@@ -41,6 +41,11 @@ import {
   localQuoteAuthorization,
 } from "../../quote-authorization-document";
 import { statusTargetRef } from "../../quote-uri";
+import { findAccountById } from "../../account-store";
+import { nowIso } from "../../clock";
+import { enqueueHomeFanOut } from "../../home-fan-out";
+import { announceNoteUpdate } from "../../local-status-update";
+import { enqueuePublicFanOut } from "../../public-fan-out";
 import { findRemoteActorByUri, listAcceptedRemoteFollowerInboxes } from "../../remote-actor-store";
 
 const statusEngagementAccounts = async (
@@ -217,6 +222,49 @@ const federateStampDeletion = async (
   }
 };
 
+/**
+ * Tell local streams the quoting status changed, as Mastodon's
+ * `DistributionWorker` with `update: true`. The stamp `Delete` is what
+ * reaches other servers.
+ */
+const publishQuoteRevoke = async (
+  env: Env,
+  identity: InstanceIdentity,
+  quoting: FoundStatus,
+): Promise<void> => {
+  if (quoting.kind === "LocalStatus") {
+    if (quoting.status.kind !== "LocalNote") {
+      return;
+    }
+    const author = await findAccountById(env.DB, quoting.status.accountId);
+    if (author.isErr() || !author.value) {
+      return;
+    }
+    const announced = await announceNoteUpdate(
+      env,
+      identity,
+      author.value,
+      quoting.status,
+      nowIso(),
+      false,
+    );
+    if (announced.isErr()) {
+      console.error(
+        JSON.stringify({ kind: "QuoteRevokeNotAnnounced", statusId: quoting.status.id }),
+      );
+    }
+    return;
+  }
+  await enqueueHomeFanOut(env, {
+    event: "status.update",
+    entryId: quoting.status.id,
+    author: { kind: "RemoteActor", actorUri: quoting.status.actorUri },
+  });
+  if (quoting.status.visibility.kind === "Public") {
+    await enqueuePublicFanOut(env, { event: "status.update", entryId: quoting.status.id });
+  }
+};
+
 /** The quoted author withdraws a quote; the quoting status stays, unattached. */
 export const postV1StatusesByIdQuotesByQuotingStatusIdRevoke = async (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/quotes/:quoting_status_id/revoke">,
@@ -268,6 +316,7 @@ export const postV1StatusesByIdQuotesByQuotingStatusIdRevoke = async (
     quoting.value,
     revoked.value.id,
   );
+  await publishQuoteRevoke(c.env, identity.value, quoting.value);
   // As Mastodon, the quoting status answers whoever wrote it, a suspended author stripped.
   const document =
     quoting.value.kind === "LocalStatus"

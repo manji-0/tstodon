@@ -307,6 +307,7 @@ describe("quoting a remote status", () => {
     ).toBe(202);
 
     expect((await quoteOf(email, quotingId)).state).toBe("revoked");
+    expect((await quoteOf(email, daveNote.id)).state).toBe("revoked");
   });
 
   it("revokes the quote when the quoted author deletes the stamp, keeping the note", async () => {

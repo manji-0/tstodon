@@ -13,6 +13,7 @@ import {
   findAccountNote as findAccountNoteSql,
   findActiveMute as findActiveMuteSql,
   findBlock as findBlockSql,
+  findRemoteBlock as findRemoteBlockSql,
   findEndorsement as findEndorsementSql,
   findFollowKind as findFollowKindSql,
   findOutboundFollow as findOutboundFollowSql,
@@ -67,6 +68,7 @@ export const relationshipFlags = async (
     d1PrepareTyped(db, findAccountNoteSql(viewerId, targetActorUri.unwrapOr(targetId))),
     d1PrepareTyped(db, findActorDomainBlockSql(viewerId, targetActorUri.unwrapOr(""))),
     d1PrepareTyped(db, findOutboundFollowSql(viewerId, targetActorUri.unwrapOr(""))),
+    d1PrepareTyped(db, findRemoteBlockSql(targetActorUri.unwrapOr(""), viewerId)),
   ]);
   if (batched.isErr()) {
     return err(batched.error);
@@ -93,7 +95,8 @@ export const relationshipFlags = async (
     : remoteOutgoing(outboundFollowFromRow(batched.value[8]?.results?.[0]));
   const incoming = first(z.object({ kind: z.string() }), 1);
   const blocking = (batched.value[2]?.results?.length ?? 0) > 0;
-  const blockedBy = (batched.value[3]?.results?.length ?? 0) > 0;
+  const blockedBy =
+    (batched.value[3]?.results?.length ?? 0) > 0 || (batched.value[9]?.results?.length ?? 0) > 0;
   const mute = first(z.object({ notifications: z.number(), expires_at: z.string().nullable() }), 4);
   const endorsed = (batched.value[5]?.results?.length ?? 0) > 0;
   const note = first(z.object({ note: z.string() }), 6)?.note ?? "";

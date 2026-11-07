@@ -15,7 +15,7 @@ import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch
 import { enqueueHomeFanOut } from "./home-fan-out";
 import { enqueuePublicFanOut } from "./public-fan-out";
 import { enqueueLinkCard } from "./link-card";
-import { isAccountMentionedOnRemoteStatus, recordRemoteStatusMentions } from "./mention-store";
+import { isActiveRemoteStatusMention, recordRemoteStatusMentions } from "./mention-store";
 import { notifyFromRemote } from "./notify";
 import { actorMovedTo, cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
 import { setRemoteActorMovedTo } from "./remote-actor-store";
@@ -149,7 +149,7 @@ const applyNoteUpdate = async (
   const mentioned = await mentionedLocalAccountIds(env, identity, target.raw);
   const added: string[] = [];
   for (const accountId of mentioned) {
-    const already = await isAccountMentionedOnRemoteStatus(env.DB, stored.value.id, accountId);
+    const already = await isActiveRemoteStatusMention(env.DB, stored.value.id, accountId);
     if (already.isOk() && !already.value) {
       added.push(accountId);
     }
