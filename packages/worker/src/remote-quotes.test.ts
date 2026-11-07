@@ -343,6 +343,86 @@ describe("quoting a remote status", () => {
     ).toBe(200);
   });
 
+  /** `quoteBob` with the quote accepted on a stamp, boosted by Carol, whom Dan and Bob follow. */
+  const boostedQuote = async (slug: string) => {
+    const quote = await quoteBob(slug);
+    const stamp = `${quote.bob.actorUri}/stamps/1`;
+    expect(
+      await quote.bob.send({
+        id: `${quote.bob.actorUri}#accepts/1`,
+        type: "Accept",
+        object: quote.request.body.id,
+        result: stamp,
+      }),
+    ).toBe(202);
+    const carolEmail = `${slug}-carol@example.com`;
+    const carol = await signedInAccount(carolEmail);
+    expect(
+      (
+        await json(`/api/v1/statuses/${quote.quotingId}/reblog`, {
+          method: "POST",
+          headers: await authHeaders(carolEmail),
+        })
+      ).status,
+    ).toBe(200);
+    const dan = await remoteActor(`${slug}-dan`, "dan.example");
+    for (const follower of [dan, quote.bob]) {
+      expect(
+        await follower.send({
+          id: `${follower.actorUri}#follows/${slug}`,
+          type: "Follow",
+          object: `https://example.com/users/${carol.username}`,
+        }),
+      ).toBe(202);
+    }
+    return { ...quote, stamp, carol, dan };
+  };
+
+  it("forwards a signed stamp Delete to the followers of the quoting note's local boosters", async () => {
+    const quote = await boostedQuote("rq-stamp-forward");
+    const deletion = {
+      id: `${quote.stamp}#delete`,
+      type: "Delete",
+      object: { id: quote.stamp, type: "QuoteAuthorization" },
+      signature: {
+        type: "RsaSignature2017",
+        creator: `${quote.bob.actorUri}#main-key`,
+        created: "2026-11-02T00:00:00Z",
+        signatureValue: "c2lnbmVk",
+      },
+    };
+
+    expect(await quote.bob.send(deletion)).toBe(202);
+
+    expect((await quoteOf(quote.email, quote.quotingId)).state).toBe("revoked");
+    const forwarded = await queued(quote.carol.id, "Delete");
+    // Forwarded as received, so Dan's server can check Bob's signature.
+    expect(forwarded.map((row) => row.payload)).toEqual([
+      {
+        "@context": "https://www.w3.org/ns/activitystreams",
+        actor: quote.bob.actorUri,
+        ...deletion,
+      },
+    ]);
+    // Bob follows Carol too, but is not sent his own Delete back.
+    expect(await deliveryInboxes(forwarded[0]?.id ?? "")).toEqual([`${quote.dan.actorUri}/inbox`]);
+  });
+
+  it("does not forward a stamp Delete without a Linked Data signature", async () => {
+    const quote = await boostedQuote("rq-stamp-unsigned");
+
+    expect(
+      await quote.bob.send({
+        id: `${quote.stamp}#delete`,
+        type: "Delete",
+        object: { id: quote.stamp, type: "QuoteAuthorization" },
+      }),
+    ).toBe(202);
+
+    expect((await quoteOf(quote.email, quote.quotingId)).state).toBe("revoked");
+    expect(await queued(quote.carol.id, "Delete")).toEqual([]);
+  });
+
   it("refuses a note whose author lets nobody quote it with Mastodon's 404", async () => {
     const email = "rq-nobody-alice@example.com";
     const bob = await remoteActor("rq-nobody-bob");

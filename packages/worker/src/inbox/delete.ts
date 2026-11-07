@@ -37,6 +37,7 @@ export const receiveRemoteDelete: InboxHandler<RemoteDelivery<"Delete">> = async
   identity,
   signer,
   activity,
+  body,
 }) => {
   const effect = remoteDeleteEffect(identity, activity);
   switch (effect.kind) {
@@ -46,7 +47,7 @@ export const receiveRemoteDelete: InboxHandler<RemoteDelivery<"Delete">> = async
     }
     case "RemoveRemoteStatus": {
       // A status URI never names a stamp, so a stamp found by it is what goes.
-      const revoked = await revokeQuoteStamp(env, identity, signer, effect.objectUri);
+      const revoked = await revokeQuoteStamp(env, identity, signer, effect.objectUri, body);
       if (revoked.isErr()) {
         return err(revoked.error);
       }

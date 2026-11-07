@@ -280,6 +280,81 @@ describe("quote stamps for local statuses", () => {
     ).toEqual({ quote: quote.quotedUri });
   });
 
+  it("also withdraws the stamp from mentioned, boosting, favouriting and replied-to accounts, once per inbox", async () => {
+    const alice = await account("stamp-reach-alice@example.com");
+    const aliceUri = `https://example.com/users/${alice.username}`;
+    const carol = await remoteActor("stamp-reach-carol", "carol.example");
+    const dave = await remoteActor("stamp-reach-dave", "shared.example", {
+      sharedInboxUri: "https://shared.example/inbox",
+    });
+    const frank = await remoteActor("stamp-reach-frank", "shared.example", {
+      sharedInboxUri: "https://shared.example/inbox",
+    });
+    const erin = await remoteActor("stamp-reach-erin", "erin.example");
+    const erinNote = "https://erin.example/notes/stamp-reach";
+    expect(
+      await erin.send({
+        id: `${erinNote}/activity`,
+        type: "Create",
+        object: {
+          id: erinNote,
+          type: "Note",
+          attributedTo: erin.actorUri,
+          content: "<p>reply to me</p>",
+          published: "2026-11-01T00:00:00.000Z",
+          to: ["https://www.w3.org/ns/activitystreams#Public"],
+        },
+      }),
+    ).toBe(202);
+    const erinNoteId = read(
+      z.object({ id: z.string() }),
+      await env.DB.prepare("SELECT id FROM remote_statuses WHERE object_uri = ?")
+        .bind(erinNote)
+        .first(),
+    ).id;
+
+    const quotedId = await create("stamp-reach-alice@example.com", { status: "stamp me" });
+    const quotedUri = `${aliceUri}/statuses/${quotedId}`;
+    // Carol follows Alice and is mentioned; Dave and Frank share one inbox.
+    expect(
+      await carol.send({ id: `${carol.actorUri}/follows/1`, type: "Follow", object: aliceUri }),
+    ).toBe(202);
+    expect(
+      await dave.send({
+        id: `${dave.actorUri}/announces/1`,
+        type: "Announce",
+        object: quotedUri,
+        to: ["https://www.w3.org/ns/activitystreams#Public"],
+      }),
+    ).toBe(202);
+    expect(
+      await frank.send({ id: `${frank.actorUri}/likes/1`, type: "Like", object: quotedUri }),
+    ).toBe(202);
+    const quotingId = await create("stamp-reach-bob@example.com", {
+      status: "@stamp-reach-carol@carol.example quoting",
+      quoted_status_id: quotedId,
+      in_reply_to_id: erinNoteId,
+    });
+
+    expect(await revoke("stamp-reach-alice@example.com", quotedId, quotingId)).toBe(200);
+
+    const row = await env.DB.prepare(
+      "SELECT id FROM outbound_activities WHERE account_id = ? AND kind = 'Delete'",
+    )
+      .bind(alice.id)
+      .first();
+    const { results } = await env.DB.prepare(
+      "SELECT inbox_url FROM outbox_deliveries WHERE activity_id = ? AND inbox_url IS NOT NULL ORDER BY inbox_url",
+    )
+      .bind(read(z.object({ id: z.string() }), row).id)
+      .all();
+    expect(read(z.array(z.object({ inbox_url: z.string() })), results)).toEqual([
+      { inbox_url: `${carol.actorUri}/inbox` },
+      { inbox_url: `${erin.actorUri}/inbox` },
+      { inbox_url: "https://shared.example/inbox" },
+    ]);
+  });
+
   it("tells the quoting author's stream that the quote was revoked", async () => {
     const email = "stamp-stream-bob@example.com";
     const quote = await localQuote("stamp-stream-alice@example.com", email);

@@ -394,6 +394,99 @@ describe("remote notes that quote a local status", () => {
     expect(read(z.object({ quotes_count: z.number() }), alice.body).quotes_count).toBe(0);
   });
 
+  it("withdraws the stamp when an edit moves an accepted quote, not when it keeps it", async () => {
+    const quote = await setup("rqr-move");
+    expect(await quote.request()).toBe(202);
+    const bobNoteId = await remoteStatusId(quote.noteUri);
+    const other = await send(quote.email, "/api/v1/statuses", { status: "quote me instead" });
+    expect(other.status).toBe(200);
+    const otherUri = `${quote.aliceUri}/statuses/${read(IdSchema, other.body).id}`;
+
+    expect(
+      await quote.bob.send({
+        id: `${quote.noteUri}#updates/1`,
+        type: "Update",
+        object: quote.note({ content: "<p>edited</p>", updated: "2026-11-02T00:00:00.000Z" }),
+      }),
+    ).toBe(202);
+    expect(await queued(quote.alice.id, "Delete")).toEqual([]);
+
+    expect(
+      await quote.bob.send({
+        id: `${quote.noteUri}#updates/2`,
+        type: "Update",
+        object: quote.note({
+          content: "<p>moved</p>",
+          updated: "2026-11-03T00:00:00.000Z",
+          quote: otherUri,
+        }),
+      }),
+    ).toBe(202);
+    const deletions = await queued(quote.alice.id, "Delete");
+    expect(deletions.map((row) => row.payload)).toEqual([
+      expect.objectContaining({
+        type: "Delete",
+        actor: quote.aliceUri,
+        object: expect.objectContaining({
+          type: "QuoteAuthorization",
+          interactingObject: quote.noteUri,
+          interactionTarget: quote.statusUri,
+        }),
+      }),
+    ]);
+    expect(await deliveryInboxes(deletions[0]?.id ?? "")).toEqual([`${quote.bob.actorUri}/inbox`]);
+    expect(await quoteOf(quote.email, bobNoteId)).toEqual({
+      state: "pending",
+      quoted_status: null,
+    });
+  });
+
+  it("withdraws the stamp when an edit drops an accepted quote", async () => {
+    const quote = await setup("rqr-drop");
+    expect(await quote.request()).toBe(202);
+    const { quote: _dropped, ...unquoted } = quote.note({
+      content: "<p>no quote</p>",
+      updated: "2026-11-02T00:00:00.000Z",
+    });
+
+    expect(
+      await quote.bob.send({ id: `${quote.noteUri}#updates/1`, type: "Update", object: unquoted }),
+    ).toBe(202);
+
+    const deletions = await queued(quote.alice.id, "Delete");
+    expect(deletions.map((row) => row.payload)).toEqual([
+      expect.objectContaining({
+        type: "Delete",
+        object: expect.objectContaining({
+          interactingObject: quote.noteUri,
+          interactionTarget: quote.statusUri,
+        }),
+      }),
+    ]);
+    expect(await quoteOf(quote.email, await remoteStatusId(quote.noteUri))).toBeNull();
+  });
+
+  it("sends no stamp Delete when an edit moves a quote that was never accepted", async () => {
+    const quote = await setup("rqr-move-pending");
+    expect(
+      await quote.bob.send({
+        id: `${quote.noteUri}/activity`,
+        type: "Create",
+        object: quote.note(),
+      }),
+    ).toBe(202);
+    const { quote: _dropped, ...unquoted } = quote.note({
+      content: "<p>no quote</p>",
+      updated: "2026-11-02T00:00:00.000Z",
+    });
+
+    expect(
+      await quote.bob.send({ id: `${quote.noteUri}#updates/1`, type: "Update", object: unquoted }),
+    ).toBe(202);
+
+    expect(await queued(quote.alice.id, "Delete")).toEqual([]);
+  });
+
   it("revokes the quote with a stamp Delete sent to the quoting author's inbox", async () => {
     const quote = await setup("rqr-revoke");
     expect(await quote.request()).toBe(202);
