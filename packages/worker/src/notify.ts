@@ -29,6 +29,7 @@ import { isActorDomainBlocked } from "./domain-block-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { localAccountPresentations } from "./account-presentation";
 import { findActiveMute, findBlock, silencesAnyOf } from "./block-mute-store";
+import { findRemoteBlock } from "./remote-block-store";
 import { mastodonNotification } from "./notification-documents";
 import { findNotificationById, groupedEntry, insertNotification } from "./notification-store";
 import { enqueuePushDeliveries } from "./push-delivery";
@@ -286,9 +287,10 @@ const screenSender = async (
   }
   const sender = notification.fromActorUri ?? notification.fromAccountId;
   // Every notification pays for this check, so the two lookups run together.
-  const [blocked, muted] = await Promise.all([
+  const [blocked, muted, blockedBySender] = await Promise.all([
     findBlock(db, recipientId, sender),
     findActiveMute(db, recipientId, sender),
+    findRemoteBlock(db, notification.fromActorUri ?? "", recipientId),
   ]);
   if (blocked.isErr()) {
     return err(blocked.error);
@@ -296,7 +298,10 @@ const screenSender = async (
   if (muted.isErr()) {
     return err(muted.error);
   }
-  if (blocked.value || muted.value?.notifications) {
+  if (blockedBySender.isErr()) {
+    return err(blockedBySender.error);
+  }
+  if (blocked.value || blockedBySender.value || muted.value?.notifications) {
     return ok(DROP);
   }
   if (notification.kind === "mention" && mentionedPost) {

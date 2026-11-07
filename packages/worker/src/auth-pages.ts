@@ -1,10 +1,9 @@
-import { Sensitive, type SensitiveValue } from "@tstodon/core";
 import { escapeHtml } from "./html";
+import { ACCESS_LOGOUT_PATH } from "./access-jwt";
 
 /**
- * The few HTML pages sign-in needs: passkey sign-up and sign-in, and the
- * OAuth consent screen. Plain HTML with an inline script; there is no web UI
- * beyond them.
+ * The few HTML pages sign-in needs: the Access explanation, and the OAuth
+ * consent screen. Plain HTML; there is no passkey ceremony.
  */
 
 export const page = (title: string, body: string, script = ""): string => `<!doctype html>
@@ -38,183 +37,11 @@ ${body}
 export const safeReturnTo = (raw: string | undefined): string =>
   raw && raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("\\") ? raw : "/";
 
-/** base64url <-> ArrayBuffer and the WebAuthn JSON forms simplewebauthn expects. */
-export const WEBAUTHN_HELPERS = `
-      const fromB64u = (value) => {
-        const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
-        const padded = base64 + "===".slice((base64.length + 3) % 4);
-        return Uint8Array.from(atob(padded), (ch) => ch.charCodeAt(0)).buffer;
-      };
-      const toB64u = (buffer) =>
-        btoa(String.fromCharCode(...new Uint8Array(buffer)))
-          .replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/, "");
-      const credentialIds = (list) => (list || []).map((entry) => ({ ...entry, id: fromB64u(entry.id) }));
-      const show = (message) => { document.getElementById("error").textContent = message; };
-      const failure = async (response) => {
-        try { return (await response.json()).message || response.statusText; }
-        catch { return response.statusText; }
-      };`;
+const accessExplainer = (instanceName: string): string =>
+  `<p>Sign-in is <strong>Cloudflare Access</strong>. Access checks a passkey of its own, or your identity provider (such as WorkOS), and sends this server a signed token. This server does not register passkeys and has no password.</p>
+      <p class="muted">Open ${escapeHtml(instanceName)} through Access. A new address gets an account when registrations are open; the username comes from the address.</p>`;
 
-/**
- * `signInWithPasskey()`: a passkey sign-in that starts a new session. It
- * resolves to whether it did, and shows why not. Needs {@link WEBAUTHN_HELPERS}.
- */
-export const PASSKEY_SIGN_IN = `
-      const signInWithPasskey = async () => {
-        try {
-          const optionsResponse = await fetch("/api/auth/passkey/generate-authenticate-options");
-          if (!optionsResponse.ok) {
-            show(await failure(optionsResponse));
-            return false;
-          }
-          const options = await optionsResponse.json();
-          const credential = await navigator.credentials.get({
-            publicKey: {
-              ...options,
-              challenge: fromB64u(options.challenge),
-              allowCredentials: credentialIds(options.allowCredentials),
-            },
-          });
-          const response = {
-            id: credential.id,
-            rawId: toB64u(credential.rawId),
-            type: credential.type,
-            authenticatorAttachment: credential.authenticatorAttachment || undefined,
-            clientExtensionResults: credential.getClientExtensionResults(),
-            response: {
-              clientDataJSON: toB64u(credential.response.clientDataJSON),
-              authenticatorData: toB64u(credential.response.authenticatorData),
-              signature: toB64u(credential.response.signature),
-              userHandle: credential.response.userHandle ? toB64u(credential.response.userHandle) : undefined,
-            },
-          };
-          const verified = await fetch("/api/auth/passkey/verify-authentication", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ response }),
-          });
-          if (!verified.ok) {
-            show(await failure(verified));
-            return false;
-          }
-          return true;
-        } catch (error) {
-          show(error instanceof Error ? error.message : String(error));
-          return false;
-        }
-      };`;
-
-/**
- * `registerPasskey(query, body)`: create a passkey through Better Auth's
- * registration endpoints (`query` goes to the options request, `body` joins
- * the credential in the verification). It resolves to whether it did, and
- * shows why not. Needs {@link WEBAUTHN_HELPERS}.
- */
-export const PASSKEY_REGISTER = `
-      const registerPasskey = async (query, body) => {
-        try {
-          const optionsResponse = await fetch(
-            "/api/auth/passkey/generate-register-options?" + new URLSearchParams(query),
-          );
-          if (!optionsResponse.ok) {
-            show(await failure(optionsResponse));
-            return false;
-          }
-          const options = await optionsResponse.json();
-          const credential = await navigator.credentials.create({
-            publicKey: {
-              ...options,
-              challenge: fromB64u(options.challenge),
-              user: { ...options.user, id: fromB64u(options.user.id) },
-              excludeCredentials: credentialIds(options.excludeCredentials),
-            },
-          });
-          const response = {
-            id: credential.id,
-            rawId: toB64u(credential.rawId),
-            type: credential.type,
-            authenticatorAttachment: credential.authenticatorAttachment || undefined,
-            clientExtensionResults: credential.getClientExtensionResults(),
-            response: {
-              clientDataJSON: toB64u(credential.response.clientDataJSON),
-              attestationObject: toB64u(credential.response.attestationObject),
-              transports: credential.response.getTransports ? credential.response.getTransports() : [],
-            },
-          };
-          const verified = await fetch("/api/auth/passkey/verify-registration", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ response, ...body }),
-          });
-          if (!verified.ok) {
-            show(await failure(verified));
-            return false;
-          }
-          return true;
-        } catch (error) {
-          show(error instanceof Error ? error.message : String(error));
-          return false;
-        }
-      };`;
-
-export type SignUpForm = Readonly<{ username: string; email: SensitiveValue<string> }>;
-
-/** Step one: username and email; the server mails a confirmation link. */
-export const signUpPage = (
-  instanceName: string,
-  open: boolean,
-  form: SignUpForm = { username: "", email: Sensitive.of("") },
-  error?: string,
-): string =>
-  page(
-    `Sign up · ${instanceName}`,
-    open
-      ? `      <h1>Create an account on ${escapeHtml(instanceName)}</h1>
-      <p class="muted">We email you a link to confirm the address; the link lets you create the passkey you sign in with. There is no password.</p>
-      <form method="post" action="/auth/sign_up">
-        <label for="username">Username</label>
-        <input id="username" name="username" required maxlength="30" pattern="[A-Za-z0-9_]+" autocomplete="username" value="${escapeHtml(form.username)}" />
-        <label for="email">Email address</label>
-        <input id="email" name="email" type="email" required autocomplete="email" value="${escapeHtml(form.email.reveal())}" />
-        <button type="submit">Send confirmation email</button>
-      </form>
-      <p class="error" role="alert">${error === undefined ? "" : escapeHtml(error)}</p>
-      <p><a href="/auth/sign_in">Already have an account? Sign in</a></p>`
-      : `      <h1>Sign-ups are closed</h1>
-      <p>${escapeHtml(instanceName)} is not accepting new accounts.</p>`,
-  );
-
-export const signUpSentPage = (instanceName: string, email: SensitiveValue<string>): string =>
-  page(
-    `Check your email · ${instanceName}`,
-    `      <h1>Check your email</h1>
-      <p>We sent a link to <strong>${escapeHtml(email.reveal())}</strong>. Open it within an hour to confirm the address and create your passkey.</p>
-      <p class="muted">No email? Check spam, or <a href="/auth/sign_up">start again</a>.</p>`,
-  );
-
-/** Step two, from the emailed link: create the passkey. */
-export const signUpPasskeyPage = (instanceName: string, username: string, token: string): string =>
-  page(
-    `Create your passkey · ${instanceName}`,
-    `      <h1>Create your passkey</h1>
-      <p>Your email address is confirmed. Create a passkey for <strong>@${escapeHtml(username)}</strong> on ${escapeHtml(instanceName)}.</p>
-      <form id="form" data-token="${escapeHtml(token)}" data-username="${escapeHtml(username)}">
-        <label for="passkey-name">Name for this passkey</label>
-        <input id="passkey-name" name="name" required maxlength="60" placeholder="Laptop" autocomplete="off" />
-        <button type="submit">Create passkey</button>
-      </form>
-      <p id="error" class="error" role="alert"></p>`,
-    `${WEBAUTHN_HELPERS}${PASSKEY_REGISTER}
-      document.getElementById("form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        show("");
-        const { token, username } = event.target.dataset;
-        const name = new FormData(event.target).get("name");
-        const created = await registerPasskey({ context: token, name: username }, { name, createSession: true });
-        if (created) location.assign("/");
-      });`,
-  );
-
+/** Signed out: tell the browser that Access is the login. */
 export const signInPage = (
   instanceName: string,
   returnTo: string,
@@ -224,33 +51,25 @@ export const signInPage = (
     `Sign in · ${instanceName}`,
     signedInAs === undefined
       ? `      <h1>Sign in to ${escapeHtml(instanceName)}</h1>
-      <form id="form" data-return-to="${escapeHtml(returnTo)}">
-        <button type="submit">Sign in with a passkey</button>
-      </form>
-      <p id="error" class="error" role="alert"></p>
-      <p><a href="/auth/sign_up">Create an account</a></p>`
+      ${accessExplainer(instanceName)}
+      <p><a href="${escapeHtml(returnTo)}">Continue</a></p>`
       : `      <h1>Signed in</h1>
-      <p>You are signed in to ${escapeHtml(instanceName)} as <strong>@${escapeHtml(signedInAs)}</strong>.
+      <p>You are signed in to ${escapeHtml(instanceName)} as <strong>@${escapeHtml(signedInAs)}</strong> through Cloudflare Access.
       Use a Mastodon app to read and post.</p>
       <form id="sign-out"><button type="submit">Sign out</button></form>
       <p id="error" class="error" role="alert"></p>`,
     signedInAs === undefined
-      ? `${WEBAUTHN_HELPERS}${PASSKEY_SIGN_IN}
-      document.getElementById("form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        show("");
-        if (await signInWithPasskey()) location.assign(event.target.dataset.returnTo);
-      });`
+      ? ""
       : `
       document.getElementById("sign-out").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const response = await fetch("/api/auth/sign-out", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: "{}",
-        });
-        if (response.ok) location.reload();
-        else document.getElementById("error").textContent = response.statusText;
+        const response = await fetch("/auth/sign_out", { method: "DELETE", headers: { Accept: "application/json" } });
+        if (!response.ok) {
+          document.getElementById("error").textContent = response.statusText;
+          return;
+        }
+        const body = await response.json();
+        location.assign(typeof body.redirect_to === "string" ? body.redirect_to : "${ACCESS_LOGOUT_PATH}");
       });`,
   );
 

@@ -7,6 +7,7 @@ import { unfollowAccount } from "../follow-store";
 import { enqueueHomeFanOut } from "../home-fan-out";
 import { deleteRemoteNotifications } from "../notification-store";
 import { deleteRemoteFollow } from "../remote-actor-store";
+import { deleteRemoteBlock } from "../remote-block-store";
 import { deleteRemoteBoostByActivity } from "../remote-boost-store";
 import { deleteRemoteAnnounce, deleteRemoteFavourite } from "../remote-interaction-store";
 import { localAccountAt } from "./follow";
@@ -57,6 +58,16 @@ export const receiveRemoteUndo: InboxHandler<RemoteDelivery<"Undo">> = async ({
 }) => {
   const targets = remoteUndoTargets(identity, activity, received.object);
   const actorUri = signer.actorUri;
+  const nested = parseNestedActivityObject(received.object);
+  if (nested.isOk() && nested.value.type === "Block") {
+    const blocked = await localAccountAt(env, identity, objectUriOf(nested.value.object));
+    if (blocked) {
+      const lifted = await deleteRemoteBlock(env.DB, actorUri, blocked.id);
+      if (lifted.isErr()) {
+        return err(lifted.error);
+      }
+    }
+  }
   const followed = await localAccountAt(env, identity, targets.followedUri);
   if (followed) {
     await deleteRemoteFollow(env.DB, actorUri, followed.id);

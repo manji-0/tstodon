@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { schemaResult, type ValidationError } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
-import { softPasskey } from "../packages/worker/test/soft-passkey.js";
+import { signAccessJwt } from "../packages/worker/test/access-jwt-fixture.js";
 import {
   AccountPrivateKeyRow,
   ApPerson,
@@ -120,36 +120,12 @@ export const waitOk = async (url: string, label: string): Promise<void> => {
   fail(`${label} not ready`, url);
 };
 
-/** The captured confirmation email for `email` on an e2e instance (`EMAIL_TRANSPORT=capture`). */
-const mailboxText = (instance: E2eInstance, email: string): string => {
-  const config = instance === "a" ? "e2e/a.wrangler.jsonc" : "e2e/b.wrangler.jsonc";
-  const persist = instance === "a" ? ".wrangler/e2e-a" : ".wrangler/e2e-b";
-  return execFileSync(
-    "pnpm",
-    [
-      "exec",
-      "wrangler",
-      "kv",
-      "key",
-      "get",
-      `mailbox:${email.toLowerCase()}`,
-      "--binding",
-      "APP_CACHE",
-      "--local",
-      "--config",
-      config,
-      "--persist-to",
-      persist,
-    ],
-    { cwd: root, encoding: "utf8" },
-  );
-};
-
-/** A cookie-keeping client for one instance: what a browser does during sign-up. */
-const browserFor = (origin: string): E2eBrowser => {
+/** A cookie-keeping client for one instance, presenting one Access login. */
+const browserFor = (origin: string, assertion: string): E2eBrowser => {
   const cookies = new Map<string, string>();
   return async (path: string, init: RequestInit = {}): Promise<Response> => {
     const headers = new Headers(init.headers);
+    headers.set("Cf-Access-Jwt-Assertion", assertion);
     if (cookies.size > 0) {
       headers.set("cookie", [...cookies].map(([name, value]) => `${name}=${value}`).join("; "));
     }
@@ -166,10 +142,6 @@ const browserFor = (origin: string): E2eBrowser => {
   };
 };
 
-const RegistrationOptions = z.object({
-  challenge: z.string(),
-  rp: z.object({ id: z.string().optional() }),
-});
 const RegisteredApp = z.object({ client_id: z.string(), client_secret: z.string() });
 const IssuedToken = z.object({ access_token: z.string() });
 
@@ -179,9 +151,9 @@ const OOB = "urn:ietf:wg:oauth:2.0:oob";
 export type E2eBrowser = (path: string, init?: RequestInit) => Promise<Response>;
 
 /**
- * Sign up on `origin` (confirm the email link, then a software passkey), authorize an app through the
- * consent page, and return its bearer token with the signed-in browser. The
- * username is the email's local part, sanitized as account usernames are.
+ * Sign in on `origin` with an Access JWT (the account is provisioned from the
+ * address), authorize an app through the consent page, and return its bearer
+ * token with the signed-in browser. The username is the email's local part.
  */
 const signUpBrowser = async (
   origin: string,
@@ -191,38 +163,10 @@ const signUpBrowser = async (
     .toLowerCase()
     .replaceAll("-", "_")
     .replace(/[^a-z0-9_]/g, "");
-  const browser = browserFor(origin);
-  const requested = await browser("/auth/sign_up", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ username, email }).toString(),
-  });
-  if (!requested.ok) {
-    return fail(`sign-up request for ${username} on ${origin}`, await requested.text());
-  }
-  // The e2e instances capture mail in APP_CACHE instead of sending it.
-  const mail = mailboxText(origin === A ? "a" : "b", email);
-  const linkToken = /\/auth\/sign_up\/verify\?token=([\w-]+)/.exec(mail)?.[1];
-  if (!linkToken) {
-    return fail(`sign-up link for ${username} on ${origin}`, mail);
-  }
-  const options = await browser(
-    `/api/auth/passkey/generate-register-options?${new URLSearchParams({ context: linkToken, name: username }).toString()}`,
-  );
-  if (!options.ok) {
-    return fail(`sign-up options for ${username} on ${origin}`, await options.text());
-  }
-  const passkey = await softPasskey(origin);
-  const registration = await passkey.register(
-    expectParsed("registration options", schemaResult(RegistrationOptions), await options.json()),
-  );
-  const verified = await browser("/api/auth/passkey/verify-registration", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ response: registration, createSession: true }),
-  });
-  if (!verified.ok) {
-    return fail(`passkey sign-up for ${username} on ${origin}`, await verified.text());
+  const browser = browserFor(origin, await signAccessJwt({ email }));
+  const signedIn = await browser("/auth/sign_in");
+  if (!signedIn.ok) {
+    return fail(`Access sign-in for ${username} on ${origin}`, await signedIn.text());
   }
   const appResponse = await fetch(`${origin}/api/v1/apps`, {
     method: "POST",

@@ -241,6 +241,39 @@ describe("a remote note quoting another remote note", () => {
     });
   });
 
+  it("is revoked when the quoted author deletes the stamp", async () => {
+    const q = await setup("rqq-revoke");
+    stubFetch({ [q.stampUri]: q.stamp() });
+    expect(await create(q.bob, q.bobNote())).toBe(202);
+
+    expect(
+      await q.carol.send({
+        id: `${q.stampUri}#delete`,
+        type: "Delete",
+        object: { id: q.stampUri, type: "QuoteAuthorization" },
+      }),
+    ).toBe(202);
+
+    expect(await q.quote()).toEqual({ state: "revoked", quoted_status: null });
+    expect(await remoteStatusId(q.bobNoteUri)).toBeDefined();
+  });
+
+  it("keeps the quote when someone other than the quoted author deletes the stamp", async () => {
+    const q = await setup("rqq-revoke-stranger");
+    stubFetch({ [q.stampUri]: q.stamp() });
+    expect(await create(q.bob, q.bobNote())).toBe(202);
+
+    expect(
+      await q.bob.send({
+        id: `${q.stampUri}#delete`,
+        type: "Delete",
+        object: { id: q.stampUri, type: "QuoteAuthorization" },
+      }),
+    ).toBe(202);
+
+    expect((await q.quote())?.state).toBe("accepted");
+  });
+
   it("keeps no legacy-only quote", async () => {
     const q = await setup("rqq-legacy");
     const fetched = stubFetch({ [q.stampUri]: q.stamp() });

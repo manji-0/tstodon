@@ -2,10 +2,11 @@
 #
 # Production auth is Cloudflare Access (WorkOS as the Access IdP). Worker vars:
 #   CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD, CF_ACCESS_ADMIN_GROUPS
-# Local tests use the fixture JWKS/private JWK from wrangler.jsonc.
-# Optionally override:
+# Pin the public JWKS here when you do not want the Worker to fetch it.
+# The private key is not a Worker var. Tests sign with
+# packages/worker/test/access-jwt-fixture.ts.
 # CF_ACCESS_JWKS_JSON=
-# CF_ACCESS_LOCAL_PRIVATE_JWK=
+# CF_ACCESS_JWKS_URL=
 # RESEND_API_KEY=
 # VAPID_PRIVATE_JWK=   # P-256 private JWK for Web Push (see docs/reference/configuration.md#web-push)
 # VAPID_SUBJECT=mailto:admin@example.com

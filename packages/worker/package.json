@@ -10,7 +10,6 @@
     ".": "./src/entry-classes.ts"
   },
   "dependencies": {
-    "@better-auth/passkey": "1.7.12",
     "@prisma/client": "^7.10.0",
     "@tstodon/core": "workspace:*",
     "@tstodon/domain": "workspace:*",

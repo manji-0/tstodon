@@ -1,14 +1,7 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { browser, type Browser, ORIGIN, postJson, read, signUp } from "../test/passkey-browser";
-import { softPasskey, type SoftPasskey } from "../test/soft-passkey";
-
-const AuthOptionsSchema = z.object({ challenge: z.string(), rpId: z.string().optional() });
-const RegisterOptionsSchema = z.object({
-  challenge: z.string(),
-  rp: z.object({ id: z.string().optional() }),
-});
+import { postJson, read, signUp } from "../test/passkey-browser";
 
 const userIdOf = async (username: string): Promise<string> => {
   const row = await env.DB.prepare(`SELECT auth_user_id AS id FROM accounts WHERE username = ?`)
@@ -27,13 +20,6 @@ const sessionRows = async (userId: string) =>
       .all()
   ).results;
 
-const passkeyRows = async (userId: string) =>
-  (
-    await env.DB.prepare(`SELECT * FROM "passkey" WHERE "userId" = ? ORDER BY "id"`)
-      .bind(userId)
-      .all()
-  ).results;
-
 const accountRows = async (userId: string) =>
   (
     await env.DB.prepare(`SELECT * FROM "account" WHERE "userId" = ? ORDER BY "id"`)
@@ -47,22 +33,9 @@ const makeAdmin = async (username: string): Promise<void> => {
     .run();
 };
 
-/** A new browser session for the passkey's user, as the sign-in page makes one. */
-const signInAgain = async (passkey: SoftPasskey): Promise<Browser> => {
-  const fetcher = browser();
-  const options = await fetcher("/api/auth/passkey/generate-authenticate-options");
-  expect(options.status).toBe(200);
-  const response = await passkey.authenticate(read(AuthOptionsSchema, await options.json()));
-  const verified = await postJson(fetcher, "/api/auth/passkey/verify-authentication", { response });
-  expect(verified.status).toBe(200);
-  return fetcher;
-};
-
 /**
- * Every endpoint Better Auth 1.7.12 serves with the core, admin, and passkey
- * plugins, less the ones the sign-in, sign-up, and Password and security
- * pages call (`/get-session`, `/sign-out`, and the four passkey ceremony
- * endpoints).
+ * Every endpoint Better Auth 1.7.12 serves with the core and admin plugins,
+ * less `/get-session` and `/sign-out`. Passkey routes are not mounted.
  */
 const UNCALLED_ENDPOINTS = [
   ["GET", "/account-info"],
@@ -122,7 +95,7 @@ describe("Better Auth endpoints tstodon does not call", () => {
         method === "GET"
           ? await fetcher(`/api/auth${path}`)
           : await postJson(fetcher, `/api/auth${path}`, {});
-      expect(response.status, `${method} ${path}`).toBe(403);
+      expect([403, 404], `${method} ${path}`).toContain(response.status);
     }
     expect((await fetcher("/auth/edit")).status).toBe(200);
   });
@@ -182,25 +155,29 @@ describe("Better Auth endpoints tstodon does not call", () => {
     expect(await accountRows(userId)).toEqual(before);
   });
 
-  it("keeps /passkey/update-passkey from renaming a passkey", async () => {
-    const { fetcher } = await signUp("bae_rename_passkey", undefined, "Laptop");
+  it("keeps /passkey/update-passkey from creating a passkey", async () => {
+    const { fetcher } = await signUp("bae_rename_passkey");
     const userId = await userIdOf("bae_rename_passkey");
-    const before = await passkeyRows(userId);
-    const id = read(z.object({ id: z.string() }), before[0]).id;
 
-    await postJson(fetcher, "/api/auth/passkey/update-passkey", { id, name: "Renamed" });
+    const response = await postJson(fetcher, "/api/auth/passkey/update-passkey", {
+      id: "missing",
+      name: "Renamed",
+    });
 
-    expect(await passkeyRows(userId)).toEqual(before);
+    expect([403, 404]).toContain(response.status);
+    const rows = await env.DB.prepare(`SELECT COUNT(*) AS n FROM "passkey" WHERE "userId" = ?`)
+      .bind(userId)
+      .first("n");
+    expect(rows).toBe(0);
   });
 
-  it("keeps /list-sessions from handing out the other sessions' tokens", async () => {
-    const { fetcher, passkey } = await signUp("bae_list_sessions");
-    await signInAgain(passkey);
+  it("keeps /list-sessions from handing out session tokens", async () => {
+    const { fetcher } = await signUp("bae_list_sessions");
     const tokens = read(
       z.array(z.object({ token: z.string() })),
       await sessionRows(await userIdOf("bae_list_sessions")),
     );
-    expect(tokens).toHaveLength(2);
+    expect(tokens).toHaveLength(1);
 
     const listed = await (await fetcher("/api/auth/list-sessions")).text();
 
@@ -293,37 +270,30 @@ describe("Better Auth admin endpoints", () => {
 });
 
 describe("Better Auth endpoints the pages call", () => {
-  it("signs in with a passkey, reads the session, and signs out", async () => {
-    const { passkey } = await signUp("bae_flow");
+  it("does not treat the Access JWT as a Better Auth cookie session", async () => {
+    const { fetcher } = await signUp("bae_flow");
     const userId = await userIdOf("bae_flow");
-    const second = await signInAgain(passkey);
-    expect(await sessionRows(userId)).toHaveLength(2);
-
-    const session = await second("/api/auth/get-session");
-    expect(session.status).toBe(200);
-    expect(
-      read(z.object({ user: z.object({ id: z.string() }) }), await session.json()).user.id,
-    ).toBe(userId);
-
-    const signedOut = await postJson(second, "/api/auth/sign-out", {});
-    expect(signedOut.status).toBe(200);
     expect(await sessionRows(userId)).toHaveLength(1);
-    expect(await (await second("/api/auth/get-session")).json()).toBeNull();
+
+    // Void's session lookup reads the cookie, not the Access assertion.
+    expect(await (await fetcher("/api/auth/get-session")).json()).toBeNull();
+    expect(await (await fetcher("/auth/sign_in")).text()).toContain("@bae_flow");
+
+    const signedOut = await fetcher("/auth/sign_out", {
+      method: "DELETE",
+      headers: { Accept: "application/json" },
+    });
+    expect(signedOut.status).toBe(200);
+    expect(await sessionRows(userId)).toHaveLength(0);
   });
 
-  it("adds a passkey for a signed-in user with a recent sign-in", async () => {
+  it("does not register a passkey for a signed-in user", async () => {
     const { fetcher } = await signUp("bae_add_passkey");
-    const options = await fetcher(
-      `/api/auth/passkey/generate-register-options?${new URLSearchParams({ name: "Phone" }).toString()}`,
-    );
-    expect(options.status).toBe(200);
-    const passkey = await softPasskey(ORIGIN);
-    const response = await passkey.register(read(RegisterOptionsSchema, await options.json()));
-    const verified = await postJson(fetcher, "/api/auth/passkey/verify-registration", {
-      response,
-      name: "Phone",
-    });
-    expect(verified.status).toBe(200);
-    expect(await passkeyRows(await userIdOf("bae_add_passkey"))).toHaveLength(2);
+    const options = await fetcher("/api/auth/passkey/generate-register-options");
+    expect([403, 404]).toContain(options.status);
+    const rows = await env.DB.prepare(`SELECT COUNT(*) AS n FROM "passkey" WHERE "userId" = ?`)
+      .bind(await userIdOf("bae_add_passkey"))
+      .first("n");
+    expect(rows).toBe(0);
   });
 });

@@ -1,22 +1,21 @@
-import type { AuthorizedApp, PasskeyEntry, SessionEntry } from "./account-security-store";
-import { page, PASSKEY_REGISTER, PASSKEY_SIGN_IN, WEBAUTHN_HELPERS } from "./auth-pages";
+import type { AuthorizedApp, SessionEntry } from "./account-security-store";
+import { ACCESS_LOGOUT_PATH } from "./access-jwt";
+import { page } from "./auth-pages";
 import { escapeHtml } from "./html";
 import { messageLine, nav, type PageMessage } from "./settings-pages";
 
 /**
- * Mastodon's `/auth/edit` ("Password and security"), for an account that
- * signs in with passkeys only: the passkeys, the browser sessions, and the
- * apps allowed to use the account.
+ * Mastodon's `/auth/edit` ("Password and security") for an account that signs
+ * in through Cloudflare Access: the local record of that login, and the apps
+ * allowed to use the account. Passkeys stay with Access.
  */
 
 export type SecurityView = Readonly<{
-  passkeys: ReadonlyArray<PasskeyEntry>;
   sessions: ReadonlyArray<SessionEntry & Readonly<{ current: boolean }>>;
   apps: ReadonlyArray<AuthorizedApp>;
   /**
-   * `Fresh`: the sign-in is recent enough to change what protects the
-   * account. `Stale`: the page offers a passkey sign-in first and leaves the
-   * forms that change anything out.
+   * `Fresh`: the Access login is recent enough to change what protects the
+   * account. `Stale`: the page points at Access and leaves those forms out.
    */
   signIn: "Fresh" | "Stale";
 }>;
@@ -30,25 +29,6 @@ const postForm = (action: string, fields: Readonly<Record<string, string>>, butt
     .join("")}
           <button type="submit">${button}</button>
         </form>`;
-
-const passkeyItem = (passkey: PasskeyEntry, view: SecurityView): string => `
-        <li><strong>${escapeHtml(passkey.name ?? "Passkey")}</strong>
-          <span class="muted">${passkey.addedAt === undefined ? "" : `added ${day(passkey.addedAt)}, `}${passkey.deviceType === "multiDevice" ? "synced between devices" : "this device only"}</span>
-          <form method="post" action="/auth/edit/passkeys/rename">
-            <input type="hidden" name="id" value="${escapeHtml(passkey.id)}" />
-            <label for="name-${escapeHtml(passkey.id)}">Name</label>
-            <input id="name-${escapeHtml(passkey.id)}" name="name" required maxlength="60" value="${escapeHtml(passkey.name ?? "")}" />
-            <button type="submit">Rename</button>
-          </form>${
-            view.signIn === "Stale"
-              ? ""
-              : view.passkeys.length === 1
-                ? `
-          <p class="muted">This is your only passkey. Add another before you remove it.</p>`
-                : `
-          ${postForm("/auth/edit/passkeys/remove", { id: passkey.id }, "Remove passkey")}`
-          }
-        </li>`;
 
 const sessionItem = (session: SecurityView["sessions"][number], view: SecurityView): string => `
         <li>${session.current ? "<strong>This browser</strong>" : "A browser"}
@@ -86,43 +66,16 @@ export const securityPage = (
     `Password and security · ${instanceName}`,
     `${nav}
       <h1>Password and security</h1>
-      <p><strong>@${escapeHtml(username)}</strong> signs in with passkeys. There is no password.</p>${
+      <p><strong>@${escapeHtml(username)}</strong> signs in through Cloudflare Access. Passkeys and the identity provider (such as WorkOS) stay there. There is no password on this server.</p>${
         view.signIn === "Stale"
           ? `
-      <form id="confirm">
-        <p>To change passkeys, sessions, or app access, confirm it is you.</p>
-        <button type="submit">Confirm with your passkey</button>
-      </form>`
+      <p>To change sessions or app access, sign in again through Cloudflare Access.</p>
+      <p><a href="${ACCESS_LOGOUT_PATH}">Sign in again</a></p>`
           : ""
       }
 ${messageLine(message)}
-      <h2>Passkeys</h2>
-      ${list(view.passkeys, "No passkeys.", (passkey) => passkeyItem(passkey, view))}${
-        view.signIn === "Stale"
-          ? ""
-          : `
-      <form id="add-passkey">
-        <label for="new-name">Name for the new passkey</label>
-        <input id="new-name" name="name" required maxlength="60" placeholder="Laptop" autocomplete="off" />
-        <button type="submit">Add a passkey</button>
-      </form>`
-      }
       <h2>Browser sessions</h2>
       ${list(view.sessions, "No sessions.", (session) => sessionItem(session, view))}
       <h2 id="authorized-applications">Authorized apps</h2>
       ${list(view.apps, "No apps can use your account.", (app) => appItem(app, view))}`,
-    view.signIn === "Stale"
-      ? `${WEBAUTHN_HELPERS}${PASSKEY_SIGN_IN}
-      document.getElementById("confirm").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        show("");
-        if (await signInWithPasskey()) location.reload();
-      });`
-      : `${WEBAUTHN_HELPERS}${PASSKEY_REGISTER}
-      document.getElementById("add-passkey").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        show("");
-        const name = new FormData(event.target).get("name");
-        if (await registerPasskey({}, { name })) location.reload();
-      });`,
   );

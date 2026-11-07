@@ -4,9 +4,12 @@
 <!-- constrained-by ../../docs/operations/cloudflare-deploy.md -->
 
 Terraform / OpenTofu skeleton for the **Worker data plane**: D1, KV, R2, and the
-Queue (IDs/names for `packages/worker/wrangler.jsonc`). Sign-in is the Worker's
-own (Better Auth passkeys and Mastodon OAuth), so there is no Access or IdP
-configuration here.
+Queue (IDs/names for `packages/worker/wrangler.jsonc`). Browser login is
+Cloudflare Access (its own passkeys, or an IdP such as WorkOS), configured in
+the Cloudflare dashboard and on the Worker as `CF_ACCESS_*` (see
+[Authentication](../../docs/reference/configuration.md#authentication)). This
+skeleton does not create that Access application. Mastodon API clients still
+use OAuth tokens this server issues.
 
 The Worker script, Durable Objects, Workflows, Images, and Analytics Engine stay with `wrangler deploy`.
 

@@ -1,7 +1,8 @@
 import type { Context } from "hono";
-import { getSession } from "void/auth";
 import { z } from "zod";
-import { schemaResult, Sensitive, warmSchemas } from "@tstodon/core";
+import { schemaResult, warmSchemas } from "@tstodon/core";
+import { ACCESS_LOGOUT_PATH, accessConfigured } from "../access-jwt";
+import { endAccessSessions } from "../access-session";
 import {
   browserSession,
   EXPIRED_SESSION_COOKIES,
@@ -13,17 +14,10 @@ import {
   consentPage,
   errorPage,
   signInPage,
-  signUpPage,
-  signUpPasskeyPage,
-  signUpSentPage,
   safeReturnTo,
   type ConsentRequest,
 } from "../auth-pages";
-import { runD1 } from "../d1";
-import { deleteAuthSession } from "../generated/prisma/sql";
 import { readOptionalBody } from "../http";
-import { runTyped } from "../typed-sql";
-import { checkSignupLink, requestSignup, signupErrorMessage } from "../passkey-signup";
 import {
   authenticateOauthClient,
   consumeAuthorizationCode,
@@ -35,8 +29,7 @@ import {
   type OauthApplication,
 } from "../oauth-store";
 import { DEFAULT_SCOPES, parseScopes, scopesWithin } from "../oauth-scope";
-import { registrationsOpen } from "../runtime-config";
-import { signInRedirect as pageSignInRedirect } from "../page-redirect";
+import { pageRedirect, signInRedirect as pageSignInRedirect } from "../page-redirect";
 
 export const OOB_REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob";
 
@@ -169,10 +162,16 @@ export const getOauthAuthorize = async (c: Context<{ Bindings: Env }, "/oauth/au
     return answerCheck(c, check);
   }
   if (params.value.force_login === "true" || params.value.force_login === "1") {
-    return signInRedirect(c);
+    // Access still holds the browser until its own logout. The authorize
+    // request comes back with the JWT after that logout; dropping it here
+    // would discard the client's redirect, state, and PKCE.
+    const back = new URL(c.req.url);
+    back.searchParams.delete("force_login");
+    const returnTo = `${back.origin}${back.pathname}${back.search}`;
+    return pageRedirect(c, `${ACCESS_LOGOUT_PATH}?redirect_url=${encodeURIComponent(returnTo)}`);
   }
-  const signedIn = await browserSession(c.env);
-  if (signedIn.kind === "SignedOut") {
+  const signedIn = await browserSession(c.req.raw, c.env);
+  if (signedIn.kind === "SignedOut" || signedIn.kind === "NoAccount") {
     return signInRedirect(c);
   }
   if (signedIn.kind !== "Account") {
@@ -200,7 +199,7 @@ export const postOauthAuthorize = async (c: Context<{ Bindings: Env }, "/oauth/a
   if (check.kind !== "Valid") {
     return answerCheck(c, check);
   }
-  const signedIn = await browserSession(c.env);
+  const signedIn = await browserSession(c.req.raw, c.env);
   if (signedIn.kind === "SignedOut") {
     return refuse(c, "Your session has ended. Sign in and authorize again.", 403);
   }
@@ -401,100 +400,38 @@ const returnTo = (c: Context<{ Bindings: Env }>): string => {
 };
 
 export const getAuthSignIn = async (c: Context<{ Bindings: Env }, "/auth/sign_in">) => {
-  const signedIn = await browserSession(c.env);
+  const signedIn = await browserSession(c.req.raw, c.env, { provision: true });
   return c.html(
     signInPage(
       instanceName(c.env),
-      returnTo(c),
+      signedIn.kind === "NoAccount" ? "/" : returnTo(c),
       signedIn.kind === "Account" ? signedIn.account.username : undefined,
     ),
   );
 };
 
+/** Sign-up is the same door as sign-in: Access provisions the account. */
 export const getAuthSignUp = (c: Context<{ Bindings: Env }, "/auth/sign_up">) =>
-  c.html(signUpPage(instanceName(c.env), registrationsOpen(c.env)));
-
-const SignUpBodySchema = z.object({
-  username: z.string().trim().default(""),
-  email: Sensitive.schema(z.string().trim().default("")),
-});
-
-/** Step one of sign-up: mail a confirmation link for the username and address. */
-export const postAuthSignUp = async (c: Context<{ Bindings: Env }, "/auth/sign_up">) => {
-  const body = await readOptionalBody(c, SignUpBodySchema);
-  const form = body.isOk() ? body.value : { username: "", email: Sensitive.of("") };
-  const requested = await requestSignup(c.env, form.username, form.email);
-  if (requested.isErr()) {
-    const status =
-      requested.error.kind === "RepositoryError" || requested.error.kind === "MailError"
-        ? 500
-        : 422;
-    return c.html(
-      signUpPage(
-        instanceName(c.env),
-        registrationsOpen(c.env),
-        form,
-        signupErrorMessage(requested.error),
-      ),
-      status,
-    );
-  }
-  return c.html(signUpSentPage(instanceName(c.env), requested.value.email));
-};
-
-const TokenQuerySchema = z.object({ token: z.string().optional() });
-const parseTokenQuery = schemaResult(TokenQuerySchema);
-
-/** Step two, from the emailed link: the passkey page, if the link is still good. */
-export const getAuthSignUpVerify = async (
-  c: Context<{ Bindings: Env }, "/auth/sign_up/verify">,
-) => {
-  // Better Auth registers a passkey for the signed-in user whenever a session
-  // exists, so a sign-up ceremony in a signed-in browser would add the passkey
-  // to that account and never create the new one.
-  if (getSession()) {
-    return refuse(c, "You are signed in. Sign out first, then open this sign-up link again.", 403);
-  }
-  const query = parseTokenQuery(c.req.query());
-  const token = query.isOk() ? query.value.token : undefined;
-  const intent = await checkSignupLink(c.env, token);
-  if (intent.isErr() || token === undefined) {
-    return refuse(
-      c,
-      signupErrorMessage(intent.isErr() ? intent.error : { kind: "InvalidSignupLink" }),
-    );
-  }
-  return c.html(signUpPasskeyPage(instanceName(c.env), intent.value.username, token));
-};
+  c.redirect("/auth/sign_in");
 
 /**
- * `DELETE /auth/sign_out`, as the Mastodon web UI calls it: end the Better
- * Auth session (its web app token goes with it) and say where to go next.
- * Cross-site callers cannot send this (a DELETE needs a CORS preflight).
+ * `DELETE /auth/sign_out`, as the Mastodon web UI calls it: drop the local
+ * session (its web app token goes with it) and send the browser to Access
+ * logout, which is what actually ends the login. Cross-site callers cannot
+ * send this (a DELETE needs a CORS preflight).
  */
 export const deleteAuthSignOut = async (c: Context<{ Bindings: Env }, "/auth/sign_out">) => {
-  const state = getSession();
-  if (state) {
-    const removed = await runD1(() => runTyped(c.env.DB, deleteAuthSession(state.session.id)));
-    if (removed.isErr()) {
-      return c.json({ error: removed.error.message, kind: removed.error.kind }, 500);
-    }
-  }
+  await endAccessSessions(c.req.raw, c.env);
   for (const cookie of EXPIRED_SESSION_COOKIES) {
     c.header("Set-Cookie", cookie, { append: true });
   }
+  const next = accessConfigured(c.env) ? ACCESS_LOGOUT_PATH : "/";
   return (c.req.header("Accept") ?? "").includes("application/json")
-    ? c.json({ redirect_to: "/" })
-    : c.redirect("/");
+    ? c.json({ redirect_to: next })
+    : c.redirect(next);
 };
 
 /** The old Access explainer URL now leads to sign-in. */
 export const getLogin = (c: Context<{ Bindings: Env }, "/login">) => c.redirect("/auth/sign_in");
 
-warmSchemas([
-  AuthorizeParamsSchema,
-  TokenParamsSchema,
-  ReturnToQuerySchema,
-  SignUpBodySchema,
-  TokenQuerySchema,
-]);
+warmSchemas([AuthorizeParamsSchema, TokenParamsSchema, ReturnToQuerySchema]);

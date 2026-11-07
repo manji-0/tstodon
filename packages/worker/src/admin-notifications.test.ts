@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount, signupEmail } from "../test/auth-fixture";
-import { createSignupAccount } from "./passkey-signup";
+import { createSignupAccount } from "./account-provision";
 
 const json = async (
   path: string,

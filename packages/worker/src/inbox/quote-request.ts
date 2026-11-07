@@ -22,11 +22,13 @@ import {
 } from "../activitypub";
 import { refId } from "../activitypub-wire";
 import { findBlock } from "../block-mute-store";
+import { publishConversationUpdate } from "../conversation-stream";
 import type { RepositoryError } from "../d1";
 import { enqueueTargetedActivity } from "../delivery";
 import { isActorDomainBlocked } from "../domain-block-store";
 import { enqueueHomeFanOut } from "../home-fan-out";
 import { newEntityId } from "../ids";
+import { recordSilentRemoteStatusMention } from "../mention-store";
 import { notifyFromRemote } from "../notify";
 import { enqueuePublicFanOut } from "../public-fan-out";
 import { quoteAuthorizationUri } from "../quote-authorization-document";
@@ -136,6 +138,28 @@ const cacheInstrument = async (
     notifyMentions: true,
   });
   return stored.map((status) => (status?.actorUri === signer.actorUri ? status : undefined));
+};
+
+/**
+ * Let the quoted author see the quoting note, as Mastodon's
+ * `Quote#ensure_quoted_access`: a silent mention, so a followers-only or
+ * direct note reaches them and the quote notification can be sent, without
+ * a mention notification of its own.
+ */
+const ensureQuotedAccess = async (
+  env: Env,
+  identity: InstanceIdentity,
+  status: RemoteStatusValue,
+  accountId: string,
+): Promise<Result<void, RepositoryError>> => {
+  const recorded = await recordSilentRemoteStatusMention(env.DB, status.id, accountId);
+  if (recorded.isErr()) {
+    return recorded;
+  }
+  if (status.visibility.kind === "Direct") {
+    await publishConversationUpdate(env, identity, [accountId], status.id);
+  }
+  return ok(undefined);
 };
 
 /** Tell local timelines that show the quoting note that its quote changed. */
@@ -322,9 +346,15 @@ export const receiveQuoteRequest = async (
     return ok(undefined);
   }
   await announceQuoteChange(env, quoting.value);
-  // Mastodon also mentions the quoted author silently (`ensure_quoted_access`)
-  // so a narrower note reaches them; without silent mentions, an author who
-  // may not see the note is not told about it.
+  const access = await ensureQuotedAccess(
+    env,
+    delivery.identity,
+    quoting.value,
+    quoted.value.author.id,
+  );
+  if (access.isErr()) {
+    return err(access.error);
+  }
   if (!(await canViewRemoteStatus(env.DB, quoting.value, quoted.value.author.id))) {
     return ok(undefined);
   }

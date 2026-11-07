@@ -3,14 +3,12 @@ import type { Context } from "hono";
 import { z } from "zod";
 import {
   listAuthorizedApplications,
-  listPasskeys,
   listSessions,
-  removePasskey,
-  renamePasskey,
   revokeAuthorizedApplication,
   revokeSession,
 } from "../account-security-store";
 import { securityPage } from "../account-security-pages";
+import { ACCESS_LOGOUT_PATH } from "../access-jwt";
 import { errorPage } from "../auth-pages";
 import { EXPIRED_SESSION_COOKIES, type BrowserSession } from "../browser-session";
 import { readOptionalBody } from "../http";
@@ -20,10 +18,9 @@ import type { PageMessage } from "../settings-pages";
 import { instanceName, settingsAccount } from "./account-settings";
 
 /**
- * Mastodon's `/auth/edit`: passkeys, browser sessions, and authorized apps.
- * Every write is a form post from this site by the signed-in user, to rows
- * that user owns. Writes that change what protects the account also need a
- * recent sign-in; renaming a passkey does not.
+ * Mastodon's `/auth/edit`: the local record of the Access login, and the apps
+ * allowed to use the account. Every write is a form post from this site by
+ * the signed-in user, to rows that user owns, and needs a recent Access login.
  */
 
 type Signed = Extract<BrowserSession, { kind: "Account" }>;
@@ -35,12 +32,11 @@ const render = async (
   message?: PageMessage,
   status: 200 | 403 | 404 | 422 | 500 = 200,
 ): Promise<Response> => {
-  const [passkeys, sessions, apps] = await Promise.all([
-    listPasskeys(c.env.DB, signed.userId),
+  const [sessions, apps] = await Promise.all([
     listSessions(c.env.DB, signed.userId),
     listAuthorizedApplications(c.env.DB, signed.account.id),
   ]);
-  if (passkeys.isErr() || sessions.isErr() || apps.isErr()) {
+  if (sessions.isErr() || apps.isErr()) {
     return c.html(
       errorPage(instanceName(c.env), "The server could not read your security settings."),
       500,
@@ -51,7 +47,6 @@ const render = async (
       instanceName(c.env),
       signed.account.username,
       {
-        passkeys: passkeys.value,
         sessions: sessions.value.map((session) => ({
           ...session,
           current: session.id === signed.sessionId,
@@ -76,7 +71,7 @@ export const getAuthEdit = async (c: Context<{ Bindings: Env }, "/auth/edit">) =
   return signedIn.kind === "Answered" ? signedIn.response : render(c, signedIn);
 };
 
-/** A write that needs a recent sign-in; a stale one gets the page that asks for it. */
+/** A write that needs a recent Access login; a stale one gets the page that says so. */
 const afterRecentSignIn = async (
   c: SecurityContext,
   write: (signed: Signed) => Promise<Response>,
@@ -89,69 +84,16 @@ const afterRecentSignIn = async (
     return render(
       c,
       signedIn,
-      { kind: "error", text: "Confirm with your passkey to change this." },
+      { kind: "error", text: "Sign in again through Cloudflare Access to change this." },
       403,
     );
   }
   return write(signedIn);
 };
 
-const PasskeyRenameFormSchema = z.object({
-  id: z.string().default(""),
-  name: z.string().trim().min(1).max(60),
-});
 const IdFormSchema = z.object({ id: z.string().default("") });
 
-/** Rename one of the signed-in user's passkeys. */
-export const postPasskeyRename = async (
-  c: Context<{ Bindings: Env }, "/auth/edit/passkeys/rename">,
-) => {
-  const signedIn = await settingsAccount(c);
-  if (signedIn.kind === "Answered") {
-    return signedIn.response;
-  }
-  const form = await readOptionalBody(c, PasskeyRenameFormSchema);
-  if (form.isErr()) {
-    return render(
-      c,
-      signedIn,
-      { kind: "error", text: "Give the passkey a name of up to 60 characters." },
-      422,
-    );
-  }
-  const renamed = await renamePasskey(c.env.DB, signedIn.userId, form.value.id, form.value.name);
-  if (renamed.isErr()) {
-    return render(c, signedIn, FAILED, 500);
-  }
-  return renamed.value === "Renamed"
-    ? render(c, signedIn, { kind: "notice", text: "Passkey renamed." })
-    : render(c, signedIn, { kind: "error", text: "That passkey was not found." }, 404);
-};
-
-/** Remove one of the signed-in user's passkeys, never the last. */
-export const postPasskeyRemove = (c: Context<{ Bindings: Env }, "/auth/edit/passkeys/remove">) =>
-  afterRecentSignIn(c, async (signed) => {
-    const form = await readOptionalBody(c, IdFormSchema);
-    const removed = await removePasskey(c.env.DB, signed.userId, form.isOk() ? form.value.id : "");
-    if (removed.isErr()) {
-      return render(c, signed, FAILED, 500);
-    }
-    switch (removed.value) {
-      case "Removed":
-        return render(c, signed, { kind: "notice", text: "Passkey removed." });
-      case "LastPasskey":
-        return render(
-          c,
-          signed,
-          { kind: "error", text: "This is your only passkey. Add another before you remove it." },
-          422,
-        );
-      case "NotFound":
-        return render(c, signed, { kind: "error", text: "That passkey was not found." }, 404);
-    }
-  });
-
-/** End one of the signed-in user's sessions; ending this browser's signs it out. */
+/** End one of the signed-in user's sessions. Ending this browser's sends them to Access logout. */
 export const postSessionRevoke = (c: Context<{ Bindings: Env }, "/auth/edit/sessions/revoke">) =>
   afterRecentSignIn(c, async (signed) => {
     const form = await readOptionalBody(c, IdFormSchema);
@@ -164,7 +106,7 @@ export const postSessionRevoke = (c: Context<{ Bindings: Env }, "/auth/edit/sess
       return render(c, signed, { kind: "error", text: "That session was not found." }, 404);
     }
     if (id === signed.sessionId) {
-      const response = pageRedirect(c, "/auth/sign_in", 303);
+      const response = pageRedirect(c, ACCESS_LOGOUT_PATH, 303);
       for (const cookie of EXPIRED_SESSION_COOKIES) {
         response.headers.append("Set-Cookie", cookie);
       }
@@ -192,4 +134,4 @@ export const postAuthorizedApplicationRevoke = (
       : render(c, signed, { kind: "error", text: "That app has no access to your account." }, 404);
   });
 
-warmSchemas([PasskeyRenameFormSchema, IdFormSchema]);
+warmSchemas([IdFormSchema]);

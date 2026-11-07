@@ -9,6 +9,7 @@ import {
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { saveLocalAccountModeration } from "./account-moderation-store";
+import { notifyAdmins } from "./admin-notify";
 import { isRegistrationBlocked } from "./registration-block-store";
 import { nowInstant } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
@@ -16,6 +17,7 @@ import { generateAccountKeys } from "./keys";
 import { newEntityId } from "./ids";
 import { findAccountByUsername, insertAccount } from "./account-store";
 import { setAccountAuthUser } from "./generated/prisma/sql";
+import { registrationApprovalRequired } from "./runtime-config";
 import { runTyped } from "./typed-sql";
 
 /** Mastodon caps local usernames at 30 characters. */
@@ -104,4 +106,27 @@ export const provisionLocalAccount = async (
     }
   }
   return ok(account);
+};
+
+/**
+ * Create the local account for a Better Auth user that already exists, and
+ * tell admins. Callers that sign a person up (Access provisioning, tests)
+ * share this so a new account always announces itself.
+ */
+export const createSignupAccount = async (
+  env: Env,
+  intent: Readonly<{ username: string; email: SensitiveValue<AccessEmail> }>,
+  authUserId: string,
+  pending: boolean = registrationApprovalRequired(env),
+): Promise<Result<LocalAccount, ProvisionError>> => {
+  const account = await provisionLocalAccount(env.DB, {
+    username: intent.username,
+    email: intent.email,
+    authUserId,
+    pending,
+  });
+  if (account.isOk()) {
+    await notifyAdmins(env, { kind: "admin.sign_up", fromAccountId: account.value.id });
+  }
+  return account;
 };

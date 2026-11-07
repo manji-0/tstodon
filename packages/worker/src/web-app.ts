@@ -1,5 +1,4 @@
 import type { Context, Next } from "hono";
-import { getSession } from "void/auth";
 import { z } from "zod";
 import { InstanceLimits, Languages, schemaResult } from "@tstodon/core";
 import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
@@ -128,8 +127,8 @@ const WEB_APP_ID = "tstodon-web";
 const WEB_SCOPES = "read write follow push";
 
 /**
- * The web app's token for a Better Auth session: derived from the session's
- * own secret, so it is never stored, and recorded (as a digest) on first use.
+ * The web app's token for an Access login: derived from that login's session
+ * secret, so it is never stored, and recorded (as a digest) on first use.
  */
 const webAccessToken = async (
   env: Env,
@@ -167,13 +166,16 @@ type Viewer = Readonly<{
 }>;
 
 /** The signed-in account behind the request's Better Auth session, if it may use the app. */
-const currentViewer = async (env: Env): Promise<Viewer | undefined> => {
-  const state = getSession();
-  const viewer = await browserSession(env);
-  if (!state || viewer.kind !== "Account") {
+const currentViewer = async (request: Request, env: Env): Promise<Viewer | undefined> => {
+  const viewer = await browserSession(request, env);
+  if (viewer.kind !== "Account") {
     return undefined;
   }
-  const token = await webAccessToken(env, state.session, viewer.account.id);
+  const token = await webAccessToken(
+    env,
+    { id: viewer.sessionId, token: viewer.sessionToken },
+    viewer.account.id,
+  );
   return token ? { account: viewer.account, role: viewer.role, token } : undefined;
 };
 
@@ -382,10 +384,10 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
     return next();
   }
   const locale = pickLocale(c.req.header("Accept-Language"), manifest.locales);
-  const viewer = await currentViewer(c.env);
+  const viewer = await currentViewer(c.req.raw, c.env);
   const identity = parseInstanceIdentity(c.env);
   c.header("Cache-Control", "private, no-store");
-  c.header("Vary", "Cookie, Accept-Language");
+  c.header("Vary", "Cookie, Accept-Language, Cf-Access-Jwt-Assertion");
   return c.html(
     webAppPage(manifest, {
       locale,

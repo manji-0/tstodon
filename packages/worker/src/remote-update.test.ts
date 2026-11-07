@@ -172,6 +172,42 @@ describe("remote Update of a note", () => {
     );
     expect(mentions.filter((entry) => entry.status.id === id)).toHaveLength(1);
   });
+
+  it("notifies once when an edit turns a silent mention into a real one", async () => {
+    const email = "remote-update-silent-mention@example.com";
+    const headers = await authHeaders(email);
+    const account = read(
+      z.object({ id: z.string(), username: z.string() }),
+      await json("/api/v1/accounts/verify_credentials", { headers }),
+    );
+    const actorUrl = `https://example.com/users/${account.username}`;
+    const author = await remoteActor("update-silent-mentioner");
+    const id = await create(author, "silent-mention", "<p>hi</p>");
+    await env.DB.prepare(
+      "INSERT INTO remote_status_mentions (status_id, account_id, silent) VALUES (?, ?, 1)",
+    )
+      .bind(id, account.id)
+      .run();
+    const mentioning = note(author, "silent-mention", "<p>hi @you</p>", {
+      tag: [{ type: "Mention", href: actorUrl }],
+      cc: [actorUrl],
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+
+    const mentionCount = async () =>
+      read(
+        z.array(z.object({ status: z.object({ id: z.string() }) })),
+        await json("/api/v1/notifications?types[]=mention", { headers }),
+      ).filter((entry) => entry.status.id === id).length;
+
+    await update(author, "silent-mention-1", mentioning);
+    expect(await mentionCount()).toBe(1);
+    await update(author, "silent-mention-2", {
+      ...mentioning,
+      updated: "2026-10-22T00:00:00.000Z",
+    });
+    expect(await mentionCount()).toBe(1);
+  });
 });
 
 describe("update notifications to local boosters", () => {
