@@ -1,4 +1,4 @@
-import { expect, replacePasskeyDevice, signUp, test } from "./fixtures";
+import { expect, signUp, test } from "./fixtures";
 
 /**
  * The web app's links to Mastodon's Rails settings pages: they land on this
@@ -53,8 +53,7 @@ test.describe("settings links in the web UI", () => {
     await expect(filters.getByLabel("Keyword or phrase").first()).toHaveValue("season finale");
   });
 
-  test("adds, renames, and removes a passkey, and keeps the last one", async ({
-    context,
+  test("shows the Access login on Password and security, with no local passkey", async ({
     page,
   }) => {
     await signUp(page, person("sec"));
@@ -62,23 +61,9 @@ test.describe("settings links in the web UI", () => {
     await page.getByRole("link", { name: "Password and security" }).click();
     await expect(page).toHaveURL(/\/auth\/edit$/);
     await expect(page.getByRole("heading", { name: "Password and security" })).toBeVisible();
-    await expect(page.getByText("This is your only passkey")).toBeVisible();
-    await expect(page.getByText("Phone", { exact: true })).toBeVisible();
+    await expect(page.getByText("Cloudflare Access")).toBeVisible();
     await expect(page.getByText("This browser")).toBeVisible();
-
-    await replacePasskeyDevice(context, page);
-    await page.getByLabel("Name for the new passkey").fill("Laptop");
-    await page.getByRole("button", { name: "Add a passkey" }).click();
-    await expect(page.getByText("Laptop", { exact: true })).toBeVisible();
-
-    await page.getByLabel("Name", { exact: true }).last().fill("Work laptop");
-    await page.getByRole("button", { name: "Rename" }).last().click();
-    await expect(page.getByText("Passkey renamed.")).toBeVisible();
-    await expect(page.getByText("Work laptop", { exact: true })).toBeVisible();
-
-    await page.getByRole("button", { name: "Remove passkey" }).last().click();
-    await expect(page.getByText("Passkey removed.")).toBeVisible();
-    await expect(page.getByText("This is your only passkey")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add a passkey" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Remove passkey" })).toHaveCount(0);
   });
   test("downloads a CSV export and uploads an import that finishes", async ({ page }) => {

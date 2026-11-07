@@ -258,7 +258,7 @@ export const getV2Instance = async (c: Context<{ Bindings: Env }, "/api/v2/insta
       limited_federation: await isLimitedFederation(c.env),
     },
     registrations: {
-      // Self-service sign-up with a passkey at `/auth/sign_up`.
+      // A new Access login provisions an account when this is on.
       enabled: registrationsOpen(c.env),
       approval_required: registrationApprovalRequired(c.env),
       reason_required: false,

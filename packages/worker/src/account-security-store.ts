@@ -1,35 +1,22 @@
 import { Sensitive, type SensitiveValue } from "@tstodon/core";
-import { err, ok, type Result } from "neverthrow";
+import type { Result } from "neverthrow";
 import { z } from "zod";
 import { runD1, type RepositoryError } from "./d1";
 import {
   deleteAuthorizationCodesOfAccount,
   deleteAuthorizedApplicationTokens,
-  deleteAuthPasskeyKeepingOne,
   deleteOwnAuthSession,
   listAuthorizedApplicationTokens,
-  listAuthPasskeys,
   listAuthSessions,
-  renameAuthPasskey,
 } from "./generated/prisma/sql";
 import { queryTyped, runTyped, runTypedBatch } from "./typed-sql";
 
 /**
- * The credentials behind an account's sign-in, as the "Password and
- * security" page shows them: passkeys and browser sessions are Better Auth's
- * (keyed by its user id), authorized apps are OAuth access tokens (keyed by
- * the local account id). Every write names its owner in the `WHERE`, so a
- * guessed id of someone else's row matches nothing.
+ * What the "Password and security" page can change: the local record of the
+ * Access login (a Better Auth session row, keyed by its user id) and the
+ * OAuth apps allowed to use the account. Every write names its owner in the
+ * `WHERE`, so a guessed id of someone else's row matches nothing.
  */
-
-export type PasskeyEntry = Readonly<{
-  id: string;
-  name: string | undefined;
-  addedAt: Date | undefined;
-  /** `multiDevice` passkeys sync between a person's devices. */
-  deviceType: string;
-  backedUp: boolean;
-}>;
 
 export type SessionEntry = Readonly<{
   id: string;
@@ -47,66 +34,6 @@ export type AuthorizedApp = Readonly<{
   scopes: ReadonlyArray<string>;
   authorizedAt: Date;
 }>;
-
-const PasskeyRowSchema = z.object({
-  id: z.string(),
-  name: z.string().nullable(),
-  createdAt: z.number().nullable(),
-  deviceType: z.string(),
-  backedUp: z.number(),
-});
-
-export const listPasskeys = async (
-  db: D1Database,
-  userId: string,
-): Promise<Result<ReadonlyArray<PasskeyEntry>, RepositoryError>> =>
-  runD1(async () =>
-    (await queryTyped(db, listAuthPasskeys(userId), PasskeyRowSchema)).map((row) => ({
-      id: row.id,
-      name: row.name?.trim() || undefined,
-      addedAt: row.createdAt === null ? undefined : new Date(row.createdAt),
-      deviceType: row.deviceType,
-      backedUp: row.backedUp !== 0,
-    })),
-  );
-
-/** Whether a rename changed a passkey of this user. */
-export const renamePasskey = async (
-  db: D1Database,
-  userId: string,
-  passkeyId: string,
-  name: string,
-): Promise<Result<"Renamed" | "NotFound", RepositoryError>> =>
-  (await runD1(() => runTyped(db, renameAuthPasskey(passkeyId, userId, name)))).map((result) =>
-    result.meta.changes > 0 ? "Renamed" : "NotFound",
-  );
-
-export type PasskeyRemoval = "Removed" | "NotFound" | "LastPasskey";
-
-/**
- * Remove one of the user's passkeys, never the last: the delete itself
- * refuses when it would leave none, since sign-in is passkey-only.
- */
-export const removePasskey = async (
-  db: D1Database,
-  userId: string,
-  passkeyId: string,
-): Promise<Result<PasskeyRemoval, RepositoryError>> => {
-  const deleted = await runD1(() => runTyped(db, deleteAuthPasskeyKeepingOne(passkeyId, userId)));
-  if (deleted.isErr()) {
-    return err(deleted.error);
-  }
-  if (deleted.value.meta.changes > 0) {
-    return ok("Removed");
-  }
-  const remaining = await listPasskeys(db, userId);
-  if (remaining.isErr()) {
-    return err(remaining.error);
-  }
-  return ok(
-    remaining.value.some((passkey) => passkey.id === passkeyId) ? "LastPasskey" : "NotFound",
-  );
-};
 
 const SessionRowSchema = z.object({
   id: z.string(),

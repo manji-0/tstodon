@@ -1,5 +1,5 @@
-// Browser e2e instance (e2e/web) — local origin http://localhost:8793. Passkeys need a
-// host name (WebAuthn rejects IP addresses as the relying party), hence localhost.
+// Browser e2e instance (e2e/web) — local origin http://localhost:8793, the host
+// INSTANCE_DOMAIN names. Sign-in is a test Cloudflare Access JWT, not a local passkey.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "tstodon-e2e-web",
@@ -40,6 +40,11 @@
     "MEDIA_PUBLIC_BASE_URL": "http://localhost:8793",
     "EMAIL_FROM": "tstodon <noreply@example.com>",
     "EMAIL_TRANSPORT": "capture",
+    // Public test Access key (packages/worker/test/access-jwt-fixture.ts). Not a secret.
+    "CF_ACCESS_TEAM_DOMAIN": "https://tstodon.cloudflareaccess.com",
+    "CF_ACCESS_AUD": "tstodon-local-aud",
+    "CF_ACCESS_JWKS_JSON": "{\"keys\":[{\"kty\":\"RSA\",\"n\":\"qHE50MFXgxUeSKwP4ChF1TRN7gvR1z4bRcTIc7Jcr6qTrccio5BjeveN7dxj8pP985tYQMVI9sx81vEA7v38KzY0Q9UqEgZzd7VP_TGJEm4fxaP7dZSVQWTvrTxNpqCCPml4rc3nNgABRWniSgwCWR1A7d7mpOTicxXG6PApWAPDuRGdBNq2hnkm2fkFSKKf_oyaXjlRZJMYiMR8pOoCb9xrSUKTzrUjK_AvSmt3CcnJwMqMMVn_ZP7-nRi-OogwkOjW0NyUzIle7KQkMYDhHGRMUnZjj6Qwo0yBzvJXXuBjusHTPYHPlSVnY4k9uxA2SojnCUgrM20tGLsmUofpFw\",\"e\":\"AQAB\",\"kid\":\"tstodon-local-access\",\"alg\":\"RS256\",\"use\":\"sig\"}]}",
+    // Leave CF_ACCESS_ADMIN_GROUPS unset so a later page view does not clear these.
     // The admin scenarios sign up as these.
     "ADMIN_USERNAMES": "modadmin,modadmin2,modadmin3,modadmin4",
   },

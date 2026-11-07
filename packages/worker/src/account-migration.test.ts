@@ -345,7 +345,7 @@ describe("moving to a different account", () => {
       .run();
 
     const form = await fetcher("/settings/migration");
-    expect(await form.text()).toContain("signInWithPasskey");
+    expect(await form.text()).toContain("Cloudflare Access");
     const refused = await postForm(fetcher, "/settings/migration", { acct: target.username });
     expect(refused.status).toBe(403);
     expect(await movedTo(mover.id)).toBeUndefined();

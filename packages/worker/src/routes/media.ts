@@ -191,7 +191,7 @@ export const getMediaById = async (c: Context<{ Bindings: Env }, "/media/:id">) 
   if (status.isErr()) {
     return jsonRepositoryError(c, status.error.message);
   }
-  const session = await browserSession(c.env);
+  const session = await browserSession(c.req.raw, c.env);
   const viewerId = session.kind === "Account" ? session.account.id : undefined;
   if (!status.value || !(await canViewStatus(c.env.DB, status.value, viewerId))) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);

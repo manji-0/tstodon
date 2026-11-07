@@ -110,13 +110,13 @@ describe("worker http", () => {
     expect(allowed.isOk()).toBe(true);
   });
 
-  it("sends the old login URL to passkey sign-in", async () => {
+  it("sends the old login URL to the Access sign-in page", async () => {
     const response = await SELF.fetch("https://example.com/login", { redirect: "manual" });
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe("/auth/sign_in");
     const page = await SELF.fetch("https://example.com/auth/sign_in");
     expect(page.status).toBe(200);
-    expect(await page.text()).toContain("Sign in with a passkey");
+    expect(await page.text()).toContain("Cloudflare Access");
   });
 
   it("serves Mastodon instance metadata", async () => {

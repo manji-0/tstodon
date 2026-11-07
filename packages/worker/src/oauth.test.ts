@@ -1,18 +1,12 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { browser, ORIGIN, postForm, read, signUp, type Browser } from "../test/passkey-browser";
 import {
-  browser,
-  ORIGIN,
-  postForm,
-  postJson,
-  read,
-  registrationOptions,
-  requestSignupLink,
-  signUp,
-  type Browser,
-} from "../test/passkey-browser";
-import { mailboxKey } from "./mailer";
+  accessAuthHeaders,
+  LOCAL_ACCESS_ADMIN_GROUP,
+  signAccessJwt,
+} from "../test/access-jwt-fixture";
 import { pkceS256 } from "./oauth-store";
 
 const CALLBACK = "https://client.example/callback";
@@ -98,8 +92,8 @@ const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 const me = (token: string) =>
   SELF.fetch(`${ORIGIN}/api/v1/accounts/verify_credentials`, { headers: bearer(token) });
 
-describe("passkey sign-up and Mastodon OAuth", () => {
-  it("signs up with a passkey and authorizes an app with PKCE", async () => {
+describe("Access sign-in and Mastodon OAuth", () => {
+  it("signs in through Access and authorizes an app with PKCE", async () => {
     const { fetcher } = await signUp("passkey_alice");
     const app = await registerApp();
     const verifier = "a-code-verifier-that-is-long-enough-for-pkce-0123456789";
@@ -131,74 +125,42 @@ describe("passkey sign-up and Mastodon OAuth", () => {
     expect(read(z.object({ error: z.string() }), await replay.json()).error).toBe("invalid_grant");
   });
 
-  it("signs back in with the same passkey", async () => {
-    const { passkey } = await signUp("passkey_bob");
-    const fetcher = browser();
-    const options = await fetcher("/api/auth/passkey/generate-authenticate-options");
-    expect(options.status).toBe(200);
-    const response = await passkey.authenticate(
-      read(z.object({ challenge: z.string(), rpId: z.string().optional() }), await options.json()),
-    );
-    const verified = await postJson(fetcher, "/api/auth/passkey/verify-authentication", {
-      response,
-    });
-    expect(verified.status).toBe(200);
-    const page = await fetcher("/auth/sign_in");
+  it("signs back in with the same Access identity and does not open passkey registration", async () => {
+    await signUp("passkey_bob");
+    const again = browser(await signAccessJwt({ email: "passkey_bob@mail.example" }));
+    const page = await again("/auth/sign_in");
+    expect(page.status).toBe(200);
     expect(await page.text()).toContain("@passkey_bob");
+    expect((await again("/api/auth/passkey/generate-authenticate-options")).status).not.toBe(200);
+    const accounts = await env.DB.prepare(`SELECT COUNT(*) AS n FROM accounts WHERE username = ?`)
+      .bind("passkey_bob")
+      .first("n");
+    expect(accounts).toBe(1);
   });
 
-  it("creates a passkey only from a confirmed email link, once", async () => {
-    const fetcher = browser();
-    // Without the emailed token there is no passkey step.
-    expect((await registrationOptions(fetcher, "passkey_hank")).status).toBe(400);
-    expect((await registrationOptions(fetcher, "not-a-token")).status).toBe(400);
-    expect((await fetcher("/auth/sign_up/verify?token=not-a-token")).status).toBe(400);
-
-    const { token } = await signUp("passkey_hank", "Hank@Mail.Example");
+  it("provisions the account from the Access email, once", async () => {
+    const fetcher = browser(await signAccessJwt({ email: "Hank@Mail.Example" }));
+    const page = await fetcher("/auth/sign_in");
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain("@hank");
     const row = await env.DB.prepare(
-      `SELECT u.email, u.emailVerified AS verified, a.access_email
-       FROM accounts a JOIN "user" u ON u.id = a.auth_user_id WHERE a.username = ?`,
+      `SELECT u.email, u.emailVerified AS verified, a.access_email, a.username
+       FROM accounts a JOIN "user" u ON u.id = a.auth_user_id WHERE a.access_email = ?`,
     )
-      .bind("passkey_hank")
+      .bind("hank@mail.example")
       .first();
     expect(row).toEqual({
       email: "hank@mail.example",
       verified: 1,
       access_email: "hank@mail.example",
+      username: "hank",
     });
-    // The link is spent.
-    expect((await registrationOptions(browser(), token)).status).toBe(400);
-  });
-
-  it("refuses taken, malformed, and blocked sign-ups at the form", async () => {
-    await signUp("passkey_carol", "carol@mail.example");
-    await env.APP_CACHE.delete(mailboxKey("carol@mail.example"));
-    const fetcher = browser();
-    for (const [username, email] of [
-      ["passkey_carol", "carol2@mail.example"],
-      ["passkey_carol2", "carol@mail.example"],
-      ["not-valid", "x@mail.example"],
-      ["x".repeat(31), "y@mail.example"],
-      ["passkey_carol3", "not-an-email"],
-    ] as const) {
-      const response = await postForm(fetcher, "/auth/sign_up", { username, email });
-      expect(response.status).toBe(422);
-      expect(await env.APP_CACHE.get(mailboxKey(email))).toBeNull();
-    }
-  });
-
-  it("sends one link a minute per address", async () => {
-    const fetcher = browser();
-    const first = await requestSignupLink(fetcher, "passkey_ivy", "ivy@mail.example");
-    await env.APP_CACHE.delete(mailboxKey("ivy@mail.example"));
-    const again = await postForm(fetcher, "/auth/sign_up", {
-      username: "passkey_ivy",
-      email: "ivy@mail.example",
-    });
-    expect(again.status).toBe(200);
-    expect(await env.APP_CACHE.get(mailboxKey("ivy@mail.example"))).toBeNull();
-    // The first link still works.
-    expect((await registrationOptions(fetcher, first)).status).toBe(200);
+    await fetcher("/auth/sign_in");
+    const count = await env.DB.prepare(`SELECT COUNT(*) AS n FROM accounts WHERE access_email = ?`)
+      .bind("hank@mail.example")
+      .first("n");
+    expect(count).toBe(1);
+    expect(await (await browser()("/auth/sign_in")).text()).not.toContain("@hank");
   });
 
   it("enforces scopes and revokes tokens", async () => {
@@ -353,5 +315,252 @@ describe("passkey sign-up and Mastodon OAuth", () => {
       token_endpoint: "https://example.com/oauth/token",
       code_challenge_methods_supported: ["S256"],
     });
+  });
+
+  const accountCount = (email: string) =>
+    env.DB.prepare(`SELECT COUNT(*) AS n FROM accounts WHERE access_email = ?`)
+      .bind(email)
+      .first("n");
+
+  const userRole = (email: string) =>
+    env.DB.prepare(`SELECT role FROM "user" WHERE email = ?`).bind(email).first("role");
+
+  const accessVars = [
+    "CF_ACCESS_ADMIN_GROUPS",
+    "ADMIN_USERNAMES",
+    "CF_ACCESS_TEAM_DOMAIN",
+    "CF_ACCESS_JWKS_JSON",
+  ] as const;
+
+  const readAccessVar = (name: (typeof accessVars)[number]): string => {
+    const value: unknown = Reflect.get(env, name);
+    return typeof value === "string" ? value : "";
+  };
+
+  const withAccessEnv = async (
+    patch: Readonly<Partial<Record<(typeof accessVars)[number], string>>>,
+    body: () => Promise<void>,
+  ) => {
+    const previous = accessVars.map((name) => [name, readAccessVar(name)] as const);
+    for (const name of accessVars) {
+      const next = patch[name];
+      if (next !== undefined) {
+        Reflect.set(env, name, next);
+      }
+    }
+    try {
+      await body();
+    } finally {
+      for (const [name, value] of previous) {
+        Reflect.set(env, name, value);
+      }
+    }
+  };
+
+  it("keeps the OAuth request across an Access force_login logout", async () => {
+    const { fetcher } = await signUp("force_login_user");
+    const app = await registerApp();
+    const query = new URLSearchParams({
+      response_type: "code",
+      client_id: app.client_id,
+      redirect_uri: CALLBACK,
+      scope: "read",
+      state: "keep-me",
+      code_challenge: "challenge-value",
+      code_challenge_method: "S256",
+      force_login: "true",
+    });
+    const response = await fetcher(`/oauth/authorize?${query.toString()}`);
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("location") ?? "", "http://127.0.0.1");
+    expect(location.pathname).toBe("/cdn-cgi/access/logout");
+    const back = new URL(location.searchParams.get("redirect_url") ?? "");
+    expect(back.pathname).toBe("/oauth/authorize");
+    expect(back.searchParams.get("client_id")).toBe(app.client_id);
+    expect(back.searchParams.get("redirect_uri")).toBe(CALLBACK);
+    expect(back.searchParams.get("state")).toBe("keep-me");
+    expect(back.searchParams.get("code_challenge")).toBe("challenge-value");
+    expect(back.searchParams.has("force_login")).toBe(false);
+  });
+
+  it("does not provision an account from an unrelated GET", async () => {
+    const email = "side-effect@mail.example";
+    const fetcher = browser(await signAccessJwt({ email }));
+    const app = await registerApp();
+    const authorize = await fetcher(
+      `/oauth/authorize?${new URLSearchParams({ response_type: "code", client_id: app.client_id, redirect_uri: CALLBACK }).toString()}`,
+    );
+    expect(authorize.status).toBe(302);
+    expect(authorize.headers.get("location")).toContain("/auth/sign_in");
+    expect(await accountCount(email)).toBe(0);
+    expect((await fetcher("/")).status).toBe(200);
+    expect((await fetcher("/media/missing-attachment")).status).toBe(404);
+    expect(await accountCount(email)).toBe(0);
+    const signedIn = await fetcher("/auth/sign_in");
+    expect(await signedIn.text()).toContain("@side_effect");
+    expect(await accountCount(email)).toBe(1);
+  });
+
+  it("refuses the test Access key off a local host and ignores a non-RSA JWKS", async () => {
+    const email = "off-local@mail.example";
+    const token = await signAccessJwt({ email });
+    const remote = await SELF.fetch(`${ORIGIN}/auth/sign_in`, {
+      headers: { "Cf-Access-Jwt-Assertion": token },
+    });
+    expect(remote.status).toBe(200);
+    expect(await remote.text()).not.toContain("@off_local");
+    expect(await accountCount(email)).toBe(0);
+    const local = await browser(token)("/auth/sign_in");
+    expect(await local.text()).toContain("@off_local");
+
+    await withAccessEnv(
+      {
+        CF_ACCESS_JWKS_JSON: JSON.stringify({
+          keys: [{ kty: "EC", crv: "P-256", x: "AA", y: "BB", kid: "ec-key" }],
+        }),
+      },
+      async () => {
+        const page = await browser(await signAccessJwt({ email: "ec-only@mail.example" }))(
+          "/auth/sign_in",
+        );
+        expect(await page.text()).not.toContain("@ec_only");
+        expect(await accountCount("ec-only@mail.example")).toBe(0);
+      },
+    );
+  });
+
+  it("trims the Access team domain before checking the issuer", async () => {
+    await withAccessEnv(
+      { CF_ACCESS_TEAM_DOMAIN: "  https://tstodon.cloudflareaccess.com/  " },
+      async () => {
+        const page = await browser(await signAccessJwt({ email: "trim-team@mail.example" }))(
+          "/auth/sign_in",
+        );
+        expect(await page.text()).toContain("@trim_team");
+      },
+    );
+  });
+
+  it("sets admin from Access groups and leaves a hand-edited role alone when the list is empty", async () => {
+    const email = "group-admin@mail.example";
+    await withAccessEnv({ CF_ACCESS_ADMIN_GROUPS: LOCAL_ACCESS_ADMIN_GROUP }, async () => {
+      const promoted = await browser(
+        await signAccessJwt({ email, groups: [LOCAL_ACCESS_ADMIN_GROUP] }),
+      )("/auth/sign_in");
+      expect(await promoted.text()).toContain("@group_admin");
+      expect(await userRole(email)).toBe("admin");
+      await browser(await signAccessJwt({ email }))("/auth/sign_in");
+      expect(await userRole(email)).toBe("user");
+      await browser(await signAccessJwt({ email, groups: [LOCAL_ACCESS_ADMIN_GROUP] }))(
+        "/auth/sign_in",
+      );
+      expect(await userRole(email)).toBe("admin");
+    });
+
+    await withAccessEnv(
+      { CF_ACCESS_ADMIN_GROUPS: "", ADMIN_USERNAMES: "grant_admin" },
+      async () => {
+        const granted = "grant_admin@mail.example";
+        await browser(await signAccessJwt({ email: granted }))("/auth/sign_in");
+        expect(await userRole(granted)).toBe("admin");
+        await env.DB.prepare(`UPDATE "user" SET role = 'user' WHERE email = ?`).bind(granted).run();
+        await browser(await signAccessJwt({ email: granted }))("/auth/sign_in");
+        expect(await userRole(granted)).toBe("user");
+
+        const kept = "hand-admin@mail.example";
+        await browser(await signAccessJwt({ email: kept }))("/auth/sign_in");
+        expect(await userRole(kept)).toBe("user");
+        await env.DB.prepare(`UPDATE "user" SET role = 'admin' WHERE email = ?`).bind(kept).run();
+        await browser(await signAccessJwt({ email: kept }))("/auth/sign_in");
+        expect(await userRole(kept)).toBe("admin");
+      },
+    );
+  });
+
+  it("rebuilds a session whose user is not the Access account", async () => {
+    const { fetcher } = await signUp("rebind_one");
+    await signUp("rebind_two");
+    const app = await registerApp();
+    const session = read(
+      z.object({ id: z.string(), token: z.string(), userId: z.string() }),
+      await env.DB.prepare(
+        `SELECT s.id AS id, s.token AS token, s.userId AS userId
+         FROM "session" s JOIN accounts a ON a.auth_user_id = s.userId
+         WHERE a.username = 'rebind_one'`,
+      ).first(),
+    );
+    const other = read(
+      z.object({ id: z.string(), userId: z.string() }),
+      await env.DB.prepare(
+        `SELECT id, auth_user_id AS userId FROM accounts WHERE username = 'rebind_two'`,
+      ).first(),
+    );
+    await env.DB.prepare(`UPDATE "session" SET userId = ? WHERE id = ?`)
+      .bind(other.userId, session.id)
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO oauth_access_tokens
+         (id, token_hash, application_id, account_id, scopes, web_session_id, created_at)
+       VALUES (?, 'stale-rebind-hash', ?, ?, 'read', ?, '2020-01-01T00:00:00.000Z')`,
+    )
+      .bind(`web:${session.id}`, app.id, other.id, session.id)
+      .run();
+    expect((await fetcher("/auth/sign_in")).status).toBe(200);
+    const rebuilt = read(
+      z.object({ token: z.string(), userId: z.string() }),
+      await env.DB.prepare(`SELECT token, userId FROM "session" WHERE id = ?`)
+        .bind(session.id)
+        .first(),
+    );
+    expect(rebuilt.userId).toBe(session.userId);
+    expect(rebuilt.token).not.toBe(session.token);
+    expect(
+      await env.DB.prepare(`SELECT id FROM oauth_access_tokens WHERE id = ?`)
+        .bind(`web:${session.id}`)
+        .first(),
+    ).toBeNull();
+  });
+
+  it("deletes a user row only when this request created it", async () => {
+    const keptEmail = "person@kept-user.example";
+    await env.DB.prepare(
+      `INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt, role)
+       VALUES ('user-kept-existing', 'kept', ?, 1, 1, 1, 'user')`,
+    )
+      .bind(keptEmail)
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO email_domain_blocks (id, domain, created_at) VALUES (?, 'kept-user.example', '2020-01-01T00:00:00.000Z')`,
+    )
+      .bind("block-kept-user")
+      .run();
+    const kept = await browser(await signAccessJwt({ email: keptEmail }))("/auth/sign_in");
+    expect(await kept.text()).not.toContain("@person");
+    expect(
+      await env.DB.prepare(`SELECT id FROM "user" WHERE id = 'user-kept-existing'`).first("id"),
+    ).toBe("user-kept-existing");
+    expect(await accountCount(keptEmail)).toBe(0);
+
+    await env.DB.prepare(
+      `INSERT INTO email_domain_blocks (id, domain, created_at) VALUES ('block-fresh-user', 'fresh-block.example', '2020-01-01T00:00:00.000Z')`,
+    ).run();
+    await browser(await signAccessJwt({ email: "new@fresh-block.example" }))("/auth/sign_in");
+    expect(
+      await env.DB.prepare(`SELECT id FROM "user" WHERE email = 'new@fresh-block.example'`).first(
+        "id",
+      ),
+    ).toBeNull();
+    expect(await accountCount("new@fresh-block.example")).toBe(0);
+  });
+
+  it("sends an Access assertion unless the caller asks for a bearer header", async () => {
+    const headers = await accessAuthHeaders("header-default@mail.example");
+    expect(headers.Authorization).toBeUndefined();
+    expect(headers["Cf-Access-Jwt-Assertion"]?.length).toBeGreaterThan(0);
+    const bearerHeaders = await accessAuthHeaders("header-default@mail.example", {
+      via: "bearer",
+    });
+    expect(bearerHeaders.Authorization?.startsWith("Bearer ")).toBe(true);
+    expect(bearerHeaders["Cf-Access-Jwt-Assertion"]).toBeUndefined();
   });
 });

@@ -2,7 +2,9 @@
 
 ## Summary
 
-`tstodon` is a TypeScript implementation of a Mastodon-compatible server designed for Cloudflare Workers. It follows the same platform mapping as cfwdon: D1 for relational state, R2 for media bodies, Queues and Workflows for outbound delivery, Durable Objects for streaming hubs, KV for short-lived caches, and Void's Better Auth (passkeys) behind a first-party Mastodon OAuth 2 server for API authentication.
+<!-- derived-from ../reference/configuration.md#authentication -->
+
+`tstodon` is a TypeScript implementation of a Mastodon-compatible server designed for Cloudflare Workers. It follows the same platform mapping as cfwdon: D1 for relational state, R2 for media bodies, Queues and Workflows for outbound delivery, Durable Objects for streaming hubs, KV for short-lived caches, and Cloudflare Access for browser login behind a first-party Mastodon OAuth 2 server for API authentication.
 
 Domain state is expressed as Zod 4.6 discriminated unions with a unified `kind` discriminant. HTTP routing is Hono. Those two layers stay separate.
 
@@ -39,6 +41,7 @@ Do not encode domain state machines as Hono middleware. A follow request's `Pend
 ## Cloudflare Mapping
 
 <!-- constrained-by ../reference/configuration.md#cloudflare-bindings -->
+<!-- derived-from ../reference/configuration.md#authentication -->
 
 | Concern                                  | Primitive                                                                                                                                                                                                                                                                                                                     |
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -54,7 +57,7 @@ Do not encode domain state machines as Hono middleware. A follow request's `Pend
 | Maintenance                              | Cron triggers                                                                                                                                                                                                                                                                                                                 |
 | Request metrics                          | Analytics Engine                                                                                                                                                                                                                                                                                                              |
 | Static UI                                | Workers Assets                                                                                                                                                                                                                                                                                                                |
-| Authn                                    | Void Better Auth (passkey, admin plugin) + D1 OAuth tables                                                                                                                                                                                                                                                                    |
+| Authn                                    | Cloudflare Access JWT (passkeys or an IdP such as WorkOS) + D1 OAuth tables; Better Auth stores the linked user and session                                                                                                                                                                                                   |
 
 Workers AI and Vectorize are the intended search/moderation path, but they are not bound yet because Workers AI is remote-billed even in local dev.
 
@@ -94,7 +97,7 @@ Every domain rule matches either host. An instance rule (an admin's suspension, 
 
 <!-- derived-from ../reference/configuration.md#authentication -->
 
-People sign in with a passkey through Void's Better Auth (`/api/auth/*`, configured in `packages/worker/app/auth.ts`); signing up mails a confirmation link first, and only that link opens the passkey step, which creates the Better Auth user (with the verified email) and the local account together. Mastodon clients register at `/api/v1/apps` and get bearer tokens from the Worker's own OAuth 2 server (`/oauth/authorize` consent on the Better Auth session, `/oauth/token`, PKCE, scopes), stored as digests in D1. Protected API routes resolve the bearer token to its account and scopes; the Better Auth admin plugin's `admin` role maps onto `{ kind: "Admin" }`. Public discovery routes stay unauthenticated. ActivityPub inbox routes require a valid HTTP Signature; local actors use the stored account key and remote actors use a cached (or freshly fetched) `RemoteActor` key. Unsigned or unverifiable requests are `InvalidSignature`.
+People sign in through Cloudflare Access. Access checks a passkey of its own, or an identity provider such as WorkOS, and the Worker verifies `Cf-Access-Jwt-Assertion` (`packages/worker/src/access-jwt.ts`). A new address is provisioned when registrations are open (`packages/worker/src/access-session.ts`): the username comes from the address, and the Better Auth user and session rows are the account link and the web app token's secret, not a second login. Mastodon clients register at `/api/v1/apps` and get bearer tokens from the Worker's own OAuth 2 server (`/oauth/authorize` consent on that Access session, `/oauth/token`, PKCE, scopes), stored as digests in D1. Protected API routes resolve the bearer token to its account and scopes; the Better Auth admin plugin's `admin` role maps onto `{ kind: "Admin" }`. Public discovery routes stay unauthenticated. ActivityPub inbox routes require a valid HTTP Signature; local actors use the stored account key and remote actors use a cached (or freshly fetched) `RemoteActor` key. Unsigned or unverifiable requests are `InvalidSignature`.
 
 ## Implemented Surface
 

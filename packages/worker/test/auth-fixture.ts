@@ -7,10 +7,10 @@ import { issueAccessToken } from "../src/oauth-store";
 import { registrationApprovalRequired } from "../src/runtime-config";
 
 /**
- * Test-only sign-in: seed what a passkey sign-up and an OAuth authorization
+ * Test-only sign-in: seed what an Access login and an OAuth authorization
  * would leave in D1 (a Better Auth user, its local account, an app, and an
- * access token) without the browser ceremony. `email` names the person; the
- * account's username is derived from it, as the Access-era fixture did.
+ * access token) without a browser. `email` names the person; the account's
+ * username is derived from it, as Access provisioning does.
  */
 
 const FIXTURE_APP_ID = "test-fixture-app";

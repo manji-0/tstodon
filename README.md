@@ -1,6 +1,8 @@
 # tstodon
 
-`tstodon` is a TypeScript Mastodon-compatible server for Cloudflare Workers. It takes the same platform split as [`cfwdon`](https://github.com/manji-0/cfwdon): Workers for the request path, D1 for relational state, R2 for media, Queues and Workflows for delivery, Durable Objects for streaming. Sign-in is passkeys through Void's Better Auth, and Mastodon clients get tokens from the Worker's own OAuth 2 server.
+<!-- constrained-by ./docs/reference/configuration.md#authentication -->
+
+`tstodon` is a TypeScript Mastodon-compatible server for Cloudflare Workers. It takes the same platform split as [`cfwdon`](https://github.com/manji-0/cfwdon): Workers for the request path, D1 for relational state, R2 for media, Queues and Workflows for delivery, Durable Objects for streaming. People sign in through Cloudflare Access (its own passkeys, or an identity provider such as WorkOS). Mastodon clients get tokens from the Worker's own OAuth 2 server.
 
 The TypeScript domain is modeled with [Zod 4.6](https://zod.dev) `z.discriminatedUnion` values. States, errors, ActivityPub activities, and queue jobs are all `kind`-discriminated unions rather than optional-field bags.
 
@@ -13,7 +15,7 @@ The project is early software. The [local core](docs/planning/local-core.md) cla
 - Cloudflare bindings for D1, R2, KV, Queues, Durable Objects, Workflows, Images, Analytics Engine, cron, and observability
 - Zod 4.6 discriminant domain models for status composition, follow requests, outbox delivery, inbox activities, notifications, and registration
 - Mastodon's own web UI (built from a pinned Mastodon release by `pnpm web:build`), served from Workers Assets with the Worker rendering its shell and initial state
-- Email-confirmed passkey sign-up and passkey sign-in (Better Auth, with its admin plugin for roles) and a Mastodon-compatible OAuth 2 server (`/api/v1/apps`, `/oauth/authorize`, `/oauth/token`, PKCE, scopes)
+- Cloudflare Access login (passkeys or an IdP such as WorkOS; this server does not register passkeys) and a Mastodon-compatible OAuth 2 server (`/api/v1/apps`, `/oauth/authorize`, `/oauth/token`, PKCE, scopes). Better Auth stores the linked user, session, and admin role
 - Media (avatars, headers, attachments) stored in R2; public URLs via `MEDIA_PUBLIC_BASE_URL` (R2 custom domain in production, Worker object-key proxy locally)
 - CORS: media proxy allows `*`; `/api/*` reflects `INSTANCE_PUBLIC_ORIGIN` and optional `CORS_ALLOWED_ORIGINS` (R2 custom domains need a separate bucket CORS policy)
 
