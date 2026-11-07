@@ -3,7 +3,12 @@ import { z } from "zod";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import { ACCESS_LOGOUT_PATH, accessConfigured } from "../access-jwt";
 import { endAccessSessions } from "../access-session";
-import { browserSession, EXPIRED_SESSION_COOKIES, isSameOriginPost } from "../browser-session";
+import {
+  browserSession,
+  EXPIRED_SESSION_COOKIES,
+  isSameOriginPost,
+  pageOrigin,
+} from "../browser-session";
 import {
   authorizationCodePage,
   consentPage,
@@ -24,7 +29,6 @@ import {
   type OauthApplication,
 } from "../oauth-store";
 import { DEFAULT_SCOPES, parseScopes, scopesWithin } from "../oauth-scope";
-import { parseInstanceIdentity } from "../runtime-config";
 import { pageRedirect, signInRedirect as pageSignInRedirect } from "../page-redirect";
 
 export const OOB_REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob";
@@ -370,8 +374,7 @@ export const postOauthRevoke = async (c: Context<{ Bindings: Env }, "/oauth/revo
 
 /** RFC 8414 metadata, which Mastodon 4.3 serves for client discovery. */
 export const getOauthAuthorizationServerMetadata = (c: Context<{ Bindings: Env }>) => {
-  const identity = parseInstanceIdentity(c.env);
-  const origin = identity.isOk() ? identity.value.publicOrigin : new URL(c.req.url).origin;
+  const origin = pageOrigin(c.env, c.req.raw);
   return c.json({
     issuer: `${origin}/`,
     authorization_endpoint: `${origin}/oauth/authorize`,

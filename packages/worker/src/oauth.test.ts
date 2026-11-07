@@ -412,6 +412,18 @@ describe("Access sign-in and Mastodon OAuth", () => {
     expect(await accountCount(email)).toBe(0);
     const local = await browser(token)("/auth/sign_in");
     expect(await local.text()).toContain("@off_local");
+    const lookalike = await SELF.fetch("https://a.tstodon.localhost.example/auth/sign_in", {
+      headers: {
+        "Cf-Access-Jwt-Assertion": await signAccessJwt({ email: "lookalike@mail.example" }),
+      },
+    });
+    expect(await lookalike.text()).not.toContain("@lookalike");
+    const loopbackName = await SELF.fetch("https://a.tstodon.localhost/auth/sign_in", {
+      headers: {
+        "Cf-Access-Jwt-Assertion": await signAccessJwt({ email: "portless@mail.example" }),
+      },
+    });
+    expect(await loopbackName.text()).toContain("@portless");
 
     await withAccessEnv(
       {

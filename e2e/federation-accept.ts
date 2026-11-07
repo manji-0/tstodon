@@ -102,7 +102,7 @@ const main = async (): Promise<void> => {
     // Per-inbox target rows only: the activity's fan-out row has no inbox_url.
     `SELECT inbox_url FROM outbox_deliveries WHERE activity_id = '${acceptActivityRow.id}' AND inbox_url IS NOT NULL`,
     OutboxDeliveryRow.parseMany,
-    (rows) => rows.some((r) => r.inbox_url.includes("8792")),
+    (rows) => rows.some((r) => r.inbox_url.includes(B_DOMAIN)),
     "Accept missing outbox target to B",
     40,
   );

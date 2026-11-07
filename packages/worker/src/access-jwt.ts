@@ -80,13 +80,22 @@ const accessJwk = (key: z.infer<typeof JsonWebKeySchema>): JWK | undefined => {
 /** Published in the test fixture. A production host must not accept it. */
 const LOCAL_ACCESS_KID = "tstodon-local-access";
 
-/** Same hosts Void treats as local, plus IPv6 loopback. */
+/**
+ * Same hosts Void treats as local, plus IPv6 loopback and `*.localhost`
+ * (RFC 6761 loopback names, e.g. the portless e2e pair).
+ */
 const isLocalAccessHost = (hostname: string): boolean => {
   const host = hostname
     .trim()
     .toLowerCase()
     .replace(/^\[|\]$/g, "");
-  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host.endsWith(".local");
+  return (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "::1" ||
+    host.endsWith(".local") ||
+    host.endsWith(".localhost")
+  );
 };
 
 /** Issuer, with surrounding whitespace and a trailing slash removed. */

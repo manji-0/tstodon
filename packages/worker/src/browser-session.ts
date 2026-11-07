@@ -1,6 +1,7 @@
 import type { FediRole, LocalAccount } from "@tstodon/domain";
 import type { Context } from "hono";
 import { accessLogin } from "./access-session";
+import { parseInstanceIdentity } from "./runtime-config";
 
 /**
  * Who a browser request acts as, from its Cloudflare Access JWT: the
@@ -47,6 +48,47 @@ export const browserSession = async (
   }
 };
 
+/** `http` or `https` from the first `X-Forwarded-Proto` value a proxy sent. */
+const forwardedScheme = (header: string | undefined): "http:" | "https:" | undefined => {
+  const scheme = header?.split(",")[0]?.trim().toLowerCase();
+  if (scheme === "http" || scheme === "https") {
+    return `${scheme}:`;
+  }
+  return undefined;
+};
+
+/**
+ * The origin of `requestUrl` after a TLS-terminating proxy. The dev server's
+ * `request.url` stays `http:` on the socket to Vite; portless records the
+ * browser's scheme in `X-Forwarded-Proto`.
+ */
+export const browserFacingOrigin = (
+  requestUrl: string,
+  forwardedProto: string | undefined,
+): string => {
+  const url = new URL(requestUrl);
+  const scheme = forwardedScheme(forwardedProto);
+  if (scheme !== undefined) {
+    url.protocol = scheme;
+  }
+  return url.origin;
+};
+
+/**
+ * The origin this instance tells browsers. A parsed instance identity uses its
+ * public origin (`INSTANCE_PUBLIC_ORIGIN`, or `https://` plus the domain), so
+ * a page served as `https://` still matches when `request.url` is `http://`.
+ * When that identity does not parse, the request URL with `X-Forwarded-Proto`
+ * applied is the fallback.
+ */
+export const pageOrigin = (env: Env, request: Request): string => {
+  const identity = parseInstanceIdentity(env);
+  if (identity.isOk()) {
+    return new URL(identity.value.publicOrigin).origin;
+  }
+  return browserFacingOrigin(request.url, request.headers.get("X-Forwarded-Proto") ?? undefined);
+};
+
 /**
  * A form posts back to this origin; refuse a cross-site post. A browser's
  * Sec-Fetch-Site decides when it is sent: the pages' `no-referrer` policy
@@ -58,7 +100,15 @@ export const isSameOriginPost = (c: Context<{ Bindings: Env }>): boolean => {
     return site === "same-origin";
   }
   const origin = c.req.header("Origin");
-  return origin === undefined || origin === new URL(c.req.url).origin;
+  if (origin === undefined) {
+    return true;
+  }
+  const request = c.req.raw;
+  return (
+    origin ===
+      browserFacingOrigin(request.url, request.headers.get("X-Forwarded-Proto") ?? undefined) ||
+    origin === pageOrigin(c.env, request)
+  );
 };
 
 /** `Set-Cookie` values that expire the Better Auth session cookie, under either of its names. */

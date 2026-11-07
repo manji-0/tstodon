@@ -67,6 +67,10 @@ The remote updates scenario waits for B's debounced `Update(Question)`. Miniflar
 
 Behind an HTTP proxy (`HTTPS_PROXY` set), start the instances with `NO_PROXY=127.0.0.1,localhost`. The Workers' outbound fetches use the proxy otherwise, and it cannot reach the other instance on loopback, so search finds no remote account.
 
+### HTTPS hostnames (portless)
+
+The loopback pair speaks plain HTTP. To sign and verify through `https://a.tstodon.localhost` and `https://b.tstodon.localhost`, follow [Federation e2e over portless](./e2e-federation-portless.md). That run uses `e2e/portless-a.wrangler.jsonc` and `e2e/portless-b.wrangler.jsonc` and the same persist dirs. Leave these loopback configs as they are.
+
 ### Not covered locally
 
 - Outbox paging: tstodon serves its outbox as one `OrderedCollection` without `next` links, so the instances cannot exercise the deeper backfill (`OUTBOX_BACKFILL_PAGE_LIMIT`). Vitest covers it with served page documents (`src/remote-outbox-backfill.test.ts`).
