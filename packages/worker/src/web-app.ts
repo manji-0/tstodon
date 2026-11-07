@@ -200,7 +200,7 @@ const webSettings = async (env: Env, accountId: string): Promise<unknown> => {
 };
 
 /** Mastodon's `InitialStateSerializer`, for this server's settings. */
-const initialState = async (
+export const initialState = async (
   env: Env,
   request: Request,
   locale: string,

@@ -5,7 +5,13 @@ import { accessTokenFor, authHeaders, signedInAccount } from "../test/auth-fixtu
 import { StreamEvent } from "@tstodon/domain";
 import { publishToAccount } from "./stream-publish";
 import { ORIGIN, read, signUp } from "../test/passkey-browser";
-import { isWebAppPath, packCacheControl, webAppPage, type WebManifest } from "./web-app";
+import {
+  initialState as pageInitialState,
+  isWebAppPath,
+  packCacheControl,
+  webAppPage,
+  type WebManifest,
+} from "./web-app";
 
 const MANIFEST: WebManifest = {
   ref: "test",
@@ -67,6 +73,32 @@ describe("Mastodon web app", () => {
     ]) {
       expect(isWebAppPath(path)).toBe(false);
     }
+  });
+
+  it("keeps the streaming URL on the host that served the page", async () => {
+    expect(env.INSTANCE_PUBLIC_ORIGIN).toBe("https://example.com");
+    const streamUrl = (state: Record<string, unknown>) =>
+      read(z.object({ streaming_api_base_url: z.string() }), state.meta).streaming_api_base_url;
+
+    const local = streamUrl(
+      await pageInitialState(env, new Request("http://127.0.0.1:8787/home"), "en", undefined),
+    );
+    expect(local).toBe("ws://127.0.0.1:8787");
+    expect(local).not.toBe("https://example.com");
+
+    const proxied = streamUrl(
+      await pageInitialState(
+        env,
+        new Request("http://a.tstodon.localhost/home", {
+          headers: { "X-Forwarded-Proto": "https" },
+        }),
+        "en",
+        undefined,
+      ),
+    );
+    expect(proxied).toBe("wss://a.tstodon.localhost");
+    expect(proxied).not.toBe("https://example.com");
+    expect(proxied).not.toBe("wss://example.com");
   });
 
   it("renders the shell with the initial state that cannot break out of its script", () => {

@@ -32,7 +32,7 @@ tstodon signs `(request-target) host date digest` (`packages/worker/src/http-sig
 
 Every federation script signs up before it delivers anything. `signUpBrowser` (`e2e/lib.ts`) posts `/oauth/authorize` with `Origin` set to the https public origin. The dev server's `request.url` is still `http://…`, and `isSameOriginPost` (`packages/worker/src/browser-session.ts`) used to compare that `Origin` to `new URL(request.url).origin`. The post was a 403 (`Authorization must be confirmed on this site.`), so the run never reached a signed delivery.
 
-The check now accepts the post when `Origin` equals the request origin after `X-Forwarded-Proto` is applied, and when `Origin` equals `INSTANCE_PUBLIC_ORIGIN`. `pageOrigin` uses that public origin for the web UI's streaming URL (`web-app.ts`) and for the OAuth metadata fallback (`oauth.ts`), which used to copy `request.url` as well. Keep the proxy on HTTPS. `--no-tls` makes WebFinger ask for `https://` names that nothing is serving.
+The check now accepts the post when `Origin` equals the request origin after `X-Forwarded-Proto` is applied, and when `Origin` equals `INSTANCE_PUBLIC_ORIGIN`. The OAuth metadata fallback (`oauth.ts`) uses that public origin. The web UI's streaming URL stays on the host that served the page, with `X-Forwarded-Proto` applied: `INSTANCE_PUBLIC_ORIGIN` is `https://example.com` under `pnpm dev`, and the stream must not follow it. Keep the proxy on HTTPS. `--no-tls` makes WebFinger ask for `https://` names that nothing is serving.
 
 ## What has to be set
 
