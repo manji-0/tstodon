@@ -47,7 +47,8 @@ import { findShownStatusAnywhere } from "../../found-status";
 import { remoteStatusHistory } from "../../remote-status-edit";
 import { isQuotePolicy, listAcceptedQuoteEdges, setStatusQuotePolicy } from "../../quote-store";
 import { applyMediaAttributes } from "../../local-status-publish";
-import { checkAttachableMedia, queueLinkCard, visibilityIsPublic } from "./create";
+import { checkAttachableMedia, queueLinkCard } from "./create";
+import { visibilityIsPublic } from "../../quote-resolve";
 import { ApiRefusal } from "../api-refusal";
 import type { MediaAttribute } from "../../status-body-schema";
 

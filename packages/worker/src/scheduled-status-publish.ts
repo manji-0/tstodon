@@ -13,6 +13,7 @@ import { publishLocalNote } from "./local-status-publish";
 import { findUnattachableMediaIds } from "./media-store";
 import { mediaDescriptionsFit } from "./status-body-schema";
 import { parseInstanceIdentity } from "./runtime-config";
+import { resolveQuote, type ResolvedQuote } from "./quote-resolve";
 import {
   deleteScheduledStatus,
   listDueScheduledStatuses,
@@ -49,9 +50,39 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void
     await deleteScheduledStatus(env.DB, row.accountId, row.id);
     return;
   }
+  // A scheduled quote is resolved again, as `PostStatusService` does when
+  // `PublishScheduledStatusWorker` replays it: a quoted status that is gone,
+  // hidden from the author, or whose policy no longer lets them quote drops
+  // the post (Mastodon's `RecordNotFound` / `NotPermittedError`).
+  const quoteRaw = row.params.quoted_status_id ?? null;
+  let quoted: ResolvedQuote = { quote: null, visibility: visibility.value };
+  if (quoteRaw !== null) {
+    const resolved = await resolveQuote(
+      env,
+      identity.value,
+      account.value.id,
+      quoteRaw,
+      row.params.text,
+      visibility.value,
+    );
+    if (resolved.isErr()) {
+      // A failed read keeps the post for the next run, as the media check does.
+      if (resolved.error.kind === "Rejected") {
+        await deleteScheduledStatus(env.DB, row.accountId, row.id);
+      }
+      return;
+    }
+    if (resolved.value.quote === null) {
+      await deleteScheduledStatus(env.DB, row.accountId, row.id);
+      return;
+    }
+    quoted = resolved.value;
+  }
+  const { quote } = quoted;
   const composing = StatusComposition.composing({
     text: row.params.text,
-    visibility: visibility.value,
+    visibility: quoted.visibility,
+    ...(quote ? { quote: { kind: "Quoted", target: quote.quoted } } : {}),
     spoilerText: row.params.spoiler_text,
     sensitive: row.params.sensitive,
     language:
@@ -115,9 +146,8 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void
           hideTotals: row.params.poll.hide_totals,
         }
       : null,
-    // Scheduled quotes are refused at create time, and the policy was frozen
-    // with the params.
-    quote: null,
+    quote: quote ? { ...quote, inlineHtml: quote.inlineHtml ?? "" } : null,
+    // The policy was frozen with the params.
     quotePolicy:
       row.params.quote_policy === undefined
         ? null
