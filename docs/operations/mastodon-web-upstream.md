@@ -43,6 +43,8 @@ Below, `OLD` is the tag in `upstream.json` and `NEW` the release to move to.
    git status packages/worker   # resolve conflicts, then git add
    ```
 
+   `app/javascript/mastodon/api_types/*.ts` are re-exports of `@tstodon/api` here: a conflict there is resolved by keeping the re-export file and applying upstream's field changes to the schemas in `packages/api/src/` instead (see "REST types from `@tstodon/api`" in `UPSTREAM.md`); `pnpm typecheck` and `pnpm typecheck:web` then show the server and client code that must follow.
+
    `config/formatjs-formatter.js` is `packages/worker/config/formatjs-formatter.cjs` here (renamed, with the locale path changed): apply its diff, usually empty, by hand. An empty diff makes `git apply` print `No valid patches in input`; that is fine. A file upstream deleted is deleted here too; a file upstream added under an imported directory is added. If `imported` gained an entry in step 2, apply it the same way.
 
 4. Bring the dependencies across. Step 2 put upstream's new versions into `packages/worker/package.json`; check that the tstodon-only entries `UPSTREAM.md` lists (`HOISTED` in the script below) are still needed. Then lock them at the versions upstream's `yarn.lock` resolved:

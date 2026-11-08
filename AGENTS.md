@@ -8,6 +8,7 @@ This file tells AI coding agents how to work in this repository without losing p
 
 - `packages/core` for Result/schema helpers, branded IDs, and `Sensitive`.
 - `packages/domain` for Zod 4.6 `kind`-discriminated domain models.
+- `packages/api` (`@tstodon/api`) for Mastodon's REST entities as they appear on the wire: Zod schemas and their types (`ApiStatus` / `ApiStatusJSON`), and Zod-free enum-like constants in `@tstodon/api/values`. REST JSON shapes live here: the Worker's document builders return these types, and the web UI's `src/mastodon/api_types/*.ts` re-export them. See `packages/api/README.md`.
 - `packages/worker` for the app [Void](https://void.cloud) builds, serves, and deploys, in Void's "SPA + API" shape: the Worker runtime and its client, Mastodon's web frontend. `packages/worker` is the Void project root (`vite.config.ts` with `voidPlugin()`, `void.json`, `wrangler.jsonc`, `public/`):
   - `app/`: Void's conventions (`void.json` `sourceDir`): `routes/`, `middleware/`, `crons/`, `queues/`, `db/migrations/`.
   - `server/`: the Worker's shared code (`#server/*`).
@@ -24,11 +25,13 @@ Do not send Queue, scheduled, Workflow, or Durable Object traffic through HTTP r
 
 The browser UI is Mastodon's own web app, vendored in `packages/worker/src` at the upstream release `packages/worker/src/UPSTREAM.md` records (with `upstream.json`, which the build reads). Change the UI there, and list each change against upstream under "Local changes" in `UPSTREAM.md`; moving to a newer release is `docs/operations/mastodon-web-upstream.md`. It is the Void app's client: the same `vite build` (`pnpm build`) builds it into `packages/worker/dist/client/` before the Worker, and `pnpm dev` serves it from source with hot reload. It keeps Mastodon's code style but runs on the workspace's Vite+ and Vitest: root `vp check` skips `src/` and `config/`, and its own checks are `pnpm typecheck:web` and `pnpm test:web` (jsdom, `packages/worker/vitest.config.ts`). The build fetches upstream's `public/emoji` and `public/ocr` (not committed). `server/web-app.ts` (middleware `03.web-app.ts`) renders the HTML shell and initial state from `virtual:tstodon/web-manifest`, the client build's entry files (`web-build.ts`). Browser e2e scenarios (Playwright) live in `e2e/web/` (`pnpm e2e:web`, see `docs/getting-started/e2e-web.md`).
 
-Hono handlers are a boundary: parse with Zod, call domain companions, map `Result` error `kind`s to HTTP. Domain transitions stay pure.
+Hono handlers are a boundary: parse with Zod, call domain companions, map `Result` error `kind`s to HTTP. Domain transitions stay pure. A REST response is typed with its `@tstodon/api` type (never `Record<string, unknown>`); the Worker does not parse its own responses at runtime, its tests do (`expectContract` in `packages/worker/test/api-contract.ts`). The web UI imports `@tstodon/api` types type-only and values only from `@tstodon/api/values`, so Zod stays out of the client bundle.
 
 A use case that reads or writes storage takes each operation as a function-typed contract from `packages/domain` (beside its concept, e.g. `outbound-follow-store.ts`, `notification-resolver.ts`; no `ports/` directory), and the caller wires the D1 store function to it. See `docs/architecture/tstodon-architecture.md#read-and-write-contracts`.
 
 ## Zod discriminant conventions
+
+These rules are for domain models (`packages/domain`) and the Worker's own schemas. `@tstodon/api` mirrors Mastodon's wire format instead: no `kind`, enum-like strings as `z.literal([...])` over the arrays in `values.ts`, and discriminated unions only on Mastodon's own fields (a notification's `type`, a quote's `state`).
 
 - Discriminator property is always `kind`.
 - Write each variant with `z.literal("...")`, not `z.enum`.

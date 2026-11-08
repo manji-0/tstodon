@@ -27,6 +27,8 @@ Domain state is expressed as Zod 4.6 discriminated unions with a unified `kind` 
   Result conversion, branded strings, `Sensitive`, exhaustiveness helpers.
 - `packages/domain`
   Pure Zod discriminant models and transitions.
+- `packages/api`
+  Mastodon's REST entities as Zod schemas and inferred types, shared by the Worker and the web UI (see [REST API Contract](#rest-api-contract)).
 - `packages/worker`
   Cloudflare Worker runtime, built by Void. Void file routes (`app/routes/`) and Hono for HTTP. `app/crons/` and `app/queues/` for cron and queue handlers; Workflow and Durable Object classes exported from the generated entry.
 
@@ -68,6 +70,17 @@ Variants are objects with `kind` and `z.literal` discriminators. Nested unions r
 ## Read and Write Contracts
 
 A use case that reads or writes storage takes each operation as a parameter. The operation's type is a function type in `packages/domain`, beside the concept it serves: reads in `<concept>-resolver.ts` (or with the concept, as `FindThreadParent` in `thread-status.ts`), writes in `<concept>-store.ts`. Contracts name domain types and fail with `RepositoryError`; there is no `ports/` directory and no SQL in the domain. The D1 functions in `packages/worker/server/*-store.ts` stay the implementations. The composition point (an inbox handler, a route, or an `env`-taking entry such as `notifyAccount`) wires them as `(input) => storeFunction(env.DB, input)`. Each use case receives only the operations it calls, so its unit tests pass in-memory functions instead of D1. Examples: `answerOutboundFollow`, `listThreadAncestors`, `deliverNotification`, `withdrawRemoteStatus` and `recordInboxFollow`. Add a contract only when a use case takes it; a store function with no such use case stays a plain D1 function.
+
+## REST API Contract
+
+<!-- constrained-by ../../packages/worker/src/UPSTREAM.md#rest-types-from-tstodonapi -->
+
+The JSON the REST API answers is defined once, in `@tstodon/api` (`packages/api`): a Zod schema per Mastodon entity, as Mastodon 4.5–4.7's serializers put it on the wire, with its type (`ApiStatus` / `ApiStatusJSON`). Two sides use it:
+
+- The Worker's document builders (`packages/worker/server/*-documents.ts`, `poll-document.ts`, `media-document.ts`, the instance and notification routes, ...) return these types, so the compiler checks every document against the contract. The Worker does not parse its own responses at runtime; the tests do (`expectContract` in `packages/worker/test/api-contract.ts`, the endpoint sweep in `server/api-contract.test.ts`).
+- The web UI's `mastodon/api_types/*.ts` re-export the same types under upstream's names (type-only imports, erased from the bundle); values it needs (visibility and quote-policy lists) come from the Zod-free `@tstodon/api/values`.
+
+Wire entities have no `kind`: the [discriminant rule](#discriminant-modeling) is for domain models. Where Mastodon discriminates (a notification's or media attachment's `type`, a quote's `state`), the schema is a discriminated union on that field. The domain maps its models to the wire names at the boundary (`Visibility.toMastodon` returns the contract's `StatusVisibility`). What tstodon renders beyond Mastodon (the `move` notification) or leaves out is noted in the schema.
 
 ## Remote Actor Domains
 
