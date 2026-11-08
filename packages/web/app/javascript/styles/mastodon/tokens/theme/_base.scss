@@ -1,69 +1,78 @@
+// tstodon theme: a Linear-like solid palette. Cool, low-saturation neutrals,
+// one indigo accent (#5e6ad2 at step 600) and desaturated semantic colours.
+// Step numbers keep upstream's names so the dark/light token mixins read as
+// before; grey-450, grey-850 and grey-925 are added. See UPSTREAM.md ("Local
+// modifications: theme").
+
 @mixin palette {
   --color-white: #fff;
   --color-black: #000;
 
-  // Grey
-  --color-grey-50: #f6f6f9;
-  --color-grey-100: #eeedf3;
-  --color-grey-200: #d7d6e1;
-  --color-grey-300: #b2b1c8;
-  --color-grey-400: #88a;
-  --color-grey-500: #67678e;
-  --color-grey-600: #535374;
-  --color-grey-700: #44445f;
-  --color-grey-800: #3a3a50;
-  --color-grey-900: #21212c;
-  --color-grey-950: #181820;
+  // Grey (neutral)
+  --color-grey-50: #f7f8f8;
+  --color-grey-100: #eeeff1;
+  --color-grey-200: #e6e6e9;
+  --color-grey-300: #d0d1d6;
+  --color-grey-400: #8a8f98;
+  --color-grey-450: #80858e;
+  --color-grey-500: #6b6f76;
+  --color-grey-600: #62666d;
+  --color-grey-700: #3e4046;
+  --color-grey-800: #26272c;
+  --color-grey-850: #1f2023;
+  --color-grey-900: #161719;
+  --color-grey-925: #0f1011;
+  --color-grey-950: #08090a;
 
-  // Indigo
-  --color-indigo-50: #f0f1ff;
-  --color-indigo-100: #e0e3ff;
-  --color-indigo-200: #c8cdfe;
-  --color-indigo-300: #a5abfd;
-  --color-indigo-400: #8280f9;
-  --color-indigo-500: #7263f2;
-  --color-indigo-600: #6147e6;
-  --color-indigo-700: #5638cc;
-  --color-indigo-800: #48359c;
-  --color-indigo-900: #3d317c;
-  --color-indigo-950: #261e48;
+  // Indigo (accent)
+  --color-indigo-50: #f1f2fc;
+  --color-indigo-100: #e4e6f9;
+  --color-indigo-200: #c9cdf2;
+  --color-indigo-300: #a7aeeb;
+  --color-indigo-400: #8b93e8;
+  --color-indigo-500: #6e79d6;
+  --color-indigo-600: #5e6ad2;
+  --color-indigo-700: #4f5ac4;
+  --color-indigo-800: #414aa3;
+  --color-indigo-900: #262a52;
+  --color-indigo-950: #181a33;
 
   // Red
-  --color-red-50: #fef2f2;
-  --color-red-100: #ffe2e2;
-  --color-red-200: #ffc9c9;
-  --color-red-300: #ffa2a2;
-  --color-red-400: #ff6467;
-  --color-red-500: #fb2c36;
-  --color-red-600: #e7000b;
-  --color-red-700: #c10007;
-  --color-red-800: #9f0712;
-  --color-red-900: #82181a;
-  --color-red-950: #460809;
+  --color-red-50: #fdf3f3;
+  --color-red-100: #fbe4e4;
+  --color-red-200: #f5c7c7;
+  --color-red-300: #ef9f9f;
+  --color-red-400: #e77878;
+  --color-red-500: #eb5757;
+  --color-red-600: #d64545;
+  --color-red-700: #be3838;
+  --color-red-800: #9b2e2e;
+  --color-red-900: #4f2021;
+  --color-red-950: #2a1415;
 
-  // Yellow
-  --color-yellow-50: #fffbeb;
-  --color-yellow-100: #fef3c6;
-  --color-yellow-200: #fee685;
-  --color-yellow-300: #ffd230;
-  --color-yellow-400: #ffb900;
-  --color-yellow-500: #fe9a00;
-  --color-yellow-600: #e17100;
-  --color-yellow-700: #bb4d00;
-  --color-yellow-800: #973c00;
-  --color-yellow-900: #7b3306;
-  --color-yellow-950: #461901;
+  // Yellow (amber)
+  --color-yellow-50: #fdf8ec;
+  --color-yellow-100: #faefd3;
+  --color-yellow-200: #f3dda1;
+  --color-yellow-300: #ebc76b;
+  --color-yellow-400: #e2b340;
+  --color-yellow-500: #d49a2a;
+  --color-yellow-600: #b37d1d;
+  --color-yellow-700: #8a6016;
+  --color-yellow-800: #6c4b14;
+  --color-yellow-900: #433012;
+  --color-yellow-950: #261c0d;
 
   // Green
-  --color-green-50: #f0fdf4;
-  --color-green-100: #dcfce7;
-  --color-green-200: #b9f8cf;
-  --color-green-300: #7bf1a8;
-  --color-green-400: #05df72;
-  --color-green-500: #00c950;
-  --color-green-600: #00a63e;
-  --color-green-700: #008236;
-  --color-green-800: #016630;
-  --color-green-900: #0d542b;
-  --color-green-950: #032e15;
+  --color-green-50: #eff8f3;
+  --color-green-100: #d9f0e3;
+  --color-green-200: #b2e0c6;
+  --color-green-300: #82cba2;
+  --color-green-400: #4cb782;
+  --color-green-500: #3ba170;
+  --color-green-600: #2e8a5d;
+  --color-green-700: #23714c;
+  --color-green-800: #1c5a3d;
+  --color-green-900: #163d2b;
+  --color-green-950: #0e2419;
 }
