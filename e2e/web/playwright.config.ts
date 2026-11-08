@@ -2,8 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 /**
  * Browser e2e: Mastodon's web UI against the Worker in Void's dev server,
- * which serves the frontend from source. Run with `pnpm e2e:web`, which
- * migrates the database first (database.mjs).
+ * which serves the built UI (`packages/worker/dist/client`). Run with
+ * `pnpm e2e:web`, which migrates the database (database.mjs) and builds
+ * first.
  */
 export default defineConfig({
   testDir: ".",

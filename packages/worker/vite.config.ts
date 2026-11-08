@@ -23,16 +23,22 @@ const statePath = persistTo
   ? path.resolve(import.meta.dirname, "../..", persistTo)
   : path.join(import.meta.dirname, ".wrangler/state");
 
+// `TSTODON_WEB_CLIENT=build` makes `vp dev` serve the built client
+// (`dist/client`, from a prior `vp build`) instead of the frontend's sources:
+// the browser e2e suite runs the production UI, as deployed, against the dev
+// Worker.
+const builtClient = process.env["TSTODON_WEB_CLIENT"] === "build";
+
 const voidConfig = defineConfig({
   // Committed static files (and upstream's emoji, linked in by `upstreamAssets`),
   // copied into the client build beside the frontend's output.
-  publicDir: "public",
+  publicDir: builtClient ? "dist/client" : "public",
   ...(persistTo ? { cacheDir: path.join(statePath, "vite") } : {}),
   // The Worker build reads the client's Vite manifest, so the client builds first.
   builder: { buildApp: buildClientFirst },
   plugins: [
     upstreamAssets(),
-    webManifest(),
+    webManifest(builtClient ? { source: "build" } : {}),
     // Local state stays where `wrangler ... --local -c packages/worker/wrangler.jsonc`
     // reads and writes it. `void:migrations` applies app/db/migrations on `vp dev`
     // to a fixed `.void/` database with its own `_void_migrations` table, not to
