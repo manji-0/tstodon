@@ -40,7 +40,7 @@ export const NotificationGroupWithStatus: React.FC<{
   actions?: JSX.Element;
   count: number;
   accountIds: string[];
-  timestamp: string;
+  timestamp?: string;
   labelRenderer: LabelRenderer;
   labelSeeMoreHref?: string;
   type: string;

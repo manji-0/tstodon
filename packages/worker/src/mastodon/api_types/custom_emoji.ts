@@ -1,9 +1,3 @@
-// See app/serializers/rest/custom_emoji_serializer.rb
-export interface ApiCustomEmojiJSON {
-  shortcode: string;
-  static_url: string;
-  url: string;
-  category?: string;
-  featured?: boolean;
-  visible_in_picker: boolean;
-}
+// See app/serializers/rest/custom_emoji_serializer.rb; the shape lives in
+// @tstodon/api (packages/api), shared with the server.
+export type { ApiCustomEmojiJSON } from '@tstodon/api';

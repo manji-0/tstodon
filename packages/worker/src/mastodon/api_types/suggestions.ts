@@ -1,13 +1,3 @@
-import type { ApiAccountJSON } from 'mastodon/api_types/accounts';
-
-export type ApiSuggestionSourceJSON =
-  | 'featured'
-  | 'most_followed'
-  | 'most_interactions'
-  | 'similar_to_recently_followed'
-  | 'friends_of_friends';
-
-export interface ApiSuggestionJSON {
-  sources: [ApiSuggestionSourceJSON, ...ApiSuggestionSourceJSON[]];
-  account: ApiAccountJSON;
-}
+// See app/serializers/rest/suggestion_serializer.rb; the shapes live in
+// @tstodon/api (packages/api), shared with the server.
+export type { ApiSuggestionSourceJSON, ApiSuggestionJSON } from '@tstodon/api';

@@ -128,7 +128,10 @@ export const statusFactoryAPI: FactoryFunction<ApiStatusJSON> = ({
 } = {}) => ({
   id: id ?? '1',
   created_at: '2023-01-01T00:00:00.000Z',
+  in_reply_to_id: null,
+  in_reply_to_account_id: null,
   sensitive: false,
+  spoiler_text: '',
   visibility: 'public',
   language: 'en',
   uri: 'https://example.com/status/1',
@@ -137,12 +140,16 @@ export const statusFactoryAPI: FactoryFunction<ApiStatusJSON> = ({
   reblogs_count: 0,
   quotes_count: 0,
   favourites_count: 0,
+  edited_at: null,
   account: accountFactoryAPI(),
   media_attachments: [],
   mentions: [],
   tags: [],
   emojis: [],
   tagged_collections: [],
+  card: null,
+  poll: null,
+  quote_approval: { automatic: [], manual: [], current_user: 'unknown' },
   content:
     data.text
       ?.split('\n')
@@ -165,6 +172,7 @@ export const statusQuotedFactoryAPI: FactoryFunction<ApiQuotedStatusJSON> = (
   const { quote, ...status } = options;
   return {
     ...statusFactoryAPI(status),
+    reblog: null,
     quote: quote
       ? {
           ...quote,
@@ -177,6 +185,8 @@ const baseAttachment = {
   id: '1',
   url: 'https://example.com/image/1',
   preview_url: 'https://example.com/image/1/preview',
+  remote_url: null,
+  description: null,
   blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.',
 } as const;
 const imageMeta = {

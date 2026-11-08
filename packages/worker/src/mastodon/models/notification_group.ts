@@ -262,6 +262,14 @@ export function createNotificationGroupFromNotificationJSON(
           notification.moderation_warning,
         ),
       };
+    case 'annual_report':
+      return {
+        ...group,
+        type: notification.type,
+        annualReport: createAnnualReportEventFromJSON(
+          notification.annual_report,
+        ),
+      };
     case 'added_to_collection':
     case 'collection_update':
       return {

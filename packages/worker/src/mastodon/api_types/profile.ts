@@ -1,28 +1,7 @@
-import type { ApiAccountFieldJSON } from './accounts';
-import type { ApiFeaturedTagJSON } from './tags';
+import type { ApiAccountFieldJSON, ApiProfileJSON } from '@tstodon/api';
 
-export interface ApiProfileJSON {
-  id: string;
-  display_name: string;
-  note: string;
-  fields: ApiAccountFieldJSON[];
-  avatar: string;
-  avatar_static: string;
-  avatar_description: string;
-  header: string;
-  header_static: string;
-  header_description: string;
-  locked: boolean;
-  bot: boolean;
-  hide_collections: boolean;
-  discoverable: boolean;
-  indexable: boolean;
-  show_media: boolean;
-  show_media_replies: boolean;
-  show_featured: boolean;
-  attribution_domains: string[];
-  featured_tags: ApiFeaturedTagJSON[];
-}
+// The entity lives in @tstodon/api (packages/api), shared with the server.
+export type { ApiProfileJSON } from '@tstodon/api';
 
 export type ApiProfileUpdateParams = Partial<
   Pick<

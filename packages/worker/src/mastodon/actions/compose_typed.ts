@@ -340,7 +340,7 @@ export const submitCompose = createAppThunk(
     } else {
       dispatch(
         submitComposeApi((status: ApiStatusJSON) => {
-          if (redirectOnSuccess) {
+          if (redirectOnSuccess && status.url) {
             window.location.assign(status.url);
           }
         }),

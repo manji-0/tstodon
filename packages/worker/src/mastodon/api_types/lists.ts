@@ -1,10 +1,3 @@
-// See app/serializers/rest/list_serializer.rb
-
-export type RepliesPolicyType = 'list' | 'followed' | 'none';
-
-export interface ApiListJSON {
-  id: string;
-  title: string;
-  exclusive: boolean;
-  replies_policy: RepliesPolicyType;
-}
+// See app/serializers/rest/list_serializer.rb; the shape lives in
+// @tstodon/api (packages/api), shared with the server.
+export type { RepliesPolicyType, ApiListJSON } from '@tstodon/api';

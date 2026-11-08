@@ -36,13 +36,13 @@ export interface StatusShape {
   id: string;
   account: string;
   created_at: string;
-  edited_at?: string;
+  edited_at?: string | null;
   application: {
     name: string;
-    website?: string;
+    website?: string | null;
   };
   hidden: boolean;
-  language: string;
+  language: string | null;
   muted: boolean;
   pinned: boolean;
   filtered: FilterResult[];
@@ -55,14 +55,14 @@ export interface StatusShape {
   // Content
   content: string;
   contentHtml: string;
-  in_reply_to_account_id?: string;
-  in_reply_to_id?: string;
+  in_reply_to_account_id?: string | null;
+  in_reply_to_id?: string | null;
   search_index?: string;
   spoilerHtml?: string;
   spoiler_text?: string;
 
   // Embeds
-  card?: CardShape;
+  card?: CardShape | null;
   emojis: Pick<ApiCustomEmojiJSON, 'shortcode' | 'static_url' | 'url'>[];
   media_attachments: MediaAttachmentShape[];
   mentions: ApiMentionJSON[];

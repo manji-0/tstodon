@@ -3,7 +3,7 @@ import { memo, useRef, useEffect } from 'react';
 import { decode } from 'blurhash';
 
 interface Props extends React.HTMLAttributes<HTMLCanvasElement> {
-  hash: string;
+  hash: string | null | undefined;
   width?: number;
   height?: number;
   dummy?: boolean; // Whether dummy mode is enabled. If enabled, nothing is rendered and canvas left untouched

@@ -1,23 +1,3 @@
-import type { ApiCustomEmojiJSON } from './custom_emoji';
-
-// See app/serializers/rest/poll_serializer.rb
-
-export interface ApiPollOptionJSON {
-  title: string;
-  votes_count: number;
-}
-
-export interface ApiPollJSON {
-  id: string;
-  expires_at: string | null;
-  expired: boolean;
-  multiple: boolean;
-  votes_count: number;
-  voters_count: number | null;
-
-  options: ApiPollOptionJSON[];
-  emojis: ApiCustomEmojiJSON[];
-
-  voted?: boolean;
-  own_votes?: number[];
-}
+// See app/serializers/rest/poll_serializer.rb; the shapes live in
+// @tstodon/api (packages/api), shared with the server.
+export type { ApiPollOptionJSON, ApiPollJSON } from '@tstodon/api';
