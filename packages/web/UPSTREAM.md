@@ -40,4 +40,8 @@ Changes against upstream, so a future merge knows what is ours:
 - `.gitignore`, `UPSTREAM.md`, `upstream.json` added.
 - Repository root: `pnpm-workspace.yaml` keeps upstream's `vite` and `vitest` for this package (the rest of the workspace gets Vite+) and lists the install scripts this package's dependencies may not run; `vite.config.ts` keeps `vp check` out of this package.
 
-How to move to a newer upstream release: [docs/operations/mastodon-web-upstream.md](../../docs/operations/mastodon-web-upstream.md).
+## Working on it
+
+Change the frontend here and list each change against upstream under "Local changes" above. `pnpm web:build` builds it into the Worker's assets (see `scripts/build-mastodon-web.mjs`). Mastodon's own checks run as in upstream, through pnpm: `pnpm -C packages/web typecheck` and `pnpm -C packages/web test:js run` (CI runs both). The `lint`, `format` and Storybook scripts are kept from upstream but not run or checked here.
+
+How to move to a newer upstream release, including `scripts/import-mastodon-web-lock.mjs`, which locks the dependencies at the versions upstream's `yarn.lock` resolved: [docs/operations/mastodon-web-upstream.md](../../docs/operations/mastodon-web-upstream.md).
