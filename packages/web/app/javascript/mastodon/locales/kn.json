@@ -17,7 +17,7 @@
   "column.domain_blocks": "Hidden domains",
   "column.pins": "Pinned toot",
   "community.column_settings.media_only": "Media only",
-  "compose_form.encryption_warning": "Posts on Mastodon are not end-to-end encrypted. Do not share any dangerous information over Mastodon.",
+  "compose_form.encryption_warning": "Posts on tstodon are not end-to-end encrypted. Do not share any dangerous information over tstodon.",
   "compose_form.hashtag_warning": "This post won't be listed under any hashtag as it is unlisted. Only public posts can be searched by hashtag.",
   "compose_form.placeholder": "What is on your mind?",
   "compose_form.spoiler.marked": "Text is hidden behind warning",

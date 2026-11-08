@@ -20,7 +20,7 @@ const messages = defineMessages({
   },
   share_on_mastodon: {
     id: 'annual_report.summary.share_on_mastodon',
-    defaultMessage: 'Share on Mastodon',
+    defaultMessage: 'Share on tstodon',
   },
   share_elsewhere: {
     id: 'annual_report.summary.share_elsewhere',

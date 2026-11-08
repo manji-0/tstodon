@@ -325,7 +325,7 @@ export const Search: React.FC<{
             label: (
               <FormattedMessage
                 id='search.quick_action.open_url'
-                defaultMessage='Open URL in Mastodon'
+                defaultMessage='Open URL in tstodon'
               />
             ),
             action: async () => {

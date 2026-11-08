@@ -54,7 +54,7 @@
   "column_header.unpin": "పీకివేయు",
   "community.column_settings.media_only": "మీడియా మాత్రమే",
   "compose_form.direct_message_warning_learn_more": "మరింత తెలుసుకోండి",
-  "compose_form.encryption_warning": "Posts on Mastodon are not end-to-end encrypted. Do not share any dangerous information over Mastodon.",
+  "compose_form.encryption_warning": "Posts on tstodon are not end-to-end encrypted. Do not share any dangerous information over tstodon.",
   "compose_form.hashtag_warning": "This post won't be listed under any hashtag as it is unlisted. Only public posts can be searched by hashtag.",
   "compose_form.lock_disclaimer": "మీ ఖాతా {locked} చేయబడలేదు. ఎవరైనా మిమ్మల్ని అనుసరించి మీ అనుచరులకు-మాత్రమే పోస్ట్లను వీక్షించవచ్చు.",
   "compose_form.lock_disclaimer.lock": "బిగించబడినది",

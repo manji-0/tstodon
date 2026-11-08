@@ -334,10 +334,11 @@ export const webAppPage = (
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <script src="${attribute(manifest.themeSelection)}"></script>
-    <meta name="theme-color" content="#181820" media="(prefers-color-scheme: dark)">
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#08090a" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#f7f8f8" media="(prefers-color-scheme: light)">
     <meta name="mobile-web-app-capable" content="yes">
     <title>${attribute(options.title)}</title>
+    ${manifest.favicon ? `<link rel="icon" type="image/png" sizes="32x32" href="${attribute(manifest.favicon)}">` : ""}
     <link rel="stylesheet" href="${attribute(manifest.theme)}" media="all" crossorigin="anonymous">
     <script type="module" src="${attribute(manifest.polyfills)}" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="${attribute(manifest.inert)}" media="all" id="inert-style" crossorigin="anonymous">
@@ -349,7 +350,7 @@ export const webAppPage = (
   </head>
   <body class="app-body">
     <div class="notranslate app-holder" id="mastodon" data-props="${attribute(JSON.stringify({ locale: options.locale }))}">
-      <noscript>To use this web application, please enable JavaScript, or try one of the native apps for Mastodon.</noscript>
+      <noscript>To use tstodon's web app, please enable JavaScript, or use an app that works with Mastodon-compatible servers.</noscript>
     </div>
   </body>
 </html>`;

@@ -9,6 +9,7 @@ import ImmutablePropTypes from 'react-immutable-proptypes';
 import { connect } from 'react-redux';
 
 import { domain } from 'mastodon/initial_state';
+import { productName, projectUrl } from 'mastodon/tstodon/brand';
 
 import { injectIntl } from '@/mastodon/components/intl';
 import { fetchServer, fetchExtendedDescription, fetchDomainBlocks  } from 'mastodon/actions/server';
@@ -97,7 +98,7 @@ class About extends PureComponent {
             <NavigationFocusTarget as='h1'>
               {isLoading ? <Skeleton width='10ch' /> : domain}
             </NavigationFocusTarget>
-            <p><FormattedMessage id='about.powered_by' defaultMessage='Decentralized social media powered by {mastodon}' values={{ mastodon: <a href='https://joinmastodon.org' className='about__mail' target='_blank' rel='noopener'>Mastodon</a> }} /></p>
+            <p><FormattedMessage id='about.powered_by' defaultMessage='Decentralized social media powered by {mastodon}' values={{ mastodon: <a href={projectUrl} className='about__mail' target='_blank' rel='noopener'>{productName}</a> }} /></p>
           </div>
 
           <div className='about__meta'>
@@ -148,7 +149,7 @@ class About extends PureComponent {
               </>
             ) : (domainBlocks.isAvailable ? (
               <>
-                <p><FormattedMessage id='about.domain_blocks.preamble' defaultMessage='Mastodon generally allows you to view content from and interact with users from any other server in the fediverse. These are the exceptions that have been made on this particular server.' /></p>
+                <p><FormattedMessage id='about.domain_blocks.preamble' defaultMessage='tstodon generally allows you to view content from and interact with users from any other server in the fediverse. These are the exceptions that have been made on this particular server.' /></p>
 
                 {domainBlocks.items.length > 0 && (
                   <div className='about__domain-blocks'>
@@ -173,7 +174,7 @@ class About extends PureComponent {
           <LinkFooter context='about' />
 
           <div className='about__footer'>
-            <p><FormattedMessage id='about.disclaimer' defaultMessage='Mastodon is free, open-source software, and a trademark of Mastodon GmbH.' /></p>
+            <p><FormattedMessage id='about.disclaimer' defaultMessage='tstodon is free, open-source software based on Mastodon. Mastodon is a trademark of Mastodon GmbH.' /></p>
           </div>
         </div>
 

@@ -13,10 +13,11 @@
 }
 
 @mixin radius {
-  --radius-xs: 8px;
-  --radius-sm: 12px;
-  --radius-md: 16px;
-  --radius-lg: 20px;
-  --radius-xl: 28px;
+  // tstodon theme: small radii (4–6px controls, 8px cards and modals).
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
   --radius-round: calc(1px * infinity);
 }

@@ -5,6 +5,7 @@ import { FormattedMessage } from 'react-intl';
 import { DisplayName } from '@/mastodon/components/display_name';
 import { IconLogo } from '@/mastodon/components/logo';
 import { useAppSelector } from '@/mastodon/store';
+import { projectUrl } from '@/mastodon/tstodon/brand';
 
 import { AnnualReport, accountSelector } from './index';
 import classes from './shared_page.module.scss';
@@ -20,24 +21,16 @@ export const WrapstodonSharedPage: FC = () => {
           <IconLogo className={classes.logo} />
           <FormattedMessage
             id='annual_report.shared_page.footer'
-            defaultMessage='Generated with {heart} by the Mastodon team'
-            values={{ heart: '🐘' }}
+            defaultMessage='Generated with {heart} by tstodon'
+            values={{ heart: '❤️' }}
             tagName='p'
           />
           <ul className={classes.linkList}>
             <li>
-              <a href='https://joinmastodon.org'>
+              <a href={projectUrl}>
                 <FormattedMessage
                   id='footer.about_mastodon'
-                  defaultMessage='About Mastodon'
-                />
-              </a>
-            </li>
-            <li>
-              <a href='https://joinmastodon.org/sponsors'>
-                <FormattedMessage
-                  id='annual_report.shared_page.donate'
-                  defaultMessage='Donate'
+                  defaultMessage='About tstodon'
                 />
               </a>
             </li>
@@ -47,7 +40,7 @@ export const WrapstodonSharedPage: FC = () => {
         <div className={classes.footerSection}>
           <FormattedMessage
             id='annual_report.shared_page.footer_server_info'
-            defaultMessage='{username} uses {domain}, one of many communities powered by Mastodon.'
+            defaultMessage='{username} uses {domain}, one of many communities in the fediverse.'
             values={{
               username: <DisplayName variant='simple' account={account} />,
               domain: <strong>{domain}</strong>,

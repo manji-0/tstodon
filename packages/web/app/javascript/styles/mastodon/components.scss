@@ -9,6 +9,7 @@
 
 .animated-number {
   display: inline-flex;
+  font-variant-numeric: tabular-nums;
   flex-direction: column;
   align-items: stretch;
   overflow: hidden;
@@ -85,7 +86,7 @@
 .button {
   background-color: var(--color-bg-brand-base);
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   box-sizing: border-box;
   color: var(--color-text-on-brand-base);
   cursor: pointer;
@@ -94,12 +95,12 @@
   justify-content: center;
   gap: 6px;
   font-family: inherit;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   letter-spacing: 0;
   line-height: 22px;
   overflow: hidden;
-  padding: 6px 17px;
+  padding: 6px 14px;
   position: relative;
   text-align: center;
   text-decoration: none;
@@ -121,9 +122,9 @@
   &--compact {
     font-size: 14px;
     line-height: normal;
-    font-weight: 700;
+    font-weight: 500;
     padding: 5px 12px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
 
   &--dangerous {
@@ -165,17 +166,18 @@
     transition: none;
   }
 
+  // tstodon theme: secondary buttons are neutral (hairline border, no accent).
   &.button-secondary {
-    color: var(--color-text-brand);
+    color: var(--color-text-primary);
     background: transparent;
-    border-color: var(--color-border-brand);
+    border-color: var(--color-border-primary);
 
     &:active,
     &:focus,
     &:hover {
-      border-color: var(--color-border-brand);
-      color: var(--color-text-brand);
-      background-color: transparent;
+      border-color: var(--color-border-primary);
+      color: var(--color-text-primary);
+      background-color: var(--color-bg-highlight);
       text-decoration: none;
     }
 
@@ -928,10 +930,10 @@ body > [data-popover-placement] {
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--color-text-brand);
+  color: var(--color-text-secondary);
   background: transparent;
-  border: 1px solid var(--color-border-brand);
-  border-radius: 6px;
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-sm);
   padding: 4px 8px;
   font-size: 13px;
   line-height: normal;
@@ -939,6 +941,11 @@ body > [data-popover-placement] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+
+  &:hover:not([disabled]) {
+    color: var(--color-text-primary);
+    background: var(--color-bg-highlight);
+  }
 
   &:focus-visible {
     outline: var(--outline-focus-default);
@@ -985,6 +992,7 @@ body > [data-popover-placement] {
 .character-counter {
   cursor: default;
   font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
   font-size: 14px;
   font-weight: 400;
   line-height: normal;
@@ -1494,6 +1502,15 @@ body > [data-popover-placement] {
     outline: 2px solid var(--color-border-brand);
     outline-offset: -2px;
     background: var(--color-bg-brand-softest);
+  }
+}
+
+// tstodon theme: timeline rows get a subtle hover background.
+.status__wrapper.focusable,
+.notification-group.focusable,
+.conversation.focusable {
+  &:hover:not(:focus-visible) {
+    background: var(--color-bg-highlight);
   }
 }
 
@@ -2835,7 +2852,7 @@ a.account__display-name {
   backdrop-filter: $backdrop-blur-filter;
   border: 1px solid var(--color-border-primary);
   padding: 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   box-shadow: var(--dropdown-shadow);
   z-index: 9999;
 
@@ -2942,7 +2959,7 @@ a.account__display-name {
     gap: 8px;
     white-space: inherit;
     width: 100%;
-    padding: 10px 14px;
+    padding: 8px 12px;
     border: 0;
     margin: 0;
     background: transparent;
@@ -2950,13 +2967,14 @@ a.account__display-name {
     text-decoration: none;
     color: inherit;
     text-align: inherit;
-    border-radius: 4px;
+    border-radius: var(--radius-xs);
 
+    // tstodon theme: neutral hover rows, as in the rest of the UI.
     &:focus,
     &:hover,
     &:active {
       &:where(:not(:disabled, [aria-disabled='true'])) {
-        background: var(--color-bg-brand-softest);
+        background: var(--color-bg-tertiary);
         outline: 0;
       }
     }
@@ -4095,29 +4113,32 @@ a.account__display-name {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 12px;
-  padding-inline-start: 16px;
-  font-size: 16px;
-  font-weight: 400;
+  padding: 9px 12px;
+  padding-inline-start: 14px;
+  font-size: 14px;
+  font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
-  color: color-mix(
-    in oklab,
-    var(--color-text-primary),
-    var(--color-text-secondary)
-  );
+  color: var(--color-text-secondary);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 
   &:hover,
   &:active,
   &:focus-visible {
     color: var(--color-text-primary);
+    background: var(--color-bg-highlight);
   }
 
+  // tstodon theme: the selected item is a solid row with an accent icon.
   &.active {
-    color: var(--color-text-brand);
+    color: var(--color-text-primary);
+    background: var(--color-bg-tertiary);
+
+    .icon {
+      color: var(--color-text-brand);
+    }
   }
 
   &:focus-visible {
@@ -4586,27 +4607,9 @@ a.status-card {
   flex: 0 0 auto;
   z-index: 1;
 
+  // tstodon theme: a flat accent hairline instead of upstream's glow.
   &.active {
-    box-shadow: 0 1px 0 var(--color-bg-brand-softest);
-
-    &::before {
-      display: block;
-      content: '';
-      position: absolute;
-      bottom: -13px;
-      inset-inline-start: 0;
-      inset-inline-end: 0;
-      margin: 0 auto;
-      width: 60%;
-      pointer-events: none;
-      height: 28px;
-      z-index: 1;
-      background: radial-gradient(
-        ellipse,
-        rgb(from var(--color-bg-brand-base) r g b / 23%) 0%,
-        transparent 60%
-      );
-    }
+    box-shadow: 0 1px 0 var(--color-border-brand);
   }
 
   .announcements {
@@ -4707,7 +4710,6 @@ a.status-card {
   &.active {
     .column-header__icon {
       color: var(--color-text-brand);
-      text-shadow: 0 0 10px var(--color-bg-brand-softest);
     }
   }
 

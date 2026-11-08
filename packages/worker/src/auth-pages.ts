@@ -55,7 +55,7 @@ export const signInPage = (
       <p><a href="${escapeHtml(returnTo)}">Continue</a></p>`
       : `      <h1>Signed in</h1>
       <p>You are signed in to ${escapeHtml(instanceName)} as <strong>@${escapeHtml(signedInAs)}</strong> through Cloudflare Access.
-      Use a Mastodon app to read and post.</p>
+      Use the web app, or an app that works with Mastodon-compatible servers, to read and post.</p>
       <form id="sign-out"><button type="submit">Sign out</button></form>
       <p id="error" class="error" role="alert"></p>`,
     signedInAs === undefined

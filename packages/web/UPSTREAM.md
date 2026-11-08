@@ -20,7 +20,7 @@ These upstream paths were copied unmodified into `packages/web/` (the `imported`
 - `vitest.config.mts`, `vitest.shims.d.ts`, `.storybook/` (Mastodon's tests and stories; not used by the build)
 - `eslint.config.mjs`, `stylelint.config.js`, `.oxfmtrc.json` (Mastodon's lint and format settings; tstodon's own `vp check` skips this package)
 - `package.json` (adapted to pnpm, see below)
-- `public/sounds/`, `public/sw.js` (a symlink to the built `packs/sw.js`), `public/badge.png`, `public/loading.{gif,png}`, `public/oops.{gif,png}`, `public/web-push-icon_{expand,favourite,reblog}.png`
+- `public/sounds/`, `public/sw.js` (a symlink to the built `packs/sw.js`), `public/badge.png`, `public/web-push-icon_{expand,favourite,reblog}.png` (`public/loading.{gif,png}` and `public/oops.{gif,png}` were imported too, then removed with the mascot; see "Branding" below)
 - `LICENSE`, `AUTHORS.md`
 
 The import commit also carried upstream's `yarn.lock` and `.yarnrc.yml`; the pnpm integration commit removed them (the root `pnpm-lock.yaml` now pins this package's dependencies, imported from that `yarn.lock`).
@@ -39,6 +39,30 @@ Changes against upstream, so a future merge knows what is ours:
 - `vitest.config.mts`: Storybook's test integration starts `pnpm run storybook`.
 - `.gitignore`, `UPSTREAM.md`, `upstream.json` added.
 - Repository root: `pnpm-workspace.yaml` keeps upstream's `vite` and `vitest` for this package (the rest of the workspace gets Vite+) and lists the install scripts this package's dependencies may not run; `vite.config.ts` keeps `vp check` out of this package.
+
+### Branding
+
+The UI is branded tstodon, with a credit to Mastodon. Only user-visible text and images changed: the `mastodon/` directory, import paths, CSS classes, storage and Redux keys and message ids are upstream's, so merges stay mechanical.
+
+- Strings: `locales/en.json` and the English `defaultMessage`s name the product "tstodon" where upstream said "Mastodon", and say "the fediverse" where it meant the network (`sign_in_banner.mastodon_is`, `closed_registrations_modal.*`, `server_banner.is_one_of_many`, the annual report texts, …). Every other locale had "Mastodon" and its transliterations (마스토돈, מסטודון, ماستودون, मास्टोडन, …) renamed to "tstodon" mechanically, so a sentence about the network reads "tstodon" there. `about.disclaimer`, `annual_report.shared_page.footer` and `confirmations.hide_featured_tab.message` changed meaning, so their translations were removed and those messages fall back to English. `footer.based_on` ("Based on {name}") is new. On a merge, take upstream's new translations and rename "Mastodon" in them the same way; keep the English values.
+- Credit and links: the link footer's second section is "tstodon:" (About links `https://github.com/<meta.repository>`, "Based on Mastodon" links Mastodon's repository, "View source code" stays `meta.source_url`); the about page's "powered by" links tstodon and its disclaimer credits Mastodon; the error boundary shows "tstodon v…". The annual report's shared page links tstodon and has no "Donate" link (it was Mastodon's). Constants live in `app/javascript/mastodon/tstodon/brand.ts`.
+- Logo: `components/logo.tsx` keeps upstream's component names (`WordmarkLogo`, `IconLogo`, `SymbolLogo`) but draws the tstodon mark inline (`brand.ts` `symbolPath`: a speech bubble with "ts" cut out). `images/tstodon-symbol.svg` (brand colour, transparent) and `images/tstodon-app-icon.svg` (white mark on a full-bleed square) hold the same path.
+- Icons: `icons/favicon-*.png` were rendered from `tstodon-symbol.svg`, `icons/android-chrome-*.png` and `icons/apple-touch-icon-*.png` from `tstodon-app-icon.svg`, and `public/badge.png` from the mark in black on transparent (an alpha mask), each at upstream's file names and sizes (sharp, `density` high enough that no size is upscaled). Re-render them after changing the mark.
+- Removed: Mastodon's logos (`images/logo.svg`, `images/logo-symbol-icon.svg`, `images/logo-symbol-wordmark.svg`, `images/app-icon.svg`, `images/mailer/{logo,wordmark}.png`, `images/mailer-new/common/logo-{header,footer}.png`, the app screenshots `images/mailer-new/welcome/feature_*.png`) and the mascot (`images/elephant_ui*.svg`, `images/friends-cropped.png`, `images/preview.png`, `images/archetypes/{booster,lurker,oracle,pollster,replier}.png` and `images/archetypes/previews/`, `public/loading.{gif,png}`, `public/oops.{gif,png}`). A merge that touches one of these comes back as a modify/delete conflict; keep the deletion. `scripts/build-mastodon-web.mjs` no longer copies `loading.*` / `oops.*`, and `.storybook/main.ts` maps the new symbol where it mapped `logo.svg`.
+- Where the mascot was: `components/empty_state` shows no image by default and an `error` icon for errors; `components/regeneration_indicator` an `hourglass` icon; `features/ui/components/modal_placeholder` an `error` icon; the annual report archetypes a Material Symbols icon each; the compose drawer and announcements show `meta.mascot` only when the server sets one. `entrypoints/error.ts` (Rails' error page) is empty. `images/anniversary.svg` (a laurel wreath, no Mastodon branding) stays.
+
+### Theme
+
+tstodon replaces Mastodon's look with a flat, Linear-like design in two colour schemes. The scheme still follows `data-color-scheme` (`auto` resolves to the OS setting through `inline/theme-selection.js`, unchanged) and `data-contrast` (`high`, or the OS `prefers-contrast: more`, applies each scheme's `contrast-overrides`). Class names and the token names components use are upstream's; the changes are in values, so on a merge take upstream's structure and re-apply these values:
+
+- `app/javascript/styles/mastodon/tokens/theme/_base.scss`: the palette. Neutral greys (`grey-50` `#f7f8f8` … `grey-950` `#08090a`, with `grey-450`, `grey-850` and `grey-925` added), an indigo accent scale (`indigo-600` `#5e6ad2`), and desaturated red, amber and green scales. Step names are upstream's.
+- `tokens/theme/_dark.scss`, `tokens/theme/_light.scss`: the token mappings and both `contrast-overrides`. New token `--color-bg-app` (the page behind the columns; `basics.scss` paints `html` and `body` with it). Status links use the accent (`--color-text-status-links: var(--color-text-brand)`), the brand hover is darker so white text stays at AA, `--dropdown-shadow` is one short soft shadow, and the rich-text (code, quote) tokens are neutral.
+- `tokens/_shape.scss`: radii 4 / 6 / 8 / 10 / 12px (`--radius-xs` … `--radius-xl`).
+- `styles/fonts/inter.scss`: upright Inter is the bundled variable font (`fonts/inter/inter-variable-font-slnt-wght.woff2`, OFL, already in upstream's tree) with its weight range clamped to 400–600, replacing the static regular and semibold upright faces; the italic faces are upstream's.
+- `styles/mastodon/basics.scss`: `--font-body` is Inter with a system fallback stack and `--font-heading` follows it (upstream: Roboto and Syne); `html` / `body` background is `--color-bg-app`.
+- `styles/mastodon/components.scss` (each block marked `tstodon theme`): `.button` (14px, 6px radius), neutral `.button.button-secondary` and `.dropdown-button`, compact `.column-link` with a solid selected row and accent icon, a hover background on timeline rows (`.status__wrapper`, `.notification-group`, `.conversation`), `.dropdown-menu` radius and neutral item hover, no glow under an active `.column-header__wrapper` or its icon, tabular numbers in `.animated-number` and `.character-counter`.
+
+Outside this package, `packages/worker/src/web-app.ts` sets the `theme-color` meta values to the app backgrounds (`#08090a` dark, `#f7f8f8` light).
 
 ## Working on it
 

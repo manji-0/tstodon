@@ -11,6 +11,13 @@ import {
   termsOfServiceEnabled,
 } from 'mastodon/initial_state';
 
+import {
+  productName,
+  projectUrl,
+  upstreamName,
+  upstreamUrl,
+} from 'mastodon/tstodon/brand';
+
 import classes from './link_footer.module.scss';
 
 export const LinkFooter: React.FC<{
@@ -78,12 +85,12 @@ export const LinkFooter: React.FC<{
         </ul>
       </section>
       <section>
-        <h2 className={classes.heading}>Mastodon:</h2>
+        <h2 className={classes.heading}>{`${productName}:`}</h2>
         <ul className={classes.list}>
           <li>
-            <a href='https://joinmastodon.org' target='_blank' rel='noopener'>
+            <a href={projectUrl} target='_blank' rel='noopener'>
               <FormattedMessage id='footer.about' defaultMessage='About' />
-              <span className='sr-only'> Mastodon</span>
+              <span className='sr-only'> {productName}</span>
             </a>
           </li>
           <li>
@@ -111,6 +118,15 @@ export const LinkFooter: React.FC<{
               <FormattedMessage
                 id='footer.source_code'
                 defaultMessage='View source code'
+              />
+            </a>
+          </li>
+          <li>
+            <a href={upstreamUrl} target='_blank' rel='noopener'>
+              <FormattedMessage
+                id='footer.based_on'
+                defaultMessage='Based on {name}'
+                values={{ name: upstreamName }}
               />
             </a>
           </li>

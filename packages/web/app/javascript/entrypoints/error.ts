@@ -1,17 +1,4 @@
-import ready from '../mastodon/ready';
-
-ready(() => {
-  const image = document.querySelector<HTMLImageElement>('img');
-
-  if (!image) return;
-
-  image.addEventListener('mouseenter', () => {
-    image.src = '/oops.gif';
-  });
-
-  image.addEventListener('mouseleave', () => {
-    image.src = '/oops.png';
-  });
-}).catch((e: unknown) => {
-  console.error(e);
-});
+// tstodon: Mastodon's error page swapped its mascot illustration between a
+// still and an animated image on hover. tstodon serves no such page and ships
+// no mascot, so this entry point is empty.
+export {};

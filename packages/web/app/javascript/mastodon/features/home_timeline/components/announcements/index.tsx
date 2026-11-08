@@ -3,7 +3,6 @@ import type { FC } from 'react';
 
 import type { Map, List } from 'immutable';
 
-import elephantUIPlane from '@/images/elephant_ui_plane.svg';
 import type { RenderSlideFn } from '@/mastodon/components/carousel';
 import { Carousel } from '@/mastodon/components/carousel';
 import { CustomEmojiProvider } from '@/mastodon/components/emoji/context';
@@ -46,12 +45,14 @@ export const Announcements: FC = () => {
 
   return (
     <div className='announcements__root'>
-      <img
-        className='announcements__mastodon'
-        alt=''
-        draggable='false'
-        src={mascot ?? elephantUIPlane}
-      />
+      {mascot && (
+        <img
+          className='announcements__mastodon'
+          alt=''
+          draggable='false'
+          src={mascot}
+        />
+      )}
 
       <CustomEmojiProvider emojis={emojis}>
         <Carousel

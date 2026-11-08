@@ -2,17 +2,17 @@ import { FormattedMessage } from 'react-intl';
 
 import classNames from 'classnames';
 
-import ElephantImage from '@/images/elephant_ui.svg?react';
+import ErrorIcon from '@/material-icons/400-24px/error.svg?react';
 
-import { GIF } from '../gif';
+import { Icon } from '../icon';
 
 import classes from './empty_state.module.scss';
 
+// tstodon: no mascot illustrations; the default state has no image and the
+// error state shows a neutral icon.
 const images = {
-  default: <ElephantImage className={classes.defaultImage} />,
-  error: (
-    <GIF src='/oops.gif' staticSrc='/oops.png' className={classes.errorImage} />
-  ),
+  default: null,
+  error: <Icon id='error' icon={ErrorIcon} style={{ width: 64, height: 64 }} />,
 };
 
 /**
