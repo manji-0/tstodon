@@ -1,1 +1,1 @@
-export { getSeveredRelationshipsFile as GET } from "#src/routes/severed-relationships";
+export { getSeveredRelationshipsFile as GET } from "#server/routes/severed-relationships";

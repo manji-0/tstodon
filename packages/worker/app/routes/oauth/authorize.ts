@@ -1,1 +1,1 @@
-export { getOauthAuthorize as GET, postOauthAuthorize as POST } from "#src/routes/oauth";
+export { getOauthAuthorize as GET, postOauthAuthorize as POST } from "#server/routes/oauth";

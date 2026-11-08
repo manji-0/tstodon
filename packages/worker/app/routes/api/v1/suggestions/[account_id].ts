@@ -1,1 +1,1 @@
-export { deleteV1SuggestionsByAccountId as DELETE } from "#src/routes/suggestions";
+export { deleteV1SuggestionsByAccountId as DELETE } from "#server/routes/suggestions";

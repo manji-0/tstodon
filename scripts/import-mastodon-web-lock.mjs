@@ -1,17 +1,22 @@
 #!/usr/bin/env node
-// Lock packages/web's dependencies at the versions upstream Mastodon's
-// yarn.lock resolved, instead of whatever is newest when pnpm resolves them.
+// Lock the Mastodon frontend's dependencies (in packages/worker/package.json,
+// beside the Worker's own) at the versions upstream Mastodon's yarn.lock
+// resolved, instead of whatever is newest when pnpm resolves them.
 //
-//   node scripts/import-mastodon-web-lock.mjs path/to/mastodon/yarn.lock
+//   node scripts/import-mastodon-web-lock.mjs path/to/mastodon/yarn.lock path/to/mastodon/package.json
 //
-// `pnpm import` turns that yarn.lock into a pnpm lockfile for
-// packages/web/package.json alone (in .cache/mastodon-web-lock/). This script
-// then puts its importer into the workspace's pnpm-lock.yaml as
-// `packages/web`, adds the package and snapshot entries the workspace lock
-// lacks (an entry the workspace already has stays as it is), drops entries no
-// importer reaches any more, and installs with --frozen-lockfile, which
-// fails if the result does not satisfy every package.json. Run `pnpm install`
-// afterwards: it should report the lockfile up to date.
+// The frontend's dependencies are the entries of packages/worker/package.json
+// that upstream's package.json declares, plus the few tstodon declares because
+// upstream relies on Yarn hoisting for them (HOISTED below; see
+// packages/worker/src/UPSTREAM.md). `pnpm import` turns the yarn.lock into a
+// pnpm lockfile for those alone, at packages/worker/package.json's versions,
+// in .cache/mastodon-web-lock/, with the workspace's settings (catalog,
+// overrides: Vite and Vitest stay the workspace's). This script then replaces
+// those dependencies' entries in the workspace lock's `packages/worker`
+// importer, adds the package and snapshot entries the workspace lock lacks (an
+// entry it already has stays as it is), drops entries no importer reaches any
+// more, and runs `pnpm install` (which settles peer suffixes, keeping the
+// locked versions) and `pnpm install --frozen-lockfile`.
 // See docs/operations/mastodon-web-upstream.md.
 
 import { execFileSync } from "node:child_process";
@@ -20,19 +25,69 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const yarnLock = process.argv[2];
-if (!yarnLock) {
-  console.error("Usage: node scripts/import-mastodon-web-lock.mjs path/to/mastodon/yarn.lock");
+const [yarnLock, upstreamPackageJson] = process.argv.slice(2);
+if (!yarnLock || !upstreamPackageJson) {
+  console.error(
+    "Usage: node scripts/import-mastodon-web-lock.mjs path/to/mastodon/yarn.lock path/to/mastodon/package.json",
+  );
   process.exit(1);
 }
+
+/** Packages upstream uses without declaring them (Yarn hoists them); tstodon declares them. */
+const HOISTED = ["browserslist", "tesseract.js-core", "@types/history", "jsdom", "redux"];
+/** The workspace's own: Vite+ core and Vitest from the catalog. */
+const WORKSPACE_OWNED = ["vite", "vitest"];
+
+const readJson = (file) => JSON.parse(readFileSync(file, "utf8"));
+const upstream = readJson(path.resolve(upstreamPackageJson));
+const worker = readJson(path.join(root, "packages", "worker", "package.json"));
+const upstreamNames = new Set([
+  ...Object.keys(upstream.dependencies ?? {}),
+  ...Object.keys(upstream.devDependencies ?? {}),
+  ...HOISTED,
+]);
+const frontend = (deps = {}) =>
+  Object.fromEntries(
+    Object.entries(deps).filter(
+      ([name]) => upstreamNames.has(name) && !WORKSPACE_OWNED.includes(name),
+    ),
+  );
+const catalog = (name) => {
+  const entry = new RegExp(`^ {2}${name}: (.+)$`, "m").exec(
+    readFileSync(path.join(root, "pnpm-workspace.yaml"), "utf8"),
+  );
+  if (!entry?.[1]) throw new Error(`pnpm-workspace.yaml has no catalog entry ${name}`);
+  return entry[1].trim();
+};
+const frontendPackage = {
+  name: "mastodon-web-lock",
+  private: true,
+  dependencies: frontend(worker.dependencies),
+  // Vite+ core and Vitest as the workspace has them, so upstream's Vite
+  // plugins resolve their peers to those and not to upstream's Vite.
+  devDependencies: {
+    ...frontend(worker.devDependencies),
+    vite: catalog("vite"),
+    vitest: catalog("vitest"),
+  },
+};
+const frontendNames = new Set([
+  ...Object.keys(frontendPackage.dependencies),
+  ...Object.keys(frontendPackage.devDependencies),
+]);
 
 const work = path.join(root, ".cache", "mastodon-web-lock");
 rmSync(work, { recursive: true, force: true });
 mkdirSync(work, { recursive: true });
-copyFileSync(path.join(root, "packages", "web", "package.json"), path.join(work, "package.json"));
+writeFileSync(path.join(work, "package.json"), `${JSON.stringify(frontendPackage, null, 2)}\n`);
 copyFileSync(path.resolve(yarnLock), path.join(work, "yarn.lock"));
-// A workspace of its own, so pnpm does not treat it as part of this one.
-writeFileSync(path.join(work, "pnpm-workspace.yaml"), "packages: []\n");
+// A workspace of its own, so pnpm does not treat it as part of this one, with
+// this workspace's settings.
+const workspaceYaml = readFileSync(path.join(root, "pnpm-workspace.yaml"), "utf8");
+writeFileSync(
+  path.join(work, "pnpm-workspace.yaml"),
+  workspaceYaml.replace(/^packages:\n(?: {2}- .*\n)+/m, "packages: []\n"),
+);
 execFileSync("pnpm", ["import"], { cwd: work, stdio: "inherit" });
 
 /**
@@ -118,11 +173,54 @@ const section = (sections, head) => {
 };
 
 const importers = section(workspace, "importers:");
-const webImporter = section(imported, "importers:").entries.find((e) => e.key === ".");
-if (!webImporter) throw new Error("pnpm import wrote no importer");
-importers.entries = [
-  ...importers.entries.filter((e) => e.key !== "packages/web"),
-  { key: "packages/web", lines: ["  packages/web:", ...webImporter.lines.slice(1)] },
+const workerImporter = importers.entries.find((e) => e.key === "packages/worker");
+const frontendImporter = section(imported, "importers:").entries.find((e) => e.key === ".");
+if (!workerImporter) throw new Error("Lockfile has no packages/worker importer");
+if (!frontendImporter) throw new Error("pnpm import wrote no importer");
+
+/**
+ * An importer's dependency blocks by group (`dependencies`, `devDependencies`):
+ * a six-space `name:` line and the specifier and version lines under it.
+ */
+const importerGroups = (entry) => {
+  const groups = new Map();
+  let group;
+  let block;
+  for (const line of entry.lines.slice(1)) {
+    const groupHead = /^ {4}(\S+):$/.exec(line);
+    if (groupHead) {
+      group = new Map();
+      groups.set(groupHead[1], group);
+      continue;
+    }
+    const name = /^ {6}(\S.*):$/.exec(line);
+    if (name && group) {
+      block = [line];
+      group.set(unquote(name[1]), block);
+    } else if (block) {
+      block.push(line);
+    }
+  }
+  return groups;
+};
+
+const workerGroups = importerGroups(workerImporter);
+const frontendGroups = importerGroups(frontendImporter);
+for (const [groupName, group] of workerGroups) {
+  for (const name of group.keys()) {
+    if (!frontendNames.has(name)) continue;
+    const locked = frontendGroups.get(groupName)?.get(name);
+    if (!locked) throw new Error(`pnpm import locked no ${groupName} ${name}`);
+    group.set(name, locked);
+  }
+}
+const compareKeys = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+workerImporter.lines = [
+  workerImporter.lines[0],
+  ...[...workerGroups].flatMap(([groupName, group]) => [
+    `    ${groupName}:`,
+    ...[...group].sort(([a], [b]) => compareKeys(a, b)).flatMap(([, block]) => block),
+  ]),
 ];
 
 for (const head of ["packages:", "snapshots:"]) {
@@ -136,7 +234,7 @@ for (const head of ["packages:", "snapshots:"]) {
       existing.lines.includes("    optional: true") &&
       !entry.lines.includes("    optional: true")
     ) {
-      // A snapshot packages/web needs is not optional, whatever else uses it.
+      // A snapshot the frontend needs is not optional, whatever else uses it.
       existing.lines = existing.lines.filter((line) => line !== "    optional: true");
       if (existing.lines.length === 1)
         existing.lines = [`${existing.lines[0].replace(/:$/, "")}: {}`];
@@ -166,7 +264,10 @@ const compare = (a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
 for (const s of [importers, packages, snapshots]) s.entries.sort(compare);
 
 writeFileSync(lockPath, `${prefix}${formatDocument(workspace)}\n`);
-console.log(`Locked packages/web from ${path.relative(root, path.resolve(yarnLock))}`);
+console.log(
+  `Locked the Mastodon frontend's dependencies from ${path.relative(root, path.resolve(yarnLock))}`,
+);
 
+execFileSync("pnpm", ["install"], { cwd: root, stdio: "inherit" });
 execFileSync("pnpm", ["install", "--frozen-lockfile"], { cwd: root, stdio: "inherit" });
 rmSync(work, { recursive: true, force: true });

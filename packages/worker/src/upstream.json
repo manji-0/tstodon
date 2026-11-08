@@ -1,0 +1,27 @@
+{
+  "repository": "https://github.com/mastodon/mastodon.git",
+  "tag": "v4.7.5",
+  "commit": "24cd1c875a1ac393e587421726394d5692ff5496",
+  "imported": {
+    "app/javascript": "packages/worker/src",
+    "config/vite": "packages/worker/config/vite",
+    "config/themes.yml": "packages/worker/config/themes.yml",
+    "config/formatjs-formatter.js": "packages/worker/config/formatjs-formatter.cjs",
+    ".browserslistrc": "packages/worker/.browserslistrc",
+    "public/sounds": "packages/worker/public/sounds",
+    "public/badge.png": "packages/worker/public/badge.png",
+    "public/web-push-icon_expand.png": "packages/worker/public/web-push-icon_expand.png",
+    "public/web-push-icon_favourite.png": "packages/worker/public/web-push-icon_favourite.png",
+    "public/web-push-icon_reblog.png": "packages/worker/public/web-push-icon_reblog.png",
+    "LICENSE": "packages/worker/src/LICENSE",
+    "AUTHORS.md": "packages/worker/src/AUTHORS.md"
+  },
+  "ported": {
+    "vite.config.mts": "packages/worker/web-build.ts",
+    "vitest.config.mts": "packages/worker/vitest.config.ts",
+    "tsconfig.json": "packages/worker/src/tsconfig.json",
+    "package.json": "packages/worker/package.json"
+  },
+  "fetched": ["public/emoji", "public/ocr"],
+  "served": ["public/emoji"]
+}

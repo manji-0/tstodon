@@ -1,1 +1,1 @@
-export { postV1Reports as POST } from "#src/routes/reports";
+export { postV1Reports as POST } from "#server/routes/reports";

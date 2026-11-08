@@ -1,1 +1,1 @@
-export { postV1NotificationsByIdDismiss as POST } from "#src/routes/notifications";
+export { postV1NotificationsByIdDismiss as POST } from "#server/routes/notifications";

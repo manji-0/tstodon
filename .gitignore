@@ -14,14 +14,10 @@ e2e/instances/.wrangler
 worker-configuration.d.ts
 .vitest/
 .void/
-# Mastodon web UI build output (pnpm web:build)
+# Upstream Mastodon's static trees, fetched by the build (packages/worker/web-build.ts)
 /.cache
+/packages/worker/public/emoji
+/packages/worker/public/ocr
+# Vite/Vitest caches beside the frontend's own package.json
+/packages/worker/src/node_modules
 /.wrangler/e2e-web
-/packages/worker/assets/packs
-/packages/worker/assets/emoji
-/packages/worker/assets/sounds
-/packages/worker/assets/sw.js
-/packages/worker/assets/badge.png
-/packages/worker/assets/loading.*
-/packages/worker/assets/oops.*
-/packages/worker/assets/web-push-icon_*.png

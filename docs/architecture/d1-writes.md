@@ -9,7 +9,7 @@ Short checklist. Long-form design: [d1-write-strategy.md](./d1-write-strategy.md
 
 ## Rules
 
-1. Multi-statement writes go through `runD1Batch` / `runD1BatchChunked` (`packages/worker/src/d1.ts`), not sequential `await stmt.run()` loops.
+1. Multi-statement writes go through `runD1Batch` / `runD1BatchChunked` (`packages/worker/server/d1.ts`), not sequential `await stmt.run()` loops.
 2. Prefer a single UPSERT / `INSERT OR IGNORE` / conditional `UPDATE ... WHERE` over SELECT-then-INSERT when app logic allows. D1 has no interactive `BEGIN`/`COMMIT`.
 3. Do not use `Promise.all` of separate D1 writes on the same database as a substitute for `batch`. D1 serializes writers; batch is one round-trip and one SQL transaction.
 4. Chunk large homogeneous batches with `D1_BATCH_CHUNK_SIZE` (100). Keep per-statement bind counts under the platform limit (100).

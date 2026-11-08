@@ -1,1 +1,1 @@
-export { postV1AccountsByIdUnfollow as POST } from "#src/routes/accounts/follows";
+export { postV1AccountsByIdUnfollow as POST } from "#server/routes/accounts/follows";

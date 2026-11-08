@@ -1,1 +1,1 @@
-export { getV1AccountsByIdLists as GET } from "#src/routes/lists";
+export { getV1AccountsByIdLists as GET } from "#server/routes/lists";

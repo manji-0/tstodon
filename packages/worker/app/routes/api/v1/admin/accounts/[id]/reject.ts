@@ -1,1 +1,1 @@
-export { postV1AdminAccountsByIdReject as POST } from "#src/routes/admin/accounts";
+export { postV1AdminAccountsByIdReject as POST } from "#server/routes/admin/accounts";

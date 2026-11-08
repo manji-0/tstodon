@@ -1,1 +1,1 @@
-export { postOauthRevoke as POST } from "#src/routes/oauth";
+export { postOauthRevoke as POST } from "#server/routes/oauth";

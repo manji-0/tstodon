@@ -1,1 +1,1 @@
-export { getV1Conversations as GET } from "#src/routes/conversations";
+export { getV1Conversations as GET } from "#server/routes/conversations";

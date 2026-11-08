@@ -1,6 +1,6 @@
 import type { Context, Next } from "hono";
-import { getWellKnownNodeinfo, getWellKnownWebfinger } from "#src/routes/discovery";
-import { getOauthAuthorizationServerMetadata } from "#src/routes/oauth";
+import { getWellKnownNodeinfo, getWellKnownWebfinger } from "#server/routes/discovery";
+import { getOauthAuthorizationServerMetadata } from "#server/routes/oauth";
 
 // Void's route scanner skips dot directories, so `routes/.well-known/` would
 // never be registered. Serve the discovery documents here instead.

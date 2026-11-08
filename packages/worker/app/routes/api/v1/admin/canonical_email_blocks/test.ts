@@ -1,1 +1,1 @@
-export { postV1AdminCanonicalEmailBlocksTest as POST } from "#src/routes/admin/email-blocks";
+export { postV1AdminCanonicalEmailBlocksTest as POST } from "#server/routes/admin/email-blocks";

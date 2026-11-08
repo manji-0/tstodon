@@ -1,9 +1,9 @@
 import { SELF, env } from "cloudflare:test";
 import { expect } from "vite-plus/test";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
-import { signFetchRequest, signInboxRequest } from "../src/http-signature";
-import { generateAccountKeys } from "../src/keys";
-import { upsertRemoteActor } from "../src/remote-actor-store";
+import { signFetchRequest, signInboxRequest } from "../server/http-signature";
+import { generateAccountKeys } from "../server/keys";
+import { upsertRemoteActor } from "../server/remote-actor-store";
 
 export type Remote = Readonly<{
   actorUri: string;

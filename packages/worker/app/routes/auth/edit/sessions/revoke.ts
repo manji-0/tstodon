@@ -1,1 +1,1 @@
-export { postSessionRevoke as POST } from "#src/routes/account-security";
+export { postSessionRevoke as POST } from "#server/routes/account-security";

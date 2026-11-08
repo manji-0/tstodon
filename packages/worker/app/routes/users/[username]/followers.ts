@@ -1,1 +1,1 @@
-export { getUsersByUsernameFollowers as GET } from "#src/routes/activitypub";
+export { getUsersByUsernameFollowers as GET } from "#server/routes/activitypub";

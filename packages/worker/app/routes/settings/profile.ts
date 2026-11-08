@@ -1,1 +1,1 @@
-export { getSettingsProfile as GET } from "#src/routes/preferences";
+export { getSettingsProfile as GET } from "#server/routes/preferences";

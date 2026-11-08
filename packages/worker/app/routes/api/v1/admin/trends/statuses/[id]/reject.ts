@@ -1,1 +1,1 @@
-export { postV1AdminTrendsStatusesByIdReject as POST } from "#src/routes/admin/trends";
+export { postV1AdminTrendsStatusesByIdReject as POST } from "#server/routes/admin/trends";

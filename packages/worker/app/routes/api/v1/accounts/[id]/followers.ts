@@ -1,1 +1,1 @@
-export { getV1AccountsByIdFollowers as GET } from "#src/routes/accounts/profile";
+export { getV1AccountsByIdFollowers as GET } from "#server/routes/accounts/profile";

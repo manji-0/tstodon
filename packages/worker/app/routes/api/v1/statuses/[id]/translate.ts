@@ -1,1 +1,1 @@
-export { postV1StatusesByIdTranslate as POST } from "#src/routes/statuses/read";
+export { postV1StatusesByIdTranslate as POST } from "#server/routes/statuses/read";

@@ -1,1 +1,1 @@
-export { postUsersByUsernameInbox as POST } from "#src/routes/activitypub";
+export { postUsersByUsernameInbox as POST } from "#server/routes/activitypub";

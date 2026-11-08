@@ -1,1 +1,1 @@
-export { getV1AccountsByIdStatuses as GET } from "#src/routes/accounts/profile";
+export { getV1AccountsByIdStatuses as GET } from "#server/routes/accounts/profile";

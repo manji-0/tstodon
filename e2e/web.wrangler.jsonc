@@ -3,7 +3,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "tstodon-e2e-web",
-  "main": "../packages/worker/src/entry-classes.ts",
+  "main": "../packages/worker/server/entry-classes.ts",
   "compatibility_date": "2026-09-20",
   "compatibility_flags": ["nodejs_compat"],
   "placement": {
@@ -21,7 +21,7 @@
     },
   },
   "assets": {
-    "directory": "../packages/worker/assets",
+    "directory": "../packages/worker/public",
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "none",

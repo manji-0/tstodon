@@ -1,1 +1,1 @@
-export { postV1StatusesByIdMute as POST } from "#src/routes/statuses/interactions";
+export { postV1StatusesByIdMute as POST } from "#server/routes/statuses/interactions";

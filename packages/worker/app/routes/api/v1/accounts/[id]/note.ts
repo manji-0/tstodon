@@ -1,1 +1,1 @@
-export { postV1AccountsByIdNote as POST } from "#src/routes/accounts/endorsements";
+export { postV1AccountsByIdNote as POST } from "#server/routes/accounts/endorsements";

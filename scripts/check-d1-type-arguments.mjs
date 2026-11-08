@@ -10,7 +10,7 @@ import path from "node:path";
 const ROOTS = [
   "packages/core/src",
   "packages/domain/src",
-  "packages/worker/src",
+  "packages/worker/server",
   "packages/worker/app",
 ];
 const SKIPPED_DIRECTORIES = new Set(["generated", "node_modules"]);

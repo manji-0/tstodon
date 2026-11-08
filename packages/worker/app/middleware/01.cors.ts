@@ -1,5 +1,5 @@
 import type { Context, Next } from "hono";
-import { apiCors, mediaCors } from "#src/cors";
+import { apiCors, mediaCors } from "#server/cors";
 
 // Public media proxy (local-core / same-origin MEDIA_PUBLIC_BASE_URL). Production R2
 // custom domains need a matching bucket CORS policy (see docs/operations).

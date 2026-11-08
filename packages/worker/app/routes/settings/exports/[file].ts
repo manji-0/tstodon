@@ -1,1 +1,1 @@
-export { getSettingsExportFile as GET } from "#src/routes/data-settings";
+export { getSettingsExportFile as GET } from "#server/routes/data-settings";

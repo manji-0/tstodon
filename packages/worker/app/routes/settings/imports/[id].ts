@@ -1,1 +1,1 @@
-export { getSettingsImportById as GET } from "#src/routes/data-settings";
+export { getSettingsImportById as GET } from "#server/routes/data-settings";

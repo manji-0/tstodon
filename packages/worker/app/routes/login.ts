@@ -1,1 +1,1 @@
-export { getLogin as GET } from "#src/routes/oauth";
+export { getLogin as GET } from "#server/routes/oauth";

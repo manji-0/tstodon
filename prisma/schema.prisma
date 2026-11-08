@@ -1,6 +1,6 @@
 generator client {
   provider        = "prisma-client"
-  output          = "../packages/worker/src/generated/prisma"
+  output          = "../packages/worker/server/generated/prisma"
   runtime         = "cloudflare"
   previewFeatures = ["typedSql", "partialIndexes"]
 }

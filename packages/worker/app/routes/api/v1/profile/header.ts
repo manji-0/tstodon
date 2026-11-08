@@ -1,1 +1,1 @@
-export { deleteV1ProfileHeader as DELETE } from "#src/routes/accounts/credentials";
+export { deleteV1ProfileHeader as DELETE } from "#server/routes/accounts/credentials";

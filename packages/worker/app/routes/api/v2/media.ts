@@ -1,1 +1,1 @@
-export { postV2Media as POST } from "#src/routes/media";
+export { postV2Media as POST } from "#server/routes/media";

@@ -1,1 +1,1 @@
-export { getV1InstanceActivity as GET } from "#src/routes/instance";
+export { getV1InstanceActivity as GET } from "#server/routes/instance";

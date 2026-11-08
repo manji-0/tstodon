@@ -1,1 +1,1 @@
-export { getV1StatusesByIdQuotes as GET } from "#src/routes/statuses/engagement";
+export { getV1StatusesByIdQuotes as GET } from "#server/routes/statuses/engagement";

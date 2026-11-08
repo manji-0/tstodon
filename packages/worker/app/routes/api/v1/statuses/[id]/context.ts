@@ -1,1 +1,1 @@
-export { getV1StatusesByIdContext as GET } from "#src/routes/statuses/read";
+export { getV1StatusesByIdContext as GET } from "#server/routes/statuses/read";

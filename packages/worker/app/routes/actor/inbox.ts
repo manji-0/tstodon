@@ -1,1 +1,1 @@
-export { postActorInbox as POST } from "#src/routes/activitypub";
+export { postActorInbox as POST } from "#server/routes/activitypub";

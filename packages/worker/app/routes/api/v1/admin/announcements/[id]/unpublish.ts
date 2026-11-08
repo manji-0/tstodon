@@ -1,1 +1,1 @@
-export { postV1AdminAnnouncementsByIdUnpublish as POST } from "#src/routes/admin/announcements";
+export { postV1AdminAnnouncementsByIdUnpublish as POST } from "#server/routes/admin/announcements";

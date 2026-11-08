@@ -51,18 +51,18 @@ Without explicit assumptions, agents and reviewers over-fit for hyperscale or un
 
 ## Load assumptions (explicit)
 
-| ID  | Assumption / fact                                                                                                                           | Notes                                                                                                               |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| A1  | **Assumption:** local / small-instance first                                                                                                | Tens to low hundreds of local accounts; not a global Twitter-class timeline                                         |
-| A2  | **Fact:** `queryLimit` defaults to **20** and **clamps to max 40** (`packages/worker/src/http.ts`). **Assumption:** clients usually ask ≤40 | Callers cannot request >40 through this helper                                                                      |
-| A3  | **Fact:** reblog/reply depth for document assembly                                                                                          | Code bounds chain resolution to **4 passes** in `mastodonStatuses`                                                  |
-| A4  | **Fact:** status context caps                                                                                                               | `CONTEXT_ANCESTOR_LIMIT = 40`, `CONTEXT_DESCENDANT_LIMIT = 60` in `status-store.ts`                                 |
-| A5  | **Assumption:** remote followers per local actor                                                                                            | ≤ a few hundred accepted remote followers for early deployments                                                     |
-| A6  | **Fact:** list membership edits may exceed 100                                                                                              | Code already chunk-batches at 100                                                                                   |
-| A7  | **Fact:** poll expiry cron batch size                                                                                                       | Up to **50** expired unnotified polls per `ProcessExpiredPolls` job                                                 |
-| A8  | **Fact:** search default limit                                                                                                              | `queryLimit(..., 5)` on search routes; hashtag/status `LIKE` still full-scan within LIMIT                           |
-| A9  | **Fact:** D1 platform                                                                                                                       | 100 bind params; batch soft chunk 100; single-primary write serialization; query duration / Worker CPU limits apply |
-| A10 | **Assumption:** not Twitter-scale                                                                                                           | No claim that home timelines of 10k+ followees or celebrity fan-out are in scope without further design             |
+| ID  | Assumption / fact                                                                                                                              | Notes                                                                                                               |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| A1  | **Assumption:** local / small-instance first                                                                                                   | Tens to low hundreds of local accounts; not a global Twitter-class timeline                                         |
+| A2  | **Fact:** `queryLimit` defaults to **20** and **clamps to max 40** (`packages/worker/server/http.ts`). **Assumption:** clients usually ask ≤40 | Callers cannot request >40 through this helper                                                                      |
+| A3  | **Fact:** reblog/reply depth for document assembly                                                                                             | Code bounds chain resolution to **4 passes** in `mastodonStatuses`                                                  |
+| A4  | **Fact:** status context caps                                                                                                                  | `CONTEXT_ANCESTOR_LIMIT = 40`, `CONTEXT_DESCENDANT_LIMIT = 60` in `status-store.ts`                                 |
+| A5  | **Assumption:** remote followers per local actor                                                                                               | ≤ a few hundred accepted remote followers for early deployments                                                     |
+| A6  | **Fact:** list membership edits may exceed 100                                                                                                 | Code already chunk-batches at 100                                                                                   |
+| A7  | **Fact:** poll expiry cron batch size                                                                                                          | Up to **50** expired unnotified polls per `ProcessExpiredPolls` job                                                 |
+| A8  | **Fact:** search default limit                                                                                                                 | `queryLimit(..., 5)` on search routes; hashtag/status `LIKE` still full-scan within LIMIT                           |
+| A9  | **Fact:** D1 platform                                                                                                                          | 100 bind params; batch soft chunk 100; single-primary write serialization; query duration / Worker CPU limits apply |
+| A10 | **Assumption:** not Twitter-scale                                                                                                              | No claim that home timelines of 10k+ followees or celebrity fan-out are in scope without further design             |
 
 If a production target violates A1/A5/A10, revisit fan-out and read models before tuning SQL micro-optimizations.
 
@@ -131,7 +131,7 @@ flowchart LR
 - `LocalReblog` needs the reblog target (and nested reblog) document.
 - Naive per-item `mastodonStatus` would be O(N) query storms.
 
-**In code today** (`packages/worker/src/local-status-documents.ts`):
+**In code today** (`packages/worker/server/local-status-documents.ts`):
 
 1. Seed map with page statuses.
 2. Up to **4 passes** of `findStatusesByIds` for missing reblog targets / reply parents (`sqlInJsonEach`).
@@ -320,11 +320,11 @@ Do not move timeline truth into DO storage as a first response to load.
 | Poll expiry      | Jobs hitting the 50 cap; publish failures                                                 |
 | Search/tag       | `METRICS` indexes `search` / `timeline.tag` doubles: `[latencyMs, …hitCounts]`            |
 
-Analytics Engine is already wired for cron (`METRICS` via `writeMetric` in `packages/worker/src/metrics.ts`); extend blobs/indexes per path rather than inventing a parallel system.
+Analytics Engine is already wired for cron (`METRICS` via `writeMetric` in `packages/worker/server/metrics.ts`); extend blobs/indexes per path rather than inventing a parallel system.
 
 ### Metric reference
 
-Every point is written by `writeMetric` (`packages/worker/src/metrics.ts`) to the `METRICS` dataset `tstodon_metrics`, and a failed write is swallowed. Analytics Engine exposes `index1` (the `indexes[0]` below), `blob1..N` and `double1..N` in this order. Sampling applies, so weight sums by `_sample_interval`.
+Every point is written by `writeMetric` (`packages/worker/server/metrics.ts`) to the `METRICS` dataset `tstodon_metrics`, and a failed write is swallowed. Analytics Engine exposes `index1` (the `indexes[0]` below), `blob1..N` and `double1..N` in this order. Sampling applies, so weight sums by `_sample_interval`.
 
 | Index (`index1`)  | Written by                                                                                                                                                  | Doubles (`double1..`)                   | Blobs (`blob1..`)                              |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ---------------------------------------------- |

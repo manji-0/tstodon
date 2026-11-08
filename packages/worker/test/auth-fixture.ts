@@ -1,10 +1,10 @@
 import { AccessEmail, Username, type LocalAccount } from "@tstodon/domain";
 import { Sensitive, type SensitiveValue } from "@tstodon/core";
 import { env } from "cloudflare:test";
-import { provisionLocalAccount } from "../src/account-provision";
-import { findAccountByEmail, findAccountByUsername } from "../src/account-store";
-import { issueAccessToken } from "../src/oauth-store";
-import { registrationApprovalRequired } from "../src/runtime-config";
+import { provisionLocalAccount } from "../server/account-provision";
+import { findAccountByEmail, findAccountByUsername } from "../server/account-store";
+import { issueAccessToken } from "../server/oauth-store";
+import { registrationApprovalRequired } from "../server/runtime-config";
 
 /**
  * Test-only sign-in: seed what an Access login and an OAuth authorization

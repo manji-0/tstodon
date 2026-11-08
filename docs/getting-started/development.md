@@ -2,29 +2,32 @@
 
 ## Commands
 
+<!-- constrained-by ../reference/configuration.md#web-ui -->
+
 ```sh
 pnpm types:worker
 pnpm check
 pnpm typecheck
 pnpm test
+pnpm typecheck:web
+pnpm test:web
 pnpm lint
 pnpm fmt
 pnpm fmt:check
 pnpm dev
 pnpm build
-pnpm web:build
 pnpm e2e:web
 pnpm run ci
 ```
 
-`pnpm run ci` is the merge gate (`pnpm ci` is pnpm's frozen install). The toolchain is [Vite+](https://viteplus.dev/) (`vp`). The root `vite.config.ts` holds the lint, format, and test settings; `packages/worker` is the Void app, with its own `vite.config.ts`, `void.json`, and `wrangler.jsonc`:
+`pnpm run ci` is the merge gate (`pnpm ci` is pnpm's frozen install). The toolchain is [Vite+](https://viteplus.dev/) (`vp`). The root `vite.config.ts` holds the lint, format, and test settings; `packages/worker` is the Void app, with its own `vite.config.ts`, `void.json`, and `wrangler.jsonc`. It has Void's "SPA + API" shape: Void's conventions in `app/`, the Worker's shared code in `server/` (`#server/*`), the client, Mastodon's web frontend, in `src/`, and committed static files in `public/`:
 
 - `pnpm check` (`vp check`) formats with Oxfmt, lints with Oxlint (type-aware rules via oxlint-tsgolint), and type-checks every package including tests. `pnpm typecheck` runs only the type check. Each package `tsconfig.json` is a standalone `noEmit` project; nothing is emitted by TypeScript.
 - `pnpm test` (`vp -C packages/worker build && vp test run`) runs Vitest 5. Worker tests run in workerd through `@cloudflare/vitest-plugin`, against the Void build in `packages/worker/dist/`.
-- `pnpm dev` and `pnpm build` (`vp -C packages/worker dev|build`) run the Worker through [Void](https://void.cloud) (`voidPlugin()`), which wraps `@cloudflare/vite-plugin` (Vite + Rolldown) and generates the Worker entry in `packages/worker/.void/` (gitignored). Bindings, vars, and resource IDs still come from `packages/worker/wrangler.jsonc`; Void adds `main`, cron `triggers`, and the queue consumer from `packages/worker/app`. Static assets come from `packages/worker/assets/` (Vite's `publicDir`).
-- `pnpm web:build` builds Mastodon's web UI from `packages/web` into `packages/worker/assets/` (see [Web UI](../reference/configuration.md#web-ui)); without it the web app's paths serve the static placeholder page. `packages/web` is Mastodon's frontend, vendored (see `packages/web/UPSTREAM.md` and [Mastodon web upstream](../operations/mastodon-web-upstream.md)); it keeps Mastodon's tooling, so `pnpm check` and `pnpm test` skip it. Its own checks are `pnpm -C packages/web typecheck` and `pnpm -C packages/web test:js run` (the emoji test needs `public/emoji`, which `pnpm web:build` fetches).
+- `pnpm dev` and `pnpm build` (`vp -C packages/worker dev|build`) run the Worker through [Void](https://void.cloud) (`voidPlugin()`), which wraps `@cloudflare/vite-plugin` (Vite + Rolldown) and generates the Worker entry in `packages/worker/.void/` (gitignored). Bindings, vars, and resource IDs still come from `packages/worker/wrangler.jsonc`; Void adds `main`, cron `triggers`, and the queue consumer from `packages/worker/app`. The same build builds the client first, Mastodon's web UI from `packages/worker/src` (see [Web UI](../reference/configuration.md#web-ui)), into `packages/worker/dist/client/` with `packages/worker/public/`; that directory is the Worker's static assets. `pnpm dev` serves the frontend from source with hot reload. The first build or dev start fetches upstream's emoji (needs `git` and network access to GitHub).
+- `packages/worker/src` is Mastodon's frontend, vendored (see `packages/worker/src/UPSTREAM.md` and [Mastodon web upstream](../operations/mastodon-web-upstream.md)). It keeps Mastodon's code style, so `pnpm check` skips `src/` and `config/` (upstream's Vite plugins). Its own checks are `pnpm typecheck:web` (TypeScript with `packages/worker/src/tsconfig.json`) and `pnpm test:web` (Mastodon's Vitest suite in jsdom, `packages/worker/vitest.config.ts`; the emoji test reads `public/emoji`, which the config fetches when missing). `pnpm run ci` runs both.
 - `pnpm e2e:web` runs the Playwright scenarios against Mastodon's web UI on a fresh local instance (see [Browser e2e](e2e-web.md)).
-- `pnpm run deploy` builds the web UI, then runs `void deploy --backend cloudflare` in `packages/worker` (see [Cloudflare deploy](../operations/cloudflare-deploy.md)); plain `pnpm deploy` is pnpm's own command.
+- `pnpm run deploy` runs `void deploy --backend cloudflare` in `packages/worker`, which builds the Worker and the web UI (see [Cloudflare deploy](../operations/cloudflare-deploy.md)); plain `pnpm deploy` is pnpm's own command.
 - Local state (D1, KV, R2, Durable Objects, Workflows) lives in `packages/worker/.wrangler/state`, wrangler's default for `packages/worker/wrangler.jsonc`. Apply D1 migrations to it with `pnpm db:migrate:local`. Void's own dev-time migration runner is disabled in `packages/worker/vite.config.ts`: it migrates a separate `.void/` database, not the `DB` binding.
 
 TypeScript targets ES2025 with `erasableSyntaxOnly` and `verbatimModuleSyntax`.
@@ -35,7 +38,7 @@ TypeScript targets ES2025 with `erasableSyntaxOnly` and `verbatimModuleSyntax`.
 
 Void serves HTTP from file routes in `packages/worker/app/routes/` (`void.json` sets `sourceDir` to `packages/worker/app`). To add an endpoint:
 
-1. Write the handler in a module under `packages/worker/src/routes/` as an exported Hono handler, typed with its path so `c.req.param()` stays exact:
+1. Write the handler in a module under `packages/worker/server/routes/` as an exported Hono handler, typed with its path so `c.req.param()` stays exact:
 
    ```ts
    export const getV1StatusesByIdContext = async (
@@ -47,10 +50,10 @@ Void serves HTTP from file routes in `packages/worker/app/routes/` (`void.json` 
 
    ```ts
    // packages/worker/app/routes/api/v1/statuses/[id]/context.ts
-   export { getV1StatusesByIdContext as GET } from "#src/routes/statuses/read";
+   export { getV1StatusesByIdContext as GET } from "#server/routes/statuses/read";
    ```
 
-`#src/*` is a package import of `@tstodon/worker` (`packages/worker/src/*`). Handlers are plain Hono handlers rather than `defineHandler` callbacks because Void types `c.env` with its own bindings, not the `Env` from `wrangler types`; at runtime `defineHandler(fn)` is `fn`. Void orders static segments before parameters (`accounts/lookup` wins over `accounts/[id]`) and the catch-all last.
+`#server/*` is a package import of `@tstodon/worker` (`packages/worker/server/*`). Handlers are plain Hono handlers rather than `defineHandler` callbacks because Void types `c.env` with its own bindings, not the `Env` from `wrangler types`; at runtime `defineHandler(fn)` is `fn`. Void orders static segments before parameters (`accounts/lookup` wins over `accounts/[id]`) and the catch-all last.
 
 - `app/middleware/01.cors.ts`: CORS for `/api/*` and the media paths.
 - `app/middleware/02.well-known.ts`: `/.well-known/webfinger` and `/.well-known/nodeinfo`. Void's route scanner skips dot directories, so these cannot be route files.
@@ -60,9 +63,9 @@ Queue consumers, cron, Workflows, and Durable Objects are not HTTP routes:
 
 - Cron jobs: `packages/worker/app/crons/*.ts` export `cron` (one expression or an array) and a `defineScheduled` default.
 - Queue consumers: `packages/worker/app/queues/<queue-name>.ts` export a `defineQueue` default plus `maxBatchSize` / `maxBatchTimeout` / `maxRetries`. The file name is the Cloudflare queue name. Void has no `max_concurrency` option, so the queue file also exports `maxConcurrency`, and the `tstodon:queue-consumer-concurrency` plugin (`packages/worker/void-plugins.ts`) writes it onto the consumer in the built `wrangler.json`.
-- Workflow and Durable Object classes: export them from `packages/worker/src/entry-classes.ts`. Void's generated entry only exports Void's own classes, so the `tstodon:export-entry-classes` plugin (`packages/worker/void-plugins.ts`) appends this module to it.
+- Workflow and Durable Object classes: export them from `packages/worker/server/entry-classes.ts`. Void's generated entry only exports Void's own classes, so the `tstodon:export-entry-classes` plugin (`packages/worker/void-plugins.ts`) appends this module to it.
 
-`packages/worker/wrangler.jsonc` `main` points at `src/entry-classes.ts` only so `wrangler types` can type the class bindings; Void replaces it in dev and build. Worker tests run in workerd against the build output (`packages/worker/dist/ssr/wrangler.json`), so they exercise Void's routing; `pnpm test` builds first.
+`packages/worker/wrangler.jsonc` `main` points at `server/entry-classes.ts` only so `wrangler types` can type the class bindings; Void replaces it in dev and build. Worker tests run in workerd against the build output (`packages/worker/dist/ssr/wrangler.json`), so they exercise Void's routing; `pnpm test` builds first.
 
 ### Triggering cron locally
 

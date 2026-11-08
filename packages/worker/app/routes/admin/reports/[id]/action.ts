@@ -1,1 +1,1 @@
-export { postAdminReportAction as POST } from "#src/routes/admin-web/reports";
+export { postAdminReportAction as POST } from "#server/routes/admin-web/reports";

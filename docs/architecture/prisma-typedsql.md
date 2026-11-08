@@ -10,7 +10,7 @@
 
 Worker SQL that is a **single, fixed-shape statement** should live in `prisma/sql/*.sql`.
 
-Prisma generates typed factories under `packages/worker/src/generated/prisma`. At runtime we execute them through D1 via `queryTyped` / `runTyped` / `d1PrepareTyped` in `packages/worker/src/typed-sql.ts` (rewrites `$1`-style placeholders to `?`). There is **no** runtime `PrismaClient` path.
+Prisma generates typed factories under `packages/worker/server/generated/prisma`. At runtime we execute them through D1 via `queryTyped` / `runTyped` / `d1PrepareTyped` in `packages/worker/server/typed-sql.ts` (rewrites `$1`-style placeholders to `?`). There is **no** runtime `PrismaClient` path.
 
 The generated `Result` row types are not trusted: they do not describe what D1 returns (`COUNT(*)` is typed `bigint`; D1 yields a number). Each `queryTyped` call passes a Zod row schema, and rows are parsed there, once.
 
@@ -41,7 +41,7 @@ TypedSQL needs a local D1 sqlite file (created by the wrangler apply above). `pr
 pnpm prisma:generate   # prisma generate --sql
 ```
 
-Generated client lives at `packages/worker/src/generated/prisma/` (committed so typecheck works without a local D1).
+Generated client lives at `packages/worker/server/generated/prisma/` (committed so typecheck works without a local D1).
 
 ## Escape hatches
 

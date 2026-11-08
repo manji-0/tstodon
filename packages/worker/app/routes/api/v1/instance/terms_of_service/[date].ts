@@ -1,1 +1,1 @@
-export { getV1InstanceTermsOfServiceByDate as GET } from "#src/routes/instance";
+export { getV1InstanceTermsOfServiceByDate as GET } from "#server/routes/instance";

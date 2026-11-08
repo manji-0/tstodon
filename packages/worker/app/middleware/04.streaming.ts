@@ -1,5 +1,5 @@
 import type { Context, Next } from "hono";
-import { getV1Streaming } from "#src/routes/streaming";
+import { getV1Streaming } from "#server/routes/streaming";
 
 // Mastodon clients also connect to `/api/v1/streaming/` and the per-stream
 // paths under it (`/api/v1/streaming/user`); all of them are the same socket.

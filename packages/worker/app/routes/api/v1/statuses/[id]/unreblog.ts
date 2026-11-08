@@ -1,1 +1,1 @@
-export { postV1StatusesByIdUnreblog as POST } from "#src/routes/statuses/interactions";
+export { postV1StatusesByIdUnreblog as POST } from "#server/routes/statuses/interactions";

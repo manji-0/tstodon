@@ -1,1 +1,1 @@
-export { getNodeinfo20 as GET } from "#src/routes/discovery";
+export { getNodeinfo20 as GET } from "#server/routes/discovery";

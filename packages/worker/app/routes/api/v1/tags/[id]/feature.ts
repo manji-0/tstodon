@@ -1,1 +1,1 @@
-export { postV1TagsByIdFeature as POST } from "#src/routes/tags";
+export { postV1TagsByIdFeature as POST } from "#server/routes/tags";

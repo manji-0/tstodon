@@ -1,1 +1,1 @@
-export { getAdminReports as GET } from "#src/routes/admin-web/reports";
+export { getAdminReports as GET } from "#server/routes/admin-web/reports";

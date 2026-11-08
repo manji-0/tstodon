@@ -5,7 +5,7 @@ alwaysApply: true
 
 # tstodon routing and types
 
-- HTTP routing lives in Hono (`packages/worker/src/app.ts` and `routes/`).
+- HTTP routing lives in Hono (`packages/worker/server/app.ts` and `routes/`).
 - Queue, cron, Workflows, and Durable Objects are not Hono routes. Handle them on the Worker entrypoint.
 - Domain and boundary payloads use Zod 4 `z.discriminatedUnion` with `kind` (never `type` / `status` / `state`).
 - Discriminator fields use `z.literal(...)` per variant, not `z.enum(...)`.

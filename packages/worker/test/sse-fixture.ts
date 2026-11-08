@@ -6,8 +6,8 @@ import {
   type StreamChannelValue,
 } from "@tstodon/domain";
 import { expect } from "vite-plus/test";
-import { ANONYMOUS_HUB } from "../src/stream-access";
-import { publishToHub } from "../src/stream-publish";
+import { ANONYMOUS_HUB } from "../server/stream-access";
+import { publishToHub } from "../server/stream-publish";
 import { authHeaders, signedInAccount } from "./auth-fixture";
 
 const ORIGIN = "https://example.com";

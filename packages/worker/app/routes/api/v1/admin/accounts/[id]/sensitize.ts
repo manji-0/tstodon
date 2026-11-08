@@ -1,1 +1,1 @@
-export { postV1AdminAccountsByIdSensitize as POST } from "#src/routes/admin/accounts";
+export { postV1AdminAccountsByIdSensitize as POST } from "#server/routes/admin/accounts";

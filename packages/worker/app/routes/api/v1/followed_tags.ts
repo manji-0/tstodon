@@ -1,1 +1,1 @@
-export { getV1FollowedTags as GET } from "#src/routes/tags";
+export { getV1FollowedTags as GET } from "#server/routes/tags";
