@@ -6,6 +6,7 @@ import {
   LOCAL_ACCESS_JWKS_JSON,
   LOCAL_ACCESS_TEAM_DOMAIN,
 } from "./packages/worker/test/access-jwt-fixture";
+import { webManifest } from "./packages/worker/web-build";
 
 const migrations = await readD1Migrations(
   path.join(import.meta.dirname, "packages/worker/app/db/migrations"),
@@ -27,6 +28,8 @@ export default defineConfig({
       {
         extends: false,
         plugins: [
+          // `server/web-manifest.ts` imports the client build's entry files.
+          webManifest({ source: "build" }),
           cloudflareTest({
             // The build output: tests run the Worker Void generates, so build
             // `packages/worker` first (`pnpm test` does).
@@ -91,9 +94,11 @@ export default defineConfig({
       "packages/worker/.wrangler/**",
       "pnpm-lock.yaml",
       "**/worker-configuration.d.ts",
-      // Mastodon's vendored frontend keeps upstream's formatting (its own
-      // .oxfmtrc.json); see packages/web/UPSTREAM.md.
-      "packages/web/**",
+      // Mastodon's vendored frontend and its Vite plugins keep upstream's
+      // formatting; see packages/worker/src/UPSTREAM.md.
+      "packages/worker/src/**",
+      "packages/worker/config/**",
+      "packages/worker/public/**",
     ],
   },
   lint: {
@@ -113,8 +118,10 @@ export default defineConfig({
       "**/worker-configuration.d.ts",
       // Prisma's generated client and TypedSQL modules cast internally.
       "packages/worker/server/generated/**",
-      // Mastodon's vendored frontend has its own ESLint setup.
-      "packages/web/**",
+      // Mastodon's vendored frontend and its Vite plugins (upstream's code;
+      // `pnpm typecheck:web` checks their types).
+      "packages/worker/src/**",
+      "packages/worker/config/**",
     ],
     rules: {
       "typescript/consistent-type-definitions": ["error", "type"],

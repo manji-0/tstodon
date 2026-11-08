@@ -1,9 +1,18 @@
-// The Worker's Void app. Lint, format, and test settings live in the root
-// `vite.config.ts`; this config only builds and serves the Worker.
+// The Void app: the Worker (`app/`, `server/`) and its client, Mastodon's web
+// frontend (`src/`, composed in `web-build.ts`), built by one `vite build`.
+// Lint, format, and Worker test settings live in the root `vite.config.ts`;
+// the frontend's tests in `vitest.config.ts` beside this file.
 import path from "node:path";
 import { voidPlugin } from "void";
-import { defineConfig } from "vite-plus";
+import { defineConfig, mergeConfig } from "vite-plus";
 import { exportEntryClasses, queueConsumerConcurrency } from "./void-plugins";
+import {
+  buildClientFirst,
+  upstreamAssets,
+  webClientConfig,
+  webManifest,
+  webSharedConfig,
+} from "./web-build";
 
 // The two-instance e2e harness (`process-compose.yaml`) runs one `vp dev` per
 // instance, each with its own Worker config (`CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH`,
@@ -14,11 +23,16 @@ const statePath = persistTo
   ? path.resolve(import.meta.dirname, "../..", persistTo)
   : path.join(import.meta.dirname, ".wrangler/state");
 
-export default defineConfig({
-  // Workers static assets come from Vite's public directory (the client build).
-  publicDir: "assets",
+const voidConfig = defineConfig({
+  // Committed static files (and upstream's emoji, linked in by `upstreamAssets`),
+  // copied into the client build beside the frontend's output.
+  publicDir: "public",
   ...(persistTo ? { cacheDir: path.join(statePath, "vite") } : {}),
+  // The Worker build reads the client's Vite manifest, so the client builds first.
+  builder: { buildApp: buildClientFirst },
   plugins: [
+    upstreamAssets(),
+    webManifest(),
     // Local state stays where `wrangler ... --local -c packages/worker/wrangler.jsonc`
     // reads and writes it. `void:migrations` applies app/db/migrations on `vp dev`
     // to a fixed `.void/` database with its own `_void_migrations` table, not to
@@ -28,3 +42,7 @@ export default defineConfig({
     queueConsumerConcurrency(),
   ],
 });
+
+export default defineConfig(async () =>
+  mergeConfig(mergeConfig(voidConfig, webSharedConfig()), await webClientConfig()),
+);

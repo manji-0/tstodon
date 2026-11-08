@@ -84,7 +84,7 @@ export async function importCustomEmojiData() {
 export async function importLegacyShortcodes() {
   const globPaths = import.meta.glob<string>(
     // We use import.meta.glob to eagerly load the URL, as the regular import() doesn't work inside the Web Worker.
-    '../../../../../node_modules/emojibase-data/en/shortcodes/iamcal.json',
+    '../../../../node_modules/emojibase-data/en/shortcodes/iamcal.json',
     { eager: true, import: 'default', query: '?url' },
   );
   const path = Object.values(globPaths)[0];
@@ -103,9 +103,9 @@ export async function importLegacyShortcodes() {
 }
 
 function localeToEmojiPath(locale: Locale) {
-  const key = `../../../../../node_modules/emojibase-data/${locale}/compact.json`;
+  const key = `../../../../node_modules/emojibase-data/${locale}/compact.json`;
   const emojiModules = import.meta.glob<string>(
-    '../../../../../node_modules/emojibase-data/**/compact.json',
+    '../../../../node_modules/emojibase-data/**/compact.json',
     {
       query: '?url',
       import: 'default',
@@ -120,9 +120,9 @@ function localeToEmojiPath(locale: Locale) {
 }
 
 function localeToShortcodesPath(locale: Locale) {
-  const key = `../../../../../node_modules/emojibase-data/${locale}/shortcodes/cldr.json`;
+  const key = `../../../../node_modules/emojibase-data/${locale}/shortcodes/cldr.json`;
   const shortcodesModules = import.meta.glob<string>(
-    '../../../../../node_modules/emojibase-data/**/shortcodes/cldr.json',
+    '../../../../node_modules/emojibase-data/**/shortcodes/cldr.json',
     {
       query: '?url',
       import: 'default',

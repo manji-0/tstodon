@@ -1,7 +1,7 @@
 const path = require('path');
 
 const currentTranslations = require(
-  path.join(__dirname, '../app/javascript/mastodon/locales/en.json'),
+  path.join(__dirname, '../src/mastodon/locales/en.json'),
 );
 
 exports.format = (msgs) => {

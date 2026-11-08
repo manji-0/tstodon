@@ -20,59 +20,18 @@ import {
 import { queryTyped, runTypedBatch } from "./typed-sql";
 import { vapidPublicKey } from "./vapid";
 import { parseJsonText } from "./json-column";
+import { type WebEntry, type WebManifest, webManifest } from "./web-manifest";
+
+export type { WebManifest } from "./web-manifest";
 
 /**
- * Mastodon's own web UI, built by `pnpm web:build` into the Workers Assets
- * (`/packs`, `/emoji`, `/sounds`, `/sw.js`). The Worker plays the part of
- * Mastodon's Rails layout: it serves the HTML shell on the web app's paths
- * with the `initial-state` document the UI boots from. A signed-in Better
- * Auth session gets an access token of the built-in web app, derived from the
- * session and removed with it.
+ * Mastodon's own web UI, the client of this Void app (`src/`), served as
+ * Workers Assets (`/packs`, `/emoji`, `/sounds`, `/sw.js`). The Worker plays
+ * the part of Mastodon's Rails layout: it serves the HTML shell on the web
+ * app's paths with the `initial-state` document the UI boots from. A
+ * signed-in Better Auth session gets an access token of the built-in web app,
+ * derived from the session and removed with it.
  */
-
-const EntrySchema = z.object({
-  js: z.string(),
-  css: z.array(z.string()),
-  preload: z.array(z.string()),
-});
-
-const WebManifestSchema = z.object({
-  ref: z.string(),
-  polyfills: z.string(),
-  themeSelection: z.string(),
-  inert: z.string(),
-  theme: z.string(),
-  // Builds from before the favicon was recorded have no key; they still serve.
-  favicon: z.string().optional(),
-  common: EntrySchema,
-  application: EntrySchema,
-  // Builds from before the helper was recorded have no key; the page is then not served.
-  remoteInteractionHelper: EntrySchema.optional(),
-  locales: z.array(z.string()),
-});
-
-export type WebManifest = z.infer<typeof WebManifestSchema>;
-
-const parseWebManifest = schemaResult(WebManifestSchema);
-
-let manifestLoad: Promise<WebManifest | undefined> | undefined;
-
-/** The build's compact manifest, once per isolate; `undefined` without a web build. */
-export const webManifest = (env: Env, requestUrl: string): Promise<WebManifest | undefined> => {
-  manifestLoad ??= (async () => {
-    try {
-      const response = await env.ASSETS.fetch(new URL("/packs/tstodon-web.json", requestUrl));
-      if (!response.ok) {
-        return undefined;
-      }
-      const parsed = parseWebManifest(await response.json());
-      return parsed.isOk() ? parsed.value : undefined;
-    } catch {
-      return undefined;
-    }
-  })();
-  return manifestLoad;
-};
 
 /** Paths Mastodon routes to its React app (`config/routes/web_app.rb` and friends). */
 const WEB_APP_PATHS: ReadonlyArray<RegExp> = [
@@ -92,8 +51,8 @@ const HASHED_PACK = /^\/packs\/(?:[^/]+\/)*[^/]+-[\w-]{8}\.\w+$/;
  * The Cache-Control for a static asset, when it differs from the platform's
  * revalidate-every-time default. A content-hashed pack never changes under
  * its name, so a browser keeps it instead of revalidating the app's ~180
- * modules (each a Worker invocation) on every page load. The build's
- * fixed-name files, `tstodon-web.json` and `sw.js`, keep the default.
+ * modules (each a Worker invocation) on every page load. Fixed-name files
+ * (`/sw.js`, `/emoji/*`, …) keep the default.
  */
 export const packCacheControl = (pathname: string): string | undefined =>
   HASHED_PACK.test(pathname) ? "private, max-age=31536000, immutable" : undefined;
@@ -306,7 +265,13 @@ const scriptJson = (value: unknown): string =>
     .replaceAll("\u2028", "\\u2028")
     .replaceAll("\u2029", "\\u2029");
 
-export const entryTags = (entry: z.infer<typeof EntrySchema>): string =>
+/**
+ * Vite's own paths on the dev server (its HMR client, React Refresh, modules
+ * outside the root); `/@vite/client` would otherwise look like a profile.
+ */
+const VITE_DEV_PATH = /^\/@(?:vite|id|fs|react-refresh)(?:\/|$)/;
+
+export const entryTags = (entry: WebEntry): string =>
   [
     ...entry.css.map(
       (href) => `<link rel="stylesheet" href="${attribute(href)}" crossorigin="anonymous">`,
@@ -315,6 +280,13 @@ export const entryTags = (entry: z.infer<typeof EntrySchema>): string =>
       (href) => `<link rel="modulepreload" href="${attribute(href)}" crossorigin="anonymous">`,
     ),
     `<script type="module" src="${attribute(entry.js)}" crossorigin="anonymous"></script>`,
+  ].join("\n    ");
+
+/** Vite's HMR client and the React Refresh preamble, as `vite_ruby` adds them in development. */
+const devTags = (manifest: WebManifest): string =>
+  [
+    manifest.devPreamble ? `<script type="module">${manifest.devPreamble}</script>` : "",
+    `<script type="module" src="/@vite/client"></script>`,
   ].join("\n    ");
 
 /** The page Mastodon's `layouts/application` + `shared/_web_app` render. */
@@ -333,14 +305,15 @@ export const webAppPage = (
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <script src="${attribute(manifest.themeSelection)}"></script>
+    ${manifest.dev ? devTags(manifest) : ""}
+    <script${manifest.dev ? ' type="module"' : ""} src="${attribute(manifest.themeSelection)}"></script>
     <meta name="theme-color" content="#08090a" media="(prefers-color-scheme: dark)">
     <meta name="theme-color" content="#f7f8f8" media="(prefers-color-scheme: light)">
     <meta name="mobile-web-app-capable" content="yes">
     <title>${attribute(options.title)}</title>
-    ${manifest.favicon ? `<link rel="icon" type="image/png" sizes="32x32" href="${attribute(manifest.favicon)}">` : ""}
+    <link rel="icon" type="image/png" sizes="32x32" href="${attribute(manifest.favicon)}">
     <link rel="stylesheet" href="${attribute(manifest.theme)}" media="all" crossorigin="anonymous">
-    <script type="module" src="${attribute(manifest.polyfills)}" crossorigin="anonymous"></script>
+    ${manifest.polyfills ? `<script type="module" src="${attribute(manifest.polyfills)}" crossorigin="anonymous"></script>` : ""}
     <link rel="stylesheet" href="${attribute(manifest.inert)}" media="all" id="inert-style" crossorigin="anonymous">
     ${entryTags(manifest.common)}
     ${options.signedIn ? `<meta name="initialPath" content="${attribute(options.path)}">` : ""}
@@ -356,8 +329,7 @@ export const webAppPage = (
 </html>`;
 
 /**
- * Request-wide middleware: the web app's paths get the shell (once the UI is
- * built), `/web/*` redirects as in Mastodon, `/@user` asked for as
+ * Request-wide middleware: the web app's paths get the shell, `/web/*` redirects as in Mastodon, `/@user` asked for as
  * ActivityPub goes to the actor or note URL, and the `/favicon.ico` every
  * browser asks for goes to the build's hashed favicon.
  */
@@ -370,20 +342,16 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
     return c.redirect(path.slice("/web".length) || "/", 302);
   }
   if (path === "/favicon.ico") {
-    const manifest = await webManifest(c.env, c.req.url);
-    return manifest?.favicon ? c.redirect(manifest.favicon, 302) : next();
+    return c.redirect(webManifest.favicon, 302);
   }
-  if (!isWebAppPath(path)) {
+  if (!isWebAppPath(path) || (webManifest.dev && VITE_DEV_PATH.test(path))) {
     return next();
   }
   if (path.startsWith("/@") && wantsActivityJson(c.req.header("Accept"))) {
     const target = activityPubTarget(path);
     return target ? c.redirect(target, 301) : next();
   }
-  const manifest = await webManifest(c.env, c.req.url);
-  if (!manifest) {
-    return next();
-  }
+  const manifest = webManifest;
   const locale = pickLocale(c.req.header("Accept-Language"), manifest.locales);
   const viewer = await currentViewer(c.req.raw, c.env);
   const identity = parseInstanceIdentity(c.env);

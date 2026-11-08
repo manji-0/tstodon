@@ -3,5 +3,11 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["*.ts", "packages/worker/vite.config.ts", "packages/worker/void-plugins.ts"]
+  "include": [
+    "*.ts",
+    "packages/worker/vite.config.ts",
+    "packages/worker/void-plugins.ts",
+    "packages/worker/web-build.ts",
+    "packages/worker/vitest.config.ts"
+  ]
 }

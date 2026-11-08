@@ -15,6 +15,7 @@ import {
 
 const MANIFEST: WebManifest = {
   ref: "test",
+  dev: false,
   polyfills: "/packs/polyfills.js",
   themeSelection: "/packs/theme-selection.js",
   inert: "/packs/inert.css",
@@ -22,11 +23,9 @@ const MANIFEST: WebManifest = {
   favicon: "/packs/favicon.png",
   common: { js: "/packs/common.js", css: [], preload: [] },
   application: { js: "/packs/application.js", css: ["/packs/app.css"], preload: ["/packs/r.js"] },
+  remoteInteractionHelper: { js: "/packs/remote_interaction_helper.js", css: [], preload: [] },
   locales: ["en", "ja"],
 };
-
-/** Whether `pnpm web:build` has put the Mastodon UI into the assets under test. */
-const webBuilt = (await SELF.fetch(`${ORIGIN}/packs/tstodon-web.json`)).ok;
 
 const InitialStateSchema = z.object({
   meta: z.object({
@@ -139,7 +138,7 @@ describe("Mastodon web app", () => {
     expect(note.headers.get("location")).toBe("/users/alice/statuses/123");
   });
 
-  it.skipIf(!webBuilt)("answers /favicon.ico with the build's favicon", async () => {
+  it("answers /favicon.ico with the build's favicon", async () => {
     const response = await SELF.fetch(`${ORIGIN}/favicon.ico`, { redirect: "manual" });
     expect(response.status).toBe(302);
     const icon = await SELF.fetch(new URL(response.headers.get("location") ?? "", ORIGIN));
@@ -152,27 +151,35 @@ describe("Mastodon web app", () => {
     expect(packCacheControl("/packs/common-lwvm9nKJ.js")).toBe(immutable);
     expect(packCacheControl("/packs/ImmutablePropTypes-C_rOJ6cM.js")).toBe(immutable);
     expect(packCacheControl("/packs/assets/themes/default-Dk-Jc7j1.css")).toBe(immutable);
-    expect(packCacheControl("/packs/tstodon-web.json")).toBeUndefined();
     expect(packCacheControl("/packs/sw.js")).toBeUndefined();
     expect(packCacheControl("/sw.js")).toBeUndefined();
     expect(packCacheControl("/emoji/1f600.svg")).toBeUndefined();
     expect(packCacheControl("/packsx/common-lwvm9nKJ.js")).toBeUndefined();
   });
 
-  it.skipIf(!webBuilt)(
-    "serves the built packs cacheable and the manifest revalidated",
-    async () => {
-      const manifest = await SELF.fetch(`${ORIGIN}/packs/tstodon-web.json`);
-      expect(manifest.headers.get("cache-control") ?? "").not.toContain("immutable");
-      const { common } = read(
-        z.object({ common: z.object({ js: z.string() }) }),
-        await manifest.json(),
-      );
-      const pack = await SELF.fetch(`${ORIGIN}${common.js}`);
-      expect(pack.status).toBe(200);
-      expect(pack.headers.get("cache-control")).toBe("private, max-age=31536000, immutable");
-    },
-  );
+  it("serves the shell's packs from the client build, cacheable, and the service worker revalidated", async () => {
+    const html = await (await SELF.fetch(`${ORIGIN}/`)).text();
+    const urls = [
+      ...html.matchAll(/<(?:script|link)[^>]* (?:src|href)="(\/packs\/[^"]+)"/g),
+    ].flatMap((match) => (match[1] ? [match[1]] : []));
+    // The theme, the inert styles, the polyfills, theme selection, common and application.
+    expect(urls.length).toBeGreaterThan(5);
+    expect(html).toMatch(/<script type="module" src="\/packs\/application-[\w-]{8}\.js"/);
+    expect(html).not.toContain("/@vite/client");
+    for (const url of urls) {
+      const pack = await SELF.fetch(`${ORIGIN}${url}`);
+      expect(pack.status, url).toBe(200);
+      expect(pack.headers.get("cache-control"), url).toBe("private, max-age=31536000, immutable");
+      await pack.body?.cancel();
+    }
+    const worker = await SELF.fetch(`${ORIGIN}/sw.js`);
+    expect(worker.status).toBe(200);
+    expect(worker.headers.get("cache-control") ?? "").not.toContain("immutable");
+    expect(await worker.text()).toContain("/packs/");
+    // Upstream's emoji, fetched at build time, and the committed sounds.
+    expect((await SELF.fetch(`${ORIGIN}/emoji/1f600.svg`)).status).toBe(200);
+    expect((await SELF.fetch(`${ORIGIN}/sounds/boop.mp3`)).status).toBe(200);
+  });
 
   it("stores the web UI's settings", async () => {
     const headers = await authHeaders("web-settings@example.com");
@@ -304,43 +311,40 @@ describe("Mastodon web app", () => {
     expect(profile.formatted_note).toContain("<br>");
   });
 
-  it.skipIf(!webBuilt)(
-    "boots signed out and signed in, with a token tied to the session",
-    async () => {
-      const anonymous = await SELF.fetch(`${ORIGIN}/`, {
-        headers: { "Accept-Language": "ja,en;q=0.5" },
-      });
-      expect(anonymous.status).toBe(200);
-      expect(anonymous.headers.get("cache-control")).toBe("private, no-store");
-      const signedOut = initialState(await anonymous.text());
-      expect(signedOut.meta.access_token).toBeNull();
-      expect(signedOut.meta.locale).toBe("ja");
+  it("boots signed out and signed in, with a token tied to the session", async () => {
+    const anonymous = await SELF.fetch(`${ORIGIN}/`, {
+      headers: { "Accept-Language": "ja,en;q=0.5" },
+    });
+    expect(anonymous.status).toBe(200);
+    expect(anonymous.headers.get("cache-control")).toBe("private, no-store");
+    const signedOut = initialState(await anonymous.text());
+    expect(signedOut.meta.access_token).toBeNull();
+    expect(signedOut.meta.locale).toBe("ja");
 
-      const { fetcher } = await signUp("web_viewer");
-      const page = await fetcher("/home");
-      expect(page.status).toBe(200);
-      const state = initialState(await page.text());
-      const token = state.meta.access_token ?? "";
-      expect(token.length).toBeGreaterThan(20);
-      expect(state.accounts[state.meta.me ?? ""]?.username).toBe("web_viewer");
-      expect(state.compose.default_privacy).toBe("public");
+    const { fetcher } = await signUp("web_viewer");
+    const page = await fetcher("/home");
+    expect(page.status).toBe(200);
+    const state = initialState(await page.text());
+    const token = state.meta.access_token ?? "";
+    expect(token.length).toBeGreaterThan(20);
+    expect(state.accounts[state.meta.me ?? ""]?.username).toBe("web_viewer");
+    expect(state.compose.default_privacy).toBe("public");
 
-      // The same session keeps the same token; the token works on the API.
-      expect(initialState(await (await fetcher("/home")).text()).meta.access_token).toBe(token);
-      const me = await SELF.fetch(`${ORIGIN}/api/v1/accounts/verify_credentials`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      expect(me.status).toBe(200);
+    // The same session keeps the same token; the token works on the API.
+    expect(initialState(await (await fetcher("/home")).text()).meta.access_token).toBe(token);
+    const me = await SELF.fetch(`${ORIGIN}/api/v1/accounts/verify_credentials`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(me.status).toBe(200);
 
-      // Signing out ends it.
-      await fetcher("/auth/sign_out", {
-        method: "DELETE",
-        headers: { Accept: "application/json" },
-      });
-      const after = await SELF.fetch(`${ORIGIN}/api/v1/accounts/verify_credentials`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      expect(after.status).toBe(401);
-    },
-  );
+    // Signing out ends it.
+    await fetcher("/auth/sign_out", {
+      method: "DELETE",
+      headers: { Accept: "application/json" },
+    });
+    const after = await SELF.fetch(`${ORIGIN}/api/v1/accounts/verify_credentials`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(after.status).toBe(401);
+  });
 });

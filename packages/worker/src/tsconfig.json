@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "strict": true,
+    "isolatedModules": true, // Required by Vite
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["vite/client", "vitest/globals"],
+    "paths": {
+      "@/*": ["./*"],
+      "mastodon": ["./mastodon"],
+      "mastodon/*": ["./mastodon/*"],
+      "images/*": ["./images/*"],
+      "styles/*": ["./styles/*"]
+    }
+  },
+  "include": [".", "../config/vite"],
+  // Storybook is not part of this build (see UPSTREAM.md): its stories and
+  // the MSW handlers and fixtures only they import.
+  "exclude": [
+    "**/*.stories.tsx",
+    "**/*.stories.ts",
+    "testing/api.ts",
+    "mastodon/components/status/testing.ts"
+  ]
+}

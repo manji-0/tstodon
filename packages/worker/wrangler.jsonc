@@ -21,7 +21,9 @@
     },
   },
   "assets": {
-    "directory": "./assets",
+    // The Cloudflare Vite plugin serves and deploys the client build
+    // (`dist/client`: the frontend and `public/`) in its place.
+    "directory": "./public",
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "none",

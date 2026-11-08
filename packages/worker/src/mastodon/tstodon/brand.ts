@@ -1,4 +1,4 @@
-// tstodon branding (not in upstream Mastodon; see packages/web/UPSTREAM.md).
+// tstodon branding (not in upstream Mastodon; see packages/worker/src/UPSTREAM.md).
 
 import { repository } from 'mastodon/initial_state';
 

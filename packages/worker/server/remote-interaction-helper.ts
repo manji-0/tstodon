@@ -1,11 +1,12 @@
 import type { Context } from "hono";
-import { entryTags, webManifest } from "./web-app";
+import { entryTags } from "./web-app";
+import { webManifest } from "./web-manifest";
 
 /**
  * Mastodon's `/remote_interaction_helper`: the page the signed-out
  * interaction modal ("interact from your server") loads in an iframe. Its one
  * script (the `remote_interaction_helper` pack, built from Mastodon's source
- * by `pnpm web:build`) does the WebFinger lookups of the visitor's server from
+ * by the Void build) does the WebFinger lookups of the visitor's server from
  * here, where the strict `connect-src` of the main app does not apply, and
  * talks to the parent window by `postMessage` after checking its origin.
  */
@@ -24,18 +25,14 @@ const CONTENT_SECURITY_POLICY = [
   "frame-ancestors 'self'",
 ].join("; ");
 
-export const getRemoteInteractionHelper = async (c: Context<{ Bindings: Env }>) => {
-  const manifest = await webManifest(c.env, c.req.url);
-  if (!manifest?.remoteInteractionHelper) {
-    return c.text("Not found", 404);
-  }
+export const getRemoteInteractionHelper = (c: Context<{ Bindings: Env }>) => {
   return c.html(
     `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8">
     <meta name="robots" content="noindex">
-    ${entryTags(manifest.remoteInteractionHelper)}
+    ${entryTags(webManifest.remoteInteractionHelper)}
   </head>
 </html>`,
     200,
