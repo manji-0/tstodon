@@ -68,8 +68,15 @@ export {
   type ImageMetadataStrip,
   type MalformedImage,
   type StrippedImage,
-  type UnstrippableUpload,
 } from "./image-metadata";
+export {
+  VideoMetadata,
+  type MalformedVideo,
+  type StrippedVideo,
+  type VideoContainer,
+  type VideoMetadataStrip,
+} from "./video-metadata";
+export { UploadMetadata, type UnstrippableUpload } from "./upload-metadata";
 export { MediaId } from "./media-id";
 export {
   ImageDimensions,

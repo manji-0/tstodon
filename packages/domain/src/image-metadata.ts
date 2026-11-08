@@ -38,17 +38,12 @@ export type MalformedImage = Readonly<{
   reason: string;
 }>;
 
-/** Why an upload cannot be stored without its metadata. */
-export type UnstrippableUpload =
-  | MalformedImage
-  | Readonly<{ kind: "NotTheDeclaredType"; contentType: string }>;
+export const at = (bytes: Uint8Array, index: number): number => bytes[index] ?? 0;
 
-const at = (bytes: Uint8Array, index: number): number => bytes[index] ?? 0;
-
-const u16be = (bytes: Uint8Array, offset: number): number =>
+export const u16be = (bytes: Uint8Array, offset: number): number =>
   (at(bytes, offset) << 8) | at(bytes, offset + 1);
 
-const u32be = (bytes: Uint8Array, offset: number): number =>
+export const u32be = (bytes: Uint8Array, offset: number): number =>
   ((at(bytes, offset) << 24) |
     (at(bytes, offset + 1) << 16) |
     (at(bytes, offset + 2) << 8) |
@@ -66,7 +61,7 @@ const u32le = (bytes: Uint8Array, offset: number): number =>
   0;
 
 /** An unsigned big-endian integer of 0, 4 or 8 bytes (ISOBMFF field sizes). */
-const uintBe = (bytes: Uint8Array, offset: number, size: number): number =>
+export const uintBe = (bytes: Uint8Array, offset: number, size: number): number =>
   size === 0
     ? 0
     : size === 4
@@ -74,7 +69,7 @@ const uintBe = (bytes: Uint8Array, offset: number, size: number): number =>
       : u32be(bytes, offset) * 0x1_0000_0000 + u32be(bytes, offset + 4);
 
 /** A four-character code as the big-endian number its bytes spell. */
-const fourcc = (code: string): number =>
+export const fourcc = (code: string): number =>
   ((code.charCodeAt(0) << 24) |
     (code.charCodeAt(1) << 16) |
     (code.charCodeAt(2) << 8) |
@@ -82,7 +77,7 @@ const fourcc = (code: string): number =>
   0;
 
 /** Whether `bytes` holds the ASCII text `text` at `offset`. */
-const startsWith = (bytes: Uint8Array, offset: number, text: string): boolean => {
+export const startsWith = (bytes: Uint8Array, offset: number, text: string): boolean => {
   if (offset + text.length > bytes.length) {
     return false;
   }
@@ -491,7 +486,10 @@ const stripWebp = (bytes: Uint8Array): Strip => {
 
 // --- AVIF -------------------------------------------------------------------
 
-type Box = Readonly<{ type: number; body: number; end: number }>;
+/** An ISOBMFF box: its type, where its payload starts, and where it ends. */
+export type IsoBox = Readonly<{ type: number; body: number; end: number }>;
+
+type Box = IsoBox;
 
 /** The ISOBMFF box at `pos`, or `undefined` when its size does not fit within `limit`. */
 const boxAt = (bytes: Uint8Array, pos: number, limit: number): Box | undefined => {
@@ -668,29 +666,44 @@ const stripAvif = (bytes: Uint8Array): Strip => {
   if (!meta) {
     return malformed("avif", "has no meta box");
   }
+  const out = bytes.slice();
+  const failure = blankHeifMetadataItems(bytes, out, meta);
+  return failure === undefined ? stripped("avif", out, undefined) : malformed("avif", failure);
+};
+
+/**
+ * Overwrite, in `out`, the bytes of the EXIF and XMP items that a HEIF-style
+ * `meta` box (a full box holding `iinf` and `iloc`) of `bytes` lists. The
+ * reason when the items cannot be read, `undefined` once done. Shared by
+ * AVIF and by the file-level `meta` box of an MP4.
+ */
+export const blankHeifMetadataItems = (
+  bytes: Uint8Array,
+  out: Uint8Array,
+  meta: IsoBox,
+): string | undefined => {
   const children = childBoxes(bytes, meta.body + 4, meta.end);
   if (!children) {
-    return malformed("avif", "the meta boxes do not fit");
+    return "the meta boxes do not fit";
   }
   const iinf = children.find((box) => box.type === IINF);
   const iloc = children.find((box) => box.type === ILOC);
   const idat = children.find((box) => box.type === IDAT);
   const items = iinf ? metadataItems(bytes, iinf) : new Map<number, MetadataItem>();
   if (!items) {
-    return malformed("avif", "unreadable item info");
+    return "unreadable item info";
   }
-  const out = bytes.slice();
   if (items.size === 0) {
-    return stripped("avif", out, undefined);
+    return undefined;
   }
   const extents = iloc ? itemExtents(bytes, iloc, idat?.body, items) : undefined;
   if (!extents) {
-    return malformed("avif", "unreadable item locations");
+    return "unreadable item locations";
   }
   for (const [id, ranges] of extents) {
     for (const range of ranges) {
       if (range.start + range.length > out.length || range.length < 0) {
-        return malformed("avif", "an item runs past the end");
+        return "an item runs past the end";
       }
       out.fill(items.get(id) === "xmp" ? 0x20 : 0, range.start, range.start + range.length);
     }
@@ -699,7 +712,7 @@ const stripAvif = (bytes: Uint8Array): Strip => {
       out.set(EMPTY_EXIF_ITEM, first.start);
     }
   }
-  return stripped("avif", out, undefined);
+  return undefined;
 };
 
 // --- Dispatch ----------------------------------------------------------------
@@ -737,14 +750,6 @@ const STRIPPERS: Readonly<Record<ImageContainer, (bytes: Uint8Array) => Strip>> 
   avif: stripAvif,
 };
 
-/** The upload types whose bytes must be one of the stripped containers. */
-const CONTAINER_TYPES: ReadonlySet<string> = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/avif",
-]);
-
 export const ImageMetadata = {
   /**
    * Rewrite a JPEG, PNG, WebP or AVIF without its metadata, judged by the
@@ -755,24 +760,5 @@ export const ImageMetadata = {
   strip: (bytes: Uint8Array): Result<ImageMetadataStrip, MalformedImage> => {
     const format = containerOf(bytes);
     return format ? STRIPPERS[format](bytes) : ok({ kind: "UnknownFormat" });
-  },
-
-  /**
-   * The bytes to store for an upload declared as `contentType`: stripped
-   * whenever they are a known container, whatever the declared type, and
-   * refused when they claim to be a JPEG, PNG, WebP or AVIF but are none, or
-   * are damaged. Other types (GIF, video) pass through as uploaded.
-   */
-  forUpload: (contentType: string, bytes: Uint8Array): Result<Uint8Array, UnstrippableUpload> => {
-    const result = ImageMetadata.strip(bytes);
-    if (result.isErr()) {
-      return err(result.error);
-    }
-    if (result.value.kind === "Stripped") {
-      return ok(result.value.bytes);
-    }
-    return CONTAINER_TYPES.has(contentType)
-      ? err({ kind: "NotTheDeclaredType", contentType })
-      : ok(bytes);
   },
 } as const;
