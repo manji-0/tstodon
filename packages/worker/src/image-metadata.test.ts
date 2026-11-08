@@ -1,6 +1,11 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
-import { exifOrientation, ImageMetadata, type StrippedImage } from "@tstodon/domain";
+import {
+  exifOrientation,
+  ImageMetadata,
+  UploadMetadata,
+  type StrippedImage,
+} from "@tstodon/domain";
 import {
   AVIF_8X6_WITH_METADATA,
   containsText,
@@ -273,25 +278,25 @@ describe("ImageMetadata.strip: damaged input", () => {
   });
 });
 
-describe("ImageMetadata.forUpload", () => {
+describe("UploadMetadata.forUpload: images", () => {
   it("strips by the bytes whatever the declared type", () => {
-    const stored = ImageMetadata.forUpload("image/gif", jpegWithMetadata());
+    const stored = UploadMetadata.forUpload("image/gif", jpegWithMetadata());
     expect(stored.isOk()).toBe(true);
     expectNoSecrets(stored._unsafeUnwrap());
   });
 
-  it("passes GIF and video through and refuses a declared image it cannot read", () => {
+  it("passes GIF through and refuses a declared image it cannot read", () => {
     const gif = Uint8Array.of(71, 73, 70, 56, 57, 97);
-    expect(ImageMetadata.forUpload("image/gif", gif)._unsafeUnwrap()).toBe(gif);
-    expect(ImageMetadata.forUpload("image/png", Uint8Array.of(1, 2, 3))._unsafeUnwrapErr()).toEqual(
-      {
-        kind: "NotTheDeclaredType",
-        contentType: "image/png",
-      },
-    );
-    expect(ImageMetadata.forUpload("image/jpeg", jpegWithMetadata().subarray(0, 100)).isErr()).toBe(
-      true,
-    );
+    expect(UploadMetadata.forUpload("image/gif", gif)._unsafeUnwrap()).toBe(gif);
+    expect(
+      UploadMetadata.forUpload("image/png", Uint8Array.of(1, 2, 3))._unsafeUnwrapErr(),
+    ).toEqual({
+      kind: "NotTheDeclaredType",
+      contentType: "image/png",
+    });
+    expect(
+      UploadMetadata.forUpload("image/jpeg", jpegWithMetadata().subarray(0, 100)).isErr(),
+    ).toBe(true);
   });
 });
 

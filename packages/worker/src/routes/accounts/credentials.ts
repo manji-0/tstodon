@@ -1,6 +1,6 @@
 import {
   FediRole,
-  ImageMetadata,
+  UploadMetadata,
   QuoteApprovalPolicy,
   Visibility,
   type FediRole as FediRoleValue,
@@ -136,7 +136,7 @@ const storeProfileImage = async (
     return { kind: "Err", message: `${kind} exceeds ${PROFILE_IMAGE_MAX_BYTES} bytes` };
   }
   // Stored without EXIF, XMP and the like, as media attachments are.
-  const scrubbed = ImageMetadata.forUpload(contentType, new Uint8Array(uploaded));
+  const scrubbed = UploadMetadata.forUpload(contentType, new Uint8Array(uploaded));
   if (scrubbed.isErr()) {
     console.warn(
       JSON.stringify({ kind: "ProfileImageRejected", image: kind, error: scrubbed.error }),

@@ -1,3 +1,5 @@
+import { sampleVideoFor } from "./video-fixtures";
+
 /**
  * Real images for upload tests (generated with sharp): a 40x30 RGB PNG and an
  * 800x600 JPEG, both colour gradients, small enough to inline, an 8x6 WebP
@@ -377,8 +379,8 @@ export const webpChunks = (
 
 /**
  * A real file of an upload type, for tests that only need an upload to be
- * accepted: images must be readable, as their metadata is stripped. GIF and
- * video pass through unread, so any bytes do.
+ * accepted: images and videos must be readable, as their metadata is
+ * stripped. A GIF passes through unread, so any bytes do.
  */
 export const sampleUploadFor = (type: string): Uint8Array =>
   type === "image/jpeg"
@@ -389,4 +391,6 @@ export const sampleUploadFor = (type: string): Uint8Array =>
         ? WEBP_8X6
         : type === "image/avif"
           ? AVIF_8X6_WITH_METADATA
-          : Uint8Array.of(1, 2, 3);
+          : type.startsWith("video/")
+            ? sampleVideoFor(type)
+            : Uint8Array.of(1, 2, 3);
