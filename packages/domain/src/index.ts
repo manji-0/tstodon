@@ -79,6 +79,12 @@ export {
   type ImagePreview,
 } from "./media-image";
 export {
+  MediaVacuum,
+  type DeleteMediaObjects,
+  type DeleteUnattachedMedia,
+  type MediaVacuumPass,
+} from "./media-vacuum";
+export {
   OutboxDelivery,
   DELIVERY_MAX_ATTEMPTS,
   type OutboxDelivery as OutboxDeliveryValue,

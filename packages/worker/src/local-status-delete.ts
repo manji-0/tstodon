@@ -8,7 +8,8 @@ import { loadNoteMentions } from "./mention-resolve";
 import { reachesRemoteInboxes } from "./outbox-job";
 import { enqueuePublicFanOut } from "./public-fan-out";
 import { loadNoteReply } from "./reply-target";
-import { deleteStatus } from "./status-store";
+import { deleteStatus, type StatusMediaOnDelete } from "./status-store";
+import { deleteMediaObjects } from "./media-objects";
 import { loadNoteQuotePolicy } from "./quote-policy-name";
 import { publishToAccount } from "./stream-publish";
 
@@ -16,13 +17,17 @@ import { publishToAccount } from "./stream-publish";
  * Delete one of the account's own statuses and tell everyone: the account's
  * streams, the home and public timelines, and the remote servers a `Delete`
  * reaches. `false` means no status of the account had that id. Used by
- * `DELETE /api/v1/statuses/:id` and by the automated post deletion.
+ * `DELETE /api/v1/statuses/:id`, the automated post deletion and moderation.
+ * With `media: "Delete"` the status's media rows go with it and their
+ * objects are removed from the bucket; `Keep` leaves the media unattached
+ * for a redraft (`delete_media` not set), for the media sweep to remove.
  */
 export const deleteLocalStatus = async (
   env: Env,
   identity: InstanceIdentity,
   account: LocalAccount,
   status: LocalStatusValue,
+  media: StatusMediaOnDelete,
 ): Promise<Result<boolean, RepositoryError>> => {
   // The note's addressing comes from its mentions, which are deleted with it.
   const tombstone =
@@ -36,14 +41,16 @@ export const deleteLocalStatus = async (
           }),
         )
       : undefined;
-  const deleted = await deleteStatus(env.DB, status.id, account.id);
+  const deleted = await deleteStatus(env.DB, status.id, account.id, media);
   if (deleted.isErr()) {
     return err(deleted.error);
   }
   if (!deleted.value) {
     return ok(false);
   }
-  await announceRemovedBoosts(env, deleted.value);
+  // A handful of objects (the media and their previews): deleted inline.
+  await deleteMediaObjects(env, deleted.value.mediaObjectKeys, { statusId: status.id });
+  await announceRemovedBoosts(env, deleted.value.boosts);
   await publishToAccount(env, account.id, { kind: "delete", statusId: status.id });
   await enqueueHomeFanOut(env, {
     event: "delete",

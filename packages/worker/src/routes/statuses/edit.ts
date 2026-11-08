@@ -9,7 +9,7 @@ import {
   Visibility,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import type { z } from "zod";
+import { z } from "zod";
 import type { Context } from "hono";
 import { findAccountsByUsernames } from "../../account-store";
 import { authenticate } from "../../auth";
@@ -23,6 +23,7 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
+  readOptionalBody,
   readUnknownBody,
   requireFunctionalUser,
   requireUser,
@@ -35,7 +36,7 @@ import {
   mediaDescriptionsFit,
   withoutNullFields,
 } from "../../status-body-schema";
-import { isTruthy, stringList } from "../../form-values";
+import { booleanish, isTruthy, stringList } from "../../form-values";
 import { schemaResult } from "@tstodon/core";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { notifyAccount } from "../../notify";
@@ -51,6 +52,23 @@ import { checkAttachableMedia, queueLinkCard } from "./create";
 import { visibilityIsPublic } from "../../quote-resolve";
 import { ApiRefusal } from "../api-refusal";
 import type { MediaAttribute } from "../../status-body-schema";
+
+const DeleteStatusBodySchema = z.object({ delete_media: booleanish });
+
+/**
+ * Mastodon 4.4's `delete_media`, from the query or the body: set, the media
+ * goes with the status; left out, it stays unattached for a redraft, as the
+ * web UI's "Delete & redraft" relies on, until the media sweep removes it.
+ */
+const deleteMediaRequested = async (
+  c: Context<{ Bindings: Env }, "/api/v1/statuses/:id">,
+): Promise<boolean> => {
+  if (isTruthy(c.req.query("delete_media"))) {
+    return true;
+  }
+  const body = await readOptionalBody(c, DeleteStatusBodySchema);
+  return body.isOk() && isTruthy(body.value.delete_media);
+};
 
 export const deleteV1StatusesById = async (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id">,
@@ -74,7 +92,13 @@ export const deleteV1StatusesById = async (
   if (document.isErr()) {
     return jsonRepositoryError(c, document.error.message);
   }
-  const deleted = await deleteLocalStatus(c.env, identity.value, user.value, existing.value);
+  const deleted = await deleteLocalStatus(
+    c.env,
+    identity.value,
+    user.value,
+    existing.value,
+    (await deleteMediaRequested(c)) ? "Delete" : "Keep",
+  );
   if (deleted.isErr()) {
     return jsonRepositoryError(c, deleted.error.message);
   }

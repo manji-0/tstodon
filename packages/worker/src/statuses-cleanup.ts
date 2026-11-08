@@ -123,7 +123,7 @@ export const cleanUpAccountStatuses = async (
       continue;
     }
     // A failed delete is retried by a later pass over this post.
-    const removed = await deleteLocalStatus(env, identity.value, account.value, note);
+    const removed = await deleteLocalStatus(env, identity.value, account.value, note, "Delete");
     stoppedAt = note.id;
     deleted += removed.isOk() && removed.value ? 1 : 0;
     if (deleted >= CLEANUP_DELETE_BATCH) {
