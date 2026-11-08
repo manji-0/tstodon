@@ -201,13 +201,16 @@ export type NoteMention = Readonly<{ href: string; name: string }>;
 
 /**
  * A media attachment as Mastodon federates it, a `Document`: its type, public
- * URL, description as `name`, and focal point when one is set.
+ * URL, description as `name`, blurhash, focal point when one is set, and the
+ * original's `width` / `height` when the upload read them.
  */
 export type NoteAttachment = Readonly<{
   mediaType: string;
   url: string;
   name: string | null;
+  blurhash: string | null;
   focalPoint: readonly [number, number] | undefined;
+  dimensions: Readonly<{ width: number; height: number }> | undefined;
 }>;
 
 /**
@@ -353,8 +356,11 @@ export const noteDocument = (
       mediaType: media.mediaType,
       url: media.url,
       name: media.name,
-      blurhash: null,
+      blurhash: media.blurhash,
       ...(media.focalPoint ? { focalPoint: media.focalPoint } : {}),
+      ...(media.dimensions
+        ? { width: media.dimensions.width, height: media.dimensions.height }
+        : {}),
     })),
     tag: mentions.map((mention) => ({ type: "Mention", href: mention.href, name: mention.name })),
     interactionPolicy: { canQuote: { automaticApproval } },

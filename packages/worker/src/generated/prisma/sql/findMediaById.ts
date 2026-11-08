@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param id
  */
 export const findMediaById = $runtime.makeTypedQueryFactory(
-  "SELECT id, account_id, status_id, object_key, content_type, created_at, description, focus_x, focus_y\nFROM media_attachments\nWHERE id = $1",
+  "SELECT id, account_id, status_id, object_key, content_type, created_at, description, focus_x, focus_y,\nwidth, height, preview_object_key, preview_width, preview_height, blurhash\nFROM media_attachments\nWHERE id = $1",
 ) as (id: string) => $runtime.TypedSql<findMediaById.Parameters, findMediaById.Result>;
 
 export namespace findMediaById {
@@ -23,5 +23,11 @@ export namespace findMediaById {
     description: string | null;
     focus_x: number | null;
     focus_y: number | null;
+    width: number | null;
+    height: number | null;
+    preview_object_key: string | null;
+    preview_width: number | null;
+    preview_height: number | null;
+    blurhash: string | null;
   };
 }

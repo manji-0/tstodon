@@ -12,7 +12,7 @@ Configured in `packages/worker/wrangler.jsonc`:
 - `OUTBOX_PROCESS_QUEUE` — Queue producer/consumer (`ExpandFollowers` fan-out and `ProcessExpiredPolls`)
 - `STREAM_HUB` — Durable Object
 - `OUTBOX_DELIVERY_WORKFLOW` — per-inbox delivery retries
-- `IMAGES` — Images
+- `IMAGES` — Images (dimensions, `small` preview and blurhash of image uploads; see [Image processing](#image-processing))
 - `METRICS` — Analytics Engine
 - `ASSETS` — static assets
 
@@ -33,13 +33,21 @@ Media blobs live in the `MEDIA` R2 bucket. Mastodon JSON emits absolute URLs as 
 | Production    | R2 custom domain (e.g. `https://media.example.com`)           | R2 public hostname                                                     |
 | Local / tests | Same as `INSTANCE_PUBLIC_ORIGIN` (e.g. `https://example.com`) | Worker object-key proxy (`/attachments/*`, `/avatars/*`, `/headers/*`) |
 
-Object keys: `attachments/{accountId}/{name}`, `avatars/{accountId}/{blobId}`, `headers/{accountId}/{blobId}`. An attachment's `name` is 128 random bits in hex, stored in the row's `object_key` and never derived from the media id. Both hostnames serve every object without auth, so that name is what keeps media on a private or direct post private (Mastodon names its files with `SecureRandom.hex(8)` for the same reason). Avatars and headers are public in Mastodon, so their keys keep the upload's id. Attachments stored before migration 0103 sit at `attachments/{accountId}/{mediaId}` until the `RekeyLegacyMedia` job moves them; see [Moving attachments off id-derived keys](../operations/cloudflare-deploy.md#moving-attachments-off-id-derived-keys). The `IMAGES` binding is reserved for transforms; it is not used on the read path yet.
+Object keys: `attachments/{accountId}/{name}`, `avatars/{accountId}/{blobId}`, `headers/{accountId}/{blobId}`. An attachment's `name` is 128 random bits in hex, stored in the row's `object_key` and never derived from the media id. Both hostnames serve every object without auth, so that name is what keeps media on a private or direct post private (Mastodon names its files with `SecureRandom.hex(8)` for the same reason). Avatars and headers are public in Mastodon, so their keys keep the upload's id. Attachments stored before migration 0103 sit at `attachments/{accountId}/{mediaId}` until the `RekeyLegacyMedia` job moves them; see [Moving attachments off id-derived keys](../operations/cloudflare-deploy.md#moving-attachments-off-id-derived-keys). An image's `small` preview is stored under its own random key in the same prefix (the row's `preview_object_key`).
 
 | Var                         | Purpose                                                                                                                                                                                                                       |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `MEDIA_REKEY_DELETE_LEGACY` | Whether the `RekeyLegacyMedia` job deletes the object left at an attachment's old, id-derived key once the row points at its copy (default off; `true` deletes). While off, the old URL stays reachable on the media hostname |
 
 `GET /media/:id` follows Mastodon's `MediaController#show`: for media attached to a local status that the signed-in browser session may see, it redirects (302) to the file URL. Unattached media, an unknown id, and a status the viewer may not see answer 404.
+
+### Image processing
+
+<!-- derived-from #media-public-urls -->
+
+On a JPEG, PNG, WebP or AVIF upload, the Worker uses the `IMAGES` binding (Workers Images) to read the original's width and height, build a WebP preview within Mastodon's `small` budget of 230,400 pixels (640x360, aspect kept, never enlarged), and sample a 100-pixel PNG thumbnail of the preview, from which it computes a 4x4-component blurhash in the Worker. The preview goes to `MEDIA` beside the original, and the sizes, the preview's key and the blurhash to `media_attachments` (migration 0117). The REST document then lists `meta.original` and `meta.small`, the preview as `preview_url`, and the `blurhash`; the federated `Document` carries the `blurhash`, `width` and `height`. The original itself is stored unchanged.
+
+Without the binding, or when Images fails (for example, when Images is not enabled on the account, or the file is not a readable image), the upload still succeeds as before: `meta` has no sizes, `preview_url` is the original's URL, and `blurhash` is `null`; the Worker logs `MediaImageNotProcessed`. GIF and video uploads are never processed. Uploads made before this are not processed afterwards. Locally and in tests, Miniflare serves the binding with `sharp`. Each image upload makes two `info` calls and two transformations; see Cloudflare's Images pricing for what the binding bills.
 
 ### CORS / allowed origins
 

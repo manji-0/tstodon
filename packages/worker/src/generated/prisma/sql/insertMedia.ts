@@ -13,9 +13,15 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param description
  * @param focusX
  * @param focusY
+ * @param width
+ * @param height
+ * @param previewObjectKey
+ * @param previewWidth
+ * @param previewHeight
+ * @param blurhash
  */
 export const insertMedia = $runtime.makeTypedQueryFactory(
-  "INSERT INTO media_attachments (id, account_id, object_key, content_type, created_at, description, focus_x, focus_y)\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+  "INSERT INTO media_attachments (\nid, account_id, object_key, content_type, created_at, description, focus_x, focus_y,\nwidth, height, preview_object_key, preview_width, preview_height, blurhash\n)\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
 ) as (
   id: string,
   accountId: string,
@@ -25,6 +31,12 @@ export const insertMedia = $runtime.makeTypedQueryFactory(
   description: string | null,
   focusX: number | null,
   focusY: number | null,
+  width: number | null,
+  height: number | null,
+  previewObjectKey: string | null,
+  previewWidth: number | null,
+  previewHeight: number | null,
+  blurhash: string | null,
 ) => $runtime.TypedSql<insertMedia.Parameters, insertMedia.Result>;
 
 export namespace insertMedia {
@@ -37,6 +49,12 @@ export namespace insertMedia {
     description: string | null,
     focusX: number | null,
     focusY: number | null,
+    width: number | null,
+    height: number | null,
+    previewObjectKey: string | null,
+    previewWidth: number | null,
+    previewHeight: number | null,
+    blurhash: string | null,
   ];
   export type Result = {};
 }
