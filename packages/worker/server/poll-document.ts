@@ -1,19 +1,21 @@
+import type { ApiPollJSON } from "@tstodon/api";
 import type { RemoteEmoji, RemotePollValue } from "@tstodon/domain";
 import { remoteEmojisJson, remoteEmojisInTexts } from "./remote-emoji-document";
 import type { PollRecord } from "./poll-store";
 import { NO_REMOTE_POLL_VOTES, type RemotePollVotes } from "./remote-poll-vote-store";
 
-export const pollJson = (poll: PollRecord): Record<string, unknown> => {
+export const pollJson = (poll: PollRecord): ApiPollJSON => {
   const expired = Date.parse(poll.expiresAt) <= Date.now();
-  // A poll that hides totals keeps them secret until it ends.
+  // A poll that hides totals keeps each option's count secret until it ends,
+  // as Mastodon's: the total votes and voters stay shown.
   const hidden = poll.hideTotals && !expired;
   return {
     id: poll.id,
     expires_at: poll.expiresAt,
     expired,
     multiple: poll.multiple,
-    votes_count: hidden ? null : poll.options.reduce((sum, option) => sum + option.votesCount, 0),
-    voters_count: hidden ? null : poll.votersCount,
+    votes_count: poll.options.reduce((sum, option) => sum + option.votesCount, 0),
+    voters_count: poll.votersCount,
     voted: poll.votedIndexes.length > 0,
     own_votes: [...poll.votedIndexes],
     options: poll.options.map((option) => ({
@@ -42,7 +44,7 @@ export const remotePollJson = (
   poll: Exclude<RemotePollValue, { kind: "NoPoll" }>,
   votes: RemotePollVotes = NO_REMOTE_POLL_VOTES,
   emojis: ReadonlyArray<RemoteEmoji> = [],
-): Record<string, unknown> => {
+): ApiPollJSON => {
   const expiresAt = poll.ends.kind === "At" ? poll.ends.at : null;
   const options = poll.options.map((option, index) => ({
     title: option.title,

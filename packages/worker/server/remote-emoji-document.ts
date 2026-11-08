@@ -1,3 +1,4 @@
+import type { ApiCustomEmojiJSON } from "@tstodon/api";
 import type { RemoteEmoji } from "@tstodon/domain";
 import { httpUrl } from "./sanitize-html";
 
@@ -17,9 +18,7 @@ export const remoteEmojisInTexts = (
 };
 
 /** CustomEmoji entities of a remote note's emoji; one whose image is not an http(s) URL is left out. */
-export const remoteEmojisJson = (
-  emojis: ReadonlyArray<RemoteEmoji>,
-): ReadonlyArray<Record<string, unknown>> =>
+export const remoteEmojisJson = (emojis: ReadonlyArray<RemoteEmoji>): ApiCustomEmojiJSON[] =>
   emojis.flatMap((emoji) =>
     httpUrl(emoji.url) === undefined
       ? []
