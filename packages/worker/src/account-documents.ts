@@ -29,7 +29,7 @@ import {
   listAccountProfiles,
 } from "./account-profile-store";
 import { loadCustomEmojis } from "./custom-emoji-store";
-import { textToHtml } from "./html";
+import { escapeHtml, textToHtml } from "./html";
 import { mediaUrl } from "./media-document";
 import { quotePolicyName } from "./quote-policy-name";
 
@@ -327,9 +327,11 @@ export const mastodonAccount = (
     statuses_count: counts.statuses,
     last_status_at: null,
     emojis: emojis.map(customEmojiJson),
+    // `value` is HTML, as Mastodon's: clients insert it as markup, so a raw
+    // value would be stored XSS. `source.fields` keeps the plain text.
     fields: profile.fields.map((field) => ({
       name: field.name,
-      value: field.value,
+      value: escapeHtml(field.value),
       verified_at: null,
     })),
   };
