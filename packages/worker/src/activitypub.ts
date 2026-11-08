@@ -6,14 +6,73 @@ import {
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
+import { type AccountProfile, EMPTY_ACCOUNT_PROFILE } from "./account-profile-store";
 import type { ActivityJsonSchema } from "./activitypub-wire";
+import type { CustomEmoji } from "./emoji";
+import { escapeHtml, textToHtml } from "./html";
+import { mediaPublicUrl } from "./media-keys";
 import type { PollRecord } from "./poll-store";
 import type { QuotePolicy } from "./quote-store";
 
 /**
- * A local account's `Person`. As Mastodon's `ActorSerializer`, `alsoKnownAs`
- * lists the accounts it moved from and `movedTo` the account it moved to,
- * each only when there is one.
+ * What a local actor shows of its profile. `Shown` carries the stored
+ * profile and the custom emoji its name, bio and fields use; `Suspended`
+ * strips it, as Mastodon's `ActorSerializer` does for a suspended account.
+ */
+export type ActorProfile =
+  | Readonly<{
+      kind: "Shown";
+      profile: AccountProfile;
+      emojis: ReadonlyArray<CustomEmoji>;
+    }>
+  | Readonly<{ kind: "Suspended" }>;
+
+const SHOWN_EMPTY_PROFILE: ActorProfile = {
+  kind: "Shown",
+  profile: EMPTY_ACCOUNT_PROFILE,
+  emojis: [],
+};
+
+/** Mastodon's actor JSON-LD terms (`context_extensions` of its `ActorSerializer`). */
+const ACTOR_CONTEXT_TERMS = {
+  manuallyApprovesFollowers: "as:manuallyApprovesFollowers",
+  toot: "http://joinmastodon.org/ns#",
+  alsoKnownAs: { "@id": "as:alsoKnownAs", "@type": "@id" },
+  movedTo: { "@id": "as:movedTo", "@type": "@id" },
+  schema: "http://schema.org#",
+  PropertyValue: "schema:PropertyValue",
+  value: "schema:value",
+  discoverable: "toot:discoverable",
+  suspended: "toot:suspended",
+  indexable: "toot:indexable",
+  Emoji: "toot:Emoji",
+} as const;
+
+/** An avatar or header as an `Image`, with its stored content type when known. */
+const actorImage = (
+  identity: InstanceIdentity,
+  objectKey: string | null,
+  contentType: string | null,
+): Record<string, unknown> | undefined =>
+  objectKey === null
+    ? undefined
+    : {
+        type: "Image",
+        ...(contentType === null ? {} : { mediaType: contentType }),
+        url: mediaPublicUrl(identity, objectKey),
+      };
+
+/** Mastodon publishes the day an account joined, not the moment. */
+const publishedDay = (createdAt: string): string => `${createdAt.slice(0, 10)}T00:00:00Z`;
+
+/**
+ * A local account's `Person` (or `Service` for a bot), as Mastodon's
+ * `ActorSerializer`: the bio as `summary` HTML, the avatar and header as
+ * `icon` / `image`, profile fields as `PropertyValue` attachments, custom
+ * emoji as `Emoji` tags, and the locked / discoverable / indexable flags. A
+ * suspended account shows none of its profile and says `suspended`.
+ * `alsoKnownAs` lists the accounts it moved from and `movedTo` the account it
+ * moved to, each only when there is one.
  */
 export const actorDocument = (
   identity: InstanceIdentity,
@@ -21,23 +80,25 @@ export const actorDocument = (
   migration: Readonly<{ alsoKnownAs: ReadonlyArray<string>; movedTo?: string | undefined }> = {
     alsoKnownAs: [],
   },
+  shown: ActorProfile = SHOWN_EMPTY_PROFILE,
 ): Record<string, unknown> => {
   const id = InstanceIdentity.actorUrl(identity, account.username);
+  const profile = shown.kind === "Shown" ? shown.profile : undefined;
+  const icon = profile && actorImage(identity, profile.avatarObjectKey, profile.avatarContentType);
+  const image = profile && actorImage(identity, profile.headerObjectKey, profile.headerContentType);
   return {
     "@context": [
       "https://www.w3.org/ns/activitystreams",
       "https://w3id.org/security/v1",
-      {
-        alsoKnownAs: { "@id": "as:alsoKnownAs", "@type": "@id" },
-        movedTo: { "@id": "as:movedTo", "@type": "@id" },
-      },
+      ACTOR_CONTEXT_TERMS,
     ],
     ...(migration.alsoKnownAs.length > 0 ? { alsoKnownAs: migration.alsoKnownAs } : {}),
     ...(migration.movedTo ? { movedTo: migration.movedTo } : {}),
     id,
-    type: "Person",
+    type: profile?.bot ? "Service" : "Person",
     preferredUsername: account.username,
-    name: account.displayName,
+    name: profile ? account.displayName : account.username,
+    summary: profile && profile.note.length > 0 ? textToHtml(profile.note) : "",
     inbox: `${id}/inbox`,
     outbox: `${id}/outbox`,
     followers: `${id}/followers`,
@@ -46,11 +107,31 @@ export const actorDocument = (
       sharedInbox: InstanceIdentity.sharedInboxUrl(identity),
     },
     url: id,
+    manuallyApprovesFollowers: profile ? account.locked : false,
+    discoverable: profile ? profile.discoverable : false,
+    indexable: profile ? profile.indexable : false,
+    published: publishedDay(account.createdAt),
+    ...(shown.kind === "Suspended" ? { suspended: true } : {}),
     publicKey: {
       id: `${id}#main-key`,
       owner: id,
       publicKeyPem: account.publicKeyPem,
     },
+    tag:
+      shown.kind === "Shown"
+        ? shown.emojis.map((emoji) => ({
+            type: "Emoji",
+            name: `:${emoji.shortcode}:`,
+            icon: { type: "Image", url: emoji.url },
+          }))
+        : [],
+    attachment: (profile?.fields ?? []).map((field) => ({
+      type: "PropertyValue",
+      name: field.name,
+      value: escapeHtml(field.value),
+    })),
+    ...(icon ? { icon } : {}),
+    ...(image ? { image } : {}),
   };
 };
 

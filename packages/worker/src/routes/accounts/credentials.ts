@@ -28,6 +28,7 @@ import { accountSource, mastodonAccountDocument } from "../../account-documents"
 import { parseInstanceIdentity } from "../../runtime-config";
 import { isTruthy } from "../../form-values";
 import { newEntityId } from "../../ids";
+import { sendActorUpdate } from "../../local-actor";
 import { avatarObjectKey, headerObjectKey } from "../../media-keys";
 import { ApiRefusal } from "../api-refusal";
 import { buildFeaturedTagDocuments } from "../tags";
@@ -370,9 +371,34 @@ export const patchV1AccountsUpdateCredentials = async (
     return jsonValidationError(c);
   }
   const updated = await updateCredentials(c.env, user.value, rawBody, body.value);
-  return updated.isErr()
-    ? ApiRefusal.respond(c, updated.error)
-    : c.json(await ownAccountDocument(c.env, identity.value, updated.value));
+  if (updated.isErr()) {
+    return ApiRefusal.respond(c, updated.error);
+  }
+  await federateProfileChange(c.env, identity.value, updated.value);
+  return c.json(await ownAccountDocument(c.env, identity.value, updated.value));
+};
+
+/**
+ * Tell remote followers the profile changed with an actor `Update`, as
+ * Mastodon's credentials and profile-image controllers queue
+ * `ActivityPub::UpdateDistributionWorker`. Best effort: the change is stored
+ * either way.
+ */
+const federateProfileChange = async (
+  env: Env,
+  identity: InstanceIdentity,
+  account: LocalAccount,
+): Promise<void> => {
+  const sent = await sendActorUpdate(env, identity, account);
+  if (sent.isErr()) {
+    console.error(
+      JSON.stringify({
+        kind: "ProfileUpdateNotFederated",
+        accountId: account.id,
+        error: sent.error.kind,
+      }),
+    );
+  }
 };
 
 /** `DELETE /api/v1/profile/avatar|header`: drop the image and answer the credential account. */
@@ -406,6 +432,7 @@ const deleteProfileImage = async (
       return jsonRepositoryError(c, saved.error.message);
     }
     await c.env.MEDIA.delete(objectKey);
+    await federateProfileChange(c.env, identity.value, user.value);
   }
   return c.json(await ownAccountDocument(c.env, identity.value, user.value));
 };
