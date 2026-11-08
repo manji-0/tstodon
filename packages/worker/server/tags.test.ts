@@ -1,6 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiFeaturedTag, ApiHashtag } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
@@ -26,21 +27,9 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   return parsed.value;
 };
 
-const TagSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  url: z.string().min(1),
-  history: z.array(z.object({ day: z.string(), uses: z.string(), accounts: z.string() })),
-  following: z.boolean(),
-});
-
-const FeaturedTagSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  url: z.string().min(1),
-  statuses_count: z.number(),
-  last_status_at: z.string().nullable(),
-});
+// The REST contract (`@tstodon/api`).
+const TagSchema = ApiHashtag;
+const FeaturedTagSchema = ApiFeaturedTag;
 
 const accountIdFor = async (email: string): Promise<string> => {
   const response = await json("/api/v1/accounts/verify_credentials", {
@@ -109,7 +98,8 @@ describe("tags", () => {
     expect(created.status).toBe(200);
     const featured = read(FeaturedTagSchema, created.body);
     expect(featured.id).toBe("featurewave");
-    expect(featured.statuses_count).toBeGreaterThanOrEqual(1);
+    // A string on the wire, as Mastodon's.
+    expect(Number(featured.statuses_count)).toBeGreaterThanOrEqual(1);
 
     const mine = await json("/api/v1/featured_tags", { headers: await auth(email) });
     expect(read(z.array(FeaturedTagSchema), mine.body).map((tag) => tag.name)).toContain(
