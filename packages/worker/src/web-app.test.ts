@@ -114,6 +114,10 @@ describe("Mastodon web app", () => {
     expect(html).toContain('<script type="module" src="/packs/application.js"');
     expect(html).toContain('<link rel="modulepreload" href="/packs/r.js"');
     expect(html).toContain('<meta name="initialPath" content="/home">');
+    expect(html).toContain(
+      '<link rel="icon" type="image/png" sizes="32x32" href="/packs/favicon.png">',
+    );
+    expect(html).toContain("To use tstodon's web app");
     expect(html).not.toContain("</script><script>alert(1)");
   });
 
