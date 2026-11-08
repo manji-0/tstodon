@@ -2,14 +2,17 @@
 
 html {
   color: var(--color-text-primary);
-  background: var(--color-bg-primary);
+  background: var(--color-bg-app); // tstodon theme: app background below the columns
 
   &.custom-scrollbars {
     scrollbar-color: var(--color-text-secondary) var(--color-bg-secondary);
   }
 
-  --font-body: mastodon-font-sans-serif, sans-serif;
-  --font-heading: Syne, sans-serif;
+  // tstodon theme: Inter (bundled, OFL) for text and headings.
+  --font-body:
+    Inter, -apple-system, blinkmacsystemfont, 'Segoe UI', roboto,
+    'Helvetica Neue', arial, sans-serif;
+  --font-heading: var(--font-body);
   --font-monospace: mastodon-font-monospace, monospace;
 
   &[data-redesign='true'] {
@@ -54,7 +57,7 @@ html.has-modal {
 
 body {
   font-family: var(--font-body);
-  background: var(--color-bg-primary);
+  background: var(--color-bg-app);
   font-size: 13px;
   line-height: 18px;
   font-weight: 400;

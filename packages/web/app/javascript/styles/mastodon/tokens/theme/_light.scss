@@ -3,8 +3,8 @@
 @mixin tokens {
   /* TEXT TOKENS */
 
-  --color-text-primary: var(--color-grey-950);
-  --color-text-secondary: var(--color-grey-600);
+  --color-text-primary: var(--color-grey-925);
+  --color-text-secondary: var(--color-grey-500);
   --color-text-tertiary: var(--color-grey-500); // legacy
   --color-text-inverted: var(--color-white);
   --color-text-brand: var(--color-indigo-700);
@@ -16,7 +16,7 @@
 
   --color-text-on-brand-base: var(--color-white);
   --color-text-brand-on-inverted: var(--color-indigo-400); // legacy
-  --color-text-error: var(--color-red-800);
+  --color-text-error: var(--color-red-700);
   --color-text-on-error-base: var(--color-white);
   --color-text-warning: var(--color-yellow-700);
   --color-text-on-warning-base: var(--color-white);
@@ -32,24 +32,25 @@
   /* BACKGROUND TOKENS */
 
   // Neutrals
+  --color-bg-app: var(--color-grey-50);
   --color-bg-primary: var(--color-white);
   --overlay-strength-secondary: 4%;
   --color-bg-secondary: var(--color-grey-50);
   --color-bg-tertiary: var(--color-grey-100); // legacy
   --color-bg-blend: #{utils.css-alpha(var(--color-text-primary), 4%)};
-  --color-bg-highlight: #{utils.css-alpha(var(--color-text-primary), 4%)};
+  --color-bg-highlight: #{utils.css-alpha(var(--color-text-primary), 3%)};
 
   // Utility
-  --color-bg-inverted: var(--color-grey-950);
+  --color-bg-inverted: var(--color-grey-925);
   --color-bg-overlay-highlight: var(--color-bg-highlight); // legacy
   --color-bg-overlay: var(--color-bg-primary); // legacy
   --color-bg-media-base: var(--color-black); // legacy
   --color-bg-media: #{utils.css-alpha(var(--color-bg-media-base), 65%)}; // legacy
-  --color-bg-disabled: var(--color-grey-400); // legacy
+  --color-bg-disabled: var(--color-grey-300); // legacy
 
   // Brand
-  --color-bg-brand-base: var(--color-indigo-700);
-  --color-bg-brand-base-hover: var(--color-indigo-800); // legacy
+  --color-bg-brand-base: var(--color-indigo-600);
+  --color-bg-brand-base-hover: var(--color-indigo-700); // legacy
   --color-bg-brand-soft: var(--color-indigo-100);
   --color-bg-brand-softest: var(--color-indigo-50);
 
@@ -65,15 +66,15 @@
   --color-bg-warning-softest: var(--color-yellow-50);
 
   // Success
-  --color-bg-success-base: var(--color-green-600); // legacy
+  --color-bg-success-base: var(--color-green-700); // legacy
   --color-bg-success-soft: var(--color-green-100);
   --color-bg-success-softest: var(--color-green-50);
 
   /* BORDER TOKENS */
 
   --color-border-primary: var(--color-grey-200);
-  --color-border-strong: var(--color-grey-950);
-  --color-border-brand: var(--color-text-brand);
+  --color-border-strong: var(--color-grey-925);
+  --color-border-brand: var(--color-indigo-600);
   --color-border-brand-soft: var(--color-indigo-200);
   --color-border-error: var(--color-red-700);
   --color-border-media: rgb(252 248 255 / 15%); // legacy
@@ -87,14 +88,14 @@
 
   /* SHADOW TOKENS (LEGACY) */
 
-  --shadow-strength-primary: 30%;
+  --shadow-strength-primary: 12%;
   --color-shadow-primary: #{utils.css-alpha(
       var(--color-black),
       var(--shadow-strength-primary)
     )};
-  --dropdown-shadow:
-    0 20px 25px -5px var(--color-shadow-primary),
-    0 8px 10px -6px var(--color-shadow-primary);
+
+  // Solid surfaces: one soft, short shadow (popovers carry their own border).
+  --dropdown-shadow: 0 8px 24px -8px var(--color-shadow-primary);
   --overlay-icon-shadow: drop-shadow(0 0 8px var(--color-shadow-primary));
 
   /* GRAPHS/CHARTS TOKENS (LEGACY) */
@@ -108,22 +109,25 @@
 
   /* RICH TEXT TOKENS (LEGACY) */
 
-  --rich-text-container-color: rgb(255 216 231 / 100%);
-  --rich-text-text-color: rgb(114 47 83 / 100%);
-  --rich-text-decorations-color: rgb(255 175 212 / 100%);
+  --rich-text-container-color: var(--color-bg-tertiary);
+  --rich-text-text-color: var(--color-grey-800);
+  --rich-text-decorations-color: var(--color-grey-300);
 }
 
 @mixin contrast-overrides {
   /* TEXT TOKENS */
 
   --color-text-primary: var(--color-black);
-  --color-text-secondary: var(--color-grey-800);
+  --color-text-secondary: var(--color-grey-700);
   --color-text-tertiary: var(--color-grey-700);
-  --color-text-brand: var(--color-indigo-600);
+  --color-text-brand: var(--color-indigo-800);
 
   /* BACKGROUND TOKENS */
   --color-bg-error-base: var(--color-red-800);
+  --color-bg-brand-base: var(--color-indigo-700);
+  --color-bg-brand-base-hover: var(--color-indigo-800);
 
   /* BORDER TOKENS */
-  --color-border-primary: var(--color-grey-300);
+  --color-border-primary: var(--color-grey-400);
+  --color-border-brand: var(--color-indigo-800);
 }
