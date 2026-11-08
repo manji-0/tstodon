@@ -417,6 +417,7 @@ export const ModelName = {
   filters: "filters",
   follows: "follows",
   blocks: "blocks",
+  remote_blocks: "remote_blocks",
   mutes: "mutes",
   notification_dismissals: "notification_dismissals",
   notification_clear_markers: "notification_clear_markers",
@@ -513,6 +514,7 @@ export type TypeMap<
       | "filters"
       | "follows"
       | "blocks"
+      | "remote_blocks"
       | "mutes"
       | "notification_dismissals"
       | "notification_clear_markers"
@@ -2527,6 +2529,82 @@ export type TypeMap<
         count: {
           args: Prisma.blocksCountArgs<ExtArgs>;
           result: runtime.Types.Utils.Optional<Prisma.BlocksCountAggregateOutputType> | number;
+        };
+      };
+    };
+    remote_blocks: {
+      payload: Prisma.$remote_blocksPayload<ExtArgs>;
+      fields: Prisma.remote_blocksFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.remote_blocksFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_blocksPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.remote_blocksFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_blocksPayload>;
+        };
+        findFirst: {
+          args: Prisma.remote_blocksFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_blocksPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.remote_blocksFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_blocksPayload>;
+        };
+        findMany: {
+          args: Prisma.remote_blocksFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_blocksPayload>[];
+        };
+        create: {
+          args: Prisma.remote_blocksCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_blocksPayload>;
+        };
+        createMany: {
+          args: Prisma.remote_blocksCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.remote_blocksCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_blocksPayload>[];
+        };
+        delete: {
+          args: Prisma.remote_blocksDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_blocksPayload>;
+        };
+        update: {
+          args: Prisma.remote_blocksUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_blocksPayload>;
+        };
+        deleteMany: {
+          args: Prisma.remote_blocksDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.remote_blocksUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.remote_blocksUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_blocksPayload>[];
+        };
+        upsert: {
+          args: Prisma.remote_blocksUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_blocksPayload>;
+        };
+        aggregate: {
+          args: Prisma.Remote_blocksAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateRemote_blocks>;
+        };
+        groupBy: {
+          args: Prisma.remote_blocksGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Remote_blocksGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.remote_blocksCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Remote_blocksCountAggregateOutputType>
+            | number;
         };
       };
     };
@@ -6665,6 +6743,15 @@ export const BlocksScalarFieldEnum = {
 export type BlocksScalarFieldEnum =
   (typeof BlocksScalarFieldEnum)[keyof typeof BlocksScalarFieldEnum];
 
+export const Remote_blocksScalarFieldEnum = {
+  actor_uri: "actor_uri",
+  account_id: "account_id",
+  created_at: "created_at",
+} as const;
+
+export type Remote_blocksScalarFieldEnum =
+  (typeof Remote_blocksScalarFieldEnum)[keyof typeof Remote_blocksScalarFieldEnum];
+
 export const MutesScalarFieldEnum = {
   id: "id",
   account_id: "account_id",
@@ -7068,6 +7155,7 @@ export type ReportsScalarFieldEnum =
 export const Remote_status_mentionsScalarFieldEnum = {
   status_id: "status_id",
   account_id: "account_id",
+  silent: "silent",
 } as const;
 
 export type Remote_status_mentionsScalarFieldEnum =
@@ -7154,9 +7242,11 @@ export const Status_quotesScalarFieldEnum = {
   remote_status_id: "remote_status_id",
   quoted_status_id: "quoted_status_id",
   quoted_remote_status_id: "quoted_remote_status_id",
+  quoted_uri: "quoted_uri",
   state: "state",
   approval_uri: "approval_uri",
   activity_uri: "activity_uri",
+  legacy: "legacy",
   created_at: "created_at",
   updated_at: "updated_at",
 } as const;
@@ -7474,6 +7564,7 @@ export type GlobalOmitConfig = {
   filters?: Prisma.filtersOmit;
   follows?: Prisma.followsOmit;
   blocks?: Prisma.blocksOmit;
+  remote_blocks?: Prisma.remote_blocksOmit;
   mutes?: Prisma.mutesOmit;
   notification_dismissals?: Prisma.notification_dismissalsOmit;
   notification_clear_markers?: Prisma.notification_clear_markersOmit;

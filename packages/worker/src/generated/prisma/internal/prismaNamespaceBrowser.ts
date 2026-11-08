@@ -74,6 +74,7 @@ export const ModelName = {
   filters: "filters",
   follows: "follows",
   blocks: "blocks",
+  remote_blocks: "remote_blocks",
   mutes: "mutes",
   notification_dismissals: "notification_dismissals",
   notification_clear_markers: "notification_clear_markers",
@@ -451,6 +452,15 @@ export const BlocksScalarFieldEnum = {
 
 export type BlocksScalarFieldEnum =
   (typeof BlocksScalarFieldEnum)[keyof typeof BlocksScalarFieldEnum];
+
+export const Remote_blocksScalarFieldEnum = {
+  actor_uri: "actor_uri",
+  account_id: "account_id",
+  created_at: "created_at",
+} as const;
+
+export type Remote_blocksScalarFieldEnum =
+  (typeof Remote_blocksScalarFieldEnum)[keyof typeof Remote_blocksScalarFieldEnum];
 
 export const MutesScalarFieldEnum = {
   id: "id",
@@ -855,6 +865,7 @@ export type ReportsScalarFieldEnum =
 export const Remote_status_mentionsScalarFieldEnum = {
   status_id: "status_id",
   account_id: "account_id",
+  silent: "silent",
 } as const;
 
 export type Remote_status_mentionsScalarFieldEnum =
@@ -941,9 +952,11 @@ export const Status_quotesScalarFieldEnum = {
   remote_status_id: "remote_status_id",
   quoted_status_id: "quoted_status_id",
   quoted_remote_status_id: "quoted_remote_status_id",
+  quoted_uri: "quoted_uri",
   state: "state",
   approval_uri: "approval_uri",
   activity_uri: "activity_uri",
+  legacy: "legacy",
   created_at: "created_at",
   updated_at: "updated_at",
 } as const;

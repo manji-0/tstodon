@@ -1,6 +1,7 @@
 import {
   type InstanceIdentity,
   type LocalStatus,
+  Quote,
   type QuoteValue,
   type QuoteViewerRelation,
   QuoteInteractionPolicy,
@@ -171,7 +172,8 @@ const quotedStatuses = async (
   if (accessOf.isErr()) {
     return err(accessOf.error);
   }
-  const access = ({ quoted }: QuoteValue): QuotedStatusAccess => accessOf.value(quoted);
+  const access = ({ quoted }: QuoteValue): QuotedStatusAccess =>
+    quoted.kind === "Unresolved" ? "Gone" : accessOf.value(quoted);
   return ok({
     locals: [...locals.value.values()].filter((status) =>
       isQuotedStatusShown(accessOf.value(StatusTarget.local(status.id))),
@@ -212,7 +214,7 @@ const quotedDocuments = async (
   const rendered = documentsById([...localDocuments.value, ...remoteDocuments.value]);
   return ok((quote) => {
     const shown = access(quote);
-    if (shown === "Gone") {
+    if (shown === "Gone" || quote.quoted.kind === "Unresolved") {
       return undefined;
     }
     if (!isQuotedStatusShown(shown)) {
@@ -235,7 +237,11 @@ const quoteRenderer = async (
     return (await quotedStatuses(env.DB, quotes, viewerId)).map(
       ({ access }) =>
         (quote) =>
-          mastodonShallowQuote(quote.state, quote.quoted.statusId, () => access(quote)),
+          mastodonShallowQuote(
+            quote.state,
+            quote.quoted.kind === "Unresolved" ? null : quote.quoted.statusId,
+            () => access(quote),
+          ),
     );
   }
   return (await quotedDocuments(env, identity, quotes, viewerId)).map(
@@ -318,7 +324,7 @@ export const mastodonRemoteStatuses = async (
       ),
     });
     const quote = quotes.value.get(status.id);
-    if (quote) {
+    if (quote && Quote.isShown(quote)) {
       document.quote = renderQuote.value(quote);
     }
     const sensitized = moderations.isOk() && moderations.value.get(status.actorUri)?.sensitized;

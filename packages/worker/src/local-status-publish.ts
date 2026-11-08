@@ -168,6 +168,7 @@ export const publishLocalNote = async (
         input.quote.quotedAuthor.kind === "Local"
           ? { kind: "Accepted", approval: { kind: "Implicit" } }
           : { kind: "Pending" },
+      legacy: false,
       activityUri:
         input.quote.quotedAuthor.kind === "Local"
           ? undefined

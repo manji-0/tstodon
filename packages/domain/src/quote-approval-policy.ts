@@ -74,15 +74,48 @@ const hostOf = (uri: string): string | undefined => {
   }
 };
 
+/** The author a `canQuote` belongs to, with the collections its actor document named. */
+export type QuotePolicyAuthor = Readonly<{
+  actorUri: string;
+  followersUri?: string | undefined;
+  followingUri?: string | undefined;
+}>;
+
+/** A URI as the URL parser writes it, so two spellings of one URI compare equal. */
+const normalized = (uri: string): string | undefined => {
+  try {
+    return new URL(uri).href;
+  } catch {
+    return undefined;
+  }
+};
+
 /**
- * The author's own collection a URI names: one on the author's host whose
- * path ends in `/followers` or `/following`. Remote actors do not keep their
- * collection URIs here, so this matches as `visibilityFromAudience` does.
+ * The author's own collection a URI names. When the author's actor document
+ * named its collections, only those URIs match, as Mastodon compares with
+ * `followers_url` / `following_url`. An author cached before those were kept
+ * names none, and falls back to a URI on the author's host whose path ends
+ * in `/followers` or `/following`, as `visibilityFromAudience` reads them;
+ * the policy only renders who may ask to quote, the quoted server decides.
  */
 const authorCollection = (
   uri: string,
-  authorHost: string | undefined,
+  author: QuotePolicyAuthor,
 ): "followers" | "following" | undefined => {
+  if (author.followersUri !== undefined || author.followingUri !== undefined) {
+    const entry = normalized(uri);
+    if (entry === undefined) {
+      return undefined;
+    }
+    if (author.followersUri !== undefined && normalized(author.followersUri) === entry) {
+      return "followers";
+    }
+    if (author.followingUri !== undefined && normalized(author.followingUri) === entry) {
+      return "following";
+    }
+    return undefined;
+  }
+  const authorHost = hostOf(author.actorUri);
   if (authorHost === undefined || hostOf(uri) !== authorHost) {
     return undefined;
   }
@@ -104,17 +137,16 @@ const AUDIENCE_ORDER: ReadonlyArray<QuoteAudience> = [
 ];
 
 /** Mastodon's `quote_subpolicy`: known audiences, the author's own URI dropped, anything else unsupported. */
-const subpolicy = (raw: unknown, actorUri: string): QuoteAudience[] => {
+const subpolicy = (raw: unknown, author: QuotePolicyAuthor): QuoteAudience[] => {
   const entries = raw === undefined || raw === null ? [] : Array.isArray(raw) ? raw : [raw];
-  const authorHost = hostOf(actorUri);
   const found = new Set<QuoteAudience>();
   for (const entry of entries) {
     if (typeof entry !== "string") {
       found.add("unsupported_policy");
     } else if (PUBLIC_AUDIENCE.has(entry)) {
       found.add("public");
-    } else if (entry !== actorUri) {
-      found.add(authorCollection(entry, authorHost) ?? "unsupported_policy");
+    } else if (entry !== author.actorUri) {
+      found.add(authorCollection(entry, author) ?? "unsupported_policy");
     }
   }
   return AUDIENCE_ORDER.filter((audience) => found.has(audience));
@@ -133,17 +165,14 @@ export const QuoteInteractionPolicy = {
   /** No policy advertised: Mastodon lets nobody but the author quote. */
   none,
   /** Read a note's `interactionPolicy.canQuote`, as Mastodon's status parser does. */
-  fromCanQuote: (
-    canQuote: unknown,
-    author: Readonly<{ actorUri: string }>,
-  ): QuoteInteractionPolicy => {
+  fromCanQuote: (canQuote: unknown, author: QuotePolicyAuthor): QuoteInteractionPolicy => {
     const parsed = parseCanQuote(canQuote);
     if (parsed.isErr()) {
       return none;
     }
     return {
-      automatic: subpolicy(parsed.value.automaticApproval, author.actorUri),
-      manual: subpolicy(parsed.value.manualApproval, author.actorUri),
+      automatic: subpolicy(parsed.value.automaticApproval, author),
+      manual: subpolicy(parsed.value.manualApproval, author),
     };
   },
   /**

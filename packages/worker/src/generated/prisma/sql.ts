@@ -610,6 +610,8 @@ export * from "./sql/listStatusMentionsByIds";
 
 export * from "./sql/listStatusMuteRoots";
 
+export * from "./sql/listStatusReachInboxes";
+
 export * from "./sql/listStatusRemoteMentions";
 
 export * from "./sql/listStatusReplyLinks";

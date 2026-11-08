@@ -10,6 +10,7 @@ import {
   type RemoteStatus as RemoteStatusValue,
   type Hostname,
   type MentionedPost,
+  type QuotePolicyAuthor,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
@@ -32,7 +33,7 @@ import { isTruthy, stringList } from "./form-values";
 import { NoteDocumentSchema } from "./activitypub-wire";
 import { remoteEmojisInTexts } from "./remote-emoji-document";
 import { remotePollFromDocument } from "./remote-poll-parse";
-import { type RemoteQuoteContext, syncRemoteQuote } from "./remote-quote";
+import { type EmbeddedQuoted, type RemoteQuoteContext, syncRemoteQuote } from "./remote-quote";
 
 export const parseNoteDocument = schemaResult(NoteDocumentSchema);
 
@@ -101,9 +102,10 @@ export const noteEmojis = (
 
 export const noteFromUnknown = (
   raw: unknown,
-  actorUri: string,
+  author: QuotePolicyAuthor,
   idClock: IdClock = "Received",
 ): Result<RemoteStatusValue, { kind: "InvalidObject" } | RepositoryError> => {
+  const actorUri = author.actorUri;
   const document = parseNoteDocument(raw);
   if (document.isErr()) {
     return err({ kind: "InvalidObject" });
@@ -157,9 +159,10 @@ export const noteFromUnknown = (
       document.value.summary ?? "",
       ...(poll.kind === "NoPoll" ? [] : poll.options.map((option) => option.title)),
     ]),
-    quotePolicy: QuoteInteractionPolicy.fromCanQuote(canQuoteOf(document.value.interactionPolicy), {
-      actorUri,
-    }),
+    quotePolicy: QuoteInteractionPolicy.fromCanQuote(
+      canQuoteOf(document.value.interactionPolicy),
+      author,
+    ),
     ...(document.value.url ? { url: document.value.url } : {}),
   });
 };
@@ -285,8 +288,12 @@ type PersistOptions = Readonly<{
   notifyMentions?: boolean;
   /** Which instant a newly stored note's id sorts at; `Received` by default. */
   idClock?: IdClock;
-  /** Fetch a quoted note that is not cached; `false` for a note fetched as one, so quotes resolve one level deep. */
-  fetchQuoted?: boolean;
+  /**
+   * How many quotes deep this note sits below the note that arrived (0 by
+   * default); a note fetched as a quoted one is one deeper than its quoting
+   * note. See {@link MAX_QUOTE_DEPTH}.
+   */
+  quoteDepth?: number;
 }>;
 
 type ObjectReference = string | Readonly<{ id: string } & Record<string, unknown>>;
@@ -401,29 +408,89 @@ export const persistAnnouncedObject = async (
 };
 
 /**
+ * How deep quoted notes are fetched below the note that arrived, as
+ * Mastodon's `VerifyQuoteService::MAX_SYNCHRONOUS_DEPTH` (2): notes at depth
+ * 0, 1 and 2 fetch their quoted notes, so up to three levels are stored. A
+ * note deeper than that keeps its quote of an uncached note unresolved.
+ */
+export const MAX_QUOTE_DEPTH = 3;
+
+/**
+ * Store an inlined copy of a quoted note when the actor that sent it vouches
+ * for it, as Mastodon's `safe_prefetched_embed`: its id is `uri`, it is
+ * `vouchedBy`'s own note, and it sits on `vouchedBy`'s host. Otherwise, or
+ * when that actor cannot be resolved, `undefined`, and the caller fetches by
+ * id instead.
+ */
+const persistVouchedQuoted = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+  uri: string,
+  embedded: EmbeddedQuoted,
+  options: PersistOptions,
+): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
+  const note = parseNoteDocument(embedded.object);
+  const host = urlHost(uri);
+  if (
+    note.isErr() ||
+    note.value.id !== uri ||
+    note.value.attributedTo !== embedded.vouchedBy ||
+    host === undefined ||
+    host !== urlHost(embedded.vouchedBy)
+  ) {
+    return ok(undefined);
+  }
+  if (embedded.vouchedBy === actor.actorUri) {
+    return storeRemoteNote(env, identity, actor, embedded.object, options);
+  }
+  const author = await resolveRemoteActor(
+    env.DB,
+    identity,
+    `${embedded.vouchedBy}#main-key`,
+    embedded.vouchedBy,
+    options,
+  );
+  if (author.isErr()) {
+    return author.error.kind === "RepositoryError" ? err(author.error) : ok(undefined);
+  }
+  return storeRemoteNote(env, identity, author.value, embedded.object, options);
+};
+
+/**
  * How a note `actor` wrote reaches the note it quotes and that quote's stamp.
- * An uncached quoted note is fetched as an announced one, unless
- * `options.fetchQuoted` is `false`.
+ * An uncached quoted note comes from an inlined copy its sender vouches for
+ * ({@link persistVouchedQuoted}), else is fetched as an announced one, while
+ * `options.quoteDepth` is under {@link MAX_QUOTE_DEPTH}; the quoted note is
+ * stored one level deeper.
  */
 export const remoteQuoteContext = (
   env: Env,
   identity: InstanceIdentity,
   actor: RemoteActor,
   options: PersistOptions,
-): RemoteQuoteContext => ({
-  fetchOptions: options,
-  resolveQuoted: async (uri) => {
-    const cached = await findRemoteStatusByObjectUri(env.DB, uri);
-    if (cached.isErr() || cached.value || options.fetchQuoted === false) {
-      return cached;
-    }
-    return persistAnnouncedObject(env, identity, actor, uri, {
-      ...options,
-      notifyMentions: false,
-      fetchQuoted: false,
-    });
-  },
-});
+): RemoteQuoteContext => {
+  const depth = options.quoteDepth ?? 0;
+  const mayFetch = depth < MAX_QUOTE_DEPTH;
+  const nested: PersistOptions = { ...options, notifyMentions: false, quoteDepth: depth + 1 };
+  return {
+    fetchOptions: options,
+    mayFetch,
+    resolveQuoted: async (uri, embedded) => {
+      const cached = await findRemoteStatusByObjectUri(env.DB, uri);
+      if (cached.isErr() || cached.value || !mayFetch) {
+        return cached;
+      }
+      if (embedded) {
+        const vouched = await persistVouchedQuoted(env, identity, actor, uri, embedded, nested);
+        if (vouched.isErr() || vouched.value) {
+          return vouched;
+        }
+      }
+      return persistAnnouncedObject(env, identity, actor, uri, nested);
+    },
+  };
+};
 
 const urlHost = (href: string): string | undefined => {
   try {
@@ -441,7 +508,7 @@ const storeRemoteNote = async (
   raw: unknown,
   options: PersistOptions,
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
-  const parsed = noteFromUnknown(raw, actor.actorUri, options.idClock);
+  const parsed = noteFromUnknown(raw, actor, options.idClock);
   if (parsed.isErr()) {
     return parsed.error.kind === "RepositoryError" ? err(parsed.error) : ok(undefined);
   }

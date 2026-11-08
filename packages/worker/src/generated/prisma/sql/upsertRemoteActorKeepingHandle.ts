@@ -19,9 +19,11 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param profileJson
  * @param outboxUri
  * @param featuredUri
+ * @param followersUri
+ * @param followingUri
  */
 export const upsertRemoteActorKeepingHandle = $runtime.makeTypedQueryFactory(
-  "INSERT INTO remote_actors (\nactor_uri, username, domain, inbox_uri, shared_inbox_uri,\npublic_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at, profile_json,\noutbox_uri, featured_uri, last_webfingered_at\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NULL)\nON CONFLICT(actor_uri) DO UPDATE SET\ninbox_uri = excluded.inbox_uri,\nshared_inbox_uri = excluded.shared_inbox_uri,\npublic_key_id = excluded.public_key_id,\npublic_key_pem = excluded.public_key_pem,\ndisplay_name = excluded.display_name,\nprofile_json = excluded.profile_json,\noutbox_uri = excluded.outbox_uri,\nfeatured_uri = excluded.featured_uri,\nfetched_at = excluded.fetched_at,\nupdated_at = excluded.updated_at\nRETURNING username, domain, last_webfingered_at",
+  "INSERT INTO remote_actors (\nactor_uri, username, domain, inbox_uri, shared_inbox_uri,\npublic_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at, profile_json,\noutbox_uri, featured_uri, last_webfingered_at, followers_uri, following_uri\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NULL, $15, $16)\nON CONFLICT(actor_uri) DO UPDATE SET\ninbox_uri = excluded.inbox_uri,\nshared_inbox_uri = excluded.shared_inbox_uri,\npublic_key_id = excluded.public_key_id,\npublic_key_pem = excluded.public_key_pem,\ndisplay_name = excluded.display_name,\nprofile_json = excluded.profile_json,\noutbox_uri = excluded.outbox_uri,\nfeatured_uri = excluded.featured_uri,\nfollowers_uri = excluded.followers_uri,\nfollowing_uri = excluded.following_uri,\nfetched_at = excluded.fetched_at,\nupdated_at = excluded.updated_at\nRETURNING username, domain, last_webfingered_at",
 ) as (
   actorUri: string,
   username: string,
@@ -37,6 +39,8 @@ export const upsertRemoteActorKeepingHandle = $runtime.makeTypedQueryFactory(
   profileJson: string,
   outboxUri: string | null,
   featuredUri: string | null,
+  followersUri: string | null,
+  followingUri: string | null,
 ) => $runtime.TypedSql<
   upsertRemoteActorKeepingHandle.Parameters,
   upsertRemoteActorKeepingHandle.Result
@@ -58,6 +62,8 @@ export namespace upsertRemoteActorKeepingHandle {
     profileJson: string,
     outboxUri: string | null,
     featuredUri: string | null,
+    followersUri: string | null,
+    followingUri: string | null,
   ];
   export type Result = {
     username: string;

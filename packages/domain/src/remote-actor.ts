@@ -47,6 +47,12 @@ const RemoteActorSchema = z.object({
   outboxUri: z.url().optional(),
   /** Its `featured` collection: the notes it pinned. */
   featuredUri: z.url().optional(),
+  /**
+   * Its `followers` and `following` collections (Mastodon's `followers_url`
+   * / `following_url`), kept only on the actor's own host.
+   */
+  followersUri: z.url().optional(),
+  followingUri: z.url().optional(),
   fetchedAt: IsoInstant.schema,
   /**
    * When WebFinger last confirmed `username@domain` for this actor
@@ -85,6 +91,8 @@ export const RemoteActor = {
     movedTo?: string | undefined;
     outboxUri?: string | undefined;
     featuredUri?: string | undefined;
+    followersUri?: string | undefined;
+    followingUri?: string | undefined;
     fetchedAt: z.infer<typeof IsoInstant.schema>;
     webfingeredAt?: z.infer<typeof IsoInstant.schema> | undefined;
   }): Result<RemoteActor, RemoteActorParseError> => {
@@ -103,6 +111,8 @@ export const RemoteActor = {
       ...(input.movedTo ? { movedTo: input.movedTo } : {}),
       ...(input.outboxUri ? { outboxUri: input.outboxUri } : {}),
       ...(input.featuredUri ? { featuredUri: input.featuredUri } : {}),
+      ...(input.followersUri ? { followersUri: input.followersUri } : {}),
+      ...(input.followingUri ? { followingUri: input.followingUri } : {}),
       ...(input.webfingeredAt ? { webfingeredAt: input.webfingeredAt } : {}),
     });
     return parsed.mapErr((): RemoteActorParseError => ({ kind: "InvalidActor" }));

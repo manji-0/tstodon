@@ -33,6 +33,7 @@ export type * from "./models/filter_statuses";
 export type * from "./models/filters";
 export type * from "./models/follows";
 export type * from "./models/blocks";
+export type * from "./models/remote_blocks";
 export type * from "./models/mutes";
 export type * from "./models/notification_dismissals";
 export type * from "./models/notification_clear_markers";

@@ -147,6 +147,11 @@ export type follows = Prisma.followsModel;
  */
 export type blocks = Prisma.blocksModel;
 /**
+ * Model remote_blocks
+ *
+ */
+export type remote_blocks = Prisma.remote_blocksModel;
+/**
  * Model mutes
  *
  */

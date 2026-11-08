@@ -10,6 +10,7 @@ import {
   deleteRemoteAnnounce as deleteRemoteAnnounceSql,
   deleteRemoteFavourite as deleteRemoteFavouriteSql,
   listPollInteractorInboxes as listPollInteractorInboxesSql,
+  listStatusReachInboxes as listStatusReachInboxesSql,
   upsertRemoteAnnounce as upsertRemoteAnnounceSql,
   upsertRemoteFavourite as upsertRemoteFavouriteSql,
 } from "./generated/prisma/sql";
@@ -99,5 +100,30 @@ export const listPollInteractorInboxes = async (
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(db, listPollInteractorInboxesSql(statusId), InboxUriRow);
+    return rows.map((row) => row.inbox_uri);
+  });
+
+/**
+ * The inboxes of the remote actors that mention (a local status), boost,
+ * favourite or reply to a status, without suspended actors: the
+ * `ListStatusInteractorInboxes` lookup. `uri` is the status's ActivityPub id.
+ */
+export const listStatusInteractorInboxes = async (
+  db: D1Database,
+  status: Readonly<
+    | { kind: "Local"; statusId: string; uri: string }
+    | { kind: "Remote"; statusId: string; uri: string }
+  >,
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped(
+      db,
+      listStatusReachInboxesSql(
+        status.kind === "Local" ? status.statusId : "",
+        status.kind === "Remote" ? status.statusId : "",
+        status.uri,
+      ),
+      InboxUriRow,
+    );
     return rows.map((row) => row.inbox_uri);
   });

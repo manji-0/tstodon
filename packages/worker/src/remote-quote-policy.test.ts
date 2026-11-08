@@ -221,6 +221,69 @@ describe("remote quote policies", () => {
     });
   });
 
+  it("keeps the collections an actor names on its own host and matches canQuote against them", async () => {
+    const bob = await remoteActor("quote-policy-collections");
+    const fans = "https://remote.example/ap/fans/quote-policy-collections";
+    expect(
+      await bob.send({
+        id: `${bob.actorUri}#updates/collections`,
+        type: "Update",
+        object: {
+          id: bob.actorUri,
+          type: "Person",
+          preferredUsername: "quote-policy-collections",
+          inbox: `${bob.actorUri}/inbox`,
+          followers: { id: fans, type: "OrderedCollection" },
+          following: "https://elsewhere.example/users/quote-policy-collections/following",
+          publicKey: {
+            id: `${bob.actorUri}#main-key`,
+            owner: bob.actorUri,
+            publicKeyPem: bob.publicKeyPem,
+          },
+        },
+      }),
+    ).toBe(202);
+    expect(
+      await env.DB.prepare(
+        "SELECT followers_uri, following_uri FROM remote_actors WHERE actor_uri = ?",
+      )
+        .bind(bob.actorUri)
+        .first(),
+    ).toEqual({ followers_uri: fans, following_uri: null });
+
+    // The lookalike `/followers` path on the author's host is not its collection.
+    const status = await note(
+      bob,
+      "quote-policy-collections",
+      canQuote({ automaticApproval: [fans], manualApproval: [`${bob.actorUri}/followers`] }),
+    );
+    expect(await quoteApproval(status.id, "quote-policy-collections@example.com")).toEqual({
+      automatic: ["followers"],
+      manual: ["unsupported_policy"],
+      current_user: "unknown",
+    });
+  });
+
+  it("matches another actor's collection path on the author's host as unsupported", async () => {
+    const bob = await remoteActor("quote-policy-lookalike", "remote.example", {
+      followersUri: "https://remote.example/users/quote-policy-lookalike/followers",
+      followingUri: "https://remote.example/users/quote-policy-lookalike/following",
+    });
+    const status = await note(
+      bob,
+      "quote-policy-lookalike",
+      canQuote({
+        automaticApproval: ["https://remote.example/users/someone-else/followers"],
+        manualApproval: [`${bob.actorUri}/following`],
+      }),
+    );
+    expect(await quoteApproval(status.id, "quote-policy-lookalike@example.com")).toEqual({
+      automatic: ["unsupported_policy"],
+      manual: ["following"],
+      current_user: "unknown",
+    });
+  });
+
   it("denies an anonymous viewer, as Mastodon does", async () => {
     const bob = await remoteActor("quote-policy-anonymous");
     const status = await note(

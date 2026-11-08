@@ -8,7 +8,7 @@
 -- suspended; neither its account domain's hostname (`host`) nor its URI's
 -- (`uri_host`) is in `suspendedDomains`; and, when there is an allow list,
 -- `allowListAdmits` the authority, with or without its port, and the URI host.
-SELECT actor_uri, username, domain, inbox_uri, shared_inbox_uri, public_key_id, public_key_pem, display_name, profile_json, moved_to, outbox_uri, featured_uri, fetched_at
+SELECT actor_uri, username, domain, inbox_uri, shared_inbox_uri, public_key_id, public_key_pem, display_name, profile_json, moved_to, outbox_uri, featured_uri, followers_uri, following_uri, fetched_at
 FROM remote_actors
 WHERE (username LIKE $1 OR (username || '@' || domain) LIKE $1)
   AND actor_uri NOT IN (SELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended')
