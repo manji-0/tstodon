@@ -1,3 +1,4 @@
+import { type ApiPreviewCardJSON, isPreviewCardType, type PreviewCardType } from "@tstodon/api";
 import type { Hostname, InstanceIdentity } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { z } from "zod";
@@ -33,7 +34,7 @@ export type LinkCard = Readonly<{
   authorName: string;
   authorUrl: string;
   image: string | null;
-  type: string;
+  type: PreviewCardType;
 }>;
 
 const MAX_HTML_CHARS = 200_000;
@@ -55,10 +56,12 @@ const CardSchema = z.object({
   type: z.string().min(1),
 });
 
-export const cardDocument = (card: LinkCard): Record<string, unknown> => ({
+export const cardDocument = (card: LinkCard): ApiPreviewCardJSON => ({
   url: card.url,
   title: card.title,
   description: card.description,
+  // The page's language is not read.
+  language: null,
   type: card.type,
   author_name: card.authorName,
   author_url: card.authorUrl,
@@ -68,8 +71,12 @@ export const cardDocument = (card: LinkCard): Record<string, unknown> => ({
   width: 0,
   height: 0,
   image: card.image,
+  image_description: "",
   embed_url: "",
   blurhash: null,
+  published_at: null,
+  // Mastodon 4.3's fediverse author attribution (`fediverse:creator`) is not read.
+  authors: [],
 });
 
 export const parseCardJson = (raw: string): LinkCard | undefined => {
@@ -87,7 +94,8 @@ export const parseCardJson = (raw: string): LinkCard | undefined => {
     authorName: value.author_name,
     authorUrl: value.author_url,
     image: value.image,
-    type: value.type,
+    // A card cached before its type was checked reads as a link.
+    type: isPreviewCardType(value.type) ? value.type : "link",
   };
 };
 
