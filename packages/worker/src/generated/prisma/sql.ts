@@ -164,6 +164,8 @@ export * from "./sql/deleteRemoteNotifications";
 
 export * from "./sql/deleteRemoteStatusByObjectUri";
 
+export * from "./sql/deleteRemoteStatusRemoteMentions";
+
 export * from "./sql/deleteSignupIntentsByEmail";
 
 export * from "./sql/deleteStatusMentions";
@@ -421,6 +423,8 @@ export * from "./sql/insertRemotePollVoteOrIgnore";
 export * from "./sql/insertRemoteStatusEdit";
 
 export * from "./sql/insertRemoteStatusMention";
+
+export * from "./sql/insertRemoteStatusRemoteMention";
 
 export * from "./sql/insertReport";
 

@@ -557,4 +557,38 @@ describe("remote notes that quote a local status", () => {
     expect(await deliveryInboxes(deletion.id)).toContain(`${quote.bob.actorUri}/inbox`);
     expect((await quoteOf(quote.email, bobNoteId))?.state).toBe("revoked");
   });
+
+  it("also withdraws the stamp from the cached remote actors the quoting note mentions, once per inbox", async () => {
+    const quote = await setup("rqr-reach-mentions");
+    const carol = await remoteActor("rqr-reach-carol", "carol.example");
+    const dave = await remoteActor("rqr-reach-dave", "shared.example", {
+      sharedInboxUri: "https://shared.example/inbox",
+    });
+    const frank = await remoteActor("rqr-reach-frank", "shared.example", {
+      sharedInboxUri: "https://shared.example/inbox",
+    });
+    // Not cached: it is kept as a mention, but nothing fetches it for reach.
+    const ghost = "https://ghost.example/users/ghost";
+    const tag = [carol.actorUri, dave.actorUri, frank.actorUri, ghost, quote.aliceUri].map(
+      (href) => ({ type: "Mention", href }),
+    );
+    expect(await quote.request({ instrument: quote.note({ tag }) })).toBe(202);
+    const bobNoteId = await remoteStatusId(quote.noteUri);
+
+    const revoked = await send(
+      quote.email,
+      `/api/v1/statuses/${quote.statusId}/quotes/${bobNoteId}/revoke`,
+    );
+    expect(revoked.status).toBe(200);
+
+    const [deletion] = await queued(quote.alice.id, "Delete");
+    if (!deletion) {
+      throw new Error("no Delete was queued");
+    }
+    expect((await deliveryInboxes(deletion.id)).toSorted()).toEqual([
+      `${carol.actorUri}/inbox`,
+      `${quote.bob.actorUri}/inbox`,
+      "https://shared.example/inbox",
+    ]);
+  });
 });
