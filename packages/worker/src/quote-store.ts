@@ -392,3 +392,51 @@ export const setStatusQuotePolicy = async (
       .bind(statusId, policy)
       .run();
   });
+
+const StaleRefreshRow = z.object({ id: z.string(), updated_at: z.string() });
+const ClaimedRow = z.object({ id: z.string() });
+
+/**
+ * The accepted quote a status makes on a remote stamp, when it was last
+ * checked or changed before `staleBefore`, with that instant: a quote due
+ * for a refresh, as Mastodon's `Quote#schedule_refresh_if_stale!`.
+ */
+export const findStaleQuoteRefresh = async (
+  db: D1Database,
+  statusId: string,
+  staleBefore: string,
+): Promise<Result<Readonly<{ id: string; updatedAt: string }> | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT id, updated_at FROM status_quotes
+         WHERE (status_id = ? OR remote_status_id = ?)
+           AND state = 'accepted' AND approval_uri IS NOT NULL AND updated_at <= ?
+         LIMIT 1`,
+      )
+      .bind(statusId, statusId, staleBefore)
+      .all();
+    const row = parseRows(StaleRefreshRow, results)[0];
+    return row && { id: row.id, updatedAt: row.updated_at };
+  });
+
+/**
+ * Mark a quote as checked at `claimedAt`, unless someone did since
+ * `previous` (Mastodon's `quote.touch` under the worker's lock); `false`
+ * when another view claimed it first.
+ */
+export const claimQuoteRefresh = async (
+  db: D1Database,
+  id: string,
+  previous: string,
+  claimedAt: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        "UPDATE status_quotes SET updated_at = ? WHERE id = ? AND updated_at = ? RETURNING id",
+      )
+      .bind(claimedAt, id, previous)
+      .all();
+    return parseRows(ClaimedRow, results).length > 0;
+  });

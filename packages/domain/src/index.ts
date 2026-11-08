@@ -204,6 +204,7 @@ export {
   QuotedTarget,
   type QuotedTarget as QuotedTargetValue,
 } from "./quote";
+export { QuoteRetry } from "./quote-retry";
 export {
   StatusQuoteTarget,
   type StatusQuoteTarget as StatusQuoteTargetValue,

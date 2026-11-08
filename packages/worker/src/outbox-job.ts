@@ -37,6 +37,7 @@ import { startOutboxDeliveryWorkflow } from "./delivery";
 import { parseJsonText } from "./json-column";
 import { parseLocalStatusId } from "./activitypub";
 import { listPollInteractorInboxes } from "./remote-interaction-store";
+import { processRefetchAndVerifyQuoteJob, processRefreshQuoteJob } from "./quote-retry-jobs";
 
 const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -215,6 +216,10 @@ export const processOutboxJob = async (
       return processBackfillRemoteOutboxJob(env, job);
     case "BackfillRemoteThread":
       return processBackfillRemoteThreadJob(env, job);
+    case "RefetchAndVerifyQuote":
+      return processRefetchAndVerifyQuoteJob(env, job);
+    case "RefreshQuote":
+      return processRefreshQuoteJob(env, job);
     case "ExpandFollowers": {
       const startedAt = Date.now();
       const activity = await findOutboundActivity(env.DB, job.activityId);
