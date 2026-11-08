@@ -21,7 +21,11 @@ export default defineConfig({
         extends: false,
         test: {
           name: "domain",
-          include: ["packages/core/src/**/*.test.ts", "packages/domain/src/**/*.test.ts"],
+          include: [
+            "packages/core/src/**/*.test.ts",
+            "packages/domain/src/**/*.test.ts",
+            "packages/api/src/**/*.test.ts",
+          ],
           environment: "node",
         },
       },
