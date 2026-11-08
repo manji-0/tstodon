@@ -66,7 +66,7 @@ export const getUsersByUsername = async (c: Context<{ Bindings: Env }, "/users/:
   if (!account.value) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  const document = await localActorDocument(c.env.DB, identity.value, account.value);
+  const document = await localActorDocument(c.env, identity.value, account.value);
   if (document.isErr()) {
     return jsonRepositoryError(c, document.error.message);
   }

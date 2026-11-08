@@ -181,6 +181,19 @@ describe("account profiles", () => {
     expect(status.fields.map((field) => field.name)).toEqual(["Website"]);
   });
 
+  it("renders a profile field value as escaped HTML, never raw markup", async () => {
+    const email = "profile-field-xss@example.com";
+    const raw = '<img src=x onerror="alert(1)"> & co';
+    const updated = read(
+      AccountSchema,
+      (await updateCredentials(email, { fields: [{ name: "Site", value: raw }] })).body,
+    );
+    const escaped = "&lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; co";
+    expect(updated.fields[0]?.value).toBe(escaped);
+    const publicAccount = read(AccountSchema, (await json(`/api/v1/accounts/${updated.id}`)).body);
+    expect(publicAccount.fields[0]?.value).toBe(escaped);
+  });
+
   it("keeps at most four profile fields", async () => {
     const email = "profile-fields@example.com";
     const updated = await updateCredentials(email, {

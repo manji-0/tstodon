@@ -7010,6 +7010,12 @@ export const Media_attachmentsScalarFieldEnum = {
   focus_y: "focus_y",
   legacy_object_key: "legacy_object_key",
   position: "position",
+  width: "width",
+  height: "height",
+  preview_object_key: "preview_object_key",
+  preview_width: "preview_width",
+  preview_height: "preview_height",
+  blurhash: "blurhash",
 } as const;
 
 export type Media_attachmentsScalarFieldEnum =

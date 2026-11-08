@@ -1,3 +1,4 @@
+import type { ImageDimensions } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { jsonStringArray, runD1, sqlInJsonEach, type RepositoryError } from "./d1";
@@ -29,9 +30,26 @@ export const MediaRowSchema = z.object({
   description: z.string().nullable(),
   focus_x: z.number().nullable(),
   focus_y: z.number().nullable(),
+  width: z.number().int().nullable(),
+  height: z.number().int().nullable(),
+  preview_object_key: z.string().min(1).nullable(),
+  preview_width: z.number().int().nullable(),
+  preview_height: z.number().int().nullable(),
+  blurhash: z.string().min(1).nullable(),
 });
 
 export type MediaRow = z.infer<typeof MediaRowSchema>;
+
+/**
+ * What an image upload stores beside the original: its dimensions, the
+ * preview's key and dimensions (absent when storing the preview failed), and
+ * the blurhash.
+ */
+export type StoredImage = Readonly<{
+  original: ImageDimensions;
+  preview: Readonly<{ objectKey: string; dimensions: ImageDimensions }> | undefined;
+  blurhash: string | null;
+}>;
 
 /** Mastodon's `focus` value: `"x,y"` with each component in [-1, 1]. */
 export const parseMediaFocus = (raw: string): Readonly<{ x: number; y: number }> | undefined => {
@@ -53,12 +71,21 @@ export const insertMedia = async (
     contentType: string;
     description: string | null;
     focus: Readonly<{ x: number; y: number }> | null;
+    image: StoredImage | null;
   },
 ): Promise<Result<MediaRow, RepositoryError>> =>
   runD1(async () => {
     const createdAt = nowIso();
     const focusX = input.focus?.x ?? null;
     const focusY = input.focus?.y ?? null;
+    const image = {
+      width: input.image?.original.width ?? null,
+      height: input.image?.original.height ?? null,
+      preview_object_key: input.image?.preview?.objectKey ?? null,
+      preview_width: input.image?.preview?.dimensions.width ?? null,
+      preview_height: input.image?.preview?.dimensions.height ?? null,
+      blurhash: input.image?.blurhash ?? null,
+    };
     // Prisma 7 exposes TypedSQL writes through $queryRawTyped (no $executeRawTyped yet).
     await runTyped(
       db,
@@ -71,6 +98,12 @@ export const insertMedia = async (
         input.description,
         focusX,
         focusY,
+        image.width,
+        image.height,
+        image.preview_object_key,
+        image.preview_width,
+        image.preview_height,
+        image.blurhash,
       ),
     );
     return {
@@ -83,6 +116,7 @@ export const insertMedia = async (
       description: input.description,
       focus_x: focusX,
       focus_y: focusY,
+      ...image,
     };
   });
 
@@ -107,7 +141,8 @@ export const findMediaByIds = async (
   const queried = await runD1(() =>
     db
       .prepare(
-        `SELECT id, account_id, status_id, object_key, content_type, created_at, description, focus_x, focus_y
+        `SELECT id, account_id, status_id, object_key, content_type, created_at, description, focus_x, focus_y,
+           width, height, preview_object_key, preview_width, preview_height, blurhash
          FROM media_attachments WHERE id ${sqlInJsonEach()}`,
       )
       .bind(jsonStringArray(unique))
@@ -170,11 +205,12 @@ export const updateMediaMetadata = async (
 const DeletedMediaRow = z.object({
   object_key: z.string(),
   legacy_object_key: z.string().nullable(),
+  preview_object_key: z.string().nullable(),
 });
 
 /**
- * Delete a media row, returning the object keys it held (its key, and a
- * legacy key not yet removed) so the caller can drop the objects.
+ * Delete a media row, returning the object keys it held (its key, its
+ * preview's, and a legacy key not yet removed) so the caller can drop the objects.
  */
 export const deleteMedia = async (
   db: D1Database,
@@ -186,9 +222,9 @@ export const deleteMedia = async (
     return [
       ...new Set(
         rows.flatMap((row) =>
-          row.legacy_object_key === null
-            ? [row.object_key]
-            : [row.object_key, row.legacy_object_key],
+          [row.object_key, row.legacy_object_key, row.preview_object_key].filter(
+            (key): key is string => key !== null,
+          ),
         ),
       ),
     ];

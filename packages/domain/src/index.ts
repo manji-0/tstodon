@@ -62,6 +62,13 @@ export {
 } from "./local-account-moderation";
 export { MediaId } from "./media-id";
 export {
+  ImageDimensions,
+  type AnalyzeImage,
+  type ImageAnalysis,
+  type ImageMeta,
+  type ImagePreview,
+} from "./media-image";
+export {
   OutboxDelivery,
   DELIVERY_MAX_ATTEMPTS,
   type OutboxDelivery as OutboxDeliveryValue,
