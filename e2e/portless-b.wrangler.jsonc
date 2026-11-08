@@ -23,7 +23,7 @@
     },
   },
   "assets": {
-    "directory": "../packages/worker/assets",
+    "directory": "../packages/worker/public",
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "none",

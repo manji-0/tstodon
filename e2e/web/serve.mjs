@@ -1,17 +1,14 @@
 // Playwright's web server for the browser e2e suite: a fresh copy of the
 // migrated database (database.mjs), then the Worker in Void's dev server on
 // http://localhost:8793 with e2e/web.wrangler.jsonc (mail captured in APP_CACHE).
+// The dev server serves Mastodon's web frontend from source (packages/worker/src)
+// and fetches upstream's emoji on first start.
 import { spawn } from "node:child_process";
-import { cpSync, existsSync, rmSync } from "node:fs";
+import { cpSync, rmSync } from "node:fs";
 import path from "node:path";
 import { config, migratedDatabase, root } from "./database.mjs";
 
 const state = ".wrangler/e2e-web";
-
-if (!existsSync(path.join(root, "packages/worker/assets/packs/tstodon-web.json"))) {
-  console.error("The Mastodon web UI is not built. Run `pnpm web:build` first.");
-  process.exit(1);
-}
 
 // Only `v3`, the Worker's local storage, is replaced. `vite` beside it is
 // Vite's dependency cache, which takes about a minute to rebuild.
