@@ -1,17 +1,24 @@
 #!/usr/bin/env node
-// Build Mastodon's own web UI (its React app under app/javascript) and place
+// Build Mastodon's web UI (the React app vendored in packages/web) and place
 // the output in packages/worker/assets, which Void serves as Workers Assets.
 //
-// The Mastodon source is fetched at a pinned release (MASTODON_WEB_REF,
-// default below) into .cache/mastodon-web/<ref>, built with Mastodon's Vite
-// config, and copied without sourcemaps or precompressed files. The Worker
-// renders the HTML shell itself (src/web-app.ts) from packs/tstodon-web.json,
-// the compact manifest this script writes.
+// packages/web is Mastodon's frontend at the release named in
+// packages/web/upstream.json, with tstodon's changes (see UPSTREAM.md there).
+// The large static trees upstream keeps in public/ (`fetched` in
+// upstream.json: twemoji SVGs and Tesseract language data) are not committed:
+// they are fetched from that upstream commit into
+// .cache/mastodon-web/upstream/<commit>/ and linked into packages/web/public/.
+// The frontend is built with Mastodon's Vite config through pnpm and copied
+// without sourcemaps or precompressed files. The Worker renders the HTML shell
+// itself (src/web-app.ts) from packs/tstodon-web.json, the compact manifest
+// this script writes.
 //
-// A build takes over a minute, so it is skipped when the assets are the output
-// of this script at this ref: `.cache/mastodon-web/assets.stamp` holds a digest
-// of the ref, this script, and the manifest it wrote, and every file that
-// manifest names must exist. `--force` rebuilds.
+// A build takes about half a minute, so it is skipped when the assets are the
+// output of this script for the current sources: `.cache/mastodon-web/
+// assets.stamp` holds a digest of every file under packages/web that git
+// tracks or does not ignore, the lockfile and workspace settings, this
+// script, and the manifest it wrote, and every file that manifest names must
+// exist. `--force` rebuilds.
 //
 // Mastodon is AGPL-3.0-or-later, as tstodon is; the build output carries its
 // license notices.
@@ -22,33 +29,81 @@ import {
   copyFileSync,
   cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
+  readlinkSync,
+  renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
-const DEFAULT_REF = "v4.7.3";
-const REPOSITORY = "https://github.com/mastodon/mastodon.git";
-
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const ref = process.env.MASTODON_WEB_REF ?? DEFAULT_REF;
-const source = path.join(root, ".cache", "mastodon-web", ref);
+const web = path.join(root, "packages", "web");
+const cache = path.join(root, ".cache", "mastodon-web");
 const assets = path.join(root, "packages", "worker", "assets");
 const compactManifest = path.join(assets, "packs", "tstodon-web.json");
-const stamp = path.join(root, ".cache", "mastodon-web", "assets.stamp");
+const stamp = path.join(cache, "assets.stamp");
 
-/** The digest of what produced the current assets, or undefined before a build. */
-const assetsDigest = () =>
+const upstream = z
+  .object({
+    repository: z.string(),
+    tag: z.string(),
+    commit: z.string().regex(/^[0-9a-f]{40}$/),
+    fetched: z.array(z.string()),
+  })
+  .parse(JSON.parse(readFileSync(path.join(web, "upstream.json"), "utf8")));
+
+// The upstream release the build is based on, marked as carrying tstodon's changes.
+const ref = `${upstream.tag}+tstodon`;
+const fetchedRoot = path.join(cache, "upstream", upstream.commit);
+
+const git = (args, cwd = root) =>
+  execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+
+/** A digest of what the assets are built from: packages/web as it is on disk, the dependency lock, this script. */
+const sourcesDigest = () => {
+  const hash = createHash("sha256").update(`${ref}\0${upstream.commit}\0`);
+  const files = git([
+    "ls-files",
+    "-z",
+    "--cached",
+    "--others",
+    "--exclude-standard",
+    "--",
+    "packages/web",
+  ])
+    .split("\0")
+    .filter(Boolean);
+  for (const file of [...new Set(files)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
+    hash.update(`${file}\0`);
+    const full = path.join(root, file);
+    let stat;
+    try {
+      stat = lstatSync(full);
+    } catch {
+      hash.update("missing\0");
+      continue;
+    }
+    hash.update(stat.isSymbolicLink() ? `link:${readlinkSync(full)}` : readFileSync(full));
+    hash.update("\0");
+  }
+  for (const file of ["pnpm-lock.yaml", "pnpm-workspace.yaml"]) {
+    hash.update(readFileSync(path.join(root, file))).update("\0");
+  }
+  return hash.update(readFileSync(fileURLToPath(import.meta.url))).digest("hex");
+};
+
+/** The digest of the sources and the manifest a build wrote from them, or undefined before a build. */
+const assetsDigest = (sources) =>
   existsSync(compactManifest)
     ? createHash("sha256")
-        .update(`${ref}\0`)
-        .update(readFileSync(fileURLToPath(import.meta.url)))
-        .update("\0")
+        .update(`${sources}\0`)
         .update(readFileSync(compactManifest))
         .digest("hex")
     : undefined;
@@ -97,50 +152,106 @@ const assetsPresent = () => {
   );
 };
 
+const sources = sourcesDigest();
 if (
   !process.argv.includes("--force") &&
   existsSync(stamp) &&
-  readFileSync(stamp, "utf8") === assetsDigest() &&
+  readFileSync(stamp, "utf8") === assetsDigest(sources) &&
   assetsPresent()
 ) {
   console.log(`Mastodon web ${ref} is up to date in ${path.relative(root, assets)}`);
   process.exit(0);
 }
 
-const run = (command, args, cwd) =>
-  execFileSync(command, args, {
-    cwd,
-    stdio: "inherit",
-    env: { ...process.env, COREPACK_ENABLE_DOWNLOAD_PROMPT: "0" },
-  });
+const run = (command, args, cwd = root) => execFileSync(command, args, { cwd, stdio: "inherit" });
 
-if (!existsSync(path.join(source, "package.json"))) {
-  rmSync(source, { recursive: true, force: true });
-  mkdirSync(path.dirname(source), { recursive: true });
-  run("git", [
-    "clone",
-    "--depth",
-    "1",
-    "--branch",
-    ref,
-    "--filter=blob:none",
-    "--sparse",
-    REPOSITORY,
-    source,
-  ]);
-  // The frontend, its Vite plugins and configs, and the static files it uses.
+/**
+ * Fetches upstream's `fetched` paths at the pinned commit into fetchedRoot: a
+ * shallow, blob-filtered, sparse fetch of the tag, which must point at the
+ * recorded commit. Only the checked-out files are kept.
+ */
+const fetchUpstreamAssets = () => {
+  const marker = path.join(fetchedRoot, ".complete");
+  if (existsSync(marker) && readFileSync(marker, "utf8").trim() === upstream.commit) {
+    return;
+  }
+  const staging = `${fetchedRoot}.tmp`;
+  rmSync(staging, { recursive: true, force: true });
+  rmSync(fetchedRoot, { recursive: true, force: true });
+  mkdirSync(staging, { recursive: true });
+  console.log(`Fetching ${upstream.fetched.join(", ")} from Mastodon ${upstream.tag}`);
+  run("git", ["init", "--quiet"], staging);
+  run("git", ["remote", "add", "origin", upstream.repository], staging);
   run(
     "git",
-    ["sparse-checkout", "set", "app/javascript", "config", "public", "lib/javascript", "streaming"],
-    source,
+    ["sparse-checkout", "set", "--no-cone", ...upstream.fetched.map((p) => `/${p}/`)],
+    staging,
   );
-}
+  run(
+    "git",
+    [
+      "fetch",
+      "--quiet",
+      "--depth",
+      "1",
+      "--filter=blob:none",
+      "origin",
+      `refs/tags/${upstream.tag}`,
+    ],
+    staging,
+  );
+  const fetched = git(["rev-parse", "FETCH_HEAD^{commit}"], staging).trim();
+  if (fetched !== upstream.commit) {
+    throw new Error(
+      `Mastodon ${upstream.tag} is ${fetched}, but packages/web/upstream.json records ${upstream.commit}`,
+    );
+  }
+  run("git", ["-c", "advice.detachedHead=false", "checkout", "--quiet", upstream.commit], staging);
+  for (const p of upstream.fetched) {
+    if (!existsSync(path.join(staging, p))) {
+      throw new Error(`Mastodon ${upstream.tag} has no ${p}`);
+    }
+  }
+  rmSync(path.join(staging, ".git"), { recursive: true, force: true });
+  writeFileSync(path.join(staging, ".complete"), `${upstream.commit}\n`);
+  renameSync(staging, fetchedRoot);
+};
 
-run("corepack", ["yarn", "install", "--immutable"], source);
-run("corepack", ["yarn", "build:production"], source);
+/** Links each fetched path into packages/web, where upstream keeps it (gitignored there). */
+const linkUpstreamAssets = () => {
+  for (const p of upstream.fetched) {
+    const link = path.join(web, p);
+    rmSync(link, { recursive: true, force: true });
+    mkdirSync(path.dirname(link), { recursive: true });
+    symlinkSync(path.relative(path.dirname(link), path.join(fetchedRoot, p)), link, "dir");
+  }
+};
 
-const publicDir = path.join(source, "public");
+/** Removes fetched trees of other commits, and the clones the script kept before packages/web. */
+const pruneCache = () => {
+  for (const entry of readdirSync(path.join(cache, "upstream"))) {
+    if (entry !== upstream.commit) {
+      rmSync(path.join(cache, "upstream", entry), { recursive: true, force: true });
+    }
+  }
+  for (const entry of readdirSync(cache)) {
+    if (entry !== "upstream" && entry !== "assets.stamp") {
+      rmSync(path.join(cache, entry), { recursive: true, force: true });
+    }
+  }
+};
+
+fetchUpstreamAssets();
+linkUpstreamAssets();
+pruneCache();
+
+const publicDir = path.join(web, "public");
 const packs = path.join(publicDir, "packs");
+// Mastodon's production build keeps old files in its output directory; start
+// empty so no stale chunk is copied.
+rmSync(packs, { recursive: true, force: true });
+run("pnpm", ["--filter", "@tstodon/web", "run", "build:production"]);
+
 const keep = (file) => !file.endsWith(".map") && !file.endsWith(".gz");
 
 // Generated directories are replaced wholesale; see the .gitignore entries.
@@ -151,7 +262,7 @@ cpSync(packs, path.join(assets, "packs"), {
   recursive: true,
   filter: (from) => keep(from) && !from.includes(`${path.sep}.vite`),
 });
-cpSync(path.join(publicDir, "emoji"), path.join(assets, "emoji"), { recursive: true });
+cpSync(path.join(fetchedRoot, "public", "emoji"), path.join(assets, "emoji"), { recursive: true });
 cpSync(path.join(publicDir, "sounds"), path.join(assets, "sounds"), { recursive: true });
 for (const file of readdirSync(publicDir)) {
   if (/^(sw\.js|badge\.png|loading\.(gif|png)|oops\.(gif|png)|web-push-icon_.*\.png)$/.test(file)) {
@@ -187,7 +298,7 @@ const entry = (key) => {
   return { js: url(start.file), css: [...css], preload: [...preload] };
 };
 
-const locales = readdirSync(path.join(source, "app", "javascript", "mastodon", "locales"))
+const locales = readdirSync(path.join(web, "app", "javascript", "mastodon", "locales"))
   .filter((file) => /^[a-zA-Z-]+\.json$/.test(file))
   .map((file) => file.replace(/\.json$/, ""))
   .sort();
@@ -211,5 +322,5 @@ const compact = {
   locales,
 };
 writeFileSync(compactManifest, `${JSON.stringify(compact, null, 2)}\n`);
-writeFileSync(stamp, assetsDigest());
+writeFileSync(stamp, assetsDigest(sources));
 console.log(`Mastodon web ${ref} written to ${path.relative(root, assets)}`);
