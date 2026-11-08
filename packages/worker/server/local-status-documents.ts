@@ -1,3 +1,12 @@
+import type {
+  ApiAccountJSON,
+  ApiMediaAttachmentJSON,
+  ApiOriginalStatusJSON,
+  ApiPreviewCardJSON,
+  ApiQuotedStatusJSON,
+  ApiShallowQuoteJSON,
+  ApiStatusJSON,
+} from "@tstodon/api";
 import {
   InstanceIdentity,
   type LocalAccount,
@@ -22,8 +31,13 @@ import {
 import { listStatusMentions } from "./mention-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteActorsByUris } from "./remote-actor-store";
-import { mastodonRemoteStatuses } from "./remote-status-documents";
-import { isQuotedStatusShown, mastodonQuote, type QuotedDocument } from "./quote-document";
+import { mastodonRemoteStatuses, mastodonShallowRemoteStatuses } from "./remote-status-documents";
+import {
+  isQuotedStatusShown,
+  mastodonQuote,
+  mastodonShallowQuote,
+  type QuotedDocument,
+} from "./quote-document";
 import { quotedStatusAccess } from "./quoted-status-access";
 import { findRemoteStatusesByIds, findRemoteStatusRefsByObjectUris } from "./remote-status-store";
 import { findStatusesByIds, listStatusReplyUris } from "./status-store";
@@ -49,8 +63,8 @@ const mediaAttachmentsJson = (
   identity: InstanceIdentity,
   mediaIds: ReadonlyArray<string>,
   mediaById: ReadonlyMap<string, MediaRow>,
-): Record<string, unknown>[] => {
-  const media: Record<string, unknown>[] = [];
+): ApiMediaAttachmentJSON[] => {
+  const media: ApiMediaAttachmentJSON[] = [];
   for (const mediaId of mediaIds) {
     const row = mediaById.get(mediaId);
     if (!row) {
@@ -65,7 +79,7 @@ const buildLocalNoteDocument = (
   identity: InstanceIdentity,
   status: LocalNote,
   account: LocalAccount,
-  accountDoc: Record<string, unknown>,
+  accountDoc: ApiAccountJSON,
   interactions: StatusInteractionCounts,
   poll: PollRecord | undefined,
   mediaById: ReadonlyMap<string, MediaRow>,
@@ -73,8 +87,8 @@ const buildLocalNoteDocument = (
   emojis: ReadonlyArray<CustomEmoji>,
   muted: boolean,
   sensitized: boolean,
-  card: Record<string, unknown> | null,
-): Record<string, unknown> => {
+  card: ApiPreviewCardJSON | null,
+): ApiOriginalStatusJSON => {
   const url = `${InstanceIdentity.actorUrl(identity, account.username)}/statuses/${status.id}`;
   const attachments = mediaAttachmentsJson(identity, status.mediaIds, mediaById);
   return {
@@ -119,7 +133,7 @@ export const mastodonStatus = async (
   status: LocalStatus,
   viewerId: string | undefined,
   authors: StatusAuthors = StatusAuthors.available,
-): Promise<Result<Record<string, unknown> | undefined, RepositoryError>> =>
+): Promise<Result<ApiStatusJSON | undefined, RepositoryError>> =>
   (await mastodonStatuses(env, identity, [status], viewerId, authors)).map(
     (documents) => documents[0],
   );
@@ -139,11 +153,50 @@ export const mastodonStatuses = async (
   statuses: ReadonlyArray<LocalStatus>,
   viewerId: string | undefined,
   authors: StatusAuthors = StatusAuthors.available,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
-  if (statuses.length === 0) {
-    return ok([]);
-  }
+): Promise<Result<ApiStatusJSON[], RepositoryError>> =>
+  statuses.length === 0
+    ? ok([])
+    : (await renderLocalStatuses(env, identity, statuses, viewerId, authors)).map(
+        ({ documents }) => documents,
+      );
 
+/**
+ * {@link mastodonStatuses} for local statuses shown inside another's quote,
+ * as Mastodon's `ShallowStatusSerializer`: each one's own quote by id only,
+ * which ends the nesting. A boost is never quoted, so boosts are left out.
+ */
+export const mastodonShallowStatuses = async (
+  env: Env,
+  identity: InstanceIdentity,
+  statuses: ReadonlyArray<LocalStatus>,
+  viewerId: string | undefined,
+): Promise<Result<ApiQuotedStatusJSON[], RepositoryError>> =>
+  statuses.length === 0
+    ? ok([])
+    : (await renderLocalStatuses(env, identity, statuses, viewerId, StatusAuthors.available)).map(
+        ({ shallow }) =>
+          statuses.flatMap((status) => {
+            const document = shallow(status);
+            return document ? [document] : [];
+          }),
+      );
+
+/** The statuses rendered in full, and how each renders shown inside a quote. */
+const renderLocalStatuses = async (
+  env: Env,
+  identity: InstanceIdentity,
+  statuses: ReadonlyArray<LocalStatus>,
+  viewerId: string | undefined,
+  authors: StatusAuthors,
+): Promise<
+  Result<
+    Readonly<{
+      documents: ApiStatusJSON[];
+      shallow: (status: LocalStatus) => ApiQuotedStatusJSON | undefined;
+    }>,
+    RepositoryError
+  >
+> => {
   const instanceEmojis = await loadCustomEmojis(env, identity.mediaPublicBaseUrl);
 
   const byId = new Map<string, LocalStatus>(statuses.map((status) => [status.id, status]));
@@ -207,6 +260,22 @@ export const mastodonStatuses = async (
     }
   }
   quotes = await loadQuotes(byId.values());
+  // A quoted status shows its own quote by id, under the state the viewer
+  // sees it in: load the local statuses those quotes name too.
+  const nestedMissing = [
+    ...new Set(
+      [...quotes.values()].flatMap(({ quoted }) =>
+        quoted.kind === "LocalStatus" && !byId.has(quoted.statusId) ? [quoted.statusId] : [],
+      ),
+    ),
+  ];
+  if (nestedMissing.length > 0) {
+    const loaded = await findStatusesByIds(env.DB, nestedMissing);
+    for (const [id, status] of loaded.isOk() ? loaded.value : []) {
+      byId.set(id, status);
+    }
+    quotes = await loadQuotes(byId.values());
+  }
 
   const allStatuses = [...byId.values()];
   const accountIds = [...new Set(allStatuses.map((status) => status.accountId))];
@@ -245,7 +314,7 @@ export const mastodonStatuses = async (
   const sensitizedIds = sensitizedResult.isOk() ? sensitizedResult.value : new Set<string>();
   const cards = new Map(
     [...(cardsResult.isOk() ? cardsResult.value : [])].flatMap(
-      ([statusId, raw]): [string, Record<string, unknown>][] => {
+      ([statusId, raw]): [string, ApiPreviewCardJSON][] => {
         const card = parseCardJson(raw);
         return card ? [[statusId, cardDocument(card)]] : [];
       },
@@ -271,7 +340,7 @@ export const mastodonStatuses = async (
   const viewerFollowing = viewerId ? await followingAccountIds(env.DB, viewerId) : undefined;
   const followedByIds = viewerFollowing?.isOk() ? viewerFollowing.value : new Set<string>();
 
-  const noteDocs = new Map<string, Record<string, unknown>>();
+  const noteDocs = new Map<string, ApiOriginalStatusJSON>();
   const mutedRoots = viewerId ? await listStatusMuteRoots(env.DB, viewerId) : undefined;
   const mutedSet = mutedRoots?.isOk() ? mutedRoots.value : new Set<string>();
   const threadRoots =
@@ -419,15 +488,13 @@ export const mastodonStatuses = async (
   const accessOf = quotedAccess.value;
   const [remoteRendered, quotedRemoteRendered] = await Promise.all([
     mastodonRemoteStatuses(env, identity, remotesOf(boostedRemoteIds), viewerId, boosted),
-    mastodonRemoteStatuses(
+    mastodonShallowRemoteStatuses(
       env,
       identity,
       remotesOf(quotedRemoteIds).filter((status) =>
         isQuotedStatusShown(accessOf(StatusTarget.remote(status.id))),
       ),
       viewerId,
-      StatusAuthors.available,
-      "Shallow",
     ),
   ]);
   if (remoteRendered.isErr()) {
@@ -438,6 +505,24 @@ export const mastodonStatuses = async (
   }
   const remoteDocs = documentsById(remoteRendered.value);
   const quotedRemoteDocs = documentsById(quotedRemoteRendered.value);
+  // A local status shown inside a quote shows its own quote by id only, as
+  // Mastodon's `ShallowQuoteSerializer`, which ends the nesting.
+  const shallowQuoteOf = (statusId: string): ApiShallowQuoteJSON | null => {
+    const quote = quotes.get(statusId);
+    if (!quote) {
+      return null;
+    }
+    const { quoted } = quote;
+    return mastodonShallowQuote(
+      quote.state,
+      quoted.kind === "Unresolved" ? null : quoted.statusId,
+      () => (quoted.kind === "Unresolved" ? "Gone" : accessOf(quoted)),
+    );
+  };
+  const shallowLocalDocument = (statusId: string): ApiQuotedStatusJSON | undefined => {
+    const document = noteDocs.get(statusId);
+    return document && { ...document, quote: shallowQuoteOf(statusId) };
+  };
   const quotedDocument = (quoted: StatusTargetValue): QuotedDocument => {
     const access = accessOf(quoted);
     if (access === "Gone") {
@@ -452,7 +537,7 @@ export const mastodonStatuses = async (
       quoted.kind === "RemoteStatus"
         ? quotedRemoteDocs.get(quoted.statusId)
         : author && StatusAuthors.available(author.presentation)
-          ? noteDocs.get(quoted.statusId)
+          ? shallowLocalDocument(quoted.statusId)
           : undefined;
     return document ? { access, document } : "Unauthorized";
   };
@@ -495,10 +580,16 @@ export const mastodonStatuses = async (
     };
   }
 
-  const render = (
+  const renderNote = (
     status: LocalStatus,
     rule: StatusAuthors,
-  ): Record<string, unknown> | undefined => {
+  ): ApiOriginalStatusJSON | undefined => {
+    const author = authorOf(status);
+    return author && rule(author.presentation) && status.kind === "LocalNote"
+      ? noteDocs.get(status.id)
+      : undefined;
+  };
+  const render = (status: LocalStatus, rule: StatusAuthors): ApiStatusJSON | undefined => {
     const author = authorOf(status);
     if (!author || !rule(author.presentation)) {
       return undefined;
@@ -507,10 +598,11 @@ export const mastodonStatuses = async (
       return noteDocs.get(status.id);
     }
     const local = byId.get(status.target.statusId);
+    // A boost wraps an original status; boosting a boost boosts its original.
     const wrapped =
       status.target.kind === "RemoteStatus"
         ? remoteDocs.get(status.target.statusId)
-        : local && render(local, boosted);
+        : local && renderNote(local, boosted);
     if (!wrapped) {
       return undefined;
     }
@@ -525,10 +617,12 @@ export const mastodonStatuses = async (
     };
   };
 
-  return ok(
-    statuses.flatMap((status) => {
+  return ok({
+    documents: statuses.flatMap((status) => {
       const document = render(status, authors);
       return document ? [document] : [];
     }),
-  );
+    shallow: (status) =>
+      renderNote(status, StatusAuthors.available) && shallowLocalDocument(status.id),
+  });
 };

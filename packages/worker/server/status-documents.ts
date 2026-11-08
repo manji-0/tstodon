@@ -1,3 +1,4 @@
+import type { ApiOriginalStatusJSON, ApiStatusJSON } from "@tstodon/api";
 import type { InstanceIdentity } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
@@ -6,6 +7,14 @@ import { mastodonRemoteStatuses } from "./remote-status-documents";
 import { findRemoteStatusesByIds } from "./remote-status-store";
 import { findStatusesByIds } from "./status-store";
 import { documentsById } from "./documents-by-id";
+
+/**
+ * The original a rendered status shows: a boost's boosted status, else the
+ * status itself. What a boost wraps as `reblog`, as Mastodon never boosts a
+ * boost.
+ */
+export const originalStatus = (document: ApiStatusJSON): ApiOriginalStatusJSON =>
+  document.reblog ?? { ...document, reblog: null };
 
 /**
  * Status documents keyed by status id, for ids that may be local statuses or
@@ -18,7 +27,7 @@ export const statusDocumentsByIds = async (
   identity: InstanceIdentity,
   ids: ReadonlyArray<string>,
   viewerId: string | undefined,
-): Promise<Result<ReadonlyMap<string, Record<string, unknown>>, RepositoryError>> => {
+): Promise<Result<ReadonlyMap<string, ApiStatusJSON>, RepositoryError>> => {
   const unique = [...new Set(ids)];
   if (unique.length === 0) {
     return ok(new Map());

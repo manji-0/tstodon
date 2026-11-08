@@ -1,3 +1,4 @@
+import type { ApiScheduledStatusJSON, ApiStatusJSON } from "@tstodon/api";
 import {
   type InstanceIdentity,
   type LocalAccount,
@@ -158,7 +159,7 @@ type NoteRequest = Readonly<{
  */
 type Written = Readonly<{
   record: IdempotentRecord;
-  document: Result<Record<string, unknown>, ApiRefusal>;
+  document: Result<ApiStatusJSON | ApiScheduledStatusJSON, ApiRefusal>;
 }>;
 
 /**
@@ -380,7 +381,7 @@ const recordDocument = async (
   c: Context<{ Bindings: Env }>,
   record: IdempotentRecord,
   viewerId: string,
-): Promise<Result<Record<string, unknown> | undefined, RepositoryError>> => {
+): Promise<Result<ApiStatusJSON | ApiScheduledStatusJSON | undefined, RepositoryError>> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return ok(undefined);

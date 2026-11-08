@@ -1,3 +1,4 @@
+import type { ApiStatusJSON } from "@tstodon/api";
 import { InstanceIdentity, type LocalAccount, type LocalNote } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { noteDocument } from "./activitypub";
@@ -31,7 +32,7 @@ export const announceNoteUpdate = async (
   note: LocalNote,
   updatedAt: string,
   federate: boolean,
-): Promise<Result<Record<string, unknown> | undefined, EnqueueLocalActivityError>> => {
+): Promise<Result<ApiStatusJSON | undefined, EnqueueLocalActivityError>> => {
   const media = federate ? await loadNoteMedia(env.DB, identity, note) : undefined;
   if (media?.isErr()) {
     console.error(JSON.stringify({ kind: "StatusUpdateNotFederated", statusId: note.id }));

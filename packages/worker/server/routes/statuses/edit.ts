@@ -1,3 +1,4 @@
+import type { ApiStatusJSON } from "@tstodon/api";
 import {
   type InstanceIdentity,
   type LocalAccount,
@@ -253,7 +254,7 @@ const editNote = async (
   existing: LocalNote,
   body: UpdateStatusBody,
   mediaAttributes: ReadonlyArray<MediaAttribute>,
-): Promise<Result<Record<string, unknown>, ApiRefusal>> => {
+): Promise<Result<ApiStatusJSON, ApiRefusal>> => {
   const pollUpdate = await resolvePollEdit(env.DB, existing, author.id, body.poll);
   if (pollUpdate.isErr()) {
     return err(pollUpdate.error);

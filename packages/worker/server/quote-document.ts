@@ -1,3 +1,4 @@
+import type { ApiQuoteJSON, ApiQuotedStatusJSON, ApiShallowQuoteJSON } from "@tstodon/api";
 import type { QuoteState } from "@tstodon/domain";
 
 /** Mastodon's `quote.state` for a quote that is not accepted. */
@@ -31,7 +32,7 @@ export const isQuotedStatusShown = (access: QuotedStatusAccess): access is Quote
 
 /** A quoted status as rendered for the viewer, with the access it is shown under. */
 export type QuotedDocument =
-  | Readonly<{ access: QuotedStatusShown; document: Record<string, unknown> }>
+  | Readonly<{ access: QuotedStatusShown; document: ApiQuotedStatusJSON }>
   | "Unauthorized"
   | undefined;
 
@@ -50,10 +51,7 @@ const ACCEPTED_STATE_NAMES = {
  * quote shows its status, and only while the status is there and the viewer
  * may see it.
  */
-export const mastodonQuote = (
-  state: QuoteState,
-  quoted: () => QuotedDocument,
-): Record<string, unknown> => {
+export const mastodonQuote = (state: QuoteState, quoted: () => QuotedDocument): ApiQuoteJSON => {
   if (state.kind !== "Accepted") {
     return { state: QUOTE_STATE_NAMES[state.kind], quoted_status: null };
   }
@@ -75,13 +73,16 @@ export const mastodonShallowQuote = (
   state: QuoteState,
   quotedStatusId: string | null,
   access: () => QuotedStatusAccess,
-): Record<string, unknown> => {
+): ApiShallowQuoteJSON => {
   if (state.kind !== "Accepted") {
     return { state: QUOTE_STATE_NAMES[state.kind], quoted_status_id: null };
   }
   const shown = access();
-  return {
-    state: ACCEPTED_STATE_NAMES[shown],
-    quoted_status_id: isQuotedStatusShown(shown) ? quotedStatusId : null,
-  };
+  if (!isQuotedStatusShown(shown)) {
+    return { state: ACCEPTED_STATE_NAMES[shown], quoted_status_id: null };
+  }
+  // An accepted quote whose status was never resolved has nothing to name.
+  return quotedStatusId === null
+    ? { state: ACCEPTED_STATE_NAMES.Gone, quoted_status_id: null }
+    : { state: ACCEPTED_STATE_NAMES[shown], quoted_status_id: quotedStatusId };
 };

@@ -1,3 +1,4 @@
+import type { ApiFilterJSON } from "@tstodon/api";
 import { type Context } from "hono";
 import { warmSchemas } from "@tstodon/core";
 import { z } from "zod";
@@ -99,7 +100,7 @@ export const getV2Filters = async (c: Context<{ Bindings: Env }, "/api/v2/filter
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
-  const documents: Record<string, unknown>[] = [];
+  const documents: ApiFilterJSON[] = [];
   for (const row of rows.value) {
     documents.push(await filterDocumentV2(c, row));
   }
@@ -140,7 +141,7 @@ const keywordsFromBody = (
 const filterDocumentV2 = async (
   c: Context<{ Bindings: Env }>,
   row: FilterRow,
-): Promise<Record<string, unknown>> => {
+): Promise<ApiFilterJSON> => {
   const statuses = await listFilterStatuses(c.env.DB, row.id);
   return mastodonFilterV2(row, statuses.isOk() ? statuses.value : []);
 };

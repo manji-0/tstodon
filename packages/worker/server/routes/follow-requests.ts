@@ -1,3 +1,4 @@
+import type { ApiAccountJSON } from "@tstodon/api";
 import { InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import type { Context } from "hono";
 import { findAccountById } from "../account-store";
@@ -99,7 +100,7 @@ export const getV1FollowRequests = async (
     return jsonRepositoryError(c, remote.error.message);
   }
 
-  type Entry = Readonly<{ createdAt: string; document: Record<string, unknown> }>;
+  type Entry = Readonly<{ createdAt: string; document: ApiAccountJSON }>;
   const requesters = [
     ...local.value.map((requester) => ({
       createdAt: requester.createdAt,

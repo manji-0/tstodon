@@ -1,3 +1,4 @@
+import type { ApiStatusJSON } from "@tstodon/api";
 import { type InstanceIdentity, type RemoteBoostValue, Visibility } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { presentedAccounts } from "./account-documents";
@@ -10,6 +11,7 @@ import { mastodonRemoteStatuses } from "./remote-status-documents";
 import { findRemoteStatusesByIds } from "./remote-status-store";
 import { findStatusesByIds } from "./status-store";
 import { documentsById } from "./documents-by-id";
+import { originalStatus } from "./status-documents";
 
 /**
  * Remote boosts as Mastodon statuses: the booster as `account`, the boosted
@@ -24,7 +26,7 @@ export const remoteBoostDocuments = async (
   boosts: ReadonlyArray<RemoteBoostValue>,
   viewerId: string | undefined,
   authors: StatusAuthors = StatusAuthors.available,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
   if (boosts.length === 0) {
     return ok([]);
   }
@@ -66,10 +68,11 @@ export const remoteBoostDocuments = async (
   return ok(
     boosts.flatMap((boost) => {
       const booster = boosters.value.get(RemoteAccountId.encode(boost.actorUri));
-      const reblog = documents.get(boost.target.statusId);
-      if (!booster || !authors(booster.presentation) || !reblog) {
+      const rendered = documents.get(boost.target.statusId);
+      if (!booster || !authors(booster.presentation) || !rendered) {
         return [];
       }
+      const reblog = originalStatus(rendered);
       return [
         {
           ...reblog,

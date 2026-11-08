@@ -1,3 +1,4 @@
+import type { ApiCredentialAccountJSON } from "@tstodon/api";
 import {
   FediRole,
   UploadMetadata,
@@ -89,7 +90,7 @@ export const credentialAccountDocument = async (
   identity: InstanceIdentity,
   account: LocalAccount,
   role: FediRoleValue,
-): Promise<Record<string, unknown>> => {
+): Promise<ApiCredentialAccountJSON> => {
   const [document, profile, defaults] = await Promise.all([
     mastodonAccountDocument(env, identity, account),
     findAccountProfile(env.DB, account.id),
@@ -97,7 +98,7 @@ export const credentialAccountDocument = async (
   ]);
   return {
     ...document,
-    role: FediRole.toMastodon(role),
+    role: { ...FediRole.toMastodon(role) },
     source: accountSource(
       account,
       profile.isOk() ? profile.value : EMPTY_ACCOUNT_PROFILE,
@@ -348,7 +349,7 @@ const ownAccountDocument = async (
   env: Env,
   identity: InstanceIdentity,
   account: LocalAccount,
-): Promise<Record<string, unknown>> => {
+): Promise<ApiCredentialAccountJSON> => {
   const [document, profile, defaults] = await Promise.all([
     mastodonAccountDocument(env, identity, account),
     findAccountProfile(env.DB, account.id),

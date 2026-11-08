@@ -1,3 +1,4 @@
+import type { ApiListJSON } from "@tstodon/api";
 import { warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -102,14 +103,7 @@ const listFromRow = (row: z.infer<typeof ListRowSchema>): AccountList => ({
   exclusive: row.exclusive !== 0,
 });
 
-export const toMastodonList = (
-  list: AccountList,
-): Readonly<{
-  id: string;
-  title: string;
-  replies_policy: ListRepliesPolicy;
-  exclusive: boolean;
-}> => ({
+export const toMastodonList = (list: AccountList): ApiListJSON => ({
   id: list.id,
   title: list.title,
   replies_policy: list.repliesPolicy,

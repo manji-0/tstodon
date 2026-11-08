@@ -1,3 +1,9 @@
+import type {
+  ApiAccountJSON,
+  ApiOriginalStatusJSON,
+  ApiPreviewCardJSON,
+  MediaAttachmentType,
+} from "@tstodon/api";
 import {
   type QuoteApprovalForViewer,
   type RemoteStatus as RemoteStatusValue,
@@ -11,7 +17,7 @@ import { NO_STATUS_INTERACTIONS, type StatusInteractionCounts } from "./status-i
 
 /** What a remote status shows beside its own fields: its card, and the viewer's and this instance's engagement. */
 export type RemoteStatusExtras = Readonly<{
-  card?: Record<string, unknown> | null | undefined;
+  card?: ApiPreviewCardJSON | null | undefined;
   pollVotes?: RemotePollVotes | undefined;
   /** Local accounts' favourites and boosts only; remote totals are not kept. */
   interactions?: StatusInteractionCounts | undefined;
@@ -24,9 +30,9 @@ export type RemoteStatusExtras = Readonly<{
 /** A remote status with `account`, its author as the reader is shown it. */
 export const mastodonRemoteStatus = (
   status: RemoteStatusValue,
-  account: Record<string, unknown>,
+  account: ApiAccountJSON,
   extras: RemoteStatusExtras = {},
-): Record<string, unknown> => {
+): ApiOriginalStatusJSON => {
   const card = extras.card ?? null;
   const pollVotes = extras.pollVotes ?? NO_REMOTE_POLL_VOTES;
   const interactions = extras.interactions ?? NO_STATUS_INTERACTIONS;
@@ -91,7 +97,7 @@ export const mastodonRemoteStatus = (
   };
 };
 
-const remoteMediaType = (mediaType: string): string => {
+const remoteMediaType = (mediaType: string): MediaAttachmentType => {
   const type = mediaType.toLowerCase();
   if (type.length === 0) {
     return "unknown";

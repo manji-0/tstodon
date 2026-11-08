@@ -1,3 +1,4 @@
+import type { ApiNotificationRequestJSON, NotificationPolicyJSON } from "@tstodon/api";
 import { type Context } from "hono";
 import { warmSchemas } from "@tstodon/core";
 import {
@@ -70,7 +71,7 @@ const requestDocuments = async (
   accountId: string,
   requests: ReadonlyArray<NotificationRequest>,
   senders: typeof accountDocumentsByIds,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+): Promise<Result<ApiNotificationRequestJSON[], RepositoryError>> => {
   // The status stored with the held notification is the exact one.
   const [resolved, statuses] = await Promise.all([
     senders(
@@ -115,7 +116,7 @@ const policyDocument = async (
   env: Env,
   accountId: string,
   policy: NotificationPolicy,
-): Promise<Record<string, unknown>> => {
+): Promise<NotificationPolicyJSON> => {
   const counts = await countNotificationRequests(env.DB, accountId);
   return {
     for_not_following: policy.forNotFollowing,
@@ -123,6 +124,8 @@ const policyDocument = async (
     for_new_accounts: policy.forNewAccounts,
     for_private_mentions: policy.forPrivateMentions,
     for_limited_accounts: policy.forLimitedAccounts,
+    // Mastodon 4.6's bot policy is not kept: bots' notifications are accepted.
+    for_bots: "accept",
     summary: {
       pending_requests_count: counts.isOk() ? counts.value.requests : 0,
       pending_notifications_count: counts.isOk() ? counts.value.notifications : 0,
