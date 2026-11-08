@@ -84,8 +84,9 @@ const quotedNote = async (
 /**
  * Whether the signer may quote the note, as Mastodon's `StatusPolicy#quote?`:
  * its author is available and blocks neither the signer nor its domain, and
- * the note's policy lets the signer in. Local policies approve automatically,
- * so the answer is always immediate.
+ * the note's policy lets the signer in. As in Mastodon, a local policy is
+ * automatic only (no local `manualApproval`), so the answer is always an
+ * immediate `Accept` or `Reject`, never a pending request.
  */
 const mayQuote = async (
   env: Env,

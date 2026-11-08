@@ -344,7 +344,8 @@ describe("quote posts", () => {
         z.object({
           "@context": z.array(z.unknown()),
           interactionPolicy: z.object({
-            canQuote: z.object({ automaticApproval: z.array(z.string()) }),
+            // Strict: Mastodon advertises no `manualApproval` on its own notes.
+            canQuote: z.strictObject({ automaticApproval: z.array(z.string()) }),
           }),
         }),
         note.body,
@@ -385,7 +386,7 @@ describe("quote posts", () => {
         object: z.object({
           id: z.string(),
           interactionPolicy: z.object({
-            canQuote: z.object({ automaticApproval: z.array(z.string()) }),
+            canQuote: z.strictObject({ automaticApproval: z.array(z.string()) }),
           }),
         }),
       }),

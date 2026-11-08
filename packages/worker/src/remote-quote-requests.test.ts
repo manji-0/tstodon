@@ -270,7 +270,11 @@ describe("answering a remote QuoteRequest for a local status", () => {
   it("under a followers policy rejects a stranger and accepts a remote follower", async () => {
     const stranger = await setup("rqr-followers-no", { quote_approval_policy: "followers" });
     expect(await stranger.request()).toBe(202);
+    // Mastodon has no manual approval for local posts: a request outside the
+    // policy is rejected at once, not held pending, and notifies nobody.
+    expect((await answers(stranger.alice.id)).accepts).toEqual([]);
     expect((await answers(stranger.alice.id)).rejects).toHaveLength(1);
+    expect((await notificationsOf(stranger.email)).map((n) => n.type)).not.toContain("quote");
 
     const follower = await setup("rqr-followers-yes", { quote_approval_policy: "followers" });
     expect(await follow(follower.bob, follower.aliceUri)).toBe(202);
