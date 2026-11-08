@@ -328,7 +328,9 @@ export const publishLocalNote = async (
           },
     );
   }
-  // Mastodon's `QuoteRequestWorker` retries; this is sent once.
+  // A targeted outbox delivery: its workflow retries a failed attempt with
+  // backoff, as Mastodon's `QuoteRequestWorker` delivers through
+  // `DeliveryWorker`. As Mastodon, nothing asks again when no answer comes.
   if (object !== undefined && quote !== undefined && quotedAuthor?.kind === "Remote") {
     const requested = await enqueueTargetedActivity(
       env,

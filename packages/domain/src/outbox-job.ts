@@ -187,6 +187,29 @@ const FanOutPublicSchema = z.object({
   afterHub: z.string(),
 });
 
+/**
+ * Check a pending quote by a remote note again after its quoted note or
+ * stamp could not be fetched, as Mastodon's `RefetchAndVerifyQuoteWorker`:
+ * `quotedUri` is the quoted note and `approvalUri` the stamp the note named,
+ * `attempt` counts from 1 (see `QuoteRetry`).
+ */
+const RefetchAndVerifyQuoteSchema = z.object({
+  kind: z.literal("RefetchAndVerifyQuote"),
+  quoteId: z.string().min(1),
+  quotedUri: z.url(),
+  approvalUri: z.url().optional(),
+  attempt: z.number().int().min(1),
+});
+
+/**
+ * Fetch the stamp of an accepted quote of a remote status again, as
+ * Mastodon's `QuoteRefreshWorker`; one that no longer resolves revokes it.
+ */
+const RefreshQuoteSchema = z.object({
+  kind: z.literal("RefreshQuote"),
+  quoteId: z.string().min(1),
+});
+
 export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ExpandFollowersSchema,
   DeliverTargetSchema,
@@ -209,6 +232,8 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   BackfillRemoteThreadSchema,
   ProcessCsvImportSchema,
   SeverBlockedDomainFollowsSchema,
+  RefetchAndVerifyQuoteSchema,
+  RefreshQuoteSchema,
 ]);
 
 export type OutboxJob = z.infer<typeof OutboxJobSchema>;

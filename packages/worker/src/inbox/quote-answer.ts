@@ -5,7 +5,6 @@ import {
   Quote,
   type QuoteValue,
   type RemoteActor,
-  type RemoteStatusValue,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountById } from "../account-store";
@@ -13,9 +12,8 @@ import { localNoteRef } from "../activitypub";
 import { refId } from "../activitypub-wire";
 import { nowIso } from "../clock";
 import type { RepositoryError } from "../d1";
-import { enqueueHomeFanOut } from "../home-fan-out";
+import { announceRemoteQuoteChange } from "../remote-quote-announce";
 import { announceNoteUpdate } from "../local-status-update";
-import { enqueuePublicFanOut } from "../public-fan-out";
 import { findQuotesByApprovalUri, saveQuoteState } from "../quote-store";
 import { forwardStampDelete } from "../quote-stamp-revoke";
 import { stampAuthorizes } from "../remote-quote-verify";
@@ -171,18 +169,6 @@ export const receiveQuoteAnswer = async (
     : ok(undefined);
 };
 
-/** Tell local timelines that show a remote quoting note that its quote changed. */
-const publishRemoteQuoteUpdate = async (env: Env, status: RemoteStatusValue): Promise<void> => {
-  await enqueueHomeFanOut(env, {
-    event: "status.update",
-    entryId: status.id,
-    author: { kind: "RemoteActor", actorUri: status.actorUri },
-  });
-  if (status.visibility.kind === "Public") {
-    await enqueuePublicFanOut(env, { event: "status.update", entryId: status.id });
-  }
-};
-
 /**
  * The quoted author deleted the stamp of a quote, as Mastodon's
  * `Delete#revoke_quote`: every pending or accepted quote that stamp approved
@@ -243,7 +229,7 @@ export const revokeQuoteStamp = async (
       return err(remoteQuoting.error);
     }
     if (remoteQuoting.value) {
-      await publishRemoteQuoteUpdate(env, remoteQuoting.value);
+      await announceRemoteQuoteChange(env, remoteQuoting.value);
       await forwardStampDelete(env, identity, signer, body, {
         kind: "Remote",
         status: remoteQuoting.value,

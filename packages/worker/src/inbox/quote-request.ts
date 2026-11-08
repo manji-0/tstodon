@@ -26,11 +26,10 @@ import { publishConversationUpdate } from "../conversation-stream";
 import type { RepositoryError } from "../d1";
 import { enqueueTargetedActivity } from "../delivery";
 import { isActorDomainBlocked } from "../domain-block-store";
-import { enqueueHomeFanOut } from "../home-fan-out";
+import { announceRemoteQuoteChange } from "../remote-quote-announce";
 import { newEntityId } from "../ids";
 import { recordSilentRemoteStatusMention } from "../mention-store";
 import { notifyFromRemote } from "../notify";
-import { enqueuePublicFanOut } from "../public-fan-out";
 import { quoteAuthorizationUri } from "../quote-authorization-document";
 import { loadNoteQuotePolicy } from "../quote-policy-name";
 import { findQuoteByActivityUri, findQuoteByQuoting, saveQuoteState } from "../quote-store";
@@ -163,18 +162,6 @@ const ensureQuotedAccess = async (
   return ok(undefined);
 };
 
-/** Tell local timelines that show the quoting note that its quote changed. */
-const announceQuoteChange = async (env: Env, quoting: RemoteStatusValue): Promise<void> => {
-  await enqueueHomeFanOut(env, {
-    event: "status.update",
-    entryId: quoting.id,
-    author: { kind: "RemoteActor", actorUri: quoting.actorUri },
-  });
-  if (quoting.visibility.kind === "Public") {
-    await enqueuePublicFanOut(env, { event: "status.update", entryId: quoting.id });
-  }
-};
-
 const sendAnswer = async (
   env: Env,
   author: LocalAccount,
@@ -248,7 +235,7 @@ const rejectQuoteRequest = async (
       return err(saved.error);
     }
     if (rejected.state.kind !== quote.value.state.kind) {
-      await announceQuoteChange(env, owned);
+      await announceRemoteQuoteChange(env, owned);
     }
   }
   await sendAnswer(
@@ -346,7 +333,7 @@ export const receiveQuoteRequest = async (
   if (quote.value.state.kind === "Accepted") {
     return ok(undefined);
   }
-  await announceQuoteChange(env, quoting.value);
+  await announceRemoteQuoteChange(env, quoting.value);
   const access = await ensureQuotedAccess(
     env,
     delivery.identity,

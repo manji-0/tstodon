@@ -20,6 +20,7 @@ import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "../../d1";
 import { findRemoteStatusById, findRemoteStatusesByIds } from "../../remote-status-store";
 import { requestRemoteThreadBackfill } from "../../remote-thread-backfill";
+import { requestQuoteRefresh } from "../../quote-retry-queue";
 import { ContextLimits, findStatusById, findStatusesByIds } from "../../status-store";
 import { canViewRemoteBoost, canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
 import { findRemoteBoostById } from "../../remote-boost-store";
@@ -157,6 +158,8 @@ export const getV1StatusesById = async (c: Context<{ Bindings: Env }, "/api/v1/s
   if (!document.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
+  // As Mastodon's `show`, a stale quote's stamp is checked again, off the request path.
+  await requestQuoteRefresh(c.env, c.req.param("id"));
   return c.json(document.value);
 };
 

@@ -32,6 +32,7 @@ import {
 import { findStatusById } from "./status-store";
 import { findAccountById } from "./account-store";
 import { federateStampDeletion } from "./quote-stamp-revoke";
+import { enqueueQuoteRefetch, type QuoteRefetch } from "./quote-retry-queue";
 
 /** The keys a note may name its quoted status by, in Mastodon's order; all but `quote` predate FEP-044f. */
 const QUOTE_KEYS = ["quote", "_misskey_quote", "quoteUrl", "quoteUri"] as const;
@@ -221,6 +222,19 @@ const keepsState = (state: QuoteState, approvalUri: string | undefined): boolean
 };
 
 /**
+ * What syncing a quote of a remote status did: whether it changed the
+ * quote's state or quoted note (`changed`), and the quote to check again
+ * later (`refetch`), when it is left pending because the quoted note did
+ * not resolve or the stamp could not be fetched for now.
+ */
+export type RemoteQuoteSync = Readonly<{
+  changed: boolean;
+  refetch: QuoteRefetch | undefined;
+}>;
+
+const UNCHANGED: RemoteQuoteSync = { changed: false, refetch: undefined };
+
+/**
  * A quote of a remote status, verified with {@link verifyRemoteQuote}. A
  * quoted note that cannot be found or fetched keeps the quote unresolved and
  * pending (rejected when its stamp does not resolve), as Mastodon keeps a
@@ -228,6 +242,12 @@ const keepsState = (state: QuoteState, approvalUri: string | undefined): boolean
  * again, and a quote resolved that way keeps its id. A changed stamp, or a
  * quote not yet accepted, is verified again; a changed quoted note starts
  * over under a new quote id.
+ *
+ * A quote left pending with its quoted note unresolved (whether the fetch
+ * failed or the quote depth allowed none, Mastodon's
+ * `RecursionLimitExceededError`), or with a stamp fetch that failed for
+ * now, is to be checked again (`refetch`), as Mastodon's
+ * `fetch_and_verify_quote` queues `RefetchAndVerifyQuoteWorker`.
  */
 const syncRemoteQuoted = async (
   env: Env,
@@ -236,16 +256,19 @@ const syncRemoteQuoted = async (
   existing: QuoteValue | undefined,
   ref: NoteQuoteRef,
   context: RemoteQuoteContext,
-): Promise<Result<void, RepositoryError>> => {
+): Promise<Result<RemoteQuoteSync, RepositoryError>> => {
   const quoting = StatusTarget.remote(status.id);
   if (!isRemoteNoteUri(identity, ref.uri)) {
-    return forget(env.DB, quoting, existing);
+    return (await forget(env.DB, quoting, existing)).map(() => ({
+      changed: existing !== undefined,
+      refetch: undefined,
+    }));
   }
   const resolved = await resolveQuotedNote(identity, status, ref, context);
   if (resolved.isErr()) {
     return err(resolved.error);
   }
-  const { quoted, stamp } = resolved.value;
+  const { quoted } = resolved.value;
   const target = quoted ? StatusTarget.remote(quoted.id) : QuotedTarget.unresolved(ref.uri);
   const unchanged = existing !== undefined && QuotedTarget.equals(existing.quoted, target);
   const resolving =
@@ -254,8 +277,14 @@ const syncRemoteQuoted = async (
     quoted !== undefined;
   const same = unchanged || resolving ? existing : undefined;
   if (same && unchanged && same.legacy === ref.legacy && keepsState(same.state, ref.approvalUri)) {
-    return ok(undefined);
+    return ok(UNCHANGED);
   }
+  // The stamp is fetched here rather than in `verifyRemoteQuote`, so a
+  // temporary failure can be told apart from a stamp that does not match.
+  const stamp =
+    quoted && quoted.actorUri !== status.actorUri && resolved.value.stamp === undefined
+      ? await fetchStamp(identity, ref.approvalUri, context.fetchOptions)
+      : resolved.value.stamp;
   const state = quoted
     ? await verifyRemoteQuote(
         identity,
@@ -264,15 +293,67 @@ const syncRemoteQuoted = async (
         stamp,
       )
     : unresolvedQuoteState(stamp ?? { kind: "None" });
+  const id = same?.id ?? newEntityId();
+  const retry = state.kind === "Pending" && (quoted === undefined || stamp?.kind === "Unavailable");
+  const outcome: RemoteQuoteSync = {
+    changed: same === undefined || !resolvedSameState(same, target, state),
+    refetch: retry ? { quoteId: id, quotedUri: ref.uri, approvalUri: ref.approvalUri } : undefined,
+  };
   if (same) {
-    return saveQuoteState(env.DB, { ...same, quoted: target, state, legacy: ref.legacy });
+    return (
+      await saveQuoteState(env.DB, { ...same, quoted: target, state, legacy: ref.legacy })
+    ).map(() => outcome);
   }
   const forgotten = await forget(env.DB, quoting, existing);
   if (forgotten.isErr()) {
-    return forgotten;
+    return err(forgotten.error);
   }
-  return insertStatusQuote(env.DB, newQuote(quoting, target, state, ref.legacy));
+  return (
+    await insertStatusQuote(env.DB, { ...newQuote(quoting, target, state, ref.legacy), id })
+  ).map(() => outcome);
 };
+
+/** Whether `quote` already names `target` in `state`, so a sync to them changes nothing visible. */
+const resolvedSameState = (
+  quote: QuoteValue,
+  target: QuotedTargetValue,
+  state: QuoteState,
+): boolean => QuotedTarget.equals(quote.quoted, target) && sameState(quote.state, state);
+
+const approvalUri = (state: QuoteState): string | undefined =>
+  state.kind === "Accepted" && state.approval.kind === "Stamp" ? state.approval.uri : undefined;
+
+const sameState = (a: QuoteState, b: QuoteState): boolean =>
+  a.kind === b.kind && approvalUri(a) === approvalUri(b);
+
+/**
+ * Check a pending quote by a remote note again, as Mastodon's
+ * `RefetchAndVerifyQuoteWorker` runs `VerifyQuoteService`: the quoted note
+ * `quotedUri` is resolved (fetched when not cached) and the stamp
+ * `approvalUri` fetched and verified. The caller has checked that the quote
+ * is still pending and still names `quotedUri`.
+ */
+export const reverifyRemoteQuote = (
+  env: Env,
+  identity: InstanceIdentity,
+  status: RemoteStatusValue,
+  quote: QuoteValue,
+  refetch: Readonly<{ quotedUri: string; approvalUri: string | undefined }>,
+  context: RemoteQuoteContext,
+): Promise<Result<RemoteQuoteSync, RepositoryError>> =>
+  syncRemoteQuoted(
+    env,
+    identity,
+    status,
+    quote,
+    {
+      uri: refetch.quotedUri,
+      legacy: quote.legacy,
+      embedded: undefined,
+      approvalUri: refetch.approvalUri,
+    },
+    context,
+  );
 
 /**
  * Keep the quote a cached remote note makes in step with its document, as
@@ -288,7 +369,7 @@ const reconcileRemoteQuote = async (
   status: RemoteStatusValue,
   raw: unknown,
   context: RemoteQuoteContext,
-): Promise<Result<void, RepositoryError>> => {
+): Promise<Result<QuoteRefetch | undefined, RepositoryError>> => {
   const quoting = StatusTarget.remote(status.id);
   const existing = await findQuoteByQuoting(env.DB, quoting);
   if (existing.isErr()) {
@@ -297,12 +378,16 @@ const reconcileRemoteQuote = async (
   const ref = noteQuoteRef(raw);
   const quotedId = ref && parseLocalStatusId(identity, ref.uri);
   if (ref && quotedId !== undefined) {
-    return syncLocalQuoted(env.DB, quoting, existing.value, ref, quotedId);
+    return (await syncLocalQuoted(env.DB, quoting, existing.value, ref, quotedId)).map(
+      () => undefined,
+    );
   }
   if (ref) {
-    return syncRemoteQuoted(env, identity, status, existing.value, ref, context);
+    return (await syncRemoteQuoted(env, identity, status, existing.value, ref, context)).map(
+      (synced) => synced.refetch,
+    );
   }
-  return forget(env.DB, quoting, existing.value);
+  return (await forget(env.DB, quoting, existing.value)).map(() => undefined);
 };
 
 /**
@@ -347,7 +432,8 @@ const withdrawDroppedStamp = async (
 
 /**
  * {@link reconcileRemoteQuote}, then {@link withdrawDroppedStamp} when an
- * accepted quote of a local status went away with the edit.
+ * accepted quote of a local status went away with the edit. A quote of a
+ * remote status left to check again is queued for its first refetch.
  */
 export const syncRemoteQuote = async (
   env: Env,
@@ -363,7 +449,10 @@ export const syncRemoteQuote = async (
   }
   const synced = await reconcileRemoteQuote(env, identity, status, raw, context);
   if (synced.isErr()) {
-    return synced;
+    return err(synced.error);
+  }
+  if (synced.value) {
+    await enqueueQuoteRefetch(env, synced.value, 1);
   }
   const accepted =
     before.value?.quoted.kind === "LocalStatus" && before.value.state.kind === "Accepted";
@@ -373,5 +462,5 @@ export const syncRemoteQuote = async (
       await withdrawDroppedStamp(env, identity, status, before.value, after.value);
     }
   }
-  return synced;
+  return ok(undefined);
 };
