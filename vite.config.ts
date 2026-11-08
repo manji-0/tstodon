@@ -91,6 +91,9 @@ export default defineConfig({
       "packages/worker/.wrangler/**",
       "pnpm-lock.yaml",
       "**/worker-configuration.d.ts",
+      // Mastodon's vendored frontend keeps upstream's formatting (its own
+      // .oxfmtrc.json); see packages/web/UPSTREAM.md.
+      "packages/web/**",
     ],
   },
   lint: {
@@ -110,6 +113,8 @@ export default defineConfig({
       "**/worker-configuration.d.ts",
       // Prisma's generated client and TypedSQL modules cast internally.
       "packages/worker/src/generated/**",
+      // Mastodon's vendored frontend has its own ESLint setup.
+      "packages/web/**",
     ],
     rules: {
       "typescript/consistent-type-definitions": ["error", "type"],

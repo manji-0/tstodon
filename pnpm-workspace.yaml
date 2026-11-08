@@ -9,6 +9,16 @@ allowBuilds:
   msgpackr-extract: true
   prisma: true
   workerd: true
+  # packages/web (Mastodon's frontend). None of these scripts is needed to
+  # build it: @parcel/watcher ships prebuilt binaries, core-js and
+  # tesseract.js only print a message, unrs-resolver's only repairs missing
+  # optional binaries, and msw's would rewrite the committed
+  # .storybook/static/mockServiceWorker.js.
+  "@parcel/watcher": false
+  core-js: false
+  msw: false
+  tesseract.js: false
+  unrs-resolver: false
 
 # Fresh Oxc / TypeScript releases are intentionally allowed through the age gate.
 minimumReleaseAgeExclude:
@@ -26,6 +36,11 @@ catalog:
 overrides:
   vite@*: "catalog:"
   vitest@*: "catalog:"
+  # packages/web (Mastodon's frontend) builds and tests with the Vite and
+  # Vitest releases Mastodon pins, not Vite+. A parent-scoped override wins
+  # over the generic ones above.
+  "@tstodon/web>vite": 8.2.1
+  "@tstodon/web>vitest": 4.1.10
 peerDependencyRules:
   allowAny:
     - vite

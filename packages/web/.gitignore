@@ -1,0 +1,13 @@
+# Build output and caches (pnpm web:build, Mastodon's own tooling)
+/public/packs
+/public/packs-dev
+/public/packs-test
+/tmp
+/coverage
+# Vite caches under its root (app/javascript)
+/app/javascript/node_modules
+/storybook-static
+.eslintcache
+# Fetched from upstream at build time (see UPSTREAM.md)
+/public/emoji
+/public/ocr
