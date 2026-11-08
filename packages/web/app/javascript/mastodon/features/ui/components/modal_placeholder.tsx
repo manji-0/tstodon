@@ -2,8 +2,9 @@ import { useCallback } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
+import ErrorIcon from '@/material-icons/400-24px/error.svg?react';
 import { Button } from 'mastodon/components/button';
-import { GIF } from 'mastodon/components/gif';
+import { Icon } from 'mastodon/components/icon';
 import { LoadingIndicator } from 'mastodon/components/loading_indicator';
 
 export const ModalPlaceholder: React.FC<{
@@ -25,10 +26,10 @@ export const ModalPlaceholder: React.FC<{
         <LoadingIndicator />
       ) : (
         <div className='modal-placeholder__error'>
-          <GIF
-            src='/oops.gif'
-            staticSrc='/oops.png'
-            className='modal-placeholder__error__image'
+          <Icon
+            id='error'
+            icon={ErrorIcon}
+            style={{ width: 64, height: 64, alignSelf: 'center' }}
           />
 
           <div className='modal-placeholder__error__message'>

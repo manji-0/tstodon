@@ -1,13 +1,15 @@
 import { FormattedMessage } from 'react-intl';
 
-import { GIF } from './gif';
+import HourglassIcon from '@/material-icons/400-24px/hourglass.svg?react';
+
+import { Icon } from './icon';
 
 export const RegenerationIndicator: React.FC = () => (
   <div className='regeneration-indicator'>
-    <GIF
-      src='/loading.gif'
-      staticSrc='/loading.png'
-      className='regeneration-indicator__figure'
+    <Icon
+      id='hourglass'
+      icon={HourglassIcon}
+      style={{ width: 64, height: 64, marginBottom: 16 }}
     />
 
     <div className='regeneration-indicator__label'>

@@ -4,15 +4,17 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import classNames from 'classnames';
 
-import booster from '@/images/archetypes/booster.png';
-import lurker from '@/images/archetypes/lurker.png';
-import oracle from '@/images/archetypes/oracle.png';
-import pollster from '@/images/archetypes/pollster.png';
-import replier from '@/images/archetypes/replier.png';
 import space_elements from '@/images/archetypes/space_elements.png';
+import EditIcon from '@/material-icons/400-24px/edit.svg?react';
+import InsertChartIcon from '@/material-icons/400-24px/insert_chart.svg?react';
+import RepeatIcon from '@/material-icons/400-24px/repeat.svg?react';
+import ReplyIcon from '@/material-icons/400-24px/reply.svg?react';
+import VisibilityIcon from '@/material-icons/400-24px/visibility.svg?react';
 import { Avatar } from '@/mastodon/components/avatar';
 import { Button } from '@/mastodon/components/button';
 import { DisplayName } from '@/mastodon/components/display_name';
+import { Icon } from '@/mastodon/components/icon';
+import type { IconProp } from '@/mastodon/components/icon';
 import { me } from '@/mastodon/initial_state';
 import type { Account } from '@/mastodon/models/account';
 import type {
@@ -103,13 +105,14 @@ export const archetypePublicDescriptions = defineMessages<ArchetypeData>({
   },
 });
 
+// tstodon: neutral icons in place of Mastodon's mascot illustrations.
 const illustrations = {
-  booster,
-  replier,
-  pollster,
-  lurker,
-  oracle,
-} as const;
+  booster: RepeatIcon,
+  replier: ReplyIcon,
+  pollster: InsertChartIcon,
+  lurker: VisibilityIcon,
+  oracle: EditIcon,
+} as const satisfies Record<ArchetypeData, IconProp>;
 
 export const Archetype: React.FC<{
   report: AnnualReport;
@@ -154,13 +157,18 @@ export const Archetype: React.FC<{
           />
         )}
         <div className={styles.archetypeIllustrationWrapper}>
-          <img
-            src={illustrations[archetype]}
-            alt=''
-            className={classNames(
-              styles.archetypeIllustration,
-              isRevealed ? '' : styles.blurredImage,
-            )}
+          <Icon
+            id={archetype}
+            icon={illustrations[archetype]}
+            className={isRevealed ? undefined : styles.blurredImage}
+            style={{
+              width: '100%',
+              height: '100%',
+              padding: 20,
+              boxSizing: 'border-box',
+              background: 'var(--color-bg-brand-softest)',
+              color: 'var(--color-text-brand)',
+            }}
           />
         </div>
         <img

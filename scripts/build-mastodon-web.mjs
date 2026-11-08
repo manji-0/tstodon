@@ -265,7 +265,7 @@ cpSync(packs, path.join(assets, "packs"), {
 cpSync(path.join(fetchedRoot, "public", "emoji"), path.join(assets, "emoji"), { recursive: true });
 cpSync(path.join(publicDir, "sounds"), path.join(assets, "sounds"), { recursive: true });
 for (const file of readdirSync(publicDir)) {
-  if (/^(sw\.js|badge\.png|loading\.(gif|png)|oops\.(gif|png)|web-push-icon_.*\.png)$/.test(file)) {
+  if (/^(sw\.js|badge\.png|web-push-icon_.*\.png)$/.test(file)) {
     // `sw.js` is a symlink into packs/ in the source; copy the file, not the link.
     rmSync(path.join(assets, file), { force: true });
     copyFileSync(path.join(publicDir, file), path.join(assets, file));
