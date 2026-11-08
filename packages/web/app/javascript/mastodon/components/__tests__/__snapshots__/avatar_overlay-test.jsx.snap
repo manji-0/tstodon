@@ -1,0 +1,35 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`<AvatarOverlay > renders a overlay avatar 1`] = `
+<div
+  class="account__avatar-overlay"
+  style="width: 46px; height: 46px;"
+>
+  <div
+    class="account__avatar-overlay-base"
+  >
+    <div
+      class="account__avatar"
+      style="width: 36px; height: 36px;"
+    >
+      <img
+        alt="alice"
+        src="/static/alice.jpg"
+      />
+    </div>
+  </div>
+  <div
+    class="account__avatar-overlay-overlay"
+  >
+    <div
+      class="account__avatar"
+      style="width: 24px; height: 24px;"
+    >
+      <img
+        alt="eve@blackhat.lair"
+        src="/static/eve.jpg"
+      />
+    </div>
+  </div>
+</div>
+`;
