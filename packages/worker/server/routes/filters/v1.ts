@@ -145,7 +145,7 @@ export const deleteV1FiltersById = async (c: Context<{ Bindings: Env }, "/api/v1
   if (!deleted.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.body(null, 200);
+  return c.json({});
 };
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.

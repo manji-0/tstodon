@@ -1,3 +1,4 @@
+import type { ApiAnnouncementJSON } from "@tstodon/api";
 import type { Context } from "hono";
 import { err, ok, type Result } from "neverthrow";
 import {
@@ -29,7 +30,7 @@ const announcementDocument = (
   read: boolean,
   reactions: ReadonlyMap<string, AnnouncementReactionState>,
   emojis: ReadonlyArray<CustomEmoji>,
-): Record<string, unknown> => {
+): ApiAnnouncementJSON => {
   const names = [...new Set([...announcement.reactions, ...reactions.keys()])];
   return {
     id: announcement.id,
@@ -37,7 +38,13 @@ const announcementDocument = (
     starts_at: announcement.startsAt,
     ends_at: announcement.endsAt,
     all_day: announcement.allDay,
-    published_at: announcement.publishedAt,
+    // A configured announcement may name no publication time: it has been
+    // live since it starts (or was last changed), as far as anyone can tell.
+    published_at:
+      announcement.publishedAt ??
+      announcement.startsAt ??
+      announcement.updatedAt ??
+      new Date(0).toISOString(),
     updated_at: announcement.updatedAt,
     read,
     mentions: [],
