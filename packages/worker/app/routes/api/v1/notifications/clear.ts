@@ -1,1 +1,1 @@
-export { postV1NotificationsClear as POST } from "#src/routes/notifications";
+export { postV1NotificationsClear as POST } from "#server/routes/notifications";

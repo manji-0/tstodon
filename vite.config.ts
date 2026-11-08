@@ -66,7 +66,7 @@ export default defineConfig({
           // Integration tests run in workerd; under a full parallel run the
           // longer request chains need more than Vitest's 5s default.
           testTimeout: 15_000,
-          include: ["packages/worker/src/**/*.test.ts"],
+          include: ["packages/worker/server/**/*.test.ts"],
           setupFiles: ["./packages/worker/test/apply-migrations.ts"],
         },
       },
@@ -112,7 +112,7 @@ export default defineConfig({
       "e2e/instances/.wrangler/**",
       "**/worker-configuration.d.ts",
       // Prisma's generated client and TypedSQL modules cast internally.
-      "packages/worker/src/generated/**",
+      "packages/worker/server/generated/**",
       // Mastodon's vendored frontend has its own ESLint setup.
       "packages/web/**",
     ],

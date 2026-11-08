@@ -1,1 +1,1 @@
-export { postSettingsAliasesRemove as POST } from "#src/routes/account-settings";
+export { postSettingsAliasesRemove as POST } from "#server/routes/account-settings";

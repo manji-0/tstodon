@@ -1,2 +1,2 @@
-export { deleteV1AnnouncementsByIdReactionsByName as DELETE } from "#src/routes/announcements";
-export { putV1AnnouncementsByIdReactionsByName as PUT } from "#src/routes/announcements";
+export { deleteV1AnnouncementsByIdReactionsByName as DELETE } from "#server/routes/announcements";
+export { putV1AnnouncementsByIdReactionsByName as PUT } from "#server/routes/announcements";

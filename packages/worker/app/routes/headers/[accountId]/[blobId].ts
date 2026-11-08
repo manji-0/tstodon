@@ -1,1 +1,1 @@
-export { getHeadersByAccountIdByBlobId as GET } from "#src/routes/media";
+export { getHeadersByAccountIdByBlobId as GET } from "#server/routes/media";

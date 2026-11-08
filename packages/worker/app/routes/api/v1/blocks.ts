@@ -1,1 +1,1 @@
-export { getV1Blocks as GET } from "#src/routes/accounts/blocks-mutes";
+export { getV1Blocks as GET } from "#server/routes/accounts/blocks-mutes";

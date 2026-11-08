@@ -1,1 +1,1 @@
-export { postV1AccountsByIdUnendorse as POST } from "#src/routes/accounts/endorsements";
+export { postV1AccountsByIdUnendorse as POST } from "#server/routes/accounts/endorsements";

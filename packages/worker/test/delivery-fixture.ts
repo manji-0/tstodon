@@ -3,9 +3,9 @@ import { OutboxJob } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { expect, vi } from "vite-plus/test";
 import { z } from "zod";
-import { attemptInboxDelivery } from "../src/delivery";
-import { processOutboxJob } from "../src/outbox-job";
-import { listOutboundActivities } from "../src/outbox-store";
+import { attemptInboxDelivery } from "../server/delivery";
+import { processOutboxJob } from "../server/outbox-job";
+import { listOutboundActivities } from "../server/outbox-store";
 
 export const CreateActivitySchema = z.object({
   type: z.string(),

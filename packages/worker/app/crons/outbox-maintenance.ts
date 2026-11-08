@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { defineScheduled } from "void";
-import { type HOURLY_CRON, handleScheduled } from "#src/scheduled-handler";
+import { type HOURLY_CRON, handleScheduled } from "#server/scheduled-handler";
 
 // Void reads the schedules from this literal; the type keeps the hourly one in
 // step with the `HOURLY_CRON` that `handleScheduled` compares against.

@@ -73,4 +73,4 @@ The loopback pair speaks plain HTTP. To sign and verify through `https://a.tstod
 
 ### Not covered locally
 
-- Outbox paging: tstodon serves its outbox as one `OrderedCollection` without `next` links, so the instances cannot exercise the deeper backfill (`OUTBOX_BACKFILL_PAGE_LIMIT`). Vitest covers it with served page documents (`src/remote-outbox-backfill.test.ts`).
+- Outbox paging: tstodon serves its outbox as one `OrderedCollection` without `next` links, so the instances cannot exercise the deeper backfill (`OUTBOX_BACKFILL_PAGE_LIMIT`). Vitest covers it with served page documents (`server/remote-outbox-backfill.test.ts`).

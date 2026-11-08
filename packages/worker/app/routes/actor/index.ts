@@ -1,1 +1,1 @@
-export { getActor as GET } from "#src/routes/activitypub";
+export { getActor as GET } from "#server/routes/activitypub";

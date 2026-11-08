@@ -1,1 +1,1 @@
-export { getV1StatusesByIdFavouritedBy as GET } from "#src/routes/statuses/engagement";
+export { getV1StatusesByIdFavouritedBy as GET } from "#server/routes/statuses/engagement";

@@ -1,1 +1,1 @@
-export { getV1FollowRequests as GET } from "#src/routes/follow-requests";
+export { getV1FollowRequests as GET } from "#server/routes/follow-requests";

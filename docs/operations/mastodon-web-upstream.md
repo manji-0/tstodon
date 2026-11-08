@@ -56,7 +56,7 @@ Below, `OLD` is the tag in `upstream.json` and `NEW` the release to move to.
    pnpm e2e:web --trace off
    ```
 
-   Then look over the Worker's side of the contract with the frontend: `src/web-app.ts` renders the HTML shell and `initial-state` Mastodon's Rails views render (compare upstream's `app/views/layouts/application.html.haml`, `app/serializers/initial_state_serializer.rb` and `app/presenters/initial_state_presenter.rb` between the tags), and reads the Vite entry names in `scripts/build-mastodon-web.mjs`.
+   Then look over the Worker's side of the contract with the frontend: `server/web-app.ts` renders the HTML shell and `initial-state` Mastodon's Rails views render (compare upstream's `app/views/layouts/application.html.haml`, `app/serializers/initial_state_serializer.rb` and `app/presenters/initial_state_presenter.rb` between the tags), and reads the Vite entry names in `scripts/build-mastodon-web.mjs`.
 
 7. Clean up: `git update-ref -d refs/mastodon/OLD` (and `NEW`), `git remote remove mastodon`, and delete `.cache/mastodon-web.patch` and `.cache/mastodon-yarn.lock`.
 

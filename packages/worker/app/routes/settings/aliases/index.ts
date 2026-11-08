@@ -1,4 +1,4 @@
 export {
   getSettingsAliases as GET,
   postSettingsAliases as POST,
-} from "#src/routes/account-settings";
+} from "#server/routes/account-settings";

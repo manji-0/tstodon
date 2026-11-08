@@ -1,1 +1,1 @@
-export { getDisputes as GET } from "#src/routes/unsupported-pages";
+export { getDisputes as GET } from "#server/routes/unsupported-pages";

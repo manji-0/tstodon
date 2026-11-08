@@ -1,1 +1,1 @@
-export { getV1Favourites as GET } from "#src/routes/statuses/interactions";
+export { getV1Favourites as GET } from "#server/routes/statuses/interactions";

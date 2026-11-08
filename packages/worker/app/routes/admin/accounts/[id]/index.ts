@@ -1,1 +1,4 @@
-export { getAdminAccount as GET, postAdminAccount as POST } from "#src/routes/admin-web/accounts";
+export {
+  getAdminAccount as GET,
+  postAdminAccount as POST,
+} from "#server/routes/admin-web/accounts";

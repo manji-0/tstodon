@@ -1,1 +1,1 @@
-export { getAttachmentsByAccountIdByBlobId as GET } from "#src/routes/media";
+export { getAttachmentsByAccountIdByBlobId as GET } from "#server/routes/media";

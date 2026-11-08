@@ -1,1 +1,1 @@
-export { postV1AdminReportsByIdResolve as POST } from "#src/routes/admin/reports";
+export { postV1AdminReportsByIdResolve as POST } from "#server/routes/admin/reports";

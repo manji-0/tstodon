@@ -1,1 +1,1 @@
-export { deleteV1ConversationsById as DELETE } from "#src/routes/conversations";
+export { deleteV1ConversationsById as DELETE } from "#server/routes/conversations";

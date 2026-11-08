@@ -24,7 +24,7 @@ For variable-length membership filters, always use:
   .bind(jsonStringArray(ids));
 ```
 
-Helpers live in `packages/worker/src/d1.ts` (`sqlInJsonEach`, `jsonStringArray`, `D1_MAX_BOUND_PARAMETERS`).
+Helpers live in `packages/worker/server/d1.ts` (`sqlInJsonEach`, `jsonStringArray`, `D1_MAX_BOUND_PARAMETERS`).
 
 Do **not** concatenate growing `?` lists for id/username/status sets.
 
@@ -41,5 +41,5 @@ Fixed, known-small lists with N ≤ 100 may use ordinary `IN (?,…)` only when 
 ## Consequences
 
 - Preload helpers (`findAccountsByIds`, interaction counts, hydrate media, …) bind one JSON array (plus any other fixed params).
-- Regression coverage: `packages/worker/src/d1-sql.test.ts` asserts a 200-id list still uses a single `?`.
+- Regression coverage: `packages/worker/server/d1-sql.test.ts` asserts a 200-id list still uses a single `?`.
 - Reviewers should reject PRs that reintroduce placeholder maps for membership.

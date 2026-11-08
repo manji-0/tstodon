@@ -1,1 +1,1 @@
-export { getUsersByUsernameStatusesById as GET } from "#src/routes/activitypub";
+export { getUsersByUsernameStatusesById as GET } from "#server/routes/activitypub";

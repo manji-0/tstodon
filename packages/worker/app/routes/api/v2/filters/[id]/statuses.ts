@@ -1,2 +1,2 @@
-export { getV2FiltersByIdStatuses as GET } from "#src/routes/filters/statuses";
-export { postV2FiltersByIdStatuses as POST } from "#src/routes/filters/statuses";
+export { getV2FiltersByIdStatuses as GET } from "#server/routes/filters/statuses";
+export { postV2FiltersByIdStatuses as POST } from "#server/routes/filters/statuses";

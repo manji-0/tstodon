@@ -1,4 +1,4 @@
 export {
   getSettingsMigration as GET,
   postSettingsMigration as POST,
-} from "#src/routes/account-settings";
+} from "#server/routes/account-settings";

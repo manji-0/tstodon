@@ -1,1 +1,1 @@
-export { getMediaById as GET } from "#src/routes/media";
+export { getMediaById as GET } from "#server/routes/media";

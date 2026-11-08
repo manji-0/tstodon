@@ -1,1 +1,1 @@
-export { getV1InstanceDomainBlocks as GET } from "#src/routes/instance";
+export { getV1InstanceDomainBlocks as GET } from "#server/routes/instance";

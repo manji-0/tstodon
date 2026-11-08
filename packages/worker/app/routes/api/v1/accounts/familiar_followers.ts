@@ -1,1 +1,1 @@
-export { getV1AccountsFamiliarFollowers as GET } from "#src/routes/accounts/lookup";
+export { getV1AccountsFamiliarFollowers as GET } from "#server/routes/accounts/lookup";

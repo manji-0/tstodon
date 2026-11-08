@@ -1,1 +1,1 @@
-export { getV1FeaturedTagsSuggestions as GET } from "#src/routes/tags";
+export { getV1FeaturedTagsSuggestions as GET } from "#server/routes/tags";

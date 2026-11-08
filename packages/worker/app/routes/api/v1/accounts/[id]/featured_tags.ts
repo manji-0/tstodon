@@ -1,1 +1,1 @@
-export { getV1AccountsByIdFeaturedTags as GET } from "#src/routes/tags";
+export { getV1AccountsByIdFeaturedTags as GET } from "#server/routes/tags";

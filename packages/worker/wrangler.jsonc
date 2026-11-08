@@ -3,7 +3,7 @@
   "name": "tstodon",
   // Void generates the Worker entry (`.void/entry.ts`) from `app/`
   // and replaces `main`; this one only lets `wrangler types` type the class bindings.
-  "main": "src/entry-classes.ts",
+  "main": "server/entry-classes.ts",
   "compatibility_date": "2026-09-20",
   "compatibility_flags": ["nodejs_compat"],
   "placement": {

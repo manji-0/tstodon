@@ -1,1 +1,1 @@
-export { postDeleteFilter as POST } from "#src/routes/filter-settings";
+export { postDeleteFilter as POST } from "#server/routes/filter-settings";

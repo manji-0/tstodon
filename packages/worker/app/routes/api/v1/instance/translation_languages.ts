@@ -1,1 +1,1 @@
-export { getV1InstanceTranslationLanguages as GET } from "#src/routes/instance";
+export { getV1InstanceTranslationLanguages as GET } from "#server/routes/instance";

@@ -1,1 +1,1 @@
-export { getV1Endorsements as GET } from "#src/routes/accounts/endorsements";
+export { getV1Endorsements as GET } from "#server/routes/accounts/endorsements";

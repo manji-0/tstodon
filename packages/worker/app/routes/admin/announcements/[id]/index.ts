@@ -1,4 +1,4 @@
 export {
   getAdminAnnouncement as GET,
   postAdminAnnouncement as POST,
-} from "#src/routes/admin-web/announcements";
+} from "#server/routes/admin-web/announcements";

@@ -1,1 +1,1 @@
-export { getRemoteInteractionHelper as GET } from "#src/remote-interaction-helper";
+export { getRemoteInteractionHelper as GET } from "#server/remote-interaction-helper";

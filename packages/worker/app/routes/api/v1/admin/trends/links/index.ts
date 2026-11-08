@@ -1,1 +1,1 @@
-export { getV1AdminTrendsLinks as GET } from "#src/routes/admin/trends";
+export { getV1AdminTrendsLinks as GET } from "#server/routes/admin/trends";

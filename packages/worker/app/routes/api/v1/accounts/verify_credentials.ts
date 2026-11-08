@@ -1,1 +1,1 @@
-export { getV1AccountsVerifyCredentials as GET } from "#src/routes/accounts/credentials";
+export { getV1AccountsVerifyCredentials as GET } from "#server/routes/accounts/credentials";

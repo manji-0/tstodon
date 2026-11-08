@@ -9,32 +9,32 @@ import { describe, expect, it } from "vite-plus/test";
  */
 const REVEAL_SITES: Readonly<Record<string, number>> = {
   // Writes the Access email onto the linked Better Auth user row.
-  "packages/worker/src/access-session.ts": 1,
+  "packages/worker/server/access-session.ts": 1,
   // Writes the address and private key, and looks an account up by address.
-  "packages/worker/src/account-store.ts": 3,
+  "packages/worker/server/account-store.ts": 3,
   // Shows a user the IP address of their own sessions.
-  "packages/worker/src/account-security-pages.ts": 1,
+  "packages/worker/server/account-security-pages.ts": 1,
   // The admin account list and page show the address (Mastodon's `/admin/accounts`).
-  "packages/worker/src/admin-pages.ts": 2,
+  "packages/worker/server/admin-pages.ts": 2,
   // Imports the RSA key to sign a delivery.
-  "packages/worker/src/http-signature.ts": 1,
+  "packages/worker/server/http-signature.ts": 1,
   // Stores a newly generated instance actor key.
-  "packages/worker/src/instance-actor.ts": 1,
+  "packages/worker/server/instance-actor.ts": 1,
   // The recipient of an outgoing email.
-  "packages/worker/src/mailer.ts": 1,
+  "packages/worker/server/mailer.ts": 1,
   // Domain and canonical-hash sign-up block checks.
-  "packages/worker/src/registration-block-store.ts": 2,
+  "packages/worker/server/registration-block-store.ts": 2,
   // The admin API's `Admin::Account#email`.
-  "packages/worker/src/routes/admin/accounts.ts": 1,
+  "packages/worker/server/routes/admin/accounts.ts": 1,
   // Imports the VAPID key to sign a push.
-  "packages/worker/src/web-push.ts": 1,
+  "packages/worker/server/web-push.ts": 1,
 };
 
 const ROOT = path.resolve(import.meta.dirname, "../../..");
 const SCANNED = [
   "packages/core/src",
   "packages/domain/src",
-  "packages/worker/src",
+  "packages/worker/server",
   "packages/worker/app",
 ];
 

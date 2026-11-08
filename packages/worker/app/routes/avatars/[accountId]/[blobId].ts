@@ -1,1 +1,1 @@
-export { getAvatarsByAccountIdByBlobId as GET } from "#src/routes/media";
+export { getAvatarsByAccountIdByBlobId as GET } from "#server/routes/media";

@@ -14,7 +14,7 @@ Run the two local Workers from [Federation e2e](./e2e-federation.md) on public H
 
 <!-- derived-from #goal -->
 
-tstodon signs `(request-target) host date digest` (`packages/worker/src/http-signature.ts`). Verification rebuilds that string from the path on `request.url`, the `Host` header, `Date`, and a SHA-256 of the body.
+tstodon signs `(request-target) host date digest` (`packages/worker/server/http-signature.ts`). Verification rebuilds that string from the path on `request.url`, the `Host` header, `Date`, and a SHA-256 of the body.
 
 | Piece              | Through portless                                                                                                                     |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -30,7 +30,7 @@ tstodon signs `(request-target) host date digest` (`packages/worker/src/http-sig
 <!-- constrained-by ../reference/configuration.md#authentication -->
 <!-- derived-from #why-the-signature-matches -->
 
-Every federation script signs up before it delivers anything. `signUpBrowser` (`e2e/lib.ts`) posts `/oauth/authorize` with `Origin` set to the https public origin. The dev server's `request.url` is still `http://…`, and `isSameOriginPost` (`packages/worker/src/browser-session.ts`) used to compare that `Origin` to `new URL(request.url).origin`. The post was a 403 (`Authorization must be confirmed on this site.`), so the run never reached a signed delivery.
+Every federation script signs up before it delivers anything. `signUpBrowser` (`e2e/lib.ts`) posts `/oauth/authorize` with `Origin` set to the https public origin. The dev server's `request.url` is still `http://…`, and `isSameOriginPost` (`packages/worker/server/browser-session.ts`) used to compare that `Origin` to `new URL(request.url).origin`. The post was a 403 (`Authorization must be confirmed on this site.`), so the run never reached a signed delivery.
 
 The check now accepts the post when `Origin` equals the request origin after `X-Forwarded-Proto` is applied, and when `Origin` equals `INSTANCE_PUBLIC_ORIGIN`. The OAuth metadata fallback (`oauth.ts`) uses that public origin. The web UI's streaming URL stays on the host that served the page, with `X-Forwarded-Proto` applied: `INSTANCE_PUBLIC_ORIGIN` is `https://example.com` under `pnpm dev`, and the stream must not follow it. Keep the proxy on HTTPS. `--no-tls` makes WebFinger ask for `https://` names that nothing is serving.
 

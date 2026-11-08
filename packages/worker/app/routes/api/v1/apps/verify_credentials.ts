@@ -1,1 +1,1 @@
-export { getV1AppsVerifyCredentials as GET } from "#src/routes/apps";
+export { getV1AppsVerifyCredentials as GET } from "#server/routes/apps";

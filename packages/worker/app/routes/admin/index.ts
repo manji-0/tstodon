@@ -1,1 +1,1 @@
-export { getAdminDashboard as GET } from "#src/routes/admin-web/dashboard";
+export { getAdminDashboard as GET } from "#server/routes/admin-web/dashboard";

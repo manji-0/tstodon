@@ -10,7 +10,7 @@ import { instanceName, type SettingsContext, settingsAccount } from "./account-s
 
 /**
  * Mastodon's `/statuses_cleanup`: the account's automated post deletion
- * policy. The cron job in `src/statuses-cleanup.ts` applies it.
+ * policy. The cron job in `server/statuses-cleanup.ts` applies it.
  */
 
 /** Checkboxes post `1` when checked and nothing when not. */

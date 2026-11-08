@@ -1,1 +1,1 @@
-export { getSettingsImport as GET, postSettingsImport as POST } from "#src/routes/data-settings";
+export { getSettingsImport as GET, postSettingsImport as POST } from "#server/routes/data-settings";

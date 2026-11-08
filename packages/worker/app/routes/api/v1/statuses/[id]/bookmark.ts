@@ -1,1 +1,1 @@
-export { postV1StatusesByIdBookmark as POST } from "#src/routes/statuses/interactions";
+export { postV1StatusesByIdBookmark as POST } from "#server/routes/statuses/interactions";

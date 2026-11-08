@@ -1,1 +1,1 @@
-export { getAuthEdit as GET } from "#src/routes/account-security";
+export { getAuthEdit as GET } from "#server/routes/account-security";

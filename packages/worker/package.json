@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "imports": {
-    "#src/*": "./src/*.ts"
+    "#server/*": "./server/*.ts"
   },
   "exports": {
-    ".": "./src/entry-classes.ts"
+    ".": "./server/entry-classes.ts"
   },
   "dependencies": {
     "@prisma/client": "^7.10.0",

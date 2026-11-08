@@ -1,1 +1,1 @@
-export { getV2NotificationsUnreadCount as GET } from "#src/routes/notifications";
+export { getV2NotificationsUnreadCount as GET } from "#server/routes/notifications";

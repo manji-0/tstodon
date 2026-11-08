@@ -1,1 +1,1 @@
-export { getV1Instance as GET } from "#src/routes/instance";
+export { getV1Instance as GET } from "#server/routes/instance";

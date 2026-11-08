@@ -1,1 +1,1 @@
-export { postV1AdminAccountsByIdSuspend as POST } from "#src/routes/admin/accounts";
+export { postV1AdminAccountsByIdSuspend as POST } from "#server/routes/admin/accounts";

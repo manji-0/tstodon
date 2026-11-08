@@ -1,1 +1,1 @@
-export { getV2Notifications as GET } from "#src/routes/notifications";
+export { getV2Notifications as GET } from "#server/routes/notifications";

@@ -1,1 +1,1 @@
-export { getV2Suggestions as GET } from "#src/routes/suggestions";
+export { getV2Suggestions as GET } from "#server/routes/suggestions";

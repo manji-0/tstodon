@@ -1,1 +1,1 @@
-export { getV1NotificationsRequestsById as GET } from "#src/routes/notification-requests";
+export { getV1NotificationsRequestsById as GET } from "#server/routes/notification-requests";

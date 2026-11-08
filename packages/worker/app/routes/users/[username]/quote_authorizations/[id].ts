@@ -1,1 +1,1 @@
-export { getUsersByUsernameQuoteAuthorizationsById as GET } from "#src/routes/activitypub";
+export { getUsersByUsernameQuoteAuthorizationsById as GET } from "#server/routes/activitypub";

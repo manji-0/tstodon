@@ -5,7 +5,7 @@ import type { Plugin } from "vite-plus";
 import { z } from "zod";
 
 const root = import.meta.dirname;
-const entryClassesFile = path.join(root, "src/entry-classes.ts");
+const entryClassesFile = path.join(root, "server/entry-classes.ts");
 const queuesDir = path.join(root, "app/queues");
 
 /**

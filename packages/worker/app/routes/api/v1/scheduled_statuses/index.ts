@@ -1,1 +1,1 @@
-export { getV1ScheduledStatuses as GET } from "#src/routes/scheduled-statuses";
+export { getV1ScheduledStatuses as GET } from "#server/routes/scheduled-statuses";

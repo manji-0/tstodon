@@ -1,1 +1,1 @@
-export { getV1Search as GET } from "#src/routes/search";
+export { getV1Search as GET } from "#server/routes/search";

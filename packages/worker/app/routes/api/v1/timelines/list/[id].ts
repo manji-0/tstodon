@@ -1,1 +1,1 @@
-export { getV1TimelinesListById as GET } from "#src/routes/lists";
+export { getV1TimelinesListById as GET } from "#server/routes/lists";

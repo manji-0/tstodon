@@ -1,1 +1,1 @@
-export { getV1AdminAccounts as GET } from "#src/routes/admin/accounts";
+export { getV1AdminAccounts as GET } from "#server/routes/admin/accounts";

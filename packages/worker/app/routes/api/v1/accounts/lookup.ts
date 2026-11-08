@@ -1,1 +1,1 @@
-export { getV1AccountsLookup as GET } from "#src/routes/accounts/lookup";
+export { getV1AccountsLookup as GET } from "#server/routes/accounts/lookup";

@@ -20,8 +20,8 @@ On D1 that path is a poor default:
 
 ## Decision
 
-- **Generate** with Prisma (`pnpm prisma:generate` → `packages/worker/src/generated/prisma`).
-- **Execute** only via `queryTyped` / `runTyped` / `d1PrepareTyped` in `packages/worker/src/typed-sql.ts`, which rewrite `$N` → `?` and call D1. Because TypedSQL names are positional and may repeat (`accountCounts` binds `$1` three times), `d1PrepareTyped` expands one value per `$N` occurrence rather than assuming a 1:1 argument list.
+- **Generate** with Prisma (`pnpm prisma:generate` → `packages/worker/server/generated/prisma`).
+- **Execute** only via `queryTyped` / `runTyped` / `d1PrepareTyped` in `packages/worker/server/typed-sql.ts`, which rewrite `$N` → `?` and call D1. Because TypedSQL names are positional and may repeat (`accountCounts` binds `$1` three times), `d1PrepareTyped` expands one value per `$N` occurrence rather than assuming a 1:1 argument list.
 - Do **not** construct `PrismaClient` / `@prisma/adapter-d1` on the request path.
 - Do **not** use Prisma model CRUD (`findMany`, `create`, …) for domain persistence.
 

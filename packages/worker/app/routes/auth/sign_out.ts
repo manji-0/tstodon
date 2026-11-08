@@ -1,1 +1,1 @@
-export { deleteAuthSignOut as DELETE } from "#src/routes/oauth";
+export { deleteAuthSignOut as DELETE } from "#server/routes/oauth";

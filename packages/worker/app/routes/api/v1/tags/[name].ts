@@ -1,1 +1,1 @@
-export { getV1TagsByName as GET } from "#src/routes/tags";
+export { getV1TagsByName as GET } from "#server/routes/tags";

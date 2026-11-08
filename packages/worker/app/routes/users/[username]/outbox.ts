@@ -1,1 +1,1 @@
-export { getUsersByUsernameOutbox as GET } from "#src/routes/activitypub";
+export { getUsersByUsernameOutbox as GET } from "#server/routes/activitypub";

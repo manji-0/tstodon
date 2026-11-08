@@ -1,1 +1,1 @@
-export { getV1PollsById as GET } from "#src/routes/polls";
+export { getV1PollsById as GET } from "#server/routes/polls";

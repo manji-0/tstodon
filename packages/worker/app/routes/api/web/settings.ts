@@ -1,1 +1,1 @@
-export { putApiWebSettings as PUT } from "#src/routes/web-settings";
+export { putApiWebSettings as PUT } from "#server/routes/web-settings";

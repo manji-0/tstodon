@@ -25,15 +25,15 @@ The short checklist remains [`./d1-writes.md`](./d1-writes.md). This design **su
 
 Worker persistence already clusters around a small helper surface:
 
-| Helper                                       | File                               | Role                                                       |
-| -------------------------------------------- | ---------------------------------- | ---------------------------------------------------------- |
-| `runD1`                                      | `packages/worker/src/d1.ts`        | Catch D1 failures → `Result<…, RepositoryError>`           |
-| `runD1Batch`                                 | same                               | One `db.batch` round-trip / SQL transaction                |
-| `runD1BatchChunked`                          | same                               | Chunk large statement lists at `D1_BATCH_CHUNK_SIZE` (100) |
-| `sqlInJsonEach` / `jsonStringArray`          | same                               | O(1)-bind membership (`json_each(?)`)                      |
-| `d1PrepareTyped` / `queryTyped` / `runTyped` | `packages/worker/src/typed-sql.ts` | Execute Prisma TypedSQL via D1 (`$N` → `?`)                |
+| Helper                                       | File                                  | Role                                                       |
+| -------------------------------------------- | ------------------------------------- | ---------------------------------------------------------- |
+| `runD1`                                      | `packages/worker/server/d1.ts`        | Catch D1 failures → `Result<…, RepositoryError>`           |
+| `runD1Batch`                                 | same                                  | One `db.batch` round-trip / SQL transaction                |
+| `runD1BatchChunked`                          | same                                  | Chunk large statement lists at `D1_BATCH_CHUNK_SIZE` (100) |
+| `sqlInJsonEach` / `jsonStringArray`          | same                                  | O(1)-bind membership (`json_each(?)`)                      |
+| `d1PrepareTyped` / `queryTyped` / `runTyped` | `packages/worker/server/typed-sql.ts` | Execute Prisma TypedSQL via D1 (`$N` → `?`)                |
 
-Fixed-shape SQL lives under repo-root `prisma/sql/*.sql`, is generated into `packages/worker/src/generated/prisma/sql/`, and is executed only through the TypedSQL helpers. Shape-varying timeline/search/context SQL stays on `db.prepare` ([ADR: variable timeline SQL](./adr-variable-timeline-sql.md)).
+Fixed-shape SQL lives under repo-root `prisma/sql/*.sql`, is generated into `packages/worker/server/generated/prisma/sql/`, and is executed only through the TypedSQL helpers. Shape-varying timeline/search/context SQL stays on `db.prepare` ([ADR: variable timeline SQL](./adr-variable-timeline-sql.md)).
 
 ### Pain points this design addresses
 
@@ -135,7 +135,7 @@ flowchart TB
 **Error wrapping**
 
 ```ts
-// packages/worker/src/d1.ts
+// packages/worker/server/d1.ts
 export const runD1 = async <T>(work: () => Promise<T>): Promise<Result<T, RepositoryError>>
 ```
 
@@ -163,7 +163,7 @@ Chunks are sequential (`await` per chunk). Partial success across chunks is poss
 **TypedSQL → D1**
 
 ```ts
-// packages/worker/src/typed-sql.ts
+// packages/worker/server/typed-sql.ts
 export const d1PrepareTyped = (
   db: D1Database,
   typed: { readonly sql: string; readonly values: ReadonlyArray<unknown> },
@@ -216,14 +216,14 @@ sequenceDiagram
 
 ### 1. Mentions — delete-all + insert set in one batch
 
-`replaceStatusMentions` in `packages/worker/src/mention-store.ts`:
+`replaceStatusMentions` in `packages/worker/server/mention-store.ts`:
 
 - `deleteStatusMentions` + N × `insertStatusMention` (`INSERT OR IGNORE`)
 - Single `runD1Batch` today — **safe while `1 + N ≤ ~100`** (typical mention cardinality). If mention sets can approach the soft cap, switch to `runD1BatchChunked` or cap mentions in the API; do not treat unbounded non-chunked batches as normative.
 
 ### 2. Status + media — parent note + attachment links
 
-`insertLocalNote` in `packages/worker/src/status-store.ts`:
+`insertLocalNote` in `packages/worker/server/status-store.ts`:
 
 - `insertLocalNote` TypedSQL + one `attachMediaToStatus` per `mediaIds` entry
 - `runD1Batch` so the note never lands without its media links (or neither lands)
@@ -231,7 +231,7 @@ sequenceDiagram
 
 ### 3. Outbox activity + fan-out row
 
-`insertOutboundActivity` in `packages/worker/src/outbox-store.ts`:
+`insertOutboundActivity` in `packages/worker/server/outbox-store.ts`:
 
 - Inserts `outbound_activities` + initial `outbox_deliveries` fan-out row (`insertOutboxDeliveryFanout`) in one `runD1Batch`
 - Queue `ExpandFollowers` is sent **after** insert succeeds inside `enqueueLocalActivity` (`delivery.ts`)
@@ -278,7 +278,7 @@ Patches (at most home + notifications) are prepared with `d1PrepareTyped` and co
 
 ## Status publish composition (route-level gap)
 
-Rule 4 applies **per store helper**. The Create path in `packages/worker/src/routes/statuses.ts` today composes several helpers and side effects in an order that can leave partial outcomes. Heavy-path context (without inventing a reverse dependency): [Doc B §7](./d1-heavy-scenarios.md#7-status-create-saga-composition).
+Rule 4 applies **per store helper**. The Create path in `packages/worker/server/routes/statuses.ts` today composes several helpers and side effects in an order that can leave partial outcomes. Heavy-path context (without inventing a reverse dependency): [Doc B §7](./d1-heavy-scenarios.md#7-status-create-saga-composition).
 
 1. `insertLocalNote` (batch: note + media)
 2. Optional `insertPoll` (**separate** batch — orphan note if poll insert fails after note ok; route returns 500 but note remains)
@@ -395,7 +395,7 @@ No further open questions in this document; capacity SLOs remain in Doc B.
 - [`./adr-wrangler-migrations-sot.md`](./adr-wrangler-migrations-sot.md)
 - [`./adr-variable-timeline-sql.md`](./adr-variable-timeline-sql.md)
 - [`./tstodon-architecture.md`](./tstodon-architecture.md)
-- Code: `packages/worker/src/d1.ts`, `typed-sql.ts`, `mention-store.ts`, `status-store.ts`, `outbox-store.ts`, `poll-store.ts`, `marker-store.ts`, `list-store.ts`, `status-interaction-store.ts`, `delivery.ts`, `routes/statuses/`
+- Code: `packages/worker/server/d1.ts`, `typed-sql.ts`, `mention-store.ts`, `status-store.ts`, `outbox-store.ts`, `poll-store.ts`, `marker-store.ts`, `list-store.ts`, `status-interaction-store.ts`, `delivery.ts`, `routes/statuses/`
 
 ## Key Decisions
 
@@ -415,7 +415,7 @@ No further open questions in this document; capacity SLOs remain in Doc B.
 | --- | ------------------------------------------------------------------ | -------------------------------------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | `docs: land D1 write strategy`                                     | `docs/architecture/d1-write-strategy.md`, `docs/architecture/d1-writes.md` | —                      | Publish this draft; add `constrained-by ./d1-write-strategy.md` on the checklist; cross-link ADRs                                                                                                                                                  |
 | 2   | `docs: point architecture index at write strategy`                 | `docs/architecture/tstodon-architecture.md`                                | PR1                    | Cloudflare mapping row: link long-form + checklist                                                                                                                                                                                                 |
-| 3   | `refactor(worker): chunked ExpandFollowers outbox target inserts`  | `packages/worker/src/delivery.ts`, `outbox-store.ts`                       | PR1 (convention only)  | **Shared implementation PR** (Doc B references this id). Replace per-inbox sequential `ensureOutboxTarget` with chunked `INSERT OR IGNORE` batch + workflow starts. May land before or with PR4; does not hard-depend on `runTypedBatch`.          |
-| 4   | `refactor(worker): add runTypedBatch helper`                       | `packages/worker/src/typed-sql.ts`, call sites as convenient               | PR1                    | **Planned (not optional).** Sugar over `d1PrepareTyped` + `runD1Batch`. Land soon; may ship with or after PR3.                                                                                                                                     |
+| 3   | `refactor(worker): chunked ExpandFollowers outbox target inserts`  | `packages/worker/server/delivery.ts`, `outbox-store.ts`                    | PR1 (convention only)  | **Shared implementation PR** (Doc B references this id). Replace per-inbox sequential `ensureOutboxTarget` with chunked `INSERT OR IGNORE` batch + workflow starts. May land before or with PR4; does not hard-depend on `runTypedBatch`.          |
+| 4   | `refactor(worker): add runTypedBatch helper`                       | `packages/worker/server/typed-sql.ts`, call sites as convenient            | PR1                    | **Planned (not optional).** Sugar over `d1PrepareTyped` + `runD1Batch`. Land soon; may ship with or after PR3.                                                                                                                                     |
 | 5   | `fix(worker): Create status saga ordering + enqueue observability` | `routes/statuses.ts`, `delivery.ts`                                        | PR1                    | **Sole owner** of `enqueueLocalActivity` swallow fix (`Result` and/or log/metric on insert/parse/queue send). Also: persist mentions before notify; handle note/poll fate. Doc B must not open a second `delivery.ts` change set for the same gap. |
 | 6   | _(deferred)_ Write-side `Promise.all` guard                        | —                                                                          | evidence of regression | Do **not** land a blunt lint forbidding `Promise.all` near stores — it false-positives `mastodonStatuses` reads. Revisit only with a write-helper-scoped check if a real write regression appears; rely on checklist + `d1-sql.test.ts` for now    |

@@ -1,1 +1,1 @@
-export { postAuthorizedApplicationRevoke as POST } from "#src/routes/account-security";
+export { postAuthorizedApplicationRevoke as POST } from "#server/routes/account-security";

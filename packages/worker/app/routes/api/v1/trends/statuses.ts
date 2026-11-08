@@ -1,1 +1,1 @@
-export { getV1TrendsStatuses as GET } from "#src/routes/trends";
+export { getV1TrendsStatuses as GET } from "#server/routes/trends";
