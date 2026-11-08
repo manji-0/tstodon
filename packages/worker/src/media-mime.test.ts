@@ -1,5 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
+import { sampleUploadFor } from "../test/image-fixtures";
 import { z } from "zod";
 import { schemaResult, InstanceLimits } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
@@ -31,7 +32,7 @@ const upload = async (
   name: string,
 ): Promise<{ status: number; body: unknown }> => {
   const form = new FormData();
-  form.set("file", new File([new Uint8Array([1, 2, 3])], name, { type }));
+  form.set("file", new File([sampleUploadFor(type)], name, { type }));
   return json("/api/v2/media", {
     method: "POST",
     headers: await auth(email),

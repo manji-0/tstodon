@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
+import { PNG_40X30 } from "../test/image-fixtures";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
@@ -69,8 +70,7 @@ const actorJson = async (username: string): Promise<unknown> => {
 
 const actor = async (username: string) => read(ActorSchema, await actorJson(username));
 
-const imageFile = (name: string, type: string): File =>
-  new File([new Uint8Array([137, 80, 78, 71])], name, { type });
+const imageFile = (name: string, type: string): File => new File([PNG_40X30], name, { type });
 
 const updateProfile = async (email: string, form: FormData) => {
   const response = await json("/api/v1/accounts/update_credentials", {

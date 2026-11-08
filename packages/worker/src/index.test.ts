@@ -1,6 +1,7 @@
 import { schemaResult } from "@tstodon/core";
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
+import { JPEG_800X600, PNG_40X30 } from "../test/image-fixtures";
 import { z } from "zod";
 import { findAccountByUsername } from "./account-store";
 import { requireAdmin } from "./auth";
@@ -252,10 +253,7 @@ describe("worker http", () => {
 
   it("uploads media, creates polls, filters, and reports", async () => {
     const form = new FormData();
-    form.set(
-      "file",
-      new File([new Uint8Array([137, 80, 78, 71])], "hello.png", { type: "image/png" }),
-    );
+    form.set("file", new File([PNG_40X30], "hello.png", { type: "image/png" }));
     const mediaResponse = await SELF.fetch("https://example.com/api/v1/media", {
       method: "POST",
       headers: await auth("alice@example.com"),
@@ -265,13 +263,13 @@ describe("worker http", () => {
     const media = read(MastodonMediaPreviewSchema, await mediaResponse.json());
     expect(media.id).toBeTruthy();
     expect(media.url).toContain("/attachments/");
-    expect(media.preview_url).toBe(media.url);
+    expect(media.preview_url).toContain("/attachments/");
 
     const mediaGet = await SELF.fetch(media.url, {
       headers: { Origin: "https://other.example" },
     });
     expect(mediaGet.status).toBe(200);
-    expect([...new Uint8Array(await mediaGet.arrayBuffer())]).toEqual([137, 80, 78, 71]);
+    expect(new Uint8Array(await mediaGet.arrayBuffer())).toEqual(PNG_40X30);
     expect(mediaGet.headers.get("cache-control")).toContain("max-age=31536000");
     expect(mediaGet.headers.get("access-control-allow-origin")).toBe("*");
 
@@ -308,8 +306,8 @@ describe("worker http", () => {
 
     const avatarForm = new FormData();
     avatarForm.set("display_name", "Alice Avatar");
-    avatarForm.set("avatar", new File(["avatar-bytes"], "avatar.png", { type: "image/png" }));
-    avatarForm.set("header", new File(["header-bytes"], "header.png", { type: "image/png" }));
+    avatarForm.set("avatar", new File([PNG_40X30], "avatar.png", { type: "image/png" }));
+    avatarForm.set("header", new File([JPEG_800X600], "header.jpg", { type: "image/jpeg" }));
     const profileResponse = await SELF.fetch(
       "https://example.com/api/v1/accounts/update_credentials",
       {
@@ -324,10 +322,10 @@ describe("worker http", () => {
     expect(profile.header).toContain("/headers/");
     const avatarGet = await SELF.fetch(profile.avatar!);
     expect(avatarGet.status).toBe(200);
-    expect(await avatarGet.text()).toBe("avatar-bytes");
+    expect(new Uint8Array(await avatarGet.arrayBuffer())).toEqual(PNG_40X30);
     const headerGet = await SELF.fetch(profile.header!);
     expect(headerGet.status).toBe(200);
-    expect(await headerGet.text()).toBe("header-bytes");
+    expect(new Uint8Array(await headerGet.arrayBuffer())).toEqual(JPEG_800X600);
 
     const poll = await json("/api/v1/statuses", {
       method: "POST",

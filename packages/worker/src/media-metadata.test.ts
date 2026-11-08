@@ -1,5 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
+import { PNG_40X30 } from "../test/image-fixtures";
 import { z } from "zod";
 import { InstanceLimits, schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
@@ -37,7 +38,7 @@ const postUpload = async (
   fields: Record<string, string> = {},
 ): Promise<{ status: number; body: unknown }> => {
   const form = new FormData();
-  form.set("file", new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" }));
+  form.set("file", new File([PNG_40X30], "a.png", { type: "image/png" }));
   for (const [key, value] of Object.entries(fields)) {
     form.set(key, value);
   }
@@ -186,7 +187,8 @@ describe("media metadata", () => {
     const accepted = await postUpload(email, "/api/v2/media", { description: fits });
     expect(accepted.status).toBe(200);
     expect(read(MediaSchema, accepted.body).description).toBe(fits);
-    expect(await storedUploads(accountId)).toEqual({ rows: 1, objects: 1 });
+    // The original and its preview.
+    expect(await storedUploads(accountId)).toEqual({ rows: 1, objects: 2 });
   });
 
   it("deletes unattached media", async () => {

@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
+import { PNG_40X30 } from "../test/image-fixtures";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
@@ -7,7 +8,7 @@ import { signUp } from "../test/passkey-browser";
 import { purgeAccount } from "./admin-actions";
 import { processOutboxJob } from "./outbox-job";
 
-const BYTES = [137, 80, 78, 71, 1, 2, 3];
+const BYTES = [...PNG_40X30];
 
 const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   const parsed = schemaResult(schema)(body);

@@ -1,5 +1,6 @@
 import {
   FediRole,
+  ImageMetadata,
   QuoteApprovalPolicy,
   Visibility,
   type FediRole as FediRoleValue,
@@ -130,10 +131,19 @@ const storeProfileImage = async (
   if (!allowed.includes(contentType)) {
     return { kind: "Err", message: `${kind} must be one of ${allowed.join(", ")}` };
   }
-  const bytes = await value.arrayBuffer();
-  if (bytes.byteLength > PROFILE_IMAGE_MAX_BYTES) {
+  const uploaded = await value.arrayBuffer();
+  if (uploaded.byteLength > PROFILE_IMAGE_MAX_BYTES) {
     return { kind: "Err", message: `${kind} exceeds ${PROFILE_IMAGE_MAX_BYTES} bytes` };
   }
+  // Stored without EXIF, XMP and the like, as media attachments are.
+  const scrubbed = ImageMetadata.forUpload(contentType, new Uint8Array(uploaded));
+  if (scrubbed.isErr()) {
+    console.warn(
+      JSON.stringify({ kind: "ProfileImageRejected", image: kind, error: scrubbed.error }),
+    );
+    return { kind: "Err", message: `${kind} is not a readable ${contentType} file` };
+  }
+  const bytes = scrubbed.value;
   // A fresh key per upload, so the immutable cache never serves the old image.
   const blobId = newEntityId();
   const objectKey =

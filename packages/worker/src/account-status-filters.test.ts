@@ -1,5 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
+import { PNG_40X30 } from "../test/image-fixtures";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
@@ -68,7 +69,7 @@ describe("account status filters", () => {
       headers: await auth(email),
       body: (() => {
         const form = new FormData();
-        form.set("file", new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" }));
+        form.set("file", new File([PNG_40X30], "a.png", { type: "image/png" }));
         return form;
       })(),
     });
