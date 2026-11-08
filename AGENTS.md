@@ -8,6 +8,7 @@ This file tells AI coding agents how to work in this repository without losing p
 
 - `packages/core` for Result/schema helpers, branded IDs, and `Sensitive`.
 - `packages/domain` for Zod 4.6 `kind`-discriminated domain models.
+- `packages/web` for Mastodon's web frontend, vendored from upstream (`@tstodon/web`; see `packages/web/UPSTREAM.md`).
 - `packages/worker` for the Worker runtime, built, served, and deployed by [Void](https://void.cloud). `packages/worker` is the Void project root (`vite.config.ts` with `voidPlugin()`, `void.json`, `wrangler.jsonc`, `assets/`); Void reads its conventions from `packages/worker/app` (`void.json` `sourceDir`): `routes/`, `middleware/`, `crons/`, `queues/`, `db/migrations/`. Shared code stays in `packages/worker/src`.
 
 Operational docs live under `docs/`.
@@ -18,7 +19,7 @@ Void generates the Worker entry (`.void/entry.ts`) and owns HTTP routing (on Hon
 
 Do not send Queue, scheduled, Workflow, or Durable Object traffic through HTTP routes. Cron jobs live in `packages/worker/app/crons/`, queue consumers in `packages/worker/app/queues/` (the file name is the queue name). Workflow and Durable Object classes are exported from `packages/worker/src/entry-classes.ts`, which the `tstodon:export-entry-classes` plugin in `packages/worker/void-plugins.ts` appends to Void's entry. Worker tests run against the Void build in `packages/worker/dist/` (`pnpm test` builds first).
 
-The browser UI is Mastodon's own web app: `pnpm web:build` builds it from a pinned Mastodon release into `packages/worker/assets/` (gitignored output), and `src/web-app.ts` (middleware `03.web-app.ts`) renders its HTML shell and initial state. Do not hand-edit the built assets. Browser e2e scenarios (Playwright) live in `e2e/web/` (`pnpm e2e:web`, see `docs/getting-started/e2e-web.md`).
+The browser UI is Mastodon's own web app, vendored in `packages/web` at the upstream release `packages/web/UPSTREAM.md` records (with `upstream.json`, which the build reads). Change the UI there, and list each change against upstream under "Local changes" in `UPSTREAM.md`; moving to a newer release is `docs/operations/mastodon-web-upstream.md`. It keeps Mastodon's own code style, lint and Vite/Vitest versions: root `vp check` and `vp test run` skip it, and its own checks are `pnpm -C packages/web typecheck` and `pnpm -C packages/web test:js run`. `pnpm web:build` builds it into `packages/worker/assets/` (gitignored output; `public/emoji` and `public/ocr` are fetched from upstream, not committed), and `src/web-app.ts` (middleware `03.web-app.ts`) renders its HTML shell and initial state. Do not hand-edit the built assets. Browser e2e scenarios (Playwright) live in `e2e/web/` (`pnpm e2e:web`, see `docs/getting-started/e2e-web.md`).
 
 Hono handlers are a boundary: parse with Zod, call domain companions, map `Result` error `kind`s to HTTP. Domain transitions stay pure.
 
