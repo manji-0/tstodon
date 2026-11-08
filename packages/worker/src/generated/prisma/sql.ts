@@ -168,6 +168,8 @@ export * from "./sql/deleteRemoteStatusRemoteMentions";
 
 export * from "./sql/deleteSignupIntentsByEmail";
 
+export * from "./sql/deleteStatusMedia";
+
 export * from "./sql/deleteStatusMentions";
 
 export * from "./sql/deleteStatusOwned";
@@ -175,6 +177,8 @@ export * from "./sql/deleteStatusOwned";
 export * from "./sql/deleteStatusRemoteMentions";
 
 export * from "./sql/deleteStreamSubscription";
+
+export * from "./sql/deleteUnattachedMedia";
 
 export * from "./sql/demoteRemoteActorHandle";
 

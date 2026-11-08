@@ -169,7 +169,7 @@ const deleteLocal = async (
   if (!account.value || !status.value || status.value.accountId !== accountId) {
     return ok(false);
   }
-  return deleteLocalStatus(env, identity, account.value, status.value);
+  return deleteLocalStatus(env, identity, account.value, status.value, "Delete");
 };
 
 /**
