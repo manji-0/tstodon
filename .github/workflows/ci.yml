@@ -45,6 +45,19 @@ jobs:
       - name: Check D1 result calls take no type argument
         run: node scripts/check-d1-type-arguments.mjs
 
+      # Mastodon's web UI (packages/web). The build fetches public/emoji and
+      # public/ocr from the pinned upstream tag (Mastodon's emoji test reads
+      # them) and fills packages/worker/assets, so the Worker's web app tests
+      # run against a real build instead of skipping.
+      - name: Build web UI
+        run: vp run web:build
+
+      - name: Typecheck web UI
+        run: vp run @tstodon/web#typecheck
+
+      - name: Test web UI
+        run: vp run @tstodon/web#test:js run
+
       # Worker tests run against the Void build output in packages/worker/dist/.
       - name: Build
         run: vp -C packages/worker build
