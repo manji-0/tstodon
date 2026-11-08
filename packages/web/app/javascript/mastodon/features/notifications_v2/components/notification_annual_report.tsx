@@ -43,7 +43,7 @@ export const NotificationAnnualReport: React.FC<{
         <p>
           <FormattedMessage
             id='notification.annual_report.message'
-            defaultMessage="Your {year} #Wrapstodon awaits! Unveil your year's highlights and memorable moments on Mastodon!"
+            defaultMessage="Your {year} #Wrapstodon awaits! Unveil your year's highlights and memorable moments on the fediverse!"
             values={{ year }}
           />
         </p>

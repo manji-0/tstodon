@@ -282,7 +282,7 @@ export const Profile: React.FC<{
               <span className='hint'>
                 <FormattedMessage
                   id='onboarding.profile.discoverable_hint'
-                  defaultMessage='When you opt in to discoverability on Mastodon, your posts may appear in search results and trending, and your profile may be suggested to people with similar interests to you.'
+                  defaultMessage='When you opt in to discoverability on tstodon, your posts may appear in search results and trending, and your profile may be suggested to people with similar interests to you.'
                 />
               </span>
             </div>

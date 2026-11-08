@@ -269,7 +269,7 @@ export const QuotedStatus: React.FC<QuotedStatusProps> = ({
           <p>
             <FormattedMessage
               id='status.quote_error.pending_approval_popout.body'
-              defaultMessage="On Mastodon, you can control whether someone can quote you. This post is pending while we're getting the original author's approval."
+              defaultMessage="On tstodon, you can control whether someone can quote you. This post is pending while we're getting the original author's approval."
             />
           </p>
         </LearnMoreLink>

@@ -26,7 +26,7 @@ export const AnnualReportAnnouncement: React.FC<
       />
       <FormattedMessage
         id='annual_report.announcement.description'
-        defaultMessage='Discover more about your engagement on Mastodon over the past year.'
+        defaultMessage='Discover more about your engagement on the fediverse over the past year.'
         tagName='p'
       />
       {state === 'available' ? (

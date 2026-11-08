@@ -56,22 +56,22 @@ export const archetypeSelfDescriptions = defineMessages<ArchetypeData>({
   replier: {
     id: 'annual_report.summary.archetype.replier.desc_self',
     defaultMessage:
-      'You frequently replied to other people’s posts, pollinating Mastodon with new discussions.',
+      'You frequently replied to other people’s posts, pollinating the fediverse with new discussions.',
   },
   pollster: {
     id: 'annual_report.summary.archetype.pollster.desc_self',
     defaultMessage:
-      'You created more polls than other post types, cultivating curiosity on Mastodon.',
+      'You created more polls than other post types, cultivating curiosity on the fediverse.',
   },
   lurker: {
     id: 'annual_report.summary.archetype.lurker.desc_self',
     defaultMessage:
-      'We know you were out there, somewhere, enjoying Mastodon in your own quiet way.',
+      'We know you were out there, somewhere, enjoying the fediverse in your own quiet way.',
   },
   oracle: {
     id: 'annual_report.summary.archetype.oracle.desc_self',
     defaultMessage:
-      'You created new posts more than replies, keeping Mastodon fresh and future-facing.',
+      'You created new posts more than replies, keeping the fediverse fresh and future-facing.',
   },
 });
 
@@ -84,22 +84,22 @@ export const archetypePublicDescriptions = defineMessages<ArchetypeData>({
   replier: {
     id: 'annual_report.summary.archetype.replier.desc_public',
     defaultMessage:
-      '{name} frequently replied to other people’s posts, pollinating Mastodon with new discussions.',
+      '{name} frequently replied to other people’s posts, pollinating the fediverse with new discussions.',
   },
   pollster: {
     id: 'annual_report.summary.archetype.pollster.desc_public',
     defaultMessage:
-      '{name} created more polls than other post types, cultivating curiosity on Mastodon.',
+      '{name} created more polls than other post types, cultivating curiosity on the fediverse.',
   },
   lurker: {
     id: 'annual_report.summary.archetype.lurker.desc_public',
     defaultMessage:
-      'We know {name} was out there, somewhere, enjoying Mastodon in their own quiet way.',
+      'We know {name} was out there, somewhere, enjoying the fediverse in their own quiet way.',
   },
   oracle: {
     id: 'annual_report.summary.archetype.oracle.desc_public',
     defaultMessage:
-      '{name} created new posts more than replies, keeping Mastodon fresh and future-facing.',
+      '{name} created new posts more than replies, keeping the fediverse fresh and future-facing.',
   },
 });
 
@@ -204,7 +204,7 @@ export const Archetype: React.FC<{
           ) : (
             <FormattedMessage
               id='annual_report.summary.archetype.reveal_description'
-              defaultMessage='Thanks for being part of Mastodon! Time to find out which archetype you embodied in {year}.'
+              defaultMessage='Thanks for being part of the fediverse! Time to find out which archetype you embodied in {year}.'
               values={{ year: report.year }}
             />
           )}
