@@ -36,6 +36,8 @@ const remoteFollowerFlags = (followedBy: boolean): RelationshipFlags => ({
   following: false,
   followedBy,
   requested: false,
+  // Answered: authorized (followed_by) or rejected, the request is gone.
+  requestedBy: false,
   blocking: false,
   blockedBy: false,
   muting: false,
