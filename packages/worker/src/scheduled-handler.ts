@@ -31,6 +31,11 @@ export const handleScheduled = (
     env.OUTBOX_PROCESS_QUEUE.send({ kind: "PublishScheduledStatuses" }),
     // Delete the old posts of accounts with automated post deletion on.
     env.OUTBOX_PROCESS_QUEUE.send({ kind: "CleanUpStatuses" }),
+    // Delete media left unattached for over a day (Mastodon's daily
+    // `MediaAttachmentsVacuum`); on the six-hourly cron only.
+    controller.cron === HOURLY_CRON
+      ? undefined
+      : env.OUTBOX_PROCESS_QUEUE.send({ kind: "VacuumMediaAttachments" }),
     // Re-fetch actors cached over a day ago, under the handle WebFinger
     // confirms; once an hour, not again when the six-hourly cron fires too.
     controller.cron === HOURLY_CRON ? refreshStaleRemoteActors(env) : undefined,

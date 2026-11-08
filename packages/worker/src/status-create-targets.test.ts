@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
+import { PNG_40X30 } from "../test/image-fixtures";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
@@ -35,7 +36,7 @@ const send = async (email: string, method: string, path: string, body: unknown) 
 
 const upload = async (email: string): Promise<string> => {
   const form = new FormData();
-  form.set("file", new File([new Uint8Array([9, 9, 9])], "photo.png", { type: "image/png" }));
+  form.set("file", new File([PNG_40X30], "photo.png", { type: "image/png" }));
   const response = await json("/api/v2/media", {
     method: "POST",
     headers: await authHeaders(email),

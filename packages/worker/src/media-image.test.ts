@@ -4,8 +4,19 @@ import { Hono } from "hono";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
+import { exifOrientation } from "@tstodon/domain";
 import { authHeaders } from "../test/auth-fixture";
-import { JPEG_800X600, PNG_40X30 } from "../test/image-fixtures";
+import {
+  AVIF_8X6_WITH_METADATA,
+  containsText,
+  JPEG_800X600,
+  jpegSegments,
+  jpegWithMetadata,
+  PNG_40X30,
+  pngWithMetadata,
+  SECRETS,
+  webpWithMetadata,
+} from "../test/image-fixtures";
 import { encodeBlurhash } from "./blurhash";
 import { imagesBindingAnalyzer } from "./media-image";
 import { decodePng } from "./png-pixels";
@@ -203,16 +214,31 @@ describe("image uploads", () => {
     expect(await storedKeys(accountId)).toEqual([objectKeyOf(media.url)]);
   });
 
-  it("keeps a GIF and an unreadable image as they were", async () => {
+  it("keeps a GIF as it was and refuses an image it cannot read", async () => {
     const email = "media-image-unprocessed@example.com";
+    const accountId = await accountIdOf(email);
     const gif = await upload(email, new Uint8Array([71, 73, 70]), "a.gif", "image/gif");
-    const broken = await upload(email, new Uint8Array([1, 2, 3]), "a.png", "image/png");
+    expect(gif.meta).toEqual({});
+    expect(gif.preview_url).toBe(gif.url);
+    expect(gif.blurhash).toBeNull();
 
-    for (const media of [gif, broken]) {
-      expect(media.meta).toEqual({});
-      expect(media.preview_url).toBe(media.url);
-      expect(media.blurhash).toBeNull();
+    for (const [bytes, type] of [
+      [new Uint8Array([1, 2, 3]), "image/png"],
+      [jpegWithMetadata(6).subarray(0, 200), "image/jpeg"],
+      [webpWithMetadata().subarray(0, 60), "image/webp"],
+    ] as const) {
+      const refused = await json("/api/v2/media", {
+        method: "POST",
+        headers: await authHeaders(email),
+        body: uploadForm(bytes, "broken", type),
+      });
+      expect(refused.status).toBe(422);
+      expect(refused.body).toEqual({
+        error: `file is not a readable ${type} file`,
+        kind: "ValidationError",
+      });
     }
+    expect(await storedKeys(accountId)).toEqual([objectKeyOf(gif.url)]);
   });
 
   it("deletes the preview with the media", async () => {
@@ -228,6 +254,149 @@ describe("image uploads", () => {
 
     expect(deleted.status).toBe(200);
     expect(await storedKeys(accountId)).toEqual([]);
+  });
+});
+
+/** The stored original of an upload, as R2 holds it. */
+const storedOriginal = async (
+  media: z.infer<typeof Media>,
+): Promise<Readonly<{ bytes: Uint8Array; size: number; contentType: string | undefined }>> => {
+  const object = await env.MEDIA.get(objectKeyOf(media.url));
+  if (!object) {
+    throw new Error("original not stored");
+  }
+  return {
+    bytes: new Uint8Array(await object.arrayBuffer()),
+    size: object.size,
+    contentType: object.httpMetadata?.contentType,
+  };
+};
+
+const expectNoSecrets = (bytes: Uint8Array): void => {
+  for (const secret of [...Object.values(SECRETS), "secret-copyright"]) {
+    expect(containsText(bytes, secret), secret).toBe(false);
+  }
+};
+
+describe("image metadata on upload", () => {
+  it("stores a JPEG without GPS, XMP, IPTC or comments, keeping its ICC profile", async () => {
+    const email = "media-strip-jpeg@example.com";
+
+    const media = await upload(email, jpegWithMetadata(), "phone.jpg", "image/jpeg");
+
+    const stored = await storedOriginal(media);
+    expectNoSecrets(stored.bytes);
+    expect(stored.contentType).toBe("image/jpeg");
+    expect(stored.size).toBe(stored.bytes.length);
+    const markers = jpegSegments(stored.bytes).map((segment) => segment.marker);
+    expect(markers).toContain(0xe2);
+    expect(markers).not.toContain(0xe1);
+    expect(markers).not.toContain(0xed);
+    expect(markers).not.toContain(0xfe);
+    expect(media.meta.original?.size).toBe("800x600");
+  });
+
+  it("keeps only the orientation of a rotated photo and describes it as displayed", async () => {
+    const email = "media-strip-rotated@example.com";
+
+    const media = await upload(email, jpegWithMetadata(6), "rotated.jpg", "image/jpeg");
+
+    const stored = await storedOriginal(media);
+    expectNoSecrets(stored.bytes);
+    const app1 = jpegSegments(stored.bytes).filter((segment) => segment.marker === 0xe1);
+    expect(app1).toHaveLength(1);
+    expect(exifOrientation(app1[0]?.data ?? new Uint8Array())).toBe(6);
+    // 800x600 as stored, rotated a quarter turn: shown 600 wide and 800 high.
+    expect(media.meta.original).toEqual({
+      width: 600,
+      height: 800,
+      size: "600x800",
+      aspect: 600 / 800,
+    });
+    expect(media.meta.small?.height).toBeGreaterThan(media.meta.small?.width ?? 0);
+  });
+
+  it("strips PNG text and EXIF chunks, WebP EXIF and XMP chunks, and AVIF metadata items", async () => {
+    const email = "media-strip-formats@example.com";
+
+    for (const [bytes, type, size] of [
+      [pngWithMetadata(), "image/png", "40x30"],
+      [webpWithMetadata(), "image/webp", "8x6"],
+      [AVIF_8X6_WITH_METADATA, "image/avif", "8x6"],
+    ] as const) {
+      const media = await upload(email, bytes, "image", type);
+      const stored = await storedOriginal(media);
+      expectNoSecrets(stored.bytes);
+      expect(stored.contentType).toBe(type);
+      expect(stored.size).toBe(stored.bytes.length);
+      expect(media.meta.original?.size).toBe(size);
+    }
+  });
+
+  it("strips the upload when the Images binding fails", async () => {
+    const email = "media-strip-no-images@example.com";
+    const app = new Hono<{ Bindings: Env }>().post("/api/v2/media", postV2Media);
+
+    const response = await app.request(
+      "https://example.com/api/v2/media",
+      {
+        method: "POST",
+        headers: await authHeaders(email),
+        body: uploadForm(jpegWithMetadata(6), "rotated.jpg", "image/jpeg"),
+      },
+      { ...env, IMAGES: failingImages },
+    );
+
+    expect(response.status).toBe(200);
+    const media = read(Media, await response.json());
+    expect(media.meta).toEqual({});
+    const stored = await storedOriginal(media);
+    expectNoSecrets(stored.bytes);
+    expect(
+      exifOrientation(
+        jpegSegments(stored.bytes).find((s) => s.marker === 0xe1)?.data ?? new Uint8Array(),
+      ),
+    ).toBe(6);
+  });
+
+  it("strips avatars and headers", async () => {
+    const email = "media-strip-profile@example.com";
+    const form = new FormData();
+    form.set("avatar", new File([jpegWithMetadata(6)], "avatar.jpg", { type: "image/jpeg" }));
+    form.set("header", new File([pngWithMetadata()], "header.png", { type: "image/png" }));
+
+    const response = await json("/api/v1/accounts/update_credentials", {
+      method: "PATCH",
+      headers: await authHeaders(email),
+      body: form,
+    });
+
+    expect(response.status).toBe(200);
+    const profile = read(z.object({ avatar: z.string(), header: z.string() }), response.body);
+    for (const url of [profile.avatar, profile.header]) {
+      const object = await env.MEDIA.get(objectKeyOf(url));
+      const bytes = new Uint8Array((await object?.arrayBuffer()) ?? new ArrayBuffer(0));
+      expect(bytes.length).toBeGreaterThan(0);
+      expect(object?.size).toBe(bytes.length);
+      expectNoSecrets(bytes);
+    }
+    const avatar = await env.MEDIA.get(objectKeyOf(profile.avatar));
+    const avatarBytes = new Uint8Array((await avatar?.arrayBuffer()) ?? new ArrayBuffer(0));
+    expect(
+      exifOrientation(
+        jpegSegments(avatarBytes).find((s) => s.marker === 0xe1)?.data ?? new Uint8Array(),
+      ),
+    ).toBe(6);
+
+    const broken = new FormData();
+    broken.set("avatar", new File([Uint8Array.of(1, 2, 3)], "a.png", { type: "image/png" }));
+    const refused = await json("/api/v1/accounts/update_credentials", {
+      method: "PATCH",
+      headers: await authHeaders(email),
+      body: broken,
+    });
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(refused.body)).toContain("avatar is not a readable image/png file");
   });
 });
 

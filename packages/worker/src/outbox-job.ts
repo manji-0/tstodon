@@ -23,6 +23,7 @@ import { processBackfillRemoteOutboxJob } from "./remote-outbox-backfill";
 import { processBackfillRemoteThreadJob } from "./remote-thread-backfill";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { rekeyLegacyMediaBatch } from "./media-rekey";
+import { vacuumMediaAttachments } from "./media-vacuum";
 import { backfillLocalNoteTags } from "./local-tag-backfill";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { cleanUpAccountStatuses, queueStatusesCleanup } from "./statuses-cleanup";
@@ -180,6 +181,17 @@ export const processOutboxJob = async (
           });
         }
         return { outcome: "ok", size: batch.scanned, chained: batch.nextAfterId !== undefined };
+      });
+    case "VacuumMediaAttachments":
+      return measureJobPage(env, job.kind, async () => {
+        const pass = await vacuumMediaAttachments(env);
+        if (pass.isErr()) {
+          return { outcome: "retry", size: 0, chained: false };
+        }
+        if (pass.value.chained) {
+          await env.OUTBOX_PROCESS_QUEUE.send({ kind: "VacuumMediaAttachments" });
+        }
+        return { outcome: "ok", size: pass.value.deleted, chained: pass.value.chained };
       });
     case "CleanUpStatuses":
       await queueStatusesCleanup(env);

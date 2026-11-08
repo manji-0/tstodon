@@ -32,6 +32,12 @@ const RekeyLegacyMediaSchema = z.object({
   kind: z.literal("RekeyLegacyMedia"),
   afterId: z.string(),
 });
+/**
+ * Delete a batch of media unattached for over a day, rows and objects, as
+ * Mastodon's `Vacuum::MediaAttachmentsVacuum` (six-hourly cron, chains while
+ * a pass deletes a full batch).
+ */
+const VacuumMediaAttachmentsSchema = unitKind("VacuumMediaAttachments");
 /** Publish the scheduled statuses whose time has come (cron). */
 const PublishScheduledStatusesSchema = unitKind("PublishScheduledStatuses");
 /** Queue one `CleanUpAccountStatuses` per account with automated post deletion on (cron). */
@@ -218,6 +224,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   BackfillRemoteTagsSchema,
   BackfillLocalNoteTagsSchema,
   RekeyLegacyMediaSchema,
+  VacuumMediaAttachmentsSchema,
   PublishScheduledStatusesSchema,
   CleanUpStatusesSchema,
   CleanUpAccountStatusesSchema,

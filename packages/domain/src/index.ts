@@ -60,6 +60,16 @@ export {
   type LocalAccountModeration as LocalAccountModerationValue,
   type LocalAccountModerationAction,
 } from "./local-account-moderation";
+export {
+  ImageMetadata,
+  exifOrientation,
+  type ExifOrientation,
+  type ImageContainer,
+  type ImageMetadataStrip,
+  type MalformedImage,
+  type StrippedImage,
+  type UnstrippableUpload,
+} from "./image-metadata";
 export { MediaId } from "./media-id";
 export {
   ImageDimensions,
@@ -68,6 +78,12 @@ export {
   type ImageMeta,
   type ImagePreview,
 } from "./media-image";
+export {
+  MediaVacuum,
+  type DeleteMediaObjects,
+  type DeleteUnattachedMedia,
+  type MediaVacuumPass,
+} from "./media-vacuum";
 export {
   OutboxDelivery,
   DELIVERY_MAX_ATTEMPTS,

@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
+import { sampleUploadFor } from "../test/image-fixtures";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { Hono } from "hono";
@@ -40,7 +41,7 @@ const send = async (email: string, method: string, path: string, body: unknown) 
 
 const upload = async (email: string, name: string, type: string): Promise<string> => {
   const form = new FormData();
-  form.set("file", new File([new Uint8Array([9, 9, 9])], name, { type }));
+  form.set("file", new File([sampleUploadFor(type)], name, { type }));
   const response = await json("/api/v2/media", {
     method: "POST",
     headers: await authHeaders(email),
@@ -121,14 +122,18 @@ describe("note attachments", () => {
         mediaType: "image/jpeg",
         url: urls.get(clip),
         name: null,
-        blurhash: null,
+        blurhash: expect.any(String),
+        width: 800,
+        height: 600,
       },
       {
         type: "Document",
         mediaType: "image/png",
         url: urls.get(photo),
         name: "a described photo",
-        blurhash: null,
+        blurhash: expect.any(String),
+        width: 40,
+        height: 30,
         focalPoint: [0.5, -0.25],
       },
     ];
@@ -169,7 +174,9 @@ describe("note attachments", () => {
         mediaType: "image/png",
         url: urls.get(second),
         name: "described on edit",
-        blurhash: null,
+        blurhash: expect.any(String),
+        width: 40,
+        height: 30,
       },
     ];
     const updates = await queuedNotes(status.account.id, "Update");
@@ -288,7 +295,15 @@ describe("note attachments", () => {
     expect(url).toMatch(/^https?:\/\//);
     const [created] = await queuedNotes(accountId, "Create");
     expect(created?.attachment).toEqual([
-      { type: "Document", mediaType: "image/png", url, name: "scheduled alt", blurhash: null },
+      {
+        type: "Document",
+        mediaType: "image/png",
+        url,
+        name: "scheduled alt",
+        blurhash: expect.any(String),
+        width: 40,
+        height: 30,
+      },
     ]);
   });
 

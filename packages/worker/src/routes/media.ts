@@ -1,4 +1,5 @@
 import { InstanceLimits, schemaResult } from "@tstodon/core";
+import { ImageMetadata } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import {
   jsonAuthError,
@@ -113,9 +114,19 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
       422,
     );
   }
+  // Metadata (EXIF with its GPS position, XMP, IPTC, comments) never reaches
+  // the bucket: a file that cannot be rewritten without it is refused.
+  const scrubbed = ImageMetadata.forUpload(contentType, new Uint8Array(await file.arrayBuffer()));
+  if (scrubbed.isErr()) {
+    console.warn(JSON.stringify({ kind: "MediaImageRejected", error: scrubbed.error }));
+    return c.json(
+      { error: `file is not a readable ${contentType} file`, kind: "ValidationError" },
+      422,
+    );
+  }
+  const bytes = scrubbed.value;
   const id = newEntityId();
   const objectKey = newAttachmentObjectKey(user.value.id);
-  const bytes = new Uint8Array(await file.arrayBuffer());
   await c.env.MEDIA.put(objectKey, bytes, {
     httpMetadata: { contentType },
   });

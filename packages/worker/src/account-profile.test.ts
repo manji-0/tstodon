@@ -1,5 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
+import { PNG_40X30 } from "../test/image-fixtures";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
@@ -54,10 +55,7 @@ describe("account profiles", () => {
     const form = new FormData();
     form.set("display_name", "Image Owner");
     form.set("locked", "true");
-    form.set(
-      "avatar",
-      new File([new Uint8Array([137, 80, 78, 71])], "a.png", { type: "image/png" }),
-    );
+    form.set("avatar", new File([PNG_40X30], "a.png", { type: "image/png" }));
     form.set("header", new File([new Uint8Array([71, 73, 70])], "h.gif", { type: "image/gif" }));
     const updated = await json("/api/v1/accounts/update_credentials", {
       method: "PATCH",
@@ -93,10 +91,7 @@ describe("account profiles", () => {
   it("deletes the avatar and header separately", async () => {
     const email = "profile-image-delete@example.com";
     const form = new FormData();
-    form.set(
-      "avatar",
-      new File([new Uint8Array([137, 80, 78, 71])], "a.png", { type: "image/png" }),
-    );
+    form.set("avatar", new File([PNG_40X30], "a.png", { type: "image/png" }));
     form.set("header", new File([new Uint8Array([71, 73, 70])], "h.gif", { type: "image/gif" }));
     const uploaded = await json("/api/v1/accounts/update_credentials", {
       method: "PATCH",

@@ -25,6 +25,7 @@ import {
   sqlInJsonEach,
 } from "./d1";
 import { removedBoostsFromRows } from "./removed-boost";
+import { deletedMediaObjectKeys } from "./media-store";
 import { visibilitySql } from "./sql-enums";
 import { extractHashtags, recordTagNames, searchableTagNames } from "./hashtags";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
@@ -33,6 +34,7 @@ import {
   countStatuses as countStatusesSql,
   deleteLocalBoostsOfOwned as deleteLocalBoostsOfOwnedSql,
   deleteReblogOf as deleteReblogOfSql,
+  deleteStatusMedia as deleteStatusMediaSql,
   deleteStatusOwned as deleteStatusOwnedSql,
   detachStatusMedia as detachStatusMediaSql,
   findLocalReblog as findLocalReblogSql,
@@ -359,25 +361,52 @@ export const updateLocalNote = async (
 };
 
 /**
+ * What happens to a deleted status's media: `Delete` removes the rows (and
+ * the caller the objects), as Mastodon's `RemoveStatusService`; `Keep` leaves
+ * them unattached so a redraft can attach them again (Mastodon's `redraft`),
+ * until the media sweep removes them.
+ */
+export type StatusMediaOnDelete = "Delete" | "Keep";
+
+export type DeletedStatus = Readonly<{
+  boosts: ReadonlyArray<RemovedBoost>;
+  /** The bucket keys of the media rows deleted with the status. */
+  mediaObjectKeys: ReadonlyArray<string>;
+}>;
+
+/**
  * Delete the account's own status along with the local boosts of it (the
- * foreign key would only null their target). Resolves to the boosts removed,
+ * foreign key would only null their target) and, unless `media` is `Keep`,
+ * its media: what it holds and what an edit took off it that its history
+ * still shows. Resolves to the boosts removed and the media's object keys,
  * or `undefined` when the account owns no such status.
  */
 export const deleteStatus = async (
   db: D1Database,
   id: string,
   accountId: string,
-): Promise<Result<ReadonlyArray<RemovedBoost> | undefined, RepositoryError>> => {
+  media: StatusMediaOnDelete,
+): Promise<Result<DeletedStatus | undefined, RepositoryError>> => {
   const batched = await runD1Batch(db, [
     d1PrepareTyped(db, deleteLocalBoostsOfOwnedSql(id, accountId)),
+    // Before the status: its edit history, which names media an edit took
+    // off, goes with it, and the foreign key would only detach the rest.
+    ...(media === "Delete" ? [d1PrepareTyped(db, deleteStatusMediaSql(id, accountId))] : []),
     d1PrepareTyped(db, deleteStatusOwnedSql(id, accountId)),
   ]);
   if (batched.isErr()) {
     return err(batched.error);
   }
-  const [boosts, deleted] = batched.value;
+  const boosts = batched.value[0];
+  const deleted = batched.value.at(-1);
+  const deletedMedia = media === "Delete" ? batched.value[1] : undefined;
   return ok(
-    (deleted?.results ?? []).length > 0 ? removedBoostsFromRows(boosts?.results) : undefined,
+    (deleted?.results ?? []).length > 0
+      ? {
+          boosts: removedBoostsFromRows(boosts?.results),
+          mediaObjectKeys: deletedMediaObjectKeys(deletedMedia?.results),
+        }
+      : undefined,
   );
 };
 

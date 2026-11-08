@@ -10,6 +10,7 @@ import { parseRows } from "./d1";
 import {
   clearLegacyMediaKey as clearLegacyMediaKeySql,
   deleteMedia as deleteMediaSql,
+  deleteUnattachedMedia as deleteUnattachedMediaSql,
   findMediaById as findMediaByIdSql,
   insertMedia as insertMediaSql,
   listLegacyMedia as listLegacyMediaSql,
@@ -209,6 +210,22 @@ const DeletedMediaRow = z.object({
 });
 
 /**
+ * The bucket keys deleted media rows held: each row's key, its preview's, and
+ * a legacy key not yet removed.
+ */
+export const deletedMediaObjectKeys = (
+  rows: ReadonlyArray<unknown> | undefined,
+): ReadonlyArray<string> => [
+  ...new Set(
+    parseRows(DeletedMediaRow, rows).flatMap((row) =>
+      [row.object_key, row.legacy_object_key, row.preview_object_key].filter(
+        (key): key is string => key !== null,
+      ),
+    ),
+  ),
+];
+
+/**
  * Delete a media row, returning the object keys it held (its key, its
  * preview's, and a legacy key not yet removed) so the caller can drop the objects.
  */
@@ -217,17 +234,29 @@ export const deleteMedia = async (
   id: string,
   accountId: string,
 ): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+  runD1(async () =>
+    deletedMediaObjectKeys(await queryTyped(db, deleteMediaSql(id, accountId), DeletedMediaRow)),
+  );
+
+/**
+ * Delete up to `limit` of the oldest media no status, scheduled post or edit
+ * history holds, uploaded before `createdBefore`. Resolves to the rows
+ * deleted and the object keys they held.
+ */
+export const deleteUnattachedMedia = async (
+  db: D1Database,
+  createdBefore: string,
+  limit: number,
+): Promise<
+  Result<Readonly<{ deleted: number; objectKeys: ReadonlyArray<string> }>, RepositoryError>
+> =>
   runD1(async () => {
-    const rows = await queryTyped(db, deleteMediaSql(id, accountId), DeletedMediaRow);
-    return [
-      ...new Set(
-        rows.flatMap((row) =>
-          [row.object_key, row.legacy_object_key, row.preview_object_key].filter(
-            (key): key is string => key !== null,
-          ),
-        ),
-      ),
-    ];
+    const rows = await queryTyped(
+      db,
+      deleteUnattachedMediaSql(createdBefore, limit),
+      DeletedMediaRow,
+    );
+    return { deleted: rows.length, objectKeys: deletedMediaObjectKeys(rows) };
   });
 
 const LegacyMediaRowSchema = z.object({
