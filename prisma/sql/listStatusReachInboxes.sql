@@ -3,14 +3,21 @@
 -- @param {String} $3:statusUri
 -- The inboxes of the remote actors a status reached, as Mastodon's
 -- `StatusReachFinder` with `unsafe: true` (the reach `RevokeQuoteService`
--- withdraws a stamp from): the actors a local status mentions, the actors
--- that boosted or favourited it, and the authors of cached replies to it.
+-- withdraws a stamp from): the actors a status mentions (a remote one's
+-- `remote_status_remote_mentions`; a mentioned actor not cached is not
+-- reached), the actors that boosted or favourited it, and the authors of
+-- cached replies to it.
 -- One of $1 (a local status) and $2 (a remote status) is '' and matches
 -- nothing; $3 is the status's URI. A shared inbox stands for its actors.
 -- Leaves out the actors an admin suspended.
 SELECT DISTINCT COALESCE(a.shared_inbox_uri, a.inbox_uri) AS inbox_uri
 FROM (
-  SELECT actor_uri FROM status_remote_mentions WHERE status_id = $1
+  -- Nested, as D1 caps the terms of one compound SELECT.
+  SELECT actor_uri FROM (
+    SELECT actor_uri FROM status_remote_mentions WHERE status_id = $1
+    UNION ALL
+    SELECT actor_uri FROM remote_status_remote_mentions WHERE status_id = $2
+  )
   UNION
   SELECT remote_actor_uri AS actor_uri FROM remote_announces WHERE status_id = $1
   UNION

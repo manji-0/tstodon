@@ -110,6 +110,7 @@ export const ModelName = {
   email_domain_blocks: "email_domain_blocks",
   reports: "reports",
   remote_status_mentions: "remote_status_mentions",
+  remote_status_remote_mentions: "remote_status_remote_mentions",
   status_remote_mentions: "status_remote_mentions",
   status_mentions: "status_mentions",
   link_cards: "link_cards",
@@ -870,6 +871,14 @@ export const Remote_status_mentionsScalarFieldEnum = {
 
 export type Remote_status_mentionsScalarFieldEnum =
   (typeof Remote_status_mentionsScalarFieldEnum)[keyof typeof Remote_status_mentionsScalarFieldEnum];
+
+export const Remote_status_remote_mentionsScalarFieldEnum = {
+  status_id: "status_id",
+  actor_uri: "actor_uri",
+} as const;
+
+export type Remote_status_remote_mentionsScalarFieldEnum =
+  (typeof Remote_status_remote_mentionsScalarFieldEnum)[keyof typeof Remote_status_remote_mentionsScalarFieldEnum];
 
 export const Status_remote_mentionsScalarFieldEnum = {
   status_id: "status_id",

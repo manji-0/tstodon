@@ -3,9 +3,11 @@ import { err, ok, type Result } from "neverthrow";
 import { jsonStringArray, type RepositoryError, runD1, runD1Batch } from "./d1";
 import { d1PrepareTyped, CountedRow, queryTyped } from "./typed-sql";
 import {
+  deleteRemoteStatusRemoteMentions as deleteRemoteStatusRemoteMentionsSql,
   deleteStatusMentions as deleteStatusMentionsSql,
   deleteStatusRemoteMentions as deleteStatusRemoteMentionsSql,
   insertRemoteStatusMention as insertRemoteStatusMentionSql,
+  insertRemoteStatusRemoteMention as insertRemoteStatusRemoteMentionSql,
   insertSilentRemoteStatusMention as insertSilentRemoteStatusMentionSql,
   isActiveRemoteStatusMention as isActiveRemoteStatusMentionSql,
   insertStatusMention as insertStatusMentionSql,
@@ -39,6 +41,25 @@ export const recordRemoteStatusMentions = async (
       d1PrepareTyped(db, insertRemoteStatusMentionSql(statusId, accountId)),
     ),
   );
+  return batched.isErr() ? err(batched.error) : ok(undefined);
+};
+
+/**
+ * Replace the remote actors a cached remote note mentions (its `Mention`
+ * tags off this server), so an `Update` that adds or drops one keeps them in
+ * step. Local accounts, and their silent mentions, are not touched.
+ */
+export const replaceRemoteStatusRemoteMentions = async (
+  db: D1Database,
+  statusId: string,
+  actorUris: ReadonlyArray<string>,
+): Promise<Result<void, RepositoryError>> => {
+  const batched = await runD1Batch(db, [
+    d1PrepareTyped(db, deleteRemoteStatusRemoteMentionsSql(statusId)),
+    ...actorUris.map((actorUri) =>
+      d1PrepareTyped(db, insertRemoteStatusRemoteMentionSql(statusId, actorUri)),
+    ),
+  ]);
   return batched.isErr() ? err(batched.error) : ok(undefined);
 };
 

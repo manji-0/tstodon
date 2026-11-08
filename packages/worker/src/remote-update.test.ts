@@ -208,6 +208,65 @@ describe("remote Update of a note", () => {
     });
     expect(await mentionCount()).toBe(1);
   });
+
+  it("keeps the remote actors a note mentions in step with its edits", async () => {
+    const email = "remote-update-remote-mentions@example.com";
+    const headers = await authHeaders(email);
+    const account = read(
+      z.object({ id: z.string(), username: z.string() }),
+      await json("/api/v1/accounts/verify_credentials", { headers }),
+    );
+    const localUrl = `https://example.com/users/${account.username}`;
+    const author = await remoteActor("update-remote-mentioner");
+    const carol = "https://carol.example/users/carol";
+    const ghost = "https://ghost.example/users/ghost";
+    const dave = "https://dave.example/users/dave";
+    const mentioning = (hrefs: ReadonlyArray<string>, updated: string) =>
+      note(author, "remote-mentions", "<p>hi all</p>", {
+        tag: hrefs.map((href) => ({ type: "Mention", href })),
+        cc: [localUrl],
+        updated,
+      });
+    expect(
+      await author.send({
+        id: "https://remote.example/activities/create-remote-mentions",
+        type: "Create",
+        object: mentioning([carol, ghost, ghost, localUrl], "2026-10-20T00:00:00.000Z"),
+      }),
+    ).toBe(202);
+    const id = read(
+      z.object({ id: z.string() }),
+      await env.DB.prepare("SELECT id FROM remote_statuses WHERE object_uri = ?")
+        .bind("https://remote.example/notes/remote-mentions")
+        .first(),
+    ).id;
+    const remoteMentions = async () => {
+      const { results } = await env.DB.prepare(
+        "SELECT actor_uri FROM remote_status_remote_mentions WHERE status_id = ? ORDER BY actor_uri",
+      )
+        .bind(id)
+        .all();
+      return read(z.array(z.object({ actor_uri: z.string() })), results).map(
+        (row) => row.actor_uri,
+      );
+    };
+    const localMentions = async () => {
+      const { results } = await env.DB.prepare(
+        "SELECT account_id, silent FROM remote_status_mentions WHERE status_id = ?",
+      )
+        .bind(id)
+        .all();
+      return read(z.array(z.object({ account_id: z.string(), silent: z.number() })), results);
+    };
+    // Remote actors are kept by URI, cached or not; the local one stays apart.
+    expect(await remoteMentions()).toEqual([carol, ghost]);
+    expect(await localMentions()).toEqual([{ account_id: account.id, silent: 0 }]);
+
+    await update(author, "remote-mentions-1", mentioning([dave], "2026-10-21T00:00:00.000Z"));
+    expect(await remoteMentions()).toEqual([dave]);
+    // The local mention is left alone, as `remote_status_mentions` always was.
+    expect(await localMentions()).toEqual([{ account_id: account.id, silent: 0 }]);
+  });
 });
 
 describe("update notifications to local boosters", () => {
