@@ -89,6 +89,8 @@ export type MediaAttachmentType = (typeof MEDIA_ATTACHMENT_TYPES)[number];
 /** `PreviewCard#type`. */
 export const PREVIEW_CARD_TYPES = ["link", "photo", "video", "rich"] as const;
 export type PreviewCardType = (typeof PREVIEW_CARD_TYPES)[number];
+export const isPreviewCardType = (value: string): value is PreviewCardType =>
+  includes(PREVIEW_CARD_TYPES, value);
 
 /** Mastodon's `Notification::TYPES`, with Mastodon 4.7's collection notifications. */
 export const NOTIFICATION_TYPES = [
@@ -137,6 +139,8 @@ export const NOTIFICATION_WITH_STATUS_TYPES = [
   "quoted_update",
 ] as const;
 export type NotificationWithStatusType = (typeof NOTIFICATION_WITH_STATUS_TYPES)[number];
+export const isNotificationWithStatusType = (value: string): value is NotificationWithStatusType =>
+  includes(NOTIFICATION_WITH_STATUS_TYPES, value);
 
 /** `AccountRelationshipSeveranceEvent#type`. */
 export const SEVERANCE_EVENT_TYPES = [
@@ -171,6 +175,8 @@ export type FilterAction = (typeof FILTER_ACTIONS)[number];
 /** `Report#category`. */
 export const REPORT_CATEGORIES = ["other", "spam", "legal", "violation"] as const;
 export type ReportCategory = (typeof REPORT_CATEGORIES)[number];
+export const isReportCategory = (value: string): value is ReportCategory =>
+  includes(REPORT_CATEGORIES, value);
 
 /** `List#replies_policy`. */
 export const LIST_REPLIES_POLICIES = ["followed", "list", "none"] as const;

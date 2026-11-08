@@ -1,3 +1,4 @@
+import { QUOTE_APPROVAL_AUDIENCES, type UserQuotePolicy } from "@tstodon/api/values";
 import { schemaResult, unitKind } from "@tstodon/core";
 import { z } from "zod";
 import type { Visibility } from "./visibility";
@@ -23,12 +24,7 @@ export const QuoteApprovalPolicy = {
 } as const;
 
 /** One audience a remote author lets quote a note, by Mastodon's REST name for it. */
-export const QuoteAudienceSchema = z.union([
-  z.literal("public"),
-  z.literal("followers"),
-  z.literal("following"),
-  z.literal("unsupported_policy"),
-]);
+export const QuoteAudienceSchema = z.literal(QUOTE_APPROVAL_AUDIENCES);
 
 export type QuoteAudience = z.infer<typeof QuoteAudienceSchema>;
 
@@ -44,7 +40,7 @@ export const QuoteInteractionPolicySchema = z.object({
 export type QuoteInteractionPolicy = z.infer<typeof QuoteInteractionPolicySchema>;
 
 /** Mastodon's `current_user` answer: whether the viewer may quote, and how. */
-export type QuoteApprovalForViewer = "automatic" | "manual" | "unknown" | "denied";
+export type QuoteApprovalForViewer = UserQuotePolicy;
 
 /** Who the viewer is to the note's author; `undefined` for no viewer. */
 export type QuoteViewerRelation = Readonly<{

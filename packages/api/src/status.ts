@@ -5,7 +5,7 @@ import { ApiCustomEmoji } from "./custom-emoji";
 import { ApiFilterResult } from "./filter";
 import { ApiMediaAttachment } from "./media-attachment";
 import { ApiPoll } from "./poll";
-import { ApiTag } from "./tag";
+import { ApiTag, ApiTagHistory } from "./tag";
 import {
   PREVIEW_CARD_TYPES,
   QUOTE_APPROVAL_AUDIENCES,
@@ -61,6 +61,10 @@ export const ApiPreviewCard = z.object({
   authors: z.array(ApiPreviewCardAuthor),
 });
 export type ApiPreviewCardJSON = z.infer<typeof ApiPreviewCard>;
+
+/** `REST::Trends::LinkSerializer`: a preview card with its daily uses. */
+export const ApiTrendsLink = ApiPreviewCard.extend({ history: z.array(ApiTagHistory) });
+export type ApiTrendsLinkJSON = z.infer<typeof ApiTrendsLink>;
 
 /** The audiences in `quote_approval` lists, with the author-side `nobody`. */
 export type ApiQuotePolicy = QuoteApprovalAudience | QuotePolicyName;
@@ -160,13 +164,13 @@ export const ApiQuote = z.discriminatedUnion("state", [
 ]);
 export type ApiQuoteJSON = z.infer<typeof ApiQuote>;
 
-/** A status that is not a boost: what a boost's `reblog` holds. */
-export const ApiRebloggedStatus = z.object({
+/** A status that is not a boost (an original): what a boost's `reblog` holds. */
+export const ApiOriginalStatus = z.object({
   ...statusFields,
   reblog: z.null().optional(),
   quote: ApiQuote.nullable().optional(),
 });
-export type ApiRebloggedStatusJSON = z.infer<typeof ApiRebloggedStatus>;
+export type ApiOriginalStatusJSON = z.infer<typeof ApiOriginalStatus>;
 
 /**
  * `REST::StatusSerializer`. A boost has the boosted status as `reblog`; a
@@ -174,7 +178,7 @@ export type ApiRebloggedStatusJSON = z.infer<typeof ApiRebloggedStatus>;
  */
 export const ApiStatus = z.object({
   ...statusFields,
-  reblog: ApiRebloggedStatus.nullable().optional(),
+  reblog: ApiOriginalStatus.nullable().optional(),
   quote: ApiQuote.nullable().optional(),
 });
 export type ApiStatusJSON = z.infer<typeof ApiStatus>;
@@ -185,6 +189,19 @@ export const ApiContext = z.object({
   descendants: z.array(ApiStatus),
 });
 export type ApiContextJSON = z.infer<typeof ApiContext>;
+
+/** `REST::StatusEditSerializer` (`/api/v1/statuses/:id/history`). */
+export const ApiStatusEdit = z.object({
+  content: z.string(),
+  spoiler_text: z.string(),
+  sensitive: z.boolean(),
+  created_at: z.string(),
+  account: ApiAccount,
+  poll: z.object({ options: z.array(z.object({ title: z.string() })) }).nullable(),
+  media_attachments: z.array(ApiMediaAttachment),
+  emojis: z.array(ApiCustomEmoji),
+});
+export type ApiStatusEditJSON = z.infer<typeof ApiStatusEdit>;
 
 /** `REST::StatusSourceSerializer`. */
 export const ApiStatusSource = z.object({

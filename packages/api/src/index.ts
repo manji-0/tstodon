@@ -25,4 +25,5 @@ export * from "./search";
 export * from "./announcement";
 export * from "./suggestion";
 export * from "./profile";
+export * from "./scheduled-status";
 export * from "./misc";

@@ -248,6 +248,9 @@ importers:
 
   packages/domain:
     dependencies:
+      '@tstodon/api':
+        specifier: workspace:*
+        version: link:../api
       '@tstodon/core':
         specifier: workspace:*
         version: link:../core

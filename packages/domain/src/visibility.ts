@@ -1,3 +1,4 @@
+import type { StatusVisibility } from "@tstodon/api/values";
 import { assertNever, schemaResult, unitKind } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -48,7 +49,7 @@ export const Visibility = {
         return err({ kind: "Unknown", value: raw });
     }
   },
-  toMastodon: (visibility: Visibility): "public" | "unlisted" | "private" | "direct" => {
+  toMastodon: (visibility: Visibility): StatusVisibility => {
     switch (visibility.kind) {
       case "Public":
         return "public";

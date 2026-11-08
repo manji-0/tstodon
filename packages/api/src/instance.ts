@@ -77,7 +77,8 @@ export const ApiInstance = z.object({
       privacy_policy: z.string().nullable(),
       terms_of_service: z.string().nullable(),
     }),
-    vapid: z.object({ public_key: z.string() }),
+    /** tstodon: `null` when no VAPID key is configured (no Web Push). */
+    vapid: z.object({ public_key: z.string().nullable() }),
     accounts: z.object({
       max_display_name_length: z.number(),
       max_note_length: z.number(),
