@@ -20,6 +20,7 @@ import {
   newAttachmentObjectKey,
   parseMediaObjectKey,
 } from "../media-keys";
+import { imagesBindingAnalyzer, isAnalyzedImageType, processUploadedImage } from "../media-image";
 import { parseInstanceIdentity } from "../runtime-config";
 import { newEntityId } from "../ids";
 import { browserSession } from "../browser-session";
@@ -114,9 +115,18 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
   }
   const id = newEntityId();
   const objectKey = newAttachmentObjectKey(user.value.id);
-  await c.env.MEDIA.put(objectKey, await file.arrayBuffer(), {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  await c.env.MEDIA.put(objectKey, bytes, {
     httpMetadata: { contentType },
   });
+  const image = isAnalyzedImageType(contentType)
+    ? await processUploadedImage(
+        c.env.MEDIA,
+        imagesBindingAnalyzer(c.env.IMAGES),
+        user.value.id,
+        bytes,
+      )
+    : null;
   const row = await insertMedia(c.env.DB, {
     id,
     accountId: user.value.id,
@@ -124,6 +134,7 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
     contentType,
     description: metadata.value.description ?? null,
     focus: metadata.value.focus ?? null,
+    image,
   });
   if (row.isErr()) {
     return jsonRepositoryError(c, row.error.message);

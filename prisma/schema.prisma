@@ -517,6 +517,12 @@ model media_attachments {
   focus_y      Float?
   legacy_object_key String?
   position     Int?
+  width        Int?
+  height       Int?
+  preview_object_key String?
+  preview_width Int?
+  preview_height Int?
+  blurhash     String?
   statuses     statuses? @relation(fields: [status_id], references: [id], onUpdate: NoAction)
   accounts     accounts  @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }

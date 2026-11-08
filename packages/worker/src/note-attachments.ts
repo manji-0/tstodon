@@ -3,7 +3,7 @@ import { err, ok, type Result } from "neverthrow";
 import type { NoteMedia } from "./activitypub";
 import { sensitizedAccountIds } from "./account-flag-store";
 import type { RepositoryError } from "./d1";
-import { mediaUrl } from "./media-document";
+import { mediaOriginalDimensions, mediaUrl } from "./media-document";
 import { findMediaByIds } from "./media-store";
 
 /**
@@ -28,6 +28,8 @@ export const loadNoteMedia = async (
             mediaType: row.content_type,
             url: mediaUrl(identity, row.object_key),
             name: row.description,
+            blurhash: row.blurhash,
+            dimensions: mediaOriginalDimensions(row),
             focalPoint:
               row.focus_x !== null && row.focus_y !== null
                 ? ([row.focus_x, row.focus_y] as const)

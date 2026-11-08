@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  */
 export const listMediaObjectKeysForAccount = $runtime.makeTypedQueryFactory(
-  "SELECT object_key FROM media_attachments WHERE account_id = $1\nUNION\nSELECT legacy_object_key AS object_key FROM media_attachments\nWHERE account_id = $1 AND legacy_object_key IS NOT NULL",
+  "SELECT object_key FROM media_attachments WHERE account_id = $1\nUNION\nSELECT legacy_object_key AS object_key FROM media_attachments\nWHERE account_id = $1 AND legacy_object_key IS NOT NULL\nUNION\nSELECT preview_object_key AS object_key FROM media_attachments\nWHERE account_id = $1 AND preview_object_key IS NOT NULL",
 ) as (
   accountId: string,
 ) => $runtime.TypedSql<

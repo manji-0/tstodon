@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.64.0",
+    "blurhash": "2.0.5",
     "vite-plus": "catalog:",
     "void": "0.10.13",
     "wrangler": "^4.151.2"
