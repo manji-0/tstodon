@@ -1,10 +1,21 @@
-import { AccountPresentation, type InstanceIdentity } from "@tstodon/domain";
+import {
+  type ApiAccountJSON,
+  type ApiAccountRelationshipSeveranceEventJSON,
+  type ApiNotificationJSON,
+  type ApiReportJSON,
+  type ApiStatusJSON,
+  isNotificationType,
+  isNotificationWithStatusType,
+  type NotificationType,
+} from "@tstodon/api";
+import { assertNever } from "@tstodon/core";
+import { AccountPresentation, type InstanceIdentity, NotificationGroup } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { presentedAccountsByIds } from "./account-documents";
 import type { RepositoryError } from "./d1";
 import { reportDocumentsByIds } from "./report-documents";
 import { findAccountSeveranceEvents, severanceEventDocument } from "./severed-relationship-store";
-import type { NotificationRow } from "./notification-store";
+import { groupedEntry, type NotificationRow } from "./notification-store";
 import { statusDocumentsByIds } from "./status-documents";
 
 /**
@@ -18,7 +29,7 @@ export const mastodonNotifications = async (
   identity: InstanceIdentity,
   rows: ReadonlyArray<NotificationRow>,
   viewerId: string,
-): Promise<Result<ReadonlyMap<string, Record<string, unknown>>, RepositoryError>> => {
+): Promise<Result<ReadonlyMap<string, ApiNotificationJSON>, RepositoryError>> => {
   const [presented, statuses, reported, severance] = await Promise.all([
     presentedAccountsByIds(
       env,
@@ -59,43 +70,83 @@ export const mastodonNotifications = async (
   const events = new Map(
     (severance.isOk() ? severance.value : []).map((event) => [event.id, event]),
   );
-  const documents = new Map<string, Record<string, unknown>>();
+  const documents = new Map<string, ApiNotificationJSON>();
+  const groupedTypes = new Set(NotificationGroup.defaultGroupedTypes);
   for (const row of rows) {
     const sender = accounts.get(row.from_account_id);
     // As Mastodon's `without_suspended`, a sender that is not available hides the notification.
     if (!sender || !AccountPresentation.available(sender.presentation)) {
       continue;
     }
-    const account = sender.document;
+    const type = row.kind;
+    if (!isNotificationType(type)) {
+      continue;
+    }
+    const base = {
+      id: row.id,
+      created_at: row.created_at,
+      // The group the web UI files it under, as Mastodon 4.3's default grouping.
+      group_key: NotificationGroup.key(groupedEntry(row), groupedTypes),
+      account: sender.document,
+    };
     const target = row.target_account_id
       ? accounts.get(row.target_account_id)?.document
       : undefined;
-    // A `move` without its new account to show is left out, as one whose sender is gone.
-    if (row.kind === "move" && !target) {
-      continue;
-    }
     const report = row.report_id ? reports.get(row.report_id) : undefined;
-    // An `admin.report` whose report is gone has nothing to show.
-    if (row.kind === "admin.report" && !report) {
-      continue;
-    }
     const event = row.severance_event_id ? events.get(row.severance_event_id) : undefined;
-    // A `severed_relationships` whose event is gone has nothing to show.
-    if (row.kind === "severed_relationships" && !event) {
-      continue;
-    }
-    documents.set(row.id, {
-      id: row.id,
-      type: row.kind,
-      created_at: row.created_at,
-      account,
+    const document = notificationDocument(type, base, {
       status: row.status_id ? (statuses.value.get(row.status_id) ?? null) : null,
-      ...(target ? { target } : {}),
-      ...(report ? { report } : {}),
-      ...(event ? { event: severanceEventDocument(event) } : {}),
+      target,
+      report,
+      event: event && severanceEventDocument(event),
     });
+    if (document) {
+      documents.set(row.id, document);
+    }
   }
   return ok(documents);
+};
+
+type NotificationBase = Pick<ApiNotificationJSON, "id" | "created_at" | "group_key" | "account">;
+
+/**
+ * One notification as its type renders it, or `undefined` when what the type
+ * shows is gone: a `move` without its new account, an `admin.report` without
+ * its report, a `severed_relationships` without its event. A type this
+ * server does not send is left out.
+ */
+const notificationDocument = (
+  type: NotificationType,
+  base: NotificationBase,
+  payload: Readonly<{
+    status: ApiStatusJSON | null;
+    target: ApiAccountJSON | undefined;
+    report: ApiReportJSON | undefined;
+    event: ApiAccountRelationshipSeveranceEventJSON | undefined;
+  }>,
+): ApiNotificationJSON | undefined => {
+  if (isNotificationWithStatusType(type)) {
+    return { ...base, type, status: payload.status };
+  }
+  switch (type) {
+    case "follow":
+    case "follow_request":
+    case "admin.sign_up":
+      return { ...base, type };
+    case "admin.report":
+      return payload.report && { ...base, type, report: payload.report };
+    case "severed_relationships":
+      return payload.event && { ...base, type, event: payload.event };
+    case "move":
+      return payload.target && { ...base, type, target: payload.target };
+    case "moderation_warning":
+    case "annual_report":
+    case "added_to_collection":
+    case "collection_update":
+      return undefined;
+    default:
+      return assertNever(type);
+  }
 };
 
 export const mastodonNotification = async (
@@ -103,7 +154,7 @@ export const mastodonNotification = async (
   identity: InstanceIdentity,
   row: NotificationRow,
   viewerId: string,
-): Promise<Result<Record<string, unknown> | undefined, RepositoryError>> =>
+): Promise<Result<ApiNotificationJSON | undefined, RepositoryError>> =>
   (await mastodonNotifications(env, identity, [row], viewerId)).map((documents) =>
     documents.get(row.id),
   );

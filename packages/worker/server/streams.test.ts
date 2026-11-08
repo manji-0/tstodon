@@ -88,8 +88,9 @@ describe("streaming subscriptions", () => {
       created_at: expect.any(String),
       group_key: expect.stringMatching(/^follow-/),
       account: { acct: "st_notify_follower" },
-      status: null,
     });
+    // As Mastodon's, a type without a status carries no `status` key.
+    expect(JSON.parse(onUser.payload)).not.toHaveProperty("status");
 
     const own = await post(target, "not a notification");
     expect(await all.next()).toMatchObject({ stream: ["user"], event: "update" });

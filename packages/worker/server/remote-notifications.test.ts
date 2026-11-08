@@ -1,3 +1,5 @@
+import { ApiNotification } from "@tstodon/api";
+import { expectContract } from "../test/api-contract";
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
@@ -29,14 +31,15 @@ const NotificationSchema = z.object({
   id: z.string(),
   type: z.string(),
   account: z.object({ id: z.string(), acct: z.string() }),
-  status: z.object({ id: z.string() }).nullable(),
+  // Only the types that show a status carry one, as Mastodon's.
+  status: z.object({ id: z.string() }).nullable().optional(),
 });
 
-const notifications = async (email: string) =>
-  read(
-    z.array(NotificationSchema),
-    (await json("/api/v1/notifications", { headers: await authHeaders(email) })).body,
-  );
+const notifications = async (email: string) => {
+  const { body } = await json("/api/v1/notifications", { headers: await authHeaders(email) });
+  expectContract(z.array(ApiNotification), body);
+  return read(z.array(NotificationSchema), body);
+};
 
 const me = async (email: string) =>
   read(

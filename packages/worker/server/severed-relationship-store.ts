@@ -1,3 +1,4 @@
+import type { ApiAccountRelationshipSeveranceEventJSON } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { err, type Result } from "neverthrow";
 import type { Hostname } from "@tstodon/domain";
@@ -514,7 +515,9 @@ export const listSeveredFollows = async (
   });
 
 /** Mastodon's `RelationshipSeveranceEvent` entity inside a `severed_relationships` notification. */
-export const severanceEventDocument = (event: AccountSeveranceEvent): Record<string, unknown> => ({
+export const severanceEventDocument = (
+  event: AccountSeveranceEvent,
+): ApiAccountRelationshipSeveranceEventJSON => ({
   id: event.id,
   type: event.type,
   purged: event.purged,

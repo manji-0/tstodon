@@ -1,5 +1,16 @@
 import type { Context } from "hono";
 import {
+  type ApiAccountRelationshipSeveranceEventJSON,
+  type ApiFilterResultJSON,
+  type ApiNotificationGroupJSON,
+  type ApiNotificationGroupsResultJSON,
+  type ApiNotificationJSON,
+  type ApiReportJSON,
+  isNotificationType,
+  isNotificationWithStatusType,
+} from "@tstodon/api";
+import { assertNever } from "@tstodon/core";
+import {
   type LocalStatus,
   NotificationGroup,
   type NotificationGroupPage,
@@ -50,12 +61,12 @@ import {
 import { findStatusesByIds } from "../status-store";
 import { mutedThreadStatusIds } from "../status-mute-store";
 
-/** Filters matching this notification, for the `filtered` attribute. */
+/** Filters matching this notification's status, for the status's `filtered` attribute. */
 const notificationFiltered = (
   row: NotificationRow,
   filters: ReadonlyArray<FilterWithStatuses>,
   statuses: ReadonlyMap<string, LocalStatus>,
-): ReadonlyArray<Record<string, unknown>> => {
+): ApiFilterResultJSON[] => {
   if (filters.length === 0 || !row.status_id) {
     return [];
   }
@@ -64,6 +75,19 @@ const notificationFiltered = (
   const matches = matchFilters(filters, "notifications", text, row.status_id);
   return filteredAttribute(matches);
 };
+
+/**
+ * The notification with `filtered` on its status, where Mastodon renders a
+ * status's filter matches (the web UI reads them there, under the
+ * `notifications` context).
+ */
+const withFiltered = (
+  document: ApiNotificationJSON,
+  filtered: ApiFilterResultJSON[],
+): ApiNotificationJSON =>
+  filtered.length > 0 && "status" in document && document.status
+    ? { ...document, status: { ...document.status, filtered } }
+    : document;
 
 export const getV1Notifications = async (
   c: Context<{ Bindings: Env }, "/api/v1/notifications">,
@@ -116,22 +140,18 @@ export const getV1Notifications = async (
   if (rendered.isErr()) {
     return jsonRepositoryError(c, rendered.error.message);
   }
-  const documents: Record<string, unknown>[] = [];
+  const documents: ApiNotificationJSON[] = [];
   for (const row of visibleRows) {
     const found = rendered.value.get(row.id);
     if (!found) {
       continue;
     }
-    const document = { ...found };
     const filtered = notificationFiltered(
       row,
       filters.isOk() ? filters.value : [],
       notificationStatuses.isOk() ? notificationStatuses.value : new Map(),
     );
-    if (filtered.length > 0) {
-      document.filtered = filtered;
-    }
-    documents.push(document);
+    documents.push(withFiltered(found, filtered));
   }
   // Mastodon pages the notification list by notification id, over the rows
   // the page read: rows left out here do not end the list.
@@ -198,7 +218,7 @@ export const getV1NotificationsById = async (
     filters.isOk() ? filters.value : [],
     statuses?.isOk() ? statuses.value : new Map(),
   );
-  return c.json(filtered.length > 0 ? { ...document, filtered } : document);
+  return c.json(withFiltered(document, filtered));
 };
 
 export const postV1NotificationsClear = async (
@@ -343,6 +363,57 @@ const notificationGroupByKey = async (
   });
 };
 
+/**
+ * One group as its type renders it (see `mastodonNotifications`); the page
+ * bounds only in a paginated list, as Mastodon's. A group whose report or
+ * event is gone, or of a type this server does not send, is left out.
+ */
+const notificationGroupDocument = (
+  group: NotificationGroup,
+  withPageIds: boolean,
+  report: ApiReportJSON | undefined,
+  event: ApiAccountRelationshipSeveranceEventJSON | undefined,
+): ApiNotificationGroupJSON | undefined => {
+  const type = group.type;
+  if (!isNotificationType(type)) {
+    return undefined;
+  }
+  const base = {
+    group_key: group.groupKey,
+    notifications_count: group.notificationsCount,
+    most_recent_notification_id: group.mostRecentNotificationId,
+    ...(withPageIds
+      ? {
+          page_min_id: group.pageMinId,
+          page_max_id: group.pageMaxId,
+          latest_page_notification_at: group.latestPageNotificationAt,
+        }
+      : {}),
+    sample_account_ids: [...group.sampleAccountIds],
+  };
+  if (isNotificationWithStatusType(type)) {
+    return { ...base, type, status_id: group.statusId };
+  }
+  switch (type) {
+    case "follow":
+    case "follow_request":
+    case "admin.sign_up":
+    case "move":
+      return { ...base, type };
+    case "admin.report":
+      return report && { ...base, type, report };
+    case "severed_relationships":
+      return event && { ...base, type, event };
+    case "moderation_warning":
+    case "annual_report":
+    case "added_to_collection":
+    case "collection_update":
+      return undefined;
+    default:
+      return assertNever(type);
+  }
+};
+
 const groupEnvelope = async (
   c: Context<{ Bindings: Env }>,
   accountId: string,
@@ -350,7 +421,7 @@ const groupEnvelope = async (
   accountIds: ReadonlyArray<string>,
   statusIds: ReadonlyArray<string>,
   withPageIds: boolean,
-): Promise<Result<Record<string, unknown>, RepositoryError>> => {
+): Promise<Result<ApiNotificationGroupsResultJSON, RepositoryError>> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return ok({ accounts: [], statuses: [], notification_groups: [] });
@@ -387,27 +458,15 @@ const groupEnvelope = async (
   return ok({
     accounts,
     statuses,
-    notification_groups: groups.map((group) => {
+    notification_groups: groups.flatMap((group) => {
       const event = group.severanceEventId ? events.get(group.severanceEventId) : undefined;
-      return {
-        group_key: group.groupKey,
-        notifications_count: group.notificationsCount,
-        type: group.type,
-        most_recent_notification_id: group.mostRecentNotificationId,
-        ...(withPageIds
-          ? {
-              page_min_id: group.pageMinId,
-              page_max_id: group.pageMaxId,
-              latest_page_notification_at: group.latestPageNotificationAt,
-            }
-          : {}),
-        sample_account_ids: group.sampleAccountIds,
-        ...(group.statusId ? { status_id: group.statusId } : {}),
-        ...(group.reportId && reportDocuments.has(group.reportId)
-          ? { report: reportDocuments.get(group.reportId) }
-          : {}),
-        ...(event ? { event: severanceEventDocument(event) } : {}),
-      };
+      const document = notificationGroupDocument(
+        group,
+        withPageIds,
+        group.reportId ? reportDocuments.get(group.reportId) : undefined,
+        event && severanceEventDocument(event),
+      );
+      return document ? [document] : [];
     }),
   });
 };
