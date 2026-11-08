@@ -270,7 +270,11 @@ describe("answering a remote QuoteRequest for a local status", () => {
   it("under a followers policy rejects a stranger and accepts a remote follower", async () => {
     const stranger = await setup("rqr-followers-no", { quote_approval_policy: "followers" });
     expect(await stranger.request()).toBe(202);
+    // Mastodon has no manual approval for local posts: a request outside the
+    // policy is rejected at once, not held pending, and notifies nobody.
+    expect((await answers(stranger.alice.id)).accepts).toEqual([]);
     expect((await answers(stranger.alice.id)).rejects).toHaveLength(1);
+    expect((await notificationsOf(stranger.email)).map((n) => n.type)).not.toContain("quote");
 
     const follower = await setup("rqr-followers-yes", { quote_approval_policy: "followers" });
     expect(await follow(follower.bob, follower.aliceUri)).toBe(202);
@@ -556,5 +560,39 @@ describe("remote notes that quote a local status", () => {
     );
     expect(await deliveryInboxes(deletion.id)).toContain(`${quote.bob.actorUri}/inbox`);
     expect((await quoteOf(quote.email, bobNoteId))?.state).toBe("revoked");
+  });
+
+  it("also withdraws the stamp from the cached remote actors the quoting note mentions, once per inbox", async () => {
+    const quote = await setup("rqr-reach-mentions");
+    const carol = await remoteActor("rqr-reach-carol", "carol.example");
+    const dave = await remoteActor("rqr-reach-dave", "shared.example", {
+      sharedInboxUri: "https://shared.example/inbox",
+    });
+    const frank = await remoteActor("rqr-reach-frank", "shared.example", {
+      sharedInboxUri: "https://shared.example/inbox",
+    });
+    // Not cached: it is kept as a mention, but nothing fetches it for reach.
+    const ghost = "https://ghost.example/users/ghost";
+    const tag = [carol.actorUri, dave.actorUri, frank.actorUri, ghost, quote.aliceUri].map(
+      (href) => ({ type: "Mention", href }),
+    );
+    expect(await quote.request({ instrument: quote.note({ tag }) })).toBe(202);
+    const bobNoteId = await remoteStatusId(quote.noteUri);
+
+    const revoked = await send(
+      quote.email,
+      `/api/v1/statuses/${quote.statusId}/quotes/${bobNoteId}/revoke`,
+    );
+    expect(revoked.status).toBe(200);
+
+    const [deletion] = await queued(quote.alice.id, "Delete");
+    if (!deletion) {
+      throw new Error("no Delete was queued");
+    }
+    expect((await deliveryInboxes(deletion.id)).toSorted()).toEqual([
+      `${carol.actorUri}/inbox`,
+      `${quote.bob.actorUri}/inbox`,
+      "https://shared.example/inbox",
+    ]);
   });
 });

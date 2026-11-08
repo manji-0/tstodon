@@ -15,7 +15,11 @@ import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch
 import { enqueueHomeFanOut } from "./home-fan-out";
 import { enqueuePublicFanOut } from "./public-fan-out";
 import { enqueueLinkCard } from "./link-card";
-import { isActiveRemoteStatusMention, recordRemoteStatusMentions } from "./mention-store";
+import {
+  isActiveRemoteStatusMention,
+  recordRemoteStatusMentions,
+  replaceRemoteStatusRemoteMentions,
+} from "./mention-store";
 import { notifyFromRemote } from "./notify";
 import { actorMovedTo, cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
 import { setRemoteActorMovedTo } from "./remote-actor-store";
@@ -24,6 +28,7 @@ import { snapshotRemoteRevision } from "./remote-status-edit";
 import {
   applyMediaPolicy,
   mentionedLocalAccountIds,
+  mentionedRemoteActorUris,
   remoteMentionedPost,
   noteFromUnknown,
   parseNoteDocument,
@@ -157,6 +162,14 @@ const applyNoteUpdate = async (
   const recorded = await recordRemoteStatusMentions(env.DB, stored.value.id, mentioned);
   if (recorded.isErr()) {
     return err(recorded.error);
+  }
+  const remoteMentions = await replaceRemoteStatusRemoteMentions(
+    env.DB,
+    stored.value.id,
+    mentionedRemoteActorUris(identity, target.raw),
+  );
+  if (remoteMentions.isErr()) {
+    return err(remoteMentions.error);
   }
   const quote = await syncRemoteQuote(
     env,

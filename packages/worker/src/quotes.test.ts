@@ -107,14 +107,6 @@ describe("quote posts", () => {
       poll: { options: ["a", "b"], expires_in: 3600 },
     });
     expect(withPoll.status).toBe(422);
-
-    // It cannot be scheduled either.
-    const scheduled = await post(quoter, {
-      status: "quoted later",
-      quoted_status_id: original.id,
-      scheduled_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-    });
-    expect(scheduled.status).toBe(422);
   });
 
   it("enforces a nobody policy and allows the author to quote themselves", async () => {
@@ -344,7 +336,8 @@ describe("quote posts", () => {
         z.object({
           "@context": z.array(z.unknown()),
           interactionPolicy: z.object({
-            canQuote: z.object({ automaticApproval: z.array(z.string()) }),
+            // Strict: Mastodon advertises no `manualApproval` on its own notes.
+            canQuote: z.strictObject({ automaticApproval: z.array(z.string()) }),
           }),
         }),
         note.body,
@@ -385,7 +378,7 @@ describe("quote posts", () => {
         object: z.object({
           id: z.string(),
           interactionPolicy: z.object({
-            canQuote: z.object({ automaticApproval: z.array(z.string()) }),
+            canQuote: z.strictObject({ automaticApproval: z.array(z.string()) }),
           }),
         }),
       }),

@@ -10,7 +10,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param statusUri
  */
 export const listStatusReachInboxes = $runtime.makeTypedQueryFactory(
-  "SELECT DISTINCT COALESCE(a.shared_inbox_uri, a.inbox_uri) AS inbox_uri\nFROM (\nSELECT actor_uri FROM status_remote_mentions WHERE status_id = $1\nUNION\nSELECT remote_actor_uri AS actor_uri FROM remote_announces WHERE status_id = $1\nUNION\nSELECT remote_actor_uri AS actor_uri FROM remote_favourites WHERE status_id = $1\nUNION\nSELECT actor_uri FROM remote_boosts\nWHERE (local_status_id = $1 AND $1 <> '') OR (remote_status_id = $2 AND $2 <> '')\nUNION\nSELECT actor_uri FROM remote_statuses WHERE in_reply_to_uri = $3\n) i\nJOIN remote_actors a ON a.actor_uri = i.actor_uri\nWHERE i.actor_uri NOT IN (SELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended')",
+  "SELECT DISTINCT COALESCE(a.shared_inbox_uri, a.inbox_uri) AS inbox_uri\nFROM (\nSELECT actor_uri FROM (\nSELECT actor_uri FROM status_remote_mentions WHERE status_id = $1\nUNION ALL\nSELECT actor_uri FROM remote_status_remote_mentions WHERE status_id = $2\n)\nUNION\nSELECT remote_actor_uri AS actor_uri FROM remote_announces WHERE status_id = $1\nUNION\nSELECT remote_actor_uri AS actor_uri FROM remote_favourites WHERE status_id = $1\nUNION\nSELECT actor_uri FROM remote_boosts\nWHERE (local_status_id = $1 AND $1 <> '') OR (remote_status_id = $2 AND $2 <> '')\nUNION\nSELECT actor_uri FROM remote_statuses WHERE in_reply_to_uri = $3\n) i\nJOIN remote_actors a ON a.actor_uri = i.actor_uri\nWHERE i.actor_uri NOT IN (SELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended')",
 ) as (
   localStatusId: string,
   remoteStatusId: string,

@@ -31,6 +31,8 @@ export const ScheduledStatusParamsSchema = z.object({
     .nullable(),
   in_reply_to_id: z.string().nullable(),
   quote_policy: z.string().nullable().optional(),
+  /** The status the post quotes (Mastodon 4.5), resolved again when it is published. */
+  quoted_status_id: z.string().nullable().optional(),
 });
 
 export type ScheduledStatusParams = z.infer<typeof ScheduledStatusParamsSchema>;
@@ -208,6 +210,8 @@ export const scheduledStatusDocument = (
     idempotency: null,
     with_rate_limit: false,
     in_reply_to_id: row.params.in_reply_to_id,
+    quoted_status_id: row.params.quoted_status_id ?? null,
+    quote_approval_policy: row.params.quote_policy ?? null,
     application_id: null,
   },
   media_attachments: [...media],

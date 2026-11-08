@@ -28,7 +28,7 @@ import { mentionedPost, notifyFromRemote } from "./notify";
 import { findThreadParent } from "./thread-context";
 import { findRemoteStatusByObjectUri, upsertRemoteStatus } from "./remote-status-store";
 import { publishConversationUpdate } from "./conversation-stream";
-import { recordRemoteStatusMentions } from "./mention-store";
+import { recordRemoteStatusMentions, replaceRemoteStatusRemoteMentions } from "./mention-store";
 import { isTruthy, stringList } from "./form-values";
 import { NoteDocumentSchema } from "./activitypub-wire";
 import { remoteEmojisInTexts } from "./remote-emoji-document";
@@ -202,6 +202,28 @@ const mentionedLocalUsernames = (identity: InstanceIdentity, raw: unknown): stri
 };
 
 /**
+ * The remote actors a remote note's `Mention` tags name: http(s) URIs off
+ * this server, each once. Mastodon keeps them as the status's mentions, which
+ * `StatusReachFinder` reaches; they are not fetched here, so only the ones
+ * cached by then are reached.
+ */
+export const mentionedRemoteActorUris = (identity: InstanceIdentity, raw: unknown): string[] => {
+  const local = new URL(identity.publicOrigin).origin;
+  return [
+    ...new Set(
+      mentionHrefs(raw).flatMap((href) => {
+        const url = URL.parse(href);
+        return url &&
+          (url.protocol === "https:" || url.protocol === "http:") &&
+          url.origin !== local
+          ? [href]
+          : [];
+      }),
+    ),
+  ];
+};
+
+/**
  * Record the local accounts a newly stored remote note addresses, so it can
  * reach their conversations, and notify them when asked.
  */
@@ -254,6 +276,14 @@ const recordMentions = async (
   const recorded = await recordRemoteStatusMentions(env.DB, statusId, accountIds);
   if (recorded.isErr()) {
     return err(recorded.error);
+  }
+  const remote = await replaceRemoteStatusRemoteMentions(
+    env.DB,
+    statusId,
+    mentionedRemoteActorUris(identity, raw),
+  );
+  if (remote.isErr()) {
+    return err(remote.error);
   }
   if (status.visibility.kind === "Direct") {
     await publishConversationUpdate(env, identity, accountIds, statusId);
