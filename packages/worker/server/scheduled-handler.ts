@@ -46,6 +46,16 @@ export const handleScheduled = (
           source: "attachments",
           afterId: "",
         }),
+    // Record the byte size of objects stored before sizes were recorded (a
+    // HEAD each, no body read); once every size is known, one query that
+    // reads nothing. Six-hourly only, as the metadata backfill.
+    controller.cron === HOURLY_CRON
+      ? undefined
+      : env.OUTBOX_PROCESS_QUEUE.send({
+          kind: "BackfillStoredMediaSizes",
+          source: "attachments",
+          afterId: "",
+        }),
     // Re-fetch actors cached over a day ago, under the handle WebFinger
     // confirms; once an hour, not again when the six-hourly cron fires too.
     controller.cron === HOURLY_CRON ? refreshStaleRemoteActors(env) : undefined,

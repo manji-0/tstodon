@@ -150,20 +150,24 @@ export const processUploadedImage = async (
     return null;
   }
   const objectKey = newAttachmentObjectKey(accountId);
-  const stored = await media
+  // The size R2 reports for what it stored, for the row to record.
+  const storedSize = await media
     .put(objectKey, analysis.preview.bytes, {
       httpMetadata: { contentType: analysis.preview.contentType },
     })
     .then(
-      () => true,
-      () => false,
+      (object): number => object?.size ?? analysis.preview.bytes.byteLength,
+      () => undefined,
     );
-  if (!stored) {
+  if (storedSize === undefined) {
     console.warn(JSON.stringify({ kind: "MediaPreviewNotStored" }));
   }
   return {
     original: analysis.original,
-    preview: stored ? { objectKey, dimensions: analysis.preview.dimensions } : undefined,
+    preview:
+      storedSize === undefined
+        ? undefined
+        : { objectKey, dimensions: analysis.preview.dimensions, size: storedSize },
     blurhash: analysis.blurhash,
   };
 };

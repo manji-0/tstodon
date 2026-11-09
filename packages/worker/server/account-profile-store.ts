@@ -104,10 +104,21 @@ export const listAccountProfiles = async (
   return ok(new Map(queried.value.map((row) => [row.account_id, profileFromRow(row)])));
 };
 
+/**
+ * The byte sizes of avatar and header images uploaded with this write. A new
+ * key takes its size from here (null: not known, for the size backfill); a
+ * key the profile already holds keeps its recorded size; a removed image
+ * drops its size.
+ */
+export type ProfileImageSizes = Readonly<{ avatar: number | null; header: number | null }>;
+
+const NO_NEW_IMAGES: ProfileImageSizes = { avatar: null, header: null };
+
 export const upsertAccountProfile = async (
   db: D1Database,
   accountId: string,
   profile: AccountProfile,
+  uploaded: ProfileImageSizes = NO_NEW_IMAGES,
 ): Promise<Result<void, RepositoryError>> => {
   const written = await runD1(async () => {
     await runTyped(
@@ -125,6 +136,8 @@ export const upsertAccountProfile = async (
         profile.headerObjectKey,
         profile.headerContentType,
         nowIso(),
+        uploaded.avatar,
+        uploaded.header,
       ),
     );
   });

@@ -2,7 +2,8 @@
 -- @param {String} $2:objectKey
 -- @param {String} $3:contentType
 -- @param {String} $4:now
+-- @param {Int} $5:imageFileSize?
 UPDATE custom_emojis
-SET object_key = $2, content_type = $3, updated_at = $4
+SET object_key = $2, content_type = $3, updated_at = $4, image_file_size = $5
 WHERE id = $1
 RETURNING id

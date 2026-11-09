@@ -94,6 +94,21 @@ export {
   type StoredMediaTally,
   type UnstrippedMedia,
 } from "./stored-media-metadata";
+export {
+  StoredMediaSizes,
+  type HeadStoredMedia,
+  type ListUnsizedMedia,
+  type RecordStoredMediaSizes,
+  type StoredMediaSize,
+  type StoredMediaSizeCursor,
+  type StoredMediaSizePass,
+  type StoredMediaSizeReport,
+  type StoredMediaSizeSource,
+  type StoredMediaSizeTally,
+  type StoredMediaSlot,
+  type UnsizedMedia,
+  type UnsizedObject,
+} from "./stored-media-sizes";
 export { MediaId } from "./media-id";
 export { MediaDimensions, type VideoDimensions } from "./media-dimensions";
 export {

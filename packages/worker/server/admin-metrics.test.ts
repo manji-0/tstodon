@@ -11,6 +11,7 @@ import {
 } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
+import { humanSize } from "./human-size";
 
 /**
  * The dashboard metrics (`POST /api/v1/admin/measures`, `/dimensions`,
@@ -171,7 +172,91 @@ describe("admin measures", () => {
     expect(exact).toMatchObject({ key: "instance_accounts", total: "1" });
     expect(exact?.previous_total).toBeUndefined();
     expect(withSubdomains).toMatchObject({ total: "2" });
+    // tstodon caches no remote media: a remote domain stores nothing here.
     expect(media).toMatchObject({ unit: "bytes", total: "0", human_value: "0 Bytes" });
+    expect(media?.previous_total).toBeUndefined();
+  });
+
+  it("totals this server's stored media attachments in bytes, by upload day", async () => {
+    const member = await ok(ApiCredentialAccount, "GET", "/api/v1/accounts/verify_credentials", {
+      email: "metrics-media@example.com",
+    });
+    const measureMedia = async (): Promise<z.infer<typeof ApiAdminMeasure>> => {
+      const [measured] = await ok(z.array(ApiAdminMeasure), "POST", "/api/v1/admin/measures", {
+        body: {
+          keys: ["instance_media_attachments"],
+          start_at: daysAgo(2),
+          end_at: today,
+          instance_media_attachments: { domain: "example.com" },
+        },
+      });
+      if (measured === undefined) {
+        throw new Error("no measure");
+      }
+      return measured;
+    };
+    const insert = (id: string, createdAt: string, size: number, preview: number | null) =>
+      env.DB.prepare(
+        `INSERT INTO media_attachments (id, account_id, object_key, content_type, created_at, file_size, preview_file_size)
+         VALUES (?, ?, ?, 'image/png', ?, ?, ?)`,
+      )
+        .bind(id, member.id, `attachments/${member.id}/${id}-key`, createdAt, size, preview)
+        .run();
+    const before = await measureMedia();
+    await insert("metricsmedia1", `${today}T01:00:00.000Z`, 1_200_000, 34_567);
+    await insert("metricsmedia2", `${daysAgo(1)}T01:00:00.000Z`, 2048, null);
+    const after = await measureMedia();
+    expect(after).toMatchObject({ key: "instance_media_attachments", unit: "bytes" });
+    expect(after.previous_total).toBeUndefined();
+    expect(Number(after.total) - Number(before.total)).toBe(1_200_000 + 34_567 + 2048);
+    expect(valueOn(after, today) - valueOn(before, today)).toBe(1_234_567);
+    expect(valueOn(after, daysAgo(1)) - valueOn(before, daysAgo(1))).toBe(2048);
+    // Mastodon's `number_to_human_size` of the total.
+    expect(after.human_value).toBe(humanSize(Number(after.total)));
+    expect(after.human_value).toMatch(/^\d+(\.\d{1,2})? (Bytes|KB|MB|GB)$/);
+  });
+
+  it("counts originals, previews, avatars, headers and custom emojis in space_usage's media entry", async () => {
+    const member = await ok(ApiCredentialAccount, "GET", "/api/v1/accounts/verify_credentials", {
+      email: "metrics-space@example.com",
+    });
+    const mediaUsage = async (): Promise<z.infer<typeof ApiAdminDimension>["data"][number]> => {
+      const [usage] = await ok(z.array(ApiAdminDimension), "POST", "/api/v1/admin/dimensions", {
+        body: { keys: ["space_usage"], start_at: today, end_at: today },
+      });
+      const media = usage?.data.find((entry) => entry.key === "media");
+      if (media === undefined) {
+        throw new Error("no media entry");
+      }
+      return media;
+    };
+    const before = await mediaUsage();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO media_attachments (id, account_id, object_key, preview_object_key, content_type, created_at, file_size, preview_file_size)
+         VALUES ('metricsspace1', ?, ?, ?, 'image/png', ?, 1000, 100)`,
+      ).bind(
+        member.id,
+        `attachments/${member.id}/space-original`,
+        `attachments/${member.id}/space-preview`,
+        new Date().toISOString(),
+      ),
+      env.DB.prepare(
+        `INSERT INTO account_profiles (account_id, avatar_object_key, avatar_content_type, avatar_file_size,
+           header_object_key, header_content_type, header_file_size)
+         VALUES (?, 'avatars/space/a', 'image/png', 20, 'headers/space/h', 'image/png', 3)
+         ON CONFLICT(account_id) DO UPDATE SET avatar_object_key = 'avatars/space/a',
+           avatar_file_size = 20, header_object_key = 'headers/space/h', header_file_size = 3`,
+      ).bind(member.id),
+      env.DB.prepare(
+        `INSERT INTO custom_emojis (id, shortcode, object_key, content_type, image_file_size)
+         VALUES ('metricsspaceemoji', 'metrics_space', 'emoji/metricsspaceemoji', 'image/png', 4)`,
+      ),
+    ]);
+    const after = await mediaUsage();
+    expect(after).toMatchObject({ human_key: "Media storage", unit: "bytes" });
+    expect(Number(after.value) - Number(before.value)).toBe(1000 + 100 + 20 + 3 + 4);
+    expect(after.human_value).toMatch(/^\d+(\.\d{1,2})? (Bytes|KB|MB|GB)$/);
   });
 
   it("reads form parameters and refuses a bad range", async () => {
@@ -245,6 +330,11 @@ describe("admin dimensions and retention", () => {
     expect(byKey.get("languages")).toContainEqual({ key: "fr", human_key: "French", value: "1" });
     expect(byKey.get("sources")?.[0]).toMatchObject({ key: "web", human_key: "Website" });
     expect(byKey.get("space_usage")?.[0]).toMatchObject({ key: "d1", unit: "bytes" });
+    expect(byKey.get("space_usage")?.[1]).toMatchObject({
+      key: "media",
+      human_key: "Media storage",
+      unit: "bytes",
+    });
     expect(byKey.get("software_versions")?.[0]).toMatchObject({ key: "tstodon" });
     expect(byKey.get("tag_servers")).toEqual([
       { key: "example.com", human_key: "example.com", value: "1" },

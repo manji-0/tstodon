@@ -933,6 +933,21 @@ describe("/settings/export and /settings/import pages", () => {
     for (const file of ["follows", "lists", "blocks", "mutes", "domain_blocks", "bookmarks"]) {
       expect(exportPage).toContain(`href="/settings/exports/${file}.csv"`);
     }
+    // Mastodon's "Media storage": the account's attachments, avatar and header.
+    expect(exportPage).toContain("Media storage: <strong>0 Bytes</strong>");
+    await env.DB.prepare(
+      `INSERT INTO media_attachments (id, account_id, object_key, content_type, created_at, file_size, preview_file_size)
+       VALUES (?, ?, ?, 'image/png', ?, 1024, 512)`,
+    )
+      .bind(
+        `pg-links-media-${owner.id}`,
+        owner.id,
+        `attachments/${owner.id}/pg-links`,
+        new Date().toISOString(),
+      )
+      .run();
+    const withMedia = await (await owner.fetcher("/settings/export")).text();
+    expect(withMedia).toContain("Media storage: <strong>1.5 KB</strong>");
     expect((await owner.fetcher("/settings/exports/other.csv")).status).toBe(404);
     expect((await owner.fetcher("/settings/exports/follows.json")).status).toBe(404);
   });

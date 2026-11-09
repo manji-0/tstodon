@@ -141,7 +141,7 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
   const bytes = scrubbed.value;
   const id = newEntityId();
   const objectKey = newAttachmentObjectKey(user.value.id);
-  await c.env.MEDIA.put(objectKey, bytes, {
+  const stored = await c.env.MEDIA.put(objectKey, bytes, {
     httpMetadata: { contentType },
   });
   const image = isAnalyzedImageType(contentType)
@@ -156,6 +156,7 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
     id,
     accountId: user.value.id,
     objectKey,
+    fileSize: stored?.size ?? bytes.byteLength,
     contentType,
     description: metadata.value.description ?? null,
     focus: metadata.value.focus ?? null,

@@ -133,11 +133,16 @@ const storeProfileImage = async (
   kind: "avatar" | "header",
   value: unknown,
 ): Promise<
-  | Readonly<{ kind: "Ok"; objectKey: string | null; contentType: string | null }>
+  | Readonly<{
+      kind: "Ok";
+      objectKey: string | null;
+      contentType: string | null;
+      size: number | null;
+    }>
   | Readonly<{ kind: "Err"; message: string }>
 > => {
   if (value === undefined || value === null) {
-    return { kind: "Ok", objectKey: null, contentType: null };
+    return { kind: "Ok", objectKey: null, contentType: null, size: null };
   }
   if (!(value instanceof File)) {
     return { kind: "Err", message: `${kind} must be sent as a file` };
@@ -166,8 +171,8 @@ const storeProfileImage = async (
   const blobId = newEntityId();
   const objectKey =
     kind === "avatar" ? avatarObjectKey(accountId, blobId) : headerObjectKey(accountId, blobId);
-  await env.MEDIA.put(objectKey, bytes, { httpMetadata: { contentType } });
-  return { kind: "Ok", objectKey, contentType };
+  const stored = await env.MEDIA.put(objectKey, bytes, { httpMetadata: { contentType } });
+  return { kind: "Ok", objectKey, contentType, size: stored?.size ?? bytes.byteLength };
 };
 
 type UpdateCredentialsBody = z.infer<typeof UpdateCredentialsBodySchema>;
@@ -366,18 +371,23 @@ const saveProfile = async (
   }
   const flag = (value: UpdateCredentialsBody["bot"], stored: boolean): boolean =>
     value === undefined ? stored : isTruthy(value);
-  const saved = await upsertAccountProfile(env.DB, accountId, {
-    note: body.note === undefined ? existing.note : body.note,
-    fields: fields === undefined ? existing.fields : fields,
-    bot: flag(body.bot, existing.bot),
-    discoverable: flag(body.discoverable, existing.discoverable),
-    indexable: flag(body.indexable, existing.indexable),
-    hideCollections: flag(body.hide_collections, existing.hideCollections),
-    avatarObjectKey: avatar.objectKey ?? existing.avatarObjectKey,
-    avatarContentType: avatar.contentType ?? existing.avatarContentType,
-    headerObjectKey: header.objectKey ?? existing.headerObjectKey,
-    headerContentType: header.contentType ?? existing.headerContentType,
-  });
+  const saved = await upsertAccountProfile(
+    env.DB,
+    accountId,
+    {
+      note: body.note === undefined ? existing.note : body.note,
+      fields: fields === undefined ? existing.fields : fields,
+      bot: flag(body.bot, existing.bot),
+      discoverable: flag(body.discoverable, existing.discoverable),
+      indexable: flag(body.indexable, existing.indexable),
+      hideCollections: flag(body.hide_collections, existing.hideCollections),
+      avatarObjectKey: avatar.objectKey ?? existing.avatarObjectKey,
+      avatarContentType: avatar.contentType ?? existing.avatarContentType,
+      headerObjectKey: header.objectKey ?? existing.headerObjectKey,
+      headerContentType: header.contentType ?? existing.headerContentType,
+    },
+    { avatar: avatar.size, header: header.size },
+  );
   if (saved.isErr()) {
     return err(ApiRefusal.repository(saved.error.message));
   }

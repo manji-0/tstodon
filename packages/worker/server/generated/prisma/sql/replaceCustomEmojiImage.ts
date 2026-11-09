@@ -9,18 +9,26 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param objectKey
  * @param contentType
  * @param now
+ * @param imageFileSize
  */
 export const replaceCustomEmojiImage = $runtime.makeTypedQueryFactory(
-  "UPDATE custom_emojis\nSET object_key = $2, content_type = $3, updated_at = $4\nWHERE id = $1\nRETURNING id",
+  "UPDATE custom_emojis\nSET object_key = $2, content_type = $3, updated_at = $4, image_file_size = $5\nWHERE id = $1\nRETURNING id",
 ) as (
   id: string,
   objectKey: string,
   contentType: string,
   now: string,
+  imageFileSize: number | null,
 ) => $runtime.TypedSql<replaceCustomEmojiImage.Parameters, replaceCustomEmojiImage.Result>;
 
 export namespace replaceCustomEmojiImage {
-  export type Parameters = [id: string, objectKey: string, contentType: string, now: string];
+  export type Parameters = [
+    id: string,
+    objectKey: string,
+    contentType: string,
+    now: string,
+    imageFileSize: number | null,
+  ];
   export type Result = {
     id: string | null;
   };

@@ -12,7 +12,11 @@ import type {
 import { Languages } from "@tstodon/core";
 import { z } from "zod";
 import { parseRows, runD1, type RepositoryError } from "./d1";
+import { dailyMediaAttachmentBytes as dailyMediaAttachmentBytesSql } from "./generated/prisma/sql";
 import { extractHashtags } from "./hashtags";
+import { humanSize } from "./human-size";
+import { storedMediaBytes, totalStoredMediaBytes } from "./media-sizes";
+import { queryTyped } from "./typed-sql";
 import { err, ok, type Result } from "neverthrow";
 
 /**
@@ -25,9 +29,11 @@ import { err, ok, type Result } from "neverthrow";
  *   days before that count no one;
  * - `interactions` counts favourites, boosts and replies of local posts, by
  *   local accounts and remote actors;
- * - `instance_media_attachments` and the `media` share of `space_usage` are
- *   not known: tstodon does not record stored media sizes, so the measure
- *   is zero and the dimension leaves media out;
+ * - `instance_media_attachments` and the `media` entry of `space_usage`
+ *   sum the byte sizes recorded for what tstodon stores in the `MEDIA`
+ *   bucket (migration 0125; sizes of objects stored before it count once
+ *   `BackfillStoredMediaSizes` has read them). tstodon does not cache remote
+ *   media, so the measure is 0 for any domain but this server's own;
  * - `sources` is every sign-up as `web`: accounts are created only by the
  *   web sign-in (Cloudflare Access), never by an app.
  */
@@ -406,14 +412,7 @@ const measure = async (
     case "tag_servers":
       return tagMeasure(db, key, params.tag ?? "", range, localDomain);
     case "instance_media_attachments":
-      // tstodon does not record the size of stored media.
-      return {
-        key,
-        unit: "bytes",
-        total: "0",
-        human_value: "0 Bytes",
-        data: seriesOf(range, new Map()),
-      };
+      return mediaAttachmentsMeasure(db, range, params, localDomain);
     case "instance_accounts":
     case "instance_statuses":
     case "instance_follows":
@@ -421,6 +420,60 @@ const measure = async (
     case "instance_reports":
       return instanceMeasure(db, key, range, params);
   }
+};
+
+/**
+ * Whether `localDomain` is the `domain` asked for (or under it, with
+ * `include_subdomains`).
+ */
+const isLocalDomain = (localDomain: string, params: MeasureParams): boolean => {
+  const domain = params.domain?.trim().toLowerCase() ?? "";
+  const local = localDomain.toLowerCase();
+  return (
+    domain.length > 0 &&
+    (local === domain || (params.includeSubdomains === true && local.endsWith(`.${domain}`)))
+  );
+};
+
+/**
+ * `Admin::Metrics::Measure::InstanceMediaAttachmentsMeasure`: the bytes of a
+ * domain's media attachments (original and preview) stored here, in total
+ * and by the day they were uploaded. Mastodon counts the remote media it
+ * caches; tstodon caches none (remote attachments are linked from their
+ * server), so a remote domain stores 0 bytes. This server's own domain
+ * counts its uploads.
+ */
+const mediaAttachmentsMeasure = async (
+  db: D1Database,
+  range: MetricsRange,
+  params: MeasureParams,
+  localDomain: string,
+): Promise<ApiAdminMeasureJSON> => {
+  const key = "instance_media_attachments";
+  if (!isLocalDomain(localDomain, params)) {
+    return {
+      key,
+      unit: "bytes",
+      total: "0",
+      human_value: humanSize(0),
+      data: seriesOf(range, new Map()),
+    };
+  }
+  const [from, to] = bounds(range);
+  const [daily, stored] = await Promise.all([
+    queryTyped(db, dailyMediaAttachmentBytesSql(from, to), DayCountRow),
+    storedMediaBytes(db),
+  ]);
+  if (stored.isErr()) {
+    throw new Error(stored.error.message);
+  }
+  return {
+    key,
+    unit: "bytes",
+    total: String(stored.value.attachments),
+    human_value: humanSize(stored.value.attachments),
+    data: seriesOf(range, new Map(daily.map((row) => [row.day, row.n]))),
+  };
 };
 
 const instanceMeasure = async (
@@ -537,17 +590,6 @@ const topOf = (keys: ReadonlyArray<string>, limit: number): Array<{ key: string;
     .slice(0, limit);
 };
 
-const humanBytes = (bytes: number): string => {
-  const units = ["Bytes", "KB", "MB", "GB", "TB"];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return unit === 0 ? `${value} Bytes` : `${value.toFixed(1)} ${units[unit]}`;
-};
-
 /** The tstodon release this Worker reports in NodeInfo. */
 const TSTODON_VERSION = "0.1.0";
 
@@ -603,10 +645,18 @@ const dimension = async (
         ),
       };
     case "space_usage": {
-      // D1 reports the database size after each query; media sizes are not recorded.
-      const result = await db.prepare("SELECT 1").all();
+      // D1 reports the database size after each query; the bucket's share is
+      // the sum of the recorded object sizes (Mastodon's `media` entry).
+      const [result, stored] = await Promise.all([
+        db.prepare("SELECT 1").all(),
+        storedMediaBytes(db),
+      ]);
+      if (stored.isErr()) {
+        throw new Error(stored.error.message);
+      }
       const meta = D1SizeMeta.safeParse(result.meta);
       const bytes = meta.success ? (meta.data.size_after ?? 0) : 0;
+      const media = totalStoredMediaBytes(stored.value);
       return {
         key,
         data: [
@@ -615,7 +665,14 @@ const dimension = async (
             human_key: "Cloudflare D1",
             value: String(bytes),
             unit: "bytes",
-            human_value: humanBytes(bytes),
+            human_value: humanSize(bytes),
+          },
+          {
+            key: "media",
+            human_key: "Media storage",
+            value: String(media),
+            unit: "bytes",
+            human_value: humanSize(media),
           },
         ],
       };

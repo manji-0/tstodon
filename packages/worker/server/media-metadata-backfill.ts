@@ -63,19 +63,20 @@ const listUnstrippedMedia =
       }
     });
 
+/** The mark, with the size of the object now stored at the key (a rewrite changes it). */
 const markStoredMedia =
   (db: D1Database): MarkStoredMedia =>
-  (source, media, mark) =>
+  (source, media, mark, size) =>
     runD1(async () => {
       const objectKey = media.objectKeys[0] ?? "";
       const error = mark.kind === "Clean" ? null : mark.reason;
       const at = nowIso();
       const statement =
         source === "attachments"
-          ? markMediaMetadataStrippedSql(media.id, objectKey, at, error)
+          ? markMediaMetadataStrippedSql(media.id, objectKey, at, error, size)
           : source === "avatars"
-            ? markAvatarMetadataStrippedSql(media.id, objectKey, at, error)
-            : markHeaderMetadataStrippedSql(media.id, objectKey, at, error);
+            ? markAvatarMetadataStrippedSql(media.id, objectKey, at, error, size)
+            : markHeaderMetadataStrippedSql(media.id, objectKey, at, error, size);
       await runTyped(db, statement);
     });
 

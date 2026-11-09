@@ -77,13 +77,14 @@ const objectBytes = async (key: string): Promise<Uint8Array> => {
 const MarkRow = z.object({
   metadata_stripped_at: z.string().nullable(),
   metadata_strip_error: z.string().nullable(),
+  file_size: z.number().nullable(),
 });
 
 const attachmentMark = async (id: string): Promise<z.infer<typeof MarkRow>> =>
   read(
     MarkRow,
     await env.DB.prepare(
-      "SELECT metadata_stripped_at, metadata_strip_error FROM media_attachments WHERE id = ?",
+      "SELECT metadata_stripped_at, metadata_strip_error, file_size FROM media_attachments WHERE id = ?",
     )
       .bind(id)
       .first(),
@@ -96,6 +97,8 @@ const ProfileMarkRow = z.object({
   header_object_key: z.string().nullable(),
   header_metadata_stripped_at: z.string().nullable(),
   header_metadata_strip_error: z.string().nullable(),
+  avatar_file_size: z.number().nullable(),
+  header_file_size: z.number().nullable(),
 });
 
 const profileMark = async (accountId: string): Promise<z.infer<typeof ProfileMarkRow>> =>
@@ -103,7 +106,8 @@ const profileMark = async (accountId: string): Promise<z.infer<typeof ProfileMar
     ProfileMarkRow,
     await env.DB.prepare(
       `SELECT avatar_object_key, avatar_metadata_stripped_at, avatar_metadata_strip_error,
-              header_object_key, header_metadata_stripped_at, header_metadata_strip_error
+              header_object_key, header_metadata_stripped_at, header_metadata_strip_error,
+              avatar_file_size, header_file_size
        FROM account_profiles WHERE account_id = ?`,
     )
       .bind(accountId)
@@ -184,7 +188,11 @@ describe("StripStoredMediaMetadata", () => {
       const mark = await attachmentMark(media.id);
       expect(mark.metadata_stripped_at).not.toBeNull();
       expect(mark.metadata_strip_error).toBeNull();
+      // The rewrite's size is recorded with the mark: what R2 now holds.
+      expect(mark.file_size).toBe((await env.MEDIA.head(media.objectKey))?.size);
     }
+    expect((await attachmentMark(jpeg.id)).file_size).toBe(strippedJpeg.length);
+    expect((await attachmentMark(jpeg.id)).file_size).toBeLessThan(jpegWithMetadata(6).length);
     expect(await caches.default.match(cacheKey)).toBeUndefined();
   });
 
@@ -317,6 +325,9 @@ describe("StripStoredMediaMetadata", () => {
     expect(mark.avatar_metadata_stripped_at).not.toBeNull();
     expect(mark.header_metadata_stripped_at).not.toBeNull();
     expect(mark.avatar_metadata_strip_error).toBeNull();
+    expect(mark.avatar_file_size).toBe((await objectBytes(avatarKey)).length);
+    expect(mark.header_file_size).toBe((await objectBytes(headerKey)).length);
+    expect(mark.avatar_file_size).toBeLessThan(pngWithMetadata().length);
   });
 
   it("is queued by the six-hourly cron, not the hourly one", async () => {

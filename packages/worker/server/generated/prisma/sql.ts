@@ -74,6 +74,8 @@ export * from "./sql/countUnreadNotifications";
 
 export * from "./sql/createList";
 
+export * from "./sql/dailyMediaAttachmentBytes";
+
 export * from "./sql/deleteAccount";
 
 export * from "./sql/deleteAccountAlias";
@@ -652,6 +654,8 @@ export * from "./sql/listTagModerationsByNamesJson";
 
 export * from "./sql/listUnindexedRemoteStatuses";
 
+export * from "./sql/listUnsizedMedia";
+
 export * from "./sql/listUnstrippedAvatars";
 
 export * from "./sql/listUnstrippedHeaders";
@@ -706,6 +710,14 @@ export * from "./sql/recordAccountActivityDay";
 
 export * from "./sql/recordAccountIp";
 
+export * from "./sql/recordAvatarFileSize";
+
+export * from "./sql/recordCustomEmojiFileSize";
+
+export * from "./sql/recordHeaderFileSize";
+
+export * from "./sql/recordMediaFileSizes";
+
 export * from "./sql/rejectFollowRequest";
 
 export * from "./sql/rejectOutboundFollow";
@@ -753,6 +765,10 @@ export * from "./sql/setRemoteStatusCard";
 export * from "./sql/setStatusReplyUri";
 
 export * from "./sql/settleRemotePollOwnVotes";
+
+export * from "./sql/sumAccountMediaBytes";
+
+export * from "./sql/sumStoredMediaBytes";
 
 export * from "./sql/summarizeNotificationGroups";
 

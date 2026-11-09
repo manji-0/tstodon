@@ -9,14 +9,16 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param objectKey
  * @param strippedAt
  * @param error
+ * @param fileSize
  */
 export const markHeaderMetadataStripped = $runtime.makeTypedQueryFactory(
-  "UPDATE account_profiles\nSET header_metadata_stripped_at = CASE WHEN $4 IS NULL THEN $3 END,\nheader_metadata_strip_error = $4\nWHERE account_id = $1 AND header_object_key = $2",
+  "UPDATE account_profiles\nSET header_metadata_stripped_at = CASE WHEN $4 IS NULL THEN $3 END,\nheader_metadata_strip_error = $4,\nheader_file_size = $5\nWHERE account_id = $1 AND header_object_key = $2",
 ) as (
   accountId: string,
   objectKey: string,
   strippedAt: string,
   error: string | null,
+  fileSize: number,
 ) => $runtime.TypedSql<markHeaderMetadataStripped.Parameters, markHeaderMetadataStripped.Result>;
 
 export namespace markHeaderMetadataStripped {
@@ -25,6 +27,7 @@ export namespace markHeaderMetadataStripped {
     objectKey: string,
     strippedAt: string,
     error: string | null,
+    fileSize: number,
   ];
   export type Result = {};
 }

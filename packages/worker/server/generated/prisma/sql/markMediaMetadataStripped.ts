@@ -9,14 +9,16 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param objectKey
  * @param strippedAt
  * @param error
+ * @param fileSize
  */
 export const markMediaMetadataStripped = $runtime.makeTypedQueryFactory(
-  "UPDATE media_attachments\nSET metadata_stripped_at = CASE WHEN $4 IS NULL THEN $3 END,\nmetadata_strip_error = $4\nWHERE id = $1 AND object_key = $2",
+  "UPDATE media_attachments\nSET metadata_stripped_at = CASE WHEN $4 IS NULL THEN $3 END,\nmetadata_strip_error = $4,\nfile_size = $5\nWHERE id = $1 AND object_key = $2",
 ) as (
   id: string,
   objectKey: string,
   strippedAt: string,
   error: string | null,
+  fileSize: number,
 ) => $runtime.TypedSql<markMediaMetadataStripped.Parameters, markMediaMetadataStripped.Result>;
 
 export namespace markMediaMetadataStripped {
@@ -25,6 +27,7 @@ export namespace markMediaMetadataStripped {
     objectKey: string,
     strippedAt: string,
     error: string | null,
+    fileSize: number,
   ];
   export type Result = {};
 }

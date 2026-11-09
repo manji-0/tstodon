@@ -69,7 +69,8 @@ export const uploadCustomEmoji = async (
   const id = newEntityId();
   const objectKey = `emoji/${id}`;
   const contentType = contentTypeOf(input.image);
-  await env.MEDIA.put(objectKey, await input.image.arrayBuffer(), {
+  const bytes = await input.image.arrayBuffer();
+  const stored = await env.MEDIA.put(objectKey, bytes, {
     httpMetadata: { contentType },
   });
   const inserted = await insertCustomEmoji(env.DB, {
@@ -77,6 +78,7 @@ export const uploadCustomEmoji = async (
     shortcode,
     objectKey,
     contentType,
+    imageFileSize: stored?.size ?? bytes.byteLength,
     visibleInPicker: input.visibleInPicker,
     category: input.category,
   });
@@ -122,10 +124,17 @@ export const changeCustomEmoji = async (
   }
   if (changes.image) {
     const contentType = contentTypeOf(changes.image);
-    await env.MEDIA.put(`emoji/${id}`, await changes.image.arrayBuffer(), {
+    const bytes = await changes.image.arrayBuffer();
+    const stored = await env.MEDIA.put(`emoji/${id}`, bytes, {
       httpMetadata: { contentType },
     });
-    const replaced = await replaceCustomEmojiImage(env.DB, id, `emoji/${id}`, contentType);
+    const replaced = await replaceCustomEmojiImage(
+      env.DB,
+      id,
+      `emoji/${id}`,
+      contentType,
+      stored?.size ?? bytes.byteLength,
+    );
     if (replaced.isErr()) {
       return err(replaced.error);
     }
