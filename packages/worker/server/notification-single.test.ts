@@ -25,18 +25,24 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   return parsed.value;
 };
 
+// A status's filter matches are on the status, as Mastodon renders them.
 const NotificationSchema = z.object({
   id: z.string().min(1),
   type: z.string().min(1),
   account: z.object({ id: z.string().min(1), acct: z.string().min(1) }),
-  status: z.object({ id: z.string().min(1) }).nullable(),
-  filtered: z
-    .array(
-      z.object({
-        filter: z.object({ title: z.string() }),
-        keyword_matches: z.array(z.string()),
-      }),
-    )
+  status: z
+    .object({
+      id: z.string().min(1),
+      filtered: z
+        .array(
+          z.object({
+            filter: z.object({ title: z.string() }),
+            keyword_matches: z.array(z.string()),
+          }),
+        )
+        .optional(),
+    })
+    .nullable()
     .optional(),
 });
 
@@ -129,7 +135,7 @@ describe("single notification", () => {
     const singleFiltered = await json(`/api/v1/notifications/${notification2?.id ?? ""}`, {
       headers: await auth(viewerEmail),
     });
-    expect(read(NotificationSchema, singleFiltered.body).filtered?.[0]?.filter.title).toBe(
+    expect(read(NotificationSchema, singleFiltered.body).status?.filtered?.[0]?.filter.title).toBe(
       "spoiler",
     );
 

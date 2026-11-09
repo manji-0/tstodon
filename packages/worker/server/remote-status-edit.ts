@@ -1,3 +1,4 @@
+import type { ApiAccountJSON, ApiStatusEditJSON } from "@tstodon/api";
 import {
   IsoInstant,
   RemoteAttachmentSchema,
@@ -48,9 +49,9 @@ export const snapshotRemoteRevision = (
 /** The `StatusEdit` entity of one version of `status`. */
 const statusEditJson = (
   status: RemoteStatusValue,
-  account: Record<string, unknown>,
+  account: ApiAccountJSON,
   revision: RemoteRevision,
-): Record<string, unknown> => {
+): ApiStatusEditJSON => {
   const document = mastodonRemoteStatus(
     {
       ...status,
@@ -87,8 +88,8 @@ const statusEditJson = (
 export const remoteStatusHistory = async (
   db: D1Database,
   status: RemoteStatusValue,
-  account: Record<string, unknown>,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+  account: ApiAccountJSON,
+): Promise<Result<ApiStatusEditJSON[], RepositoryError>> => {
   const stored = await listRemoteStatusEdits(db, status.id);
   if (stored.isErr()) {
     return err(stored.error);

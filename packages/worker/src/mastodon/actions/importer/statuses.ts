@@ -21,13 +21,11 @@ export function normalizeStatus(
   const normalStatus: StatusShape = {
     hidden: normalOldStatus?.hidden ?? false,
     collapsed: normalOldStatus?.collapsed ?? null,
-    content: '',
     contentHtml: '',
     muted: false,
     pinned: false,
     bookmarked: false,
     favourited: false,
-    quote_approval: null,
     reblogged: false,
 
     ...status,
@@ -105,7 +103,7 @@ export function normalizeStatus(
           ? status.poll.options.map((option) => option.title)
           : [],
       )
-      .concat(status.media_attachments.map((att) => att.description))
+      .concat(status.media_attachments.map((att) => att.description ?? ''))
       .join('\n\n')
       .replace(/<br\s*\/?>/g, '\n')
       .replace(/<\/p><p>/g, '\n\n');

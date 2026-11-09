@@ -1,3 +1,4 @@
+import type { ApiAccountJSON, ApiHashtagJSON, ApiSearchResultsJSON } from "@tstodon/api";
 import { ok } from "neverthrow";
 import type { InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import { searchAccountsPage } from "../account-search";
@@ -87,7 +88,7 @@ const search = async (c: Context<{ Bindings: Env }>) => {
   if (query.length === 0) {
     return c.json({ accounts: [], statuses: [], hashtags: [], collections: [] });
   }
-  const accountDocs: Record<string, unknown>[] = [];
+  const accountDocs: ApiAccountJSON[] = [];
   if (type !== "statuses" && type !== "hashtags") {
     // As Mastodon, the resolved account joins only the first page, first,
     // and counts inside `limit`.
@@ -146,10 +147,9 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     const filters = await loadViewerFilters(c.env.DB, viewerId);
     if (filters.isOk() && filters.value.length > 0) {
       for (const document of statusDocs) {
-        const id = typeof document.id === "string" ? document.id : "";
+        const id = document.id;
         const status = statusesById.get(id);
-        const renderedContent = typeof document.content === "string" ? document.content : "";
-        const text = status && status.kind === "LocalNote" ? status.text : renderedContent;
+        const text = status && status.kind === "LocalNote" ? status.text : document.content;
         const matches = matchFilters(filters.value, "public", text, id.length > 0 ? id : null);
         if (matches.length > 0) {
           document.filtered = filteredAttribute(matches);
@@ -157,7 +157,7 @@ const search = async (c: Context<{ Bindings: Env }>) => {
       }
     }
   }
-  let hashtags: Record<string, unknown>[] = [];
+  let hashtags: ApiHashtagJSON[] = [];
   if (type !== "accounts" && type !== "statuses") {
     const found = await searchTags(c.env.DB, query, limit, offset);
     if (found.isErr()) {
@@ -193,14 +193,15 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     [elapsedMs(startedAt), accountDocs.length, statusDocs.length],
     [type],
   );
-  return c.json({
+  const results: ApiSearchResultsJSON = {
     accounts: accountDocs,
     // Mastodon 4.7 also searches collections, which are not kept here; its
     // web UI expects the key.
     collections: [],
     statuses: statusDocs,
     hashtags,
-  });
+  };
+  return c.json(results);
 };
 
 export const getV1Search = (c: Context<{ Bindings: Env }, "/api/v1/search">) => search(c);

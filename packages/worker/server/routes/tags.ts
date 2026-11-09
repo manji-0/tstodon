@@ -1,3 +1,4 @@
+import type { ApiFeaturedTagJSON, ApiHashtagJSON } from "@tstodon/api";
 import type { Context } from "hono";
 import { z } from "zod";
 import { AccountPresentation, type InstanceIdentity } from "@tstodon/domain";
@@ -35,8 +36,8 @@ import {
 
 const FeaturedTagBodySchema = z.object({ name: z.string().min(1) });
 
-type DocumentResult =
-  | Readonly<{ kind: "Ok"; document: Record<string, unknown> }>
+type DocumentResult<T> =
+  | Readonly<{ kind: "Ok"; document: T }>
   | Readonly<{ kind: "Err"; message: string }>;
 
 const tagNotFound = (c: Context<{ Bindings: Env }>): Response =>
@@ -53,7 +54,7 @@ const buildTagDocument = async (
   name: string,
   viewerId: string | undefined,
   following: boolean,
-): Promise<DocumentResult> => {
+): Promise<DocumentResult<ApiHashtagJSON>> => {
   const history = await tagDailyHistory(env.DB, name);
   if (history.isErr()) {
     return { kind: "Err", message: history.error.message };
@@ -73,7 +74,7 @@ const buildFeaturedTagDocument = async (
   accountId: string,
   username: string,
   name: string,
-): Promise<DocumentResult> => {
+): Promise<DocumentResult<ApiFeaturedTagJSON>> => {
   const uses = await accountTagUses(env.DB, accountId, name);
   if (uses.isErr()) {
     return { kind: "Err", message: uses.error.message };
@@ -96,14 +97,14 @@ export const buildFeaturedTagDocuments = async (
   accountId: string,
   username: string,
 ): Promise<
-  | Readonly<{ kind: "Ok"; documents: Record<string, unknown>[] }>
+  | Readonly<{ kind: "Ok"; documents: ApiFeaturedTagJSON[] }>
   | Readonly<{ kind: "Err"; message: string }>
 > => {
   const names = await listFeaturedTags(env.DB, accountId);
   if (names.isErr()) {
     return { kind: "Err", message: names.error.message };
   }
-  const documents: Record<string, unknown>[] = [];
+  const documents: ApiFeaturedTagJSON[] = [];
   for (const name of names.value) {
     const built = await buildFeaturedTagDocument(env, identity, accountId, username, name);
     if (built.kind === "Err") {

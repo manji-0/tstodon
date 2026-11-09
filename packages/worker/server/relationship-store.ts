@@ -26,6 +26,8 @@ export type RelationshipFlags = Readonly<{
   following: boolean;
   followedBy: boolean;
   requested: boolean;
+  /** The target asked to follow the viewer and waits for an answer. */
+  requestedBy: boolean;
   blocking: boolean;
   blockedBy: boolean;
   muting: boolean;
@@ -108,6 +110,7 @@ export const relationshipFlags = async (
     languages: outgoing?.languages ?? [],
     followedBy: incoming?.kind === "Accepted",
     requested: outgoing?.requested ?? false,
+    requestedBy: incoming?.kind === "Pending",
     blocking,
     blockedBy,
     muting: mute !== undefined,

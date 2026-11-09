@@ -1,3 +1,4 @@
+import type { ApiAccountJSON, ApiAccountSourceJSON } from "@tstodon/api";
 import {
   AccountPresentation,
   InstanceIdentity,
@@ -39,7 +40,7 @@ import { quotePolicyName } from "./quote-policy-name";
  */
 export type PresentedAccount = Readonly<{
   presentation: AccountPresentation;
-  document: Record<string, unknown>;
+  document: ApiAccountJSON;
 }>;
 
 type PresentedAccounts = Result<ReadonlyMap<string, PresentedAccount>, RepositoryError>;
@@ -111,7 +112,7 @@ export const presentedAccounts = async (
   const presented = (
     id: string,
     presentation: AccountPresentation | undefined,
-    document: Record<string, unknown> | undefined,
+    document: ApiAccountJSON | undefined,
   ): [string, PresentedAccount][] =>
     presentation && document
       ? [
@@ -145,7 +146,7 @@ export const presentedAccounts = async (
 const documentsWhere = async (
   accounts: Promise<PresentedAccounts>,
   keep: (presentation: AccountPresentation) => boolean,
-): Promise<Result<ReadonlyMap<string, Record<string, unknown>>, RepositoryError>> =>
+): Promise<Result<ReadonlyMap<string, ApiAccountJSON>, RepositoryError>> =>
   (await accounts).map(
     (byId) =>
       new Map(
@@ -195,8 +196,8 @@ export const embeddedAccountDocumentsByIds = (
 const withLocalMoves = async (
   env: Env,
   identity: InstanceIdentity,
-  documents: ReadonlyMap<string, Record<string, unknown>>,
-): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
+  documents: ReadonlyMap<string, ApiAccountJSON>,
+): Promise<ReadonlyMap<string, ApiAccountJSON>> => {
   const targets = await listAccountMoveTargets(env.DB, [...documents.keys()]);
   if (targets.isErr() || targets.value.size === 0) {
     return documents;
@@ -225,7 +226,7 @@ const movedToDocuments = async (
   env: Env,
   identity: InstanceIdentity,
   actorUris: ReadonlyArray<string>,
-): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
+): Promise<ReadonlyMap<string, ApiAccountJSON>> => {
   if (actorUris.length === 0) {
     return new Map();
   }
@@ -253,8 +254,8 @@ const movedToDocuments = async (
   const presented = (
     uri: string,
     presentation: AccountPresentation | undefined,
-    document: Record<string, unknown> | undefined,
-  ): [string, Record<string, unknown>][] => {
+    document: ApiAccountJSON | undefined,
+  ): [string, ApiAccountJSON][] => {
     const shown =
       presentation && document && presentedAccountDocument(identity, presentation, document);
     return shown ? [[uri, shown]] : [];
@@ -283,7 +284,7 @@ export const mastodonAccount = (
   counts: { followers: number; following: number; statuses: number },
   emojis: ReadonlyArray<CustomEmoji> = [],
   profile: AccountProfile = EMPTY_ACCOUNT_PROFILE,
-): Record<string, unknown> => {
+): ApiAccountJSON => {
   const url = InstanceIdentity.actorUrl(identity, account.username);
   return {
     id: account.id,
@@ -345,7 +346,7 @@ export const accountSource = (
   account: LocalAccount,
   profile: AccountProfile = EMPTY_ACCOUNT_PROFILE,
   defaults: ComposeDefaults = { language: null, sensitive: false },
-): Record<string, unknown> => ({
+): ApiAccountSourceJSON => ({
   privacy: Visibility.toMastodon(account.defaultPostVisibility),
   sensitive: defaults.sensitive,
   language: defaults.language,
@@ -364,10 +365,10 @@ export const accountSource = (
 });
 
 /** The documents for `ids` in that order, skipping ids that did not resolve. */
-export const documentsInOrder = (
+export const documentsInOrder = <T>(
   ids: ReadonlyArray<string>,
-  documents: ReadonlyMap<string, Record<string, unknown>>,
-): Record<string, unknown>[] =>
+  documents: ReadonlyMap<string, T>,
+): T[] =>
   ids.flatMap((id) => {
     const document = documents.get(id);
     return document ? [document] : [];
@@ -377,7 +378,7 @@ export const mastodonAccountDocument = async (
   env: Env,
   identity: InstanceIdentity,
   account: LocalAccount,
-): Promise<Record<string, unknown>> => {
+): Promise<ApiAccountJSON> => {
   const [counts, profile] = await Promise.all([
     accountCounts(env.DB, account.id),
     findAccountProfile(env.DB, account.id),
@@ -405,7 +406,7 @@ export const mastodonAccountDocuments = async (
   identity: InstanceIdentity,
   accounts: ReadonlyArray<LocalAccount>,
   includeMoved = true,
-): Promise<ReadonlyMap<string, Record<string, unknown>>> => {
+): Promise<ReadonlyMap<string, ApiAccountJSON>> => {
   if (accounts.length === 0) {
     return new Map();
   }
@@ -438,7 +439,7 @@ export const mastodonAccountDocuments = async (
 export const mastodonRemoteAccount = (
   identity: InstanceIdentity,
   actor: RemoteActor,
-): Record<string, unknown> => {
+): ApiAccountJSON => {
   const { profile } = actor;
   return {
     id: RemoteAccountId.encode(actor.actorUri),
@@ -482,7 +483,7 @@ export const accountRefDocument = async (
   env: Env,
   identity: InstanceIdentity,
   ref: AccountRef,
-): Promise<Result<Record<string, unknown> | undefined, RepositoryError>> => {
+): Promise<Result<ApiAccountJSON | undefined, RepositoryError>> => {
   const id = refAccountId(ref);
   return (await accountDocumentsByIds(env, identity, [id])).map((documents) => documents.get(id));
 };

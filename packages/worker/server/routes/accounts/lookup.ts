@@ -1,3 +1,4 @@
+import type { ApiAccountJSON, ApiFamiliarFollowersJSON } from "@tstodon/api";
 import type { Context } from "hono";
 import {
   AccountPresentation,
@@ -145,10 +146,10 @@ export const getV1AccountsSearch = async (
     return jsonRepositoryError(c, followingIds.error.message);
   }
   const following = followingIds?.isOk() ? followingIds.value : undefined;
-  const documents: Record<string, unknown>[] = [];
+  const documents: ApiAccountJSON[] = [];
   const seen = new Set<string>();
-  const push = (document: Record<string, unknown>): void => {
-    const id = String(document.id);
+  const push = (document: ApiAccountJSON): void => {
+    const id = document.id;
     if (!seen.has(id)) {
       seen.add(id);
       documents.push(document);
@@ -252,7 +253,7 @@ export const getV1AccountsFamiliarFollowers = async (
     ...url.searchParams.getAll("id"),
   ].filter((value) => value.length > 0);
 
-  const groups: Record<string, unknown>[] = [];
+  const groups: ApiFamiliarFollowersJSON = [];
   for (const requestedId of requestedIds) {
     const account = await findAccountByIdOrUsername(c.env.DB, requestedId);
     if (account.isErr()) {
@@ -275,7 +276,7 @@ const familiarFollowerDocuments = async (
   identity: InstanceIdentity,
   viewerId: string,
   account: LocalAccount,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+): Promise<Result<ApiAccountJSON[], RepositoryError>> => {
   const presentation = await accountRefPresentation(env, localRef(identity, account));
   if (presentation.isErr()) {
     return err(presentation.error);
@@ -305,7 +306,7 @@ export const lookupAccountDocument = async (
   env: Env,
   identity: InstanceIdentity,
   id: string,
-): Promise<Result<Record<string, unknown> | undefined, RepositoryError>> => {
+): Promise<Result<ApiAccountJSON | undefined, RepositoryError>> => {
   const account = await findAccountByIdOrUsername(env.DB, id);
   if (account.isErr()) {
     return err(account.error);

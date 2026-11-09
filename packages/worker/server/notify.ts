@@ -1,3 +1,4 @@
+import type { ApiNotificationJSON } from "@tstodon/api";
 import { assertNever } from "@tstodon/core";
 import {
   FediRole,
@@ -9,7 +10,6 @@ import {
   LocalFollow,
   type MentionedPost,
   type NewNotification,
-  NotificationGroup,
   type NotificationPolicyAction,
   type PublishNotification,
   type ResolveNotificationDisposition,
@@ -31,7 +31,7 @@ import { localAccountPresentations } from "./account-presentation";
 import { findActiveMute, findBlock, silencesAnyOf } from "./block-mute-store";
 import { findRemoteBlock } from "./remote-block-store";
 import { mastodonNotification } from "./notification-documents";
-import { findNotificationById, groupedEntry, insertNotification } from "./notification-store";
+import { findNotificationById, insertNotification } from "./notification-store";
 import { enqueuePushDeliveries } from "./push-delivery";
 import { parseInstanceIdentity } from "./runtime-config";
 import { mutedThreadStatusIds } from "./status-mute-store";
@@ -234,23 +234,14 @@ const streamedNotification = async (
   env: Env,
   recipientId: string,
   notificationId: string,
-): Promise<Record<string, unknown> | undefined> => {
+): Promise<ApiNotificationJSON | undefined> => {
   const identity = parseInstanceIdentity(env);
   const row = await findNotificationById(env.DB, recipientId, notificationId);
   if (identity.isErr() || row.isErr() || !row.value) {
     return undefined;
   }
   const rendered = await mastodonNotification(env, identity.value, row.value, recipientId);
-  const document = rendered.isOk() ? rendered.value : undefined;
-  return document
-    ? {
-        ...document,
-        group_key: NotificationGroup.key(
-          groupedEntry(row.value),
-          new Set(NotificationGroup.defaultGroupedTypes),
-        ),
-      }
-    : undefined;
+  return rendered.isOk() ? rendered.value : undefined;
 };
 
 /**

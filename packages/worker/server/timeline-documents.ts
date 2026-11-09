@@ -1,3 +1,4 @@
+import type { ApiStatusJSON } from "@tstodon/api";
 import { InstanceIdentity, type LocalStatus, type RemoteNote, Visibility } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
@@ -42,7 +43,7 @@ export const remoteTimelineDocuments = async (
   Result<
     Readonly<{
       statuses: RemoteNote[];
-      documents: Record<string, unknown>[];
+      documents: ApiStatusJSON[];
     }>,
     RepositoryError
   >
@@ -56,18 +57,16 @@ export const remoteTimelineDocuments = async (
 
 /** Merge local and remote timeline documents, newest first (`min_id` oldest first). */
 export const mergeTimelineDocuments = (
-  local: ReadonlyArray<Record<string, unknown>>,
-  remote: ReadonlyArray<Record<string, unknown>>,
+  local: ReadonlyArray<ApiStatusJSON>,
+  remote: ReadonlyArray<ApiStatusJSON>,
   cursor: { minId?: string | undefined },
   limit: number,
-): Record<string, unknown>[] => {
+): ApiStatusJSON[] => {
   const ascending = (cursor.minId ?? "").length > 0;
   return [...local, ...remote]
-    .sort((left, right) => {
-      const leftId = typeof left.id === "string" ? left.id : "";
-      const rightId = typeof right.id === "string" ? right.id : "";
-      return ascending ? leftId.localeCompare(rightId) : rightId.localeCompare(leftId);
-    })
+    .sort((left, right) =>
+      ascending ? left.id.localeCompare(right.id) : right.id.localeCompare(left.id),
+    )
     .slice(0, limit);
 };
 
@@ -92,7 +91,7 @@ const publicSurfaceDocuments = async (
   remote: Promise<Result<RemoteNote[], RepositoryError>> | undefined,
   limit: number,
   cursor: IdCursor,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
   const [localStatuses, remoteStatuses] = await Promise.all([
     local ?? Promise.resolve(ok([])),
     remote ?? Promise.resolve(ok([])),
@@ -143,7 +142,7 @@ export const publicTimelineDocuments = (
   options: Readonly<{ scopes: TimelineScopes; onlyMedia: boolean }>,
   limit: number,
   cursor: IdCursor,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> =>
+): Promise<Result<ApiStatusJSON[], RepositoryError>> =>
   publicSurfaceDocuments(
     env,
     identity,
@@ -170,7 +169,7 @@ export const tagTimelineDocuments = (
   options: Readonly<{ scopes: TimelineScopes; filters: TagStatusFilters }>,
   limit: number,
   cursor: IdCursor,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> =>
+): Promise<Result<ApiStatusJSON[], RepositoryError>> =>
   publicSurfaceDocuments(
     env,
     identity,
@@ -197,7 +196,7 @@ const followedRemoteDocuments = async (
   feed: FollowedFeed,
   limit: number,
   cursor: IdCursor,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
   const [remote, boosts] = await Promise.all([
     listFollowedRemoteStatuses(env.DB, viewerId, feed, limit, cursor),
     listFollowedRemoteBoosts(env.DB, viewerId, feed, limit, cursor),
@@ -254,7 +253,7 @@ const feedDocuments = async (
   local: Promise<Result<LocalStatus[], RepositoryError>>,
   limit: number,
   cursor: IdCursor,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
   const [statuses, remote] = await Promise.all([
     local,
     followedRemoteDocuments(env, identity, viewerId, feed, limit, cursor),
@@ -298,7 +297,7 @@ export const homeTimelineDocuments = async (
   viewerId: string,
   limit: number,
   cursor: IdCursor,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> =>
+): Promise<Result<ApiStatusJSON[], RepositoryError>> =>
   feedDocuments(
     env,
     identity,
@@ -318,7 +317,7 @@ export const remoteAccountPinnedDocuments = async (
   identity: InstanceIdentity,
   actorUri: string,
   viewerId: string | undefined,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
   const pinned = await listRemoteActorPinnedStatuses(env.DB, actorUri, viewerId);
   if (pinned.isErr()) {
     return err(pinned.error);
@@ -351,7 +350,7 @@ export const remoteAccountTimelineDocuments = async (
   actorUri: string,
   viewerId: string | undefined,
   filters: AccountStatusFilters,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
   const withBoosts =
     !filters.excludeReblogs && !filters.onlyMedia && (filters.tagged ?? "").length === 0;
   const [notes, boosts] = await Promise.all([
@@ -404,7 +403,7 @@ export const listTimelineDocuments = async (
   list: AccountList,
   limit: number,
   cursor: IdCursor,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
   const feed: ListFeed = {
     kind: "List",
     listId: list.id,

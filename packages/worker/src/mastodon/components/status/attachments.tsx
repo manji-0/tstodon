@@ -38,7 +38,9 @@ export const StatusAttachments: React.FC<{
         accountId={status.account.id}
         contextType={contextType}
         sensitive={status.sensitive}
-        language={status.translation?.language ?? status.language}
+        language={
+          status.translation?.language ?? status.language ?? undefined
+        }
         attachment={attachment}
         restAttachments={status.media_attachments.slice(1)}
         defaultPosterUrl={status.account.avatar_static}
@@ -100,7 +102,7 @@ const MediaAttachments: React.FC<{
   accountId: string;
   contextType?: string;
   sensitive: boolean;
-  language: string;
+  language?: string;
   attachment: MediaAttachmentShape;
   restAttachments: MediaAttachmentShape[];
   defaultPosterUrl: string;
@@ -114,7 +116,7 @@ const MediaAttachments: React.FC<{
   defaultPosterUrl,
 }) => {
   const description =
-    attachment.translation?.description ?? attachment.description;
+    attachment.translation?.description ?? attachment.description ?? undefined;
 
   const immutableAttachments = useAppSelector((state) => {
     return state.statuses.getIn([
@@ -192,7 +194,10 @@ const MediaAttachments: React.FC<{
     isMediaAttachmentOfType(attachment, 'video') ||
     isMediaAttachmentOfType(attachment, 'gifv')
   ) {
-    aspectRatio = `${attachment.meta.original.width} / ${attachment.meta.original.height}`;
+    const { original } = attachment.meta;
+    if (original?.width && original.height) {
+      aspectRatio = `${original.width} / ${original.height}`;
+    }
   } else if (isMediaAttachmentOfType(attachment, 'audio')) {
     aspectRatio = '16 / 9';
   }
@@ -212,13 +217,13 @@ const MediaAttachments: React.FC<{
           alt={description}
           lang={language}
           poster={attachment.preview_url || defaultPosterUrl}
-          backgroundColor={colors.background}
-          foregroundColor={colors.foreground}
-          accentColor={colors.accent}
-          duration={original.duration}
+          backgroundColor={colors?.background}
+          foregroundColor={colors?.foreground}
+          accentColor={colors?.accent}
+          duration={original?.duration}
           deployPictureInPicture={handleDeployPictureInPicture}
           sensitive={sensitive}
-          blurhash={attachment.blurhash}
+          blurhash={attachment.blurhash ?? undefined}
           visible={showMedia}
           onToggleVisibility={handleToggleMediaVisibility}
           matchedFilters={mediaFilters}
@@ -237,10 +242,10 @@ const MediaAttachments: React.FC<{
           src={attachment.url}
           alt={description}
           lang={language}
-          preview={attachment.preview_url}
-          frameRate={original.frame_rate}
+          preview={attachment.preview_url ?? undefined}
+          frameRate={original?.frame_rate}
           aspectRatio={aspectRatio}
-          blurhash={attachment.blurhash}
+          blurhash={attachment.blurhash ?? undefined}
           sensitive={sensitive}
           onOpenVideo={handleOpenVideo}
           deployPictureInPicture={handleDeployPictureInPicture}

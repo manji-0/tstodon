@@ -1,3 +1,4 @@
+import type { ApiHashtagJSON } from "@tstodon/api";
 import type { Context } from "hono";
 import type { InstanceIdentity } from "@tstodon/domain";
 import { jsonRepositoryError, queryLimit, queryOffset, queryTrendsLimit } from "../http";
@@ -31,7 +32,7 @@ const trendingTagDocuments = async (
   c: Context<{ Bindings: Env }>,
   identity: InstanceIdentity,
   names: ReadonlyArray<string>,
-): Promise<ReadonlyArray<Record<string, unknown>>> => {
+): Promise<ApiHashtagJSON[]> => {
   const auth = await authenticate(c.req.raw, c.env);
   const viewerId = auth.isOk() && auth.value.kind === "Account" ? auth.value.account.id : undefined;
   const followed = new Set(

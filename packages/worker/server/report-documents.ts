@@ -1,3 +1,4 @@
+import { type ApiReportJSON, isReportCategory } from "@tstodon/api";
 import type {
   InstanceIdentity,
   LocalStatusValue,
@@ -57,7 +58,7 @@ export const reportDocumentsByIds = async (
   env: Env,
   identity: InstanceIdentity,
   ids: ReadonlyArray<string>,
-): Promise<Result<ReadonlyMap<string, Record<string, unknown>>, RepositoryError>> => {
+): Promise<Result<ReadonlyMap<string, ApiReportJSON>, RepositoryError>> => {
   const rows: ReportRow[] = [];
   for (const found of await Promise.all(
     [...new Set(ids)].map((id) => findReportById(env.DB, id)),
@@ -78,7 +79,7 @@ export const reportDocumentsByIds = async (
     return err(resolved.error);
   }
   const targets = resolved.value;
-  const documents = new Map<string, Record<string, unknown>>();
+  const documents = new Map<string, ApiReportJSON>();
   for (const row of rows) {
     const target = targets.get(ReportParty.accountId(row.target));
     if (!target) {
@@ -88,12 +89,13 @@ export const reportDocumentsByIds = async (
       id: row.id,
       action_taken: row.resolution.kind === "Resolved",
       action_taken_at: row.resolution.kind === "Resolved" ? row.resolution.at : null,
-      category: row.category,
+      // A category Mastodon does not name reads as `other`.
+      category: isReportCategory(row.category) ? row.category : "other",
       comment: row.comment,
       forwarded: row.forwarding.kind === "Forwarded",
       created_at: row.createdAt,
-      status_ids: row.statusIds,
-      rule_ids: row.ruleIds,
+      status_ids: [...row.statusIds],
+      rule_ids: [...row.ruleIds],
       target_account: target,
     });
   }

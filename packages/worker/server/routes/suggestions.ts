@@ -1,3 +1,4 @@
+import type { ApiAccountJSON, ApiSuggestionJSON } from "@tstodon/api";
 import type { Context } from "hono";
 import { findAccountById, listDirectoryAccounts } from "../account-store";
 import { jsonAuthError, jsonRepositoryError, queryAccountsLimit, requireUser } from "../http";
@@ -7,7 +8,7 @@ import { dismissSuggestion, listSuggestionExclusionIds } from "../suggestion-sto
 
 const suggestedAccounts = async (
   c: Context<{ Bindings: Env }>,
-): Promise<Response | Record<string, unknown>[]> => {
+): Promise<Response | ApiAccountJSON[]> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -50,7 +51,14 @@ export const getV2Suggestions = async (c: Context<{ Bindings: Env }, "/api/v2/su
   if (!Array.isArray(result)) {
     return result;
   }
-  return c.json(result.map((account) => ({ source: "global", account })));
+  // The directory's recently active accounts: Mastodon's `most_interactions`
+  // source, which its deprecated `source` names `global`.
+  const suggestions: ApiSuggestionJSON[] = result.map((account) => ({
+    source: "global",
+    sources: ["most_interactions"],
+    account,
+  }));
+  return c.json(suggestions);
 };
 
 export const deleteV1SuggestionsByAccountId = async (

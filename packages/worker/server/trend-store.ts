@@ -1,3 +1,4 @@
+import type { ApiHistoryJSON, ApiPreviewCardJSON, ApiTrendsLinkJSON } from "@tstodon/api";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import { cardDocument, listCachedLinkCards, normalizeLinkUrl } from "./link-card";
@@ -9,7 +10,7 @@ const TREND_WINDOW = 100;
 const LINK_PATTERN = /https?:\/\/[^\s<>"')\]]+/g;
 
 /** A bare card for a link that has not been unfurled yet. */
-export const fallbackLinkCard = (url: string): Record<string, unknown> | undefined => {
+export const fallbackLinkCard = (url: string): ApiPreviewCardJSON | undefined => {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -17,28 +18,23 @@ export const fallbackLinkCard = (url: string): Record<string, unknown> | undefin
     return undefined;
   }
   const host = parsed.host;
-  return {
+  return cardDocument({
     url,
     title: host,
     description: "",
     type: "link",
-    author_name: "",
-    author_url: "",
-    provider_name: host,
-    provider_url: `${parsed.protocol}//${host}`,
-    html: "",
-    width: 0,
-    height: 0,
+    authorName: "",
+    authorUrl: "",
+    providerName: host,
+    providerUrl: `${parsed.protocol}//${host}`,
     image: null,
-    blurhash: null,
-    embed_url: "",
-  };
+  });
 };
 
 export type TrendingLink = Readonly<{
   url: string;
   uses: number;
-  document: Record<string, unknown>;
+  document: ApiTrendsLinkJSON;
 }>;
 
 const HISTORY_DAYS = 7;
@@ -79,7 +75,7 @@ const trendingLinkUses = async (
 };
 
 /** Mastodon's `Trends::Link` history: the last week, newest first, zero-filled. */
-const linkHistory = (usage: LinkUsage): ReadonlyArray<Record<string, string>> => {
+const linkHistory = (usage: LinkUsage): ApiHistoryJSON[] => {
   const today = Math.floor(Date.now() / 1000 / SECONDS_PER_DAY) * SECONDS_PER_DAY;
   return Array.from({ length: HISTORY_DAYS }, (_, offset) => {
     const day = today - offset * SECONDS_PER_DAY;

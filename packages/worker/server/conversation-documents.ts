@@ -1,3 +1,4 @@
+import type { ApiConversationJSON } from "@tstodon/api";
 import type { InstanceIdentity } from "@tstodon/domain";
 import { err, type Result } from "neverthrow";
 import { accountDocumentsByIds } from "./account-documents";
@@ -15,7 +16,7 @@ export const conversationDocuments = async (
   identity: InstanceIdentity,
   viewerId: string,
   conversations: ReadonlyArray<ConversationSummary>,
-): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+): Promise<Result<ApiConversationJSON[], RepositoryError>> => {
   const [accounts, statuses] = await Promise.all([
     accountDocumentsByIds(
       env,

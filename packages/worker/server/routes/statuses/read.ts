@@ -1,3 +1,4 @@
+import type { ApiStatusJSON } from "@tstodon/api";
 import type { Context } from "hono";
 import {
   type InstanceIdentity,
@@ -34,7 +35,7 @@ const visibleRemoteBoostDocument = async (
   identity: InstanceIdentity,
   id: string,
   viewerId: string | undefined,
-): Promise<Result<Record<string, unknown> | null, RepositoryError>> => {
+): Promise<Result<ApiStatusJSON | null, RepositoryError>> => {
   const boost = await findRemoteBoostById(env.DB, id);
   if (boost.isErr()) {
     return err(boost.error);
@@ -51,7 +52,7 @@ const visibleStatusDocument = async (
   identity: InstanceIdentity,
   id: string,
   viewerId: string | undefined,
-): Promise<Result<Record<string, unknown> | null, RepositoryError>> => {
+): Promise<Result<ApiStatusJSON | null, RepositoryError>> => {
   const status = await findStatusById(env.DB, id);
   if (status.isErr()) {
     return err(status.error);

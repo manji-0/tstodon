@@ -1,41 +1,18 @@
-import type { ApiStatusJSON } from './statuses';
+// The REST shapes live in @tstodon/api (packages/api), shared with the server.
 
-export type ApiQuoteState = 'accepted' | 'pending' | 'revoked' | 'unauthorized';
-export type ApiQuotePolicy =
-  | 'public'
-  | 'followers'
-  | 'following'
-  | 'nobody'
-  | 'unsupported_policy';
-export type ApiUserQuotePolicy = 'automatic' | 'manual' | 'denied' | 'unknown';
+import { isQuotePolicyName } from '@tstodon/api/values';
 
-interface ApiQuoteEmptyJSON {
-  state: Exclude<ApiQuoteState, 'accepted'>;
-  quoted_status: null;
-}
+import type { ApiQuotePolicy } from '@tstodon/api';
 
-interface ApiNestedQuoteJSON {
-  state: 'accepted';
-  quoted_status_id: string;
-}
-
-export type ApiQuotedStatusJSON = Omit<ApiStatusJSON, 'quote'> & {
-  quote?: ApiNestedQuoteJSON | ApiQuoteEmptyJSON;
-};
-
-interface ApiQuoteAcceptedJSON {
-  state: 'accepted';
-  quoted_status: ApiQuotedStatusJSON;
-}
-
-export type ApiQuoteJSON = ApiQuoteAcceptedJSON | ApiQuoteEmptyJSON;
-
-export interface ApiQuotePolicyJSON {
-  automatic: ApiQuotePolicy[];
-  manual: ApiQuotePolicy[];
-  current_user: ApiUserQuotePolicy;
-}
+export type {
+  ApiQuoteState,
+  ApiQuotePolicy,
+  ApiUserQuotePolicy,
+  ApiQuotedStatusJSON,
+  ApiQuoteJSON,
+  ApiQuotePolicyJSON,
+} from '@tstodon/api';
 
 export function isQuotePolicy(policy: string): policy is ApiQuotePolicy {
-  return ['public', 'followers', 'nobody'].includes(policy);
+  return isQuotePolicyName(policy);
 }

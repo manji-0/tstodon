@@ -1,3 +1,4 @@
+import type { ApiMediaAttachmentJSON } from "@tstodon/api";
 import { ImageDimensions, type InstanceIdentity } from "@tstodon/domain";
 
 import { mediaPublicUrl } from "./media-keys";
@@ -39,27 +40,29 @@ export const mediaOriginalDimensions = (
 export const mastodonMedia = (
   identity: InstanceIdentity,
   row: MediaDocumentRow,
-): Record<string, unknown> => {
+): ApiMediaAttachmentJSON => {
   const url = mediaUrl(identity, row.object_key);
   const focus =
     row.focus_x !== null && row.focus_y !== null ? { x: row.focus_x, y: row.focus_y } : undefined;
   const original = mediaOriginalDimensions(row);
   const small =
     row.preview_object_key === null ? undefined : dimensions(row.preview_width, row.preview_height);
-  return {
+  const meta = {
+    ...(original ? { original: ImageDimensions.meta(original) } : {}),
+    ...(small ? { small: ImageDimensions.meta(small) } : {}),
+    ...(focus ? { focus } : {}),
+  };
+  const fields = {
     id: row.id,
-    type: row.content_type.startsWith("video/") ? "video" : "image",
     url,
     preview_url:
       small && row.preview_object_key !== null ? mediaUrl(identity, row.preview_object_key) : url,
     remote_url: null,
     text_url: url,
-    meta: {
-      ...(original ? { original: ImageDimensions.meta(original) } : {}),
-      ...(small ? { small: ImageDimensions.meta(small) } : {}),
-      ...(focus ? { focus } : {}),
-    },
     description: row.description,
     blurhash: row.blurhash,
   };
+  return row.content_type.startsWith("video/")
+    ? { ...fields, type: "video", meta }
+    : { ...fields, type: "image", meta };
 };

@@ -1,3 +1,4 @@
+import type { ApiFilterResultJSON } from "@tstodon/api";
 import { err, ok, type Result } from "neverthrow";
 import { ContentFilter, LocalStatus } from "@tstodon/domain";
 import type { RepositoryError } from "./d1";
@@ -77,10 +78,11 @@ export const matchFilters = (
   });
 };
 
+/** A rendered status that can carry `filtered`. */
+type FilterableDocument = Readonly<{ id: string; filtered?: ApiFilterResultJSON[] | undefined }>;
+
 /** The `filtered` array Mastodon attaches to statuses and notifications. */
-export const filteredAttribute = (
-  matches: ReadonlyArray<FilterMatch>,
-): ReadonlyArray<Record<string, unknown>> =>
+export const filteredAttribute = (matches: ReadonlyArray<FilterMatch>): ApiFilterResultJSON[] =>
   matches.map((match) => ({
     filter: mastodonFilterV2(match.row, match.statuses),
     keyword_matches: [...match.keywordMatches],
@@ -92,7 +94,7 @@ export const filteredAttribute = (
  * Only local notes carry it: a reblog's text lives on another row, so its
  * document keeps `filtered` unset.
  */
-export const attachFilteredToStatuses = async <T extends Record<string, unknown>>(
+export const attachFilteredToStatuses = async <T extends FilterableDocument>(
   db: D1Database,
   viewerId: string | undefined,
   context: string,
@@ -110,7 +112,7 @@ export const attachFilteredToStatuses = async <T extends Record<string, unknown>
     statuses.filter(LocalStatus.isNote).map((note) => [note.id, note.text]),
   );
   return documents.map((document) => {
-    const id = typeof document.id === "string" ? document.id : "";
+    const id = document.id;
     const text = texts.get(id);
     if (text === undefined) {
       return document;
@@ -124,7 +126,7 @@ export const attachFilteredToStatuses = async <T extends Record<string, unknown>
  * The same `filtered` attribute for remote status documents, matched against
  * the text of their stored HTML.
  */
-export const attachFilteredToRemoteStatuses = async <T extends Record<string, unknown>>(
+export const attachFilteredToRemoteStatuses = async <T extends FilterableDocument>(
   db: D1Database,
   viewerId: string | undefined,
   context: string,
@@ -140,7 +142,7 @@ export const attachFilteredToRemoteStatuses = async <T extends Record<string, un
   }
   const texts = new Map(statuses.map((status) => [status.id, htmlToText(status.contentHtml)]));
   return documents.map((document) => {
-    const id = typeof document.id === "string" ? document.id : "";
+    const id = document.id;
     const text = texts.get(id);
     if (text === undefined) {
       return document;

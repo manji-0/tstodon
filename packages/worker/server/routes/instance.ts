@@ -1,3 +1,4 @@
+import type { ApiInstanceJSON, ApiRuleJSON, ApiTermsOfServiceJSON } from "@tstodon/api";
 import { type Context } from "hono";
 import { InstanceLimits, Languages } from "@tstodon/core";
 import { countAccounts } from "../account-store";
@@ -41,7 +42,7 @@ export const getV1InstancePrivacyPolicy = (
   return c.json({ updated_at: document.updatedAt, content: document.content });
 };
 
-const termsOfServiceDocument = (env: Env): Record<string, unknown> | undefined => {
+const termsOfServiceDocument = (env: Env): ApiTermsOfServiceJSON | undefined => {
   const terms = termsOfService(env);
   if (!terms) {
     return undefined;
@@ -145,8 +146,12 @@ export const getV1Instance = async (c: Context<{ Bindings: Env }, "/api/v1/insta
   });
 };
 
+/** `INSTANCE_RULES` as Mastodon's Rule entities: a rule without a hint has an empty one. */
+const ruleDocuments = (env: Env): ApiRuleJSON[] =>
+  instanceRules(env).map((rule) => ({ id: rule.id, text: rule.text, hint: rule.hint ?? "" }));
+
 export const getV1InstanceRules = (c: Context<{ Bindings: Env }, "/api/v1/instance/rules">) =>
-  c.json(instanceRules(c.env));
+  c.json(ruleDocuments(c.env));
 
 /** Mastodon requires a user token for peers and activity under limited federation. */
 const requireUserWhenLimited = async (
@@ -211,7 +216,8 @@ export const getV2Instance = async (c: Context<{ Bindings: Env }, "/api/v2/insta
     return jsonRepositoryError(c, statuses.error.message);
   }
   const instance = identity.value;
-  return c.json({
+  const description = thumbnailDescription(c.env);
+  const document: ApiInstanceJSON = {
     domain: instance.domain,
     title: instance.name,
     version: "0.1.0 (compatible; tstodon)",
@@ -222,12 +228,13 @@ export const getV2Instance = async (c: Context<{ Bindings: Env }, "/api/v2/insta
     },
     thumbnail: {
       url: instance.thumbnailUrl,
-      ...(thumbnailDescription(c.env) ? { description: thumbnailDescription(c.env) } : {}),
+      ...(description ? { description } : {}),
     },
     languages: instance.languages,
     configuration: {
       urls: {
         streaming: `wss://${instance.domain}`,
+        status: null,
         about: null,
         privacy_policy: privacyPolicy(c.env) ? `${instance.publicOrigin}/privacy-policy` : null,
         terms_of_service: termsOfService(c.env)
@@ -236,8 +243,15 @@ export const getV2Instance = async (c: Context<{ Bindings: Env }, "/api/v2/insta
       },
       vapid: { public_key: vapidPublicKey(c.env) },
       accounts: {
+        max_display_name_length: InstanceLimits.account.maxDisplayNameCharacters,
+        max_note_length: InstanceLimits.account.maxNoteCharacters,
+        max_avatar_description_length: InstanceLimits.account.maxAvatarDescriptionCharacters,
+        max_header_description_length: InstanceLimits.account.maxHeaderDescriptionCharacters,
         max_featured_tags: InstanceLimits.account.maxFeaturedTags,
         max_pinned_statuses: InstanceLimits.account.maxPinnedStatuses,
+        max_profile_fields: InstanceLimits.account.maxProfileFields,
+        profile_field_name_limit: InstanceLimits.account.maxProfileFieldNameCharacters,
+        profile_field_value_limit: InstanceLimits.account.maxProfileFieldValueCharacters,
       },
       statuses: {
         max_characters: InstanceLimits.status.maxCharacters,
@@ -246,7 +260,12 @@ export const getV2Instance = async (c: Context<{ Bindings: Env }, "/api/v2/insta
       },
       media_attachments: {
         description_limit: InstanceLimits.media.maxDescriptionCharacters,
+        image_matrix_limit: InstanceLimits.media.imageMatrixLimit,
+        image_size_limit: InstanceLimits.media.imageSizeLimit,
         supported_mime_types: [...InstanceLimits.media.supportedMimeTypes],
+        video_frame_rate_limit: InstanceLimits.media.videoFrameRateLimit,
+        video_matrix_limit: InstanceLimits.media.videoMatrixLimit,
+        video_size_limit: InstanceLimits.media.videoSizeLimit,
       },
       polls: {
         max_options: InstanceLimits.poll.maxOptions,
@@ -255,6 +274,13 @@ export const getV2Instance = async (c: Context<{ Bindings: Env }, "/api/v2/insta
         max_expiration: InstanceLimits.poll.maxExpirationSeconds,
       },
       translation: { enabled: false },
+      // Mastodon 4.5: the live, hashtag and trending-link feeds are served to
+      // anyone, local and remote content alike.
+      timeline_access: {
+        live_feeds: { local: "public", remote: "public" },
+        hashtag_feeds: { local: "public", remote: "public" },
+        trending_link_feeds: { local: "public", remote: "public" },
+      },
       limited_federation: await isLimitedFederation(c.env),
     },
     registrations: {
@@ -267,9 +293,10 @@ export const getV2Instance = async (c: Context<{ Bindings: Env }, "/api/v2/insta
       url: null,
     },
     contact: { email: instance.contactEmail, account: null },
-    rules: instanceRules(c.env),
+    rules: ruleDocuments(c.env),
     // Mastodon gates features by API version; 2 covers the 4.3 set this server
     // implements (grouped notifications plus the notification policy/requests).
     api_versions: { mastodon: 7 },
-  });
+  };
+  return c.json(document);
 };

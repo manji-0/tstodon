@@ -1,3 +1,9 @@
+import {
+  type ApiMediaAttachmentJSON,
+  type ApiScheduledStatusJSON,
+  isQuotePolicyName,
+  isStatusVisibility,
+} from "@tstodon/api";
 import { parseJsonColumn } from "./json-column";
 import type { Result } from "neverthrow";
 import { z } from "zod";
@@ -187,8 +193,8 @@ export const listDueScheduledStatuses = async (
 /** The ScheduledStatus document Mastodon returns for a scheduled post. */
 export const scheduledStatusDocument = (
   row: ScheduledStatusRow,
-  media: ReadonlyArray<Record<string, unknown>>,
-): Record<string, unknown> => ({
+  media: ReadonlyArray<ApiMediaAttachmentJSON>,
+): ApiScheduledStatusJSON => ({
   id: row.id,
   scheduled_at: row.scheduledAt,
   params: {
@@ -196,7 +202,7 @@ export const scheduledStatusDocument = (
     media_ids: row.params.media_ids.length > 0 ? [...row.params.media_ids] : null,
     sensitive: row.params.sensitive,
     spoiler_text: row.params.spoiler_text.length > 0 ? row.params.spoiler_text : null,
-    visibility: row.params.visibility,
+    visibility: isStatusVisibility(row.params.visibility) ? row.params.visibility : null,
     language: row.params.language,
     scheduled_at: null,
     poll: row.params.poll
@@ -211,7 +217,10 @@ export const scheduledStatusDocument = (
     with_rate_limit: false,
     in_reply_to_id: row.params.in_reply_to_id,
     quoted_status_id: row.params.quoted_status_id ?? null,
-    quote_approval_policy: row.params.quote_policy ?? null,
+    quote_approval_policy:
+      row.params.quote_policy && isQuotePolicyName(row.params.quote_policy)
+        ? row.params.quote_policy
+        : null,
     application_id: null,
   },
   media_attachments: [...media],

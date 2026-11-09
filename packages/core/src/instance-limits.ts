@@ -22,9 +22,28 @@ export const InstanceLimits = {
     maxFeaturedTags: 10,
     /** Mastodon keeps at most this many profile fields (`Account::Field::LIMIT`). */
     maxProfileFields: 4,
+    /**
+     * Mastodon's defaults, advertised so clients size their profile forms;
+     * the Worker does not refuse longer values yet.
+     */
+    maxDisplayNameCharacters: 30,
+    maxNoteCharacters: 500,
+    maxAvatarDescriptionCharacters: 150,
+    maxHeaderDescriptionCharacters: 150,
+    maxProfileFieldNameCharacters: 255,
+    maxProfileFieldValueCharacters: 255,
   },
   media: {
     maxDescriptionCharacters: 1500,
+    /**
+     * Mastodon's default upload limits, advertised so clients check before
+     * uploading; the Worker does not refuse larger uploads by them yet.
+     */
+    imageMatrixLimit: 33_177_600,
+    imageSizeLimit: 16_777_216,
+    videoFrameRateLimit: 120,
+    videoMatrixLimit: 8_294_400,
+    videoSizeLimit: 103_809_024,
     /** What an upload may declare; advertised by /api/v2/instance. */
     supportedMimeTypes: [
       "image/jpeg",

@@ -1,9 +1,10 @@
+import type { ApiRelationshipJSON } from "@tstodon/api";
 import type { RelationshipFlags } from "./relationship-store";
 
 export const mastodonRelationship = (
   targetId: string,
   flags: RelationshipFlags,
-): Record<string, unknown> => ({
+): ApiRelationshipJSON => ({
   id: targetId,
   following: flags.following,
   showing_reblogs: flags.showingReblogs,
@@ -16,6 +17,7 @@ export const mastodonRelationship = (
   muting_notifications: flags.mutingNotifications,
   muting_expires_at: flags.mutingExpiresAt,
   requested: flags.requested,
+  requested_by: flags.requestedBy,
   domain_blocking: flags.domainBlocking,
   endorsed: flags.endorsed,
   note: flags.note,

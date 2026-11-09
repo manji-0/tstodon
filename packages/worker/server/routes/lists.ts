@@ -134,7 +134,7 @@ export const deleteV1ListsById = async (c: Context<{ Bindings: Env }, "/api/v1/l
   if (!deleted.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.body(null, 200);
+  return c.json({});
 };
 
 export const getV1ListsByIdAccounts = async (
@@ -212,7 +212,7 @@ export const postV1ListsByIdAccounts = async (
   if (added.isErr()) {
     return jsonRepositoryError(c, added.error.message);
   }
-  return c.body(null, 200);
+  return c.json({});
 };
 
 export const deleteV1ListsByIdAccounts = async (
@@ -241,7 +241,7 @@ export const deleteV1ListsByIdAccounts = async (
   if (removed.isErr()) {
     return jsonRepositoryError(c, removed.error.message);
   }
-  return c.body(null, 200);
+  return c.json({});
 };
 
 export const getV1AccountsByIdLists = async (

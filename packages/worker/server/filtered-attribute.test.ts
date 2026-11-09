@@ -130,14 +130,14 @@ describe("filtered attribute", () => {
       z.array(
         z.object({
           type: z.string(),
-          status: z.object({ id: z.string() }).nullable(),
-          filtered: FilteredSchema.optional(),
+          status: z.object({ id: z.string(), filtered: FilteredSchema.optional() }).nullable(),
         }),
       ),
       notifications.body,
     );
     const mention = rows.find((row) => row.status?.id === statusId);
-    expect(mention?.filtered?.[0]?.filter.title).toBe("finale");
+    // As Mastodon's, the matches are on the notification's status.
+    expect(mention?.status?.filtered?.[0]?.filter.title).toBe("finale");
 
     // Narrowing a filter to this status also matches, even without a keyword hit.
     await createFilter(viewerEmail, {
@@ -161,37 +161,40 @@ describe("filtered attribute", () => {
     const afterRows = read(
       z.array(
         z.object({
-          status: z.object({ id: z.string() }).nullable(),
-          filtered: FilteredSchema.optional(),
+          status: z.object({ id: z.string(), filtered: FilteredSchema.optional() }).nullable(),
         }),
       ),
       after.body,
     );
     const narrowedFilter = afterRows
       .find((row) => row.status?.id === statusId)
-      ?.filtered?.find((entry) => entry.filter.title === "finale");
+      ?.status?.filtered?.find((entry) => entry.filter.title === "finale");
     expect(narrowedFilter?.status_matches).toEqual([statusId]);
     // The embedded filter lists its narrowing as FilterStatus entities.
     const embedded = read(
       z.array(
         z.object({
-          status: z.object({ id: z.string() }).nullable(),
-          filtered: z
-            .array(
-              z.object({
-                filter: z.object({
-                  title: z.string(),
-                  statuses: z.array(z.object({ id: z.string(), status_id: z.string() })),
-                }),
-              }),
-            )
-            .optional(),
+          status: z
+            .object({
+              id: z.string(),
+              filtered: z
+                .array(
+                  z.object({
+                    filter: z.object({
+                      title: z.string(),
+                      statuses: z.array(z.object({ id: z.string(), status_id: z.string() })),
+                    }),
+                  }),
+                )
+                .optional(),
+            })
+            .nullable(),
         }),
       ),
       after.body,
     )
       .find((row) => row.status?.id === statusId)
-      ?.filtered?.find((entry) => entry.filter.title === "finale")?.filter.statuses;
+      ?.status?.filtered?.find((entry) => entry.filter.title === "finale")?.filter.statuses;
     expect(embedded?.map((entry) => entry.status_id)).toEqual([statusId]);
     expect(embedded?.[0]?.id).not.toBe(statusId);
   });

@@ -188,7 +188,7 @@ export const StatusRedesign: React.FC<StatusRedesignProps> = ({
         )}
         <StatusContentWrapper
           statusId={status.id}
-          inReplyToId={actualStatus.in_reply_to_id}
+          inReplyToId={actualStatus.in_reply_to_id ?? undefined}
           rootId={rootId}
           nextId={nextId}
           previousId={previousId}

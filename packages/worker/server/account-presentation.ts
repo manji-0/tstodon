@@ -1,3 +1,4 @@
+import type { ApiAccountJSON } from "@tstodon/api";
 import {
   AccountPresentation,
   AccountStanding,
@@ -188,9 +189,11 @@ const isAvailable = (presentation: AccountPresentation | undefined): boolean =>
  */
 const suspendedAccountDocument = (
   identity: InstanceIdentity,
-  document: Readonly<Record<string, unknown>>,
-): Record<string, unknown> => ({
-  ...Object.fromEntries(Object.entries(document).filter(([key]) => key !== "moved")),
+  document: ApiAccountJSON,
+): ApiAccountJSON => ({
+  ...document,
+  // No `moved`: the key is left out of the JSON.
+  moved: undefined,
   display_name: "",
   note: "",
   avatar: identity.thumbnailUrl,
@@ -215,8 +218,8 @@ const suspendedAccountDocument = (
 export const embeddedAccountDocument = (
   identity: InstanceIdentity,
   presentation: AccountPresentation,
-  document: Record<string, unknown>,
-): Record<string, unknown> =>
+  document: ApiAccountJSON,
+): ApiAccountJSON =>
   presentation.kind === "Shown" ? document : suspendedAccountDocument(identity, document);
 
 /**
@@ -226,8 +229,8 @@ export const embeddedAccountDocument = (
 export const presentedAccountDocument = (
   identity: InstanceIdentity,
   presentation: AccountPresentation,
-  document: Record<string, unknown>,
-): Record<string, unknown> | undefined => {
+  document: ApiAccountJSON,
+): ApiAccountJSON | undefined => {
   switch (presentation.kind) {
     case "Shown":
       return document;

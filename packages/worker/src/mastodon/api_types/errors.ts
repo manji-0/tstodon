@@ -1,20 +1,7 @@
-export type ErrorToken =
-  | 'ERR_TAKEN'
-  | 'ERR_INVALID'
-  | 'ERR_BLOCKED'
-  | 'ERR_RESERVED'
-  | 'ERR_TOO_MANY'
-  | 'ERR_MALFORMED'
-  | 'ERR_UNUSABLE'
-  | 'ERR_TOO_SOON'
-  | 'ERR_BELOW_LIMIT'
-  | 'ERR_UNREACHABLE'
-  | 'ERR_ELEVATED';
+import type { ValidationError } from '@tstodon/api';
 
-export interface ValidationError {
-  error: ErrorToken;
-  description: string;
-}
+// The error shapes live in @tstodon/api (packages/api), shared with the server.
+export type { ErrorToken, ValidationError } from '@tstodon/api';
 
 export interface ValidationErrorResponse {
   error: string;

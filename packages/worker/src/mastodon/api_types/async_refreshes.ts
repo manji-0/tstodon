@@ -1,7 +1,2 @@
-export interface ApiAsyncRefreshJSON {
-  async_refresh: {
-    id: string;
-    status: 'running' | 'finished';
-    result_count: number;
-  };
-}
+// The shape lives in @tstodon/api (packages/api), shared with the server.
+export type { ApiAsyncRefreshJSON } from '@tstodon/api';

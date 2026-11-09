@@ -1,3 +1,9 @@
+import type {
+  ApiOriginalStatusJSON,
+  ApiQuoteJSON,
+  ApiQuotedStatusJSON,
+  ApiShallowQuoteJSON,
+} from "@tstodon/api";
 import {
   type InstanceIdentity,
   type LocalStatus,
@@ -15,7 +21,7 @@ import { parseLocalStatusId } from "./activitypub";
 import type { RepositoryError } from "./d1";
 import { cardDocument, parseCardJson } from "./link-card";
 import { RemoteAccountId } from "./remote-account-id";
-import { mastodonStatuses } from "./local-status-documents";
+import { mastodonShallowStatuses } from "./local-status-documents";
 import {
   isQuotedStatusShown,
   mastodonQuote,
@@ -37,6 +43,13 @@ import { statusInteractionCountsByIds } from "./status-interaction-store";
 import { findStatusesByIds } from "./status-store";
 import { quotedStatusAccess } from "./quoted-status-access";
 
+/** The reply fields of a rendered status, which {@link attachRemoteReplyRefs} fills in. */
+type ReplyRefs = {
+  readonly id: string;
+  in_reply_to_id: string | null;
+  in_reply_to_account_id: string | null;
+};
+
 /**
  * Fill `in_reply_to_id` and `in_reply_to_account_id` on remote status
  * documents from the `inReplyTo` stored with them: a local parent by its id
@@ -47,10 +60,10 @@ import { quotedStatusAccess } from "./quoted-status-access";
 export const attachRemoteReplyRefs = async (
   db: D1Database,
   identity: InstanceIdentity,
-  documents: ReadonlyArray<Record<string, unknown>>,
+  documents: ReadonlyArray<ReplyRefs>,
 ): Promise<void> => {
   const ids = documents.flatMap((document) =>
-    typeof document.id === "string" && document.in_reply_to_id == null ? [document.id] : [],
+    document.in_reply_to_id === null ? [document.id] : [],
   );
   const targets = await findRemoteStatusReplyTargets(db, ids);
   if (targets.isErr() || targets.value.size === 0) {
@@ -75,7 +88,7 @@ export const attachRemoteReplyRefs = async (
     findRemoteStatusRefsByObjectUris(db, remoteParents),
   ]);
   for (const document of documents) {
-    const target = typeof document.id === "string" ? targets.value.get(document.id) : undefined;
+    const target = targets.value.get(document.id);
     const uri = target?.inReplyToUri;
     if (!uri) {
       continue;
@@ -125,12 +138,6 @@ export const quoteViewerRelations = async (
     ]),
   );
 };
-
-/**
- * How a rendered status shows its own quote: in full, or by id only when the
- * status is itself shown inside a quote, as Mastodon's `ShallowStatusSerializer`.
- */
-export type QuoteNesting = "Full" | "Shallow";
 
 /**
  * The statuses accepted `quotes` quote, as stored, with what the viewer is
@@ -202,8 +209,8 @@ const quotedDocuments = async (
   }
   const { locals, remotes, access } = quoted.value;
   const [localDocuments, remoteDocuments] = await Promise.all([
-    mastodonStatuses(env, identity, locals, viewerId),
-    mastodonRemoteStatuses(env, identity, remotes, viewerId, StatusAuthors.available, "Shallow"),
+    mastodonShallowStatuses(env, identity, locals, viewerId),
+    mastodonShallowRemoteStatuses(env, identity, remotes, viewerId),
   ]);
   if (localDocuments.isErr()) {
     return err(localDocuments.error);
@@ -225,49 +232,60 @@ const quotedDocuments = async (
   });
 };
 
-/** How each of `quotes` renders as its quoting status's `quote`, nested as `nesting` says. */
-const quoteRenderer = async (
+/**
+ * How each of `quotes` renders as its quoting status's `quote`: in full, as
+ * Mastodon's `QuoteSerializer`.
+ */
+const fullQuoteRenderer = async (
   env: Env,
   identity: InstanceIdentity,
   quotes: ReadonlyArray<QuoteValue>,
   viewerId: string | undefined,
-  nesting: QuoteNesting,
-): Promise<Result<(quote: QuoteValue) => Record<string, unknown>, RepositoryError>> => {
-  if (nesting === "Shallow") {
-    return (await quotedStatuses(env.DB, quotes, viewerId)).map(
-      ({ access }) =>
-        (quote) =>
-          mastodonShallowQuote(
-            quote.state,
-            quote.quoted.kind === "Unresolved" ? null : quote.quoted.statusId,
-            () => access(quote),
-          ),
-    );
-  }
-  return (await quotedDocuments(env, identity, quotes, viewerId)).map(
+): Promise<Result<(quote: QuoteValue) => ApiQuoteJSON, RepositoryError>> =>
+  (await quotedDocuments(env, identity, quotes, viewerId)).map(
     (documentOf) => (quote) => mastodonQuote(quote.state, () => documentOf(quote)),
   );
-};
 
 /**
- * Cached remote statuses as Mastodon statuses rendered for the viewer, in the
- * order given: author, preview card, the viewer's poll votes, local accounts'
- * favourites and boosts with the viewer's own, whether the viewer may quote
- * it, its quote, and reply refs. A status with
- * media is marked sensitive when an admin marked its author's media sensitive,
- * as Mastodon does for a remote account. A status whose author is not cached,
- * or whose author's presentation `authors` refuses, is left out; an author
- * that is not shown renders stripped. The statuses themselves get no
- * visibility check here; a quoted one the viewer may not see is `unauthorized`.
+ * How each of `quotes` renders as the `quote` of a status shown inside a
+ * quote: by id only, as Mastodon's `ShallowQuoteSerializer`, which ends the
+ * nesting.
  */
-export const mastodonRemoteStatuses = async (
+const shallowQuoteRenderer = async (
+  env: Env,
+  _identity: InstanceIdentity,
+  quotes: ReadonlyArray<QuoteValue>,
+  viewerId: string | undefined,
+): Promise<Result<(quote: QuoteValue) => ApiShallowQuoteJSON, RepositoryError>> =>
+  (await quotedStatuses(env.DB, quotes, viewerId)).map(
+    ({ access }) =>
+      (quote) =>
+        mastodonShallowQuote(
+          quote.state,
+          quote.quoted.kind === "Unresolved" ? null : quote.quoted.statusId,
+          () => access(quote),
+        ),
+  );
+
+/**
+ * Cached remote statuses rendered for the viewer, each showing its quote as
+ * `renderer` renders it. See {@link mastodonRemoteStatuses}.
+ */
+const renderRemoteStatuses = async <Q>(
   env: Env,
   identity: InstanceIdentity,
   statuses: ReadonlyArray<RemoteStatusValue>,
   viewerId: string | undefined,
-  authors: StatusAuthors = StatusAuthors.available,
-  nesting: QuoteNesting = "Full",
-): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+  authors: StatusAuthors,
+  renderer: (
+    env: Env,
+    identity: InstanceIdentity,
+    quotes: ReadonlyArray<QuoteValue>,
+    viewerId: string | undefined,
+  ) => Promise<Result<(quote: QuoteValue) => Q, RepositoryError>>,
+): Promise<
+  Result<(Omit<ApiOriginalStatusJSON, "quote"> & { quote: Q | null })[], RepositoryError>
+> => {
   if (statuses.length === 0) {
     return ok([]);
   }
@@ -291,13 +309,7 @@ export const mastodonRemoteStatuses = async (
   if (quotes.isErr()) {
     return err(quotes.error);
   }
-  const renderQuote = await quoteRenderer(
-    env,
-    identity,
-    [...quotes.value.values()],
-    viewerId,
-    nesting,
-  );
+  const renderQuote = await renderer(env, identity, [...quotes.value.values()], viewerId);
   if (renderQuote.isErr()) {
     return err(renderQuote.error);
   }
@@ -324,15 +336,54 @@ export const mastodonRemoteStatuses = async (
       ),
     });
     const quote = quotes.value.get(status.id);
-    if (quote && Quote.isShown(quote)) {
-      document.quote = renderQuote.value(quote);
-    }
     const sensitized = moderations.isOk() && moderations.value.get(status.actorUri)?.sensitized;
-    if (sensitized && status.media.length > 0) {
-      document.sensitive = true;
-    }
-    return [document];
+    return [
+      {
+        ...document,
+        quote: quote && Quote.isShown(quote) ? renderQuote.value(quote) : null,
+        sensitive: document.sensitive || (sensitized === true && status.media.length > 0),
+      },
+    ];
   });
   await attachRemoteReplyRefs(env.DB, identity, documents);
   return ok(documents);
 };
+
+/**
+ * Cached remote statuses as Mastodon statuses rendered for the viewer, in the
+ * order given: author, preview card, the viewer's poll votes, local accounts'
+ * favourites and boosts with the viewer's own, whether the viewer may quote
+ * it, its quote, and reply refs. A status with
+ * media is marked sensitive when an admin marked its author's media sensitive,
+ * as Mastodon does for a remote account. A status whose author is not cached,
+ * or whose author's presentation `authors` refuses, is left out; an author
+ * that is not shown renders stripped. The statuses themselves get no
+ * visibility check here; a quoted one the viewer may not see is `unauthorized`.
+ */
+export const mastodonRemoteStatuses = (
+  env: Env,
+  identity: InstanceIdentity,
+  statuses: ReadonlyArray<RemoteStatusValue>,
+  viewerId: string | undefined,
+  authors: StatusAuthors = StatusAuthors.available,
+): Promise<Result<ApiOriginalStatusJSON[], RepositoryError>> =>
+  renderRemoteStatuses(env, identity, statuses, viewerId, authors, fullQuoteRenderer);
+
+/**
+ * {@link mastodonRemoteStatuses} for statuses shown inside another's quote,
+ * as Mastodon's `ShallowStatusSerializer`: each one's own quote by id only.
+ */
+export const mastodonShallowRemoteStatuses = (
+  env: Env,
+  identity: InstanceIdentity,
+  statuses: ReadonlyArray<RemoteStatusValue>,
+  viewerId: string | undefined,
+): Promise<Result<ApiQuotedStatusJSON[], RepositoryError>> =>
+  renderRemoteStatuses(
+    env,
+    identity,
+    statuses,
+    viewerId,
+    StatusAuthors.available,
+    shallowQuoteRenderer,
+  );

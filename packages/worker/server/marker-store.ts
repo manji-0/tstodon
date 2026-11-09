@@ -1,3 +1,4 @@
+import { type ApiMarkerJSON, type ApiMarkersJSON, MARKER_TIMELINES } from "@tstodon/api";
 import { compileSchema, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -13,7 +14,7 @@ import {
 
 const LastReadStatusIdRow = z.object({ last_read_status_id: z.string() });
 
-export const MarkerTimelineSchema = z.union([z.literal("home"), z.literal("notifications")]);
+export const MarkerTimelineSchema = z.literal(MARKER_TIMELINES);
 export type MarkerTimeline = z.infer<typeof MarkerTimelineSchema>;
 
 const compiledMarkerTimelineSchema = compileSchema(MarkerTimelineSchema);
@@ -26,17 +27,13 @@ const MarkerRowSchema = z.object({
   updated_at: z.string().min(1),
 });
 
-export type MarkerDocument = Readonly<{
-  last_read_id: string;
-  version: number;
-  updated_at: string;
-}>;
+export type MarkerDocument = ApiMarkerJSON;
 
 export const getMarkers = async (
   db: D1Database,
   accountId: string,
   timelines: ReadonlyArray<MarkerTimeline>,
-): Promise<Result<Readonly<Record<string, MarkerDocument>>, RepositoryError>> => {
+): Promise<Result<ApiMarkersJSON, RepositoryError>> => {
   if (timelines.length === 0) {
     return ok({});
   }
@@ -62,7 +59,7 @@ export const upsertMarkers = async (
   db: D1Database,
   accountId: string,
   patches: ReadonlyArray<Readonly<{ timeline: MarkerTimeline; last_read_id: string }>>,
-): Promise<Result<Readonly<Record<string, MarkerDocument>>, RepositoryError>> => {
+): Promise<Result<ApiMarkersJSON, RepositoryError>> => {
   if (patches.length === 0) {
     return ok({});
   }

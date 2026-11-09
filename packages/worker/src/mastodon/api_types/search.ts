@@ -1,13 +1,3 @@
-import type { ApiAccountJSON } from './accounts';
-import type { ApiCollectionJSON } from './collections';
-import type { ApiStatusJSON } from './statuses';
-import type { ApiHashtagJSON } from './tags';
-
-export type ApiSearchType = 'accounts' | 'statuses' | 'hashtags';
-
-export interface ApiSearchResultsJSON {
-  accounts: ApiAccountJSON[];
-  statuses: ApiStatusJSON[];
-  hashtags: ApiHashtagJSON[];
-  collections: ApiCollectionJSON[];
-}
+// See app/serializers/rest/search_serializer.rb; the shape lives in
+// @tstodon/api (packages/api), shared with the server.
+export type { ApiSearchType, ApiSearchResultsJSON } from '@tstodon/api';

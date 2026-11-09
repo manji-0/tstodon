@@ -21,7 +21,7 @@ import type { Result } from "neverthrow";
 import { findAccountById } from "../account-store";
 import type { RepositoryError } from "../d1";
 import { findRemoteActorByUri } from "../remote-actor-store";
-import { reportedStatuses } from "../report-documents";
+import { reportDocumentsByIds, reportedStatuses } from "../report-documents";
 import { insertReport, ReportCategorySchema, ReportParty } from "../report-store";
 import { booleanish, isTruthy, stringList } from "../form-values";
 
@@ -185,17 +185,14 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
     fromAccountId: user.value.id,
     reportId: report.value.id,
   });
-  return c.json({
-    id: report.value.id,
-    action_taken: false,
-    action_taken_at: null,
-    category: category.value,
-    comment: body.value.comment ?? "",
-    forwarded: forwardTo !== undefined,
-    status_ids: statusIds,
-    rule_ids: requestedRules,
-    target_account: { id: body.value.account_id },
-  });
+  // The report as Mastodon's `REST::ReportSerializer` renders it, its target
+  // account in full.
+  const rendered = await reportDocumentsByIds(c.env, identity.value, [report.value.id]);
+  if (rendered.isErr()) {
+    return jsonRepositoryError(c, rendered.error.message);
+  }
+  const document = rendered.value.get(report.value.id);
+  return document ? c.json(document) : c.json({ error: "Record not found", kind: "NotFound" }, 404);
 };
 
 type ReportTarget =

@@ -241,13 +241,15 @@ const PollOption: React.FC<PollOptionProps> = (props) => {
     const pollVotesCount = poll.voters_count ?? poll.votes_count;
     return pollVotesCount === 0
       ? 0
-      : (option.votes_count / pollVotesCount) * 100;
+      : ((option.votes_count ?? 0) / pollVotesCount) * 100;
   }, [option, poll]);
   const isLeading = useMemo(
     () =>
       poll.options
         .filter((other) => other.title !== option.title)
-        .every((other) => option.votes_count >= other.votes_count),
+        .every(
+          (other) => (option.votes_count ?? 0) >= (other.votes_count ?? 0),
+        ),
     [poll, option],
   );
   const titleHtml = useMemo(() => {

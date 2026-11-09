@@ -41,6 +41,9 @@ export const getV1Conversations = async (
     : c.json(documents.value);
 };
 
+/** How far down the list a conversation just marked read is looked for (as its stream event). */
+const READ_CONVERSATION_WINDOW = 100;
+
 export const postV1ConversationsByIdRead = async (
   c: Context<{ Bindings: Env }, "/api/v1/conversations/:id/read">,
 ) => {
@@ -70,7 +73,28 @@ export const postV1ConversationsByIdRead = async (
     return jsonRepositoryError(c, marked.error.message);
   }
   await publishConversationRead(c.env, identity.value, user.value.id, conversationId);
-  return c.body(null, 200);
+  // Mastodon answers with the conversation, now read, as the list shows it.
+  const listed = await listConversationsForAccount(
+    c.env.DB,
+    identity.value,
+    user.value.id,
+    READ_CONVERSATION_WINDOW,
+  );
+  if (listed.isErr()) {
+    return jsonRepositoryError(c, listed.error.message);
+  }
+  const conversation = listed.value.find((entry) => entry.id === conversationId);
+  if (!conversation) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  const documents = await conversationDocuments(c.env, identity.value, user.value.id, [
+    conversation,
+  ]);
+  if (documents.isErr()) {
+    return jsonRepositoryError(c, documents.error.message);
+  }
+  const [document] = documents.value;
+  return document ? c.json(document) : c.json({ error: "Record not found", kind: "NotFound" }, 404);
 };
 
 export const deleteV1ConversationsById = async (
@@ -101,5 +125,5 @@ export const deleteV1ConversationsById = async (
   if (hidden.isErr()) {
     return jsonRepositoryError(c, hidden.error.message);
   }
-  return c.body(null, 200);
+  return c.json({});
 };

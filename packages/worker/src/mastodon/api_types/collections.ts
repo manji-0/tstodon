@@ -1,33 +1,14 @@
 // See app/serializers/rest/base_collection_serializer.rb
 
-import type { ApiAccountJSON } from './accounts';
-import type { ApiTagJSON } from './statuses';
+import type {
+  ApiAccountJSON,
+  ApiCollectionJSON,
+  CollectionAccountItem,
+} from '@tstodon/api';
 
-/**
- * Returned when fetching all collections for an account,
- * doesn't contain account and item data
- */
-export interface ApiCollectionJSON {
-  account_id: string;
-
-  id: string;
-  uri: string;
-  url: string;
-  local: boolean;
-  item_count: number;
-
-  name: string;
-  description: string | null;
-  tag: ApiTagJSON | null;
-  language: string | null;
-  sensitive: boolean;
-  discoverable: boolean;
-
-  created_at: string;
-  updated_at: string;
-
-  items: CollectionAccountItem[];
-}
+// The collection and its item live in @tstodon/api (packages/api), shared
+// with the server.
+export type { ApiCollectionJSON, CollectionAccountItem } from '@tstodon/api';
 
 /**
  * Returned when fetching all collections for an account
@@ -48,16 +29,6 @@ export interface ApiWrappedCollectionJSON {
  */
 export interface ApiCollectionWithAccountsJSON extends ApiWrappedCollectionJSON {
   accounts: ApiAccountJSON[];
-}
-
-/**
- * Nested account item
- */
-export interface CollectionAccountItem {
-  id: string;
-  account_id?: string; // Only present when state is 'accepted' (or the collection is your own)
-  state: 'pending' | 'accepted' | 'rejected' | 'revoked';
-  created_at: string;
 }
 
 export interface WrappedCollectionAccountItem {

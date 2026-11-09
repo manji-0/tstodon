@@ -1,22 +1,3 @@
-interface ApiHistoryJSON {
-  day: string;
-  accounts: string;
-  uses: string;
-}
-
-interface ApiHashtagBase {
-  id: string;
-  name: string;
-  url: string;
-}
-
-export interface ApiHashtagJSON extends ApiHashtagBase {
-  history: [ApiHistoryJSON, ...ApiHistoryJSON[]];
-  following?: boolean;
-  featuring?: boolean;
-}
-
-export interface ApiFeaturedTagJSON extends ApiHashtagBase {
-  statuses_count: string;
-  last_status_at: string | null;
-}
+// See app/serializers/rest/tag_serializer.rb; the shapes live in
+// @tstodon/api (packages/api), shared with the server.
+export type { ApiHashtagJSON, ApiFeaturedTagJSON } from '@tstodon/api';

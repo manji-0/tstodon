@@ -1,3 +1,5 @@
+import type { ApiCustomEmojiJSON } from "@tstodon/api";
+
 /** A custom emoji configured on this instance (`CUSTOM_EMOJIS`). */
 export type CustomEmoji = Readonly<{
   shortcode: string;
@@ -7,18 +9,13 @@ export type CustomEmoji = Readonly<{
   category?: string;
 }>;
 
-export const customEmojiJson = (emoji: CustomEmoji): Record<string, unknown> => {
-  const base: Record<string, unknown> = {
-    shortcode: emoji.shortcode,
-    url: emoji.url,
-    static_url: emoji.static_url,
-    visible_in_picker: emoji.visible_in_picker,
-  };
-  if (emoji.category !== undefined) {
-    base.category = emoji.category;
-  }
-  return base;
-};
+export const customEmojiJson = (emoji: CustomEmoji): ApiCustomEmojiJSON => ({
+  shortcode: emoji.shortcode,
+  url: emoji.url,
+  static_url: emoji.static_url,
+  visible_in_picker: emoji.visible_in_picker,
+  ...(emoji.category === undefined ? {} : { category: emoji.category }),
+});
 
 /**
  * Configured emojis whose `:shortcode:` appears in `text`, in first-use order.

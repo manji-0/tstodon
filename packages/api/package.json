@@ -1,0 +1,14 @@
+{
+  "name": "@tstodon/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./values": "./src/values.ts"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  }
+}

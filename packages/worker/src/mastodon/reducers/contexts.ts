@@ -77,7 +77,7 @@ const normalizeContext = (
   if (ancestors[0]) {
     addReply(state, {
       id,
-      in_reply_to_id: ancestors[ancestors.length - 1]?.id,
+      in_reply_to_id: ancestors[ancestors.length - 1]?.id ?? null,
     });
   }
 

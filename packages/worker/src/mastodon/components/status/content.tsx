@@ -91,7 +91,8 @@ export const StatusContent: React.FC<{
     return null;
   }
 
-  const language = status.translation?.language ?? status.language;
+  const language =
+    status.translation?.language ?? status.language ?? undefined;
 
   const renderReadMore = !!onClick && status.collapsed;
   const readMoreButton = renderReadMore && (

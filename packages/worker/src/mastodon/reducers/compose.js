@@ -1,5 +1,7 @@
 import { Map as ImmutableMap, List as ImmutableList, OrderedSet as ImmutableOrderedSet, fromJS } from 'immutable';
 
+import { STATUS_VISIBILITIES } from '@tstodon/api/values';
+
 import {
   changeComposeVisibility,
   changeUploadCompose,
@@ -233,7 +235,8 @@ const insertEmoji = (state, position, emojiData, needsSpace) => {
 };
 
 const privacyPreference = (a, b) => {
-  const order = ['public', 'unlisted', 'private', 'direct'];
+  // From most to least public (@tstodon/api's STATUS_VISIBILITIES).
+  const order = STATUS_VISIBILITIES;
   return order[Math.max(order.indexOf(a), order.indexOf(b), 0)];
 };
 

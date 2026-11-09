@@ -1,3 +1,4 @@
+import type { ApiMediaAttachmentJSON, ApiScheduledStatusJSON } from "@tstodon/api";
 import type { InstanceIdentity } from "@tstodon/domain";
 import type { Context } from "hono";
 import { z } from "zod";
@@ -42,7 +43,7 @@ export const scheduledStatusMedia = async (
   db: D1Database,
   identity: InstanceIdentity,
   row: ScheduledStatusRow,
-): Promise<ReadonlyArray<Record<string, unknown>>> => {
+): Promise<ApiMediaAttachmentJSON[]> => {
   if (row.params.media_ids.length === 0) {
     return [];
   }
@@ -61,7 +62,7 @@ export const scheduledStatusMedia = async (
 const scheduledDocument = async (
   c: Context<{ Bindings: Env }>,
   row: ScheduledStatusRow,
-): Promise<Record<string, unknown> | undefined> => {
+): Promise<ApiScheduledStatusJSON | undefined> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return undefined;
@@ -89,7 +90,7 @@ export const getV1ScheduledStatuses = async (
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
-  const documents: Record<string, unknown>[] = [];
+  const documents: ApiScheduledStatusJSON[] = [];
   for (const row of rows.value) {
     const document = await scheduledDocument(c, row);
     if (document) {
@@ -178,5 +179,5 @@ export const deleteV1ScheduledStatusesById = async (
   if (!removed.value) {
     return notFound(c);
   }
-  return c.body(null, 200);
+  return c.json({});
 };

@@ -1,3 +1,4 @@
+import type { ApiStatusJSON } from "@tstodon/api";
 import {
   type InstanceIdentity,
   type LocalAccount,
@@ -440,7 +441,7 @@ const publishBoost = async (
   booster: LocalAccount,
   target: FoundStatus,
   reblog: LocalReblog,
-): Promise<Result<Record<string, unknown>, ApiRefusal>> => {
+): Promise<Result<ApiStatusJSON, ApiRefusal>> => {
   const objectRef = await activityObjectRef(env.DB, identity, target);
   if (objectRef.isErr()) {
     return err(ApiRefusal.repository(objectRef.error.message));

@@ -232,10 +232,7 @@ export const tagDailyHistories = async (
         accounts.set(tag, tagAccounts);
       }
     }
-    const today = Math.floor(Date.now() / 1000 / SECONDS_PER_DAY) * SECONDS_PER_DAY;
-    const days = Array.from({ length: TAG_HISTORY_DAYS }, (_, offset) =>
-      String(today - offset * SECONDS_PER_DAY),
-    );
+    const days = tagHistoryDays();
     return new Map(
       [...wanted].map((tag): [string, TagHistoryEntry[]] => [
         tag,
@@ -247,6 +244,18 @@ export const tagDailyHistories = async (
       ]),
     );
   });
+
+/** The days a tag's history covers, newest first, as Unix-second strings. */
+const tagHistoryDays = (): string[] => {
+  const today = Math.floor(Date.now() / 1000 / SECONDS_PER_DAY) * SECONDS_PER_DAY;
+  return Array.from({ length: TAG_HISTORY_DAYS }, (_, offset) =>
+    String(today - offset * SECONDS_PER_DAY),
+  );
+};
+
+/** A history of no uses over the days {@link tagDailyHistories} covers. */
+export const emptyTagHistory = (): TagHistoryEntry[] =>
+  tagHistoryDays().map((day) => ({ day, uses: "0", accounts: "0" }));
 
 /** {@link tagDailyHistories} for a single tag. */
 export const tagDailyHistory = async (
