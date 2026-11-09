@@ -19,8 +19,6 @@ Conventions in this document:
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
 | `DB` (D1)                                  | Everything relational: accounts and their **actor private keys** (`accounts.private_key_jwk`, `instance_actor_keys.private_key_jwk`), statuses, follows, notifications, OAuth tables, Better Auth `user` / `session`, outbox rows | Yes, and it is sensitive (see below)  |
 | `MEDIA` (R2)                               | Local uploads under `attachments/`, `avatars/`, `headers/`, custom emoji under `emoji/`, image previews                                                                                                                           | Yes                                   |
-| `APP_CACHE` (KV)                           | Only `mailbox:<recipient>` entries when `EMAIL_TRANSPORT=capture` (tests and local e2e), one-hour TTL                                                                                                                             | No                                    |
-| `REMOTE_DNS_CACHE` (KV)                    | Nothing: no code reads or writes it at this revision (OPS-7 in [open TODOs](../planning/open-todos.md))                                                                                                                           | No                                    |
 | `RATE_LIMIT_COUNTER` (Durable Object)      | Rate-limit counters, deleted by an alarm when their window ends                                                                                                                                                                   | No                                    |
 | `STREAM_HUB` (Durable Object)              | Open streaming connections                                                                                                                                                                                                        | No                                    |
 | `OUTBOX_PROCESS_QUEUE` / Workflow          | In-flight jobs and deliveries; their durable state is the `outbox_deliveries` rows in D1                                                                                                                                          | No (restore D1, see caveats)          |
@@ -69,28 +67,93 @@ Caveats, from how this server works:
 - **Federation does not rewind.** Remote servers keep what they received after the restore point: posts that no longer exist here (they get a 404 when fetched; no `Delete` is sent), follows and accepts this server has forgotten, profile updates. Expect a few days of inconsistency for anything that happened in the lost window.
 - **Media does not rewind.** R2 is not restored. Objects uploaded after the restore point stay in the bucket unreferenced; objects the media vacuum or an account purge deleted after the restore point are gone, and their rows point at nothing (404).
 
-### Periodic exports
+### Scheduled D1 backups
 
-Time Travel lives in the same account as the database and covers only its window. Keep exports elsewhere as well. This repository has no export job yet (OPS-4 in [open TODOs](../planning/open-todos.md)); run one from CI or a trusted machine:
+Time Travel lives in the same account as the database and covers only its window. The [`D1 backup`](../../.github/workflows/d1-backup.yml) GitHub Actions workflow keeps copies elsewhere: once a day (03:43 UTC; change the `cron` line to suit your quiet hours) and on demand (Actions → D1 backup → Run workflow) it
+
+1. exports the production database with `wrangler d1 export --remote` (the lockfile's wrangler, through a throwaway config that names the database by id),
+2. checks the dump is not empty and holds `d1_migrations` and `accounts`,
+3. compresses it and encrypts it with [age](https://age-encryption.org) to the public keys in `D1_BACKUP_AGE_RECIPIENTS`, then deletes the plaintext; the plaintext never leaves the runner,
+4. uploads `<prefix><database>-<YYYYMMDDTHHMMSSZ>.sql.gz.age` to an S3-compatible bucket (an R2 bucket in **another** Cloudflare account, or another provider), with its SHA-256 in the object metadata (`sha256`), and checks the stored size,
+5. prunes old backups in that bucket (below), and
+6. optionally also keeps the encrypted file as a workflow artifact for `D1_BACKUP_ARTIFACT_RETENTION_DAYS` days.
+
+It was chosen over a Worker cron calling D1's export API (`POST /accounts/:account/d1/database/:id/export`, what wrangler calls): that would put a Cloudflare API token and the backup bucket's write credentials into the Worker the backups protect, and an encrypted copy outside Cloudflare would still need a second system. A logical dump from the Worker (paged `SELECT`s to R2) would run into CPU and subrequest limits and is not a consistent snapshot.
+
+The workflow does nothing until configured: a scheduled run with none of the settings below passes with a notice (forks stay green); a manual run, or a run with only some of them, fails and names what is missing. Scheduled workflows run from the default branch only, may start late at busy times, and GitHub disables them in a public repository after 60 days without repository activity: the launch checklist and the alert below catch that.
+
+Settings (repository Settings → Secrets and variables → Actions; an `environment` with required reviewers is not used, since nobody approves a nightly run):
+
+| Name                                | Kind     | Value                                                                                                                                                        |
+| ----------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `D1_BACKUP_CLOUDFLARE_API_TOKEN`    | secret   | A Cloudflare API token on the production account, permission Account → D1 → Edit only, limited to that account (see below)                                   |
+| `D1_BACKUP_CLOUDFLARE_ACCOUNT_ID`   | variable | The production account id                                                                                                                                    |
+| `D1_BACKUP_DATABASE_ID`             | variable | The production `database_id` (`wrangler d1 info tstodon`, or `tofu output -json wrangler_bindings`)                                                          |
+| `D1_BACKUP_DATABASE_NAME`           | variable | Optional, default `tstodon`; also the key's name part                                                                                                        |
+| `D1_BACKUP_AGE_RECIPIENTS`          | variable | One or more age public keys (`age1…`), separated by spaces, commas or newlines. Public keys only, never an identity (`AGE-SECRET-KEY-…`)                     |
+| `D1_BACKUP_S3_BUCKET`               | variable | The backup bucket. Leave unset to keep artifacts only                                                                                                        |
+| `D1_BACKUP_S3_ENDPOINT`             | variable | The S3 endpoint, for R2 `https://<backup-account-id>.r2.cloudflarestorage.com`                                                                               |
+| `D1_BACKUP_S3_REGION`               | variable | Optional, default `auto` (R2); set the bucket's region for another provider                                                                                  |
+| `D1_BACKUP_S3_PREFIX`               | variable | Optional, default `d1/`                                                                                                                                      |
+| `D1_BACKUP_S3_ACCESS_KEY_ID`        | secret   | An R2 API token's Access Key ID (or the provider's), for that bucket only                                                                                    |
+| `D1_BACKUP_S3_SECRET_ACCESS_KEY`    | secret   | Its Secret Access Key                                                                                                                                        |
+| `D1_BACKUP_PRUNE`                   | variable | Optional, default `true`; `false` leaves retention to the bucket's lifecycle rules                                                                           |
+| `D1_BACKUP_KEEP_DAYS`               | variable | Optional, default `35`: every backup younger than this is kept                                                                                               |
+| `D1_BACKUP_KEEP_MONTHS`             | variable | Optional, default `12`: the first backup of each of this many calendar months (UTC, the current one included) is kept                                        |
+| `D1_BACKUP_KEEP_LATEST`             | variable | Optional, default `7`: the newest this many backups are kept whatever their age, so a schedule that stopped for months never prunes the last copies          |
+| `D1_BACKUP_ARTIFACT_RETENTION_DAYS` | variable | Optional: also upload the encrypted file as a workflow artifact kept this many days (at most your plan's artifact retention). Required when no bucket is set |
+
+**Least privilege.**
+
+- The Cloudflare token can read the whole database and, with D1 Edit, also write to it and to every other D1 database in the account: D1 has no read-only export permission and no per-database scoping **(verify on the API token page; D1's export endpoint is a `POST`, listed under D1 Edit at the time of writing)**. Give it nothing else, set an expiry and roll it with the other tokens, and keep it in this repository's secrets only. It does not need D1 Read: the throwaway config names the database by id, so wrangler never lists databases.
+- The bucket lives in a second Cloudflare account (or another provider), so losing or compromising the production account does not reach it. Its R2 API token is "Object Read & Write" on that one bucket (list, put, delete for pruning; R2 has no put-only token).
+- Add a bucket lock rule so a leaked bucket token cannot erase history: `wrangler r2 bucket lock add <bucket> --prefix d1/ --retention-days 30` (run with the backup account's credentials). Keep `D1_BACKUP_KEEP_DAYS` above the lock's days: pruning a locked object fails, and the workflow only warns about it.
+- The workflow's `GITHUB_TOKEN` is `contents: read`. Anyone who can push a workflow change to the default branch can read these secrets; protect the branch.
+
+**Key custody.** The dump contains every actor's private signing key and the session rows ([secrets inventory](#secrets-and-configuration-inventory)); the age identity is the key to all of it.
+
+- Generate the key pair offline: `age-keygen -o tstodon-d1-backup.key` prints the public key (`age1…`) for `D1_BACKUP_AGE_RECIPIENTS`. The identity file never goes into GitHub, Cloudflare or the bucket.
+- Keep the identity in two places with different custodians (a password manager entry and a printed or hardware copy, or two operators' vaults). A backup nobody can decrypt is no backup. Several recipients are fine: each can decrypt alone (for example one software key, one `age-plugin-yubikey` key).
+- To rotate: add the new public key to `D1_BACKUP_AGE_RECIPIENTS`, run the workflow, check a restore with the new key, then remove the old public key. Keep the old identity until every backup encrypted to it has been pruned (`D1_BACKUP_KEEP_MONTHS` months).
+- If an identity leaks, treat every backup encrypted to it as leaked: see [Key compromise](#key-compromise-and-secret-rotation).
+
+**Cost of an export.** D1 documents that an export blocks other queries to the database while it runs **(verify)**, so a large export is a short outage of the API; schedule it when traffic is lowest. Export does not support databases with virtual tables; tstodon's migrations create none (no FTS).
+
+**Manual export** (the same thing from a trusted machine, for example before a risky migration):
 
 ```sh
-f=tstodon-$(date -u +%Y%m%dT%H%MZ).sql
+f=tstodon-$(date -u +%Y%m%dT%H%M%SZ).sql
 wrangler d1 export tstodon --remote --output "$f"
-age -r <recipient-public-key> -o "$f.age" "$f" && rm "$f"   # or gpg; the dump contains private keys
-wrangler r2 object put "tstodon-backups/d1/$f.age" --file "$f.age" --remote
+gzip -9 -c "$f" | age --encrypt -r <recipient-public-key> -o "$f.gz.age" && rm "$f"
+aws s3api put-object --endpoint-url "$BACKUP_S3_ENDPOINT" --bucket <bucket> --key "d1/$f.gz.age" --body "$f.gz.age"
 ```
 
-- **Schedule.** Daily, off-peak, keeping about 30 dailies and 12 monthlies is a reasonable start; Time Travel already covers fine-grained recovery inside its window, so the exports are for account loss, operator error discovered late, and moving the instance.
-- **Cost of an export.** D1 documents that an export blocks other queries to the database while it runs **(verify)**, so a large export is a short outage of the API; run it when traffic is lowest. Export does not support databases with virtual tables; tstodon's migrations create none (no FTS). `--table`, `--no-data` and `--no-schema` narrow the dump.
-- **Where to put it.** A separate bucket, ideally in a different Cloudflare account or another provider, with a lock rule so a leaked token cannot delete history (`wrangler r2 bucket lock add tstodon-backups --retention-days 35`). `wrangler r2 object put` has an upload size limit **(verify)**; for large dumps use an S3-compatible client (rclone, `aws s3 cp`) with an R2 API token.
-- **Restore from an export** into a new database, then point the Worker at it:
+Name it as the workflow does (`d1/tstodon-<stamp>.sql.gz.age`, second precision) and pruning treats it like the others; any other key in the bucket is never pruned. `node scripts/d1-backup.mjs key` prints the name for now, and `node scripts/d1-backup.mjs prune --now <ISO time> < keys.txt` shows what a run would prune.
 
-  ```sh
-  wrangler d1 create tstodon-restore
-  wrangler d1 execute tstodon-restore --remote --file tstodon-<stamp>.sql
-  ```
+### Restore from a scheduled backup
 
-  Put the new `database_id` in `packages/worker/wrangler.jsonc` and `pnpm run deploy`. The dump includes `d1_migrations`, so the deploy applies only the migrations newer than the dump. Check the placement region still matches the new database's primary location.
+<!-- derived-from #scheduled-d1-backups -->
+
+1. Download the backup and decrypt it on a trusted machine with an encrypted disk:
+
+   ```sh
+   aws s3api get-object --endpoint-url "$BACKUP_S3_ENDPOINT" --bucket <bucket> \
+     --key d1/tstodon-<stamp>.sql.gz.age tstodon-<stamp>.sql.gz.age
+   # or download the workflow run's artifact (a zip holding the .age and .sha256)
+   age --decrypt -i tstodon-d1-backup.key tstodon-<stamp>.sql.gz.age | gunzip > restore.sql
+   ```
+
+2. Rehearse it locally first: `scripts/d1-restore-check.sh tstodon-<stamp>.sql.gz.age tstodon-d1-backup.key` decrypts the backup (checking a `.sha256` next to it when there is one), loads it into a scratch local D1 database, prints the account, status and instance-key counts and the newest migration, and lists migrations the repository has that the backup lacks. Nothing touches Cloudflare. Tested with a local export → encrypt → decrypt → import round trip: the re-export of the restored database was byte-identical to the original, including multi-line PEMs, quotes and non-ASCII JSON.
+3. Load it into a new database and point the Worker at it:
+
+   ```sh
+   wrangler d1 create tstodon-restore
+   wrangler d1 execute tstodon-restore --remote --file restore.sql
+   ```
+
+   Put the new `database_id` in `packages/worker/wrangler.jsonc` (and `D1_BACKUP_DATABASE_ID`) and `pnpm run deploy`. The dump includes `d1_migrations`, so the deploy applies only the migrations newer than the dump. Check the placement region still matches the new database's primary location. Pause the queue around the switch as for [Time Travel](#d1-time-travel-point-in-time-restore); its caveats (deliveries and queue messages in flight, federation and media do not rewind) apply here too, with a longer lost window.
+
+4. Delete `restore.sql` (`shred -u restore.sql`) once the restore is verified.
 
 ### R2 media
 
@@ -108,24 +171,26 @@ R2 has no object versioning to fall back on **(verify)**, and the Worker deletes
 
 The media bucket alone is not a usable backup: object keys are random, and only D1 says which account and status an object belongs to. Back up both, at about the same time.
 
-### KV, Durable Objects, telemetry
+### Durable Objects, telemetry
 
-Nothing to back up. `APP_CACHE` holds captured mail only in test setups, `REMOTE_DNS_CACHE` is unused, rate-limit counters expire with their window, `StreamHub` holds connections. Analytics Engine and Workers Logs keep data only for their retention window; export what you need to keep (Logpush, below).
+Nothing to back up (there is no KV namespace). Rate-limit counters expire with their window, `StreamHub` holds connections. Analytics Engine and Workers Logs keep data only for their retention window; export what you need to keep (Logpush, below).
 
 ### Secrets and configuration inventory
 
 Keep these in a password manager or vault, outside Cloudflare:
 
-| Item                                                                  | Where it lives                         | If lost                                                                                                                                         |
-| --------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BETTER_AUTH_SECRET`                                                  | Worker secret                          | Generate a new one; see [rotation](#key-compromise-and-secret-rotation)                                                                         |
-| `VAPID_PRIVATE_JWK`                                                   | Worker secret                          | Every Web Push subscription stops working; clients must subscribe again                                                                         |
-| `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD`, `CF_ACCESS_ADMIN_GROUPS`    | Worker vars (not secret)               | Read them again from Zero Trust → Access → Applications                                                                                         |
-| The Access application itself (paths, policies, identity providers)   | Cloudflare Zero Trust                  | Recreate from the [deploy checklist](./cloudflare-deploy.md) protect/bypass list; a new application has a new AUD                               |
-| Actor private keys                                                    | D1 (`accounts`, `instance_actor_keys`) | Unrecoverable without a D1 backup: remote servers cache the public keys, so new keys break signature verification until they refetch the actors |
-| Cloudflare API tokens (deploy, OpenTofu, Queues send, Analytics read) | Your CI / machine                      | Roll them in the dashboard (My Profile → API Tokens)                                                                                            |
-| `infra/cloudflare/terraform.tfvars` and the OpenTofu state            | Your machine / state backend           | Re-import the resources                                                                                                                         |
-| `packages/worker/wrangler.jsonc` with production ids                  | Your deploy branch                     | Recreate from `tofu output -json wrangler_bindings`                                                                                             |
+| Item                                                                  | Where it lives                         | If lost                                                                                                                                                                                                  |
+| --------------------------------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BETTER_AUTH_SECRET`                                                  | Worker secret                          | Generate a new one; see [rotation](#key-compromise-and-secret-rotation)                                                                                                                                  |
+| `VAPID_PRIVATE_JWK`                                                   | Worker secret                          | Every Web Push subscription stops working; clients must subscribe again                                                                                                                                  |
+| `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD`, `CF_ACCESS_ADMIN_GROUPS`    | Worker vars (not secret)               | Read them again from Zero Trust → Access → Applications                                                                                                                                                  |
+| The Access application itself (paths, policies, identity providers)   | Cloudflare Zero Trust                  | Recreate from the [deploy checklist](./cloudflare-deploy.md) protect/bypass list; a new application has a new AUD                                                                                        |
+| Actor private keys                                                    | D1 (`accounts`, `instance_actor_keys`) | Unrecoverable without a D1 backup. If leaked, rotate them (see [rotating actor keys](#rotating-actor-keys)); remote servers fetch the new public keys when a signature fails against the one they cached |
+| Cloudflare API tokens (deploy, OpenTofu, Queues send, Analytics read) | Your CI / machine                      | Roll them in the dashboard (My Profile → API Tokens)                                                                                                                                                     |
+| The D1 backup age identity (`AGE-SECRET-KEY-…`)                       | Two custodians, offline                | Every backup encrypted only to it is unreadable; see [key custody](#scheduled-d1-backups)                                                                                                                |
+| D1 backup tokens (`D1_BACKUP_*` secrets)                              | GitHub Actions secrets                 | Roll them (D1 Edit token on the production account, R2 token on the backup account) and update the secrets                                                                                               |
+| `infra/cloudflare/terraform.tfvars` and the OpenTofu state            | Your machine / state backend           | Re-import the resources                                                                                                                                                                                  |
+| `packages/worker/wrangler.jsonc` with production ids                  | Your deploy branch                     | Recreate from `tofu output -json wrangler_bindings`                                                                                                                                                      |
 
 **A D1 backup is a key backup.** It contains every actor's private signing key, the Better Auth `session` rows (whose `token` derives the web app's access token: `webAccessToken` in `server/web-app.ts`), push subscription endpoints and keys, Access email addresses and account IP history. OAuth client secrets, codes and access tokens are stored as SHA-256 digests. Treat an export like the secrets above: encrypt it, restrict who can read the bucket, and never attach one to an issue.
 
@@ -137,7 +202,7 @@ Keep these in a password manager or vault, outside Cloudflare:
 
 `wrangler.jsonc` enables Workers Logs and traces with `head_sampling_rate: 1` (every invocation). Where to read them:
 
-- **Workers Logs** (dashboard: Workers & Pages → `tstodon` → Observability / Logs). Kept 3 days on Free and 7 days on Paid **(verify)**. Every server event below is one `console.*` line holding a JSON object with a `kind` field; filter on the message containing `"kind":"OutboxJobDeadLettered"` (Workers Logs also extracts JSON fields for querying; check whether your view offers `kind` as a field). Invocations also carry the request path, status and outcome, which is how inbox refusals are found (they are not logged as events, OPS-5).
+- **Workers Logs** (dashboard: Workers & Pages → `tstodon` → Observability / Logs). Kept 3 days on Free and 7 days on Paid **(verify)**. Every server event below is one `console.*` line holding a JSON object with a `kind` field; filter on the message containing `"kind":"OutboxJobDeadLettered"` (Workers Logs also extracts JSON fields for querying; check whether your view offers `kind` as a field). Invocations also carry the request path, status and outcome.
 - **Live tail**: `wrangler tail tstodon --format pretty` (add `--status error`, `--search OutboxWorkflowCreateFailed`, `--method POST`, `--ip self`). Tail sees queue, cron and Workflow invocations too.
 - **Logpush** to R2 or a third party for longer retention and alerting: needs Workers Paid, `"logpush": true` in `wrangler.jsonc` (not set in this repository) and a Logpush job for the Workers trace events dataset (dashboard: Analytics & Logs → Logpush) **(verify)**.
 
@@ -148,7 +213,6 @@ Level is the `console` method. Every event's `kind` is unique to one meaning; th
 **Delivery and the outbox queue.** Act on any of these: each one means activities did not leave or a job was abandoned.
 
 | Event                                              | Level       | Source                                              | Meaning                                                                                                                                                                                                                       | Act                                                                                                                   |
-| -------------------------------------------------- | ----------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | -------------------------------------------------- | ----------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `OutboxEnqueueInsertFailed`                        | error       | `delivery.ts`                                       | Storing the outbound activity in D1 failed (`accountId` or `signer`, `activityKind`, `message`); nothing was delivered                                                                                                        | D1 health; the user's local action happened, remotes never hear of it                                                 |
 | `OutboxEnqueueInvalidActivityId`                   | error       | `delivery.ts`                                       | D1 returned an id that is not an activity id                                                                                                                                                                                  | Bug; report it                                                                                                        |
@@ -189,6 +253,8 @@ Level is the `console` method. Every event's `kind` is unique to one meaning; th
 | `ThreadBackfillNotQueued`, `OutboxBackfillNotQueued`, `OutboxBackfillPageNotQueued`                                                          | `remote-thread-backfill.ts`, `remote-outbox-backfill.ts`                                                      | Fetching a remote thread or a remote actor's recent posts                                                  |
 | `ExpiredPollsFollowUpNotQueued`, `CsvImportNotQueued`                                                                                        | `poll-expiry.ts`, `csv-import-apply.ts`                                                                       | The next page of poll expiry or of a CSV import (the import then shows as stopped)                         |
 
+**Signing keys** ([rotating actor keys](#rotating-actor-keys)). `ActorKeyRotationRequested` (log, `routes/admin/actor-keys.ts`, `routes/admin-web/`): an admin asked for a rotation (`target`: `Account`, `InstanceActor` or `All`; `adminAccountId`), the record of who did it. `ActorKeyRotated` (log, `actor-key-rotation.ts`): an actor's key pair was replaced (`actor`, `accountId`, `update`). `ActorKeysRotationStarted` / `ActorKeysRotationDone` (log): a bulk rotation was queued / finished (`startedAt`, `rotated`). `ActorKeyUpdateNotQueued` (error): a rotated account's actor `Update` could not be queued (`error`); its followers' servers learn the key on the next failed signature instead. `RemoteKeyRefetched` (log, `remote-actor-fetch.ts`): a remote actor's signature failed against its cached key, its document was fetched again and had a new key (`keyIdKept` false: the document no longer publishes the key id the request named, so it was refused). `RemoteKeyRefetchThrottled` (log): a failed signature from an actor whose key was refetched in the last 5 minutes; a steady stream of these for one actor means forged signatures, or a remote whose key does not match its document.
+
 **Outgoing fetches.** `FetchNotSigned` (error, `instance-actor.ts`, `federated-fetch.ts`): the instance actor's key could not be read from D1, or a fetch could not be signed with it (`message`), so the ActivityPub GET went out unsigned. A remote in secure mode (Mastodon's `AUTHORIZED_FETCH`) answers such a GET with 401, so its actors, posts and quote stamps do not resolve. Check D1, then that `instance_actor_keys` holds one row.
 
 **Streaming.** `HomeFanOutNotPublished`, `ListFanOutNotPublished`, `PublicFanOutNotPublished` (`hub`), `BoostRemovalNotPublished`, `ConversationNotPublished` (`home-fan-out.ts`, `public-fan-out.ts`, `conversation-stream.ts`): a `StreamHub` Durable Object call failed, so open clients missed a live update. Timelines are still correct on reload. Act only on a sustained rate (Durable Object errors in the dashboard).
@@ -213,7 +279,32 @@ Level is the `console` method. Every event's `kind` is unique to one meaning; th
 - `RATE_LIMITS is not a JSON object of known buckets; using the defaults` (warn): the `RATE_LIMITS` var is malformed and was ignored as a whole. Fix the var.
 - `rate limit counter unavailable: …` (warn): a `RateLimitCounter` call failed and the request went through uncounted (fail open). Sustained lines mean limits are not enforced; check Durable Object errors.
 
-**Not logged.** Inbox refusals (`401 InvalidSignature`, `503 VerificationUnavailable`, `403` for refused domains and suspended actors) are not log events (OPS-5); find them by request path and status in Workers Logs. A delivery attempt is not a log line either: each writes an `outbox.deliver` metric point, and only a delivery that ends unsent logs (`OutboxDeliveryGivenUp`).
+**Inbox refusals** (`inbox-refusal.ts`, from `routes/activitypub.ts` and, for `RateLimitedAddress`, `rate-limit.ts`). `InboxRefused` (warn) is one delivery to `/inbox`, `/actor/inbox` or `/users/*/inbox` the server refused, with `reason`, `status`, `path`, `keyIdHost` (the host of the `Signature` header's `keyId`), `actor` (the activity's claimed `actor`), `signer` (the verified signing actor, once known) and `detail`; URIs are cut at 200 characters, and no body, header value or key is logged. Each isolate logs at most 5 lines per reason per minute; the rest are counted only, and the first line of the next window for that reason is preceded by `InboxRefusalsSuppressed` (warn, `reason`, `suppressed`: the lines the last window left out). Every refusal, logged or not, is an `inbox.refuse` point (doubles `[1, loggedFlag]`, blobs `[reason, status]`), so count refusals with the metric and read examples in the logs.
+
+| `reason`             | Status | Meaning                                                                                                                                                                                     |
+| -------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UnparseableBody`    | 400    | The body is not JSON, or not an activity (no `type`, `actor`, …)                                                                                                                            |
+| `InvalidActivityId`  | 400    | The activity's `id` is not usable                                                                                                                                                           |
+| `ActivityRejected`   | 400    | The activity verified but the inbox rejects it; `detail` is the rejection's `kind` (also stored in `inbox_activities`)                                                                      |
+| `MissingSignature`   | 401    | No `Signature` header, or one without `keyId`, `headers` and `signature`                                                                                                                    |
+| `DateNotSigned`      | 401    | The signature does not cover `date` (SIG-1); refused before any key lookup                                                                                                                  |
+| `DigestNotSigned`    | 401    | The signature does not cover `digest` (SIG-1); refused before any key lookup                                                                                                                |
+| `SignatureExpired`   | 401    | The signed `Date` is over 12 hours old (`detail` `past`), over 1 hour ahead (`future`) or does not parse (`invalid`), Mastodon's window (SIG-1): a replay, or a sender whose clock is wrong |
+| `DigestMismatch`     | 401    | `Digest` is missing or does not match the body; refused before any key lookup                                                                                                               |
+| `UnknownLocalActor`  | 401    | The activity claims a local actor that does not exist                                                                                                                                       |
+| `ActorMismatch`      | 401    | The key belongs to another actor than the activity's (cached for another actor, or on another host)                                                                                         |
+| `KeyRejected`        | 401    | The key could not be used: its server answered 4xx (a deleted actor's 410), the document is not an actor owning that key, or a redirect left its origin                                     |
+| `SignatureMismatch`  | 401    | The signature does not verify with the signer's key (forged, or signed over other headers than sent)                                                                                        |
+| `KeyUnavailable`     | 503    | The key's server did not answer or answered 5xx; `Retry-After: 5` is sent and the sender retries                                                                                            |
+| `DomainSuspended`    | 403    | The key's or actor's host is suspended here (checked before anything is fetched from it)                                                                                                    |
+| `DomainNotAllowed`   | 403    | Limited federation, and the host is not on the allow list                                                                                                                                   |
+| `ActorSuspended`     | 403    | An admin suspended the signing actor (its own account `Delete` still goes through)                                                                                                          |
+| `RateLimitedDomain`  | 429    | The verified sending server is over `inbox_domain`                                                                                                                                          |
+| `RateLimitedAddress` | 429    | The client address is over `inbox_ip` (logged by the rate-limit middleware, before the body is read; `keyIdHost` and `actor` are absent)                                                    |
+
+A steady trickle of `KeyRejected` (410 from deleted actors' servers) and `DomainSuspended` is normal. A jump in `SignatureMismatch` from one `keyIdHost` is a forger or a broken remote; `KeyUnavailable` for one host is that server down.
+
+**Not logged.** A delivery attempt is not a log line: each writes an `outbox.deliver` metric point, and only a delivery that ends unsent logs (`OutboxDeliveryGivenUp`). A transient failure's last HTTP status is on its `outbox_deliveries` row (below).
 
 ### Analytics Engine metrics
 
@@ -221,25 +312,27 @@ Level is the `console` method. Every event's `kind` is unique to one meaning; th
 
 Every point is written by `writeMetric` in `packages/worker/server/metrics.ts` to dataset `tstodon_metrics`; a failed write is swallowed. Columns: `index1` is the metric name, then `double1..` and `blob1..`. The full table is the [metric reference](../architecture/d1-heavy-scenarios.md#metric-reference); the ones operators watch:
 
-| `index1`          | Doubles                                                    | Blobs                                                                              | Watch for                                                                   |
-| ----------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `cron`            | `[1]`                                                      | `[cronExpression, scheduled]`                                                      | Missing points: a cron run failed (written only when all its sends succeed) |
-| `outbox.job`      | `[1]`                                                      | `[jobKind, retry or failed]`                                                       | Any `failed`                                                                |
-| `outbox.dead`     | `[1, attemptsOnOutboxQueue]`                               | `[jobKind, reason]`                                                                | Any point: a job stored in `outbox_dead_jobs`                               |
-| `activity.vacuum` | `[deliveries, outbound, inbox, ms]`                        | `[ok or error, chained or empty]`                                                  | `error`; a `chained` streak that does not end (a backlog growing)           |
-| `outbox.job.page` | `[size, elapsedMs, chainedFlag]`                           | `[jobKind, ok or retry or error, step]`                                            | `error` and `retry` by job; `elapsedMs` growth                              |
-| `outbox.enqueue`  | `[1]`                                                      | `[activityKind]` or `[activityKind, targeted]`                                     | Volume of outgoing activities; a drop to zero while users post              |
-| `outbox.expand`   | `[remoteTargetCount, expandMs, okFlag, skippedCount]`      | `[ok or targets_failed]`                                                           | `targets_failed`                                                            |
-| `outbox.deliver`  | `[latencyMs, failedHttpStatus, attemptNumber]`             | `[success or permanent or http or throttled or network or local or skipped, host]` | Failure share per host; `local` (this server's D1 or keys failing)          |
-| `outbox.skip`     | `[skippedCount]`                                           | `[expand or targeted, DomainUnavailable]`                                          | Volume left out for unavailable domains                                     |
-| `outbox.domain`   | `[failureDays]`                                            | `[unavailable or available, delivery or inbound or admin]`                         | Any `unavailable`                                                           |
-| `outbox.sweep`    | `[examined, created, restarted, waiting, givenUp, failed]` | `[ok or error]`                                                                    | `error`; `created` / `restarted` above zero every hour                      |
-| `push.deliver`    | `[httpStatus or 0]`                                        | `[httpStatus or network]`                                                          | 401/403 (VAPID key problem), `network`                                      |
-| `timeline.*`      | `[latencyMs, rows]`                                        | `[ok or error]`                                                                    | p95 latency, `error` share                                                  |
-| `search`          | `[latencyMs, accountHits, statusHits]`                     | `[type]`                                                                           | p95 latency                                                                 |
-| `stream.render`   | `[renderMs, deliveredFlag]`                                | `[home or list or public, ok or error]`                                            | `error` share                                                               |
+| `index1`          | Doubles                                                      | Blobs                                                                              | Watch for                                                                   |
+| ----------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `cron`            | `[1]`                                                        | `[cronExpression, scheduled]`                                                      | Missing points: a cron run failed (written only when all its sends succeed) |
+| `outbox.job`      | `[1]`                                                        | `[jobKind, retry or failed]`                                                       | Any `failed`                                                                |
+| `outbox.dead`     | `[1, attemptsOnOutboxQueue]`                                 | `[jobKind, reason]`                                                                | Any point: a job stored in `outbox_dead_jobs`                               |
+| `activity.vacuum` | `[deliveries, outbound, inbox, ms]`                          | `[ok or error, chained or empty]`                                                  | `error`; a `chained` streak that does not end (a backlog growing)           |
+| `outbox.job.page` | `[size, elapsedMs, chainedFlag]`                             | `[jobKind, ok or retry or error, step]`                                            | `error` and `retry` by job; `elapsedMs` growth                              |
+| `outbox.enqueue`  | `[1]`                                                        | `[activityKind]` or `[activityKind, targeted]`                                     | Volume of outgoing activities; a drop to zero while users post              |
+| `outbox.expand`   | `[remoteTargetCount, expandMs, okFlag, skippedCount]`        | `[ok or targets_failed]`                                                           | `targets_failed`                                                            |
+| `outbox.deliver`  | `[latencyMs, failedHttpStatus, attemptNumber]`               | `[success or permanent or http or throttled or network or local or skipped, host]` | Failure share per host; `local` (this server's D1 or keys failing)          |
+| `outbox.skip`     | `[skippedCount]`                                             | `[expand or targeted, DomainUnavailable]`                                          | Volume left out for unavailable domains                                     |
+| `outbox.domain`   | `[failureDays]`                                              | `[unavailable or available, delivery or inbound or admin]`                         | Any `unavailable`                                                           |
+| `outbox.sweep`    | `[examined, created, restarted, waiting, givenUp, failed]`   | `[ok or error]`                                                                    | `error`; `created` / `restarted` above zero every hour                      |
+| `push.deliver`    | `[httpStatus or 0]`                                          | `[httpStatus or network]`                                                          | 401/403 (VAPID key problem), `network`                                      |
+| `inbox.refuse`    | `[1, loggedFlag]`                                            | `[reason, status]` (reasons under [Inbox refusals](#log-events))                   | A jump in one reason; `DomainSuspended` / `KeyRejected` floods              |
+| `timeline.*`      | `[latencyMs, rows]`                                          | `[ok or error]`                                                                    | p95 latency, `error` share                                                  |
+| `search`          | `[latencyMs, accountHits, statusHits]`                       | `[type]`                                                                           | p95 latency                                                                 |
+| `stream.render`   | `[renders, delivered, errors, totalMs, maxMs, p50Ms, p95Ms]` | `[home or list or public, ok or error]`                                            | `errors`; `p95Ms` growth                                                    |
+| `metrics.dropped` | `[droppedPoints, writtenPoints]`                             | `[fetch or queue or scheduled or workflow, indexThatLostMost]`                     | Any point: an invocation hit the data point budget                          |
 
-`outbox.job.page` is written by every paged job: `FanOutHome`, `FanOutPublic`, `DistributePollUpdate`, `ProcessExpiredPolls`, `MoveFollows`, `BackfillRemoteOutbox`, `BackfillRemoteThread`, `ProcessCsvImport`, `CleanUpAccountStatuses`, `SeverBlockedDomainFollows`, `FanOutRemovedStatuses`, `BackfillLocalNoteTags`, `RekeyLegacyMedia`, `VacuumMediaAttachments`, `VacuumActivities`, `RequeueDeadOutboxJobs`, `StripStoredMediaMetadata`, `BackfillStoredMediaSizes` (`blob1` is the job kind as queued). The delivery Workflow writes one `outbox.deliver` point per attempt.
+`outbox.job.page` is written by every paged job: `FanOutHome`, `FanOutPublic`, `DistributePollUpdate`, `ProcessExpiredPolls`, `MoveFollows`, `BackfillRemoteOutbox`, `BackfillRemoteThread`, `ProcessCsvImport`, `CleanUpAccountStatuses`, `SeverBlockedDomainFollows`, `FanOutRemovedStatuses`, `BackfillLocalNoteTags`, `RekeyLegacyMedia`, `VacuumMediaAttachments`, `VacuumActivities`, `RequeueDeadOutboxJobs`, `RotateActorKeys`, `StripStoredMediaMetadata`, `BackfillStoredMediaSizes` (`blob1` is the job kind as queued). The delivery Workflow writes one `outbox.deliver` point per attempt.
 
 Query with the SQL API (an API token with Account Analytics Read):
 
@@ -259,6 +352,11 @@ More queries (same call):
 SELECT blob1 AS cron, SUM(_sample_interval) AS runs, MAX(timestamp) AS last_run
 FROM tstodon_metrics WHERE index1 = 'cron' AND timestamp > NOW() - INTERVAL '1' DAY
 GROUP BY cron
+
+-- Inbox refusals per reason and status in the last hour (OPS-5).
+SELECT blob1 AS reason, blob2 AS status, SUM(_sample_interval) AS refused
+FROM tstodon_metrics WHERE index1 = 'inbox.refuse' AND timestamp > NOW() - INTERVAL '1' HOUR
+GROUP BY reason, status ORDER BY refused DESC
 
 -- Paged jobs: passes, failures and p95 time per job over a week.
 SELECT blob1 AS job, blob2 AS outcome, SUM(_sample_interval) AS passes,
@@ -283,6 +381,20 @@ SELECT blob1 AS status, SUM(_sample_interval) AS n
 FROM tstodon_metrics WHERE index1 = 'push.deliver' AND timestamp > NOW() - INTERVAL '1' DAY
 GROUP BY status ORDER BY n DESC
 
+-- Fan-out renders per target over a day: renders, mean and worst per-pass p95.
+SELECT blob1 AS target, SUM(double1 * _sample_interval) AS renders,
+       SUM(double2 * _sample_interval) AS delivered, SUM(double3 * _sample_interval) AS errors,
+       SUM(double4 * _sample_interval) / SUM(double1 * _sample_interval) AS mean_ms,
+       MAX(double7) AS worst_pass_p95_ms
+FROM tstodon_metrics WHERE index1 = 'stream.render' AND timestamp > NOW() - INTERVAL '1' DAY
+GROUP BY target
+
+-- Invocations that ran out of data point budget.
+SELECT blob1 AS source, blob2 AS index, SUM(_sample_interval) AS invocations,
+       SUM(double1 * _sample_interval) AS dropped
+FROM tstodon_metrics WHERE index1 = 'metrics.dropped' AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY source, index ORDER BY dropped DESC
+
 -- Timeline latency.
 SELECT index1, quantileWeighted(0.5, double1, _sample_interval) AS p50_ms,
        quantileWeighted(0.95, double1, _sample_interval) AS p95_ms, SUM(_sample_interval) AS requests
@@ -290,16 +402,16 @@ FROM tstodon_metrics WHERE index1 LIKE 'timeline.%' AND blob1 = 'ok' AND timesta
 GROUP BY index1
 ```
 
-Analytics Engine keeps data for three months and samples at high volume (weight by `_sample_interval`); a Worker invocation can write a limited number of data points (250 at the time of writing) **(verify)**, which a large fan-out batch (`stream.render`, one point per recipient) can exceed, losing points silently.
+Analytics Engine keeps data for three months and samples at high volume (weight by `_sample_interval`). A Worker invocation can write at most 250 data points (Cloudflare's Analytics Engine limits page; later points are dropped without an error). Each request, queue batch, cron run and delivery Workflow run therefore writes under a budget (`withMetricsBudget`, `server/metrics.ts`): after 249 points `writeMetric` stops writing, and when the invocation ends it writes one `metrics.dropped` point and logs `MetricsDropped` (`source`, `written`, `dropped` per index). Fan-outs write one `stream.render` point per pass and target (home, list, public) rather than one per recipient, so a batch of ten fan-out pages writes a few dozen points.
 
 ### Outbound delivery health (D1)
 
 Each activity to each remote inbox is a row in `outbox_deliveries` (`inbox_url` set; fan-out rows have `inbox_url` NULL and `kind` `Expanded` or `Delivered`). `kind` is `Queued`, `Delivered`, `Failed` or `Skipped`:
 
 - `Failed` / `Permanent` (with `http_status`): the remote answered a 4xx other than 401, 408 and 429, or a 501 (Mastodon's `response_error_unsalvageable?`), or the activity or its signer is gone here.
-- `Failed` / `RetryExhausted` (with `attempt_count`): 17 attempts failed, or the hourly sweep found the target stuck for over 10 days.
+- `Failed` / `RetryExhausted` (with `attempt_count`, and `http_status` of the last attempt when it got an HTTP answer): 17 attempts failed, or the hourly sweep found the target stuck for over 10 days (no `http_status` then).
 - `Skipped` / `DomainUnavailable`: the inbox's domain was marked unavailable (below), so nothing was sent.
-- `Queued` with `next_attempt_at`: waiting for its next attempt.
+- `Queued` with `next_attempt_at`: waiting for its next attempt. `http_status` is the status of the attempt that failed last (a 5xx, 401, 408 or 429), NULL when it got no HTTP answer (network error, timeout) or failed here; every attempt's status is in the `outbox.deliver` metric.
 
 The Workflow attempts a delivery up to 17 times (Mastodon's 16 retries), sleeping Sidekiq's backoff between attempts: `count⁴ + 15 + rand(10) × (count + 1)` seconds, from 15 seconds up to about 14 hours, about 2.1 days in all (`OutboxDelivery` in `packages/domain/src/outbox-delivery.ts`). A 429 or 503 with a `Retry-After` waits at least that long, at most 12 hours. 5xx, 401, 408, 429 and no answer at all are retried.
 
@@ -400,7 +512,6 @@ Starting points; tune them to your traffic. Cloudflare Notifications covers some
 
 | Signal                                                          | Threshold to start with                                   |
 | --------------------------------------------------------------- | --------------------------------------------------------- |
-| --------------------------------------------------------------  | --------------------------------------------------------- |
 | Uptime check on `/healthz` or `/api/v1/instance`                | 3 consecutive failures                                    |
 | Worker invocations with outcome `exception`                     | > 1% of requests over 10 minutes                          |
 | `cron` metric                                                   | No point for 2 hours                                      |
@@ -415,9 +526,11 @@ Starting points; tune them to your traffic. Cloudflare Notifications covers some
 | `OutboxDeliveryGivenUp` to one host                             | > 50 per hour (a remote is down; see playbook)            |
 | `push.deliver` 401 / 403                                        | > 5% of pushes                                            |
 | `rate limit counter unavailable`                                | Any sustained (> 10 per 5 minutes)                        |
+| A failed `D1 backup` workflow run, or no new object under `d1/` | Any failure; no new backup for 2 days (schedule disabled) |
 | D1 size                                                         | > 70% of the plan limit                                   |
 | R2 storage                                                      | Growth beyond what you budgeted per week                  |
 | 429 responses on `/inbox` (Workers Logs or Security analytics)  | A sudden jump, or one large remote throttled continuously |
+| `inbox.refuse` `SignatureMismatch` or `KeyUnavailable`          | > 100 per hour, or 10× the usual rate                     |
 
 ## Common incidents
 
@@ -441,7 +554,7 @@ Starting points; tune them to your traffic. Cloudflare Notifications covers some
 
 ### Inbox flood
 
-1. Identify the source: Workers Logs filtered on path `/inbox`, `/actor/inbox` or `/users/*/inbox` by client IP and status; Security → Analytics for the zone.
+1. Identify the source: `inbox.refuse` by `reason` (query under [Analytics Engine metrics](#analytics-engine-metrics)), the `InboxRefused` lines' `keyIdHost` and `actor`, Workers Logs filtered on path `/inbox`, `/actor/inbox` or `/users/*/inbox` by client IP and status; Security → Analytics for the zone.
 2. The Worker already throttles: `inbox_ip` (1500 per 5 minutes per address, before the body is read) and `inbox_domain` (3000 per 5 minutes per verified sending server). Tighten with `RATE_LIMITS`, for example `{"inbox_domain": {"limit": 600, "period": 300}}`, in `wrangler.jsonc` vars, and deploy.
 3. One bad server: a domain block with severity `suspend` (`/admin/instances`, or `POST /api/v1/admin/domain_blocks`) refuses its deliveries after signature verification.
 4. An address range: an IP block with `no_access` (`POST /api/v1/admin/ip_blocks`, `ip=203.0.113.0/24`, `severity=no_access`, optional `expires_in`). It refuses every request from the range before routing, within a minute in every isolate. Do not block the address you administer from: the admin API is refused too (remove such a block with `wrangler d1 execute tstodon --remote --command "DELETE FROM ip_blocks WHERE ip = '203.0.113.0/24'"`).
@@ -503,7 +616,26 @@ Symptoms and fixes:
 - **`VAPID_PRIVATE_JWK`**: rotating it invalidates every push subscription (the push services reject the new key for subscriptions made with the old one). Generate and put a new key (see [Web Push](../reference/configuration.md#web-push)); clients must subscribe again, which the web app does when it next registers push; native apps vary. Expect `push.deliver` 401/403 until the old subscriptions are replaced (only 404 and 410 delete a subscription).
 - **Access**: rotate the identity provider's credentials in Zero Trust; revoke sessions there (Zero Trust → My Team → Users → revoke, **verify path**). A new Access application means a new `CF_ACCESS_AUD`.
 - **Cloudflare API token leaked**: roll it in the dashboard, then update CI. Check the audit log (Manage Account → Audit Log) for what it did.
-- **Actor private keys** (a D1 export leaked): there is no key rotation in tstodon (OPS-8), and remote servers cache public keys. Treat it as a full compromise: secure the backups, rotate everything above, and consider the instance's signatures forgeable until keys can be rotated. An OAuth token leak is contained by revoking the token (`/auth/edit` authorized apps, or delete its row).
+- **Actor private keys** (a D1 export leaked): the export holds every local account's private key (`accounts.private_key_jwk`) and the instance actor's (`instance_actor_keys`), so anyone holding it can sign as them. Rotate them all (below), and treat the rest of the export as leaked too: rotate `BETTER_AUTH_SECRET` and delete the sessions (above), and revoke OAuth tokens if their table matters to you (they are stored as digests, so a leaked digest cannot be presented as a token, but delete them if in doubt). An OAuth token leak on its own is contained by revoking the token (`/auth/edit` authorized apps, or delete its row).
+
+#### Rotating actor keys
+
+A rotation gives an actor a new RSA key pair and drops the old one at once (no grace period: the old key is the one that leaked). The key id stays `<actor>#main-key`, as Mastodon's: Mastodon has no rotation of its own and looks a key up by that id, so a remote server that cached the old key fails to verify the next signature, fetches the actor again and retries the verification with the new key (Mastodon does this once per failed verification; confidence: good, verify against the Mastodon version you federate with most). Everything tstodon signs reads the key when it signs (each delivery attempt in the delivery Workflow, each signed fetch), so deliveries queued before the rotation go out signed with the new key.
+
+- **One account**: the account's admin page (`/admin/accounts/:id`, **Rotate signing key**), or `POST /api/v1/admin/accounts/:id/rotate_key` with an admin token (`admin:write`). It sends the account's followers an actor `Update` carrying the new key, so their servers refresh before the next signature (a suspended account sends none). Answers `{"account_id", "rotated_at", "update": "queued" | "skipped" | "failed"}`.
+- **The instance actor**: `/admin/actor_keys` (**Rotate the instance actor's key**), or `POST /api/v1/admin/actor_keys/instance_actor`. Nobody follows it, so no `Update` goes out; remotes pick the key up on the first signature that fails (a forwarded report, or a signed fetch to a secure-mode server).
+- **Every key** (the leaked-export case): `/admin/actor_keys` (**Rotate every key**), or `POST /api/v1/admin/actor_keys/rotate_all` (answers 202 with `started_at`). It queues the `RotateActorKeys` job on `tstodon-outbox-process`: the first page rotates the instance actor, then each page rotates 20 local accounts (by id) and sends each its `Update`, and queues the next page 20 seconds later, so at most 60 `Update`s a minute reach any one server; a server with 10,000 accounts takes a little under three hours. A page that is retried skips the accounts the run already rotated. Follow it with `ActorKeysRotationStarted`, one `ActorKeyRotated` per actor, and `ActorKeysRotationDone` (`rotated`); the `outbox.job.page` metric has one point per page (`RotateActorKeys`). Starting it again rotates every key again.
+
+What it does not fix:
+
+- Signatures made with the old key before the rotation stay valid wherever they were already accepted; nothing recalls activities a forger already delivered. Look for activities the accounts did not send (reports from remote admins, odd posts) and delete them.
+- Until a remote server refetches an actor, it still holds the old public key: a forger with the old key can still be believed by a server that has not seen a failed signature or the `Update` yet. The `Update` closes that window for followers' servers within minutes of each account's page; for others it closes on the next signature tstodon sends them. There is no way to make every server on the network refetch.
+- Remote servers that do not refetch on a failed signature (not Mastodon's behaviour, but some software caches keys for a long time) reject the account's deliveries until their cache expires.
+- Sessions, `BETTER_AUTH_SECRET`, VAPID and Access are separate: rotate them as above.
+
+Do it as soon as the leak is known, after securing the backups: every hour before the rotation is an hour of forgeable signatures, and the rotation is cheap to repeat.
+
+tstodon handles a **remote** actor's rotation the same way: when a signature fails against an actor's cached key, the inbox (and any signed GET this server checks, `signedFetchActor`) fetches the actor's document again, caches it if it publishes a new key, and verifies again with that key. One refetch per actor per 5 minutes (`remote_actors.key_refetched_at`), so forged signatures cannot make this server fetch an actor over and over; a refused refetch logs `RemoteKeyRefetchThrottled`, a key that changed logs `RemoteKeyRefetched`.
 
 ### Rolling back a bad deploy
 
@@ -514,7 +646,7 @@ Symptoms and fixes:
    wrangler versions list
    ```
 
-2. Roll the Worker back: `wrangler rollback <version-id> -m "reason"`. This restores the code and its configuration from that version. It does not touch D1 data, R2, KV, or the queue's contents, and Cloudflare refuses some rollbacks across Durable Object migrations **(verify)** (this Worker's DO migrations are tags `v1` and `v2`).
+2. Roll the Worker back: `wrangler rollback <version-id> -m "reason"`. This restores the code and its configuration from that version. It does not touch D1 data, R2, or the queue's contents, and Cloudflare refuses some rollbacks across Durable Object migrations **(verify)** (this Worker's DO migrations are tags `v1` and `v2`).
 3. **D1 migrations are forward-only.** `pnpm run deploy` applied the new version's migrations before uploading it, so the old code now runs on the new schema. Most migrations are additive and the old code works; a table rebuild or a dropped column can break it. Options, in order of preference:
    - fix forward: revert the code change on `main`, keep the migration, deploy;
    - if the migration damaged data, [restore D1 with Time Travel](#d1-time-travel-point-in-time-restore) to just before the deploy, then deploy the version that matches that schema.

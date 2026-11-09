@@ -9,20 +9,6 @@ resource "cloudflare_d1_database" "tstodon" {
   primary_location_hint = var.d1_primary_location_hint
 }
 
-resource "cloudflare_workers_kv_namespace" "remote_dns_cache" {
-  count = var.create_kv ? 1 : 0
-
-  account_id = var.account_id
-  title      = var.kv_remote_dns_cache_title
-}
-
-resource "cloudflare_workers_kv_namespace" "app_cache" {
-  count = var.create_kv ? 1 : 0
-
-  account_id = var.account_id
-  title      = var.kv_app_cache_title
-}
-
 resource "cloudflare_r2_bucket" "media" {
   count = var.create_r2 ? 1 : 0
 

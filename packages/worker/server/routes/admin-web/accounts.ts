@@ -21,7 +21,7 @@ import {
   confirmPage,
   remoteActorPage,
 } from "../../admin-pages";
-import type { RepositoryError } from "../../d1";
+import { type RepositoryError, toRepositoryError } from "../../d1";
 import { RemoteAccountId } from "../../remote-account-id";
 import { findRemoteActorAcct, listOpenReportIdsForTarget } from "../../report-store";
 import type { PageMessage } from "../../settings-pages";
@@ -37,6 +37,8 @@ import {
   withNotice,
 } from "./shared";
 import { pageRedirect } from "../../page-redirect";
+import { rotateAccountKey } from "../../actor-key-rotation";
+import { parseInstanceIdentity } from "../../runtime-config";
 
 /** Mastodon's `/admin/accounts` pages: find local accounts and moderate one. */
 
@@ -419,6 +421,50 @@ const postRemoteAccount = async (
 };
 
 /** The account page's moderation buttons; destructive ones ask again first. */
+/**
+ * Rotate the account's signing key (OPS-8), after a confirmation. Unlike the
+ * moderation actions, an admin may rotate their own.
+ */
+const rotateKey = async (
+  c: SettingsContext,
+  adminAccountId: string,
+  state: AdminAccountState,
+  confirmed: boolean,
+) => {
+  const path = `/admin/accounts/${state.account.id}`;
+  if (!confirmed) {
+    return c.html(
+      confirmPage(instanceName(c.env), {
+        title: `Rotate the signing key of @${state.account.username}?`,
+        text: "The account gets a new key pair and the old one stops working at once. Its followers' servers are sent the new key; other servers fetch it when a signature fails to verify.",
+        action: path,
+        fields: { do: "rotate_key" },
+        confirmLabel: "Rotate signing key",
+        cancelHref: path,
+      }),
+    );
+  }
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return serverError(c, toRepositoryError("the instance identity is not configured"));
+  }
+  console.log(
+    JSON.stringify({
+      kind: "ActorKeyRotationRequested",
+      target: "Account",
+      accountId: state.account.id,
+      adminAccountId,
+    }),
+  );
+  const rotated = await rotateAccountKey(c.env, identity.value, state.account.id);
+  if (rotated.isErr()) {
+    return rotated.error.kind === "NotFound"
+      ? notFound(c, "account")
+      : serverError(c, rotated.error);
+  }
+  return pageRedirect(c, withNotice(path, "key_rotated"), 303);
+};
+
 export const postAdminAccount = async (c: Context<{ Bindings: Env }, "/admin/accounts/:id">) => {
   const admin = await adminSession(c);
   if (admin.kind === "Answered") {
@@ -431,6 +477,9 @@ export const postAdminAccount = async (c: Context<{ Bindings: Env }, "/admin/acc
   const fields = await readFields(c);
   if (found.kind === "FoundRemote") {
     return postRemoteAccount(c, found.view, fields);
+  }
+  if (fields.do === "rotate_key") {
+    return rotateKey(c, admin.account.id, found.state, fields.confirmed === "1");
   }
   const name = schemaResult(AccountCommandSchema)(fields.do);
   if (name.isErr()) {

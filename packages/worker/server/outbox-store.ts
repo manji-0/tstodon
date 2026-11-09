@@ -330,7 +330,10 @@ export const findOutboxFanout = async (
 
 /**
  * Settle or advance a `Queued` target. `nextAttemptAt` is when a target left
- * `Queued` is due again (the stuck-delivery sweep reads it).
+ * `Queued` is due again (the stuck-delivery sweep reads it). `lastHttpStatus`
+ * is the status of the failed attempt that left it `Queued` or
+ * `RetryExhausted`, stored in `http_status` (a `Permanent` failure stores its
+ * own; every other state stores none).
  */
 export const persistOutboxTarget = async (
   db: D1Database,
@@ -338,6 +341,7 @@ export const persistOutboxTarget = async (
   inboxUrl: string,
   delivery: OutboxDeliveryValue,
   nextAttemptAt: string | null = null,
+  lastHttpStatus: number | null = null,
 ): Promise<Result<void, RepositoryError>> => {
   const parsed = ActivityId.parse(activityId);
   if (parsed.isErr()) {
@@ -345,13 +349,16 @@ export const persistOutboxTarget = async (
   }
   return runD1(async () => {
     const columns = persistColumns(delivery);
+    const transient =
+      delivery.kind === "Queued" ||
+      (delivery.kind === "Failed" && delivery.reasonKind === "RetryExhausted");
     await runTyped(
       db,
       updateOutboxTargetSql(
         columns.kind,
         columns.reasonKind,
         columns.attemptCount,
-        columns.httpStatus,
+        columns.httpStatus ?? (transient ? lastHttpStatus : null),
         nowIso(),
         activityId,
         inboxUrl,

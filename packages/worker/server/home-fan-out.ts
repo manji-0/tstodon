@@ -11,7 +11,7 @@ import { err, ok, type Result } from "neverthrow";
 import { type RepositoryError, runD1 } from "./d1";
 import { listHomeFanOutAccounts } from "./generated/prisma/sql";
 import { findListForAccount } from "./list-store";
-import { measureJobPage, measureStreamRender } from "./metrics";
+import { type StreamRenderTally, measureJobPage, streamRenderTally } from "./metrics";
 import { parseInstanceIdentity } from "./runtime-config";
 import { publishToAccount, publishToHub } from "./stream-publish";
 import { listListStreamSubscriptions } from "./stream-subscription-store";
@@ -142,18 +142,49 @@ const listEvent = async (
  * Tell each account about the entry, with the document rendered for it, on
  * its home and on each list stream it has open whose list holds the entry.
  * Redoing it only sends the events again, which clients take as the same
- * status.
+ * status. Writes its own `stream.render` points unless the caller passes the
+ * tallies it shares across entries.
  */
 export const announceHomeEntry = async (
   env: Env,
   identity: InstanceIdentity,
   entry: HomeEntryEvent,
   accountIds: ReadonlyArray<string>,
+  renders?: HomeRenderTallies,
+): Promise<Result<void, RepositoryError>> => {
+  if (renders) {
+    return announceHomeEntryTallied(env, identity, entry, accountIds, renders);
+  }
+  const own = homeRenderTallies(env);
+  try {
+    return await announceHomeEntryTallied(env, identity, entry, accountIds, own);
+  } finally {
+    flushHomeRenderTallies(own);
+  }
+};
+
+/** The `stream.render` tallies of one fan-out pass (see `streamRenderTally`). */
+type HomeRenderTallies = Readonly<{ home: StreamRenderTally; list: StreamRenderTally }>;
+
+const homeRenderTallies = (env: Env): HomeRenderTallies => ({
+  home: streamRenderTally(env, "home"),
+  list: streamRenderTally(env, "list"),
+});
+
+const flushHomeRenderTallies = (renders: HomeRenderTallies): void => {
+  renders.home.flush();
+  renders.list.flush();
+};
+
+const announceHomeEntryTallied = async (
+  env: Env,
+  identity: InstanceIdentity,
+  entry: HomeEntryEvent,
+  accountIds: ReadonlyArray<string>,
+  { home, list }: HomeRenderTallies,
 ): Promise<Result<void, RepositoryError>> => {
   for (const accountId of accountIds) {
-    const event = await measureStreamRender(env, "home", () =>
-      followerEvent(env, identity, entry, accountId),
-    );
+    const event = await home.measure(() => followerEvent(env, identity, entry, accountId));
     if (event.isErr()) {
       return err(event.error);
     }
@@ -170,9 +201,7 @@ export const announceHomeEntry = async (
     return err(lists.error);
   }
   for (const { hub: accountId, listId } of lists.value) {
-    const event = await measureStreamRender(env, "list", () =>
-      listEvent(env, identity, entry, accountId, listId),
-    );
+    const event = await list.measure(() => listEvent(env, identity, entry, accountId, listId));
     if (event.isErr()) {
       return err(event.error);
     }
@@ -298,16 +327,25 @@ export const processFanOutRemovedStatusesJob = (
     if (identity.isErr()) {
       return { outcome: "retry", size: 0, chained: false };
     }
-    for (const entryId of job.statusIds) {
-      const announced = await announceHomeEntry(
-        env,
-        identity.value,
-        { event: "delete", entryId },
-        job.accountIds,
-      );
-      if (announced.isErr()) {
-        return { outcome: "retry", size: 0, chained: false };
+    // One `stream.render` point per target for the whole job, not per entry:
+    // a queue batch of these jobs would otherwise pass Analytics Engine's
+    // per-invocation cap.
+    const renders = homeRenderTallies(env);
+    try {
+      for (const entryId of job.statusIds) {
+        const announced = await announceHomeEntry(
+          env,
+          identity.value,
+          { event: "delete", entryId },
+          job.accountIds,
+          renders,
+        );
+        if (announced.isErr()) {
+          return { outcome: "retry", size: 0, chained: false };
+        }
       }
+    } finally {
+      flushHomeRenderTallies(renders);
     }
     // Entries times accounts told; the job is one page and never chains.
     return { outcome: "ok", size: job.statusIds.length * job.accountIds.length, chained: false };

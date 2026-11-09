@@ -1,19 +1,16 @@
 account_id = "00000000000000000000000000000000"
 
-# --- Worker data plane (D1 / KV / R2 / Queue) ---
+# --- Worker data plane (D1 / R2 / Queue) ---
 create_d1    = true
-create_kv    = true
 create_r2    = true
 create_queue = true
 
 d1_database_name         = "tstodon"
 d1_primary_location_hint = "apac" # matches wrangler placement aws:ap-southeast-1
 
-kv_remote_dns_cache_title = "tstodon-remote-dns-cache"
-kv_app_cache_title        = "tstodon-app-cache"
-r2_media_bucket_name      = "tstodon-media"
-outbox_queue_name         = "tstodon-outbox-process"
-outbox_dlq_name           = "tstodon-outbox-dlq"
+r2_media_bucket_name = "tstodon-media"
+outbox_queue_name    = "tstodon-outbox-process"
+outbox_dlq_name      = "tstodon-outbox-dlq"
 
 worker_script_name     = "tstodon"
 attach_queue_consumer  = false # set true after the first wrangler deploy

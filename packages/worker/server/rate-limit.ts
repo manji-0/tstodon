@@ -14,6 +14,7 @@ import {
 import type { Context, Next } from "hono";
 import { err, ok } from "neverthrow";
 import { authenticate, bearerToken } from "./auth";
+import { recordInboxRefusal } from "./inbox-refusal";
 import { clientIp } from "./ip-access";
 import { parseJsonText } from "./json-column";
 import { optionalEnvString } from "./runtime-config";
@@ -244,6 +245,9 @@ export const rateLimitMiddleware =
     }
     const verdict = await limiter.run(c.env, checks);
     if (verdict.kind === "Limited") {
+      if (verdict.headline.name === "inbox_ip") {
+        recordInboxRefusal(c.env, { reason: "RateLimitedAddress", status: 429, path });
+      }
       return tooManyRequests(c, verdict);
     }
     await next();

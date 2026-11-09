@@ -7,7 +7,7 @@ import {
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
-import { measureJobPage, measureStreamRender } from "./metrics";
+import { type StreamRenderTally, measureJobPage, streamRenderTally } from "./metrics";
 import { parseInstanceIdentity } from "./runtime-config";
 import { ANONYMOUS_HUB } from "./stream-access";
 import { MAX_HUB_TAGGED_CHANNELS } from "./stream-hub";
@@ -141,18 +141,31 @@ const fanOutPublicPage = async (
   if (page.isErr()) {
     return err(page.error);
   }
+  const renders = streamRenderTally(env, "public");
+  try {
+    return await tellHubs(env, identity, job, page.value, renders);
+  } finally {
+    renders.flush();
+  }
+};
+
+const tellHubs = async (
+  env: Env,
+  identity: InstanceIdentity,
+  job: FanOutPublic,
+  page: Readonly<{ hubs: ReadonlyArray<HubChannels>; next: string | undefined }>,
+  renders: StreamRenderTally,
+): Promise<Result<Readonly<{ hubs: number; next: string | undefined }>, RepositoryError>> => {
   let passes = 0;
   let told = 0;
-  for (const [index, hub] of page.value.hubs.entries()) {
+  for (const [index, hub] of page.hubs.entries()) {
     const cost = job.event === "delete" ? 0 : hub.channels.length;
     if (passes > 0 && passes + cost > PUBLIC_FAN_OUT_PASS_BUDGET) {
-      return ok({ hubs: told, next: page.value.hubs[index - 1]?.hub });
+      return ok({ hubs: told, next: page.hubs[index - 1]?.hub });
     }
     passes += cost;
     told += 1;
-    const delivery = await measureStreamRender(env, "public", () =>
-      hubDelivery(env, identity, job, hub),
-    );
+    const delivery = await renders.measure(() => hubDelivery(env, identity, job, hub));
     if (delivery.isErr()) {
       return err(delivery.error);
     }
@@ -164,7 +177,7 @@ const fanOutPublicPage = async (
       }
     }
   }
-  return ok({ hubs: told, next: page.value.next });
+  return ok({ hubs: told, next: page.next });
 };
 
 /** Handle one queued page of a public fan-out, queueing the next when there is one. */

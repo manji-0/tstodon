@@ -9,10 +9,12 @@ export type Remote = Readonly<{
   actorUri: string;
   publicKeyPem: string;
   send: (activity: Record<string, unknown>) => Promise<number>;
-  /** The signed shared-inbox delivery `send` posts, unsent. */
-  delivery: (activity: Record<string, unknown>) => Promise<Request>;
+  /** The signed shared-inbox delivery `send` posts, unsent; signed at `date`, now by default. */
+  delivery: (activity: Record<string, unknown>, date?: Date) => Promise<Request>;
   /** A GET signed with this actor's key (authorized fetch). */
   fetch: (path: string) => Promise<Response>;
+  /** The signed GET `fetch` sends, unsent; signed at `date`, now by default. */
+  signedGet: (path: string, date?: Date) => Promise<Request>;
 }>;
 
 /**
@@ -65,7 +67,10 @@ export const remoteActor = async (
   if (options.cache !== false) {
     expect((await upsertRemoteActor(env.DB, actor.value)).isOk()).toBe(true);
   }
-  const delivery = async (activity: Record<string, unknown>): Promise<Request> => {
+  const delivery = async (
+    activity: Record<string, unknown>,
+    date: Date = new Date(),
+  ): Promise<Request> => {
     const body = JSON.stringify({
       "@context": "https://www.w3.org/ns/activitystreams",
       actor: actorUri,
@@ -76,6 +81,7 @@ export const remoteActor = async (
       keys.privateKeyJwk,
       `${actorUri}#main-key`,
       body,
+      date,
     );
     if (headers.isErr()) {
       throw new Error(headers.error.message);
@@ -86,23 +92,26 @@ export const remoteActor = async (
       body,
     });
   };
+  const signedGet = async (path: string, date: Date = new Date()): Promise<Request> => {
+    const url = new URL(path, "https://example.com");
+    const accept = "application/activity+json";
+    const headers = await signFetchRequest(
+      url,
+      keys.privateKeyJwk,
+      `${actorUri}#main-key`,
+      accept,
+      date,
+    );
+    if (headers.isErr()) {
+      throw new Error(headers.error.message);
+    }
+    return new Request(url, { headers: { ...headers.value, Host: url.host, Accept: accept } });
+  };
   return {
     actorUri,
     publicKeyPem: keys.publicKeyPem,
-    fetch: async (path) => {
-      const url = new URL(path, "https://example.com");
-      const accept = "application/activity+json";
-      const headers = await signFetchRequest(
-        url,
-        keys.privateKeyJwk,
-        `${actorUri}#main-key`,
-        accept,
-      );
-      if (headers.isErr()) {
-        throw new Error(headers.error.message);
-      }
-      return SELF.fetch(url, { headers: { ...headers.value, Host: url.host, Accept: accept } });
-    },
+    fetch: async (path) => SELF.fetch(await signedGet(path)),
+    signedGet,
     delivery,
     send: async (activity) => (await SELF.fetch(await delivery(activity))).status,
   };

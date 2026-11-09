@@ -37,8 +37,6 @@
     "CONTACT_EMAIL": "admin@example.com",
     "INSTANCE_THUMBNAIL_URL": "http://127.0.0.1:8792/site/thumbnail.png",
     "MEDIA_PUBLIC_BASE_URL": "http://127.0.0.1:8792",
-    "EMAIL_FROM": "tstodon <noreply@example.com>",
-    "EMAIL_TRANSPORT": "capture",
     // Public test Access key (packages/worker/test/access-jwt-fixture.ts). Not a secret.
     "CF_ACCESS_TEAM_DOMAIN": "https://tstodon.cloudflareaccess.com",
     "CF_ACCESS_AUD": "tstodon-local-aud",
@@ -57,21 +55,6 @@
     {
       "binding": "MEDIA",
       "bucket_name": "tstodon-e2e-b-media",
-    },
-  ],
-  "send_email": [
-    {
-      "name": "EMAIL",
-    },
-  ],
-  "kv_namespaces": [
-    {
-      "binding": "REMOTE_DNS_CACHE",
-      "id": "000000000000000000000000000000b1",
-    },
-    {
-      "binding": "APP_CACHE",
-      "id": "000000000000000000000000000000b2",
     },
   ],
   "queues": {

@@ -16,9 +16,8 @@ const jrd = (subject: string, actorUrl: string): WebFingerJrdJSON => ({
   links: [{ rel: "self", type: "application/activity+json", href: actorUrl }],
 });
 
-export const getWellKnownWebfinger = async (
-  c: Context<{ Bindings: Env }, "/.well-known/webfinger">,
-) => {
+/** Served by `app/middleware/03.well-known.ts` (no route file: Void skips dot directories). */
+export const getWellKnownWebfinger = async (c: Context<{ Bindings: Env }>) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -47,7 +46,7 @@ export const getWellKnownWebfinger = async (
   return c.json(jrd(resource, InstanceIdentity.actorUrl(identity.value, account.value.username)));
 };
 
-export const getWellKnownNodeinfo = (c: Context<{ Bindings: Env }, "/.well-known/nodeinfo">) => {
+export const getWellKnownNodeinfo = (c: Context<{ Bindings: Env }>) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);

@@ -103,6 +103,8 @@ const SCOPE_RULES: ReadonlyArray<ScopeRule> = [
   ...adminRules("trends", false),
   ...adminRules("ip_blocks", true),
   ...adminRules("tags", false),
+  // tstodon's actor key rotation (OPS-8), under the top-level admin scopes.
+  ...adminRules("actor_keys", false),
   // The dashboard's metrics are read with a POST, under `admin:read`.
   rule("/api/v1/admin/(?:measures|dimensions|retention)", "admin:read", "admin:read"),
 

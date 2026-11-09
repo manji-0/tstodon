@@ -16,12 +16,12 @@ const REVEAL_SITES: Readonly<Record<string, number>> = {
   "packages/worker/server/account-security-pages.ts": 1,
   // The admin account list and page show the address (Mastodon's `/admin/accounts`).
   "packages/worker/server/admin-pages.ts": 2,
+  // Stores a local account's rotated private key.
+  "packages/worker/server/actor-key-rotation.ts": 1,
   // Imports the RSA key to sign a delivery.
   "packages/worker/server/http-signature.ts": 1,
-  // Stores a newly generated instance actor key.
-  "packages/worker/server/instance-actor.ts": 1,
-  // The recipient of an outgoing email.
-  "packages/worker/server/mailer.ts": 1,
+  // Stores a newly generated instance actor key, first or rotated.
+  "packages/worker/server/instance-actor.ts": 2,
   // Domain and canonical-hash sign-up block checks.
   "packages/worker/server/registration-block-store.ts": 2,
   // The admin API's `Admin::Account#email`.

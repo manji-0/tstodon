@@ -35,10 +35,16 @@ export type DeliveryRunDeps = Readonly<{
   /** Whether the inbox's domain is marked unavailable. */
   domainUnavailable: (inboxUrl: string) => Promise<boolean>;
   attempt: (job: DeliverTargetJob) => Promise<InboxDeliveryAttempt>;
+  /**
+   * Store the target's state. `lastHttpStatus` is the HTTP status of the
+   * attempt that left it `Queued` or `RetryExhausted` (null when it had none:
+   * a network or local failure, a success, a skip).
+   */
   persist: (
     job: DeliverTargetJob,
     delivery: OutboxDeliveryValue,
     nextAttemptAt: string | null,
+    lastHttpStatus: number | null,
   ) => Promise<Result<void, RepositoryError>>;
   recordReachability: (inboxUrl: string, reachability: DeliveryReachability) => Promise<unknown>;
   metric: (index: string, doubles: ReadonlyArray<number>, blobs: ReadonlyArray<string>) => void;
@@ -146,7 +152,7 @@ export const runOutboxDelivery = async (
     if (loaded.domainUnavailable) {
       const skipped = OutboxDelivery.skipped();
       await steps.run(`attempt-${i}-skip`, "write", async () => {
-        const persisted = await deps.persist(job, skipped, null);
+        const persisted = await deps.persist(job, skipped, null, null);
         if (persisted.isErr()) {
           throw new Error(persisted.error.message);
         }
@@ -193,7 +199,13 @@ export const runOutboxDelivery = async (
             : 0;
         const nextAttemptAt =
           next.kind === "Queued" ? new Date(deps.now() + delayMs).toISOString() : null;
-        const persisted = await deps.persist(job, next, nextAttemptAt);
+        const failedStatus = DeliveryAttemptOutcome.failedHttpStatus(attempt.outcome);
+        const persisted = await deps.persist(
+          job,
+          next,
+          nextAttemptAt,
+          failedStatus === 0 ? null : failedStatus,
+        );
         if (persisted.isErr()) {
           throw new Error(persisted.error.message);
         }

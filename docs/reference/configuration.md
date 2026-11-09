@@ -8,7 +8,6 @@ Configured in `packages/worker/wrangler.jsonc`:
 
 - `DB` — D1
 - `MEDIA` — R2
-- `REMOTE_DNS_CACHE`, `APP_CACHE` — KV
 - `OUTBOX_PROCESS_QUEUE` — Queue producer/consumer (`ExpandFollowers` fan-out, `ProcessExpiredPolls` and the other outbox jobs)
 - `OUTBOX_DLQ` — producer of `tstodon-outbox-dlq`, the outbox queue's dead-letter queue (see [Outbox dead-letter queue](#outbox-dead-letter-queue))
 - `STREAM_HUB` — Durable Object
@@ -18,7 +17,9 @@ Configured in `packages/worker/wrangler.jsonc`:
 - `METRICS` — Analytics Engine
 - `ASSETS` — static assets
 
-Placeholder resource IDs in `packages/worker/wrangler.jsonc` are local-only. Create real D1 / KV / R2 / Queue resources with [`infra/cloudflare`](../../infra/cloudflare/README.md) before deploying (`tofu output -json wrangler_bindings`).
+There is no KV namespace and no `send_email` binding: `REMOTE_DNS_CACHE` was read by nothing, and the mailer (`EMAIL`, `EMAIL_FROM`, `EMAIL_TRANSPORT`, `APP_CACHE` for captured mail) lost its last caller when sign-in moved to Cloudflare Access (#82); both were removed (OPS-7). `packages/worker/void.json` keeps Void's KV inference off (`"kv": false`), so `void deploy` does not add a namespace back. A feature that needs mail later (MAIL-1 in [open TODOs](../planning/open-todos.md)) brings its binding with it.
+
+Placeholder resource IDs in `packages/worker/wrangler.jsonc` are local-only. Create real D1 / R2 / Queue resources with [`infra/cloudflare`](../../infra/cloudflare/README.md) before deploying (`tofu output -json wrangler_bindings`).
 
 ## Instance vars
 
@@ -221,6 +222,28 @@ The test runner injects its own fixture key through `miniflare.bindings` in the 
 `FEDERATION_ALLOW_HOSTS` is a comma-separated list of the only hosts allowed to federate. A non-empty list (or a runtime `domain_allows` row, managed at `/api/v1/admin/domain_allows`) turns on limited federation: outbound fetches and delivery, inbound inbox activities, and link unfurling refuse any other host, `GET /api/v1/instance/peers` and `/api/v1/instance/activity` require a user token, and `/api/v2/instance` reports `limited_federation: true`. Listed hosts also keep the private-IP exemption used by local e2e setups (`127.0.0.1`). For a listed loopback host (`localhost`, `127.0.0.1`, `::1`), WebFinger is also queried over plain `http://`, so `@user@127.0.0.1:8794` resolves against a local test server; every other host is looked up over `https://`. A `*.localhost` name is refused until the list names it; the portless pair that uses those names is [Federation e2e over portless](../getting-started/e2e-federation-portless.md).
 
 `POLL_UPDATE_DELAY_SECONDS` is how long a vote on a local poll waits before the `Update(Question)` that carries the new counts to remote servers; votes cast in that window share one `Update`. It defaults to Mastodon's 180 seconds. The local e2e instances set it to `5`, which Miniflare honours as a queue `delaySeconds`.
+
+## Authorized fetch (secure mode)
+
+<!-- constrained-by #limited-federation -->
+
+`AUTHORIZED_FETCH` (off unless set to `true`, `1`, `yes` or `on`; not in `wrangler.jsonc` by default, add it under `vars`) is Mastodon's secure mode for this server's own ActivityPub objects (`server/authorized-fetch.ts`). With it on, a GET (or HEAD) of these needs a valid HTTP signature (draft-cavage, covering `(request-target)`) by a remote actor whose domain federates here:
+
+| Path                                        | Unsigned, or a signature that does not verify | Signed by an allowed actor | Signer's domain suspended or not on the allow list, or the signer suspended by an admin |
+| ------------------------------------------- | --------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------- |
+| `/users/:username` (an actor)               | `200` with the restricted document (below)    | `200`, the whole document  | `403`                                                                                   |
+| `/users/:username/statuses/:id` (a note)    | `401` (`{"kind":"InvalidSignature"}`)         | `200` (or `404` as before) | `403`                                                                                   |
+| `/users/:username/quote_authorizations/:id` | `401`                                         | `200` / `404` as before    | `403`                                                                                   |
+| `/users/:username/outbox`                   | `401`                                         | `200`                      | `403`                                                                                   |
+| `/users/:username/followers`, `/following`  | `401`                                         | `200`                      | `403`                                                                                   |
+
+A key whose server does not answer is `503` with `Retry-After: 5` (an actor GET gets the restricted document instead). The restricted actor document is what Mastodon serves an unsigned request in secure mode (`restrict_fields_to`): `@context`, `id`, `type`, `preferredUsername`, `inbox`, `outbox`, `publicKey` and `endpoints`, nothing of the profile and no collections. It keeps the key readable without a signature, so a remote can verify what that actor signs (and fetch the key it needs to sign its own request). The signer is the key's actor, resolved as for an inbox delivery (cached, or fetched once: an instance actor such as Mastodon's `/actor` works as well as a user). A key or actor on a suspended or not-allowed host is refused before anything is fetched from it.
+
+Always public: the instance actor `/actor` (secure-mode servers, this one included, fetch it to verify the instance actor's signatures), `/.well-known/webfinger`, `/.well-known/nodeinfo`, `/nodeinfo/2.0`, `/.well-known/oauth-authorization-server`, the inboxes (they verify their own signatures), the REST API and the web UI's pages (`/@user` asked for as HTML is the web app; asked for as ActivityPub it redirects to `/users/user`, which secure mode then guards). Followers-only and direct notes need a signed fetch from their audience whether secure mode is on or not.
+
+Every response of the guarded paths in secure mode carries `Cache-Control: private` and `Vary: Signature`, signed or not, so no shared cache keeps a signed answer for unsigned requests (the quote stamp's `max-age=30, public` is dropped in secure mode). Cloudflare's cache does not vary on `Signature`, and by default it does not cache these JSON responses at all; do not add a Cache Rule that caches `/users/*` ("Cache Everything", or an Edge TTL that overrides the origin), because it would serve one requester's answer to the next. A rule that respects origin `Cache-Control` is safe. The Access bypass of `/users/*` and `/actor` is unchanged.
+
+Mastodon also turns secure mode on with `LIMITED_FEDERATION_MODE`; here `FEDERATION_ALLOW_HOSTS` does not, set `AUTHORIZED_FETCH` as well if you want both. As on the inbox, a signature must cover `date` (and `digest` on a request with a body), and its `Date` must be at most 12 hours old and at most 1 hour ahead of this server's clock (Mastodon's `EXPIRATION_WINDOW_LIMIT` and `CLOCK_SKEW_MARGIN`), so a captured signed GET cannot be replayed later; a stale signature is `401` (an actor GET gets the restricted document).
 
 ## IP blocks
 

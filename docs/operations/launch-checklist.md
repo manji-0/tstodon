@@ -22,8 +22,8 @@ M=https://media.example.com   # MEDIA_PUBLIC_BASE_URL
 - [ ] `wrangler d1 info tstodon` prints the database with a real id; `wrangler d1 migrations list tstodon --remote` reports no migrations to apply.
 - [ ] `wrangler r2 bucket info tstodon-media` answers; `wrangler r2 bucket cors list tstodon-media` shows your `INSTANCE_PUBLIC_ORIGIN`.
 - [ ] `wrangler queues info tstodon-outbox-process` and `wrangler queues info tstodon-outbox-dlq` each list the Worker `tstodon` as producer and as consumer, and the outbox consumer's dead-letter queue is `tstodon-outbox-dlq` (dashboard: Queues → `tstodon-outbox-process` → Settings). No consumer: re-apply Terraform with `attach_queue_consumer = true` (deploy checklist step 13) or redeploy.
-- [ ] `wrangler kv namespace list` shows the two namespaces whose ids are in `wrangler.jsonc` (no `0000…` placeholders left anywhere in it).
-- [ ] `wrangler deployments status` shows one active version; the dashboard (Workers & Pages → `tstodon` → Settings → Bindings) lists `DB`, `MEDIA`, `APP_CACHE`, `REMOTE_DNS_CACHE`, `OUTBOX_PROCESS_QUEUE`, `OUTBOX_DLQ`, `STREAM_HUB`, `RATE_LIMIT_COUNTER`, `OUTBOX_DELIVERY_WORKFLOW`, `METRICS`, `IMAGES`, `EMAIL`, `ASSETS`.
+- [ ] No `0000…` placeholder ids are left anywhere in `wrangler.jsonc`.
+- [ ] `wrangler deployments status` shows one active version; the dashboard (Workers & Pages → `tstodon` → Settings → Bindings) lists `DB`, `MEDIA`, `OUTBOX_PROCESS_QUEUE`, `OUTBOX_DLQ`, `STREAM_HUB`, `RATE_LIMIT_COUNTER`, `OUTBOX_DELIVERY_WORKFLOW`, `METRICS`, `IMAGES`, `ASSETS` (no KV namespace and no `EMAIL`: both were removed, OPS-7).
 - [ ] `wrangler workflows list` includes `tstodon-outbox-delivery`.
 - [ ] The Worker placement region in `wrangler.jsonc` (`placement.region`) is near the D1 primary location.
 
@@ -35,6 +35,7 @@ M=https://media.example.com   # MEDIA_PUBLIC_BASE_URL
 - [ ] `INSTANCE_DOMAIN`, `INSTANCE_PUBLIC_ORIGIN`, `MEDIA_PUBLIC_BASE_URL`, `CONTACT_EMAIL`, `SOURCE_URL` are yours, not `example.com`: `curl -s $O/api/v2/instance | jq '{domain, source_url, contact: .contact.email}'`.
 - [ ] `FEDERATION_ALLOW_HOSTS` is empty unless you mean limited federation (`curl -s $O/api/v2/instance | jq .configuration.limited_federation` is `false`); a leftover e2e host list silently refuses every other server.
 - [ ] Nothing secret is committed: `git grep -n "BETTER_AUTH_SECRET\|\"d\":" -- packages/worker/wrangler.jsonc` finds nothing.
+- [ ] Secure mode is what you chose ([Authorized fetch](../reference/configuration.md#authorized-fetch-secure-mode); off unless `AUTHORIZED_FETCH=true`). With it on: `curl -s -o /dev/null -w '%{http_code}\n' -H 'Accept: application/activity+json' $O/users/alice/outbox` is `401`, `curl -s -H 'Accept: application/activity+json' $O/users/alice | jq 'keys'` lists only `@context`, `endpoints`, `id`, `inbox`, `outbox`, `preferredUsername`, `publicKey` and `type`, and `$O/actor` and `$O/.well-known/webfinger?resource=acct:alice@$D` still answer `200`. Either way, no Cache Rule caches `/users/*` regardless of the origin's `Cache-Control` (secure-mode answers are `private` and differ per signer).
 
 ### Cloudflare Access paths
 
@@ -124,10 +125,6 @@ If the browser loops between Access and the instance: `CF_ACCESS_AUD` or `CF_ACC
 - [ ] In the web UI, turn on desktop notifications (the notifications column's settings) and allow them in the browser. `wrangler d1 execute tstodon --remote --command "SELECT COUNT(*) FROM push_subscriptions"` is at least 1.
 - [ ] From a second account (or a remote one), favourite a post of yours; the browser shows a notification. The `push.deliver` metric records the push service's status (`201` expected; [query](./runbook.md#analytics-engine-metrics)). 401/403 mean the VAPID key and subscription disagree.
 
-### Email
-
-- [ ] Nothing to check at this revision: since sign-in moved to Access (#82) no code path sends mail, although the `EMAIL` binding and `EMAIL_FROM` are still declared (OPS-7 in [open TODOs](../planning/open-todos.md)). Keep `EMAIL_TRANSPORT=send_email`; never `capture` on a real instance.
-
 ### Rate limits and IP blocks
 
 <!-- constrained-by ../reference/configuration.md#rate-limits -->
@@ -153,7 +150,10 @@ If the browser loops between Access and the instance: `CF_ACCESS_AUD` or `CF_ACC
 ### Backups and monitoring
 
 - [ ] `wrangler d1 time-travel info tstodon` returns a bookmark (Time Travel is on).
-- [ ] A first export ran and its encrypted file is in the backup location ([Periodic exports](./runbook.md#periodic-exports)); a restore of it into a scratch database (`wrangler d1 create tstodon-restore-test`, `wrangler d1 execute … --file`) succeeds. Delete the scratch database afterwards.
+- [ ] The `D1 backup` workflow is configured ([Scheduled D1 backups](./runbook.md#scheduled-d1-backups)): the secrets and variables are set, the Cloudflare token has D1 Edit only, the bucket is in another account (or provider) with a lock rule, and the age identity is stored by two custodians outside GitHub and Cloudflare.
+- [ ] A manual run (Actions → D1 backup → Run workflow) succeeds, and its object `d1/tstodon-<stamp>.sql.gz.age` is in the bucket (`aws s3api head-object` shows the `sha256` metadata).
+- [ ] That backup restores: `scripts/d1-restore-check.sh <file> <identity>` decrypts it with the custodians' key and loads it into a scratch local database with the expected account count and no missing migrations ([Restore from a scheduled backup](./runbook.md#restore-from-a-scheduled-backup)). Optionally also load it into a scratch remote database (`wrangler d1 create tstodon-restore-test`, `wrangler d1 execute tstodon-restore-test --remote --file restore.sql`) and delete it afterwards.
+- [ ] The next scheduled run appears in the Actions tab the following day, and the alert on a failed or missing run is set ([Suggested alerts](./runbook.md#suggested-alerts)).
 - [ ] Media is copied somewhere else on a schedule ([R2 media](./runbook.md#r2-media)).
 - [ ] The secrets inventory is in your vault ([runbook](./runbook.md#secrets-and-configuration-inventory)).
 - [ ] An uptime check on `/api/v1/instance` (or `/healthz` with a bypass), and the alerts you chose from [Suggested alerts](./runbook.md#suggested-alerts), are live; an Analytics Engine query with your token returns rows.
@@ -164,7 +164,7 @@ If the browser loops between Access and the instance: `CF_ACCESS_AUD` or `CF_ACC
 
 Use an account you control on a real Mastodon 4.5 or newer server (4.5 is the first with FEP-044f quote posts) and, ideally, one on Misskey. Below, `alice@$D` is yours on tstodon and `bob@remote.example` is the remote one. Each step names where to look when it fails:
 
-- **Requests to us**: Workers Logs filtered on the inbox paths (`/inbox`, `/users/alice/inbox`, `/actor/inbox`) and their status: `202` accepted; `401 InvalidSignature` (key fetch or signature failed); `403` (domain blocked, not on the allow list, suspended actor); `429` (rate limit); `503 VerificationUnavailable` (could not fetch the signer's key). What was accepted is in `inbox_activities` (`SELECT kind, created_at FROM inbox_activities ORDER BY created_at DESC LIMIT 20`).
+- **Requests to us**: Workers Logs filtered on the inbox paths (`/inbox`, `/users/alice/inbox`, `/actor/inbox`) and their status: `202` accepted; `401 InvalidSignature` (key fetch or signature failed); `403` (domain blocked, not on the allow list, suspended actor); `429` (rate limit); `503 VerificationUnavailable` (could not fetch the signer's key). Every refusal is an `InboxRefused` event whose `reason` says which ([Inbox refusals](./runbook.md#log-events)). What was accepted is in `inbox_activities` (`SELECT kind, created_at FROM inbox_activities ORDER BY created_at DESC LIMIT 20`).
 - **Deliveries from us**: `outbox_deliveries` for the remote host ([failing-host query](./runbook.md#outbound-delivery-health-d1)), `wrangler workflows instances list tstodon-outbox-delivery`, and the `*NotFederated` / `Outbox*` [log events](./runbook.md#log-events).
 
 tstodon signs its outgoing ActivityPub GETs as the instance actor (`$O/actor#main-key`), so the test also works against a remote in Mastodon's secure mode (`AUTHORIZED_FETCH=true`); step 17 checks that. WebFinger is unsigned, as Mastodon sends it.

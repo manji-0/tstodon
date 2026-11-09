@@ -12,7 +12,7 @@ The project is early software. The [local core](docs/planning/local-core.md) cla
 
 - TypeScript workspace with `@tstodon/core`, `@tstodon/domain`, and `@tstodon/worker`
 - Hono for HTTP routing (Mastodon API, WebFinger, NodeInfo, ActivityPub, static assets)
-- Cloudflare bindings for D1, R2, KV, Queues, Durable Objects, Workflows, Images, Analytics Engine, cron, and observability
+- Cloudflare bindings for D1, R2, Queues, Durable Objects, Workflows, Images, Analytics Engine, cron, and observability
 - Zod 4.6 discriminant domain models for status composition, follow requests, outbox delivery, inbox activities, notifications, and registration
 - Mastodon's own web UI (vendored from Mastodon v4.7.5 in `packages/worker/src`, the client of the Void app, built with the Worker by `pnpm build`), served from Workers Assets with the Worker rendering its shell and initial state
 - Cloudflare Access login (passkeys or an IdP such as WorkOS; this server does not register passkeys) and a Mastodon-compatible OAuth 2 server (`/api/v1/apps`, `/oauth/authorize`, `/oauth/token`, PKCE, scopes). Better Auth stores the linked user, session, and admin role

@@ -44,6 +44,10 @@ const NOTICES = {
   trend_rejected: "Trend rejected.",
   email_block_added: "Email domain blocked.",
   email_block_removed: "Email domain block removed.",
+  key_rotated: "Signing key rotated. The account's followers' servers are sent the new key.",
+  instance_key_rotated: "The instance actor's signing key was rotated.",
+  key_rotation_started:
+    "Rotating every signing key. It runs in the background; the ActorKeysRotationDone log line says when it is done.",
 } as const;
 
 export type NoticeKey = keyof typeof NOTICES;

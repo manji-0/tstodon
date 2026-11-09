@@ -24,18 +24,29 @@ import {
   parseLocalActorUsername,
 } from "../activitypub";
 import { jsonRepositoryError, queryLimit } from "../http";
-import { verifyInboxRequest, parseSignatureHeader } from "../http-signature";
+import {
+  checkSignatureStrength,
+  parseSignatureHeader,
+  sha256DigestHeader,
+  verifyInboxRequest,
+} from "../http-signature";
+import { type InboxRefusal, recordInboxRefusal } from "../inbox-refusal";
 import { localActorDocument } from "../local-actor";
 import { suspendedDomains } from "../admin-domain-block-store";
 import { getRemoteActorModeration } from "../remote-actor-moderation-store";
 import { signedFetchActor } from "../signed-fetch";
+import { authorizeObjectFetch, restrictedActorDocument } from "../authorized-fetch";
 import { inboxActivityExists, insertInboxActivity } from "../inbox-store";
 import { limitInboxDelivery } from "../rate-limit";
 import { dispatchInbox } from "../inbox/dispatch";
 import type { InboxSigner } from "../inbox/handler";
 import { listPublicOutboxActivities } from "../outbox-store";
 import { resolveRemoteActor } from "../remote-actor-fetch";
-import { findRemoteActorByUri, findRemoteFollow } from "../remote-actor-store";
+import {
+  findRemoteActorByPublicKeyId,
+  findRemoteActorByUri,
+  findRemoteFollow,
+} from "../remote-actor-store";
 import { RemoteDeleteTarget } from "../remote-delete";
 import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import { loadNoteQuotePolicy } from "../quote-policy-name";
@@ -72,6 +83,10 @@ export const getUsersByUsername = async (c: Context<{ Bindings: Env }, "/users/:
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
+  const access = await authorizeObjectFetch(c, identity.value, "actor");
+  if (access.kind === "Denied") {
+    return access.response;
+  }
   const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
@@ -83,7 +98,11 @@ export const getUsersByUsername = async (c: Context<{ Bindings: Env }, "/users/:
   if (document.isErr()) {
     return jsonRepositoryError(c, document.error.message);
   }
-  return c.json(document.value, 200, jsonLd);
+  return c.json(
+    access.kind === "Restricted" ? restrictedActorDocument(document.value) : document.value,
+    200,
+    jsonLd,
+  );
 };
 
 export const getUsersByUsernameStatusesById = async (
@@ -92,6 +111,10 @@ export const getUsersByUsernameStatusesById = async (
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
+  }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
   }
   const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
   if (account.isErr()) {
@@ -148,6 +171,10 @@ export const getUsersByUsernameQuoteAuthorizationsById = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
+  }
   const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
@@ -201,9 +228,11 @@ export const getUsersByUsernameQuoteAuthorizationsById = async (
   const document = quoteAuthorizationDocument(
     localQuoteAuthorization(target, quote.value.id, quoting.uri),
   );
-  c.header("Cache-Control", "max-age=30, public");
-  // The body is public, but a signed fetcher the author blocks is refused.
-  c.header("Vary", "Signature");
+  if (access.kind === "Public") {
+    c.header("Cache-Control", "max-age=30, public");
+    // The body is public, but a signed fetcher the author blocks is refused.
+    c.header("Vary", "Signature");
+  }
   return c.json(document, 200, jsonLd);
 };
 
@@ -252,6 +281,10 @@ export const getUsersByUsernameOutbox = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
+  }
   const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
@@ -291,6 +324,10 @@ export const getUsersByUsernameFollowers = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
+  }
   const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
@@ -325,6 +362,10 @@ export const getUsersByUsernameFollowing = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
+  }
   const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
@@ -352,29 +393,82 @@ export const getUsersByUsernameFollowing = async (
   return c.json(collection(`${actor}/following`, items), 200, jsonLd);
 };
 
+/**
+ * Why a key that `resolveRemoteActor` refused did not verify, read only on
+ * that failure path: its signature was checked and failed, the key is cached
+ * for (or served from the host of) another actor, or the key was unusable.
+ */
+const keyRefusalReason = async (
+  db: D1Database,
+  keyId: string,
+  actorUri: string,
+  signatureChecked: boolean | undefined,
+): Promise<InboxRefusal["reason"]> => {
+  if (signatureChecked === false) {
+    return "SignatureMismatch";
+  }
+  const byKey = await findRemoteActorByPublicKeyId(db, keyId);
+  const keyOwner = byKey.isOk() ? byKey.value?.actorUri : undefined;
+  if (keyOwner !== undefined && keyOwner !== actorUri) {
+    return "ActorMismatch";
+  }
+  return Hostname.ofUri(keyId) !== Hostname.ofUri(actorUri) ? "ActorMismatch" : "KeyRejected";
+};
+
+const FORBIDDEN_DOMAIN = {
+  error: "This instance does not federate with that domain",
+  kind: "Forbidden",
+} as const;
+
 const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
+  const path = c.req.path;
+  const keyIdOf = (signatureHeader: string | undefined): string | undefined =>
+    signatureHeader === undefined ? undefined : parseSignatureHeader(signatureHeader)?.keyId;
+  const refuse = (refusal: Omit<InboxRefusal, "path">): void =>
+    recordInboxRefusal(c.env, { path, keyId: keyIdOf(c.req.header("Signature")), ...refusal });
   const bodyText = await c.req.text();
   const json = parseJsonText(bodyText);
   if (json.isErr()) {
+    refuse({ reason: "UnparseableBody", status: 400 });
     return c.json({ kind: "ValidationError" }, 400);
   }
   const activityJson = parseActivityJson(json.value);
   if (activityJson.isErr()) {
+    refuse({ reason: "UnparseableBody", status: 400 });
     return c.json({ kind: "ValidationError" }, 400);
   }
+  const payload = activityPayloadFromJson(activityJson.value);
+  const actorUri = String(payload.actor);
   const signature = parseSignatureHeader(c.req.header("Signature") ?? "");
   if (!signature) {
+    refuse({ reason: "MissingSignature", status: 401, actor: actorUri });
+    return c.json({ kind: "InvalidSignature" }, 401);
+  }
+  // A signature must cover `date` and `digest`, and its `Date` be recent, so
+  // a captured delivery cannot be replayed (SIG-1): refused before any lookup.
+  const weak = checkSignatureStrength(c.req.raw, signature);
+  if (weak !== undefined) {
+    refuse({
+      reason: weak.kind,
+      status: 401,
+      actor: actorUri,
+      detail: weak.kind === "SignatureExpired" ? weak.detail : undefined,
+    });
+    return c.json({ kind: "InvalidSignature" }, 401);
+  }
+  // The signature covers `Digest`, and a body that does not match it never
+  // verifies: refused before any key lookup or fetch.
+  if (c.req.header("Digest") !== (await sha256DigestHeader(bodyText))) {
+    refuse({ reason: "DigestMismatch", status: 401, actor: actorUri });
     return c.json({ kind: "InvalidSignature" }, 401);
   }
   const suspended = await suspendedDomains(c.env.DB);
   const allowHosts = await federationAllowHosts(c.env);
   const fetchSigner = instanceActorFetchSigner(c.env.DB, identity.value);
-  const payload = activityPayloadFromJson(activityJson.value);
-  const actorUri = String(payload.actor);
   const actorUsername = parseLocalActorUsername(identity.value, actorUri);
   const deletesSigner =
     payload.kind === "Delete" &&
@@ -386,6 +480,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       return jsonRepositoryError(c, actorAccount.error.message);
     }
     if (!actorAccount.value) {
+      refuse({ reason: "UnknownLocalActor", status: 401, actor: actorUri });
       return c.json({ kind: "InvalidSignature" }, 401);
     }
     signer = { kind: "Local", account: actorAccount.value };
@@ -401,14 +496,32 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         return c.body(null, 202);
       }
     }
+    // A key or actor on a suspended or not-allowed host is refused before
+    // anything is fetched from it (a cached actor there is refused below).
+    const refusedHost = [Hostname.ofUri(signature.keyId), Hostname.ofUri(actorUri)].find(
+      (host) => host !== undefined && (suspended.has(host) || !allowListAdmits(allowHosts, host)),
+    );
+    if (refusedHost !== undefined) {
+      refuse({
+        reason: suspended.has(refusedHost) ? "DomainSuspended" : "DomainNotAllowed",
+        status: 403,
+        actor: actorUri,
+      });
+      return c.json(FORBIDDEN_DOMAIN, 403);
+    }
+    let signatureChecked: boolean | undefined;
     const remote = await resolveRemoteActor(c.env.DB, identity.value, signature.keyId, actorUri, {
       allowHosts,
       blockedHosts: suspended,
       fetchSigner,
-      checkSignature: (publicKeyPem) => verifyInboxRequest(c.req.raw, publicKeyPem, bodyText),
+      checkSignature: async (publicKeyPem) => {
+        signatureChecked = await verifyInboxRequest(c.req.raw, publicKeyPem, bodyText);
+        return signatureChecked;
+      },
     });
     if (remote.isErr()) {
       if (remote.error.kind === "VerificationUnavailable") {
+        refuse({ reason: "KeyUnavailable", status: 503, actor: actorUri });
         c.header("Retry-After", "5");
         return c.json({ kind: "VerificationUnavailable" }, 503);
       }
@@ -416,23 +529,32 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         return jsonRepositoryError(c, remote.error.message);
       }
       if (remote.error.kind === "DomainRefused") {
-        return c.json(
-          { error: "This instance does not federate with that domain", kind: "Forbidden" },
-          403,
-        );
+        refuse({
+          reason: suspended.has(remote.error.host) ? "DomainSuspended" : "DomainNotAllowed",
+          status: 403,
+          actor: actorUri,
+        });
+        return c.json(FORBIDDEN_DOMAIN, 403);
       }
+      refuse({
+        reason: await keyRefusalReason(c.env.DB, signature.keyId, actorUri, signatureChecked),
+        status: 401,
+        actor: actorUri,
+      });
       return c.json({ kind: "InvalidSignature" }, 401);
     }
     // Limited federation: an actor outside the allow list never federates here.
-    if (
-      RemoteActor.hostnames(remote.value).some(
-        (host) => suspended.has(host) || !allowListAdmits(allowHosts, host),
-      )
-    ) {
-      return c.json(
-        { error: "This instance does not federate with that domain", kind: "Forbidden" },
-        403,
-      );
+    const refusedActorHost = RemoteActor.hostnames(remote.value).find(
+      (host) => suspended.has(host) || !allowListAdmits(allowHosts, host),
+    );
+    if (refusedActorHost !== undefined) {
+      refuse({
+        reason: suspended.has(refusedActorHost) ? "DomainSuspended" : "DomainNotAllowed",
+        status: 403,
+        actor: actorUri,
+        signer: remote.value.actorUri,
+      });
+      return c.json(FORBIDDEN_DOMAIN, 403);
     }
     // An admin suspended this actor: nothing it sends is processed, except
     // the deletion of its own account.
@@ -441,6 +563,12 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       return jsonRepositoryError(c, moderation.error.message);
     }
     if (moderation.value.standing.kind === "Suspended" && !deletesSigner) {
+      refuse({
+        reason: "ActorSuspended",
+        status: 403,
+        actor: actorUri,
+        signer: remote.value.actorUri,
+      });
       return c.json({ error: "This actor is suspended on this instance", kind: "Forbidden" }, 403);
     }
     signer = { kind: "Remote", actor: remote.value };
@@ -449,8 +577,13 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     signer.kind === "Local" ? signer.account.publicKeyPem : signer.actor.publicKeyPem;
   const verified = await verifyInboxRequest(c.req.raw, publicKeyPem, bodyText);
   if (!verified) {
+    refuse({ reason: "SignatureMismatch", status: 401, actor: actorUri });
     return c.json({ kind: "InvalidSignature" }, 401);
   }
+  const signerUri =
+    signer.kind === "Local"
+      ? InstanceIdentity.actorUrl(identity.value, signer.account.username)
+      : signer.actor.actorUri;
   // Counted per sending server only once its signature verified, so an
   // unsigned or forged delivery cannot spend another server's budget (the
   // per-address `inbox_ip` limit, in the middleware, comes before any of this).
@@ -460,6 +593,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       Hostname.ofUri(signer.actor.actorUri) ?? signer.actor.domain,
     );
     if (limited !== undefined) {
+      refuse({ reason: "RateLimitedDomain", status: 429, actor: actorUri, signer: signerUri });
       return limited;
     }
     // A verified delivery from the server shows it is up, as Mastodon's
@@ -474,6 +608,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   }
   const activityId = ActivityId.parse(payload.id);
   if (activityId.isErr()) {
+    refuse({ reason: "InvalidActivityId", status: 400, actor: actorUri, signer: signerUri });
     return c.json({ kind: "ValidationError" }, 400);
   }
   const known = await inboxActivityExists(c.env.DB, activityId.value);
@@ -488,6 +623,13 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     return c.body(null, 202);
   }
   if (received.kind === "Rejected") {
+    refuse({
+      reason: "ActivityRejected",
+      status: 400,
+      actor: actorUri,
+      signer: signerUri,
+      detail: received.error.kind,
+    });
     await insertInboxActivity(c.env.DB, {
       activityId: activityId.value,
       kind: received.error.kind,

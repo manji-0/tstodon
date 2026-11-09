@@ -3,7 +3,13 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { OutboxJob } from "@tstodon/domain";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { newEntityId } from "./ids";
-import { measureJobPage, measureStreamRender } from "./metrics";
+import {
+  ANALYTICS_ENGINE_POINTS_PER_INVOCATION,
+  measureJobPage,
+  streamRenderTally,
+  withMetricsBudget,
+  writeMetric,
+} from "./metrics";
 import { processOutboxJob } from "./outbox-job";
 import { ok, err } from "neverthrow";
 import { z } from "zod";
@@ -194,17 +200,204 @@ describe("paged job metrics", () => {
 });
 
 describe("stream render metrics", () => {
-  it("records latency, and whether the recipient got an event", async () => {
+  it("writes one point per pass and target with counts and timings", async () => {
     const recorded = recordingEnv();
-    await measureStreamRender(recorded.env, "home", async () => ok("event"));
-    await measureStreamRender(recorded.env, "list", async () => ok(undefined));
-    await measureStreamRender(recorded.env, "public", async () => err("broken"));
-    expect(
-      recorded.points.map((point) => [point.indexes[0], point.blobs, point.doubles[1]]),
-    ).toEqual([
-      ["stream.render", ["home", "ok"], 1],
-      ["stream.render", ["list", "ok"], 0],
-      ["stream.render", ["public", "error"], 0],
+    const home = streamRenderTally(recorded.env, "home");
+    await home.measure(async () => ok("event"));
+    await home.measure(async () => ok(undefined));
+    await home.measure(async () => ok("event"));
+    const list = streamRenderTally(recorded.env, "list");
+    await list.measure(async () => err("broken"));
+    const idle = streamRenderTally(recorded.env, "public");
+    home.flush();
+    list.flush();
+    idle.flush();
+    expect(recorded.points).toEqual([
+      {
+        indexes: ["stream.render"],
+        doubles: [
+          3,
+          2,
+          0,
+          expect.any(Number),
+          expect.any(Number),
+          expect.any(Number),
+          expect.any(Number),
+        ],
+        blobs: ["home", "ok"],
+      },
+      {
+        indexes: ["stream.render"],
+        doubles: [
+          1,
+          0,
+          1,
+          expect.any(Number),
+          expect.any(Number),
+          expect.any(Number),
+          expect.any(Number),
+        ],
+        blobs: ["list", "error"],
+      },
+    ]);
+    // total >= max >= p95 >= p50 >= 0
+    const [total = -1, max = -1, p50 = -1, p95 = -1] = recorded.points[0]?.doubles.slice(3) ?? [];
+    expect(total).toBeGreaterThanOrEqual(max);
+    expect(max).toBeGreaterThanOrEqual(p95);
+    expect(p95).toBeGreaterThanOrEqual(p50);
+    expect(p50).toBeGreaterThanOrEqual(0);
+  });
+
+  it("writes one point per FanOutRemovedStatuses job, not one per entry", async () => {
+    const recorded = recordingEnv();
+    const outcome = await processOutboxJob(
+      recorded.env,
+      job({
+        kind: "FanOutRemovedStatuses",
+        accountIds: [newEntityId(), newEntityId()],
+        statusIds: [newEntityId(), newEntityId(), newEntityId()],
+      }),
+    );
+    expect(outcome).toBe("ok");
+    const renders = recorded.points.filter((point) => point.indexes[0] === "stream.render");
+    expect(renders.map((point) => [point.blobs, point.doubles.slice(0, 3)])).toEqual([
+      [
+        ["home", "ok"],
+        [6, 6, 0],
+      ],
+    ]);
+  });
+
+  it("starts over after a flush", async () => {
+    const recorded = recordingEnv();
+    const tally = streamRenderTally(recorded.env, "public");
+    await tally.measure(async () => ok("event"));
+    tally.flush();
+    tally.flush();
+    await tally.measure(async () => ok(undefined));
+    tally.flush();
+    expect(recorded.points.map((point) => point.doubles.slice(0, 3))).toEqual([
+      [1, 1, 0],
+      [1, 0, 0],
+    ]);
+  });
+});
+
+describe("metrics budget", () => {
+  it("keeps one invocation under Analytics Engine's cap and reports what it dropped", async () => {
+    const recorded = recordingEnv();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = await withMetricsBudget(recorded.env, "queue", async () => {
+      for (let index = 0; index < ANALYTICS_ENGINE_POINTS_PER_INVOCATION + 40; index += 1) {
+        writeMetric(recorded.env, index % 2 === 0 ? "stream.render" : "outbox.job.page", [index]);
+      }
+      return "done";
+    });
+    const logged = warn.mock.calls.map(([line]) => String(line));
+    warn.mockRestore();
+    expect(result).toBe("done");
+    expect(recorded.points).toHaveLength(ANALYTICS_ENGINE_POINTS_PER_INVOCATION);
+    expect(recorded.points.at(-1)).toEqual({
+      indexes: ["metrics.dropped"],
+      doubles: [41, ANALYTICS_ENGINE_POINTS_PER_INVOCATION - 1],
+      blobs: ["queue", "outbox.job.page"],
+    });
+    expect(logged).toHaveLength(1);
+    expect(JSON.parse(logged[0] ?? "{}")).toEqual({
+      kind: "MetricsDropped",
+      source: "queue",
+      written: ANALYTICS_ENGINE_POINTS_PER_INVOCATION - 1,
+      dropped: { "stream.render": 20, "outbox.job.page": 21 },
+    });
+  });
+
+  it("writes no summary when nothing was dropped, and a nested budget shares the outer one", async () => {
+    const recorded = recordingEnv();
+    await withMetricsBudget(
+      recorded.env,
+      "fetch",
+      async () => {
+        writeMetric(recorded.env, "search", [1]);
+        await withMetricsBudget(recorded.env, "inner", async () => {
+          writeMetric(recorded.env, "search", [2]);
+          writeMetric(recorded.env, "search", [3]);
+        });
+      },
+      3,
+    );
+    expect(recorded.points.map((point) => [point.indexes[0], point.doubles])).toEqual([
+      ["search", [1]],
+      ["search", [2]],
+      ["metrics.dropped", [1, 2]],
+    ]);
+  });
+
+  it("counts each invocation separately", async () => {
+    const recorded = recordingEnv();
+    const run = () =>
+      withMetricsBudget(
+        recorded.env,
+        "fetch",
+        async () => {
+          writeMetric(recorded.env, "search", [1]);
+        },
+        2,
+      );
+    await run();
+    await run();
+    expect(recorded.points).toHaveLength(2);
+  });
+
+  it("never throws, even when the binding throws or the run fails", async () => {
+    const throwing = new Proxy(env, {
+      get: (target, key) =>
+        key === "METRICS"
+          ? {
+              writeDataPoint: () => {
+                throw new Error("analytics down");
+              },
+            }
+          : Reflect.get(target, key),
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(
+      withMetricsBudget(
+        throwing,
+        "fetch",
+        async () => {
+          writeMetric(throwing, "search", [1]);
+          writeMetric(throwing, "search", [2]);
+          throw new Error("handler failed");
+        },
+        1,
+      ),
+    ).rejects.toThrow("handler failed");
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it("logs a point dropped after the invocation settled", async () => {
+    const recorded = recordingEnv();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let late: Promise<void> = Promise.resolve();
+    await withMetricsBudget(
+      recorded.env,
+      "fetch",
+      async () => {
+        writeMetric(recorded.env, "search", [1]);
+        late = Promise.resolve().then(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          writeMetric(recorded.env, "search", [2]);
+        });
+      },
+      2,
+    );
+    await late;
+    const logged = warn.mock.calls.map(([line]) => JSON.parse(String(line)));
+    warn.mockRestore();
+    expect(recorded.points).toHaveLength(1);
+    expect(logged).toEqual([
+      { kind: "MetricsDropped", source: "fetch", written: 1, dropped: { search: 1 }, late: true },
     ]);
   });
 });

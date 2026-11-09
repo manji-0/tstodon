@@ -25,6 +25,8 @@ export default defineConfig({
             "packages/core/src/**/*.test.ts",
             "packages/domain/src/**/*.test.ts",
             "packages/api/src/**/*.test.ts",
+            // Operator scripts (D1 backup naming and retention).
+            "scripts/**/*.test.mjs",
           ],
           environment: "node",
         },
@@ -62,8 +64,6 @@ export default defineConfig({
                 // Leave CF_ACCESS_ADMIN_GROUPS unset. A non-empty list is the
                 // role on every Access login, which would undo a role a test
                 // sets on the user row.
-                // Sign-up mail lands in APP_CACHE, where tests read the link.
-                EMAIL_TRANSPORT: "capture",
                 // Tests share accounts and send many requests; the rate-limit
                 // tests turn the limits on for the app they build.
                 RATE_LIMITS_ENABLED: "false",

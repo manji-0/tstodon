@@ -28,6 +28,7 @@ const ADMIN_LINKS = [
   ["/admin/custom_emojis", "Custom emojis"],
   ["/admin/trends/tags", "Trends"],
   ["/admin/email_domain_blocks", "Email domain blocks"],
+  ["/admin/actor_keys", "Signing keys"],
 ] as const;
 
 const adminNav = `      <p class="muted"><a href="/">Back to the web app</a> · <a href="/settings/preferences">Preferences</a></p>
@@ -344,9 +345,45 @@ ${messageLine(message)}
       <p class="muted">You cannot moderate your own account.</p>`
           : `
       ${view.actions.map((button) => postButton(action, button.label, { do: button.command })).join("\n      ")}`
-      }`,
+      }
+      <h2>Signing key</h2>
+      <p class="muted">The key this account signs what it sends with. Rotate it if it may have leaked (a copy of the database got out): the old key stops working at once, and the account's followers' servers are sent its new key.</p>
+      ${postButton(action, "Rotate signing key", { do: "rotate_key" })}`,
   );
 };
+
+/** The signing keys page: rotate the instance actor's key, or every local key. */
+export const actorKeysPage = (
+  instanceName: string,
+  view: Readonly<{
+    instanceActor: Readonly<{ createdAt: string; rotatedAt: string | undefined }> | undefined;
+    /** Accounts per page of the bulk rotation. */
+    pageSize: number;
+  }>,
+  message?: PageMessage,
+): string =>
+  adminPage(
+    instanceName,
+    "Signing keys",
+    `      <h1>Signing keys</h1>
+${messageLine(message)}
+      <p>Every local account, and the server's own instance actor, signs what it sends with its own key; other servers check those signatures against the public key they cached. Rotate keys when they may have leaked, for instance when a copy of the database got out. See the runbook's key compromise playbook first: rotating keys does not end sessions or change other secrets.</p>
+      <h2>Instance actor</h2>
+      <p>${
+        view.instanceActor === undefined
+          ? `<span class="muted">No key yet: one is made on first use.</span>`
+          : `Key made ${escapeHtml(view.instanceActor.createdAt)}${
+              view.instanceActor.rotatedAt === undefined
+                ? ", never rotated."
+                : `, last rotated ${escapeHtml(view.instanceActor.rotatedAt)}.`
+            }`
+      }</p>
+      <p class="muted">Nobody follows the instance actor, so no update is sent: other servers fetch its new key when a signature fails to verify against the one they cached.</p>
+      ${postButton("/admin/actor_keys", "Rotate the instance actor's key", { do: "rotate_instance" })}
+      <h2>Every local key</h2>
+      <p class="muted">Rotates the instance actor's key and then every local account's, a page of ${view.pageSize} accounts at a time, sending each account's followers its new key. It runs in the background and takes a while on a large server.</p>
+      ${postButton("/admin/actor_keys", "Rotate every key", { do: "rotate_all" })}`,
+  );
 
 /** A remote actor's admin page: its standing here and the actions on it. */
 export const remoteActorPage = (
