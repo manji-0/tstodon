@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { authHeaders } from "../test/auth-fixture";
@@ -305,6 +305,40 @@ describe("admin pages", () => {
     expect(
       (await postForm(admin.fetcher, "/admin/instances/unblocked.example", { do: "remove" }))
         .status,
+    ).toBe(404);
+  });
+
+  it("lists domains deliveries fail to, and marks one available", async () => {
+    const admin = await adminBrowser("pages_delivery_admin");
+    await env.DB.prepare(
+      `INSERT INTO delivery_domain_health (domain, kind, failure_days, last_failure_day, unavailable_since, updated_at)
+       VALUES ('gone-dark.example', 'Unavailable', 7, '2026-11-08', '2026-11-08T03:00:00.000Z', '2026-11-08T03:00:00.000Z'),
+              ('wobbly.example', 'Failing', 2, '2026-11-08', NULL, '2026-11-08T03:00:00.000Z')`,
+    ).run();
+    const list = await page(await admin.fetcher("/admin/instances"));
+    expect(list).toContain("Delivery failures");
+    expect(list).toContain('href="/admin/instances/gone-dark.example"');
+    expect(list).toContain("Unavailable since 2026-11-08");
+    expect(list).toContain("failed on 2 of 7 days");
+
+    const domainPage = await page(await admin.fetcher("/admin/instances/gone-dark.example"));
+    expect(domainPage).toContain("deliveries are skipped");
+    expect(domainPage).toContain("Mark as available");
+    redirectsTo(
+      await postForm(admin.fetcher, "/admin/instances/gone-dark.example", {
+        do: "mark_available",
+      }),
+      "/admin/instances/gone-dark.example?notice=marked_available",
+    );
+    expect(await page(await admin.fetcher("/admin/instances/gone-dark.example"))).toContain(
+      "No delivery failures are recorded",
+    );
+    expect(
+      (
+        await postForm(admin.fetcher, "/admin/instances/gone-dark.example", {
+          do: "mark_available",
+        })
+      ).status,
     ).toBe(404);
   });
 

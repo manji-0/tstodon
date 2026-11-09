@@ -1,5 +1,6 @@
 import { writeMetric } from "./metrics";
 import { refreshStaleRemoteActors } from "./remote-actor-refresh";
+import { sweepStuckDeliveries } from "./stuck-delivery-sweep";
 
 /**
  * The hourly entry of `app/crons/outbox-maintenance.ts`, whose `cron` export
@@ -59,6 +60,9 @@ export const handleScheduled = (
     // Re-fetch actors cached over a day ago, under the handle WebFinger
     // confirms; once an hour, not again when the six-hourly cron fires too.
     controller.cron === HOURLY_CRON ? refreshStaleRemoteActors(env) : undefined,
+    // Start or restart the delivery Workflows of targets left `Queued` past
+    // their next attempt (a failed create, a step that errored); hourly only.
+    controller.cron === HOURLY_CRON ? sweepStuckDeliveries(env) : undefined,
   ]).then(() => {
     writeMetric(env, "cron", [1], [controller.cron, "scheduled"]);
   });

@@ -119,6 +119,7 @@ export const ModelName = {
   link_cards: "link_cards",
   scheduled_statuses: "scheduled_statuses",
   notification_request_groups: "notification_request_groups",
+  delivery_domain_health: "delivery_domain_health",
   domain_allows: "domain_allows",
   suggestion_dismissals: "suggestion_dismissals",
   trend_reviews: "trend_reviews",
@@ -749,6 +750,7 @@ export const Outbox_deliveriesScalarFieldEnum = {
   created_at: "created_at",
   updated_at: "updated_at",
   inbox_url: "inbox_url",
+  next_attempt_at: "next_attempt_at",
 } as const;
 
 export type Outbox_deliveriesScalarFieldEnum =
@@ -980,6 +982,18 @@ export const Notification_request_groupsScalarFieldEnum = {
 
 export type Notification_request_groupsScalarFieldEnum =
   (typeof Notification_request_groupsScalarFieldEnum)[keyof typeof Notification_request_groupsScalarFieldEnum];
+
+export const Delivery_domain_healthScalarFieldEnum = {
+  domain: "domain",
+  kind: "kind",
+  failure_days: "failure_days",
+  last_failure_day: "last_failure_day",
+  unavailable_since: "unavailable_since",
+  updated_at: "updated_at",
+} as const;
+
+export type Delivery_domain_healthScalarFieldEnum =
+  (typeof Delivery_domain_healthScalarFieldEnum)[keyof typeof Delivery_domain_healthScalarFieldEnum];
 
 export const Domain_allowsScalarFieldEnum = {
   id: "id",

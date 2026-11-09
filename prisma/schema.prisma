@@ -614,6 +614,7 @@ model outbox_deliveries {
   created_at    String  @default("CURRENT_TIMESTAMP")
   updated_at    String  @default("CURRENT_TIMESTAMP")
   inbox_url     String?
+  next_attempt_at String?
 
   @@unique([activity_id, inbox_url], map: "idx_outbox_deliveries_target", where: raw("inbox_url IS NOT NULL"))
 }
@@ -878,6 +879,15 @@ model notification_request_groups {
   accounts        accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([account_id, from_account_id])
+}
+
+model delivery_domain_health {
+  domain            String  @id
+  kind              String
+  failure_days      Int
+  last_failure_day  String
+  unavailable_since String?
+  updated_at        String
 }
 
 model domain_allows {

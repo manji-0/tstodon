@@ -1,3 +1,4 @@
+import { recordDeliveryReachability } from "../delivery-domain-health-store";
 import {
   ACTIVITY_STREAMS,
   type ApActorCollectionJSON,
@@ -460,6 +461,15 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     );
     if (limited !== undefined) {
       return limited;
+    }
+    // A verified delivery from the server shows it is up, as Mastodon's
+    // `DeliveryFailureTracker.track_inverse_success!`: a domain with recorded
+    // delivery failures is cleared (one D1 write); one without costs nothing.
+    // Only the signing actor's own host: the inbox URLs in its document are
+    // whatever that server claims.
+    const senderHost = Hostname.ofUri(signer.actor.actorUri);
+    if (senderHost !== undefined) {
+      await recordDeliveryReachability(c.env, senderHost, "Reachable", "inbound");
     }
   }
   const activityId = ActivityId.parse(payload.id);

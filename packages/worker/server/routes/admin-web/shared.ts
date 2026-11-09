@@ -27,6 +27,7 @@ const NOTICES = {
   deleted: "Account deleted.",
   block_saved: "Domain block saved.",
   block_removed: "Domain block removed.",
+  marked_available: "Domain marked as available. Deliveries to it start again.",
   posts_marked_sensitive: "Posts marked as sensitive.",
   posts_marked_not_sensitive: "Posts marked as not sensitive.",
   posts_deleted: "Posts deleted.",

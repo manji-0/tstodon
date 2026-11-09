@@ -46,6 +46,7 @@ export type Outbox_deliveriesMinAggregateOutputType = {
   created_at: string | null;
   updated_at: string | null;
   inbox_url: string | null;
+  next_attempt_at: string | null;
 };
 
 export type Outbox_deliveriesMaxAggregateOutputType = {
@@ -58,6 +59,7 @@ export type Outbox_deliveriesMaxAggregateOutputType = {
   created_at: string | null;
   updated_at: string | null;
   inbox_url: string | null;
+  next_attempt_at: string | null;
 };
 
 export type Outbox_deliveriesCountAggregateOutputType = {
@@ -70,6 +72,7 @@ export type Outbox_deliveriesCountAggregateOutputType = {
   created_at: number;
   updated_at: number;
   inbox_url: number;
+  next_attempt_at: number;
   _all: number;
 };
 
@@ -93,6 +96,7 @@ export type Outbox_deliveriesMinAggregateInputType = {
   created_at?: true;
   updated_at?: true;
   inbox_url?: true;
+  next_attempt_at?: true;
 };
 
 export type Outbox_deliveriesMaxAggregateInputType = {
@@ -105,6 +109,7 @@ export type Outbox_deliveriesMaxAggregateInputType = {
   created_at?: true;
   updated_at?: true;
   inbox_url?: true;
+  next_attempt_at?: true;
 };
 
 export type Outbox_deliveriesCountAggregateInputType = {
@@ -117,6 +122,7 @@ export type Outbox_deliveriesCountAggregateInputType = {
   created_at?: true;
   updated_at?: true;
   inbox_url?: true;
+  next_attempt_at?: true;
   _all?: true;
 };
 
@@ -221,6 +227,7 @@ export type Outbox_deliveriesGroupByOutputType = {
   created_at: string;
   updated_at: string;
   inbox_url: string | null;
+  next_attempt_at: string | null;
   _count: Outbox_deliveriesCountAggregateOutputType | null;
   _avg: Outbox_deliveriesAvgAggregateOutputType | null;
   _sum: Outbox_deliveriesSumAggregateOutputType | null;
@@ -254,6 +261,7 @@ export type outbox_deliveriesWhereInput = {
   created_at?: Prisma.StringFilter<"outbox_deliveries"> | string;
   updated_at?: Prisma.StringFilter<"outbox_deliveries"> | string;
   inbox_url?: Prisma.StringNullableFilter<"outbox_deliveries"> | string | null;
+  next_attempt_at?: Prisma.StringNullableFilter<"outbox_deliveries"> | string | null;
 };
 
 export type outbox_deliveriesOrderByWithRelationInput = {
@@ -266,6 +274,7 @@ export type outbox_deliveriesOrderByWithRelationInput = {
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   inbox_url?: Prisma.SortOrderInput | Prisma.SortOrder;
+  next_attempt_at?: Prisma.SortOrderInput | Prisma.SortOrder;
 };
 
 export type outbox_deliveriesWhereUniqueInput = Prisma.AtLeast<
@@ -283,6 +292,7 @@ export type outbox_deliveriesWhereUniqueInput = Prisma.AtLeast<
     created_at?: Prisma.StringFilter<"outbox_deliveries"> | string;
     updated_at?: Prisma.StringFilter<"outbox_deliveries"> | string;
     inbox_url?: Prisma.StringNullableFilter<"outbox_deliveries"> | string | null;
+    next_attempt_at?: Prisma.StringNullableFilter<"outbox_deliveries"> | string | null;
   },
   "id" | "activity_id_inbox_url"
 >;
@@ -297,6 +307,7 @@ export type outbox_deliveriesOrderByWithAggregationInput = {
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   inbox_url?: Prisma.SortOrderInput | Prisma.SortOrder;
+  next_attempt_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   _count?: Prisma.outbox_deliveriesCountOrderByAggregateInput;
   _avg?: Prisma.outbox_deliveriesAvgOrderByAggregateInput;
   _max?: Prisma.outbox_deliveriesMaxOrderByAggregateInput;
@@ -321,6 +332,7 @@ export type outbox_deliveriesScalarWhereWithAggregatesInput = {
   created_at?: Prisma.StringWithAggregatesFilter<"outbox_deliveries"> | string;
   updated_at?: Prisma.StringWithAggregatesFilter<"outbox_deliveries"> | string;
   inbox_url?: Prisma.StringNullableWithAggregatesFilter<"outbox_deliveries"> | string | null;
+  next_attempt_at?: Prisma.StringNullableWithAggregatesFilter<"outbox_deliveries"> | string | null;
 };
 
 export type outbox_deliveriesCreateInput = {
@@ -333,6 +345,7 @@ export type outbox_deliveriesCreateInput = {
   created_at?: string;
   updated_at?: string;
   inbox_url?: string | null;
+  next_attempt_at?: string | null;
 };
 
 export type outbox_deliveriesUncheckedCreateInput = {
@@ -345,6 +358,7 @@ export type outbox_deliveriesUncheckedCreateInput = {
   created_at?: string;
   updated_at?: string;
   inbox_url?: string | null;
+  next_attempt_at?: string | null;
 };
 
 export type outbox_deliveriesUpdateInput = {
@@ -357,6 +371,7 @@ export type outbox_deliveriesUpdateInput = {
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   inbox_url?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  next_attempt_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type outbox_deliveriesUncheckedUpdateInput = {
@@ -369,6 +384,7 @@ export type outbox_deliveriesUncheckedUpdateInput = {
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   inbox_url?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  next_attempt_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type outbox_deliveriesCreateManyInput = {
@@ -381,6 +397,7 @@ export type outbox_deliveriesCreateManyInput = {
   created_at?: string;
   updated_at?: string;
   inbox_url?: string | null;
+  next_attempt_at?: string | null;
 };
 
 export type outbox_deliveriesUpdateManyMutationInput = {
@@ -393,6 +410,7 @@ export type outbox_deliveriesUpdateManyMutationInput = {
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   inbox_url?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  next_attempt_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type outbox_deliveriesUncheckedUpdateManyInput = {
@@ -405,6 +423,7 @@ export type outbox_deliveriesUncheckedUpdateManyInput = {
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   inbox_url?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  next_attempt_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type outbox_deliveriesActivity_idInbox_urlCompoundUniqueInput = {
@@ -422,6 +441,7 @@ export type outbox_deliveriesCountOrderByAggregateInput = {
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   inbox_url?: Prisma.SortOrder;
+  next_attempt_at?: Prisma.SortOrder;
 };
 
 export type outbox_deliveriesAvgOrderByAggregateInput = {
@@ -439,6 +459,7 @@ export type outbox_deliveriesMaxOrderByAggregateInput = {
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   inbox_url?: Prisma.SortOrder;
+  next_attempt_at?: Prisma.SortOrder;
 };
 
 export type outbox_deliveriesMinOrderByAggregateInput = {
@@ -451,6 +472,7 @@ export type outbox_deliveriesMinOrderByAggregateInput = {
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   inbox_url?: Prisma.SortOrder;
+  next_attempt_at?: Prisma.SortOrder;
 };
 
 export type outbox_deliveriesSumOrderByAggregateInput = {
@@ -471,6 +493,7 @@ export type outbox_deliveriesSelect<
     created_at?: boolean;
     updated_at?: boolean;
     inbox_url?: boolean;
+    next_attempt_at?: boolean;
   },
   ExtArgs["result"]["outbox_deliveries"]
 >;
@@ -488,6 +511,7 @@ export type outbox_deliveriesSelectCreateManyAndReturn<
     created_at?: boolean;
     updated_at?: boolean;
     inbox_url?: boolean;
+    next_attempt_at?: boolean;
   },
   ExtArgs["result"]["outbox_deliveries"]
 >;
@@ -505,6 +529,7 @@ export type outbox_deliveriesSelectUpdateManyAndReturn<
     created_at?: boolean;
     updated_at?: boolean;
     inbox_url?: boolean;
+    next_attempt_at?: boolean;
   },
   ExtArgs["result"]["outbox_deliveries"]
 >;
@@ -519,6 +544,7 @@ export type outbox_deliveriesSelectScalar = {
   created_at?: boolean;
   updated_at?: boolean;
   inbox_url?: boolean;
+  next_attempt_at?: boolean;
 };
 
 export type outbox_deliveriesOmit<
@@ -532,7 +558,8 @@ export type outbox_deliveriesOmit<
   | "http_status"
   | "created_at"
   | "updated_at"
-  | "inbox_url",
+  | "inbox_url"
+  | "next_attempt_at",
   ExtArgs["result"]["outbox_deliveries"]
 >;
 
@@ -552,6 +579,7 @@ export type $outbox_deliveriesPayload<
       created_at: string;
       updated_at: string;
       inbox_url: string | null;
+      next_attempt_at: string | null;
     },
     ExtArgs["result"]["outbox_deliveries"]
   >;
@@ -1133,6 +1161,7 @@ export interface outbox_deliveriesFieldRefs {
   readonly created_at: Prisma.FieldRef<"outbox_deliveries", "String">;
   readonly updated_at: Prisma.FieldRef<"outbox_deliveries", "String">;
   readonly inbox_url: Prisma.FieldRef<"outbox_deliveries", "String">;
+  readonly next_attempt_at: Prisma.FieldRef<"outbox_deliveries", "String">;
 }
 
 // Custom InputTypes

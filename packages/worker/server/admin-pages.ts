@@ -1,4 +1,8 @@
-import type { RemoteActorModerationValue } from "@tstodon/domain";
+import {
+  DELIVERY_FAILURE_DAYS_THRESHOLD,
+  type DeliveryDomainHealthValue,
+  type RemoteActorModerationValue,
+} from "@tstodon/domain";
 import type { AdminAccountFilters } from "./account-admin-store";
 import type { AdminAccountState } from "./admin-actions";
 import type { DomainBlockRow } from "./admin-domain-block-store";
@@ -401,11 +405,20 @@ export const adminNotFoundPage = (instanceName: string, what: string): string =>
 
 const SEVERITY_LABELS = { silence: "Limit", suspend: "Suspend", noop: "None" } as const;
 
-/** Mastodon's `GET /admin/instances`: the domains this server blocks. */
+const healthLine = (health: DeliveryDomainHealthValue): string =>
+  health.kind === "Unavailable"
+    ? `Unavailable since ${escapeHtml(health.unavailableSince.slice(0, 10))}: deliveries are skipped (failures on ${health.failureDays} days, last ${escapeHtml(health.lastFailureDay)})`
+    : `Failing: deliveries failed on ${health.failureDays} of ${DELIVERY_FAILURE_DAYS_THRESHOLD} days before it is marked unavailable (last ${escapeHtml(health.lastFailureDay)})`;
+
+/**
+ * Mastodon's `GET /admin/instances`: the domains this server blocks, and the
+ * ones deliveries fail to (Mastodon's "Unavailable" filter).
+ */
 export const instancesPage = (
   instanceName: string,
   blocks: ReadonlyArray<DomainBlockRow>,
   message?: PageMessage,
+  health: ReadonlyArray<DeliveryDomainHealthValue> = [],
 ): string =>
   adminPage(
     instanceName,
@@ -429,6 +442,19 @@ ${messageLine(message)}
         )
         .join("")}
       </ul>`
+      }
+      <h2>Delivery failures</h2>${
+        health.length === 0
+          ? `
+      <p class="muted">Deliveries are not failing to any domain.</p>`
+          : `
+      <ul>${health
+        .map(
+          (entry) => `
+        <li><a href="/admin/instances/${escapeHtml(entry.domain)}">${escapeHtml(entry.domain)}</a> <span class="muted">${healthLine(entry)}</span></li>`,
+        )
+        .join("")}
+      </ul>`
       }`,
   );
 
@@ -444,7 +470,12 @@ export type DomainBlockForm = Readonly<{
 /** Mastodon's `GET /admin/instances/:domain`, with the form that blocks it. */
 export const instancePage = (
   instanceName: string,
-  view: Readonly<{ domain: string; blocked: boolean; form: DomainBlockForm }>,
+  view: Readonly<{
+    domain: string;
+    blocked: boolean;
+    form: DomainBlockForm;
+    health?: DeliveryDomainHealthValue | undefined;
+  }>,
   message?: PageMessage,
 ): string => {
   const action = `/admin/instances/${view.domain}`;
@@ -484,6 +515,14 @@ ${messageLine(message)}
       <h2>Lift the block</h2>
       ${postButton(action, "Remove block", { do: "remove" })}`
           : ""
+      }
+      <h2>Delivery</h2>${
+        view.health === undefined
+          ? `
+      <p class="muted">No delivery failures are recorded for this domain.</p>`
+          : `
+      <p>${healthLine(view.health)}.</p>
+      ${postButton(action, "Mark as available", { do: "mark_available" })}`
       }`,
   );
 };

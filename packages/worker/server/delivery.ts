@@ -14,14 +14,17 @@ import { findAccountById } from "./account-store";
 import type { RepositoryError } from "./d1";
 import { signInboxRequest } from "./http-signature";
 import { instanceActorKeyId, instanceActorKeys } from "./instance-actor";
+import { unavailableDeliveryDomains } from "./delivery-domain-health-store";
 import {
   ensureOutboxTargets,
   findOutboundActivity,
+  insertSkippedOutboxTargets,
   insertOutboundActivity,
   type OutboundSigner,
   outboundSignerOf,
 } from "./outbox-store";
 import { writeMetric } from "./metrics";
+import type { OutboxWorkflowParams } from "./outbox-delivery-workflow";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { federatesWithHost, parseInstanceIdentity } from "./runtime-config";
 
@@ -168,11 +171,16 @@ const enqueueSignedActivity = async (
   if (activityId.isErr()) {
     return err({ kind: "InvalidActivityId" });
   }
-  const targets = await ensureOutboxTargets(env.DB, activityId.value, admitted);
+  const { deliver, skipped } = await partitionByDomainAvailability(env.DB, admitted);
+  const targets = await ensureOutboxTargets(env.DB, activityId.value, deliver);
   if (targets.isErr()) {
     return err(targets.error);
   }
-  for (const inboxUrl of admitted) {
+  const skippedTargets = await recordSkippedTargets(env, activityId.value, skipped, "targeted");
+  if (skippedTargets.isErr()) {
+    return err(skippedTargets.error);
+  }
+  for (const inboxUrl of deliver) {
     const deliver = OutboxJob.parse({
       kind: "DeliverTarget",
       activityId: activityId.value,
@@ -198,13 +206,69 @@ export const deliveryWorkflowId = async (activityId: string, inboxUrl: string): 
   return `outbox-${hex}`;
 };
 
+/**
+ * Split inboxes into those to deliver to and those on a domain marked
+ * unavailable (`DeliveryDomainHealth`), whose targets are recorded `Skipped`.
+ */
+export const partitionByDomainAvailability = async (
+  db: D1Database,
+  inboxUrls: ReadonlyArray<string>,
+): Promise<Readonly<{ deliver: string[]; skipped: string[] }>> => {
+  const unavailable = await unavailableDeliveryDomains(db);
+  const deliver: string[] = [];
+  const skipped: string[] = [];
+  for (const inboxUrl of inboxUrls) {
+    const host = Hostname.ofUri(inboxUrl);
+    (host !== undefined && unavailable.has(host) ? skipped : deliver).push(inboxUrl);
+  }
+  return { deliver, skipped };
+};
+
+/**
+ * Store the targets left out for an unavailable domain as `Skipped` /
+ * `DomainUnavailable`, with one `OutboxDeliverySkipped` line and one
+ * `outbox.skip` point per activity.
+ */
+export const recordSkippedTargets = async (
+  env: Env,
+  activityId: string,
+  inboxUrls: ReadonlyArray<string>,
+  source: "targeted" | "expand",
+): Promise<Result<void, RepositoryError>> => {
+  if (inboxUrls.length === 0) {
+    return ok(undefined);
+  }
+  const inserted = await insertSkippedOutboxTargets(env.DB, activityId, inboxUrls);
+  if (inserted.isErr()) {
+    return err(inserted.error);
+  }
+  console.log(
+    JSON.stringify({
+      kind: "OutboxDeliverySkipped",
+      activityId,
+      reason: "DomainUnavailable",
+      targets: inboxUrls.length,
+      domains: [...new Set(inboxUrls.map((url) => Hostname.ofUri(url) ?? ""))].slice(0, 20),
+    }),
+  );
+  writeMetric(env, "outbox.skip", [inboxUrls.length], [source, "DomainUnavailable"]);
+  return ok(undefined);
+};
+
+/** The part of the `OUTBOX_DELIVERY_WORKFLOW` binding that starts an instance. */
+export type DeliveryWorkflowCreate = Readonly<{
+  create: (options: Readonly<{ id: string; params: OutboxWorkflowParams }>) => Promise<unknown>;
+}>;
+
+/** Start the target's delivery Workflow; false (logged) when Workflows refused it. */
 export const startOutboxDeliveryWorkflow = async (
   env: Env,
   job: DeliverTargetJob,
-): Promise<void> => {
+  workflows: DeliveryWorkflowCreate = env.OUTBOX_DELIVERY_WORKFLOW,
+): Promise<boolean> => {
   const id = await deliveryWorkflowId(job.activityId, job.inboxUrl);
   try {
-    await env.OUTBOX_DELIVERY_WORKFLOW.create({
+    await workflows.create({
       id,
       params: {
         kind: "DeliverTarget" as const,
@@ -212,6 +276,7 @@ export const startOutboxDeliveryWorkflow = async (
         inboxUrl: job.inboxUrl,
       },
     });
+    return true;
   } catch (cause) {
     console.error(
       JSON.stringify({
@@ -220,6 +285,7 @@ export const startOutboxDeliveryWorkflow = async (
         message: cause instanceof Error ? cause.message : String(cause),
       }),
     );
+    return false;
   }
 };
 
@@ -261,30 +327,49 @@ const signingKey = async (
   }
 };
 
-export const attemptInboxDelivery = async (
+/**
+ * One delivery attempt. `remote` is false when this server settled it without
+ * an answer from the inbox (the activity or its signer is gone, the URL does
+ * not parse, a local dependency failed): such an outcome says nothing about
+ * the remote's health.
+ */
+export type InboxDeliveryAttempt = Readonly<{
+  outcome: DeliveryAttemptOutcomeValue;
+  remote: boolean;
+}>;
+
+const local = (outcome: DeliveryAttemptOutcomeValue): InboxDeliveryAttempt => ({
+  outcome,
+  remote: false,
+});
+
+export const attemptInboxDeliveryWithEvidence = async (
   env: Env,
   job: DeliverTargetJob,
-): Promise<DeliveryAttemptOutcomeValue> => {
+): Promise<InboxDeliveryAttempt> => {
   const activity = await findOutboundActivity(env.DB, job.activityId);
-  if (activity.isErr() || !activity.value) {
-    return DeliveryAttemptOutcome.forHttpStatus(404);
+  if (activity.isErr()) {
+    return local(DeliveryAttemptOutcome.Local);
+  }
+  if (!activity.value) {
+    return local(DeliveryAttemptOutcome.forHttpStatus(404));
   }
   const identity = parseInstanceIdentity(env);
   if (identity.isErr()) {
-    return DeliveryAttemptOutcome.TransientFailure;
+    return local(DeliveryAttemptOutcome.Local);
   }
   const key = await signingKey(env, identity.value, outboundSignerOf(activity.value));
   if (key.kind === "Missing") {
-    return DeliveryAttemptOutcome.forHttpStatus(404);
+    return local(DeliveryAttemptOutcome.forHttpStatus(404));
   }
   if (key.kind === "Unavailable") {
-    return DeliveryAttemptOutcome.TransientFailure;
+    return local(DeliveryAttemptOutcome.Local);
   }
   let inbox: URL;
   try {
     inbox = new URL(job.inboxUrl);
   } catch {
-    return DeliveryAttemptOutcome.forHttpStatus(400);
+    return local(DeliveryAttemptOutcome.forHttpStatus(400));
   }
   const headers = await signInboxRequest(
     inbox,
@@ -293,7 +378,7 @@ export const attemptInboxDelivery = async (
     activity.value.payload_json,
   );
   if (headers.isErr()) {
-    return DeliveryAttemptOutcome.forHttpStatus(400);
+    return local(DeliveryAttemptOutcome.forHttpStatus(400));
   }
   try {
     const response = await fetch(inbox, {
@@ -301,8 +386,20 @@ export const attemptInboxDelivery = async (
       headers: headers.value,
       body: activity.value.payload_json,
     });
-    return DeliveryAttemptOutcome.forHttpStatus(response.status);
+    return {
+      outcome: DeliveryAttemptOutcome.forHttpStatus(
+        response.status,
+        DeliveryAttemptOutcome.retryAfterSeconds(response.headers.get("retry-after"), Date.now()),
+      ),
+      remote: true,
+    };
   } catch {
-    return DeliveryAttemptOutcome.TransientFailure;
+    return { outcome: DeliveryAttemptOutcome.Network, remote: true };
   }
 };
+
+export const attemptInboxDelivery = async (
+  env: Env,
+  job: DeliverTargetJob,
+): Promise<DeliveryAttemptOutcomeValue> =>
+  (await attemptInboxDeliveryWithEvidence(env, job)).outcome;
