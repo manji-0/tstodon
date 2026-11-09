@@ -1,9 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount, ApiAdminAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (email: string, admin = false): Promise<Record<string, string>> =>
   authHeaders(email, { admin });
@@ -27,14 +27,6 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   return parsed.value;
 };
 
-const AdminAccountSchema = MastodonAccountPreviewSchema.extend({
-  email: z.string(),
-  suspended: z.boolean(),
-  silenced: z.boolean(),
-  limited: z.boolean(),
-  disabled: z.boolean(),
-});
-
 const adminPost = async (email: string, path: string): Promise<{ status: number; body: unknown }> =>
   json(path, { method: "POST", headers: await auth(email, true) });
 
@@ -44,11 +36,11 @@ describe("admin accounts", () => {
     const target = await json("/api/v1/accounts/verify_credentials", {
       headers: await auth("admacct-target@example.com"),
     });
-    const targetId = read(MastodonAccountPreviewSchema, target.body).id;
+    const targetId = read(ApiAccount, target.body).id;
 
     const list = await json("/api/v1/admin/accounts", { headers: await auth(adminEmail, true) });
     expect(list.status).toBe(200);
-    const accounts = read(z.array(AdminAccountSchema), list.body);
+    const accounts = read(z.array(ApiAdminAccount), list.body);
     const found = accounts.find((account) => account.id === targetId);
     expect(found?.email).toBe("admacct-target@example.com");
     expect(found?.suspended).toBe(false);
@@ -67,11 +59,11 @@ describe("admin accounts", () => {
     const target = await json("/api/v1/accounts/verify_credentials", {
       headers: await auth(targetEmail),
     });
-    const targetId = read(MastodonAccountPreviewSchema, target.body).id;
+    const targetId = read(ApiAccount, target.body).id;
 
     const suspended = await adminPost(adminEmail, `/api/v1/admin/accounts/${targetId}/suspend`);
     expect(suspended.status).toBe(200);
-    const document = read(AdminAccountSchema, suspended.body);
+    const document = read(ApiAdminAccount, suspended.body);
     expect(document.suspended).toBe(true);
     // `disabled` is Mastodon's separate `disable` action, not suspension.
     expect(document.disabled).toBe(false);
@@ -88,7 +80,7 @@ describe("admin accounts", () => {
 
     const restored = await adminPost(adminEmail, `/api/v1/admin/accounts/${targetId}/unsuspend`);
     expect(restored.status).toBe(200);
-    expect(read(AdminAccountSchema, restored.body).suspended).toBe(false);
+    expect(read(ApiAdminAccount, restored.body).suspended).toBe(false);
     expect(
       (await json("/api/v1/accounts/verify_credentials", { headers: await auth(targetEmail) }))
         .status,
@@ -101,14 +93,14 @@ describe("admin accounts", () => {
     const target = await json("/api/v1/accounts/verify_credentials", {
       headers: await auth(targetEmail),
     });
-    const targetId = read(MastodonAccountPreviewSchema, target.body).id;
+    const targetId = read(ApiAccount, target.body).id;
     expect((await adminPost(adminEmail, `/api/v1/admin/accounts/${targetId}/suspend`)).status).toBe(
       200,
     );
 
     for (const action of ["silence", "unsilence"]) {
       const changed = await adminPost(adminEmail, `/api/v1/admin/accounts/${targetId}/${action}`);
-      expect(read(AdminAccountSchema, changed.body).suspended).toBe(true);
+      expect(read(ApiAdminAccount, changed.body).suspended).toBe(true);
       expect(
         (await json("/api/v1/accounts/verify_credentials", { headers: await auth(targetEmail) }))
           .status,
@@ -122,7 +114,7 @@ describe("admin accounts", () => {
     const target = await json("/api/v1/accounts/verify_credentials", {
       headers: await auth(targetEmail),
     });
-    const targetId = read(MastodonAccountPreviewSchema, target.body).id;
+    const targetId = read(ApiAccount, target.body).id;
 
     const created = await json("/api/v1/statuses", {
       method: "POST",
@@ -147,12 +139,10 @@ describe("admin accounts", () => {
     const suggestions = await json("/api/v1/suggestions", {
       headers: await auth("admacct-viewer@example.com"),
     });
-    expect(
-      read(z.array(MastodonAccountPreviewSchema), suggestions.body).map((a) => a.id),
-    ).not.toContain(targetId);
+    expect(read(z.array(ApiAccount), suggestions.body).map((a) => a.id)).not.toContain(targetId);
 
     const unsilenced = await adminPost(adminEmail, `/api/v1/admin/accounts/${targetId}/unsilence`);
-    expect(read(AdminAccountSchema, unsilenced.body).silenced).toBe(false);
+    expect(read(ApiAdminAccount, unsilenced.body).silenced).toBe(false);
     expect(await publicIds()).toContain(statusId);
   });
 

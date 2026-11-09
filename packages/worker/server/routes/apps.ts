@@ -1,3 +1,4 @@
+import type { ApiApplicationJSON, ApiCredentialApplicationJSON } from "@tstodon/api";
 import type { Context } from "hono";
 import { warmSchemas } from "@tstodon/core";
 import { authenticate } from "../auth";
@@ -36,13 +37,13 @@ const validRedirectUri = (uri: string): boolean => {
 const validationFailed = (c: Context<{ Bindings: Env }>, message: string) =>
   c.json({ error: `Validation failed: ${message}` }, 422);
 
-const appDocument = (env: Env, app: OauthApplication) => ({
+const appDocument = (env: Env, app: OauthApplication): ApiApplicationJSON => ({
   id: app.id,
   name: app.name,
   website: app.website,
-  scopes: app.scopes,
+  scopes: [...app.scopes],
   redirect_uri: app.redirectUris.join("\n"),
-  redirect_uris: app.redirectUris,
+  redirect_uris: [...app.redirectUris],
   vapid_key: vapidPublicKey(env),
 });
 
@@ -79,12 +80,13 @@ export const postV1Apps = async (c: Context<{ Bindings: Env }, "/api/v1/apps">) 
     return c.json({ error: registered.error.message, kind: registered.error.kind }, 500);
   }
   const { application, clientSecret } = registered.value;
-  return c.json({
+  const document: ApiCredentialApplicationJSON = {
     ...appDocument(c.env, application),
     client_id: application.clientId,
     client_secret: clientSecret,
     client_secret_expires_at: 0,
-  });
+  };
+  return c.json(document);
 };
 
 /** The app behind the presented token, user or app-only. */

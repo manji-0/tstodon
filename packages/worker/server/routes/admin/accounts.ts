@@ -1,8 +1,10 @@
 import type { Context } from "hono";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
+import type { ApiAccountJSON, ApiAdminAccountJSON } from "@tstodon/api";
 import {
   AccountActionType,
+  FediRole,
   type InstanceIdentity,
   LocalAccountModeration,
   type LocalAccountModerationAction,
@@ -75,54 +77,71 @@ const adminAccountFilters = (
   };
 };
 
+/** Admin::Account's role: the roles tstodon has are not kept per account here. */
+const USER_ROLE = FediRole.toMastodon(FediRole.User);
+
 const adminAccountDocument = async (
   env: Env,
   identity: InstanceIdentity,
   state: AdminAccountState,
-): Promise<Record<string, unknown>> => ({
-  ...(await mastodonAccountDocument(env, identity, state.account)),
-  email: state.account.accessEmail.reveal(),
-  ip: null,
-  role: { id: "-1", name: "user", highlighted: false },
-  approved: state.moderation.approval.kind === "Approved",
-  // `disable` blocks the login; it is separate from suspension.
-  disabled: state.moderation.login.kind === "Disabled",
-  silenced: state.moderation.standing.kind === "Silenced",
-  suspended: state.moderation.standing.kind === "Suspended",
-  limited: state.moderation.standing.kind !== "InGoodStanding",
-  sensitized: state.moderation.sensitized,
-  invited_by_account_id: null,
-  created_by_application_id: null,
-  invite_request: null,
-});
+): Promise<ApiAdminAccountJSON> => {
+  const account = await mastodonAccountDocument(env, identity, state.account);
+  return {
+    id: account.id,
+    username: account.username,
+    domain: null,
+    created_at: account.created_at,
+    email: state.account.accessEmail.reveal(),
+    ip: null,
+    ips: [],
+    locale: null,
+    invite_request: null,
+    role: { ...USER_ROLE },
+    // Access verified the address before the account existed.
+    confirmed: true,
+    approved: state.moderation.approval.kind === "Approved",
+    // `disable` blocks the login; it is separate from suspension.
+    disabled: state.moderation.login.kind === "Disabled",
+    silenced: state.moderation.standing.kind === "Silenced",
+    suspended: state.moderation.standing.kind === "Suspended",
+    limited: state.moderation.standing.kind !== "InGoodStanding",
+    sensitized: state.moderation.sensitized,
+    account,
+  };
+};
 
 /** An `Admin::Account` for a remote actor: it has no login, email, or IP here. */
 const adminRemoteDocument = (
-  account: Record<string, unknown>,
+  account: ApiAccountJSON,
   domain: string,
   moderation: RemoteActorModerationValue,
-): Record<string, unknown> => ({
-  ...account,
+): ApiAdminAccountJSON => ({
+  id: account.id,
+  username: account.username,
   domain,
+  created_at: account.created_at,
   email: null,
   ip: null,
-  role: { id: "-1", name: "user", highlighted: false },
+  ips: [],
+  locale: null,
+  invite_request: null,
+  role: { ...USER_ROLE },
+  // No login here to confirm.
+  confirmed: false,
   approved: true,
   disabled: false,
   silenced: moderation.standing.kind === "Silenced",
   suspended: moderation.standing.kind === "Suspended",
   limited: moderation.standing.kind !== "InGoodStanding",
   sensitized: moderation.sensitized,
-  invited_by_account_id: null,
-  created_by_application_id: null,
-  invite_request: null,
+  account,
 });
 
 const remoteActorDocument = (
   identity: InstanceIdentity,
   actor: RemoteActorValue,
   moderation: RemoteActorModerationValue,
-): Record<string, unknown> =>
+): ApiAdminAccountJSON =>
   adminRemoteDocument(mastodonRemoteAccount(identity, actor), actor.domain, moderation);
 
 /**
@@ -133,7 +152,7 @@ const purgedRemoteDocument = (
   identity: InstanceIdentity,
   actorUri: string,
   acct: string,
-): Record<string, unknown> => {
+): ApiAdminAccountJSON => {
   const separator = acct.lastIndexOf("@");
   const username = separator > 0 ? acct.slice(0, separator) : acct;
   const domain = separator > 0 ? acct.slice(separator + 1) : "";
@@ -146,15 +165,23 @@ const purgedRemoteDocument = (
       locked: false,
       bot: false,
       discoverable: false,
+      indexable: false,
       group: false,
+      hide_collections: null,
+      show_media: true,
+      show_media_replies: true,
+      show_featured: true,
+      feature_approval: { automatic: [], manual: [], current_user: "denied" },
       created_at: new Date(0).toISOString(),
       note: "",
       url: actorUri,
       uri: actorUri,
       avatar: identity.thumbnailUrl,
       avatar_static: identity.thumbnailUrl,
+      avatar_description: "",
       header: identity.thumbnailUrl,
       header_static: identity.thumbnailUrl,
+      header_description: "",
       followers_count: 0,
       following_count: 0,
       statuses_count: 0,
@@ -172,7 +199,7 @@ export const adminAccountFor = async (
   env: Env,
   identity: InstanceIdentity,
   accountId: string,
-): Promise<Record<string, unknown> | null> => {
+): Promise<ApiAdminAccountJSON | null> => {
   const actorUri = RemoteAccountId.decode(accountId);
   if (actorUri.isOk()) {
     const state = await findAdminRemoteActor(env.DB, actorUri.value);
@@ -194,7 +221,7 @@ export const adminPartyFor = async (
   identity: InstanceIdentity,
   party: ReportParty,
   acct: string | null,
-): Promise<Record<string, unknown> | null> => {
+): Promise<ApiAdminAccountJSON | null> => {
   if (party.kind === "Local") {
     return adminAccountFor(env, identity, party.accountId);
   }
@@ -231,7 +258,7 @@ const remoteAdminAccounts = async (
   env: Env,
   identity: InstanceIdentity,
   filters: Parameters<typeof listAdminRemoteActorUris>[1],
-): Promise<Result<Record<string, unknown>[], RepositoryError>> => {
+): Promise<Result<ApiAdminAccountJSON[], RepositoryError>> => {
   const uris = await listAdminRemoteActorUris(env.DB, filters);
   if (uris.isErr()) {
     return err(uris.error);
@@ -293,7 +320,7 @@ export const getV1AdminAccounts = async (
   if (states.isErr()) {
     return jsonRepositoryError(c, states.error.message);
   }
-  const documents: Record<string, unknown>[] = [];
+  const documents: ApiAdminAccountJSON[] = [];
   for (const state of states.value) {
     documents.push(await adminAccountDocument(c.env, identity.value, state));
   }

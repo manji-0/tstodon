@@ -1,3 +1,4 @@
+import { type ApiAdminReportJSON, isReportCategory } from "@tstodon/api";
 import type { Context } from "hono";
 import { z } from "zod";
 import { type InstanceIdentity, ReportResolution } from "@tstodon/domain";
@@ -31,7 +32,7 @@ const adminReportDocument = async (
   c: Context<{ Bindings: Env }>,
   identity: InstanceIdentity,
   report: ReportRow,
-): Promise<Record<string, unknown>> => {
+): Promise<ApiAdminReportJSON> => {
   const reported = await reportedStatuses(c.env.DB, report.statusIds);
   // A moderator sees every reported status, a suspended author's too, stripped.
   const statuses = reported.isOk()
@@ -60,7 +61,8 @@ const adminReportDocument = async (
     id: report.id,
     action_taken: report.resolution.kind === "Resolved",
     action_taken_at: report.resolution.kind === "Resolved" ? report.resolution.at : null,
-    category: report.category,
+    // A category Mastodon does not name reads as `other`.
+    category: isReportCategory(report.category) ? report.category : "other",
     comment: report.comment,
     forwarded: report.forwarding.kind === "Forwarded",
     created_at: report.createdAt,
@@ -78,11 +80,7 @@ const adminReportDocument = async (
     // The configured rules this violation is tied to.
     rules: instanceRules(c.env)
       .filter((rule) => report.ruleIds.includes(rule.id))
-      .map((rule) =>
-        rule.hint === undefined
-          ? { id: rule.id, text: rule.text }
-          : { id: rule.id, text: rule.text, hint: rule.hint },
-      ),
+      .map((rule) => ({ id: rule.id, text: rule.text, hint: rule.hint ?? "" })),
   };
 };
 
@@ -119,7 +117,7 @@ export const getV1AdminReports = async (c: Context<{ Bindings: Env }, "/api/v1/a
   if (reports.isErr()) {
     return jsonRepositoryError(c, reports.error.message);
   }
-  const documents: Record<string, unknown>[] = [];
+  const documents: ApiAdminReportJSON[] = [];
   for (const report of reports.value) {
     documents.push(await adminReportDocument(c, identity.value, report));
   }

@@ -135,3 +135,61 @@ export const ApiInstance = z.object({
   rules: z.array(ApiRule),
 });
 export type ApiInstanceJSON = z.infer<typeof ApiInstance>;
+
+/** `/api/v1/instance/activity`: one row per week, the counts as strings. */
+export const ApiInstanceActivity = z.object({
+  week: z.string(),
+  statuses: z.string(),
+  logins: z.string(),
+  registrations: z.string(),
+});
+export type ApiInstanceActivityJSON = z.infer<typeof ApiInstanceActivity>;
+
+/**
+ * `REST::V1::InstanceSerializer` (`/api/v1/instance`, deprecated in favour of
+ * the v2 document but still read by older clients).
+ */
+export const ApiV1Instance = z.object({
+  uri: z.string(),
+  title: z.string(),
+  short_description: z.string(),
+  description: z.string(),
+  email: z.string().nullable(),
+  version: z.string(),
+  urls: z.object({ streaming_api: z.string() }),
+  stats: z.object({
+    user_count: z.number(),
+    status_count: z.number(),
+    domain_count: z.number(),
+  }),
+  thumbnail: z.string().nullable(),
+  languages: z.array(z.string()),
+  registrations: z.boolean(),
+  approval_required: z.boolean(),
+  invites_enabled: z.boolean(),
+  configuration: z.object({
+    accounts: z.object({ max_featured_tags: z.number(), max_pinned_statuses: z.number() }),
+    statuses: z.object({
+      max_characters: z.number(),
+      max_media_attachments: z.number(),
+      characters_reserved_per_url: z.number(),
+    }),
+    media_attachments: z.object({
+      supported_mime_types: z.array(z.string()),
+      image_size_limit: z.number(),
+      image_matrix_limit: z.number(),
+      video_size_limit: z.number(),
+      video_frame_rate_limit: z.number(),
+      video_matrix_limit: z.number(),
+    }),
+    polls: z.object({
+      max_options: z.number(),
+      max_characters_per_option: z.number(),
+      min_expiration: z.number(),
+      max_expiration: z.number(),
+    }),
+  }),
+  contact_account: ApiAccount.nullable(),
+  rules: z.array(ApiRule),
+});
+export type ApiV1InstanceJSON = z.infer<typeof ApiV1Instance>;

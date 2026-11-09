@@ -1,9 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount, ApiAdminReport, ApiReport } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (
   email: string,
@@ -29,58 +29,26 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   return parsed.value;
 };
 
-const ReportSchema = z.object({
-  id: z.string().min(1),
-  action_taken: z.boolean(),
-  action_taken_at: z.string().nullable(),
-  category: z.string().min(1),
-  comment: z.string(),
-  forwarded: z.boolean(),
-  created_at: z.string(),
-  updated_at: z.string(),
-  account: MastodonAccountPreviewSchema.nullable(),
-  target_account: MastodonAccountPreviewSchema.nullable(),
-  assigned_account: MastodonAccountPreviewSchema.nullable(),
-  action_taken_by_account: MastodonAccountPreviewSchema.nullable(),
-  statuses: z.array(z.object({ id: z.string().min(1) })),
-  rules: z.array(z.object({ id: z.string(), text: z.string(), hint: z.string().optional() })),
-});
-
-/** `POST /api/v1/reports` answers Mastodon's plain Report entity. */
-const CreatedReportSchema = z.object({
-  id: z.string().min(1),
-  action_taken: z.boolean(),
-  action_taken_at: z.string().nullable(),
-  category: z.string().min(1),
-  comment: z.string(),
-  forwarded: z.boolean(),
-  status_ids: z.array(z.string()),
-  rule_ids: z.array(z.string()),
-  target_account: z.object({ id: z.string().min(1) }),
-});
-
-const credentials = async (
-  email: string,
-): Promise<z.infer<typeof MastodonAccountPreviewSchema>> => {
+const credentials = async (email: string): Promise<z.infer<typeof ApiAccount>> => {
   const response = await json("/api/v1/accounts/verify_credentials", {
     headers: await auth(email),
   });
   expect(response.status).toBe(200);
-  return read(MastodonAccountPreviewSchema, response.body);
+  return read(ApiAccount, response.body);
 };
 
 const fileReport = async (
   email: string,
   targetId: string,
   body: Record<string, unknown> = {},
-): Promise<z.infer<typeof CreatedReportSchema>> => {
+): Promise<z.infer<typeof ApiReport>> => {
   const response = await json("/api/v1/reports", {
     method: "POST",
     headers: { "content-type": "application/json", ...(await auth(email)) },
     body: JSON.stringify({ account_id: targetId, ...body }),
   });
   expect(response.status).toBe(200);
-  return read(CreatedReportSchema, response.body);
+  return read(ApiReport, response.body);
 };
 
 const reportWithRules = async (email: string, targetId: string) => {
@@ -90,17 +58,20 @@ const reportWithRules = async (email: string, targetId: string) => {
     body: JSON.stringify({ account_id: targetId, category: "violation", rule_ids: ["2"] }),
   });
   expect(response.status).toBe(200);
-  const created = read(CreatedReportSchema, response.body);
+  const created = read(ApiReport, response.body);
   expect(created.rule_ids).toEqual(["2"]);
   return created;
 };
 
-const adminReports = async (email: string, query = ""): Promise<z.infer<typeof ReportSchema>[]> => {
+const adminReports = async (
+  email: string,
+  query = "",
+): Promise<z.infer<typeof ApiAdminReport>[]> => {
   const response = await json(`/api/v1/admin/reports${query}`, {
     headers: await auth(email, { admin: true }),
   });
   expect(response.status).toBe(200);
-  return read(z.array(ReportSchema), response.body);
+  return read(z.array(ApiAdminReport), response.body);
 };
 
 describe("admin reports", () => {
@@ -135,7 +106,7 @@ describe("admin reports", () => {
       headers: await auth(admin, { admin: true }),
     });
     expect(resolved.status).toBe(200);
-    const document = read(ReportSchema, resolved.body);
+    const document = read(ApiAdminReport, resolved.body);
     expect(document.action_taken).toBe(true);
     expect(document.action_taken_at).not.toBeNull();
     expect(document.action_taken_by_account?.id).toBeDefined();
@@ -150,7 +121,7 @@ describe("admin reports", () => {
       headers: await auth(admin, { admin: true }),
     });
     expect(reopened.status).toBe(200);
-    expect(read(ReportSchema, reopened.body).action_taken).toBe(false);
+    expect(read(ApiAdminReport, reopened.body).action_taken).toBe(false);
   });
 
   it("serves a single report and 404s for an unknown one", async () => {
@@ -162,7 +133,7 @@ describe("admin reports", () => {
       headers: await auth(admin, { admin: true }),
     });
     expect(one.status).toBe(200);
-    expect(read(ReportSchema, one.body).id).toBe(filed.id);
+    expect(read(ApiAdminReport, one.body).id).toBe(filed.id);
 
     const missing = await json("/api/v1/admin/reports/nope", {
       headers: await auth(admin, { admin: true }),
@@ -197,7 +168,7 @@ describe("admin reports", () => {
       body: JSON.stringify({ category: "violation", rule_ids: ["1"] }),
     });
     expect(updated.status).toBe(200);
-    const document = read(ReportSchema, updated.body);
+    const document = read(ApiAdminReport, updated.body);
     expect(document.category).toBe("violation");
     expect(document.rules.map((rule) => rule.id)).toEqual(["1"]);
 
@@ -227,12 +198,12 @@ describe("admin reports", () => {
       headers: await auth(admin, { admin: true }),
     });
     expect(assigned.status).toBe(200);
-    expect(read(ReportSchema, assigned.body).assigned_account?.id).toBeDefined();
+    expect(read(ApiAdminReport, assigned.body).assigned_account?.id).toBeDefined();
     const unassigned = await json(`/api/v1/admin/reports/${filed.id}/unassign`, {
       method: "POST",
       headers: await auth(admin, { admin: true }),
     });
-    expect(read(ReportSchema, unassigned.body).assigned_account).toBeNull();
+    expect(read(ApiAdminReport, unassigned.body).assigned_account).toBeNull();
   });
 
   it("resolves the report behind a moderation action", async () => {
@@ -251,7 +222,7 @@ describe("admin reports", () => {
     const afterFirst = await json("/api/v1/admin/reports?resolved=true", {
       headers: await auth(admin, { admin: true }),
     });
-    expect(read(z.array(ReportSchema), afterFirst.body).map((report) => report.id)).toEqual([
+    expect(read(z.array(ApiAdminReport), afterFirst.body).map((report) => report.id)).toEqual([
       first.id,
     ]);
 
@@ -265,7 +236,7 @@ describe("admin reports", () => {
     const afterBulk = await json("/api/v1/admin/reports?resolved=true", {
       headers: await auth(admin, { admin: true }),
     });
-    expect(read(z.array(ReportSchema), afterBulk.body).map((report) => report.id)).toEqual(
+    expect(read(z.array(ApiAdminReport), afterBulk.body).map((report) => report.id)).toEqual(
       expect.arrayContaining([first.id, second.id]),
     );
 
@@ -297,7 +268,7 @@ describe("admin reports", () => {
       body: JSON.stringify({ category: "spam", rule_ids: [] }),
     });
     expect(cleared.status).toBe(200);
-    const document = read(ReportSchema, cleared.body);
+    const document = read(ApiAdminReport, cleared.body);
     expect(document.category).toBe("spam");
     expect(document.rules).toEqual([]);
   });

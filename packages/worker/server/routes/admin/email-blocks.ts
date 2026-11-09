@@ -1,3 +1,4 @@
+import type { ApiAdminCanonicalEmailBlockJSON, ApiAdminEmailDomainBlockJSON } from "@tstodon/api";
 import { Hostname } from "@tstodon/domain";
 import { Sensitive } from "@tstodon/core";
 import type { Context } from "hono";
@@ -44,6 +45,13 @@ const CanonicalEmailTestBodySchema = z.object({ email: OptionalEmailSchema });
 
 const EmailDomainBlockBodySchema = z.object({ domain: z.string().optional() });
 
+const canonicalEmailBlockDocument = (
+  block: Readonly<{ id: string; canonicalEmailHash: string }>,
+): ApiAdminCanonicalEmailBlockJSON => ({
+  id: block.id,
+  canonical_email_hash: block.canonicalEmailHash,
+});
+
 export const getV1AdminCanonicalEmailBlocks = async (
   c: Context<{ Bindings: Env }, "/api/v1/admin/canonical_email_blocks">,
 ) => {
@@ -59,9 +67,7 @@ export const getV1AdminCanonicalEmailBlocks = async (
   if (blocks.isErr()) {
     return jsonRepositoryError(c, blocks.error.message);
   }
-  return c.json(
-    blocks.value.map((block) => ({ id: block.id, canonical_email_hash: block.canonicalEmailHash })),
-  );
+  return c.json(blocks.value.map(canonicalEmailBlockDocument));
 };
 
 export const getV1AdminCanonicalEmailBlocksById = async (
@@ -78,7 +84,7 @@ export const getV1AdminCanonicalEmailBlocksById = async (
   if (!block.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.json({ id: block.value.id, canonical_email_hash: block.value.canonicalEmailHash });
+  return c.json(canonicalEmailBlockDocument(block.value));
 };
 
 /** `POST /test` answers the block an email would hit, without creating one. */
@@ -104,7 +110,7 @@ export const postV1AdminCanonicalEmailBlocksTest = async (
   if (!block.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.json({ id: block.value.id, canonical_email_hash: block.value.canonicalEmailHash });
+  return c.json(canonicalEmailBlockDocument(block.value));
 };
 
 export const postV1AdminCanonicalEmailBlocks = async (
@@ -139,7 +145,7 @@ export const postV1AdminCanonicalEmailBlocks = async (
       422,
     );
   }
-  return c.json({ id: blocked.value.id, canonical_email_hash: blocked.value.canonicalEmailHash });
+  return c.json(canonicalEmailBlockDocument(blocked.value));
 };
 
 export const deleteV1AdminCanonicalEmailBlocksById = async (
@@ -162,13 +168,14 @@ export const deleteV1AdminCanonicalEmailBlocksById = async (
 const emailDomainBlockDocument = async (
   env: Env,
   block: EmailDomainBlock,
-): Promise<Record<string, unknown>> => {
+): Promise<ApiAdminEmailDomainBlockJSON> => {
   const history = await emailDomainHistory(env.DB, block.domain);
   return {
     id: block.id,
     domain: block.domain,
     created_at: block.createdAt,
-    history: history.isOk() ? history.value : [],
+    history: history.isOk() ? history.value.map((day) => ({ ...day })) : [],
+    allow_with_approval: false,
   };
 };
 
@@ -187,7 +194,7 @@ export const getV1AdminEmailDomainBlocks = async (
   if (blocks.isErr()) {
     return jsonRepositoryError(c, blocks.error.message);
   }
-  const documents: Record<string, unknown>[] = [];
+  const documents: ApiAdminEmailDomainBlockJSON[] = [];
   for (const block of blocks.value) {
     documents.push(await emailDomainBlockDocument(c.env, block));
   }

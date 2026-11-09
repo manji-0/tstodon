@@ -2,6 +2,8 @@ import { schemaResult } from "@tstodon/core";
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { JPEG_800X600, PNG_40X30 } from "../test/image-fixtures";
+import { ApiV1Instance } from "@tstodon/api";
+import { expectContract } from "../test/api-contract";
 import { z } from "zod";
 import { findAccountByUsername } from "./account-store";
 import { requireAdmin } from "./auth";
@@ -124,10 +126,12 @@ describe("worker http", () => {
     const response = await SELF.fetch("https://example.com/api/v1/instance");
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body).toMatchObject({
-      kind: "MastodonInstance",
+    // Mastodon's v1 document: no tstodon `kind`, the streaming URL under `urls`.
+    expect(body).not.toHaveProperty("kind");
+    expect(expectContract(ApiV1Instance, body)).toMatchObject({
       uri: "example.com",
       title: "tstodon",
+      urls: { streaming_api: "wss://example.com" },
     });
   });
 

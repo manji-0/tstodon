@@ -176,6 +176,36 @@ describe("account profiles", () => {
     expect(status.fields.map((field) => field.name)).toEqual(["Website"]);
   });
 
+  it("takes Mastodon's fields_attributes, as a list or an indexed form hash", async () => {
+    const email = "profile-fields-attributes@example.com";
+    const listed = read(
+      AccountSchema,
+      (
+        await updateCredentials(email, {
+          fields_attributes: [
+            { name: "Website", value: "https://example.org" },
+            { name: "Pronouns", value: "they/them" },
+          ],
+        })
+      ).body,
+    );
+    expect(listed.fields.map((field) => field.name)).toEqual(["Website", "Pronouns"]);
+
+    const form = new FormData();
+    form.set("fields_attributes[1][name]", "Second");
+    form.set("fields_attributes[1][value]", "two");
+    form.set("fields_attributes[0][name]", "First");
+    form.set("fields_attributes[0][value]", "one");
+    const response = await SELF.fetch("https://example.com/api/v1/accounts/update_credentials", {
+      method: "PATCH",
+      headers: await auth(email),
+      body: form,
+    });
+    expect(response.status).toBe(200);
+    const formed = read(AccountSchema, await response.json());
+    expect(formed.fields.map((field) => field.name)).toEqual(["First", "Second"]);
+  });
+
   it("renders a profile field value as escaped HTML, never raw markup", async () => {
     const email = "profile-field-xss@example.com";
     const raw = '<img src=x onerror="alert(1)"> & co';
