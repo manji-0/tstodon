@@ -11,6 +11,7 @@ import { requestQuoteRefresh } from "./quote-retry-queue";
 import { findRemoteActorByUri } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
 import { parseInstanceIdentity } from "./runtime-config";
+import { unsignedFetch } from "./federated-fetch";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -150,6 +151,7 @@ const setup = async (slug: string) => {
       identity.value,
       actor.value,
       note(bob, bobNoteUri, { quote: carolNote.id, quoteAuthorization: stampUri }),
+      { fetchSigner: unsignedFetch },
     );
     expect(stored.isOk()).toBe(true);
   };

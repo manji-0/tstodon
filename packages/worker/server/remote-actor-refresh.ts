@@ -2,6 +2,7 @@ import { suspendedDomains } from "./admin-domain-block-store";
 import { refreshRemoteActor } from "./remote-actor-fetch";
 import { claimRemoteActorRefresh, listStaleRemoteActorUris } from "./remote-actor-store";
 import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
+import { instanceActorFetchSigner } from "./instance-actor";
 
 /**
  * How much one cron run may refresh: at most `actors` actors, none started
@@ -50,6 +51,7 @@ export const refreshStaleRemoteActors = async (
   const options = {
     allowHosts: await federationAllowHosts(env),
     blockedHosts: await suspendedDomains(env.DB),
+    fetchSigner: instanceActorFetchSigner(env.DB, identity.value),
   };
   const deadline = Date.now() + budget.ms;
   let started = 0;

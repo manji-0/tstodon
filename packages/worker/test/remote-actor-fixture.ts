@@ -91,11 +91,17 @@ export const remoteActor = async (
     publicKeyPem: keys.publicKeyPem,
     fetch: async (path) => {
       const url = new URL(path, "https://example.com");
-      const headers = await signFetchRequest(url, keys.privateKeyJwk, `${actorUri}#main-key`);
+      const accept = "application/activity+json";
+      const headers = await signFetchRequest(
+        url,
+        keys.privateKeyJwk,
+        `${actorUri}#main-key`,
+        accept,
+      );
       if (headers.isErr()) {
         throw new Error(headers.error.message);
       }
-      return SELF.fetch(url, { headers: headers.value });
+      return SELF.fetch(url, { headers: { ...headers.value, Host: url.host, Accept: accept } });
     },
     delivery,
     send: async (activity) => (await SELF.fetch(await delivery(activity))).status,

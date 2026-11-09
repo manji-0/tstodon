@@ -127,7 +127,7 @@ const InlineInstrumentSchema = z.object({ id: z.string().min(1) }).passthrough()
  * way the note must be the signer's.
  */
 const cacheInstrument = async (
-  { env, identity, signer, received, allowHosts }: RemoteDelivery<"QuoteRequest">,
+  { env, identity, signer, received, allowHosts, fetchSigner }: RemoteDelivery<"QuoteRequest">,
   uri: string,
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
   const inline = schemaResult(InlineInstrumentSchema)(received.instrument);
@@ -135,6 +135,7 @@ const cacheInstrument = async (
     inline.isOk() && urlHost(inline.value.id) === urlHost(signer.actorUri) ? inline.value : uri;
   const stored = await persistRemoteObject(env, identity, signer, embedded, {
     allowHosts,
+    fetchSigner,
     // A `Create` that comes after finds the note cached and notifies nobody.
     notifyMentions: true,
   });

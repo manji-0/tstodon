@@ -441,7 +441,7 @@ export const resolveRemoteActor = async (
   identity: InstanceIdentity,
   keyId: string,
   actorUri: string,
-  options: KeyResolveOptions = {},
+  options: KeyResolveOptions,
 ): Promise<Result<RemoteActor, RemoteActorResolveError>> => {
   const byKey = await findRemoteActorByPublicKeyId(db, keyId);
   if (byKey.isErr()) {
@@ -550,7 +550,7 @@ export const resolveRemoteActorByHandle = async (
   db: D1Database,
   identity: InstanceIdentity,
   handle: string,
-  options: HandleResolveOptions = {},
+  options: HandleResolveOptions,
 ): Promise<Result<RemoteActor, RemoteActorResolveError>> => {
   const asked = domainHandle(handle);
   if (asked === undefined) {

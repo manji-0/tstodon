@@ -23,6 +23,7 @@ import { type CollectionPage, fetchCollectionPage, firstCollectionPage } from ".
 import { persistAnnouncedObject, persistRemoteObject } from "./remote-status-persist";
 import { type JobPage, measureJobPage } from "./metrics";
 import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
+import { instanceActorFetchSigner } from "./instance-actor";
 
 /** How long a backfilled outbox counts as fresh before a profile view fetches it again. */
 export const OUTBOX_BACKFILL_TTL_MS = 24 * 60 * 60 * 1000;
@@ -176,6 +177,7 @@ const backfillRemoteOutbox = async (env: Env, job: BackfillRemoteOutbox): Promis
   const options: FederatedFetchOptions = {
     allowHosts: await federationAllowHosts(env),
     blockedHosts: suspended,
+    fetchSigner: instanceActorFetchSigner(env.DB, identity.value),
   };
   const { from } = job;
   // A later page is a link taken from the remote's document; it must stay on

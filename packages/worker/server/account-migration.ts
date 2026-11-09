@@ -14,6 +14,7 @@ import { newEntityId } from "./ids";
 import { sendActorUpdate } from "./local-actor";
 import { findMoveTarget, startMovingFollows } from "./remote-move";
 import { federationAllowHosts } from "./runtime-config";
+import { instanceActorFetchSigner } from "./instance-actor";
 
 export type AddAliasError = ResolveHandleError | Readonly<{ kind: "SelfAlias" }>;
 
@@ -98,6 +99,7 @@ export const moveAccount = async (
   const target = await findMoveTarget(env, identity, resolved.value.actorUri, {
     allowHosts: await federationAllowHosts(env),
     blockedHosts: await suspendedDomains(env.DB),
+    fetchSigner: instanceActorFetchSigner(env.DB, identity),
   });
   if (target.isErr()) {
     return err(target.error);

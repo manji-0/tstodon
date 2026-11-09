@@ -10,6 +10,7 @@ import { upsertRemoteActor } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
 import { findRemoteStatusByObjectUri } from "./remote-status-store";
 import { authHeaders } from "../test/auth-fixture";
+import { unsignedFetch } from "./federated-fetch";
 
 const auth = (email: string): Promise<Record<string, string>> =>
   authHeaders(email, { admin: true });
@@ -83,24 +84,30 @@ describe("remote status media", () => {
       throw new Error("identity");
     }
 
-    const persisted = await persistRemoteObject(env, identity.value, actor, {
-      id: `${actorUri}/statuses/1`,
-      type: "Note",
-      attributedTo: actorUri,
-      content: "<p>look at this</p>",
-      published: new Date().toISOString(),
-      to: ["https://www.w3.org/ns/activitystreams#Public"],
-      attachment: [
-        {
-          type: "Document",
-          mediaType: "image/png",
-          url: "https://media-remote.example/a.png",
-          name: "alt text",
-        },
-        { type: "Document", mediaType: "video/mp4", url: "https://media-remote.example/b.mp4" },
-        { type: "Document", url: "https://media-remote.example/no-type" },
-      ],
-    });
+    const persisted = await persistRemoteObject(
+      env,
+      identity.value,
+      actor,
+      {
+        id: `${actorUri}/statuses/1`,
+        type: "Note",
+        attributedTo: actorUri,
+        content: "<p>look at this</p>",
+        published: new Date().toISOString(),
+        to: ["https://www.w3.org/ns/activitystreams#Public"],
+        attachment: [
+          {
+            type: "Document",
+            mediaType: "image/png",
+            url: "https://media-remote.example/a.png",
+            name: "alt text",
+          },
+          { type: "Document", mediaType: "video/mp4", url: "https://media-remote.example/b.mp4" },
+          { type: "Document", url: "https://media-remote.example/no-type" },
+        ],
+      },
+      { fetchSigner: unsignedFetch },
+    );
     expect(persisted.isOk()).toBe(true);
     expect(persisted.isOk() ? persisted.value : undefined).toBeDefined();
 
@@ -130,19 +137,25 @@ describe("remote status media", () => {
       throw new Error("identity");
     }
 
-    const persisted = await persistRemoteObject(env, identity.value, actor, {
-      id: `${actorUri}/statuses/2`,
-      type: "Note",
-      attributedTo: actorUri,
-      content: "<p>many</p>",
-      published: new Date().toISOString(),
-      to: ["https://www.w3.org/ns/activitystreams#Public"],
-      attachment: Array.from({ length: 6 }, (_, index) => ({
-        type: "Document",
-        mediaType: "audio/mpeg",
-        url: `https://media-many.example/${index}.mp3`,
-      })),
-    });
+    const persisted = await persistRemoteObject(
+      env,
+      identity.value,
+      actor,
+      {
+        id: `${actorUri}/statuses/2`,
+        type: "Note",
+        attributedTo: actorUri,
+        content: "<p>many</p>",
+        published: new Date().toISOString(),
+        to: ["https://www.w3.org/ns/activitystreams#Public"],
+        attachment: Array.from({ length: 6 }, (_, index) => ({
+          type: "Document",
+          mediaType: "audio/mpeg",
+          url: `https://media-many.example/${index}.mp3`,
+        })),
+      },
+      { fetchSigner: unsignedFetch },
+    );
     expect(persisted.isOk()).toBe(true);
     const stored = persisted.isOk() ? persisted.value : undefined;
     expect(stored?.kind === "RemoteNote" ? stored.media.length : 0).toBe(4);
@@ -174,9 +187,13 @@ describe("reject_media domain blocks", () => {
       ],
     });
 
-    expect((await persistRemoteObject(env, identity.value, actor, note("before"))).isOk()).toBe(
-      true,
-    );
+    expect(
+      (
+        await persistRemoteObject(env, identity.value, actor, note("before"), {
+          fetchSigner: unsignedFetch,
+        })
+      ).isOk(),
+    ).toBe(true);
 
     const blocked = await json("/api/v1/admin/domain_blocks", {
       method: "POST",
@@ -199,9 +216,13 @@ describe("reject_media domain blocks", () => {
       before.isOk() && before.value?.kind === "RemoteNote" ? before.value.media : undefined,
     ).toEqual([]);
 
-    expect((await persistRemoteObject(env, identity.value, actor, note("after"))).isOk()).toBe(
-      true,
-    );
+    expect(
+      (
+        await persistRemoteObject(env, identity.value, actor, note("after"), {
+          fetchSigner: unsignedFetch,
+        })
+      ).isOk(),
+    ).toBe(true);
 
     const timeline = await json("/api/v1/timelines/public");
     const statuses = read(z.array(RemoteStatusSchema), timeline.body).filter(

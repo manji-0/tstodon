@@ -9,6 +9,7 @@ import { RemoteAccountId } from "./remote-account-id";
 import { resolveRemoteActorByHandle } from "./remote-actor-fetch";
 import { findRemoteActorByHandle, findRemoteActorByUri } from "./remote-actor-store";
 import { federationAllowHosts } from "./runtime-config";
+import { instanceActorFetchSigner } from "./instance-actor";
 
 /**
  * An account on either side of a move: a local account, or a cached remote
@@ -117,6 +118,7 @@ export const resolveAccountHandle = async (
   const actor = await resolveRemoteActorByHandle(env.DB, identity, `${username}@${domain}`, {
     allowHosts: await federationAllowHosts(env),
     blockedHosts: await suspendedDomains(env.DB),
+    fetchSigner: instanceActorFetchSigner(env.DB, identity),
   });
   if (actor.isErr()) {
     return actor.error.kind === "RepositoryError"

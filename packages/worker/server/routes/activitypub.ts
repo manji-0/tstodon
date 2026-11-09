@@ -54,7 +54,11 @@ import { loadNoteReply } from "../reply-target";
 import { loadNotePoll } from "../poll-store";
 import { findStatusById } from "../status-store";
 import { RemoteAccountId } from "../remote-account-id";
-import { instanceActorDocument, instanceActorKeys } from "../instance-actor";
+import {
+  instanceActorDocument,
+  instanceActorFetchSigner,
+  instanceActorKeys,
+} from "../instance-actor";
 
 const parseActivityJson = schemaResult(ActivityJsonSchema);
 
@@ -367,6 +371,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   }
   const suspended = await suspendedDomains(c.env.DB);
   const allowHosts = await federationAllowHosts(c.env);
+  const fetchSigner = instanceActorFetchSigner(c.env.DB, identity.value);
   const payload = activityPayloadFromJson(activityJson.value);
   const actorUri = String(payload.actor);
   const actorUsername = parseLocalActorUsername(identity.value, actorUri);
@@ -398,6 +403,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     const remote = await resolveRemoteActor(c.env.DB, identity.value, signature.keyId, actorUri, {
       allowHosts,
       blockedHosts: suspended,
+      fetchSigner,
       checkSignature: (publicKeyPem) => verifyInboxRequest(c.req.raw, publicKeyPem, bodyText),
     });
     if (remote.isErr()) {
@@ -496,6 +502,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       body: json.value,
       allowHosts,
       blockedHosts: suspended,
+      fetchSigner,
     },
     signer,
   );

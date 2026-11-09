@@ -4,6 +4,7 @@ import { parseSignatureHeader, verifySignedFetch } from "./http-signature";
 import { resolveRemoteActor } from "./remote-actor-fetch";
 import { findRemoteActorByPublicKeyId } from "./remote-actor-store";
 import { allowListAdmits, federationAllowHosts } from "./runtime-config";
+import { instanceActorFetchSigner } from "./instance-actor";
 
 /**
  * The remote actor that signed this GET (an "authorized fetch"), or undefined
@@ -32,6 +33,7 @@ export const signedFetchActor = async (
   const actor = await resolveRemoteActor(env.DB, identity, parsed.keyId, actorUri, {
     allowHosts,
     blockedHosts: suspended,
+    fetchSigner: instanceActorFetchSigner(env.DB, identity),
     checkSignature: (publicKeyPem) => verifySignedFetch(request, parsed, publicKeyPem),
   });
   if (actor.isErr()) {

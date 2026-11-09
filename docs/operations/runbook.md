@@ -176,6 +176,8 @@ Level is the `console` method. Every event's `kind` is unique to one meaning; th
 | `ThreadBackfillNotQueued`, `OutboxBackfillNotQueued`, `OutboxBackfillPageNotQueued`                                                          | `remote-thread-backfill.ts`, `remote-outbox-backfill.ts`                                                      | Fetching a remote thread or a remote actor's recent posts                                                  |
 | `ExpiredPollsFollowUpNotQueued`, `CsvImportNotQueued`                                                                                        | `poll-expiry.ts`, `csv-import-apply.ts`                                                                       | The next page of poll expiry or of a CSV import (the import then shows as stopped)                         |
 
+**Outgoing fetches.** `FetchNotSigned` (error, `instance-actor.ts`, `federated-fetch.ts`): the instance actor's key could not be read from D1, or a fetch could not be signed with it (`message`), so the ActivityPub GET went out unsigned. A remote in secure mode (Mastodon's `AUTHORIZED_FETCH`) answers such a GET with 401, so its actors, posts and quote stamps do not resolve. Check D1, then that `instance_actor_keys` holds one row.
+
 **Streaming.** `HomeFanOutNotPublished`, `ListFanOutNotPublished`, `PublicFanOutNotPublished` (`hub`), `BoostRemovalNotPublished`, `ConversationNotPublished` (`home-fan-out.ts`, `public-fan-out.ts`, `conversation-stream.ts`): a `StreamHub` Durable Object call failed, so open clients missed a live update. Timelines are still correct on reload. Act only on a sustained rate (Durable Object errors in the dashboard).
 
 **Media.**

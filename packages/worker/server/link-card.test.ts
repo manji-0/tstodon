@@ -11,6 +11,7 @@ import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { cacheLinkCard, processLinkCardJob } from "./link-card";
 import { processOutboxJob } from "./outbox-job";
+import { unsignedFetch } from "./federated-fetch";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -170,14 +171,20 @@ describe("link cards", () => {
     if (identity.isErr()) {
       throw new Error("identity");
     }
-    const persisted = await persistRemoteObject(env, identity.value, actor.value, {
-      id: `${actorUri}/statuses/1`,
-      type: "Note",
-      attributedTo: actorUri,
-      content: '<p>reading <a href="https://news.example/story-remote">this</a></p>',
-      published: new Date().toISOString(),
-      to: ["https://www.w3.org/ns/activitystreams#Public"],
-    });
+    const persisted = await persistRemoteObject(
+      env,
+      identity.value,
+      actor.value,
+      {
+        id: `${actorUri}/statuses/1`,
+        type: "Note",
+        attributedTo: actorUri,
+        content: '<p>reading <a href="https://news.example/story-remote">this</a></p>',
+        published: new Date().toISOString(),
+        to: ["https://www.w3.org/ns/activitystreams#Public"],
+      },
+      { fetchSigner: unsignedFetch },
+    );
     expect(persisted.isOk()).toBe(true);
     const remoteId = persisted.isOk() && persisted.value ? persisted.value.id : "";
     expect(remoteId.length).toBeGreaterThan(0);

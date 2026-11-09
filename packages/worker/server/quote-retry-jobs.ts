@@ -24,14 +24,19 @@ import { remoteQuoteContext } from "./remote-status-persist";
 import { findRemoteStatusById } from "./remote-status-store";
 import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 import { findStatusById } from "./status-store";
+import { instanceActorFetchSigner } from "./instance-actor";
 
 type RefetchAndVerifyQuote = Extract<OutboxJob, { kind: "RefetchAndVerifyQuote" }>;
 type RefreshQuote = Extract<OutboxJob, { kind: "RefreshQuote" }>;
 
 /** The federation guards: suspended domains and the allow list. */
-const federationOptions = async (env: Env): Promise<FederatedFetchOptions> => ({
+const federationOptions = async (
+  env: Env,
+  identity: InstanceIdentity,
+): Promise<FederatedFetchOptions> => ({
   allowHosts: await federationAllowHosts(env),
   blockedHosts: await suspendedDomains(env.DB),
+  fetchSigner: instanceActorFetchSigner(env.DB, identity),
 });
 
 /** Whether `uri` sits on a host this instance federates with. */
@@ -95,7 +100,7 @@ export const processRefetchAndVerifyQuoteJob = async (
   if (actor.isErr()) {
     return "retry";
   }
-  const options = await federationOptions(env);
+  const options = await federationOptions(env, identity.value);
   if (
     !actor.value ||
     RemoteActor.onAnyHost(actor.value, options.blockedHosts ?? new Set()) ||
@@ -194,7 +199,7 @@ export const processRefreshQuoteJob = async (
     return "ok";
   }
   const stampUri = state.approval.uri;
-  const options = await federationOptions(env);
+  const options = await federationOptions(env, identity.value);
   if (!federatesWith(options, stampUri)) {
     return "ok";
   }

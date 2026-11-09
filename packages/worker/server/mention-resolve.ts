@@ -7,6 +7,7 @@ import { remoteMentionHandles } from "./html";
 import { resolveRemoteActorByHandle } from "./remote-actor-fetch";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { allowListAdmits, federationAllowHosts } from "./runtime-config";
+import { instanceActorFetchSigner } from "./instance-actor";
 
 const MAX_MENTION_LOOKUPS = 20;
 
@@ -33,6 +34,7 @@ export const resolveRemoteMentions = async (
   }
   const blockedHosts = await suspendedDomains(env.DB);
   const allowHosts = await federationAllowHosts(env);
+  const fetchSigner = instanceActorFetchSigner(env.DB, identity);
   let lookUpsLeft = MAX_MENTION_LOOKUPS;
   const mayLookUp = (): boolean => {
     if (lookUpsLeft === 0) {
@@ -50,7 +52,7 @@ export const resolveRemoteMentions = async (
       env.DB,
       identity,
       `${handle.username}@${handle.domain}`,
-      { allowHosts, blockedHosts, mayLookUp },
+      { allowHosts, blockedHosts, mayLookUp, fetchSigner },
     );
     const admitted =
       resolved.isOk() &&
