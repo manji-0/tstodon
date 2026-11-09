@@ -336,6 +336,9 @@ const questionFields = (
   };
 };
 
+/** A focal point as the `Document` carries it, `[x, y]`. */
+const focalPointOf = (point: readonly [number, number]): [number, number] => [point[0], point[1]];
+
 /**
  * The status a note quotes, as its `quote` property names it, the quoted
  * author's stamp once the quote is accepted (`quoteAuthorization`), and a
@@ -451,9 +454,7 @@ export const noteDocument = (
       url: media.url,
       name: media.name,
       blurhash: media.blurhash,
-      ...(media.focalPoint
-        ? { focalPoint: [media.focalPoint[0], media.focalPoint[1]] as [number, number] }
-        : {}),
+      ...(media.focalPoint ? { focalPoint: focalPointOf(media.focalPoint) } : {}),
       ...(media.dimensions
         ? { width: media.dimensions.width, height: media.dimensions.height }
         : {}),
