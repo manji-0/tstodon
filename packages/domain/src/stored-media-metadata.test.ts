@@ -28,6 +28,7 @@ const harness = (fixture: Fixture) => {
   const marks: Array<Readonly<{ source: StoredMediaSource; id: string; mark: StoredMediaMark }>> =
     [];
   const reads: string[] = [];
+  const sizes: Array<readonly [string, number]> = [];
   const list: ListUnstrippedMedia = async (source, afterId, limit) =>
     ok((fixture.rows[source] ?? []).filter((row) => row.id > afterId).slice(0, limit));
   const read: ReadStoredMedia = async (objectKey) => {
@@ -38,14 +39,15 @@ const harness = (fixture: Fixture) => {
     }
     return object;
   };
-  const mark: MarkStoredMedia = async (source, media, value) => {
+  const mark: MarkStoredMedia = async (source, media, value, size) => {
     if (fixture.markFails) {
       return err({ kind: "RepositoryError", message: "down" });
     }
     marks.push({ source, id: media.id, mark: value });
+    sizes.push([media.id, size]);
     return ok(undefined);
   };
-  return { deps: { list, read, mark }, marks, reads };
+  return { deps: { list, read, mark }, marks, reads, sizes };
 };
 
 const found = (bytes: Uint8Array, writes: Uint8Array[] = []): StoredMediaObject => ({
@@ -150,6 +152,39 @@ describe("StoredMediaMetadata.pass", () => {
       ["flaky", "Deferred"],
     ]);
     expect(pass.next).toBeUndefined();
+  });
+
+  it("marks each row with the size of its own object as now stored", async () => {
+    const { deps, sizes } = harness({
+      rows: {
+        attachments: [
+          { id: "a1", objectKeys: ["clean", "legacy"] },
+          { id: "a2", objectKeys: ["gone"] },
+          { id: "a3", objectKeys: ["huge"] },
+          { id: "a4", objectKeys: ["broken"] },
+          { id: "a5", objectKeys: ["flaky"] },
+        ],
+      },
+      objects: {
+        clean: found(OPAQUE),
+        legacy: found(BROKEN_PNG),
+        huge: { kind: "TooLarge", size: 500 },
+        broken: found(BROKEN_PNG),
+        flaky: new Error("R2 unavailable"),
+      },
+    });
+    await StoredMediaMetadata.pass(
+      deps,
+      { source: "attachments", afterId: "" },
+      { ...LIMITS, rows: 10 },
+    );
+    // The first key's object counts, not a legacy copy; a deferred row is not marked.
+    expect(sizes).toEqual([
+      ["a1", OPAQUE.length],
+      ["a2", 0],
+      ["a3", 500],
+      ["a4", BROKEN_PNG.length],
+    ]);
   });
 
   it("stops early once its byte budget is spent and resumes after the last row read", async () => {

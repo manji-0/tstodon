@@ -95,11 +95,14 @@ export type StoredMediaMark =
 /**
  * Record `mark` on a row of `source`, if it still holds the key it was listed
  * with (`media.objectKeys[0]`); a row that moved or went is left alone.
+ * `size` is the byte size of the object now at that key (the rewrite when
+ * stripped, 0 when missing), which the row records with the mark.
  */
 export type MarkStoredMedia = (
   source: StoredMediaSource,
   media: UnstrippedMedia,
   mark: StoredMediaMark,
+  size: number,
 ) => Promise<Result<void, RepositoryError>>;
 
 /** The rewrite of one stored object: new bytes, or none needed. */
@@ -205,39 +208,58 @@ const strip = (bytes: Uint8Array): Result<StoredMediaStrip, MalformedImage | Mal
   );
 };
 
-/** Strip one object; resolves to what happened and how many bytes were read. */
+/**
+ * Strip one object; resolves to what happened, how many bytes were read, and
+ * the size of the object now stored at the key (undefined when deferred: it
+ * is read again).
+ */
 const stripObject = async (
   read: ReadStoredMedia,
   objectKey: string,
   limits: StoredMediaLimits,
-): Promise<Readonly<{ outcome: StoredMediaOutcome; bytesRead: number }>> => {
+): Promise<
+  Readonly<{ outcome: StoredMediaOutcome; bytesRead: number; size: number | undefined }>
+> => {
   try {
     const object = await read(objectKey, limits.objectBytes);
     switch (object.kind) {
       case "Missing":
-        return { outcome: { kind: "Missing" }, bytesRead: 0 };
+        return { outcome: { kind: "Missing" }, bytesRead: 0, size: 0 };
       case "TooLarge":
-        return { outcome: { kind: "TooLarge", size: object.size }, bytesRead: 0 };
+        return {
+          outcome: { kind: "TooLarge", size: object.size },
+          bytesRead: 0,
+          size: object.size,
+        };
       case "Found": {
         const bytesRead = object.bytes.length;
         const rewrite = strip(object.bytes);
         if (rewrite.isErr()) {
-          return { outcome: { kind: "Unreadable", error: rewrite.error }, bytesRead };
+          return {
+            outcome: { kind: "Unreadable", error: rewrite.error },
+            bytesRead,
+            size: bytesRead,
+          };
         }
         if (rewrite.value.kind === "Unchanged") {
-          return { outcome: { kind: "Unchanged" }, bytesRead };
+          return { outcome: { kind: "Unchanged" }, bytesRead, size: bytesRead };
         }
         const replaced = await object.replace(rewrite.value.bytes);
-        return {
-          outcome: replaced
-            ? { kind: "Stripped" }
-            : { kind: "Deferred", reason: "ObjectChangedSinceRead" },
-          bytesRead,
-        };
+        return replaced
+          ? { outcome: { kind: "Stripped" }, bytesRead, size: rewrite.value.bytes.length }
+          : {
+              outcome: { kind: "Deferred", reason: "ObjectChangedSinceRead" },
+              bytesRead,
+              size: undefined,
+            };
       }
     }
   } catch (error) {
-    return { outcome: { kind: "Deferred", reason: reasonOf(error) }, bytesRead: 0 };
+    return {
+      outcome: { kind: "Deferred", reason: reasonOf(error) },
+      bytesRead: 0,
+      size: undefined,
+    };
   }
 };
 
@@ -300,7 +322,9 @@ export const StoredMediaMetadata = {
    * row so no later run reads it again. A page that lists a full batch, or
    * stops early on its byte budget, continues after its last row; a short
    * page moves on to the next source. A row whose mark fails to record is
-   * read again by a later run, which finds it clean.
+   * read again by a later run, which finds it clean. The mark carries the
+   * size of the row's object as now stored, so a rewrite keeps the recorded
+   * size true to the bucket.
    */
   pass: async (
     deps: Readonly<{ list: ListUnstrippedMedia; read: ReadStoredMedia; mark: MarkStoredMedia }>,
@@ -321,8 +345,12 @@ export const StoredMediaMetadata = {
         break;
       }
       const outcomes: StoredMediaOutcome[] = [];
-      for (const objectKey of media.objectKeys) {
+      let size: number | undefined;
+      for (const [index, objectKey] of media.objectKeys.entries()) {
         const done = await stripObject(deps.read, objectKey, limits);
+        if (index === 0) {
+          size = done.size;
+        }
         bytesRead += done.bytesRead;
         tally[TALLY_KEY[done.outcome.kind]] += 1;
         outcomes.push(done.outcome);
@@ -331,8 +359,9 @@ export const StoredMediaMetadata = {
         }
       }
       const mark = markOf(outcomes);
-      if (mark) {
-        const marked = await deps.mark(cursor.source, media, mark);
+      // No object was deferred, so the row's own object has a size.
+      if (mark && size !== undefined) {
+        const marked = await deps.mark(cursor.source, media, mark, size);
         if (marked.isErr()) {
           reports.push({
             source: cursor.source,

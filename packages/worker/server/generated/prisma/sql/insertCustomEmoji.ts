@@ -12,9 +12,10 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param visibleInPicker
  * @param category
  * @param now
+ * @param imageFileSize
  */
 export const insertCustomEmoji = $runtime.makeTypedQueryFactory(
-  "INSERT INTO custom_emojis (\nid, shortcode, object_key, content_type, visible_in_picker, category, created_at, updated_at\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $7)",
+  "INSERT INTO custom_emojis (\nid, shortcode, object_key, content_type, visible_in_picker, category, created_at, updated_at,\nimage_file_size\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8)",
 ) as (
   id: string,
   shortcode: string,
@@ -23,6 +24,7 @@ export const insertCustomEmoji = $runtime.makeTypedQueryFactory(
   visibleInPicker: number,
   category: string | null,
   now: string,
+  imageFileSize: number | null,
 ) => $runtime.TypedSql<insertCustomEmoji.Parameters, insertCustomEmoji.Result>;
 
 export namespace insertCustomEmoji {
@@ -34,6 +36,7 @@ export namespace insertCustomEmoji {
     visibleInPicker: number,
     category: string | null,
     now: string,
+    imageFileSize: number | null,
   ];
   export type Result = {};
 }

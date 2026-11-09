@@ -5,6 +5,7 @@ import { ActivityId } from "./activity-id";
 import { Hostname } from "./hostname";
 import { StatusId } from "./status-id";
 import { StoredMediaMetadata } from "./stored-media-metadata";
+import { StoredMediaSizes } from "./stored-media-sizes";
 
 const ExpandFollowersSchema = z.object({
   kind: z.literal("ExpandFollowers"),
@@ -51,6 +52,20 @@ const StripStoredMediaMetadataSchema = z.object({
   source: StoredMediaMetadata.sourceSchema.default("attachments"),
   afterId: z.string().default(""),
   tally: StoredMediaMetadata.tallySchema.default(StoredMediaMetadata.emptyTally),
+});
+/**
+ * Record the byte size of the next page of stored objects whose size is not
+ * known (stored before sizes were recorded; see `StoredMediaSizes`), from a
+ * HEAD of each: the rows of `source` after `afterId` (empty for the first),
+ * then the later sources. `tally` sums the pages before, for the log line of
+ * the last one. The six-hourly cron queues the first page; a full page
+ * queues the next.
+ */
+const BackfillStoredMediaSizesSchema = z.object({
+  kind: z.literal("BackfillStoredMediaSizes"),
+  source: StoredMediaSizes.sourceSchema.default("attachments"),
+  afterId: z.string().default(""),
+  tally: StoredMediaSizes.tallySchema.default(StoredMediaSizes.emptyTally),
 });
 /** Publish the scheduled statuses whose time has come (cron). */
 const PublishScheduledStatusesSchema = unitKind("PublishScheduledStatuses");
@@ -240,6 +255,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   RekeyLegacyMediaSchema,
   VacuumMediaAttachmentsSchema,
   StripStoredMediaMetadataSchema,
+  BackfillStoredMediaSizesSchema,
   PublishScheduledStatusesSchema,
   CleanUpStatusesSchema,
   CleanUpAccountStatusesSchema,

@@ -318,6 +318,8 @@ export const Account_profilesScalarFieldEnum = {
   avatar_metadata_strip_error: "avatar_metadata_strip_error",
   header_metadata_stripped_at: "header_metadata_stripped_at",
   header_metadata_strip_error: "header_metadata_strip_error",
+  avatar_file_size: "avatar_file_size",
+  header_file_size: "header_file_size",
 } as const;
 
 export type Account_profilesScalarFieldEnum =
@@ -635,6 +637,7 @@ export const Custom_emojisScalarFieldEnum = {
   category: "category",
   created_at: "created_at",
   updated_at: "updated_at",
+  image_file_size: "image_file_size",
 } as const;
 
 export type Custom_emojisScalarFieldEnum =
@@ -692,6 +695,8 @@ export const Media_attachmentsScalarFieldEnum = {
   blurhash: "blurhash",
   metadata_stripped_at: "metadata_stripped_at",
   metadata_strip_error: "metadata_strip_error",
+  file_size: "file_size",
+  preview_file_size: "preview_file_size",
 } as const;
 
 export type Media_attachmentsScalarFieldEnum =

@@ -90,6 +90,8 @@ export const insertCustomEmoji = async (
     shortcode: string;
     objectKey: string;
     contentType: string;
+    /** The byte size of the stored image. */
+    imageFileSize: number;
     visibleInPicker: boolean;
     category: string | null;
   },
@@ -105,6 +107,7 @@ export const insertCustomEmoji = async (
         input.visibleInPicker ? 1 : 0,
         input.category,
         nowIso(),
+        input.imageFileSize,
       ),
     );
   });
@@ -129,11 +132,12 @@ export const replaceCustomEmojiImage = async (
   id: string,
   objectKey: string,
   contentType: string,
+  imageFileSize: number,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(
       db,
-      replaceCustomEmojiImageSql(id, objectKey, contentType, nowIso()),
+      replaceCustomEmojiImageSql(id, objectKey, contentType, nowIso(), imageFileSize),
       IdRow,
     );
     return rows.length > 0;

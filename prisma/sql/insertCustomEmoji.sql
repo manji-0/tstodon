@@ -5,6 +5,8 @@
 -- @param {Int} $5:visibleInPicker
 -- @param {String} $6:category?
 -- @param {String} $7:now
+-- @param {Int} $8:imageFileSize?
 INSERT INTO custom_emojis (
-    id, shortcode, object_key, content_type, visible_in_picker, category, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+    id, shortcode, object_key, content_type, visible_in_picker, category, created_at, updated_at,
+    image_file_size
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8)

@@ -17,9 +17,11 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param headerObjectKey
  * @param headerContentType
  * @param now
+ * @param avatarFileSize
+ * @param headerFileSize
  */
 export const upsertAccountProfile = $runtime.makeTypedQueryFactory(
-  "INSERT INTO account_profiles (\naccount_id, note, fields_json, bot, discoverable, indexable, hide_collections,\navatar_object_key, avatar_content_type, header_object_key, header_content_type, updated_at,\navatar_metadata_stripped_at, header_metadata_stripped_at\n) VALUES (\n$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,\nCASE WHEN $8 IS NULL THEN NULL ELSE $12 END, CASE WHEN $10 IS NULL THEN NULL ELSE $12 END\n)\nON CONFLICT(account_id) DO UPDATE SET\nnote = $2, fields_json = $3, bot = $4, discoverable = $5,\nindexable = $6, hide_collections = $7,\navatar_object_key = $8, avatar_content_type = $9,\nheader_object_key = $10, header_content_type = $11, updated_at = $12,\navatar_metadata_stripped_at = CASE\nWHEN $8 IS NULL THEN NULL\nWHEN avatar_object_key IS $8 THEN avatar_metadata_stripped_at\nELSE $12 END,\navatar_metadata_strip_error = CASE\nWHEN avatar_object_key IS $8 THEN avatar_metadata_strip_error END,\nheader_metadata_stripped_at = CASE\nWHEN $10 IS NULL THEN NULL\nWHEN header_object_key IS $10 THEN header_metadata_stripped_at\nELSE $12 END,\nheader_metadata_strip_error = CASE\nWHEN header_object_key IS $10 THEN header_metadata_strip_error END",
+  "INSERT INTO account_profiles (\naccount_id, note, fields_json, bot, discoverable, indexable, hide_collections,\navatar_object_key, avatar_content_type, header_object_key, header_content_type, updated_at,\navatar_metadata_stripped_at, header_metadata_stripped_at, avatar_file_size, header_file_size\n) VALUES (\n$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,\nCASE WHEN $8 IS NULL THEN NULL ELSE $12 END, CASE WHEN $10 IS NULL THEN NULL ELSE $12 END,\nCASE WHEN $8 IS NULL THEN NULL ELSE $13 END, CASE WHEN $10 IS NULL THEN NULL ELSE $14 END\n)\nON CONFLICT(account_id) DO UPDATE SET\nnote = $2, fields_json = $3, bot = $4, discoverable = $5,\nindexable = $6, hide_collections = $7,\navatar_object_key = $8, avatar_content_type = $9,\nheader_object_key = $10, header_content_type = $11, updated_at = $12,\navatar_metadata_stripped_at = CASE\nWHEN $8 IS NULL THEN NULL\nWHEN avatar_object_key IS $8 THEN avatar_metadata_stripped_at\nELSE $12 END,\navatar_metadata_strip_error = CASE\nWHEN avatar_object_key IS $8 THEN avatar_metadata_strip_error END,\nheader_metadata_stripped_at = CASE\nWHEN $10 IS NULL THEN NULL\nWHEN header_object_key IS $10 THEN header_metadata_stripped_at\nELSE $12 END,\nheader_metadata_strip_error = CASE\nWHEN header_object_key IS $10 THEN header_metadata_strip_error END,\navatar_file_size = CASE\nWHEN $8 IS NULL THEN NULL\nWHEN avatar_object_key IS $8 THEN COALESCE(avatar_file_size, $13)\nELSE $13 END,\nheader_file_size = CASE\nWHEN $10 IS NULL THEN NULL\nWHEN header_object_key IS $10 THEN COALESCE(header_file_size, $14)\nELSE $14 END",
 ) as (
   accountId: string,
   note: string,
@@ -33,6 +35,8 @@ export const upsertAccountProfile = $runtime.makeTypedQueryFactory(
   headerObjectKey: string | null,
   headerContentType: string | null,
   now: string,
+  avatarFileSize: number | null,
+  headerFileSize: number | null,
 ) => $runtime.TypedSql<upsertAccountProfile.Parameters, upsertAccountProfile.Result>;
 
 export namespace upsertAccountProfile {
@@ -49,6 +53,8 @@ export namespace upsertAccountProfile {
     headerObjectKey: string | null,
     headerContentType: string | null,
     now: string,
+    avatarFileSize: number | null,
+    headerFileSize: number | null,
   ];
   export type Result = {};
 }

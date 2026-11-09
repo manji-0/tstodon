@@ -43,12 +43,12 @@ export type MediaRow = z.infer<typeof MediaRowSchema>;
 
 /**
  * What an image upload stores beside the original: its dimensions, the
- * preview's key and dimensions (absent when storing the preview failed), and
- * the blurhash.
+ * preview's key, dimensions and stored byte size (absent when storing the
+ * preview failed), and the blurhash.
  */
 export type StoredImage = Readonly<{
   original: ImageDimensions;
-  preview: Readonly<{ objectKey: string; dimensions: ImageDimensions }> | undefined;
+  preview: Readonly<{ objectKey: string; dimensions: ImageDimensions; size: number }> | undefined;
   blurhash: string | null;
 }>;
 
@@ -69,6 +69,8 @@ export const insertMedia = async (
     id: string;
     accountId: string;
     objectKey: string;
+    /** The byte size of the original as stored (stripped of its metadata). */
+    fileSize: number;
     contentType: string;
     description: string | null;
     focus: Readonly<{ x: number; y: number }> | null;
@@ -105,6 +107,8 @@ export const insertMedia = async (
         image.preview_width,
         image.preview_height,
         image.blurhash,
+        input.fileSize,
+        input.image?.preview?.size ?? null,
       ),
     );
     return {

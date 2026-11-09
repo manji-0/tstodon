@@ -182,6 +182,8 @@ model account_profiles {
   avatar_metadata_strip_error String?
   header_metadata_stripped_at String?
   header_metadata_strip_error String?
+  avatar_file_size    Int?
+  header_file_size    Int?
 }
 
 model account_flags {
@@ -509,6 +511,7 @@ model custom_emojis {
   category          String?
   created_at        String  @default("CURRENT_TIMESTAMP")
   updated_at        String  @default("CURRENT_TIMESTAMP")
+  image_file_size   Int?
 
   @@index([shortcode], map: "idx_custom_emojis_shortcode")
 }
@@ -559,6 +562,8 @@ model media_attachments {
   blurhash     String?
   metadata_stripped_at String?
   metadata_strip_error String?
+  file_size    Int?
+  preview_file_size Int?
   statuses     statuses? @relation(fields: [status_id], references: [id], onUpdate: NoAction)
   accounts     accounts  @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
