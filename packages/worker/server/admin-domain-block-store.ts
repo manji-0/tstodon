@@ -1,3 +1,4 @@
+import type { ApiAdminDomainBlockJSON, ApiDomainBlockJSON } from "@tstodon/api";
 import { Hostname } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
@@ -164,9 +165,12 @@ export const suspendedDomains = async (db: D1Database): Promise<ReadonlySet<Host
   return new Set((rows.isOk() ? rows.value : []).map((row) => Hostname.ofAuthority(row.domain)));
 };
 
-export const domainBlockDocument = (row: DomainBlockRow): Record<string, unknown> => ({
+export const domainBlockDocument = async (
+  row: DomainBlockRow,
+): Promise<ApiAdminDomainBlockJSON> => ({
   id: row.id,
   domain: row.domain,
+  digest: await domainDigest(row.domain),
   severity: row.severity,
   reject_media: row.reject_media !== 0,
   reject_reports: row.reject_reports !== 0,
@@ -193,7 +197,11 @@ export const listPublicDomainBlocks = async (
 
 export const publicDomainBlockDocument = async (
   row: DomainBlockRow,
-): Promise<Record<string, unknown>> => {
+): Promise<ApiDomainBlockJSON | undefined> => {
+  // The query leaves `noop` out; a public block is a silence or a suspension.
+  if (row.severity === "noop") {
+    return undefined;
+  }
   const digest = await domainDigest(row.domain);
   return {
     domain: row.obfuscate !== 0 ? digest : row.domain,

@@ -28,7 +28,7 @@ Domain state is expressed as Zod 4.6 discriminated unions with a unified `kind` 
 - `packages/domain`
   Pure Zod discriminant models and transitions.
 - `packages/api`
-  Mastodon's REST entities as Zod schemas and inferred types, shared by the Worker and the web UI (see [REST API Contract](#rest-api-contract)).
+  Mastodon's REST entities as Zod schemas and inferred types, shared by the Worker and the web UI, and the ActivityPub documents tstodon sends (`@tstodon/api/activitypub`) (see [REST API Contract](#rest-api-contract)).
 - `packages/worker`
   Cloudflare Worker runtime, built by Void. Void file routes (`app/routes/`) and Hono for HTTP. `app/crons/` and `app/queues/` for cron and queue handlers; Workflow and Durable Object classes exported from the generated entry.
 
@@ -81,6 +81,10 @@ The JSON the REST API answers is defined once, in `@tstodon/api` (`packages/api`
 - The web UI's `mastodon/api_types/*.ts` re-export the same types under upstream's names (type-only imports, erased from the bundle); values it needs (visibility and quote-policy lists) come from the Zod-free `@tstodon/api/values`.
 
 Wire entities have no `kind`: the [discriminant rule](#discriminant-modeling) is for domain models. Where Mastodon discriminates (a notification's or media attachment's `type`, a quote's `state`), the schema is a discriminated union on that field. The domain maps its models to the wire names at the boundary (`Visibility.toMastodon` returns the contract's `StatusVisibility`). What tstodon renders beyond Mastodon (the `move` notification) or leaves out is noted in the schema.
+
+The admin API (`/api/v1/admin/*`) is in the same contract (`ApiAdminAccount`, `ApiAdminReport`, the domain, email and canonical-email blocks, `ApiAdminTag`, ...), checked by `server/admin-api-contract.test.ts`. One stored shape is parsed at runtime with a contract schema: a local status's replaced revisions (`status_edits.snapshot_json`), read at the D1 boundary with `StatusEditSnapshot` (`ApiStatusEdit` without its account).
+
+Federation output has its own entry, `@tstodon/api/activitypub`: schemas of the actor, instance actor, `Note` / `Question`, quote stamp, every activity the Worker delivers (`ApActivityDocument`), its collections, WebFinger and NodeInfo, as Mastodon's serializers shape them. The builders (`server/activitypub.ts`, `local-actor.ts`, `instance-actor.ts`, `quote-authorization-document.ts`, the activity builders, the ActivityPub and discovery routes) return these types, and the delivery queue (`enqueueLocalActivity`, `enqueueTargetedActivity`, ...) takes an `ApActivityDocument`; only a forwarded remote body (`forwardActivityToInboxes`) is not one. These schemas describe what tstodon sends; inbound documents are read leniently by `server/activitypub-wire.ts`. `server/activitypub-contract.test.ts` parses the served documents and every activity a run of actions queues.
 
 ## Remote Actor Domains
 

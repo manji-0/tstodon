@@ -2,9 +2,9 @@ import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { PNG_40X30 } from "../test/image-fixtures";
 import { z } from "zod";
+import { ApiAccount, ApiAdminAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (email: string, admin = false): Promise<Record<string, string>> =>
   authHeaders(email, { admin });
@@ -28,16 +28,12 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   return parsed.value;
 };
 
-const AdminAccountSchema = MastodonAccountPreviewSchema.extend({
-  sensitized: z.boolean(),
-});
-
 const accountIdFor = async (email: string): Promise<string> => {
   const response = await json("/api/v1/accounts/verify_credentials", {
     headers: await auth(email),
   });
   expect(response.status).toBe(200);
-  return read(MastodonAccountPreviewSchema, response.body).id;
+  return read(ApiAccount, response.body).id;
 };
 
 const adminPost = async (email: string, path: string): Promise<{ status: number; body: unknown }> =>
@@ -73,7 +69,7 @@ describe("admin account sensitize and delete", () => {
 
     const sensitized = await adminPost(adminEmail, `/api/v1/admin/accounts/${authorId}/sensitize`);
     expect(sensitized.status).toBe(200);
-    expect(read(AdminAccountSchema, sensitized.body).sensitized).toBe(true);
+    expect(read(ApiAdminAccount, sensitized.body).sensitized).toBe(true);
     expect(await sensitiveOf()).toBe(true);
 
     const unsensitized = await adminPost(
@@ -81,7 +77,7 @@ describe("admin account sensitize and delete", () => {
       `/api/v1/admin/accounts/${authorId}/unsensitize`,
     );
     expect(unsensitized.status).toBe(200);
-    expect(read(AdminAccountSchema, unsensitized.body).sensitized).toBe(false);
+    expect(read(ApiAdminAccount, unsensitized.body).sensitized).toBe(false);
     expect(await sensitiveOf()).toBe(false);
   });
 

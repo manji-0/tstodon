@@ -1,4 +1,4 @@
-import type { ApiCredentialAccountJSON } from "@tstodon/api";
+import type { ApiCredentialAccountJSON, ApiProfileDocumentJSON } from "@tstodon/api";
 import {
   FediRole,
   UploadMetadata,
@@ -28,6 +28,7 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
+  nestFormKeys,
   readUnknownBody,
   requireSession,
   requireUser,
@@ -471,7 +472,10 @@ export const patchV1AccountsUpdateCredentials = async (
     return jsonAuthError(c, user.error);
   }
   const rawBody = await readUnknownBody(c);
-  const body = schemaResult(UpdateCredentialsBodySchema)(rawBody);
+  // A form nests `fields_attributes[0][name]` as Rails does.
+  const body = schemaResult(UpdateCredentialsBodySchema)(
+    schemaResult(z.record(z.string(), z.unknown()))(rawBody).map(nestFormKeys).unwrapOr(rawBody),
+  );
   if (body.isErr()) {
     return jsonValidationError(c);
   }
@@ -550,64 +554,43 @@ export const deleteV1ProfileHeader = (c: Context<{ Bindings: Env }, "/api/v1/pro
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([UpdateCredentialsBodySchema]);
 
-const ProfileSourceSchema = z.object({
-  id: z.string(),
-  display_name: z.string(),
-  avatar: z.string(),
-  avatar_static: z.string(),
-  header: z.string(),
-  header_static: z.string(),
-  locked: z.boolean(),
-  bot: z.boolean(),
-  discoverable: z.boolean().nullable().optional(),
-  indexable: z.boolean(),
-  hide_collections: z.boolean().nullable().optional(),
-  note: z.string(),
-  fields: z.array(z.unknown()),
-  source: z.object({ note: z.string(), fields: z.array(z.unknown()) }),
-});
-
 /**
  * Mastodon 4.6's profile-editing document (`REST::ProfileSerializer`): the
- * plain-text note and fields alongside their rendered forms.
+ * plain-text note and fields, with their rendered forms alongside
+ * (`formatted_note` / `formatted_fields`, tstodon).
  */
 const profileDocument = async (
   env: Env,
   identity: InstanceIdentity,
   account: LocalAccount,
   role: FediRoleValue,
-): Promise<Record<string, unknown> | undefined> => {
+): Promise<ApiProfileDocumentJSON> => {
   const [credential, featured] = await Promise.all([
     credentialAccountDocument(env, identity, account, role),
     buildFeaturedTagDocuments(env, identity, account.id, account.username),
   ]);
-  const parsed = schemaResult(ProfileSourceSchema)(credential);
-  if (parsed.isErr()) {
-    return undefined;
-  }
-  const doc = parsed.value;
   return {
-    id: doc.id,
-    display_name: doc.display_name,
-    note: doc.source.note,
-    fields: doc.source.fields,
-    formatted_note: doc.note,
-    formatted_fields: doc.fields,
-    avatar: doc.avatar,
-    avatar_static: doc.avatar_static,
-    avatar_description: "",
-    header: doc.header,
-    header_static: doc.header_static,
-    header_description: "",
-    locked: doc.locked,
-    bot: doc.bot,
-    hide_collections: doc.hide_collections ?? false,
-    discoverable: doc.discoverable ?? false,
-    indexable: doc.indexable,
-    show_media: true,
-    show_media_replies: true,
-    show_featured: true,
-    attribution_domains: [],
+    id: credential.id,
+    display_name: credential.display_name,
+    note: credential.source.note,
+    fields: credential.source.fields,
+    formatted_note: credential.note,
+    formatted_fields: credential.fields,
+    avatar: credential.avatar,
+    avatar_static: credential.avatar_static,
+    avatar_description: credential.avatar_description,
+    header: credential.header,
+    header_static: credential.header_static,
+    header_description: credential.header_description,
+    locked: credential.locked,
+    bot: credential.bot,
+    hide_collections: credential.hide_collections ?? false,
+    discoverable: credential.discoverable ?? false,
+    indexable: credential.indexable,
+    show_media: credential.show_media,
+    show_media_replies: credential.show_media_replies,
+    show_featured: credential.show_featured,
+    attribution_domains: credential.source.attribution_domains,
     featured_tags: featured.kind === "Ok" ? featured.documents : [],
   };
 };
@@ -622,13 +605,9 @@ export const getV1Profile = async (c: Context<{ Bindings: Env }>) => {
   if (session.isErr()) {
     return jsonAuthError(c, session.error);
   }
-  const document = await profileDocument(
-    c.env,
-    identity.value,
-    session.value.account,
-    session.value.role,
+  return c.json(
+    await profileDocument(c.env, identity.value, session.value.account, session.value.role),
   );
-  return document ? c.json(document) : jsonRepositoryError(c, "profile could not be rendered");
 };
 
 /**

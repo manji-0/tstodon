@@ -1,5 +1,5 @@
 import type { ApiStatusJSON } from "@tstodon/api";
-import { InstanceIdentity, type LocalAccount, type LocalNote } from "@tstodon/domain";
+import { InstanceIdentity, IsoInstant, type LocalAccount, type LocalNote } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { noteDocument } from "./activitypub";
 import { type EnqueueLocalActivityError, enqueueLocalActivity } from "./delivery";
@@ -45,14 +45,20 @@ export const announceNoteUpdate = async (
       type: "Update",
       actor,
       published: updatedAt,
-      object: noteDocument(identity, account, note, {
-        quote: await noteQuote(env, identity, note.id),
-        mentions: await loadNoteMentions(env.DB, identity, note.id),
-        reply: await loadNoteReply(env.DB, identity, note),
-        poll: await loadNotePoll(env.DB, note.id),
-        media: media.value,
-        quotePolicy: await loadNoteQuotePolicy(env.DB, account, note),
-      }),
+      // Stamped with this change, so a receiver takes it as newer than its copy.
+      object: noteDocument(
+        identity,
+        account,
+        { ...note, editedAt: IsoInstant.parse(updatedAt).unwrapOr(note.editedAt) },
+        {
+          quote: await noteQuote(env, identity, note.id),
+          mentions: await loadNoteMentions(env.DB, identity, note.id),
+          reply: await loadNoteReply(env.DB, identity, note),
+          poll: await loadNotePoll(env.DB, note.id),
+          media: media.value,
+          quotePolicy: await loadNoteQuotePolicy(env.DB, account, note),
+        },
+      ),
     });
     if (enqueued.isErr()) {
       return enqueued.map(() => undefined);

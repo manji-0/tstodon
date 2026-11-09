@@ -1,12 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount, ApiStatus } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
-import {
-  MastodonAccountPreviewSchema,
-  MastodonStatusPreviewSchema,
-} from "../test/mastodon-preview-schemas";
 
 const json = async (
   path: string,
@@ -28,15 +25,15 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
 };
 
 const SearchResultsSchema = z.object({
-  statuses: z.array(MastodonStatusPreviewSchema),
+  statuses: z.array(ApiStatus),
 });
 
-const accountOf = async (email: string): Promise<z.infer<typeof MastodonAccountPreviewSchema>> => {
+const accountOf = async (email: string): Promise<z.infer<typeof ApiAccount>> => {
   const response = await json("/api/v1/accounts/verify_credentials", {
     headers: await authHeaders(email),
   });
   expect(response.status).toBe(200);
-  return read(MastodonAccountPreviewSchema, response.body);
+  return read(ApiAccount, response.body);
 };
 
 const post = async (
@@ -50,7 +47,7 @@ const post = async (
     body: JSON.stringify({ status, visibility }),
   });
   expect(response.status).toBe(200);
-  return read(MastodonStatusPreviewSchema, response.body).id;
+  return read(ApiStatus, response.body).id;
 };
 
 const act = async (email: string, path: string): Promise<void> => {

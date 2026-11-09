@@ -1,9 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -37,7 +37,7 @@ const credentials = async (email: string): Promise<{ id: string; username: strin
     headers: await auth(email),
   });
   expect(response.status).toBe(200);
-  const account = read(MastodonAccountPreviewSchema, response.body);
+  const account = read(ApiAccount, response.body);
   return { id: account.id, username: account.username };
 };
 

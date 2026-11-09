@@ -1,13 +1,13 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { localAccountPresentations, remoteAccountPresentations } from "./account-presentation";
 import { searchAccountsPage } from "./account-search";
 import { generateAccountKeys } from "./keys";
 import { findRemoteActorsByUris } from "./remote-actor-store";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -30,22 +30,17 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   return parsed.value;
 };
 
-const AccountListSchema = z.array(MastodonAccountPreviewSchema);
+const AccountListSchema = z.array(ApiAccount);
 
-const credentials = async (
-  email: string,
-): Promise<z.infer<typeof MastodonAccountPreviewSchema>> => {
+const credentials = async (email: string): Promise<z.infer<typeof ApiAccount>> => {
   const response = await json("/api/v1/accounts/verify_credentials", {
     headers: await auth(email),
   });
   expect(response.status).toBe(200);
-  return read(MastodonAccountPreviewSchema, response.body);
+  return read(ApiAccount, response.body);
 };
 
-const search = async (
-  email: string,
-  query: string,
-): Promise<z.infer<typeof MastodonAccountPreviewSchema>[]> => {
+const search = async (email: string, query: string): Promise<z.infer<typeof ApiAccount>[]> => {
   const response = await json(`/api/v1/accounts/search?${query}`, {
     headers: await auth(email),
   });

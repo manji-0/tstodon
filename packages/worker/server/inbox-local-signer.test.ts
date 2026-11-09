@@ -1,13 +1,9 @@
 import { schemaResult } from "@tstodon/core";
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
-import type { z } from "zod";
+import { z } from "zod";
+import { ApiNotification, ApiRelationship, ApiStatus } from "@tstodon/api";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
-import {
-  MastodonNotificationListPreviewSchema,
-  MastodonRelationshipListPreviewSchema,
-  MastodonStatusPreviewSchema,
-} from "../test/mastodon-preview-schemas";
 import { signInboxRequest } from "./http-signature";
 
 const json = async (
@@ -64,7 +60,7 @@ const postStatus = async (email: string, text: string) => {
     body: JSON.stringify({ status: text }),
   });
   expect(created.status).toBe(200);
-  const status = read(MastodonStatusPreviewSchema, created.body);
+  const status = read(ApiStatus, created.body);
   return {
     ...status,
     uri: `https://example.com/users/${status.account.username}/statuses/${status.id}`,
@@ -79,7 +75,7 @@ describe("inbox activities signed by a local account", () => {
       const relationships = await json(`/api/v1/accounts/relationships?id=${target.id}`, {
         headers: await authHeaders("ls-follower@example.com"),
       });
-      return read(MastodonRelationshipListPreviewSchema, relationships.body)[0]?.following;
+      return read(z.array(ApiRelationship), relationships.body)[0]?.following;
     };
 
     expect(
@@ -116,9 +112,9 @@ describe("inbox activities signed by a local account", () => {
     const notifications = await json("/api/v1/notifications", {
       headers: await authHeaders("ls-refollow-target@example.com"),
     });
-    expect(
-      read(MastodonNotificationListPreviewSchema, notifications.body).map((n) => n.type),
-    ).toEqual(["follow"]);
+    expect(read(z.array(ApiNotification), notifications.body).map((n) => n.type)).toEqual([
+      "follow",
+    ]);
   });
 
   it("refuses a Follow of an account that blocks the follower", async () => {
@@ -140,9 +136,7 @@ describe("inbox activities signed by a local account", () => {
     const relationships = await json(`/api/v1/accounts/relationships?id=${target.id}`, {
       headers: await authHeaders("ls-blocked-follower@example.com"),
     });
-    expect(read(MastodonRelationshipListPreviewSchema, relationships.body)[0]?.following).toBe(
-      false,
-    );
+    expect(read(z.array(ApiRelationship), relationships.body)[0]?.following).toBe(false);
   });
 
   it("favourites a local status on Like", async () => {
@@ -157,7 +151,7 @@ describe("inbox activities signed by a local account", () => {
     const seen = await json(`/api/v1/statuses/${status.id}`, {
       headers: await authHeaders("ls-liker@example.com"),
     });
-    const parsed = read(MastodonStatusPreviewSchema, seen.body);
+    const parsed = read(ApiStatus, seen.body);
     expect(parsed.favourited).toBe(true);
     expect(parsed.favourites_count).toBe(1);
   });
@@ -174,7 +168,7 @@ describe("inbox activities signed by a local account", () => {
     const seen = await json(`/api/v1/statuses/${status.id}`, {
       headers: await authHeaders("ls-booster@example.com"),
     });
-    expect(read(MastodonStatusPreviewSchema, seen.body).reblogs_count).toBe(1);
+    expect(read(ApiStatus, seen.body).reblogs_count).toBe(1);
   });
 
   it("accepts and ignores a Create, which only remote signers deliver", async () => {

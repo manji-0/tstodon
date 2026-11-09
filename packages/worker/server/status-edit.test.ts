@@ -1,6 +1,8 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiStatus, ApiStatusEdit, ApiStatusSource } from "@tstodon/api";
+import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
 import { schemaResult } from "@tstodon/core";
 
@@ -74,13 +76,53 @@ describe("status editing", () => {
 
     const history = await json(`/api/v1/statuses/${original.id}/history`);
     expect(history.status).toBe(200);
-    const entries = read(
-      z.array(z.object({ id: z.string(), content: z.string(), created_at: z.string() })),
-      history.body,
-    );
-    expect(entries.length).toBe(2);
+    // `StatusEdit` entities, not statuses: no id, the revision's own fields.
+    const entries = expectContract(z.array(ApiStatusEdit), history.body);
+    expect(history.body).toEqual([
+      expect.not.objectContaining({ id: expect.anything() }),
+      expect.not.objectContaining({ id: expect.anything() }),
+    ]);
+    expect(entries).toMatchObject([
+      {
+        spoiler_text: "",
+        sensitive: false,
+        created_at: original.created_at,
+        poll: null,
+        account: { username: "edit_author" },
+      },
+      {
+        spoiler_text: "cw",
+        sensitive: true,
+        created_at: editedDoc.edited_at,
+        account: { username: "edit_author" },
+      },
+    ]);
     expect(entries[0]?.content).toContain("original text");
-    expect(entries[entries.length - 1]?.content).toContain("edited text");
+    expect(entries[1]?.content).toContain("edited text");
+  });
+
+  it("reads a revision stored as a whole status document", async () => {
+    const email = "edit-legacy@example.com";
+    const created = await json("/api/v1/statuses", await jsonBody({ status: "first" }, email)());
+    const original = expectContract(ApiStatus, created.body);
+    const edited = await json(`/api/v1/statuses/${original.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth(email)) },
+      body: JSON.stringify({ status: "second" }),
+    });
+    expect(edited.status).toBe(200);
+    // Snapshots written before `StatusEditSnapshot` held the Status document.
+    await env.DB.prepare(`UPDATE status_edits SET snapshot_json = ? WHERE status_id = ?`)
+      .bind(JSON.stringify({ ...original, content: "<p>legacy</p>" }), original.id)
+      .run();
+
+    const history = await json(`/api/v1/statuses/${original.id}/history`);
+    const entries = expectContract(z.array(ApiStatusEdit), history.body);
+    expect(entries.map((entry) => entry.content)).toEqual([
+      "<p>legacy</p>",
+      expect.stringContaining("second"),
+    ]);
+    expect(entries[0]).not.toHaveProperty("id");
   });
 
   it("serves the raw source", async () => {
@@ -95,9 +137,11 @@ describe("status editing", () => {
       headers: await auth(email),
     });
     expect(source.status).toBe(200);
-    expect(
-      read(z.object({ id: z.string(), text: z.string(), spoiler_text: z.string() }), source.body),
-    ).toEqual({ id: status.id, text: "raw text #tag", spoiler_text: "cw" });
+    expect(expectContract(ApiStatusSource, source.body)).toEqual({
+      id: status.id,
+      text: "raw text #tag",
+      spoiler_text: "cw",
+    });
   });
 
   it("404s for a status the viewer does not own", async () => {

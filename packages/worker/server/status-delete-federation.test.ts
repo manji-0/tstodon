@@ -2,8 +2,8 @@ import { schemaResult } from "@tstodon/core";
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount } from "@tstodon/api";
 import { authHeaders } from "../test/auth-fixture";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 import { listOutboundActivities } from "./outbox-store";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -40,7 +40,7 @@ const account = async (email: string) => {
     headers: await authHeaders(email),
   });
   expect(response.status).toBe(200);
-  return read(MastodonAccountPreviewSchema, response.body);
+  return read(ApiAccount, response.body);
 };
 
 const postAndDelete = async (email: string, body: Record<string, unknown>): Promise<string> => {

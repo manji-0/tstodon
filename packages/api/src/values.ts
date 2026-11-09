@@ -203,3 +203,7 @@ export type TimelineAccess = (typeof TIMELINE_ACCESS_VALUES)[number];
 /** `Marker` timelines. */
 export const MARKER_TIMELINES = ["home", "notifications"] as const;
 export type MarkerTimeline = (typeof MARKER_TIMELINES)[number];
+
+/** `Admin::DomainBlock#severity`; the public `DomainBlock` leaves `noop` out. */
+export const DOMAIN_BLOCK_SEVERITIES = ["silence", "suspend", "noop"] as const;
+export type DomainBlockSeverity = (typeof DOMAIN_BLOCK_SEVERITIES)[number];

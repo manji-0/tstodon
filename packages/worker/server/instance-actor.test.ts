@@ -1,3 +1,4 @@
+import type { ApActivityDocumentOf } from "@tstodon/api/activitypub";
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
@@ -59,11 +60,12 @@ describe("instance actor", () => {
 
   it("signs the activities it sends with its own key", async () => {
     const inbox = "https://remote.example/users/signed-check/inbox";
-    const activity = {
+    const activity: ApActivityDocumentOf<"Flag"> = {
       "@context": "https://www.w3.org/ns/activitystreams",
       id: "https://example.com/actor#signed-check",
       type: "Flag",
       actor: "https://example.com/actor",
+      content: "",
       object: ["https://remote.example/users/signed-check"],
     };
     expect((await enqueueInstanceActorActivity(env, "Flag", activity, inbox)).isOk()).toBe(true);

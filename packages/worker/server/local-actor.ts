@@ -1,3 +1,4 @@
+import { type ApActorDocumentJSON, PUBLIC_COLLECTION } from "@tstodon/api/activitypub";
 import { InstanceIdentity, type LocalAccount } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { listAccountAliases } from "./account-alias-store";
@@ -12,8 +13,6 @@ import { emojisInTexts } from "./emoji";
 import { enqueueLocalActivity, type EnqueueLocalActivityError } from "./delivery";
 import { newEntityId } from "./ids";
 
-const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
-
 /**
  * The actor document of a local account as it stands now: its profile (bio,
  * avatar, header, fields, flags and the custom emoji they use, or none of it
@@ -24,7 +23,7 @@ export const localActorDocument = async (
   env: Env,
   identity: InstanceIdentity,
   account: LocalAccount,
-): Promise<Result<Record<string, unknown>, RepositoryError>> => {
+): Promise<Result<ApActorDocumentJSON, RepositoryError>> => {
   const [aliases, move, profile, standing, emojis] = await Promise.all([
     listAccountAliases(env.DB, account.id),
     findAccountMove(env.DB, account.id),

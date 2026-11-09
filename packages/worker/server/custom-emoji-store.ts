@@ -1,3 +1,4 @@
+import type { ApiAdminCustomEmojiJSON } from "@tstodon/api";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
@@ -49,7 +50,7 @@ export const customEmojiFromRow = (
 export const adminCustomEmojiJson = (
   row: CustomEmojiRow,
   mediaPublicBaseUrl: string,
-): Record<string, unknown> => ({
+): ApiAdminCustomEmojiJSON => ({
   id: row.id,
   ...customEmojiJson(customEmojiFromRow(row, mediaPublicBaseUrl)),
 });

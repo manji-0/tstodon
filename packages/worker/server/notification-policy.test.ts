@@ -1,10 +1,9 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount, ApiNotificationPolicy } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
-import { ApiNotificationPolicy } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { findRemoteActorByUri, upsertRemoteActor } from "./remote-actor-store";
@@ -46,7 +45,7 @@ const PolicySchema = z.object({
 const RequestSchema = z.object({
   id: z.string().min(1),
   notifications_count: z.string(),
-  account: MastodonAccountPreviewSchema.nullable(),
+  account: ApiAccount.nullable(),
   last_status: z.object({ id: z.string().min(1) }).nullable(),
 });
 
@@ -54,7 +53,7 @@ const credentials = async (email: string): Promise<{ id: string; username: strin
   const response = await json("/api/v1/accounts/verify_credentials", {
     headers: await auth(email),
   });
-  const account = read(MastodonAccountPreviewSchema, response.body);
+  const account = read(ApiAccount, response.body);
   return { id: account.id, username: account.username };
 };
 

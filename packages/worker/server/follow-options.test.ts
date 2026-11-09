@@ -1,9 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -34,12 +34,12 @@ const RelationshipSchema = z.object({
   languages: z.array(z.string()),
 });
 
-const accountFor = async (email: string): Promise<z.infer<typeof MastodonAccountPreviewSchema>> => {
+const accountFor = async (email: string): Promise<z.infer<typeof ApiAccount>> => {
   const response = await json("/api/v1/accounts/verify_credentials", {
     headers: await auth(email),
   });
   expect(response.status).toBe(200);
-  return read(MastodonAccountPreviewSchema, response.body);
+  return read(ApiAccount, response.body);
 };
 
 const post = async (email: string, body: Record<string, unknown>): Promise<string> => {
@@ -186,6 +186,6 @@ describe("follow options", () => {
 const NotificationSchema = z.object({
   id: z.string().min(1),
   type: z.string().min(1),
-  account: MastodonAccountPreviewSchema,
+  account: ApiAccount,
   status: z.object({ id: z.string().min(1) }).nullable(),
 });

@@ -1,3 +1,4 @@
+import type { ApActivityDocumentOf } from "@tstodon/api/activitypub";
 import type { ApiStatusJSON } from "@tstodon/api";
 import {
   type InstanceIdentity,
@@ -277,7 +278,7 @@ const federateRemoteInteraction = async (
   env: Env,
   accountId: string,
   kind: "Like" | "Undo",
-  activity: Record<string, unknown>,
+  activity: ApActivityDocumentOf<"Like" | "Undo">,
 ): Promise<void> => {
   const enqueued = await enqueueLocalActivity(env, accountId, kind, activity);
   if (enqueued.isErr()) {

@@ -1,12 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount, ApiStatus } from "@tstodon/api";
 import { authHeaders } from "../test/auth-fixture";
 import { schemaResult } from "@tstodon/core";
-import {
-  MastodonAccountPreviewSchema,
-  MastodonStatusPreviewSchema,
-} from "../test/mastodon-preview-schemas";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -34,7 +31,7 @@ const accountIdFor = async (email: string): Promise<string> => {
     headers: await auth(email),
   });
   expect(response.status).toBe(200);
-  return read(MastodonAccountPreviewSchema, response.body).id;
+  return read(ApiAccount, response.body).id;
 };
 
 const NotificationListSchema = z.array(z.object({ id: z.string().min(1), type: z.string() }));
@@ -63,7 +60,7 @@ const seedTwoNotifications = async (suffix: string): Promise<void> => {
     body: JSON.stringify({ status: `note target ${suffix}` }),
   });
   expect(status.status).toBe(200);
-  const statusId = read(MastodonStatusPreviewSchema, status.body).id;
+  const statusId = read(ApiStatus, status.body).id;
   expect(
     (
       await json(`/api/v1/accounts/${authorId}/follow`, {

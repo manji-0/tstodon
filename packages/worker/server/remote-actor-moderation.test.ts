@@ -1,6 +1,7 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAdminAccount, ApiAdminReport } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { type Browser, ORIGIN, postForm, signUp } from "../test/passkey-browser";
@@ -33,22 +34,10 @@ const admin = async (path: string, body?: unknown) =>
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 
-const AdminAccountSchema = z.object({
-  id: z.string(),
-  acct: z.string(),
-  domain: z.string(),
-  silenced: z.boolean(),
-  suspended: z.boolean(),
-  limited: z.boolean(),
-  sensitized: z.boolean(),
-  disabled: z.boolean(),
-  email: z.null(),
-});
-
 const adminAccount = async (id: string) => {
   const response = await admin(`/api/v1/admin/accounts/${id}`);
   expect(response.status).toBe(200);
-  return read(AdminAccountSchema, await response.json());
+  return read(ApiAdminAccount, await response.json());
 };
 
 const takeAction = (id: string, body: Record<string, unknown>) =>
@@ -100,20 +89,21 @@ describe("moderating a single remote account through the admin API", () => {
       "/api/v1/admin/accounts?origin=remote&by_domain=moderation-list.example",
     );
     expect(found.status).toBe(200);
-    expect(read(z.array(AdminAccountSchema), await found.json())).toMatchObject([
+    expect(read(z.array(ApiAdminAccount), await found.json())).toMatchObject([
       {
         id,
-        acct: "listed@moderation-list.example",
         domain: "moderation-list.example",
+        email: null,
         silenced: false,
+        account: { id, acct: "listed@moderation-list.example" },
       },
     ]);
 
     expect((await takeAction(id, { type: "silence" })).status).toBe(200);
     const silenced = await admin("/api/v1/admin/accounts?origin=remote&silenced=true");
-    expect(read(z.array(AdminAccountSchema), await silenced.json()).map((a) => a.id)).toEqual([id]);
+    expect(read(z.array(ApiAdminAccount), await silenced.json()).map((a) => a.id)).toEqual([id]);
     const suspended = await admin("/api/v1/admin/accounts?origin=remote&suspended=true");
-    expect(read(z.array(AdminAccountSchema), await suspended.json())).toEqual([]);
+    expect(read(z.array(ApiAdminAccount), await suspended.json())).toEqual([]);
     const local = await admin("/api/v1/admin/accounts");
     expect(
       read(z.array(z.object({ id: z.string() })), await local.json()).map((a) => a.id),
@@ -364,17 +354,11 @@ describe("reports about a remote actor that was purged", () => {
 
     const report = await admin(`/api/v1/admin/reports/${reportId}`);
     expect(report.status).toBe(200);
-    expect(
-      read(
-        z.object({
-          target_account: z.object({ id: z.string(), acct: z.string(), username: z.string() }),
-        }),
-        await report.json(),
-      ).target_account,
-    ).toMatchObject({
+    expect(read(ApiAdminReport, await report.json()).target_account).toMatchObject({
       id,
-      acct: "purged-target@moderation-purged.example",
       username: "purged-target",
+      domain: "moderation-purged.example",
+      account: { id, acct: "purged-target@moderation-purged.example" },
     });
 
     const browser = await adminBrowser("remote_purged_admin");

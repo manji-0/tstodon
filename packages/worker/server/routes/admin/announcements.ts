@@ -1,3 +1,4 @@
+import type { ApiAdminAnnouncementJSON } from "@tstodon/api";
 import type { Context } from "hono";
 import type { Result } from "neverthrow";
 import { z } from "zod";
@@ -62,7 +63,7 @@ const announcementResponse = (
   }
 };
 
-const adminAnnouncementDocument = (row: AnnouncementRow): Record<string, unknown> => ({
+const adminAnnouncementDocument = (row: AnnouncementRow): ApiAdminAnnouncementJSON => ({
   id: row.id,
   text: row.content,
   content: row.content,

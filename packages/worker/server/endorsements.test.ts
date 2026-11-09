@@ -1,9 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -39,7 +39,7 @@ const accountIdFor = async (email: string): Promise<string> => {
     headers: await auth(email),
   });
   expect(response.status).toBe(200);
-  return read(MastodonAccountPreviewSchema, response.body).id;
+  return read(ApiAccount, response.body).id;
 };
 
 describe("endorsements", () => {
@@ -62,16 +62,12 @@ describe("endorsements", () => {
 
     const mine = await json("/api/v1/endorsements", { headers: await auth(viewer) });
     expect(mine.status).toBe(200);
-    expect(read(z.array(MastodonAccountPreviewSchema), mine.body).map((a) => a.id)).toContain(
-      targetId,
-    );
+    expect(read(z.array(ApiAccount), mine.body).map((a) => a.id)).toContain(targetId);
 
     const viewerId = await accountIdFor(viewer);
     const publicList = await json(`/api/v1/accounts/${viewerId}/endorsements`);
     expect(publicList.status).toBe(200);
-    expect(read(z.array(MastodonAccountPreviewSchema), publicList.body).map((a) => a.id)).toContain(
-      targetId,
-    );
+    expect(read(z.array(ApiAccount), publicList.body).map((a) => a.id)).toContain(targetId);
 
     const unendorsed = await json(`/api/v1/accounts/${targetId}/unendorse`, {
       method: "POST",
@@ -80,7 +76,7 @@ describe("endorsements", () => {
     expect(unendorsed.status).toBe(200);
     expect(read(RelationshipSchema, unendorsed.body).endorsed).toBe(false);
     const after = await json("/api/v1/endorsements", { headers: await auth(viewer) });
-    expect(read(z.array(MastodonAccountPreviewSchema), after.body)).toEqual([]);
+    expect(read(z.array(ApiAccount), after.body)).toEqual([]);
   });
 
   it("requires authentication and 404s for unknown targets", async () => {

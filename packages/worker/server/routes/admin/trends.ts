@@ -1,3 +1,4 @@
+import type { ApiAdminTagJSON } from "@tstodon/api";
 import { StatusAuthors } from "../../account-presentation";
 import { mastodonTag } from "../../tag-documents";
 import type { Context } from "hono";
@@ -21,7 +22,9 @@ import { listTrendReviews, type TrendState } from "../../trend-review-store";
 import { type ReviewTrendError, reviewTrend } from "../../admin-trends";
 import { StatusId } from "@tstodon/domain";
 
-const adminTagFields = (state: TrendState | undefined): Record<string, unknown> => ({
+const adminTagFields = (
+  state: TrendState | undefined,
+): Pick<ApiAdminTagJSON, "trendable" | "usable" | "requires_review"> => ({
   trendable: state !== "Rejected",
   usable: true,
   requires_review: state === undefined,
@@ -32,7 +35,7 @@ const adminTagDocument = async (
   identity: InstanceIdentity,
   name: string,
   state: TrendState | undefined,
-): Promise<Record<string, unknown>> => ({
+): Promise<ApiAdminTagJSON> => ({
   ...mastodonTag(identity, name, {
     history: (await tagDailyHistory(c.env.DB, name)).unwrapOr([]),
   }),
@@ -71,7 +74,7 @@ export const getV1AdminTrendsTags = async (
     tags.value.map((tag) => tag.name),
   );
   return c.json(
-    tags.value.map((tag) => ({
+    tags.value.map((tag): ApiAdminTagJSON => ({
       ...mastodonTag(identity.value, tag.name, {
         history: (histories.isOk() ? histories.value.get(tag.name) : undefined) ?? [],
       }),

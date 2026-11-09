@@ -1,12 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount, ApiStatus } from "@tstodon/api";
 import { authHeaders } from "../test/auth-fixture";
 import { schemaResult } from "@tstodon/core";
-import {
-  MastodonAccountPreviewSchema,
-  MastodonStatusPreviewSchema,
-} from "../test/mastodon-preview-schemas";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -34,7 +31,7 @@ const accountIdFor = async (email: string): Promise<string> => {
     headers: await auth(email),
   });
   expect(response.status).toBe(200);
-  return read(MastodonAccountPreviewSchema, response.body).id;
+  return read(ApiAccount, response.body).id;
 };
 
 const postStatus = async (email: string, text: string): Promise<{ id: string }> => {
@@ -44,7 +41,7 @@ const postStatus = async (email: string, text: string): Promise<{ id: string }> 
     body: JSON.stringify({ status: text }),
   });
   expect(response.status).toBe(200);
-  return read(MastodonStatusPreviewSchema, response.body);
+  return read(ApiStatus, response.body);
 };
 
 const follow = async (followerEmail: string, targetId: string) =>
@@ -56,7 +53,7 @@ const follow = async (followerEmail: string, targetId: string) =>
 const homeIds = async (email: string): Promise<string[]> => {
   const response = await json("/api/v1/timelines/home", { headers: await auth(email) });
   expect(response.status).toBe(200);
-  return read(z.array(MastodonStatusPreviewSchema), response.body).map((status) => status.id);
+  return read(z.array(ApiStatus), response.body).map((status) => status.id);
 };
 
 const action = async (email: string, targetId: string, verb: string) =>
@@ -98,9 +95,7 @@ describe("blocks and mutes", () => {
     );
 
     const blocks = await json("/api/v1/blocks", { headers: await auth("blk-a@example.com") });
-    expect(read(z.array(MastodonAccountPreviewSchema), blocks.body).map((x) => x.id)).toContain(
-      bId,
-    );
+    expect(read(z.array(ApiAccount), blocks.body).map((x) => x.id)).toContain(bId);
 
     const unblocked = await action("blk-a@example.com", bId, "unblock");
     // The block ended the follows both ways, and unblocking does not bring them back.
@@ -111,7 +106,7 @@ describe("blocks and mutes", () => {
     const blocksAfter = await json("/api/v1/blocks", {
       headers: await auth("blk-a@example.com"),
     });
-    expect(read(z.array(MastodonAccountPreviewSchema), blocksAfter.body)).toHaveLength(0);
+    expect(read(z.array(ApiAccount), blocksAfter.body)).toHaveLength(0);
   });
 
   it("keeps blocked and muted authors off the public and tag timelines", async () => {
@@ -125,7 +120,7 @@ describe("blocks and mutes", () => {
     const ids = async (email: string, path: string): Promise<string[]> => {
       const response = await json(path, { headers: await auth(email) });
       expect(response.status).toBe(200);
-      return read(z.array(MastodonStatusPreviewSchema), response.body).map((status) => status.id);
+      return read(z.array(ApiStatus), response.body).map((status) => status.id);
     };
     for (const path of ["/api/v1/timelines/public?local=true", "/api/v1/timelines/tag/blkpub"]) {
       const seen = await ids("blk-pub-a@example.com", path);
@@ -156,9 +151,7 @@ describe("blocks and mutes", () => {
     ]) {
       const response = await json(path, { headers: await auth("blk-page-a@example.com") });
       expect(response.status).toBe(200);
-      const ids = read(z.array(MastodonStatusPreviewSchema), response.body).map(
-        (status) => status.id,
-      );
+      const ids = read(z.array(ApiStatus), response.body).map((status) => status.id);
       expect(ids).toEqual([older[1]?.id, older[0]?.id]);
     }
   });
@@ -179,10 +172,7 @@ describe("blocks and mutes", () => {
     const notificationSenders = async (email: string): Promise<string[]> => {
       const response = await json("/api/v1/notifications", { headers: await auth(email) });
       expect(response.status).toBe(200);
-      return read(
-        z.array(z.object({ type: z.string(), account: MastodonAccountPreviewSchema })),
-        response.body,
-      )
+      return read(z.array(z.object({ type: z.string(), account: ApiAccount })), response.body)
         .filter((item) => item.type === "favourite")
         .map((item) => item.account.id);
     };
@@ -208,7 +198,7 @@ describe("blocks and mutes", () => {
     expect(await notificationSenders("mute-a@example.com")).not.toContain(bId);
 
     const mutes = await json("/api/v1/mutes", { headers: await auth("mute-a@example.com") });
-    expect(read(z.array(MastodonAccountPreviewSchema), mutes.body).map((x) => x.id)).toContain(bId);
+    expect(read(z.array(ApiAccount), mutes.body).map((x) => x.id)).toContain(bId);
 
     const unmuted = await action("mute-a@example.com", bId, "unmute");
     expect(unmuted.body).toMatchObject({ muting: false });
