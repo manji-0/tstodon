@@ -12,6 +12,7 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
   signer,
   received,
   allowHosts,
+  blockedHosts,
   fetchSigner,
 }) => {
   const vote = await handleRemotePollVote(env, identity, signer, received.object);
@@ -20,6 +21,7 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
   }
   const created = await persistRemoteObject(env, identity, signer, received.object, {
     allowHosts,
+    blockedHosts,
     fetchSigner,
     notifyMentions: true,
   });
