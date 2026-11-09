@@ -19,8 +19,6 @@ Conventions in this document:
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
 | `DB` (D1)                                  | Everything relational: accounts and their **actor private keys** (`accounts.private_key_jwk`, `instance_actor_keys.private_key_jwk`), statuses, follows, notifications, OAuth tables, Better Auth `user` / `session`, outbox rows | Yes, and it is sensitive (see below)  |
 | `MEDIA` (R2)                               | Local uploads under `attachments/`, `avatars/`, `headers/`, custom emoji under `emoji/`, image previews                                                                                                                           | Yes                                   |
-| `APP_CACHE` (KV)                           | Only `mailbox:<recipient>` entries when `EMAIL_TRANSPORT=capture` (tests and local e2e), one-hour TTL                                                                                                                             | No                                    |
-| `REMOTE_DNS_CACHE` (KV)                    | Nothing: no code reads or writes it at this revision (OPS-7 in [open TODOs](../planning/open-todos.md))                                                                                                                           | No                                    |
 | `RATE_LIMIT_COUNTER` (Durable Object)      | Rate-limit counters, deleted by an alarm when their window ends                                                                                                                                                                   | No                                    |
 | `STREAM_HUB` (Durable Object)              | Open streaming connections                                                                                                                                                                                                        | No                                    |
 | `OUTBOX_PROCESS_QUEUE` / Workflow          | In-flight jobs and deliveries; their durable state is the `outbox_deliveries` rows in D1                                                                                                                                          | No (restore D1, see caveats)          |
@@ -108,9 +106,9 @@ R2 has no object versioning to fall back on **(verify)**, and the Worker deletes
 
 The media bucket alone is not a usable backup: object keys are random, and only D1 says which account and status an object belongs to. Back up both, at about the same time.
 
-### KV, Durable Objects, telemetry
+### Durable Objects, telemetry
 
-Nothing to back up. `APP_CACHE` holds captured mail only in test setups, `REMOTE_DNS_CACHE` is unused, rate-limit counters expire with their window, `StreamHub` holds connections. Analytics Engine and Workers Logs keep data only for their retention window; export what you need to keep (Logpush, below).
+Nothing to back up (there is no KV namespace). Rate-limit counters expire with their window, `StreamHub` holds connections. Analytics Engine and Workers Logs keep data only for their retention window; export what you need to keep (Logpush, below).
 
 ### Secrets and configuration inventory
 
@@ -514,7 +512,7 @@ Symptoms and fixes:
    wrangler versions list
    ```
 
-2. Roll the Worker back: `wrangler rollback <version-id> -m "reason"`. This restores the code and its configuration from that version. It does not touch D1 data, R2, KV, or the queue's contents, and Cloudflare refuses some rollbacks across Durable Object migrations **(verify)** (this Worker's DO migrations are tags `v1` and `v2`).
+2. Roll the Worker back: `wrangler rollback <version-id> -m "reason"`. This restores the code and its configuration from that version. It does not touch D1 data, R2, or the queue's contents, and Cloudflare refuses some rollbacks across Durable Object migrations **(verify)** (this Worker's DO migrations are tags `v1` and `v2`).
 3. **D1 migrations are forward-only.** `pnpm run deploy` applied the new version's migrations before uploading it, so the old code now runs on the new schema. Most migrations are additive and the old code works; a table rebuild or a dropped column can break it. Options, in order of preference:
    - fix forward: revert the code change on `main`, keep the migration, deploy;
    - if the migration damaged data, [restore D1 with Time Travel](#d1-time-travel-point-in-time-restore) to just before the deploy, then deploy the version that matches that schema.

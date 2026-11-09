@@ -8,7 +8,6 @@ Configured in `packages/worker/wrangler.jsonc`:
 
 - `DB` — D1
 - `MEDIA` — R2
-- `REMOTE_DNS_CACHE`, `APP_CACHE` — KV
 - `OUTBOX_PROCESS_QUEUE` — Queue producer/consumer (`ExpandFollowers` fan-out, `ProcessExpiredPolls` and the other outbox jobs)
 - `OUTBOX_DLQ` — producer of `tstodon-outbox-dlq`, the outbox queue's dead-letter queue (see [Outbox dead-letter queue](#outbox-dead-letter-queue))
 - `STREAM_HUB` — Durable Object
@@ -18,7 +17,9 @@ Configured in `packages/worker/wrangler.jsonc`:
 - `METRICS` — Analytics Engine
 - `ASSETS` — static assets
 
-Placeholder resource IDs in `packages/worker/wrangler.jsonc` are local-only. Create real D1 / KV / R2 / Queue resources with [`infra/cloudflare`](../../infra/cloudflare/README.md) before deploying (`tofu output -json wrangler_bindings`).
+There is no KV namespace and no `send_email` binding: `REMOTE_DNS_CACHE` was read by nothing, and the mailer (`EMAIL`, `EMAIL_FROM`, `EMAIL_TRANSPORT`, `APP_CACHE` for captured mail) lost its last caller when sign-in moved to Cloudflare Access (#82); both were removed (OPS-7). `packages/worker/void.json` keeps Void's KV inference off (`"kv": false`), so `void deploy` does not add a namespace back. A feature that needs mail later (MAIL-1 in [open TODOs](../planning/open-todos.md)) brings its binding with it.
+
+Placeholder resource IDs in `packages/worker/wrangler.jsonc` are local-only. Create real D1 / R2 / Queue resources with [`infra/cloudflare`](../../infra/cloudflare/README.md) before deploying (`tofu output -json wrangler_bindings`).
 
 ## Instance vars
 

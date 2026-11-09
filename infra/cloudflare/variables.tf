@@ -9,12 +9,6 @@ variable "create_d1" {
   default     = true
 }
 
-variable "create_kv" {
-  type        = bool
-  description = "Create KV namespaces bound as REMOTE_DNS_CACHE and APP_CACHE."
-  default     = true
-}
-
 variable "create_r2" {
   type        = bool
   description = "Create the R2 bucket bound as MEDIA."
@@ -37,18 +31,6 @@ variable "d1_primary_location_hint" {
   type        = string
   description = "D1 primary location hint. Align with Worker placement when possible (apac ≈ ap-southeast-1)."
   default     = "apac"
-}
-
-variable "kv_remote_dns_cache_title" {
-  type        = string
-  description = "KV namespace title for REMOTE_DNS_CACHE."
-  default     = "tstodon-remote-dns-cache"
-}
-
-variable "kv_app_cache_title" {
-  type        = string
-  description = "KV namespace title for APP_CACHE."
-  default     = "tstodon-app-cache"
 }
 
 variable "r2_media_bucket_name" {

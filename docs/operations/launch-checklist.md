@@ -22,8 +22,8 @@ M=https://media.example.com   # MEDIA_PUBLIC_BASE_URL
 - [ ] `wrangler d1 info tstodon` prints the database with a real id; `wrangler d1 migrations list tstodon --remote` reports no migrations to apply.
 - [ ] `wrangler r2 bucket info tstodon-media` answers; `wrangler r2 bucket cors list tstodon-media` shows your `INSTANCE_PUBLIC_ORIGIN`.
 - [ ] `wrangler queues info tstodon-outbox-process` and `wrangler queues info tstodon-outbox-dlq` each list the Worker `tstodon` as producer and as consumer, and the outbox consumer's dead-letter queue is `tstodon-outbox-dlq` (dashboard: Queues → `tstodon-outbox-process` → Settings). No consumer: re-apply Terraform with `attach_queue_consumer = true` (deploy checklist step 13) or redeploy.
-- [ ] `wrangler kv namespace list` shows the two namespaces whose ids are in `wrangler.jsonc` (no `0000…` placeholders left anywhere in it).
-- [ ] `wrangler deployments status` shows one active version; the dashboard (Workers & Pages → `tstodon` → Settings → Bindings) lists `DB`, `MEDIA`, `APP_CACHE`, `REMOTE_DNS_CACHE`, `OUTBOX_PROCESS_QUEUE`, `OUTBOX_DLQ`, `STREAM_HUB`, `RATE_LIMIT_COUNTER`, `OUTBOX_DELIVERY_WORKFLOW`, `METRICS`, `IMAGES`, `EMAIL`, `ASSETS`.
+- [ ] No `0000…` placeholder ids are left anywhere in `wrangler.jsonc`.
+- [ ] `wrangler deployments status` shows one active version; the dashboard (Workers & Pages → `tstodon` → Settings → Bindings) lists `DB`, `MEDIA`, `OUTBOX_PROCESS_QUEUE`, `OUTBOX_DLQ`, `STREAM_HUB`, `RATE_LIMIT_COUNTER`, `OUTBOX_DELIVERY_WORKFLOW`, `METRICS`, `IMAGES`, `ASSETS` (no KV namespace and no `EMAIL`: both were removed, OPS-7).
 - [ ] `wrangler workflows list` includes `tstodon-outbox-delivery`.
 - [ ] The Worker placement region in `wrangler.jsonc` (`placement.region`) is near the D1 primary location.
 
@@ -123,10 +123,6 @@ If the browser loops between Access and the instance: `CF_ACCESS_AUD` or `CF_ACC
 
 - [ ] In the web UI, turn on desktop notifications (the notifications column's settings) and allow them in the browser. `wrangler d1 execute tstodon --remote --command "SELECT COUNT(*) FROM push_subscriptions"` is at least 1.
 - [ ] From a second account (or a remote one), favourite a post of yours; the browser shows a notification. The `push.deliver` metric records the push service's status (`201` expected; [query](./runbook.md#analytics-engine-metrics)). 401/403 mean the VAPID key and subscription disagree.
-
-### Email
-
-- [ ] Nothing to check at this revision: since sign-in moved to Access (#82) no code path sends mail, although the `EMAIL` binding and `EMAIL_FROM` are still declared (OPS-7 in [open TODOs](../planning/open-todos.md)). Keep `EMAIL_TRANSPORT=send_email`; never `capture` on a real instance.
 
 ### Rate limits and IP blocks
 

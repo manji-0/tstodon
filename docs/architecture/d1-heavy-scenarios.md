@@ -212,7 +212,6 @@ sequenceDiagram
 **In code mitigations:**
 
 - Idempotent inserts / `ON CONFLICT` on natural keys — e.g. inbox `activity_id` (`INSERT OR IGNORE`), remote status `object_uri` (UPSERT), remote favourite/announce `(remote_actor_uri, status_id)` (`DO NOTHING` / UPSERT). Do not summarize all of these as “UPSERT on object_uri.”
-- DNS/SSRF cache via KV (`REMOTE_DNS_CACHE`) reduces repeat resolution cost (architecture mapping).
 
 **Gaps:**
 
