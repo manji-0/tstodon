@@ -179,6 +179,13 @@ describe("Mastodon web app", () => {
     // Upstream's emoji, fetched at build time, and the committed sounds.
     expect((await SELF.fetch(`${ORIGIN}/emoji/1f600.svg`)).status).toBe(200);
     expect((await SELF.fetch(`${ORIGIN}/sounds/boop.mp3`)).status).toBe(200);
+    // The fixed icon URLs the service worker puts on notifications.
+    for (const icon of ["/badge.png", "/android-chrome-192x192.png"]) {
+      const response = await SELF.fetch(`${ORIGIN}${icon}`);
+      expect(response.status, icon).toBe(200);
+      expect(response.headers.get("content-type"), icon).toBe("image/png");
+      await response.body?.cancel();
+    }
   });
 
   it("stores the web UI's settings", async () => {
