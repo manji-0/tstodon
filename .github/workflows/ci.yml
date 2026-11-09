@@ -68,3 +68,41 @@ jobs:
         if: github.event_name != 'pull_request'
         working-directory: packages/worker
         run: vp exec wrangler deploy --dry-run
+
+  # Browser e2e (e2e/web, docs/getting-started/e2e-web.md): Mastodon's web UI
+  # against the Worker in Void's dev server. A separate job so a slow or
+  # broken browser setup does not hold up the checks above.
+  e2e-web:
+    name: e2e-web
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        # Pinned to v1.21.2; setup-vp's README asks for an exact release.
+        uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af
+        with:
+          node-version: 26
+          cache: true
+          run-install: false
+
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+
+      # The Chromium headless shell the pinned @playwright/test expects.
+      - name: Install Chromium
+        run: vp exec playwright install --with-deps chromium
+
+      - name: Browser e2e
+        run: vp run e2e:web
+
+      - name: Upload failure traces and screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-web-results
+          path: .cache/e2e-web/results
+          include-hidden-files: true
+          retention-days: 7

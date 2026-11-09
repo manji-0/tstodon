@@ -9,6 +9,8 @@ export type Remote = Readonly<{
   actorUri: string;
   publicKeyPem: string;
   send: (activity: Record<string, unknown>) => Promise<number>;
+  /** The signed shared-inbox delivery `send` posts, unsent. */
+  delivery: (activity: Record<string, unknown>) => Promise<Request>;
   /** A GET signed with this actor's key (authorized fetch). */
   fetch: (path: string) => Promise<Response>;
 }>;
@@ -63,6 +65,27 @@ export const remoteActor = async (
   if (options.cache !== false) {
     expect((await upsertRemoteActor(env.DB, actor.value)).isOk()).toBe(true);
   }
+  const delivery = async (activity: Record<string, unknown>): Promise<Request> => {
+    const body = JSON.stringify({
+      "@context": "https://www.w3.org/ns/activitystreams",
+      actor: actorUri,
+      ...activity,
+    });
+    const headers = await signInboxRequest(
+      new URL("https://example.com/inbox"),
+      keys.privateKeyJwk,
+      `${actorUri}#main-key`,
+      body,
+    );
+    if (headers.isErr()) {
+      throw new Error(headers.error.message);
+    }
+    return new Request("https://example.com/inbox", {
+      method: "POST",
+      headers: headers.value,
+      body,
+    });
+  };
   return {
     actorUri,
     publicKeyPem: keys.publicKeyPem,
@@ -74,28 +97,7 @@ export const remoteActor = async (
       }
       return SELF.fetch(url, { headers: headers.value });
     },
-    send: async (activity) => {
-      const body = JSON.stringify({
-        "@context": "https://www.w3.org/ns/activitystreams",
-        actor: actorUri,
-        ...activity,
-      });
-      const headers = await signInboxRequest(
-        new URL("https://example.com/inbox"),
-        keys.privateKeyJwk,
-        `${actorUri}#main-key`,
-        body,
-      );
-      if (headers.isErr()) {
-        throw new Error(headers.error.message);
-      }
-      return (
-        await SELF.fetch("https://example.com/inbox", {
-          method: "POST",
-          headers: headers.value,
-          body,
-        })
-      ).status;
-    },
+    delivery,
+    send: async (activity) => (await SELF.fetch(await delivery(activity))).status,
   };
 };

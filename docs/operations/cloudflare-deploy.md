@@ -3,6 +3,7 @@
 <!-- constrained-by ../reference/configuration.md#cloudflare-bindings -->
 <!-- constrained-by ../reference/configuration.md#authentication -->
 <!-- constrained-by ../reference/configuration.md#web-ui -->
+<!-- constrained-by ../reference/configuration.md#rate-limits -->
 
 1. Provision Cloudflare resources with [`infra/cloudflare`](../../infra/cloudflare/README.md) (`tofu apply`): D1, KV, R2, Queue.
 2. Copy `tofu output -json wrangler_bindings` into production `packages/worker/wrangler.jsonc`, and pin the account there (`account_id`) or export `CLOUDFLARE_ACCOUNT_ID` (replace placeholder D1 / KV / R2 / queue identifiers).
@@ -23,7 +24,8 @@
 9. Set optional Worker var `CORS_ALLOWED_ORIGINS` for extra browser API origins (comma-separated). `/api*` always allows `INSTANCE_PUBLIC_ORIGIN`.
 10. `pnpm run ci`
 11. `pnpm run deploy` (`void deploy --backend cloudflare` in `packages/worker`). Void checks that every binding the source needs is in `wrangler.jsonc` with a real id and that the queue exists, builds (the Worker and its client, Mastodon's web UI from `packages/worker/src`, fetching upstream's emoji on the first build; see [Web UI](../reference/configuration.md#web-ui)), warns about secret-looking plaintext vars, validates `packages/worker/app/db/migrations/*.sql` against what wrangler would apply, applies them to remote D1 (and verifies none remain pending), then runs `wrangler deploy` on the verified build. The upload carries the generated entry, cron triggers from `packages/worker/app/crons`, and the queue consumer from `packages/worker/app/queues`. Run `pnpm -C packages/worker exec void deploy --backend cloudflare --provision` once on a dev machine to create missing D1 / KV / R2 / Queue resources and write their ids; `--provision` is refused in CI. The managed `void deploy` (Void platform) does not fit this Worker: it ignores `wrangler.jsonc` and cannot carry the Workflow, `StreamHub`, Analytics Engine, or Images bindings.
-12. Re-apply Terraform with `attach_queue_consumer = true` so the outbox Queue consumer points at the deployed Worker. Keep `queue_consumer_max_concurrency` (default `1`) equal to `maxConcurrency` in `packages/worker/app/queues/tstodon-outbox-process.ts`; `wrangler deploy` writes that value too.
+12. Rate limits are on by default with Mastodon's numbers (see [Rate limits](../reference/configuration.md#rate-limits)). Their counters are the `RateLimitCounter` Durable Object (`RATE_LIMIT_COUNTER`, migration tag `v2` in `wrangler.jsonc`), which `wrangler deploy` creates; there is nothing to provision. Set `RATE_LIMITS` to change a bucket, and add the [edge rule](#rate-limiting-at-the-edge) below as an outer layer.
+13. Re-apply Terraform with `attach_queue_consumer = true` so the outbox Queue consumer points at the deployed Worker. Keep `queue_consumer_max_concurrency` (default `1`) equal to `maxConcurrency` in `packages/worker/app/queues/tstodon-outbox-process.ts`; `wrangler deploy` writes that value too.
 
 Never commit `BETTER_AUTH_SECRET`, VAPID keys, or other private key material. Confirm the Worker placement region still matches the D1 primary.
 
@@ -133,3 +135,30 @@ wrangler d1 execute <D1_DATABASE_NAME> --remote --command \
 ```
 
 Progress also shows in the `outbox.job.page` metric for `BackfillStoredMediaSizes` (the step is the source). To start a run at once, send the queue `{"kind": "BackfillStoredMediaSizes"}` as for the metadata job above; starting it again is always safe.
+
+## Rate limiting at the edge
+
+<!-- constrained-by ../reference/configuration.md#rate-limits -->
+
+The Worker's limits are per subject and Mastodon-shaped, and each counted request is a Durable Object call. A Cloudflare WAF rate-limiting rule drops a flood before it reaches the Worker, at no Worker cost, so put one in front as an outer layer. Keep it well above the Worker's own budgets so that it only ever catches floods: a client within Mastodon's limits must never meet it.
+
+In the dashboard: the zone, **Security** → **WAF** → **Rate limiting rules** → **Create rule** (the Free plan has one rule, a 10-second period and a 10-second block; paid plans allow longer):
+
+- **If incoming requests match** (expression editor):
+
+  ```text
+  (http.request.uri.path wildcard "/api/*"
+   or http.request.uri.path wildcard "/oauth/*"
+   or http.request.uri.path wildcard "/auth/*"
+   or http.request.uri.path wildcard "/.well-known/*"
+   or http.request.uri.path wildcard "/users/*"
+   or http.request.uri.path eq "/inbox"
+   or http.request.uri.path eq "/actor/inbox")
+  and not http.request.uri.path wildcard "/api/v1/streaming*"
+  ```
+
+- **With the same characteristics**: IP.
+- **When rate exceeds**: 200 requests per 10 seconds.
+- **Then take action**: Block, for 10 seconds (on a paid plan, a custom JSON response `{"error":"Too many requests"}` with status 429 matches what the Worker sends). Do not use a challenge: API clients and remote servers cannot solve one.
+
+Remote servers deliver from a few addresses and retry a refused delivery later, so a 10-second block costs them only a delay; still, if a large server that many of your users follow is caught by the rule, raise the rate or exclude the inbox paths from it and leave them to `inbox_ip` / `inbox_domain`.

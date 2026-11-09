@@ -3,3 +3,4 @@
 // module from it.
 export { OutboxDeliveryWorkflow } from "./outbox-delivery-workflow";
 export { StreamHub } from "./stream-hub";
+export { RateLimitCounter } from "./rate-limit-counter";

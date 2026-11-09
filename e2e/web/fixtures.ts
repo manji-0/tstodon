@@ -6,11 +6,23 @@ import { signAccessJwt } from "../../packages/worker/test/access-jwt-fixture";
  * `Cf-Access-Jwt-Assertion`. Access itself (a passkey, or an IdP such as
  * WorkOS) is not running here. The test key signs the assertion; the e2e
  * Worker trusts the matching public JWKS.
+ *
+ * As with Access, the browser holds the JWT in the `CF_Authorization` cookie
+ * and the edge in front of the Worker (access-edge.mjs) sends it as the header
+ * on every request: windows the web app opens (the More menu's settings pages,
+ * the admin links) and `<a download>` links (the CSV export) included. The
+ * Worker keeps no session cookie of its own.
  */
+
+/** The cookie access-edge.mjs turns into `Cf-Access-Jwt-Assertion`. */
+const ACCESS_COOKIE = "CF_Authorization";
 
 const signInAs = async (page: Page, email: string): Promise<void> => {
   const assertion = await signAccessJwt({ email });
-  await page.setExtraHTTPHeaders({ "Cf-Access-Jwt-Assertion": assertion });
+  // Cookies ignore the port: this is the cookie for http://localhost:8793.
+  await page
+    .context()
+    .addCookies([{ name: ACCESS_COOKIE, value: assertion, domain: "localhost", path: "/" }]);
 };
 
 /** Provision `username` from an Access login and open the web app as that person. */
@@ -22,8 +34,8 @@ export const signUp = async (page: Page, username: string): Promise<void> => {
 };
 
 /**
- * Sign in again as `username`. The previous assertion must have been dropped
- * (see {@link dropAccessLogin}); sending it again is a new Access login.
+ * Sign in again as `username`. The previous login must have been dropped
+ * (see {@link dropAccessLogin}); sending a JWT again is a new Access login.
  */
 export const signIn = async (page: Page, username: string): Promise<void> => {
   await signInAs(page, `${username}@mail.example`);
@@ -31,11 +43,12 @@ export const signIn = async (page: Page, username: string): Promise<void> => {
 };
 
 /**
- * Stand in for Access logout. The Worker cannot drop `Cf-Access-Jwt-Assertion`;
- * while the header is still sent, the next request signs the person in again.
+ * Stand in for Access logout, which clears `CF_Authorization`. The Worker
+ * cannot drop the JWT; while it is still sent, the next request signs the
+ * person in again.
  */
 export const dropAccessLogin = async (page: Page): Promise<void> => {
-  await page.setExtraHTTPHeaders({});
+  await page.context().clearCookies({ name: ACCESS_COOKIE });
 };
 
 /** Problems the UI reports: uncaught errors and failed API calls. */

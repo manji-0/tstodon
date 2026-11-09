@@ -101,10 +101,23 @@ test.describe("Mastodon web UI: profile, media, remote accounts", () => {
     const image = status(page, "a red square").locator(".media-gallery img").first();
     await expect(image).toBeVisible();
     await expect(image).toHaveAttribute("alt", "A solid red rectangle");
-    // The browser actually loaded the stored image.
+    // The attachment reports the stored size, so the gallery offers both
+    // copies by width and the browser picks one for the column.
+    await expect(image).toHaveAttribute("srcset", / 64w, .* 64w$/);
+    // The browser actually loaded the stored image. With a `w` srcset,
+    // `naturalWidth` is the width the image is laid out at, not the file's, so
+    // decode the copy it chose on its own.
     await expect
-      .poll(() => image.evaluate((element: HTMLImageElement) => element.naturalWidth))
-      .toBe(64);
+      .poll(() =>
+        image.evaluate(async (element: HTMLImageElement) => {
+          if (!element.complete || element.currentSrc === "") return undefined;
+          const file = new Image();
+          file.src = element.currentSrc;
+          await file.decode();
+          return { width: file.naturalWidth, height: file.naturalHeight };
+        }),
+      )
+      .toEqual({ width: 64, height: 48 });
   });
 
   test("looks up an account on another server", async ({ page }) => {

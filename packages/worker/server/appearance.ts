@@ -128,7 +128,7 @@ export const applyAppearance = (response: Response, appearance: Appearance): Res
     .transform(response);
 };
 
-/** Request-wide middleware (`app/middleware/05.page-appearance.ts`). */
+/** Request-wide middleware (`app/middleware/06.page-appearance.ts`). */
 export const pageAppearanceMiddleware = async (c: Context<{ Bindings: Env }>, next: Next) => {
   await next();
   const accountId = signedInAccounts.get(c.req.raw);
