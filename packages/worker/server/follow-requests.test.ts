@@ -15,6 +15,8 @@ import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 import { RemoteAccountId } from "./remote-account-id";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
+import { ApiRelationship } from "@tstodon/api";
+import { expectContract } from "../test/api-contract";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -53,6 +55,17 @@ const pendingRequestIds = async (email: string): Promise<string[]> => {
   const response = await json("/api/v1/follow_requests", { headers: await auth(email) });
   expect(response.status).toBe(200);
   return read(z.array(MastodonAccountPreviewSchema), response.body).map((account) => account.id);
+};
+
+/** The viewer's Relationship to one account, read from GET /api/v1/accounts/relationships. */
+const relationshipOf = async (email: string, id: string) => {
+  const response = await json(`/api/v1/accounts/relationships?id[]=${encodeURIComponent(id)}`, {
+    headers: await auth(email),
+  });
+  expect(response.status).toBe(200);
+  const [relationship] = expectContract(z.array(ApiRelationship), response.body);
+  expect(relationship?.id).toBe(id);
+  return relationship;
 };
 
 const follow = async (followerEmail: string, targetId: string) =>
@@ -212,12 +225,28 @@ describe("follow requests", () => {
     expect(profile.status).toBe(200);
     expect(profile.body).toMatchObject({ id: remoteId, acct: "fr-frank@remote.example" });
 
+    // As Mastodon, a pending request from a remote actor is `requested_by`.
+    expect(await relationshipOf("fr-remote-viewer@example.com", remoteId)).toMatchObject({
+      requested_by: true,
+      followed_by: false,
+      following: false,
+      requested: false,
+    });
+
     const authorize = await json(`/api/v1/follow_requests/${remoteId}/authorize`, {
       method: "POST",
       headers: await auth("fr-remote-viewer@example.com"),
     });
     expect(authorize.status).toBe(200);
-    expect(authorize.body).toMatchObject({ followed_by: true });
+    expect(expectContract(ApiRelationship, authorize.body)).toMatchObject({
+      id: remoteId,
+      followed_by: true,
+      requested_by: false,
+    });
+    expect(await relationshipOf("fr-remote-viewer@example.com", remoteId)).toMatchObject({
+      requested_by: false,
+      followed_by: true,
+    });
 
     const accepted = await listAcceptedRemoteFollowerUris(env.DB, local.value.id, 20);
     expect(accepted.isOk()).toBe(true);
@@ -295,15 +324,26 @@ describe("follow requests", () => {
       202,
     );
 
-    const rejected = await json(
-      `/api/v1/follow_requests/${RemoteAccountId.encode(actorUri)}/reject`,
-      {
-        method: "POST",
-        headers: await auth("fr-remote-reject-viewer@example.com"),
-      },
-    );
+    const remoteId = RemoteAccountId.encode(actorUri);
+    expect(await relationshipOf("fr-remote-reject-viewer@example.com", remoteId)).toMatchObject({
+      requested_by: true,
+      followed_by: false,
+    });
+
+    const rejected = await json(`/api/v1/follow_requests/${remoteId}/reject`, {
+      method: "POST",
+      headers: await auth("fr-remote-reject-viewer@example.com"),
+    });
     expect(rejected.status).toBe(200);
-    expect(rejected.body).toMatchObject({ followed_by: false });
+    expect(expectContract(ApiRelationship, rejected.body)).toMatchObject({
+      id: remoteId,
+      followed_by: false,
+      requested_by: false,
+    });
+    expect(await relationshipOf("fr-remote-reject-viewer@example.com", remoteId)).toMatchObject({
+      requested_by: false,
+      followed_by: false,
+    });
 
     const accepted = await listAcceptedRemoteFollowerUris(env.DB, local.value.id, 20);
     expect(accepted.isOk()).toBe(true);

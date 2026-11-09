@@ -17,6 +17,7 @@ import {
   findEndorsement as findEndorsementSql,
   findFollowKind as findFollowKindSql,
   findOutboundFollow as findOutboundFollowSql,
+  findRemoteFollow as findRemoteFollowSql,
   upsertAccountNote as upsertAccountNoteSql,
 } from "./generated/prisma/sql";
 
@@ -71,6 +72,9 @@ export const relationshipFlags = async (
     d1PrepareTyped(db, findActorDomainBlockSql(viewerId, targetActorUri.unwrapOr(""))),
     d1PrepareTyped(db, findOutboundFollowSql(viewerId, targetActorUri.unwrapOr(""))),
     d1PrepareTyped(db, findRemoteBlockSql(targetActorUri.unwrapOr(""), viewerId)),
+    // A remote target's follow of the viewer: `Queued` waits for an answer
+    // (`requested_by`), `Fulfilled` is accepted (`followed_by`).
+    d1PrepareTyped(db, findRemoteFollowSql(viewerId, targetActorUri.unwrapOr(""))),
   ]);
   if (batched.isErr()) {
     return err(batched.error);
@@ -95,7 +99,15 @@ export const relationshipFlags = async (
         languages: parseJsonColumn(z.array(z.string()), local.languages_json).unwrapOr([]),
       }
     : remoteOutgoing(outboundFollowFromRow(batched.value[8]?.results?.[0]));
-  const incoming = first(z.object({ kind: z.string() }), 1);
+  const remoteIncoming = first(
+    z.object({ remote_request_kind: z.literal(["Queued", "Fulfilled"]) }),
+    10,
+  );
+  const incoming =
+    first(z.object({ kind: z.string() }), 1) ??
+    (remoteIncoming
+      ? { kind: remoteIncoming.remote_request_kind === "Queued" ? "Pending" : "Accepted" }
+      : undefined);
   const blocking = (batched.value[2]?.results?.length ?? 0) > 0;
   const blockedBy =
     (batched.value[3]?.results?.length ?? 0) > 0 || (batched.value[9]?.results?.length ?? 0) > 0;
