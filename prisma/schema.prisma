@@ -145,6 +145,7 @@ model notification_policies {
   for_new_accounts     String @default("accept")
   for_private_mentions String @default("drop")
   for_limited_accounts String @default("filter")
+  for_bots             String @default("accept")
   updated_at           String @default("CURRENT_TIMESTAMP")
 }
 

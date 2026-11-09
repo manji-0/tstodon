@@ -6640,6 +6640,7 @@ export const Notification_policiesScalarFieldEnum = {
   for_new_accounts: "for_new_accounts",
   for_private_mentions: "for_private_mentions",
   for_limited_accounts: "for_limited_accounts",
+  for_bots: "for_bots",
   updated_at: "updated_at",
 } as const;
 

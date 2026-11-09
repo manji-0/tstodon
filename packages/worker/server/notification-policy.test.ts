@@ -1,9 +1,13 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
+import { ApiNotificationPolicy } from "@tstodon/api";
+import { expectContract } from "../test/api-contract";
+import { remoteActor } from "../test/remote-actor-fixture";
+import { findRemoteActorByUri, upsertRemoteActor } from "./remote-actor-store";
 
 const auth = (email: string, admin = false): Promise<Record<string, string>> =>
   authHeaders(email, { admin });
@@ -331,5 +335,122 @@ describe("notification policy", () => {
       headers: await auth(recipientEmail),
     });
     expect(dismissed.status).toBe(200);
+  });
+});
+
+describe("notification policy for_bots", () => {
+  const markBot = async (email: string): Promise<void> => {
+    const response = await json("/api/v1/accounts/update_credentials", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...(await auth(email)) },
+      body: JSON.stringify({ bot: true }),
+    });
+    expect(response.status).toBe(200);
+  };
+
+  const requestCount = async (email: string): Promise<number> => {
+    const response = await json("/api/v1/notifications/requests", { headers: await auth(email) });
+    expect(response.status).toBe(200);
+    return read(z.array(RequestSchema), response.body).length;
+  };
+
+  it("defaults to accept, stores accept / filter / drop and renders it", async () => {
+    const email = "bots-policy-owner@example.com";
+    const initial = await json("/api/v2/notifications/policy", { headers: await auth(email) });
+    expect(expectContract(ApiNotificationPolicy, initial.body).for_bots).toBe("accept");
+
+    for (const value of ["filter", "drop", "accept"] as const) {
+      const updated = await patchPolicy(email, { for_bots: value });
+      expect(updated.status).toBe(200);
+      expect(expectContract(ApiNotificationPolicy, updated.body).for_bots).toBe(value);
+      const stored = await json("/api/v2/notifications/policy", { headers: await auth(email) });
+      expect(expectContract(ApiNotificationPolicy, stored.body).for_bots).toBe(value);
+    }
+
+    // Another dimension's update leaves it alone.
+    await patchPolicy(email, { for_bots: "drop" });
+    const other = await patchPolicy(email, { for_not_following: "filter" });
+    expect(expectContract(ApiNotificationPolicy, other.body)).toMatchObject({
+      for_bots: "drop",
+      for_not_following: "filter",
+    });
+  });
+
+  it("accepts, filters or drops a mention from a local bot", async () => {
+    const recipientEmail = "bots-local-recipient@example.com";
+    const botEmail = "bots-local-bot@example.com";
+    const humanEmail = "bots-local-human@example.com";
+    const recipient = await credentials(recipientEmail);
+    await credentials(botEmail);
+    await credentials(humanEmail);
+    await markBot(botEmail);
+
+    await postStatus(botEmail, { status: `@${recipient.username} beep (accepted)` });
+    expect(await notifications(recipientEmail)).toHaveLength(1);
+
+    await patchPolicy(recipientEmail, { for_bots: "filter" });
+    await postStatus(botEmail, { status: `@${recipient.username} beep (filtered)` });
+    expect(await notifications(recipientEmail)).toHaveLength(1);
+    expect(await requestCount(recipientEmail)).toBe(1);
+
+    await patchPolicy(recipientEmail, { for_bots: "drop" });
+    await postStatus(botEmail, { status: `@${recipient.username} beep (dropped)` });
+    expect(await notifications(recipientEmail)).toHaveLength(1);
+    const included = await json("/api/v1/notifications?include_filtered=true", {
+      headers: await auth(recipientEmail),
+    });
+    // The filtered one is held; the dropped one was never created.
+    expect(read(z.array(z.unknown()), included.body)).toHaveLength(2);
+
+    // A human sender is not affected.
+    await postStatus(humanEmail, { status: `@${recipient.username} hello` });
+    expect(await notifications(recipientEmail)).toHaveLength(2);
+  });
+
+  it("applies to a remote Service / Application actor", async () => {
+    const email = "bots-remote-recipient@example.com";
+    const recipient = await credentials(email);
+    const recipientUrl = `https://example.com/users/${recipient.username}`;
+    const bot = await remoteActor("bots-remote-service");
+    const stored = await findRemoteActorByUri(env.DB, bot.actorUri);
+    if (stored.isErr() || !stored.value) {
+      throw new Error("remote actor fixture missing");
+    }
+    expect(
+      (
+        await upsertRemoteActor(env.DB, {
+          ...stored.value,
+          profile: { ...stored.value.profile, bot: true },
+        })
+      ).isOk(),
+    ).toBe(true);
+    const human = await remoteActor("bots-remote-person");
+    const mention = (actorUri: string, n: string) => ({
+      id: `${actorUri}/activities/bots-${n}`,
+      type: "Create",
+      object: {
+        id: `${actorUri}/notes/bots-${n}`,
+        type: "Note",
+        attributedTo: actorUri,
+        content: `<p>mention ${n}</p>`,
+        published: "2026-10-20T00:00:00.000Z",
+        to: ["https://www.w3.org/ns/activitystreams#Public"],
+        cc: [recipientUrl],
+        tag: [{ type: "Mention", href: recipientUrl, name: `@${recipient.username}@example.com` }],
+      },
+    });
+
+    await patchPolicy(email, { for_bots: "drop" });
+    expect(await bot.send(mention(bot.actorUri, "dropped"))).toBe(202);
+    expect(await notifications(email)).toHaveLength(0);
+    expect(await requestCount(email)).toBe(0);
+
+    await patchPolicy(email, { for_bots: "filter" });
+    expect(await bot.send(mention(bot.actorUri, "filtered"))).toBe(202);
+    expect(await notifications(email)).toHaveLength(0);
+    expect(await requestCount(email)).toBe(1);
+
+    expect(await human.send(mention(human.actorUri, "person"))).toBe(202);
+    expect(await notifications(email)).toHaveLength(1);
   });
 });

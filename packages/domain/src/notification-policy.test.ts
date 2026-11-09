@@ -13,6 +13,7 @@ const strict = {
   forNewAccounts: "filter",
   forPrivateMentions: "drop",
   forLimitedAccounts: "drop",
+  forBots: "filter",
 } as const satisfies NotificationPolicy;
 
 const acceptAll = {
@@ -21,6 +22,7 @@ const acceptAll = {
   forNewAccounts: "accept",
   forPrivateMentions: "accept",
   forLimitedAccounts: "accept",
+  forBots: "accept",
 } as const satisfies NotificationPolicy;
 
 const friend = {
@@ -30,12 +32,14 @@ const friend = {
   recipientFollowsSender: true,
   senderFollowsRecipient: true,
   privateMention: false,
+  bot: false,
 } as const satisfies LocalNotificationSender;
 
 const remoteFollower = {
   kind: "Remote",
   standing: { kind: "InGoodStanding" },
   followsRecipient: true,
+  bot: false,
 } as const satisfies RemoteNotificationSender;
 
 describe("NotificationPolicy.disposition", () => {
@@ -101,6 +105,28 @@ describe("NotificationPolicy.disposition", () => {
       NotificationPolicy.disposition(
         acceptAll,
         { ...remoteFollower, standing: { kind: "Suspended" } },
+        NOW,
+      ),
+    ).toBe("drop");
+  });
+
+  it("applies for_bots to a local or remote bot, accepting bots by default", () => {
+    expect(NotificationPolicy.default.forBots).toBe("accept");
+    expect(NotificationPolicy.disposition(acceptAll, { ...friend, bot: true }, NOW)).toBe("accept");
+    for (const forBots of ["filter", "drop"] as const) {
+      const policy = { ...acceptAll, forBots };
+      expect(NotificationPolicy.disposition(policy, { ...friend, bot: true }, NOW)).toBe(forBots);
+      expect(NotificationPolicy.disposition(policy, friend, NOW)).toBe("accept");
+      expect(NotificationPolicy.disposition(policy, { ...remoteFollower, bot: true }, NOW)).toBe(
+        forBots,
+      );
+      expect(NotificationPolicy.disposition(policy, remoteFollower, NOW)).toBe("accept");
+    }
+    // The most restrictive category still wins.
+    expect(
+      NotificationPolicy.disposition(
+        { ...acceptAll, forBots: "filter", forLimitedAccounts: "drop" },
+        { ...friend, bot: true, silenced: true },
         NOW,
       ),
     ).toBe("drop");

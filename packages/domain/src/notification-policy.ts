@@ -8,6 +8,8 @@ export type NotificationPolicy = Readonly<{
   forNewAccounts: NotificationPolicyAction;
   forPrivateMentions: NotificationPolicyAction;
   forLimitedAccounts: NotificationPolicyAction;
+  /** Mastodon 4.6: notifications from automated accounts. */
+  forBots: NotificationPolicyAction;
 }>;
 
 /** What the policy needs to know about a local sender. */
@@ -19,6 +21,8 @@ export type LocalNotificationSender = Readonly<{
   senderFollowsRecipient: boolean;
   /** The notification is a mention on a direct status. */
   privateMention: boolean;
+  /** The sender's profile is marked as a bot (`accounts.bot`). */
+  bot: boolean;
 }>;
 
 /** What the policy needs to know about a remote sender. */
@@ -26,19 +30,25 @@ export type RemoteNotificationSender = Readonly<{
   kind: "Remote";
   standing: AccountStanding;
   followsRecipient: boolean;
+  /** The actor's `type` is `Service` or `Application` (Mastodon's `bot?`). */
+  bot: boolean;
 }>;
 
 export type NotificationSender = LocalNotificationSender | RemoteNotificationSender;
 
 const NEW_ACCOUNT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
-/** Mastodon's defaults: private mentions are dropped, limited accounts filtered. */
+/**
+ * Mastodon's defaults: private mentions are dropped, limited accounts
+ * filtered, bots accepted.
+ */
 const defaultPolicy: NotificationPolicy = {
   forNotFollowing: "accept",
   forNotFollowers: "accept",
   forNewAccounts: "accept",
   forPrivateMentions: "drop",
   forLimitedAccounts: "filter",
+  forBots: "accept",
 };
 
 /**
@@ -56,6 +66,7 @@ const remoteActions = (
   ...(sender.standing.kind === "Silenced" ? [policy.forLimitedAccounts] : []),
   ...(sender.standing.kind === "Suspended" ? (["drop"] as const) : []),
   ...(sender.followsRecipient ? [] : [policy.forNotFollowers]),
+  ...(sender.bot ? [policy.forBots] : []),
 ];
 
 /** A private mention from an account the recipient follows is exempt (Mastodon's exception). */
@@ -72,6 +83,7 @@ const localActions = (
     ...(fresh ? [policy.forNewAccounts] : []),
     ...(sender.recipientFollowsSender ? [] : [policy.forNotFollowing]),
     ...(sender.senderFollowsRecipient ? [] : [policy.forNotFollowers]),
+    ...(sender.bot ? [policy.forBots] : []),
   ];
 };
 

@@ -4,10 +4,11 @@
 -- @param {String} $4:forNewAccounts
 -- @param {String} $5:forPrivateMentions
 -- @param {String} $6:forLimitedAccounts
--- @param {String} $7:now
+-- @param {String} $7:forBots
+-- @param {String} $8:now
 INSERT INTO notification_policies (
-  account_id, for_not_following, for_not_followers, for_new_accounts, for_private_mentions, for_limited_accounts, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7)
+  account_id, for_not_following, for_not_followers, for_new_accounts, for_private_mentions, for_limited_accounts, for_bots, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT(account_id) DO UPDATE SET
   for_not_following = $2, for_not_followers = $3, for_new_accounts = $4,
-  for_private_mentions = $5, for_limited_accounts = $6, updated_at = $7
+  for_private_mentions = $5, for_limited_accounts = $6, for_bots = $7, updated_at = $8

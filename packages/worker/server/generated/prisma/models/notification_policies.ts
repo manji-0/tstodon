@@ -31,6 +31,7 @@ export type Notification_policiesMinAggregateOutputType = {
   for_new_accounts: string | null;
   for_private_mentions: string | null;
   for_limited_accounts: string | null;
+  for_bots: string | null;
   updated_at: string | null;
 };
 
@@ -41,6 +42,7 @@ export type Notification_policiesMaxAggregateOutputType = {
   for_new_accounts: string | null;
   for_private_mentions: string | null;
   for_limited_accounts: string | null;
+  for_bots: string | null;
   updated_at: string | null;
 };
 
@@ -51,6 +53,7 @@ export type Notification_policiesCountAggregateOutputType = {
   for_new_accounts: number;
   for_private_mentions: number;
   for_limited_accounts: number;
+  for_bots: number;
   updated_at: number;
   _all: number;
 };
@@ -62,6 +65,7 @@ export type Notification_policiesMinAggregateInputType = {
   for_new_accounts?: true;
   for_private_mentions?: true;
   for_limited_accounts?: true;
+  for_bots?: true;
   updated_at?: true;
 };
 
@@ -72,6 +76,7 @@ export type Notification_policiesMaxAggregateInputType = {
   for_new_accounts?: true;
   for_private_mentions?: true;
   for_limited_accounts?: true;
+  for_bots?: true;
   updated_at?: true;
 };
 
@@ -82,6 +87,7 @@ export type Notification_policiesCountAggregateInputType = {
   for_new_accounts?: true;
   for_private_mentions?: true;
   for_limited_accounts?: true;
+  for_bots?: true;
   updated_at?: true;
   _all?: true;
 };
@@ -170,6 +176,7 @@ export type Notification_policiesGroupByOutputType = {
   for_new_accounts: string;
   for_private_mentions: string;
   for_limited_accounts: string;
+  for_bots: string;
   updated_at: string;
   _count: Notification_policiesCountAggregateOutputType | null;
   _min: Notification_policiesMinAggregateOutputType | null;
@@ -199,6 +206,7 @@ export type notification_policiesWhereInput = {
   for_new_accounts?: Prisma.StringFilter<"notification_policies"> | string;
   for_private_mentions?: Prisma.StringFilter<"notification_policies"> | string;
   for_limited_accounts?: Prisma.StringFilter<"notification_policies"> | string;
+  for_bots?: Prisma.StringFilter<"notification_policies"> | string;
   updated_at?: Prisma.StringFilter<"notification_policies"> | string;
 };
 
@@ -209,6 +217,7 @@ export type notification_policiesOrderByWithRelationInput = {
   for_new_accounts?: Prisma.SortOrder;
   for_private_mentions?: Prisma.SortOrder;
   for_limited_accounts?: Prisma.SortOrder;
+  for_bots?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
 
@@ -223,6 +232,7 @@ export type notification_policiesWhereUniqueInput = Prisma.AtLeast<
     for_new_accounts?: Prisma.StringFilter<"notification_policies"> | string;
     for_private_mentions?: Prisma.StringFilter<"notification_policies"> | string;
     for_limited_accounts?: Prisma.StringFilter<"notification_policies"> | string;
+    for_bots?: Prisma.StringFilter<"notification_policies"> | string;
     updated_at?: Prisma.StringFilter<"notification_policies"> | string;
   },
   "account_id"
@@ -235,6 +245,7 @@ export type notification_policiesOrderByWithAggregationInput = {
   for_new_accounts?: Prisma.SortOrder;
   for_private_mentions?: Prisma.SortOrder;
   for_limited_accounts?: Prisma.SortOrder;
+  for_bots?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   _count?: Prisma.notification_policiesCountOrderByAggregateInput;
   _max?: Prisma.notification_policiesMaxOrderByAggregateInput;
@@ -255,6 +266,7 @@ export type notification_policiesScalarWhereWithAggregatesInput = {
   for_new_accounts?: Prisma.StringWithAggregatesFilter<"notification_policies"> | string;
   for_private_mentions?: Prisma.StringWithAggregatesFilter<"notification_policies"> | string;
   for_limited_accounts?: Prisma.StringWithAggregatesFilter<"notification_policies"> | string;
+  for_bots?: Prisma.StringWithAggregatesFilter<"notification_policies"> | string;
   updated_at?: Prisma.StringWithAggregatesFilter<"notification_policies"> | string;
 };
 
@@ -265,6 +277,7 @@ export type notification_policiesCreateInput = {
   for_new_accounts?: string;
   for_private_mentions?: string;
   for_limited_accounts?: string;
+  for_bots?: string;
   updated_at?: string;
 };
 
@@ -275,6 +288,7 @@ export type notification_policiesUncheckedCreateInput = {
   for_new_accounts?: string;
   for_private_mentions?: string;
   for_limited_accounts?: string;
+  for_bots?: string;
   updated_at?: string;
 };
 
@@ -285,6 +299,7 @@ export type notification_policiesUpdateInput = {
   for_new_accounts?: Prisma.StringFieldUpdateOperationsInput | string;
   for_private_mentions?: Prisma.StringFieldUpdateOperationsInput | string;
   for_limited_accounts?: Prisma.StringFieldUpdateOperationsInput | string;
+  for_bots?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -295,6 +310,7 @@ export type notification_policiesUncheckedUpdateInput = {
   for_new_accounts?: Prisma.StringFieldUpdateOperationsInput | string;
   for_private_mentions?: Prisma.StringFieldUpdateOperationsInput | string;
   for_limited_accounts?: Prisma.StringFieldUpdateOperationsInput | string;
+  for_bots?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -305,6 +321,7 @@ export type notification_policiesCreateManyInput = {
   for_new_accounts?: string;
   for_private_mentions?: string;
   for_limited_accounts?: string;
+  for_bots?: string;
   updated_at?: string;
 };
 
@@ -315,6 +332,7 @@ export type notification_policiesUpdateManyMutationInput = {
   for_new_accounts?: Prisma.StringFieldUpdateOperationsInput | string;
   for_private_mentions?: Prisma.StringFieldUpdateOperationsInput | string;
   for_limited_accounts?: Prisma.StringFieldUpdateOperationsInput | string;
+  for_bots?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -325,6 +343,7 @@ export type notification_policiesUncheckedUpdateManyInput = {
   for_new_accounts?: Prisma.StringFieldUpdateOperationsInput | string;
   for_private_mentions?: Prisma.StringFieldUpdateOperationsInput | string;
   for_limited_accounts?: Prisma.StringFieldUpdateOperationsInput | string;
+  for_bots?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
@@ -335,6 +354,7 @@ export type notification_policiesCountOrderByAggregateInput = {
   for_new_accounts?: Prisma.SortOrder;
   for_private_mentions?: Prisma.SortOrder;
   for_limited_accounts?: Prisma.SortOrder;
+  for_bots?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
 
@@ -345,6 +365,7 @@ export type notification_policiesMaxOrderByAggregateInput = {
   for_new_accounts?: Prisma.SortOrder;
   for_private_mentions?: Prisma.SortOrder;
   for_limited_accounts?: Prisma.SortOrder;
+  for_bots?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
 
@@ -355,6 +376,7 @@ export type notification_policiesMinOrderByAggregateInput = {
   for_new_accounts?: Prisma.SortOrder;
   for_private_mentions?: Prisma.SortOrder;
   for_limited_accounts?: Prisma.SortOrder;
+  for_bots?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
 
@@ -368,6 +390,7 @@ export type notification_policiesSelect<
     for_new_accounts?: boolean;
     for_private_mentions?: boolean;
     for_limited_accounts?: boolean;
+    for_bots?: boolean;
     updated_at?: boolean;
   },
   ExtArgs["result"]["notification_policies"]
@@ -383,6 +406,7 @@ export type notification_policiesSelectCreateManyAndReturn<
     for_new_accounts?: boolean;
     for_private_mentions?: boolean;
     for_limited_accounts?: boolean;
+    for_bots?: boolean;
     updated_at?: boolean;
   },
   ExtArgs["result"]["notification_policies"]
@@ -398,6 +422,7 @@ export type notification_policiesSelectUpdateManyAndReturn<
     for_new_accounts?: boolean;
     for_private_mentions?: boolean;
     for_limited_accounts?: boolean;
+    for_bots?: boolean;
     updated_at?: boolean;
   },
   ExtArgs["result"]["notification_policies"]
@@ -410,6 +435,7 @@ export type notification_policiesSelectScalar = {
   for_new_accounts?: boolean;
   for_private_mentions?: boolean;
   for_limited_accounts?: boolean;
+  for_bots?: boolean;
   updated_at?: boolean;
 };
 
@@ -422,6 +448,7 @@ export type notification_policiesOmit<
   | "for_new_accounts"
   | "for_private_mentions"
   | "for_limited_accounts"
+  | "for_bots"
   | "updated_at",
   ExtArgs["result"]["notification_policies"]
 >;
@@ -439,6 +466,7 @@ export type $notification_policiesPayload<
       for_new_accounts: string;
       for_private_mentions: string;
       for_limited_accounts: string;
+      for_bots: string;
       updated_at: string;
     },
     ExtArgs["result"]["notification_policies"]
@@ -1018,6 +1046,7 @@ export interface notification_policiesFieldRefs {
   readonly for_new_accounts: Prisma.FieldRef<"notification_policies", "String">;
   readonly for_private_mentions: Prisma.FieldRef<"notification_policies", "String">;
   readonly for_limited_accounts: Prisma.FieldRef<"notification_policies", "String">;
+  readonly for_bots: Prisma.FieldRef<"notification_policies", "String">;
   readonly updated_at: Prisma.FieldRef<"notification_policies", "String">;
 }
 

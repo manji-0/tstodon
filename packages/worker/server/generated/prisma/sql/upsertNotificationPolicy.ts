@@ -11,10 +11,11 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param forNewAccounts
  * @param forPrivateMentions
  * @param forLimitedAccounts
+ * @param forBots
  * @param now
  */
 export const upsertNotificationPolicy = $runtime.makeTypedQueryFactory(
-  "INSERT INTO notification_policies (\naccount_id, for_not_following, for_not_followers, for_new_accounts, for_private_mentions, for_limited_accounts, updated_at\n) VALUES ($1, $2, $3, $4, $5, $6, $7)\nON CONFLICT(account_id) DO UPDATE SET\nfor_not_following = $2, for_not_followers = $3, for_new_accounts = $4,\nfor_private_mentions = $5, for_limited_accounts = $6, updated_at = $7",
+  "INSERT INTO notification_policies (\naccount_id, for_not_following, for_not_followers, for_new_accounts, for_private_mentions, for_limited_accounts, for_bots, updated_at\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\nON CONFLICT(account_id) DO UPDATE SET\nfor_not_following = $2, for_not_followers = $3, for_new_accounts = $4,\nfor_private_mentions = $5, for_limited_accounts = $6, for_bots = $7, updated_at = $8",
 ) as (
   accountId: string,
   forNotFollowing: string,
@@ -22,6 +23,7 @@ export const upsertNotificationPolicy = $runtime.makeTypedQueryFactory(
   forNewAccounts: string,
   forPrivateMentions: string,
   forLimitedAccounts: string,
+  forBots: string,
   now: string,
 ) => $runtime.TypedSql<upsertNotificationPolicy.Parameters, upsertNotificationPolicy.Result>;
 
@@ -33,6 +35,7 @@ export namespace upsertNotificationPolicy {
     forNewAccounts: string,
     forPrivateMentions: string,
     forLimitedAccounts: string,
+    forBots: string,
     now: string,
   ];
   export type Result = {};

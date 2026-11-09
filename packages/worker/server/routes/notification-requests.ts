@@ -42,6 +42,7 @@ export const NotificationPolicyBodySchema = z.object({
   for_new_accounts: z.string().optional(),
   for_private_mentions: z.string().optional(),
   for_limited_accounts: z.string().optional(),
+  for_bots: z.string().optional(),
   filter_not_following: booleanish,
   filter_not_followers: booleanish,
   filter_new_accounts: booleanish,
@@ -124,8 +125,7 @@ const policyDocument = async (
     for_new_accounts: policy.forNewAccounts,
     for_private_mentions: policy.forPrivateMentions,
     for_limited_accounts: policy.forLimitedAccounts,
-    // Mastodon 4.6's bot policy is not kept: bots' notifications are accepted.
-    for_bots: "accept",
+    for_bots: policy.forBots,
     summary: {
       pending_requests_count: counts.isOk() ? counts.value.requests : 0,
       pending_notifications_count: counts.isOk() ? counts.value.notifications : 0,
@@ -203,6 +203,8 @@ export const patchV2NotificationsPolicy = async (
       body.value.filter_limited_accounts,
       existing.value.forLimitedAccounts,
     ),
+    // Mastodon 4.6 added `for_bots` without a legacy `filter_bots` boolean.
+    forBots: action(body.value.for_bots, undefined, existing.value.forBots),
   };
   const saved = await saveNotificationPolicy(c.env.DB, user.value.id, policy);
   if (saved.isErr()) {
