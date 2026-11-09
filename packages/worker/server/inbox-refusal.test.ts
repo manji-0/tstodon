@@ -137,6 +137,57 @@ describe("inbox refusal events", () => {
     });
   });
 
+  it("logs stale, future and weak signatures before any key lookup (SIG-1)", async () => {
+    const { testEnv, refusals } = metricsEnv();
+    const host = "refusal-stale.example";
+    const bob = await remoteActor("refusal-stale", host);
+    const post = inbox(testEnv);
+    const hour = 60 * 60 * 1000;
+    await expectRefusal(
+      await post(await bob.delivery(activity(host, "1"), new Date(Date.now() - 13 * hour))),
+      401,
+      "SignatureExpired",
+      refusals,
+      { keyIdHost: host, actor: bob.actorUri, detail: "past" },
+    );
+    await expectRefusal(
+      await post(await bob.delivery(activity(host, "2"), new Date(Date.now() + 2 * hour))),
+      401,
+      "SignatureExpired",
+      refusals,
+      { detail: "future" },
+    );
+    // The signed header list cut down: refused on the list, before verifying.
+    const narrowed = async (slug: string, headers: string): Promise<Request> => {
+      const signed = await bob.delivery(activity(host, slug));
+      const request = new Request(signed.url, {
+        method: "POST",
+        headers: signed.headers,
+        body: await signed.text(),
+      });
+      request.headers.set(
+        "Signature",
+        (signed.headers.get("Signature") ?? "").replace(/headers="[^"]*"/, `headers="${headers}"`),
+      );
+      return request;
+    };
+    await expectRefusal(
+      await post(await narrowed("3", "(request-target) host digest")),
+      401,
+      "DateNotSigned",
+      refusals,
+    );
+    await expectRefusal(
+      await post(await narrowed("4", "(request-target) host date")),
+      401,
+      "DigestNotSigned",
+      refusals,
+    );
+    // A fresh delivery from the same actor still goes through.
+    const fresh = await post(await bob.delivery(activity(host, "5")));
+    expect(fresh.status).toBeLessThan(300);
+  });
+
   it("logs a signature that does not verify with the signer's cached key", async () => {
     const { testEnv, refusals } = metricsEnv();
     const host = "refusal-forged.example";

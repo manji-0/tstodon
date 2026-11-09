@@ -24,7 +24,12 @@ import {
   parseLocalActorUsername,
 } from "../activitypub";
 import { jsonRepositoryError, queryLimit } from "../http";
-import { parseSignatureHeader, sha256DigestHeader, verifyInboxRequest } from "../http-signature";
+import {
+  checkSignatureStrength,
+  parseSignatureHeader,
+  sha256DigestHeader,
+  verifyInboxRequest,
+} from "../http-signature";
 import { type InboxRefusal, recordInboxRefusal } from "../inbox-refusal";
 import { localActorDocument } from "../local-actor";
 import { suspendedDomains } from "../admin-domain-block-store";
@@ -441,6 +446,18 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   const signature = parseSignatureHeader(c.req.header("Signature") ?? "");
   if (!signature) {
     refuse({ reason: "MissingSignature", status: 401, actor: actorUri });
+    return c.json({ kind: "InvalidSignature" }, 401);
+  }
+  // A signature must cover `date` and `digest`, and its `Date` be recent, so
+  // a captured delivery cannot be replayed (SIG-1): refused before any lookup.
+  const weak = checkSignatureStrength(c.req.raw, signature);
+  if (weak !== undefined) {
+    refuse({
+      reason: weak.kind,
+      status: 401,
+      actor: actorUri,
+      detail: weak.kind === "SignatureExpired" ? weak.detail : undefined,
+    });
     return c.json({ kind: "InvalidSignature" }, 401);
   }
   // The signature covers `Digest`, and a body that does not match it never

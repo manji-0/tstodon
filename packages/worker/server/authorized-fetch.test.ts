@@ -220,6 +220,24 @@ describe("secure mode on (AUTHORIZED_FETCH=true)", () => {
     );
   });
 
+  it("refuses a replayed signed GET signed 13 hours ago, or one dated ahead, with 401 (SIG-1)", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const bob = await remoteActor("secure-replayed", "secure-allowed.example");
+    const hour = 60 * 60 * 1000;
+    for (const date of [new Date(Date.now() - 13 * hour), new Date(Date.now() + 2 * hour)]) {
+      const note = await secure(await bob.signedGet(notePath, date));
+      expect(note.status, date.toUTCString()).toBe(401);
+      const actor = await secure(await bob.signedGet(`/users/${USERNAME}`, date));
+      expect(actor.status).toBe(200);
+      expect(
+        Object.keys(read(z.record(z.string(), z.unknown()), await actor.json())),
+      ).not.toContain("followers");
+    }
+    // The same signer, signing now, is served.
+    expect((await secure(await bob.signedGet(notePath))).status).toBe(200);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("accepts a signature by a remote server's instance actor, fetched on first use", async () => {
     // Mastodon signs its fetches as its instance actor (`/actor`, an `Application`).
     const host = "secure-mastodon.example";

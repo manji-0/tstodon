@@ -243,7 +243,7 @@ Always public: the instance actor `/actor` (secure-mode servers, this one includ
 
 Every response of the guarded paths in secure mode carries `Cache-Control: private` and `Vary: Signature`, signed or not, so no shared cache keeps a signed answer for unsigned requests (the quote stamp's `max-age=30, public` is dropped in secure mode). Cloudflare's cache does not vary on `Signature`, and by default it does not cache these JSON responses at all; do not add a Cache Rule that caches `/users/*` ("Cache Everything", or an Edge TTL that overrides the origin), because it would serve one requester's answer to the next. A rule that respects origin `Cache-Control` is safe. The Access bypass of `/users/*` and `/actor` is unchanged.
 
-Mastodon also turns secure mode on with `LIMITED_FEDERATION_MODE`; here `FEDERATION_ALLOW_HOSTS` does not, set `AUTHORIZED_FETCH` as well if you want both. As on the inbox, the signature's `Date` is not checked for freshness (SIG-1 in [open TODOs](../planning/open-todos.md)).
+Mastodon also turns secure mode on with `LIMITED_FEDERATION_MODE`; here `FEDERATION_ALLOW_HOSTS` does not, set `AUTHORIZED_FETCH` as well if you want both. As on the inbox, a signature must cover `date` (and `digest` on a request with a body), and its `Date` must be at most 12 hours old and at most 1 hour ahead of this server's clock (Mastodon's `EXPIRATION_WINDOW_LIMIT` and `CLOCK_SKEW_MARGIN`), so a captured signed GET cannot be replayed later; a stale signature is `401` (an actor GET gets the restricted document).
 
 ## IP blocks
 

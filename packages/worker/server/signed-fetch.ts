@@ -1,6 +1,6 @@
 import { Hostname, type InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import { suspendedDomains } from "./admin-domain-block-store";
-import { parseSignatureHeader, verifySignedFetch } from "./http-signature";
+import { checkSignatureStrength, parseSignatureHeader, verifySignedFetch } from "./http-signature";
 import { resolveRemoteActor } from "./remote-actor-fetch";
 import { getRemoteActorModeration } from "./remote-actor-moderation-store";
 import { findRemoteActorByPublicKeyId } from "./remote-actor-store";
@@ -11,7 +11,10 @@ import { instanceActorFetchSigner } from "./instance-actor";
 export type SignedFetchVerdict =
   /** No `Signature` header, or one that does not parse. */
   | Readonly<{ kind: "Unsigned" }>
-  /** The key could not be used, or the signature does not verify. */
+  /**
+   * The signature is stale or does not sign `date`, the key could not be
+   * used, or the signature does not verify.
+   */
   | Readonly<{ kind: "Invalid" }>
   /** The key's server did not answer, or D1 could not be read. */
   | Readonly<{ kind: "Unavailable" }>
@@ -30,6 +33,11 @@ const verify = async (
   const parsed = header ? parseSignatureHeader(header) : undefined;
   if (!parsed) {
     return { kind: "Unsigned" };
+  }
+  // Not signed over `date`, or a `Date` outside the window (SIG-1): a
+  // captured signed GET cannot be replayed, and no key is fetched for it.
+  if (checkSignatureStrength(request, parsed) !== undefined) {
+    return { kind: "Invalid" };
   }
   // A signed GET names no actor; the key's cached owner, or the key URL
   // without its fragment, is the actor to resolve.

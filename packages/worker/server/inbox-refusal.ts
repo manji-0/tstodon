@@ -15,6 +15,12 @@ export type InboxRefusalReason =
   | "ActivityRejected"
   /** 401: no `Signature` header, or one that does not parse. */
   | "MissingSignature"
+  /** 401: the signature does not cover `date` (SIG-1). */
+  | "DateNotSigned"
+  /** 401: the signature does not cover `digest` (SIG-1). */
+  | "DigestNotSigned"
+  /** 401: the signed `Date` is unparseable, over 12 hours old or over 1 hour ahead (SIG-1). */
+  | "SignatureExpired"
   /** 401: `Digest` is missing or does not match the body. */
   | "DigestMismatch"
   /** 401: the activity names a local actor that does not exist. */

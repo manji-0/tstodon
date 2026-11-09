@@ -104,9 +104,10 @@ export const signInboxRequest = async (
   privateKeyJwk: SensitiveValue<string>,
   keyId: string,
   body: string,
+  at: Date = new Date(),
 ): Promise<Result<Headers, SignatureError>> => {
   const digest = await sha256DigestHeader(body);
-  const date = new Date().toUTCString();
+  const date = at.toUTCString();
   const signature = await signRequest(
     "post",
     url,
@@ -186,6 +187,63 @@ export const parseSignatureHeader = (header: string): ParsedSignature | undefine
   };
 };
 
+/**
+ * How old a signature's `Date` may be: Mastodon's
+ * `SignatureVerification::EXPIRATION_WINDOW_LIMIT` (12 hours).
+ */
+export const SIGNATURE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * How far ahead of this server's clock a `Date` may be: Mastodon's
+ * `CLOCK_SKEW_MARGIN` (1 hour).
+ */
+export const SIGNATURE_CLOCK_SKEW_MS = 60 * 60 * 1000;
+
+/** Why a signature is refused before any key is looked up (SIG-1). */
+export type SignatureStrengthError =
+  /** `date` is not among the signed headers. */
+  | Readonly<{ kind: "DateNotSigned" }>
+  /** A request with a body whose signature does not cover `digest`. */
+  | Readonly<{ kind: "DigestNotSigned" }>
+  /** The signed `Date` is missing, unparseable, too old or too far ahead. */
+  | Readonly<{ kind: "SignatureExpired"; detail: "invalid" | "past" | "future" }>;
+
+const hasBody = (method: string): boolean => !["GET", "HEAD"].includes(method.toUpperCase());
+
+/**
+ * Whether a parsed signature is one this server accepts at all, before any
+ * key is fetched, as Mastodon's `verify_signature_strength!` and
+ * `matches_time_window?`: it must sign `date`, a request with a body must
+ * sign `digest`, and the `Date` must be at most {@link SIGNATURE_MAX_AGE_MS}
+ * old and at most {@link SIGNATURE_CLOCK_SKEW_MS} ahead. A captured signed
+ * request therefore cannot be replayed after the window. `(created)` is not
+ * accepted in place of `date`: the signing string here has no `(created)`.
+ */
+export const checkSignatureStrength = (
+  request: Request,
+  parsed: ParsedSignature,
+  now: number = Date.now(),
+): SignatureStrengthError | undefined => {
+  const signed = new Set(parsed.headers.map((name) => name.toLowerCase()));
+  if (!signed.has("date")) {
+    return { kind: "DateNotSigned" };
+  }
+  if (hasBody(request.method) && !signed.has("digest")) {
+    return { kind: "DigestNotSigned" };
+  }
+  const date = Date.parse(request.headers.get("Date") ?? "");
+  if (Number.isNaN(date)) {
+    return { kind: "SignatureExpired", detail: "invalid" };
+  }
+  if (now - date > SIGNATURE_MAX_AGE_MS) {
+    return { kind: "SignatureExpired", detail: "past" };
+  }
+  if (date - now > SIGNATURE_CLOCK_SKEW_MS) {
+    return { kind: "SignatureExpired", detail: "future" };
+  }
+  return undefined;
+};
+
 const pemToSpki = (pem: string): ArrayBuffer => {
   const b64 = pem
     .replace("-----BEGIN PUBLIC KEY-----", "")
@@ -244,7 +302,7 @@ export const verifyInboxRequest = async (
     return false;
   }
   const parsed = parseSignatureHeader(header);
-  if (!parsed) {
+  if (!parsed || checkSignatureStrength(request, parsed) !== undefined) {
     return false;
   }
   const digest = request.headers.get("Digest");
@@ -257,7 +315,8 @@ export const verifyInboxRequest = async (
 
 /**
  * A signed fetch (a GET with no body): the signature must cover
- * `(request-target)`, so it cannot be replayed against another resource.
+ * `(request-target)`, so it cannot be replayed against another resource,
+ * and pass {@link checkSignatureStrength}, so it cannot be replayed later.
  */
 export const verifySignedFetch = async (
   request: Request,
@@ -265,6 +324,7 @@ export const verifySignedFetch = async (
   publicKeyPem: string,
 ): Promise<boolean> =>
   parsed.headers.includes("(request-target)") &&
+  checkSignatureStrength(request, parsed) === undefined &&
   verifySignature(request, parsed, publicKeyPem, request.headers.get("Digest") ?? "");
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
