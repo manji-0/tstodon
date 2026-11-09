@@ -21,9 +21,9 @@ M=https://media.example.com   # MEDIA_PUBLIC_BASE_URL
 
 - [ ] `wrangler d1 info tstodon` prints the database with a real id; `wrangler d1 migrations list tstodon --remote` reports no migrations to apply.
 - [ ] `wrangler r2 bucket info tstodon-media` answers; `wrangler r2 bucket cors list tstodon-media` shows your `INSTANCE_PUBLIC_ORIGIN`.
-- [ ] `wrangler queues info tstodon-outbox-process` lists the Worker `tstodon` as producer and as consumer. No consumer: re-apply Terraform with `attach_queue_consumer = true` (deploy checklist step 13) or redeploy.
+- [ ] `wrangler queues info tstodon-outbox-process` and `wrangler queues info tstodon-outbox-dlq` each list the Worker `tstodon` as producer and as consumer, and the outbox consumer's dead-letter queue is `tstodon-outbox-dlq` (dashboard: Queues → `tstodon-outbox-process` → Settings). No consumer: re-apply Terraform with `attach_queue_consumer = true` (deploy checklist step 13) or redeploy.
 - [ ] `wrangler kv namespace list` shows the two namespaces whose ids are in `wrangler.jsonc` (no `0000…` placeholders left anywhere in it).
-- [ ] `wrangler deployments status` shows one active version; the dashboard (Workers & Pages → `tstodon` → Settings → Bindings) lists `DB`, `MEDIA`, `APP_CACHE`, `REMOTE_DNS_CACHE`, `OUTBOX_PROCESS_QUEUE`, `STREAM_HUB`, `RATE_LIMIT_COUNTER`, `OUTBOX_DELIVERY_WORKFLOW`, `METRICS`, `IMAGES`, `EMAIL`, `ASSETS`.
+- [ ] `wrangler deployments status` shows one active version; the dashboard (Workers & Pages → `tstodon` → Settings → Bindings) lists `DB`, `MEDIA`, `APP_CACHE`, `REMOTE_DNS_CACHE`, `OUTBOX_PROCESS_QUEUE`, `OUTBOX_DLQ`, `STREAM_HUB`, `RATE_LIMIT_COUNTER`, `OUTBOX_DELIVERY_WORKFLOW`, `METRICS`, `IMAGES`, `EMAIL`, `ASSETS`.
 - [ ] `wrangler workflows list` includes `tstodon-outbox-delivery`.
 - [ ] The Worker placement region in `wrangler.jsonc` (`placement.region`) is near the D1 primary location.
 
@@ -147,7 +147,7 @@ If the browser loops between Access and the instance: `CF_ACCESS_AUD` or `CF_ACC
 ### Crons and the queue consumer
 
 - [ ] After the next minute 17, the `cron` metric has a point for `17 * * * *` (query in the [runbook](./runbook.md#analytics-engine-metrics)), and `wrangler tail tstodon --format pretty` around that minute shows the scheduled event followed by queue batches.
-- [ ] `outbox.job.page` points appear for `ProcessExpiredPolls` (hourly) and, after the six-hourly run, `VacuumMediaAttachments`, `StripStoredMediaMetadata`, `BackfillStoredMediaSizes`.
+- [ ] `outbox.job.page` points appear for `ProcessExpiredPolls` (hourly) and, after the six-hourly run, `VacuumMediaAttachments`, `VacuumActivities` (also an `ActivityVacuumPass` log line), `StripStoredMediaMetadata`, `BackfillStoredMediaSizes`.
 - [ ] The queue backlog (dashboard: Queues → `tstodon-outbox-process`) drains to zero between runs.
 
 ### Backups and monitoring

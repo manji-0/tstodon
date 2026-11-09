@@ -9,7 +9,8 @@ Configured in `packages/worker/wrangler.jsonc`:
 - `DB` — D1
 - `MEDIA` — R2
 - `REMOTE_DNS_CACHE`, `APP_CACHE` — KV
-- `OUTBOX_PROCESS_QUEUE` — Queue producer/consumer (`ExpandFollowers` fan-out and `ProcessExpiredPolls`)
+- `OUTBOX_PROCESS_QUEUE` — Queue producer/consumer (`ExpandFollowers` fan-out, `ProcessExpiredPolls` and the other outbox jobs)
+- `OUTBOX_DLQ` — producer of `tstodon-outbox-dlq`, the outbox queue's dead-letter queue (see [Outbox dead-letter queue](#outbox-dead-letter-queue))
 - `STREAM_HUB` — Durable Object
 - `RATE_LIMIT_COUNTER` — Durable Object `RateLimitCounter`, the rate-limit counters (see [Rate limits](#rate-limits))
 - `OUTBOX_DELIVERY_WORKFLOW` — per-inbox delivery retries
@@ -107,6 +108,26 @@ Sizes are shown in binary units with three significant digits, as Mastodon's `nu
 | Production R2 custom domain                                                   | Apply a bucket CORS policy (see [`infra/cloudflare/media-cors.json.example`](../../infra/cloudflare/media-cors.json.example) and deploy checklist). Worker CORS does not cover R2 hostnames.                        |
 
 `CORS_ALLOWED_ORIGINS` is optional. Empty ⇒ API CORS still allows the instance public origin. Trailing slashes are normalized.
+
+## Outbox dead-letter queue
+
+<!-- constrained-by ../operations/runbook.md#dead-lettered-jobs -->
+
+`tstodon-outbox-process` dead-letters to `tstodon-outbox-dlq` (`deadLetterQueue` in `packages/worker/app/queues/tstodon-outbox-process.ts`; `queueConsumerOptions` in `void-plugins.ts` writes it as the consumer's `dead_letter_queue`, since Void's queue file has no such option). The outbox handler decides about a job that returns retry: it retries it twice, then sends `{"kind": "DeadOutboxJob", "job": <body as queued>, "attempts": 3}` to `OUTBOX_DLQ` and acks it. Queues itself moves what the handler cannot decide: a message it throws on, or one that is not an `OutboxJob`, after `max_retries` (3, so 4 deliveries). If the send to `OUTBOX_DLQ` fails, the message is retried instead, so Queues dead-letters it in the end.
+
+The dead-letter queue's consumer (`app/queues/tstodon-outbox-dlq.ts`: batches of 10, `max_retries` 5, `max_concurrency` 1) stores each message in the D1 table `outbox_dead_jobs` (migration 0126): `job_kind`, `reason` (`RetriesExhausted`, `HandlerFailed` or `Unparseable`), `body_json`, `attempts`, `dead_count`, `error`, `first_seen_at` and `last_seen_at`. The `RequeueDeadOutboxJobs` job sends stored jobs back. Both queues are provisioned by [`infra/cloudflare`](../../infra/cloudflare/README.md) (`outbox_queue_name`, `outbox_dlq_name`). In `vp dev`, Void writes the consumers without `dead_letter_queue` (the option is added to the build output only), so only the handler's own sends reach the local dead-letter queue.
+
+## Activity retention
+
+<!-- constrained-by ../operations/runbook.md#retention -->
+
+The six-hourly cron queues `VacuumActivities`, which prunes three tables (rules in the runbook's [Retention](../operations/runbook.md#retention)). Each var is a number of days; empty or unset is the default, `0` or `off` stops pruning that table, anything else is the default.
+
+| Var                                | Default | Prunes                                                                                                                         |
+| ---------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `OUTBOX_DELIVERY_RETENTION_DAYS`   | `30`    | `outbox_deliveries` rows in a final state (`Delivered`, `Failed`, `Expanded`), by `updated_at`                                 |
+| `OUTBOUND_ACTIVITY_RETENTION_DAYS` | `30`    | `outbound_activities` by `created_at`, except those still being delivered and each account's newest 40 public posts and boosts |
+| `INBOX_ACTIVITY_RETENTION_DAYS`    | `30`    | `inbox_activities` (the inbox's dedupe by activity id) by `created_at`; at least `7` days                                      |
 
 ## Authentication
 

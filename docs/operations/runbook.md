@@ -65,7 +65,7 @@ Restore (this is destructive for everything written after the target):
 Caveats, from how this server works:
 
 - **Deliveries in flight.** Each delivery Workflow instance reads its `outbound_activities` row on every attempt. If the restore removed the row, the attempt counts as a 404 and the delivery ends `Failed` / `Permanent`; nothing is sent. Deliveries whose rows survive continue. Workflow instance ids are a hash of activity id and inbox (`deliveryWorkflowId` in `server/delivery.ts`), so a delivery that already ran is not started again for the same row.
-- **Queue messages in flight** may name rows that no longer exist. Jobs handle a missing row as nothing to do or as a retry; a job that keeps failing is dropped after 3 attempts (`OutboxJobDropped`).
+- **Queue messages in flight** may name rows that no longer exist. Jobs handle a missing row as nothing to do or as a retry; a job that keeps failing goes to the dead-letter queue after 3 attempts (`OutboxJobExhausted`) and waits in `outbox_dead_jobs`; requeue it only once the rows it names exist again (see [Dead-lettered jobs](#dead-lettered-jobs)).
 - **Federation does not rewind.** Remote servers keep what they received after the restore point: posts that no longer exist here (they get a 404 when fetched; no `Delete` is sent), follows and accepts this server has forgotten, profile updates. Expect a few days of inconsistency for anything that happened in the lost window.
 - **Media does not rewind.** R2 is not restored. Objects uploaded after the restore point stay in the bucket unreferenced; objects the media vacuum or an account purge deleted after the restore point are gone, and their rows point at nothing (404).
 
@@ -137,7 +137,7 @@ Keep these in a password manager or vault, outside Cloudflare:
 
 `wrangler.jsonc` enables Workers Logs and traces with `head_sampling_rate: 1` (every invocation). Where to read them:
 
-- **Workers Logs** (dashboard: Workers & Pages → `tstodon` → Observability / Logs). Kept 3 days on Free and 7 days on Paid **(verify)**. Every server event below is one `console.*` line holding a JSON object with a `kind` field; filter on the message containing `"kind":"OutboxJobDropped"` (Workers Logs also extracts JSON fields for querying; check whether your view offers `kind` as a field). Invocations also carry the request path, status and outcome, which is how inbox refusals are found (they are not logged as events, OPS-5).
+- **Workers Logs** (dashboard: Workers & Pages → `tstodon` → Observability / Logs). Kept 3 days on Free and 7 days on Paid **(verify)**. Every server event below is one `console.*` line holding a JSON object with a `kind` field; filter on the message containing `"kind":"OutboxJobDeadLettered"` (Workers Logs also extracts JSON fields for querying; check whether your view offers `kind` as a field). Invocations also carry the request path, status and outcome, which is how inbox refusals are found (they are not logged as events, OPS-5).
 - **Live tail**: `wrangler tail tstodon --format pretty` (add `--status error`, `--search OutboxWorkflowCreateFailed`, `--method POST`, `--ip self`). Tail sees queue, cron and Workflow invocations too.
 - **Logpush** to R2 or a third party for longer retention and alerting: needs Workers Paid, `"logpush": true` in `wrangler.jsonc` (not set in this repository) and a Logpush job for the Workers trace events dataset (dashboard: Analytics & Logs → Logpush) **(verify)**.
 
@@ -147,16 +147,21 @@ Level is the `console` method. Every event's `kind` is unique to one meaning; th
 
 **Delivery and the outbox queue.** Act on any of these: each one means activities did not leave or a job was abandoned.
 
-| Event                            | Level | Source             | Meaning                                                                                                                                                             | Act                                                                                                       |
-| -------------------------------- | ----- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `OutboxEnqueueInsertFailed`      | error | `delivery.ts`      | Storing the outbound activity in D1 failed (`accountId` or `signer`, `activityKind`, `message`); nothing was delivered                                              | D1 health; the user's local action happened, remotes never hear of it                                     |
-| `OutboxEnqueueInvalidActivityId` | error | `delivery.ts`      | D1 returned an id that is not an activity id                                                                                                                        | Bug; report it                                                                                            |
-| `OutboxEnqueueQueueSendFailed`   | error | `delivery.ts`      | The activity is stored but its `ExpandFollowers` message was not queued, so no follower inbox gets it                                                               | Queue health (dashboard), then check `outbox.enqueue` volume                                              |
-| `OutboxWorkflowCreateFailed`     | error | `delivery.ts`      | Starting the delivery Workflow for one inbox failed (`activityId`, `message`)                                                                                       | Workflows limits / status; the target row stays `Queued` and nothing retries it                           |
-| `OutboxExpandLookupFailed`       | error | `outbox-job.ts`    | Fan-out could not load the activity or its audience (`lookup`)                                                                                                      | The job is retried; repeated lines point at D1                                                            |
-| `OutboxExpandTargetsFailed`      | error | `outbox-job.ts`    | Fan-out could not write the per-inbox target rows                                                                                                                   | As above                                                                                                  |
-| `OutboxJobRejected`              | error | `queue-handler.ts` | A queue message is not a valid `OutboxJob` (`issues`). Usually a hand-sent message with a wrong body, or version skew between producer and consumer during a deploy | Fix the sender. The message is retried and then discarded by Queues (no dead-letter queue)                |
-| `OutboxJobDropped`               | error | `queue-handler.ts` | A job returned retry on its third attempt and was acknowledged, so it will not run again (`jobKind`, `attempts`). Paired with the `outbox.job` `failed` metric      | Read the job's own error lines just before it; cron-queued jobs run again at the next cron, others do not |
+| Event                            | Level | Source                 | Meaning                                                                                                                                                             | Act                                                                                                   |
+| -------------------------------- | ----- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `OutboxEnqueueInsertFailed`      | error | `delivery.ts`          | Storing the outbound activity in D1 failed (`accountId` or `signer`, `activityKind`, `message`); nothing was delivered                                              | D1 health; the user's local action happened, remotes never hear of it                                 |
+| `OutboxEnqueueInvalidActivityId` | error | `delivery.ts`          | D1 returned an id that is not an activity id                                                                                                                        | Bug; report it                                                                                        |
+| `OutboxEnqueueQueueSendFailed`   | error | `delivery.ts`          | The activity is stored but its `ExpandFollowers` message was not queued, so no follower inbox gets it                                                               | Queue health (dashboard), then check `outbox.enqueue` volume                                          |
+| `OutboxWorkflowCreateFailed`     | error | `delivery.ts`          | Starting the delivery Workflow for one inbox failed (`activityId`, `message`)                                                                                       | Workflows limits / status; the target row stays `Queued` and nothing retries it                       |
+| `OutboxExpandLookupFailed`       | error | `outbox-job.ts`        | Fan-out could not load the activity or its audience (`lookup`)                                                                                                      | The job is retried; repeated lines point at D1                                                        |
+| `OutboxExpandTargetsFailed`      | error | `outbox-job.ts`        | Fan-out could not write the per-inbox target rows                                                                                                                   | As above                                                                                              |
+| `OutboxJobRejected`              | error | `queue-handler.ts`     | A queue message is not a valid `OutboxJob` (`issues`). Usually a hand-sent message with a wrong body, or version skew between producer and consumer during a deploy | Fix the sender. The message is retried, then Queues moves it to the dead-letter queue (`Unparseable`) |
+| `OutboxJobExhausted`             | error | `queue-handler.ts`     | A job returned retry on its third attempt; the handler sent it to the dead-letter queue and acked it (`jobKind`, `attempts`). Paired with `outbox.job` `failed`     | Read the job's own error lines just before it, then [Dead-lettered jobs](#dead-lettered-jobs)         |
+| `OutboxDeadLetterSendFailed`     | error | `queue-handler.ts`     | Sending an exhausted job to the dead-letter queue failed; the message is retried instead, and Queues dead-letters it itself after `max_retries`                     | Queue health; a stream of them means the dead-letter queue is missing or refusing                     |
+| `OutboxJobDeadLettered`          | error | `dead-letter-queue.ts` | The dead-letter consumer stored a job in `outbox_dead_jobs` (`id`, `jobKind`, `reason`, `attempts`, `error`)                                                        | [Dead-lettered jobs](#dead-lettered-jobs)                                                             |
+| `OutboxDeadJobRecordFailed`      | error | `dead-letter-queue.ts` | Storing a dead job failed (`message`); the dead-letter queue retries it (5 times)                                                                                   | D1 health                                                                                             |
+| `OutboxDeadJobLost`              | error | `dead-letter-queue.ts` | Storing failed on the last attempt; the job (`body`) is in this line and nowhere else                                                                               | Copy `body` from the line and send it to `tstodon-outbox-process` once D1 is back                     |
+| `OutboxDeadJobsRequeued`         | log   | `dead-letter-queue.ts` | A `RequeueDeadOutboxJobs` page sent jobs back (`select`, `requeued`, `chained`)                                                                                     | Nothing                                                                                               |
 
 **"Not federated" and "not queued".** The local change succeeded (the post exists, the profile changed) but the activity or follow-up job that tells remote servers was not created. One line is worth reading; a stream of them points at D1 or the queue.
 
@@ -191,6 +196,8 @@ Level is the `console` method. Every event's `kind` is unique to one meaning; th
 | `MediaMetadataNotStripped`, `MediaSizeNotRead`       | warn / error | A backfill skipped one object (`outcome`); warn when the object is missing, error otherwise. See the [deploy checklist](./cloudflare-deploy.md) |
 | `MediaMetadataBackfillDone`, `MediaSizeBackfillDone` | log          | A backfill run finished, with its counts                                                                                                        |
 
+**Retention** (`activity-vacuum.ts`): `ActivityVacuumPass` (log) is one pass of the `VacuumActivities` job with the rows it deleted per table (`deliveries`, `outbound`, `inbox`), whether it chained, and the retention in days it used (`off` for a table not pruned); `ActivityVacuumFailed` (error, `message`) is a pass that D1 refused, retried by the queue. See [Retention](#retention).
+
 **Rate limits** (`rate-limit.ts`; plain strings, not JSON):
 
 - `RATE_LIMITS is not a JSON object of known buckets; using the defaults` (warn): the `RATE_LIMITS` var is malformed and was ignored as a whole. Fix the var.
@@ -207,7 +214,9 @@ Every point is written by `writeMetric` in `packages/worker/server/metrics.ts` t
 | `index1`          | Doubles                                 | Blobs                                          | Watch for                                                                   |
 | ----------------- | --------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------- |
 | `cron`            | `[1]`                                   | `[cronExpression, scheduled]`                  | Missing points: a cron run failed (written only when all its sends succeed) |
-| `outbox.job`      | `[1]`                                   | `[jobKind, retry or failed]`                   | Any `failed`                                                                |
+| `outbox.job`      | `[1]`                                   | `[jobKind, retry or failed]`                   | Any `failed` (each one is a job sent to the dead-letter queue)              |
+| `outbox.dead`     | `[1, attemptsOnOutboxQueue]`            | `[jobKind, reason]`                            | Any point: a job stored in `outbox_dead_jobs`                               |
+| `activity.vacuum` | `[deliveries, outbound, inbox, ms]`     | `[ok or error, chained or empty]`              | `error`; a `chained` streak that does not end (a backlog growing)           |
 | `outbox.job.page` | `[size, elapsedMs, chainedFlag]`        | `[jobKind, ok or retry or error, step]`        | `error` and `retry` by job; `elapsedMs` growth                              |
 | `outbox.enqueue`  | `[1]`                                   | `[activityKind]` or `[activityKind, targeted]` | Volume of outgoing activities; a drop to zero while users post              |
 | `outbox.expand`   | `[remoteTargetCount, expandMs, okFlag]` | `[ok or targets_failed]`                       | `targets_failed`                                                            |
@@ -216,7 +225,7 @@ Every point is written by `writeMetric` in `packages/worker/server/metrics.ts` t
 | `search`          | `[latencyMs, accountHits, statusHits]`  | `[type]`                                       | p95 latency                                                                 |
 | `stream.render`   | `[renderMs, deliveredFlag]`             | `[home or list or public, ok or error]`        | `error` share                                                               |
 
-`outbox.job.page` is written by every paged job: `FanOutHome`, `FanOutPublic`, `DistributePollUpdate`, `ProcessExpiredPolls`, `MoveFollows`, `BackfillRemoteOutbox`, `BackfillRemoteThread`, `ProcessCsvImport`, `CleanUpAccountStatuses`, `SeverBlockedDomainFollows`, `FanOutRemovedStatuses`, `BackfillLocalNoteTags`, `RekeyLegacyMedia`, `VacuumMediaAttachments`, `StripStoredMediaMetadata`, `BackfillStoredMediaSizes` (`blob1` is the job kind as queued). The delivery Workflow writes no metric (OPS-6).
+`outbox.job.page` is written by every paged job: `FanOutHome`, `FanOutPublic`, `DistributePollUpdate`, `ProcessExpiredPolls`, `MoveFollows`, `BackfillRemoteOutbox`, `BackfillRemoteThread`, `ProcessCsvImport`, `CleanUpAccountStatuses`, `SeverBlockedDomainFollows`, `FanOutRemovedStatuses`, `BackfillLocalNoteTags`, `RekeyLegacyMedia`, `VacuumMediaAttachments`, `VacuumActivities`, `RequeueDeadOutboxJobs`, `StripStoredMediaMetadata`, `BackfillStoredMediaSizes` (`blob1` is the job kind as queued). The delivery Workflow writes no metric (OPS-6).
 
 Query with the SQL API (an API token with Account Analytics Read):
 
@@ -296,14 +305,14 @@ A delivery that ends `Failed` completes normally (status `complete`, with the `F
 
 ### Queue health
 
-- **Dashboard**: Queues → `tstodon-outbox-process` → Metrics: backlog (messages and bytes), consumer concurrency, message operations. `wrangler queues info tstodon-outbox-process` shows the producers and consumer.
-- **Consumer settings** come from `packages/worker/app/queues/tstodon-outbox-process.ts`: batches of 10, `max_retries` 3, `max_concurrency` 1. One consumer works through the backlog serially; a backlog that only grows means jobs arrive faster than one invocation clears them.
-- **No dead-letter queue** is configured (OPS-1). A job the handler gives up on is acked (`OutboxJobDropped`); a message that throws or never parses is discarded by Queues after `max_retries`. Message retention in the queue is limited (4 days by default **(verify)**), so a consumer that is detached or failing for longer loses messages.
+- **Dashboard**: Queues → `tstodon-outbox-process` → Metrics: backlog (messages and bytes), consumer concurrency, message operations. `wrangler queues info tstodon-outbox-process` shows the producers and consumer (and `wrangler queues info tstodon-outbox-dlq` the dead-letter queue's).
+- **Consumer settings** come from `packages/worker/app/queues/tstodon-outbox-process.ts`: batches of 10, `max_retries` 3, `max_concurrency` 1, `dead_letter_queue` `tstodon-outbox-dlq`. One consumer works through the backlog serially; a backlog that only grows means jobs arrive faster than one invocation clears them.
+- **Dead-letter queue** `tstodon-outbox-dlq`. Nothing the outbox queue gives up on is dropped any more: a job that returns retry on its third attempt is sent there by the handler (`OutboxJobExhausted`), and a message the handler throws on or cannot parse is moved there by Queues after `max_retries` (4 deliveries). Its consumer (`app/queues/tstodon-outbox-dlq.ts`, batches of 10, `max_retries` 5) stores each one in the D1 table `outbox_dead_jobs` (`OutboxJobDeadLettered`, `outbox.dead` metric); see [Dead-lettered jobs](#dead-lettered-jobs). A dead-letter backlog that grows means its consumer is failing (`OutboxDeadJobRecordFailed`). Message retention in a queue is limited (4 days by default **(verify)**), so a consumer that is detached or failing for longer still loses messages.
 - **Consumer errors** are queue invocations with outcome `exception` in Workers Logs (`wrangler tail tstodon --status error`).
 
 ### Cron health
 
-Two schedules, both at minute 17 (`packages/worker/app/crons/outbox-maintenance.ts`): hourly (`17 * * * *`) and six-hourly (`17 */6 * * *`). The handler only queues jobs (polls, link cards, tag backfills, media rekey, scheduled posts, post clean-up; the six-hourly one also media vacuum, metadata strip and size backfills) and refreshes stale remote actors directly on the hourly run. It writes the `cron` metric only when every send succeeded. Check:
+Two schedules, both at minute 17 (`packages/worker/app/crons/outbox-maintenance.ts`): hourly (`17 * * * *`) and six-hourly (`17 */6 * * *`). The handler only queues jobs (polls, link cards, tag backfills, media rekey, scheduled posts, post clean-up; the six-hourly one also media vacuum, the activity vacuum, metadata strip and size backfills) and refreshes stale remote actors directly on the hourly run. It writes the `cron` metric only when every send succeeded. Check:
 
 - the `cron` query above (a missing hour is a failed run);
 - dashboard: Workers & Pages → `tstodon` → Settings → Triggers (Cron Triggers) and its past events **(verify path)**;
@@ -313,7 +322,7 @@ Two schedules, both at minute 17 (`packages/worker/app/crons/outbox-maintenance.
 
 - **Size**: `wrangler d1 info tstodon` (database size, tables). The per-database limit is 10 GB on Workers Paid and 500 MB on Free **(verify)**; writes fail once it is reached.
 - **Queries**: `wrangler d1 insights tstodon --sort-by reads --time-period 7d --limit 10` (also `--sort-by time`, `writes`), and the D1 dashboard (rows read / written, query duration). A single query is cut off after 30 seconds **(verify)**.
-- **Growth**: `outbound_activities`, `outbox_deliveries` and `inbox_activities` grow with every post, delivery and received activity and are never pruned (OPS-3). Watch their row counts:
+- **Growth**: `outbound_activities`, `outbox_deliveries` and `inbox_activities` grow with every post, delivery and received activity; the `VacuumActivities` job prunes them to their retention (see [Retention](#retention)), so their row counts should level off after the first retention window. Watch them:
 
   ```sh
   wrangler d1 execute tstodon --remote --command \
@@ -348,21 +357,23 @@ Two schedules, both at minute 17 (`packages/worker/app/crons/outbox-maintenance.
 
 Starting points; tune them to your traffic. Cloudflare Notifications covers some of these (which Workers, Queues and D1 alert types your plan offers varies **(verify)**); the rest need a small job that runs the queries above on a schedule.
 
-| Signal                                                         | Threshold to start with                                   |
-| -------------------------------------------------------------- | --------------------------------------------------------- |
-| Uptime check on `/healthz` or `/api/v1/instance`               | 3 consecutive failures                                    |
-| Worker invocations with outcome `exception`                    | > 1% of requests over 10 minutes                          |
-| `cron` metric                                                  | No point for 2 hours                                      |
-| `outbox.job` `failed` or `OutboxJobDropped`                    | Any, per job kind, per hour                               |
-| `OutboxEnqueue*Failed`, `OutboxWorkflowCreateFailed`           | Any                                                       |
-| `*NotFederated` / `*NotQueued` events                          | > 10 per hour                                             |
-| Queue backlog                                                  | > 1,000 messages for 30 minutes, or growing for 1 hour    |
-| `RetryExhausted` deliveries to one host                        | > 50 per hour (a remote is down; see playbook)            |
-| `push.deliver` 401 / 403                                       | > 5% of pushes                                            |
-| `rate limit counter unavailable`                               | Any sustained (> 10 per 5 minutes)                        |
-| D1 size                                                        | > 70% of the plan limit                                   |
-| R2 storage                                                     | Growth beyond what you budgeted per week                  |
-| 429 responses on `/inbox` (Workers Logs or Security analytics) | A sudden jump, or one large remote throttled continuously |
+| Signal                                                          | Threshold to start with                                   |
+| --------------------------------------------------------------- | --------------------------------------------------------- |
+| Uptime check on `/healthz` or `/api/v1/instance`                | 3 consecutive failures                                    |
+| Worker invocations with outcome `exception`                     | > 1% of requests over 10 minutes                          |
+| `cron` metric                                                   | No point for 2 hours                                      |
+| `outbox.job` `failed`, `outbox.dead` or `OutboxJobDeadLettered` | Any, per job kind, per hour                               |
+| `OutboxDeadJobLost`                                             | Any                                                       |
+| Rows in `outbox_dead_jobs`                                      | Any row older than a day (nobody looked at it)            |
+| `OutboxEnqueue*Failed`, `OutboxWorkflowCreateFailed`            | Any                                                       |
+| `*NotFederated` / `*NotQueued` events                           | > 10 per hour                                             |
+| Queue backlog                                                   | > 1,000 messages for 30 minutes, or growing for 1 hour    |
+| `RetryExhausted` deliveries to one host                         | > 50 per hour (a remote is down; see playbook)            |
+| `push.deliver` 401 / 403                                        | > 5% of pushes                                            |
+| `rate limit counter unavailable`                                | Any sustained (> 10 per 5 minutes)                        |
+| D1 size                                                         | > 70% of the plan limit                                   |
+| R2 storage                                                      | Growth beyond what you budgeted per week                  |
+| 429 responses on `/inbox` (Workers Logs or Security analytics)  | A sudden jump, or one large remote throttled continuously |
 
 ## Common incidents
 
@@ -397,7 +408,7 @@ Starting points; tune them to your traffic. Cloudflare Notifications covers some
 
 ### D1 near its limits
 
-- **Size**: see the growth query. The tables that grow without bound are `outbound_activities`, `outbox_deliveries` and `inbox_activities` (OPS-3). There is no supported prune yet; do not delete from them by hand without checking which reads still use them (`prisma/sql/*.sql`, `packages/worker/server/*-store.ts`), for example `Undo` lookups of a past `Follow`.
+- **Size**: see the growth query. The tables that grew with every activity, `outbound_activities`, `outbox_deliveries` and `inbox_activities`, are pruned by the `VacuumActivities` job ([Retention](#retention)); to free space sooner, lower their `*_RETENTION_DAYS` vars and send `{"kind": "VacuumActivities"}` to the queue. Do not delete from them by hand: the job's rules keep the rows a delivery, the outbox or the inbox dedupe still reads.
 - **Slow or expensive queries**: `wrangler d1 insights` by reads and time; compare with `timeline.*` and `outbox.job.page` p95. The [heavy D1 scenarios](../architecture/d1-heavy-scenarios.md) document lists the known heavy paths and what has been measured.
 - **Overload** shows as `RepositoryError` 500s on the API and `retry` clusters in `outbox.job.page`. Throttle the source (rate limits) before anything else.
 
@@ -453,6 +464,63 @@ Symptoms and fixes:
    - fix forward: revert the code change on `main`, keep the migration, deploy;
    - if the migration damaged data, [restore D1 with Time Travel](#d1-time-travel-point-in-time-restore) to just before the deploy, then deploy the version that matches that schema.
 4. Do not edit an applied migration file; Void's deploy gate compares the migrations with what wrangler would apply.
+
+### Dead-lettered jobs
+
+<!-- constrained-by ../reference/configuration.md#outbox-dead-letter-queue -->
+
+Every job the outbox queue gave up on is a row in `outbox_dead_jobs`, one per distinct body (`id` is the SHA-256 of `body_json`; the same job dying again bumps `dead_count` and `last_seen_at`). `reason` says why:
+
+| `reason`           | Meaning                                                                                                            | Usually                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `RetriesExhausted` | The job returned retry on each of its 3 attempts; the handler sent it here                                         | D1, the queue or a remote was failing for the minutes the attempts took            |
+| `HandlerFailed`    | A valid job that Queues moved here after 4 deliveries: the handler threw, or the invocation hit a CPU/memory limit | A bug or an oversized page: read the queue invocation's exception in Workers Logs  |
+| `Unparseable`      | The body is not an `OutboxJob` (`error` holds the schema issues)                                                   | A hand-sent message with a typo, or a job kind only a newer (or older) build knows |
+
+1. **Look.**
+
+   ```sh
+   wrangler d1 execute tstodon --remote --command \
+     "SELECT job_kind, reason, COUNT(*) AS jobs, SUM(dead_count) AS deaths, MIN(first_seen_at) AS first, MAX(last_seen_at) AS last
+      FROM outbox_dead_jobs GROUP BY job_kind, reason ORDER BY last DESC"
+   wrangler d1 execute tstodon --remote --command \
+     "SELECT id, job_kind, reason, attempts, dead_count, error, last_seen_at, substr(body_json, 1, 300) AS body
+      FROM outbox_dead_jobs ORDER BY last_seen_at DESC LIMIT 20"
+   ```
+
+   Find what the job logged on its attempts (`wrangler tail` is live only; search Workers Logs for the `jobKind` around `last_seen_at`).
+
+2. **Fix the cause first**: D1 or the remote back, the bug deployed, the sender corrected. A requeued job that fails again comes back here.
+3. **Decide per kind.** Cron-queued jobs (`ProcessExpiredPolls`, `RefreshLinkCards`, the backfills, `VacuumMediaAttachments`, `VacuumActivities`, `PublishScheduledStatuses`, `CleanUpStatuses`) run again at the next cron and their rows can simply be deleted. Fan-out and delivery jobs (`ExpandFollowers`, `DeliverTarget`, `FanOutHome`, `FanOutPublic`, `MoveFollows`, `ProcessCsvImport`, …) are not queued again by anything: requeue them. A requeued `ProcessCsvImport` page runs, but the import stays shown as stopped (`Failed`). Delete `Unparseable` rows you cannot fix.
+4. **Requeue** by sending a `RequeueDeadOutboxJobs` message to `tstodon-outbox-process` (Queues REST API; an API token with Queues write, and the queue id from `wrangler queues info tstodon-outbox-process`). `select` is `{"kind": "All"}`, `{"kind": "JobKind", "jobKind": "ExpandFollowers"}` or `{"kind": "Ids", "ids": ["<id>", …]}` (up to 100):
+
+   ```sh
+   curl -X POST "https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/queues/<QUEUE_ID>/messages" \
+     -H "Authorization: Bearer <API_TOKEN>" -H "Content-Type: application/json" \
+     --data '{"body": {"kind": "RequeueDeadOutboxJobs", "select": {"kind": "JobKind", "jobKind": "ExpandFollowers"}}}'
+   ```
+
+   Each page sends 50 stored bodies back to the outbox queue exactly as they were queued, then deletes their rows (`OutboxDeadJobsRequeued`); a full page queues the next. A job that dies again after the run started is left for the next requeue, so a job that keeps failing is not sent round in a loop.
+
+5. **Delete** what you will not requeue: `wrangler d1 execute tstodon --remote --command "DELETE FROM outbox_dead_jobs WHERE job_kind = 'RefreshLinkCards'"`.
+
+`OutboxDeadJobLost` is a dead job that could not be stored either (D1 down for the dead-letter queue's 6 deliveries). Its `body` is in that log line only: send it to `tstodon-outbox-process` as above, as the message body.
+
+### Retention
+
+<!-- constrained-by ../reference/configuration.md#activity-retention -->
+
+The six-hourly cron queues `VacuumActivities`, which deletes one batch of 500 rows per table past its retention, oldest first, and queues another pass while any table fills its batch. Each pass logs `ActivityVacuumPass` and writes `activity.vacuum`; a pass with nothing to delete is three index lookups.
+
+| Table                 | Deleted                                                                                                                        | Kept, whatever its age                                                                                                                                                                   | Var (default)                             |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `outbox_deliveries`   | Rows `Delivered`, `Failed` (`Permanent` or `RetryExhausted`) or, for a fan-out row, `Expanded`, last updated before the cutoff | `Queued` rows, and any state this build does not know                                                                                                                                    | `OUTBOX_DELIVERY_RETENTION_DAYS` (30)     |
+| `outbound_activities` | Activities created before the cutoff                                                                                           | One with any unfinished delivery row (the Workflow reads its JSON on each attempt); the account's newest 40 public `Create` / `Announce` (the ActivityPub outbox page, at most 40 items) | `OUTBOUND_ACTIVITY_RETENTION_DAYS` (30)   |
+| `inbox_activities`    | Received activity ids from before the cutoff                                                                                   | Nothing else reads them; the floor of 7 days keeps the inbox's dedupe of redeliveries (Mastodon retries a delivery for about 2 to 3 days, other servers up to about a week **(verify)**) | `INBOX_ACTIVITY_RETENTION_DAYS` (30, ≥ 7) |
+
+No other read uses old rows: `Undo(Follow)` takes the `Follow` id from `outbound_follows`, an `Undo(Like)` / `Undo(Announce)` and `Delete` are rebuilt from the interaction and status tables, and inbound dedupe only asks whether an id exists. A redelivered `ExpandFollowers` or `DeliverTarget` for an activity whose delivery rows were pruned writes new `Queued` rows and delivers again (remotes dedupe by activity id); one whose activity was pruned ends `Failed` / `Permanent` (404) without sending.
+
+To run a pass now, send `{"kind": "VacuumActivities"}` to the queue as above. To stop pruning a table, set its var to `off`.
 
 ### Running the media backfills
 
