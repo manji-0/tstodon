@@ -8,7 +8,7 @@ This file tells AI coding agents how to work in this repository without losing p
 
 - `packages/core` for Result/schema helpers, branded IDs, and `Sensitive`.
 - `packages/domain` for Zod 4.6 `kind`-discriminated domain models.
-- `packages/api` (`@tstodon/api`) for Mastodon's REST entities as they appear on the wire: Zod schemas and their types (`ApiStatus` / `ApiStatusJSON`), and Zod-free enum-like constants in `@tstodon/api/values`. REST JSON shapes live here: the Worker's document builders return these types, and the web UI's `src/mastodon/api_types/*.ts` re-export them. See `packages/api/README.md`.
+- `packages/api` (`@tstodon/api`) for Mastodon's REST entities as they appear on the wire: Zod schemas and their types (`ApiStatus` / `ApiStatusJSON`), and Zod-free enum-like constants in `@tstodon/api/values`. REST JSON shapes live here: the Worker's document builders return these types, and the web UI's `src/mastodon/api_types/*.ts` re-export them. The ActivityPub documents tstodon sends are schemas in `@tstodon/api/activitypub` (server-only). See `packages/api/README.md`.
 - `packages/worker` for the app [Void](https://void.cloud) builds, serves, and deploys, in Void's "SPA + API" shape: the Worker runtime and its client, Mastodon's web frontend. `packages/worker` is the Void project root (`vite.config.ts` with `voidPlugin()`, `void.json`, `wrangler.jsonc`, `public/`):
   - `app/`: Void's conventions (`void.json` `sourceDir`): `routes/`, `middleware/`, `crons/`, `queues/`, `db/migrations/`.
   - `server/`: the Worker's shared code (`#server/*`).
