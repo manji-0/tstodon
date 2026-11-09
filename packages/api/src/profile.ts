@@ -24,9 +24,17 @@ export const ApiProfile = z.object({
   show_featured: z.boolean(),
   attribution_domains: z.array(z.string()),
   featured_tags: z.array(ApiFeaturedTag),
-  /** tstodon: the note as HTML, as `Account#note` renders it (`note` is the plain text). */
-  formatted_note: z.string(),
-  /** tstodon: the fields with HTML values, as `Account#fields` (`fields` holds the plain text). */
-  formatted_fields: z.array(ApiAccountField),
 });
 export type ApiProfileJSON = z.infer<typeof ApiProfile>;
+
+/**
+ * What tstodon's `/api/v1/profile` answers: Mastodon's Profile with the
+ * rendered forms beside the plain text (the web UI reads {@link ApiProfile}).
+ */
+export const ApiProfileDocument = ApiProfile.extend({
+  /** The note as HTML, as `Account#note` renders it (`note` is the plain text). */
+  formatted_note: z.string(),
+  /** The fields with HTML values, as `Account#fields` (`fields` holds the plain text). */
+  formatted_fields: z.array(ApiAccountField),
+});
+export type ApiProfileDocumentJSON = z.infer<typeof ApiProfileDocument>;

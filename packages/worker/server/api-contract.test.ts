@@ -21,7 +21,7 @@ import {
   ApiNotificationGroupsResult,
   ApiNotificationPolicy,
   ApiPoll,
-  ApiProfile,
+  ApiProfileDocument,
   ApiRelationship,
   ApiReport,
   ApiRule,
@@ -363,9 +363,9 @@ describe("REST API contract (@tstodon/api)", () => {
     await get(z.array(z.string()), undefined, "/api/v1/instance/peers");
     await get(z.array(ApiDomainBlock), undefined, "/api/v1/instance/domain_blocks");
 
-    const profile = await get(ApiProfile, author, "/api/v1/profile");
+    const profile = await get(ApiProfileDocument, author, "/api/v1/profile");
     expect(profile.id).toBeTruthy();
-    const changed = await ok(ApiProfile, author, "PATCH", "/api/v1/profile", {
+    const changed = await ok(ApiProfileDocument, author, "PATCH", "/api/v1/profile", {
       note: "Plain *note*",
       fields_attributes: [{ name: "Site", value: "https://example.com" }],
     });

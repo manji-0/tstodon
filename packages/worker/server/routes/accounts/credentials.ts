@@ -1,4 +1,4 @@
-import type { ApiCredentialAccountJSON, ApiProfileJSON } from "@tstodon/api";
+import type { ApiCredentialAccountJSON, ApiProfileDocumentJSON } from "@tstodon/api";
 import {
   FediRole,
   UploadMetadata,
@@ -487,7 +487,7 @@ const profileDocument = async (
   identity: InstanceIdentity,
   account: LocalAccount,
   role: FediRoleValue,
-): Promise<ApiProfileJSON> => {
+): Promise<ApiProfileDocumentJSON> => {
   const [credential, featured] = await Promise.all([
     credentialAccountDocument(env, identity, account, role),
     buildFeaturedTagDocuments(env, identity, account.id, account.username),
