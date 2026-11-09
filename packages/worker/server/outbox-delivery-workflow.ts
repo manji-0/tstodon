@@ -40,8 +40,15 @@ export const outboxDeliveryRunDeps = (env: Env): DeliveryRunDeps => ({
     );
   },
   attempt: (job) => attemptInboxDeliveryWithEvidence(env, job),
-  persist: (job, delivery, nextAttemptAt) =>
-    persistOutboxTarget(env.DB, job.activityId, job.inboxUrl, delivery, nextAttemptAt),
+  persist: (job, delivery, nextAttemptAt, lastHttpStatus) =>
+    persistOutboxTarget(
+      env.DB,
+      job.activityId,
+      job.inboxUrl,
+      delivery,
+      nextAttemptAt,
+      lastHttpStatus,
+    ),
   recordReachability: (inboxUrl, reachability) =>
     recordInboxReachability(env, inboxUrl, reachability),
   metric: (index, doubles, blobs) => writeMetric(env, index, doubles, blobs),

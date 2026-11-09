@@ -13,6 +13,8 @@ export type Remote = Readonly<{
   delivery: (activity: Record<string, unknown>) => Promise<Request>;
   /** A GET signed with this actor's key (authorized fetch). */
   fetch: (path: string) => Promise<Response>;
+  /** The signed GET `fetch` sends, unsent. */
+  signedGet: (path: string) => Promise<Request>;
 }>;
 
 /**
@@ -86,23 +88,20 @@ export const remoteActor = async (
       body,
     });
   };
+  const signedGet = async (path: string): Promise<Request> => {
+    const url = new URL(path, "https://example.com");
+    const accept = "application/activity+json";
+    const headers = await signFetchRequest(url, keys.privateKeyJwk, `${actorUri}#main-key`, accept);
+    if (headers.isErr()) {
+      throw new Error(headers.error.message);
+    }
+    return new Request(url, { headers: { ...headers.value, Host: url.host, Accept: accept } });
+  };
   return {
     actorUri,
     publicKeyPem: keys.publicKeyPem,
-    fetch: async (path) => {
-      const url = new URL(path, "https://example.com");
-      const accept = "application/activity+json";
-      const headers = await signFetchRequest(
-        url,
-        keys.privateKeyJwk,
-        `${actorUri}#main-key`,
-        accept,
-      );
-      if (headers.isErr()) {
-        throw new Error(headers.error.message);
-      }
-      return SELF.fetch(url, { headers: { ...headers.value, Host: url.host, Accept: accept } });
-    },
+    fetch: async (path) => SELF.fetch(await signedGet(path)),
+    signedGet,
     delivery,
     send: async (activity) => (await SELF.fetch(await delivery(activity))).status,
   };

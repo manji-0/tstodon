@@ -28,7 +28,7 @@ pnpm run ci
 - `packages/worker/src` is Mastodon's frontend, vendored (see `packages/worker/src/UPSTREAM.md` and [Mastodon web upstream](../operations/mastodon-web-upstream.md)). It keeps Mastodon's code style, so `pnpm check` skips `src/` and `config/` (upstream's Vite plugins). Its own checks are `pnpm typecheck:web` (TypeScript with `packages/worker/src/tsconfig.json`) and `pnpm test:web` (Mastodon's Vitest suite in jsdom, `packages/worker/vitest.config.ts`; the emoji test reads `public/emoji`, which the config fetches when missing). `pnpm run ci` runs both.
 - `pnpm e2e:web` runs the Playwright scenarios against Mastodon's web UI on a fresh local instance (see [Browser e2e](e2e-web.md)).
 - `pnpm run deploy` runs `void deploy --backend cloudflare` in `packages/worker`, which builds the Worker and the web UI (see [Cloudflare deploy](../operations/cloudflare-deploy.md)); plain `pnpm deploy` is pnpm's own command.
-- Local state (D1, KV, R2, Durable Objects, Workflows) lives in `packages/worker/.wrangler/state`, wrangler's default for `packages/worker/wrangler.jsonc`. Apply D1 migrations to it with `pnpm db:migrate:local`. Void's own dev-time migration runner is disabled in `packages/worker/vite.config.ts`: it migrates a separate `.void/` database, not the `DB` binding.
+- Local state (D1, R2, Durable Objects, Workflows) lives in `packages/worker/.wrangler/state`, wrangler's default for `packages/worker/wrangler.jsonc`. Apply D1 migrations to it with `pnpm db:migrate:local`. Void's own dev-time migration runner is disabled in `packages/worker/vite.config.ts`: it migrates a separate `.void/` database, not the `DB` binding.
 
 TypeScript targets ES2025 with `erasableSyntaxOnly` and `verbatimModuleSyntax`.
 

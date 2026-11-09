@@ -172,7 +172,8 @@ describe("delivery retries", () => {
       kind: "Failed",
       reason_kind: "RetryExhausted",
       attempt_count: 17,
-      http_status: null,
+      // The last attempt's status (OPS-5); the metric has every one.
+      http_status: 502,
       next_attempt_at: null,
     });
     const givenUp = warn.mock.calls
@@ -228,6 +229,32 @@ describe("delivery retries", () => {
       next_attempt_at: new Date(START + 15_000).toISOString(),
     });
     expect((await targetRow(job)).kind).toBe("Delivered");
+  });
+
+  it("stores a transient failure's HTTP status on the row while it waits, and clears it on success", async () => {
+    const job = await deliveryJob("retry-status.example");
+    const clock = { now: START };
+    const rows: Array<z.infer<typeof TargetRowSchema>> = [];
+    const steps: DeliverySteps = {
+      run: (_name, _kind, work) => work(),
+      sleep: async (_name, ms) => {
+        rows.push(await targetRow(job));
+        clock.now += ms;
+      },
+    };
+    const run = runWith(clock, [
+      DeliveryAttemptOutcome.forHttpStatus(503),
+      DeliveryAttemptOutcome.forHttpStatus(429, 1),
+      DeliveryAttemptOutcome.Network,
+      DeliveryAttemptOutcome.Success,
+    ]);
+    expect(await runOutboxDelivery(steps, run.deps, job)).toEqual({ kind: "Delivered" });
+    expect(rows.map((row) => [row.kind, row.attempt_count, row.http_status])).toEqual([
+      ["Queued", 1, 503],
+      ["Queued", 2, 429],
+      ["Queued", 3, null],
+    ]);
+    expect(await targetRow(job)).toMatchObject({ kind: "Delivered", http_status: null });
   });
 
   it("honours Retry-After on a 429", async () => {

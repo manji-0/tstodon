@@ -19,8 +19,6 @@ Conventions in this document:
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
 | `DB` (D1)                                  | Everything relational: accounts and their **actor private keys** (`accounts.private_key_jwk`, `instance_actor_keys.private_key_jwk`), statuses, follows, notifications, OAuth tables, Better Auth `user` / `session`, outbox rows | Yes, and it is sensitive (see below)  |
 | `MEDIA` (R2)                               | Local uploads under `attachments/`, `avatars/`, `headers/`, custom emoji under `emoji/`, image previews                                                                                                                           | Yes                                   |
-| `APP_CACHE` (KV)                           | Only `mailbox:<recipient>` entries when `EMAIL_TRANSPORT=capture` (tests and local e2e), one-hour TTL                                                                                                                             | No                                    |
-| `REMOTE_DNS_CACHE` (KV)                    | Nothing: no code reads or writes it at this revision (OPS-7 in [open TODOs](../planning/open-todos.md))                                                                                                                           | No                                    |
 | `RATE_LIMIT_COUNTER` (Durable Object)      | Rate-limit counters, deleted by an alarm when their window ends                                                                                                                                                                   | No                                    |
 | `STREAM_HUB` (Durable Object)              | Open streaming connections                                                                                                                                                                                                        | No                                    |
 | `OUTBOX_PROCESS_QUEUE` / Workflow          | In-flight jobs and deliveries; their durable state is the `outbox_deliveries` rows in D1                                                                                                                                          | No (restore D1, see caveats)          |
@@ -173,9 +171,9 @@ R2 has no object versioning to fall back on **(verify)**, and the Worker deletes
 
 The media bucket alone is not a usable backup: object keys are random, and only D1 says which account and status an object belongs to. Back up both, at about the same time.
 
-### KV, Durable Objects, telemetry
+### Durable Objects, telemetry
 
-Nothing to back up. `APP_CACHE` holds captured mail only in test setups, `REMOTE_DNS_CACHE` is unused, rate-limit counters expire with their window, `StreamHub` holds connections. Analytics Engine and Workers Logs keep data only for their retention window; export what you need to keep (Logpush, below).
+Nothing to back up (there is no KV namespace). Rate-limit counters expire with their window, `StreamHub` holds connections. Analytics Engine and Workers Logs keep data only for their retention window; export what you need to keep (Logpush, below).
 
 ### Secrets and configuration inventory
 
@@ -204,7 +202,7 @@ Keep these in a password manager or vault, outside Cloudflare:
 
 `wrangler.jsonc` enables Workers Logs and traces with `head_sampling_rate: 1` (every invocation). Where to read them:
 
-- **Workers Logs** (dashboard: Workers & Pages → `tstodon` → Observability / Logs). Kept 3 days on Free and 7 days on Paid **(verify)**. Every server event below is one `console.*` line holding a JSON object with a `kind` field; filter on the message containing `"kind":"OutboxJobDeadLettered"` (Workers Logs also extracts JSON fields for querying; check whether your view offers `kind` as a field). Invocations also carry the request path, status and outcome, which is how inbox refusals are found (they are not logged as events, OPS-5).
+- **Workers Logs** (dashboard: Workers & Pages → `tstodon` → Observability / Logs). Kept 3 days on Free and 7 days on Paid **(verify)**. Every server event below is one `console.*` line holding a JSON object with a `kind` field; filter on the message containing `"kind":"OutboxJobDeadLettered"` (Workers Logs also extracts JSON fields for querying; check whether your view offers `kind` as a field). Invocations also carry the request path, status and outcome.
 - **Live tail**: `wrangler tail tstodon --format pretty` (add `--status error`, `--search OutboxWorkflowCreateFailed`, `--method POST`, `--ip self`). Tail sees queue, cron and Workflow invocations too.
 - **Logpush** to R2 or a third party for longer retention and alerting: needs Workers Paid, `"logpush": true` in `wrangler.jsonc` (not set in this repository) and a Logpush job for the Workers trace events dataset (dashboard: Analytics & Logs → Logpush) **(verify)**.
 
@@ -215,7 +213,6 @@ Level is the `console` method. Every event's `kind` is unique to one meaning; th
 **Delivery and the outbox queue.** Act on any of these: each one means activities did not leave or a job was abandoned.
 
 | Event                                              | Level       | Source                                              | Meaning                                                                                                                                                                                                                       | Act                                                                                                                   |
-| -------------------------------------------------- | ----------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | -------------------------------------------------- | ----------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `OutboxEnqueueInsertFailed`                        | error       | `delivery.ts`                                       | Storing the outbound activity in D1 failed (`accountId` or `signer`, `activityKind`, `message`); nothing was delivered                                                                                                        | D1 health; the user's local action happened, remotes never hear of it                                                 |
 | `OutboxEnqueueInvalidActivityId`                   | error       | `delivery.ts`                                       | D1 returned an id that is not an activity id                                                                                                                                                                                  | Bug; report it                                                                                                        |
@@ -282,7 +279,29 @@ Level is the `console` method. Every event's `kind` is unique to one meaning; th
 - `RATE_LIMITS is not a JSON object of known buckets; using the defaults` (warn): the `RATE_LIMITS` var is malformed and was ignored as a whole. Fix the var.
 - `rate limit counter unavailable: …` (warn): a `RateLimitCounter` call failed and the request went through uncounted (fail open). Sustained lines mean limits are not enforced; check Durable Object errors.
 
-**Not logged.** Inbox refusals (`401 InvalidSignature`, `503 VerificationUnavailable`, `403` for refused domains and suspended actors) are not log events (OPS-5); find them by request path and status in Workers Logs. A delivery attempt is not a log line either: each writes an `outbox.deliver` metric point, and only a delivery that ends unsent logs (`OutboxDeliveryGivenUp`).
+**Inbox refusals** (`inbox-refusal.ts`, from `routes/activitypub.ts` and, for `RateLimitedAddress`, `rate-limit.ts`). `InboxRefused` (warn) is one delivery to `/inbox`, `/actor/inbox` or `/users/*/inbox` the server refused, with `reason`, `status`, `path`, `keyIdHost` (the host of the `Signature` header's `keyId`), `actor` (the activity's claimed `actor`), `signer` (the verified signing actor, once known) and `detail`; URIs are cut at 200 characters, and no body, header value or key is logged. Each isolate logs at most 5 lines per reason per minute; the rest are counted only, and the first line of the next window for that reason is preceded by `InboxRefusalsSuppressed` (warn, `reason`, `suppressed`: the lines the last window left out). Every refusal, logged or not, is an `inbox.refuse` point (doubles `[1, loggedFlag]`, blobs `[reason, status]`), so count refusals with the metric and read examples in the logs.
+
+| `reason`             | Status | Meaning                                                                                                                                                 |
+| -------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UnparseableBody`    | 400    | The body is not JSON, or not an activity (no `type`, `actor`, …)                                                                                        |
+| `InvalidActivityId`  | 400    | The activity's `id` is not usable                                                                                                                       |
+| `ActivityRejected`   | 400    | The activity verified but the inbox rejects it; `detail` is the rejection's `kind` (also stored in `inbox_activities`)                                  |
+| `MissingSignature`   | 401    | No `Signature` header, or one without `keyId`, `headers` and `signature`                                                                                |
+| `DigestMismatch`     | 401    | `Digest` is missing or does not match the body; refused before any key lookup                                                                           |
+| `UnknownLocalActor`  | 401    | The activity claims a local actor that does not exist                                                                                                   |
+| `ActorMismatch`      | 401    | The key belongs to another actor than the activity's (cached for another actor, or on another host)                                                     |
+| `KeyRejected`        | 401    | The key could not be used: its server answered 4xx (a deleted actor's 410), the document is not an actor owning that key, or a redirect left its origin |
+| `SignatureMismatch`  | 401    | The signature does not verify with the signer's key (forged, or signed over other headers than sent)                                                    |
+| `KeyUnavailable`     | 503    | The key's server did not answer or answered 5xx; `Retry-After: 5` is sent and the sender retries                                                        |
+| `DomainSuspended`    | 403    | The key's or actor's host is suspended here (checked before anything is fetched from it)                                                                |
+| `DomainNotAllowed`   | 403    | Limited federation, and the host is not on the allow list                                                                                               |
+| `ActorSuspended`     | 403    | An admin suspended the signing actor (its own account `Delete` still goes through)                                                                      |
+| `RateLimitedDomain`  | 429    | The verified sending server is over `inbox_domain`                                                                                                      |
+| `RateLimitedAddress` | 429    | The client address is over `inbox_ip` (logged by the rate-limit middleware, before the body is read; `keyIdHost` and `actor` are absent)                |
+
+A steady trickle of `KeyRejected` (410 from deleted actors' servers) and `DomainSuspended` is normal. A jump in `SignatureMismatch` from one `keyIdHost` is a forger or a broken remote; `KeyUnavailable` for one host is that server down.
+
+**Not logged.** A delivery attempt is not a log line: each writes an `outbox.deliver` metric point, and only a delivery that ends unsent logs (`OutboxDeliveryGivenUp`). A transient failure's last HTTP status is on its `outbox_deliveries` row (below).
 
 ### Analytics Engine metrics
 
@@ -304,6 +323,7 @@ Every point is written by `writeMetric` in `packages/worker/server/metrics.ts` t
 | `outbox.domain`   | `[failureDays]`                                              | `[unavailable or available, delivery or inbound or admin]`                         | Any `unavailable`                                                           |
 | `outbox.sweep`    | `[examined, created, restarted, waiting, givenUp, failed]`   | `[ok or error]`                                                                    | `error`; `created` / `restarted` above zero every hour                      |
 | `push.deliver`    | `[httpStatus or 0]`                                          | `[httpStatus or network]`                                                          | 401/403 (VAPID key problem), `network`                                      |
+| `inbox.refuse`    | `[1, loggedFlag]`                                            | `[reason, status]` (reasons under [Inbox refusals](#log-events))                   | A jump in one reason; `DomainSuspended` / `KeyRejected` floods              |
 | `timeline.*`      | `[latencyMs, rows]`                                          | `[ok or error]`                                                                    | p95 latency, `error` share                                                  |
 | `search`          | `[latencyMs, accountHits, statusHits]`                       | `[type]`                                                                           | p95 latency                                                                 |
 | `stream.render`   | `[renders, delivered, errors, totalMs, maxMs, p50Ms, p95Ms]` | `[home or list or public, ok or error]`                                            | `errors`; `p95Ms` growth                                                    |
@@ -329,6 +349,11 @@ More queries (same call):
 SELECT blob1 AS cron, SUM(_sample_interval) AS runs, MAX(timestamp) AS last_run
 FROM tstodon_metrics WHERE index1 = 'cron' AND timestamp > NOW() - INTERVAL '1' DAY
 GROUP BY cron
+
+-- Inbox refusals per reason and status in the last hour (OPS-5).
+SELECT blob1 AS reason, blob2 AS status, SUM(_sample_interval) AS refused
+FROM tstodon_metrics WHERE index1 = 'inbox.refuse' AND timestamp > NOW() - INTERVAL '1' HOUR
+GROUP BY reason, status ORDER BY refused DESC
 
 -- Paged jobs: passes, failures and p95 time per job over a week.
 SELECT blob1 AS job, blob2 AS outcome, SUM(_sample_interval) AS passes,
@@ -381,9 +406,9 @@ Analytics Engine keeps data for three months and samples at high volume (weight 
 Each activity to each remote inbox is a row in `outbox_deliveries` (`inbox_url` set; fan-out rows have `inbox_url` NULL and `kind` `Expanded` or `Delivered`). `kind` is `Queued`, `Delivered`, `Failed` or `Skipped`:
 
 - `Failed` / `Permanent` (with `http_status`): the remote answered a 4xx other than 401, 408 and 429, or a 501 (Mastodon's `response_error_unsalvageable?`), or the activity or its signer is gone here.
-- `Failed` / `RetryExhausted` (with `attempt_count`): 17 attempts failed, or the hourly sweep found the target stuck for over 10 days.
+- `Failed` / `RetryExhausted` (with `attempt_count`, and `http_status` of the last attempt when it got an HTTP answer): 17 attempts failed, or the hourly sweep found the target stuck for over 10 days (no `http_status` then).
 - `Skipped` / `DomainUnavailable`: the inbox's domain was marked unavailable (below), so nothing was sent.
-- `Queued` with `next_attempt_at`: waiting for its next attempt.
+- `Queued` with `next_attempt_at`: waiting for its next attempt. `http_status` is the status of the attempt that failed last (a 5xx, 401, 408 or 429), NULL when it got no HTTP answer (network error, timeout) or failed here; every attempt's status is in the `outbox.deliver` metric.
 
 The Workflow attempts a delivery up to 17 times (Mastodon's 16 retries), sleeping Sidekiq's backoff between attempts: `count⁴ + 15 + rand(10) × (count + 1)` seconds, from 15 seconds up to about 14 hours, about 2.1 days in all (`OutboxDelivery` in `packages/domain/src/outbox-delivery.ts`). A 429 or 503 with a `Retry-After` waits at least that long, at most 12 hours. 5xx, 401, 408, 429 and no answer at all are retried.
 
@@ -484,7 +509,6 @@ Starting points; tune them to your traffic. Cloudflare Notifications covers some
 
 | Signal                                                          | Threshold to start with                                   |
 | --------------------------------------------------------------- | --------------------------------------------------------- |
-| --------------------------------------------------------------  | --------------------------------------------------------- |
 | Uptime check on `/healthz` or `/api/v1/instance`                | 3 consecutive failures                                    |
 | Worker invocations with outcome `exception`                     | > 1% of requests over 10 minutes                          |
 | `cron` metric                                                   | No point for 2 hours                                      |
@@ -503,6 +527,7 @@ Starting points; tune them to your traffic. Cloudflare Notifications covers some
 | D1 size                                                         | > 70% of the plan limit                                   |
 | R2 storage                                                      | Growth beyond what you budgeted per week                  |
 | 429 responses on `/inbox` (Workers Logs or Security analytics)  | A sudden jump, or one large remote throttled continuously |
+| `inbox.refuse` `SignatureMismatch` or `KeyUnavailable`          | > 100 per hour, or 10× the usual rate                     |
 
 ## Common incidents
 
@@ -526,7 +551,7 @@ Starting points; tune them to your traffic. Cloudflare Notifications covers some
 
 ### Inbox flood
 
-1. Identify the source: Workers Logs filtered on path `/inbox`, `/actor/inbox` or `/users/*/inbox` by client IP and status; Security → Analytics for the zone.
+1. Identify the source: `inbox.refuse` by `reason` (query under [Analytics Engine metrics](#analytics-engine-metrics)), the `InboxRefused` lines' `keyIdHost` and `actor`, Workers Logs filtered on path `/inbox`, `/actor/inbox` or `/users/*/inbox` by client IP and status; Security → Analytics for the zone.
 2. The Worker already throttles: `inbox_ip` (1500 per 5 minutes per address, before the body is read) and `inbox_domain` (3000 per 5 minutes per verified sending server). Tighten with `RATE_LIMITS`, for example `{"inbox_domain": {"limit": 600, "period": 300}}`, in `wrangler.jsonc` vars, and deploy.
 3. One bad server: a domain block with severity `suspend` (`/admin/instances`, or `POST /api/v1/admin/domain_blocks`) refuses its deliveries after signature verification.
 4. An address range: an IP block with `no_access` (`POST /api/v1/admin/ip_blocks`, `ip=203.0.113.0/24`, `severity=no_access`, optional `expires_in`). It refuses every request from the range before routing, within a minute in every isolate. Do not block the address you administer from: the admin API is refused too (remove such a block with `wrangler d1 execute tstodon --remote --command "DELETE FROM ip_blocks WHERE ip = '203.0.113.0/24'"`).
@@ -618,7 +643,7 @@ tstodon handles a **remote** actor's rotation the same way: when a signature fai
    wrangler versions list
    ```
 
-2. Roll the Worker back: `wrangler rollback <version-id> -m "reason"`. This restores the code and its configuration from that version. It does not touch D1 data, R2, KV, or the queue's contents, and Cloudflare refuses some rollbacks across Durable Object migrations **(verify)** (this Worker's DO migrations are tags `v1` and `v2`).
+2. Roll the Worker back: `wrangler rollback <version-id> -m "reason"`. This restores the code and its configuration from that version. It does not touch D1 data, R2, or the queue's contents, and Cloudflare refuses some rollbacks across Durable Object migrations **(verify)** (this Worker's DO migrations are tags `v1` and `v2`).
 3. **D1 migrations are forward-only.** `pnpm run deploy` applied the new version's migrations before uploading it, so the old code now runs on the new schema. Most migrations are additive and the old code works; a table rebuild or a dropped column can break it. Options, in order of preference:
    - fix forward: revert the code change on `main`, keep the migration, deploy;
    - if the migration damaged data, [restore D1 with Time Travel](#d1-time-travel-point-in-time-restore) to just before the deploy, then deploy the version that matches that schema.

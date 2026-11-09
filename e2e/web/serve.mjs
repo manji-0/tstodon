@@ -1,8 +1,8 @@
 // Playwright's web server for the browser e2e suite: a fresh copy of the
 // migrated database (database.mjs), then the Worker in Void's dev server on
-// http://localhost:8795 with e2e/web.wrangler.jsonc (mail captured in APP_CACHE),
-// behind the stand-in Access edge (access-edge.mjs) on http://localhost:8793,
-// the origin the browser opens.
+// http://localhost:8795 with e2e/web.wrangler.jsonc, behind the stand-in
+// Access edge (access-edge.mjs) on http://localhost:8793, the origin the
+// browser opens.
 // The dev server serves the built web UI (packages/worker/dist/client, which
 // `pnpm e2e:web` builds first) as deployed, not the frontend's sources: React's
 // development build logs warnings the scenarios count as console errors.
@@ -53,8 +53,6 @@ const server = spawn(
       TSTODON_PERSIST_TO: state,
       TSTODON_WEB_CLIENT: "build",
       VOID_INSPECTOR_PORT: "false",
-      // fixtures.ts reads the captured mail through the local explorer API.
-      X_LOCAL_EXPLORER: "true",
     },
   },
 );
