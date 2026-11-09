@@ -1,30 +1,29 @@
 import { escapeHtml } from "./html";
 import { ACCESS_LOGOUT_PATH } from "./access-jwt";
+import { webManifest } from "./web-manifest";
 
 /**
  * The few HTML pages sign-in needs: the Access explanation, and the OAuth
  * consent screen. Plain HTML; there is no passkey ceremony.
+ *
+ * `page` is the frame of every page the Worker renders itself (settings,
+ * filters, account security, admin, …). It links one stylesheet, built from
+ * the web app's theme tokens (`src/styles/entrypoints/pages.scss`, a hashed
+ * pack), and renders `auto` for the colour scheme and contrast.
  */
 
 export const page = (title: string, body: string, script = ""): string => `<!doctype html>
-<html lang="en">
+<html lang="en" data-color-scheme="auto" data-contrast="auto">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="no-referrer" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#08090a" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8f8" media="(prefers-color-scheme: light)" />
     <title>${escapeHtml(title)}</title>
-    <style>
-      body { font-family: system-ui, sans-serif; max-width: 28rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.5; }
-      label, input, select, button { display: block; width: 100%; box-sizing: border-box; }
-      input, select, button { font: inherit; padding: 0.5rem; margin-top: 0.25rem; }
-      select + label { margin-top: 0.75rem; }
-      .check { display: flex; gap: 0.5rem; align-items: baseline; margin: 0.75rem 0 0; }
-      .check input { width: auto; flex: none; margin: 0; }
-      button { margin-top: 1rem; cursor: pointer; }
-      .error { color: #b00020; }
-      .muted { color: #666; }
-      code { word-break: break-all; }
-    </style>
+    <link rel="icon" type="image/png" sizes="32x32" href="${escapeHtml(webManifest.favicon)}" />
+    <link rel="stylesheet" href="${escapeHtml(webManifest.pages)}" />
   </head>
   <body>
     <main>

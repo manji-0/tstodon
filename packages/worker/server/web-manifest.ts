@@ -28,6 +28,8 @@ export const WebManifestSchema = z.object({
   themeSelection: z.string(),
   inert: z.string(),
   theme: z.string(),
+  /** The stylesheet of the Worker's own HTML pages (`src/styles/entrypoints/pages.scss`). */
+  pages: z.string(),
   favicon: z.string(),
   common: EntrySchema,
   application: EntrySchema,
