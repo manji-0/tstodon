@@ -285,3 +285,18 @@ export {
   type StatusesCleanupPolicy as StatusesCleanupPolicyValue,
   type StatusesCleanupRules,
 } from "./statuses-cleanup-policy";
+export {
+  IpBlock,
+  IpBlockSeverity,
+  IpRange,
+  type IpAccessDecision,
+  type IpBlock as IpBlockValue,
+  type IpBlockExpiry,
+  type IpBlockList,
+  type IpBlockSeverity as IpBlockSeverityValue,
+  type IpBlockSeverityName,
+  type IpRange as IpRangeValue,
+  type IpSignUpDecision,
+  type InvalidIpRange,
+  type ListIpBlocks,
+} from "./ip-block";
