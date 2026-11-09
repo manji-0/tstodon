@@ -32,6 +32,7 @@ import { rekeyLegacyMediaBatch } from "./media-rekey";
 import { vacuumMediaAttachments } from "./media-vacuum";
 import { vacuumActivities } from "./activity-vacuum";
 import { requeueDeadOutboxJobs } from "./dead-letter-queue";
+import { ROTATE_ACTOR_KEYS_PAUSE_SECONDS, rotateActorKeysPage } from "./actor-key-rotation";
 import {
   logStripStoredMediaMetadataDone,
   stripStoredMediaMetadataPage,
@@ -224,6 +225,27 @@ export const processOutboxJob = async (
       });
     case "RequeueDeadOutboxJobs":
       return requeueDeadOutboxJobs(env, job);
+    case "RotateActorKeys":
+      return measureJobPage(env, job.kind, async () => {
+        const identity = parseInstanceIdentity(env);
+        if (identity.isErr()) {
+          return { outcome: "retry", size: 0, chained: false };
+        }
+        const page = await rotateActorKeysPage(env, identity.value, job);
+        if (page.isErr()) {
+          return { outcome: "retry", size: 0, chained: false };
+        }
+        if (page.value.next !== undefined) {
+          await env.OUTBOX_PROCESS_QUEUE.send(page.value.next, {
+            delaySeconds: ROTATE_ACTOR_KEYS_PAUSE_SECONDS,
+          });
+        }
+        return {
+          outcome: "ok",
+          size: page.value.rotated,
+          chained: page.value.next !== undefined,
+        };
+      });
     case "StripStoredMediaMetadata":
       return measureJobPage(env, job.kind, async () => {
         const page = await stripStoredMediaMetadataPage(env, job);
