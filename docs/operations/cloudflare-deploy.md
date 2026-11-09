@@ -110,3 +110,26 @@ curl -X POST "https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/queues/
 Starting it again, at any time, is safe: once every row is marked, a run is one page that reads no object.
 
 **Caches keep the old bytes.** The rewrite keeps the key, so the URL does not change, and media is served with `Cache-Control: public, max-age=31536000, immutable`. Browsers, the media hostname's CDN cache and remote servers that copied the file keep the version with metadata until it expires or they fetch it again. The job drops the copy in the Worker's own Cache API (`caches.default`), which only matters when `MEDIA_PUBLIC_BASE_URL` is the Worker origin, and only reaches the data centre the queue consumer ran in. The Worker cannot purge the zone cache (that needs an API token it does not have). After the run, purge the media hostname: by prefix `<media hostname>/attachments/`, `/avatars/` and `/headers/` in the dashboard (Caching, Configuration, Custom Purge), or Purge Everything for the media zone; do the same for the Worker hostname if `MEDIA_PUBLIC_BASE_URL` is the Worker origin. Copies already in browsers and on remote servers cannot be recalled.
+
+## Recording stored media sizes
+
+<!-- constrained-by ../reference/configuration.md#media-storage-accounting -->
+
+Migration 0125 adds the byte size of each stored object (see [Media storage accounting](../reference/configuration.md#media-storage-accounting)). Uploads, avatar and header changes, custom emoji uploads and the metadata rewrite record sizes from then on; rows stored before have no size (NULL) and count 0 in `space_usage`, `instance_media_attachments` and the export page until the `BackfillStoredMediaSizes` queue job has read them.
+
+You do not need to start the job: the six-hourly cron queues its first page on `tstodon-outbox-process`. Each page is one D1 query (`listUnsizedMedia`) for up to 50 rows of unknown size, attachments first, then avatars, headers and custom emojis; each object gets a `HEAD` (its size from R2's metadata, no body read), and the row records the size only while it still holds that key and its size is still unknown, so an upload or metadata rewrite since is never overwritten. A full page queues the next one with its cursor (`source`, `afterId`) and the counts so far.
+
+- **Missing objects.** A row whose object is not in the bucket gets size 0 and a `MediaSizeNotRead` warning with the key and `outcome` `Missing`.
+- **Failures.** A `HEAD` or D1 write that fails is logged as `MediaSizeNotRead` (`Deferred`) and leaves the row's size unknown for the next run.
+- **Done.** The last page of a run that did anything logs `MediaSizeBackfillDone` with `sized`, `missing` and `deferred`. Once every size is known, a run is one query that reads nothing (partial indexes on the unknown sizes) and no `HEAD`.
+
+To check progress:
+
+```sh
+wrangler d1 execute <D1_DATABASE_NAME> --remote --command \
+  "SELECT (SELECT COUNT(*) FROM media_attachments WHERE file_size IS NULL OR (preview_object_key IS NOT NULL AND preview_file_size IS NULL)) AS attachments,
+          (SELECT COUNT(*) FROM account_profiles WHERE (avatar_object_key IS NOT NULL AND avatar_file_size IS NULL) OR (header_object_key IS NOT NULL AND header_file_size IS NULL)) AS profiles,
+          (SELECT COUNT(*) FROM custom_emojis WHERE image_file_size IS NULL) AS emojis"
+```
+
+Progress also shows in the `outbox.job.page` metric for `BackfillStoredMediaSizes` (the step is the source). To start a run at once, send the queue `{"kind": "BackfillStoredMediaSizes"}` as for the metadata job above; starting it again is always safe.

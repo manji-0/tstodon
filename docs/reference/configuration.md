@@ -81,6 +81,20 @@ A file that cannot be rewritten is refused rather than stored with its metadata:
 
 Objects stored before stripping existed are rewritten in place by the `StripStoredMediaMetadata` queue job, which the six-hourly cron starts: attachment originals, avatars and headers, 10 rows and at most 64 MiB per message, objects over 32 MiB passed over, a container that cannot be walked left as it is with the reason recorded. Uploads are marked as stripped when stored (migration 0119: `media_attachments.metadata_stripped_at`, `account_profiles.avatar_metadata_stripped_at` / `header_metadata_stripped_at`), so the job never reads them. The URL stays the same, so caches serve the old bytes until they expire or are purged; see [Stripping metadata from stored media](../operations/cloudflare-deploy.md#stripping-metadata-from-stored-media).
 
+### Media storage accounting
+
+<!-- constrained-by ../operations/cloudflare-deploy.md#recording-stored-media-sizes -->
+
+tstodon records the byte size of every object it stores in `MEDIA` (migration 0125): attachment originals and their IMAGES previews (`media_attachments.file_size` / `preview_file_size`), avatars and headers (`account_profiles.avatar_file_size` / `header_file_size`) and custom emoji images (`custom_emojis.image_file_size`). The size is what R2 reports for the stored bytes, after metadata stripping, and the `StripStoredMediaMetadata` rewrite records the new size. Nothing needs configuring.
+
+| Where                                                       | What it shows                                                                                                                                                                                                            |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /api/v1/admin/dimensions`, `space_usage`              | `d1` (the database size D1 reports) and `media` ("Media storage"): originals, previews, a legacy copy the rekey job keeps (counted at the original's size), avatars, headers and custom emoji images                     |
+| `POST /api/v1/admin/measures`, `instance_media_attachments` | for this server's own `domain`: the attachments' originals and previews, in total and by upload day; 0 for any other domain, since tstodon links remote media rather than caching it (Mastodon counts its cached copies) |
+| `/settings/export`                                          | "Media storage" of the signed-in account: its attachments, avatar and header                                                                                                                                             |
+
+Sizes are shown in binary units with three significant digits, as Mastodon's `number_to_human_size` (`1.18 MB`). Nothing else tstodon creates is stored in the bucket: link card images, remote avatars and remote media are not cached, and the images of the `CUSTOM_EMOJIS` var are hosted elsewhere. Objects stored before sizes were recorded count 0 until the `BackfillStoredMediaSizes` job has read them; see [Recording stored media sizes](../operations/cloudflare-deploy.md#recording-stored-media-sizes).
+
 ### CORS / allowed origins
 
 <!-- constrained-by ../operations/cloudflare-deploy.md -->
