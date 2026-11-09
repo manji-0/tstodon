@@ -39,6 +39,14 @@ export const handleQueue = async (batch: OutboxBatch, env: Env): Promise<void> =
     }
     if (outcome === "retry") {
       writeMetric(env, "outbox.job", [1], [parsed.value.kind, "failed"]);
+      // No dead-letter queue is configured: once acked, nothing runs this job again.
+      console.error(
+        JSON.stringify({
+          kind: "OutboxJobDropped",
+          jobKind: parsed.value.kind,
+          attempts: message.attempts,
+        }),
+      );
       if (parsed.value.kind === "ProcessCsvImport") {
         // Nothing will run the rest of the import; show it as stopped, not as running.
         await failCsvImport(env.DB, parsed.value.importId);
