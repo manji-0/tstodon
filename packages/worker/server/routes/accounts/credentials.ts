@@ -1,4 +1,4 @@
-import type { ApiCredentialAccountJSON } from "@tstodon/api";
+import type { ApiCredentialAccountJSON, ApiProfileDocumentJSON } from "@tstodon/api";
 import {
   FediRole,
   UploadMetadata,
@@ -8,7 +8,13 @@ import {
   type InstanceIdentity,
   type LocalAccount,
 } from "@tstodon/domain";
-import { InstanceLimits, schemaResult, warmSchemas } from "@tstodon/core";
+import {
+  InstanceLimits,
+  characterCount,
+  countableLength,
+  schemaResult,
+  warmSchemas,
+} from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { type Context } from "hono";
 import { findAccountById, setAccountLocked, updateAccountProfile } from "../../account-store";
@@ -22,6 +28,7 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
+  nestFormKeys,
   readUnknownBody,
   requireSession,
   requireUser,
@@ -37,6 +44,11 @@ import { buildFeaturedTagDocuments } from "../tags";
 import { z } from "zod";
 import { booleanish } from "../../form-values";
 
+const ProfileFieldInputSchema = z.object({
+  name: z.string().optional(),
+  value: z.string().optional(),
+});
+
 export const UpdateCredentialsBodySchema = z.object({
   display_name: z.string().optional(),
   avatar: z.unknown().optional(),
@@ -47,8 +59,13 @@ export const UpdateCredentialsBodySchema = z.object({
   indexable: booleanish,
   hide_collections: booleanish,
   locked: booleanish,
-  fields: z
-    .array(z.object({ name: z.string().optional(), value: z.string().optional() }))
+  fields: z.array(ProfileFieldInputSchema).optional(),
+  /**
+   * Mastodon's name for the profile fields: an array (the web UI's JSON) or
+   * an object keyed by position (`fields_attributes[0][name]` as a form).
+   */
+  fields_attributes: z
+    .union([z.array(ProfileFieldInputSchema), z.record(z.string(), ProfileFieldInputSchema)])
     .optional(),
   source: z
     .object({
@@ -241,6 +258,86 @@ const parseSourceDefaults = (
   });
 };
 
+type ProfileFieldInput = z.infer<typeof ProfileFieldInputSchema>;
+
+/**
+ * The profile fields a request sets, in order, or `undefined` when it names
+ * none: `fields_attributes` (a JSON array or object keyed by position, or
+ * `fields_attributes[0][name]` form keys) or `fields`. A field with a blank
+ * name or value is left out, before the limits are checked.
+ */
+const profileFields = (
+  rawBody: unknown,
+  body: UpdateCredentialsBody,
+): ReadonlyArray<Readonly<{ name: string; value: string }>> | undefined => {
+  const flat: Record<string, unknown> = schemaResult(z.record(z.string(), z.unknown()))(
+    rawBody,
+  ).unwrapOr({});
+  const formFields = new Map<number, { name?: string; value?: string }>();
+  for (const [key, value] of Object.entries(flat)) {
+    const match = /^fields_attributes\[(\d+)\]\[(name|value)\]$/.exec(key);
+    if (match && typeof value === "string") {
+      const index = Number(match[1]);
+      formFields.set(index, { ...formFields.get(index), [match[2] ?? "name"]: value });
+    }
+  }
+  const byPosition = (entries: ReadonlyArray<[number, ProfileFieldInput]>) =>
+    [...entries].sort(([a], [b]) => a - b).map(([, field]) => field);
+  const attributes = body.fields_attributes;
+  const requested: ReadonlyArray<ProfileFieldInput> | undefined =
+    attributes === undefined
+      ? formFields.size > 0
+        ? byPosition([...formFields.entries()])
+        : body.fields
+      : Array.isArray(attributes)
+        ? attributes
+        : byPosition(Object.entries(attributes).map(([key, field]) => [Number(key), field]));
+  return requested?.flatMap((field) => {
+    const name = field.name?.trim() ?? "";
+    const value = field.value?.trim() ?? "";
+    return name.length > 0 && value.length > 0 ? [{ name, value }] : [];
+  });
+};
+
+/**
+ * The advertised account limits (`configuration.accounts`), checked before
+ * anything is stored, with Mastodon's `Validation failed: ...` messages (the
+ * `Account` model's length validations and `NoteLengthValidator`).
+ */
+const checkProfileLimits = (
+  rawBody: unknown,
+  body: UpdateCredentialsBody,
+): Result<void, ApiRefusal> => {
+  const limits = InstanceLimits.account;
+  const problems: string[] = [];
+  const displayName = body.display_name?.trim();
+  if (displayName !== undefined && characterCount(displayName) > limits.maxDisplayNameCharacters) {
+    problems.push(
+      `Display name is too long (maximum is ${limits.maxDisplayNameCharacters} characters)`,
+    );
+  }
+  if (body.note !== undefined && countableLength(body.note) > limits.maxNoteCharacters) {
+    problems.push(`Note character limit of ${limits.maxNoteCharacters} exceeded`);
+  }
+  const fields = profileFields(rawBody, body) ?? [];
+  if (fields.length > limits.maxProfileFields) {
+    problems.push(`Fields is too long (maximum is ${limits.maxProfileFields} characters)`);
+  }
+  if (fields.some((field) => characterCount(field.name) > limits.maxProfileFieldNameCharacters)) {
+    problems.push(
+      `Fields name is too long (maximum is ${limits.maxProfileFieldNameCharacters} characters)`,
+    );
+  }
+  if (fields.some((field) => characterCount(field.value) > limits.maxProfileFieldValueCharacters)) {
+    problems.push(
+      `Fields value is too long (maximum is ${limits.maxProfileFieldValueCharacters} characters)`,
+    );
+  }
+  return problems.length === 0
+    ? ok(undefined)
+    : err(ApiRefusal.rejected(422, `Validation failed: ${problems.join(", ")}`, "ValidationError"));
+};
+
 /**
  * Store the bio, profile fields, flags, and avatar/header uploads beside the
  * account row; an omitted value keeps the stored one, and a replaced image is
@@ -249,6 +346,7 @@ const parseSourceDefaults = (
 const saveProfile = async (
   env: Env,
   accountId: string,
+  rawBody: unknown,
   body: UpdateCredentialsBody,
 ): Promise<Result<void, ApiRefusal>> => {
   const existingProfile = await findAccountProfile(env.DB, accountId);
@@ -256,14 +354,7 @@ const saveProfile = async (
     return err(ApiRefusal.repository(existingProfile.error.message));
   }
   const existing = existingProfile.value;
-  const fields = body.fields
-    ?.flatMap((field) => {
-      const name = field.name?.trim() ?? "";
-      const value = field.value?.trim() ?? "";
-      return name.length > 0 && value.length > 0 ? [{ name, value }] : [];
-    })
-    // Mastodon keeps only the first few profile fields.
-    .slice(0, InstanceLimits.account.maxProfileFields);
+  const fields = profileFields(rawBody, body);
   // Avatar / header uploads land in the media bucket like any other object.
   const avatar = await storeProfileImage(env, accountId, "avatar", body.avatar);
   if (avatar.kind === "Err") {
@@ -314,6 +405,10 @@ const updateCredentials = async (
   if (defaults.isErr()) {
     return err(ApiRefusal.rejected(422, defaults.error, "ValidationError"));
   }
+  const limits = checkProfileLimits(rawBody, body);
+  if (limits.isErr()) {
+    return err(limits.error);
+  }
   if (defaults.value) {
     const stored = await updateAccountDefaults(env.DB, account.id, defaults.value);
     if (stored.isErr()) {
@@ -328,7 +423,7 @@ const updateCredentials = async (
   if (updated.isErr()) {
     return err(ApiRefusal.repository(updated.error.message));
   }
-  const profile = await saveProfile(env, account.id, body);
+  const profile = await saveProfile(env, account.id, rawBody, body);
   if (profile.isErr()) {
     return err(profile.error);
   }
@@ -377,7 +472,10 @@ export const patchV1AccountsUpdateCredentials = async (
     return jsonAuthError(c, user.error);
   }
   const rawBody = await readUnknownBody(c);
-  const body = schemaResult(UpdateCredentialsBodySchema)(rawBody);
+  // A form nests `fields_attributes[0][name]` as Rails does.
+  const body = schemaResult(UpdateCredentialsBodySchema)(
+    schemaResult(z.record(z.string(), z.unknown()))(rawBody).map(nestFormKeys).unwrapOr(rawBody),
+  );
   if (body.isErr()) {
     return jsonValidationError(c);
   }
@@ -456,64 +554,43 @@ export const deleteV1ProfileHeader = (c: Context<{ Bindings: Env }, "/api/v1/pro
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([UpdateCredentialsBodySchema]);
 
-const ProfileSourceSchema = z.object({
-  id: z.string(),
-  display_name: z.string(),
-  avatar: z.string(),
-  avatar_static: z.string(),
-  header: z.string(),
-  header_static: z.string(),
-  locked: z.boolean(),
-  bot: z.boolean(),
-  discoverable: z.boolean().nullable().optional(),
-  indexable: z.boolean(),
-  hide_collections: z.boolean().nullable().optional(),
-  note: z.string(),
-  fields: z.array(z.unknown()),
-  source: z.object({ note: z.string(), fields: z.array(z.unknown()) }),
-});
-
 /**
  * Mastodon 4.6's profile-editing document (`REST::ProfileSerializer`): the
- * plain-text note and fields alongside their rendered forms.
+ * plain-text note and fields, with their rendered forms alongside
+ * (`formatted_note` / `formatted_fields`, tstodon).
  */
 const profileDocument = async (
   env: Env,
   identity: InstanceIdentity,
   account: LocalAccount,
   role: FediRoleValue,
-): Promise<Record<string, unknown> | undefined> => {
+): Promise<ApiProfileDocumentJSON> => {
   const [credential, featured] = await Promise.all([
     credentialAccountDocument(env, identity, account, role),
     buildFeaturedTagDocuments(env, identity, account.id, account.username),
   ]);
-  const parsed = schemaResult(ProfileSourceSchema)(credential);
-  if (parsed.isErr()) {
-    return undefined;
-  }
-  const doc = parsed.value;
   return {
-    id: doc.id,
-    display_name: doc.display_name,
-    note: doc.source.note,
-    fields: doc.source.fields,
-    formatted_note: doc.note,
-    formatted_fields: doc.fields,
-    avatar: doc.avatar,
-    avatar_static: doc.avatar_static,
-    avatar_description: "",
-    header: doc.header,
-    header_static: doc.header_static,
-    header_description: "",
-    locked: doc.locked,
-    bot: doc.bot,
-    hide_collections: doc.hide_collections ?? false,
-    discoverable: doc.discoverable ?? false,
-    indexable: doc.indexable,
-    show_media: true,
-    show_media_replies: true,
-    show_featured: true,
-    attribution_domains: [],
+    id: credential.id,
+    display_name: credential.display_name,
+    note: credential.source.note,
+    fields: credential.source.fields,
+    formatted_note: credential.note,
+    formatted_fields: credential.fields,
+    avatar: credential.avatar,
+    avatar_static: credential.avatar_static,
+    avatar_description: credential.avatar_description,
+    header: credential.header,
+    header_static: credential.header_static,
+    header_description: credential.header_description,
+    locked: credential.locked,
+    bot: credential.bot,
+    hide_collections: credential.hide_collections ?? false,
+    discoverable: credential.discoverable ?? false,
+    indexable: credential.indexable,
+    show_media: credential.show_media,
+    show_media_replies: credential.show_media_replies,
+    show_featured: credential.show_featured,
+    attribution_domains: credential.source.attribution_domains,
     featured_tags: featured.kind === "Ok" ? featured.documents : [],
   };
 };
@@ -528,13 +605,9 @@ export const getV1Profile = async (c: Context<{ Bindings: Env }>) => {
   if (session.isErr()) {
     return jsonAuthError(c, session.error);
   }
-  const document = await profileDocument(
-    c.env,
-    identity.value,
-    session.value.account,
-    session.value.role,
+  return c.json(
+    await profileDocument(c.env, identity.value, session.value.account, session.value.role),
   );
-  return document ? c.json(document) : jsonRepositoryError(c, "profile could not be rendered");
 };
 
 /**

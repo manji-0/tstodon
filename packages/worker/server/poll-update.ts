@@ -1,3 +1,4 @@
+import { ACTIVITY_STREAMS, type ApActivityDocumentOf } from "@tstodon/api/activitypub";
 import { InstanceIdentity, type LocalNote, type OutboxJob } from "@tstodon/domain";
 import { findAccountById } from "./account-store";
 import { noteDocument } from "./activitypub";
@@ -83,8 +84,8 @@ const distributePollUpdate = async (
     return;
   }
   const actor = InstanceIdentity.actorUrl(identity, author.value.username);
-  const update = {
-    "@context": "https://www.w3.org/ns/activitystreams",
+  const update: ApActivityDocumentOf<"Update"> = {
+    "@context": ACTIVITY_STREAMS,
     id: `${actor}/statuses/${note.id}/updates/${newEntityId()}`,
     type: "Update",
     actor,

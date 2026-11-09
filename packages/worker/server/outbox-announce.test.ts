@@ -2,8 +2,8 @@ import { schemaResult } from "@tstodon/core";
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount } from "@tstodon/api";
 import { authHeaders } from "../test/auth-fixture";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 import { listOutboundActivities } from "./outbox-store";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -33,7 +33,7 @@ const headers = async (email: string) => ({
 
 const account = async (email: string) =>
   read(
-    MastodonAccountPreviewSchema,
+    ApiAccount,
     (await json("/api/v1/accounts/verify_credentials", { headers: await headers(email) })).body,
   );
 

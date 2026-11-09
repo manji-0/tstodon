@@ -1,9 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -83,7 +83,7 @@ describe("conversations", () => {
     const bobAccount = await json("/api/v1/accounts/verify_credentials", {
       headers: await auth(bob),
     });
-    const bobPreview = read(MastodonAccountPreviewSchema, bobAccount.body);
+    const bobPreview = read(ApiAccount, bobAccount.body);
     const bobId = bobPreview.id;
     const bobUsername = bobPreview.username;
 
@@ -133,6 +133,6 @@ describe("conversations", () => {
 const ConversationSchema = z.object({
   id: z.string().min(1),
   unread: z.boolean(),
-  accounts: z.array(MastodonAccountPreviewSchema),
+  accounts: z.array(ApiAccount),
   last_status: z.object({ id: z.string().min(1) }).nullable(),
 });

@@ -1,5 +1,10 @@
 import { assertNever } from "@tstodon/core";
-import { Hostname, OutboxJob, type OutboxJob as OutboxJobValue } from "@tstodon/domain";
+import {
+  Hostname,
+  OutboxJob,
+  StoredMediaMetadata,
+  type OutboxJob as OutboxJobValue,
+} from "@tstodon/domain";
 import { ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import {
@@ -24,6 +29,10 @@ import { processBackfillRemoteThreadJob } from "./remote-thread-backfill";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { rekeyLegacyMediaBatch } from "./media-rekey";
 import { vacuumMediaAttachments } from "./media-vacuum";
+import {
+  logStripStoredMediaMetadataDone,
+  stripStoredMediaMetadataPage,
+} from "./media-metadata-backfill";
 import { backfillLocalNoteTags } from "./local-tag-backfill";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { cleanUpAccountStatuses, queueStatusesCleanup } from "./statuses-cleanup";
@@ -192,6 +201,32 @@ export const processOutboxJob = async (
           await env.OUTBOX_PROCESS_QUEUE.send({ kind: "VacuumMediaAttachments" });
         }
         return { outcome: "ok", size: pass.value.deleted, chained: pass.value.chained };
+      });
+    case "StripStoredMediaMetadata":
+      return measureJobPage(env, job.kind, async () => {
+        const page = await stripStoredMediaMetadataPage(env, job);
+        if (page.isErr()) {
+          return { outcome: "retry", size: 0, chained: false, step: job.source };
+        }
+        const tally = StoredMediaMetadata.addTally(job.tally, page.value.tally);
+        const { next } = page.value;
+        if (next) {
+          await env.OUTBOX_PROCESS_QUEUE.send({
+            kind: "StripStoredMediaMetadata",
+            source: next.source,
+            afterId: next.afterId,
+            tally,
+          });
+        } else if (Object.values(tally).some((n) => n > 0)) {
+          // A run with nothing left to do (every later cron) logs nothing.
+          logStripStoredMediaMetadataDone(tally);
+        }
+        return {
+          outcome: "ok",
+          size: page.value.scanned,
+          chained: next !== undefined,
+          step: job.source,
+        };
       });
     case "CleanUpStatuses":
       await queueStatusesCleanup(env);

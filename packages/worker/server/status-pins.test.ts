@@ -1,12 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount, ApiStatus } from "@tstodon/api";
 import { authHeaders } from "../test/auth-fixture";
 import { schemaResult } from "@tstodon/core";
-import {
-  MastodonAccountPreviewSchema,
-  MastodonStatusPreviewSchema,
-} from "../test/mastodon-preview-schemas";
 
 // The pin-limit case makes a dozen status writes (2 to 5.5 s alone) and timed
 // out at the shared 15 s budget in full CI runs at load 16 to 24 (#48, #50).
@@ -38,7 +35,7 @@ const accountIdFor = async (email: string): Promise<string> => {
     headers: await auth(email),
   });
   expect(response.status).toBe(200);
-  return read(MastodonAccountPreviewSchema, response.body).id;
+  return read(ApiAccount, response.body).id;
 };
 
 const postStatus = async (email: string, payload: Record<string, unknown>): Promise<string> => {
@@ -48,13 +45,13 @@ const postStatus = async (email: string, payload: Record<string, unknown>): Prom
     body: JSON.stringify(payload),
   });
   expect(response.status).toBe(200);
-  return read(MastodonStatusPreviewSchema, response.body).id;
+  return read(ApiStatus, response.body).id;
 };
 
 const pinnedIds = async (accountId: string): Promise<string[]> => {
   const response = await json(`/api/v1/accounts/${accountId}/statuses?pinned=true`);
   expect(response.status).toBe(200);
-  return read(z.array(MastodonStatusPreviewSchema), response.body).map((status) => status.id);
+  return read(z.array(ApiStatus), response.body).map((status) => status.id);
 };
 
 const pin = async (email: string, statusId: string, verb = "pin") =>

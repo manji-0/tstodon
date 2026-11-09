@@ -176,6 +176,36 @@ describe("account profiles", () => {
     expect(status.fields.map((field) => field.name)).toEqual(["Website"]);
   });
 
+  it("takes Mastodon's fields_attributes, as a list or an indexed form hash", async () => {
+    const email = "profile-fields-attributes@example.com";
+    const listed = read(
+      AccountSchema,
+      (
+        await updateCredentials(email, {
+          fields_attributes: [
+            { name: "Website", value: "https://example.org" },
+            { name: "Pronouns", value: "they/them" },
+          ],
+        })
+      ).body,
+    );
+    expect(listed.fields.map((field) => field.name)).toEqual(["Website", "Pronouns"]);
+
+    const form = new FormData();
+    form.set("fields_attributes[1][name]", "Second");
+    form.set("fields_attributes[1][value]", "two");
+    form.set("fields_attributes[0][name]", "First");
+    form.set("fields_attributes[0][value]", "one");
+    const response = await SELF.fetch("https://example.com/api/v1/accounts/update_credentials", {
+      method: "PATCH",
+      headers: await auth(email),
+      body: form,
+    });
+    expect(response.status).toBe(200);
+    const formed = read(AccountSchema, await response.json());
+    expect(formed.fields.map((field) => field.name)).toEqual(["First", "Second"]);
+  });
+
   it("renders a profile field value as escaped HTML, never raw markup", async () => {
     const email = "profile-field-xss@example.com";
     const raw = '<img src=x onerror="alert(1)"> & co';
@@ -189,23 +219,25 @@ describe("account profiles", () => {
     expect(publicAccount.fields[0]?.value).toBe(escaped);
   });
 
-  it("keeps at most four profile fields", async () => {
+  it("keeps up to four profile fields and refuses a fifth, as Mastodon", async () => {
     const email = "profile-fields@example.com";
-    const updated = await updateCredentials(email, {
-      fields: [
-        { name: "One", value: "1" },
-        { name: "Two", value: "2" },
-        { name: "Three", value: "3" },
-        { name: "Four", value: "4" },
-        { name: "Five", value: "5" },
-      ],
-    });
+    const four = [
+      { name: "One", value: "1" },
+      { name: "Two", value: "2" },
+      { name: "Three", value: "3" },
+      { name: "Four", value: "4" },
+    ];
+    const updated = await updateCredentials(email, { fields: four });
     expect(read(AccountSchema, updated.body).fields.map((field) => field.name)).toEqual([
       "One",
       "Two",
       "Three",
       "Four",
     ]);
+    const refused = await updateCredentials(email, {
+      fields: [...four, { name: "Five", value: "5" }],
+    });
+    expect(refused.status).toBe(422);
   });
 
   it("keeps omitted profile fields and replaces them when provided", async () => {

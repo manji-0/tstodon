@@ -7,10 +7,12 @@ import {
   ApiConversation,
   ApiCredentialAccount,
   ApiCustomEmoji,
+  ApiDomainBlock,
   ApiFeaturedTag,
   ApiFilter,
   ApiHashtag,
   ApiInstance,
+  ApiInstanceActivity,
   ApiList,
   ApiMarkers,
   ApiMediaAttachment,
@@ -19,13 +21,17 @@ import {
   ApiNotificationGroupsResult,
   ApiNotificationPolicy,
   ApiPoll,
+  ApiProfileDocument,
   ApiRelationship,
   ApiReport,
   ApiRule,
   ApiSearchResults,
   ApiStatus,
+  ApiStatusEdit,
+  ApiStatusSource,
   ApiSuggestion,
   ApiV1Filter,
+  ApiV1Instance,
 } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
@@ -170,6 +176,29 @@ describe("REST API contract (@tstodon/api)", () => {
       media_ids: [media.id],
     });
     expect(edited.edited_at).not.toBeNull();
+    const history = await get(
+      z.array(ApiStatusEdit),
+      reader,
+      `/api/v1/statuses/${withMedia.id}/history`,
+    );
+    expect(history).toHaveLength(2);
+    expect(history[0]?.media_attachments).toHaveLength(1);
+    await get(ApiStatusSource, author, `/api/v1/statuses/${withMedia.id}/source`);
+    const unvoted = await post(ApiStatus, author, "/api/v1/statuses", {
+      status: "Which one?",
+      poll: { options: ["this", "that"], expires_in: 3600 },
+    });
+    const pollEdit = await ok(ApiStatus, author, "PUT", `/api/v1/statuses/${unvoted.id}`, {
+      status: "Which one now?",
+      poll: { options: ["this", "that", "other"], expires_in: 3600 },
+    });
+    expect(pollEdit.poll?.options).toHaveLength(3);
+    const pollRevisions = await get(
+      z.array(ApiStatusEdit),
+      author,
+      `/api/v1/statuses/${unvoted.id}/history`,
+    );
+    expect(pollRevisions.map((revision) => revision.poll?.options.length)).toEqual([2, 3]);
 
     for (const path of [
       "/api/v1/timelines/home",
@@ -328,6 +357,21 @@ describe("REST API contract (@tstodon/api)", () => {
     expect(instance.configuration.statuses.max_characters).toBeGreaterThan(0);
     await get(z.array(ApiRule), undefined, "/api/v1/instance/rules");
     await get(z.array(ApiCustomEmoji), undefined, "/api/v1/custom_emojis");
+    const v1 = await get(ApiV1Instance, undefined, "/api/v1/instance");
+    expect(v1.urls.streaming_api).toBe("wss://example.com");
+    await get(z.array(ApiInstanceActivity), undefined, "/api/v1/instance/activity");
+    await get(z.array(z.string()), undefined, "/api/v1/instance/peers");
+    await get(z.array(ApiDomainBlock), undefined, "/api/v1/instance/domain_blocks");
+
+    const profile = await get(ApiProfileDocument, author, "/api/v1/profile");
+    expect(profile.id).toBeTruthy();
+    const changed = await ok(ApiProfileDocument, author, "PATCH", "/api/v1/profile", {
+      note: "Plain *note*",
+      fields_attributes: [{ name: "Site", value: "https://example.com" }],
+    });
+    expect(changed.note).toBe("Plain *note*");
+    expect(changed.formatted_note).toContain("<p>");
+    expect(changed.fields.map((field) => field.name)).toEqual(["Site"]);
 
     const filter = await post(ApiFilter, reader, "/api/v2/filters", {
       title: "spoilers",

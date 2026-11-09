@@ -1,12 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount, ApiStatus } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
-import {
-  MastodonAccountPreviewSchema,
-  MastodonStatusPreviewSchema,
-} from "../test/mastodon-preview-schemas";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -29,14 +26,14 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   return parsed.value;
 };
 
-const MutedStatusSchema = MastodonStatusPreviewSchema.extend({ muted: z.boolean() });
+const MutedStatusSchema = ApiStatus.extend({ muted: z.boolean() });
 
 const credentials = async (email: string): Promise<{ id: string; username: string }> => {
   const response = await json("/api/v1/accounts/verify_credentials", {
     headers: await auth(email),
   });
   expect(response.status).toBe(200);
-  const account = read(MastodonAccountPreviewSchema, response.body);
+  const account = read(ApiAccount, response.body);
   return { id: account.id, username: account.username };
 };
 
@@ -47,7 +44,7 @@ const postStatus = async (email: string, payload: Record<string, unknown>): Prom
     body: JSON.stringify(payload),
   });
   expect(response.status).toBe(200);
-  return read(MastodonStatusPreviewSchema, response.body).id;
+  return read(ApiStatus, response.body).id;
 };
 
 const muteStatus = async (email: string, statusId: string, verb: "mute" | "unmute") =>
@@ -59,7 +56,7 @@ const getStatus = async (email: string, statusId: string) =>
 const homeIds = async (email: string): Promise<string[]> => {
   const response = await json("/api/v1/timelines/home", { headers: await auth(email) });
   expect(response.status).toBe(200);
-  return read(z.array(MastodonStatusPreviewSchema), response.body).map((status) => status.id);
+  return read(z.array(ApiStatus), response.body).map((status) => status.id);
 };
 
 const notificationStatusIds = async (email: string): Promise<string[]> => {

@@ -2,6 +2,7 @@ import type { Context, Next } from "hono";
 import { z } from "zod";
 import { InstanceLimits, Languages, schemaResult } from "@tstodon/core";
 import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
+import { type Appearance, DEFAULT_APPEARANCE, findAppearance, themeColorMetas } from "./appearance";
 import { browserFacingOrigin, browserSession } from "./browser-session";
 import { runD1 } from "./d1";
 import {
@@ -299,16 +300,17 @@ export const webAppPage = (
     signedIn: boolean;
     vapidKey: string | null;
     state: unknown;
+    /** The viewer's colour scheme and contrast; `auto` for a signed-out visitor. */
+    appearance: Appearance;
   }>,
 ): string => `<!doctype html>
-<html lang="${attribute(options.locale)}" data-contrast="auto" data-color-scheme="auto" data-system-theme="true">
+<html lang="${attribute(options.locale)}" data-contrast="${options.appearance.contrast}" data-color-scheme="${options.appearance.colorScheme}"${options.appearance.colorScheme === "auto" ? ' data-system-theme="true"' : ""}>
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     ${manifest.dev ? devTags(manifest) : ""}
     <script${manifest.dev ? ' type="module"' : ""} src="${attribute(manifest.themeSelection)}"></script>
-    <meta name="theme-color" content="#08090a" media="(prefers-color-scheme: dark)">
-    <meta name="theme-color" content="#f7f8f8" media="(prefers-color-scheme: light)">
+    ${themeColorMetas(options.appearance.colorScheme)}
     <meta name="mobile-web-app-capable" content="yes">
     <title>${attribute(options.title)}</title>
     <link rel="icon" type="image/png" sizes="32x32" href="${attribute(manifest.favicon)}">
@@ -355,6 +357,14 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
   const locale = pickLocale(c.req.header("Accept-Language"), manifest.locales);
   const viewer = await currentViewer(c.req.raw, c.env);
   const identity = parseInstanceIdentity(c.env);
+  const [state, appearance] = await Promise.all([
+    initialState(c.env, c.req.raw, locale, viewer),
+    viewer === undefined
+      ? DEFAULT_APPEARANCE
+      : findAppearance(c.env.DB, viewer.account.id).then((found) =>
+          found.unwrapOr(DEFAULT_APPEARANCE),
+        ),
+  ]);
   c.header("Cache-Control", "private, no-store");
   c.header("Vary", "Cookie, Accept-Language, Cf-Access-Jwt-Assertion");
   return c.html(
@@ -364,7 +374,8 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
       path,
       signedIn: viewer !== undefined,
       vapidKey: vapidPublicKey(c.env),
-      state: await initialState(c.env, c.req.raw, locale, viewer),
+      state,
+      appearance,
     }),
   );
 };

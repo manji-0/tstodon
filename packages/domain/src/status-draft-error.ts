@@ -8,7 +8,8 @@ const TooManyMediaSchema = z.object({
 });
 const TooLongSchema = z.object({
   kind: z.literal("TooLong"),
-  field: z.union([z.literal("text"), z.literal("spoiler_text")]),
+  // Mastodon reports the shared content-warning-and-body limit on `text`.
+  field: z.literal("text"),
   limit: z.number().int().positive(),
 });
 const PollWithMediaSchema = unitKind("PollWithMedia");

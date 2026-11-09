@@ -5,13 +5,14 @@ import {
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountStanding } from "./account-moderation-store";
+import { findAccountProfile } from "./account-profile-store";
 import { findAccountById } from "./account-store";
 import type { RepositoryError } from "./d1";
 import { findFollowKind } from "./follow-store";
 import { findNotificationPolicy, isSenderAccepted } from "./notification-policy-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { getRemoteActorModeration } from "./remote-actor-moderation-store";
-import { findRemoteFollow } from "./remote-actor-store";
+import { findRemoteActorByUri, findRemoteFollow } from "./remote-actor-store";
 import { findStatusById } from "./status-store";
 
 export type NotificationDisposition = NotificationPolicyAction;
@@ -37,10 +38,15 @@ const remoteSender = async (
   if (moderation.isErr()) {
     return err(moderation.error);
   }
+  const actor = await findRemoteActorByUri(db, actorUri);
+  if (actor.isErr()) {
+    return err(actor.error);
+  }
   return ok({
     kind: "Remote",
     standing: moderation.value.standing,
     followsRecipient: follow.value?.requestKind === "Fulfilled",
+    bot: actor.value?.profile.bot ?? false,
   });
 };
 
@@ -53,6 +59,10 @@ const localSender = async (
   const standing = await findAccountStanding(db, input.senderId);
   if (standing.isErr()) {
     return err(standing.error);
+  }
+  const profile = await findAccountProfile(db, input.senderId);
+  if (profile.isErr()) {
+    return err(profile.error);
   }
   const followed = await findFollowKind(db, input.recipientId, input.senderId);
   if (followed.isErr()) {
@@ -80,6 +90,7 @@ const localSender = async (
     recipientFollowsSender: followed.value === "Accepted",
     senderFollowsRecipient: follows.value === "Accepted",
     privateMention,
+    bot: profile.value.bot,
   });
 };
 

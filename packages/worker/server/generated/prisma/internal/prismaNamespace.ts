@@ -6640,6 +6640,7 @@ export const Notification_policiesScalarFieldEnum = {
   for_new_accounts: "for_new_accounts",
   for_private_mentions: "for_private_mentions",
   for_limited_accounts: "for_limited_accounts",
+  for_bots: "for_bots",
   updated_at: "updated_at",
 } as const;
 
@@ -6677,6 +6678,10 @@ export const Account_profilesScalarFieldEnum = {
   header_object_key: "header_object_key",
   header_content_type: "header_content_type",
   updated_at: "updated_at",
+  avatar_metadata_stripped_at: "avatar_metadata_stripped_at",
+  avatar_metadata_strip_error: "avatar_metadata_strip_error",
+  header_metadata_stripped_at: "header_metadata_stripped_at",
+  header_metadata_strip_error: "header_metadata_strip_error",
 } as const;
 
 export type Account_profilesScalarFieldEnum =
@@ -7016,6 +7021,8 @@ export const Media_attachmentsScalarFieldEnum = {
   preview_width: "preview_width",
   preview_height: "preview_height",
   blurhash: "blurhash",
+  metadata_stripped_at: "metadata_stripped_at",
+  metadata_strip_error: "metadata_strip_error",
 } as const;
 
 export type Media_attachmentsScalarFieldEnum =

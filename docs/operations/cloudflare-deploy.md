@@ -64,3 +64,49 @@ After you deploy:
 3. Purge the old URLs from the CDN cache of the media hostname. A deleted object can still be served from cache until then. Purge by prefix `<media hostname>/attachments/` in the dashboard (Caching, Configuration, Custom Purge), or select Purge Everything for the media zone. Do the same for the Worker hostname if `MEDIA_PUBLIC_BASE_URL` was the Worker origin.
 
 `DELETE /api/v1/media/:id` and account purges delete an old object that is still stored, whatever the flag says. Remote servers that copied an attachment's old URL keep their own copy; Mastodon stores remote media locally when a post arrives. An old URL that a remote server fetches after the old object is deleted answers 404. A status federated while its media was still at the old key (a post, edit or poll update, or a fetch of the note, between the deploy and the move) carries the old URL, and a remote tstodon server keeps that URL instead of a copy, so the media breaks there once `MEDIA_REKEY_DELETE_LEGACY` deletes the old object. Mastodon remotes downloaded the file and are not affected.
+
+## Stripping metadata from stored media
+
+<!-- constrained-by ../reference/configuration.md#media-metadata -->
+
+Uploads have been stored without their metadata since stripping on upload landed (#87, #88; see [Media metadata](../reference/configuration.md#media-metadata)). Objects stored before that still carry it: a photo's EXIF GPS position, camera and owner, its XMP and IPTC, a video's QuickTime location and device atoms. Migration 0119 adds the marks that say which stored objects are clean (`media_attachments.metadata_stripped_at`, `account_profiles.avatar_metadata_stripped_at` / `header_metadata_stripped_at`), and the `StripStoredMediaMetadata` queue job rewrites the older objects in place.
+
+You do not need to start the job: the six-hourly cron queues its first page. Each page lists 10 unmarked rows in id order, reads each object from `MEDIA`, rewrites it with the same stripper as an upload (`StoredMediaMetadata.strip`, over `ImageMetadata` / `VideoMetadata`) and marks the row; a page with work after it queues the next page at once, with its cursor (`source`, `afterId`) and the counts so far in the message. It walks attachment originals (and the id-derived copy the rekey job keeps while `MEDIA_REKEY_DELETE_LEGACY` is off), then avatars, then headers. Previews are not read: every preview is a WebP the `IMAGES` binding encoded from an original that was already stripped (previews and stripping landed together). New uploads are marked when they are stored, so the job never reads them.
+
+- **Idempotent.** An object whose rewrite is byte for byte what is stored (already clean, or a GIF, which is not stripped) is marked without a write. The write goes to the same key only if the object is still the one read (R2 `etagMatches`), with its content type. A run that stops part way is finished by the next, and a second chain (a cron firing while a long first run is still going) only repeats reads.
+- **Bounded.** A page reads at most 64 MiB; once that is spent the remaining rows go to the next page. An object over 32 MiB is not read: the object and its rewrite are both held in memory, and a Worker has 128 MB. Every image fits (the upload cap is 16 MiB); a video over 32 MiB (the cap is 99 MiB) keeps its metadata and its row gets `metadata_strip_error` `TooLarge: <bytes> bytes`.
+- **Nothing is deleted.** An object whose container cannot be walked (truncated, corrupt) is left as it is, its row gets the reason in `*_metadata_strip_error` (for example `MalformedImage: ...`), and the job passes over it from then on. A row whose object is missing from the bucket is marked clean. A read or write that fails leaves the row unmarked for the next run. Each such object is logged as `MediaMetadataNotStripped` (with `outcome`), and the last page of a run that did anything logs `MediaMetadataBackfillDone` with the counts: `stripped`, `unchanged`, `missing`, `unreadable`, `tooLarge`, `deferred`.
+
+After you deploy:
+
+1. Within six hours (or at once, see below), wait until nothing is left:
+
+   ```sh
+   wrangler d1 execute <D1_DATABASE_NAME> --remote --command \
+     "SELECT (SELECT COUNT(*) FROM media_attachments WHERE metadata_stripped_at IS NULL AND metadata_strip_error IS NULL) AS attachments,
+             (SELECT COUNT(*) FROM account_profiles WHERE avatar_object_key IS NOT NULL AND avatar_metadata_stripped_at IS NULL AND avatar_metadata_strip_error IS NULL) AS avatars,
+             (SELECT COUNT(*) FROM account_profiles WHERE header_object_key IS NOT NULL AND header_metadata_stripped_at IS NULL AND header_metadata_strip_error IS NULL) AS headers"
+   ```
+
+   Progress shows in the `outbox.job.page` metric for `StripStoredMediaMetadata` (the step is the source).
+
+2. List what was passed over, and decide what to do with it (replace or delete it through the owner's account):
+
+   ```sh
+   wrangler d1 execute <D1_DATABASE_NAME> --remote --command \
+     "SELECT id, object_key, metadata_strip_error FROM media_attachments WHERE metadata_strip_error IS NOT NULL"
+   ```
+
+   Clearing a row's `metadata_strip_error` makes the next run try it again.
+
+To start a run without waiting for the cron, send the queue a message, for example with the Queues REST API (an API token allowed to write to Queues):
+
+```sh
+curl -X POST "https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/queues/<QUEUE_ID>/messages" \
+  -H "Authorization: Bearer <API_TOKEN>" -H "Content-Type: application/json" \
+  --data '{"body": {"kind": "StripStoredMediaMetadata"}, "content_type": "json"}'
+```
+
+Starting it again, at any time, is safe: once every row is marked, a run is one page that reads no object.
+
+**Caches keep the old bytes.** The rewrite keeps the key, so the URL does not change, and media is served with `Cache-Control: public, max-age=31536000, immutable`. Browsers, the media hostname's CDN cache and remote servers that copied the file keep the version with metadata until it expires or they fetch it again. The job drops the copy in the Worker's own Cache API (`caches.default`), which only matters when `MEDIA_PUBLIC_BASE_URL` is the Worker origin, and only reaches the data centre the queue consumer ran in. The Worker cannot purge the zone cache (that needs an API token it does not have). After the run, purge the media hostname: by prefix `<media hostname>/attachments/`, `/avatars/` and `/headers/` in the dashboard (Caching, Configuration, Custom Purge), or Purge Everything for the media zone; do the same for the Worker hostname if `MEDIA_PUBLIC_BASE_URL` is the Worker origin. Copies already in browsers and on remote servers cannot be recalled.

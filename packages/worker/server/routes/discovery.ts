@@ -1,8 +1,20 @@
+import type {
+  NodeInfo20JSON,
+  NodeInfoDiscoveryJSON,
+  WebFingerJrdJSON,
+} from "@tstodon/api/activitypub";
 import type { Context } from "hono";
 import { InstanceIdentity } from "@tstodon/domain";
 import { countAccounts, findAccountByUsername } from "../account-store";
 import { jsonRepositoryError } from "../http";
-import { parseInstanceIdentity } from "../runtime-config";
+import { parseInstanceIdentity, registrationsOpen } from "../runtime-config";
+
+/** The JRD for an account: its actor as the alias and the `self` link Mastodon resolves. */
+const jrd = (subject: string, actorUrl: string): WebFingerJrdJSON => ({
+  subject,
+  aliases: [actorUrl],
+  links: [{ rel: "self", type: "application/activity+json", href: actorUrl }],
+});
 
 export const getWellKnownWebfinger = async (
   c: Context<{ Bindings: Env }, "/.well-known/webfinger">,
@@ -23,12 +35,7 @@ export const getWellKnownWebfinger = async (
   const username = resource.slice(prefix.length, resource.length - suffix.length);
   // As Mastodon: `acct:<domain>@<domain>` names the instance actor.
   if (username === identity.value.domain) {
-    const actorUrl = InstanceIdentity.instanceActorUrl(identity.value);
-    return c.json({
-      subject: resource,
-      aliases: [actorUrl],
-      links: [{ rel: "self", type: "application/activity+json", href: actorUrl }],
-    });
+    return c.json(jrd(resource, InstanceIdentity.instanceActorUrl(identity.value)));
   }
   const account = await findAccountByUsername(c.env.DB, username);
   if (account.isErr()) {
@@ -37,18 +44,7 @@ export const getWellKnownWebfinger = async (
   if (!account.value) {
     return c.json({ kind: "UnknownResource", resource }, 404);
   }
-  const actorUrl = InstanceIdentity.actorUrl(identity.value, account.value.username);
-  return c.json({
-    subject: resource,
-    aliases: [actorUrl],
-    links: [
-      {
-        rel: "self",
-        type: "application/activity+json",
-        href: actorUrl,
-      },
-    ],
-  });
+  return c.json(jrd(resource, InstanceIdentity.actorUrl(identity.value, account.value.username)));
 };
 
 export const getWellKnownNodeinfo = (c: Context<{ Bindings: Env }, "/.well-known/nodeinfo">) => {
@@ -56,25 +52,29 @@ export const getWellKnownNodeinfo = (c: Context<{ Bindings: Env }, "/.well-known
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  return c.json({
+  const discovery: NodeInfoDiscoveryJSON = {
     links: [
       {
         rel: "http://nodeinfo.diaspora.software/ns/schema/2.0",
         href: `${identity.value.publicOrigin.replace(/\/$/, "")}/nodeinfo/2.0`,
       },
     ],
-  });
+  };
+  return c.json(discovery);
 };
 
 export const getNodeinfo20 = async (c: Context<{ Bindings: Env }, "/nodeinfo/2.0">) => {
   const users = await countAccounts(c.env.DB);
-  return c.json({
+  const nodeinfo: NodeInfo20JSON = {
     version: "2.0",
     software: { name: "tstodon", version: "0.1.0" },
     protocols: ["activitypub"],
     services: { inbound: [], outbound: [] },
-    openRegistrations: false,
+    // As the REST instance's `registrations.enabled` (Mastodon's
+    // `registrations_mode != 'none'`).
+    openRegistrations: registrationsOpen(c.env),
     usage: { users: { total: users.isOk() ? users.value : 0 } },
     metadata: {},
-  });
+  };
+  return c.json(nodeinfo);
 };

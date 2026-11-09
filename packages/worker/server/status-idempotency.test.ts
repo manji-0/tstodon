@@ -2,9 +2,9 @@ import { SELF, env } from "cloudflare:test";
 import { Hono } from "hono";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 import { postV1Statuses } from "./routes/statuses/create";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
@@ -49,7 +49,7 @@ describe("status idempotency", () => {
   it("returns the first result for a repeated key and posts once", async () => {
     const email = "idempotency-author@example.com";
     const accountId = read(
-      MastodonAccountPreviewSchema,
+      ApiAccount,
       (await json("/api/v1/accounts/verify_credentials", { headers: await auth(email) })).body,
     ).id;
 

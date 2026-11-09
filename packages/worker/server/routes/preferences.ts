@@ -5,10 +5,18 @@ import { z } from "zod";
 import { findComposeDefaults, updateAccountDefaults } from "../account-defaults-store";
 import { findAccountProfile, upsertAccountProfile } from "../account-profile-store";
 import { findAccountById, setAccountLocked } from "../account-store";
+import {
+  ColorSchemeSchema,
+  ContrastSchema,
+  DEFAULT_APPEARANCE,
+  findAppearance,
+  saveAppearance,
+} from "../appearance";
 import { errorPage } from "../auth-pages";
 import { readOptionalBody } from "../http";
 import { quotePolicyName } from "../quote-policy-name";
 import {
+  appearancePage,
   type PageMessage,
   postingDefaultsPage,
   privacyPage,
@@ -31,20 +39,86 @@ export const getSettings = (c: Context<{ Bindings: Env }, "/settings">) =>
 export const getSettingsProfile = (c: Context<{ Bindings: Env }, "/settings/profile">) =>
   pageRedirect(c, "/profile/edit");
 
-/** `/settings/preferences`: an index of the settings this server has. */
+/** `/settings/preferences`: an index of the settings this server has, appearance first. */
 export const getSettingsPreferences = async (
   c: Context<{ Bindings: Env }, "/settings/preferences">,
 ) => {
   const signedIn = await settingsAccount(c);
+  if (signedIn.kind === "Answered") {
+    return signedIn.response;
+  }
+  const appearance = await findAppearance(c.env.DB, signedIn.account.id);
+  return c.html(
+    settingsIndexPage(
+      instanceName(c.env),
+      signedIn.account.username,
+      FediRole.isAdmin(signedIn.role),
+      appearance.unwrapOr(DEFAULT_APPEARANCE),
+    ),
+  );
+};
+
+const AppearanceFormSchema = z.object({
+  color_scheme: ColorSchemeSchema,
+  contrast: ContrastSchema,
+});
+
+const renderAppearance = async (
+  c: SettingsContext,
+  accountId: string,
+  message?: PageMessage,
+  status: 200 | 422 | 500 = 200,
+) => {
+  const appearance = await findAppearance(c.env.DB, accountId);
+  if (appearance.isErr()) {
+    return c.html(errorPage(instanceName(c.env), "The server could not read your settings."), 500);
+  }
+  return c.html(appearancePage(instanceName(c.env), appearance.value, message), status);
+};
+
+/** Mastodon's `GET /settings/preferences/appearance`. */
+export const getAppearance = async (
+  c: Context<{ Bindings: Env }, "/settings/preferences/appearance">,
+) => {
+  const signedIn = await settingsAccount(c);
   return signedIn.kind === "Answered"
     ? signedIn.response
-    : c.html(
-        settingsIndexPage(
-          instanceName(c.env),
-          signedIn.account.username,
-          FediRole.isAdmin(signedIn.role),
-        ),
-      );
+    : renderAppearance(c, signedIn.account.id);
+};
+
+/**
+ * Mastodon's `PUT /settings/preferences/appearance`, as a form post: the
+ * colour scheme and contrast, which this page's own response already shows.
+ */
+export const postAppearance = async (
+  c: Context<{ Bindings: Env }, "/settings/preferences/appearance">,
+) => {
+  const signedIn = await settingsAccount(c);
+  if (signedIn.kind === "Answered") {
+    return signedIn.response;
+  }
+  const accountId = signedIn.account.id;
+  const form = await readOptionalBody(c, AppearanceFormSchema);
+  if (form.isErr()) {
+    return renderAppearance(
+      c,
+      accountId,
+      { kind: "error", text: "Choose a color scheme and a contrast from the lists." },
+      422,
+    );
+  }
+  const saved = await saveAppearance(c.env.DB, accountId, {
+    colorScheme: form.value.color_scheme,
+    contrast: form.value.contrast,
+  });
+  return saved.isErr()
+    ? renderAppearance(
+        c,
+        accountId,
+        { kind: "error", text: "The server could not save your settings. Try again." },
+        500,
+      )
+    : renderAppearance(c, accountId, { kind: "notice", text: "Changes saved." });
 };
 
 const QUOTE_POLICIES = {
@@ -225,4 +299,4 @@ export const postSettingsPrivacy = async (c: Context<{ Bindings: Env }, "/settin
     : renderPrivacy(c, accountId, { kind: "notice", text: "Changes saved." });
 };
 
-warmSchemas([PostingDefaultsFormSchema, PrivacyFormSchema]);
+warmSchemas([AppearanceFormSchema, PostingDefaultsFormSchema, PrivacyFormSchema]);

@@ -27,30 +27,10 @@ import {
   listPendingFollowRequesters,
   rejectFollowRequest,
 } from "../follow-store";
-import { relationshipFlags, type RelationshipFlags } from "../relationship-store";
+import { relationshipFlags } from "../relationship-store";
 
 const notFound = (c: Context<{ Bindings: Env }>) =>
   c.json({ error: "Record not found", kind: "NotFound" }, 404);
-
-/** A remote follower has no local relationship rows, so only followed_by is known. */
-const remoteFollowerFlags = (followedBy: boolean): RelationshipFlags => ({
-  following: false,
-  followedBy,
-  requested: false,
-  // Answered: authorized (followed_by) or rejected, the request is gone.
-  requestedBy: false,
-  blocking: false,
-  blockedBy: false,
-  muting: false,
-  mutingNotifications: false,
-  mutingExpiresAt: null,
-  endorsed: false,
-  note: "",
-  domainBlocking: false,
-  showingReblogs: true,
-  notifying: false,
-  languages: [],
-});
 
 /** Resolve a follow request target id to a local account or a remote actor uri. */
 const localRequester = async (c: Context<{ Bindings: Env }>, id: string) => {
@@ -204,7 +184,11 @@ export const postV1FollowRequestsByIdAuthorize = async (
       followerInbox,
     );
   }
-  return c.json(mastodonRelationship(id, remoteFollowerFlags(true)));
+  const flags = await relationshipFlags(c.env.DB, user.value.id, id);
+  if (flags.isErr()) {
+    return jsonRepositoryError(c, flags.error.message);
+  }
+  return c.json(mastodonRelationship(id, flags.value));
 };
 
 export const postV1FollowRequestsByIdReject = async (
@@ -264,5 +248,9 @@ export const postV1FollowRequestsByIdReject = async (
   if (followActivityId.value) {
     await sendFollowReject(c.env, identity.value, user.value, remote.actor, followActivityId.value);
   }
-  return c.json(mastodonRelationship(id, remoteFollowerFlags(false)));
+  const flags = await relationshipFlags(c.env.DB, user.value.id, id);
+  if (flags.isErr()) {
+    return jsonRepositoryError(c, flags.error.message);
+  }
+  return c.json(mastodonRelationship(id, flags.value));
 };

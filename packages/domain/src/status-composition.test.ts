@@ -53,4 +53,31 @@ describe("StatusComposition", () => {
   it("keeps quote None as a discriminant, not an optional field", () => {
     expect(StatusQuoteTarget.none.kind).toBe("None");
   });
+
+  it("shares the 500-character limit between the content warning and the body", () => {
+    const check = (text: string, spoilerText = "") =>
+      StatusComposition.validate(
+        StatusComposition.composing({ text, spoilerText, visibility: Visibility.Public }),
+      );
+    expect(check("a".repeat(500)).isOk()).toBe(true);
+    expect(check("a".repeat(501)).isErr()).toBe(true);
+    expect(check("a".repeat(250), "c".repeat(250)).isOk()).toBe(true);
+    const over = check("a".repeat(250), "c".repeat(251));
+    expect(over.isErr() && over.error).toEqual({ kind: "TooLong", field: "text", limit: 500 });
+  });
+
+  it("counts a URL as 23 characters and a remote mention without its domain", () => {
+    const url = `https://example.com/${"p".repeat(600)}`;
+    const check = (text: string) =>
+      StatusComposition.validate(
+        StatusComposition.composing({ text, visibility: Visibility.Public }),
+      ).isOk();
+    // 476 + 1 + 23 = 500.
+    expect(check(`${"a".repeat(476)} ${url}`)).toBe(true);
+    expect(check(`${"a".repeat(477)} ${url}`)).toBe(false);
+    const mention = "@alice@a-very-long-domain-name.example.social";
+    // 493 + 1 + 6 ("@alice") = 500.
+    expect(check(`${"a".repeat(493)} ${mention}`)).toBe(true);
+    expect(check(`${"a".repeat(494)} ${mention}`)).toBe(false);
+  });
 });

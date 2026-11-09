@@ -57,7 +57,7 @@ export const getV1AdminDomainBlocks = async (
   if (blocks.isErr()) {
     return jsonRepositoryError(c, blocks.error.message);
   }
-  return c.json(blocks.value.map(domainBlockDocument));
+  return c.json(await Promise.all(blocks.value.map(domainBlockDocument)));
 };
 
 export const getV1AdminDomainBlocksById = async (
@@ -74,7 +74,7 @@ export const getV1AdminDomainBlocksById = async (
   if (!block.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.json(domainBlockDocument(block.value));
+  return c.json(await domainBlockDocument(block.value));
 };
 
 export const postV1AdminDomainBlocks = async (
@@ -113,7 +113,7 @@ export const postV1AdminDomainBlocks = async (
     }
   }
   return created.value
-    ? c.json(domainBlockDocument(created.value))
+    ? c.json(await domainBlockDocument(created.value))
     : c.json({ error: "Record not found", kind: "NotFound" }, 404);
 };
 
@@ -159,7 +159,7 @@ export const putV1AdminDomainBlocksById = async (
     return jsonRepositoryError(c, updated.error.message);
   }
   return updated.value
-    ? c.json(domainBlockDocument(updated.value))
+    ? c.json(await domainBlockDocument(updated.value))
     : c.json({ error: "Record not found", kind: "NotFound" }, 404);
 };
 

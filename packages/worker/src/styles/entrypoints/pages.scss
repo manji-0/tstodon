@@ -1,0 +1,416 @@
+// tstodon: the stylesheet of the pages the Worker renders itself (sign-in,
+// OAuth consent, settings, filters, account security, admin, …), built from
+// the web app's own tokens so both look alike. Not in upstream; see
+// UPSTREAM.md ("Theme").
+//
+// The Worker renders `data-color-scheme` (auto, light or dark) and
+// `data-contrast` (auto or high) from the viewer's appearance setting. These
+// pages load no script, so `auto` resolves here, with media queries, where
+// the web app's `inline/theme-selection.js` resolves it in JavaScript.
+
+@use '../fonts/inter';
+@use '../mastodon/tokens/theme/base';
+@use '../mastodon/tokens/theme/dark';
+@use '../mastodon/tokens/theme/light';
+@use '../mastodon/tokens/shape';
+@use '../mastodon/tokens/type';
+
+@mixin light-scheme {
+  color-scheme: light;
+
+  @include light.tokens;
+
+  // Form controls need a 3:1 boundary (WCAG 1.4.11); the border tokens are
+  // dividers, lighter than that.
+  --page-control-border: var(--color-grey-400);
+}
+
+@mixin dark-scheme {
+  color-scheme: dark;
+
+  @include dark.tokens;
+
+  --page-control-border: var(--color-grey-600);
+}
+
+@mixin light-high-contrast {
+  @include light.contrast-overrides;
+
+  --page-control-border: var(--color-grey-700);
+}
+
+@mixin dark-high-contrast {
+  @include dark.contrast-overrides;
+
+  --page-control-border: var(--color-grey-400);
+}
+
+// Light is the base: `light`, and `auto` unless the system asks for dark.
+html {
+  @include base.palette;
+  @include shape.space;
+  @include shape.radius;
+  @include type.font-size;
+  @include type.line-height;
+  @include type.letter-spacing;
+  @include light-scheme;
+}
+
+html[data-contrast='high'] {
+  @include light-high-contrast;
+}
+
+@media (prefers-contrast: more) {
+  html[data-contrast='auto'] {
+    @include light-high-contrast;
+  }
+}
+
+// Dark: after the light contrast rules, which it replaces at equal specificity.
+html[data-color-scheme='dark'] {
+  @include dark-scheme;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-color-scheme='auto'] {
+    @include dark-scheme;
+  }
+}
+
+html[data-color-scheme='dark'][data-contrast='high'] {
+  @include dark-high-contrast;
+}
+
+@media (prefers-contrast: more) {
+  html[data-color-scheme='dark'][data-contrast='auto'] {
+    @include dark-high-contrast;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-color-scheme='auto'][data-contrast='high'] {
+    @include dark-high-contrast;
+  }
+}
+
+@media (prefers-color-scheme: dark) and (prefers-contrast: more) {
+  html[data-color-scheme='auto'][data-contrast='auto'] {
+    @include dark-high-contrast;
+  }
+}
+
+// Layout and elements
+
+html {
+  background: var(--color-bg-app);
+  color: var(--color-text-primary);
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    sans-serif;
+  font-size: 100%;
+  line-height: var(--lh-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  padding: var(--space-5xl) var(--space-md);
+  font-size: var(--fs-md);
+}
+
+main {
+  box-sizing: border-box;
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: var(--space-3xl);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-lg);
+}
+
+@media (width <= 40rem) {
+  body {
+    padding: 0;
+  }
+
+  main {
+    min-height: 100vh;
+    padding: var(--space-xl) var(--space-md);
+    border: 0;
+    border-radius: 0;
+  }
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  line-height: var(--lh-tighter);
+  letter-spacing: var(--ls-tighter);
+}
+
+h1 {
+  margin: var(--space-md) 0 var(--space-sm);
+  font-size: var(--fs-2xl);
+}
+
+h2 {
+  margin: var(--space-3xl) 0 var(--space-xs);
+  padding-top: var(--space-xl);
+  border-top: 1px solid var(--color-border-primary);
+  font-size: var(--fs-lg);
+  letter-spacing: var(--ls-tight);
+}
+
+h3 {
+  margin: var(--space-xl) 0 var(--space-xs);
+  font-size: var(--fs-md);
+}
+
+p {
+  margin: var(--space-sm) 0;
+}
+
+main > :first-child {
+  margin-top: 0;
+}
+
+a {
+  color: var(--color-text-brand);
+  text-decoration: none;
+  text-underline-offset: 0.15em;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-border-brand);
+  outline-offset: 2px;
+}
+
+strong {
+  font-weight: 600;
+}
+
+ul,
+ol {
+  margin: var(--space-sm) 0;
+  padding-left: var(--space-xl);
+}
+
+li {
+  margin: var(--space-xs) 0;
+}
+
+li::marker {
+  color: var(--color-text-secondary);
+}
+
+code {
+  padding: 0.1em 0.35em;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-xs);
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 0.875em;
+  word-break: break-all;
+}
+
+blockquote {
+  margin: var(--space-md) 0;
+  padding: var(--space-2xs) var(--space-md);
+  border-left: 3px solid var(--color-border-primary);
+  color: var(--color-text-secondary);
+}
+
+img {
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+table {
+  width: 100%;
+  margin: var(--space-md) 0;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 1px solid var(--color-border-primary);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+time {
+  font-variant-numeric: tabular-nums;
+}
+
+// Forms
+
+label {
+  display: block;
+  margin-top: var(--space-md);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+input:not([type='checkbox'], [type='radio'], [type='hidden'], [type='submit']),
+select,
+textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: var(--space-2xs);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--page-control-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--fs-md);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-border-brand);
+  outline-offset: 0;
+  border-color: var(--color-border-brand);
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--color-bg-brand-base);
+}
+
+.check {
+  display: flex;
+  gap: var(--space-xs);
+  align-items: baseline;
+  margin: var(--space-sm) 0 0;
+  font-weight: 400;
+}
+
+.check input {
+  flex: none;
+  align-self: center;
+}
+
+.check label {
+  margin: 0;
+  font-size: inherit;
+  font-weight: 400;
+}
+
+fieldset {
+  margin: var(--space-md) 0 0;
+  padding: 0;
+  border: 0;
+}
+
+legend {
+  padding: 0;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+fieldset .check {
+  margin-top: var(--space-xs);
+}
+
+button,
+input[type='submit'] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 2.25rem;
+  margin: var(--space-md) var(--space-xs) 0 0;
+  padding: var(--space-xs) var(--space-md);
+  background: var(--color-bg-brand-base);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-on-brand-base);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+button:hover,
+input[type='submit']:hover {
+  background: var(--color-bg-brand-base-hover);
+}
+
+// A secondary action: OAuth's "Deny", and buttons a page marks so.
+button.secondary,
+button[value='deny'] {
+  background: var(--color-bg-secondary);
+  border-color: var(--page-control-border);
+  color: var(--color-text-primary);
+}
+
+button.secondary:hover,
+button[value='deny']:hover {
+  background: var(--color-bg-tertiary);
+}
+
+// The admin pages' one-button forms sit side by side.
+li > form,
+p > form {
+  display: inline;
+}
+
+li > form button,
+p > form button {
+  min-height: 1.875rem;
+  margin: var(--space-xs) var(--space-xs) 0 0;
+  padding: var(--space-2xs) var(--space-sm);
+  font-size: var(--fs-xs);
+}
+
+// Text
+
+.muted {
+  color: var(--color-text-secondary);
+}
+
+.error {
+  color: var(--color-text-error);
+}
+
+.notice {
+  color: var(--color-text-success);
+}
+
+// An empty status line stays in the page (scripts fill it) but takes no room.
+p[role='alert']:empty {
+  margin: 0;
+}
+
+// The filter form's keyword rows.
+.keyword {
+  margin-top: var(--space-md);
+  padding-top: var(--space-2xs);
+  border-top: 1px dashed var(--color-border-primary);
+}

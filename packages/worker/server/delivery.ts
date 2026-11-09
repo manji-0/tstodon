@@ -1,3 +1,4 @@
+import type { ApActivityDocumentJSON } from "@tstodon/api/activitypub";
 import {
   ActivityId,
   DeliveryAttemptOutcome,
@@ -35,7 +36,7 @@ export const enqueueLocalActivity = async (
   env: Env,
   accountId: string,
   kind: string,
-  payload: unknown,
+  payload: ApActivityDocumentJSON,
 ): Promise<Result<void, EnqueueLocalActivityError>> => {
   const inserted = await insertOutboundActivity(env.DB, {
     signer: { kind: "Account", accountId },
@@ -90,7 +91,7 @@ export const enqueueTargetedActivity = (
   env: Env,
   accountId: string,
   kind: string,
-  payload: unknown,
+  payload: ApActivityDocumentJSON,
   inboxUrl: string,
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
   enqueueSignedActivity(env, { kind: "Account", accountId }, kind, payload, [inboxUrl]);
@@ -103,16 +104,30 @@ export const enqueueActivityToInboxes = (
   env: Env,
   accountId: string,
   kind: string,
-  payload: unknown,
+  payload: ApActivityDocumentJSON,
   inboxUrls: ReadonlyArray<string>,
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
   enqueueSignedActivity(env, { kind: "Account", accountId }, kind, payload, inboxUrls);
+
+/**
+ * Forward an activity another server signed, as received, to `inboxUrls`
+ * (Mastodon's `ActivityPub::Forwarder`): its body is not tstodon's, so it is
+ * not typed as one of tstodon's activities.
+ */
+export const forwardActivityToInboxes = (
+  env: Env,
+  accountId: string,
+  kind: string,
+  body: Readonly<Record<string, unknown>>,
+  inboxUrls: ReadonlyArray<string>,
+): Promise<Result<void, EnqueueLocalActivityError>> =>
+  enqueueSignedActivity(env, { kind: "Account", accountId }, kind, body, inboxUrls);
 
 /** {@link enqueueTargetedActivity}, signed by the instance actor rather than a user. */
 export const enqueueInstanceActorActivity = (
   env: Env,
   kind: string,
-  payload: unknown,
+  payload: ApActivityDocumentJSON,
   inboxUrl: string,
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
   enqueueSignedActivity(env, { kind: "InstanceActor" }, kind, payload, [inboxUrl]);

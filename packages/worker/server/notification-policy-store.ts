@@ -28,6 +28,7 @@ const PolicyRowSchema = z.object({
   for_new_accounts: z.string(),
   for_private_mentions: z.string(),
   for_limited_accounts: z.string(),
+  for_bots: z.string(),
 });
 
 const action = (raw: string, fallback: NotificationPolicyAction): NotificationPolicyAction => {
@@ -56,6 +57,7 @@ export const findNotificationPolicy = async (
         row.for_limited_accounts,
         NotificationPolicy.default.forLimitedAccounts,
       ),
+      forBots: action(row.for_bots, NotificationPolicy.default.forBots),
     };
   });
 
@@ -74,6 +76,7 @@ export const saveNotificationPolicy = async (
         policy.forNewAccounts,
         policy.forPrivateMentions,
         policy.forLimitedAccounts,
+        policy.forBots,
         nowIso(),
       ),
     );

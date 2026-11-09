@@ -11,7 +11,7 @@ import { err, ok } from "neverthrow";
 import { z } from "zod";
 import { findAccountById } from "./account-store";
 import { localNoteRef } from "./activitypub";
-import { enqueueActivityToInboxes } from "./delivery";
+import { enqueueActivityToInboxes, forwardActivityToInboxes } from "./delivery";
 import { type FoundStatus, foundStatusTarget } from "./found-status";
 import {
   localQuoteAuthorization,
@@ -140,7 +140,7 @@ export const forwardStampDelete = async (
   if (forward.isErr() || forward.value === undefined) {
     return;
   }
-  const enqueued = await enqueueActivityToInboxes(
+  const enqueued = await forwardActivityToInboxes(
     env,
     forward.value.signerAccountId,
     "Delete",

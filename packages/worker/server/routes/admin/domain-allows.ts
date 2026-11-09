@@ -1,3 +1,4 @@
+import type { ApiAdminDomainAllowJSON } from "@tstodon/api";
 import { Hostname } from "@tstodon/domain";
 import type { Context } from "hono";
 import { z } from "zod";
@@ -18,7 +19,7 @@ import {
   requireAdmin,
 } from "../../http";
 
-const domainAllowDocument = (row: DomainAllowRow): Record<string, unknown> => ({
+const domainAllowDocument = (row: DomainAllowRow): ApiAdminDomainAllowJSON => ({
   id: row.id,
   domain: row.domain,
   created_at: row.createdAt,

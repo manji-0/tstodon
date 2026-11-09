@@ -253,7 +253,7 @@ export const postV1AccountsByIdRemoveFromFollowers = async (
   if (!removed.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const flags = await relationshipFlags(c.env.DB, user.value.id, actorUri.value);
+  const flags = await relationshipFlags(c.env.DB, user.value.id, targetId);
   if (flags.isErr()) {
     return jsonRepositoryError(c, flags.error.message);
   }

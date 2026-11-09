@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  */
 export const findNotificationPolicy = $runtime.makeTypedQueryFactory(
-  "SELECT account_id, for_not_following, for_not_followers, for_new_accounts, for_private_mentions, for_limited_accounts\nFROM notification_policies WHERE account_id = $1",
+  "SELECT account_id, for_not_following, for_not_followers, for_new_accounts, for_private_mentions, for_limited_accounts, for_bots\nFROM notification_policies WHERE account_id = $1",
 ) as (
   accountId: string,
 ) => $runtime.TypedSql<findNotificationPolicy.Parameters, findNotificationPolicy.Result>;
@@ -22,5 +22,6 @@ export namespace findNotificationPolicy {
     for_new_accounts: string;
     for_private_mentions: string;
     for_limited_accounts: string;
+    for_bots: string;
   };
 }

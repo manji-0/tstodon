@@ -1,10 +1,10 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiSearchResults } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { generateAccountKeys } from "./keys";
-import { MastodonSearchPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const json = async (
   path: string,
@@ -86,14 +86,14 @@ describe("remote search resolution", () => {
         });
         expect(resolved.status).toBe(200);
         expect(
-          read(MastodonSearchPreviewSchema, resolved.body).accounts.map((account) => account.acct),
+          read(ApiSearchResults, resolved.body).accounts.map((account) => account.acct),
         ).toContain("remote@remote.example");
         // The handle lookup confirms the handle; the actor fetch does not repeat it.
         expect(webfingerCalls).toBe(1);
 
         const cached = await json("/api/v2/search?q=remote@remote.example");
         expect(
-          read(MastodonSearchPreviewSchema, cached.body).accounts.map((account) => account.acct),
+          read(ApiSearchResults, cached.body).accounts.map((account) => account.acct),
         ).toContain("remote@remote.example");
       },
     );
@@ -138,7 +138,7 @@ describe("remote search resolution", () => {
       async () => {
         const response = await json("/api/v2/search?q=plainqueryxyz");
         expect(response.status).toBe(200);
-        expect(read(MastodonSearchPreviewSchema, response.body).accounts).toEqual([]);
+        expect(read(ApiSearchResults, response.body).accounts).toEqual([]);
       },
     );
     expect(calls).toBe(0);

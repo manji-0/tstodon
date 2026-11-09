@@ -14,6 +14,8 @@
 -- @param {String} $14:blurhash?
 INSERT INTO media_attachments (
   id, account_id, object_key, content_type, created_at, description, focus_x, focus_y,
-  width, height, preview_object_key, preview_width, preview_height, blurhash
+  width, height, preview_object_key, preview_width, preview_height, blurhash,
+  metadata_stripped_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+-- The upload is stored stripped of its metadata: marked so the backfill skips it.
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $5)

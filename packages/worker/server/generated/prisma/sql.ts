@@ -632,6 +632,18 @@ export * from "./sql/listSuspendedDomains";
 
 export * from "./sql/listUnindexedRemoteStatuses";
 
+export * from "./sql/listUnstrippedAvatars";
+
+export * from "./sql/listUnstrippedHeaders";
+
+export * from "./sql/listUnstrippedMedia";
+
+export * from "./sql/markAvatarMetadataStripped";
+
+export * from "./sql/markHeaderMetadataStripped";
+
+export * from "./sql/markMediaMetadataStripped";
+
 export * from "./sql/markPollExpiryNotified";
 
 export * from "./sql/markRemoteStatusTagsIndexed";

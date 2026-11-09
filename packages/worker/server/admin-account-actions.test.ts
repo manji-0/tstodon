@@ -1,9 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount, ApiAdminAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (
   email: string,
@@ -29,13 +29,6 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   return parsed.value;
 };
 
-const AdminAccountSchema = MastodonAccountPreviewSchema.extend({
-  approved: z.boolean(),
-  disabled: z.boolean(),
-  silenced: z.boolean(),
-  suspended: z.boolean(),
-});
-
 const adminPassword = { admin: true } as const;
 
 const action = async (
@@ -49,14 +42,12 @@ const action = async (
     body: JSON.stringify(type === undefined ? {} : { type }),
   });
 
-const credentials = async (
-  email: string,
-): Promise<z.infer<typeof MastodonAccountPreviewSchema>> => {
+const credentials = async (email: string): Promise<z.infer<typeof ApiAccount>> => {
   const response = await json("/api/v1/accounts/verify_credentials", {
     headers: await auth(email),
   });
   expect(response.status).toBe(200);
-  return read(MastodonAccountPreviewSchema, response.body);
+  return read(ApiAccount, response.body);
 };
 
 describe("admin account actions", () => {
@@ -80,7 +71,7 @@ describe("admin account actions", () => {
     const listed = await json("/api/v1/admin/accounts?disabled=true", {
       headers: await auth(admin, adminPassword),
     });
-    const document = read(z.array(AdminAccountSchema), listed.body).find(
+    const document = read(z.array(ApiAdminAccount), listed.body).find(
       (row) => row.id === target.id,
     );
     expect(document?.disabled).toBe(true);
@@ -92,7 +83,7 @@ describe("admin account actions", () => {
       headers: await auth(admin, adminPassword),
     });
     expect(enabled.status).toBe(200);
-    expect(read(AdminAccountSchema, enabled.body).disabled).toBe(false);
+    expect(read(ApiAdminAccount, enabled.body).disabled).toBe(false);
     expect(
       (
         await json("/api/v1/accounts/verify_credentials", {
@@ -112,15 +103,13 @@ describe("admin account actions", () => {
     expect((await action(admin, sensitizedTarget.id, "sensitive")).status).toBe(200);
     expect((await action(admin, suspendedTarget.id, "suspend")).status).toBe(200);
 
-    const document = async (
-      id: string,
-    ): Promise<z.infer<typeof AdminAccountSchema> | undefined> => {
+    const document = async (id: string): Promise<z.infer<typeof ApiAdminAccount> | undefined> => {
       // Each state has its own filter, and `active` excludes suspensions only.
       for (const query of ["?limit=200", "?silenced=true&limit=200", "?suspended=true&limit=200"]) {
         const listed = await json(`/api/v1/admin/accounts${query}`, {
           headers: await auth(admin, adminPassword),
         });
-        const found = read(z.array(AdminAccountSchema), listed.body).find((row) => row.id === id);
+        const found = read(z.array(ApiAdminAccount), listed.body).find((row) => row.id === id);
         if (found) {
           return found;
         }

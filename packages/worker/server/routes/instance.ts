@@ -1,4 +1,11 @@
-import type { ApiInstanceJSON, ApiRuleJSON, ApiTermsOfServiceJSON } from "@tstodon/api";
+import type {
+  ApiDomainBlockJSON,
+  ApiInstanceActivityJSON,
+  ApiInstanceJSON,
+  ApiRuleJSON,
+  ApiTermsOfServiceJSON,
+  ApiV1InstanceJSON,
+} from "@tstodon/api";
 import { type Context } from "hono";
 import { InstanceLimits, Languages } from "@tstodon/core";
 import { countAccounts } from "../account-store";
@@ -98,9 +105,12 @@ export const getV1InstanceDomainBlocks = async (
   if (blocks.isErr()) {
     return jsonRepositoryError(c, blocks.error.message);
   }
-  const documents: Record<string, unknown>[] = [];
+  const documents: ApiDomainBlockJSON[] = [];
   for (const block of blocks.value) {
-    documents.push(await publicDomainBlockDocument(block));
+    const document = await publicDomainBlockDocument(block);
+    if (document) {
+      documents.push(document);
+    }
   }
   return c.json(documents);
 };
@@ -119,31 +129,53 @@ export const getV1Instance = async (c: Context<{ Bindings: Env }, "/api/v1/insta
     return jsonRepositoryError(c, statuses.error.message);
   }
   const instance = identity.value;
-  return c.json({
-    kind: "MastodonInstance",
+  const document: ApiV1InstanceJSON = {
     uri: instance.domain,
     title: instance.name,
     short_description: instance.description,
     description: instance.description,
     email: instance.contactEmail,
     version: "0.1.0 (compatible; tstodon)",
-    languages: instance.languages,
-    registrations: registrationsOpen(c.env),
-    approval_required: registrationApprovalRequired(c.env),
-    invites_enabled: false,
-    configuration: {
-      urls: {
-        streaming: `wss://${instance.domain}`,
-      },
-    },
-    thumbnail: instance.thumbnailUrl,
-    source_url: instance.sourceUrl,
+    urls: { streaming_api: `wss://${instance.domain}` },
     stats: {
       user_count: users.value,
       status_count: statuses.value,
       domain_count: 1,
     },
-  });
+    thumbnail: instance.thumbnailUrl,
+    languages: instance.languages,
+    registrations: registrationsOpen(c.env),
+    approval_required: registrationApprovalRequired(c.env),
+    invites_enabled: false,
+    configuration: {
+      accounts: {
+        max_featured_tags: InstanceLimits.account.maxFeaturedTags,
+        max_pinned_statuses: InstanceLimits.account.maxPinnedStatuses,
+      },
+      statuses: {
+        max_characters: InstanceLimits.status.maxCharacters,
+        max_media_attachments: InstanceLimits.status.maxMediaAttachments,
+        characters_reserved_per_url: InstanceLimits.status.charactersReservedPerUrl,
+      },
+      media_attachments: {
+        supported_mime_types: [...InstanceLimits.media.supportedMimeTypes],
+        image_size_limit: InstanceLimits.media.imageSizeLimit,
+        image_matrix_limit: InstanceLimits.media.imageMatrixLimit,
+        video_size_limit: InstanceLimits.media.videoSizeLimit,
+        video_frame_rate_limit: InstanceLimits.media.videoFrameRateLimit,
+        video_matrix_limit: InstanceLimits.media.videoMatrixLimit,
+      },
+      polls: {
+        max_options: InstanceLimits.poll.maxOptions,
+        max_characters_per_option: InstanceLimits.poll.maxOptionCharacters,
+        min_expiration: InstanceLimits.poll.minExpirationSeconds,
+        max_expiration: InstanceLimits.poll.maxExpirationSeconds,
+      },
+    },
+    contact_account: null,
+    rules: ruleDocuments(c.env),
+  };
+  return c.json(document);
 };
 
 /** `INSTANCE_RULES` as Mastodon's Rule entities: a rule without a hint has an empty one. */
@@ -193,7 +225,7 @@ export const getV1InstanceActivity = async (
     return jsonRepositoryError(c, activity.error.message);
   }
   return c.json(
-    activity.value.map((row) => ({
+    activity.value.map((row): ApiInstanceActivityJSON => ({
       week: row.week,
       statuses: String(row.statuses),
       logins: "0",

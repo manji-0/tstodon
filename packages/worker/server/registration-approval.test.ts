@@ -1,11 +1,11 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount, ApiAdminAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { findLocalAccountModeration } from "./account-moderation-store";
 import { registrationApprovalRequired } from "./runtime-config";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (
   email: string,
@@ -31,38 +31,26 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   return parsed.value;
 };
 
-const AdminAccountSchema = MastodonAccountPreviewSchema.extend({
-  email: z.string(),
-  approved: z.boolean(),
-  disabled: z.boolean(),
-  suspended: z.boolean(),
-  limited: z.boolean(),
-});
-
-const adminList = async (
-  email: string,
-  query = "",
-): Promise<z.infer<typeof AdminAccountSchema>[]> => {
+const adminList = async (email: string, query = ""): Promise<z.infer<typeof ApiAdminAccount>[]> => {
   const response = await json(`/api/v1/admin/accounts${query}`, {
     headers: await auth(email, { admin: true }),
   });
   expect(response.status).toBe(200);
-  return read(z.array(AdminAccountSchema), response.body);
+  return read(z.array(ApiAdminAccount), response.body);
 };
 
 const searchAccountIds = async (query: string): Promise<string[]> => {
   const response = await json(`/api/v2/search?q=${encodeURIComponent(query)}&type=accounts`);
   expect(response.status).toBe(200);
-  return read(
-    z.object({ accounts: z.array(MastodonAccountPreviewSchema) }),
-    response.body,
-  ).accounts.map((account) => account.id);
+  return read(z.object({ accounts: z.array(ApiAccount) }), response.body).accounts.map(
+    (account) => account.id,
+  );
 };
 
 const directoryIds = async (): Promise<string[]> => {
   const response = await json("/api/v1/directory?limit=80");
   expect(response.status).toBe(200);
-  return read(z.array(MastodonAccountPreviewSchema), response.body).map((account) => account.id);
+  return read(z.array(ApiAccount), response.body).map((account) => account.id);
 };
 
 describe("registration approval", () => {
@@ -95,7 +83,7 @@ describe("registration approval", () => {
       headers: await auth("approval-admin@example.com", { admin: true }),
     });
     expect(approved.status).toBe(200);
-    expect(read(AdminAccountSchema, approved.body).approved).toBe(true);
+    expect(read(ApiAdminAccount, approved.body).approved).toBe(true);
     expect((await adminList("approval-admin@example.com", "?pending=true")).length).toBe(0);
     expect(await searchAccountIds(username)).toContain(id);
     expect(await directoryIds()).toContain(id);
@@ -114,7 +102,7 @@ describe("registration approval", () => {
     });
     expect(rejected.status).toBe(200);
     // The documented response is the rejected account document.
-    expect(read(AdminAccountSchema, rejected.body).approved).toBe(false);
+    expect(read(ApiAdminAccount, rejected.body).approved).toBe(false);
     // And the account is gone.
     expect((await json(`/api/v1/accounts/${id}`)).status).toBe(404);
     expect(await searchAccountIds("approval_reject")).not.toContain(id);
@@ -125,7 +113,7 @@ describe("registration approval", () => {
     const target = await json("/api/v1/accounts/verify_credentials", {
       headers: await auth("approval-filter-target@example.com"),
     });
-    const targetId = read(MastodonAccountPreviewSchema, target.body).id;
+    const targetId = read(ApiAccount, target.body).id;
 
     expect((await adminList(admin)).map((row) => row.id)).toContain(targetId);
 
@@ -156,13 +144,13 @@ describe("registration approval", () => {
     const target = await json("/api/v1/accounts/verify_credentials", {
       headers: await auth("approval-single-target@example.com"),
     });
-    const targetId = read(MastodonAccountPreviewSchema, target.body).id;
+    const targetId = read(ApiAccount, target.body).id;
 
     const single = await json(`/api/v1/admin/accounts/${targetId}`, {
       headers: await auth(admin, { admin: true }),
     });
     expect(single.status).toBe(200);
-    const document = read(AdminAccountSchema, single.body);
+    const document = read(ApiAdminAccount, single.body);
     expect(document.id).toBe(targetId);
     expect(document.approved).toBe(true);
     expect(document.disabled).toBe(false);

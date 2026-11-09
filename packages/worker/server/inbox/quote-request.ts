@@ -1,3 +1,4 @@
+import type { ApActivityDocumentOf } from "@tstodon/api/activitypub";
 import { schemaResult } from "@tstodon/core";
 import {
   type InstanceIdentity,
@@ -167,7 +168,7 @@ const sendAnswer = async (
   author: LocalAccount,
   signer: RemoteActor,
   kind: "Accept" | "Reject",
-  activity: Record<string, unknown>,
+  activity: ApActivityDocumentOf<"Accept" | "Reject">,
 ): Promise<void> => {
   const enqueued = await enqueueTargetedActivity(env, author.id, kind, activity, signer.inboxUri);
   if (enqueued.isErr()) {

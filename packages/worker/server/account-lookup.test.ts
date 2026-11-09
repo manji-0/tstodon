@@ -1,10 +1,10 @@
 import { SELF, env } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
 import { authHeaders } from "../test/auth-fixture";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 import { nowIso } from "./clock";
 import { generateAccountKeys } from "./keys";
 import { setRemoteActorMovedTo, upsertRemoteActor } from "./remote-actor-store";
@@ -28,7 +28,7 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   return parsed.value;
 };
 
-const LookupSchema = MastodonAccountPreviewSchema.extend({ acct: z.string(), url: z.string() });
+const LookupSchema = ApiAccount.extend({ acct: z.string(), url: z.string() });
 
 const lookup = (acct: string): Promise<{ status: number; body: unknown }> =>
   json(`/api/v1/accounts/lookup?acct=${encodeURIComponent(acct)}`);

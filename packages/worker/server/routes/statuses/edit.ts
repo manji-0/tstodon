@@ -1,4 +1,4 @@
-import type { ApiStatusJSON } from "@tstodon/api";
+import type { ApiStatusEditJSON, ApiStatusJSON, ApiStatusSourceJSON } from "@tstodon/api";
 import {
   type InstanceIdentity,
   type LocalAccount,
@@ -42,7 +42,12 @@ import { schemaResult } from "@tstodon/core";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { notifyAccount } from "../../notify";
 import { findStatusById, replaceStatusMedia, updateLocalNote } from "../../status-store";
-import { findStatusUpdatedAt, insertStatusEdit, listStatusEdits } from "../../status-edit-store";
+import {
+  findStatusUpdatedAt,
+  insertStatusEdit,
+  listStatusEdits,
+  statusEditSnapshotOf,
+} from "../../status-edit-store";
 import { availableAccountDocumentsByIds } from "../../account-documents";
 import { RemoteAccountId } from "../../remote-account-id";
 import { findShownStatusAnywhere } from "../../found-status";
@@ -50,6 +55,7 @@ import { remoteStatusHistory } from "../../remote-status-edit";
 import { isQuotePolicy, listAcceptedQuoteEdges, setStatusQuotePolicy } from "../../quote-store";
 import { applyMediaAttributes } from "../../local-status-publish";
 import { checkAttachableMedia, queueLinkCard } from "./create";
+import { checkPollLimits, draftRefusal } from "./status-limits";
 import { visibilityIsPublic } from "../../quote-resolve";
 import { ApiRefusal } from "../api-refusal";
 import type { MediaAttribute } from "../../status-body-schema";
@@ -160,6 +166,10 @@ const resolvePollEdit = async (
     );
   }
   const expiresIn = pollEdit.expires_in === undefined ? undefined : Number(pollEdit.expires_in);
+  const limits = checkPollLimits(options, expiresIn);
+  if (limits.isErr()) {
+    return err(limits.error);
+  }
   return ok({
     pollId: current.value.id,
     options,
@@ -196,7 +206,7 @@ const snapshotPreviousRevision = async (
   const snapshotted = await insertStatusEdit(
     env.DB,
     note.id,
-    JSON.stringify({ ...previousDocument.value, created_at: revisionAt }),
+    statusEditSnapshotOf(previousDocument.value, revisionAt),
   );
   return snapshotted.isErr()
     ? err(ApiRefusal.repository(snapshotted.error.message))
@@ -283,7 +293,7 @@ const editNote = async (
     }),
   );
   if (draft.isErr()) {
-    return err(ApiRefusal.rejected(422, draft.error.kind, draft.error.kind));
+    return err(draftRefusal(draft.error));
   }
   const policyRaw = (body.quote_approval_policy ?? "").trim().toLowerCase();
   const policyEdit = isQuotePolicy(policyRaw) ? policyRaw : undefined;
@@ -472,9 +482,16 @@ export const getV1StatusesByIdHistory = async (
   if (!current.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const revisions = [...snapshots.value].reverse();
+  // Each revision with the author as it is now, as Mastodon's `StatusEdit#account`.
+  const author = current.value.account;
+  const revisions = snapshots.value
+    .toReversed()
+    .map((snapshot): ApiStatusEditJSON => ({ ...snapshot, account: author }));
   const revisionAt = updatedAt.isOk() && updatedAt.value ? updatedAt.value : status.createdAt;
-  return c.json([...revisions, { ...current.value, created_at: revisionAt }]);
+  return c.json([
+    ...revisions,
+    { ...statusEditSnapshotOf(current.value, revisionAt), account: author },
+  ]);
 };
 
 export const getV1StatusesByIdSource = async (
@@ -497,9 +514,10 @@ export const getV1StatusesByIdSource = async (
   ) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.json({
+  const source: ApiStatusSourceJSON = {
     id: status.value.id,
     text: status.value.text,
     spoiler_text: status.value.spoilerText,
-  });
+  };
+  return c.json(source);
 };

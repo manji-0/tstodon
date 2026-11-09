@@ -1,3 +1,4 @@
+import type { ApActivityDocumentOf } from "@tstodon/api/activitypub";
 import {
   type HasRemoteFollow,
   InstanceIdentity,
@@ -24,7 +25,7 @@ const followAcceptActivity = (
   target: LocalAccount,
   follower: RemoteActor,
   follow: ActivityOf<"Follow">,
-): Record<string, unknown> => {
+): ApActivityDocumentOf<"Accept"> => {
   const acceptActor = InstanceIdentity.actorUrl(identity, target.username);
   return {
     "@context": "https://www.w3.org/ns/activitystreams",

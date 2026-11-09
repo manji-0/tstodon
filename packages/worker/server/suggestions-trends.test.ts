@@ -1,9 +1,9 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount } from "@tstodon/api";
 import { authHeaders } from "../test/auth-fixture";
 import { schemaResult } from "@tstodon/core";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 import { cacheLinkCard } from "./link-card";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
@@ -32,7 +32,7 @@ const accountIdFor = async (email: string): Promise<string> => {
     headers: await auth(email),
   });
   expect(response.status).toBe(200);
-  return read(MastodonAccountPreviewSchema, response.body).id;
+  return read(ApiAccount, response.body).id;
 };
 
 const postStatus = async (email: string, text: string): Promise<void> => {
@@ -65,17 +65,14 @@ describe("suggestions and trending links", () => {
 
     const v1 = await json("/api/v1/suggestions", { headers: await auth("sug-viewer@example.com") });
     expect(v1.status).toBe(200);
-    const ids = read(z.array(MastodonAccountPreviewSchema), v1.body).map((account) => account.id);
+    const ids = read(z.array(ApiAccount), v1.body).map((account) => account.id);
     expect(ids).toContain(otherId);
     expect(ids).not.toContain(viewerId);
     expect(ids).not.toContain(followedId);
 
     const v2 = await json("/api/v2/suggestions", { headers: await auth("sug-viewer@example.com") });
     expect(v2.status).toBe(200);
-    const grouped = read(
-      z.array(z.object({ source: z.string(), account: MastodonAccountPreviewSchema })),
-      v2.body,
-    );
+    const grouped = read(z.array(z.object({ source: z.string(), account: ApiAccount })), v2.body);
     expect(grouped.length).toBeGreaterThan(0);
     expect(grouped.every((item) => item.source === "global")).toBe(true);
     expect(grouped.map((item) => item.account.id)).toContain(otherId);
@@ -90,9 +87,7 @@ describe("suggestions and trending links", () => {
         headers: await auth("sug-dismisser@example.com"),
       });
       expect(response.status).toBe(200);
-      return read(z.array(MastodonAccountPreviewSchema), response.body).map(
-        (account) => account.id,
-      );
+      return read(z.array(ApiAccount), response.body).map((account) => account.id);
     };
     expect(await suggestedIds()).toContain(dismissedId);
 
@@ -117,9 +112,9 @@ describe("suggestions and trending links", () => {
     const others = await json("/api/v1/suggestions", {
       headers: await auth("sug-bystander@example.com"),
     });
-    expect(
-      read(z.array(MastodonAccountPreviewSchema), others.body).map((account) => account.id),
-    ).toContain(dismissedId);
+    expect(read(z.array(ApiAccount), others.body).map((account) => account.id)).toContain(
+      dismissedId,
+    );
 
     // The dismissal goes away with the dismissed account.
     await env.DB.prepare("DELETE FROM accounts WHERE id = ?").bind(dismissedId).run();
