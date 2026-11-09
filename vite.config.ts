@@ -64,6 +64,9 @@ export default defineConfig({
                 // sets on the user row.
                 // Sign-up mail lands in APP_CACHE, where tests read the link.
                 EMAIL_TRANSPORT: "capture",
+                // Tests share accounts and send many requests; the rate-limit
+                // tests turn the limits on for the app they build.
+                RATE_LIMITS_ENABLED: "false",
               },
             },
           }),

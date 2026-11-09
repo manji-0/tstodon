@@ -6,6 +6,7 @@ import {
 } from "@tstodon/api/activitypub";
 import {
   ActivityId,
+  Hostname,
   InboxActivity,
   InstanceIdentity,
   type LocalAccount,
@@ -28,6 +29,7 @@ import { suspendedDomains } from "../admin-domain-block-store";
 import { getRemoteActorModeration } from "../remote-actor-moderation-store";
 import { signedFetchActor } from "../signed-fetch";
 import { inboxActivityExists, insertInboxActivity } from "../inbox-store";
+import { limitInboxDelivery } from "../rate-limit";
 import { dispatchInbox } from "../inbox/dispatch";
 import type { InboxSigner } from "../inbox/handler";
 import { listPublicOutboxActivities } from "../outbox-store";
@@ -441,6 +443,18 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   const verified = await verifyInboxRequest(c.req.raw, publicKeyPem, bodyText);
   if (!verified) {
     return c.json({ kind: "InvalidSignature" }, 401);
+  }
+  // Counted per sending server only once its signature verified, so an
+  // unsigned or forged delivery cannot spend another server's budget (the
+  // per-address `inbox_ip` limit, in the middleware, comes before any of this).
+  if (signer.kind === "Remote") {
+    const limited = await limitInboxDelivery(
+      c,
+      Hostname.ofUri(signer.actor.actorUri) ?? signer.actor.domain,
+    );
+    if (limited !== undefined) {
+      return limited;
+    }
   }
   const activityId = ActivityId.parse(payload.id);
   if (activityId.isErr()) {

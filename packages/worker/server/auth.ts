@@ -87,14 +87,33 @@ export const roleFromAuthUser = (role: unknown): FediRoleValue =>
     : FediRole.User;
 
 /**
+ * Each request's authentication, so the rate-limit middleware and the route
+ * handler after it (which both ask) read the token once.
+ */
+const authentications = new WeakMap<
+  Request,
+  Readonly<{ env: Env; result: Promise<Result<AuthContext, AuthError>> }>
+>();
+
+/**
  * Who a request acts as, from its `Authorization: Bearer` OAuth token. The
  * token must carry a scope for the request's method and path; suspended and
- * disabled accounts are refused.
+ * disabled accounts are refused. A request is looked up once.
  */
-export const authenticate = async (
+export const authenticate = (
   request: Request,
   env: Env,
 ): Promise<Result<AuthContext, AuthError>> => {
+  const known = authentications.get(request);
+  if (known !== undefined && known.env === env) {
+    return known.result;
+  }
+  const result = lookUpToken(request, env);
+  authentications.set(request, { env, result });
+  return result;
+};
+
+const lookUpToken = async (request: Request, env: Env): Promise<Result<AuthContext, AuthError>> => {
   const presented = bearerToken(request);
   if (!presented) {
     return ok({ kind: "Anonymous" });
