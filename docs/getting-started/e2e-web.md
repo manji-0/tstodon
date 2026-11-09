@@ -21,7 +21,7 @@ Then Playwright starts the server itself (`e2e/web/serve.mjs`): it replaces the 
 
 It also starts `e2e/web/remote-server.mjs` on `http://127.0.0.1:8794`: a stand-in remote Mastodon server with one account, `remote_alice`, served the way Mastodon serves it (WebFinger, an ActivityPub `Person` with a key, bio and avatar, an outbox with one public note). It accepts and drops inbox deliveries and does not check signatures. `e2e/web.wrangler.jsonc` lists `127.0.0.1` in `FEDERATION_ALLOW_HOSTS`, which lets the instance fetch it over plain HTTP. Port 8794 must be free too.
 
-The browser origin is `http://localhost:8793`, the host `INSTANCE_DOMAIN` names. The browser is the Chromium Playwright 1.56 expects (`PLAYWRIGHT_BROWSERS_PATH`, or `pnpm exec playwright install chromium`). Failure traces and screenshots go to `.cache/e2e-web/results`.
+The browser origin is `http://localhost:8793`, the host `INSTANCE_DOMAIN` names. The browser is the Chromium headless shell `@playwright/test` 1.63.0 expects (revision 1243, Chromium 153), found under `PLAYWRIGHT_BROWSERS_PATH` or installed with `pnpm exec playwright install chromium`. The version is pinned to that revision because it is the one preinstalled where the suite is usually run; a newer `@playwright/test` (1.64 uses 1248, 1.65 uses 1254) needs its own browser installed. Pass `--trace off` (`pnpm e2e:web --trace off`) to skip recording traces of failures. Failure traces and screenshots go to `.cache/e2e-web/results`.
 
 ## How the scenarios sign up
 

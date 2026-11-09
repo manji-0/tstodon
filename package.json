@@ -36,7 +36,7 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.4.5",
-    "@playwright/test": "1.56.1",
+    "@playwright/test": "1.63.0",
     "@tstodon/api": "workspace:*",
     "@tstodon/core": "workspace:*",
     "@tstodon/domain": "workspace:*",
