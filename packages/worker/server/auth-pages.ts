@@ -1,5 +1,6 @@
 import { escapeHtml } from "./html";
 import { ACCESS_LOGOUT_PATH } from "./access-jwt";
+import { themeColorMetas } from "./appearance";
 import { webManifest } from "./web-manifest";
 
 /**
@@ -9,7 +10,8 @@ import { webManifest } from "./web-manifest";
  * `page` is the frame of every page the Worker renders itself (settings,
  * filters, account security, admin, …). It links one stylesheet, built from
  * the web app's theme tokens (`src/styles/entrypoints/pages.scss`, a hashed
- * pack), and renders `auto` for the colour scheme and contrast.
+ * pack), and renders `auto` for the colour scheme and contrast; the
+ * page-appearance middleware sets the signed-in account's choice.
  */
 
 export const page = (title: string, body: string, script = ""): string => `<!doctype html>
@@ -19,8 +21,7 @@ export const page = (title: string, body: string, script = ""): string => `<!doc
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="no-referrer" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#08090a" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#f7f8f8" media="(prefers-color-scheme: light)" />
+    ${themeColorMetas("auto")}
     <title>${escapeHtml(title)}</title>
     <link rel="icon" type="image/png" sizes="32x32" href="${escapeHtml(webManifest.favicon)}" />
     <link rel="stylesheet" href="${escapeHtml(webManifest.pages)}" />

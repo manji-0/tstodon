@@ -20,6 +20,7 @@ const MANIFEST: WebManifest = {
   themeSelection: "/packs/theme-selection.js",
   inert: "/packs/inert.css",
   theme: "/packs/theme.css",
+  pages: "/packs/pages.css",
   favicon: "/packs/favicon.png",
   common: { js: "/packs/common.js", css: [], preload: [] },
   application: { js: "/packs/application.js", css: ["/packs/app.css"], preload: ["/packs/r.js"] },
@@ -108,6 +109,7 @@ describe("Mastodon web app", () => {
       signedIn: true,
       vapidKey: null,
       state: { meta: { title: "</script><script>alert(1)</script>" } },
+      appearance: { colorScheme: "auto", contrast: "auto" },
     });
     expect(html).toContain('<html lang="ja"');
     expect(html).toContain('<script type="module" src="/packs/application.js"');

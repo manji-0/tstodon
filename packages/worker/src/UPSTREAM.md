@@ -88,7 +88,9 @@ tstodon replaces Mastodon's look with a flat, Linear-like design in two colour s
 - `styles/mastodon/basics.scss`: `--font-body` is Inter with a system fallback stack and `--font-heading` follows it (upstream: Roboto and Syne); `html` / `body` background is `--color-bg-app`.
 - `styles/mastodon/components.scss` (each block marked `tstodon theme`): `.button` (14px, 6px radius), neutral `.button.button-secondary` and `.dropdown-button`, compact `.column-link` with a solid selected row and accent icon, a hover background on timeline rows (`.status__wrapper`, `.notification-group`, `.conversation`), `.dropdown-menu` radius and neutral item hover, no glow under an active `.column-header__wrapper` or its icon, tabular numbers in `.animated-number` and `.character-counter`.
 
-Outside this package, `packages/worker/src/web-app.ts` sets the `theme-color` meta values to the app backgrounds (`#08090a` dark, `#f7f8f8` light).
+- `styles/entrypoints/pages.scss` (new, tstodon only): the stylesheet of the pages the Worker renders itself (settings, sign-in, OAuth, admin, …), built from the same token mixins (`tokens/theme/{base,dark,light}`, `tokens/{shape,type}`) and `fonts/inter.scss`. Upstream's `findEntrypoints` picks it up as an entry like `inert.scss`; `web-build.ts` hands its pack to the Worker as `pages`. It resolves `data-color-scheme="auto"` / `data-contrast="auto"` with media queries, because those pages load no `theme-selection.js`.
+
+Outside `src/`, `packages/worker/server/web-app.ts` renders the shell's `data-color-scheme` and `data-contrast` from the viewer's appearance setting (`server/appearance.ts`; upstream's Rails layout does the same from `color_scheme` / `contrast`), `auto` for a signed-out visitor, and the `theme-color` meta values from the app backgrounds (`#08090a` dark, `#f7f8f8` light; one value when the scheme is chosen). `inline/theme-selection.js` is unchanged.
 
 ## Working on it
 

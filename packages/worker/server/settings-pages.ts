@@ -5,6 +5,7 @@ import {
   type StatusesCleanupPolicyValue,
 } from "@tstodon/domain";
 import type { AccountAlias } from "./account-alias-store";
+import type { Appearance } from "./appearance";
 import { page } from "./auth-pages";
 import { escapeHtml } from "./html";
 
@@ -127,17 +128,45 @@ const ADMIN_SECTION = {
   ],
 } as const;
 
+const radio = (
+  name: string,
+  value: string,
+  checked: boolean,
+  label: string,
+  hint: string,
+): string => `
+          <p class="check"><input type="radio" id="${name}_${value}" name="${name}" value="${value}"${checked ? " checked" : ""} />
+          <label for="${name}_${value}">${escapeHtml(label)} <span class="muted">${escapeHtml(hint)}</span></label></p>`;
+
+/**
+ * Mastodon's appearance settings (`/settings/preferences/appearance`): the
+ * colour scheme and contrast of the web app and of these pages.
+ */
+const appearanceForm = (appearance: Appearance): string => `
+      <form method="post" action="/settings/preferences/appearance">
+        <fieldset>
+          <legend>Color scheme</legend>${radio("color_scheme", "auto", appearance.colorScheme === "auto", "Auto", "Follow your device's light or dark setting.")}${radio("color_scheme", "light", appearance.colorScheme === "light", "Light", "Dark text on a light background.")}${radio("color_scheme", "dark", appearance.colorScheme === "dark", "Dark", "Light text on a dark background.")}
+        </fieldset>
+        <fieldset>
+          <legend>Contrast</legend>${radio("contrast", "auto", appearance.contrast === "auto", "Auto", "High when your device asks for more contrast.")}${radio("contrast", "high", appearance.contrast === "high", "High", "Stronger text, links, and borders.")}
+        </fieldset>
+        <button type="submit">Save changes</button>
+      </form>`;
+
 /** The settings this server has, grouped like Mastodon's settings sidebar. */
 export const settingsIndexPage = (
   instanceName: string,
   username: string,
   isAdmin: boolean,
+  appearance: Appearance,
 ): string =>
   page(
     `Preferences · ${instanceName}`,
     `      <p class="muted"><a href="/">Back to the web app</a></p>
       <h1>Preferences</h1>
-      <p>Settings for <strong>@${escapeHtml(username)}</strong>.</p>${[
+      <p>Settings for <strong>@${escapeHtml(username)}</strong>.</p>
+      <h2 id="appearance">Appearance</h2>
+      <p class="muted">How the web app and these pages look on every device you sign in on.</p>${appearanceForm(appearance)}${[
         ...SETTINGS_SECTIONS,
         ...(isAdmin ? [ADMIN_SECTION] : []),
       ]
@@ -147,6 +176,20 @@ export const settingsIndexPage = (
       ${linkList(section.links)}`,
         )
         .join("")}`,
+  );
+
+/** Mastodon's `/settings/preferences/appearance`. */
+export const appearancePage = (
+  instanceName: string,
+  appearance: Appearance,
+  message?: PageMessage,
+): string =>
+  page(
+    `Appearance · ${instanceName}`,
+    `${nav}
+      <h1>Appearance</h1>
+      <p>How the web app and these pages look on every device you sign in on.</p>
+${messageLine(message)}${appearanceForm(appearance)}`,
   );
 
 export const messageLine = (message: PageMessage | undefined): string =>
