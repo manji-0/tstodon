@@ -106,6 +106,8 @@ export * from "./sql/deleteCanonicalEmailBlock";
 
 export * from "./sql/deleteCustomEmoji";
 
+export * from "./sql/deleteDeadOutboxJobs";
+
 export * from "./sql/deleteDomainBlock";
 
 export * from "./sql/deleteEmailDomainBlock";
@@ -514,6 +516,8 @@ export * from "./sql/listBlockersOfActor";
 
 export * from "./sql/listCustomEmojiRows";
 
+export * from "./sql/listDeadOutboxJobs";
+
 export * from "./sql/listDirectoryAccountsByActive";
 
 export * from "./sql/listDirectoryAccountsByNew";
@@ -680,7 +684,10 @@ export * from "./sql/pageNotificationGroupsOlder";
 
 export * from "./sql/pinStatus";
 
+
+
 export * from "./sql/pruneStatusIdempotency";
+
 
 export * from "./sql/purgeRemoteActorBlocks";
 
@@ -831,6 +838,8 @@ export * from "./sql/upsertBlock";
 export * from "./sql/upsertConversationHide";
 
 export * from "./sql/upsertConversationRead";
+
+export * from "./sql/upsertDeadOutboxJob";
 
 export * from "./sql/upsertFollowOptions";
 

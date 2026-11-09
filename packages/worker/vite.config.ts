@@ -5,7 +5,7 @@
 import path from "node:path";
 import { voidPlugin } from "void";
 import { defineConfig, mergeConfig } from "vite-plus";
-import { exportEntryClasses, queueConsumerConcurrency } from "./void-plugins";
+import { exportEntryClasses, queueConsumerOptions } from "./void-plugins";
 import {
   buildClientFirst,
   upstreamAssets,
@@ -45,7 +45,7 @@ const voidConfig = defineConfig({
     // the `DB` binding's file; local D1 is migrated with `pnpm db:migrate:local`.
     ...voidPlugin({ persistTo: statePath }).filter((plugin) => plugin.name !== "void:migrations"),
     exportEntryClasses(),
-    queueConsumerConcurrency(),
+    queueConsumerOptions(),
   ],
 });
 

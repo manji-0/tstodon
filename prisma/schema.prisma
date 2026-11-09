@@ -521,6 +521,8 @@ model inbox_activities {
   kind         String
   payload_json String
   created_at   String  @default("CURRENT_TIMESTAMP")
+
+  @@index([created_at], map: "idx_inbox_activities_created")
 }
 
 model instance_settings {
@@ -595,6 +597,7 @@ model outbound_activities {
   accounts     accounts? @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([account_id, id], map: "idx_outbound_activities_account")
+  @@index([created_at], map: "idx_outbound_activities_created")
 }
 
 model instance_actor_keys {
@@ -616,6 +619,22 @@ model outbox_deliveries {
   inbox_url     String?
 
   @@unique([activity_id, inbox_url], map: "idx_outbox_deliveries_target", where: raw("inbox_url IS NOT NULL"))
+  @@index([updated_at], map: "idx_outbox_deliveries_finished", where: raw("kind IN ('Delivered', 'Failed', 'Expanded')"))
+}
+
+model outbox_dead_jobs {
+  id            String  @id
+  job_kind      String
+  reason        String
+  body_json     String
+  attempts      Int
+  dead_count    Int     @default(1)
+  error         String?
+  first_seen_at String
+  last_seen_at  String
+
+  @@index([job_kind, first_seen_at], map: "idx_outbox_dead_jobs_kind")
+  @@index([first_seen_at, id], map: "idx_outbox_dead_jobs_first_seen")
 }
 
 model poll_votes {

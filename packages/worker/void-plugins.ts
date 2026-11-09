@@ -41,15 +41,32 @@ export const exportEntryClasses = (): Plugin => {
 
 // Same shape Void reads `maxBatchSize` / `maxRetries` with from a queue file.
 const MAX_CONCURRENCY = /export\s+const\s+maxConcurrency\s*=\s*(\d+)/;
+const DEAD_LETTER_QUEUE = /export\s+const\s+deadLetterQueue\s*=\s*"([A-Za-z0-9-]+)"/;
 
-/** `max_concurrency` per queue name, from `export const maxConcurrency = N` in `app/queues/<name>.ts`. */
-const declaredConcurrency = (): ReadonlyMap<string, number> =>
+/** What a queue file declares that Void does not write itself. */
+type DeclaredConsumerOptions = Readonly<{
+  maxConcurrency: number | undefined;
+  deadLetterQueue: string | undefined;
+}>;
+
+/**
+ * Per queue name, from `export const maxConcurrency = N` and
+ * `export const deadLetterQueue = "name"` in `app/queues/<name>.ts`.
+ */
+const declaredConsumerOptions = (): ReadonlyMap<string, DeclaredConsumerOptions> =>
   new Map(
     readdirSync(queuesDir)
       .filter((file) => /\.(m?ts|m?js)$/.test(file) && !file.startsWith("_"))
-      .flatMap((file) => {
-        const match = readFileSync(path.join(queuesDir, file), "utf8").match(MAX_CONCURRENCY);
-        return match?.[1] ? [[file.replace(/\.[^.]+$/, ""), Number(match[1])] as const] : [];
+      .map((file) => {
+        const source = readFileSync(path.join(queuesDir, file), "utf8");
+        const concurrency = source.match(MAX_CONCURRENCY)?.[1];
+        return [
+          file.replace(/\.[^.]+$/, ""),
+          {
+            maxConcurrency: concurrency ? Number(concurrency) : undefined,
+            deadLetterQueue: source.match(DEAD_LETTER_QUEUE)?.[1],
+          },
+        ] as const;
       }),
   );
 
@@ -63,12 +80,15 @@ const WranglerOutput = z.looseObject({
 
 /**
  * Void writes each queue consumer from `app/queues/<name>.ts` but has no
- * `max_concurrency` option. Read `export const maxConcurrency = N` from the
- * same file and set it on the consumer in the emitted `wrangler.json`, so
- * `wrangler deploy` applies it. A declared value without a consumer fails the build.
+ * `max_concurrency` or `dead_letter_queue` option. Read
+ * `export const maxConcurrency = N` and `export const deadLetterQueue = "name"`
+ * from the same file and set them on the consumer in the emitted
+ * `wrangler.json`, so `wrangler deploy` applies them. A declared value
+ * without a consumer fails the build, and so does a dead-letter queue that
+ * has no consumer file of its own (its messages would sit unread).
  */
-export const queueConsumerConcurrency = (): Plugin => ({
-  name: "tstodon:queue-consumer-concurrency",
+export const queueConsumerOptions = (): Plugin => ({
+  name: "tstodon:queue-consumer-options",
   enforce: "post",
   generateBundle(_options, bundle) {
     const asset = bundle["wrangler.json"];
@@ -81,12 +101,26 @@ export const queueConsumerConcurrency = (): Plugin => ({
     }
     const config = parsed.data;
     const consumers = config.queues?.consumers ?? [];
-    for (const [queue, maxConcurrency] of declaredConcurrency()) {
+    const declared = declaredConsumerOptions();
+    for (const [queue, options] of declared) {
+      if (options.maxConcurrency === undefined && options.deadLetterQueue === undefined) {
+        continue;
+      }
       const consumer = consumers.find((entry) => entry.queue === queue);
       if (!consumer) {
-        this.error(`queues/${queue} declares maxConcurrency but wrangler.json has no consumer`);
+        this.error(`queues/${queue} declares consumer options but wrangler.json has no consumer`);
       }
-      consumer.max_concurrency = maxConcurrency;
+      if (options.maxConcurrency !== undefined) {
+        consumer.max_concurrency = options.maxConcurrency;
+      }
+      if (options.deadLetterQueue !== undefined) {
+        if (!declared.has(options.deadLetterQueue) || options.deadLetterQueue === queue) {
+          this.error(
+            `queues/${queue} dead-letters to ${options.deadLetterQueue}, which has no queues/${options.deadLetterQueue}.ts consumer`,
+          );
+        }
+        consumer.dead_letter_queue = options.deadLetterQueue;
+      }
     }
     asset.source = JSON.stringify(config);
   },

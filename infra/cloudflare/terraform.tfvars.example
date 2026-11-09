@@ -13,6 +13,7 @@ kv_remote_dns_cache_title = "tstodon-remote-dns-cache"
 kv_app_cache_title        = "tstodon-app-cache"
 r2_media_bucket_name      = "tstodon-media"
 outbox_queue_name         = "tstodon-outbox-process"
+outbox_dlq_name           = "tstodon-outbox-dlq"
 
 worker_script_name     = "tstodon"
 attach_queue_consumer  = false # set true after the first wrangler deploy

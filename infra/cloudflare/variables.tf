@@ -23,7 +23,7 @@ variable "create_r2" {
 
 variable "create_queue" {
   type        = bool
-  description = "Create the outbox process Queue."
+  description = "Create the outbox process Queue and its dead-letter queue."
   default     = true
 }
 
@@ -63,6 +63,12 @@ variable "outbox_queue_name" {
   default     = "tstodon-outbox-process"
 }
 
+variable "outbox_dlq_name" {
+  type        = string
+  description = "Dead-letter queue of the outbox queue (OUTBOX_DLQ; `deadLetterQueue` in app/queues/tstodon-outbox-process.ts)."
+  default     = "tstodon-outbox-dlq"
+}
+
 variable "worker_script_name" {
   type        = string
   description = "Worker script name used when attaching the queue consumer (wrangler name)."
@@ -97,4 +103,22 @@ variable "queue_consumer_max_wait_time_ms" {
   type        = number
   description = "Queue consumer max wait time in milliseconds (wrangler max_batch_timeout)."
   default     = 0
+}
+
+variable "dlq_consumer_batch_size" {
+  type        = number
+  description = "Dead-letter queue consumer max_batch_size (maxBatchSize in app/queues/tstodon-outbox-dlq.ts)."
+  default     = 10
+}
+
+variable "dlq_consumer_max_retries" {
+  type        = number
+  description = "Dead-letter queue consumer max_retries (maxRetries in app/queues/tstodon-outbox-dlq.ts)."
+  default     = 5
+}
+
+variable "dlq_consumer_max_wait_time_ms" {
+  type        = number
+  description = "Dead-letter queue consumer max wait time in milliseconds (maxBatchTimeout in app/queues/tstodon-outbox-dlq.ts, in ms)."
+  default     = 5000
 }
