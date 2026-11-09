@@ -9,6 +9,7 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { type RepositoryError, runD1, toRepositoryError } from "./d1";
+import type { FetchSigner, FetchSigningKey } from "./federated-fetch";
 import {
   findInstanceActorKeys as findInstanceActorKeysSql,
   insertInstanceActorKeys as insertInstanceActorKeysSql,
@@ -84,6 +85,29 @@ export const instanceActorKeys = async (
 
 export const instanceActorKeyId = (identity: InstanceIdentity): string =>
   `${InstanceIdentity.instanceActorUrl(identity)}#main-key`;
+
+/**
+ * Signs ActivityPub GETs as the instance actor (`/actor#main-key`), as
+ * Mastodon signs the fetches it makes on the server's behalf, so servers in
+ * secure mode answer them. The key is read (or first generated) once, on the
+ * first fetch; when D1 cannot give it, fetches go unsigned.
+ */
+export const instanceActorFetchSigner = (
+  db: D1Database,
+  identity: InstanceIdentity,
+): FetchSigner => {
+  let key: Promise<FetchSigningKey | undefined> | undefined;
+  return () => {
+    key ??= instanceActorKeys(db).then((keys) => {
+      if (keys.isErr()) {
+        console.error(JSON.stringify({ kind: "FetchNotSigned", message: keys.error.message }));
+        return undefined;
+      }
+      return { keyId: instanceActorKeyId(identity), privateKeyJwk: keys.value.privateKeyJwk };
+    });
+    return key;
+  };
+};
 
 /** The instance actor's document, as Mastodon's `InstanceActorSerializer` renders it. */
 export const instanceActorDocument = (

@@ -100,6 +100,7 @@ export const ModelName = {
   outbound_activities: "outbound_activities",
   instance_actor_keys: "instance_actor_keys",
   outbox_deliveries: "outbox_deliveries",
+  outbox_dead_jobs: "outbox_dead_jobs",
   poll_votes: "poll_votes",
   remote_poll_votes: "remote_poll_votes",
   polls: "polls",
@@ -119,6 +120,7 @@ export const ModelName = {
   link_cards: "link_cards",
   scheduled_statuses: "scheduled_statuses",
   notification_request_groups: "notification_request_groups",
+  delivery_domain_health: "delivery_domain_health",
   domain_allows: "domain_allows",
   suggestion_dismissals: "suggestion_dismissals",
   trend_reviews: "trend_reviews",
@@ -749,10 +751,26 @@ export const Outbox_deliveriesScalarFieldEnum = {
   created_at: "created_at",
   updated_at: "updated_at",
   inbox_url: "inbox_url",
+  next_attempt_at: "next_attempt_at",
 } as const;
 
 export type Outbox_deliveriesScalarFieldEnum =
   (typeof Outbox_deliveriesScalarFieldEnum)[keyof typeof Outbox_deliveriesScalarFieldEnum];
+
+export const Outbox_dead_jobsScalarFieldEnum = {
+  id: "id",
+  job_kind: "job_kind",
+  reason: "reason",
+  body_json: "body_json",
+  attempts: "attempts",
+  dead_count: "dead_count",
+  error: "error",
+  first_seen_at: "first_seen_at",
+  last_seen_at: "last_seen_at",
+} as const;
+
+export type Outbox_dead_jobsScalarFieldEnum =
+  (typeof Outbox_dead_jobsScalarFieldEnum)[keyof typeof Outbox_dead_jobsScalarFieldEnum];
 
 export const Poll_votesScalarFieldEnum = {
   poll_id: "poll_id",
@@ -980,6 +998,18 @@ export const Notification_request_groupsScalarFieldEnum = {
 
 export type Notification_request_groupsScalarFieldEnum =
   (typeof Notification_request_groupsScalarFieldEnum)[keyof typeof Notification_request_groupsScalarFieldEnum];
+
+export const Delivery_domain_healthScalarFieldEnum = {
+  domain: "domain",
+  kind: "kind",
+  failure_days: "failure_days",
+  last_failure_day: "last_failure_day",
+  unavailable_since: "unavailable_since",
+  updated_at: "updated_at",
+} as const;
+
+export type Delivery_domain_healthScalarFieldEnum =
+  (typeof Delivery_domain_healthScalarFieldEnum)[keyof typeof Delivery_domain_healthScalarFieldEnum];
 
 export const Domain_allowsScalarFieldEnum = {
   id: "id",

@@ -1,7 +1,8 @@
 import { err, ok, type Result } from "neverthrow";
-import { schemaResult } from "@tstodon/core";
+import { schemaResult, type SensitiveValue } from "@tstodon/core";
 import { Hostname, type InstanceIdentity } from "@tstodon/domain";
 import { RemoteWebfingerSchema } from "./activitypub-wire";
+import { signFetchRequest } from "./http-signature";
 
 export type FederatedFetchError =
   | Readonly<{ kind: "InvalidSignature" }>
@@ -78,12 +79,33 @@ export const isBlockedFederatedHost = (
   return PRIVATE_NAME_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
 };
 
-/** Options shared by every outbound federation fetch. */
-export type FederatedFetchOptions = Readonly<{
+/** The hosts a federation request may reach. */
+export type FederatedHostOptions = Readonly<{
   allowHosts?: ReadonlySet<string>;
   /** Hostnames this instance refuses to talk to (admin-suspended domains). */
   blockedHosts?: ReadonlySet<Hostname>;
 }>;
+
+/** The key an ActivityPub GET is signed with (draft-cavage HTTP Signatures). */
+export type FetchSigningKey = Readonly<{ keyId: string; privateKeyJwk: SensitiveValue<string> }>;
+
+/**
+ * Finds the key to sign ActivityPub GETs with, once per signer; undefined
+ * sends them unsigned. `instanceActorFetchSigner` (`server/instance-actor.ts`)
+ * signs as the instance actor, as Mastodon does for fetches made on the
+ * server's behalf.
+ */
+export type FetchSigner = () => Promise<FetchSigningKey | undefined>;
+
+/** Sends ActivityPub GETs unsigned: only for tests and code that fetches nothing. */
+export const unsignedFetch: FetchSigner = async () => undefined;
+
+/**
+ * Options for a fetch of ActivityPub documents. `fetchSigner` is required so
+ * that no caller sends an unsigned GET by forgetting it: servers in secure
+ * mode (Mastodon's `AUTHORIZED_FETCH`) refuse unsigned GETs.
+ */
+export type FederatedFetchOptions = FederatedHostOptions & Readonly<{ fetchSigner: FetchSigner }>;
 
 /**
  * True when the host is refused: a non-empty allow list names the only hosts
@@ -93,7 +115,7 @@ export type FederatedFetchOptions = Readonly<{
 export const isFederatedHostRefused = (
   hostname: string,
   instanceDomain: string,
-  options: FederatedFetchOptions = {},
+  options: FederatedHostOptions = {},
 ): boolean => {
   const allowHosts = options.allowHosts;
   const host = urlHostname(hostname);
@@ -134,38 +156,99 @@ export const parseFederatedUrl = (value: string): Result<URL, FederatedFetchErro
   }
 };
 
+/** What an ActivityPub GET asks for, as Mastodon's `fetch_resource` (and signs, in `accept`). */
+export const ACTIVITY_JSON_ACCEPT =
+  'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"';
+
+/** Redirects an ActivityPub GET follows, as Mastodon's `Request` (`max_hops: 3`); same origin only. */
+const ACTIVITY_MAX_REDIRECTS = 3;
+
+const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
+
+/**
+ * The headers of one ActivityPub GET: signed for this URL (its path, query
+ * and host are in the signature) when the signer has a key, unsigned when it
+ * has none or signing fails (a server outside secure mode still answers).
+ */
+const activityGetHeaders = async (
+  identity: InstanceIdentity,
+  url: URL,
+  key: FetchSigningKey | undefined,
+): Promise<Record<string, string>> => {
+  const headers: Record<string, string> = {
+    Accept: ACTIVITY_JSON_ACCEPT,
+    "User-Agent": `tstodon (${identity.publicOrigin})`,
+  };
+  if (key === undefined) {
+    return headers;
+  }
+  const signed = await signFetchRequest(url, key.privateKeyJwk, key.keyId, ACTIVITY_JSON_ACCEPT);
+  if (signed.isErr()) {
+    console.error(JSON.stringify({ kind: "FetchNotSigned", message: signed.error.message }));
+    return headers;
+  }
+  return { ...headers, ...signed.value };
+};
+
+/**
+ * GET an ActivityPub document, signed by `options.fetchSigner`. Up to three
+ * redirects are followed when they stay on the same origin (scheme, host and
+ * port), each hop signed again for its own request target; a redirect to
+ * another origin is refused, as the document's authority would change. One
+ * 5 s deadline covers the chain, and a URL already fetched is not fetched again.
+ */
 export const fetchActivityJson = async (
   identity: InstanceIdentity,
   href: string,
-  options: FederatedFetchOptions = {},
+  options: FederatedFetchOptions,
 ): Promise<Result<unknown, FederatedFetchError>> => {
-  const url = parseFederatedUrl(href);
-  if (url.isErr()) {
-    return err(url.error);
+  const first = parseFederatedUrl(href);
+  if (first.isErr()) {
+    return err(first.error);
   }
-  if (isFederatedHostRefused(url.value.hostname, identity.domain, options)) {
+  if (isFederatedHostRefused(first.value.hostname, identity.domain, options)) {
     return err({ kind: "InvalidSignature" });
   }
   try {
-    const response = await fetch(url.value, {
-      method: "GET",
-      headers: {
-        Accept:
-          'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
-        "User-Agent": `tstodon (${identity.publicOrigin})`,
-      },
-      // Redirects are refused (a 3xx is not `ok` below). Workers' fetch
-      // rejects `redirect: "error"` outright, so it must be "manual".
-      redirect: "manual",
-      signal: AbortSignal.timeout(5000),
-    });
-    if (response.status >= 500) {
-      return err({ kind: "VerificationUnavailable" });
+    const key = await options.fetchSigner();
+    const signal = AbortSignal.timeout(5000);
+    const fetched = new Set<string>();
+    let url = first.value;
+    for (let redirects = 0; ; redirects += 1) {
+      fetched.add(url.href);
+      const response = await fetch(url, {
+        method: "GET",
+        headers: await activityGetHeaders(identity, url, key),
+        // Workers' fetch would follow redirects unsigned and past the host
+        // guard, and rejects `redirect: "error"` outright, so each hop is
+        // followed here.
+        redirect: "manual",
+        signal,
+      });
+      const location = response.headers.get("location");
+      if (REDIRECT_STATUSES.has(response.status) && location !== null) {
+        await response.body?.cancel();
+        const next = URL.parse(location, url.href);
+        if (
+          redirects === ACTIVITY_MAX_REDIRECTS ||
+          next === null ||
+          next.origin !== first.value.origin ||
+          fetched.has(next.href.replace(/#.*$/, ""))
+        ) {
+          return err({ kind: "InvalidSignature" });
+        }
+        next.hash = "";
+        url = next;
+        continue;
+      }
+      if (response.status >= 500) {
+        return err({ kind: "VerificationUnavailable" });
+      }
+      if (!response.ok) {
+        return err({ kind: "InvalidSignature" });
+      }
+      return ok(await response.json());
     }
-    if (!response.ok) {
-      return err({ kind: "InvalidSignature" });
-    }
-    return ok(await response.json());
   } catch {
     return err({ kind: "VerificationUnavailable" });
   }
@@ -176,8 +259,6 @@ export type WebfingerAnswer = Readonly<{ subject: string | undefined; self: stri
 
 /** Redirects a WebFinger lookup follows, as Mastodon's `Request` (`max_hops: 3`). */
 const WEBFINGER_MAX_REDIRECTS = 3;
-
-const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
 
 /**
  * GET a WebFinger URL, following up to three redirects, as a split-domain
@@ -190,7 +271,7 @@ const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]
 const followWebfingerRedirects = async (
   identity: InstanceIdentity,
   first: URL,
-  options: FederatedFetchOptions,
+  options: FederatedHostOptions,
 ): Promise<Result<Response, FederatedFetchError>> => {
   const signal = AbortSignal.timeout(5000);
   const fetched = new Set<string>();
@@ -232,11 +313,14 @@ const followWebfingerRedirects = async (
   }
 };
 
-/** Look up a `user@domain` handle by WebFinger. */
+/**
+ * Look up a `user@domain` handle by WebFinger. Unsigned, as Mastodon's
+ * `Webfinger` sends it (no `on_behalf_of`); secure mode leaves WebFinger open.
+ */
 export const fetchWebfinger = async (
   identity: InstanceIdentity,
   handle: string,
-  options: FederatedFetchOptions = {},
+  options: FederatedHostOptions = {},
 ): Promise<Result<WebfingerAnswer, WebfingerFetchError>> => {
   const trimmed = handle.replace(/^@/, "").trim();
   const atIndex = trimmed.lastIndexOf("@");

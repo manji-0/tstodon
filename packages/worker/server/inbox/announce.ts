@@ -19,6 +19,7 @@ export const receiveRemoteAnnounce: InboxHandler<RemoteDelivery<"Announce">> = a
   received,
   allowHosts,
   blockedHosts,
+  fetchSigner,
 }) => {
   // As Mastodon's `announceable?`, a remote actor may share a local status
   // only when it is public or unlisted; otherwise the Announce is dropped.
@@ -35,6 +36,7 @@ export const receiveRemoteAnnounce: InboxHandler<RemoteDelivery<"Announce">> = a
   const announced = await persistAnnouncedObject(env, identity, signer, received.object, {
     allowHosts,
     blockedHosts,
+    fetchSigner,
   });
   if (announced.isErr()) {
     return err(announced.error);

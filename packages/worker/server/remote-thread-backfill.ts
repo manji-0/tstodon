@@ -21,6 +21,7 @@ import {
   releaseRemoteThreadBackfill,
 } from "./remote-status-store";
 import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
+import { instanceActorFetchSigner } from "./instance-actor";
 
 /** How long a fetched thread counts as fresh before opening the status fetches it again. */
 export const THREAD_BACKFILL_TTL_MS = 60 * 60 * 1000;
@@ -164,6 +165,7 @@ const backfillRemoteThread = async (env: Env, job: BackfillRemoteThread): Promis
   const options: FederatedFetchOptions = {
     allowHosts: await federationAllowHosts(env),
     blockedHosts: suspended,
+    fetchSigner: instanceActorFetchSigner(env.DB, identity.value),
   };
   await backfillAncestors(env, identity.value, actor.value, status.value, options);
   await backfillReplies(env, identity.value, actor.value, status.value, options);

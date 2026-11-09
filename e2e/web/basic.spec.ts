@@ -116,7 +116,12 @@ test.describe("Mastodon web UI", () => {
     await signUp(page, me);
     await page.goto("/auth/sign_in");
     await expect(page.getByText(`@${me}`)).toBeVisible();
-    await page.getByRole("button", { name: "Sign out" }).click();
+    // Sign-out navigates to Access logout; let that navigation land before
+    // starting another, or the two race and one aborts (ERR_ABORTED).
+    await Promise.all([
+      page.waitForURL(/\/cdn-cgi\/access\/logout/),
+      page.getByRole("button", { name: "Sign out" }).click(),
+    ]);
     // Access logout is what ends the login. Dropping the assertion is that step.
     await dropAccessLogin(page);
     await page.goto("/");

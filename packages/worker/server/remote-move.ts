@@ -312,7 +312,7 @@ export const applyRemoteMove = async (
   identity: InstanceIdentity,
   signer: RemoteActor,
   raw: unknown,
-  options: FederatedFetchOptions = {},
+  options: FederatedFetchOptions,
 ): Promise<Result<void, RepositoryError>> => {
   const move = parseMove(raw);
   if (move.isErr() || uriOf(move.value.object) !== signer.actorUri) {

@@ -5,7 +5,18 @@ import {
   type DeliveryAttemptOutcome as DeliveryAttemptOutcomeType,
 } from "./delivery-attempt-outcome";
 
-export const DELIVERY_MAX_ATTEMPTS = 5;
+/** One attempt and Mastodon's 16 retries (`ActivityPub::DeliveryWorker`, `retry: 16`). */
+export const DELIVERY_MAX_ATTEMPTS = 17;
+
+/** A `Retry-After` longer than this (12 hours) is shortened to it. */
+export const RETRY_AFTER_CAP_SECONDS = 12 * 60 * 60;
+
+/**
+ * A target still `Queued` this long (10 days) after it was created is given up
+ * by the stuck-delivery sweep: the retries take about 2.1 days, and even a
+ * remote asking for the longest `Retry-After` each time is done well before.
+ */
+export const DELIVERY_GIVE_UP_AFTER_MS = 10 * 24 * 60 * 60 * 1000;
 
 const QueuedSchema = z.object({
   kind: z.literal("Queued"),
@@ -24,6 +35,16 @@ const PermanentSchema = z.object({
   httpStatus: z.number().int(),
 });
 
+const DomainUnavailableSchema = z.object({
+  kind: z.literal("Skipped"),
+  reasonKind: z.literal("DomainUnavailable"),
+});
+
+/** A target that was never attempted. */
+export const OutboxDeliverySkippedSchema = z.discriminatedUnion("reasonKind", [
+  DomainUnavailableSchema,
+]);
+
 export const OutboxDeliveryFailedSchema = z.discriminatedUnion("reasonKind", [
   RetryExhaustedSchema,
   PermanentSchema,
@@ -34,6 +55,7 @@ export const OutboxDeliverySchema = z.discriminatedUnion("kind", [
   ExpandedSchema,
   DeliveredSchema,
   OutboxDeliveryFailedSchema,
+  OutboxDeliverySkippedSchema,
 ]);
 
 export type OutboxDelivery = z.infer<typeof OutboxDeliverySchema>;
@@ -73,32 +95,33 @@ export const OutboxDelivery = {
         return assertNever(outcome);
     }
   },
-  retryDelay: (attempt: number): "+1 minute" | "+5 minutes" | "+15 minutes" | "+60 minutes" => {
-    switch (attempt) {
-      case 1:
-        return "+1 minute";
-      case 2:
-        return "+5 minutes";
-      case 3:
-        return "+15 minutes";
-      default:
-        return "+60 minutes";
-    }
+  /** A target left out because its domain is unavailable (`DeliveryDomainHealth`). */
+  skipped: (): OutboxDelivery => ({ kind: "Skipped", reasonKind: "DomainUnavailable" }),
+  /**
+   * Sidekiq's default retry delay, which Mastodon's `ActivityPub::DeliveryWorker`
+   * (`retry: 16`) uses: `count⁴ + 15 + rand(10) × (count + 1)` seconds before
+   * retry `count` (0 for the first). `random` is in [0, 1).
+   */
+  backoffMs: (retryCount: number, random: number): number => {
+    const jitter = Math.min(9, Math.floor(random * 10));
+    return (retryCount ** 4 + 15 + jitter * (retryCount + 1)) * 1000;
   },
-  workflowSleep: (attempt: number): "1 minute" | "5 minutes" | "15 minutes" | "60 minutes" => {
-    const delay = OutboxDelivery.retryDelay(attempt);
-    switch (delay) {
-      case "+1 minute":
-        return "1 minute";
-      case "+5 minutes":
-        return "5 minutes";
-      case "+15 minutes":
-        return "15 minutes";
-      case "+60 minutes":
-        return "60 minutes";
-      default:
-        return assertNever(delay);
+  /**
+   * How long to wait after the attempt that left `next` queued: the backoff
+   * for its retry, or the remote's `Retry-After` when that is longer (capped
+   * at {@link RETRY_AFTER_CAP_SECONDS}).
+   */
+  nextDelayMs: (
+    next: QueuedOutboxDelivery,
+    outcome: DeliveryAttemptOutcomeType,
+    random: number,
+  ): number => {
+    const backoff = OutboxDelivery.backoffMs(Math.max(0, next.attemptCount - 1), random);
+    if (outcome.kind !== "TransientFailure" || outcome.cause.kind !== "Throttled") {
+      return backoff;
     }
+    const asked = Math.min(outcome.cause.retryAfterSeconds, RETRY_AFTER_CAP_SECONDS) * 1000;
+    return Math.max(backoff, asked);
   },
 } as const;
 

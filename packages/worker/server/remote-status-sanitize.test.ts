@@ -8,6 +8,7 @@ import { generateAccountKeys } from "./keys";
 import { parseInstanceIdentity } from "./runtime-config";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
+import { unsignedFetch } from "./federated-fetch";
 
 const StatusSchema = z.object({
   content: z.string(),
@@ -46,21 +47,27 @@ describe("remote status HTML", () => {
       throw new Error("identity");
     }
     const actor = await hostileActor();
-    const persisted = await persistRemoteObject(env, identity.value, actor, {
-      id: `${actor.actorUri}/statuses/1`,
-      type: "Note",
-      attributedTo: actor.actorUri,
-      content:
-        '<p onmouseover="alert(1)">hello<script>alert(2)</script> <img src=x onerror=alert(3)>' +
-        '<a href="javascript:alert(4)">click</a> <a href="https://ok.example/">ok</a></p>',
-      url: "javascript:alert(5)",
-      published: new Date().toISOString(),
-      to: ["https://www.w3.org/ns/activitystreams#Public"],
-      attachment: [
-        { type: "Document", mediaType: "image/png", url: "javascript:alert(6)" },
-        { type: "Document", mediaType: "image/png", url: "https://hostile.example/a.png" },
-      ],
-    });
+    const persisted = await persistRemoteObject(
+      env,
+      identity.value,
+      actor,
+      {
+        id: `${actor.actorUri}/statuses/1`,
+        type: "Note",
+        attributedTo: actor.actorUri,
+        content:
+          '<p onmouseover="alert(1)">hello<script>alert(2)</script> <img src=x onerror=alert(3)>' +
+          '<a href="javascript:alert(4)">click</a> <a href="https://ok.example/">ok</a></p>',
+        url: "javascript:alert(5)",
+        published: new Date().toISOString(),
+        to: ["https://www.w3.org/ns/activitystreams#Public"],
+        attachment: [
+          { type: "Document", mediaType: "image/png", url: "javascript:alert(6)" },
+          { type: "Document", mediaType: "image/png", url: "https://hostile.example/a.png" },
+        ],
+      },
+      { fetchSigner: unsignedFetch },
+    );
     if (persisted.isErr() || !persisted.value) {
       throw new Error("remote post rejected");
     }

@@ -44,6 +44,7 @@ import { familiarFollowerIds, followingAccountIds } from "../../follow-store";
 import { relationshipFlags } from "../../relationship-store";
 import { isTruthy } from "../../form-values";
 import { findKnownAccountHandle, localRef, remoteRef } from "../../account-ref";
+import { instanceActorFetchSigner } from "../../instance-actor";
 
 export const getV1AccountsLookup = async (
   c: Context<{ Bindings: Env }, "/api/v1/accounts/lookup">,
@@ -179,6 +180,7 @@ export const getV1AccountsSearch = async (
         ? await resolveRemoteActorByHandle(c.env.DB, identity.value, handle, {
             allowHosts: await federationAllowHosts(c.env),
             blockedHosts: await suspendedDomains(c.env.DB),
+            fetchSigner: instanceActorFetchSigner(c.env.DB, identity.value),
           })
         : // Without `resolve` only the actor cache is consulted.
           (await findKnownAccountHandle(c.env, identity.value, handle)).andThen((ref) =>

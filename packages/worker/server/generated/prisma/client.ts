@@ -302,6 +302,11 @@ export type instance_actor_keys = Prisma.instance_actor_keysModel;
  */
 export type outbox_deliveries = Prisma.outbox_deliveriesModel;
 /**
+ * Model outbox_dead_jobs
+ *
+ */
+export type outbox_dead_jobs = Prisma.outbox_dead_jobsModel;
+/**
  * Model poll_votes
  *
  */
@@ -396,6 +401,11 @@ export type scheduled_statuses = Prisma.scheduled_statusesModel;
  *
  */
 export type notification_request_groups = Prisma.notification_request_groupsModel;
+/**
+ * Model delivery_domain_health
+ *
+ */
+export type delivery_domain_health = Prisma.delivery_domain_healthModel;
 /**
  * Model domain_allows
  *

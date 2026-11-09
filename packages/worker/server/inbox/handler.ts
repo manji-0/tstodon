@@ -9,6 +9,7 @@ import type { Result } from "neverthrow";
 import type { z } from "zod";
 import type { ActivityJsonSchema } from "../activitypub-wire";
 import type { RepositoryError } from "../d1";
+import type { FetchSigner } from "../federated-fetch";
 
 /** Who signed a verified inbox request: a local account, or a fetched remote actor. */
 export type InboxSigner =
@@ -28,6 +29,8 @@ export type InboxReceipt = Readonly<{
   body: unknown;
   allowHosts: ReadonlySet<string>;
   blockedHosts: ReadonlySet<Hostname>;
+  /** Signs the GETs handling the activity makes (the instance actor's key). */
+  fetchSigner: FetchSigner;
 }>;
 
 export type InboxDelivery<Signer, K extends ActivityValue["kind"]> = Readonly<

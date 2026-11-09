@@ -11,6 +11,7 @@ import { requestQuoteRefresh } from "./quote-retry-queue";
 import { findRemoteActorByUri } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
 import { parseInstanceIdentity } from "./runtime-config";
+import { unsignedFetch } from "./federated-fetch";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -150,6 +151,7 @@ const setup = async (slug: string) => {
       identity.value,
       actor.value,
       note(bob, bobNoteUri, { quote: carolNote.id, quoteAuthorization: stampUri }),
+      { fetchSigner: unsignedFetch },
     );
     expect(stored.isOk()).toBe(true);
   };
@@ -505,7 +507,10 @@ describe("our QuoteRequest (Mastodon's QuoteRequestWorker)", () => {
       inboxUrl,
     });
 
-    expect(outcome).toEqual({ kind: "TransientFailure" });
+    expect(outcome).toEqual({
+      kind: "TransientFailure",
+      cause: { kind: "HttpStatus", httpStatus: 500 },
+    });
     expect(OutboxDelivery.afterAttempt(OutboxDelivery.queued(), outcome)).toEqual({
       kind: "Queued",
       attemptCount: 1,

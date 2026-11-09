@@ -30,6 +30,8 @@ import { processBackfillRemoteThreadJob } from "./remote-thread-backfill";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { rekeyLegacyMediaBatch } from "./media-rekey";
 import { vacuumMediaAttachments } from "./media-vacuum";
+import { vacuumActivities } from "./activity-vacuum";
+import { requeueDeadOutboxJobs } from "./dead-letter-queue";
 import {
   logStripStoredMediaMetadataDone,
   stripStoredMediaMetadataPage,
@@ -45,7 +47,11 @@ import {
   legacyMediaPolicy,
   parseInstanceIdentity,
 } from "./runtime-config";
-import { startOutboxDeliveryWorkflow } from "./delivery";
+import {
+  partitionByDomainAvailability,
+  recordSkippedTargets,
+  startOutboxDeliveryWorkflow,
+} from "./delivery";
 import { parseJsonText } from "./json-column";
 import { parseLocalStatusId } from "./activitypub";
 import { listPollInteractorInboxes } from "./remote-interaction-store";
@@ -204,6 +210,20 @@ export const processOutboxJob = async (
         }
         return { outcome: "ok", size: pass.value.deleted, chained: pass.value.chained };
       });
+    case "VacuumActivities":
+      return measureJobPage(env, job.kind, async () => {
+        const pass = await vacuumActivities(env);
+        if (pass.isErr()) {
+          return { outcome: "retry", size: 0, chained: false };
+        }
+        const { deliveries, outbound, inbox, chained } = pass.value;
+        if (chained) {
+          await env.OUTBOX_PROCESS_QUEUE.send({ kind: "VacuumActivities" });
+        }
+        return { outcome: "ok", size: deliveries + outbound + inbox, chained };
+      });
+    case "RequeueDeadOutboxJobs":
+      return requeueDeadOutboxJobs(env, job);
     case "StripStoredMediaMetadata":
       return measureJobPage(env, job.kind, async () => {
         const page = await stripStoredMediaMetadataPage(env, job);
@@ -346,7 +366,12 @@ export const processOutboxJob = async (
         ),
       ];
       await markOutboundExpanded(env.DB, job.activityId, remoteInboxes.length);
-      const ensured = await ensureOutboxTargets(env.DB, job.activityId, remoteInboxes);
+      // An inbox on a domain marked unavailable gets a `Skipped` target, not a Workflow.
+      const { deliver, skipped } = await partitionByDomainAvailability(env.DB, remoteInboxes);
+      const skippedTargets = await recordSkippedTargets(env, job.activityId, skipped, "expand");
+      const ensured = skippedTargets.isErr()
+        ? skippedTargets
+        : await ensureOutboxTargets(env.DB, job.activityId, deliver);
       if (ensured.isErr()) {
         console.error(
           JSON.stringify({
@@ -363,19 +388,24 @@ export const processOutboxJob = async (
         );
         return "ok";
       }
-      for (const inboxUrl of remoteInboxes) {
-        const deliver = OutboxJob.parse({
+      for (const inboxUrl of deliver) {
+        const deliverJob = OutboxJob.parse({
           kind: "DeliverTarget",
           activityId: job.activityId,
           inboxUrl,
         });
-        if (deliver.isErr() || deliver.value.kind !== "DeliverTarget") {
+        if (deliverJob.isErr() || deliverJob.value.kind !== "DeliverTarget") {
           continue;
         }
-        await startOutboxDeliveryWorkflow(env, deliver.value);
+        await startOutboxDeliveryWorkflow(env, deliverJob.value);
       }
-      // doubles: [remoteTargetCount, expandMs, okFlag]
-      writeMetric(env, "outbox.expand", [remoteInboxes.length, elapsedMs(startedAt), 1], ["ok"]);
+      // doubles: [remoteTargetCount, expandMs, okFlag, skippedCount]
+      writeMetric(
+        env,
+        "outbox.expand",
+        [remoteInboxes.length, elapsedMs(startedAt), 1, skipped.length],
+        ["ok"],
+      );
       return "ok";
     }
     case "DeliverTarget": {

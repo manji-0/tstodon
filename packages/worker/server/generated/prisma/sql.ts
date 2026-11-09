@@ -106,6 +106,10 @@ export * from "./sql/deleteCanonicalEmailBlock";
 
 export * from "./sql/deleteCustomEmoji";
 
+export * from "./sql/deleteDeadOutboxJobs";
+
+export * from "./sql/deleteDeliveryDomainHealth";
+
 export * from "./sql/deleteDomainBlock";
 
 export * from "./sql/deleteEmailDomainBlock";
@@ -241,6 +245,8 @@ export * from "./sql/findCanonicalEmailBlockById";
 export * from "./sql/findCustomEmojiById";
 
 export * from "./sql/findCustomEmojiByShortcode";
+
+export * from "./sql/findDeliveryDomainHealth";
 
 export * from "./sql/findDomainBlockByDomain";
 
@@ -444,6 +450,8 @@ export * from "./sql/insertRemoteStatusRemoteMention";
 
 export * from "./sql/insertReport";
 
+export * from "./sql/insertSettledOutboxTargetOrIgnore";
+
 export * from "./sql/insertSignupIntent";
 
 export * from "./sql/insertSilentRemoteStatusMention";
@@ -513,6 +521,10 @@ export * from "./sql/listAuthorizedApplicationTokens";
 export * from "./sql/listBlockersOfActor";
 
 export * from "./sql/listCustomEmojiRows";
+
+export * from "./sql/listDeadOutboxJobs";
+
+export * from "./sql/listDeliveryDomainHealth";
 
 export * from "./sql/listDirectoryAccountsByActive";
 
@@ -646,11 +658,15 @@ export * from "./sql/listStatusReplyLinks";
 
 export * from "./sql/listStatusReplyUris";
 
+export * from "./sql/listStuckOutboxTargets";
+
 export * from "./sql/listSuggestionExclusionIds";
 
 export * from "./sql/listSuspendedDomains";
 
 export * from "./sql/listTagModerationsByNamesJson";
+
+export * from "./sql/listUnavailableDeliveryDomains";
 
 export * from "./sql/listUnindexedRemoteStatuses";
 
@@ -680,7 +696,15 @@ export * from "./sql/pageNotificationGroupsOlder";
 
 export * from "./sql/pinStatus";
 
+export * from "./sql/postponeOutboxTarget";
+
+export * from "./sql/pruneInboxActivities";
+
+export * from "./sql/pruneOutboundActivities";
+
 export * from "./sql/pruneStatusIdempotency";
+
+export * from "./sql/pruneTerminalDeliveries";
 
 export * from "./sql/purgeRemoteActorBlocks";
 
@@ -831,6 +855,10 @@ export * from "./sql/upsertBlock";
 export * from "./sql/upsertConversationHide";
 
 export * from "./sql/upsertConversationRead";
+
+export * from "./sql/upsertDeadOutboxJob";
+
+export * from "./sql/upsertDeliveryDomainHealth";
 
 export * from "./sql/upsertFollowOptions";
 

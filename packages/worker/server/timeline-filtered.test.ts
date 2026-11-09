@@ -9,6 +9,7 @@ import { generateAccountKeys } from "./keys";
 import { parseInstanceIdentity } from "./runtime-config";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
+import { unsignedFetch } from "./federated-fetch";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -102,14 +103,20 @@ describe("filtered on timelines", () => {
     if (identity.isErr()) {
       throw new Error("identity");
     }
-    const persisted = await persistRemoteObject(env, identity.value, actor.value, {
-      id: `${actorUri}/statuses/1`,
-      type: "Note",
-      attributedTo: actorUri,
-      content: '<p>remote spoilers from <a href="https://x.example">someone</a></p>',
-      published: new Date().toISOString(),
-      to: ["https://www.w3.org/ns/activitystreams#Public"],
-    });
+    const persisted = await persistRemoteObject(
+      env,
+      identity.value,
+      actor.value,
+      {
+        id: `${actorUri}/statuses/1`,
+        type: "Note",
+        attributedTo: actorUri,
+        content: '<p>remote spoilers from <a href="https://x.example">someone</a></p>',
+        published: new Date().toISOString(),
+        to: ["https://www.w3.org/ns/activitystreams#Public"],
+      },
+      { fetchSigner: unsignedFetch },
+    );
     expect(persisted.isOk()).toBe(true);
     const remoteId = persisted.isOk() && persisted.value ? persisted.value.id : "";
 

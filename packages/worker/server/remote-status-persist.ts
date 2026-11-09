@@ -8,7 +8,6 @@ import {
   type RemoteEmoji,
   RemoteActor,
   type RemoteStatus as RemoteStatusValue,
-  type Hostname,
   type MentionedPost,
   type QuotePolicyAuthor,
 } from "@tstodon/domain";
@@ -17,7 +16,7 @@ import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
-import { fetchActivityJson } from "./federated-fetch";
+import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { resolveRemoteActor } from "./remote-actor-fetch";
 import { entityIdAt, type IdClock, newEntityId } from "./ids";
 import { parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
@@ -311,20 +310,19 @@ export const applyMediaPolicy = async (
   return RemoteActor.onAnyHost(actor, rejected) ? { ...status, media: [] } : status;
 };
 
-type PersistOptions = Readonly<{
-  allowHosts?: ReadonlySet<string>;
-  blockedHosts?: ReadonlySet<Hostname>;
-  /** Notify the local accounts the note mentions, when it is newly stored (inbox `Create`). */
-  notifyMentions?: boolean;
-  /** Which instant a newly stored note's id sorts at; `Received` by default. */
-  idClock?: IdClock;
-  /**
-   * How many quotes deep this note sits below the note that arrived (0 by
-   * default); a note fetched as a quoted one is one deeper than its quoting
-   * note. See {@link MAX_QUOTE_DEPTH}.
-   */
-  quoteDepth?: number;
-}>;
+type PersistOptions = FederatedFetchOptions &
+  Readonly<{
+    /** Notify the local accounts the note mentions, when it is newly stored (inbox `Create`). */
+    notifyMentions?: boolean;
+    /** Which instant a newly stored note's id sorts at; `Received` by default. */
+    idClock?: IdClock;
+    /**
+     * How many quotes deep this note sits below the note that arrived (0 by
+     * default); a note fetched as a quoted one is one deeper than its quoting
+     * note. See {@link MAX_QUOTE_DEPTH}.
+     */
+    quoteDepth?: number;
+  }>;
 
 type ObjectReference = string | Readonly<{ id: string } & Record<string, unknown>>;
 
@@ -343,7 +341,7 @@ export const persistRemoteObject = async (
   identity: InstanceIdentity,
   actor: RemoteActor,
   object: ObjectReference,
-  options: PersistOptions = {},
+  options: PersistOptions,
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
   const cached = await cachedRemoteStatus(
     env,
@@ -392,7 +390,7 @@ export const persistAnnouncedObject = async (
   identity: InstanceIdentity,
   announcer: RemoteActor,
   object: ObjectReference,
-  options: PersistOptions = {},
+  options: PersistOptions,
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
   const objectUri = typeof object === "string" ? object : object.id;
   const cached = await cachedRemoteStatus(env, identity, objectUri);

@@ -10,6 +10,7 @@ import { parseInstanceIdentity } from "./runtime-config";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
 import { processOutboxJob } from "./outbox-job";
+import { unsignedFetch } from "./federated-fetch";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -85,14 +86,20 @@ const remotePost = async (
   if (identity.isErr()) {
     throw new Error("identity");
   }
-  const persisted = await persistRemoteObject(env, identity.value, actor, {
-    id: objectId,
-    type: "Note",
-    attributedTo: actor.actorUri,
-    content,
-    published: new Date().toISOString(),
-    to,
-  });
+  const persisted = await persistRemoteObject(
+    env,
+    identity.value,
+    actor,
+    {
+      id: objectId,
+      type: "Note",
+      attributedTo: actor.actorUri,
+      content,
+      published: new Date().toISOString(),
+      to,
+    },
+    { fetchSigner: unsignedFetch },
+  );
   expect(persisted.isOk()).toBe(true);
   return persisted.isOk() && persisted.value ? persisted.value.id : "";
 };

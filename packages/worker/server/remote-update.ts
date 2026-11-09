@@ -268,7 +268,7 @@ export const applyRemoteUpdate = async (
   identity: InstanceIdentity,
   signer: RemoteActor,
   object: string | Readonly<Record<string, unknown>>,
-  options: FederatedFetchOptions = {},
+  options: FederatedFetchOptions,
 ): Promise<Result<void, RepositoryError>> => {
   let raw: unknown = object;
   if (typeof object === "string") {

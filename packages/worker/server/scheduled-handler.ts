@@ -1,5 +1,6 @@
 import { writeMetric } from "./metrics";
 import { refreshStaleRemoteActors } from "./remote-actor-refresh";
+import { sweepStuckDeliveries } from "./stuck-delivery-sweep";
 
 /**
  * The hourly entry of `app/crons/outbox-maintenance.ts`, whose `cron` export
@@ -36,6 +37,12 @@ export const handleScheduled = (
     controller.cron === HOURLY_CRON
       ? undefined
       : env.OUTBOX_PROCESS_QUEUE.send({ kind: "VacuumMediaAttachments" }),
+    // Prune finished deliveries, old outbound activities and the inbox's
+    // dedupe rows past their retention (Mastodon's `Vacuum::*` jobs run
+    // daily); one indexed query per table when nothing is due.
+    controller.cron === HOURLY_CRON
+      ? undefined
+      : env.OUTBOX_PROCESS_QUEUE.send({ kind: "VacuumActivities" }),
     // Strip the metadata from media stored before stripping on upload; once
     // every row is marked, one page that reads nothing. Six-hourly only, so a
     // long first run is not joined by a second chain every hour.
@@ -59,6 +66,9 @@ export const handleScheduled = (
     // Re-fetch actors cached over a day ago, under the handle WebFinger
     // confirms; once an hour, not again when the six-hourly cron fires too.
     controller.cron === HOURLY_CRON ? refreshStaleRemoteActors(env) : undefined,
+    // Start or restart the delivery Workflows of targets left `Queued` past
+    // their next attempt (a failed create, a step that errored); hourly only.
+    controller.cron === HOURLY_CRON ? sweepStuckDeliveries(env) : undefined,
   ]).then(() => {
     writeMetric(env, "cron", [1], [controller.cron, "scheduled"]);
   });

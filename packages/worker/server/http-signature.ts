@@ -127,30 +127,28 @@ export const signInboxRequest = async (
   );
 };
 
-/** Headers for a signed fetch GET (authorized fetch): `(request-target) host date`. */
+/**
+ * Headers for a signed fetch GET (authorized fetch), as Mastodon's `Request`
+ * signs one: `(request-target) host date accept`. The caller sends `Accept`
+ * exactly as given here, and the request goes to `url.host`.
+ */
 export const signFetchRequest = async (
   url: URL,
   privateKeyJwk: SensitiveValue<string>,
   keyId: string,
-): Promise<Result<Headers, SignatureError>> => {
-  const date = new Date().toUTCString();
+  accept: string,
+  date: Date = new Date(),
+): Promise<Result<Readonly<{ Date: string; Signature: string }>, SignatureError>> => {
+  const dateHeader = date.toUTCString();
   const signature = await signRequest(
     "get",
     url,
     privateKeyJwk,
     keyId,
-    ["(request-target)", "host", "date"],
-    { host: url.host, date },
+    ["(request-target)", "host", "date", "accept"],
+    { host: url.host, date: dateHeader, accept },
   );
-  return signature.map(
-    (value) =>
-      new Headers({
-        Host: url.host,
-        Date: date,
-        Signature: value,
-        Accept: "application/activity+json",
-      }),
-  );
+  return signature.map((value) => ({ Date: dateHeader, Signature: value }));
 };
 
 export type ParsedSignature = Readonly<{

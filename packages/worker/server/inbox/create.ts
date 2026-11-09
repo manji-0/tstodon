@@ -12,6 +12,8 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
   signer,
   received,
   allowHosts,
+  blockedHosts,
+  fetchSigner,
 }) => {
   const vote = await handleRemotePollVote(env, identity, signer, received.object);
   if (vote.kind !== "NotAVote") {
@@ -19,6 +21,8 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
   }
   const created = await persistRemoteObject(env, identity, signer, received.object, {
     allowHosts,
+    blockedHosts,
+    fetchSigner,
     notifyMentions: true,
   });
   // A redelivered Create finds the note cached and tells followers again,

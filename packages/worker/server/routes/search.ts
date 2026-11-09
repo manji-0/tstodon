@@ -22,6 +22,7 @@ import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import { searchStatuses } from "../status-timeline-store";
 import { listFeaturedTags, listFollowedTags, searchTags, tagDailyHistories } from "../tag-store";
 import type { Context } from "hono";
+import { instanceActorFetchSigner } from "../instance-actor";
 
 /** The remote actor a `resolve=true` query names by handle or actor URL, fetched if not cached. */
 const resolveSearchActor = async (
@@ -32,10 +33,12 @@ const resolveSearchActor = async (
   const bare = query.replace(/^@/, "").trim();
   const allowHosts = await federationAllowHosts(env);
   const blockedHosts = await suspendedDomains(env.DB);
+  const fetchSigner = instanceActorFetchSigner(env.DB, identity);
   if (/^[^\s@]+@[^\s@]+$/.test(bare)) {
     const actor = await resolveRemoteActorByHandle(env.DB, identity, bare, {
       allowHosts,
       blockedHosts,
+      fetchSigner,
     });
     return actor.isOk() ? actor.value : undefined;
   }
@@ -43,6 +46,7 @@ const resolveSearchActor = async (
     const actor = await resolveRemoteActor(env.DB, identity, `${bare}#main-key`, bare, {
       allowHosts,
       blockedHosts,
+      fetchSigner,
     });
     return actor.isOk() ? actor.value : undefined;
   }
