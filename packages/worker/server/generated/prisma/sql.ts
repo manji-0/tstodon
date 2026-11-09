@@ -684,10 +684,13 @@ export * from "./sql/pageNotificationGroupsOlder";
 
 export * from "./sql/pinStatus";
 
+export * from "./sql/pruneInboxActivities";
 
+export * from "./sql/pruneOutboundActivities";
 
 export * from "./sql/pruneStatusIdempotency";
 
+export * from "./sql/pruneTerminalDeliveries";
 
 export * from "./sql/purgeRemoteActorBlocks";
 

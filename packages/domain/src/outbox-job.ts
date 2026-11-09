@@ -67,6 +67,13 @@ const BackfillStoredMediaSizesSchema = z.object({
   afterId: z.string().default(""),
   tally: StoredMediaSizes.tallySchema.default(StoredMediaSizes.emptyTally),
 });
+/**
+ * Delete the outbox and inbox rows past their retention, one bounded batch
+ * per table (see `ActivityVacuum`); six-hourly cron, chains while a table
+ * fills its batch.
+ */
+const VacuumActivitiesSchema = unitKind("VacuumActivities");
+
 /** A SHA-256 hex digest: the id of an `outbox_dead_jobs` row. */
 export const DeadOutboxJobIdSchema = z.string().regex(/^[0-9a-f]{64}$/);
 
@@ -278,6 +285,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   BackfillLocalNoteTagsSchema,
   RekeyLegacyMediaSchema,
   VacuumMediaAttachmentsSchema,
+  VacuumActivitiesSchema,
   RequeueDeadOutboxJobsSchema,
   StripStoredMediaMetadataSchema,
   BackfillStoredMediaSizesSchema,

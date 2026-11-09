@@ -178,6 +178,16 @@ export {
   type SendOutboxJobs,
 } from "./dead-outbox-job";
 export {
+  ActivityVacuum,
+  type ActivityRetention,
+  type ActivityRetentionVars,
+  type ActivityVacuumPass,
+  type PruneInboxActivities,
+  type PruneOutboundActivities,
+  type PruneTerminalDeliveries,
+  type RetentionWindow,
+} from "./activity-vacuum";
+export {
   OutboundFollow,
   type OutboundFollow as OutboundFollowValue,
   type OutboundFollowState,
