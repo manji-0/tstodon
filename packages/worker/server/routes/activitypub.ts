@@ -30,6 +30,7 @@ import { localActorDocument } from "../local-actor";
 import { suspendedDomains } from "../admin-domain-block-store";
 import { getRemoteActorModeration } from "../remote-actor-moderation-store";
 import { signedFetchActor } from "../signed-fetch";
+import { authorizeObjectFetch, restrictedActorDocument } from "../authorized-fetch";
 import { inboxActivityExists, insertInboxActivity } from "../inbox-store";
 import { limitInboxDelivery } from "../rate-limit";
 import { dispatchInbox } from "../inbox/dispatch";
@@ -77,6 +78,10 @@ export const getUsersByUsername = async (c: Context<{ Bindings: Env }, "/users/:
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
+  const access = await authorizeObjectFetch(c, identity.value, "actor");
+  if (access.kind === "Denied") {
+    return access.response;
+  }
   const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
@@ -88,7 +93,11 @@ export const getUsersByUsername = async (c: Context<{ Bindings: Env }, "/users/:
   if (document.isErr()) {
     return jsonRepositoryError(c, document.error.message);
   }
-  return c.json(document.value, 200, jsonLd);
+  return c.json(
+    access.kind === "Restricted" ? restrictedActorDocument(document.value) : document.value,
+    200,
+    jsonLd,
+  );
 };
 
 export const getUsersByUsernameStatusesById = async (
@@ -97,6 +106,10 @@ export const getUsersByUsernameStatusesById = async (
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
+  }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
   }
   const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
   if (account.isErr()) {
@@ -153,6 +166,10 @@ export const getUsersByUsernameQuoteAuthorizationsById = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
+  }
   const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
@@ -206,9 +223,11 @@ export const getUsersByUsernameQuoteAuthorizationsById = async (
   const document = quoteAuthorizationDocument(
     localQuoteAuthorization(target, quote.value.id, quoting.uri),
   );
-  c.header("Cache-Control", "max-age=30, public");
-  // The body is public, but a signed fetcher the author blocks is refused.
-  c.header("Vary", "Signature");
+  if (access.kind === "Public") {
+    c.header("Cache-Control", "max-age=30, public");
+    // The body is public, but a signed fetcher the author blocks is refused.
+    c.header("Vary", "Signature");
+  }
   return c.json(document, 200, jsonLd);
 };
 
@@ -257,6 +276,10 @@ export const getUsersByUsernameOutbox = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
+  }
   const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
@@ -296,6 +319,10 @@ export const getUsersByUsernameFollowers = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
+  }
   const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
@@ -329,6 +356,10 @@ export const getUsersByUsernameFollowing = async (
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
+  }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
   }
   const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
   if (account.isErr()) {

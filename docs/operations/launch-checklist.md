@@ -35,6 +35,7 @@ M=https://media.example.com   # MEDIA_PUBLIC_BASE_URL
 - [ ] `INSTANCE_DOMAIN`, `INSTANCE_PUBLIC_ORIGIN`, `MEDIA_PUBLIC_BASE_URL`, `CONTACT_EMAIL`, `SOURCE_URL` are yours, not `example.com`: `curl -s $O/api/v2/instance | jq '{domain, source_url, contact: .contact.email}'`.
 - [ ] `FEDERATION_ALLOW_HOSTS` is empty unless you mean limited federation (`curl -s $O/api/v2/instance | jq .configuration.limited_federation` is `false`); a leftover e2e host list silently refuses every other server.
 - [ ] Nothing secret is committed: `git grep -n "BETTER_AUTH_SECRET\|\"d\":" -- packages/worker/wrangler.jsonc` finds nothing.
+- [ ] Secure mode is what you chose ([Authorized fetch](../reference/configuration.md#authorized-fetch-secure-mode); off unless `AUTHORIZED_FETCH=true`). With it on: `curl -s -o /dev/null -w '%{http_code}\n' -H 'Accept: application/activity+json' $O/users/alice/outbox` is `401`, `curl -s -H 'Accept: application/activity+json' $O/users/alice | jq 'keys'` lists only `@context`, `endpoints`, `id`, `inbox`, `outbox`, `preferredUsername`, `publicKey` and `type`, and `$O/actor` and `$O/.well-known/webfinger?resource=acct:alice@$D` still answer `200`. Either way, no Cache Rule caches `/users/*` regardless of the origin's `Cache-Control` (secure-mode answers are `private` and differ per signer).
 
 ### Cloudflare Access paths
 
@@ -160,7 +161,7 @@ If the browser loops between Access and the instance: `CF_ACCESS_AUD` or `CF_ACC
 
 Use an account you control on a real Mastodon 4.5 or newer server (4.5 is the first with FEP-044f quote posts) and, ideally, one on Misskey. Below, `alice@$D` is yours on tstodon and `bob@remote.example` is the remote one. Each step names where to look when it fails:
 
-- **Requests to us**: Workers Logs filtered on the inbox paths (`/inbox`, `/users/alice/inbox`, `/actor/inbox`) and their status: `202` accepted; `401 InvalidSignature` (key fetch or signature failed); `403` (domain blocked, not on the allow list, suspended actor); `429` (rate limit); `503 VerificationUnavailable` (could not fetch the signer's key). What was accepted is in `inbox_activities` (`SELECT kind, created_at FROM inbox_activities ORDER BY created_at DESC LIMIT 20`).
+- **Requests to us**: Workers Logs filtered on the inbox paths (`/inbox`, `/users/alice/inbox`, `/actor/inbox`) and their status: `202` accepted; `401 InvalidSignature` (key fetch or signature failed); `403` (domain blocked, not on the allow list, suspended actor); `429` (rate limit); `503 VerificationUnavailable` (could not fetch the signer's key). Every refusal is an `InboxRefused` event whose `reason` says which ([Inbox refusals](./runbook.md#log-events)). What was accepted is in `inbox_activities` (`SELECT kind, created_at FROM inbox_activities ORDER BY created_at DESC LIMIT 20`).
 - **Deliveries from us**: `outbox_deliveries` for the remote host ([failing-host query](./runbook.md#outbound-delivery-health-d1)), `wrangler workflows instances list tstodon-outbox-delivery`, and the `*NotFederated` / `Outbox*` [log events](./runbook.md#log-events).
 
 tstodon signs its outgoing ActivityPub GETs as the instance actor (`$O/actor#main-key`), so the test also works against a remote in Mastodon's secure mode (`AUTHORIZED_FETCH=true`); step 17 checks that. WebFinger is unsigned, as Mastodon sends it.
