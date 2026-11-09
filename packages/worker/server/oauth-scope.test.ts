@@ -37,6 +37,13 @@ describe("granular OAuth scopes", () => {
     expect(allows("write:favourites", "POST", "/api/v1/statuses")).toBe(false);
     expect(allows("admin:read", "GET", "/api/v1/admin/accounts")).toBe(true);
     expect(allows("admin:read:reports", "GET", "/api/v1/admin/accounts")).toBe(false);
+    expect(allows("admin:read:accounts", "GET", "/api/v2/admin/accounts")).toBe(true);
+    expect(allows("admin:write:ip_blocks", "PUT", "/api/v1/admin/ip_blocks/1")).toBe(true);
+    expect(allows("admin:write:accounts", "POST", "/api/v1/admin/ip_blocks")).toBe(false);
+    // The dashboard's metrics are POSTs that read.
+    expect(allows("admin:read", "POST", "/api/v1/admin/measures")).toBe(true);
+    expect(allows("admin:write", "POST", "/api/v1/admin/dimensions")).toBe(false);
+    expect(allows("admin:read:accounts", "GET", "/api/v1/admin/tags")).toBe(false);
     // Suggestions take only the top-level scopes, as in Mastodon.
     expect(allows("read:accounts", "GET", "/api/v2/suggestions")).toBe(false);
   });

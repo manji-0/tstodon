@@ -19,39 +19,79 @@ export type tagsModel = runtime.Types.Result.DefaultSelection<Prisma.$tagsPayloa
 
 export type AggregateTags = {
   _count: TagsCountAggregateOutputType | null;
+  _avg: TagsAvgAggregateOutputType | null;
+  _sum: TagsSumAggregateOutputType | null;
   _min: TagsMinAggregateOutputType | null;
   _max: TagsMaxAggregateOutputType | null;
+};
+
+export type TagsAvgAggregateOutputType = {
+  usable: number | null;
+  listable: number | null;
+};
+
+export type TagsSumAggregateOutputType = {
+  usable: number | null;
+  listable: number | null;
 };
 
 export type TagsMinAggregateOutputType = {
   name: string | null;
   created_at: string | null;
+  usable: number | null;
+  listable: number | null;
+  display_name: string | null;
 };
 
 export type TagsMaxAggregateOutputType = {
   name: string | null;
   created_at: string | null;
+  usable: number | null;
+  listable: number | null;
+  display_name: string | null;
 };
 
 export type TagsCountAggregateOutputType = {
   name: number;
   created_at: number;
+  usable: number;
+  listable: number;
+  display_name: number;
   _all: number;
+};
+
+export type TagsAvgAggregateInputType = {
+  usable?: true;
+  listable?: true;
+};
+
+export type TagsSumAggregateInputType = {
+  usable?: true;
+  listable?: true;
 };
 
 export type TagsMinAggregateInputType = {
   name?: true;
   created_at?: true;
+  usable?: true;
+  listable?: true;
+  display_name?: true;
 };
 
 export type TagsMaxAggregateInputType = {
   name?: true;
   created_at?: true;
+  usable?: true;
+  listable?: true;
+  display_name?: true;
 };
 
 export type TagsCountAggregateInputType = {
   name?: true;
   created_at?: true;
+  usable?: true;
+  listable?: true;
+  display_name?: true;
   _all?: true;
 };
 
@@ -95,6 +135,18 @@ export type TagsAggregateArgs<
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    *
+   * Select which fields to average
+   **/
+  _avg?: TagsAvgAggregateInputType;
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
+   * Select which fields to sum
+   **/
+  _sum?: TagsSumAggregateInputType;
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
    * Select which fields to find the minimum value
    **/
   _min?: TagsMinAggregateInputType;
@@ -124,6 +176,8 @@ export type tagsGroupByArgs<
   take?: number;
   skip?: number;
   _count?: TagsCountAggregateInputType | true;
+  _avg?: TagsAvgAggregateInputType;
+  _sum?: TagsSumAggregateInputType;
   _min?: TagsMinAggregateInputType;
   _max?: TagsMaxAggregateInputType;
 };
@@ -131,7 +185,12 @@ export type tagsGroupByArgs<
 export type TagsGroupByOutputType = {
   name: string;
   created_at: string;
+  usable: number;
+  listable: number;
+  display_name: string | null;
   _count: TagsCountAggregateOutputType | null;
+  _avg: TagsAvgAggregateOutputType | null;
+  _sum: TagsSumAggregateOutputType | null;
   _min: TagsMinAggregateOutputType | null;
   _max: TagsMaxAggregateOutputType | null;
 };
@@ -154,11 +213,17 @@ export type tagsWhereInput = {
   NOT?: Prisma.tagsWhereInput | Prisma.tagsWhereInput[];
   name?: Prisma.StringFilter<"tags"> | string;
   created_at?: Prisma.StringFilter<"tags"> | string;
+  usable?: Prisma.IntFilter<"tags"> | number;
+  listable?: Prisma.IntFilter<"tags"> | number;
+  display_name?: Prisma.StringNullableFilter<"tags"> | string | null;
 };
 
 export type tagsOrderByWithRelationInput = {
   name?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  usable?: Prisma.SortOrder;
+  listable?: Prisma.SortOrder;
+  display_name?: Prisma.SortOrderInput | Prisma.SortOrder;
 };
 
 export type tagsWhereUniqueInput = Prisma.AtLeast<
@@ -168,6 +233,9 @@ export type tagsWhereUniqueInput = Prisma.AtLeast<
     OR?: Prisma.tagsWhereInput[];
     NOT?: Prisma.tagsWhereInput | Prisma.tagsWhereInput[];
     created_at?: Prisma.StringFilter<"tags"> | string;
+    usable?: Prisma.IntFilter<"tags"> | number;
+    listable?: Prisma.IntFilter<"tags"> | number;
+    display_name?: Prisma.StringNullableFilter<"tags"> | string | null;
   },
   "name"
 >;
@@ -175,9 +243,14 @@ export type tagsWhereUniqueInput = Prisma.AtLeast<
 export type tagsOrderByWithAggregationInput = {
   name?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  usable?: Prisma.SortOrder;
+  listable?: Prisma.SortOrder;
+  display_name?: Prisma.SortOrderInput | Prisma.SortOrder;
   _count?: Prisma.tagsCountOrderByAggregateInput;
+  _avg?: Prisma.tagsAvgOrderByAggregateInput;
   _max?: Prisma.tagsMaxOrderByAggregateInput;
   _min?: Prisma.tagsMinOrderByAggregateInput;
+  _sum?: Prisma.tagsSumOrderByAggregateInput;
 };
 
 export type tagsScalarWhereWithAggregatesInput = {
@@ -186,56 +259,99 @@ export type tagsScalarWhereWithAggregatesInput = {
   NOT?: Prisma.tagsScalarWhereWithAggregatesInput | Prisma.tagsScalarWhereWithAggregatesInput[];
   name?: Prisma.StringWithAggregatesFilter<"tags"> | string;
   created_at?: Prisma.StringWithAggregatesFilter<"tags"> | string;
+  usable?: Prisma.IntWithAggregatesFilter<"tags"> | number;
+  listable?: Prisma.IntWithAggregatesFilter<"tags"> | number;
+  display_name?: Prisma.StringNullableWithAggregatesFilter<"tags"> | string | null;
 };
 
 export type tagsCreateInput = {
   name: string;
   created_at?: string;
+  usable?: number;
+  listable?: number;
+  display_name?: string | null;
 };
 
 export type tagsUncheckedCreateInput = {
   name: string;
   created_at?: string;
+  usable?: number;
+  listable?: number;
+  display_name?: string | null;
 };
 
 export type tagsUpdateInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  usable?: Prisma.IntFieldUpdateOperationsInput | number;
+  listable?: Prisma.IntFieldUpdateOperationsInput | number;
+  display_name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type tagsUncheckedUpdateInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  usable?: Prisma.IntFieldUpdateOperationsInput | number;
+  listable?: Prisma.IntFieldUpdateOperationsInput | number;
+  display_name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type tagsCreateManyInput = {
   name: string;
   created_at?: string;
+  usable?: number;
+  listable?: number;
+  display_name?: string | null;
 };
 
 export type tagsUpdateManyMutationInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  usable?: Prisma.IntFieldUpdateOperationsInput | number;
+  listable?: Prisma.IntFieldUpdateOperationsInput | number;
+  display_name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type tagsUncheckedUpdateManyInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  usable?: Prisma.IntFieldUpdateOperationsInput | number;
+  listable?: Prisma.IntFieldUpdateOperationsInput | number;
+  display_name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type tagsCountOrderByAggregateInput = {
   name?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  usable?: Prisma.SortOrder;
+  listable?: Prisma.SortOrder;
+  display_name?: Prisma.SortOrder;
+};
+
+export type tagsAvgOrderByAggregateInput = {
+  usable?: Prisma.SortOrder;
+  listable?: Prisma.SortOrder;
 };
 
 export type tagsMaxOrderByAggregateInput = {
   name?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  usable?: Prisma.SortOrder;
+  listable?: Prisma.SortOrder;
+  display_name?: Prisma.SortOrder;
 };
 
 export type tagsMinOrderByAggregateInput = {
   name?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  usable?: Prisma.SortOrder;
+  listable?: Prisma.SortOrder;
+  display_name?: Prisma.SortOrder;
+};
+
+export type tagsSumOrderByAggregateInput = {
+  usable?: Prisma.SortOrder;
+  listable?: Prisma.SortOrder;
 };
 
 export type tagsSelect<
@@ -244,6 +360,9 @@ export type tagsSelect<
   {
     name?: boolean;
     created_at?: boolean;
+    usable?: boolean;
+    listable?: boolean;
+    display_name?: boolean;
   },
   ExtArgs["result"]["tags"]
 >;
@@ -254,6 +373,9 @@ export type tagsSelectCreateManyAndReturn<
   {
     name?: boolean;
     created_at?: boolean;
+    usable?: boolean;
+    listable?: boolean;
+    display_name?: boolean;
   },
   ExtArgs["result"]["tags"]
 >;
@@ -264,6 +386,9 @@ export type tagsSelectUpdateManyAndReturn<
   {
     name?: boolean;
     created_at?: boolean;
+    usable?: boolean;
+    listable?: boolean;
+    display_name?: boolean;
   },
   ExtArgs["result"]["tags"]
 >;
@@ -271,11 +396,17 @@ export type tagsSelectUpdateManyAndReturn<
 export type tagsSelectScalar = {
   name?: boolean;
   created_at?: boolean;
+  usable?: boolean;
+  listable?: boolean;
+  display_name?: boolean;
 };
 
 export type tagsOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
-> = runtime.Types.Extensions.GetOmit<"name" | "created_at", ExtArgs["result"]["tags"]>;
+> = runtime.Types.Extensions.GetOmit<
+  "name" | "created_at" | "usable" | "listable" | "display_name",
+  ExtArgs["result"]["tags"]
+>;
 
 export type $tagsPayload<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
@@ -286,6 +417,9 @@ export type $tagsPayload<
     {
       name: string;
       created_at: string;
+      usable: number;
+      listable: number;
+      display_name: string | null;
     },
     ExtArgs["result"]["tags"]
   >;
@@ -829,6 +963,9 @@ export interface Prisma__tagsClient<
 export interface tagsFieldRefs {
   readonly name: Prisma.FieldRef<"tags", "String">;
   readonly created_at: Prisma.FieldRef<"tags", "String">;
+  readonly usable: Prisma.FieldRef<"tags", "Int">;
+  readonly listable: Prisma.FieldRef<"tags", "Int">;
+  readonly display_name: Prisma.FieldRef<"tags", "String">;
 }
 
 // Custom InputTypes

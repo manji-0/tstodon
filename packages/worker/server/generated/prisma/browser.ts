@@ -212,6 +212,21 @@ export type featured_tags = Prisma.featured_tagsModel;
  */
 export type tags = Prisma.tagsModel;
 /**
+ * Model ip_blocks
+ *
+ */
+export type ip_blocks = Prisma.ip_blocksModel;
+/**
+ * Model account_activity_days
+ *
+ */
+export type account_activity_days = Prisma.account_activity_daysModel;
+/**
+ * Model account_ips
+ *
+ */
+export type account_ips = Prisma.account_ipsModel;
+/**
  * Model backfill_cursors
  *
  */

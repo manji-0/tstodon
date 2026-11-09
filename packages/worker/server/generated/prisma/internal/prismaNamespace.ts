@@ -430,6 +430,9 @@ export const ModelName = {
   followed_tags: "followed_tags",
   featured_tags: "featured_tags",
   tags: "tags",
+  ip_blocks: "ip_blocks",
+  account_activity_days: "account_activity_days",
+  account_ips: "account_ips",
   backfill_cursors: "backfill_cursors",
   custom_emojis: "custom_emojis",
   inbox_activities: "inbox_activities",
@@ -528,6 +531,9 @@ export type TypeMap<
       | "followed_tags"
       | "featured_tags"
       | "tags"
+      | "ip_blocks"
+      | "account_activity_days"
+      | "account_ips"
       | "backfill_cursors"
       | "custom_emojis"
       | "inbox_activities"
@@ -3513,6 +3519,230 @@ export type TypeMap<
         count: {
           args: Prisma.tagsCountArgs<ExtArgs>;
           result: runtime.Types.Utils.Optional<Prisma.TagsCountAggregateOutputType> | number;
+        };
+      };
+    };
+    ip_blocks: {
+      payload: Prisma.$ip_blocksPayload<ExtArgs>;
+      fields: Prisma.ip_blocksFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.ip_blocksFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ip_blocksPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.ip_blocksFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ip_blocksPayload>;
+        };
+        findFirst: {
+          args: Prisma.ip_blocksFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ip_blocksPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.ip_blocksFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ip_blocksPayload>;
+        };
+        findMany: {
+          args: Prisma.ip_blocksFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ip_blocksPayload>[];
+        };
+        create: {
+          args: Prisma.ip_blocksCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ip_blocksPayload>;
+        };
+        createMany: {
+          args: Prisma.ip_blocksCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.ip_blocksCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ip_blocksPayload>[];
+        };
+        delete: {
+          args: Prisma.ip_blocksDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ip_blocksPayload>;
+        };
+        update: {
+          args: Prisma.ip_blocksUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ip_blocksPayload>;
+        };
+        deleteMany: {
+          args: Prisma.ip_blocksDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.ip_blocksUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.ip_blocksUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ip_blocksPayload>[];
+        };
+        upsert: {
+          args: Prisma.ip_blocksUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ip_blocksPayload>;
+        };
+        aggregate: {
+          args: Prisma.Ip_blocksAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateIp_blocks>;
+        };
+        groupBy: {
+          args: Prisma.ip_blocksGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Ip_blocksGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.ip_blocksCountArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Ip_blocksCountAggregateOutputType> | number;
+        };
+      };
+    };
+    account_activity_days: {
+      payload: Prisma.$account_activity_daysPayload<ExtArgs>;
+      fields: Prisma.account_activity_daysFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.account_activity_daysFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_activity_daysPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.account_activity_daysFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_activity_daysPayload>;
+        };
+        findFirst: {
+          args: Prisma.account_activity_daysFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_activity_daysPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.account_activity_daysFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_activity_daysPayload>;
+        };
+        findMany: {
+          args: Prisma.account_activity_daysFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_activity_daysPayload>[];
+        };
+        create: {
+          args: Prisma.account_activity_daysCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_activity_daysPayload>;
+        };
+        createMany: {
+          args: Prisma.account_activity_daysCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.account_activity_daysCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_activity_daysPayload>[];
+        };
+        delete: {
+          args: Prisma.account_activity_daysDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_activity_daysPayload>;
+        };
+        update: {
+          args: Prisma.account_activity_daysUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_activity_daysPayload>;
+        };
+        deleteMany: {
+          args: Prisma.account_activity_daysDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.account_activity_daysUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.account_activity_daysUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_activity_daysPayload>[];
+        };
+        upsert: {
+          args: Prisma.account_activity_daysUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_activity_daysPayload>;
+        };
+        aggregate: {
+          args: Prisma.Account_activity_daysAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAccount_activity_days>;
+        };
+        groupBy: {
+          args: Prisma.account_activity_daysGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Account_activity_daysGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.account_activity_daysCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Account_activity_daysCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    account_ips: {
+      payload: Prisma.$account_ipsPayload<ExtArgs>;
+      fields: Prisma.account_ipsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.account_ipsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_ipsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.account_ipsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_ipsPayload>;
+        };
+        findFirst: {
+          args: Prisma.account_ipsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_ipsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.account_ipsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_ipsPayload>;
+        };
+        findMany: {
+          args: Prisma.account_ipsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_ipsPayload>[];
+        };
+        create: {
+          args: Prisma.account_ipsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_ipsPayload>;
+        };
+        createMany: {
+          args: Prisma.account_ipsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.account_ipsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_ipsPayload>[];
+        };
+        delete: {
+          args: Prisma.account_ipsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_ipsPayload>;
+        };
+        update: {
+          args: Prisma.account_ipsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_ipsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.account_ipsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.account_ipsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.account_ipsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_ipsPayload>[];
+        };
+        upsert: {
+          args: Prisma.account_ipsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_ipsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Account_ipsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAccount_ips>;
+        };
+        groupBy: {
+          args: Prisma.account_ipsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Account_ipsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.account_ipsCountArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Account_ipsCountAggregateOutputType> | number;
         };
       };
     };
@@ -6944,9 +7174,42 @@ export type Featured_tagsScalarFieldEnum =
 export const TagsScalarFieldEnum = {
   name: "name",
   created_at: "created_at",
+  usable: "usable",
+  listable: "listable",
+  display_name: "display_name",
 } as const;
 
 export type TagsScalarFieldEnum = (typeof TagsScalarFieldEnum)[keyof typeof TagsScalarFieldEnum];
+
+export const Ip_blocksScalarFieldEnum = {
+  id: "id",
+  ip: "ip",
+  severity: "severity",
+  comment: "comment",
+  created_at: "created_at",
+  updated_at: "updated_at",
+  expires_at: "expires_at",
+} as const;
+
+export type Ip_blocksScalarFieldEnum =
+  (typeof Ip_blocksScalarFieldEnum)[keyof typeof Ip_blocksScalarFieldEnum];
+
+export const Account_activity_daysScalarFieldEnum = {
+  account_id: "account_id",
+  day: "day",
+} as const;
+
+export type Account_activity_daysScalarFieldEnum =
+  (typeof Account_activity_daysScalarFieldEnum)[keyof typeof Account_activity_daysScalarFieldEnum];
+
+export const Account_ipsScalarFieldEnum = {
+  account_id: "account_id",
+  ip: "ip",
+  used_at: "used_at",
+} as const;
+
+export type Account_ipsScalarFieldEnum =
+  (typeof Account_ipsScalarFieldEnum)[keyof typeof Account_ipsScalarFieldEnum];
 
 export const Backfill_cursorsScalarFieldEnum = {
   name: "name",
@@ -7676,6 +7939,9 @@ export type GlobalOmitConfig = {
   followed_tags?: Prisma.followed_tagsOmit;
   featured_tags?: Prisma.featured_tagsOmit;
   tags?: Prisma.tagsOmit;
+  ip_blocks?: Prisma.ip_blocksOmit;
+  account_activity_days?: Prisma.account_activity_daysOmit;
+  account_ips?: Prisma.account_ipsOmit;
   backfill_cursors?: Prisma.backfill_cursorsOmit;
   custom_emojis?: Prisma.custom_emojisOmit;
   inbox_activities?: Prisma.inbox_activitiesOmit;

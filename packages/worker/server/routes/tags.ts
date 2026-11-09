@@ -15,6 +15,7 @@ import {
 } from "../http";
 import { mastodonFeaturedTag, mastodonTag } from "../tag-documents";
 import { parseInstanceIdentity } from "../runtime-config";
+import { isTagUsable } from "../tag-moderation-store";
 import {
   FEATURED_TAG_LIMIT,
   accountTagUses,
@@ -192,6 +193,13 @@ const setTagFeatured = async (
       return jsonRepositoryError(c, already.error.message);
     }
     if (!already.value) {
+      const usable = await isTagUsable(c.env.DB, name);
+      if (usable.isErr()) {
+        return jsonRepositoryError(c, usable.error.message);
+      }
+      if (!usable.value) {
+        return c.json({ error: "Validation failed: Tag is not usable", kind: "TagNotUsable" }, 422);
+      }
       const count = await countFeaturedTags(c.env.DB, user.value.id);
       if (count.isErr()) {
         return jsonRepositoryError(c, count.error.message);
@@ -312,6 +320,13 @@ export const postV1FeaturedTags = async (
     return jsonRepositoryError(c, already.error.message);
   }
   if (!already.value) {
+    const usable = await isTagUsable(c.env.DB, name);
+    if (usable.isErr()) {
+      return jsonRepositoryError(c, usable.error.message);
+    }
+    if (!usable.value) {
+      return c.json({ error: "Validation failed: Tag is not usable", kind: "TagNotUsable" }, 422);
+    }
     const count = await countFeaturedTags(c.env.DB, user.value.id);
     if (count.isErr()) {
       return jsonRepositoryError(c, count.error.message);

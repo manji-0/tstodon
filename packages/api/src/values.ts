@@ -207,3 +207,56 @@ export type MarkerTimeline = (typeof MARKER_TIMELINES)[number];
 /** `Admin::DomainBlock#severity`; the public `DomainBlock` leaves `noop` out. */
 export const DOMAIN_BLOCK_SEVERITIES = ["silence", "suspend", "noop"] as const;
 export type DomainBlockSeverity = (typeof DOMAIN_BLOCK_SEVERITIES)[number];
+
+/** `IpBlock#severity` (`/api/v1/admin/ip_blocks`). */
+export const IP_BLOCK_SEVERITIES = [
+  "sign_up_requires_approval",
+  "sign_up_block",
+  "no_access",
+] as const;
+export type IpBlockSeverity = (typeof IP_BLOCK_SEVERITIES)[number];
+export const isIpBlockSeverity = (value: string): value is IpBlockSeverity =>
+  includes(IP_BLOCK_SEVERITIES, value);
+
+/** `Admin::Metrics::Measure::MEASURES` keys (`POST /api/v1/admin/measures`). */
+export const ADMIN_MEASURE_KEYS = [
+  "active_users",
+  "new_users",
+  "interactions",
+  "opened_reports",
+  "resolved_reports",
+  "tag_accounts",
+  "tag_uses",
+  "tag_servers",
+  "instance_accounts",
+  "instance_media_attachments",
+  "instance_reports",
+  "instance_statuses",
+  "instance_follows",
+  "instance_followers",
+] as const;
+export type AdminMeasureKey = (typeof ADMIN_MEASURE_KEYS)[number];
+export const isAdminMeasureKey = (value: string): value is AdminMeasureKey =>
+  includes(ADMIN_MEASURE_KEYS, value);
+
+/** `Admin::Metrics::Dimension::DIMENSIONS` keys (`POST /api/v1/admin/dimensions`). */
+export const ADMIN_DIMENSION_KEYS = [
+  "languages",
+  "sources",
+  "servers",
+  "space_usage",
+  "software_versions",
+  "tag_servers",
+  "tag_languages",
+  "instance_accounts",
+  "instance_languages",
+] as const;
+export type AdminDimensionKey = (typeof ADMIN_DIMENSION_KEYS)[number];
+export const isAdminDimensionKey = (value: string): value is AdminDimensionKey =>
+  includes(ADMIN_DIMENSION_KEYS, value);
+
+/** `Admin::Metrics::Retention` frequencies (`POST /api/v1/admin/retention`). */
+export const ADMIN_RETENTION_FREQUENCIES = ["day", "month"] as const;
+export type AdminRetentionFrequency = (typeof ADMIN_RETENTION_FREQUENCIES)[number];
+export const isAdminRetentionFrequency = (value: string): value is AdminRetentionFrequency =>
+  includes(ADMIN_RETENTION_FREQUENCIES, value);

@@ -302,6 +302,7 @@ export const deleteAccount = async (
   });
 
 export const STATUS_SQL: Readonly<Record<AdminAccountFilters["status"], string>> = {
+  all: "1",
   active: `id NOT IN (SELECT account_id FROM account_moderation WHERE moderation = 'Suspended')`,
   pending: "id IN (SELECT account_id FROM account_flags WHERE pending <> 0)",
   disabled: "id IN (SELECT account_id FROM account_flags WHERE disabled <> 0)",

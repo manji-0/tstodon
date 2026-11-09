@@ -17,6 +17,7 @@ import {
   queryCursor,
   readOptionalBody,
   requireAdmin,
+  setPaginationLinks,
 } from "../../http";
 
 const domainAllowDocument = (row: DomainAllowRow): ApiAdminDomainAllowJSON => ({
@@ -37,14 +38,16 @@ export const getV1AdminDomainAllows = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const allows = await listDomainAllows(
-    c.env.DB,
-    queryAdminLimit(c.req.query("limit")),
-    queryCursor(c),
-  );
+  const limit = queryAdminLimit(c.req.query("limit"));
+  const allows = await listDomainAllows(c.env.DB, limit, queryCursor(c));
   if (allows.isErr()) {
     return jsonRepositoryError(c, allows.error.message);
   }
+  setPaginationLinks(
+    c,
+    allows.value.map((allow) => allow.id),
+    limit,
+  );
   return c.json(allows.value.map(domainAllowDocument));
 };
 

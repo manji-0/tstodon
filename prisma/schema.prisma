@@ -461,8 +461,37 @@ model featured_tags {
 }
 
 model tags {
-  name       String @id
-  created_at String @default("CURRENT_TIMESTAMP")
+  name         String  @id
+  created_at   String  @default("CURRENT_TIMESTAMP")
+  usable       Int     @default(1)
+  listable     Int     @default(1)
+  display_name String?
+}
+
+model ip_blocks {
+  id         String  @id
+  ip         String  @unique(map: "sqlite_autoindex_ip_blocks_2")
+  severity   String
+  comment    String  @default("")
+  created_at String
+  updated_at String
+  expires_at String?
+}
+
+model account_activity_days {
+  account_id String
+  day        String
+
+  @@id([account_id, day])
+  @@index([day], map: "idx_account_activity_days_day")
+}
+
+model account_ips {
+  account_id String
+  ip         String
+  used_at    String
+
+  @@id([account_id, ip])
 }
 
 model backfill_cursors {

@@ -10,6 +10,7 @@ import {
   queryCursor,
   readBody,
   requireAdmin,
+  setPaginationLinks,
 } from "../../http";
 import { mastodonStatuses } from "../../local-status-documents";
 import { instanceRules, parseInstanceIdentity } from "../../runtime-config";
@@ -107,16 +108,22 @@ export const getV1AdminReports = async (c: Context<{ Bindings: Env }, "/api/v1/a
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
+  const limit = queryAdminLimit(c.req.query("limit"));
   const reports = await listReports(c.env.DB, {
     resolution: reportResolvedFilter(c),
     accountId: c.req.query("account_id") || undefined,
     targetAccountId: c.req.query("target_account_id") || undefined,
     cursor: queryCursor(c),
-    limit: queryAdminLimit(c.req.query("limit")),
+    limit,
   });
   if (reports.isErr()) {
     return jsonRepositoryError(c, reports.error.message);
   }
+  setPaginationLinks(
+    c,
+    reports.value.map((report) => report.id),
+    limit,
+  );
   const documents: ApiAdminReportJSON[] = [];
   for (const report of reports.value) {
     documents.push(await adminReportDocument(c, identity.value, report));

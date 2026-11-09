@@ -1,8 +1,6 @@
-import type { ApiAdminTagJSON } from "@tstodon/api";
+import type { ApiAdminPreviewCardProviderJSON, ApiAdminTagJSON } from "@tstodon/api";
 import { StatusAuthors } from "../../account-presentation";
-import { mastodonTag } from "../../tag-documents";
 import type { Context } from "hono";
-import type { InstanceIdentity } from "@tstodon/domain";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -17,30 +15,20 @@ import { findStatusById } from "../../status-store";
 import { listTrendingStatuses, listTrendingTags } from "../../status-discovery-store";
 import { tagDailyHistories, tagDailyHistory } from "../../tag-store";
 import { cardDocument, listCachedLinkCards } from "../../link-card";
-import { fallbackLinkCard, listTrendingLinks } from "../../trend-store";
-import { listTrendReviews, type TrendState } from "../../trend-review-store";
+import { fallbackLinkCard, listTrendingLinks, trendingLinkPublishers } from "../../trend-store";
+import {
+  listTrendReviewRecords,
+  listTrendReviews,
+  type TrendState,
+} from "../../trend-review-store";
+import {
+  defaultTagModeration,
+  findTagModeration,
+  tagModerations,
+} from "../../tag-moderation-store";
+import { adminTagDocument } from "./tags";
 import { type ReviewTrendError, reviewTrend } from "../../admin-trends";
-import { StatusId } from "@tstodon/domain";
-
-const adminTagFields = (
-  state: TrendState | undefined,
-): Pick<ApiAdminTagJSON, "trendable" | "usable" | "requires_review"> => ({
-  trendable: state !== "Rejected",
-  usable: true,
-  requires_review: state === undefined,
-});
-
-const adminTagDocument = async (
-  c: Context<{ Bindings: Env }>,
-  identity: InstanceIdentity,
-  name: string,
-  state: TrendState | undefined,
-): Promise<ApiAdminTagJSON> => ({
-  ...mastodonTag(identity, name, {
-    history: (await tagDailyHistory(c.env.DB, name)).unwrapOr([]),
-  }),
-  ...adminTagFields(state),
-});
+import { Hostname, StatusId } from "@tstodon/domain";
 
 const notFound = (c: Context<{ Bindings: Env }>) =>
   c.json({ error: "Record not found", kind: "NotFound" }, 404);
@@ -69,17 +57,23 @@ export const getV1AdminTrendsTags = async (
   if (tags.isErr()) {
     return jsonRepositoryError(c, tags.error.message);
   }
-  const histories = await tagDailyHistories(
-    c.env.DB,
-    tags.value.map((tag) => tag.name),
-  );
+  const names = tags.value.map((tag) => tag.name);
+  const [histories, moderations] = await Promise.all([
+    tagDailyHistories(c.env.DB, names),
+    tagModerations(c.env.DB, names),
+  ]);
+  if (moderations.isErr()) {
+    return jsonRepositoryError(c, moderations.error.message);
+  }
   return c.json(
-    tags.value.map((tag): ApiAdminTagJSON => ({
-      ...mastodonTag(identity.value, tag.name, {
-        history: (histories.isOk() ? histories.value.get(tag.name) : undefined) ?? [],
-      }),
-      ...adminTagFields(states.value.get(tag.name)),
-    })),
+    names.map((name): ApiAdminTagJSON =>
+      adminTagDocument(
+        identity.value,
+        moderations.value.get(name) ?? defaultTagModeration(name),
+        states.value.get(name),
+        (histories.isOk() ? histories.value.get(name) : undefined) ?? [],
+      ),
+    ),
   );
 };
 
@@ -97,7 +91,18 @@ const reviewTag = (state: TrendState) => async (c: Context<{ Bindings: Env }>) =
   if (saved.isErr()) {
     return reviewFailure(c, saved.error);
   }
-  return c.json(await adminTagDocument(c, identity.value, name, state));
+  const [moderation, history] = await Promise.all([
+    findTagModeration(c.env.DB, name),
+    tagDailyHistory(c.env.DB, name),
+  ]);
+  return c.json(
+    adminTagDocument(
+      identity.value,
+      (moderation.isOk() ? moderation.value : undefined) ?? defaultTagModeration(name),
+      state,
+      history.unwrapOr([]),
+    ),
+  );
 };
 
 export const postV1AdminTrendsTagsByIdApprove = reviewTag("Approved");
@@ -201,3 +206,77 @@ const reviewStatus = (state: TrendState) => async (c: Context<{ Bindings: Env }>
 
 export const postV1AdminTrendsStatusesByIdApprove = reviewStatus("Approved");
 export const postV1AdminTrendsStatusesByIdReject = reviewStatus("Rejected");
+
+/**
+ * `REST::Admin::Trends::Links::PreviewCardProviderSerializer`: a publisher
+ * (named by its host) is trendable unless rejected, as tstodon reviews
+ * trends on rejection.
+ */
+const publisherDocument = (
+  domain: string,
+  review: Readonly<{ state: TrendState; reviewedAt: string }> | undefined,
+): ApiAdminPreviewCardProviderJSON => ({
+  id: domain,
+  domain,
+  trendable: review?.state !== "Rejected",
+  reviewed_at: review?.reviewedAt ?? null,
+  requested_review_at: null,
+  requires_review: review === undefined,
+});
+
+/**
+ * `GET /api/v1/admin/trends/links/publishers`: the publishers of the links
+ * trending now, then the reviewed ones that are not, most shared first.
+ * Publishers have no row id, so the list pages by `offset`.
+ */
+export const getV1AdminTrendsLinksPublishers = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/trends/links/publishers">,
+) => {
+  const admin = await requireAdmin(c);
+  if (admin.isErr()) {
+    return jsonAuthError(c, admin.error);
+  }
+  const [trending, reviews] = await Promise.all([
+    trendingLinkPublishers(c.env.DB),
+    listTrendReviewRecords(c.env.DB, "Publisher"),
+  ]);
+  if (trending.isErr()) {
+    return jsonRepositoryError(c, trending.error.message);
+  }
+  if (reviews.isErr()) {
+    return jsonRepositoryError(c, reviews.error.message);
+  }
+  const domains = [
+    ...new Set([
+      ...trending.value.map((publisher) => publisher.domain),
+      ...[...reviews.value.keys()].toSorted(),
+    ]),
+  ];
+  const offset = queryOffset(c.req.query("offset"));
+  const limit = queryTrendsLimit(c.req.query("limit"));
+  return c.json(
+    domains
+      .slice(offset, offset + limit)
+      .map((domain) => publisherDocument(domain, reviews.value.get(domain))),
+  );
+};
+
+const reviewPublisher = (state: TrendState) => async (c: Context<{ Bindings: Env }>) => {
+  const admin = await requireAdmin(c);
+  if (admin.isErr()) {
+    return jsonAuthError(c, admin.error);
+  }
+  const domain = Hostname.fromInput(c.req.param("id") ?? "") ?? "";
+  const saved = await reviewTrend(c.env.DB, { kind: "Publisher", domain }, state);
+  if (saved.isErr()) {
+    return reviewFailure(c, saved.error);
+  }
+  const reviews = await listTrendReviewRecords(c.env.DB, "Publisher");
+  if (reviews.isErr()) {
+    return jsonRepositoryError(c, reviews.error.message);
+  }
+  return c.json(publisherDocument(domain, reviews.value.get(domain)));
+};
+
+export const postV1AdminTrendsLinksPublishersByIdApprove = reviewPublisher("Approved");
+export const postV1AdminTrendsLinksPublishersByIdReject = reviewPublisher("Rejected");
