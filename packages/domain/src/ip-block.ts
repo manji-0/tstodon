@@ -217,6 +217,22 @@ export const IpRange = {
   },
   /** Whether `raw` is an IPv4 or IPv6 address. */
   isAddress: (raw: string): boolean => parseAddress(raw) !== undefined,
+  /**
+   * The key rate limits count an address under, as Mastodon's
+   * `throttleable_remote_ip` does: an IPv4 address (or the IPv4 address an
+   * IPv4-mapped IPv6 address maps) is itself, an IPv6 address is its `/64`,
+   * since one host is routinely handed a whole `/64`. A malformed address
+   * has no key.
+   */
+  throttleKey: (raw: string): string | undefined => {
+    const parsed = parseAddress(raw);
+    if (parsed === undefined) {
+      return undefined;
+    }
+    return parsed.family === 4
+      ? formatIpv4(parsed.value)
+      : `${formatIpv6(parsed.value & maskOf(6, 64))}/64`;
+  },
 } as const;
 
 const SignUpRequiresApprovalSchema = z.object({ kind: z.literal("SignUpRequiresApproval") });

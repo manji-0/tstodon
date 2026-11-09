@@ -315,3 +315,22 @@ export {
   type InvalidIpRange,
   type ListIpBlocks,
 } from "./ip-block";
+export {
+  RATE_LIMIT_BUCKETS,
+  RateLimit,
+  RateLimitPolicy,
+  RateLimitSubject,
+  isApiPath,
+  type RateLimitBucket,
+  type RateLimitCaller,
+  type RateLimitCheck,
+  type RateLimitCounterState,
+  type RateLimitCounterTable,
+  type RateLimitHit,
+  type RateLimitPolicy as RateLimitPolicyValue,
+  type RateLimitRequest,
+  type RateLimitRule,
+  type RateLimitSubject as RateLimitSubjectValue,
+  type RateLimitVerdict,
+} from "./rate-limit";
+export type { HitRateLimitCounters } from "./rate-limit-counter";
