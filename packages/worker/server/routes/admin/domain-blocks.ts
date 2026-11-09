@@ -16,6 +16,7 @@ import {
   queryCursor,
   readBody,
   requireAdmin,
+  setPaginationLinks,
 } from "../../http";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { parseBool, validation } from "./shared";
@@ -48,15 +49,21 @@ export const getV1AdminDomainBlocks = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
+  const limit = queryAdminLimit(c.req.query("limit"));
   const blocks = await listDomainBlocks(
     c.env.DB,
-    queryAdminLimit(c.req.query("limit")),
+    limit,
     c.req.query("max_id") ?? null,
     queryCursor(c),
   );
   if (blocks.isErr()) {
     return jsonRepositoryError(c, blocks.error.message);
   }
+  setPaginationLinks(
+    c,
+    blocks.value.map((block) => block.id),
+    limit,
+  );
   return c.json(await Promise.all(blocks.value.map(domainBlockDocument)));
 };
 

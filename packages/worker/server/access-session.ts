@@ -18,7 +18,9 @@ import {
   identityIsAccessAdmin,
   type AccessIdentity,
 } from "./access-jwt";
+import { recordAccountActivity, recordSignUpIp } from "./account-activity";
 import { notifyAdmins } from "./admin-notify";
+import { ipSignUpDecision } from "./ip-access";
 import { parseRows, runD1, type RepositoryError } from "./d1";
 import { setAccountAuthUser } from "./generated/prisma/sql";
 import { sha256Hex } from "./oauth-store";
@@ -399,6 +401,7 @@ const accountForIdentity = async (
   env: Env,
   identity: AccessIdentity,
   provision: boolean,
+  request: Request,
 ): Promise<Result<ResolvedAccount, RepositoryError | { kind: "NoAccount" }>> => {
   const existing = await findAccountByEmail(env.DB, Sensitive.of(identity.email));
   if (existing.isErr()) {
@@ -410,6 +413,13 @@ const accountForIdentity = async (
   if (!provision || !registrationsOpen(env)) {
     return err({ kind: "NoAccount" });
   }
+  // IP blocks: `sign_up_block` refuses the account, `sign_up_requires_approval`
+  // holds it for an admin even when registrations are open to all.
+  const ipDecision = await ipSignUpDecision(request, env);
+  if (ipDecision.kind === "Blocked") {
+    return err({ kind: "NoAccount" });
+  }
+  const pending = registrationApprovalRequired(env) || ipDecision.kind === "RequiresApproval";
   const base = Username.deriveFromEmail(identity.email, false);
   const suffixed = Username.deriveFromEmail(identity.email, true);
   const preferred = base.isOk() ? base.value : undefined;
@@ -427,7 +437,7 @@ const accountForIdentity = async (
     username: username.value,
     email: Sensitive.of(identity.email),
     authUserId: user.value.id,
-    pending: registrationApprovalRequired(env),
+    pending,
   });
   if (created.isErr()) {
     let failure: ProvisionError = created.error;
@@ -438,9 +448,10 @@ const accountForIdentity = async (
           username: retryName.value,
           email: Sensitive.of(identity.email),
           authUserId: user.value.id,
-          pending: registrationApprovalRequired(env),
+          pending,
         });
         if (retried.isOk()) {
+          await recordSignUpIp(env.DB, retried.value.id, request);
           await notifyAdmins(env, { kind: "admin.sign_up", fromAccountId: retried.value.id });
           return ok({ account: retried.value, userCreated: user.value.created });
         }
@@ -461,6 +472,7 @@ const accountForIdentity = async (
     }
     return err(failure);
   }
+  await recordSignUpIp(env.DB, created.value.id, request);
   await notifyAdmins(env, { kind: "admin.sign_up", fromAccountId: created.value.id });
   return ok({ account: created.value, userCreated: user.value.created });
 };
@@ -483,7 +495,7 @@ export const accessLogin = async (
   if (identity.isErr()) {
     return { kind: "None" };
   }
-  const found = await accountForIdentity(env, identity.value, options?.provision === true);
+  const found = await accountForIdentity(env, identity.value, options?.provision === true, request);
   if (found.isErr()) {
     return { kind: "NoAccount" };
   }
@@ -511,6 +523,7 @@ export const accessLogin = async (
     return { kind: "NoAccount" };
   }
   const role = await roleOf(env.DB, user.value.id);
+  await recordAccountActivity(env.DB, found.value.account.id, request);
   return {
     kind: "Account",
     account: found.value.account,

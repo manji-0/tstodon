@@ -7,6 +7,7 @@ import {
   LocalAccountModeration,
 } from "@tstodon/domain";
 import { LocalAccountModerationColumns } from "./account-moderation-store";
+import { recordAccountActivity } from "./account-activity";
 import { accountFromRow, AccountRowSchema } from "./account-store";
 import { parseRow, runD1, type RepositoryError } from "./d1";
 import { findAccessTokenAccount } from "./generated/prisma/sql";
@@ -136,6 +137,7 @@ export const authenticate = async (
     // Mastodon's `disable` action blocks the login while the profile stays.
     return err({ kind: "Forbidden" });
   }
+  await recordAccountActivity(env.DB, accountRow.value.id, request);
   return ok({
     kind: "Account",
     account: accountRow.value,

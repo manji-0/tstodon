@@ -5,6 +5,11 @@ import {
   ApiAdminAccount,
   ApiAdminAnnouncement,
   ApiAdminCanonicalEmailBlock,
+  ApiAdminCohort,
+  ApiAdminDimension,
+  ApiAdminIpBlock,
+  ApiAdminMeasure,
+  ApiAdminPreviewCardProvider,
   ApiAdminCustomEmoji,
   ApiAdminDomainAllow,
   ApiAdminDomainBlock,
@@ -187,5 +192,46 @@ describe("admin API contract (@tstodon/api)", () => {
     );
     expect(published.published_at).not.toBeNull();
     await ok(z.array(ApiAdminCustomEmoji), "GET", "/api/v1/admin/custom_emojis");
+  });
+
+  it("IP blocks, tags, dashboard metrics, v2 accounts and link publishers", async () => {
+    const block = await ok(ApiAdminIpBlock, "POST", "/api/v1/admin/ip_blocks", {
+      body: { ip: "100.64.0.0/10", severity: "sign_up_requires_approval", comment: "contract" },
+    });
+    await ok(z.array(ApiAdminIpBlock), "GET", "/api/v1/admin/ip_blocks");
+    await ok(ApiAdminIpBlock, "GET", `/api/v1/admin/ip_blocks/${block.id}`);
+    await ok(ApiAdminIpBlock, "PUT", `/api/v1/admin/ip_blocks/${block.id}`, {
+      body: { expires_in: 86400 },
+    });
+    await ok(z.object({}), "DELETE", `/api/v1/admin/ip_blocks/${block.id}`);
+
+    await ok(ApiStatus, "POST", "/api/v1/statuses", {
+      email: MEMBER,
+      body: { status: "contract #contractadmintag https://contract-publisher.example/a" },
+    });
+    await ok(z.array(ApiAdminTag), "GET", "/api/v1/admin/tags");
+    await ok(ApiAdminTag, "GET", "/api/v1/admin/tags/contractadmintag");
+    await ok(ApiAdminTag, "PUT", "/api/v1/admin/tags/contractadmintag", {
+      body: { usable: true, listable: true, trendable: true },
+    });
+
+    const range = { start_at: new Date().toISOString().slice(0, 10) };
+    await ok(z.array(ApiAdminMeasure), "POST", "/api/v1/admin/measures", {
+      body: { ...range, keys: ["new_users", "active_users", "instance_media_attachments"] },
+    });
+    await ok(z.array(ApiAdminDimension), "POST", "/api/v1/admin/dimensions", {
+      body: { ...range, keys: ["languages", "space_usage", "software_versions"] },
+    });
+    await ok(z.array(ApiAdminCohort), "POST", "/api/v1/admin/retention", {
+      body: { ...range, frequency: "day" },
+    });
+
+    await ok(z.array(ApiAdminAccount), "GET", "/api/v2/admin/accounts?status=active");
+    await ok(z.array(ApiAdminPreviewCardProvider), "GET", "/api/v1/admin/trends/links/publishers");
+    await ok(
+      ApiAdminPreviewCardProvider,
+      "POST",
+      "/api/v1/admin/trends/links/publishers/contract-publisher.example/approve",
+    );
   });
 });

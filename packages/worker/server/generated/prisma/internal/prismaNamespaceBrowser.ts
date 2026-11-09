@@ -87,6 +87,9 @@ export const ModelName = {
   followed_tags: "followed_tags",
   featured_tags: "featured_tags",
   tags: "tags",
+  ip_blocks: "ip_blocks",
+  account_activity_days: "account_activity_days",
+  account_ips: "account_ips",
   backfill_cursors: "backfill_cursors",
   custom_emojis: "custom_emojis",
   inbox_activities: "inbox_activities",
@@ -577,9 +580,42 @@ export type Featured_tagsScalarFieldEnum =
 export const TagsScalarFieldEnum = {
   name: "name",
   created_at: "created_at",
+  usable: "usable",
+  listable: "listable",
+  display_name: "display_name",
 } as const;
 
 export type TagsScalarFieldEnum = (typeof TagsScalarFieldEnum)[keyof typeof TagsScalarFieldEnum];
+
+export const Ip_blocksScalarFieldEnum = {
+  id: "id",
+  ip: "ip",
+  severity: "severity",
+  comment: "comment",
+  created_at: "created_at",
+  updated_at: "updated_at",
+  expires_at: "expires_at",
+} as const;
+
+export type Ip_blocksScalarFieldEnum =
+  (typeof Ip_blocksScalarFieldEnum)[keyof typeof Ip_blocksScalarFieldEnum];
+
+export const Account_activity_daysScalarFieldEnum = {
+  account_id: "account_id",
+  day: "day",
+} as const;
+
+export type Account_activity_daysScalarFieldEnum =
+  (typeof Account_activity_daysScalarFieldEnum)[keyof typeof Account_activity_daysScalarFieldEnum];
+
+export const Account_ipsScalarFieldEnum = {
+  account_id: "account_id",
+  ip: "ip",
+  used_at: "used_at",
+} as const;
+
+export type Account_ipsScalarFieldEnum =
+  (typeof Account_ipsScalarFieldEnum)[keyof typeof Account_ipsScalarFieldEnum];
 
 export const Backfill_cursorsScalarFieldEnum = {
   name: "name",

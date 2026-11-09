@@ -5,7 +5,12 @@ import { ApiCustomEmoji } from "./custom-emoji";
 import { ApiRule } from "./instance";
 import { ApiStatus } from "./status";
 import { ApiHashtag, ApiTagHistory } from "./tag";
-import { DOMAIN_BLOCK_SEVERITIES, REPORT_CATEGORIES } from "./values";
+import {
+  ADMIN_RETENTION_FREQUENCIES,
+  DOMAIN_BLOCK_SEVERITIES,
+  IP_BLOCK_SEVERITIES,
+  REPORT_CATEGORIES,
+} from "./values";
 
 /*
  * The admin API (`/api/v1/admin/*`), as Mastodon's `REST::Admin::*`
@@ -116,12 +121,16 @@ export const ApiAdminCanonicalEmailBlock = z.object({
 });
 export type ApiAdminCanonicalEmailBlockJSON = z.infer<typeof ApiAdminCanonicalEmailBlock>;
 
-/** `REST::Admin::TagSerializer`: the hashtag with its review state. */
+/**
+ * `REST::Admin::TagSerializer`: the hashtag with its review state. tstodon
+ * names a tag by its name, so `id` is the name. `name` is the tag's
+ * `display_name` when an admin set one (a different casing of the name).
+ */
 export const ApiAdminTag = ApiHashtag.extend({
   trendable: z.boolean(),
   usable: z.boolean(),
   requires_review: z.boolean(),
-  listable: z.boolean().optional(),
+  listable: z.boolean(),
 });
 export type ApiAdminTagJSON = z.infer<typeof ApiAdminTag>;
 
@@ -140,3 +149,90 @@ export type ApiAdminAnnouncementJSON = z.infer<typeof ApiAdminAnnouncement>;
 /** tstodon: `/api/v1/admin/custom_emojis`, the custom emoji with its id. */
 export const ApiAdminCustomEmoji = ApiCustomEmoji.extend({ id: z.string() });
 export type ApiAdminCustomEmojiJSON = z.infer<typeof ApiAdminCustomEmoji>;
+
+/**
+ * `REST::Admin::IpBlockSerializer`. `ip` is the range in CIDR notation with
+ * its prefix (`192.0.2.0/24`, a single address as `/32` or `/128`).
+ */
+export const ApiAdminIpBlock = z.object({
+  id: z.string(),
+  ip: z.string(),
+  severity: z.literal(IP_BLOCK_SEVERITIES),
+  comment: z.string(),
+  created_at: z.string(),
+  expires_at: z.string().nullable(),
+});
+export type ApiAdminIpBlockJSON = z.infer<typeof ApiAdminIpBlock>;
+
+/** One day of a measure: `date` is midnight UTC, `value` a count as a string. */
+export const ApiAdminMeasureData = z.object({ date: z.string(), value: z.string() });
+export type ApiAdminMeasureDataJSON = z.infer<typeof ApiAdminMeasureData>;
+
+/**
+ * `REST::Admin::MeasureSerializer` (`POST /api/v1/admin/measures`). `total`
+ * covers the requested range, and `previous_total` the range of the same
+ * length before it, for measures counted in time (`active_users`,
+ * `new_users`, ...); the `instance_*` measures total everything stored and
+ * have no `previous_total`. `human_value` accompanies a `bytes` unit.
+ */
+export const ApiAdminMeasure = z.object({
+  key: z.string(),
+  unit: z.string().nullable(),
+  total: z.string(),
+  human_value: z.string().optional(),
+  previous_total: z.string().optional(),
+  data: z.array(ApiAdminMeasureData),
+});
+export type ApiAdminMeasureJSON = z.infer<typeof ApiAdminMeasure>;
+
+/** One entry of a dimension, largest first. */
+export const ApiAdminDimensionData = z.object({
+  key: z.string(),
+  human_key: z.string(),
+  value: z.string(),
+  unit: z.string().optional(),
+  human_value: z.string().optional(),
+});
+export type ApiAdminDimensionDataJSON = z.infer<typeof ApiAdminDimensionData>;
+
+/** `REST::Admin::DimensionSerializer` (`POST /api/v1/admin/dimensions`). */
+export const ApiAdminDimension = z.object({
+  key: z.string(),
+  data: z.array(ApiAdminDimensionData),
+});
+export type ApiAdminDimensionJSON = z.infer<typeof ApiAdminDimension>;
+
+/** One later period of a cohort: the share (`rate`, 0 to 1) and count still active. */
+export const ApiAdminCohortData = z.object({
+  date: z.string(),
+  rate: z.number(),
+  value: z.string(),
+});
+export type ApiAdminCohortDataJSON = z.infer<typeof ApiAdminCohortData>;
+
+/**
+ * `REST::Admin::CohortSerializer` (`POST /api/v1/admin/retention`): the
+ * accounts that signed up in `period`, and how many of them were active in
+ * each period since.
+ */
+export const ApiAdminCohort = z.object({
+  period: z.string(),
+  frequency: z.literal(ADMIN_RETENTION_FREQUENCIES),
+  data: z.array(ApiAdminCohortData),
+});
+export type ApiAdminCohortJSON = z.infer<typeof ApiAdminCohort>;
+
+/**
+ * `REST::Admin::Trends::Links::PreviewCardProviderSerializer`
+ * (`/api/v1/admin/trends/links/publishers`): a site whose links trend.
+ * tstodon names a publisher by its domain, so `id` is the domain.
+ */
+export const ApiAdminPreviewCardProvider = z.object({
+  id: z.string(),
+  domain: z.string(),
+  trendable: z.boolean(),
+  reviewed_at: z.string().nullable(),
+  requested_review_at: z.string().nullable(),
+  requires_review: z.boolean(),
+});
+export type ApiAdminPreviewCardProviderJSON = z.infer<typeof ApiAdminPreviewCardProvider>;

@@ -10,7 +10,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param offset
  */
 export const searchTags = $runtime.makeTypedQueryFactory(
-  "SELECT name FROM tags\nWHERE name >= $1 AND name < $1 || char(1114111)\nORDER BY length(name), name\nLIMIT $2 OFFSET $3",
+  "SELECT name FROM tags\nWHERE name >= $1 AND name < $1 || char(1114111) AND usable <> 0 AND listable <> 0\nORDER BY length(name), name\nLIMIT $2 OFFSET $3",
 ) as (
   prefix: string,
   limit: number,

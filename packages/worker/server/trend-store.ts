@@ -31,6 +31,18 @@ export const fallbackLinkCard = (url: string): ApiPreviewCardJSON | undefined =>
   });
 };
 
+/** A link's publisher, as Mastodon's `PreviewCardProvider` names it: its lowercase host. */
+export const linkPublisher = (url: string): string | undefined =>
+  URL.canParse(url) ? new URL(url).hostname.toLowerCase() || undefined : undefined;
+
+const publisherExcluded = (url: string, hosts: ReadonlySet<string> | undefined): boolean => {
+  if (!hosts || hosts.size === 0) {
+    return false;
+  }
+  const host = linkPublisher(url);
+  return host !== undefined && hosts.has(host);
+};
+
 export type TrendingLink = Readonly<{
   url: string;
   uses: number;
@@ -96,6 +108,7 @@ export const findTrendingLinkUrl = async (
   db: D1Database,
   url: string,
   excluded: ReadonlySet<string>,
+  excludedPublishers?: ReadonlySet<string>,
 ): Promise<Result<string | undefined, RepositoryError>> => {
   const wanted = normalizeLinkUrl(url);
   if (!wanted) {
@@ -106,7 +119,10 @@ export const findTrendingLinkUrl = async (
     return err(counts.error);
   }
   const trending = [...counts.value.keys()].some(
-    (link) => !excluded.has(link) && normalizeLinkUrl(link) === wanted,
+    (link) =>
+      !excluded.has(link) &&
+      !publisherExcluded(link, excludedPublishers) &&
+      normalizeLinkUrl(link) === wanted,
   );
   return ok(trending ? wanted : undefined);
 };
@@ -117,7 +133,13 @@ export const findTrendingLinkUrl = async (
  */
 export const listTrendingLinks = async (
   db: D1Database,
-  options: Readonly<{ limit: number; offset?: number; excluded?: ReadonlySet<string> }>,
+  options: Readonly<{
+    limit: number;
+    offset?: number;
+    excluded?: ReadonlySet<string>;
+    /** Publishers (hosts) a moderator rejected: none of their links trend. */
+    excludedPublishers?: ReadonlySet<string>;
+  }>,
 ): Promise<Result<ReadonlyArray<TrendingLink>, RepositoryError>> => {
   const counts = await trendingLinkUses(db);
   if (counts.isErr()) {
@@ -125,7 +147,9 @@ export const listTrendingLinks = async (
   }
   const offset = options.offset ?? 0;
   const ranked = [...counts.value.entries()]
-    .filter(([url]) => !options.excluded?.has(url))
+    .filter(
+      ([url]) => !options.excluded?.has(url) && !publisherExcluded(url, options.excludedPublishers),
+    )
     .toSorted((left, right) => right[1].uses - left[1].uses || left[0].localeCompare(right[0]))
     .slice(offset, offset + options.limit);
   // Prefer the unfurled card when the link has been previewed, so trends
@@ -142,5 +166,30 @@ export const listTrendingLinks = async (
         ? [{ url, uses: usage.uses, document: { ...card, history: linkHistory(usage) } }]
         : [];
     }),
+  );
+};
+
+/**
+ * The publishers of the links trending now, with how often their links were
+ * shared, most shared first.
+ */
+export const trendingLinkPublishers = async (
+  db: D1Database,
+): Promise<Result<ReadonlyArray<Readonly<{ domain: string; uses: number }>>, RepositoryError>> => {
+  const counts = await trendingLinkUses(db);
+  if (counts.isErr()) {
+    return err(counts.error);
+  }
+  const byHost = new Map<string, number>();
+  for (const [url, usage] of counts.value) {
+    const host = linkPublisher(url);
+    if (host !== undefined) {
+      byHost.set(host, (byHost.get(host) ?? 0) + usage.uses);
+    }
+  }
+  return ok(
+    [...byHost.entries()]
+      .map(([domain, uses]) => ({ domain, uses }))
+      .toSorted((left, right) => right.uses - left.uses || left.domain.localeCompare(right.domain)),
   );
 };

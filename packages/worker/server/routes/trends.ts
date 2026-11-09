@@ -4,6 +4,7 @@ import type { InstanceIdentity } from "@tstodon/domain";
 import { jsonRepositoryError, queryLimit, queryOffset, queryTrendsLimit } from "../http";
 import { listTrendingLinks } from "../trend-store";
 import { rejectedTrendTargets } from "../trend-review-store";
+import { untrendableTags } from "../tag-moderation-store";
 import { mastodonStatuses } from "../local-status-documents";
 import { mastodonTag } from "../tag-documents";
 import { authenticate } from "../auth";
@@ -16,10 +17,15 @@ export const getV1TrendsLinks = async (c: Context<{ Bindings: Env }, "/api/v1/tr
   if (rejected.isErr()) {
     return jsonRepositoryError(c, rejected.error.message);
   }
+  const publishers = await rejectedTrendTargets(c.env.DB, "Publisher");
+  if (publishers.isErr()) {
+    return jsonRepositoryError(c, publishers.error.message);
+  }
   const links = await listTrendingLinks(c.env.DB, {
     limit: queryTrendsLimit(c.req.query("limit")),
     offset: queryOffset(c.req.query("offset")),
     excluded: rejected.value,
+    excludedPublishers: publishers.value,
   });
   if (links.isErr()) {
     return jsonRepositoryError(c, links.error.message);
@@ -56,7 +62,8 @@ const trendingTagsResponse = async (c: Context<{ Bindings: Env }>): Promise<Resp
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const rejected = await rejectedTrendTargets(c.env.DB, "Tag");
+  // Rejected in review, unusable, or unlisted.
+  const rejected = await untrendableTags(c.env.DB);
   if (rejected.isErr()) {
     return jsonRepositoryError(c, rejected.error.message);
   }

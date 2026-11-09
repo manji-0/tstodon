@@ -25,7 +25,12 @@ Where tstodon renders more than Mastodon, the schema says so in a comment
   `ApiAdminAccount` (the public account nested as `account`, as Mastodon),
   `ApiAdminReport`, `ApiAdminDomainBlock`, `ApiAdminDomainAllow`,
   `ApiAdminEmailDomainBlock`, `ApiAdminCanonicalEmailBlock`, `ApiAdminTag`,
-  and tstodon's own `ApiAdminAnnouncement` and `ApiAdminCustomEmoji`.
+  `ApiAdminIpBlock`, the dashboard's `ApiAdminMeasure`, `ApiAdminDimension`
+  and `ApiAdminCohort`, `ApiAdminPreviewCardProvider` (a trending link's
+  publisher), and tstodon's own `ApiAdminAnnouncement` and
+  `ApiAdminCustomEmoji`. Their enum-like values (`IP_BLOCK_SEVERITIES`,
+  `ADMIN_MEASURE_KEYS`, `ADMIN_DIMENSION_KEYS`,
+  `ADMIN_RETENTION_FREQUENCIES`) are in `@tstodon/api/values`.
 - `@tstodon/api/values` (`src/values.ts`): the enum-like strings (status
   visibilities, quote policies and states, notification types, filter
   contexts, ...) as constant arrays with their types and guards. It imports

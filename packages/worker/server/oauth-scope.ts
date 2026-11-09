@@ -61,7 +61,7 @@ const rule = (path: string, read: string | undefined, write: string | undefined)
 
 const adminRules = (resource: string, granular: boolean): ReadonlyArray<ScopeRule> => [
   rule(
-    `/api/v1/admin/${resource}(?:/.*)?`,
+    `/api/v(?:1|2)/admin/${resource}(?:/.*)?`,
     granular ? `admin:read:${resource}` : "admin:read",
     granular ? `admin:write:${resource}` : "admin:write",
   ),
@@ -101,6 +101,10 @@ const SCOPE_RULES: ReadonlyArray<ScopeRule> = [
   ...adminRules("announcements", false),
   ...adminRules("custom_emojis", false),
   ...adminRules("trends", false),
+  ...adminRules("ip_blocks", true),
+  ...adminRules("tags", false),
+  // The dashboard's metrics are read with a POST, under `admin:read`.
+  rule("/api/v1/admin/(?:measures|dimensions|retention)", "admin:read", "admin:read"),
 
   rule("/api/v1/announcements/:id/reactions/:name", NONE, "write:favourites"),
   rule("/api/v1/announcements(?:/.*)?", "read", "write:accounts"),

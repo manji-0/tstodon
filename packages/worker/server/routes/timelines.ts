@@ -14,6 +14,8 @@ import { listLinkStatuses, type TagStatusFilters } from "../status-discovery-sto
 import { isTruthy } from "../form-values";
 import { findTrendingLinkUrl } from "../trend-store";
 import { rejectedTrendTargets } from "../trend-review-store";
+import { isTagUsable } from "../tag-moderation-store";
+import { normalizeTag } from "../tag-store";
 import { filterMutedThreads, mutedThreadStatusIds } from "../status-mute-store";
 import {
   homeTimelineDocuments,
@@ -144,6 +146,14 @@ export const getV1TimelinesTagByHashtag = async (
   if (auth.isErr()) {
     return jsonAuthError(c, auth.error);
   }
+  // An admin made the tag unusable: its timeline lists nothing.
+  const usable = await isTagUsable(c.env.DB, normalizeTag(c.req.param("hashtag") ?? ""));
+  if (usable.isErr()) {
+    return jsonRepositoryError(c, usable.error.message);
+  }
+  if (!usable.value) {
+    return c.json([]);
+  }
   const documents = await tagTimelineDocuments(
     c.env,
     identity.value,
@@ -184,7 +194,16 @@ export const getV1TimelinesLink = async (
   if (rejected.isErr()) {
     return jsonRepositoryError(c, rejected.error.message);
   }
-  const url = await findTrendingLinkUrl(c.env.DB, c.req.query("url") ?? "", rejected.value);
+  const publishers = await rejectedTrendTargets(c.env.DB, "Publisher");
+  if (publishers.isErr()) {
+    return jsonRepositoryError(c, publishers.error.message);
+  }
+  const url = await findTrendingLinkUrl(
+    c.env.DB,
+    c.req.query("url") ?? "",
+    rejected.value,
+    publishers.value,
+  );
   if (url.isErr()) {
     return jsonRepositoryError(c, url.error.message);
   }

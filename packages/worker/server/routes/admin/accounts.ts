@@ -6,6 +6,7 @@ import {
   AccountActionType,
   FediRole,
   type InstanceIdentity,
+  IpRange,
   LocalAccountModeration,
   type LocalAccountModerationAction,
   RemoteActorModeration,
@@ -13,7 +14,13 @@ import {
   type RemoteActorValue,
 } from "@tstodon/domain";
 import { findAccountById } from "../../account-store";
-import { listAdminAccounts, listAdminRemoteActorUris } from "../../account-admin-store";
+import {
+  type AdminAccountFilters,
+  listAdminAccountIds,
+  listAdminAccounts,
+  listAdminRemoteActorUris,
+} from "../../account-admin-store";
+import { type AccountIp, accountIpsByAccountIds, allAccountIps } from "../../account-activity";
 import {
   type AdminAccountState,
   adminAccountStates,
@@ -35,6 +42,7 @@ import {
   queryCursor,
   readBody,
   requireAdmin,
+  setPaginationLinks,
 } from "../../http";
 import { mastodonAccountDocument, mastodonRemoteAccount } from "../../account-documents";
 import { findRemoteActorsByUris } from "../../remote-actor-store";
@@ -42,18 +50,15 @@ import type { ReportParty } from "../../report-store";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { isTruthy } from "../../form-values";
 
-const adminAccountFilters = (
-  c: Context<{ Bindings: Env }>,
-): Readonly<{
-  origin: "local" | "remote";
-  status: "active" | "pending" | "disabled" | "silenced" | "suspended" | "sensitized";
-  username?: string | undefined;
-  displayName?: string | undefined;
-  email?: string | undefined;
-  byDomain?: string | undefined;
-  ip?: string | undefined;
-  staff?: boolean | undefined;
-}> => {
+type RequestedFilters = Omit<AdminAccountFilters, "cursor" | "limit" | "offset" | "accountIds">;
+
+const trimmedQuery = (c: Context<{ Bindings: Env }>, key: string): string | undefined => {
+  const value = c.req.query(key)?.trim() ?? "";
+  return value.length > 0 ? value : undefined;
+};
+
+/** v1's filters: flags (`local`, `remote`, `active`, ...), local and active by default. */
+const adminAccountFilters = (c: Context<{ Bindings: Env }>): RequestedFilters => {
   const present = (key: string): boolean => isTruthy(c.req.query(key));
   let status: "active" | "pending" | "disabled" | "silenced" | "suspended" = "active";
   for (const candidate of ["active", "pending", "disabled", "silenced", "suspended"] as const) {
@@ -61,29 +66,94 @@ const adminAccountFilters = (
       status = candidate;
     }
   }
-  const trimmed = (key: string): string | undefined => {
-    const value = c.req.query(key)?.trim() ?? "";
-    return value.length > 0 ? value : undefined;
-  };
   return {
     origin: present("remote") || c.req.query("origin") === "remote" ? "remote" : "local",
     status: present("sensitized") ? "sensitized" : status,
-    username: trimmed("username"),
-    displayName: trimmed("display_name"),
-    email: trimmed("email"),
-    byDomain: trimmed("by_domain"),
-    ip: trimmed("ip"),
+    username: trimmedQuery(c, "username"),
+    displayName: trimmedQuery(c, "display_name"),
+    email: trimmedQuery(c, "email"),
+    byDomain: trimmedQuery(c, "by_domain"),
+    ip: trimmedQuery(c, "ip"),
     staff: present("staff"),
   };
 };
 
-/** Admin::Account's role: the roles tstodon has are not kept per account here. */
+const V2_STATUSES = [
+  "active",
+  "pending",
+  "disabled",
+  "silenced",
+  "suspended",
+  "sensitized",
+] as const;
+
+const isV2Status = (value: string): value is (typeof V2_STATUSES)[number] =>
+  V2_STATUSES.some((status) => status === value);
+
+/**
+ * v2's filters (`Api::V2::Admin::AccountsController`): `origin`, `status`,
+ * `permissions=staff`, `role_ids[]`, `invited_by`, `username`,
+ * `display_name`, `by_domain`, `email`, `ip`. No `status` lists every
+ * status. No `origin` lists local accounts: remote actors are cached under
+ * ids that do not page with local ones, so they need `origin=remote`.
+ */
+const v2AccountFilters = (c: Context<{ Bindings: Env }>): RequestedFilters | "invalid" => {
+  const origin = trimmedQuery(c, "origin") ?? "local";
+  const status = trimmedQuery(c, "status");
+  const permissions = trimmedQuery(c, "permissions");
+  if (
+    (origin !== "local" && origin !== "remote") ||
+    (status !== undefined && !isV2Status(status)) ||
+    (permissions !== undefined && permissions !== "staff")
+  ) {
+    return "invalid";
+  }
+  const roleIds = [...(c.req.queries("role_ids[]") ?? []), ...(c.req.queries("role_ids") ?? [])]
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+  return {
+    origin,
+    status: status ?? "all",
+    username: trimmedQuery(c, "username"),
+    displayName: trimmedQuery(c, "display_name"),
+    email: trimmedQuery(c, "email"),
+    byDomain: trimmedQuery(c, "by_domain"),
+    ip: trimmedQuery(c, "ip"),
+    staff: permissions === "staff",
+    roleIds: roleIds.length > 0 ? roleIds : undefined,
+    invitedBy: trimmedQuery(c, "invited_by"),
+  };
+};
+
+/** A remote actor holds no role here. */
 const USER_ROLE = FediRole.toMastodon(FediRole.User);
+
+/** What a local account's document reads besides its state: its role and addresses. */
+type LocalAccountExtras = Readonly<{ admin: boolean; ips: ReadonlyArray<AccountIp> }>;
+
+const NO_EXTRAS: LocalAccountExtras = { admin: false, ips: [] };
+
+/** Each account's role and recorded addresses. */
+const localAccountExtras = async (
+  db: D1Database,
+  accountIds: ReadonlyArray<string>,
+): Promise<ReadonlyMap<string, LocalAccountExtras>> => {
+  const [admins, ips] = await Promise.all([
+    listAdminAccountIds(db),
+    accountIpsByAccountIds(db, accountIds),
+  ]);
+  const adminIds = new Set(admins.unwrapOr([]));
+  const byAccount = ips.unwrapOr(new Map<string, ReadonlyArray<AccountIp>>());
+  return new Map(
+    accountIds.map((id) => [id, { admin: adminIds.has(id), ips: byAccount.get(id) ?? [] }]),
+  );
+};
 
 const adminAccountDocument = async (
   env: Env,
   identity: InstanceIdentity,
   state: AdminAccountState,
+  extras: LocalAccountExtras = NO_EXTRAS,
 ): Promise<ApiAdminAccountJSON> => {
   const account = await mastodonAccountDocument(env, identity, state.account);
   return {
@@ -92,11 +162,12 @@ const adminAccountDocument = async (
     domain: null,
     created_at: account.created_at,
     email: state.account.accessEmail.reveal(),
-    ip: null,
-    ips: [],
+    // The address last used, then each recorded one (Mastodon's `user_ips`).
+    ip: extras.ips[0]?.ip ?? null,
+    ips: extras.ips.map((entry) => ({ ip: entry.ip, used_at: entry.usedAt })),
     locale: null,
     invite_request: null,
-    role: { ...USER_ROLE },
+    role: { ...FediRole.toMastodon(extras.admin ? FediRole.Admin : FediRole.User) },
     // Access verified the address before the account existed.
     confirmed: true,
     approved: state.moderation.approval.kind === "Approved",
@@ -208,7 +279,11 @@ export const adminAccountFor = async (
       : null;
   }
   const state = await findAdminAccount(env.DB, accountId);
-  return state.isOk() && state.value ? adminAccountDocument(env, identity, state.value) : null;
+  if (state.isErr() || !state.value) {
+    return null;
+  }
+  const extras = await localAccountExtras(env.DB, [state.value.account.id]);
+  return adminAccountDocument(env, identity, state.value, extras.get(state.value.account.id));
 };
 
 /**
@@ -289,26 +364,53 @@ const remoteAdminAccounts = async (
   );
 };
 
-export const getV1AdminAccounts = async (
-  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts">,
-) => {
+/**
+ * The `ip` filter: the local accounts that used an address in the range (an
+ * address or CIDR). `undefined` when no filter is asked; a range that does
+ * not parse matches no one.
+ */
+const accountIdsByIp = async (
+  db: D1Database,
+  ip: string | undefined,
+): Promise<Result<ReadonlyArray<string> | undefined, RepositoryError>> => {
+  if (ip === undefined) {
+    return ok(undefined);
+  }
+  const range = IpRange.parse(ip);
+  if (range.isErr()) {
+    return ok([]);
+  }
+  const pairs = await allAccountIps(db);
+  return pairs.map((list) => [
+    ...new Set(
+      list.filter((pair) => IpRange.contains(range.value, pair.ip)).map((pair) => pair.accountId),
+    ),
+  ]);
+};
+
+/** The admin account list both versions answer, with Mastodon's `Link` header. */
+const adminAccountsResponse = async (
+  c: Context<{ Bindings: Env }>,
+  filters: RequestedFilters,
+): Promise<Response> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const admin = await requireAdmin(c);
-  if (admin.isErr()) {
-    return jsonAuthError(c, admin.error);
-  }
   const limit = queryAdminLimit(c.req.query("limit"));
   const offset = Math.max(Number.parseInt(c.req.query("offset") ?? "0", 10) || 0, 0);
-  const filters = adminAccountFilters(c);
   if (filters.origin === "remote") {
     const remote = await remoteAdminAccounts(c.env, identity.value, { ...filters, limit, offset });
     return remote.isErr() ? jsonRepositoryError(c, remote.error.message) : c.json(remote.value);
   }
+  const accountIds = await accountIdsByIp(c.env.DB, filters.ip);
+  if (accountIds.isErr()) {
+    return jsonRepositoryError(c, accountIds.error.message);
+  }
   const accounts = await listAdminAccounts(c.env.DB, {
     ...filters,
+    ip: undefined,
+    accountIds: accountIds.value,
     cursor: queryCursor(c),
     limit,
     offset,
@@ -320,11 +422,47 @@ export const getV1AdminAccounts = async (
   if (states.isErr()) {
     return jsonRepositoryError(c, states.error.message);
   }
+  const extras = await localAccountExtras(
+    c.env.DB,
+    states.value.map((state) => state.account.id),
+  );
   const documents: ApiAdminAccountJSON[] = [];
   for (const state of states.value) {
-    documents.push(await adminAccountDocument(c.env, identity.value, state));
+    documents.push(
+      await adminAccountDocument(c.env, identity.value, state, extras.get(state.account.id)),
+    );
   }
+  setPaginationLinks(
+    c,
+    documents.map((document) => document.id),
+    limit,
+  );
   return c.json(documents);
+};
+
+export const getV1AdminAccounts = async (
+  c: Context<{ Bindings: Env }, "/api/v1/admin/accounts">,
+) => {
+  const admin = await requireAdmin(c);
+  if (admin.isErr()) {
+    return jsonAuthError(c, admin.error);
+  }
+  return adminAccountsResponse(c, adminAccountFilters(c));
+};
+
+/** `GET /api/v2/admin/accounts`: v1's list with Mastodon's v2 filters. */
+export const getV2AdminAccounts = async (
+  c: Context<{ Bindings: Env }, "/api/v2/admin/accounts">,
+) => {
+  const admin = await requireAdmin(c);
+  if (admin.isErr()) {
+    return jsonAuthError(c, admin.error);
+  }
+  const filters = v2AccountFilters(c);
+  if (filters === "invalid") {
+    return c.json({ error: "Validation failed: invalid filter", kind: "ValidationError" }, 422);
+  }
+  return adminAccountsResponse(c, filters);
 };
 
 /**

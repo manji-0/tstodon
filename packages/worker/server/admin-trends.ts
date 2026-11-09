@@ -1,4 +1,4 @@
-import { StatusId } from "@tstodon/domain";
+import { Hostname, StatusId } from "@tstodon/domain";
 import { err, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import { findStatusById } from "./status-store";
@@ -11,7 +11,9 @@ import { setTrendReview, type TrendState } from "./trend-review-store";
 export type TrendTarget =
   | Readonly<{ kind: "Tag"; name: string }>
   | Readonly<{ kind: "Link"; url: string }>
-  | Readonly<{ kind: "Status"; id: string }>;
+  | Readonly<{ kind: "Status"; id: string }>
+  /** A link publisher, by its host. */
+  | Readonly<{ kind: "Publisher"; domain: string }>;
 
 export type ReviewTrendError = Readonly<{ kind: "NotFound" }> | RepositoryError;
 
@@ -38,6 +40,12 @@ export const reviewTrend = async (
       return isWebUrl(target.url)
         ? setTrendReview(db, "Link", target.url, state)
         : err({ kind: "NotFound" });
+    case "Publisher": {
+      const domain = Hostname.fromInput(target.domain);
+      return domain === undefined || domain.includes("/")
+        ? err({ kind: "NotFound" })
+        : setTrendReview(db, "Publisher", domain, state);
+    }
     case "Status": {
       const id = StatusId.parse(target.id);
       if (id.isErr()) {
