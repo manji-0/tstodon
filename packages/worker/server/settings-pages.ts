@@ -78,7 +78,7 @@ const SETTINGS_SECTIONS: ReadonlyArray<
       {
         href: "/auth/edit",
         label: "Password and security",
-        about: "Passkeys, browser sessions, and apps that can use your account.",
+        about: "Your Cloudflare Access sign-in, browser sessions, and apps that can use your account.",
       },
       {
         href: "/severed_relationships",
