@@ -5,7 +5,7 @@ import {
   cachedDeliveryDomainHealth,
   recordInboxReachability,
 } from "./delivery-domain-health-store";
-import { writeMetric } from "./metrics";
+import { withMetricsBudget, writeMetric } from "./metrics";
 import { type DeliveryRunDeps, type DeliverySteps, runOutboxDelivery } from "./outbox-delivery-run";
 import { ensureOutboxTarget, persistOutboxTarget } from "./outbox-store";
 
@@ -63,6 +63,9 @@ export class OutboxDeliveryWorkflow extends WorkflowEntrypoint<Env, OutboxWorkfl
     if (parsed.isErr() || parsed.value.kind !== "DeliverTarget") {
       return { kind: "InvalidJob" as const };
     }
-    return runOutboxDelivery(workflowSteps(step), outboxDeliveryRunDeps(this.env), parsed.value);
+    const job = parsed.value;
+    return withMetricsBudget(this.env, "workflow", () =>
+      runOutboxDelivery(workflowSteps(step), outboxDeliveryRunDeps(this.env), job),
+    );
   }
 }

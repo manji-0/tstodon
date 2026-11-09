@@ -221,23 +221,24 @@ Level is the `console` method. Every event's `kind` is unique to one meaning; th
 
 Every point is written by `writeMetric` in `packages/worker/server/metrics.ts` to dataset `tstodon_metrics`; a failed write is swallowed. Columns: `index1` is the metric name, then `double1..` and `blob1..`. The full table is the [metric reference](../architecture/d1-heavy-scenarios.md#metric-reference); the ones operators watch:
 
-| `index1`          | Doubles                                                    | Blobs                                                                              | Watch for                                                                   |
-| ----------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `cron`            | `[1]`                                                      | `[cronExpression, scheduled]`                                                      | Missing points: a cron run failed (written only when all its sends succeed) |
-| `outbox.job`      | `[1]`                                                      | `[jobKind, retry or failed]`                                                       | Any `failed`                                                                |
-| `outbox.dead`     | `[1, attemptsOnOutboxQueue]`                               | `[jobKind, reason]`                                                                | Any point: a job stored in `outbox_dead_jobs`                               |
-| `activity.vacuum` | `[deliveries, outbound, inbox, ms]`                        | `[ok or error, chained or empty]`                                                  | `error`; a `chained` streak that does not end (a backlog growing)           |
-| `outbox.job.page` | `[size, elapsedMs, chainedFlag]`                           | `[jobKind, ok or retry or error, step]`                                            | `error` and `retry` by job; `elapsedMs` growth                              |
-| `outbox.enqueue`  | `[1]`                                                      | `[activityKind]` or `[activityKind, targeted]`                                     | Volume of outgoing activities; a drop to zero while users post              |
-| `outbox.expand`   | `[remoteTargetCount, expandMs, okFlag, skippedCount]`      | `[ok or targets_failed]`                                                           | `targets_failed`                                                            |
-| `outbox.deliver`  | `[latencyMs, failedHttpStatus, attemptNumber]`             | `[success or permanent or http or throttled or network or local or skipped, host]` | Failure share per host; `local` (this server's D1 or keys failing)          |
-| `outbox.skip`     | `[skippedCount]`                                           | `[expand or targeted, DomainUnavailable]`                                          | Volume left out for unavailable domains                                     |
-| `outbox.domain`   | `[failureDays]`                                            | `[unavailable or available, delivery or inbound or admin]`                         | Any `unavailable`                                                           |
-| `outbox.sweep`    | `[examined, created, restarted, waiting, givenUp, failed]` | `[ok or error]`                                                                    | `error`; `created` / `restarted` above zero every hour                      |
-| `push.deliver`    | `[httpStatus or 0]`                                        | `[httpStatus or network]`                                                          | 401/403 (VAPID key problem), `network`                                      |
-| `timeline.*`      | `[latencyMs, rows]`                                        | `[ok or error]`                                                                    | p95 latency, `error` share                                                  |
-| `search`          | `[latencyMs, accountHits, statusHits]`                     | `[type]`                                                                           | p95 latency                                                                 |
-| `stream.render`   | `[renderMs, deliveredFlag]`                                | `[home or list or public, ok or error]`                                            | `error` share                                                               |
+| `index1`          | Doubles                                                      | Blobs                                                                              | Watch for                                                                   |
+| ----------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `cron`            | `[1]`                                                        | `[cronExpression, scheduled]`                                                      | Missing points: a cron run failed (written only when all its sends succeed) |
+| `outbox.job`      | `[1]`                                                        | `[jobKind, retry or failed]`                                                       | Any `failed`                                                                |
+| `outbox.dead`     | `[1, attemptsOnOutboxQueue]`                                 | `[jobKind, reason]`                                                                | Any point: a job stored in `outbox_dead_jobs`                               |
+| `activity.vacuum` | `[deliveries, outbound, inbox, ms]`                          | `[ok or error, chained or empty]`                                                  | `error`; a `chained` streak that does not end (a backlog growing)           |
+| `outbox.job.page` | `[size, elapsedMs, chainedFlag]`                             | `[jobKind, ok or retry or error, step]`                                            | `error` and `retry` by job; `elapsedMs` growth                              |
+| `outbox.enqueue`  | `[1]`                                                        | `[activityKind]` or `[activityKind, targeted]`                                     | Volume of outgoing activities; a drop to zero while users post              |
+| `outbox.expand`   | `[remoteTargetCount, expandMs, okFlag, skippedCount]`        | `[ok or targets_failed]`                                                           | `targets_failed`                                                            |
+| `outbox.deliver`  | `[latencyMs, failedHttpStatus, attemptNumber]`               | `[success or permanent or http or throttled or network or local or skipped, host]` | Failure share per host; `local` (this server's D1 or keys failing)          |
+| `outbox.skip`     | `[skippedCount]`                                             | `[expand or targeted, DomainUnavailable]`                                          | Volume left out for unavailable domains                                     |
+| `outbox.domain`   | `[failureDays]`                                              | `[unavailable or available, delivery or inbound or admin]`                         | Any `unavailable`                                                           |
+| `outbox.sweep`    | `[examined, created, restarted, waiting, givenUp, failed]`   | `[ok or error]`                                                                    | `error`; `created` / `restarted` above zero every hour                      |
+| `push.deliver`    | `[httpStatus or 0]`                                          | `[httpStatus or network]`                                                          | 401/403 (VAPID key problem), `network`                                      |
+| `timeline.*`      | `[latencyMs, rows]`                                          | `[ok or error]`                                                                    | p95 latency, `error` share                                                  |
+| `search`          | `[latencyMs, accountHits, statusHits]`                       | `[type]`                                                                           | p95 latency                                                                 |
+| `stream.render`   | `[renders, delivered, errors, totalMs, maxMs, p50Ms, p95Ms]` | `[home or list or public, ok or error]`                                            | `errors`; `p95Ms` growth                                                    |
+| `metrics.dropped` | `[droppedPoints, writtenPoints]`                             | `[fetch or queue or scheduled or workflow, indexThatLostMost]`                     | Any point: an invocation hit the data point budget                          |
 
 `outbox.job.page` is written by every paged job: `FanOutHome`, `FanOutPublic`, `DistributePollUpdate`, `ProcessExpiredPolls`, `MoveFollows`, `BackfillRemoteOutbox`, `BackfillRemoteThread`, `ProcessCsvImport`, `CleanUpAccountStatuses`, `SeverBlockedDomainFollows`, `FanOutRemovedStatuses`, `BackfillLocalNoteTags`, `RekeyLegacyMedia`, `VacuumMediaAttachments`, `VacuumActivities`, `RequeueDeadOutboxJobs`, `StripStoredMediaMetadata`, `BackfillStoredMediaSizes` (`blob1` is the job kind as queued). The delivery Workflow writes one `outbox.deliver` point per attempt.
 
@@ -283,6 +284,20 @@ SELECT blob1 AS status, SUM(_sample_interval) AS n
 FROM tstodon_metrics WHERE index1 = 'push.deliver' AND timestamp > NOW() - INTERVAL '1' DAY
 GROUP BY status ORDER BY n DESC
 
+-- Fan-out renders per target over a day: renders, mean and worst per-pass p95.
+SELECT blob1 AS target, SUM(double1 * _sample_interval) AS renders,
+       SUM(double2 * _sample_interval) AS delivered, SUM(double3 * _sample_interval) AS errors,
+       SUM(double4 * _sample_interval) / SUM(double1 * _sample_interval) AS mean_ms,
+       MAX(double7) AS worst_pass_p95_ms
+FROM tstodon_metrics WHERE index1 = 'stream.render' AND timestamp > NOW() - INTERVAL '1' DAY
+GROUP BY target
+
+-- Invocations that ran out of data point budget.
+SELECT blob1 AS source, blob2 AS index, SUM(_sample_interval) AS invocations,
+       SUM(double1 * _sample_interval) AS dropped
+FROM tstodon_metrics WHERE index1 = 'metrics.dropped' AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY source, index ORDER BY dropped DESC
+
 -- Timeline latency.
 SELECT index1, quantileWeighted(0.5, double1, _sample_interval) AS p50_ms,
        quantileWeighted(0.95, double1, _sample_interval) AS p95_ms, SUM(_sample_interval) AS requests
@@ -290,7 +305,7 @@ FROM tstodon_metrics WHERE index1 LIKE 'timeline.%' AND blob1 = 'ok' AND timesta
 GROUP BY index1
 ```
 
-Analytics Engine keeps data for three months and samples at high volume (weight by `_sample_interval`); a Worker invocation can write a limited number of data points (250 at the time of writing) **(verify)**, which a large fan-out batch (`stream.render`, one point per recipient) can exceed, losing points silently.
+Analytics Engine keeps data for three months and samples at high volume (weight by `_sample_interval`). A Worker invocation can write at most 250 data points (Cloudflare's Analytics Engine limits page; later points are dropped without an error). Each request, queue batch, cron run and delivery Workflow run therefore writes under a budget (`withMetricsBudget`, `server/metrics.ts`): after 249 points `writeMetric` stops writing, and when the invocation ends it writes one `metrics.dropped` point and logs `MetricsDropped` (`source`, `written`, `dropped` per index). Fan-outs write one `stream.render` point per pass and target (home, list, public) rather than one per recipient, so a batch of ten fan-out pages writes a few dozen points.
 
 ### Outbound delivery health (D1)
 

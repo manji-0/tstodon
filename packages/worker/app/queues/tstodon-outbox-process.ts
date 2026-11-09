@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { defineQueue } from "void";
+import { withMetricsBudget } from "#server/metrics";
 import { handleQueue } from "#server/queue-handler";
 
 export const maxBatchSize = 10;
@@ -12,4 +13,7 @@ export const maxConcurrency = 1;
 export const deadLetterQueue = "tstodon-outbox-dlq";
 
 // Void types its `env` argument loosely; the module `env` carries the generated `Env`.
-export default defineQueue((batch) => handleQueue(batch, env));
+// One batch is one invocation: its metric writes share one data point budget.
+export default defineQueue((batch) =>
+  withMetricsBudget(env, "queue", () => handleQueue(batch, env)),
+);

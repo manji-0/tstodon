@@ -183,15 +183,16 @@ describe("home streams of local followers", () => {
     const lastPage = await page(second.account.id);
     expect(lastPage.isOk() && lastPage.value.next).toBe(undefined);
 
-    // The queued pass reports how many followers it told and what each render cost.
+    // The queued pass reports how many followers it told and what its renders cost.
     const written = vi.spyOn(env.METRICS, "writeDataPoint");
     expect(await processOutboxJob(env, fanOut)).toBe("ok");
     const points = written.mock.calls.map(([point]) => point);
     written.mockRestore();
-    expect(points.filter((point) => point?.indexes?.[0] === "stream.render")).toEqual([
-      { indexes: ["stream.render"], doubles: [expect.any(Number), 1], blobs: ["home", "ok"] },
-      { indexes: ["stream.render"], doubles: [expect.any(Number), 1], blobs: ["home", "ok"] },
-    ]);
+    // One point for the pass: two renders, both on the followers' timelines.
+    const renders = points.filter((point) => point?.indexes?.[0] === "stream.render");
+    expect(renders).toHaveLength(1);
+    expect(renders[0]?.blobs).toEqual(["home", "ok"]);
+    expect(renders[0]?.doubles?.slice(0, 3)).toEqual([2, 2, 0]);
     expect(points.filter((point) => point?.indexes?.[0] === "outbox.job.page")).toEqual([
       {
         indexes: ["outbox.job.page"],
