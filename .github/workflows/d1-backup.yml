@@ -1,0 +1,204 @@
+name: D1 backup
+
+# Daily encrypted export of the production D1 database to a bucket outside
+# the production Cloudflare account (OPS-4). Setup, token scopes, key custody
+# and restore: docs/operations/runbook.md#scheduled-d1-backups.
+#
+# Does nothing until it is configured: a scheduled run with none of the
+# secrets and variables below ends with a notice (forks and fresh clones stay
+# green); a manual run, or one with only some of them, fails and names what is
+# missing.
+
+on:
+  schedule:
+    - cron: "43 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: d1-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.D1_BACKUP_CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.D1_BACKUP_CLOUDFLARE_ACCOUNT_ID }}
+      DATABASE_ID: ${{ vars.D1_BACKUP_DATABASE_ID }}
+      DATABASE_NAME: ${{ vars.D1_BACKUP_DATABASE_NAME || 'tstodon' }}
+      AGE_RECIPIENTS: ${{ vars.D1_BACKUP_AGE_RECIPIENTS }}
+      S3_ENDPOINT: ${{ vars.D1_BACKUP_S3_ENDPOINT }}
+      S3_BUCKET: ${{ vars.D1_BACKUP_S3_BUCKET }}
+      S3_PREFIX: ${{ vars.D1_BACKUP_S3_PREFIX || 'd1/' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.D1_BACKUP_S3_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.D1_BACKUP_S3_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ vars.D1_BACKUP_S3_REGION || 'auto' }}
+      # R2 does not take the checksums newer AWS CLI releases send by default.
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+      PRUNE: ${{ vars.D1_BACKUP_PRUNE || 'true' }}
+      KEEP_DAYS: ${{ vars.D1_BACKUP_KEEP_DAYS || '35' }}
+      KEEP_MONTHS: ${{ vars.D1_BACKUP_KEEP_MONTHS || '12' }}
+      KEEP_LATEST: ${{ vars.D1_BACKUP_KEEP_LATEST || '7' }}
+      ARTIFACT_RETENTION_DAYS: ${{ vars.D1_BACKUP_ARTIFACT_RETENTION_DAYS }}
+      EVENT_NAME: ${{ github.event_name }}
+    steps:
+      - name: Check configuration
+        id: config
+        run: |
+          missing=()
+          # need <env var> <the secret or variable that sets it>
+          need() { [ -n "${!1}" ] || missing+=("$2"); }
+          need CLOUDFLARE_API_TOKEN "secret D1_BACKUP_CLOUDFLARE_API_TOKEN"
+          need CLOUDFLARE_ACCOUNT_ID "variable D1_BACKUP_CLOUDFLARE_ACCOUNT_ID"
+          need DATABASE_ID "variable D1_BACKUP_DATABASE_ID"
+          need AGE_RECIPIENTS "variable D1_BACKUP_AGE_RECIPIENTS"
+          s3=false
+          if [ -n "$S3_BUCKET" ]; then
+            s3=true
+            need S3_ENDPOINT "variable D1_BACKUP_S3_ENDPOINT"
+            need AWS_ACCESS_KEY_ID "secret D1_BACKUP_S3_ACCESS_KEY_ID"
+            need AWS_SECRET_ACCESS_KEY "secret D1_BACKUP_S3_SECRET_ACCESS_KEY"
+          elif [ -z "$ARTIFACT_RETENTION_DAYS" ]; then
+            missing+=("variable D1_BACKUP_S3_BUCKET or D1_BACKUP_ARTIFACT_RETENTION_DAYS")
+          fi
+          if [ "${#missing[@]}" -gt 0 ]; then
+            message="D1 backup is not configured (missing: $(IFS=,; echo "${missing[*]}" | sed 's/,/, /g')); see docs/operations/runbook.md#scheduled-d1-backups"
+            # Nothing set at all (a fork, a fresh clone): a scheduled run passes.
+            # Half set is a broken backup and fails.
+            if [ "$EVENT_NAME" = "workflow_dispatch" ] \
+              || [ -n "$CLOUDFLARE_API_TOKEN$DATABASE_ID$AGE_RECIPIENTS$S3_BUCKET$ARTIFACT_RETENTION_DAYS" ]; then
+              echo "::error::$message"
+              exit 1
+            fi
+            echo "::notice::$message"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "s3=$s3" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.config.outputs.ready == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        if: steps.config.outputs.ready == 'true'
+        # Pinned to v1.21.2; setup-vp's README asks for an exact release.
+        uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af
+        with:
+          node-version: 26
+          cache: true
+          run-install: false
+
+      # The wrangler the lockfile pins.
+      - name: Install dependencies
+        if: steps.config.outputs.ready == 'true'
+        run: vp install --frozen-lockfile
+
+      - name: Install age
+        if: steps.config.outputs.ready == 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q age
+          age --version
+
+      - name: Export D1
+        id: export
+        if: steps.config.outputs.ready == 'true'
+        run: |
+          umask 077
+          work="$RUNNER_TEMP/d1-backup"
+          mkdir -p "$work"
+          # A config of its own: the database by id, so the token needs no
+          # list permission and the repository's placeholder ids are not read.
+          node -e '
+            const [file, name, id, account] = process.argv.slice(1);
+            require("node:fs").writeFileSync(file, JSON.stringify({
+              name: "tstodon-d1-backup",
+              account_id: account,
+              compatibility_date: "2026-09-20",
+              d1_databases: [{ binding: "DB", database_name: name, database_id: id }],
+            }));
+          ' "$work/wrangler.json" "$DATABASE_NAME" "$DATABASE_ID" "$CLOUDFLARE_ACCOUNT_ID"
+          key="$(node scripts/d1-backup.mjs key --prefix "$S3_PREFIX" --database "$DATABASE_NAME")"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "file=$work/$(basename "$key")" >> "$GITHUB_OUTPUT"
+          (cd "$work" && "$GITHUB_WORKSPACE/node_modules/.bin/wrangler" d1 export "$DATABASE_NAME" \
+            --remote --skip-confirmation --config "$work/wrangler.json" --output "$work/dump.sql")
+          # A dump that cannot restore a working server is a failed backup.
+          size="$(stat -c %s "$work/dump.sql")"
+          [ "$size" -gt 0 ] || { echo "::error::empty export"; exit 1; }
+          grep -q '^CREATE TABLE.*d1_migrations' "$work/dump.sql" || { echo "::error::export has no d1_migrations table"; exit 1; }
+          grep -q '^CREATE TABLE.*accounts' "$work/dump.sql" || { echo "::error::export has no accounts table"; exit 1; }
+          echo "Exported $size bytes"
+
+      # The dump holds actor private keys and session tokens: it is only ever
+      # written to disk on this runner, and leaves it encrypted.
+      - name: Encrypt
+        if: steps.config.outputs.ready == 'true'
+        env:
+          FILE: ${{ steps.export.outputs.file }}
+        run: |
+          umask 077
+          work="$RUNNER_TEMP/d1-backup"
+          printf '%s\n' "$AGE_RECIPIENTS" | tr ' ,' '\n\n' | sed '/^$/d' > "$work/recipients.txt"
+          gzip -9 -c "$work/dump.sql" | age --encrypt -R "$work/recipients.txt" -o "$FILE"
+          shred -u "$work/dump.sql" 2>/dev/null || rm -f "$work/dump.sql"
+          head -c 21 "$FILE" | grep -q '^age-encryption.org/v1' || { echo "::error::not an age file"; exit 1; }
+          sha256sum "$FILE" | cut -d' ' -f1 > "$FILE.sha256"
+          echo "Encrypted to $(wc -l < "$work/recipients.txt") recipient(s): $(stat -c %s "$FILE") bytes, sha256 $(cat "$FILE.sha256")"
+
+      - name: Upload to the backup bucket
+        if: steps.config.outputs.ready == 'true' && steps.config.outputs.s3 == 'true'
+        env:
+          KEY: ${{ steps.export.outputs.key }}
+          FILE: ${{ steps.export.outputs.file }}
+        run: |
+          sha="$(cat "$FILE.sha256")"
+          aws s3api put-object --endpoint-url "$S3_ENDPOINT" --bucket "$S3_BUCKET" --key "$KEY" \
+            --body "$FILE" --content-type application/octet-stream --metadata "sha256=$sha" > /dev/null
+          stored="$(aws s3api head-object --endpoint-url "$S3_ENDPOINT" --bucket "$S3_BUCKET" --key "$KEY" \
+            --query ContentLength --output text)"
+          [ "$stored" = "$(stat -c %s "$FILE")" ] || { echo "::error::stored size $stored differs"; exit 1; }
+          echo "Uploaded s3://$S3_BUCKET/$KEY ($stored bytes, sha256 $sha)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Prune old backups
+        if: steps.config.outputs.ready == 'true' && steps.config.outputs.s3 == 'true' && env.PRUNE == 'true'
+        run: |
+          aws s3api list-objects-v2 --endpoint-url "$S3_ENDPOINT" --bucket "$S3_BUCKET" --prefix "$S3_PREFIX" \
+            --query 'Contents[].Key' --output text | tr '\t' '\n' | sed '/^None$/d' > "$RUNNER_TEMP/keys.txt"
+          node scripts/d1-backup.mjs prune --prefix "$S3_PREFIX" --database "$DATABASE_NAME" \
+            --keep-days "$KEEP_DAYS" --keep-months "$KEEP_MONTHS" --keep-latest "$KEEP_LATEST" \
+            < "$RUNNER_TEMP/keys.txt" > "$RUNNER_TEMP/prune.txt"
+          echo "$(wc -l < "$RUNNER_TEMP/keys.txt") object(s), pruning $(wc -l < "$RUNNER_TEMP/prune.txt")"
+          while IFS= read -r key; do
+            # A bucket lock rule refuses deletes inside its window: say so, go on.
+            aws s3api delete-object --endpoint-url "$S3_ENDPOINT" --bucket "$S3_BUCKET" --key "$key" > /dev/null \
+              && echo "Deleted $key" \
+              || echo "::warning::could not delete $key (bucket lock rule?)"
+          done < "$RUNNER_TEMP/prune.txt"
+
+      # Optional second copy (or the only one, without a bucket): the
+      # encrypted file as a workflow artifact. Anyone who can read this
+      # repository's Actions can download it; it is useless without the key.
+      - name: Upload as a workflow artifact
+        if: steps.config.outputs.ready == 'true' && env.ARTIFACT_RETENTION_DAYS != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-backup-${{ github.run_id }}
+          path: |
+            ${{ steps.export.outputs.file }}
+            ${{ steps.export.outputs.file }}.sha256
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Remove the work directory
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/d1-backup"

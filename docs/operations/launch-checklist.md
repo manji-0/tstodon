@@ -153,7 +153,10 @@ If the browser loops between Access and the instance: `CF_ACCESS_AUD` or `CF_ACC
 ### Backups and monitoring
 
 - [ ] `wrangler d1 time-travel info tstodon` returns a bookmark (Time Travel is on).
-- [ ] A first export ran and its encrypted file is in the backup location ([Periodic exports](./runbook.md#periodic-exports)); a restore of it into a scratch database (`wrangler d1 create tstodon-restore-test`, `wrangler d1 execute … --file`) succeeds. Delete the scratch database afterwards.
+- [ ] The `D1 backup` workflow is configured ([Scheduled D1 backups](./runbook.md#scheduled-d1-backups)): the secrets and variables are set, the Cloudflare token has D1 Edit only, the bucket is in another account (or provider) with a lock rule, and the age identity is stored by two custodians outside GitHub and Cloudflare.
+- [ ] A manual run (Actions → D1 backup → Run workflow) succeeds, and its object `d1/tstodon-<stamp>.sql.gz.age` is in the bucket (`aws s3api head-object` shows the `sha256` metadata).
+- [ ] That backup restores: `scripts/d1-restore-check.sh <file> <identity>` decrypts it with the custodians' key and loads it into a scratch local database with the expected account count and no missing migrations ([Restore from a scheduled backup](./runbook.md#restore-from-a-scheduled-backup)). Optionally also load it into a scratch remote database (`wrangler d1 create tstodon-restore-test`, `wrangler d1 execute tstodon-restore-test --remote --file restore.sql`) and delete it afterwards.
+- [ ] The next scheduled run appears in the Actions tab the following day, and the alert on a failed or missing run is set ([Suggested alerts](./runbook.md#suggested-alerts)).
 - [ ] Media is copied somewhere else on a schedule ([R2 media](./runbook.md#r2-media)).
 - [ ] The secrets inventory is in your vault ([runbook](./runbook.md#secrets-and-configuration-inventory)).
 - [ ] An uptime check on `/api/v1/instance` (or `/healthz` with a bypass), and the alerts you chose from [Suggested alerts](./runbook.md#suggested-alerts), are live; an Analytics Engine query with your token returns rows.

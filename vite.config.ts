@@ -25,6 +25,8 @@ export default defineConfig({
             "packages/core/src/**/*.test.ts",
             "packages/domain/src/**/*.test.ts",
             "packages/api/src/**/*.test.ts",
+            // Operator scripts (D1 backup naming and retention).
+            "scripts/**/*.test.mjs",
           ],
           environment: "node",
         },

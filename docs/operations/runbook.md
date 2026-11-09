@@ -69,28 +69,93 @@ Caveats, from how this server works:
 - **Federation does not rewind.** Remote servers keep what they received after the restore point: posts that no longer exist here (they get a 404 when fetched; no `Delete` is sent), follows and accepts this server has forgotten, profile updates. Expect a few days of inconsistency for anything that happened in the lost window.
 - **Media does not rewind.** R2 is not restored. Objects uploaded after the restore point stay in the bucket unreferenced; objects the media vacuum or an account purge deleted after the restore point are gone, and their rows point at nothing (404).
 
-### Periodic exports
+### Scheduled D1 backups
 
-Time Travel lives in the same account as the database and covers only its window. Keep exports elsewhere as well. This repository has no export job yet (OPS-4 in [open TODOs](../planning/open-todos.md)); run one from CI or a trusted machine:
+Time Travel lives in the same account as the database and covers only its window. The [`D1 backup`](../../.github/workflows/d1-backup.yml) GitHub Actions workflow keeps copies elsewhere: once a day (03:43 UTC; change the `cron` line to suit your quiet hours) and on demand (Actions → D1 backup → Run workflow) it
+
+1. exports the production database with `wrangler d1 export --remote` (the lockfile's wrangler, through a throwaway config that names the database by id),
+2. checks the dump is not empty and holds `d1_migrations` and `accounts`,
+3. compresses it and encrypts it with [age](https://age-encryption.org) to the public keys in `D1_BACKUP_AGE_RECIPIENTS`, then deletes the plaintext; the plaintext never leaves the runner,
+4. uploads `<prefix><database>-<YYYYMMDDTHHMMSSZ>.sql.gz.age` to an S3-compatible bucket (an R2 bucket in **another** Cloudflare account, or another provider), with its SHA-256 in the object metadata (`sha256`), and checks the stored size,
+5. prunes old backups in that bucket (below), and
+6. optionally also keeps the encrypted file as a workflow artifact for `D1_BACKUP_ARTIFACT_RETENTION_DAYS` days.
+
+It was chosen over a Worker cron calling D1's export API (`POST /accounts/:account/d1/database/:id/export`, what wrangler calls): that would put a Cloudflare API token and the backup bucket's write credentials into the Worker the backups protect, and an encrypted copy outside Cloudflare would still need a second system. A logical dump from the Worker (paged `SELECT`s to R2) would run into CPU and subrequest limits and is not a consistent snapshot.
+
+The workflow does nothing until configured: a scheduled run with none of the settings below passes with a notice (forks stay green); a manual run, or a run with only some of them, fails and names what is missing. Scheduled workflows run from the default branch only, may start late at busy times, and GitHub disables them in a public repository after 60 days without repository activity: the launch checklist and the alert below catch that.
+
+Settings (repository Settings → Secrets and variables → Actions; an `environment` with required reviewers is not used, since nobody approves a nightly run):
+
+| Name                                | Kind     | Value                                                                                                                                                        |
+| ----------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `D1_BACKUP_CLOUDFLARE_API_TOKEN`    | secret   | A Cloudflare API token on the production account, permission Account → D1 → Edit only, limited to that account (see below)                                   |
+| `D1_BACKUP_CLOUDFLARE_ACCOUNT_ID`   | variable | The production account id                                                                                                                                    |
+| `D1_BACKUP_DATABASE_ID`             | variable | The production `database_id` (`wrangler d1 info tstodon`, or `tofu output -json wrangler_bindings`)                                                          |
+| `D1_BACKUP_DATABASE_NAME`           | variable | Optional, default `tstodon`; also the key's name part                                                                                                        |
+| `D1_BACKUP_AGE_RECIPIENTS`          | variable | One or more age public keys (`age1…`), separated by spaces, commas or newlines. Public keys only, never an identity (`AGE-SECRET-KEY-…`)                     |
+| `D1_BACKUP_S3_BUCKET`               | variable | The backup bucket. Leave unset to keep artifacts only                                                                                                        |
+| `D1_BACKUP_S3_ENDPOINT`             | variable | The S3 endpoint, for R2 `https://<backup-account-id>.r2.cloudflarestorage.com`                                                                               |
+| `D1_BACKUP_S3_REGION`               | variable | Optional, default `auto` (R2); set the bucket's region for another provider                                                                                  |
+| `D1_BACKUP_S3_PREFIX`               | variable | Optional, default `d1/`                                                                                                                                      |
+| `D1_BACKUP_S3_ACCESS_KEY_ID`        | secret   | An R2 API token's Access Key ID (or the provider's), for that bucket only                                                                                    |
+| `D1_BACKUP_S3_SECRET_ACCESS_KEY`    | secret   | Its Secret Access Key                                                                                                                                        |
+| `D1_BACKUP_PRUNE`                   | variable | Optional, default `true`; `false` leaves retention to the bucket's lifecycle rules                                                                           |
+| `D1_BACKUP_KEEP_DAYS`               | variable | Optional, default `35`: every backup younger than this is kept                                                                                               |
+| `D1_BACKUP_KEEP_MONTHS`             | variable | Optional, default `12`: the first backup of each of this many calendar months (UTC, the current one included) is kept                                        |
+| `D1_BACKUP_KEEP_LATEST`             | variable | Optional, default `7`: the newest this many backups are kept whatever their age, so a schedule that stopped for months never prunes the last copies          |
+| `D1_BACKUP_ARTIFACT_RETENTION_DAYS` | variable | Optional: also upload the encrypted file as a workflow artifact kept this many days (at most your plan's artifact retention). Required when no bucket is set |
+
+**Least privilege.**
+
+- The Cloudflare token can read the whole database and, with D1 Edit, also write to it and to every other D1 database in the account: D1 has no read-only export permission and no per-database scoping **(verify on the API token page; D1's export endpoint is a `POST`, listed under D1 Edit at the time of writing)**. Give it nothing else, set an expiry and roll it with the other tokens, and keep it in this repository's secrets only. It does not need D1 Read: the throwaway config names the database by id, so wrangler never lists databases.
+- The bucket lives in a second Cloudflare account (or another provider), so losing or compromising the production account does not reach it. Its R2 API token is "Object Read & Write" on that one bucket (list, put, delete for pruning; R2 has no put-only token).
+- Add a bucket lock rule so a leaked bucket token cannot erase history: `wrangler r2 bucket lock add <bucket> --prefix d1/ --retention-days 30` (run with the backup account's credentials). Keep `D1_BACKUP_KEEP_DAYS` above the lock's days: pruning a locked object fails, and the workflow only warns about it.
+- The workflow's `GITHUB_TOKEN` is `contents: read`. Anyone who can push a workflow change to the default branch can read these secrets; protect the branch.
+
+**Key custody.** The dump contains every actor's private signing key and the session rows ([secrets inventory](#secrets-and-configuration-inventory)); the age identity is the key to all of it.
+
+- Generate the key pair offline: `age-keygen -o tstodon-d1-backup.key` prints the public key (`age1…`) for `D1_BACKUP_AGE_RECIPIENTS`. The identity file never goes into GitHub, Cloudflare or the bucket.
+- Keep the identity in two places with different custodians (a password manager entry and a printed or hardware copy, or two operators' vaults). A backup nobody can decrypt is no backup. Several recipients are fine: each can decrypt alone (for example one software key, one `age-plugin-yubikey` key).
+- To rotate: add the new public key to `D1_BACKUP_AGE_RECIPIENTS`, run the workflow, check a restore with the new key, then remove the old public key. Keep the old identity until every backup encrypted to it has been pruned (`D1_BACKUP_KEEP_MONTHS` months).
+- If an identity leaks, treat every backup encrypted to it as leaked: see [Key compromise](#key-compromise-and-secret-rotation).
+
+**Cost of an export.** D1 documents that an export blocks other queries to the database while it runs **(verify)**, so a large export is a short outage of the API; schedule it when traffic is lowest. Export does not support databases with virtual tables; tstodon's migrations create none (no FTS).
+
+**Manual export** (the same thing from a trusted machine, for example before a risky migration):
 
 ```sh
-f=tstodon-$(date -u +%Y%m%dT%H%MZ).sql
+f=tstodon-$(date -u +%Y%m%dT%H%M%SZ).sql
 wrangler d1 export tstodon --remote --output "$f"
-age -r <recipient-public-key> -o "$f.age" "$f" && rm "$f"   # or gpg; the dump contains private keys
-wrangler r2 object put "tstodon-backups/d1/$f.age" --file "$f.age" --remote
+gzip -9 -c "$f" | age --encrypt -r <recipient-public-key> -o "$f.gz.age" && rm "$f"
+aws s3api put-object --endpoint-url "$BACKUP_S3_ENDPOINT" --bucket <bucket> --key "d1/$f.gz.age" --body "$f.gz.age"
 ```
 
-- **Schedule.** Daily, off-peak, keeping about 30 dailies and 12 monthlies is a reasonable start; Time Travel already covers fine-grained recovery inside its window, so the exports are for account loss, operator error discovered late, and moving the instance.
-- **Cost of an export.** D1 documents that an export blocks other queries to the database while it runs **(verify)**, so a large export is a short outage of the API; run it when traffic is lowest. Export does not support databases with virtual tables; tstodon's migrations create none (no FTS). `--table`, `--no-data` and `--no-schema` narrow the dump.
-- **Where to put it.** A separate bucket, ideally in a different Cloudflare account or another provider, with a lock rule so a leaked token cannot delete history (`wrangler r2 bucket lock add tstodon-backups --retention-days 35`). `wrangler r2 object put` has an upload size limit **(verify)**; for large dumps use an S3-compatible client (rclone, `aws s3 cp`) with an R2 API token.
-- **Restore from an export** into a new database, then point the Worker at it:
+Name it as the workflow does (`d1/tstodon-<stamp>.sql.gz.age`, second precision) and pruning treats it like the others; any other key in the bucket is never pruned. `node scripts/d1-backup.mjs key` prints the name for now, and `node scripts/d1-backup.mjs prune --now <ISO time> < keys.txt` shows what a run would prune.
 
-  ```sh
-  wrangler d1 create tstodon-restore
-  wrangler d1 execute tstodon-restore --remote --file tstodon-<stamp>.sql
-  ```
+### Restore from a scheduled backup
 
-  Put the new `database_id` in `packages/worker/wrangler.jsonc` and `pnpm run deploy`. The dump includes `d1_migrations`, so the deploy applies only the migrations newer than the dump. Check the placement region still matches the new database's primary location.
+<!-- derived-from #scheduled-d1-backups -->
+
+1. Download the backup and decrypt it on a trusted machine with an encrypted disk:
+
+   ```sh
+   aws s3api get-object --endpoint-url "$BACKUP_S3_ENDPOINT" --bucket <bucket> \
+     --key d1/tstodon-<stamp>.sql.gz.age tstodon-<stamp>.sql.gz.age
+   # or download the workflow run's artifact (a zip holding the .age and .sha256)
+   age --decrypt -i tstodon-d1-backup.key tstodon-<stamp>.sql.gz.age | gunzip > restore.sql
+   ```
+
+2. Rehearse it locally first: `scripts/d1-restore-check.sh tstodon-<stamp>.sql.gz.age tstodon-d1-backup.key` decrypts the backup (checking a `.sha256` next to it when there is one), loads it into a scratch local D1 database, prints the account, status and instance-key counts and the newest migration, and lists migrations the repository has that the backup lacks. Nothing touches Cloudflare. Tested with a local export → encrypt → decrypt → import round trip: the re-export of the restored database was byte-identical to the original, including multi-line PEMs, quotes and non-ASCII JSON.
+3. Load it into a new database and point the Worker at it:
+
+   ```sh
+   wrangler d1 create tstodon-restore
+   wrangler d1 execute tstodon-restore --remote --file restore.sql
+   ```
+
+   Put the new `database_id` in `packages/worker/wrangler.jsonc` (and `D1_BACKUP_DATABASE_ID`) and `pnpm run deploy`. The dump includes `d1_migrations`, so the deploy applies only the migrations newer than the dump. Check the placement region still matches the new database's primary location. Pause the queue around the switch as for [Time Travel](#d1-time-travel-point-in-time-restore); its caveats (deliveries and queue messages in flight, federation and media do not rewind) apply here too, with a longer lost window.
+
+4. Delete `restore.sql` (`shred -u restore.sql`) once the restore is verified.
 
 ### R2 media
 
@@ -124,6 +189,8 @@ Keep these in a password manager or vault, outside Cloudflare:
 | The Access application itself (paths, policies, identity providers)   | Cloudflare Zero Trust                  | Recreate from the [deploy checklist](./cloudflare-deploy.md) protect/bypass list; a new application has a new AUD                               |
 | Actor private keys                                                    | D1 (`accounts`, `instance_actor_keys`) | Unrecoverable without a D1 backup: remote servers cache the public keys, so new keys break signature verification until they refetch the actors |
 | Cloudflare API tokens (deploy, OpenTofu, Queues send, Analytics read) | Your CI / machine                      | Roll them in the dashboard (My Profile → API Tokens)                                                                                            |
+| The D1 backup age identity (`AGE-SECRET-KEY-…`)                       | Two custodians, offline                | Every backup encrypted only to it is unreadable; see [key custody](#scheduled-d1-backups)                                                       |
+| D1 backup tokens (`D1_BACKUP_*` secrets)                              | GitHub Actions secrets                 | Roll them (D1 Edit token on the production account, R2 token on the backup account) and update the secrets                                      |
 | `infra/cloudflare/terraform.tfvars` and the OpenTofu state            | Your machine / state backend           | Re-import the resources                                                                                                                         |
 | `packages/worker/wrangler.jsonc` with production ids                  | Your deploy branch                     | Recreate from `tofu output -json wrangler_bindings`                                                                                             |
 
@@ -430,6 +497,7 @@ Starting points; tune them to your traffic. Cloudflare Notifications covers some
 | `OutboxDeliveryGivenUp` to one host                             | > 50 per hour (a remote is down; see playbook)            |
 | `push.deliver` 401 / 403                                        | > 5% of pushes                                            |
 | `rate limit counter unavailable`                                | Any sustained (> 10 per 5 minutes)                        |
+| A failed `D1 backup` workflow run, or no new object under `d1/` | Any failure; no new backup for 2 days (schedule disabled) |
 | D1 size                                                         | > 70% of the plan limit                                   |
 | R2 storage                                                      | Growth beyond what you budgeted per week                  |
 | 429 responses on `/inbox` (Workers Logs or Security analytics)  | A sudden jump, or one large remote throttled continuously |
