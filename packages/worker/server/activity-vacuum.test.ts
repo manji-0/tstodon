@@ -255,7 +255,7 @@ describe("the activity vacuum", () => {
     };
     expect(
       await plan(
-        `SELECT id FROM outbox_deliveries WHERE kind IN ('Delivered', 'Failed', 'Expanded') AND updated_at < '2001' ORDER BY updated_at LIMIT 500`,
+        `SELECT id FROM outbox_deliveries WHERE kind IN ('Delivered', 'Failed', 'Expanded', 'Skipped') AND updated_at < '2001' ORDER BY updated_at LIMIT 500`,
       ),
     ).toContain("idx_outbox_deliveries_finished");
     expect(
