@@ -11,8 +11,10 @@ import { nowIso } from "./clock";
 import { type RepositoryError, runD1, toRepositoryError } from "./d1";
 import type { FetchSigner, FetchSigningKey } from "./federated-fetch";
 import {
+  findInstanceActorKeyDates as findInstanceActorKeyDatesSql,
   findInstanceActorKeys as findInstanceActorKeysSql,
   insertInstanceActorKeys as insertInstanceActorKeysSql,
+  rotateInstanceActorKeys as rotateInstanceActorKeysSql,
 } from "./generated/prisma/sql";
 import { generateAccountKeys } from "./keys";
 import { queryTyped, runTyped } from "./typed-sql";
@@ -81,6 +83,57 @@ export const instanceActorKeys = async (
   return kept.value === undefined
     ? err(toRepositoryError("instance actor keys missing after insert"))
     : ok(kept.value);
+};
+
+/**
+ * Replace the instance actor's key pair (OPS-8), keeping its key id
+ * (`/actor#main-key`): the old private key signs nothing from now on, as
+ * every delivery and fetch reads the key when it is signed. Nobody follows
+ * the instance actor, so no `Update` goes out: a remote that cached the old
+ * key fails to verify the next signature and fetches `/actor` again, as
+ * Mastodon does on a failed verification. Resolves to when it was rotated.
+ */
+export const rotateInstanceActorKeys = async (
+  db: D1Database,
+): Promise<Result<string, RepositoryError>> => {
+  const generated = await generateAccountKeys();
+  const rotatedAt = nowIso();
+  const stored = await runD1(() =>
+    runTyped(
+      db,
+      rotateInstanceActorKeysSql(
+        generated.publicKeyPem,
+        generated.privateKeyJwk.reveal(),
+        rotatedAt,
+      ),
+    ),
+  );
+  return stored.map(() => rotatedAt);
+};
+
+const InstanceActorKeyDatesRowSchema = z.object({
+  created_at: z.string(),
+  rotated_at: z.string().nullable(),
+});
+
+/** When the instance actor's key pair was made and last rotated; undefined before its first use. */
+export const instanceActorKeyDates = async (
+  db: D1Database,
+): Promise<
+  Result<
+    Readonly<{ createdAt: string; rotatedAt: string | undefined }> | undefined,
+    RepositoryError
+  >
+> => {
+  const rows = await runD1(() =>
+    queryTyped(db, findInstanceActorKeyDatesSql(), InstanceActorKeyDatesRowSchema),
+  );
+  return rows.map((found) => {
+    const row = found[0];
+    return row === undefined
+      ? undefined
+      : { createdAt: row.created_at, rotatedAt: row.rotated_at ?? undefined };
+  });
 };
 
 export const instanceActorKeyId = (identity: InstanceIdentity): string =>

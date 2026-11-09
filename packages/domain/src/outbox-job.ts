@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AccountId } from "./account-id";
 import { ActivityId } from "./activity-id";
 import { Hostname } from "./hostname";
+import { IsoInstant } from "./iso-instant";
 import { StatusId } from "./status-id";
 import { StoredMediaMetadata } from "./stored-media-metadata";
 import { StoredMediaSizes } from "./stored-media-sizes";
@@ -97,6 +98,22 @@ const RequeueDeadOutboxJobsSchema = z.object({
   kind: z.literal("RequeueDeadOutboxJobs"),
   select: DeadOutboxJobSelectionSchema,
   before: z.string().default(""),
+});
+/**
+ * Replace the key pairs of the next page of local accounts (by id after
+ * `afterId`, empty for the first page) not rotated since `startedAt`, and
+ * send each one's followers an actor `Update` (admin sent: the actor keys
+ * page or `POST /api/v1/admin/actor_keys/rotate_all`; see the runbook's key
+ * compromise playbook). The first page also rotates the instance actor's
+ * pair. A full page queues the next one after a pause, so the `Update`s
+ * reach remote servers paced. `rotated` counts the accounts of the pages
+ * before, for the log line of the last one.
+ */
+const RotateActorKeysSchema = z.object({
+  kind: z.literal("RotateActorKeys"),
+  startedAt: IsoInstant.schema,
+  afterId: z.string().default(""),
+  rotated: z.number().int().min(0).default(0),
 });
 /** Publish the scheduled statuses whose time has come (cron). */
 const PublishScheduledStatusesSchema = unitKind("PublishScheduledStatuses");
@@ -287,6 +304,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   VacuumMediaAttachmentsSchema,
   VacuumActivitiesSchema,
   RequeueDeadOutboxJobsSchema,
+  RotateActorKeysSchema,
   StripStoredMediaMetadataSchema,
   BackfillStoredMediaSizesSchema,
   PublishScheduledStatusesSchema,

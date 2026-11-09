@@ -25,6 +25,7 @@ import {
   releaseRemoteOutboxBackfill as releaseRemoteOutboxBackfillSql,
   deleteRemoteFollow as deleteRemoteFollowSql,
   findPendingRemoteFollowRequest as findPendingRemoteFollowRequestSql,
+  claimRemoteActorKeyRefetch as claimRemoteActorKeyRefetchSql,
   claimRemoteActorRefresh as claimRemoteActorRefreshSql,
   findRemoteActorByHandle as findRemoteActorByHandleSql,
   findRemoteActorByPublicKeyId as findRemoteActorByPublicKeyIdSql,
@@ -209,6 +210,37 @@ export const claimRemoteActorRefresh = async (
   (
     await runD1(async () =>
       queryTyped(db, claimRemoteActorRefreshSql(actorUri, dueBefore(), nowIso()), ActorUriRow),
+    )
+  ).map((rows) => rows.length > 0);
+
+/**
+ * How long after one key refetch (a signature that failed against the cached
+ * key, `resolveRemoteActor`) the same actor's key may be fetched again.
+ */
+export const KEY_REFETCH_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Mark `actorUri`'s key refetched now unless it was in the last
+ * {@link KEY_REFETCH_INTERVAL_MS}. One UPDATE decides, so concurrent failed
+ * verifications refetch it once. Resolves to whether this call took it; an
+ * actor not cached resolves to false.
+ */
+export const claimRemoteActorKeyRefetch = async (
+  db: D1Database,
+  actorUri: string,
+  now: Date = new Date(),
+): Promise<Result<boolean, RepositoryError>> =>
+  (
+    await runD1(async () =>
+      queryTyped(
+        db,
+        claimRemoteActorKeyRefetchSql(
+          actorUri,
+          new Date(now.getTime() - KEY_REFETCH_INTERVAL_MS).toISOString(),
+          now.toISOString(),
+        ),
+        ActorUriRow,
+      ),
     )
   ).map((rows) => rows.length > 0);
 

@@ -24,6 +24,8 @@ export * from "./sql/claimLocalPollExpiryNotice";
 
 export * from "./sql/claimPollUpdate";
 
+export * from "./sql/claimRemoteActorKeyRefetch";
+
 export * from "./sql/claimRemoteActorRefresh";
 
 export * from "./sql/claimRemoteOutboxBackfill";
@@ -264,6 +266,8 @@ export * from "./sql/findFilterStatusById";
 
 export * from "./sql/findFollowKind";
 
+export * from "./sql/findInstanceActorKeyDates";
+
 export * from "./sql/findInstanceActorKeys";
 
 export * from "./sql/findIpBlockById";
@@ -501,6 +505,8 @@ export * from "./sql/listAccountModerations";
 export * from "./sql/listAccountMovesByIdsJson";
 
 export * from "./sql/listAccountProfiles";
+
+export * from "./sql/listAccountsDueKeyRotation";
 
 export * from "./sql/listAdminAccountIds";
 
@@ -767,6 +773,10 @@ export * from "./sql/replacePollOptions";
 export * from "./sql/reserveStatusIdempotency";
 
 export * from "./sql/rewriteEditedMediaKey";
+
+export * from "./sql/rotateAccountKeys";
+
+export * from "./sql/rotateInstanceActorKeys";
 
 export * from "./sql/searchAccounts";
 
