@@ -188,6 +188,16 @@ describe("Mastodon web app", () => {
     }
   });
 
+  it("keeps the client build's Vite manifests out of the served assets", async () => {
+    // The Worker build reads them from dist/client; `.assetsignore` keeps them
+    // from being uploaded (public/.assetsignore, merged by the Cloudflare plugin).
+    for (const path of ["/.vite/manifest.json", "/.vite/manifest-assets.json"]) {
+      const response = await SELF.fetch(`${ORIGIN}${path}`);
+      expect(response.status, path).toBe(404);
+      expect(await response.text(), path).not.toContain("src/entrypoints/");
+    }
+  });
+
   it("stores the web UI's settings", async () => {
     const headers = await authHeaders("web-settings@example.com");
     const saved = await SELF.fetch(`${ORIGIN}/api/web/settings`, {

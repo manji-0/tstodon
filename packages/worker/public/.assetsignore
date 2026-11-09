@@ -1,0 +1,5 @@
+# Not uploaded or served. The Worker build reads the client's Vite manifests
+# (.vite/manifest.json, and upstream's .vite/manifest-assets.json) from
+# dist/client at build time; browsers never need them. The Cloudflare Vite
+# plugin appends its own entries to this file in the client output.
+.vite/
