@@ -32,3 +32,7 @@ The browser origin is `http://localhost:8793`, the host `INSTANCE_DOMAIN` names.
 - A scenario fails on any uncaught page error or 5xx from `/api/*`, as well as on its own assertions.
 
 The scenarios share one server and database and run one at a time; each uses fresh usernames. The admin scenarios are the exception: they sign up as `modadmin`, `modadmin2`, and `modadmin3`, which `ADMIN_USERNAMES` in `e2e/web.wrangler.jsonc` makes admins.
+
+## CI
+
+The `e2e-web` job in `.github/workflows/ci.yml` runs `pnpm e2e:web` (as `vp run e2e:web`) after `playwright install --with-deps chromium`, separately from the `ci` job, and uploads `.cache/e2e-web/results` when a scenario fails. The suite went unrun for a while before it had that job: six scenarios had failed since sign-in moved to Access (#82) and image attachments gained dimensions (#86).
