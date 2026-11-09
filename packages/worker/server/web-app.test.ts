@@ -20,6 +20,7 @@ const MANIFEST: WebManifest = {
   themeSelection: "/packs/theme-selection.js",
   inert: "/packs/inert.css",
   theme: "/packs/theme.css",
+  pages: "/packs/pages.css",
   favicon: "/packs/favicon.png",
   common: { js: "/packs/common.js", css: [], preload: [] },
   application: { js: "/packs/application.js", css: ["/packs/app.css"], preload: ["/packs/r.js"] },
@@ -108,6 +109,7 @@ describe("Mastodon web app", () => {
       signedIn: true,
       vapidKey: null,
       state: { meta: { title: "</script><script>alert(1)</script>" } },
+      appearance: { colorScheme: "auto", contrast: "auto" },
     });
     expect(html).toContain('<html lang="ja"');
     expect(html).toContain('<script type="module" src="/packs/application.js"');
@@ -179,6 +181,23 @@ describe("Mastodon web app", () => {
     // Upstream's emoji, fetched at build time, and the committed sounds.
     expect((await SELF.fetch(`${ORIGIN}/emoji/1f600.svg`)).status).toBe(200);
     expect((await SELF.fetch(`${ORIGIN}/sounds/boop.mp3`)).status).toBe(200);
+    // The fixed icon URLs the service worker puts on notifications.
+    for (const icon of ["/badge.png", "/android-chrome-192x192.png"]) {
+      const response = await SELF.fetch(`${ORIGIN}${icon}`);
+      expect(response.status, icon).toBe(200);
+      expect(response.headers.get("content-type"), icon).toBe("image/png");
+      await response.body?.cancel();
+    }
+  });
+
+  it("keeps the client build's Vite manifests out of the served assets", async () => {
+    // The Worker build reads them from dist/client; `.assetsignore` keeps them
+    // from being uploaded (public/.assetsignore, merged by the Cloudflare plugin).
+    for (const path of ["/.vite/manifest.json", "/.vite/manifest-assets.json"]) {
+      const response = await SELF.fetch(`${ORIGIN}${path}`);
+      expect(response.status, path).toBe(404);
+      expect(await response.text(), path).not.toContain("src/entrypoints/");
+    }
   });
 
   it("stores the web UI's settings", async () => {

@@ -455,6 +455,8 @@ const builtManifest = async (clientOutDir: string): Promise<unknown> => {
     themeSelection: url(chunk("src/entrypoints/theme-selection.ts").file),
     inert: url(chunk("src/styles/entrypoints/inert.scss").file),
     theme: url(chunk(key(await defaultTheme())).file),
+    // The stylesheet of the Worker's own HTML pages (settings, sign-in, admin, …).
+    pages: url(chunk("src/styles/entrypoints/pages.scss").file),
     favicon: url(chunk(favicon).file),
     common: entry("src/entrypoints/common.ts"),
     application: entry("src/entrypoints/application.ts"),
@@ -475,6 +477,7 @@ const devManifest = async (): Promise<unknown> => {
     themeSelection: url(path.join(webRoot, "entrypoints/theme-selection.ts")),
     inert: url(path.join(webRoot, "styles/entrypoints/inert.scss")),
     theme: url(await defaultTheme()),
+    pages: url(path.join(webRoot, "styles/entrypoints/pages.scss")),
     favicon: url(path.join(webRoot, "icons/favicon-32x32.png")),
     common: entry("entrypoints/common.ts"),
     application: entry("entrypoints/application.ts"),

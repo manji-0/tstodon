@@ -42,7 +42,7 @@ export const SymbolLogo: React.FC = () => (
     <title>{productName}</title>
     <path
       d={symbolPath}
-      fill='var(--color-bg-brand-base, #4c5fd5)'
+      fill='var(--color-bg-brand-base, #5e6ad2)'
       fillRule='evenodd'
     />
   </svg>

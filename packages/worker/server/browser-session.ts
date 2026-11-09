@@ -1,6 +1,7 @@
 import type { FediRole, LocalAccount } from "@tstodon/domain";
 import type { Context } from "hono";
 import { accessLogin } from "./access-session";
+import { rememberSignedInAccount } from "./appearance";
 import { parseInstanceIdentity } from "./runtime-config";
 
 /**
@@ -44,6 +45,8 @@ export const browserSession = async (
     case "Barred":
       return { kind: "Barred" };
     case "Account":
+      // The page this request renders takes the account's appearance.
+      rememberSignedInAccount(request, login.account.id);
       return login;
   }
 };
