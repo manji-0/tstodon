@@ -36,6 +36,16 @@ export const handleScheduled = (
     controller.cron === HOURLY_CRON
       ? undefined
       : env.OUTBOX_PROCESS_QUEUE.send({ kind: "VacuumMediaAttachments" }),
+    // Strip the metadata from media stored before stripping on upload; once
+    // every row is marked, one page that reads nothing. Six-hourly only, so a
+    // long first run is not joined by a second chain every hour.
+    controller.cron === HOURLY_CRON
+      ? undefined
+      : env.OUTBOX_PROCESS_QUEUE.send({
+          kind: "StripStoredMediaMetadata",
+          source: "attachments",
+          afterId: "",
+        }),
     // Re-fetch actors cached over a day ago, under the handle WebFinger
     // confirms; once an hour, not again when the six-hourly cron fires too.
     controller.cron === HOURLY_CRON ? refreshStaleRemoteActors(env) : undefined,
