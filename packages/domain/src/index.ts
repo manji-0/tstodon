@@ -78,6 +78,7 @@ export {
 } from "./video-metadata";
 export { UploadMetadata, type UnstrippableUpload } from "./upload-metadata";
 export { MediaId } from "./media-id";
+export { MediaDimensions, type VideoDimensions } from "./media-dimensions";
 export {
   ImageDimensions,
   type AnalyzeImage,

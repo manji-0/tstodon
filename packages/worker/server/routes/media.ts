@@ -22,6 +22,7 @@ import {
   parseMediaObjectKey,
 } from "../media-keys";
 import { imagesBindingAnalyzer, isAnalyzedImageType, processUploadedImage } from "../media-image";
+import { uploadDimensionViolation, uploadSizeViolation } from "../media-limits";
 import { parseInstanceIdentity } from "../runtime-config";
 import { newEntityId } from "../ids";
 import { browserSession } from "../browser-session";
@@ -114,10 +115,21 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
       422,
     );
   }
+  // The size, matrix and frame-rate limits /api/v2/instance advertises; the
+  // size is checked before the file is read.
+  const tooLarge = uploadSizeViolation(contentType, file.size);
+  if (tooLarge !== undefined) {
+    return c.json({ error: tooLarge, kind: "ValidationError" }, 422);
+  }
+  const original = new Uint8Array(await file.arrayBuffer());
+  const outOfBounds = uploadDimensionViolation(contentType, original);
+  if (outOfBounds !== undefined) {
+    return c.json({ error: outOfBounds, kind: "ValidationError" }, 422);
+  }
   // Metadata (an image's EXIF with its GPS position, XMP, IPTC, comments; a
   // video's location, device and date atoms or tags) never reaches the
   // bucket: a file that cannot be rewritten without it is refused.
-  const scrubbed = UploadMetadata.forUpload(contentType, new Uint8Array(await file.arrayBuffer()));
+  const scrubbed = UploadMetadata.forUpload(contentType, original);
   if (scrubbed.isErr()) {
     const kind = contentType.startsWith("video/") ? "MediaVideoRejected" : "MediaImageRejected";
     console.warn(JSON.stringify({ kind, error: scrubbed.error }));

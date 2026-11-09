@@ -8,7 +8,13 @@ import {
   type InstanceIdentity,
   type LocalAccount,
 } from "@tstodon/domain";
-import { InstanceLimits, schemaResult, warmSchemas } from "@tstodon/core";
+import {
+  InstanceLimits,
+  characterCount,
+  countableLength,
+  schemaResult,
+  warmSchemas,
+} from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { type Context } from "hono";
 import { findAccountById, setAccountLocked, updateAccountProfile } from "../../account-store";
@@ -37,6 +43,11 @@ import { buildFeaturedTagDocuments } from "../tags";
 import { z } from "zod";
 import { booleanish } from "../../form-values";
 
+const ProfileFieldInputSchema = z.object({
+  name: z.string().optional(),
+  value: z.string().optional(),
+});
+
 export const UpdateCredentialsBodySchema = z.object({
   display_name: z.string().optional(),
   avatar: z.unknown().optional(),
@@ -47,8 +58,13 @@ export const UpdateCredentialsBodySchema = z.object({
   indexable: booleanish,
   hide_collections: booleanish,
   locked: booleanish,
-  fields: z
-    .array(z.object({ name: z.string().optional(), value: z.string().optional() }))
+  fields: z.array(ProfileFieldInputSchema).optional(),
+  /**
+   * Mastodon's name for the profile fields: an array (the web UI's JSON) or
+   * an object keyed by position (`fields_attributes[0][name]` as a form).
+   */
+  fields_attributes: z
+    .union([z.array(ProfileFieldInputSchema), z.record(z.string(), ProfileFieldInputSchema)])
     .optional(),
   source: z
     .object({
@@ -241,6 +257,86 @@ const parseSourceDefaults = (
   });
 };
 
+type ProfileFieldInput = z.infer<typeof ProfileFieldInputSchema>;
+
+/**
+ * The profile fields a request sets, in order, or `undefined` when it names
+ * none: `fields_attributes` (a JSON array or object keyed by position, or
+ * `fields_attributes[0][name]` form keys) or `fields`. A field with a blank
+ * name or value is left out, before the limits are checked.
+ */
+const profileFields = (
+  rawBody: unknown,
+  body: UpdateCredentialsBody,
+): ReadonlyArray<Readonly<{ name: string; value: string }>> | undefined => {
+  const flat: Record<string, unknown> = schemaResult(z.record(z.string(), z.unknown()))(
+    rawBody,
+  ).unwrapOr({});
+  const formFields = new Map<number, { name?: string; value?: string }>();
+  for (const [key, value] of Object.entries(flat)) {
+    const match = /^fields_attributes\[(\d+)\]\[(name|value)\]$/.exec(key);
+    if (match && typeof value === "string") {
+      const index = Number(match[1]);
+      formFields.set(index, { ...formFields.get(index), [match[2] ?? "name"]: value });
+    }
+  }
+  const byPosition = (entries: ReadonlyArray<[number, ProfileFieldInput]>) =>
+    [...entries].sort(([a], [b]) => a - b).map(([, field]) => field);
+  const attributes = body.fields_attributes;
+  const requested: ReadonlyArray<ProfileFieldInput> | undefined =
+    attributes === undefined
+      ? formFields.size > 0
+        ? byPosition([...formFields.entries()])
+        : body.fields
+      : Array.isArray(attributes)
+        ? attributes
+        : byPosition(Object.entries(attributes).map(([key, field]) => [Number(key), field]));
+  return requested?.flatMap((field) => {
+    const name = field.name?.trim() ?? "";
+    const value = field.value?.trim() ?? "";
+    return name.length > 0 && value.length > 0 ? [{ name, value }] : [];
+  });
+};
+
+/**
+ * The advertised account limits (`configuration.accounts`), checked before
+ * anything is stored, with Mastodon's `Validation failed: ...` messages (the
+ * `Account` model's length validations and `NoteLengthValidator`).
+ */
+const checkProfileLimits = (
+  rawBody: unknown,
+  body: UpdateCredentialsBody,
+): Result<void, ApiRefusal> => {
+  const limits = InstanceLimits.account;
+  const problems: string[] = [];
+  const displayName = body.display_name?.trim();
+  if (displayName !== undefined && characterCount(displayName) > limits.maxDisplayNameCharacters) {
+    problems.push(
+      `Display name is too long (maximum is ${limits.maxDisplayNameCharacters} characters)`,
+    );
+  }
+  if (body.note !== undefined && countableLength(body.note) > limits.maxNoteCharacters) {
+    problems.push(`Note character limit of ${limits.maxNoteCharacters} exceeded`);
+  }
+  const fields = profileFields(rawBody, body) ?? [];
+  if (fields.length > limits.maxProfileFields) {
+    problems.push(`Fields is too long (maximum is ${limits.maxProfileFields} characters)`);
+  }
+  if (fields.some((field) => characterCount(field.name) > limits.maxProfileFieldNameCharacters)) {
+    problems.push(
+      `Fields name is too long (maximum is ${limits.maxProfileFieldNameCharacters} characters)`,
+    );
+  }
+  if (fields.some((field) => characterCount(field.value) > limits.maxProfileFieldValueCharacters)) {
+    problems.push(
+      `Fields value is too long (maximum is ${limits.maxProfileFieldValueCharacters} characters)`,
+    );
+  }
+  return problems.length === 0
+    ? ok(undefined)
+    : err(ApiRefusal.rejected(422, `Validation failed: ${problems.join(", ")}`, "ValidationError"));
+};
+
 /**
  * Store the bio, profile fields, flags, and avatar/header uploads beside the
  * account row; an omitted value keeps the stored one, and a replaced image is
@@ -249,6 +345,7 @@ const parseSourceDefaults = (
 const saveProfile = async (
   env: Env,
   accountId: string,
+  rawBody: unknown,
   body: UpdateCredentialsBody,
 ): Promise<Result<void, ApiRefusal>> => {
   const existingProfile = await findAccountProfile(env.DB, accountId);
@@ -256,14 +353,7 @@ const saveProfile = async (
     return err(ApiRefusal.repository(existingProfile.error.message));
   }
   const existing = existingProfile.value;
-  const fields = body.fields
-    ?.flatMap((field) => {
-      const name = field.name?.trim() ?? "";
-      const value = field.value?.trim() ?? "";
-      return name.length > 0 && value.length > 0 ? [{ name, value }] : [];
-    })
-    // Mastodon keeps only the first few profile fields.
-    .slice(0, InstanceLimits.account.maxProfileFields);
+  const fields = profileFields(rawBody, body);
   // Avatar / header uploads land in the media bucket like any other object.
   const avatar = await storeProfileImage(env, accountId, "avatar", body.avatar);
   if (avatar.kind === "Err") {
@@ -314,6 +404,10 @@ const updateCredentials = async (
   if (defaults.isErr()) {
     return err(ApiRefusal.rejected(422, defaults.error, "ValidationError"));
   }
+  const limits = checkProfileLimits(rawBody, body);
+  if (limits.isErr()) {
+    return err(limits.error);
+  }
   if (defaults.value) {
     const stored = await updateAccountDefaults(env.DB, account.id, defaults.value);
     if (stored.isErr()) {
@@ -328,7 +422,7 @@ const updateCredentials = async (
   if (updated.isErr()) {
     return err(ApiRefusal.repository(updated.error.message));
   }
-  const profile = await saveProfile(env, account.id, body);
+  const profile = await saveProfile(env, account.id, rawBody, body);
   if (profile.isErr()) {
     return err(profile.error);
   }

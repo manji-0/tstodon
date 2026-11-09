@@ -50,6 +50,7 @@ import { remoteStatusHistory } from "../../remote-status-edit";
 import { isQuotePolicy, listAcceptedQuoteEdges, setStatusQuotePolicy } from "../../quote-store";
 import { applyMediaAttributes } from "../../local-status-publish";
 import { checkAttachableMedia, queueLinkCard } from "./create";
+import { checkPollLimits, draftRefusal } from "./status-limits";
 import { visibilityIsPublic } from "../../quote-resolve";
 import { ApiRefusal } from "../api-refusal";
 import type { MediaAttribute } from "../../status-body-schema";
@@ -160,6 +161,10 @@ const resolvePollEdit = async (
     );
   }
   const expiresIn = pollEdit.expires_in === undefined ? undefined : Number(pollEdit.expires_in);
+  const limits = checkPollLimits(options, expiresIn);
+  if (limits.isErr()) {
+    return err(limits.error);
+  }
   return ok({
     pollId: current.value.id,
     options,
@@ -283,7 +288,7 @@ const editNote = async (
     }),
   );
   if (draft.isErr()) {
-    return err(ApiRefusal.rejected(422, draft.error.kind, draft.error.kind));
+    return err(draftRefusal(draft.error));
   }
   const policyRaw = (body.quote_approval_policy ?? "").trim().toLowerCase();
   const policyEdit = isQuotePolicy(policyRaw) ? policyRaw : undefined;

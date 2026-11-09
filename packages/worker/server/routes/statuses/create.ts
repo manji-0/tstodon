@@ -38,7 +38,7 @@ import {
   releaseStatusIdempotency,
   reserveStatusIdempotency,
 } from "../../status-idempotency-store";
-import { characterCount, InstanceLimits } from "@tstodon/core";
+import { InstanceLimits } from "@tstodon/core";
 import { schemaResult } from "@tstodon/core";
 import type { MediaAttribute } from "../../status-body-schema";
 import { parseInstanceIdentity } from "../../runtime-config";
@@ -51,6 +51,7 @@ import { quotePolicyName } from "../../quote-policy-name";
 import { isQuotePolicy, type QuotePolicy } from "../../quote-store";
 import { resolveQuote, visibilityIsPublic } from "../../quote-resolve";
 import { ApiRefusal } from "../api-refusal";
+import { checkPollLimits, draftRefusal } from "./status-limits";
 import {
   findScheduledStatus,
   insertScheduledStatus,
@@ -76,20 +77,23 @@ const parsePollRequest = (
   const options = [...poll.options]
     .map((option) => option.trim())
     .filter((option) => option.length > 0);
-  if (
-    options.length < InstanceLimits.poll.minOptions ||
-    options.length > InstanceLimits.poll.maxOptions
-  ) {
+  if (options.length < InstanceLimits.poll.minOptions) {
     return err(
-      ApiRefusal.rejected(422, "poll options must be between 2 and 4", "PollOptionsOutOfRange"),
+      ApiRefusal.rejected(
+        422,
+        "Validation failed: Poll options must have more than one item",
+        "PollOptionsOutOfRange",
+      ),
     );
   }
-  if (options.some((option) => characterCount(option) > InstanceLimits.poll.maxOptionCharacters)) {
-    return err(ApiRefusal.rejected(422, "poll option is too long", "PollOptionTooLong"));
+  const expiresIn = Number(poll.expires_in ?? 86400);
+  const limits = checkPollLimits(options, expiresIn);
+  if (limits.isErr()) {
+    return err(limits.error);
   }
   return ok({
     options,
-    expiresIn: Number(poll.expires_in ?? 86400),
+    expiresIn,
     multiple: isTruthy(poll.multiple),
     hideTotals: isTruthy(poll.hide_totals),
   });
@@ -286,7 +290,7 @@ const postStatus = async (
     }),
   );
   if (draft.isErr()) {
-    return err(ApiRefusal.rejected(422, draft.error.kind, draft.error.kind));
+    return err(draftRefusal(draft.error));
   }
   const policyRaw = (body.quote_approval_policy ?? "").trim().toLowerCase();
   const requestedPolicy = isQuotePolicy(policyRaw) ? policyRaw : undefined;

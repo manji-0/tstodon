@@ -189,23 +189,25 @@ describe("account profiles", () => {
     expect(publicAccount.fields[0]?.value).toBe(escaped);
   });
 
-  it("keeps at most four profile fields", async () => {
+  it("keeps up to four profile fields and refuses a fifth, as Mastodon", async () => {
     const email = "profile-fields@example.com";
-    const updated = await updateCredentials(email, {
-      fields: [
-        { name: "One", value: "1" },
-        { name: "Two", value: "2" },
-        { name: "Three", value: "3" },
-        { name: "Four", value: "4" },
-        { name: "Five", value: "5" },
-      ],
-    });
+    const four = [
+      { name: "One", value: "1" },
+      { name: "Two", value: "2" },
+      { name: "Three", value: "3" },
+      { name: "Four", value: "4" },
+    ];
+    const updated = await updateCredentials(email, { fields: four });
     expect(read(AccountSchema, updated.body).fields.map((field) => field.name)).toEqual([
       "One",
       "Two",
       "Three",
       "Four",
     ]);
+    const refused = await updateCredentials(email, {
+      fields: [...four, { name: "Five", value: "5" }],
+    });
+    expect(refused.status).toBe(422);
   });
 
   it("keeps omitted profile fields and replaces them when provided", async () => {

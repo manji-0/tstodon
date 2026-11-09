@@ -23,13 +23,46 @@ const createRefusals = [
     name: "a poll with one option",
     body: { status: "poll", poll: { options: ["only"], expires_in: 3600 } },
     status: 422,
-    error: { error: "poll options must be between 2 and 4", kind: "PollOptionsOutOfRange" },
+    error: {
+      error: "Validation failed: Poll options must have more than one item",
+      kind: "PollOptionsOutOfRange",
+    },
   },
   {
     name: "a poll option over the length limit",
     body: { status: "poll", poll: { options: ["a", "b".repeat(51)], expires_in: 3600 } },
     status: 422,
-    error: { error: "poll option is too long", kind: "PollOptionTooLong" },
+    error: {
+      error: "Validation failed: Poll options cannot be longer than 50 characters each",
+      kind: "PollOptionTooLong",
+    },
+  },
+  {
+    name: "a poll with too many options",
+    body: { status: "poll", poll: { options: ["a", "b", "c", "d", "e"], expires_in: 3600 } },
+    status: 422,
+    error: {
+      error: "Validation failed: Poll options can't contain more than 4 items",
+      kind: "PollOptionsOutOfRange",
+    },
+  },
+  {
+    name: "a poll that ends too soon",
+    body: { status: "poll", poll: { options: ["a", "b"], expires_in: 60 } },
+    status: 422,
+    error: { error: "Validation failed: Poll expires at is too soon", kind: "PollExpiration" },
+  },
+  {
+    name: "a status over the character limit",
+    body: { status: "a".repeat(501) },
+    status: 422,
+    error: { error: "Validation failed: Text character limit of 500 exceeded", kind: "TooLong" },
+  },
+  {
+    name: "more media than max_media_attachments",
+    body: { status: "media", media_ids: ["1", "2", "3", "4", "5"] },
+    status: 422,
+    error: { error: "Cannot attach more than 4 files", kind: "TooManyMedia" },
   },
   {
     name: "a quote of a status that does not exist",
@@ -105,6 +138,24 @@ const credentialRefusals = [
     body: { source: { quote_policy: "everyone" } },
     status: 422,
     error: { error: "Invalid source[quote_policy]", kind: "ValidationError" },
+  },
+  {
+    name: "a display name over max_display_name_length",
+    body: { display_name: "n".repeat(31) },
+    status: 422,
+    error: {
+      error: "Validation failed: Display name is too long (maximum is 30 characters)",
+      kind: "ValidationError",
+    },
+  },
+  {
+    name: "a note over max_note_length",
+    body: { note: "n".repeat(501) },
+    status: 422,
+    error: {
+      error: "Validation failed: Note character limit of 500 exceeded",
+      kind: "ValidationError",
+    },
   },
   {
     name: "an avatar that is not a file",
