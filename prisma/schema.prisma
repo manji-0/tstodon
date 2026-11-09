@@ -178,6 +178,10 @@ model account_profiles {
   header_object_key   String?
   header_content_type String?
   updated_at          String  @default("CURRENT_TIMESTAMP")
+  avatar_metadata_stripped_at String?
+  avatar_metadata_strip_error String?
+  header_metadata_stripped_at String?
+  header_metadata_strip_error String?
 }
 
 model account_flags {
@@ -524,6 +528,8 @@ model media_attachments {
   preview_width Int?
   preview_height Int?
   blurhash     String?
+  metadata_stripped_at String?
+  metadata_strip_error String?
   statuses     statuses? @relation(fields: [status_id], references: [id], onUpdate: NoAction)
   accounts     accounts  @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }

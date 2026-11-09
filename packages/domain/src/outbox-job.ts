@@ -4,6 +4,7 @@ import { AccountId } from "./account-id";
 import { ActivityId } from "./activity-id";
 import { Hostname } from "./hostname";
 import { StatusId } from "./status-id";
+import { StoredMediaMetadata } from "./stored-media-metadata";
 
 const ExpandFollowersSchema = z.object({
   kind: z.literal("ExpandFollowers"),
@@ -38,6 +39,19 @@ const RekeyLegacyMediaSchema = z.object({
  * a pass deletes a full batch).
  */
 const VacuumMediaAttachmentsSchema = unitKind("VacuumMediaAttachments");
+/**
+ * Strip the metadata from the next page of media stored before stripping on
+ * upload, in place (see `StoredMediaMetadata`): the rows of `source` after
+ * `afterId` (empty for the first), then the next source. `tally` sums the
+ * pages before, for the log line of the last one. The six-hourly cron queues
+ * the first page; a page with work after it queues the next.
+ */
+const StripStoredMediaMetadataSchema = z.object({
+  kind: z.literal("StripStoredMediaMetadata"),
+  source: StoredMediaMetadata.sourceSchema.default("attachments"),
+  afterId: z.string().default(""),
+  tally: StoredMediaMetadata.tallySchema.default(StoredMediaMetadata.emptyTally),
+});
 /** Publish the scheduled statuses whose time has come (cron). */
 const PublishScheduledStatusesSchema = unitKind("PublishScheduledStatuses");
 /** Queue one `CleanUpAccountStatuses` per account with automated post deletion on (cron). */
@@ -225,6 +239,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   BackfillLocalNoteTagsSchema,
   RekeyLegacyMediaSchema,
   VacuumMediaAttachmentsSchema,
+  StripStoredMediaMetadataSchema,
   PublishScheduledStatusesSchema,
   CleanUpStatusesSchema,
   CleanUpAccountStatusesSchema,

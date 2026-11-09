@@ -77,6 +77,23 @@ export {
   type VideoMetadataStrip,
 } from "./video-metadata";
 export { UploadMetadata, type UnstrippableUpload } from "./upload-metadata";
+export {
+  StoredMediaMetadata,
+  type ListUnstrippedMedia,
+  type MarkStoredMedia,
+  type ReadStoredMedia,
+  type StoredMediaCursor,
+  type StoredMediaLimits,
+  type StoredMediaMark,
+  type StoredMediaObject,
+  type StoredMediaOutcome,
+  type StoredMediaPass,
+  type StoredMediaReport,
+  type StoredMediaSource,
+  type StoredMediaStrip,
+  type StoredMediaTally,
+  type UnstrippedMedia,
+} from "./stored-media-metadata";
 export { MediaId } from "./media-id";
 export { MediaDimensions, type VideoDimensions } from "./media-dimensions";
 export {

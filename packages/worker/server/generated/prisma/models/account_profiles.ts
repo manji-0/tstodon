@@ -47,6 +47,10 @@ export type Account_profilesMinAggregateOutputType = {
   header_object_key: string | null;
   header_content_type: string | null;
   updated_at: string | null;
+  avatar_metadata_stripped_at: string | null;
+  avatar_metadata_strip_error: string | null;
+  header_metadata_stripped_at: string | null;
+  header_metadata_strip_error: string | null;
 };
 
 export type Account_profilesMaxAggregateOutputType = {
@@ -60,6 +64,10 @@ export type Account_profilesMaxAggregateOutputType = {
   header_object_key: string | null;
   header_content_type: string | null;
   updated_at: string | null;
+  avatar_metadata_stripped_at: string | null;
+  avatar_metadata_strip_error: string | null;
+  header_metadata_stripped_at: string | null;
+  header_metadata_strip_error: string | null;
 };
 
 export type Account_profilesCountAggregateOutputType = {
@@ -73,6 +81,10 @@ export type Account_profilesCountAggregateOutputType = {
   header_object_key: number;
   header_content_type: number;
   updated_at: number;
+  avatar_metadata_stripped_at: number;
+  avatar_metadata_strip_error: number;
+  header_metadata_stripped_at: number;
+  header_metadata_strip_error: number;
   _all: number;
 };
 
@@ -97,6 +109,10 @@ export type Account_profilesMinAggregateInputType = {
   header_object_key?: true;
   header_content_type?: true;
   updated_at?: true;
+  avatar_metadata_stripped_at?: true;
+  avatar_metadata_strip_error?: true;
+  header_metadata_stripped_at?: true;
+  header_metadata_strip_error?: true;
 };
 
 export type Account_profilesMaxAggregateInputType = {
@@ -110,6 +126,10 @@ export type Account_profilesMaxAggregateInputType = {
   header_object_key?: true;
   header_content_type?: true;
   updated_at?: true;
+  avatar_metadata_stripped_at?: true;
+  avatar_metadata_strip_error?: true;
+  header_metadata_stripped_at?: true;
+  header_metadata_strip_error?: true;
 };
 
 export type Account_profilesCountAggregateInputType = {
@@ -123,6 +143,10 @@ export type Account_profilesCountAggregateInputType = {
   header_object_key?: true;
   header_content_type?: true;
   updated_at?: true;
+  avatar_metadata_stripped_at?: true;
+  avatar_metadata_strip_error?: true;
+  header_metadata_stripped_at?: true;
+  header_metadata_strip_error?: true;
   _all?: true;
 };
 
@@ -228,6 +252,10 @@ export type Account_profilesGroupByOutputType = {
   header_object_key: string | null;
   header_content_type: string | null;
   updated_at: string;
+  avatar_metadata_stripped_at: string | null;
+  avatar_metadata_strip_error: string | null;
+  header_metadata_stripped_at: string | null;
+  header_metadata_strip_error: string | null;
   _count: Account_profilesCountAggregateOutputType | null;
   _avg: Account_profilesAvgAggregateOutputType | null;
   _sum: Account_profilesSumAggregateOutputType | null;
@@ -262,6 +290,10 @@ export type account_profilesWhereInput = {
   header_object_key?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
   header_content_type?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
   updated_at?: Prisma.StringFilter<"account_profiles"> | string;
+  avatar_metadata_stripped_at?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
+  avatar_metadata_strip_error?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
+  header_metadata_stripped_at?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
+  header_metadata_strip_error?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
 };
 
 export type account_profilesOrderByWithRelationInput = {
@@ -275,6 +307,10 @@ export type account_profilesOrderByWithRelationInput = {
   header_object_key?: Prisma.SortOrderInput | Prisma.SortOrder;
   header_content_type?: Prisma.SortOrderInput | Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  avatar_metadata_stripped_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  avatar_metadata_strip_error?: Prisma.SortOrderInput | Prisma.SortOrder;
+  header_metadata_stripped_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  header_metadata_strip_error?: Prisma.SortOrderInput | Prisma.SortOrder;
 };
 
 export type account_profilesWhereUniqueInput = Prisma.AtLeast<
@@ -292,6 +328,10 @@ export type account_profilesWhereUniqueInput = Prisma.AtLeast<
     header_object_key?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
     header_content_type?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
     updated_at?: Prisma.StringFilter<"account_profiles"> | string;
+    avatar_metadata_stripped_at?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
+    avatar_metadata_strip_error?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
+    header_metadata_stripped_at?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
+    header_metadata_strip_error?: Prisma.StringNullableFilter<"account_profiles"> | string | null;
   },
   "account_id"
 >;
@@ -307,6 +347,10 @@ export type account_profilesOrderByWithAggregationInput = {
   header_object_key?: Prisma.SortOrderInput | Prisma.SortOrder;
   header_content_type?: Prisma.SortOrderInput | Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  avatar_metadata_stripped_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  avatar_metadata_strip_error?: Prisma.SortOrderInput | Prisma.SortOrder;
+  header_metadata_stripped_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  header_metadata_strip_error?: Prisma.SortOrderInput | Prisma.SortOrder;
   _count?: Prisma.account_profilesCountOrderByAggregateInput;
   _avg?: Prisma.account_profilesAvgOrderByAggregateInput;
   _max?: Prisma.account_profilesMaxOrderByAggregateInput;
@@ -338,6 +382,22 @@ export type account_profilesScalarWhereWithAggregatesInput = {
     | string
     | null;
   updated_at?: Prisma.StringWithAggregatesFilter<"account_profiles"> | string;
+  avatar_metadata_stripped_at?:
+    | Prisma.StringNullableWithAggregatesFilter<"account_profiles">
+    | string
+    | null;
+  avatar_metadata_strip_error?:
+    | Prisma.StringNullableWithAggregatesFilter<"account_profiles">
+    | string
+    | null;
+  header_metadata_stripped_at?:
+    | Prisma.StringNullableWithAggregatesFilter<"account_profiles">
+    | string
+    | null;
+  header_metadata_strip_error?:
+    | Prisma.StringNullableWithAggregatesFilter<"account_profiles">
+    | string
+    | null;
 };
 
 export type account_profilesCreateInput = {
@@ -351,6 +411,10 @@ export type account_profilesCreateInput = {
   header_object_key?: string | null;
   header_content_type?: string | null;
   updated_at?: string;
+  avatar_metadata_stripped_at?: string | null;
+  avatar_metadata_strip_error?: string | null;
+  header_metadata_stripped_at?: string | null;
+  header_metadata_strip_error?: string | null;
 };
 
 export type account_profilesUncheckedCreateInput = {
@@ -364,6 +428,10 @@ export type account_profilesUncheckedCreateInput = {
   header_object_key?: string | null;
   header_content_type?: string | null;
   updated_at?: string;
+  avatar_metadata_stripped_at?: string | null;
+  avatar_metadata_strip_error?: string | null;
+  header_metadata_stripped_at?: string | null;
+  header_metadata_strip_error?: string | null;
 };
 
 export type account_profilesUpdateInput = {
@@ -377,6 +445,10 @@ export type account_profilesUpdateInput = {
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  avatar_metadata_stripped_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  avatar_metadata_strip_error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_metadata_stripped_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_metadata_strip_error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type account_profilesUncheckedUpdateInput = {
@@ -390,6 +462,10 @@ export type account_profilesUncheckedUpdateInput = {
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  avatar_metadata_stripped_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  avatar_metadata_strip_error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_metadata_stripped_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_metadata_strip_error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type account_profilesCreateManyInput = {
@@ -403,6 +479,10 @@ export type account_profilesCreateManyInput = {
   header_object_key?: string | null;
   header_content_type?: string | null;
   updated_at?: string;
+  avatar_metadata_stripped_at?: string | null;
+  avatar_metadata_strip_error?: string | null;
+  header_metadata_stripped_at?: string | null;
+  header_metadata_strip_error?: string | null;
 };
 
 export type account_profilesUpdateManyMutationInput = {
@@ -416,6 +496,10 @@ export type account_profilesUpdateManyMutationInput = {
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  avatar_metadata_stripped_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  avatar_metadata_strip_error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_metadata_stripped_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_metadata_strip_error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type account_profilesUncheckedUpdateManyInput = {
@@ -429,6 +513,10 @@ export type account_profilesUncheckedUpdateManyInput = {
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  avatar_metadata_stripped_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  avatar_metadata_strip_error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_metadata_stripped_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  header_metadata_strip_error?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type account_profilesCountOrderByAggregateInput = {
@@ -442,6 +530,10 @@ export type account_profilesCountOrderByAggregateInput = {
   header_object_key?: Prisma.SortOrder;
   header_content_type?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  avatar_metadata_stripped_at?: Prisma.SortOrder;
+  avatar_metadata_strip_error?: Prisma.SortOrder;
+  header_metadata_stripped_at?: Prisma.SortOrder;
+  header_metadata_strip_error?: Prisma.SortOrder;
 };
 
 export type account_profilesAvgOrderByAggregateInput = {
@@ -460,6 +552,10 @@ export type account_profilesMaxOrderByAggregateInput = {
   header_object_key?: Prisma.SortOrder;
   header_content_type?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  avatar_metadata_stripped_at?: Prisma.SortOrder;
+  avatar_metadata_strip_error?: Prisma.SortOrder;
+  header_metadata_stripped_at?: Prisma.SortOrder;
+  header_metadata_strip_error?: Prisma.SortOrder;
 };
 
 export type account_profilesMinOrderByAggregateInput = {
@@ -473,6 +569,10 @@ export type account_profilesMinOrderByAggregateInput = {
   header_object_key?: Prisma.SortOrder;
   header_content_type?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  avatar_metadata_stripped_at?: Prisma.SortOrder;
+  avatar_metadata_strip_error?: Prisma.SortOrder;
+  header_metadata_stripped_at?: Prisma.SortOrder;
+  header_metadata_strip_error?: Prisma.SortOrder;
 };
 
 export type account_profilesSumOrderByAggregateInput = {
@@ -494,6 +594,10 @@ export type account_profilesSelect<
     header_object_key?: boolean;
     header_content_type?: boolean;
     updated_at?: boolean;
+    avatar_metadata_stripped_at?: boolean;
+    avatar_metadata_strip_error?: boolean;
+    header_metadata_stripped_at?: boolean;
+    header_metadata_strip_error?: boolean;
   },
   ExtArgs["result"]["account_profiles"]
 >;
@@ -512,6 +616,10 @@ export type account_profilesSelectCreateManyAndReturn<
     header_object_key?: boolean;
     header_content_type?: boolean;
     updated_at?: boolean;
+    avatar_metadata_stripped_at?: boolean;
+    avatar_metadata_strip_error?: boolean;
+    header_metadata_stripped_at?: boolean;
+    header_metadata_strip_error?: boolean;
   },
   ExtArgs["result"]["account_profiles"]
 >;
@@ -530,6 +638,10 @@ export type account_profilesSelectUpdateManyAndReturn<
     header_object_key?: boolean;
     header_content_type?: boolean;
     updated_at?: boolean;
+    avatar_metadata_stripped_at?: boolean;
+    avatar_metadata_strip_error?: boolean;
+    header_metadata_stripped_at?: boolean;
+    header_metadata_strip_error?: boolean;
   },
   ExtArgs["result"]["account_profiles"]
 >;
@@ -545,6 +657,10 @@ export type account_profilesSelectScalar = {
   header_object_key?: boolean;
   header_content_type?: boolean;
   updated_at?: boolean;
+  avatar_metadata_stripped_at?: boolean;
+  avatar_metadata_strip_error?: boolean;
+  header_metadata_stripped_at?: boolean;
+  header_metadata_strip_error?: boolean;
 };
 
 export type account_profilesOmit<
@@ -559,7 +675,11 @@ export type account_profilesOmit<
   | "avatar_content_type"
   | "header_object_key"
   | "header_content_type"
-  | "updated_at",
+  | "updated_at"
+  | "avatar_metadata_stripped_at"
+  | "avatar_metadata_strip_error"
+  | "header_metadata_stripped_at"
+  | "header_metadata_strip_error",
   ExtArgs["result"]["account_profiles"]
 >;
 
@@ -580,6 +700,10 @@ export type $account_profilesPayload<
       header_object_key: string | null;
       header_content_type: string | null;
       updated_at: string;
+      avatar_metadata_stripped_at: string | null;
+      avatar_metadata_strip_error: string | null;
+      header_metadata_stripped_at: string | null;
+      header_metadata_strip_error: string | null;
     },
     ExtArgs["result"]["account_profiles"]
   >;
@@ -1162,6 +1286,10 @@ export interface account_profilesFieldRefs {
   readonly header_object_key: Prisma.FieldRef<"account_profiles", "String">;
   readonly header_content_type: Prisma.FieldRef<"account_profiles", "String">;
   readonly updated_at: Prisma.FieldRef<"account_profiles", "String">;
+  readonly avatar_metadata_stripped_at: Prisma.FieldRef<"account_profiles", "String">;
+  readonly avatar_metadata_strip_error: Prisma.FieldRef<"account_profiles", "String">;
+  readonly header_metadata_stripped_at: Prisma.FieldRef<"account_profiles", "String">;
+  readonly header_metadata_strip_error: Prisma.FieldRef<"account_profiles", "String">;
 }
 
 // Custom InputTypes
