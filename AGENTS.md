@@ -76,6 +76,8 @@ For a fresh clone, start with:
 - `docs/planning/local-core.md`
 - `docs/reference/configuration.md`
 - `docs/operations/cloudflare-deploy.md`
+- `docs/operations/launch-checklist.md` (go-live verification and federation smoke test)
+- `docs/operations/runbook.md` (backups, monitoring, incidents, upgrades)
 
 D1 migrations are `packages/worker/app/db/migrations/*.sql`, applied by Wrangler (`pnpm db:migrate:local`; remote via `pnpm run deploy`). A migration that drops a table (e.g. a SQLite table rebuild) needs a `-- void:allow-destructive` line or Void's deploy gate refuses it.
 
