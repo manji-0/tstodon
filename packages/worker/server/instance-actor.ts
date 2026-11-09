@@ -1,3 +1,8 @@
+import {
+  ACTIVITY_STREAMS,
+  type ApInstanceActorDocumentJSON,
+  SECURITY_V1,
+} from "@tstodon/api/activitypub";
 import { Sensitive, type SensitiveValue } from "@tstodon/core";
 import { InstanceIdentity } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
@@ -84,12 +89,12 @@ export const instanceActorKeyId = (identity: InstanceIdentity): string =>
 export const instanceActorDocument = (
   identity: InstanceIdentity,
   publicKeyPem: string,
-): Record<string, unknown> => {
+): ApInstanceActorDocumentJSON => {
   const id = InstanceIdentity.instanceActorUrl(identity);
   return {
     "@context": [
-      "https://www.w3.org/ns/activitystreams",
-      "https://w3id.org/security/v1",
+      ACTIVITY_STREAMS,
+      SECURITY_V1,
       { manuallyApprovesFollowers: "as:manuallyApprovesFollowers" },
     ],
     id,

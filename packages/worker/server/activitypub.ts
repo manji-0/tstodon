@@ -4,8 +4,18 @@ import {
   type LocalNote,
   type LocalReblog,
 } from "@tstodon/domain";
-import { schemaResult } from "@tstodon/core";
-import { z } from "zod";
+import {
+  ACTIVITY_STREAMS,
+  type ApActivityDocumentOf,
+  type ApActorDocumentJSON,
+  type ApImageJSON,
+  PUBLIC_COLLECTION,
+  type ApQuestionJSON,
+  type ApQuoteRequestRefJSON,
+  type ApStatusDocumentJSON,
+  SECURITY_V1,
+} from "@tstodon/api/activitypub";
+import type { z } from "zod";
 import { type AccountProfile, EMPTY_ACCOUNT_PROFILE } from "./account-profile-store";
 import type { ActivityJsonSchema } from "./activitypub-wire";
 import type { CustomEmoji } from "./emoji";
@@ -53,7 +63,7 @@ const actorImage = (
   identity: InstanceIdentity,
   objectKey: string | null,
   contentType: string | null,
-): Record<string, unknown> | undefined =>
+): ApImageJSON | undefined =>
   objectKey === null
     ? undefined
     : {
@@ -81,18 +91,14 @@ export const actorDocument = (
     alsoKnownAs: [],
   },
   shown: ActorProfile = SHOWN_EMPTY_PROFILE,
-): Record<string, unknown> => {
+): ApActorDocumentJSON => {
   const id = InstanceIdentity.actorUrl(identity, account.username);
   const profile = shown.kind === "Shown" ? shown.profile : undefined;
   const icon = profile && actorImage(identity, profile.avatarObjectKey, profile.avatarContentType);
   const image = profile && actorImage(identity, profile.headerObjectKey, profile.headerContentType);
   return {
-    "@context": [
-      "https://www.w3.org/ns/activitystreams",
-      "https://w3id.org/security/v1",
-      ACTOR_CONTEXT_TERMS,
-    ],
-    ...(migration.alsoKnownAs.length > 0 ? { alsoKnownAs: migration.alsoKnownAs } : {}),
+    "@context": [ACTIVITY_STREAMS, SECURITY_V1, ACTOR_CONTEXT_TERMS],
+    ...(migration.alsoKnownAs.length > 0 ? { alsoKnownAs: [...migration.alsoKnownAs] } : {}),
     ...(migration.movedTo ? { movedTo: migration.movedTo } : {}),
     id,
     type: profile?.bot ? "Service" : "Person",
@@ -183,21 +189,22 @@ export const activityPayloadFromJson = (
  * addressed like the note so it reaches the same followers and mentions.
  */
 export const noteDeleteActivity = (
-  note: Readonly<Record<string, unknown>>,
-): Record<string, unknown> => {
-  const id = typeof note.id === "string" ? note.id : "";
-  return {
-    "@context": "https://www.w3.org/ns/activitystreams",
-    id: `${id}#delete`,
-    type: "Delete",
-    actor: note.attributedTo,
-    to: note.to,
-    cc: note.cc,
-    object: { id, type: "Tombstone", atomUri: id },
-  };
-};
+  note: Pick<ApStatusDocumentJSON, "id" | "attributedTo" | "to" | "cc">,
+): ApActivityDocumentOf<"Delete"> => ({
+  "@context": ACTIVITY_STREAMS,
+  id: `${note.id}#delete`,
+  type: "Delete",
+  actor: note.attributedTo,
+  to: note.to,
+  cc: note.cc,
+  object: { id: note.id, type: "Tombstone", atomUri: note.id },
+});
 
-const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
+/** An `Announce` as delivered, with its `@context`. */
+export type AnnounceDocument = ApActivityDocumentOf<"Announce">;
+
+/** A `Like` as delivered, with its `@context`. */
+export type LikeDocument = ApActivityDocumentOf<"Like">;
 
 /** A status as ActivityPub names it: its object URI and its author's actor URI. */
 export type ActivityObjectRef = Readonly<{ uri: string; authorUri: string }>;
@@ -221,7 +228,7 @@ export const announceActivity = (
   booster: LocalAccount,
   reblog: LocalReblog,
   boosted: ActivityObjectRef,
-): Record<string, unknown> => {
+): AnnounceDocument => {
   const actor = InstanceIdentity.actorUrl(identity, booster.username);
   const followers = `${actor}/followers`;
   const author = boosted.authorUri;
@@ -232,7 +239,7 @@ export const announceActivity = (
         ? [[followers], [PUBLIC_COLLECTION, author]]
         : [[followers], [author]];
   return {
-    "@context": "https://www.w3.org/ns/activitystreams",
+    "@context": ACTIVITY_STREAMS,
     id: `${actor}/statuses/${reblog.id}/activity`,
     type: "Announce",
     actor,
@@ -252,10 +259,10 @@ export const likeActivity = (
   liker: LocalAccount,
   favouriteId: string,
   liked: ActivityObjectRef,
-): Record<string, unknown> => {
+): LikeDocument => {
   const actor = InstanceIdentity.actorUrl(identity, liker.username);
   return {
-    "@context": "https://www.w3.org/ns/activitystreams",
+    "@context": ACTIVITY_STREAMS,
     id: `${actor}#likes/${favouriteId}`,
     type: "Like",
     actor,
@@ -266,16 +273,19 @@ export const likeActivity = (
 
 /** Withdraws an {@link announceActivity} or {@link likeActivity}, reaching the same audience. */
 export const undoActivity = (
-  activity: Readonly<Record<string, unknown>>,
-): Record<string, unknown> => ({
-  "@context": "https://www.w3.org/ns/activitystreams",
-  id: `${String(activity.id)}/undo`,
-  type: "Undo",
-  actor: activity.actor,
-  to: activity.to,
-  cc: activity.cc,
-  object: { ...activity, "@context": undefined },
-});
+  activity: AnnounceDocument | LikeDocument,
+): ApActivityDocumentOf<"Undo"> => {
+  const { "@context": _context, ...object } = activity;
+  return {
+    "@context": ACTIVITY_STREAMS,
+    id: `${activity.id}/undo`,
+    type: "Undo",
+    actor: activity.actor,
+    to: activity.to,
+    ...(object.type === "Announce" ? { cc: object.cc } : {}),
+    object,
+  };
+};
 
 /** An account a note mentions, as its `Mention` tag names it. */
 export type NoteMention = Readonly<{ href: string; name: string }>;
@@ -308,16 +318,18 @@ export type NoteMedia = Readonly<{
  * options with their vote counts, `endTime`, `closed` once over, and `votersCount`.
  * A poll that hides its totals keeps them out of the document until it ends.
  */
-const questionFields = (poll: PollRecord): Record<string, unknown> => {
+const questionFields = (
+  poll: PollRecord,
+): Pick<ApQuestionJSON, "oneOf" | "anyOf" | "endTime" | "closed" | "votersCount"> => {
   const closed = Date.parse(poll.expiresAt) <= Date.now();
   const hidden = poll.hideTotals && !closed;
   const options = poll.options.map((option) => ({
-    type: "Note",
+    type: "Note" as const,
     name: option.title,
-    replies: { type: "Collection", totalItems: hidden ? 0 : option.votesCount },
+    replies: { type: "Collection" as const, totalItems: hidden ? 0 : option.votesCount },
   }));
   return {
-    [poll.multiple ? "anyOf" : "oneOf"]: options,
+    ...(poll.multiple ? { anyOf: options } : { oneOf: options }),
     endTime: poll.expiresAt,
     ...(closed ? { closed: poll.expiresAt } : {}),
     ...(hidden ? {} : { votersCount: poll.votersCount }),
@@ -352,7 +364,7 @@ export const noteDocument = (
     /** Who may quote the note, federated as `interactionPolicy.canQuote`. */
     quotePolicy: QuotePolicy;
   }>,
-): Record<string, unknown> => {
+): ApStatusDocumentJSON => {
   const { quote, mentions = [], reply, poll, quotePolicy } = extras;
   const { attachments, authorSensitized } = extras.media;
   const actor = InstanceIdentity.actorUrl(identity, account.username);
@@ -369,7 +381,7 @@ export const noteDocument = (
   // note is addressed `to` them alone.
   const to =
     note.visibility.kind === "Public"
-      ? ["https://www.w3.org/ns/activitystreams#Public"]
+      ? [PUBLIC_COLLECTION]
       : note.visibility.kind === "Direct"
         ? mentioned
         : [followers];
@@ -377,7 +389,7 @@ export const noteDocument = (
     note.visibility.kind === "Public"
       ? [followers, ...mentioned]
       : note.visibility.kind === "Unlisted"
-        ? ["https://www.w3.org/ns/activitystreams#Public", ...mentioned]
+        ? [PUBLIC_COLLECTION, ...mentioned]
         : note.visibility.kind === "FollowersOnly"
           ? mentioned
           : [];
@@ -417,35 +429,45 @@ export const noteDocument = (
     canQuote: { "@id": "gts:canQuote", "@type": "@id" },
     automaticApproval: { "@id": "gts:automaticApproval", "@type": "@id" },
   };
-  return {
-    "@context": ["https://www.w3.org/ns/activitystreams", terms],
+  const fields = {
+    "@context": [ACTIVITY_STREAMS, terms] satisfies ApStatusDocumentJSON["@context"],
     ...(quotes ? { quote: quoteUri, quote_uri: quoteUri, _misskey_quote: quoteUri } : {}),
     ...(quotes && quote?.authorization ? { quoteAuthorization: quote.authorization } : {}),
-    ...(poll ? questionFields(poll) : {}),
     id,
-    type: poll ? "Question" : "Note",
     attributedTo: actor,
     content: note.contentHtml,
     published: note.createdAt,
+    // Mastodon applies an `Update` of a note only when `updated` is newer
+    // than the edit it has; without it an edit never reaches it.
+    ...(note.editedAt === null ? {} : { updated: note.editedAt }),
     to,
     cc,
     sensitive: note.sensitive || (authorSensitized && attachments.length > 0),
     summary: note.spoilerText.length > 0 ? note.spoilerText : null,
     inReplyTo: reply?.inReplyTo ?? null,
     attachment: attachments.map((media) => ({
-      type: "Document",
+      type: "Document" as const,
       mediaType: media.mediaType,
       url: media.url,
       name: media.name,
       blurhash: media.blurhash,
-      ...(media.focalPoint ? { focalPoint: media.focalPoint } : {}),
+      ...(media.focalPoint
+        ? { focalPoint: [media.focalPoint[0], media.focalPoint[1]] as [number, number] }
+        : {}),
       ...(media.dimensions
         ? { width: media.dimensions.width, height: media.dimensions.height }
         : {}),
     })),
-    tag: mentions.map((mention) => ({ type: "Mention", href: mention.href, name: mention.name })),
+    tag: mentions.map((mention) => ({
+      type: "Mention" as const,
+      href: mention.href,
+      name: mention.name,
+    })),
     interactionPolicy: { canQuote: { automaticApproval } },
   };
+  return poll
+    ? { ...fields, type: "Question", ...questionFields(poll) }
+    : { ...fields, type: "Note" };
 };
 
 /**
@@ -457,15 +479,13 @@ export const quoteRequestActivity = (
   id: string,
   actor: string,
   quotedUri: string,
-  note: Readonly<Record<string, unknown>>,
-): Record<string, unknown> => {
+  note: ApStatusDocumentJSON,
+): ApActivityDocumentOf<"QuoteRequest"> => {
   const { "@context": noteContext, ...instrument } = note;
-  const noteTerms = schemaResult(z.array(z.unknown()))(noteContext)
-    .unwrapOr([])
-    .filter((entry) => entry !== "https://www.w3.org/ns/activitystreams");
+  const [, ...noteTerms] = typeof noteContext === "string" ? [noteContext] : noteContext;
   return {
     "@context": [
-      "https://www.w3.org/ns/activitystreams",
+      ACTIVITY_STREAMS,
       { QuoteRequest: "https://w3id.org/fep/044f#QuoteRequest" },
       ...noteTerms,
     ],
@@ -478,12 +498,7 @@ export const quoteRequestActivity = (
 };
 
 /** A remote `QuoteRequest` as an answer names it back, the quoting note by URI. */
-export type QuoteRequestRef = Readonly<{
-  id: string;
-  actor: string;
-  object: string;
-  instrument: string;
-}>;
+export type QuoteRequestRef = Omit<ApQuoteRequestRefJSON, "type">;
 
 /**
  * A local quoted author's answer to a `QuoteRequest`, as Mastodon's
@@ -495,11 +510,8 @@ export const quoteRequestAnswerActivity = (
   quotedAuthorUri: string,
   quoteId: string,
   request: QuoteRequestRef,
-): Record<string, unknown> => ({
-  "@context": [
-    "https://www.w3.org/ns/activitystreams",
-    { QuoteRequest: "https://w3id.org/fep/044f#QuoteRequest" },
-  ],
+): ApActivityDocumentOf<"Accept" | "Reject"> => ({
+  "@context": [ACTIVITY_STREAMS, { QuoteRequest: "https://w3id.org/fep/044f#QuoteRequest" }],
   id: `${quotedAuthorUri}#${answer.kind === "Accept" ? "accepts" : "rejects"}/quote_requests/${quoteId}`,
   type: answer.kind,
   actor: quotedAuthorUri,

@@ -1,3 +1,4 @@
+import { ACTIVITY_STREAMS, type ApActivityDocumentOf } from "@tstodon/api/activitypub";
 import { InstanceIdentity, type LocalAccount } from "@tstodon/domain";
 
 /**
@@ -16,11 +17,11 @@ export const pollVoteActivity = (
     authorUri: string;
     publishedAt: string;
   }>,
-): Record<string, unknown> => {
+): ApActivityDocumentOf<"Create"> => {
   const actor = InstanceIdentity.actorUrl(identity, voter.username);
   const noteId = pollVoteNoteId(identity, voter, vote.id);
   return {
-    "@context": "https://www.w3.org/ns/activitystreams",
+    "@context": ACTIVITY_STREAMS,
     id: `${noteId}/activity`,
     type: "Create",
     actor,

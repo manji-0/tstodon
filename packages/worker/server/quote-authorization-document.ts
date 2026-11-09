@@ -1,15 +1,17 @@
+import {
+  ACTIVITY_STREAMS,
+  type ApActivityDocumentOf,
+  type ApQuoteAuthorizationDocumentJSON,
+  type ApQuoteAuthorizationJSON,
+  PUBLIC_COLLECTION,
+} from "@tstodon/api/activitypub";
 import type { ActivityObjectRef } from "./activitypub";
 
 /**
  * A FEP-044f `QuoteAuthorization`: the quoted author's stamp approving one
  * status quoting theirs, by URI.
  */
-export type QuoteAuthorization = Readonly<{
-  id: string;
-  attributedTo: string;
-  interactingObject: string;
-  interactionTarget: string;
-}>;
+export type QuoteAuthorization = Omit<ApQuoteAuthorizationJSON, "type">;
 
 /** The stamp a local quoted author mints for a quote, as Mastodon's `approval_uri_for`. */
 export const quoteAuthorizationUri = (quotedAuthorUri: string, quoteId: string): string =>
@@ -28,8 +30,8 @@ export const localQuoteAuthorization = (
 });
 
 /** Mastodon's `quote_authorizations` context extension. */
-const context = [
-  "https://www.w3.org/ns/activitystreams",
+const context: ApQuoteAuthorizationDocumentJSON["@context"] = [
+  ACTIVITY_STREAMS,
   {
     gts: "https://gotosocial.org/ns#",
     QuoteAuthorization: "https://w3id.org/fep/044f#QuoteAuthorization",
@@ -38,7 +40,7 @@ const context = [
   },
 ];
 
-const stampObject = (stamp: QuoteAuthorization): Record<string, unknown> => ({
+const stampObject = (stamp: QuoteAuthorization): ApQuoteAuthorizationJSON => ({
   id: stamp.id,
   type: "QuoteAuthorization",
   attributedTo: stamp.attributedTo,
@@ -47,7 +49,9 @@ const stampObject = (stamp: QuoteAuthorization): Record<string, unknown> => ({
 });
 
 /** The stamp document, as Mastodon's `QuoteAuthorizationSerializer`. */
-export const quoteAuthorizationDocument = (stamp: QuoteAuthorization): Record<string, unknown> => ({
+export const quoteAuthorizationDocument = (
+  stamp: QuoteAuthorization,
+): ApQuoteAuthorizationDocumentJSON => ({
   "@context": context,
   ...stampObject(stamp),
 });
@@ -55,11 +59,11 @@ export const quoteAuthorizationDocument = (stamp: QuoteAuthorization): Record<st
 /** Withdraws a stamp, as Mastodon's `DeleteQuoteAuthorizationSerializer`. */
 export const quoteAuthorizationDeleteActivity = (
   stamp: QuoteAuthorization,
-): Record<string, unknown> => ({
+): ApActivityDocumentOf<"Delete"> => ({
   "@context": context,
   id: `${stamp.id}#delete`,
   type: "Delete",
   actor: stamp.attributedTo,
-  to: ["https://www.w3.org/ns/activitystreams#Public"],
+  to: [PUBLIC_COLLECTION],
   object: stampObject(stamp),
 });

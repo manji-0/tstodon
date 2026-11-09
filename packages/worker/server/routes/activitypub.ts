@@ -1,4 +1,10 @@
 import {
+  ACTIVITY_STREAMS,
+  type ApActorCollectionJSON,
+  type ApOutboxJSON,
+  type ApStatusDocumentJSON,
+} from "@tstodon/api/activitypub";
+import {
   ActivityId,
   InboxActivity,
   InstanceIdentity,
@@ -200,30 +206,37 @@ export const getUsersByUsernameQuoteAuthorizationsById = async (
  */
 const noteAddresses = async (
   db: D1Database,
-  note: Readonly<Record<string, unknown>>,
+  note: Pick<ApStatusDocumentJSON, "to" | "cc" | "attributedTo">,
   author: LocalAccount,
   actorUri: string,
 ): Promise<boolean> => {
-  const audience = [note.to, note.cc].flatMap((field) =>
-    Array.isArray(field) ? field.filter((uri) => typeof uri === "string") : [],
-  );
+  const audience = [...note.to, ...note.cc];
   if (audience.includes(actorUri)) {
     return true;
   }
-  if (!audience.includes(`${String(note.attributedTo)}/followers`)) {
+  if (!audience.includes(`${note.attributedTo}/followers`)) {
     return false;
   }
   const follow = await findRemoteFollow(db, author.id, actorUri);
   return follow.isOk() && follow.value?.requestKind === "Fulfilled";
 };
 
-const collection = (id: string, items: ReadonlyArray<string>) => ({
-  "@context": "https://www.w3.org/ns/activitystreams",
+const collection = (id: string, items: ReadonlyArray<string>): ApActorCollectionJSON => ({
+  "@context": ACTIVITY_STREAMS,
   id,
   type: "OrderedCollection",
   totalItems: items.length,
-  orderedItems: items,
+  orderedItems: [...items],
 });
+
+/**
+ * The outbox: the activities as they were delivered, read back from
+ * `outbound_activities.payload_json`. They were typed as
+ * `ApActivityDocument`s when enqueued; the column is read as plain JSON
+ * objects so an activity stored by an older build still shows.
+ */
+type OutboxDocument = Omit<ApOutboxJSON, "orderedItems"> &
+  Readonly<{ orderedItems: ReadonlyArray<Readonly<Record<string, unknown>>> }>;
 
 export const getUsersByUsernameOutbox = async (
   c: Context<{ Bindings: Env }, "/users/:username/outbox">,
@@ -254,17 +267,14 @@ export const getUsersByUsernameOutbox = async (
     const payload = parseJsonColumn(JsonObjectSchema, row.payload_json);
     return payload.isOk() ? [payload.value] : [];
   });
-  return c.json(
-    {
-      "@context": "https://www.w3.org/ns/activitystreams",
-      id: `${actor}/outbox`,
-      type: "OrderedCollection",
-      totalItems: items.length,
-      orderedItems: items,
-    },
-    200,
-    jsonLd,
-  );
+  const outbox: OutboxDocument = {
+    "@context": ACTIVITY_STREAMS,
+    id: `${actor}/outbox`,
+    type: "OrderedCollection",
+    totalItems: items.length,
+    orderedItems: items,
+  };
+  return c.json(outbox, 200, jsonLd);
 };
 
 export const getUsersByUsernameFollowers = async (

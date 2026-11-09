@@ -1,3 +1,4 @@
+import type { ApBlockJSON } from "@tstodon/api/activitypub";
 import { InstanceIdentity, type LocalAccount, type RemoteActor } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { blockAccount, unblockAccount } from "./block-mute-store";
@@ -12,7 +13,7 @@ import { removeRemoteFollower } from "./remote-follower";
 export type BlockTarget = Readonly<{ accountId: string | null; actorUri: string }>;
 
 /** Mastodon's `BlockSerializer` id when the block has no `uri` of its own. */
-const blockActivity = (actorUrl: string, blockId: string, target: string) => ({
+const blockActivity = (actorUrl: string, blockId: string, target: string): ApBlockJSON => ({
   id: `${actorUrl}#blocks/${blockId}`,
   type: "Block",
   actor: actorUrl,

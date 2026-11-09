@@ -1,3 +1,4 @@
+import type { ApFollowJSON } from "@tstodon/api/activitypub";
 import {
   type AcceptOutboundFollow,
   type FindLocalAccountByUsername,
@@ -36,7 +37,7 @@ const followActivity = (
   followerUrl: string,
   followActivityId: string,
   actorUri: string,
-): Record<string, unknown> => ({
+): ApFollowJSON => ({
   id: followActivityId,
   type: "Follow",
   actor: followerUrl,
