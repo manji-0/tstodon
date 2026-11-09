@@ -16,6 +16,7 @@ import {
   listFailedRows,
 } from "../csv-import-store";
 import { exportPage, FAILED_ROWS_SHOWN, importDetailPage, importPage } from "../data-pages";
+import { accountMediaBytes } from "../media-sizes";
 import { pageRedirect } from "../page-redirect";
 import { parseInstanceIdentity } from "../runtime-config";
 import type { PageMessage } from "../settings-pages";
@@ -27,10 +28,16 @@ import { instanceName, type SettingsContext, settingsAccount } from "./account-s
  * the signed-in account.
  */
 
-/** `GET /settings/export`: the downloads. */
+/** `GET /settings/export`: the downloads, and the media storage the account uses. */
 export const getSettingsExport = async (c: SettingsContext) => {
   const signedIn = await settingsAccount(c);
-  return signedIn.kind === "Answered" ? signedIn.response : c.html(exportPage(instanceName(c.env)));
+  if (signedIn.kind === "Answered") {
+    return signedIn.response;
+  }
+  const media = await accountMediaBytes(c.env.DB, signedIn.account.id);
+  return media.isErr()
+    ? c.html(errorPage(instanceName(c.env), "The server could not read your media storage."), 500)
+    : c.html(exportPage(instanceName(c.env), media.value));
 };
 
 /** `GET /settings/exports/:file`: one CSV file, read from D1 a page at a time. */

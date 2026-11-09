@@ -4,6 +4,7 @@ import { EXPORT_FILES } from "./csv-export";
 import { MAX_IMPORT_BYTES, MAX_IMPORT_ROWS } from "./csv-import-file";
 import type { CsvImport, FailedRow } from "./csv-import-store";
 import { escapeHtml } from "./html";
+import { humanSize } from "./human-size";
 import { messageLine, nav, options, type PageMessage } from "./settings-pages";
 
 /**
@@ -36,11 +37,16 @@ const FAILURE_TEXT: Readonly<Record<RowFailureValue["kind"], string>> = {
 
 export const failureText = (failure: RowFailureValue): string => FAILURE_TEXT[failure.kind];
 
-export const exportPage = (instanceName: string): string =>
+/**
+ * `mediaBytes` is what the account's attachments (originals and previews),
+ * avatar and header take in the media bucket: Mastodon's "Media storage" row.
+ */
+export const exportPage = (instanceName: string, mediaBytes: number): string =>
   page(
     `Export · ${instanceName}`,
     `${nav}
       <h1>Export</h1>
+      <p>Media storage: <strong>${escapeHtml(humanSize(mediaBytes))}</strong></p>
       <p>Download your data as CSV files. Mastodon and other servers that follow its format can import them, and so can <a href="/settings/import">this server</a>.</p>
       <ul>${EXPORT_FILES.map(
         (file) => `
