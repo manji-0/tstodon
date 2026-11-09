@@ -147,16 +147,23 @@ Level is the `console` method. Every event's `kind` is unique to one meaning; th
 
 **Delivery and the outbox queue.** Act on any of these: each one means activities did not leave or a job was abandoned.
 
-| Event                            | Level | Source             | Meaning                                                                                                                                                             | Act                                                                                                       |
-| -------------------------------- | ----- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `OutboxEnqueueInsertFailed`      | error | `delivery.ts`      | Storing the outbound activity in D1 failed (`accountId` or `signer`, `activityKind`, `message`); nothing was delivered                                              | D1 health; the user's local action happened, remotes never hear of it                                     |
-| `OutboxEnqueueInvalidActivityId` | error | `delivery.ts`      | D1 returned an id that is not an activity id                                                                                                                        | Bug; report it                                                                                            |
-| `OutboxEnqueueQueueSendFailed`   | error | `delivery.ts`      | The activity is stored but its `ExpandFollowers` message was not queued, so no follower inbox gets it                                                               | Queue health (dashboard), then check `outbox.enqueue` volume                                              |
-| `OutboxWorkflowCreateFailed`     | error | `delivery.ts`      | Starting the delivery Workflow for one inbox failed (`activityId`, `message`)                                                                                       | Workflows limits / status; the target row stays `Queued` and nothing retries it                           |
-| `OutboxExpandLookupFailed`       | error | `outbox-job.ts`    | Fan-out could not load the activity or its audience (`lookup`)                                                                                                      | The job is retried; repeated lines point at D1                                                            |
-| `OutboxExpandTargetsFailed`      | error | `outbox-job.ts`    | Fan-out could not write the per-inbox target rows                                                                                                                   | As above                                                                                                  |
-| `OutboxJobRejected`              | error | `queue-handler.ts` | A queue message is not a valid `OutboxJob` (`issues`). Usually a hand-sent message with a wrong body, or version skew between producer and consumer during a deploy | Fix the sender. The message is retried and then discarded by Queues (no dead-letter queue)                |
-| `OutboxJobDropped`               | error | `queue-handler.ts` | A job returned retry on its third attempt and was acknowledged, so it will not run again (`jobKind`, `attempts`). Paired with the `outbox.job` `failed` metric      | Read the job's own error lines just before it; cron-queued jobs run again at the next cron, others do not |
+| Event                                              | Level       | Source                                              | Meaning                                                                                                                                                                                                                       | Act                                                                                                                   |
+| -------------------------------------------------- | ----------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `OutboxEnqueueInsertFailed`                        | error       | `delivery.ts`                                       | Storing the outbound activity in D1 failed (`accountId` or `signer`, `activityKind`, `message`); nothing was delivered                                                                                                        | D1 health; the user's local action happened, remotes never hear of it                                                 |
+| `OutboxEnqueueInvalidActivityId`                   | error       | `delivery.ts`                                       | D1 returned an id that is not an activity id                                                                                                                                                                                  | Bug; report it                                                                                                        |
+| `OutboxEnqueueQueueSendFailed`                     | error       | `delivery.ts`                                       | The activity is stored but its `ExpandFollowers` message was not queued, so no follower inbox gets it                                                                                                                         | Queue health (dashboard), then check `outbox.enqueue` volume                                                          |
+| `OutboxWorkflowCreateFailed`                       | error       | `delivery.ts`                                       | Starting the delivery Workflow for one inbox failed (`activityId`, `message`)                                                                                                                                                 | Workflows limits / status. The target row stays `Queued`; the hourly sweep starts it again once it is an hour overdue |
+| `OutboxWorkflowRestartFailed`                      | error       | `stuck-delivery-sweep.ts`                           | The sweep could not restart an ended delivery Workflow (`activityId`, `inboxUrl`, `message`)                                                                                                                                  | Retried by the next sweep; read the instance with `wrangler workflows instances describe`                             |
+| `OutboxDeliveryGivenUp`                            | warn        | `outbox-delivery-run.ts`, `stuck-delivery-sweep.ts` | A delivery ended unsent (`reasonKind`: `RetryExhausted` after 17 attempts, `Permanent` for a refusal such as 410, `Stuck` for a target the sweep found over 10 days old; `inboxUrl`, `attempts`, `lastOutcome`, `httpStatus`) | Many for one host: the remote is down or refusing; see [unavailable domains](#a-remote-domain-is-marked-unavailable)  |
+| `OutboxDeliverySkipped`                            | log         | `delivery.ts`, `outbox-delivery-run.ts`             | Targets on a domain marked unavailable were recorded `Skipped` instead of sent (`activityId`, `targets`, `domains`)                                                                                                           | Expected while a domain is unavailable                                                                                |
+| `DeliveryDomainUnavailable`                        | warn        | `delivery-domain-health-store.ts`                   | A domain had failed deliveries on 7 distinct days with no success between; deliveries to it are skipped from now (`domain`, `failureDays`)                                                                                    | Check the domain; mark it available on `/admin/instances/<domain>` if it is back                                      |
+| `DeliveryDomainAvailable`                          | log         | `delivery-domain-health-store.ts`                   | An unavailable domain answered a delivery, sent a verified activity, or an admin marked it available (`domain`, `failureDays`, `via`)                                                                                         | None                                                                                                                  |
+| `DeliveryDomainHealthNotRecorded`                  | error       | `delivery-domain-health-store.ts`                   | D1 refused the failure-day write or the clear (`domain`, `reachability`, `message`); the delivery itself went on                                                                                                              | D1 health                                                                                                             |
+| `OutboxDeliverySweep`, `OutboxDeliverySweepFailed` | log / error | `stuck-delivery-sweep.ts`                           | The hourly stuck-delivery sweep found overdue targets (counts), or could not list them                                                                                                                                        | A steady `created` or `restarted` count points at Workflows errors                                                    |
+| `OutboxExpandLookupFailed`                         | error       | `outbox-job.ts`                                     | Fan-out could not load the activity or its audience (`lookup`)                                                                                                                                                                | The job is retried; repeated lines point at D1                                                                        |
+| `OutboxExpandTargetsFailed`                        | error       | `outbox-job.ts`                                     | Fan-out could not write the per-inbox target rows                                                                                                                                                                             | As above                                                                                                              |
+| `OutboxJobRejected`                                | error       | `queue-handler.ts`                                  | A queue message is not a valid `OutboxJob` (`issues`). Usually a hand-sent message with a wrong body, or version skew between producer and consumer during a deploy                                                           | Fix the sender. The message is retried and then discarded by Queues (no dead-letter queue)                            |
+| `OutboxJobDropped`                                 | error       | `queue-handler.ts`                                  | A job returned retry on its third attempt and was acknowledged, so it will not run again (`jobKind`, `attempts`). Paired with the `outbox.job` `failed` metric                                                                | Read the job's own error lines just before it; cron-queued jobs run again at the next cron, others do not             |
 
 **"Not federated" and "not queued".** The local change succeeded (the post exists, the profile changed) but the activity or follow-up job that tells remote servers was not created. One line is worth reading; a stream of them points at D1 or the queue.
 
@@ -196,7 +203,7 @@ Level is the `console` method. Every event's `kind` is unique to one meaning; th
 - `RATE_LIMITS is not a JSON object of known buckets; using the defaults` (warn): the `RATE_LIMITS` var is malformed and was ignored as a whole. Fix the var.
 - `rate limit counter unavailable: …` (warn): a `RateLimitCounter` call failed and the request went through uncounted (fail open). Sustained lines mean limits are not enforced; check Durable Object errors.
 
-**Not logged.** Inbox refusals (`401 InvalidSignature`, `503 VerificationUnavailable`, `403` for refused domains and suspended actors) and the outcome of each delivery attempt are not log events (OPS-5). Find refusals by request path and status in Workers Logs; find delivery outcomes in `outbox_deliveries` (below).
+**Not logged.** Inbox refusals (`401 InvalidSignature`, `503 VerificationUnavailable`, `403` for refused domains and suspended actors) are not log events (OPS-5); find them by request path and status in Workers Logs. A delivery attempt is not a log line either: each writes an `outbox.deliver` metric point, and only a delivery that ends unsent logs (`OutboxDeliveryGivenUp`).
 
 ### Analytics Engine metrics
 
@@ -204,19 +211,23 @@ Level is the `console` method. Every event's `kind` is unique to one meaning; th
 
 Every point is written by `writeMetric` in `packages/worker/server/metrics.ts` to dataset `tstodon_metrics`; a failed write is swallowed. Columns: `index1` is the metric name, then `double1..` and `blob1..`. The full table is the [metric reference](../architecture/d1-heavy-scenarios.md#metric-reference); the ones operators watch:
 
-| `index1`          | Doubles                                 | Blobs                                          | Watch for                                                                   |
-| ----------------- | --------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------- |
-| `cron`            | `[1]`                                   | `[cronExpression, scheduled]`                  | Missing points: a cron run failed (written only when all its sends succeed) |
-| `outbox.job`      | `[1]`                                   | `[jobKind, retry or failed]`                   | Any `failed`                                                                |
-| `outbox.job.page` | `[size, elapsedMs, chainedFlag]`        | `[jobKind, ok or retry or error, step]`        | `error` and `retry` by job; `elapsedMs` growth                              |
-| `outbox.enqueue`  | `[1]`                                   | `[activityKind]` or `[activityKind, targeted]` | Volume of outgoing activities; a drop to zero while users post              |
-| `outbox.expand`   | `[remoteTargetCount, expandMs, okFlag]` | `[ok or targets_failed]`                       | `targets_failed`                                                            |
-| `push.deliver`    | `[httpStatus or 0]`                     | `[httpStatus or network]`                      | 401/403 (VAPID key problem), `network`                                      |
-| `timeline.*`      | `[latencyMs, rows]`                     | `[ok or error]`                                | p95 latency, `error` share                                                  |
-| `search`          | `[latencyMs, accountHits, statusHits]`  | `[type]`                                       | p95 latency                                                                 |
-| `stream.render`   | `[renderMs, deliveredFlag]`             | `[home or list or public, ok or error]`        | `error` share                                                               |
+| `index1`          | Doubles                                                    | Blobs                                                                              | Watch for                                                                   |
+| ----------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `cron`            | `[1]`                                                      | `[cronExpression, scheduled]`                                                      | Missing points: a cron run failed (written only when all its sends succeed) |
+| `outbox.job`      | `[1]`                                                      | `[jobKind, retry or failed]`                                                       | Any `failed`                                                                |
+| `outbox.job.page` | `[size, elapsedMs, chainedFlag]`                           | `[jobKind, ok or retry or error, step]`                                            | `error` and `retry` by job; `elapsedMs` growth                              |
+| `outbox.enqueue`  | `[1]`                                                      | `[activityKind]` or `[activityKind, targeted]`                                     | Volume of outgoing activities; a drop to zero while users post              |
+| `outbox.expand`   | `[remoteTargetCount, expandMs, okFlag, skippedCount]`      | `[ok or targets_failed]`                                                           | `targets_failed`                                                            |
+| `outbox.deliver`  | `[latencyMs, failedHttpStatus, attemptNumber]`             | `[success or permanent or http or throttled or network or local or skipped, host]` | Failure share per host; `local` (this server's D1 or keys failing)          |
+| `outbox.skip`     | `[skippedCount]`                                           | `[expand or targeted, DomainUnavailable]`                                          | Volume left out for unavailable domains                                     |
+| `outbox.domain`   | `[failureDays]`                                            | `[unavailable or available, delivery or inbound or admin]`                         | Any `unavailable`                                                           |
+| `outbox.sweep`    | `[examined, created, restarted, waiting, givenUp, failed]` | `[ok or error]`                                                                    | `error`; `created` / `restarted` above zero every hour                      |
+| `push.deliver`    | `[httpStatus or 0]`                                        | `[httpStatus or network]`                                                          | 401/403 (VAPID key problem), `network`                                      |
+| `timeline.*`      | `[latencyMs, rows]`                                        | `[ok or error]`                                                                    | p95 latency, `error` share                                                  |
+| `search`          | `[latencyMs, accountHits, statusHits]`                     | `[type]`                                                                           | p95 latency                                                                 |
+| `stream.render`   | `[renderMs, deliveredFlag]`                                | `[home or list or public, ok or error]`                                            | `error` share                                                               |
 
-`outbox.job.page` is written by every paged job: `FanOutHome`, `FanOutPublic`, `DistributePollUpdate`, `ProcessExpiredPolls`, `MoveFollows`, `BackfillRemoteOutbox`, `BackfillRemoteThread`, `ProcessCsvImport`, `CleanUpAccountStatuses`, `SeverBlockedDomainFollows`, `FanOutRemovedStatuses`, `BackfillLocalNoteTags`, `RekeyLegacyMedia`, `VacuumMediaAttachments`, `StripStoredMediaMetadata`, `BackfillStoredMediaSizes` (`blob1` is the job kind as queued). The delivery Workflow writes no metric (OPS-6).
+`outbox.job.page` is written by every paged job: `FanOutHome`, `FanOutPublic`, `DistributePollUpdate`, `ProcessExpiredPolls`, `MoveFollows`, `BackfillRemoteOutbox`, `BackfillRemoteThread`, `ProcessCsvImport`, `CleanUpAccountStatuses`, `SeverBlockedDomainFollows`, `FanOutRemovedStatuses`, `BackfillLocalNoteTags`, `RekeyLegacyMedia`, `VacuumMediaAttachments`, `StripStoredMediaMetadata`, `BackfillStoredMediaSizes` (`blob1` is the job kind as queued). The delivery Workflow writes one `outbox.deliver` point per attempt.
 
 Query with the SQL API (an API token with Account Analytics Read):
 
@@ -249,6 +260,12 @@ SELECT toStartOfInterval(timestamp, INTERVAL '1' HOUR) AS hour, blob1 AS activit
 FROM tstodon_metrics WHERE index1 = 'outbox.enqueue' AND timestamp > NOW() - INTERVAL '1' DAY
 GROUP BY hour, activity ORDER BY hour
 
+-- Delivery attempts by outcome and host over a day (failing hosts first).
+SELECT blob2 AS host, blob1 AS outcome, SUM(_sample_interval) AS attempts,
+       quantileWeighted(0.95, double1, _sample_interval) AS p95_ms
+FROM tstodon_metrics WHERE index1 = 'outbox.deliver' AND timestamp > NOW() - INTERVAL '1' DAY
+GROUP BY host, outcome ORDER BY attempts DESC LIMIT 50
+
 -- Web Push responses by status.
 SELECT blob1 AS status, SUM(_sample_interval) AS n
 FROM tstodon_metrics WHERE index1 = 'push.deliver' AND timestamp > NOW() - INTERVAL '1' DAY
@@ -265,7 +282,14 @@ Analytics Engine keeps data for three months and samples at high volume (weight 
 
 ### Outbound delivery health (D1)
 
-Each activity to each remote inbox is a row in `outbox_deliveries` (`inbox_url` set; fan-out rows have `inbox_url` NULL and `kind` `Expanded` or `Delivered`). `kind` is `Queued`, `Delivered` or `Failed`; a failure has `reason_kind` `Permanent` (a 4xx other than 408/429, with `http_status`) or `RetryExhausted`. The Workflow attempts a delivery 5 times, sleeping 1, 5, 15 and 60 minutes between attempts (`OutboxDelivery` in `packages/domain/src/outbox-delivery.ts`), so a delivery is decided within about 81 minutes plus run time; nothing retries it after that (OPS-2).
+Each activity to each remote inbox is a row in `outbox_deliveries` (`inbox_url` set; fan-out rows have `inbox_url` NULL and `kind` `Expanded` or `Delivered`). `kind` is `Queued`, `Delivered`, `Failed` or `Skipped`:
+
+- `Failed` / `Permanent` (with `http_status`): the remote answered a 4xx other than 401, 408 and 429, or a 501 (Mastodon's `response_error_unsalvageable?`), or the activity or its signer is gone here.
+- `Failed` / `RetryExhausted` (with `attempt_count`): 17 attempts failed, or the hourly sweep found the target stuck for over 10 days.
+- `Skipped` / `DomainUnavailable`: the inbox's domain was marked unavailable (below), so nothing was sent.
+- `Queued` with `next_attempt_at`: waiting for its next attempt.
+
+The Workflow attempts a delivery up to 17 times (Mastodon's 16 retries), sleeping Sidekiq's backoff between attempts: `count⁴ + 15 + rand(10) × (count + 1)` seconds, from 15 seconds up to about 14 hours, about 2.1 days in all (`OutboxDelivery` in `packages/domain/src/outbox-delivery.ts`). A 429 or 503 with a `Retry-After` waits at least that long, at most 12 hours. 5xx, 401, 408, 429 and no answer at all are retried.
 
 ```sh
 # State of the last day's deliveries.
@@ -280,9 +304,23 @@ wrangler d1 execute tstodon --remote --command \
    FROM outbox_deliveries
    WHERE inbox_url IS NOT NULL AND kind <> 'Delivered' AND updated_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 day')
    GROUP BY host, kind, reason_kind, http_status ORDER BY n DESC LIMIT 30"
+
+# Domains deliveries are failing to, and the ones marked unavailable.
+wrangler d1 execute tstodon --remote --command \
+  "SELECT domain, kind, failure_days, last_failure_day, unavailable_since FROM delivery_domain_health ORDER BY kind DESC, failure_days DESC"
+
+# Targets overdue for their next attempt (what the hourly sweep picks up).
+wrangler d1 execute tstodon --remote --command \
+  "SELECT COUNT(*) AS overdue FROM outbox_deliveries
+   WHERE kind = 'Queued' AND inbox_url IS NOT NULL
+     AND COALESCE(next_attempt_at, updated_at) < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 hour')"
 ```
 
-These scan the table (there is no index on `updated_at`), so they cost rows read in proportion to its size; run them when investigating, not from a one-minute monitor.
+The first two scan the table (there is no index on `updated_at`), so they cost rows read in proportion to its size; run them when investigating, not from a one-minute monitor. The last two are small: `delivery_domain_health` holds only failing domains, and the overdue count uses `idx_outbox_deliveries_due`.
+
+**Domain health.** `delivery_domain_health` counts, per domain, the distinct UTC days on which a delivery attempt failed (an HTTP failure or no answer; this server's own failures do not count). On the seventh such day with no success between, the domain is `Unavailable` (`DeliveryDomainUnavailable`): fan-out and targeted sends record its inboxes as `Skipped`, and Workflows still retrying for it stop at their next attempt. Any answer from the domain (a success, or a permanent refusal), any verified inbound activity from it, or "Mark as available" on `/admin/instances/<domain>` deletes the row (`DeliveryDomainAvailable`). Deliveries and the inbox check an isolate copy of the table, read again each minute, so for up to a minute after a change another isolate can still send to a domain just marked unavailable, or not yet clear one just marked failing. Fan-out reads the unavailable list from D1 for each activity.
+
+**Stuck deliveries.** Every hour the cron sweeps up to 50 `Queued` targets whose next attempt is over an hour late (`sweepStuckDeliveries`): a target whose Workflow was never created (`OutboxWorkflowCreateFailed`) gets one, an `errored`, `terminated` or `complete` instance is restarted from its first step (the row's attempt count carries over), a running or sleeping one is left for another hour, and a target over 10 days old is given up (`OutboxDeliveryGivenUp`, `Stuck`). Each run writes an `outbox.sweep` point.
 
 Workflow instances (instance id `outbox-<hash>`):
 
@@ -292,7 +330,7 @@ wrangler workflows instances list tstodon-outbox-delivery --status running --per
 wrangler workflows instances describe tstodon-outbox-delivery <instance-id>
 ```
 
-A delivery that ends `Failed` completes normally (status `complete`, with the `Failed` value as output). `errored` means a step threw (each step has no retries, so a D1 error in `load` / `save` ends the instance); such a target row may stay `Queued` forever.
+A delivery that ends `Failed` or `Skipped` completes normally (status `complete`, with the final state as output). `errored` means a step threw after its retries (D1 steps retry 3 times; the POST step never, and times out after 2 minutes); the sweep restarts such an instance within about two hours.
 
 ### Queue health
 
@@ -355,9 +393,11 @@ Starting points; tune them to your traffic. Cloudflare Notifications covers some
 | `cron` metric                                                  | No point for 2 hours                                      |
 | `outbox.job` `failed` or `OutboxJobDropped`                    | Any, per job kind, per hour                               |
 | `OutboxEnqueue*Failed`, `OutboxWorkflowCreateFailed`           | Any                                                       |
+| `DeliveryDomainUnavailable`, `outbox.domain` `unavailable`     | Any (a federated server is now skipped)                   |
+| `outbox.sweep` `created` + `restarted`                         | > 0 for 3 hours in a row (Workflows failing)              |
 | `*NotFederated` / `*NotQueued` events                          | > 10 per hour                                             |
 | Queue backlog                                                  | > 1,000 messages for 30 minutes, or growing for 1 hour    |
-| `RetryExhausted` deliveries to one host                        | > 50 per hour (a remote is down; see playbook)            |
+| `OutboxDeliveryGivenUp` to one host                            | > 50 per hour (a remote is down; see playbook)            |
 | `push.deliver` 401 / 403                                       | > 5% of pushes                                            |
 | `rate limit counter unavailable`                               | Any sustained (> 10 per 5 minutes)                        |
 | D1 size                                                        | > 70% of the plan limit                                   |
@@ -368,10 +408,21 @@ Starting points; tune them to your traffic. Cloudflare Notifications covers some
 
 ### A remote server is down, or delivery is backing up
 
-1. Find the hosts with the [failing-host query](#outbound-delivery-health-d1). Transient failures (5xx, 408, 429, network) are retried for about 81 minutes, then the delivery is `RetryExhausted` and dropped.
-2. If one large remote is down, there is nothing to do on this side; posts made during an outage longer than the retry window never reach it (OPS-2). When it is back, its users see new posts again; old ones are fetched only when someone opens them.
+1. Find the hosts with the [failing-host query](#outbound-delivery-health-d1) or the `outbox.deliver` query by host. Transient failures (5xx, 401, 408, 429, network) are retried for about 2.1 days (17 attempts), then the delivery is `RetryExhausted` and logged `OutboxDeliveryGivenUp`.
+2. If one remote is down, there is nothing to do on this side: deliveries wait and retry. After failures on 7 distinct days it is marked unavailable and new deliveries to it are skipped; see the next playbook. Posts made during an outage longer than the retry window never reach it; when it is back, its users see new posts again, and old ones are fetched only when someone opens them.
 3. If the queue backlog grows, check the consumer is attached (`wrangler queues info tstodon-outbox-process`; Terraform's `attach_queue_consumer`), look for queue invocation exceptions, and read `outbox.job.page` p95 by job. `max_concurrency` is 1 by design (set in the queue file and in Terraform's `queue_consumer_max_concurrency`; keep them equal).
-4. If target rows stay `Queued` while their Workflow instances are `errored`, the delivery is stuck: list errored instances and read the failing step.
+4. If target rows stay `Queued` past their `next_attempt_at`, the hourly sweep starts or restarts their Workflows (`outbox.sweep`). If the overdue count keeps growing, list errored instances and read the failing step; check Workflows status and limits in the dashboard.
+
+### A remote domain is marked unavailable
+
+<!-- derived-from #outbound-delivery-health-d1 -->
+
+`DeliveryDomainUnavailable` (or the domain under "Delivery failures" on `/admin/instances`) means deliveries to it failed on 7 distinct days with no success between, as Mastodon's `UnavailableDomain`. New deliveries to it are recorded `Skipped` / `DomainUnavailable`.
+
+1. Check whether it is really gone: `curl -sI https://<domain>/.well-known/nodeinfo` from outside Cloudflare. A domain that is gone for good can stay marked; it costs nothing but its row.
+2. It clears by itself when the domain sends a verified activity to any inbox here (or answers a delivery), as Mastodon's `track_inverse_success!`.
+3. If it is back but quiet, open `/admin/instances/<domain>` and press "Mark as available" (`DeliveryDomainAvailable`, `via: admin`). Deliveries resume with the next activity; ones skipped meanwhile are not resent. Other isolates may skip it for up to a minute more.
+4. To stop delivering to a domain on purpose, block it (severity `suspend`) instead; the unavailable mark is not a moderation tool.
 
 ### Inbox flood
 

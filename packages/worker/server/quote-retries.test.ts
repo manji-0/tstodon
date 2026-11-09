@@ -505,7 +505,10 @@ describe("our QuoteRequest (Mastodon's QuoteRequestWorker)", () => {
       inboxUrl,
     });
 
-    expect(outcome).toEqual({ kind: "TransientFailure" });
+    expect(outcome).toEqual({
+      kind: "TransientFailure",
+      cause: { kind: "HttpStatus", httpStatus: 500 },
+    });
     expect(OutboxDelivery.afterAttempt(OutboxDelivery.queued(), outcome)).toEqual({
       kind: "Queued",
       attemptCount: 1,

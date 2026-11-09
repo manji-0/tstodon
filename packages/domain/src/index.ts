@@ -26,7 +26,28 @@ export {
 export {
   DeliveryAttemptOutcome,
   type DeliveryAttemptOutcome as DeliveryAttemptOutcomeValue,
+  type DeliveryReachability,
 } from "./delivery-attempt-outcome";
+export {
+  DeliveryDomainHealth,
+  DELIVERY_FAILURE_DAYS_THRESHOLD,
+  type DeliveryDomainChange,
+  type DeliveryDomainHealth as DeliveryDomainHealthValue,
+  type DeliveryDomainHealthDeps,
+  type ClearDeliveryDomainHealth,
+  type FindCachedDeliveryDomainHealth,
+  type FindDeliveryDomainHealth,
+  type SaveDeliveryDomainHealth,
+} from "./delivery-domain-health";
+export {
+  StuckDelivery,
+  type DeliveryInstanceState,
+  type ListStuckDeliveries,
+  type StuckDeliveryAction,
+  type StuckDeliveryDeps,
+  type StuckDeliverySweep,
+  type StuckDeliveryTarget,
+} from "./stuck-delivery";
 export {
   FollowRequest,
   FollowRequestSchema,
@@ -126,8 +147,11 @@ export {
 } from "./media-vacuum";
 export {
   OutboxDelivery,
+  DELIVERY_GIVE_UP_AFTER_MS,
   DELIVERY_MAX_ATTEMPTS,
+  RETRY_AFTER_CAP_SECONDS,
   type OutboxDelivery as OutboxDeliveryValue,
+  type QueuedOutboxDelivery,
 } from "./outbox-delivery";
 export {
   NotificationGroup,

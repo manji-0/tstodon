@@ -397,6 +397,11 @@ export type scheduled_statuses = Prisma.scheduled_statusesModel;
  */
 export type notification_request_groups = Prisma.notification_request_groupsModel;
 /**
+ * Model delivery_domain_health
+ *
+ */
+export type delivery_domain_health = Prisma.delivery_domain_healthModel;
+/**
  * Model domain_allows
  *
  */

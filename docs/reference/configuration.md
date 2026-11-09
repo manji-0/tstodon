@@ -12,7 +12,7 @@ Configured in `packages/worker/wrangler.jsonc`:
 - `OUTBOX_PROCESS_QUEUE` — Queue producer/consumer (`ExpandFollowers` fan-out and `ProcessExpiredPolls`)
 - `STREAM_HUB` — Durable Object
 - `RATE_LIMIT_COUNTER` — Durable Object `RateLimitCounter`, the rate-limit counters (see [Rate limits](#rate-limits))
-- `OUTBOX_DELIVERY_WORKFLOW` — per-inbox delivery retries
+- `OUTBOX_DELIVERY_WORKFLOW` — per-inbox delivery retries (17 attempts over about 2.1 days; see the runbook's delivery health section)
 - `IMAGES` — Images (dimensions, `small` preview and blurhash of image uploads; see [Image processing](#image-processing))
 - `METRICS` — Analytics Engine
 - `ASSETS` — static assets

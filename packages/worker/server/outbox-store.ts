@@ -3,6 +3,7 @@ import {
   ActivityId,
   OutboxDelivery,
   type OutboxDelivery as OutboxDeliveryValue,
+  type StuckDeliveryTarget,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -18,6 +19,9 @@ import {
   insertOutboundActivity as insertOutboundActivitySql,
   insertOutboxDeliveryFanout as insertOutboxDeliveryFanoutSql,
   insertOutboxTargetOrIgnore as insertOutboxTargetOrIgnoreSql,
+  insertSettledOutboxTargetOrIgnore as insertSettledOutboxTargetOrIgnoreSql,
+  listStuckOutboxTargets as listStuckOutboxTargetsSql,
+  postponeOutboxTarget as postponeOutboxTargetSql,
   listOutboundActivities as listOutboundActivitiesSql,
   listPublicOutboxActivities as listPublicOutboxActivitiesSql,
   updateOutboxFanout as updateOutboxFanoutSql,
@@ -67,6 +71,13 @@ const persistColumns = (
         attemptCount: 0,
         httpStatus: null,
       };
+    case "Skipped":
+      return {
+        kind: delivery.kind,
+        reasonKind: delivery.reasonKind,
+        attemptCount: 0,
+        httpStatus: null,
+      };
     case "Failed":
       switch (delivery.reasonKind) {
         case "RetryExhausted":
@@ -94,6 +105,11 @@ const persistColumns = (
 const outboxDeliveryFromRow = (
   row: z.infer<typeof OutboxDeliveryRowSchema>,
 ): Result<OutboxDeliveryValue, RepositoryError> => {
+  if (row.kind === "Skipped") {
+    return OutboxDelivery.parse({ kind: "Skipped", reasonKind: row.reason_kind }).mapErr(() =>
+      toRepositoryError("invalid outbox delivery row"),
+    );
+  }
   if (row.kind === "Failed" && row.reason_kind === "Permanent") {
     return OutboxDelivery.parse({
       kind: "Failed",
@@ -312,11 +328,16 @@ export const findOutboxFanout = async (
   return row === undefined ? ok(undefined) : outboxDeliveryFromRow(row);
 };
 
+/**
+ * Settle or advance a `Queued` target. `nextAttemptAt` is when a target left
+ * `Queued` is due again (the stuck-delivery sweep reads it).
+ */
 export const persistOutboxTarget = async (
   db: D1Database,
   activityId: string,
   inboxUrl: string,
   delivery: OutboxDeliveryValue,
+  nextAttemptAt: string | null = null,
 ): Promise<Result<void, RepositoryError>> => {
   const parsed = ActivityId.parse(activityId);
   if (parsed.isErr()) {
@@ -334,10 +355,81 @@ export const persistOutboxTarget = async (
         nowIso(),
         activityId,
         inboxUrl,
+        delivery.kind === "Queued" ? nextAttemptAt : null,
       ),
     );
   });
 };
 
+/**
+ * Insert targets that are settled without an attempt (`Skipped`), in chunked
+ * batches (INSERT OR IGNORE: a target already there keeps its state).
+ */
+export const insertSkippedOutboxTargets = async (
+  db: D1Database,
+  activityId: string,
+  inboxUrls: ReadonlyArray<string>,
+): Promise<Result<void, RepositoryError>> => {
+  const unique = [...new Set(inboxUrls.filter((url) => url.length > 0))];
+  if (unique.length === 0) {
+    return ok(undefined);
+  }
+  const skipped = OutboxDelivery.skipped();
+  const columns = persistColumns(skipped);
+  const createdAt = nowIso();
+  const batched = await runTypedBatchChunked(
+    db,
+    unique.map((inboxUrl) =>
+      insertSettledOutboxTargetOrIgnoreSql(
+        newEntityId(),
+        activityId,
+        columns.kind,
+        columns.reasonKind ?? "",
+        inboxUrl,
+        createdAt,
+        createdAt,
+      ),
+    ),
+  );
+  return batched.map(() => undefined);
+};
+
+const StuckTargetRowSchema = z.object({
+  activity_id: z.string().min(1),
+  inbox_url: z.string().min(1),
+  attempt_count: z.number(),
+  created_at: z.string().min(1),
+});
+
+/** `Queued` targets whose next attempt was due before `dueBefore`, oldest first. */
+export const listStuckOutboxTargets = async (
+  db: D1Database,
+  dueBefore: string,
+  limit: number,
+): Promise<Result<StuckDeliveryTarget[], RepositoryError>> => {
+  const rows = await runD1(() =>
+    queryTyped(db, listStuckOutboxTargetsSql(dueBefore, limit), StuckTargetRowSchema),
+  );
+  return rows.map((found) =>
+    found.map((row) => ({
+      activityId: row.activity_id,
+      inboxUrl: row.inbox_url,
+      attemptCount: row.attempt_count,
+      createdAt: row.created_at,
+    })),
+  );
+};
+
+/** Move a `Queued` target's next attempt to `nextAttemptAt`. */
+export const postponeOutboxTarget = async (
+  db: D1Database,
+  activityId: string,
+  inboxUrl: string,
+  nextAttemptAt: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, postponeOutboxTargetSql(nextAttemptAt, activityId, inboxUrl));
+  });
+
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
-warmSchemas([OutboundActivityRowSchema, OutboxDeliveryRowSchema]);
+warmSchemas([OutboundActivityRowSchema, OutboxDeliveryRowSchema, StuckTargetRowSchema]);

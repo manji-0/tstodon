@@ -16,6 +16,12 @@ import {
   listDomainBlocks,
 } from "../../admin-domain-block-store";
 import { type DomainBlockForm, instancePage, instancesPage } from "../../admin-pages";
+import {
+  clearDeliveryDomainHealth,
+  findDeliveryDomainHealth,
+  listDeliveryDomainHealth,
+  logDeliveryDomainChange,
+} from "../../delivery-domain-health-store";
 import { errorPage } from "../../auth-pages";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { instanceName, type SettingsContext } from "../account-settings";
@@ -43,9 +49,13 @@ export const getAdminInstances = async (c: Context<{ Bindings: Env }, "/admin/in
     return pageRedirect(c, `/admin/instances/${encodeURIComponent(requested)}`, 303);
   }
   const blocks = await listDomainBlocks(c.env.DB, 200, null);
-  return blocks.isErr()
-    ? serverError(c, blocks.error)
-    : c.html(instancesPage(instanceName(c.env), blocks.value, noticeOf(c)));
+  if (blocks.isErr()) {
+    return serverError(c, blocks.error);
+  }
+  const health = await listDeliveryDomainHealth(c.env.DB);
+  return health.isErr()
+    ? serverError(c, health.error)
+    : c.html(instancesPage(instanceName(c.env), blocks.value, noticeOf(c), health.value));
 };
 
 const UNBLOCKED_FORM: DomainBlockForm = {
@@ -68,7 +78,7 @@ const comment = z
   .transform((value) => value.trim());
 
 const DomainBlockFormSchema = z.object({
-  do: z.union([z.literal("save"), z.literal("remove")]),
+  do: z.union([z.literal("save"), z.literal("remove"), z.literal("mark_available")]),
   severity: DomainBlockSeveritySchema.default("silence"),
   reject_media: checked,
   reject_reports: checked,
@@ -118,6 +128,10 @@ export const getAdminInstance = async (
   if (block.isErr()) {
     return serverError(c, block.error);
   }
+  const health = await findDeliveryDomainHealth(c.env.DB, path.domain);
+  if (health.isErr()) {
+    return serverError(c, health.error);
+  }
   const form: DomainBlockForm = block.value
     ? {
         severity: block.value.severity,
@@ -131,7 +145,7 @@ export const getAdminInstance = async (
   return c.html(
     instancePage(
       instanceName(c.env),
-      { domain: path.domain, blocked: block.value !== undefined, form },
+      { domain: path.domain, blocked: block.value !== undefined, form, health: health.value },
       noticeOf(c),
     ),
   );
@@ -157,6 +171,9 @@ export const postAdminInstance = async (
   const form = schemaResult(DomainBlockFormSchema)(await readFields(c));
   if (form.isErr()) {
     return badForm(c);
+  }
+  if (form.value.do === "mark_available") {
+    return markAvailable(c, domain);
   }
   const existing = await findDomainBlockByDomain(c.env.DB, domain);
   if (existing.isErr()) {
@@ -207,6 +224,38 @@ export const postAdminInstance = async (
     ),
     422,
   );
+};
+
+/**
+ * Mastodon's "Mark as available" (`Admin::InstancesController#restart_delivery`):
+ * forget the domain's delivery failures, so deliveries to it start again.
+ */
+const markAvailable = async (
+  c: Context<{ Bindings: Env }, "/admin/instances/:domain">,
+  domain: Hostname,
+) => {
+  const health = await findDeliveryDomainHealth(c.env.DB, domain);
+  if (health.isErr()) {
+    return serverError(c, health.error);
+  }
+  if (health.value === undefined) {
+    return notFound(c, "delivery failure record");
+  }
+  const cleared = await clearDeliveryDomainHealth(c.env.DB, domain);
+  if (cleared.isErr()) {
+    return serverError(c, cleared.error);
+  }
+  logDeliveryDomainChange(
+    c.env,
+    domain,
+    {
+      kind: "Cleared",
+      wasUnavailable: health.value.kind === "Unavailable",
+      failureDays: health.value.failureDays,
+    },
+    "admin",
+  );
+  return pageRedirect(c, withNotice(`/admin/instances/${domain}`, "marked_available"), 303);
 };
 
 warmSchemas([DomainBlockFormSchema]);

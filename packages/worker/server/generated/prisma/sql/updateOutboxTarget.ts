@@ -12,9 +12,10 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param updatedAt
  * @param activityId
  * @param inboxUrl
+ * @param nextAttemptAt
  */
 export const updateOutboxTarget = $runtime.makeTypedQueryFactory(
-  "UPDATE outbox_deliveries\nSET kind = $1, reason_kind = $2, attempt_count = $3, http_status = $4, updated_at = $5\nWHERE activity_id = $6 AND inbox_url = $7 AND kind = 'Queued'",
+  "UPDATE outbox_deliveries\nSET kind = $1, reason_kind = $2, attempt_count = $3, http_status = $4, updated_at = $5,\nnext_attempt_at = $8\nWHERE activity_id = $6 AND inbox_url = $7 AND kind = 'Queued'",
 ) as (
   kind: string,
   reasonKind: string | null,
@@ -23,6 +24,7 @@ export const updateOutboxTarget = $runtime.makeTypedQueryFactory(
   updatedAt: string,
   activityId: string,
   inboxUrl: string,
+  nextAttemptAt: string | null,
 ) => $runtime.TypedSql<updateOutboxTarget.Parameters, updateOutboxTarget.Result>;
 
 export namespace updateOutboxTarget {
@@ -34,6 +36,7 @@ export namespace updateOutboxTarget {
     updatedAt: string,
     activityId: string,
     inboxUrl: string,
+    nextAttemptAt: string | null,
   ];
   export type Result = {};
 }
