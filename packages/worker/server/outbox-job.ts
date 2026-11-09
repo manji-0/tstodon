@@ -30,6 +30,8 @@ import { processBackfillRemoteThreadJob } from "./remote-thread-backfill";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { rekeyLegacyMediaBatch } from "./media-rekey";
 import { vacuumMediaAttachments } from "./media-vacuum";
+import { vacuumActivities } from "./activity-vacuum";
+import { requeueDeadOutboxJobs } from "./dead-letter-queue";
 import {
   logStripStoredMediaMetadataDone,
   stripStoredMediaMetadataPage,
@@ -208,6 +210,20 @@ export const processOutboxJob = async (
         }
         return { outcome: "ok", size: pass.value.deleted, chained: pass.value.chained };
       });
+    case "VacuumActivities":
+      return measureJobPage(env, job.kind, async () => {
+        const pass = await vacuumActivities(env);
+        if (pass.isErr()) {
+          return { outcome: "retry", size: 0, chained: false };
+        }
+        const { deliveries, outbound, inbox, chained } = pass.value;
+        if (chained) {
+          await env.OUTBOX_PROCESS_QUEUE.send({ kind: "VacuumActivities" });
+        }
+        return { outcome: "ok", size: deliveries + outbound + inbox, chained };
+      });
+    case "RequeueDeadOutboxJobs":
+      return requeueDeadOutboxJobs(env, job);
     case "StripStoredMediaMetadata":
       return measureJobPage(env, job.kind, async () => {
         const page = await stripStoredMediaMetadataPage(env, job);

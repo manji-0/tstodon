@@ -83,6 +83,11 @@
         "binding": "OUTBOX_PROCESS_QUEUE",
         "queue": "tstodon-outbox-process",
       },
+      {
+        // The outbox queue's dead-letter queue (`app/queues/tstodon-outbox-dlq.ts`).
+        "binding": "OUTBOX_DLQ",
+        "queue": "tstodon-outbox-dlq",
+      },
     ],
   },
   "durable_objects": {

@@ -37,6 +37,12 @@ export const handleScheduled = (
     controller.cron === HOURLY_CRON
       ? undefined
       : env.OUTBOX_PROCESS_QUEUE.send({ kind: "VacuumMediaAttachments" }),
+    // Prune finished deliveries, old outbound activities and the inbox's
+    // dedupe rows past their retention (Mastodon's `Vacuum::*` jobs run
+    // daily); one indexed query per table when nothing is due.
+    controller.cron === HOURLY_CRON
+      ? undefined
+      : env.OUTBOX_PROCESS_QUEUE.send({ kind: "VacuumActivities" }),
     // Strip the metadata from media stored before stripping on upload; once
     // every row is marked, one page that reads nothing. Six-hourly only, so a
     // long first run is not joined by a second chain every hour.

@@ -443,6 +443,7 @@ export const ModelName = {
   outbound_activities: "outbound_activities",
   instance_actor_keys: "instance_actor_keys",
   outbox_deliveries: "outbox_deliveries",
+  outbox_dead_jobs: "outbox_dead_jobs",
   poll_votes: "poll_votes",
   remote_poll_votes: "remote_poll_votes",
   polls: "polls",
@@ -545,6 +546,7 @@ export type TypeMap<
       | "outbound_activities"
       | "instance_actor_keys"
       | "outbox_deliveries"
+      | "outbox_dead_jobs"
       | "poll_votes"
       | "remote_poll_votes"
       | "polls"
@@ -4506,6 +4508,82 @@ export type TypeMap<
         };
       };
     };
+    outbox_dead_jobs: {
+      payload: Prisma.$outbox_dead_jobsPayload<ExtArgs>;
+      fields: Prisma.outbox_dead_jobsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.outbox_dead_jobsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbox_dead_jobsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.outbox_dead_jobsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbox_dead_jobsPayload>;
+        };
+        findFirst: {
+          args: Prisma.outbox_dead_jobsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbox_dead_jobsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.outbox_dead_jobsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbox_dead_jobsPayload>;
+        };
+        findMany: {
+          args: Prisma.outbox_dead_jobsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbox_dead_jobsPayload>[];
+        };
+        create: {
+          args: Prisma.outbox_dead_jobsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbox_dead_jobsPayload>;
+        };
+        createMany: {
+          args: Prisma.outbox_dead_jobsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.outbox_dead_jobsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbox_dead_jobsPayload>[];
+        };
+        delete: {
+          args: Prisma.outbox_dead_jobsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbox_dead_jobsPayload>;
+        };
+        update: {
+          args: Prisma.outbox_dead_jobsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbox_dead_jobsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.outbox_dead_jobsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.outbox_dead_jobsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.outbox_dead_jobsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbox_dead_jobsPayload>[];
+        };
+        upsert: {
+          args: Prisma.outbox_dead_jobsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$outbox_dead_jobsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Outbox_dead_jobsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateOutbox_dead_jobs>;
+        };
+        groupBy: {
+          args: Prisma.outbox_dead_jobsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Outbox_dead_jobsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.outbox_dead_jobsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Outbox_dead_jobsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
     poll_votes: {
       payload: Prisma.$poll_votesPayload<ExtArgs>;
       fields: Prisma.poll_votesFieldRefs;
@@ -7427,6 +7505,21 @@ export const Outbox_deliveriesScalarFieldEnum = {
 export type Outbox_deliveriesScalarFieldEnum =
   (typeof Outbox_deliveriesScalarFieldEnum)[keyof typeof Outbox_deliveriesScalarFieldEnum];
 
+export const Outbox_dead_jobsScalarFieldEnum = {
+  id: "id",
+  job_kind: "job_kind",
+  reason: "reason",
+  body_json: "body_json",
+  attempts: "attempts",
+  dead_count: "dead_count",
+  error: "error",
+  first_seen_at: "first_seen_at",
+  last_seen_at: "last_seen_at",
+} as const;
+
+export type Outbox_dead_jobsScalarFieldEnum =
+  (typeof Outbox_dead_jobsScalarFieldEnum)[keyof typeof Outbox_dead_jobsScalarFieldEnum];
+
 export const Poll_votesScalarFieldEnum = {
   poll_id: "poll_id",
   account_id: "account_id",
@@ -8048,6 +8141,7 @@ export type GlobalOmitConfig = {
   outbound_activities?: Prisma.outbound_activitiesOmit;
   instance_actor_keys?: Prisma.instance_actor_keysOmit;
   outbox_deliveries?: Prisma.outbox_deliveriesOmit;
+  outbox_dead_jobs?: Prisma.outbox_dead_jobsOmit;
   poll_votes?: Prisma.poll_votesOmit;
   remote_poll_votes?: Prisma.remote_poll_votesOmit;
   polls?: Prisma.pollsOmit;

@@ -100,6 +100,7 @@ export const ModelName = {
   outbound_activities: "outbound_activities",
   instance_actor_keys: "instance_actor_keys",
   outbox_deliveries: "outbox_deliveries",
+  outbox_dead_jobs: "outbox_dead_jobs",
   poll_votes: "poll_votes",
   remote_poll_votes: "remote_poll_votes",
   polls: "polls",
@@ -755,6 +756,21 @@ export const Outbox_deliveriesScalarFieldEnum = {
 
 export type Outbox_deliveriesScalarFieldEnum =
   (typeof Outbox_deliveriesScalarFieldEnum)[keyof typeof Outbox_deliveriesScalarFieldEnum];
+
+export const Outbox_dead_jobsScalarFieldEnum = {
+  id: "id",
+  job_kind: "job_kind",
+  reason: "reason",
+  body_json: "body_json",
+  attempts: "attempts",
+  dead_count: "dead_count",
+  error: "error",
+  first_seen_at: "first_seen_at",
+  last_seen_at: "last_seen_at",
+} as const;
+
+export type Outbox_dead_jobsScalarFieldEnum =
+  (typeof Outbox_dead_jobsScalarFieldEnum)[keyof typeof Outbox_dead_jobsScalarFieldEnum];
 
 export const Poll_votesScalarFieldEnum = {
   poll_id: "poll_id",

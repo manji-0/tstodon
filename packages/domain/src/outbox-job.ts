@@ -67,6 +67,37 @@ const BackfillStoredMediaSizesSchema = z.object({
   afterId: z.string().default(""),
   tally: StoredMediaSizes.tallySchema.default(StoredMediaSizes.emptyTally),
 });
+/**
+ * Delete the outbox and inbox rows past their retention, one bounded batch
+ * per table (see `ActivityVacuum`); six-hourly cron, chains while a table
+ * fills its batch.
+ */
+const VacuumActivitiesSchema = unitKind("VacuumActivities");
+
+/** A SHA-256 hex digest: the id of an `outbox_dead_jobs` row. */
+export const DeadOutboxJobIdSchema = z.string().regex(/^[0-9a-f]{64}$/);
+
+/** Which dead-lettered jobs `RequeueDeadOutboxJobs` sends back. */
+export const DeadOutboxJobSelectionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("All") }),
+  z.object({ kind: z.literal("JobKind"), jobKind: z.string().min(1) }),
+  z.object({ kind: z.literal("Ids"), ids: z.array(DeadOutboxJobIdSchema).min(1).max(100) }),
+]);
+
+export type DeadOutboxJobSelection = z.infer<typeof DeadOutboxJobSelectionSchema>;
+
+/**
+ * Send the stored dead-lettered jobs that `select` names back to the outbox
+ * queue and delete their rows, a page at a time (operator sent, see the
+ * runbook). `before` is when the first page ran (empty for the first page):
+ * a job that dies again after that is left for the next requeue, so a job
+ * that keeps failing is not sent round in the same run.
+ */
+const RequeueDeadOutboxJobsSchema = z.object({
+  kind: z.literal("RequeueDeadOutboxJobs"),
+  select: DeadOutboxJobSelectionSchema,
+  before: z.string().default(""),
+});
 /** Publish the scheduled statuses whose time has come (cron). */
 const PublishScheduledStatusesSchema = unitKind("PublishScheduledStatuses");
 /** Queue one `CleanUpAccountStatuses` per account with automated post deletion on (cron). */
@@ -254,6 +285,8 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   BackfillLocalNoteTagsSchema,
   RekeyLegacyMediaSchema,
   VacuumMediaAttachmentsSchema,
+  VacuumActivitiesSchema,
+  RequeueDeadOutboxJobsSchema,
   StripStoredMediaMetadataSchema,
   BackfillStoredMediaSizesSchema,
   PublishScheduledStatusesSchema,
