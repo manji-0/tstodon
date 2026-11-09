@@ -1,11 +1,11 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { ENTITY_ID_DIGITS } from "./ids";
 import { generateAccountKeys } from "./keys";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -29,7 +29,7 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
 };
 
 const EnvelopeSchema = z.object({
-  accounts: z.array(MastodonAccountPreviewSchema),
+  accounts: z.array(ApiAccount),
   statuses: z.array(z.object({ id: z.string().min(1) })),
   notification_groups: z.array(
     z.object({
@@ -50,7 +50,7 @@ const credentials = async (email: string): Promise<{ id: string; username: strin
   const response = await json("/api/v1/accounts/verify_credentials", {
     headers: await auth(email),
   });
-  const account = read(MastodonAccountPreviewSchema, response.body);
+  const account = read(ApiAccount, response.body);
   return { id: account.id, username: account.username };
 };
 
@@ -110,7 +110,7 @@ describe("grouped notifications", () => {
       headers: await auth(authorEmail),
     });
     expect(accounts.status).toBe(200);
-    expect(read(z.array(MastodonAccountPreviewSchema), accounts.body)).toHaveLength(3);
+    expect(read(z.array(ApiAccount), accounts.body)).toHaveLength(3);
 
     // Dismissing the group empties the list, and unread_count drops with it.
     const unread = await json("/api/v2/notifications/unread_count", {
@@ -278,7 +278,7 @@ describe("grouped notifications", () => {
     const accounts = await json(`/api/v2/notifications/${groupKey}/accounts`, {
       headers: await auth(authorEmail),
     });
-    expect(read(z.array(MastodonAccountPreviewSchema), accounts.body)).toHaveLength(2);
+    expect(read(z.array(ApiAccount), accounts.body)).toHaveLength(2);
 
     const dismissed = await json(`/api/v2/notifications/${groupKey}/dismiss`, {
       method: "POST",
@@ -383,7 +383,7 @@ describe("a notification group by key", () => {
         headers: await auth(authorEmail),
       },
     );
-    const firstPage = read(z.array(MastodonAccountPreviewSchema), await first.json());
+    const firstPage = read(z.array(ApiAccount), await first.json());
     expect(firstPage).toHaveLength(40);
     expect(firstPage[0]?.username).toBe("group_large_fan_44");
     const next = parseLinks(first.headers.get("link")).next;
@@ -394,7 +394,7 @@ describe("a notification group by key", () => {
         headers: await auth(authorEmail),
       },
     );
-    const secondPage = read(z.array(MastodonAccountPreviewSchema), await second.json());
+    const secondPage = read(z.array(ApiAccount), await second.json());
     expect(secondPage.map((account) => account.username)).toEqual(
       [4, 3, 2, 1, 0].map((index) => `group_large_fan_${index}`),
     );
@@ -403,11 +403,11 @@ describe("a notification group by key", () => {
     const capped = await json(`/api/v2/notifications/${groupKey}/accounts?limit=200`, {
       headers: await auth(authorEmail),
     });
-    expect(read(z.array(MastodonAccountPreviewSchema), capped.body)).toHaveLength(45);
+    expect(read(z.array(ApiAccount), capped.body)).toHaveLength(45);
     const small = await json(`/api/v2/notifications/${groupKey}/accounts?limit=2`, {
       headers: await auth(authorEmail),
     });
-    expect(read(z.array(MastodonAccountPreviewSchema), small.body)).toHaveLength(2);
+    expect(read(z.array(ApiAccount), small.body)).toHaveLength(2);
   });
 
   it("dismisses every notification of a group larger than 50, muted senders included", async () => {
@@ -534,7 +534,7 @@ describe("a notification group by key", () => {
     const accounts = await json(`/api/v2/notifications/${groupKey}/accounts?${query}`, {
       headers: await auth(authorEmail),
     });
-    expect(read(z.array(MastodonAccountPreviewSchema), accounts.body)).toHaveLength(1);
+    expect(read(z.array(ApiAccount), accounts.body)).toHaveLength(1);
 
     await json(`/api/v2/notifications/${groupKey}/dismiss?${query}`, {
       method: "POST",

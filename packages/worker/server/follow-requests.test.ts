@@ -2,6 +2,7 @@ import { IsoInstant, RemoteActor } from "@tstodon/domain";
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount } from "@tstodon/api";
 import { findAccountByUsername } from "./account-store";
 import { generateAccountKeys } from "./keys";
 import { signInboxRequest } from "./http-signature";
@@ -11,7 +12,6 @@ import {
   listPendingRemoteFollowRequesters,
   upsertRemoteActor,
 } from "./remote-actor-store";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 import { RemoteAccountId } from "./remote-account-id";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
@@ -42,7 +42,7 @@ const accountIdFor = async (email: string): Promise<string> => {
     headers: await auth(email),
   });
   expect(response.status).toBe(200);
-  return read(MastodonAccountPreviewSchema, response.body).id;
+  return read(ApiAccount, response.body).id;
 };
 
 const lockAccount = async (accountId: string): Promise<void> => {
@@ -52,7 +52,7 @@ const lockAccount = async (accountId: string): Promise<void> => {
 const pendingRequestIds = async (email: string): Promise<string[]> => {
   const response = await json("/api/v1/follow_requests", { headers: await auth(email) });
   expect(response.status).toBe(200);
-  return read(z.array(MastodonAccountPreviewSchema), response.body).map((account) => account.id);
+  return read(z.array(ApiAccount), response.body).map((account) => account.id);
 };
 
 const follow = async (followerEmail: string, targetId: string) =>
@@ -139,7 +139,7 @@ describe("follow requests", () => {
 
   it("lists, authorizes, and delivers Accept for a remote follow request", async () => {
     const username = read(
-      MastodonAccountPreviewSchema,
+      ApiAccount,
       (
         await json("/api/v1/accounts/verify_credentials", {
           headers: await auth("fr-remote-viewer@example.com"),
@@ -202,7 +202,7 @@ describe("follow requests", () => {
     });
     expect(listed.status).toBe(200);
     const remoteId = RemoteAccountId.encode(actorUri);
-    expect(read(z.array(MastodonAccountPreviewSchema), listed.body)).toEqual(
+    expect(read(z.array(ApiAccount), listed.body)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: remoteId, acct: "fr-frank@remote.example" }),
       ]),
@@ -240,7 +240,7 @@ describe("follow requests", () => {
 
   it("rejects a remote follow request without accepting it", async () => {
     const username = read(
-      MastodonAccountPreviewSchema,
+      ApiAccount,
       (
         await json("/api/v1/accounts/verify_credentials", {
           headers: await auth("fr-remote-reject-viewer@example.com"),

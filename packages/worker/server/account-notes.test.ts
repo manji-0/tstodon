@@ -1,9 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 
@@ -35,7 +35,7 @@ const accountIdFor = async (email: string): Promise<string> => {
     headers: await auth(email),
   });
   expect(response.status).toBe(200);
-  return read(MastodonAccountPreviewSchema, response.body).id;
+  return read(ApiAccount, response.body).id;
 };
 
 const setNote = async (

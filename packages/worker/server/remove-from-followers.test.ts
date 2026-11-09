@@ -1,9 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
-import { MastodonAccountPreviewSchema } from "../test/mastodon-preview-schemas";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -37,7 +37,7 @@ const accountIdFor = async (email: string): Promise<string> => {
     headers: await auth(email),
   });
   expect(response.status).toBe(200);
-  return read(MastodonAccountPreviewSchema, response.body).id;
+  return read(ApiAccount, response.body).id;
 };
 
 const follow = async (email: string, targetId: string): Promise<void> => {
@@ -60,9 +60,7 @@ describe("remove from followers", () => {
 
     const followers = await json(`/api/v1/accounts/${viewerId}/followers`);
     expect(followers.status).toBe(200);
-    expect(read(z.array(MastodonAccountPreviewSchema), followers.body).map((a) => a.id)).toContain(
-      followerId,
-    );
+    expect(read(z.array(ApiAccount), followers.body).map((a) => a.id)).toContain(followerId);
 
     const removed = await json(`/api/v1/accounts/${followerId}/remove_from_followers`, {
       method: "POST",
@@ -74,9 +72,7 @@ describe("remove from followers", () => {
     expect(relationship.following).toBe(true);
 
     const after = await json(`/api/v1/accounts/${viewerId}/followers`);
-    expect(read(z.array(MastodonAccountPreviewSchema), after.body).map((a) => a.id)).not.toContain(
-      followerId,
-    );
+    expect(read(z.array(ApiAccount), after.body).map((a) => a.id)).not.toContain(followerId);
   });
 
   it("requires auth and 404s for unknown targets", async () => {
