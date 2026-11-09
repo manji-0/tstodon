@@ -1,13 +1,22 @@
 // Playwright's web server for the browser e2e suite: a fresh copy of the
 // migrated database (database.mjs), then the Worker in Void's dev server on
-// http://localhost:8793 with e2e/web.wrangler.jsonc (mail captured in APP_CACHE).
+// http://localhost:8795 with e2e/web.wrangler.jsonc (mail captured in APP_CACHE),
+// behind the stand-in Access edge (access-edge.mjs) on http://localhost:8793,
+// the origin the browser opens.
 // The dev server serves the built web UI (packages/worker/dist/client, which
 // `pnpm e2e:web` builds first) as deployed, not the frontend's sources: React's
 // development build logs warnings the scenarios count as console errors.
 import { spawn } from "node:child_process";
 import { cpSync, existsSync, rmSync } from "node:fs";
 import path from "node:path";
+import { startAccessEdge } from "./access-edge.mjs";
 import { config, migratedDatabase, root } from "./database.mjs";
+
+const host = "localhost";
+/** The public origin's port (INSTANCE_DOMAIN in e2e/web.wrangler.jsonc). */
+const edgePort = 8793;
+/** Void's dev server, reached only through the edge. */
+const workerPort = 8795;
 
 const state = ".wrangler/e2e-web";
 
@@ -30,10 +39,10 @@ const server = spawn(
     "packages/worker",
     "dev",
     "--port",
-    "8793",
+    String(workerPort),
     "--strictPort",
     "--host",
-    "localhost",
+    host,
   ],
   {
     cwd: root,
@@ -53,3 +62,5 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => server.kill(signal));
 }
 server.on("exit", (code) => process.exit(code ?? 0));
+
+await startAccessEdge({ host, listenPort: edgePort, originPort: workerPort });
