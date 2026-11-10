@@ -1,12 +1,11 @@
 import type { Context } from "hono";
-import { z } from "zod";
+import { ApiMuteAccountParamsSchema } from "@tstodon/api";
 import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
   queryAccountsLimit,
   queryCursor,
-  readBody,
   requireUser,
   setPaginationLinks,
 } from "../../http";
@@ -21,12 +20,8 @@ import {
   unmuteAccount,
 } from "../../block-mute-store";
 import { relationshipFlags } from "../../relationship-store";
+import { readOptionalParams } from "../../request-params";
 import { relationshipTarget } from "./endorsements";
-
-const MuteBodySchema = z.object({
-  notifications: z.union([z.boolean(), z.string(), z.null()]).optional(),
-  duration: z.union([z.number(), z.string(), z.null()]).optional(),
-});
 
 const selfTargetError = (c: Context<{ Bindings: Env }>, action: string) =>
   c.json({ error: `Cannot ${action} yourself`, kind: "InvalidRelationship" }, 400);
@@ -96,16 +91,13 @@ export const postV1AccountsByIdMute = async (
   if (target.accountId === user.value.id) {
     return selfTargetError(c, "mute");
   }
-  const body = await readBody(c, MuteBodySchema);
+  const body = await readOptionalParams(c, ApiMuteAccountParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const notifications =
-    body.value.notifications === undefined ||
-    body.value.notifications === null ||
-    body.value.notifications === true ||
-    body.value.notifications === "true";
-  const duration = Number(body.value.duration ?? 0);
+  // Both default when left out (or `null`): notifications muted too, no expiry.
+  const notifications = body.value.notifications ?? true;
+  const duration = body.value.duration ?? 0;
   const expiresAt =
     Number.isFinite(duration) && duration > 0
       ? new Date(Date.now() + duration * 1000).toISOString()
@@ -199,6 +191,11 @@ export const getV1Mutes = async (c: Context<{ Bindings: Env }, "/api/v1/mutes">)
   if (resolved.isErr()) {
     return jsonRepositoryError(c, resolved.error.message);
   }
+  setPaginationLinks(
+    c,
+    rows.value.map((row) => row.id),
+    limit,
+  );
   return c.json(rows.value.flatMap((row) => resolved.value.get(row.accountId) ?? []));
 };
 

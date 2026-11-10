@@ -14,6 +14,7 @@ import {
   ApiPoll,
   ApiProfileDocument,
   ApiRelationship,
+  ApiReport,
   ApiSearchResults,
   ApiStatus,
   ApiSuggestion,
@@ -460,5 +461,202 @@ describe("REST request params (@tstodon/api params)", () => {
       sendGet(email, "/api/v2/suggestions?limit=1&limit=5"),
     );
     expect(suggestions.length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("REST request params of the account and interaction actions", () => {
+  it("accounts: lookup, relationships and mute", async () => {
+    const viewer = "params-relations-viewer@example.com";
+    const first = await credentials("params-relations-first@example.com");
+    const second = await credentials("params-relations-second@example.com");
+    await credentials(viewer);
+
+    const looked = accepted(
+      ApiAccount,
+      await sendGet(viewer, `/api/v1/accounts/lookup?acct=${first.username}`),
+      "GET /api/v1/accounts/lookup",
+    );
+    expect(looked.id).toBe(first.id);
+    // Without `acct` there is nothing to find, as Mastodon.
+    expect((await sendGet(viewer, "/api/v1/accounts/lookup")).status).toBe(404);
+
+    const [bracketed, plain] = await bothAccepted(
+      z.array(ApiRelationship),
+      "GET /api/v1/accounts/relationships",
+      sendGet(
+        viewer,
+        `/api/v1/accounts/relationships?with_suspended=true&id[]=${first.id}&id[]=${second.id}`,
+      ),
+      sendGet(
+        viewer,
+        `/api/v1/accounts/relationships?with_suspended=1&id=${first.id}&id=${second.id}`,
+      ),
+    );
+    expect(bracketed.map((relationship) => relationship.id)).toEqual([first.id, second.id]);
+    expect(plain).toEqual(bracketed);
+
+    const [jsonMute, formMute] = await bothAccepted(
+      ApiRelationship,
+      "POST /api/v1/accounts/:id/mute",
+      sendJson(viewer, "POST", `/api/v1/accounts/${first.id}/mute`, {
+        notifications: false,
+        duration: 3600,
+      }),
+      sendForm(viewer, "POST", `/api/v1/accounts/${second.id}/mute`, [
+        ["notifications", "0"],
+        ["duration", "3600"],
+      ]),
+    );
+    for (const relationship of [jsonMute, formMute]) {
+      expect(relationship).toMatchObject({ muting: true, muting_notifications: false });
+      expect(relationship.muting_expires_at).not.toBeNull();
+    }
+
+    // Left out (or `null`), notifications are muted too and the mute does not expire.
+    const [jsonDefault, formDefault] = await bothAccepted(
+      ApiRelationship,
+      "POST /api/v1/accounts/:id/mute (defaults)",
+      sendJson(viewer, "POST", `/api/v1/accounts/${first.id}/mute`, {
+        notifications: null,
+        duration: null,
+      }),
+      sendForm(viewer, "POST", `/api/v1/accounts/${second.id}/mute`, []),
+    );
+    for (const relationship of [jsonDefault, formDefault]) {
+      expect(relationship).toMatchObject({
+        muting: true,
+        muting_notifications: true,
+        muting_expires_at: null,
+      });
+    }
+  });
+
+  it("mutes: the list pages with a Link header", async () => {
+    const viewer = "params-mutes-pages@example.com";
+    const first = await credentials("params-mutes-first@example.com");
+    const second = await credentials("params-mutes-second@example.com");
+    await credentials(viewer);
+    for (const target of [first, second]) {
+      await sendJson(viewer, "POST", `/api/v1/accounts/${target.id}/mute`, {});
+    }
+
+    const response = await SELF.fetch("https://example.com/api/v1/mutes?limit=1", {
+      headers: await authHeaders(viewer),
+    });
+    const page = expectContract(z.array(ApiAccount), await response.json());
+    expect(page).toHaveLength(1);
+    const next = /<([^>]+)>;\s*rel="next"/.exec(response.headers.get("link") ?? "")?.[1];
+    expect(next).toBeDefined();
+    const rest = accepted(
+      z.array(ApiAccount),
+      await sendGet(viewer, new URL(next ?? "").pathname + new URL(next ?? "").search),
+      "GET /api/v1/mutes (next page)",
+    );
+    expect(ids([...page, ...rest])).toEqual(ids([first, second]));
+  });
+
+  it("account statuses: pinned and the timeline filters read string booleans", async () => {
+    const email = "params-account-statuses@example.com";
+    const account = await credentials(email);
+    const pinned = await postStatus(email, { status: "pin me" });
+    const original = await postStatus(email, { status: "a thread" });
+    const reply = await postStatus(email, { status: "a reply", in_reply_to_id: original.id });
+    accepted(
+      ApiStatus,
+      await sendJson(email, "POST", `/api/v1/statuses/${pinned.id}/pin`),
+      "POST /api/v1/statuses/:id/pin",
+    );
+
+    const [pinnedTrue, pinnedOne] = await bothAccepted(
+      z.array(ApiStatus),
+      "GET /api/v1/accounts/:id/statuses?pinned",
+      sendGet(email, `/api/v1/accounts/${account.id}/statuses?pinned=true`),
+      sendGet(email, `/api/v1/accounts/${account.id}/statuses?pinned=1`),
+    );
+    expect(pinnedTrue.map((status) => status.id)).toEqual([pinned.id]);
+    expect(pinnedOne).toEqual(pinnedTrue);
+
+    const [withoutReplies, withoutRepliesOne] = await bothAccepted(
+      z.array(ApiStatus),
+      "GET /api/v1/accounts/:id/statuses?exclude_replies",
+      sendGet(email, `/api/v1/accounts/${account.id}/statuses?exclude_replies=true&limit=5`),
+      sendGet(email, `/api/v1/accounts/${account.id}/statuses?exclude_replies=1&limit=5`),
+    );
+    expect(withoutReplies.map((status) => status.id)).not.toContain(reply.id);
+    expect(withoutReplies.map((status) => status.id)).toContain(original.id);
+    expect(withoutRepliesOne).toEqual(withoutReplies);
+  });
+
+  it("domain blocks: block in the body, unblock in the query or the body", async () => {
+    const email = "params-domain-blocks@example.com";
+    await credentials(email);
+    const blocked = async () =>
+      accepted(
+        z.array(z.string()),
+        await sendGet(email, "/api/v1/domain_blocks"),
+        "GET /api/v1/domain_blocks",
+      ).toSorted();
+
+    await bothAccepted(
+      z.object({}),
+      "POST /api/v1/domain_blocks",
+      sendJson(email, "POST", "/api/v1/domain_blocks", { domain: "json.blocked.example" }),
+      sendForm(email, "POST", "/api/v1/domain_blocks", [["domain", "form.blocked.example"]]),
+    );
+    expect(await blocked()).toEqual(["form.blocked.example", "json.blocked.example"]);
+    expect((await sendJson(email, "POST", "/api/v1/domain_blocks", {})).body).toEqual({
+      error: "domain is required",
+      kind: "ValidationError",
+    });
+
+    // The web UI sends the DELETE's domain in the query.
+    await bothAccepted(
+      z.object({}),
+      "DELETE /api/v1/domain_blocks",
+      sendJson(email, "DELETE", "/api/v1/domain_blocks", { domain: "json.blocked.example" }),
+      sendDelete(email, "/api/v1/domain_blocks?domain=form.blocked.example"),
+    );
+    expect(await blocked()).toEqual([]);
+    expect((await sendDelete(email, "/api/v1/domain_blocks")).body).toEqual({
+      error: "domain is required",
+      kind: "ValidationError",
+    });
+  });
+
+  it("reports: status ids, category and forward as JSON and as a form", async () => {
+    const reporter = "params-report-reporter@example.com";
+    const targetEmail = "params-report-target@example.com";
+    const target = await credentials(targetEmail);
+    await credentials(reporter);
+    const [first, second] = [
+      await postStatus(targetEmail, { status: "reported" }),
+      await postStatus(targetEmail, { status: "reported too" }),
+    ];
+
+    const [jsonReport, formReport] = await bothAccepted(
+      ApiReport,
+      "POST /api/v1/reports",
+      sendJson(reporter, "POST", "/api/v1/reports", {
+        account_id: target.id,
+        status_ids: [first.id, second.id],
+        comment: "spam",
+        category: "spam",
+        forward: false,
+        forward_to_domains: [],
+      }),
+      sendForm(reporter, "POST", "/api/v1/reports", [
+        ["account_id", target.id],
+        ["status_ids[]", first.id],
+        ["status_ids[]", second.id],
+        ["comment", "spam"],
+        ["category", "spam"],
+        ["forward", "false"],
+      ]),
+    );
+    for (const report of [jsonReport, formReport]) {
+      expect(report).toMatchObject({ category: "spam", comment: "spam", forwarded: false });
+      expect(report.status_ids.toSorted()).toEqual([first.id, second.id].toSorted());
+      expect(report.target_account.id).toBe(target.id);
+    }
   });
 });

@@ -1,5 +1,10 @@
 import type { ApiAccountJSON, ApiFamiliarFollowersJSON } from "@tstodon/api";
-import { ApiGetAccountsParamsSchema, ApiGetFamiliarFollowersParamsSchema } from "@tstodon/api";
+import {
+  ApiGetAccountsParamsSchema,
+  ApiGetFamiliarFollowersParamsSchema,
+  ApiGetRelationshipsParamsSchema,
+  ApiLookupAccountParamsSchema,
+} from "@tstodon/api";
 import type { Context } from "hono";
 import {
   AccountPresentation,
@@ -56,7 +61,11 @@ export const getV1AccountsLookup = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const ref = await findKnownAccountHandle(c.env, identity.value, c.req.query("acct") ?? "");
+  // Without `acct` the lookup finds nothing: 404, as Mastodon.
+  const acct = readQueryParams(c, ApiLookupAccountParamsSchema)
+    .map((params) => params.acct)
+    .unwrapOr("");
+  const ref = await findKnownAccountHandle(c.env, identity.value, acct);
   if (ref.isErr()) {
     return ref.error.kind === "RepositoryError"
       ? jsonRepositoryError(c, ref.error.message)
@@ -78,10 +87,9 @@ export const getV1AccountsRelationships = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const url = new URL(c.req.url);
-  const ids = [...url.searchParams.getAll("id[]"), ...url.searchParams.getAll("id")].filter(
-    (id) => id.length > 0,
-  );
+  // `with_suspended` changes nothing: every requested id is answered.
+  const params = readQueryParams(c, ApiGetRelationshipsParamsSchema);
+  const ids = (params.isOk() ? (params.value.id ?? []) : []).filter((id) => id.length > 0);
   const relationships = [];
   for (const id of ids) {
     const flags = await relationshipFlags(c.env.DB, user.value.id, id);

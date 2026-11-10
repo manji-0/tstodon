@@ -1,13 +1,7 @@
 import type { Context } from "hono";
 import { schemaResult, warmSchemas } from "@tstodon/core";
-import { z } from "zod";
-import {
-  jsonAuthError,
-  jsonRepositoryError,
-  jsonValidationError,
-  readBody,
-  requireUser,
-} from "../http";
+import { ApiCreateReportParamsSchema } from "@tstodon/api";
+import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
 import { notifyAdmins } from "../admin-notify";
 import { instanceRules, parseInstanceIdentity } from "../runtime-config";
 import {
@@ -23,21 +17,7 @@ import type { RepositoryError } from "../d1";
 import { findRemoteActorByUri } from "../remote-actor-store";
 import { reportDocumentsByIds, reportedStatuses } from "../report-documents";
 import { insertReport, ReportCategorySchema, ReportParty } from "../report-store";
-import { booleanish, isTruthy, stringList } from "../form-values";
-
-export const ReportBodySchema = z.object({
-  account_id: z.string().min(1),
-  status_ids: z.union([z.array(z.string()), z.string()]).optional(),
-  comment: z.string().optional(),
-  category: z.string().optional(),
-  rule_ids: z
-    .union([z.array(z.union([z.string(), z.number()])), z.string(), z.number()])
-    .optional(),
-  /** Forward a report on a remote account to its server. */
-  forward: booleanish,
-  /** Servers of the accounts the reported posts reply to that should also get the report. */
-  forward_to_domains: z.union([z.array(z.string()), z.string()]).optional(),
-});
+import { readParams } from "../request-params";
 
 export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/reports">) => {
   const identity = parseInstanceIdentity(c.env);
@@ -48,7 +28,7 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const body = await readBody(c, ReportBodySchema);
+  const body = await readParams(c, ApiCreateReportParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
@@ -62,14 +42,9 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
   }
   // Rule ids are the configured `INSTANCE_RULES` entries, and Mastodon keeps
   // them for `violation` reports only.
-  const rawRuleIds = body.value.rule_ids;
-  const requestedRules = (
-    Array.isArray(rawRuleIds)
-      ? rawRuleIds.map((value) => String(value).trim())
-      : typeof rawRuleIds === "string" || typeof rawRuleIds === "number"
-        ? [String(rawRuleIds).trim()]
-        : []
-  ).filter((value) => value.length > 0);
+  const requestedRules = (body.value.rule_ids ?? [])
+    .map((value) => String(value).trim())
+    .filter((value) => value.length > 0);
   const knownRules = new Set(instanceRules(c.env).map((rule) => rule.id));
   if (requestedRules.length > 0 && category.value !== "violation") {
     return c.json(
@@ -91,14 +66,14 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const party = ReportParty.ofAccountId(body.value.account_id);
-  const statuses = await targetStatuses(c.env.DB, party, stringList(body.value.status_ids));
+  const statuses = await targetStatuses(c.env.DB, party, body.value.status_ids ?? []);
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
   const statusIds = statuses.value.map((status) => status.id);
   // A local account's report stays here, whatever `forward` says.
   const forwardTo =
-    isTruthy(body.value.forward) && target.value.kind === "Remote" ? target.value.actor : undefined;
+    body.value.forward === true && target.value.kind === "Remote" ? target.value.actor : undefined;
   const comment = body.value.comment ?? "";
   const report = await insertReport(c.env.DB, {
     reporter: { kind: "Local", accountId: user.value.id },
@@ -141,7 +116,7 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
       );
     }
   }
-  const requestedDomains = stringList(body.value.forward_to_domains);
+  const requestedDomains = body.value.forward_to_domains ?? [];
   if (requestedDomains.length > 0) {
     // Only servers a reported reply points at are reachable, and never the
     // target's own server, which `forward` covers.
@@ -240,4 +215,4 @@ const targetStatuses = async (
 };
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
-warmSchemas([ReportBodySchema]);
+warmSchemas([ApiCreateReportParamsSchema]);

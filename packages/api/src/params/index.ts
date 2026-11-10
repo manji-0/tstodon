@@ -15,3 +15,8 @@ export * from "./notifications";
 export * from "./polls";
 export * from "./search";
 export * from "./suggestions";
+// Accounts, relationships, domain blocks and reports (the account and
+// interaction actions).
+export * from "./account-actions";
+export * from "./domain-blocks";
+export * from "./reports";
