@@ -1,5 +1,11 @@
 import type { ApiAccountJSON, ApiFamiliarFollowersJSON } from "@tstodon/api";
-import { ApiGetAccountsParamsSchema, ApiGetFamiliarFollowersParamsSchema } from "@tstodon/api";
+import {
+  ApiGetAccountsParamsSchema,
+  ApiGetFamiliarFollowersParamsSchema,
+  ApiGetRelationshipsParamsSchema,
+  ApiLookupAccountParamsSchema,
+  ApiSearchAccountsParamsSchema,
+} from "@tstodon/api";
 import type { Context } from "hono";
 import {
   AccountPresentation,
@@ -44,7 +50,6 @@ import { RemoteAccountId } from "../../remote-account-id";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { familiarFollowerIds, followingAccountIds } from "../../follow-store";
 import { relationshipFlags } from "../../relationship-store";
-import { isTruthy } from "../../form-values";
 import { readQueryParams } from "../../request-params";
 import { findKnownAccountHandle, localRef, remoteRef } from "../../account-ref";
 import { instanceActorFetchSigner } from "../../instance-actor";
@@ -56,7 +61,11 @@ export const getV1AccountsLookup = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const ref = await findKnownAccountHandle(c.env, identity.value, c.req.query("acct") ?? "");
+  // Without `acct` the lookup finds nothing: 404, as Mastodon.
+  const acct = readQueryParams(c, ApiLookupAccountParamsSchema)
+    .map((params) => params.acct)
+    .unwrapOr("");
+  const ref = await findKnownAccountHandle(c.env, identity.value, acct);
   if (ref.isErr()) {
     return ref.error.kind === "RepositoryError"
       ? jsonRepositoryError(c, ref.error.message)
@@ -78,10 +87,9 @@ export const getV1AccountsRelationships = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const url = new URL(c.req.url);
-  const ids = [...url.searchParams.getAll("id[]"), ...url.searchParams.getAll("id")].filter(
-    (id) => id.length > 0,
-  );
+  // `with_suspended` changes nothing: every requested id is answered.
+  const params = readQueryParams(c, ApiGetRelationshipsParamsSchema);
+  const ids = (params.isOk() ? (params.value.id ?? []) : []).filter((id) => id.length > 0);
   const relationships = [];
   for (const id of ids) {
     const flags = await relationshipFlags(c.env.DB, user.value.id, id);
@@ -134,12 +142,16 @@ export const getV1AccountsSearch = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const rawQuery = (c.req.query("q") ?? "").trim();
+  const params = readQueryParams(c, ApiSearchAccountsParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
+  const rawQuery = (params.value.q ?? "").trim();
   const query = rawQuery.replace(/^@/, "");
-  const limit = queryAccountsLimit(c.req.query("limit"));
-  const offset = queryOffset(c.req.query("offset"));
-  const resolve = isTruthy(c.req.query("resolve"));
-  const onlyFollowing = isTruthy(c.req.query("following"));
+  const limit = queryAccountsLimit(params.value.limit);
+  const offset = queryOffset(params.value.offset);
+  const resolve = params.value.resolve ?? false;
+  const onlyFollowing = params.value.following ?? false;
   if (query.length === 0) {
     return c.json([]);
   }

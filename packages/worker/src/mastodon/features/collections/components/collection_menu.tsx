@@ -103,7 +103,7 @@ export const CollectionMenu: React.FC<{
   }, [collection, dispatch]);
 
   const openBlockModal = useCallback(() => {
-    dispatch(initBlockModal(ownerAccount));
+    if (ownerAccount) dispatch(initBlockModal(ownerAccount));
   }, [ownerAccount, dispatch]);
 
   const openRevokeConfirmation = useCallback(() => {

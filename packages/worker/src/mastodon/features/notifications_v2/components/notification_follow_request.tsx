@@ -52,11 +52,13 @@ export const NotificationFollowRequest: React.FC<{
   const dispatch = useAppDispatch();
 
   const onAuthorize = useCallback(() => {
-    dispatch(authorizeFollowRequest(notification.sampleAccountIds[0]));
+    const accountId = notification.sampleAccountIds[0];
+    if (accountId) dispatch(authorizeFollowRequest(accountId));
   }, [dispatch, notification.sampleAccountIds]);
 
   const onReject = useCallback(() => {
-    dispatch(rejectFollowRequest(notification.sampleAccountIds[0]));
+    const accountId = notification.sampleAccountIds[0];
+    if (accountId) dispatch(rejectFollowRequest(accountId));
   }, [dispatch, notification.sampleAccountIds]);
 
   const actions = (

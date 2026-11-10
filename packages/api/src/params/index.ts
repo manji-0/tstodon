@@ -15,3 +15,16 @@ export * from "./notifications";
 export * from "./polls";
 export * from "./search";
 export * from "./suggestions";
+// Accounts, relationships, domain blocks and reports (the account and
+// interaction actions).
+export * from "./account-actions";
+export * from "./domain-blocks";
+export * from "./reports";
+// The endpoints of the JavaScript actions moved to TypeScript: timelines,
+// conversations, trends, filters and the web UI's own settings and push
+// subscriptions.
+export * from "./timelines";
+export * from "./conversations";
+export * from "./trends";
+export * from "./filters";
+export * from "./web";

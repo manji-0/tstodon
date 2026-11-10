@@ -101,7 +101,7 @@ export const Footer: React.FC<{
     }
 
     if (signedIn) {
-      dispatch(toggleFavourite(status.get('id')));
+      dispatch(toggleFavourite(status.get('id') as string));
     } else {
       dispatch(
         openModal({

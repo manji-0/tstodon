@@ -41,3 +41,9 @@ export const apiRemoveAccountFromList = (listId: string, accountId: string) =>
   apiRequestDelete(`v1/lists/${listId}/accounts`, {
     account_ids: [accountId],
   } satisfies ApiListAccountsParams);
+
+export const apiGetList = (listId: string) =>
+  apiRequestGet<ApiListJSON>(`v1/lists/${listId}`);
+
+export const apiDeleteList = (listId: string) =>
+  apiRequestDelete(`v1/lists/${listId}`);

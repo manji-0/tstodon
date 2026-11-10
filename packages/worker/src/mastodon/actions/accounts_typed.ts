@@ -55,7 +55,7 @@ export const followAccountRequest = createAction(
 
 export const followAccountFail = createAction(
   'accounts/follow/FAIL',
-  actionWithSkipLoadingTrue<{ id: string; error: string; locked: boolean }>,
+  actionWithSkipLoadingTrue<{ id: string; error: unknown; locked: boolean }>,
 );
 
 export const unfollowAccountRequest = createAction(
@@ -65,7 +65,7 @@ export const unfollowAccountRequest = createAction(
 
 export const unfollowAccountFail = createAction(
   'accounts/unfollow/FAIL',
-  actionWithSkipLoadingTrue<{ id: string; error: string }>,
+  actionWithSkipLoadingTrue<{ id: string; error: unknown }>,
 );
 
 export const blockAccountSuccess = createAction<{

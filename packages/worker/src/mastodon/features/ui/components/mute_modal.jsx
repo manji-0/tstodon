@@ -57,7 +57,7 @@ export const MuteModal = ({ accountId, acct }) => {
 
   const handleClick = useCallback(() => {
     dispatch(closeModal({ modalType: undefined, ignoreFocus: false }));
-    dispatch(muteAccount(accountId, notifications, muteDuration));
+    dispatch(muteAccount(accountId, notifications, Number(muteDuration)));
   }, [dispatch, accountId, notifications, muteDuration]);
 
   const handleCancel = useCallback(() => {

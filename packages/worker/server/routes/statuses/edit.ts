@@ -1,4 +1,10 @@
-import type { ApiStatusEditJSON, ApiStatusJSON, ApiStatusSourceJSON } from "@tstodon/api";
+import {
+  ApiDeleteStatusParamsSchema,
+  ApiUpdateStatusParamsSchema,
+  type ApiStatusEditJSON,
+  type ApiStatusJSON,
+  type ApiStatusSourceJSON,
+} from "@tstodon/api";
 import {
   type InstanceIdentity,
   type LocalAccount,
@@ -10,7 +16,7 @@ import {
   Visibility,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { z } from "zod";
+import type { z } from "zod";
 import type { Context } from "hono";
 import { findAccountsByUsernames } from "../../account-store";
 import { authenticate } from "../../auth";
@@ -24,7 +30,6 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  readOptionalBody,
   readUnknownBody,
   requireFunctionalUser,
   requireUser,
@@ -32,13 +37,11 @@ import {
 import { mastodonStatus } from "../../local-status-documents";
 import { countPollVotes, findPollByStatusId, replacePollOptions } from "../../poll-store";
 import {
-  CreateStatusBodySchema,
-  mediaAttributesFromForm,
+  mediaAttributesOf,
   mediaDescriptionsFit,
   withoutNullFields,
 } from "../../status-body-schema";
-import { booleanish, isTruthy, stringList } from "../../form-values";
-import { schemaResult } from "@tstodon/core";
+import { parseBodyParams, readOptionalParams, readQueryParams } from "../../request-params";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { notifyAccount } from "../../notify";
 import { findStatusById, replaceStatusMedia, updateLocalNote } from "../../status-store";
@@ -60,8 +63,6 @@ import { visibilityIsPublic } from "../../quote-resolve";
 import { ApiRefusal } from "../api-refusal";
 import type { MediaAttribute } from "../../status-body-schema";
 
-const DeleteStatusBodySchema = z.object({ delete_media: booleanish });
-
 /**
  * Mastodon 4.4's `delete_media`, from the query or the body: set, the media
  * goes with the status; left out, it stays unattached for a redraft, as the
@@ -70,11 +71,12 @@ const DeleteStatusBodySchema = z.object({ delete_media: booleanish });
 const deleteMediaRequested = async (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id">,
 ): Promise<boolean> => {
-  if (isTruthy(c.req.query("delete_media"))) {
+  const query = readQueryParams(c, ApiDeleteStatusParamsSchema);
+  if (query.isOk() && query.value.delete_media === true) {
     return true;
   }
-  const body = await readOptionalBody(c, DeleteStatusBodySchema);
-  return body.isOk() && isTruthy(body.value.delete_media);
+  const body = await readOptionalParams(c, ApiDeleteStatusParamsSchema);
+  return body.isOk() && body.value.delete_media === true;
 };
 
 export const deleteV1StatusesById = async (
@@ -118,7 +120,7 @@ export const deleteV1StatusesById = async (
   return c.json({ ...document.value, text: sourceText });
 };
 
-type UpdateStatusBody = z.infer<typeof CreateStatusBodySchema>;
+type UpdateStatusBody = z.output<typeof ApiUpdateStatusParamsSchema>;
 
 /** The new options of a poll that may still be edited: no votes yet, not expired. */
 type PollUpdate = Readonly<{
@@ -165,7 +167,7 @@ const resolvePollEdit = async (
       ApiRefusal.rejected(422, "poll must have at least two options", "PollOptionsRequired"),
     );
   }
-  const expiresIn = pollEdit.expires_in === undefined ? undefined : Number(pollEdit.expires_in);
+  const expiresIn = pollEdit.expires_in;
   const limits = checkPollLimits(options, expiresIn);
   if (limits.isErr()) {
     return err(limits.error);
@@ -173,16 +175,13 @@ const resolvePollEdit = async (
   return ok({
     pollId: current.value.id,
     options,
-    multiple: isTruthy(pollEdit.multiple),
+    multiple: pollEdit.multiple ?? false,
     expiresAt:
       expiresIn !== undefined && Number.isFinite(expiresIn)
         ? new Date(Date.now() + expiresIn * 1000).toISOString()
         : current.value.expiresAt,
     // `hide_totals` is optional on an edit: omitting it keeps the poll's.
-    hideTotals:
-      pollEdit.hide_totals === undefined
-        ? current.value.hideTotals
-        : isTruthy(pollEdit.hide_totals),
+    hideTotals: pollEdit.hide_totals ?? current.value.hideTotals,
   });
 };
 
@@ -281,14 +280,14 @@ const editNote = async (
       text: body.status ?? existing.text,
       visibility: visibility.value,
       spoilerText: body.spoiler_text ?? existing.spoilerText,
-      sensitive: body.sensitive !== undefined ? isTruthy(body.sensitive) : existing.sensitive,
+      sensitive: body.sensitive ?? existing.sensitive,
       language:
-        body.language === undefined
+        body.language === undefined || body.language === null
           ? existing.language
           : body.language.length > 0
             ? { kind: "Present", value: body.language }
             : { kind: "None" },
-      mediaIds: body.media_ids !== undefined ? stringList(body.media_ids) : existing.mediaIds,
+      mediaIds: body.media_ids ?? existing.mediaIds,
       poll: existing.poll,
     }),
   );
@@ -404,8 +403,11 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   if (!existing || existing.kind !== "LocalNote" || existing.accountId !== user.value.id) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const rawBody = await readUnknownBody(c);
-  const body = schemaResult(CreateStatusBodySchema)(withoutNullFields(rawBody));
+  // A `null` field keeps the status's value, as a missing one does.
+  const body = parseBodyParams(
+    ApiUpdateStatusParamsSchema,
+    withoutNullFields(await readUnknownBody(c)),
+  );
   if (body.isErr()) {
     return jsonValidationError(c);
   }
@@ -415,7 +417,7 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
     user.value,
     existing,
     body.value,
-    body.value.media_attributes ?? mediaAttributesFromForm(rawBody),
+    mediaAttributesOf(body.value.media_attributes),
   );
   return edited.isErr() ? ApiRefusal.respond(c, edited.error) : c.json(edited.value);
 };

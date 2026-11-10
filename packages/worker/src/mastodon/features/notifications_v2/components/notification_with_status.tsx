@@ -64,23 +64,23 @@ export const NotificationWithStatus: React.FC<{
   const handlers = useMemo(
     () => ({
       open: () => {
-        dispatch(navigateToStatus(statusId));
+        if (statusId) dispatch(navigateToStatus(statusId));
       },
 
       reply: () => {
-        dispatch(replyComposeById(statusId));
+        if (statusId) dispatch(replyComposeById(statusId));
       },
 
       boost: () => {
-        dispatch(toggleReblog(statusId));
+        if (statusId) dispatch(toggleReblog(statusId));
       },
 
       favourite: () => {
-        dispatch(toggleFavourite(statusId));
+        if (statusId) dispatch(toggleFavourite(statusId));
       },
 
       toggleHidden: () => {
-        dispatch(toggleStatusSpoilers(statusId));
+        if (statusId) dispatch(toggleStatusSpoilers(statusId));
       },
     }),
     [dispatch, statusId],

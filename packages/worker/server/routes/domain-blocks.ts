@@ -1,12 +1,11 @@
 import { Hostname } from "@tstodon/domain";
 import type { Context } from "hono";
-import { z } from "zod";
+import { ApiDomainBlockParamsSchema } from "@tstodon/api";
 import { blockAccountDomain } from "../account-domain-block";
 import { listBlockedDomains, unblockDomain } from "../domain-block-store";
-import { jsonAuthError, jsonRepositoryError, readBody, requireUser } from "../http";
+import { jsonAuthError, jsonRepositoryError, requireUser } from "../http";
+import { readMergedParams, readParams } from "../request-params";
 import { parseInstanceIdentity } from "../runtime-config";
-
-const DomainBodySchema = z.object({ domain: z.string().min(1) });
 
 export const getV1DomainBlocks = async (c: Context<{ Bindings: Env }, "/api/v1/domain_blocks">) => {
   const user = await requireUser(c);
@@ -31,7 +30,7 @@ export const postV1DomainBlocks = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const body = await readBody(c, DomainBodySchema);
+  const body = await readParams(c, ApiDomainBlockParamsSchema);
   if (body.isErr()) {
     return c.json({ error: "domain is required", kind: "ValidationError" }, 422);
   }
@@ -56,15 +55,9 @@ export const deleteV1DomainBlocks = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  // Mastodon passes the domain as a query parameter; a JSON/form body works too.
-  let raw = c.req.query("domain") ?? "";
-  if (raw.length === 0 && (c.req.header("content-type") ?? "").length > 0) {
-    const body = await readBody(c, DomainBodySchema);
-    if (body.isOk()) {
-      raw = body.value.domain;
-    }
-  }
-  const domain = Hostname.fromInput(raw);
+  // Mastodon's clients pass the domain in the query; a JSON or form body works too.
+  const params = await readMergedParams(c, ApiDomainBlockParamsSchema);
+  const domain = params.isOk() ? Hostname.fromInput(params.value.domain) : undefined;
   if (domain === undefined) {
     return c.json({ error: "domain is required", kind: "ValidationError" }, 422);
   }

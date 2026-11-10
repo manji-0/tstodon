@@ -1,4 +1,6 @@
 import type { Context } from "hono";
+import { ApiGetConversationsParamsSchema } from "@tstodon/api";
+import { warmSchemas } from "@tstodon/core";
 import { conversationDocuments } from "../conversation-documents";
 import {
   hideConversation,
@@ -6,8 +8,15 @@ import {
   listConversationsForAccount,
 } from "../conversation-store";
 import { publishConversationRead } from "../conversation-stream";
-import { jsonAuthError, jsonRepositoryError, queryLimit, requireUser } from "../http";
+import {
+  jsonAuthError,
+  jsonRepositoryError,
+  jsonValidationError,
+  queryLimit,
+  requireUser,
+} from "../http";
 import { markConversationRead } from "../marker-store";
+import { readQueryParams } from "../request-params";
 import { parseInstanceIdentity } from "../runtime-config";
 
 export const getV1Conversations = async (
@@ -21,11 +30,16 @@ export const getV1Conversations = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
+  // The paging cursor is not read yet: the list is always the latest page.
+  const params = readQueryParams(c, ApiGetConversationsParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
   const conversations = await listConversationsForAccount(
     c.env.DB,
     identity.value,
     user.value.id,
-    queryLimit(c.req.query("limit"), 20),
+    queryLimit(params.value.limit, 20),
   );
   if (conversations.isErr()) {
     return jsonRepositoryError(c, conversations.error.message);
@@ -127,3 +141,5 @@ export const deleteV1ConversationsById = async (
   }
   return c.json({});
 };
+
+warmSchemas([ApiGetConversationsParamsSchema]);

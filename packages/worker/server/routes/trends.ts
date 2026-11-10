@@ -1,7 +1,15 @@
-import type { ApiHashtagJSON } from "@tstodon/api";
+import { ApiGetTrendsParamsSchema, type ApiHashtagJSON } from "@tstodon/api";
+import { warmSchemas } from "@tstodon/core";
 import type { Context } from "hono";
 import type { InstanceIdentity } from "@tstodon/domain";
-import { jsonRepositoryError, queryLimit, queryOffset, queryTrendsLimit } from "../http";
+import {
+  jsonRepositoryError,
+  jsonValidationError,
+  queryLimit,
+  queryOffset,
+  queryTrendsLimit,
+} from "../http";
+import { readQueryParams } from "../request-params";
 import { listTrendingLinks } from "../trend-store";
 import { rejectedTrendTargets } from "../trend-review-store";
 import { untrendableTags } from "../tag-moderation-store";
@@ -13,6 +21,10 @@ import { parseInstanceIdentity } from "../runtime-config";
 import { listTrendingStatuses, listTrendingTags } from "../status-discovery-store";
 
 export const getV1TrendsLinks = async (c: Context<{ Bindings: Env }, "/api/v1/trends/links">) => {
+  const params = readQueryParams(c, ApiGetTrendsParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
   const rejected = await rejectedTrendTargets(c.env.DB, "Link");
   if (rejected.isErr()) {
     return jsonRepositoryError(c, rejected.error.message);
@@ -22,8 +34,8 @@ export const getV1TrendsLinks = async (c: Context<{ Bindings: Env }, "/api/v1/tr
     return jsonRepositoryError(c, publishers.error.message);
   }
   const links = await listTrendingLinks(c.env.DB, {
-    limit: queryTrendsLimit(c.req.query("limit")),
-    offset: queryOffset(c.req.query("offset")),
+    limit: queryTrendsLimit(params.value.limit),
+    offset: queryOffset(params.value.offset),
     excluded: rejected.value,
     excludedPublishers: publishers.value,
   });
@@ -62,14 +74,18 @@ const trendingTagsResponse = async (c: Context<{ Bindings: Env }>): Promise<Resp
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
+  const params = readQueryParams(c, ApiGetTrendsParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
   // Rejected in review, unusable, or unlisted.
   const rejected = await untrendableTags(c.env.DB);
   if (rejected.isErr()) {
     return jsonRepositoryError(c, rejected.error.message);
   }
-  const tags = await listTrendingTags(c.env.DB, queryTrendsLimit(c.req.query("limit")), {
+  const tags = await listTrendingTags(c.env.DB, queryTrendsLimit(params.value.limit), {
     excluded: rejected.value,
-    offset: queryOffset(c.req.query("offset")),
+    offset: queryOffset(params.value.offset),
   });
   if (tags.isErr()) {
     return jsonRepositoryError(c, tags.error.message);
@@ -93,8 +109,12 @@ export const getV1TrendsStatuses = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const statuses = await listTrendingStatuses(c.env.DB, queryLimit(c.req.query("limit"), 20), {
-    offset: queryOffset(c.req.query("offset")),
+  const params = readQueryParams(c, ApiGetTrendsParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
+  const statuses = await listTrendingStatuses(c.env.DB, queryLimit(params.value.limit, 20), {
+    offset: queryOffset(params.value.offset),
   });
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
@@ -104,3 +124,5 @@ export const getV1TrendsStatuses = async (
     ? jsonRepositoryError(c, documents.error.message)
     : c.json(documents.value);
 };
+
+warmSchemas([ApiGetTrendsParamsSchema]);

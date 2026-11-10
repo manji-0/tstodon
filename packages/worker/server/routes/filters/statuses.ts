@@ -1,13 +1,8 @@
 import type { Context } from "hono";
+import { ApiCreateFilterStatusParamsSchema } from "@tstodon/api";
 import { warmSchemas } from "@tstodon/core";
-import { z } from "zod";
-import {
-  jsonAuthError,
-  jsonRepositoryError,
-  jsonValidationError,
-  readBody,
-  requireUser,
-} from "../../http";
+import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../../http";
+import { readParams } from "../../request-params";
 import {
   addFilterStatus,
   findFilterById,
@@ -16,10 +11,6 @@ import {
   removeFilterStatusById,
 } from "../../filter-store";
 import { filterNotFound } from "./shared";
-
-export const FilterStatusBodySchema = z.object({
-  status_id: z.string().trim().min(1),
-});
 
 export const getV2FiltersStatusesById = async (
   c: Context<{ Bindings: Env }, "/api/v2/filters/statuses/:id">,
@@ -85,7 +76,7 @@ export const postV2FiltersByIdStatuses = async (
   if (!row.value) {
     return filterNotFound(c);
   }
-  const body = await readBody(c, FilterStatusBodySchema);
+  const body = await readParams(c, ApiCreateFilterStatusParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
@@ -97,4 +88,4 @@ export const postV2FiltersByIdStatuses = async (
 };
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
-warmSchemas([FilterStatusBodySchema]);
+warmSchemas([ApiCreateFilterStatusParamsSchema]);

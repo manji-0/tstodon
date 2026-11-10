@@ -26,7 +26,8 @@ export const queryLimit = (raw: string | number | undefined, fallback = 20): num
   queryLimitMax(raw, fallback, 40);
 
 /** Trends: tags and links default to 10 and cap at 20, as Mastodon does. */
-export const queryTrendsLimit = (raw: string | undefined): number => queryLimitMax(raw, 10, 20);
+export const queryTrendsLimit = (raw: string | number | undefined): number =>
+  queryLimitMax(raw, 10, 20);
 
 /** Mastodon's `offset` for paged lists, kept to a value SQLite can bind as an integer. */
 export const queryOffset = (raw: string | number | undefined): number => {

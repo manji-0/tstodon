@@ -1,4 +1,9 @@
-import api, { getLinks } from 'mastodon/api';
+import type { ApiDomainBlockParams } from '@tstodon/api';
+import api, {
+  apiRequestDelete,
+  apiRequestPost,
+  getLinks,
+} from 'mastodon/api';
 
 export const apiGetDomainBlocks = async (url?: string) => {
   const response = await api().request<string[]>({
@@ -11,3 +16,14 @@ export const apiGetDomainBlocks = async (url?: string) => {
     links: getLinks(response),
   };
 };
+
+export const apiBlockDomain = (domain: string) =>
+  apiRequestPost<Record<string, never>>('v1/domain_blocks', {
+    domain,
+  } satisfies ApiDomainBlockParams);
+
+/** The domain goes in the query, as upstream sends it. */
+export const apiUnblockDomain = (domain: string) =>
+  apiRequestDelete<Record<string, never>>('v1/domain_blocks', {
+    domain,
+  } satisfies ApiDomainBlockParams);

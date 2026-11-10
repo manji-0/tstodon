@@ -153,8 +153,10 @@ export const Notifications: React.FC<{
   }, [columnId, dispatch]);
 
   const handleMove = useCallback(
-    (dir: unknown) => {
-      dispatch(moveColumn(columnId, dir));
+    (dir: number) => {
+      if (columnId) {
+        dispatch(moveColumn(columnId, dir));
+      }
     },
     [dispatch, columnId],
   );

@@ -517,10 +517,7 @@ export const notificationGroupsReducer = createReducer<NotificationGroupsState>(
           ]);
       })
       .addCase(blockDomainSuccess, (state, action) => {
-        removeNotificationsForAccounts(
-          state,
-          action.payload.accounts.map((account) => account.id),
-        );
+        removeNotificationsForAccounts(state, action.payload.accounts);
       })
       .addCase(loadPending, (state) => {
         // First, remove any existing group and merge data

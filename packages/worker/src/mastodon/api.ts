@@ -20,6 +20,10 @@ export const getLinks = (response: AxiosResponse) => {
   return LinkHeader.parse(value);
 };
 
+/** The `rel="next"` page of a `Link` header, or `null` on the last page. */
+export const getNextLinkUri = (links: LinkHeader): string | null =>
+  links.refs.find((link) => link.rel === 'next')?.uri ?? null;
+
 export interface AsyncRefreshHeader {
   id: string;
   retry: number;

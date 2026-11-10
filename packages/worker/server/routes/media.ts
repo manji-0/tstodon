@@ -1,4 +1,4 @@
-import { InstanceLimits, schemaResult } from "@tstodon/core";
+import { InstanceLimits } from "@tstodon/core";
 import { UploadMetadata } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
@@ -25,8 +25,8 @@ import { findStatusById } from "../status-store";
 import { canViewStatus } from "../visibility-guard";
 import type { Context } from "hono";
 import type { z } from "zod";
-import { ApiUpdateMediaParamsSchema } from "@tstodon/api";
-import { readOptionalParams } from "../request-params";
+import { ApiUpdateMediaParamsSchema, ApiUploadMediaParamsSchema } from "@tstodon/api";
+import { parseBodyParams, readOptionalParams } from "../request-params";
 
 const CACHE_CONTROL = "public, max-age=31536000, immutable";
 
@@ -86,7 +86,7 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
     return c.json({ error: "file is required", kind: "ValidationError" }, 400);
   }
   // An upload's `description` and `focus` are the fields `PUT /api/v1/media/:id` takes.
-  const fields = schemaResult(ApiUpdateMediaParamsSchema)(body);
+  const fields = parseBodyParams(ApiUploadMediaParamsSchema, body);
   if (fields.isErr()) {
     return jsonValidationError(c);
   }

@@ -108,7 +108,7 @@ export const UploadForm: React.FC = () => {
       const { active, over } = e;
 
       if (over && active.id !== over.id) {
-        dispatch(changeMediaOrder(active.id, over.id));
+        dispatch(changeMediaOrder(String(active.id), String(over.id)));
       }
 
       setActiveId(null);

@@ -1,14 +1,8 @@
-import type { ApiFilterJSON } from "@tstodon/api";
+import { type ApiFilterJSON, ApiFilterParamsSchema } from "@tstodon/api";
 import { type Context } from "hono";
 import { warmSchemas } from "@tstodon/core";
-import { z } from "zod";
-import {
-  jsonAuthError,
-  jsonRepositoryError,
-  jsonValidationError,
-  readBody,
-  requireUser,
-} from "../../http";
+import type { z } from "zod";
+import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../../http";
 import { newEntityId } from "../../ids";
 import { mastodonFilterV2 } from "../../filter-documents";
 import {
@@ -22,47 +16,16 @@ import {
   listFilterStatuses,
   updateFilter,
 } from "../../filter-store";
-import { isTruthy, stringList } from "../../form-values";
-import { booleanish } from "../../form-values";
+import { isTruthy } from "../../form-values";
+import { readParams } from "../../request-params";
 import { expiresAtFromBody, filterActionOf, filterNotFound, storedContexts } from "./shared";
-
-export const FilterV2BodySchema = z.object({
-  title: z.string().optional(),
-  phrase: z.string().optional(),
-  context: z.union([z.array(z.string()), z.string()]).optional(),
-  filter_action: z.string().optional(),
-  irreversible: booleanish,
-  expires_in: z.union([z.number(), z.string()]).optional(),
-  keywords_attributes: z
-    .array(
-      z.object({
-        id: z.string().optional(),
-        keyword: z.string().optional(),
-        whole_word: booleanish,
-        _destroy: booleanish,
-      }),
-    )
-    .optional(),
-  keywords: z
-    .array(
-      z.union([
-        z.string(),
-        z.object({
-          id: z.string().optional(),
-          keyword: z.string().optional(),
-          whole_word: booleanish,
-        }),
-      ]),
-    )
-    .optional(),
-});
 
 export const postV2Filters = async (c: Context<{ Bindings: Env }, "/api/v2/filters">) => {
   const user = await requireUser(c);
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const body = await readBody(c, FilterV2BodySchema);
+  const body = await readParams(c, ApiFilterParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
@@ -72,7 +35,7 @@ export const postV2Filters = async (c: Context<{ Bindings: Env }, "/api/v2/filte
   if (phrase.length === 0) {
     return c.json({ error: "title is required", kind: "ValidationError" }, 422);
   }
-  const contexts = stringList(body.value.context);
+  const contexts = body.value.context ?? [];
   const created = await insertFilter(c.env.DB, {
     accountId: user.value.id,
     phrase,
@@ -81,7 +44,7 @@ export const postV2Filters = async (c: Context<{ Bindings: Env }, "/api/v2/filte
     irreversible:
       body.value.filter_action !== undefined
         ? filterActionOf(body.value.filter_action) === "hide"
-        : isTruthy(body.value.irreversible),
+        : (body.value.irreversible ?? false),
     expiresAt: expiresAtFromBody(body.value.expires_in) ?? undefined,
     keywords,
   });
@@ -108,20 +71,12 @@ export const getV2Filters = async (c: Context<{ Bindings: Env }, "/api/v2/filter
 };
 
 /** Keywords from either `keywords_attributes[]` or `keywords[]`, in order. */
-const keywordsFromBody = (
-  body: z.infer<typeof FilterV2BodySchema>,
-  extra: ReadonlyArray<{
-    id?: string | undefined;
-    keyword?: string | undefined;
-    whole_word?: boolean;
-  }> = [],
-): FilterKeyword[] => {
+const keywordsFromBody = (body: z.output<typeof ApiFilterParamsSchema>): FilterKeyword[] => {
   const entries = [
     ...(body.keywords_attributes ?? []).filter((entry) => !isTruthy(entry._destroy)),
     ...(body.keywords ?? []).map((entry) =>
       typeof entry === "string" ? { keyword: entry } : entry,
     ),
-    ...extra,
   ];
   return entries.flatMap((entry): FilterKeyword[] => {
     const keyword = entry.keyword?.trim() ?? "";
@@ -174,7 +129,7 @@ export const putV2FiltersById = async (c: Context<{ Bindings: Env }, "/api/v2/fi
   if (!existing.value) {
     return filterNotFound(c);
   }
-  const body = await readBody(c, FilterV2BodySchema);
+  const body = await readParams(c, ApiFilterParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
@@ -184,7 +139,7 @@ export const putV2FiltersById = async (c: Context<{ Bindings: Env }, "/api/v2/fi
   const keywords = keywordsProvided ? keywordsFromBody(body.value) : filterKeywords(existing.value);
   const title = (body.value.title ?? body.value.phrase ?? "").trim();
   const phrase = title.length > 0 ? title : (keywords[0]?.keyword ?? existing.value.phrase);
-  const contexts = stringList(body.value.context);
+  const contexts = body.value.context ?? [];
   const action = body.value.filter_action;
   const updated = await updateFilter(c.env.DB, user.value.id, id, {
     phrase,
@@ -224,4 +179,4 @@ export const deleteV2FiltersById = async (c: Context<{ Bindings: Env }, "/api/v2
 };
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
-warmSchemas([FilterV2BodySchema]);
+warmSchemas([ApiFilterParamsSchema]);

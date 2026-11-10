@@ -545,7 +545,7 @@ function getMenuItems({
 
   const domain = account.acct.split('@')[1];
 
-  if (!isLocal) {
+  if (!isLocal && domain) {
     menu.push(null);
 
     const isDomainBlocking = !!relationship?.domain_blocking;
