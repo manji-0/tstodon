@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   ApiCreateListParamsSchema,
+  ApiCreateStatusParamsSchema,
   ApiFollowAccountParamsSchema,
   ApiGetNotificationsParamsSchema,
   ApiPollVoteParamsSchema,
@@ -46,6 +47,28 @@ describe("request params normalization", () => {
 
   it("an empty string is an empty list", () => {
     expect(castParams(ApiPollVoteParamsSchema, { choices: "" }, "body")).toEqual({ choices: [] });
+  });
+
+  it("reads an object keyed by position as a list in index order", () => {
+    expect(
+      parseBodyParams(ApiCreateStatusParamsSchema, {
+        "media_ids[]": ["1", "2"],
+        "media_attributes[1][id]": "2",
+        "media_attributes[1][focus]": "0,0.5",
+        "media_attributes[0][id]": "1",
+        "media_attributes[0][description]": "first",
+        "poll[options][]": ["a", "b"],
+        "poll[expires_in]": "300",
+        "poll[multiple]": "1",
+      }).unwrapOr(undefined),
+    ).toEqual({
+      media_ids: ["1", "2"],
+      media_attributes: [
+        { id: "1", description: "first" },
+        { id: "2", focus: "0,0.5" },
+      ],
+      poll: { options: ["a", "b"], expires_in: 300, multiple: true },
+    });
   });
 
   it("nests and casts a form's bracketed keys", () => {

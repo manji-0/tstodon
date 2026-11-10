@@ -660,3 +660,279 @@ describe("REST request params of the account and interaction actions", () => {
     }
   });
 });
+
+describe("REST request params: statuses, media and compose search (web UI compose actions)", () => {
+  const upload = async (
+    email: string,
+    fields: FormEntries = [],
+    path = "/api/v2/media",
+  ): Promise<z.infer<typeof ApiMediaAttachment>> => {
+    const form = new FormData();
+    form.set("file", new File([PNG_40X30], "a.png", { type: "image/png" }));
+    for (const [key, value] of fields) {
+      form.set(key, value);
+    }
+    return accepted(
+      ApiMediaAttachment,
+      await answer(
+        await SELF.fetch(`https://example.com${path}`, {
+          method: "POST",
+          headers: await authHeaders(email),
+          body: form,
+        }),
+      ),
+      `upload to ${path}`,
+    );
+  };
+
+  const mediaAnswer = async (email: string, id: string): Promise<number> =>
+    (await sendGet(email, `/api/v1/media/${id}`)).status;
+
+  it("statuses: create with media or a poll, as JSON (with the web UI's nulls) and as a form", async () => {
+    const email = "params-compose-create@example.com";
+    await credentials(email);
+    const [jsonMedia, formMedia] = [await upload(email), await upload(email)];
+
+    const [jsonStatus, formStatus] = await bothAccepted(
+      ApiStatus,
+      "POST /api/v1/statuses (media)",
+      sendJson(email, "POST", "/api/v1/statuses", {
+        status: "with media",
+        spoiler_text: "a warning",
+        sensitive: true,
+        visibility: "unlisted",
+        language: "de",
+        media_ids: [jsonMedia.id],
+        media_attributes: [{ id: jsonMedia.id, description: "a gradient", focus: "0.5,-0.5" }],
+        in_reply_to_id: null,
+        poll: null,
+        quoted_status_id: null,
+        quote_approval_policy: "nobody",
+      }),
+      sendForm(email, "POST", "/api/v1/statuses", [
+        ["status", "with media"],
+        ["spoiler_text", "a warning"],
+        ["sensitive", "1"],
+        ["visibility", "unlisted"],
+        ["language", "de"],
+        ["media_ids[]", formMedia.id],
+        ["media_attributes[0][id]", formMedia.id],
+        ["media_attributes[0][description]", "a gradient"],
+        ["media_attributes[0][focus]", "0.5,-0.5"],
+        ["quote_approval_policy", "nobody"],
+      ]),
+    );
+    for (const status of [jsonStatus, formStatus]) {
+      expect(status).toMatchObject({
+        spoiler_text: "a warning",
+        sensitive: true,
+        visibility: "unlisted",
+        language: "de",
+        in_reply_to_id: null,
+        quote_approval: { automatic: [], manual: [] },
+      });
+      expect(status.media_attachments).toHaveLength(1);
+      expect(status.media_attachments[0]).toMatchObject({
+        description: "a gradient",
+        meta: { focus: { x: 0.5, y: -0.5 } },
+      });
+    }
+    expect(jsonStatus.media_attachments[0]?.id).toBe(jsonMedia.id);
+    expect(formStatus.media_attachments[0]?.id).toBe(formMedia.id);
+
+    const [jsonPoll, formPoll] = await bothAccepted(
+      ApiStatus,
+      "POST /api/v1/statuses (poll)",
+      sendJson(email, "POST", "/api/v1/statuses", {
+        status: "Which one?",
+        poll: { options: ["this", "that"], expires_in: 3600, multiple: true, hide_totals: false },
+        language: null,
+        media_ids: [],
+      }),
+      sendForm(email, "POST", "/api/v1/statuses", [
+        ["status", "Which one?"],
+        ["poll[options][]", "this"],
+        ["poll[options][]", "that"],
+        ["poll[expires_in]", "3600"],
+        ["poll[multiple]", "true"],
+        ["poll[hide_totals]", "0"],
+      ]),
+    );
+    for (const status of [jsonPoll, formPoll]) {
+      expect(status.poll).toMatchObject({
+        multiple: true,
+        options: [{ title: "this" }, { title: "that" }],
+      });
+    }
+  });
+
+  it("statuses: edit with media_attributes as JSON and as a form, and a null description", async () => {
+    const email = "params-compose-edit@example.com";
+    await credentials(email);
+    const [jsonMedia, formMedia] = [
+      await upload(email, [["description", "before"]]),
+      await upload(email, [["description", "before"]]),
+    ];
+    const [jsonNote, formNote] = [
+      await postStatus(email, { status: "before edit", media_ids: [jsonMedia.id] }),
+      await postStatus(email, { status: "before edit", media_ids: [formMedia.id] }),
+    ];
+
+    const [jsonEdited, formEdited] = await bothAccepted(
+      ApiStatus,
+      "PUT /api/v1/statuses/:id",
+      sendJson(email, "PUT", `/api/v1/statuses/${jsonNote.id}`, {
+        status: "after edit",
+        spoiler_text: "",
+        sensitive: false,
+        language: "en",
+        media_ids: [jsonMedia.id],
+        media_attributes: [{ id: jsonMedia.id, description: "after", focus: "0.25,-0.25" }],
+        in_reply_to_id: null,
+        poll: null,
+      }),
+      sendForm(email, "PUT", `/api/v1/statuses/${formNote.id}`, [
+        ["status", "after edit"],
+        ["spoiler_text", ""],
+        ["sensitive", "false"],
+        ["language", "en"],
+        ["media_ids[]", formMedia.id],
+        ["media_attributes[0][id]", formMedia.id],
+        ["media_attributes[0][description]", "after"],
+        ["media_attributes[0][focus]", "0.25,-0.25"],
+      ]),
+    );
+    for (const status of [jsonEdited, formEdited]) {
+      expect(status.edited_at).not.toBeNull();
+      expect(status.language).toBe("en");
+      expect(status.media_attachments[0]).toMatchObject({
+        description: "after",
+        meta: { focus: { x: 0.25, y: -0.25 } },
+      });
+    }
+
+    // The web UI sends `description: null` for an attachment without alt
+    // text (and no focus): the edit goes through and the description is cleared.
+    const cleared = accepted(
+      ApiStatus,
+      await sendJson(email, "PUT", `/api/v1/statuses/${jsonNote.id}`, {
+        status: "edited again",
+        media_ids: [jsonMedia.id],
+        media_attributes: [{ id: jsonMedia.id, description: null }],
+      }),
+      "PUT /api/v1/statuses/:id (null description)",
+    );
+    expect(cleared.media_attachments[0]).toMatchObject({
+      description: null,
+      meta: { focus: { x: 0.25, y: -0.25 } },
+    });
+  });
+
+  it("statuses: delete_media in the query or the body; without it the media stays for a redraft", async () => {
+    const email = "params-compose-delete@example.com";
+    await credentials(email);
+    const [queryMedia, bodyMedia, keptMedia] = [
+      await upload(email),
+      await upload(email),
+      await upload(email),
+    ];
+    const [queryNote, bodyNote, keptNote] = [
+      await postStatus(email, { status: "delete me", media_ids: [queryMedia.id] }),
+      await postStatus(email, { status: "delete me too", media_ids: [bodyMedia.id] }),
+      await postStatus(email, { status: "redraft me", media_ids: [keptMedia.id] }),
+    ];
+
+    const [bodyDeleted, queryDeleted] = await bothAccepted(
+      ApiStatus,
+      "DELETE /api/v1/statuses/:id",
+      sendJson(email, "DELETE", `/api/v1/statuses/${bodyNote.id}`, { delete_media: true }),
+      sendDelete(email, `/api/v1/statuses/${queryNote.id}?delete_media=true`),
+    );
+    expect(bodyDeleted.text).toBe("delete me too");
+    expect(queryDeleted.text).toBe("delete me");
+    expect(await mediaAnswer(email, bodyMedia.id)).toBe(404);
+    expect(await mediaAnswer(email, queryMedia.id)).toBe(404);
+
+    const redrafted = accepted(
+      ApiStatus,
+      await sendDelete(email, `/api/v1/statuses/${keptNote.id}?delete_media=false`),
+      "DELETE /api/v1/statuses/:id (redraft)",
+    );
+    expect(redrafted.text).toBe("redraft me");
+    expect(await mediaAnswer(email, keptMedia.id)).toBe(200);
+  });
+
+  it("media: v2 and v1 uploads take description and focus; a thumbnail is read and ignored", async () => {
+    const email = "params-compose-media@example.com";
+    await credentials(email);
+    const fields: FormEntries = [
+      ["description", "a gradient"],
+      ["focus", "0.1,0.2"],
+    ];
+    const [v2, v1] = [await upload(email, fields), await upload(email, fields, "/api/v1/media")];
+    for (const media of [v2, v1]) {
+      expect(media).toMatchObject({
+        description: "a gradient",
+        meta: { focus: { x: 0.1, y: 0.2 } },
+      });
+    }
+
+    const thumbnailForm = new FormData();
+    thumbnailForm.set("thumbnail", new File([PNG_40X30], "t.png", { type: "image/png" }));
+    thumbnailForm.set("description", "with a thumbnail");
+    const withThumbnail = accepted(
+      ApiMediaAttachment,
+      await answer(
+        await SELF.fetch(`https://example.com/api/v1/media/${v2.id}`, {
+          method: "PUT",
+          headers: await authHeaders(email),
+          body: thumbnailForm,
+        }),
+      ),
+      "PUT /api/v1/media/:id (thumbnail)",
+    );
+    expect(withThumbnail.description).toBe("with a thumbnail");
+    expect(withThumbnail.preview_url).toBe(v2.preview_url);
+  });
+
+  it("compose suggestions: account and hashtag search read string booleans and numbers", async () => {
+    const email = "params-compose-search@example.com";
+    const other = await credentials("params-compose-search-other@example.com");
+    await credentials(email);
+    await sendJson(email, "POST", `/api/v1/accounts/${other.id}/follow`);
+    await postStatus(email, { status: "#paramscompose" });
+
+    const [accountsBoolean, accountsString] = await bothAccepted(
+      z.array(ApiAccount),
+      "GET /api/v1/accounts/search",
+      sendGet(email, `/api/v1/accounts/search?q=${other.username}&resolve=false&limit=4`),
+      sendGet(email, `/api/v1/accounts/search?q=${other.username}&resolve=0&limit=4`),
+    );
+    expect(ids(accountsBoolean)).toContain(other.id);
+    expect(accountsString).toEqual(accountsBoolean);
+
+    const [followingBoolean, followingString] = await bothAccepted(
+      z.array(ApiAccount),
+      "GET /api/v1/accounts/search (following)",
+      sendGet(email, `/api/v1/accounts/search?q=${other.username}&following=true`),
+      sendGet(email, `/api/v1/accounts/search?q=${other.username}&following=1`),
+    );
+    expect(ids(followingBoolean)).toEqual([other.id]);
+    expect(followingString).toEqual(followingBoolean);
+
+    const [tagsBoolean, tagsString] = await bothAccepted(
+      ApiSearchResults,
+      "GET /api/v2/search (hashtags)",
+      sendGet(
+        email,
+        "/api/v2/search?type=hashtags&q=paramscompose&resolve=false&limit=4&exclude_unreviewed=true",
+      ),
+      sendGet(
+        email,
+        "/api/v2/search?type=hashtags&q=paramscompose&resolve=0&limit=4&exclude_unreviewed=1",
+      ),
+    );
+    expect(tagsBoolean.hashtags.map((tag) => tag.name)).toContain("paramscompose");
+    expect(tagsString).toEqual(tagsBoolean);
+  });
+});

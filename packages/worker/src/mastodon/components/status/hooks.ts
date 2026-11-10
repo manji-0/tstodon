@@ -51,7 +51,7 @@ export function useStatusHandlers({
 
   // Display handlers
   const onExpandedToggle = useCallback(() => {
-    dispatch(toggleStatusSpoilers(statusId));
+    if (statusId) dispatch(toggleStatusSpoilers(statusId));
   }, [dispatch, statusId]);
 
   const onToggleHidden = useCallback(() => {
@@ -85,7 +85,7 @@ export function useStatusHandlers({
 
   const accountId = status?.account.id;
   const onMention = useCallback(() => {
-    dispatch(mentionComposeById(accountId));
+    if (accountId) dispatch(mentionComposeById(accountId));
   }, [dispatch, accountId]);
 
   // Navigation handlers

@@ -1,4 +1,8 @@
-import type { ApiScheduledStatusJSON, ApiStatusJSON } from "@tstodon/api";
+import {
+  ApiCreateStatusParamsSchema,
+  type ApiScheduledStatusJSON,
+  type ApiStatusJSON,
+} from "@tstodon/api";
 import {
   type InstanceIdentity,
   type LocalAccount,
@@ -24,12 +28,10 @@ import {
 } from "../../http";
 import { mastodonStatus } from "../../local-status-documents";
 import {
-  CreateStatusBodySchema,
-  mediaAttributesFromForm,
+  mediaAttributesOf,
   mediaDescriptionsFit,
   withoutNullFields,
 } from "../../status-body-schema";
-import { isTruthy, stringList } from "../../form-values";
 import type { z } from "zod";
 import {
   completeStatusIdempotency,
@@ -39,7 +41,6 @@ import {
   reserveStatusIdempotency,
 } from "../../status-idempotency-store";
 import { InstanceLimits } from "@tstodon/core";
-import { schemaResult } from "@tstodon/core";
 import type { MediaAttribute } from "../../status-body-schema";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { findStatusById } from "../../status-store";
@@ -51,6 +52,7 @@ import { quotePolicyName } from "../../quote-policy-name";
 import { isQuotePolicy, type QuotePolicy } from "../../quote-store";
 import { resolveQuote, visibilityIsPublic } from "../../quote-resolve";
 import { ApiRefusal } from "../api-refusal";
+import { parseBodyParams } from "../../request-params";
 import { checkPollLimits, draftRefusal } from "./status-limits";
 import {
   findScheduledStatus,
@@ -65,7 +67,7 @@ export const queueLinkCard = async (env: Env, statusId: string, text: string): P
   queued;
 };
 
-type CreateStatusBody = z.infer<typeof CreateStatusBodySchema>;
+type CreateStatusBody = z.output<typeof ApiCreateStatusParamsSchema>;
 
 /** The poll a new status asks for, with its options trimmed and within the instance limits. */
 const parsePollRequest = (
@@ -86,7 +88,7 @@ const parsePollRequest = (
       ),
     );
   }
-  const expiresIn = Number(poll.expires_in ?? 86400);
+  const expiresIn = poll.expires_in ?? 86400;
   const limits = checkPollLimits(options, expiresIn);
   if (limits.isErr()) {
     return err(limits.error);
@@ -94,8 +96,8 @@ const parsePollRequest = (
   return ok({
     options,
     expiresIn,
-    multiple: isTruthy(poll.multiple),
-    hideTotals: isTruthy(poll.hide_totals),
+    multiple: poll.multiple ?? false,
+    hideTotals: poll.hide_totals ?? false,
   });
 };
 
@@ -277,15 +279,14 @@ const postStatus = async (
       visibility: quoted.value.visibility,
       ...(quote ? { quote: { kind: "Quoted", target: quote.quoted } } : {}),
       spoilerText: body.spoiler_text ?? "",
-      sensitive:
-        body.sensitive === undefined ? composeDefaults.sensitive : isTruthy(body.sensitive),
+      sensitive: body.sensitive ?? composeDefaults.sensitive,
       language:
         body.language && body.language.length > 0
           ? { kind: "Present", value: body.language }
           : composeDefaults.language !== null
             ? { kind: "Present", value: composeDefaults.language }
             : { kind: "None" },
-      mediaIds: stringList(body.media_ids),
+      mediaIds: body.media_ids ?? [],
       poll: poll.value ? { kind: "Present" } : { kind: "None" },
     }),
   );
@@ -357,8 +358,12 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<CreateAnswer
   if (user.isErr()) {
     return unwritten(user.error);
   }
-  const rawBody = await readUnknownBody(c);
-  const body = schemaResult(CreateStatusBodySchema)(withoutNullFields(rawBody));
+  // A `null` field is a missing one, as in Rails (the web UI sends
+  // `"in_reply_to_id": null` and so on for what the post does not use).
+  const body = parseBodyParams(
+    ApiCreateStatusParamsSchema,
+    withoutNullFields(await readUnknownBody(c)),
+  );
   if (body.isErr()) {
     return unwritten(jsonValidationError(c));
   }
@@ -367,7 +372,7 @@ const createStatus = async (c: Context<{ Bindings: Env }>): Promise<CreateAnswer
     identity.value,
     user.value,
     body.value,
-    body.value.media_attributes ?? mediaAttributesFromForm(rawBody),
+    mediaAttributesOf(body.value.media_attributes),
   );
   if (posted.isErr()) {
     return unwritten(ApiRefusal.respond(c, posted.error));
