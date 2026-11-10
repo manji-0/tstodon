@@ -9,6 +9,11 @@ import {
   isNotificationType,
   isNotificationWithStatusType,
 } from "@tstodon/api";
+import {
+  type ApiGetGroupedNotificationsParams,
+  ApiGetGroupedNotificationsParamsSchema,
+  ApiGetNotificationsParamsSchema,
+} from "@tstodon/api";
 import { assertNever } from "@tstodon/core";
 import {
   type LocalStatus,
@@ -19,7 +24,7 @@ import {
 import { suspendedDomains } from "../admin-domain-block-store";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "../d1";
-import { isTruthy } from "../form-values";
+import { paramsCursor, readQueryParams } from "../request-params";
 import {
   filteredAttribute,
   loadViewerFilters,
@@ -29,6 +34,7 @@ import {
 import {
   jsonAuthError,
   jsonRepositoryError,
+  jsonValidationError,
   queryAccountsLimit,
   queryCursor,
   queryNotificationsLimit,
@@ -89,6 +95,10 @@ const withFiltered = (
     ? { ...document, status: { ...document.status, filtered } }
     : document;
 
+/** A list param without its blank entries (`types[]=` names no type). */
+const nonBlank = (values: ReadonlyArray<string> | undefined): string[] =>
+  (values ?? []).filter((value) => value.length > 0);
+
 export const getV1Notifications = async (
   c: Context<{ Bindings: Env }, "/api/v1/notifications">,
 ) => {
@@ -100,19 +110,19 @@ export const getV1Notifications = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const queryValues = (key: string): string[] =>
-    [...(c.req.queries(`${key}[]`) ?? []), ...(c.req.queries(key) ?? [])].filter(
-      (value) => value.length > 0,
-    );
-  const limit = queryNotificationsLimit(c.req.query("limit"));
+  const params = readQueryParams(c, ApiGetNotificationsParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
+  const limit = queryNotificationsLimit(params.value.limit);
   const rows = await listNotifications(c.env.DB, user.value.id, limit, {
-    types: queryValues("types"),
-    excludeTypes: queryValues("exclude_types"),
-    fromAccountId: c.req.query("account_id"),
+    types: nonBlank(params.value.types),
+    excludeTypes: nonBlank(params.value.exclude_types),
+    fromAccountId: params.value.account_id,
     // Mastodon's `include_filtered`: the policy-held notifications come back
     // in the list instead of only under `notifications/requests`.
-    includeFiltered: isTruthy(c.req.query("include_filtered")),
-    ...queryCursor(c),
+    includeFiltered: params.value.include_filtered ?? false,
+    ...paramsCursor(params.value),
   });
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
@@ -261,11 +271,10 @@ const groupedQuery = (
   filters: NotificationFilters;
   limit: number;
 } => {
-  const queryValues = (key: string): string[] =>
-    [...(c.req.queries(`${key}[]`) ?? []), ...(c.req.queries(key) ?? [])].filter(
-      (value) => value.length > 0,
-    );
-  const requested = queryValues("grouped_types");
+  // Every field casts from a query string, so this parse cannot fail.
+  const empty: ApiGetGroupedNotificationsParams = {};
+  const params = readQueryParams(c, ApiGetGroupedNotificationsParamsSchema).unwrapOr(empty);
+  const requested = nonBlank(params.grouped_types);
   return {
     type: "notifications",
     groupedTypes: new Set(
@@ -274,13 +283,13 @@ const groupedQuery = (
       ),
     ),
     filters: {
-      types: queryValues("types"),
-      excludeTypes: queryValues("exclude_types"),
-      fromAccountId: c.req.query("account_id"),
-      includeFiltered: isTruthy(c.req.query("include_filtered")),
-      ...queryCursor(c),
+      types: nonBlank(params.types),
+      excludeTypes: nonBlank(params.exclude_types),
+      fromAccountId: params.account_id,
+      includeFiltered: params.include_filtered ?? false,
+      ...paramsCursor(params),
     },
-    limit: queryNotificationsLimit(c.req.query("limit")),
+    limit: queryNotificationsLimit(params.limit),
   };
 };
 

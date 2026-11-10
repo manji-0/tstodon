@@ -1,5 +1,7 @@
 // @ts-check
 
+import { isMastodonNotificationType } from '@tstodon/api/values';
+
 import { getLocale } from '../locales';
 import { connectStream } from '../stream';
 
@@ -24,6 +26,23 @@ import {
   fillCommunityTimelineGaps,
   fillListTimelineGaps,
 } from './timelines';
+
+/**
+ * An entity payload as the streaming contract (`@tstodon/api`) types it,
+ * decoded from the JSON string it arrives as.
+ * @template {import('@tstodon/api').ApiStreamingEventName} E
+ * @param {E} _event
+ * @param {string} payload
+ * @returns {import('@tstodon/api').ApiStreamingPayloadJSON<E>}
+ */
+const decode = (_event, payload) => JSON.parse(payload);
+
+/**
+ * @param {import('@tstodon/api').ApiNotificationJSON} notification
+ * @returns {notification is import('@tstodon/api').ApiMastodonNotificationJSON}
+ */
+const isRenderedNotification = notification =>
+  isMastodonNotificationType(notification.type);
 
 /**
  * @param {number} max
@@ -100,18 +119,19 @@ export const connectTimelineStream = (timelineId, channelName, params = {}, opti
         switch (data.event) {
         case 'update':
           // @ts-expect-error
-          dispatch(updateTimeline(timelineId, JSON.parse(data.payload), { accept: options.accept, bogusQuotePolicy }));
+          dispatch(updateTimeline(timelineId, decode('update', data.payload), { accept: options.accept, bogusQuotePolicy }));
           break;
         case 'status.update':
-          // @ts-expect-error
-          dispatch(updateStatus(JSON.parse(data.payload), { bogusQuotePolicy }));
+          dispatch(updateStatus(decode('status.update', data.payload), { bogusQuotePolicy }));
           break;
         case 'delete':
           dispatch(deleteFromTimelines(data.payload));
           break;
         case 'notification': {
-          // @ts-expect-error
-          const notificationJSON = JSON.parse(data.payload);
+          const notificationJSON = decode('notification', data.payload);
+          // tstodon's `move` notification is not one this UI renders (its
+          // REST requests leave it out by type), so the stream's is dropped.
+          if (!isRenderedNotification(notificationJSON)) break;
           dispatch(updateNotifications(notificationJSON, messages, locale));
           // TODO: remove this once the groups feature replaces the previous one
           dispatch(processNewNotificationForGroups(notificationJSON));
@@ -122,16 +142,13 @@ export const connectTimelineStream = (timelineId, channelName, params = {}, opti
           break;
         }
         case 'conversation':
-          // @ts-expect-error
-          dispatch(updateConversations(JSON.parse(data.payload)));
+          dispatch(updateConversations(decode('conversation', data.payload)));
           break;
         case 'announcement':
-          // @ts-expect-error
-          dispatch(updateAnnouncements(JSON.parse(data.payload)));
+          dispatch(updateAnnouncements(decode('announcement', data.payload)));
           break;
         case 'announcement.reaction':
-          // @ts-expect-error
-          dispatch(updateAnnouncementsReaction(JSON.parse(data.payload)));
+          dispatch(updateAnnouncementsReaction(decode('announcement.reaction', data.payload)));
           break;
         case 'announcement.delete':
           dispatch(deleteAnnouncement(data.payload));

@@ -1,6 +1,6 @@
 import { AccountPresentation, InstanceIdentity } from "@tstodon/domain";
 import type { Context } from "hono";
-import { z } from "zod";
+import { ApiSetAccountNoteParamsSchema } from "@tstodon/api";
 import { findAccountByIdOrUsername } from "../../account-store";
 import {
   jsonAuthError,
@@ -8,7 +8,6 @@ import {
   jsonValidationError,
   queryAccountsLimit,
   queryCursor,
-  readBody,
   requireUser,
   setPaginationLinks,
 } from "../../http";
@@ -20,6 +19,7 @@ import { RemoteAccountId } from "../../remote-account-id";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { endorseAccount, listEndorsements, unendorseAccount } from "../../endorsement-store";
 import { relationshipFlags, setAccountNote } from "../../relationship-store";
+import { readParams } from "../../request-params";
 
 export const relationshipTarget = async (
   c: Context<{ Bindings: Env }>,
@@ -74,8 +74,6 @@ export const postV1AccountsByIdUnendorse = (
   c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/unendorse">,
 ) => setEndorsed(c, false);
 
-const AccountNoteBodySchema = z.object({ comment: z.string() });
-
 export const postV1AccountsByIdNote = async (
   c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/note">,
 ) => {
@@ -92,7 +90,7 @@ export const postV1AccountsByIdNote = async (
   if (!target) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const body = await readBody(c, AccountNoteBodySchema);
+  const body = await readParams(c, ApiSetAccountNoteParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }

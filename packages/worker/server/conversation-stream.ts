@@ -43,6 +43,9 @@ const publishConversation = async (
         continue;
       }
       const [payload] = documents.value;
+      if (!payload) {
+        continue;
+      }
       await publishToHub(env, accountId, {
         channels: [{ kind: "Direct" }],
         event: { kind: "conversation", payload },

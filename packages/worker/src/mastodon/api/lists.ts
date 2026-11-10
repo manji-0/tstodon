@@ -1,3 +1,9 @@
+import type {
+  ApiCreateListParams,
+  ApiGetListAccountsParams,
+  ApiListAccountsParams,
+  ApiUpdateListParams,
+} from '@tstodon/api';
 import {
   apiRequestPost,
   apiRequestPut,
@@ -7,18 +13,21 @@ import {
 import type { ApiAccountJSON } from 'mastodon/api_types/accounts';
 import type { ApiListJSON } from 'mastodon/api_types/lists';
 
-export const apiCreate = (list: Partial<ApiListJSON>) =>
+export const apiCreate = (list: ApiCreateListParams) =>
   apiRequestPost<ApiListJSON>('v1/lists', list);
 
-export const apiUpdate = (list: Partial<ApiListJSON>) =>
-  apiRequestPut<ApiListJSON>(`v1/lists/${list.id}`, list);
+export const apiUpdate = ({
+  id,
+  ...list
+}: ApiUpdateListParams & { id: string }) =>
+  apiRequestPut<ApiListJSON>(`v1/lists/${id}`, list);
 
 export const apiGetLists = () => apiRequestGet<ApiListJSON[]>('v1/lists');
 
 export const apiGetListAccounts = (listId: string) =>
   apiRequestGet<ApiAccountJSON[]>(`v1/lists/${listId}/accounts`, {
     limit: 0,
-  });
+  } satisfies ApiGetListAccountsParams);
 
 export const apiGetAccountLists = (accountId: string) =>
   apiRequestGet<ApiListJSON[]>(`v1/accounts/${accountId}/lists`);
@@ -26,9 +35,9 @@ export const apiGetAccountLists = (accountId: string) =>
 export const apiAddAccountToList = (listId: string, accountId: string) =>
   apiRequestPost(`v1/lists/${listId}/accounts`, {
     account_ids: [accountId],
-  });
+  } satisfies ApiListAccountsParams);
 
 export const apiRemoveAccountFromList = (listId: string, accountId: string) =>
   apiRequestDelete(`v1/lists/${listId}/accounts`, {
     account_ids: [accountId],
-  });
+  } satisfies ApiListAccountsParams);

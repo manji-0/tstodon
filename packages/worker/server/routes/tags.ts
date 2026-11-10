@@ -1,20 +1,15 @@
 import type { ApiFeaturedTagJSON, ApiHashtagJSON } from "@tstodon/api";
+import { ApiCreateFeaturedTagParamsSchema } from "@tstodon/api";
 import type { Context } from "hono";
-import { z } from "zod";
 import { AccountPresentation, type InstanceIdentity } from "@tstodon/domain";
 import { accountRefPresentation } from "../account-presentation";
 import { localRef } from "../account-ref";
 import { findAccountById } from "../account-store";
 import { authenticate } from "../auth";
-import {
-  jsonAuthError,
-  jsonRepositoryError,
-  jsonValidationError,
-  readBody,
-  requireUser,
-} from "../http";
+import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
 import { mastodonFeaturedTag, mastodonTag } from "../tag-documents";
 import { parseInstanceIdentity } from "../runtime-config";
+import { readParams } from "../request-params";
 import { isTagUsable } from "../tag-moderation-store";
 import {
   FEATURED_TAG_LIMIT,
@@ -34,8 +29,6 @@ import {
   unfeatureTag,
   unfollowTag,
 } from "../tag-store";
-
-const FeaturedTagBodySchema = z.object({ name: z.string().min(1) });
 
 type DocumentResult<T> =
   | Readonly<{ kind: "Ok"; document: T }>
@@ -307,7 +300,7 @@ export const postV1FeaturedTags = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const body = await readBody(c, FeaturedTagBodySchema);
+  const body = await readParams(c, ApiCreateFeaturedTagParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }

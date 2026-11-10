@@ -1,5 +1,6 @@
 import type { ApActivityDocumentOf } from "@tstodon/api/activitypub";
 import type { ApiStatusJSON } from "@tstodon/api";
+import { ApiReblogParamsSchema } from "@tstodon/api";
 import {
   type InstanceIdentity,
   type LocalAccount,
@@ -39,7 +40,6 @@ import {
   jsonValidationError,
   queryCursor,
   queryLimit,
-  readOptionalBody,
   requireFunctionalUser,
   requireUser,
   setPaginationLinks,
@@ -78,13 +78,9 @@ import {
   resolveThreadRootStatusIds,
   unmuteStatusThread,
 } from "../../status-mute-store";
-import { z } from "zod";
+import { readOptionalParams } from "../../request-params";
 
 /** `POST /api/v1/statuses/:id/reblog` — `visibility` is the only parameter. */
-export const ReblogBodySchema = z.object({
-  visibility: z.string().optional(),
-});
-
 const STATUS_PIN_LIMIT = InstanceLimits.account.maxPinnedStatuses;
 
 const setStatusPinned = async (c: Context<{ Bindings: Env }>, pin: boolean): Promise<Response> => {
@@ -505,7 +501,7 @@ export const postV1StatusesByIdReblog = async (
   if (user.isErr()) {
     return user.error;
   }
-  const body = await readOptionalBody(c, ReblogBodySchema);
+  const body = await readOptionalParams(c, ApiReblogParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
@@ -716,4 +712,4 @@ export const getV1Bookmarks = (c: Context<{ Bindings: Env }, "/api/v1/bookmarks"
  */
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
-warmSchemas([ReblogBodySchema]);
+warmSchemas([ApiReblogParamsSchema]);

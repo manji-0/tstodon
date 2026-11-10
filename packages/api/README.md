@@ -31,6 +31,36 @@ Where tstodon renders more than Mastodon, the schema says so in a comment
   `ApiAdminCustomEmoji`. Their enum-like values (`IP_BLOCK_SEVERITIES`,
   `ADMIN_MEASURE_KEYS`, `ADMIN_DIMENSION_KEYS`,
   `ADMIN_RETENTION_FREQUENCIES`) are in `@tstodon/api/values`.
+  Two server-to-UI documents that are not API responses live here too.
+  `src/initial-state.ts`: `ApiInitialState`, the web UI's boot document
+  (`<script id="initial-state">`, Mastodon's `InitialStateSerializer`),
+  with `ApiInitialStateMeta`, `ApiInitialStateCompose`,
+  `ApiInitialStateRole`, `ApiInitialStateLanguage`, `ApiWrapstodon`,
+  `ApiWebPushSubscription` and `ApiWebSettings`. `src/streaming.ts`:
+  `ApiStreamingEvent`, Mastodon's streaming events as a discriminated union
+  on `event` with each payload decoded (`update` and `status.update` a
+  Status, `notification` a Notification, `conversation` a Conversation,
+  `delete` an id, ...); `ApiStreamingWireEventJSON` and
+  `ApiStreamingMessageJSON`, the same events as sent (an entity payload is a
+  JSON string; a WebSocket message adds `stream`); `encodeStreamingEvent`,
+  which the Worker sends through; and `ApiStreamingWireEvent` /
+  `ApiStreamingMessage`, which parse what was sent back to the decoded
+  event (for tests). Their names (`STREAMING_EVENTS`, `LANDING_PAGES`,
+  `DISPLAY_MEDIA_VALUES`, ...) are in `@tstodon/api/values`.
+
+- Request params (`src/params/`, exported from `@tstodon/api`): what a
+  JSON client sends to the endpoints the web UI's TypeScript wrappers call,
+  under Mastodon's names (`ApiCreateListParamsSchema` /
+  `ApiCreateListParams`, `ApiUpdateCredentialsParams`, `ApiSearchParams`,
+  `ApiPaginationParams`, ...). The type is the schema's input
+  (`z.input`), which the UI uses; the Worker parses with the schema. The
+  schemas are the JSON shape only (booleans, numbers, arrays): the Worker
+  folds a form or query string into that shape first
+  (`packages/worker/server/request-params.ts`). Where the Worker reads an
+  enum-like value leniently (a notification policy's `for_*`, the
+  directory's `order`, a search `type`, a boost's `visibility`) the field is
+  a string, so an unknown value keeps the answer it had instead of becoming
+  a parse error.
 - `@tstodon/api/values` (`src/values.ts`): the enum-like strings (status
   visibilities, quote policies and states, notification types, filter
   contexts, ...) as constant arrays with their types and guards. It imports
@@ -65,6 +95,17 @@ answers; the tests do (`expectContract` in
 stored in a wire shape: a local status's replaced revisions
 (`status_edits.snapshot_json`) are parsed at the D1 boundary with
 `StatusEditSnapshot`, built from `ApiStatusEdit`.
+
+## Who parses the params
+
+The Worker's handlers read requests with `readParams` / `readOptionalParams`
+(body), `readQueryParams` (query) and `readMergedParams` (both, the body
+winning, as Rails' `params`), all in `packages/worker/server/request-params.ts`:
+`key[]` folds into `key`, a body's `a[b]` keys nest, and each field is cast
+to the type its schema declares (`true` / `1` are true, anything else false;
+a number that does not parse is left out; a single value of an array field
+is a one-item list). `server/api-params-contract.test.ts` sends each covered
+endpoint its JSON body and the form or query equivalent.
 
 ## No `kind` here
 

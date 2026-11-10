@@ -31,11 +31,7 @@ export const ApiFeaturePolicy = z.object({
 });
 export type ApiFeaturePolicyJSON = z.infer<typeof ApiFeaturePolicy>;
 
-/**
- * `REST::AccountSerializer` (with `REST::MutedAccountSerializer`'s
- * `mute_expires_at`). `moved` is the account this one moved to.
- */
-export const ApiAccount = z.object({
+const ApiAccountFields = {
   id: z.string(),
   username: z.string(),
   acct: z.string(),
@@ -78,11 +74,27 @@ export const ApiAccount = z.object({
   invalid_handle: z.boolean().optional(),
   /** `REST::MutedAccountSerializer` only. */
   mute_expires_at: z.string().nullable().optional(),
-  get moved() {
+};
+
+/**
+ * The account type is written out for `moved`: inferred through the
+ * recursive getter, TypeScript could resolve it to `{}` depending on the
+ * order it checks files in.
+ */
+export type ApiAccountJSON = z.infer<z.ZodObject<typeof ApiAccountFields>> & {
+  moved?: ApiAccountJSON | null | undefined;
+};
+
+/**
+ * `REST::AccountSerializer` (with `REST::MutedAccountSerializer`'s
+ * `mute_expires_at`). `moved` is the account this one moved to.
+ */
+export const ApiAccount = z.object({
+  ...ApiAccountFields,
+  get moved(): z.ZodOptional<z.ZodNullable<z.ZodType<ApiAccountJSON>>> {
     return ApiAccount.nullable().optional();
   },
 });
-export type ApiAccountJSON = z.infer<typeof ApiAccount>;
 export type BaseApiAccountJSON = ApiAccountJSON;
 export type ApiMutedAccountJSON = ApiAccountJSON;
 

@@ -19,9 +19,10 @@ let sharedConnection;
  */
 
 /**
- * @typedef StreamEvent
- * @property {string} event
- * @property {object} payload
+ * An event as received, its payload still encoded: an entity is a JSON string
+ * (the streaming contract of `@tstodon/api`, `packages/api/src/streaming.ts`).
+ * The WebSocket message adds `stream`; an SSE frame has none.
+ * @typedef {import('@tstodon/api').ApiStreamingWireEventJSON} StreamEvent
  */
 
 /**
@@ -224,10 +225,10 @@ const KNOWN_EVENT_TYPES = [
  * @param {(event: StreamEvent) => void} received
  */
 const handleEventSourceMessage = (e, received) => {
-  received({
+  received(/** @type {StreamEvent} */ ({
     event: e.type,
     payload: e.data,
-  });
+  }));
 };
 
 /**

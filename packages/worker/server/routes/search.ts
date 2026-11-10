@@ -1,12 +1,19 @@
 import type { ApiAccountJSON, ApiHashtagJSON, ApiSearchResultsJSON } from "@tstodon/api";
+import { ApiSearchParamsSchema } from "@tstodon/api";
 import { ok } from "neverthrow";
 import type { InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import { searchAccountsPage } from "../account-search";
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import { authenticate } from "../auth";
 import { filteredAttribute, loadViewerFilters, matchFilters } from "../filter-match";
-import { isTruthy } from "../form-values";
-import { jsonAuthError, jsonRepositoryError, queryLimit, queryOffset } from "../http";
+import { readQueryParams } from "../request-params";
+import {
+  jsonAuthError,
+  jsonRepositoryError,
+  jsonValidationError,
+  queryLimit,
+  queryOffset,
+} from "../http";
 import {
   documentsInOrder,
   mastodonAccountDocuments,
@@ -64,19 +71,22 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     return jsonAuthError(c, auth.error);
   }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
-  const query = (c.req.query("q") ?? "").trim();
+  const params = readQueryParams(c, ApiSearchParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
+  const query = (params.value.q ?? "").trim();
   // Mastodon's `blank?`: an empty `type` is no type.
-  const requestedType = (c.req.query("type") ?? "").trim();
+  const requestedType = (params.value.type ?? "").trim();
   const type = requestedType.length === 0 ? "all" : requestedType;
-  const limit = queryLimit(c.req.query("limit"), 5);
-  const rawOffset = (c.req.query("offset") ?? "").trim();
-  if (rawOffset.length > 0 && viewerId === undefined) {
+  const limit = queryLimit(params.value.limit, 5);
+  if (params.value.offset !== undefined && viewerId === undefined) {
     return c.json(
       { error: "Search queries pagination is not supported without authentication" },
       401,
     );
   }
-  const resolve = isTruthy(c.req.query("resolve"));
+  const resolve = params.value.resolve ?? false;
   // Resolving makes this instance fetch from other servers on the caller's behalf.
   if (resolve && viewerId === undefined) {
     return c.json(
@@ -88,7 +98,7 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     );
   }
   // Mastodon pages by `offset` only when one result `type` is asked for.
-  const offset = requestedType.length === 0 ? 0 : queryOffset(rawOffset);
+  const offset = requestedType.length === 0 ? 0 : queryOffset(params.value.offset);
   if (query.length === 0) {
     return c.json({ accounts: [], statuses: [], hashtags: [], collections: [] });
   }

@@ -260,3 +260,68 @@ export const ADMIN_RETENTION_FREQUENCIES = ["day", "month"] as const;
 export type AdminRetentionFrequency = (typeof ADMIN_RETENTION_FREQUENCIES)[number];
 export const isAdminRetentionFrequency = (value: string): value is AdminRetentionFrequency =>
   includes(ADMIN_RETENTION_FREQUENCIES, value);
+
+/** `meta.landing_page` of the web UI's initial state (`Setting.landing_page`, Mastodon 4.5). */
+export const LANDING_PAGES = ["about", "trends", "local_feed"] as const;
+export type LandingPage = (typeof LANDING_PAGES)[number];
+
+/** `meta.local_topic_feed_access`: Mastodon cannot turn the local hashtag feeds off. */
+export const LOCAL_TOPIC_FEED_ACCESS_VALUES = ["public", "authenticated"] as const;
+export type LocalTopicFeedAccess = (typeof LOCAL_TOPIC_FEED_ACCESS_VALUES)[number];
+
+/** `meta.display_media` (`setting_display_media`). */
+export const DISPLAY_MEDIA_VALUES = ["default", "show_all", "hide_all"] as const;
+export type DisplayMedia = (typeof DISPLAY_MEDIA_VALUES)[number];
+
+/** `meta.emoji_style` (`web.emoji_style`). */
+export const EMOJI_STYLES = ["auto", "twemoji", "native"] as const;
+export type EmojiStyle = (typeof EMOJI_STYLES)[number];
+
+/** `meta.wrapstodon.state`, the annual report's state for the viewer. */
+export const ANNUAL_REPORT_STATES = ["available", "generating", "eligible", "ineligible"] as const;
+export type AnnualReportState = (typeof ANNUAL_REPORT_STATES)[number];
+
+/**
+ * The events of Mastodon's streaming API (`streaming/index.js`, the
+ * `event` of a WebSocket message or an SSE frame). tstodon sends `update`,
+ * `status.update`, `delete`, `notification`, `notifications_merged` and
+ * `conversation`; the rest are Mastodon's, which the web UI also handles.
+ * `encrypted_message` went with Mastodon's end-to-end encryption API and is
+ * not listed.
+ */
+export const STREAMING_EVENTS = [
+  "update",
+  "status.update",
+  "delete",
+  "notification",
+  "notifications_merged",
+  "conversation",
+  "announcement",
+  "announcement.reaction",
+  "announcement.delete",
+  "filters_changed",
+] as const;
+export type StreamingEventName = (typeof STREAMING_EVENTS)[number];
+export const isStreamingEventName = (value: string): value is StreamingEventName =>
+  includes(STREAMING_EVENTS, value);
+
+/** The events whose payload is an entity, sent as a JSON string. */
+export const JSON_STREAMING_EVENTS = [
+  "update",
+  "status.update",
+  "notification",
+  "conversation",
+  "announcement",
+  "announcement.reaction",
+] as const;
+export type JsonStreamingEventName = (typeof JSON_STREAMING_EVENTS)[number];
+export const isJsonStreamingEventName = (value: string): value is JsonStreamingEventName =>
+  includes(JSON_STREAMING_EVENTS, value);
+
+/**
+ * A notification type Mastodon has, i.e. not one of tstodon's extensions:
+ * the streaming API sends every notification, and a Mastodon client drops
+ * the types it does not know.
+ */
+export const isMastodonNotificationType = (value: string): value is MastodonNotificationType =>
+  includes(NOTIFICATION_TYPES, value);

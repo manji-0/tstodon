@@ -28,54 +28,20 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  nestFormKeys,
   readUnknownBody,
   requireSession,
   requireUser,
 } from "../../http";
 import { accountSource, mastodonAccountDocument } from "../../account-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
-import { isTruthy } from "../../form-values";
 import { newEntityId } from "../../ids";
 import { sendActorUpdate } from "../../local-actor";
 import { avatarObjectKey, headerObjectKey } from "../../media-keys";
 import { ApiRefusal } from "../api-refusal";
 import { buildFeaturedTagDocuments } from "../tags";
 import { z } from "zod";
-import { booleanish } from "../../form-values";
-
-const ProfileFieldInputSchema = z.object({
-  name: z.string().optional(),
-  value: z.string().optional(),
-});
-
-export const UpdateCredentialsBodySchema = z.object({
-  display_name: z.string().optional(),
-  avatar: z.unknown().optional(),
-  header: z.unknown().optional(),
-  note: z.string().optional(),
-  bot: booleanish,
-  discoverable: booleanish,
-  indexable: booleanish,
-  hide_collections: booleanish,
-  locked: booleanish,
-  fields: z.array(ProfileFieldInputSchema).optional(),
-  /**
-   * Mastodon's name for the profile fields: an array (the web UI's JSON) or
-   * an object keyed by position (`fields_attributes[0][name]` as a form).
-   */
-  fields_attributes: z
-    .union([z.array(ProfileFieldInputSchema), z.record(z.string(), ProfileFieldInputSchema)])
-    .optional(),
-  source: z
-    .object({
-      privacy: z.string().optional(),
-      quote_policy: z.string().optional(),
-      sensitive: z.union([z.boolean(), z.string(), z.number()]).optional(),
-      language: z.string().optional(),
-    })
-    .optional(),
-});
+import { type ApiProfileFieldParamsSchema, ApiUpdateCredentialsParamsSchema } from "@tstodon/api";
+import { parseBodyParams } from "../../request-params";
 
 /** Mastodon boolean query params: `true`/`1` are on, anything else is off. */
 export const queryFlag = (value: string | undefined): boolean => value === "true" || value === "1";
@@ -175,7 +141,7 @@ const storeProfileImage = async (
   return { kind: "Ok", objectKey, contentType, size: stored?.size ?? bytes.byteLength };
 };
 
-type UpdateCredentialsBody = z.infer<typeof UpdateCredentialsBodySchema>;
+type UpdateCredentialsBody = z.output<typeof ApiUpdateCredentialsParamsSchema>;
 
 type AccountDefaultsUpdate = Parameters<typeof updateAccountDefaults>[2];
 
@@ -200,8 +166,8 @@ const parseSourceDefaults = (
   };
   const privacyRaw = sourceKey("privacy");
   const quotePolicyRaw = sourceKey("quote_policy");
-  const sensitiveRaw =
-    flat["source[sensitive]"] !== undefined ? flat["source[sensitive]"] : source?.sensitive;
+  // A form's `source[sensitive]` is nested into `source` and cast before this.
+  const sensitiveRaw = source?.sensitive;
   const languageRaw =
     typeof flat["source[language]"] === "string" ? flat["source[language]"] : source?.language;
   const languageValue =
@@ -250,20 +216,12 @@ const parseSourceDefaults = (
                 ? QuoteApprovalPolicy.Nobody
                 : QuoteApprovalPolicy.Public,
         }),
-    ...(sensitiveRaw === undefined
-      ? {}
-      : {
-          sensitive: isTruthy(
-            typeof sensitiveRaw === "boolean" || typeof sensitiveRaw === "number"
-              ? sensitiveRaw
-              : String(sensitiveRaw),
-          ),
-        }),
+    ...(sensitiveRaw === undefined ? {} : { sensitive: sensitiveRaw }),
     ...(languageValue === undefined ? {} : { language: languageValue }),
   });
 };
 
-type ProfileFieldInput = z.infer<typeof ProfileFieldInputSchema>;
+type ProfileFieldInput = z.output<typeof ApiProfileFieldParamsSchema>;
 
 /**
  * The profile fields a request sets, in order, or `undefined` when it names
@@ -369,8 +327,7 @@ const saveProfile = async (
   if (header.kind === "Err") {
     return err(ApiRefusal.rejected(422, header.message, "ValidationError"));
   }
-  const flag = (value: UpdateCredentialsBody["bot"], stored: boolean): boolean =>
-    value === undefined ? stored : isTruthy(value);
+  const flag = (value: boolean | undefined, stored: boolean): boolean => value ?? stored;
   const saved = await upsertAccountProfile(
     env.DB,
     accountId,
@@ -438,7 +395,7 @@ const updateCredentials = async (
     return err(profile.error);
   }
   if (body.locked !== undefined) {
-    const locked = await setAccountLocked(env.DB, account.id, isTruthy(body.locked));
+    const locked = await setAccountLocked(env.DB, account.id, body.locked);
     if (locked.isErr()) {
       return err(ApiRefusal.repository(locked.error.message));
     }
@@ -470,31 +427,44 @@ const ownAccountDocument = async (
   };
 };
 
-export const patchV1AccountsUpdateCredentials = async (
-  c: Context<{ Bindings: Env }, "/api/v1/accounts/update_credentials">,
-) => {
+/**
+ * Read and apply an `update_credentials` (or `PATCH /api/v1/profile`)
+ * request: the updated account, federated, or the response that refuses it.
+ */
+const applyCredentialsRequest = async (
+  c: Context<{ Bindings: Env }>,
+): Promise<Result<Readonly<{ identity: InstanceIdentity; account: LocalAccount }>, Response>> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
-    return c.json(identity.error, 500);
+    return err(c.json(identity.error, 500));
   }
   const user = await requireUser(c);
   if (user.isErr()) {
-    return jsonAuthError(c, user.error);
+    return err(jsonAuthError(c, user.error));
   }
   const rawBody = await readUnknownBody(c);
-  // A form nests `fields_attributes[0][name]` as Rails does.
-  const body = schemaResult(UpdateCredentialsBodySchema)(
-    schemaResult(z.record(z.string(), z.unknown()))(rawBody).map(nestFormKeys).unwrapOr(rawBody),
-  );
+  // A form nests `fields_attributes[0][name]` as Rails does, and its flags cast to booleans.
+  const body = parseBodyParams(ApiUpdateCredentialsParamsSchema, rawBody);
   if (body.isErr()) {
-    return jsonValidationError(c);
+    return err(jsonValidationError(c));
   }
   const updated = await updateCredentials(c.env, user.value, rawBody, body.value);
   if (updated.isErr()) {
-    return ApiRefusal.respond(c, updated.error);
+    return err(ApiRefusal.respond(c, updated.error));
   }
   await federateProfileChange(c.env, identity.value, updated.value);
-  return c.json(await ownAccountDocument(c.env, identity.value, updated.value));
+  return ok({ identity: identity.value, account: updated.value });
+};
+
+export const patchV1AccountsUpdateCredentials = async (
+  c: Context<{ Bindings: Env }, "/api/v1/accounts/update_credentials">,
+) => {
+  const updated = await applyCredentialsRequest(c);
+  if (updated.isErr()) {
+    return updated.error;
+  }
+  const { identity, account } = updated.value;
+  return c.json(await ownAccountDocument(c.env, identity, account));
 };
 
 /**
@@ -562,7 +532,7 @@ export const deleteV1ProfileHeader = (c: Context<{ Bindings: Env }, "/api/v1/pro
   deleteProfileImage(c, "header");
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
-warmSchemas([UpdateCredentialsBodySchema]);
+warmSchemas([ApiUpdateCredentialsParamsSchema]);
 
 /**
  * Mastodon 4.6's profile-editing document (`REST::ProfileSerializer`): the
@@ -625,6 +595,15 @@ export const getV1Profile = async (c: Context<{ Bindings: Env }>) => {
  * the profile document instead of the account.
  */
 export const patchV1Profile = async (c: Context<{ Bindings: Env }, "/api/v1/profile">) => {
-  const updated = await patchV1AccountsUpdateCredentials(c);
-  return updated.status === 200 ? getV1Profile(c) : updated;
+  const updated = await applyCredentialsRequest(c);
+  if (updated.isErr()) {
+    return updated.error;
+  }
+  const session = await requireSession(c);
+  if (session.isErr()) {
+    return jsonAuthError(c, session.error);
+  }
+  // The updated account, not the session's: that one was read before the change.
+  const { identity, account } = updated.value;
+  return c.json(await profileDocument(c.env, identity, account, session.value.role));
 };
