@@ -1,3 +1,5 @@
+import { ApiGetAccountStatusesParamsSchema } from "@tstodon/api";
+import { warmSchemas } from "@tstodon/core";
 import { AccountPresentation } from "@tstodon/domain";
 import type { Context } from "hono";
 import { findAccountByIdOrUsername } from "../../account-store";
@@ -7,6 +9,7 @@ import { attachFilteredToStatuses } from "../../filter-match";
 import {
   jsonAuthError,
   jsonRepositoryError,
+  jsonValidationError,
   queryAccountsLimit,
   queryCursor,
   queryLimit,
@@ -32,7 +35,7 @@ import {
   remoteAccountTimelineDocuments,
 } from "../../timeline-documents";
 import { listPinnedStatuses } from "../../status-pin-store";
-import { queryFlag } from "./credentials";
+import { paramsCursor, readQueryParams } from "../../request-params";
 import { lookupAccountDocument } from "./lookup";
 
 export const getV1AccountsById = async (c: Context<{ Bindings: Env }, "/api/v1/accounts/:id">) => {
@@ -62,6 +65,7 @@ const remoteAccountStatuses = async (
   viewerId: string | undefined,
   id: string,
   filters: AccountStatusFilters,
+  pinned: boolean,
 ) => {
   const actorUri = RemoteAccountId.decode(id);
   if (actorUri.isErr()) {
@@ -90,16 +94,15 @@ const remoteAccountStatuses = async (
     return c.json([]);
   }
   await requestRemoteOutboxBackfill(c.env, actor.value.actorUri);
-  const documents =
-    c.req.query("pinned") === "true"
-      ? await remoteAccountPinnedDocuments(c.env, identity, actor.value.actorUri, viewerId)
-      : await remoteAccountTimelineDocuments(
-          c.env,
-          identity,
-          actor.value.actorUri,
-          viewerId,
-          filters,
-        );
+  const documents = pinned
+    ? await remoteAccountPinnedDocuments(c.env, identity, actor.value.actorUri, viewerId)
+    : await remoteAccountTimelineDocuments(
+        c.env,
+        identity,
+        actor.value.actorUri,
+        viewerId,
+        filters,
+      );
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }
@@ -117,22 +120,27 @@ export const getV1AccountsByIdStatuses = async (
   if (auth.isErr()) {
     return jsonAuthError(c, auth.error);
   }
+  const params = readQueryParams(c, ApiGetAccountStatusesParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
   const id = c.req.param("id") ?? "";
   const filters: AccountStatusFilters = {
-    limit: queryLimit(c.req.query("limit")),
-    excludeReplies: queryFlag(c.req.query("exclude_replies")),
-    excludeReblogs: queryFlag(c.req.query("exclude_reblogs")),
-    onlyMedia: queryFlag(c.req.query("only_media")),
-    tagged: c.req.query("tagged"),
-    cursor: queryCursor(c),
+    limit: queryLimit(params.value.limit),
+    excludeReplies: params.value.exclude_replies ?? false,
+    excludeReblogs: params.value.exclude_reblogs ?? false,
+    onlyMedia: params.value.only_media ?? false,
+    tagged: params.value.tagged,
+    cursor: paramsCursor(params.value),
   };
+  const pinned = params.value.pinned ?? false;
   const account = await findAccountByIdOrUsername(c.env.DB, id);
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
   }
   if (!account.value) {
-    return remoteAccountStatuses(c, identity.value, viewerId, id, filters);
+    return remoteAccountStatuses(c, identity.value, viewerId, id, filters, pinned);
   }
   const presentation = await accountRefPresentation(c.env, localRef(identity.value, account.value));
   if (presentation.isErr()) {
@@ -141,10 +149,9 @@ export const getV1AccountsByIdStatuses = async (
   if (!AccountPresentation.available(presentation.value)) {
     return c.json([]);
   }
-  const statuses =
-    c.req.query("pinned") === "true"
-      ? await listPinnedStatuses(c.env.DB, account.value.id)
-      : await listAccountStatusesFiltered(c.env.DB, account.value.id, filters);
+  const statuses = pinned
+    ? await listPinnedStatuses(c.env.DB, account.value.id)
+    : await listAccountStatusesFiltered(c.env.DB, account.value.id, filters);
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
@@ -230,3 +237,5 @@ export const getV1AccountsByIdFollowers = (
 export const getV1AccountsByIdFollowing = (
   c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/following">,
 ) => accountList(c, "following");
+
+warmSchemas([ApiGetAccountStatusesParamsSchema]);

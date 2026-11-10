@@ -43,9 +43,6 @@ import { z } from "zod";
 import { type ApiProfileFieldParamsSchema, ApiUpdateCredentialsParamsSchema } from "@tstodon/api";
 import { parseBodyParams } from "../../request-params";
 
-/** Mastodon boolean query params: `true`/`1` are on, anything else is off. */
-export const queryFlag = (value: string | undefined): boolean => value === "true" || value === "1";
-
 export const getV1AccountsVerifyCredentials = async (
   c: Context<{ Bindings: Env }, "/api/v1/accounts/verify_credentials">,
 ) => {

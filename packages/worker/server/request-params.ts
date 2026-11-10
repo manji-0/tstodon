@@ -20,7 +20,8 @@ import { nestFormKeys, readUnknownBody } from "./http";
  *    `true` / `1` (anything else is `false`, as `isTruthy` always read
  *    them), a number with `parseInt` (one that does not parse is left out,
  *    so the endpoint's default applies), and an array from a single value
- *    (an empty string is an empty array). In a query string, a repeated
+ *    (an empty string is an empty array) or from an object keyed by
+ *    position (`key[0][a]`, Rails' nested attributes). In a query string, a repeated
  *    key of a field that is not an array keeps its first value.
  *
  * A JSON body is cast the same way, so `"true"` in JSON keeps working. What
@@ -70,13 +71,32 @@ const unwrapped = (schema: z.core.$ZodType): z.core.$ZodType =>
     ? unwrapped(schema.unwrap())
     : schema;
 
+/**
+ * A form's `key[0][a]=…&key[1][a]=…` nests into an object keyed by position;
+ * as Rails' nested attributes do, an array field reads its values in order.
+ */
+const indexedValues = (value: unknown): unknown[] | undefined => {
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const keys = Object.keys(value);
+  if (keys.length === 0 || !keys.every((key) => /^\d+$/.test(key))) {
+    return undefined;
+  }
+  return keys.toSorted((left, right) => Number(left) - Number(right)).map((key) => value[key]);
+};
+
 /** Marks a value the cast leaves out (a number that does not parse). */
 const OMIT = Symbol("omit");
 
 const castValue = (schema: z.core.$ZodType, value: unknown, source: Source): unknown => {
   const inner = unwrapped(schema);
   if (inner instanceof z.ZodArray) {
-    const items = Array.isArray(value) ? value : value === "" || value === undefined ? [] : [value];
+    const items = Array.isArray(value)
+      ? value
+      : value === "" || value === undefined
+        ? []
+        : (indexedValues(value) ?? [value]);
     return items.flatMap((item) => {
       const cast = castValue(inner.element, item, source);
       return cast === OMIT ? [] : [cast];

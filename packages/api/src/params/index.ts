@@ -15,3 +15,11 @@ export * from "./notifications";
 export * from "./polls";
 export * from "./search";
 export * from "./suggestions";
+// The endpoints of the JavaScript actions moved to TypeScript: timelines,
+// conversations, trends, filters and the web UI's own settings and push
+// subscriptions.
+export * from "./timelines";
+export * from "./conversations";
+export * from "./trends";
+export * from "./filters";
+export * from "./web";

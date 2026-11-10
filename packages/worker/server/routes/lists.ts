@@ -4,7 +4,6 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryCursor,
   queryLimit,
   requireUser,
 } from "../http";
@@ -26,15 +25,21 @@ import { availableAccountDocumentsByIds, documentsInOrder } from "../account-doc
 import { writeTimelineMetric } from "../metrics";
 import { parseInstanceIdentity } from "../runtime-config";
 import { listTimelineDocuments } from "../timeline-documents";
-import { readMergedParams, readParams } from "../request-params";
+import { paramsCursor, readMergedParams, readParams, readQueryParams } from "../request-params";
 import { warmSchemas } from "@tstodon/core";
 import {
   ApiCreateListParamsSchema,
+  ApiGetListTimelineParamsSchema,
   ApiListAccountsParamsSchema,
   ApiUpdateListParamsSchema,
 } from "@tstodon/api";
 
-warmSchemas([ApiCreateListParamsSchema, ApiUpdateListParamsSchema, ApiListAccountsParamsSchema]);
+warmSchemas([
+  ApiCreateListParamsSchema,
+  ApiUpdateListParamsSchema,
+  ApiListAccountsParamsSchema,
+  ApiGetListTimelineParamsSchema,
+]);
 
 export const getV1Lists = async (c: Context<{ Bindings: Env }, "/api/v1/lists">) => {
   const user = await requireUser(c);
@@ -259,6 +264,10 @@ export const getV1TimelinesListById = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
+  const params = readQueryParams(c, ApiGetListTimelineParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
   const list = await findListForAccount(c.env.DB, user.value.id, c.req.param("id"));
   if (list.isErr()) {
     return jsonRepositoryError(c, list.error.message);
@@ -271,8 +280,8 @@ export const getV1TimelinesListById = async (
     identity.value,
     user.value.id,
     list.value,
-    queryLimit(c.req.query("limit")),
-    queryCursor(c),
+    queryLimit(params.value.limit),
+    paramsCursor(params.value),
   );
   writeTimelineMetric(
     c.env,

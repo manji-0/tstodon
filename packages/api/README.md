@@ -52,7 +52,17 @@ Where tstodon renders more than Mastodon, the schema says so in a comment
   JSON client sends to the endpoints the web UI's TypeScript wrappers call,
   under Mastodon's names (`ApiCreateListParamsSchema` /
   `ApiCreateListParams`, `ApiUpdateCredentialsParams`, `ApiSearchParams`,
-  `ApiPaginationParams`, ...). The type is the schema's input
+  `ApiPaginationParams`, ...), and those of the actions moved to
+  TypeScript: the status timelines (`ApiGetHomeTimelineParams`,
+  `ApiGetPublicTimelineParams`, `ApiGetTagTimelineParams`,
+  `ApiGetListTimelineParams`, `ApiGetLinkTimelineParams`,
+  `ApiGetAccountStatusesParams`), `ApiGetConversationsParams`,
+  `ApiGetTrendsParams`, the v2 filter and filter status
+  (`ApiFilterParams`, `ApiCreateFilterStatusParams`), and the web UI's
+  own `ApiUpdateWebSettingsParams` and web push subscription
+  (`ApiCreateWebPushSubscriptionParams`,
+  `ApiUpdateWebPushSubscriptionParams`; the Worker has no route for these
+  two yet). The type is the schema's input
   (`z.input`), which the UI uses; the Worker parses with the schema. The
   schemas are the JSON shape only (booleans, numbers, arrays): the Worker
   folds a form or query string into that shape first
@@ -104,7 +114,8 @@ winning, as Rails' `params`), all in `packages/worker/server/request-params.ts`:
 `key[]` folds into `key`, a body's `a[b]` keys nest, and each field is cast
 to the type its schema declares (`true` / `1` are true, anything else false;
 a number that does not parse is left out; a single value of an array field
-is a one-item list). `server/api-params-contract.test.ts` sends each covered
+is a one-item list, and an object keyed by position, `key[0][a]`, is the
+list in order). `server/api-params-contract.test.ts` sends each covered
 endpoint its JSON body and the form or query equivalent.
 
 ## No `kind` here
