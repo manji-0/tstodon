@@ -30,8 +30,10 @@ locals {
     "headers/*",
   ]
 
+  access_allow_everyone = var.access_allow_everyone ? ["everyone"] : []
+
   access_allow_include = concat(
-    [for _ in (var.access_allow_everyone ? ["everyone"] : []) : { everyone = {} }],
+    [for _ in local.access_allow_everyone : { everyone = {} }],
     [for email in var.access_allowed_emails : { email = { email = email } }],
     [for domain in var.access_allowed_email_domains : { email_domain = { domain = domain } }],
   )
