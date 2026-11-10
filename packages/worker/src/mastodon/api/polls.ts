@@ -1,3 +1,4 @@
+import type { ApiPollVoteParams } from '@tstodon/api';
 import { apiRequestGet, apiRequestPost } from 'mastodon/api';
 import type { ApiPollJSON } from 'mastodon/api_types/polls';
 
@@ -7,4 +8,4 @@ export const apiGetPoll = (pollId: string) =>
 export const apiPollVote = (pollId: string, choices: string[]) =>
   apiRequestPost<ApiPollJSON>(`v1/polls/${pollId}/votes`, {
     choices,
-  });
+  } satisfies ApiPollVoteParams);

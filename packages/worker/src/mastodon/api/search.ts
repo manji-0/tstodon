@@ -1,3 +1,4 @@
+import type { ApiSearchParams } from '@tstodon/api';
 import { apiRequestGet } from 'mastodon/api';
 import type {
   ApiSearchType,
@@ -5,12 +6,9 @@ import type {
 } from 'mastodon/api_types/search';
 
 export const apiGetSearch = (
-  params: {
+  params: ApiSearchParams & {
     q: string;
-    resolve?: boolean;
     type?: ApiSearchType;
-    limit?: number;
-    offset?: number;
   },
   options: {
     signal?: AbortSignal;

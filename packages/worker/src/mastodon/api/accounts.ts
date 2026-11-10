@@ -5,6 +5,13 @@ import {
   apiRequestPatch,
 } from 'mastodon/api';
 import type {
+  ApiCreateFeaturedTagParams,
+  ApiFollowAccountParams,
+  ApiGetAccountsParams,
+  ApiGetFamiliarFollowersParams,
+  ApiSetAccountNoteParams,
+} from '@tstodon/api';
+import type {
   ApiAccountJSON,
   ApiFamiliarFollowersJSON,
 } from 'mastodon/api_types/accounts';
@@ -22,19 +29,14 @@ import type {
 export const apiGetAccounts = (ids: string[]) =>
   apiRequestGet<ApiAccountJSON[]>('v1/accounts', {
     id: ids,
-  });
+  } satisfies ApiGetAccountsParams);
 
 export const apiSubmitAccountNote = (id: string, value: string) =>
   apiRequestPost<ApiRelationshipJSON>(`v1/accounts/${id}/note`, {
     comment: value,
-  });
+  } satisfies ApiSetAccountNoteParams);
 
-export const apiFollowAccount = (
-  id: string,
-  params?: {
-    reblogs: boolean;
-  },
-) =>
+export const apiFollowAccount = (id: string, params?: ApiFollowAccountParams) =>
   apiRequestPost<ApiRelationshipJSON>(`v1/accounts/${id}/follow`, {
     ...params,
   });
@@ -54,7 +56,9 @@ export const apiGetCurrentFeaturedTags = () =>
   apiRequestGet<ApiFeaturedTagJSON[]>(`v1/featured_tags`);
 
 export const apiPostFeaturedTag = (name: string) =>
-  apiRequestPost<ApiFeaturedTagJSON>('v1/featured_tags', { name });
+  apiRequestPost<ApiFeaturedTagJSON>('v1/featured_tags', {
+    name,
+  } satisfies ApiCreateFeaturedTagParams);
 
 export const apiDeleteFeaturedTag = (id: string) =>
   apiRequestDelete(`v1/featured_tags/${id}`);
@@ -67,8 +71,8 @@ export const apiGetEndorsedAccounts = (id: string) =>
 
 export const apiGetFamiliarFollowers = (id: string) =>
   apiRequestGet<ApiFamiliarFollowersJSON>('v1/accounts/familiar_followers', {
-    id,
-  });
+    id: [id],
+  } satisfies ApiGetFamiliarFollowersParams);
 
 export const apiGetProfile = () => apiRequestGet<ApiProfileJSON>('v1/profile');
 

@@ -1,15 +1,15 @@
+import type { ApiCreateListParams, ApiUpdateListParams } from '@tstodon/api';
 import { apiCreate, apiUpdate, apiGetLists } from 'mastodon/api/lists';
-import type { List } from 'mastodon/models/list';
 import { createDataLoadingThunk } from 'mastodon/store/typed_functions';
 
 export const createList = createDataLoadingThunk(
   'list/create',
-  (list: Partial<List>) => apiCreate(list),
+  (list: ApiCreateListParams) => apiCreate(list),
 );
 
 export const updateList = createDataLoadingThunk(
   'list/update',
-  (list: Partial<List>) => apiUpdate(list),
+  (list: ApiUpdateListParams & { id: string }) => apiUpdate(list),
 );
 
 export const fetchLists = createDataLoadingThunk('lists/fetch', () =>

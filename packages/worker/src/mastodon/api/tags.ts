@@ -1,3 +1,4 @@
+import type { ApiGetFollowedTagsParams } from '@tstodon/api';
 import api, { getLinks, apiRequestPost, apiRequestGet } from 'mastodon/api';
 import type { ApiHashtagJSON } from 'mastodon/api_types/tags';
 
@@ -20,7 +21,7 @@ export const apiGetFollowedTags = async (url?: string, limit?: number) => {
   const response = await api().request<ApiHashtagJSON[]>({
     method: 'GET',
     url: url ?? '/api/v1/followed_tags',
-    params: { limit },
+    params: { limit } satisfies ApiGetFollowedTagsParams,
   });
 
   return {
