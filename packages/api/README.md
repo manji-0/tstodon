@@ -58,8 +58,16 @@ Where tstodon renders more than Mastodon, the schema says so in a comment
   (`domain-blocks.ts`), reports (`reports.ts`), a status's create and edit
   (`ApiCreateStatusParams` / `ApiUpdateStatusParams`, with
   `ApiStatusMediaAttributeParams` and `ApiStatusPollParams`) and delete
-  (`ApiDeleteStatusParams`), a media upload (`ApiUploadMediaParams`) and the
-  account search (`ApiSearchAccountsParams`). The type is the schema's input
+  (`ApiDeleteStatusParams`), a media upload (`ApiUploadMediaParams`), the
+  account search (`ApiSearchAccountsParams`), the status timelines
+  (`ApiGetHomeTimelineParams`, `ApiGetPublicTimelineParams`,
+  `ApiGetTagTimelineParams`, `ApiGetListTimelineParams`,
+  `ApiGetLinkTimelineParams`), `ApiGetConversationsParams`,
+  `ApiGetTrendsParams`, the v2 filter and filter status (`ApiFilterParams`,
+  `ApiCreateFilterStatusParams`), and the web UI's own
+  `ApiUpdateWebSettingsParams` and web push subscription
+  (`ApiCreateWebPushSubscriptionParams`, `ApiUpdateWebPushSubscriptionParams`;
+  the Worker has no route for these two yet). The type is the schema's input
   (`z.input`), which the UI uses; the Worker parses with the schema. The
   schemas are the JSON shape only (booleans, numbers, arrays): the Worker
   folds a form or query string into that shape first

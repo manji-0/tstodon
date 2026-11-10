@@ -3,6 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import {
   ApiAccount,
+  ApiTrendsLink,
+  ApiHashtag,
+  ApiFilterStatus,
+  ApiFilter,
+  ApiConversation,
   ApiCredentialAccount,
   ApiFamiliarFollowers,
   ApiFeaturedTag,
@@ -934,5 +939,192 @@ describe("REST request params: statuses, media and compose search (web UI compos
     );
     expect(tagsBoolean.hashtags.map((tag) => tag.name)).toContain("paramscompose");
     expect(tagsString).toEqual(tagsBoolean);
+  });
+});
+
+describe("REST request params of the actions moved to TypeScript", () => {
+  const statusIds = (statuses: ReadonlyArray<Readonly<{ id: string }>>): string[] =>
+    statuses.map((status) => status.id);
+
+  it("timelines: home, public, tag, list, link and account statuses queries", async () => {
+    const email = "params-timelines@example.com";
+    const account = await credentials(email);
+    const tagged = await postStatus(email, { status: "#paramstag #paramsone tagged" });
+    const plain = await postStatus(email, { status: "#paramstag untagged" });
+
+    const [homeJson, homePlain] = await bothAccepted(
+      z.array(ApiStatus),
+      "GET /api/v1/timelines/home",
+      sendGet(email, `/api/v1/timelines/home?limit=1`),
+      sendGet(email, `/api/v1/timelines/home?limit=1&limit=5`),
+    );
+    expect(homeJson.length).toBe(1);
+    expect(homePlain).toEqual(homeJson);
+
+    const [publicBoolean, publicString] = await bothAccepted(
+      z.array(ApiStatus),
+      "GET /api/v1/timelines/public",
+      sendGet(email, `/api/v1/timelines/public?local=true&only_media=false&max_id=${plain.id}`),
+      sendGet(email, `/api/v1/timelines/public?local=1&only_media=0&max_id=${plain.id}`),
+    );
+    expect(statusIds(publicBoolean)).toContain(tagged.id);
+    expect(statusIds(publicBoolean)).not.toContain(plain.id);
+    expect(publicString).toEqual(publicBoolean);
+
+    const [tagBracketed, tagPlain] = await bothAccepted(
+      z.array(ApiStatus),
+      "GET /api/v1/timelines/tag/:hashtag",
+      sendGet(email, "/api/v1/timelines/tag/paramstag?any[]=paramsone&local=true"),
+      sendGet(email, "/api/v1/timelines/tag/paramstag?any=%23paramsone&local=1"),
+    );
+    expect(statusIds(tagBracketed)).toEqual([tagged.id]);
+    expect(tagPlain).toEqual(tagBracketed);
+
+    const list = accepted(
+      ApiList,
+      await sendJson(email, "POST", "/api/v1/lists", { title: "Timeline params" }),
+      "create list",
+    );
+    const [listJson, listPlain] = await bothAccepted(
+      z.array(ApiStatus),
+      "GET /api/v1/timelines/list/:id",
+      sendGet(email, `/api/v1/timelines/list/${list.id}?limit=5`),
+      sendGet(email, `/api/v1/timelines/list/${list.id}?limit=5&since_id=`),
+    );
+    expect(listPlain).toEqual(listJson);
+
+    // Not a trending link: both answer the same 404.
+    const linkUrl = encodeURIComponent("https://example.org/story");
+    const [linkOne, linkRepeated] = [
+      await sendGet(email, `/api/v1/timelines/link?url=${linkUrl}&limit=5`),
+      await sendGet(email, `/api/v1/timelines/link?url=${linkUrl}&url=other&limit=5`),
+    ];
+    expect(linkOne.status).toBe(404);
+    expect(linkRepeated).toEqual(linkOne);
+
+    const [repliesBoolean, repliesString] = await bothAccepted(
+      z.array(ApiStatus),
+      "GET /api/v1/accounts/:id/statuses",
+      sendGet(
+        email,
+        `/api/v1/accounts/${account.id}/statuses?exclude_replies=true&exclude_reblogs=true&only_media=false&tagged=paramsone`,
+      ),
+      sendGet(
+        email,
+        `/api/v1/accounts/${account.id}/statuses?exclude_replies=1&exclude_reblogs=1&only_media=0&tagged=paramsone`,
+      ),
+    );
+    expect(statusIds(repliesBoolean)).toEqual([tagged.id]);
+    expect(repliesString).toEqual(repliesBoolean);
+
+    accepted(
+      ApiStatus,
+      await sendJson(email, "POST", `/api/v1/statuses/${plain.id}/pin`),
+      "pin status",
+    );
+    const [pinnedBoolean, pinnedString] = await bothAccepted(
+      z.array(ApiStatus),
+      "GET /api/v1/accounts/:id/statuses?pinned",
+      sendGet(email, `/api/v1/accounts/${account.id}/statuses?pinned=true`),
+      sendGet(email, `/api/v1/accounts/${account.id}/statuses?pinned=1`),
+    );
+    expect(statusIds(pinnedBoolean)).toEqual([plain.id]);
+    expect(pinnedString).toEqual(pinnedBoolean);
+  });
+
+  it("conversations and trends read their limit and offset", async () => {
+    const email = "params-conversations@example.com";
+    const other = await credentials("params-conversations-other@example.com");
+    await credentials(email);
+    await postStatus(email, { status: `@${other.username} psst`, visibility: "direct" });
+
+    const [conversations, repeated] = await bothAccepted(
+      z.array(ApiConversation),
+      "GET /api/v1/conversations",
+      sendGet(email, "/api/v1/conversations?limit=5"),
+      sendGet(email, "/api/v1/conversations?limit=5&limit=1"),
+    );
+    expect(conversations.length).toBe(1);
+    expect(repeated).toEqual(conversations);
+
+    const sameTrends = async <T>(schema: z.ZodType<T>, path: string) => {
+      const [first, again] = await bothAccepted(
+        schema,
+        `GET ${path}`,
+        sendGet(email, `${path}?limit=5&offset=0`),
+        sendGet(email, `${path}?limit=5&limit=10&offset=0&offset=3`),
+      );
+      expect(again).toEqual(first);
+    };
+    await sameTrends(z.array(ApiHashtag), "/api/v1/trends/tags");
+    await sameTrends(z.array(ApiStatus), "/api/v1/trends/statuses");
+    await sameTrends(z.array(ApiTrendsLink), "/api/v1/trends/links");
+  });
+
+  it("filters: a v2 filter with contexts and keywords, and a filter status", async () => {
+    const email = "params-filters@example.com";
+    await credentials(email);
+
+    const [jsonFilter, formFilter] = await bothAccepted(
+      ApiFilter,
+      "POST /api/v2/filters",
+      sendJson(email, "POST", "/api/v2/filters", {
+        title: "Spoilers",
+        context: ["home", "public"],
+        filter_action: "hide",
+        keywords_attributes: [{ keyword: "finale", whole_word: true }],
+      }),
+      sendForm(email, "POST", "/api/v2/filters", [
+        ["title", "Spoilers"],
+        ["context[]", "home"],
+        ["context[]", "public"],
+        ["filter_action", "hide"],
+        ["keywords_attributes[0][keyword]", "finale"],
+        ["keywords_attributes[0][whole_word]", "1"],
+      ]),
+    );
+    for (const filter of [jsonFilter, formFilter]) {
+      expect(filter).toMatchObject({
+        title: "Spoilers",
+        context: ["home", "public"],
+        filter_action: "hide",
+        keywords: [{ keyword: "finale", whole_word: true }],
+      });
+    }
+
+    const status = await postStatus(email, { status: "filter me" });
+    const [jsonStatus, formStatus] = await bothAccepted(
+      ApiFilterStatus,
+      "POST /api/v2/filters/:id/statuses",
+      sendJson(email, "POST", `/api/v2/filters/${jsonFilter.id}/statuses`, {
+        status_id: status.id,
+      }),
+      sendForm(email, "POST", `/api/v2/filters/${formFilter.id}/statuses`, [
+        ["status_id", status.id],
+      ]),
+    );
+    expect(jsonStatus.status_id).toBe(status.id);
+    expect(formStatus.status_id).toBe(status.id);
+  });
+
+  it("web settings: the settings object as JSON and as a form", async () => {
+    const email = "params-web-settings@example.com";
+    await credentials(email);
+    await bothAccepted(
+      z.object({}),
+      "PUT /api/web/settings",
+      sendJson(email, "PUT", "/api/web/settings", {
+        data: { introductionVersion: 20181216044202, home: { shows: { reblog: false } } },
+      }),
+      sendForm(email, "PUT", "/api/web/settings", [
+        ["data[introductionVersion]", "20181216044202"],
+        ["data[home][shows][reblog]", "false"],
+      ]),
+    );
+    const refused = await sendJson(email, "PUT", "/api/web/settings", { data: "not an object" });
+    expect(refused).toEqual({
+      status: 422,
+      body: { error: "Validation failed", kind: "ValidationError" },
+    });
   });
 });

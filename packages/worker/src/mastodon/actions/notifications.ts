@@ -1,6 +1,9 @@
 import { IntlMessageFormat } from 'intl-messageformat';
 import { defineMessages } from 'react-intl';
 
+import type { ApiNotificationJSON } from 'mastodon/api_types/notifications';
+import type { AppDispatch, GetState } from 'mastodon/store';
+
 import { unescapeHTML } from '../utils/html';
 import { requestNotificationPermission } from '../utils/notifications';
 
@@ -24,17 +27,22 @@ defineMessages({
   group: { id: 'notifications.group', defaultMessage: '{count} notifications' },
 });
 
-export function updateNotifications(notification, intlMessages, intlLocale) {
-  return (dispatch, getState) => {
+export function updateNotifications(
+  notification: ApiNotificationJSON,
+  intlMessages: Record<string, string>,
+  intlLocale: string | undefined,
+) {
+  return (dispatch: AppDispatch, getState: GetState) => {
     const filterType = notification.type === 'quoted_update' ? 'update' : notification.type;
 
-    const showAlert    = getState().getIn(['settings', 'notifications', 'alerts', filterType], true);
-    const playSound    = getState().getIn(['settings', 'notifications', 'sounds', filterType], true);
+    const showAlert    = getState().settings.getIn(['notifications', 'alerts', filterType], true);
+    const playSound    = getState().settings.getIn(['notifications', 'sounds', filterType], true);
+    const status       = 'status' in notification ? notification.status : null;
 
     let filtered = false;
 
-    if (['mention', 'quote', 'status'].includes(notification.type) && notification.status.filtered) {
-      const filters = notification.status.filtered.filter(result => result.filter.context.includes('notifications'));
+    if (['mention', 'quote', 'status'].includes(notification.type) && status?.filtered) {
+      const filters = status.filtered.filter(result => result.filter.context.includes('notifications'));
 
       if (filters.some(result => result.filter.filter_action === 'hide')) {
         return;
@@ -47,18 +55,21 @@ export function updateNotifications(notification, intlMessages, intlLocale) {
       dispatch(fetchFollowRequests());
     }
 
-    dispatch(submitMarkers());
+    void dispatch(submitMarkers({}));
 
     // `notificationsUpdate` is still used in `user_lists` and `relationships` reducers
     dispatch(importFetchedAccount(notification.account));
-    dispatch(notificationsUpdate({ notification, playSound: playSound && !filtered}));
+    dispatch(notificationsUpdate({ notification, playSound: !!playSound && !filtered}));
 
-    // Desktop notifications
-    if (typeof window.Notification !== 'undefined' && showAlert && !filtered) {
-      const title = new IntlMessageFormat(intlMessages[`notification.${notification.type}`], intlLocale).format({ name: notification.account.display_name.length > 0 ? notification.account.display_name : notification.account.username });
-      const body  = (notification.status && notification.status.spoiler_text.length > 0) ? notification.status.spoiler_text : unescapeHTML(notification.status ? notification.status.content : '');
+    // Desktop notifications, for the types with a title message (not, for
+    // example, `severed_relationships` or `annual_report`).
+    const titleMessage = intlMessages[`notification.${notification.type}`];
 
-      const notify = new Notification(title, { body, icon: notification.account.avatar, tag: notification.id });
+    if (typeof window.Notification !== 'undefined' && showAlert && !filtered && titleMessage) {
+      const title = new IntlMessageFormat(titleMessage, intlLocale).format({ name: notification.account.display_name.length > 0 ? notification.account.display_name : notification.account.username });
+      const body  = (status && status.spoiler_text.length > 0) ? status.spoiler_text : unescapeHTML(status ? status.content : '');
+
+      const notify = new Notification(typeof title === 'string' ? title : String(title), { body, icon: notification.account.avatar, tag: notification.id });
 
       notify.addEventListener('click', () => {
         window.focus();
@@ -72,7 +83,7 @@ const noOp = () => {};
 
 // Browser support
 export function setupBrowserNotifications() {
-  return dispatch => {
+  return (dispatch: AppDispatch) => {
     dispatch(setBrowserSupport('Notification' in window));
     if ('Notification' in window) {
       dispatch(setBrowserPermission(Notification.permission));
@@ -86,12 +97,11 @@ export function setupBrowserNotifications() {
   };
 }
 
-/**
- * @param {(NotificationPermission) => void} callback
- */
-export function requestBrowserPermission(callback = noOp) {
-  return dispatch => {
-    requestNotificationPermission((permission) => {
+export function requestBrowserPermission(
+  callback: (permission: NotificationPermission) => void = noOp,
+) {
+  return (dispatch: AppDispatch) => {
+    void requestNotificationPermission((permission) => {
       dispatch(setBrowserPermission(permission));
       callback(permission);
 
@@ -102,14 +112,14 @@ export function requestBrowserPermission(callback = noOp) {
   };
 }
 
-export function setBrowserSupport (value) {
+export function setBrowserSupport (value: boolean) {
   return {
     type: NOTIFICATIONS_SET_BROWSER_SUPPORT,
     value,
   };
 }
 
-export function setBrowserPermission (value) {
+export function setBrowserPermission (value: NotificationPermission) {
   return {
     type: NOTIFICATIONS_SET_BROWSER_PERMISSION,
     value,

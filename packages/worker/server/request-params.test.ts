@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   ApiCreateListParamsSchema,
   ApiCreateStatusParamsSchema,
+  ApiFilterParamsSchema,
   ApiFollowAccountParamsSchema,
   ApiGetNotificationsParamsSchema,
   ApiPollVoteParamsSchema,
@@ -82,6 +83,18 @@ describe("request params normalization", () => {
       fields_attributes: { "0": { name: "Site" } },
       source: { sensitive: true },
       attribution_domains: ["example.com"],
+    });
+  });
+
+  it("reads an array of objects keyed by position (Rails' nested attributes) in order", () => {
+    expect(
+      parseBodyParams(ApiFilterParamsSchema, {
+        "keywords_attributes[1][keyword]": "second",
+        "keywords_attributes[0][keyword]": "first",
+        "keywords_attributes[0][whole_word]": "1",
+      }).unwrapOr(undefined),
+    ).toEqual({
+      keywords_attributes: [{ keyword: "first", whole_word: true }, { keyword: "second" }],
     });
   });
 

@@ -1,7 +1,22 @@
 import type { Context } from "hono";
+import {
+  ApiGetHomeTimelineParamsSchema,
+  ApiGetLinkTimelineParamsSchema,
+  ApiGetPublicTimelineParamsSchema,
+  ApiGetTagTimelineParamsSchema,
+  type ApiGetPublicTimelineParams,
+  type ApiGetTagTimelineParams,
+} from "@tstodon/api";
+import { warmSchemas } from "@tstodon/core";
 import { authenticate } from "../auth";
 import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "../filter-match";
-import { jsonAuthError, jsonRepositoryError, queryCursor, queryLimit, requireUser } from "../http";
+import {
+  jsonAuthError,
+  jsonRepositoryError,
+  jsonValidationError,
+  queryLimit,
+  requireUser,
+} from "../http";
 import { mastodonStatuses } from "../local-status-documents";
 import { writeTimelineMetric } from "../metrics";
 import { parseInstanceIdentity } from "../runtime-config";
@@ -11,7 +26,7 @@ import {
 } from "../remote-status-timeline-store";
 import { listDirectStatusesForAccount } from "../direct-status-store";
 import { listLinkStatuses, type TagStatusFilters } from "../status-discovery-store";
-import { isTruthy } from "../form-values";
+import { paramsCursor, readQueryParams } from "../request-params";
 import { findTrendingLinkUrl } from "../trend-store";
 import { rejectedTrendTargets } from "../trend-review-store";
 import { isTagUsable } from "../tag-moderation-store";
@@ -30,9 +45,9 @@ import {
  * `local`/`remote` on a timeline (both documented): `local=true` keeps local
  * statuses, `remote=true` keeps remote ones, and neither or both keeps both.
  */
-const timelineScopes = (c: Context<{ Bindings: Env }>): TimelineScopes => {
-  const local = isTruthy(c.req.query("local"));
-  const remote = isTruthy(c.req.query("remote"));
+const timelineScopes = (params: ApiGetPublicTimelineParams): TimelineScopes => {
+  const local = params.local ?? false;
+  const remote = params.remote ?? false;
   if (!local && !remote) {
     return { local: true, remote: true };
   }
@@ -51,13 +66,17 @@ export const getV1TimelinesPublic = async (
   if (auth.isErr()) {
     return jsonAuthError(c, auth.error);
   }
+  const params = readQueryParams(c, ApiGetPublicTimelineParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
   const documents = await publicTimelineDocuments(
     c.env,
     identity.value,
     auth.value.kind === "Account" ? auth.value.account.id : undefined,
-    { scopes: timelineScopes(c), onlyMedia: isTruthy(c.req.query("only_media")) },
-    queryLimit(c.req.query("limit")),
-    queryCursor(c),
+    { scopes: timelineScopes(params.value), onlyMedia: params.value.only_media ?? false },
+    queryLimit(params.value.limit),
+    paramsCursor(params.value),
   );
   writeTimelineMetric(
     c.env,
@@ -83,12 +102,16 @@ export const getV1TimelinesHome = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
+  const params = readQueryParams(c, ApiGetHomeTimelineParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
   const documents = await homeTimelineDocuments(
     c.env,
     identity.value,
     user.value.id,
-    queryLimit(c.req.query("limit")),
-    queryCursor(c),
+    queryLimit(params.value.limit),
+    paramsCursor(params.value),
   );
   writeTimelineMetric(
     c.env,
@@ -109,18 +132,16 @@ export const getV1TimelinesHome = async (
  */
 const TAG_FILTER_LIMIT = 4;
 
-const tagStatusFilters = (c: Context<{ Bindings: Env }>): TagStatusFilters => {
-  const values = (key: string): string[] =>
-    [...(c.req.queries(`${key}[]`) ?? []), ...(c.req.queries(key) ?? [])]
-      .map((value) => value.trim().replace(/^#/, ""))
-      .filter((value) => value.length > 0);
+const tagStatusFilters = (params: ApiGetTagTimelineParams): TagStatusFilters => {
+  const values = (list: ReadonlyArray<string> | undefined): string[] =>
+    (list ?? []).map((value) => value.trim().replace(/^#/, "")).filter((value) => value.length > 0);
   const any: string[] = [];
   const all: string[] = [];
   const none: string[] = [];
   for (const [target, list] of [
-    [any, values("any")],
-    [all, values("all")],
-    [none, values("none")],
+    [any, values(params.any)],
+    [all, values(params.all)],
+    [none, values(params.none)],
   ] as const) {
     for (const value of list) {
       if (any.length + all.length + none.length >= TAG_FILTER_LIMIT) {
@@ -131,7 +152,7 @@ const tagStatusFilters = (c: Context<{ Bindings: Env }>): TagStatusFilters => {
       }
     }
   }
-  return { any, all, none, onlyMedia: isTruthy(c.req.query("only_media")) };
+  return { any, all, none, onlyMedia: params.only_media ?? false };
 };
 
 export const getV1TimelinesTagByHashtag = async (
@@ -146,6 +167,10 @@ export const getV1TimelinesTagByHashtag = async (
   if (auth.isErr()) {
     return jsonAuthError(c, auth.error);
   }
+  const params = readQueryParams(c, ApiGetTagTimelineParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
   // An admin made the tag unusable: its timeline lists nothing.
   const usable = await isTagUsable(c.env.DB, normalizeTag(c.req.param("hashtag") ?? ""));
   if (usable.isErr()) {
@@ -159,9 +184,9 @@ export const getV1TimelinesTagByHashtag = async (
     identity.value,
     auth.value.kind === "Account" ? auth.value.account.id : undefined,
     c.req.param("hashtag"),
-    { scopes: timelineScopes(c), filters: tagStatusFilters(c) },
-    queryLimit(c.req.query("limit")),
-    queryCursor(c),
+    { scopes: timelineScopes(params.value), filters: tagStatusFilters(params.value) },
+    queryLimit(params.value.limit),
+    paramsCursor(params.value),
   );
   writeTimelineMetric(
     c.env,
@@ -190,6 +215,10 @@ export const getV1TimelinesLink = async (
   if (auth.isErr()) {
     return jsonAuthError(c, auth.error);
   }
+  const params = readQueryParams(c, ApiGetLinkTimelineParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
   const rejected = await rejectedTrendTargets(c.env.DB, "Link");
   if (rejected.isErr()) {
     return jsonRepositoryError(c, rejected.error.message);
@@ -200,7 +229,7 @@ export const getV1TimelinesLink = async (
   }
   const url = await findTrendingLinkUrl(
     c.env.DB,
-    c.req.query("url") ?? "",
+    params.value.url ?? "",
     rejected.value,
     publishers.value,
   );
@@ -211,8 +240,8 @@ export const getV1TimelinesLink = async (
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
-  const limit = queryLimit(c.req.query("limit"));
-  const cursor = queryCursor(c);
+  const limit = queryLimit(params.value.limit);
+  const cursor = paramsCursor(params.value);
   const [local, remote] = await Promise.all([
     listLinkStatuses(c.env.DB, viewerId, url.value, limit, cursor),
     listLinkRemoteStatuses(c.env.DB, viewerId, url.value, limit, cursor),
@@ -322,3 +351,10 @@ export const getV1TimelinesDirect = async (
   );
   return c.json(mergeTimelineDocuments(filteredLocal, filteredRemote, {}, limit));
 };
+
+warmSchemas([
+  ApiGetHomeTimelineParamsSchema,
+  ApiGetPublicTimelineParamsSchema,
+  ApiGetTagTimelineParamsSchema,
+  ApiGetLinkTimelineParamsSchema,
+]);

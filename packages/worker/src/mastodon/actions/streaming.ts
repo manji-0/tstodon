@@ -1,9 +1,16 @@
-// @ts-check
-
+import type {
+  ApiMastodonNotificationJSON,
+  ApiNotificationJSON,
+  ApiStatusJSON,
+  ApiStreamingEventName,
+  ApiStreamingPayloadJSON,
+} from '@tstodon/api';
 import { isMastodonNotificationType } from '@tstodon/api/values';
+import type { AppDispatch, GetState } from 'mastodon/store';
 
 import { getLocale } from '../locales';
 import { connectStream } from '../stream';
+import type { StreamParams } from '../stream';
 
 import {
   fetchAnnouncements,
@@ -30,62 +37,45 @@ import {
 /**
  * An entity payload as the streaming contract (`@tstodon/api`) types it,
  * decoded from the JSON string it arrives as.
- * @template {import('@tstodon/api').ApiStreamingEventName} E
- * @param {E} _event
- * @param {string} payload
- * @returns {import('@tstodon/api').ApiStreamingPayloadJSON<E>}
  */
-const decode = (_event, payload) => JSON.parse(payload);
+const decode = <E extends ApiStreamingEventName>(
+  _event: E,
+  payload: string,
+): ApiStreamingPayloadJSON<E> => JSON.parse(payload);
 
-/**
- * @param {import('@tstodon/api').ApiNotificationJSON} notification
- * @returns {notification is import('@tstodon/api').ApiMastodonNotificationJSON}
- */
-const isRenderedNotification = notification =>
+const isRenderedNotification = (
+  notification: ApiNotificationJSON,
+): notification is ApiMastodonNotificationJSON =>
   isMastodonNotificationType(notification.type);
 
-/**
- * @param {number} max
- * @returns {number}
- */
-const randomUpTo = max =>
+const randomUpTo = (max: number) =>
   Math.floor(Math.random() * Math.floor(max));
 
-/**
- * @typedef {import('mastodon/store').AppDispatch} Dispatch
- * @typedef {import('mastodon/store').GetState} GetState
- * @typedef {import('redux').UnknownAction} UnknownAction
- * @typedef {(dispatch: Dispatch, getState: GetState) => Promise<void>} FallbackFunction
- */
+type FallbackFunction = (dispatch: AppDispatch, getState: GetState) => Promise<void>;
 
-/**
- * @param {string} timelineId
- * @param {string} channelName
- * @param {Object.<string, string>} params
- * @param {Object} options
- * @param {FallbackFunction} [options.fallback]
- * @param {() => UnknownAction} [options.fillGaps]
- * @param {(status: object) => boolean} [options.accept]
- * @returns {() => void}
- */
-export const connectTimelineStream = (timelineId, channelName, params = {}, options = {}) => {
+interface TimelineStreamOptions {
+  fallback?: FallbackFunction;
+  fillGaps?: () => (dispatch: AppDispatch, getState: GetState) => Promise<void>;
+  accept?: (status: ApiStatusJSON) => boolean;
+}
+
+export const connectTimelineStream = (
+  timelineId: string,
+  channelName: string,
+  params: StreamParams = {},
+  options: TimelineStreamOptions = {},
+) => {
   const { messages } = getLocale();
 
   // Public streams are currently not returning personalized quote policies
   const bogusQuotePolicy = channelName.startsWith('public') || channelName.startsWith('hashtag');
 
   return connectStream(channelName, params, (dispatch, getState) => {
-    // @ts-ignore
-    const locale = getState().getIn(['meta', 'locale']);
+    const locale: unknown = getState().meta.get('locale');
 
-    // @ts-expect-error
-    let pollingId;
+    let pollingId: ReturnType<typeof setTimeout> | null = null;
 
-    /**
-     * @param {FallbackFunction} fallback
-     */
-
-    const useFallback = async fallback => {
+    const useFallback = async (fallback: FallbackFunction) => {
       await fallback(dispatch, getState);
       // eslint-disable-next-line react-hooks/rules-of-hooks -- this is not a react hook
       pollingId = setTimeout(() => useFallback(fallback), 20000 + randomUpTo(20000));
@@ -95,30 +85,28 @@ export const connectTimelineStream = (timelineId, channelName, params = {}, opti
       onConnect() {
         dispatch(connectTimeline(timelineId));
 
-        // @ts-expect-error
         if (pollingId) {
-          // @ts-ignore
           clearTimeout(pollingId); pollingId = null;
         }
 
         if (options.fillGaps) {
-          dispatch(options.fillGaps());
+          void dispatch(options.fillGaps());
         }
       },
 
       onDisconnect() {
         dispatch(disconnectTimeline({ timeline: timelineId }));
 
-        if (options.fallback) {
-          // @ts-expect-error
-          pollingId = setTimeout(() => useFallback(options.fallback), randomUpTo(40000));
+        const { fallback } = options;
+
+        if (fallback) {
+          pollingId = setTimeout(() => useFallback(fallback), randomUpTo(40000));
         }
       },
 
       onReceive(data) {
         switch (data.event) {
         case 'update':
-          // @ts-expect-error
           dispatch(updateTimeline(timelineId, decode('update', data.payload), { accept: options.accept, bogusQuotePolicy }));
           break;
         case 'status.update':
@@ -132,13 +120,13 @@ export const connectTimelineStream = (timelineId, channelName, params = {}, opti
           // tstodon's `move` notification is not one this UI renders (its
           // REST requests leave it out by type), so the stream's is dropped.
           if (!isRenderedNotification(notificationJSON)) break;
-          dispatch(updateNotifications(notificationJSON, messages, locale));
+          dispatch(updateNotifications(notificationJSON, messages, typeof locale === 'string' ? locale : undefined));
           // TODO: remove this once the groups feature replaces the previous one
           dispatch(processNewNotificationForGroups(notificationJSON));
           break;
         }
         case 'notifications_merged': {
-          dispatch(refreshStaleNotificationGroups());
+          void dispatch(refreshStaleNotificationGroups());
           break;
         }
         case 'conversation':
@@ -159,10 +147,7 @@ export const connectTimelineStream = (timelineId, channelName, params = {}, opti
   });
 };
 
-/**
- * @param {Dispatch} dispatch
- */
-async function refreshHomeTimelineAndNotification(dispatch) {
+async function refreshHomeTimelineAndNotification(dispatch: AppDispatch) {
   await dispatch(expandHomeTimeline({ maxId: undefined }));
 
   // TODO: polling for merged notifications
@@ -172,64 +157,32 @@ async function refreshHomeTimelineAndNotification(dispatch) {
     // TODO
   }
 
-  await dispatch(fetchAnnouncements());
+  dispatch(fetchAnnouncements());
 }
 
-/**
- * @returns {() => void}
- */
 export const connectUserStream = () =>
   connectTimelineStream('home', 'user', {}, {
     fallback: refreshHomeTimelineAndNotification,
-    // @ts-expect-error
-    fillGaps: fillHomeTimelineGaps
+    fillGaps: fillHomeTimelineGaps,
   });
 
-/**
- * @param {Object} options
- * @param {boolean} [options.onlyMedia]
- * @returns {() => void}
- */
-export const connectCommunityStream = ({ onlyMedia } = {}) =>
+export const connectCommunityStream = ({ onlyMedia }: { onlyMedia?: boolean } = {}) =>
   connectTimelineStream(`community${onlyMedia ? ':media' : ''}`, `public:local${onlyMedia ? ':media' : ''}`, {}, {
-    // @ts-expect-error
-    fillGaps: () => (fillCommunityTimelineGaps({ onlyMedia }))
+    fillGaps: () => (fillCommunityTimelineGaps({ onlyMedia })),
   });
 
-/**
- * @param {Object} options
- * @param {boolean} [options.onlyMedia]
- * @param {boolean} [options.onlyRemote]
- * @returns {() => void}
- */
-export const connectPublicStream = ({ onlyMedia, onlyRemote } = {}) =>
+export const connectPublicStream = ({ onlyMedia, onlyRemote }: { onlyMedia?: boolean, onlyRemote?: boolean } = {}) =>
   connectTimelineStream(`public${onlyRemote ? ':remote' : ''}${onlyMedia ? ':media' : ''}`, `public${onlyRemote ? ':remote' : ''}${onlyMedia ? ':media' : ''}`, {}, {
-    // @ts-expect-error
-    fillGaps: () => fillPublicTimelineGaps({ onlyMedia, onlyRemote })
+    fillGaps: () => fillPublicTimelineGaps({ onlyMedia, onlyRemote }),
   });
 
-/**
- * @param {string} columnId
- * @param {string} tagName
- * @param {boolean} onlyLocal
- * @param {(status: object) => boolean} accept
- * @returns {() => void}
- */
-export const connectHashtagStream = (columnId, tagName, onlyLocal, accept) =>
+export const connectHashtagStream = (columnId: string, tagName: string, onlyLocal: boolean, accept: (status: ApiStatusJSON) => boolean) =>
   connectTimelineStream(`hashtag:${columnId}${onlyLocal ? ':local' : ''}`, `hashtag${onlyLocal ? ':local' : ''}`, { tag: tagName }, { accept });
 
-/**
- * @returns {() => void}
- */
 export const connectDirectStream = () =>
   connectTimelineStream('direct', 'direct');
 
-/**
- * @param {string} listId
- * @returns {() => void}
- */
-export const connectListStream = listId =>
+export const connectListStream = (listId: string) =>
   connectTimelineStream(`list:${listId}`, 'list', { list: listId }, {
-    // @ts-expect-error
-    fillGaps: () => fillListTimelineGaps(listId)
+    fillGaps: () => fillListTimelineGaps(listId),
   });

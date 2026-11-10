@@ -1,16 +1,15 @@
 import type { Context } from "hono";
+import { ApiUpdateWebSettingsParamsSchema } from "@tstodon/api";
 import { warmSchemas } from "@tstodon/core";
-import { z } from "zod";
 import { nowIso } from "../clock";
 import { runD1 } from "../d1";
 import { upsertWebSettings } from "../generated/prisma/sql";
-import { jsonAuthError, jsonRepositoryError, readBody, requireUser } from "../http";
+import { jsonAuthError, jsonRepositoryError, requireUser } from "../http";
+import { readParams } from "../request-params";
 import { runTyped } from "../typed-sql";
 
 /** The web UI's own preferences are opaque here; this caps what one account may store. */
 const MAX_SETTINGS_BYTES = 64 * 1024;
-
-const WebSettingsBodySchema = z.object({ data: z.record(z.string(), z.unknown()) });
 
 /** Mastodon's `PUT /api/web/settings`: the web UI saves its settings blob. */
 export const putApiWebSettings = async (c: Context<{ Bindings: Env }, "/api/web/settings">) => {
@@ -18,7 +17,7 @@ export const putApiWebSettings = async (c: Context<{ Bindings: Env }, "/api/web/
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const body = await readBody(c, WebSettingsBodySchema);
+  const body = await readParams(c, ApiUpdateWebSettingsParamsSchema);
   if (body.isErr()) {
     return c.json({ error: "Validation failed", kind: "ValidationError" }, 422);
   }
@@ -35,4 +34,4 @@ export const putApiWebSettings = async (c: Context<{ Bindings: Env }, "/api/web/
   return c.json({});
 };
 
-warmSchemas([WebSettingsBodySchema]);
+warmSchemas([ApiUpdateWebSettingsParamsSchema]);

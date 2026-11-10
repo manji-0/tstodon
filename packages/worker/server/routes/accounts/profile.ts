@@ -1,4 +1,5 @@
 import { ApiGetAccountStatusesParamsSchema } from "@tstodon/api";
+import { warmSchemas } from "@tstodon/core";
 import { AccountPresentation } from "@tstodon/domain";
 import type { Context } from "hono";
 import { findAccountByIdOrUsername } from "../../account-store";
@@ -134,6 +135,7 @@ export const getV1AccountsByIdStatuses = async (
     tagged: params.value.tagged,
     cursor: paramsCursor(params.value),
   };
+  const pinned = params.value.pinned ?? false;
   const account = await findAccountByIdOrUsername(c.env.DB, id);
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
@@ -236,3 +238,5 @@ export const getV1AccountsByIdFollowers = (
 export const getV1AccountsByIdFollowing = (
   c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/following">,
 ) => accountList(c, "following");
+
+warmSchemas([ApiGetAccountStatusesParamsSchema]);
