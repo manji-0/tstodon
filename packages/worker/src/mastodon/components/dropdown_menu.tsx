@@ -413,7 +413,7 @@ export const Dropdown = <Item extends object | null = MenuItem>({
           return;
         }
 
-        if (prefetchAccountId) {
+        if (typeof prefetchAccountId === 'string' && prefetchAccountId) {
           dispatch(fetchRelationships([prefetchAccountId]));
         }
 

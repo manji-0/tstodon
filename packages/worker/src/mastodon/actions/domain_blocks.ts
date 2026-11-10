@@ -1,10 +1,12 @@
-import api, { getLinks } from '../api';
+import { apiBlockDomain, apiUnblockDomain } from 'mastodon/api/domain_blocks';
+import type { Account } from 'mastodon/models/account';
+import type { AppDispatch, GetState, RootState } from 'mastodon/store';
 
-import { blockDomainSuccess, unblockDomainSuccess } from "./domain_blocks_typed";
+import { blockDomainSuccess, unblockDomainSuccess } from './domain_blocks_typed';
 import { openModal } from './modal';
 
 
-export * from "./domain_blocks_typed";
+export * from './domain_blocks_typed';
 
 export const DOMAIN_BLOCK_REQUEST = 'DOMAIN_BLOCK_REQUEST';
 export const DOMAIN_BLOCK_FAIL    = 'DOMAIN_BLOCK_FAIL';
@@ -12,29 +14,34 @@ export const DOMAIN_BLOCK_FAIL    = 'DOMAIN_BLOCK_FAIL';
 export const DOMAIN_UNBLOCK_REQUEST = 'DOMAIN_UNBLOCK_REQUEST';
 export const DOMAIN_UNBLOCK_FAIL    = 'DOMAIN_UNBLOCK_FAIL';
 
-export function blockDomain(domain) {
-  return (dispatch, getState) => {
+/** The ids of the known accounts on `domain`. */
+const accountIdsOnDomain = (state: RootState, domain: string) => {
+  const at_domain = '@' + domain;
+  return state.accounts.filter(item => item.acct.endsWith(at_domain)).valueSeq().map(item => item.id).toArray();
+};
+
+export function blockDomain(domain: string) {
+  return (dispatch: AppDispatch, getState: GetState) => {
     dispatch(blockDomainRequest(domain));
 
-    api().post('/api/v1/domain_blocks', { domain }).then(() => {
-      const at_domain = '@' + domain;
-      const accounts = getState().get('accounts').filter(item => item.get('acct').endsWith(at_domain)).valueSeq().map(item => item.get('id'));
+    apiBlockDomain(domain).then(() => {
+      const accounts = accountIdsOnDomain(getState(), domain);
 
       dispatch(blockDomainSuccess({ domain, accounts }));
-    }).catch(err => {
+    }).catch((err: unknown) => {
       dispatch(blockDomainFail(domain, err));
     });
   };
 }
 
-export function blockDomainRequest(domain) {
+export function blockDomainRequest(domain: string) {
   return {
     type: DOMAIN_BLOCK_REQUEST,
     domain,
   };
 }
 
-export function blockDomainFail(domain, error) {
+export function blockDomainFail(domain: string, error: unknown) {
   return {
     type: DOMAIN_BLOCK_FAIL,
     domain,
@@ -42,28 +49,27 @@ export function blockDomainFail(domain, error) {
   };
 }
 
-export function unblockDomain(domain) {
-  return (dispatch, getState) => {
+export function unblockDomain(domain: string) {
+  return (dispatch: AppDispatch, getState: GetState) => {
     dispatch(unblockDomainRequest(domain));
 
-    api().delete('/api/v1/domain_blocks', { params: { domain } }).then(() => {
-      const at_domain = '@' + domain;
-      const accounts = getState().get('accounts').filter(item => item.get('acct').endsWith(at_domain)).valueSeq().map(item => item.get('id'));
+    apiUnblockDomain(domain).then(() => {
+      const accounts = accountIdsOnDomain(getState(), domain);
       dispatch(unblockDomainSuccess({ domain, accounts }));
-    }).catch(err => {
+    }).catch((err: unknown) => {
       dispatch(unblockDomainFail(domain, err));
     });
   };
 }
 
-export function unblockDomainRequest(domain) {
+export function unblockDomainRequest(domain: string) {
   return {
     type: DOMAIN_UNBLOCK_REQUEST,
     domain,
   };
 }
 
-export function unblockDomainFail(domain, error) {
+export function unblockDomainFail(domain: string, error: unknown) {
   return {
     type: DOMAIN_UNBLOCK_FAIL,
     domain,
@@ -71,7 +77,7 @@ export function unblockDomainFail(domain, error) {
   };
 }
 
-export const initDomainBlockModal = account => dispatch => dispatch(openModal({
+export const initDomainBlockModal = (account: Account) => (dispatch: AppDispatch) => dispatch(openModal({
   modalType: 'DOMAIN_BLOCK',
   modalProps: {
     domain: account.get('acct').split('@')[1],

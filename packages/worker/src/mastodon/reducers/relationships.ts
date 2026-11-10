@@ -3,7 +3,6 @@ import type { Reducer } from '@reduxjs/toolkit';
 import { Map as ImmutableMap } from 'immutable';
 
 import type { ApiRelationshipJSON } from 'mastodon/api_types/relationships';
-import type { Account } from 'mastodon/models/account';
 import { createRelationship } from 'mastodon/models/relationship';
 import type { Relationship } from 'mastodon/models/relationship';
 
@@ -53,7 +52,7 @@ const normalizeRelationships = (
 
 const setDomainBlocking = (
   state: State,
-  accounts: Account[],
+  accounts: string[],
   blocking: boolean,
 ) => {
   return state.withMutations((map) => {

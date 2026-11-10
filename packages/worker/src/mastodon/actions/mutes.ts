@@ -1,4 +1,8 @@
-import api, { getLinks } from '../api';
+import { getNextLinkUri } from 'mastodon/api';
+import { apiGetMutes } from 'mastodon/api/accounts';
+import type { ApiAccountJSON } from 'mastodon/api_types/accounts';
+import type { Account } from 'mastodon/models/account';
+import type { AppDispatch, GetState } from 'mastodon/store';
 
 import { fetchRelationships } from './accounts';
 import { importFetchedAccounts } from './importer';
@@ -13,15 +17,14 @@ export const MUTES_EXPAND_SUCCESS = 'MUTES_EXPAND_SUCCESS';
 export const MUTES_EXPAND_FAIL    = 'MUTES_EXPAND_FAIL';
 
 export function fetchMutes() {
-  return (dispatch) => {
+  return (dispatch: AppDispatch) => {
     dispatch(fetchMutesRequest());
 
-    api().get('/api/v1/mutes').then(response => {
-      const next = getLinks(response).refs.find(link => link.rel === 'next');
-      dispatch(importFetchedAccounts(response.data));
-      dispatch(fetchMutesSuccess(response.data, next ? next.uri : null));
-      dispatch(fetchRelationships(response.data.map(item => item.id)));
-    }).catch(error => dispatch(fetchMutesFail(error)));
+    apiGetMutes().then(({ accounts, links }) => {
+      dispatch(importFetchedAccounts(accounts));
+      dispatch(fetchMutesSuccess(accounts, getNextLinkUri(links)));
+      dispatch(fetchRelationships(accounts.map(item => item.id)));
+    }).catch((error: unknown) => dispatch(fetchMutesFail(error)));
   };
 }
 
@@ -31,7 +34,7 @@ export function fetchMutesRequest() {
   };
 }
 
-export function fetchMutesSuccess(accounts, next) {
+export function fetchMutesSuccess(accounts: ApiAccountJSON[], next: string | null) {
   return {
     type: MUTES_FETCH_SUCCESS,
     accounts,
@@ -39,7 +42,7 @@ export function fetchMutesSuccess(accounts, next) {
   };
 }
 
-export function fetchMutesFail(error) {
+export function fetchMutesFail(error: unknown) {
   return {
     type: MUTES_FETCH_FAIL,
     error,
@@ -47,21 +50,20 @@ export function fetchMutesFail(error) {
 }
 
 export function expandMutes() {
-  return (dispatch, getState) => {
-    const url = getState().getIn(['user_lists', 'mutes', 'next']);
+  return (dispatch: AppDispatch, getState: GetState) => {
+    const url = getState().user_lists.getIn(['mutes', 'next']);
 
-    if (url === null) {
+    if (typeof url !== 'string') {
       return;
     }
 
     dispatch(expandMutesRequest());
 
-    api().get(url).then(response => {
-      const next = getLinks(response).refs.find(link => link.rel === 'next');
-      dispatch(importFetchedAccounts(response.data));
-      dispatch(expandMutesSuccess(response.data, next ? next.uri : null));
-      dispatch(fetchRelationships(response.data.map(item => item.id)));
-    }).catch(error => dispatch(expandMutesFail(error)));
+    apiGetMutes(url).then(({ accounts, links }) => {
+      dispatch(importFetchedAccounts(accounts));
+      dispatch(expandMutesSuccess(accounts, getNextLinkUri(links)));
+      dispatch(fetchRelationships(accounts.map(item => item.id)));
+    }).catch((error: unknown) => dispatch(expandMutesFail(error)));
   };
 }
 
@@ -71,7 +73,7 @@ export function expandMutesRequest() {
   };
 }
 
-export function expandMutesSuccess(accounts, next) {
+export function expandMutesSuccess(accounts: ApiAccountJSON[], next: string | null) {
   return {
     type: MUTES_EXPAND_SUCCESS,
     accounts,
@@ -79,15 +81,15 @@ export function expandMutesSuccess(accounts, next) {
   };
 }
 
-export function expandMutesFail(error) {
+export function expandMutesFail(error: unknown) {
   return {
     type: MUTES_EXPAND_FAIL,
     error,
   };
 }
 
-export function initMuteModal(account) {
-  return dispatch => {
+export function initMuteModal(account: Account) {
+  return (dispatch: AppDispatch) => {
     dispatch(openModal({
       modalType: 'MUTE',
       modalProps: {

@@ -1,4 +1,8 @@
-import api, { getLinks } from '../api';
+import { getNextLinkUri } from 'mastodon/api';
+import { apiGetBlocks } from 'mastodon/api/accounts';
+import type { ApiAccountJSON } from 'mastodon/api_types/accounts';
+import type { Account } from 'mastodon/models/account';
+import type { AppDispatch, GetState } from 'mastodon/store';
 
 import { fetchRelationships } from './accounts';
 import { importFetchedAccounts } from './importer';
@@ -13,15 +17,14 @@ export const BLOCKS_EXPAND_SUCCESS = 'BLOCKS_EXPAND_SUCCESS';
 export const BLOCKS_EXPAND_FAIL    = 'BLOCKS_EXPAND_FAIL';
 
 export function fetchBlocks() {
-  return (dispatch) => {
+  return (dispatch: AppDispatch) => {
     dispatch(fetchBlocksRequest());
 
-    api().get('/api/v1/blocks').then(response => {
-      const next = getLinks(response).refs.find(link => link.rel === 'next');
-      dispatch(importFetchedAccounts(response.data));
-      dispatch(fetchBlocksSuccess(response.data, next ? next.uri : null));
-      dispatch(fetchRelationships(response.data.map(item => item.id)));
-    }).catch(error => dispatch(fetchBlocksFail(error)));
+    apiGetBlocks().then(({ accounts, links }) => {
+      dispatch(importFetchedAccounts(accounts));
+      dispatch(fetchBlocksSuccess(accounts, getNextLinkUri(links)));
+      dispatch(fetchRelationships(accounts.map(item => item.id)));
+    }).catch((error: unknown) => dispatch(fetchBlocksFail(error)));
   };
 }
 
@@ -31,7 +34,7 @@ export function fetchBlocksRequest() {
   };
 }
 
-export function fetchBlocksSuccess(accounts, next) {
+export function fetchBlocksSuccess(accounts: ApiAccountJSON[], next: string | null) {
   return {
     type: BLOCKS_FETCH_SUCCESS,
     accounts,
@@ -39,7 +42,7 @@ export function fetchBlocksSuccess(accounts, next) {
   };
 }
 
-export function fetchBlocksFail(error) {
+export function fetchBlocksFail(error: unknown) {
   return {
     type: BLOCKS_FETCH_FAIL,
     error,
@@ -47,21 +50,20 @@ export function fetchBlocksFail(error) {
 }
 
 export function expandBlocks() {
-  return (dispatch, getState) => {
-    const url = getState().getIn(['user_lists', 'blocks', 'next']);
+  return (dispatch: AppDispatch, getState: GetState) => {
+    const url = getState().user_lists.getIn(['blocks', 'next']);
 
-    if (url === null) {
+    if (typeof url !== 'string') {
       return;
     }
 
     dispatch(expandBlocksRequest());
 
-    api().get(url).then(response => {
-      const next = getLinks(response).refs.find(link => link.rel === 'next');
-      dispatch(importFetchedAccounts(response.data));
-      dispatch(expandBlocksSuccess(response.data, next ? next.uri : null));
-      dispatch(fetchRelationships(response.data.map(item => item.id)));
-    }).catch(error => dispatch(expandBlocksFail(error)));
+    apiGetBlocks(url).then(({ accounts, links }) => {
+      dispatch(importFetchedAccounts(accounts));
+      dispatch(expandBlocksSuccess(accounts, getNextLinkUri(links)));
+      dispatch(fetchRelationships(accounts.map(item => item.id)));
+    }).catch((error: unknown) => dispatch(expandBlocksFail(error)));
   };
 }
 
@@ -71,7 +73,7 @@ export function expandBlocksRequest() {
   };
 }
 
-export function expandBlocksSuccess(accounts, next) {
+export function expandBlocksSuccess(accounts: ApiAccountJSON[], next: string | null) {
   return {
     type: BLOCKS_EXPAND_SUCCESS,
     accounts,
@@ -79,15 +81,15 @@ export function expandBlocksSuccess(accounts, next) {
   };
 }
 
-export function expandBlocksFail(error) {
+export function expandBlocksFail(error: unknown) {
   return {
     type: BLOCKS_EXPAND_FAIL,
     error,
   };
 }
 
-export function initBlockModal(account) {
-  return dispatch => {
+export function initBlockModal(account: Account) {
+  return (dispatch: AppDispatch) => {
     dispatch(openModal({
       modalType: 'BLOCK',
       modalProps: {

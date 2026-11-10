@@ -45,7 +45,7 @@ export const suggestionsReducer = createReducer(initialState, (builder) => {
   builder.addCase(blockDomainSuccess, (state, action) => {
     state.items = state.items.filter(
       (x) =>
-        !action.payload.accounts.some((account) => account.id === x.account_id),
+        !action.payload.accounts.includes(x.account_id),
     );
   });
 

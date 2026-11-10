@@ -72,11 +72,11 @@ export const NotificationWithStatus: React.FC<{
       },
 
       boost: () => {
-        dispatch(toggleReblog(statusId));
+        if (statusId) dispatch(toggleReblog(statusId));
       },
 
       favourite: () => {
-        dispatch(toggleFavourite(statusId));
+        if (statusId) dispatch(toggleFavourite(statusId));
       },
 
       toggleHidden: () => {

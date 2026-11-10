@@ -1,7 +1,29 @@
+import type { ApiFollowAccountParams } from '@tstodon/api';
+import { getNextLinkUri } from 'mastodon/api';
+import {
+  apiAuthorizeFollowRequest,
+  apiBlockAccount,
+  apiEndorseAccount,
+  apiFollowAccount,
+  apiGetAccount,
+  apiGetFollowRequests,
+  apiGetFollowers,
+  apiGetFollowing,
+  apiGetRelationships,
+  apiLookupAccount,
+  apiMuteAccount,
+  apiRejectFollowRequest,
+  apiUnblockAccount,
+  apiUnendorseAccount,
+  apiUnfollowAccount,
+  apiUnmuteAccount,
+  apiUpdateCredentials,
+} from 'mastodon/api/accounts';
+import type { ApiAccountJSON } from 'mastodon/api_types/accounts';
 import { browserHistory } from 'mastodon/components/router';
+import type { AppDispatch, GetState } from 'mastodon/store';
 import { debounceWithDispatchAndArguments } from 'mastodon/utils/debounce';
 
-import api, { getLinks } from '../api';
 import { me } from '../initial_state';
 
 import {
@@ -80,33 +102,33 @@ export const ACCOUNT_REVEAL = 'ACCOUNT_REVEAL';
 
 export * from './accounts_typed';
 
-export function fetchAccount(id) {
-  return (dispatch) => {
+export function fetchAccount(id: string) {
+  return (dispatch: AppDispatch) => {
     dispatch(fetchRelationships([id]));
     dispatch(fetchAccountRequest(id));
 
-    api().get(`/api/v1/accounts/${id}`).then(response => {
-      dispatch(importFetchedAccount(response.data));
+    apiGetAccount(id).then(account => {
+      dispatch(importFetchedAccount(account));
       dispatch(fetchAccountSuccess());
-    }).catch(error => {
+    }).catch((error: unknown) => {
       dispatch(fetchAccountFail(id, error));
     });
   };
 }
 
-export const lookupAccount = acct => (dispatch) => {
+export const lookupAccount = (acct: string) => (dispatch: AppDispatch) => {
   dispatch(lookupAccountRequest(acct));
 
-  api().get('/api/v1/accounts/lookup', { params: { acct } }).then(response => {
-    dispatch(fetchRelationships([response.data.id]));
-    dispatch(importFetchedAccount(response.data));
+  apiLookupAccount(acct).then(account => {
+    dispatch(fetchRelationships([account.id]));
+    dispatch(importFetchedAccount(account));
     dispatch(lookupAccountSuccess());
-  }).catch(error => {
+  }).catch((error: unknown) => {
     dispatch(lookupAccountFail(acct, error));
   });
 };
 
-export const lookupAccountRequest = (acct) => ({
+export const lookupAccountRequest = (acct: string) => ({
   type: ACCOUNT_LOOKUP_REQUEST,
   acct,
 });
@@ -115,14 +137,14 @@ export const lookupAccountSuccess = () => ({
   type: ACCOUNT_LOOKUP_SUCCESS,
 });
 
-export const lookupAccountFail = (acct, error) => ({
+export const lookupAccountFail = (acct: string, error: unknown) => ({
   type: ACCOUNT_LOOKUP_FAIL,
   acct,
   error,
   skipAlert: true,
 });
 
-export function fetchAccountRequest(id) {
+export function fetchAccountRequest(id: string) {
   return {
     type: ACCOUNT_FETCH_REQUEST,
     id,
@@ -135,7 +157,7 @@ export function fetchAccountSuccess() {
   };
 }
 
-export function fetchAccountFail(id, error) {
+export function fetchAccountFail(id: string, error: unknown) {
   return {
     type: ACCOUNT_FETCH_FAIL,
     id,
@@ -144,87 +166,80 @@ export function fetchAccountFail(id, error) {
   };
 }
 
-/**
- * @param {string} id
- * @param {Object} options
- * @param {boolean} [options.reblogs]
- * @param {boolean} [options.notify]
- * @returns {function(): void}
- */
-export function followAccount(id, options = { reblogs: true }) {
-  return (dispatch, getState) => {
-    const relationship = getState().getIn(['relationships', id]);
-    const alreadyFollowing = relationship?.following || relationship?.requested;
-    const locked = getState().getIn(['accounts', id, 'locked'], false);
+export function followAccount(id: string, options: ApiFollowAccountParams = { reblogs: true }) {
+  return (dispatch: AppDispatch, getState: GetState) => {
+    const relationship = getState().relationships.get(id);
+    const alreadyFollowing = !!(relationship?.following || relationship?.requested);
+    const locked = getState().accounts.get(id)?.locked ?? false;
 
     dispatch(followAccountRequest({ id, locked }));
 
-    api().post(`/api/v1/accounts/${id}/follow`, options).then(response => {
-      dispatch(followAccountSuccess({relationship: response.data, alreadyFollowing}));
-    }).catch(error => {
+    apiFollowAccount(id, options).then(relationship => {
+      dispatch(followAccountSuccess({relationship, alreadyFollowing}));
+    }).catch((error: unknown) => {
       dispatch(followAccountFail({ id, error, locked }));
     });
   };
 }
 
-export function unfollowAccount(id) {
-  return (dispatch, getState) => {
-    dispatch(unfollowAccountRequest(id));
+export function unfollowAccount(id: string) {
+  return (dispatch: AppDispatch, getState: GetState) => {
+    dispatch(unfollowAccountRequest({ id }));
 
-    api().post(`/api/v1/accounts/${id}/unfollow`).then(response => {
-      dispatch(unfollowAccountSuccess({relationship: response.data, statuses: getState().get('statuses')}));
-    }).catch(error => {
+    apiUnfollowAccount(id).then(relationship => {
+      dispatch(unfollowAccountSuccess({relationship, statuses: getState().statuses}));
+    }).catch((error: unknown) => {
       dispatch(unfollowAccountFail({ id, error }));
     });
   };
 }
 
-export function blockAccount(id) {
-  return (dispatch, getState) => {
+export function blockAccount(id: string) {
+  return (dispatch: AppDispatch, getState: GetState) => {
     dispatch(blockAccountRequest(id));
 
-    api().post(`/api/v1/accounts/${id}/block`).then(response => {
+    apiBlockAccount(id).then(relationship => {
       // Pass in entire statuses map so we can use it to filter stuff in different parts of the reducers
-      dispatch(blockAccountSuccess({ relationship: response.data, statuses: getState().get('statuses') }));
-    }).catch(error => {
-      dispatch(blockAccountFail({ id, error }));
+      dispatch(blockAccountSuccess({ relationship, statuses: getState().statuses }));
+    }).catch((error: unknown) => {
+      dispatch(blockAccountFail(error));
     });
   };
 }
 
-export function unblockAccount(id) {
-  return (dispatch) => {
+export function unblockAccount(id: string) {
+  return (dispatch: AppDispatch) => {
     dispatch(unblockAccountRequest(id));
 
-    api().post(`/api/v1/accounts/${id}/unblock`).then(response => {
-      dispatch(unblockAccountSuccess({ relationship: response.data }));
-    }).catch(error => {
-      dispatch(unblockAccountFail({ id, error }));
+    apiUnblockAccount(id).then(relationship => {
+      dispatch(unblockAccountSuccess({ relationship }));
+    }).catch((error: unknown) => {
+      dispatch(unblockAccountFail(error));
     });
   };
 }
 
-export function blockAccountRequest(id) {
+export function blockAccountRequest(id: string) {
   return {
     type: ACCOUNT_BLOCK_REQUEST,
     id,
   };
 }
-export function blockAccountFail(error) {
+export function blockAccountFail(error: unknown) {
   return {
     type: ACCOUNT_BLOCK_FAIL,
     error,
   };
 }
 
-export function unblockAccountRequest(id) {
+export function unblockAccountRequest(id: string) {
   return {
     type: ACCOUNT_UNBLOCK_REQUEST,
     id,
   };
 }
 
-export function unblockAccountFail(error) {
+export function unblockAccountFail(error: unknown) {
   return {
     type: ACCOUNT_UNBLOCK_FAIL,
     error,
@@ -232,53 +247,57 @@ export function unblockAccountFail(error) {
 }
 
 
-export function muteAccount(id, notifications, duration=0) {
-  return (dispatch, getState) => {
+/**
+ * @param notifications also hide the account's notifications (the server's default)
+ * @param duration seconds until the mute expires; 0 never expires
+ */
+export function muteAccount(id: string, notifications?: boolean, duration = 0) {
+  return (dispatch: AppDispatch, getState: GetState) => {
     dispatch(muteAccountRequest(id));
 
-    api().post(`/api/v1/accounts/${id}/mute`, { notifications, duration }).then(response => {
+    apiMuteAccount(id, { notifications, duration }).then(relationship => {
       // Pass in entire statuses map so we can use it to filter stuff in different parts of the reducers
-      dispatch(muteAccountSuccess({ relationship: response.data, statuses: getState().get('statuses') }));
-    }).catch(error => {
-      dispatch(muteAccountFail({ id, error }));
+      dispatch(muteAccountSuccess({ relationship, statuses: getState().statuses }));
+    }).catch((error: unknown) => {
+      dispatch(muteAccountFail(error));
     });
   };
 }
 
-export function unmuteAccount(id) {
-  return (dispatch) => {
+export function unmuteAccount(id: string) {
+  return (dispatch: AppDispatch) => {
     dispatch(unmuteAccountRequest(id));
 
-    api().post(`/api/v1/accounts/${id}/unmute`).then(response => {
-      dispatch(unmuteAccountSuccess({ relationship: response.data }));
-    }).catch(error => {
-      dispatch(unmuteAccountFail({ id, error }));
+    apiUnmuteAccount(id).then(relationship => {
+      dispatch(unmuteAccountSuccess({ relationship }));
+    }).catch((error: unknown) => {
+      dispatch(unmuteAccountFail(error));
     });
   };
 }
 
-export function muteAccountRequest(id) {
+export function muteAccountRequest(id: string) {
   return {
     type: ACCOUNT_MUTE_REQUEST,
     id,
   };
 }
 
-export function muteAccountFail(error) {
+export function muteAccountFail(error: unknown) {
   return {
     type: ACCOUNT_MUTE_FAIL,
     error,
   };
 }
 
-export function unmuteAccountRequest(id) {
+export function unmuteAccountRequest(id: string) {
   return {
     type: ACCOUNT_UNMUTE_REQUEST,
     id,
   };
 }
 
-export function unmuteAccountFail(error) {
+export function unmuteAccountFail(error: unknown) {
   return {
     type: ACCOUNT_UNMUTE_FAIL,
     error,
@@ -286,30 +305,28 @@ export function unmuteAccountFail(error) {
 }
 
 
-export function fetchFollowers(id) {
-  return (dispatch) => {
+export function fetchFollowers(id: string) {
+  return (dispatch: AppDispatch) => {
     dispatch(fetchFollowersRequest(id));
 
-    api().get(`/api/v1/accounts/${id}/followers`).then(response => {
-      const next = getLinks(response).refs.find(link => link.rel === 'next');
-
-      dispatch(importFetchedAccounts(response.data));
-      dispatch(fetchFollowersSuccess(id, response.data, next ? next.uri : null));
-      dispatch(fetchRelationships(response.data.map(item => item.id)));
-    }).catch(error => {
+    apiGetFollowers(id).then(({ accounts, links }) => {
+      dispatch(importFetchedAccounts(accounts));
+      dispatch(fetchFollowersSuccess(id, accounts, getNextLinkUri(links)));
+      dispatch(fetchRelationships(accounts.map(item => item.id)));
+    }).catch((error: unknown) => {
       dispatch(fetchFollowersFail(id, error));
     });
   };
 }
 
-export function fetchFollowersRequest(id) {
+export function fetchFollowersRequest(id: string) {
   return {
     type: FOLLOWERS_FETCH_REQUEST,
     id,
   };
 }
 
-export function fetchFollowersSuccess(id, accounts, next) {
+export function fetchFollowersSuccess(id: string, accounts: ApiAccountJSON[], next: string | null) {
   return {
     type: FOLLOWERS_FETCH_SUCCESS,
     id,
@@ -318,7 +335,7 @@ export function fetchFollowersSuccess(id, accounts, next) {
   };
 }
 
-export function fetchFollowersFail(id, error) {
+export function fetchFollowersFail(id: string, error: unknown) {
   return {
     type: FOLLOWERS_FETCH_FAIL,
     id,
@@ -327,36 +344,34 @@ export function fetchFollowersFail(id, error) {
   };
 }
 
-export function expandFollowers(id) {
-  return (dispatch, getState) => {
-    const url = getState().getIn(['user_lists', 'followers', id, 'next']);
+export function expandFollowers(id: string) {
+  return (dispatch: AppDispatch, getState: GetState) => {
+    const url = getState().user_lists.getIn(['followers', id, 'next']);
 
-    if (url === null) {
+    if (typeof url !== 'string') {
       return;
     }
 
     dispatch(expandFollowersRequest(id));
 
-    api().get(url).then(response => {
-      const next = getLinks(response).refs.find(link => link.rel === 'next');
-
-      dispatch(importFetchedAccounts(response.data));
-      dispatch(expandFollowersSuccess(id, response.data, next ? next.uri : null));
-      dispatch(fetchRelationships(response.data.map(item => item.id)));
-    }).catch(error => {
+    apiGetFollowers(id, url).then(({ accounts, links }) => {
+      dispatch(importFetchedAccounts(accounts));
+      dispatch(expandFollowersSuccess(id, accounts, getNextLinkUri(links)));
+      dispatch(fetchRelationships(accounts.map(item => item.id)));
+    }).catch((error: unknown) => {
       dispatch(expandFollowersFail(id, error));
     });
   };
 }
 
-export function expandFollowersRequest(id) {
+export function expandFollowersRequest(id: string) {
   return {
     type: FOLLOWERS_EXPAND_REQUEST,
     id,
   };
 }
 
-export function expandFollowersSuccess(id, accounts, next) {
+export function expandFollowersSuccess(id: string, accounts: ApiAccountJSON[], next: string | null) {
   return {
     type: FOLLOWERS_EXPAND_SUCCESS,
     id,
@@ -365,7 +380,7 @@ export function expandFollowersSuccess(id, accounts, next) {
   };
 }
 
-export function expandFollowersFail(id, error) {
+export function expandFollowersFail(id: string, error: unknown) {
   return {
     type: FOLLOWERS_EXPAND_FAIL,
     id,
@@ -373,30 +388,28 @@ export function expandFollowersFail(id, error) {
   };
 }
 
-export function fetchFollowing(id) {
-  return (dispatch) => {
+export function fetchFollowing(id: string) {
+  return (dispatch: AppDispatch) => {
     dispatch(fetchFollowingRequest(id));
 
-    api().get(`/api/v1/accounts/${id}/following`).then(response => {
-      const next = getLinks(response).refs.find(link => link.rel === 'next');
-
-      dispatch(importFetchedAccounts(response.data));
-      dispatch(fetchFollowingSuccess(id, response.data, next ? next.uri : null));
-      dispatch(fetchRelationships(response.data.map(item => item.id)));
-    }).catch(error => {
+    apiGetFollowing(id).then(({ accounts, links }) => {
+      dispatch(importFetchedAccounts(accounts));
+      dispatch(fetchFollowingSuccess(id, accounts, getNextLinkUri(links)));
+      dispatch(fetchRelationships(accounts.map(item => item.id)));
+    }).catch((error: unknown) => {
       dispatch(fetchFollowingFail(id, error));
     });
   };
 }
 
-export function fetchFollowingRequest(id) {
+export function fetchFollowingRequest(id: string) {
   return {
     type: FOLLOWING_FETCH_REQUEST,
     id,
   };
 }
 
-export function fetchFollowingSuccess(id, accounts, next) {
+export function fetchFollowingSuccess(id: string, accounts: ApiAccountJSON[], next: string | null) {
   return {
     type: FOLLOWING_FETCH_SUCCESS,
     id,
@@ -405,7 +418,7 @@ export function fetchFollowingSuccess(id, accounts, next) {
   };
 }
 
-export function fetchFollowingFail(id, error) {
+export function fetchFollowingFail(id: string, error: unknown) {
   return {
     type: FOLLOWING_FETCH_FAIL,
     id,
@@ -414,36 +427,34 @@ export function fetchFollowingFail(id, error) {
   };
 }
 
-export function expandFollowing(id) {
-  return (dispatch, getState) => {
-    const url = getState().getIn(['user_lists', 'following', id, 'next']);
+export function expandFollowing(id: string) {
+  return (dispatch: AppDispatch, getState: GetState) => {
+    const url = getState().user_lists.getIn(['following', id, 'next']);
 
-    if (url === null) {
+    if (typeof url !== 'string') {
       return;
     }
 
     dispatch(expandFollowingRequest(id));
 
-    api().get(url).then(response => {
-      const next = getLinks(response).refs.find(link => link.rel === 'next');
-
-      dispatch(importFetchedAccounts(response.data));
-      dispatch(expandFollowingSuccess(id, response.data, next ? next.uri : null));
-      dispatch(fetchRelationships(response.data.map(item => item.id)));
-    }).catch(error => {
+    apiGetFollowing(id, url).then(({ accounts, links }) => {
+      dispatch(importFetchedAccounts(accounts));
+      dispatch(expandFollowingSuccess(id, accounts, getNextLinkUri(links)));
+      dispatch(fetchRelationships(accounts.map(item => item.id)));
+    }).catch((error: unknown) => {
       dispatch(expandFollowingFail(id, error));
     });
   };
 }
 
-export function expandFollowingRequest(id) {
+export function expandFollowingRequest(id: string) {
   return {
     type: FOLLOWING_EXPAND_REQUEST,
     id,
   };
 }
 
-export function expandFollowingSuccess(id, accounts, next) {
+export function expandFollowingSuccess(id: string, accounts: ApiAccountJSON[], next: string | null) {
   return {
     type: FOLLOWING_EXPAND_SUCCESS,
     id,
@@ -452,7 +463,7 @@ export function expandFollowingSuccess(id, accounts, next) {
   };
 }
 
-export function expandFollowingFail(id, error) {
+export function expandFollowingFail(id: string, error: unknown) {
   return {
     type: FOLLOWING_EXPAND_FAIL,
     id,
@@ -460,26 +471,26 @@ export function expandFollowingFail(id, error) {
   };
 }
 
-const debouncedFetchRelationships = debounceWithDispatchAndArguments((dispatch, ...newAccountIds) => {
+const debouncedFetchRelationships = debounceWithDispatchAndArguments<string>((dispatch, ...newAccountIds) => {
   if (newAccountIds.length === 0) {
     return;
   }
 
   dispatch(fetchRelationshipsRequest(newAccountIds));
 
-  api().get(`/api/v1/accounts/relationships?with_suspended=true&${newAccountIds.map(id => `id[]=${id}`).join('&')}`).then(response => {
-    dispatch(fetchRelationshipsSuccess({ relationships: response.data }));
-  }).catch(error => {
+  apiGetRelationships(newAccountIds).then(relationships => {
+    dispatch(fetchRelationshipsSuccess({ relationships }));
+  }).catch((error: unknown) => {
     dispatch(fetchRelationshipsFail(error));
   });
 }, { delay: 500 });
 
-export function fetchRelationships(accountIds) {
-  return (dispatch, getState) => {
+export function fetchRelationships(accountIds: string[]) {
+  return (dispatch: AppDispatch, getState: GetState) => {
     const state = getState();
-    const loadedRelationships = state.get('relationships');
+    const loadedRelationships = state.relationships;
     const newAccountIds = accountIds.filter(id => loadedRelationships.get(id, null) === null);
-    const signedIn = !!state.getIn(['meta', 'me']);
+    const signedIn = !!state.meta.get('me');
 
     if (!signedIn || newAccountIds.length === 0) {
       return;
@@ -489,7 +500,7 @@ export function fetchRelationships(accountIds) {
   };
 }
 
-export function fetchRelationshipsRequest(ids) {
+export function fetchRelationshipsRequest(ids: string[]) {
   return {
     type: RELATIONSHIPS_FETCH_REQUEST,
     ids,
@@ -497,7 +508,7 @@ export function fetchRelationshipsRequest(ids) {
   };
 }
 
-export function fetchRelationshipsFail(error) {
+export function fetchRelationshipsFail(error: unknown) {
   return {
     type: RELATIONSHIPS_FETCH_FAIL,
     error,
@@ -507,14 +518,13 @@ export function fetchRelationshipsFail(error) {
 }
 
 export function fetchFollowRequests() {
-  return (dispatch) => {
+  return (dispatch: AppDispatch) => {
     dispatch(fetchFollowRequestsRequest());
 
-    api().get('/api/v1/follow_requests').then(response => {
-      const next = getLinks(response).refs.find(link => link.rel === 'next');
-      dispatch(importFetchedAccounts(response.data));
-      dispatch(fetchFollowRequestsSuccess(response.data, next ? next.uri : null));
-    }).catch(error => dispatch(fetchFollowRequestsFail(error)));
+    apiGetFollowRequests().then(({ accounts, links }) => {
+      dispatch(importFetchedAccounts(accounts));
+      dispatch(fetchFollowRequestsSuccess(accounts, getNextLinkUri(links)));
+    }).catch((error: unknown) => dispatch(fetchFollowRequestsFail(error)));
   };
 }
 
@@ -524,7 +534,7 @@ export function fetchFollowRequestsRequest() {
   };
 }
 
-export function fetchFollowRequestsSuccess(accounts, next) {
+export function fetchFollowRequestsSuccess(accounts: ApiAccountJSON[], next: string | null) {
   return {
     type: FOLLOW_REQUESTS_FETCH_SUCCESS,
     accounts,
@@ -532,7 +542,7 @@ export function fetchFollowRequestsSuccess(accounts, next) {
   };
 }
 
-export function fetchFollowRequestsFail(error) {
+export function fetchFollowRequestsFail(error: unknown) {
   return {
     type: FOLLOW_REQUESTS_FETCH_FAIL,
     error,
@@ -540,20 +550,19 @@ export function fetchFollowRequestsFail(error) {
 }
 
 export function expandFollowRequests() {
-  return (dispatch, getState) => {
-    const url = getState().getIn(['user_lists', 'follow_requests', 'next']);
+  return (dispatch: AppDispatch, getState: GetState) => {
+    const url = getState().user_lists.getIn(['follow_requests', 'next']);
 
-    if (url === null) {
+    if (typeof url !== 'string') {
       return;
     }
 
     dispatch(expandFollowRequestsRequest());
 
-    api().get(url).then(response => {
-      const next = getLinks(response).refs.find(link => link.rel === 'next');
-      dispatch(importFetchedAccounts(response.data));
-      dispatch(expandFollowRequestsSuccess(response.data, next ? next.uri : null));
-    }).catch(error => dispatch(expandFollowRequestsFail(error)));
+    apiGetFollowRequests(url).then(({ accounts, links }) => {
+      dispatch(importFetchedAccounts(accounts));
+      dispatch(expandFollowRequestsSuccess(accounts, getNextLinkUri(links)));
+    }).catch((error: unknown) => dispatch(expandFollowRequestsFail(error)));
   };
 }
 
@@ -563,7 +572,7 @@ export function expandFollowRequestsRequest() {
   };
 }
 
-export function expandFollowRequestsSuccess(accounts, next) {
+export function expandFollowRequestsSuccess(accounts: ApiAccountJSON[], next: string | null) {
   return {
     type: FOLLOW_REQUESTS_EXPAND_SUCCESS,
     accounts,
@@ -571,32 +580,31 @@ export function expandFollowRequestsSuccess(accounts, next) {
   };
 }
 
-export function expandFollowRequestsFail(error) {
+export function expandFollowRequestsFail(error: unknown) {
   return {
     type: FOLLOW_REQUESTS_EXPAND_FAIL,
     error,
   };
 }
 
-export function authorizeFollowRequest(id) {
-  return (dispatch) => {
+export function authorizeFollowRequest(id: string) {
+  return (dispatch: AppDispatch) => {
     dispatch(authorizeFollowRequestRequest(id));
 
-    api()
-      .post(`/api/v1/follow_requests/${id}/authorize`)
+    apiAuthorizeFollowRequest(id)
       .then(() => dispatch(authorizeFollowRequestSuccess({ id })))
-      .catch(error => dispatch(authorizeFollowRequestFail(id, error)));
+      .catch((error: unknown) => dispatch(authorizeFollowRequestFail(id, error)));
   };
 }
 
-export function authorizeFollowRequestRequest(id) {
+export function authorizeFollowRequestRequest(id: string) {
   return {
     type: FOLLOW_REQUEST_AUTHORIZE_REQUEST,
     id,
   };
 }
 
-export function authorizeFollowRequestFail(id, error) {
+export function authorizeFollowRequestFail(id: string, error: unknown) {
   return {
     type: FOLLOW_REQUEST_AUTHORIZE_FAIL,
     id,
@@ -605,25 +613,24 @@ export function authorizeFollowRequestFail(id, error) {
 }
 
 
-export function rejectFollowRequest(id) {
-  return (dispatch) => {
+export function rejectFollowRequest(id: string) {
+  return (dispatch: AppDispatch) => {
     dispatch(rejectFollowRequestRequest(id));
 
-    api()
-      .post(`/api/v1/follow_requests/${id}/reject`)
+    apiRejectFollowRequest(id)
       .then(() => dispatch(rejectFollowRequestSuccess({ id })))
-      .catch(error => dispatch(rejectFollowRequestFail(id, error)));
+      .catch((error: unknown) => dispatch(rejectFollowRequestFail(id, error)));
   };
 }
 
-export function rejectFollowRequestRequest(id) {
+export function rejectFollowRequestRequest(id: string) {
   return {
     type: FOLLOW_REQUEST_REJECT_REQUEST,
     id,
   };
 }
 
-export function rejectFollowRequestFail(id, error) {
+export function rejectFollowRequestFail(id: string, error: unknown) {
   return {
     type: FOLLOW_REQUEST_REJECT_FAIL,
     id,
@@ -631,78 +638,83 @@ export function rejectFollowRequestFail(id, error) {
   };
 }
 
-export function pinAccount(id) {
-  return (dispatch) => {
+// Upstream's `pin` / `unpin` requests are Mastodon 4.4's `endorse` / `unendorse`.
+export function pinAccount(id: string) {
+  return (dispatch: AppDispatch) => {
     dispatch(pinAccountRequest(id));
 
-    api().post(`/api/v1/accounts/${id}/pin`).then(response => {
-      dispatch(pinAccountSuccess({ relationship: response.data }));
-      dispatch(fetchEndorsedAccounts({ accountId: me }));
-    }).catch(error => {
+    apiEndorseAccount(id).then(relationship => {
+      dispatch(pinAccountSuccess({ relationship }));
+      if (me) void dispatch(fetchEndorsedAccounts({ accountId: me }));
+    }).catch((error: unknown) => {
       dispatch(pinAccountFail(error));
     });
   };
 }
 
-export function unpinAccount(id) {
-  return (dispatch) => {
+export function unpinAccount(id: string) {
+  return (dispatch: AppDispatch) => {
     dispatch(unpinAccountRequest(id));
 
-    api().post(`/api/v1/accounts/${id}/unpin`).then(response => {
-      dispatch(unpinAccountSuccess({ relationship: response.data }));
-      dispatch(fetchEndorsedAccounts({ accountId: me }));
-    }).catch(error => {
+    apiUnendorseAccount(id).then(relationship => {
+      dispatch(unpinAccountSuccess({ relationship }));
+      if (me) void dispatch(fetchEndorsedAccounts({ accountId: me }));
+    }).catch((error: unknown) => {
       dispatch(unpinAccountFail(error));
     });
   };
 }
 
-export function pinAccountRequest(id) {
+export function pinAccountRequest(id: string) {
   return {
     type: ACCOUNT_PIN_REQUEST,
     id,
   };
 }
 
-export function pinAccountFail(error) {
+export function pinAccountFail(error: unknown) {
   return {
     type: ACCOUNT_PIN_FAIL,
     error,
   };
 }
 
-export function unpinAccountRequest(id) {
+export function unpinAccountRequest(id: string) {
   return {
     type: ACCOUNT_UNPIN_REQUEST,
     id,
   };
 }
 
-export function unpinAccountFail(error) {
+export function unpinAccountFail(error: unknown) {
   return {
     type: ACCOUNT_UNPIN_FAIL,
     error,
   };
 }
 
-export const updateAccount = ({ displayName, note, avatar, header, discoverable, indexable }) => (dispatch) => {
-  const data = new FormData();
-
-  data.append('display_name', displayName);
-  data.append('note', note);
-  if (avatar) data.append('avatar', avatar);
-  if (header) data.append('header', header);
-  data.append('discoverable', discoverable);
-  data.append('indexable', indexable);
-
-  return api().patch('/api/v1/accounts/update_credentials', data).then(response => {
-    dispatch(importFetchedAccount(response.data));
+export const updateAccount = ({ displayName, note, avatar, header, discoverable, indexable }: {
+  displayName: string;
+  note: string;
+  avatar?: File;
+  header?: File;
+  discoverable: boolean;
+  indexable: boolean;
+}) => (dispatch: AppDispatch) =>
+  apiUpdateCredentials({
+    display_name: displayName,
+    note,
+    avatar,
+    header,
+    discoverable,
+    indexable,
+  }).then(account => {
+    dispatch(importFetchedAccount(account));
   });
-};
 
-export const navigateToProfile = (accountId) => {
-  return (_dispatch, getState) => {
-    const acct = getState().accounts.getIn([accountId, 'acct']);
+export const navigateToProfile = (accountId: string) => {
+  return (_dispatch: AppDispatch, getState: GetState) => {
+    const acct = getState().accounts.get(accountId)?.acct;
 
     if (acct) {
       browserHistory.push(`/@${acct}`);

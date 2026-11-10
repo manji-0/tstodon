@@ -124,7 +124,6 @@ export const FollowButton: React.FC<{
         }),
       );
     } else {
-      // @ts-expect-error this action is not typed yet
       dispatch(followAccount(accountId));
     }
   }, [signedIn, relationship, accountId, withUnmute, account, dispatch]);

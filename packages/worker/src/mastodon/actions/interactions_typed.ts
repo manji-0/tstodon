@@ -279,7 +279,8 @@ export const reblog = createDataLoadingThunk(
     visibility,
   }: {
     statusId: string;
-    visibility: StatusVisibility;
+    /** Left out, the server boosts with the viewer's default visibility. */
+    visibility?: StatusVisibility;
   }) => apiReblog(statusId, visibility),
   (data, { dispatch, discardLoadData }) => {
     // The reblog API method returns a new status wrapped around the original. In this case we are only

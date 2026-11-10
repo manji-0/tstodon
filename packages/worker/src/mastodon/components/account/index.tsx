@@ -111,7 +111,7 @@ export const Account: React.FC<AccountProps> = ({
   const handleMute = useCallback(() => {
     if (relationship?.muting) {
       dispatch(unmuteAccount(id));
-    } else {
+    } else if (account) {
       dispatch(initMuteModal(account));
     }
   }, [dispatch, id, account, relationship]);

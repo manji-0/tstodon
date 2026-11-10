@@ -1,4 +1,7 @@
-import api, { getLinks } from '../api';
+import { getNextLinkUri } from 'mastodon/api';
+import { apiGetBookmarks } from 'mastodon/api/interactions';
+import type { ApiStatusJSON } from 'mastodon/api_types/statuses';
+import type { AppDispatch, GetState } from 'mastodon/store';
 
 import { importFetchedStatuses } from './importer';
 
@@ -11,18 +14,17 @@ export const BOOKMARKED_STATUSES_EXPAND_SUCCESS = 'BOOKMARKED_STATUSES_EXPAND_SU
 export const BOOKMARKED_STATUSES_EXPAND_FAIL    = 'BOOKMARKED_STATUSES_EXPAND_FAIL';
 
 export function fetchBookmarkedStatuses() {
-  return (dispatch, getState) => {
-    if (getState().getIn(['status_lists', 'bookmarks', 'isLoading'])) {
+  return (dispatch: AppDispatch, getState: GetState) => {
+    if (getState().status_lists.getIn(['bookmarks', 'isLoading'])) {
       return;
     }
 
     dispatch(fetchBookmarkedStatusesRequest());
 
-    api().get('/api/v1/bookmarks').then(response => {
-      const next = getLinks(response).refs.find(link => link.rel === 'next');
-      dispatch(importFetchedStatuses(response.data));
-      dispatch(fetchBookmarkedStatusesSuccess(response.data, next ? next.uri : null));
-    }).catch(error => {
+    apiGetBookmarks().then(({ statuses, links }) => {
+      dispatch(importFetchedStatuses(statuses));
+      dispatch(fetchBookmarkedStatusesSuccess(statuses, getNextLinkUri(links)));
+    }).catch((error: unknown) => {
       dispatch(fetchBookmarkedStatusesFail(error));
     });
   };
@@ -34,7 +36,7 @@ export function fetchBookmarkedStatusesRequest() {
   };
 }
 
-export function fetchBookmarkedStatusesSuccess(statuses, next) {
+export function fetchBookmarkedStatusesSuccess(statuses: ApiStatusJSON[], next: string | null) {
   return {
     type: BOOKMARKED_STATUSES_FETCH_SUCCESS,
     statuses,
@@ -42,7 +44,7 @@ export function fetchBookmarkedStatusesSuccess(statuses, next) {
   };
 }
 
-export function fetchBookmarkedStatusesFail(error) {
+export function fetchBookmarkedStatusesFail(error: unknown) {
   return {
     type: BOOKMARKED_STATUSES_FETCH_FAIL,
     error,
@@ -50,20 +52,19 @@ export function fetchBookmarkedStatusesFail(error) {
 }
 
 export function expandBookmarkedStatuses() {
-  return (dispatch, getState) => {
-    const url = getState().getIn(['status_lists', 'bookmarks', 'next'], null);
+  return (dispatch: AppDispatch, getState: GetState) => {
+    const url = getState().status_lists.getIn(['bookmarks', 'next'], null);
 
-    if (url === null || getState().getIn(['status_lists', 'bookmarks', 'isLoading'])) {
+    if (typeof url !== 'string' || getState().status_lists.getIn(['bookmarks', 'isLoading'])) {
       return;
     }
 
     dispatch(expandBookmarkedStatusesRequest());
 
-    api().get(url).then(response => {
-      const next = getLinks(response).refs.find(link => link.rel === 'next');
-      dispatch(importFetchedStatuses(response.data));
-      dispatch(expandBookmarkedStatusesSuccess(response.data, next ? next.uri : null));
-    }).catch(error => {
+    apiGetBookmarks(url).then(({ statuses, links }) => {
+      dispatch(importFetchedStatuses(statuses));
+      dispatch(expandBookmarkedStatusesSuccess(statuses, getNextLinkUri(links)));
+    }).catch((error: unknown) => {
       dispatch(expandBookmarkedStatusesFail(error));
     });
   };
@@ -75,7 +76,7 @@ export function expandBookmarkedStatusesRequest() {
   };
 }
 
-export function expandBookmarkedStatusesSuccess(statuses, next) {
+export function expandBookmarkedStatusesSuccess(statuses: ApiStatusJSON[], next: string | null) {
   return {
     type: BOOKMARKED_STATUSES_EXPAND_SUCCESS,
     statuses,
@@ -83,7 +84,7 @@ export function expandBookmarkedStatusesSuccess(statuses, next) {
   };
 }
 
-export function expandBookmarkedStatusesFail(error) {
+export function expandBookmarkedStatusesFail(error: unknown) {
   return {
     type: BOOKMARKED_STATUSES_EXPAND_FAIL,
     error,
