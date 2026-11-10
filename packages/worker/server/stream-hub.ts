@@ -8,6 +8,11 @@ import {
   type StreamEventValue,
   type StreamRefusal,
 } from "@tstodon/domain";
+import {
+  type ApiStreamingEventJSON,
+  type ApiStreamingMessageJSON,
+  encodeStreamingEvent,
+} from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -45,24 +50,37 @@ export const MAX_HUB_TAGGED_CHANNELS = 32;
 /** The header the streaming route hands a new socket's state to its hub in. */
 export const SOCKET_STATE_HEADER = "x-tstodon-stream-socket";
 
+/** The streaming contract's event for `event`, with its payload decoded. */
+export const streamingEvent = (event: StreamEventValue): ApiStreamingEventJSON => {
+  switch (event.kind) {
+    case "delete":
+      return { event: "delete", payload: event.statusId };
+    case "notifications_merged":
+      return { event: "notifications_merged", payload: "1" };
+    case "update":
+    case "status.update":
+      return { event: event.kind, payload: event.payload };
+    case "notification":
+      return { event: "notification", payload: event.payload };
+    case "conversation":
+      return { event: "conversation", payload: event.payload };
+  }
+};
+
 /**
  * Mastodon's streaming message for an event on one stream:
  * `{ stream, event, payload }`, with an object payload sent as a JSON string,
  * as the web UI and other clients expect.
  */
-const mastodonStreamMessage = (channel: StreamChannelValue, event: StreamEventValue): string => {
-  const stream = StreamChannel.streamName(channel);
-  switch (event.kind) {
-    case "delete":
-      return JSON.stringify({ stream, event: "delete", payload: event.statusId });
-    case "notifications_merged":
-      return JSON.stringify({ stream, event: "notifications_merged", payload: "1" });
-    case "update":
-    case "notification":
-    case "status.update":
-    case "conversation":
-      return JSON.stringify({ stream, event: event.kind, payload: JSON.stringify(event.payload) });
-  }
+export const mastodonStreamMessage = (
+  channel: StreamChannelValue,
+  event: StreamEventValue,
+): string => {
+  const message: ApiStreamingMessageJSON = {
+    stream: StreamChannel.streamName(channel),
+    ...encodeStreamingEvent(streamingEvent(event)),
+  };
+  return JSON.stringify(message);
 };
 
 /**
@@ -70,18 +88,9 @@ const mastodonStreamMessage = (channel: StreamChannelValue, event: StreamEventVa
  * payload as the WebSocket message carries it but without the `stream` tag,
  * since an SSE connection holds one stream.
  */
-const mastodonSseFrame = (event: StreamEventValue): string => {
-  switch (event.kind) {
-    case "delete":
-      return `event: delete\ndata: ${event.statusId}\n\n`;
-    case "notifications_merged":
-      return "event: notifications_merged\ndata: 1\n\n";
-    case "update":
-    case "notification":
-    case "status.update":
-    case "conversation":
-      return `event: ${event.kind}\ndata: ${JSON.stringify(event.payload)}\n\n`;
-  }
+export const mastodonSseFrame = (event: StreamEventValue): string => {
+  const wire = encodeStreamingEvent(streamingEvent(event));
+  return `event: ${wire.event}\ndata: ${"payload" in wire ? wire.payload : ""}\n\n`;
 };
 
 /** Mastodon sends a `:thump` comment this often so proxies keep an idle connection open. */

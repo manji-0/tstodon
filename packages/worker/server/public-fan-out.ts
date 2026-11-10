@@ -1,3 +1,4 @@
+import type { ApiStatusJSON } from "@tstodon/api";
 import {
   type InstanceIdentity,
   OutboxJob,
@@ -57,7 +58,7 @@ const channelDocument = async (
   viewerId: string | undefined,
   channel: StreamChannelValue,
   entryId: string,
-): Promise<Result<Record<string, unknown> | undefined, RepositoryError>> => {
+): Promise<Result<ApiStatusJSON | undefined, RepositoryError>> => {
   const cursor = { onlyId: entryId };
   switch (channel.kind) {
     case "Public": {
@@ -107,7 +108,7 @@ const hubDelivery = async (
   }
   const viewerId = hub.hub === ANONYMOUS_HUB ? undefined : hub.hub;
   const channels: StreamChannelValue[] = [];
-  let payload: Record<string, unknown> | undefined;
+  let payload: ApiStatusJSON | undefined;
   for (const channel of hub.channels) {
     const document = await channelDocument(env, identity, viewerId, channel, job.entryId);
     if (document.isErr()) {

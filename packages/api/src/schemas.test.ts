@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  ApiInitialState,
   ApiNotification,
   ApiQuote,
   ApiStatus,
+  ApiStreamingEvent,
+  ApiStreamingMessage,
+  ApiStreamingWireEvent,
+  encodeStreamingEvent,
+  isMastodonNotificationType,
   isNotificationType,
   isStatusVisibility,
   STATUS_VISIBILITIES,
+  STREAMING_EVENTS,
 } from "./index";
 
 const account = {
@@ -108,5 +115,93 @@ describe("@tstodon/api schemas", () => {
     expect(isNotificationType("admin.report")).toBe(true);
     expect(isNotificationType("move")).toBe(true);
     expect(isNotificationType("reaction")).toBe(false);
+  });
+
+  it("decodes streaming events and refuses what Mastodon does not send", () => {
+    const parse = (wire: unknown) => ApiStreamingWireEvent.safeParse(wire).success;
+    const update = encodeStreamingEvent({ event: "update", payload: ApiStatus.parse(status) });
+    expect(update).toEqual({ event: "update", payload: JSON.stringify(ApiStatus.parse(status)) });
+    expect(ApiStreamingWireEvent.parse(update)).toMatchObject({
+      event: "update",
+      payload: { id: "10" },
+    });
+    expect(ApiStreamingMessage.parse({ stream: ["hashtag", "cats"], ...update })).toMatchObject({
+      stream: ["hashtag", "cats"],
+      event: "update",
+      payload: { id: "10" },
+    });
+    expect(encodeStreamingEvent({ event: "delete", payload: "10" })).toEqual({
+      event: "delete",
+      payload: "10",
+    });
+    // Decoded, the payload is the entity; on the wire it is its JSON.
+    expect(ApiStreamingEvent.safeParse({ event: "update", payload: status }).success).toBe(true);
+    expect(parse({ event: "update", payload: status })).toBe(false);
+    expect(parse({ event: "update", payload: "{not json" })).toBe(false);
+    expect(parse({ event: "update", payload: JSON.stringify({ id: "1" }) })).toBe(false);
+    expect(parse({ event: "notifications_merged", payload: "1" })).toBe(true);
+    expect(parse({ event: "notifications_merged", payload: "2" })).toBe(false);
+    expect(parse({ event: "filters_changed" })).toBe(true);
+    expect(parse({ event: "encrypted_message", payload: "{}" })).toBe(false);
+    expect(STREAMING_EVENTS).not.toContain("encrypted_message");
+    expect(
+      ApiStreamingMessage.safeParse({ stream: [], event: "delete", payload: "1" }).success,
+    ).toBe(false);
+  });
+
+  it("tells Mastodon's notification types from tstodon's", () => {
+    expect(isMastodonNotificationType("mention")).toBe(true);
+    expect(isMastodonNotificationType("move")).toBe(false);
+  });
+
+  it("parses a signed-out initial state and refuses a wrong meta", () => {
+    const meta = {
+      access_token: null,
+      activity_api_enabled: true,
+      admin: null,
+      domain: "example.com",
+      limited_federation_mode: false,
+      locale: "en",
+      mascot: null,
+      profile_directory: true,
+      registrations_open: false,
+      repository: "manji-0/tstodon",
+      search_enabled: true,
+      single_user_mode: false,
+      source_url: "",
+      sso_redirect: null,
+      status_page_url: null,
+      streaming_api_base_url: "wss://example.com",
+      title: "tstodon",
+      landing_page: "trends",
+      trends_enabled: true,
+      version: "0.1.0",
+      terms_of_service_enabled: false,
+      local_live_feed_access: "public",
+      remote_live_feed_access: "public",
+      local_topic_feed_access: "public",
+      remote_topic_feed_access: "public",
+      auto_play_gif: false,
+      display_media: "default",
+      reduce_motion: false,
+      use_blurhash: true,
+    };
+    const state = {
+      meta,
+      compose: {},
+      accounts: {},
+      media_attachments: { accept_content_types: ["image/png"] },
+      settings: {},
+      languages: [["en", "English", "English"]],
+      features: [],
+      push_subscription: null,
+    };
+    expect(ApiInitialState.safeParse(state).success).toBe(true);
+    const withMeta = (change: object) => ({ ...state, meta: { ...meta, ...change } });
+    expect(ApiInitialState.safeParse(withMeta({ display_media: "all" })).success).toBe(false);
+    expect(
+      ApiInitialState.safeParse(withMeta({ local_topic_feed_access: "disabled" })).success,
+    ).toBe(false);
+    expect(ApiInitialState.safeParse({ ...state, settings: [] }).success).toBe(false);
   });
 });

@@ -1,6 +1,8 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ApiInitialState, type ApiInitialStateJSON } from "@tstodon/api";
+import { expectContract } from "../test/api-contract";
 import { accessTokenFor, authHeaders, signedInAccount } from "../test/auth-fixture";
 import { StreamEvent } from "@tstodon/domain";
 import { publishToAccount } from "./stream-publish";
@@ -28,21 +30,10 @@ const MANIFEST: WebManifest = {
   locales: ["en", "ja"],
 };
 
-const InitialStateSchema = z.object({
-  meta: z.object({
-    access_token: z.string().nullable(),
-    me: z.string().optional(),
-    locale: z.string(),
-    title: z.string(),
-  }),
-  accounts: z.record(z.string(), z.object({ username: z.string() })),
-  compose: z.object({ default_privacy: z.string().optional() }),
-  settings: z.unknown(),
-});
-
+/** The page's initial state, parsed with the contract the web UI reads it by. */
 const initialState = (html: string) =>
-  read(
-    InitialStateSchema,
+  expectContract(
+    ApiInitialState,
     JSON.parse(
       /<script id="initial-state" type="application\/json">([^<]*)<\/script>/.exec(html)?.[1] ??
         "null",
@@ -77,8 +68,8 @@ describe("Mastodon web app", () => {
 
   it("keeps the streaming URL on the host that served the page", async () => {
     expect(env.INSTANCE_PUBLIC_ORIGIN).toBe("https://example.com");
-    const streamUrl = (state: Record<string, unknown>) =>
-      read(z.object({ streaming_api_base_url: z.string() }), state.meta).streaming_api_base_url;
+    const streamUrl = (state: ApiInitialStateJSON) =>
+      expectContract(ApiInitialState, state).meta.streaming_api_base_url;
 
     const local = streamUrl(
       await pageInitialState(env, new Request("http://127.0.0.1:8787/home"), "en", undefined),
@@ -339,6 +330,10 @@ describe("Mastodon web app", () => {
     const signedOut = initialState(await anonymous.text());
     expect(signedOut.meta.access_token).toBeNull();
     expect(signedOut.meta.locale).toBe("ja");
+    expect(signedOut.meta.me).toBeUndefined();
+    expect(signedOut.meta.admin).toBeNull();
+    expect(signedOut.role).toBeUndefined();
+    expect(signedOut.compose).toEqual({});
 
     const { fetcher } = await signUp("web_viewer");
     const page = await fetcher("/home");
@@ -347,7 +342,17 @@ describe("Mastodon web app", () => {
     const token = state.meta.access_token ?? "";
     expect(token.length).toBeGreaterThan(20);
     expect(state.accounts[state.meta.me ?? ""]?.username).toBe("web_viewer");
-    expect(state.compose.default_privacy).toBe("public");
+    expect(state.compose).toEqual({
+      me: state.meta.me,
+      default_privacy: "public",
+      default_sensitive: false,
+      default_language: "en",
+      default_quote_policy: "public",
+    });
+    expect(state.role).toMatchObject({ id: "user", permissions: "0" });
+    // `admin` is the site contact account (none here), not the viewer.
+    expect(state.meta.admin).toBeNull();
+    expect(state.meta.moved_to_account_id).toBeUndefined();
 
     // The same session keeps the same token; the token works on the API.
     expect(initialState(await (await fetcher("/home")).text()).meta.access_token).toBe(token);
@@ -365,5 +370,30 @@ describe("Mastodon web app", () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(after.status).toBe(401);
+  });
+
+  it("names the account a viewer moved to, with that account, as Mastodon's initial state", async () => {
+    const target = await signedInAccount("web-move-target@example.com");
+    const { fetcher } = await signUp("web_mover");
+    const mover = await env.DB.prepare(
+      "SELECT id FROM accounts WHERE username = 'web_mover'",
+    ).first<{
+      id: string;
+    }>();
+    await env.DB.prepare(
+      "INSERT INTO account_moves (account_id, acct, target_uri, moved_at) VALUES (?, ?, ?, ?)",
+    )
+      .bind(
+        mover?.id,
+        target.username,
+        `${ORIGIN}/users/${target.username}`,
+        new Date().toISOString(),
+      )
+      .run();
+    const state = initialState(await (await fetcher("/home")).text());
+    expect(state.meta.me).toBe(mover?.id);
+    expect(state.meta.moved_to_account_id).toBe(target.id);
+    expect(state.accounts[target.id]?.username).toBe(target.username);
+    expect(state.accounts[mover?.id ?? ""]?.moved?.id).toBe(target.id);
   });
 });

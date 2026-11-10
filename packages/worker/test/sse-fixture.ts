@@ -1,4 +1,5 @@
 import { SELF, env } from "cloudflare:test";
+import { ApiStreamingWireEvent } from "@tstodon/api";
 import {
   StatusId,
   type StatusIdValue,
@@ -8,6 +9,7 @@ import {
 import { expect } from "vite-plus/test";
 import { ANONYMOUS_HUB } from "../server/stream-access";
 import { publishToHub } from "../server/stream-publish";
+import { expectContract } from "./api-contract";
 import { authHeaders, signedInAccount } from "./auth-fixture";
 
 const ORIGIN = "https://example.com";
@@ -105,11 +107,15 @@ export const openEventStream = async (
       clearTimeout(timer);
     }
   };
-  /** The next event, skipping heartbeats. */
+  /**
+   * The next event, skipping heartbeats. An event the streaming contract
+   * (`ApiStreamingWireEvent`) does not describe fails the test.
+   */
   const next = async (): Promise<Extract<SseFrame, { kind: "Event" }>> => {
     for (;;) {
       const heard = await frame();
       if (heard.kind === "Event") {
+        expectContract(ApiStreamingWireEvent, { event: heard.event, payload: heard.data });
         return heard;
       }
     }

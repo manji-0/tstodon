@@ -1,88 +1,15 @@
-import type { ApiAnnualReportState } from './api/annual_report';
-import type { ApiAccountJSON } from './api_types/accounts';
+import type {
+  ApiInitialStateJSON,
+  ApiInitialStateLanguageJSON,
+  ApiInitialStateMetaJSON,
+} from '@tstodon/api';
 
-type InitialStateLanguage = [code: string, name: string, localName: string];
+// The initial state's shape is shared with the server, which renders it
+// (`@tstodon/api`, `packages/api/src/initial-state.ts`).
+type InitialStateLanguage = ApiInitialStateLanguageJSON;
+type InitialStateMeta = ApiInitialStateMetaJSON;
 
-interface InitialStateMeta {
-  access_token: string;
-  advanced_layout?: boolean;
-  auto_play_gif: boolean;
-  activity_api_enabled: boolean;
-  admin: string;
-  boost_modal?: boolean;
-  quick_boosting?: boolean;
-  delete_modal?: boolean;
-  missing_alt_text_modal?: boolean;
-  disable_swiping?: boolean;
-  disable_hover_cards?: boolean;
-  disabled_account_id?: string;
-  display_media: string;
-  domain: string;
-  expand_spoilers?: boolean;
-  limited_federation_mode: boolean;
-  locale: string;
-  mascot: string | null;
-  me?: string;
-  moved_to_account_id?: string;
-  owner?: string;
-  profile_directory: boolean;
-  registrations_open: boolean;
-  reduce_motion: boolean;
-  repository: string;
-  search_enabled: boolean;
-  trends_enabled: boolean;
-  single_user_mode: boolean;
-  source_url: string;
-  streaming_api_base_url: string;
-  local_live_feed_access: 'public' | 'authenticated' | 'disabled';
-  remote_live_feed_access: 'public' | 'authenticated' | 'disabled';
-  local_topic_feed_access: 'public' | 'authenticated';
-  remote_topic_feed_access: 'public' | 'authenticated' | 'disabled';
-  title: string;
-  show_trends: boolean;
-  landing_page: 'about' | 'trends' | 'local_feed';
-  use_blurhash: boolean;
-  use_pending_items?: boolean;
-  version: string;
-  sso_redirect: string;
-  status_page_url: string;
-  terms_of_service_enabled: boolean;
-  emoji_style?: string;
-  wrapstodon?: InitialStateWrapstodon | null;
-}
-
-interface IntialStateRole {
-  id: string;
-  name: string;
-  permissions: string;
-  color: string;
-  highlighted: boolean;
-  collection_limit: number;
-}
-
-interface InitialStateWrapstodon {
-  year: number;
-  state: ApiAnnualReportState;
-}
-
-interface InitialStateCompose {
-  text: string;
-  default_privacy?: string;
-  default_sensitive?: boolean;
-  default_language?: string;
-  default_quote_policy?: string;
-  me?: string;
-}
-
-export interface InitialState {
-  accounts: Record<string, ApiAccountJSON>;
-  languages: InitialStateLanguage[];
-  compose: InitialStateCompose;
-  critical_updates_pending?: boolean;
-  meta: InitialStateMeta;
-  role?: IntialStateRole;
-  features: string[];
-}
+export type InitialState = ApiInitialStateJSON;
 
 const element = document.getElementById('initial-state');
 export const initialState: InitialState | undefined = element?.textContent
@@ -168,5 +95,5 @@ export const languages = initialState?.languages.map((lang) => {
 });
 
 export function getAccessToken(): string | undefined {
-  return getMeta('access_token');
+  return getMeta('access_token') ?? undefined;
 }

@@ -1,4 +1,5 @@
 import { SELF, env } from "cloudflare:test";
+import { ApiStreamingMessage, type ApiStreamingDecodedMessageJSON } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import {
   StatusId,
@@ -9,6 +10,7 @@ import {
 import { expect } from "vite-plus/test";
 import { z } from "zod";
 import { ANONYMOUS_HUB } from "../server/stream-access";
+import { expectContract } from "./api-contract";
 import { publishToHub } from "../server/stream-publish";
 import { authHeaders, signedInAccount } from "./auth-fixture";
 
@@ -113,14 +115,21 @@ export const openStream = async (
       });
     });
   };
-  /** The next event; an error message fails the test. */
+  /**
+   * The next event as sent; an error message fails the test, and so does an
+   * event the streaming contract (`ApiStreamingMessage`) does not describe.
+   */
   const next = async (): Promise<Heard> => {
     const message = await nextMessage();
     if (!("event" in message)) {
       throw new Error(`${label} was refused: ${message.error}`);
     }
+    expectContract(ApiStreamingMessage, message);
     return message;
   };
+  /** The next event with its payload decoded and checked by the streaming contract. */
+  const nextDecoded = async (): Promise<ApiStreamingDecodedMessageJSON> =>
+    expectContract(ApiStreamingMessage, await next());
   /** The next message, which must be a streaming error. */
   const nextError = async (): Promise<z.infer<typeof ErrorSchema>> => {
     const message = await nextMessage();
@@ -171,6 +180,7 @@ export const openStream = async (
   return {
     account,
     next,
+    nextDecoded,
     nextError,
     heardNothing,
     subscribe,

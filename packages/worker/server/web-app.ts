@@ -1,6 +1,12 @@
 import type { Context, Next } from "hono";
 import { z } from "zod";
 import { InstanceLimits, Languages, schemaResult } from "@tstodon/core";
+import {
+  type ApiInitialStateJSON,
+  type ApiInitialStateMetaJSON,
+  ApiWebSettings,
+  type ApiWebSettingsJSON,
+} from "@tstodon/api";
 import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
 import { type Appearance, DEFAULT_APPEARANCE, findAppearance, themeColorMetas } from "./appearance";
 import { browserFacingOrigin, browserSession } from "./browser-session";
@@ -139,35 +145,34 @@ const currentViewer = async (request: Request, env: Env): Promise<Viewer | undef
   return token ? { account: viewer.account, role: viewer.role, token } : undefined;
 };
 
-const SourceSchema = z.object({
-  source: z
-    .object({
-      privacy: z.string().optional(),
-      sensitive: z.boolean().optional(),
-      language: z.string().nullable().optional(),
-      quote_policy: z.string().optional(),
-    })
-    .optional(),
-});
-
 const SettingsRowSchema = z.object({ data_json: z.string() });
 
-const webSettings = async (env: Env, accountId: string): Promise<unknown> => {
+const parseWebSettings = schemaResult(ApiWebSettings);
+
+/** The viewer's stored web UI settings, `{}` when none are stored or they are not an object. */
+const webSettings = async (env: Env, accountId: string): Promise<ApiWebSettingsJSON> => {
   const rows = await runD1(() => queryTyped(env.DB, findWebSettings(accountId), SettingsRowSchema));
   const row = rows.isOk() ? rows.value[0] : undefined;
   if (row === undefined) {
     return {};
   }
-  return parseJsonText(row.data_json).unwrapOr({});
+  return parseJsonText(row.data_json)
+    .andThen((data) => parseWebSettings(data))
+    .unwrapOr({});
 };
 
-/** Mastodon's `InitialStateSerializer`, for this server's settings. */
+/**
+ * Mastodon's `InitialStateSerializer`, for this server's settings. Where
+ * Mastodon reads a setting tstodon does not have, the value is Mastodon's
+ * default; `admin` is the site contact account, which tstodon does not
+ * configure (`contact.account` is `null` on `/api/v2/instance` too).
+ */
 export const initialState = async (
   env: Env,
   request: Request,
   locale: string,
   viewer: Viewer | undefined,
-): Promise<Record<string, unknown>> => {
+): Promise<ApiInitialStateJSON> => {
   const identity = parseInstanceIdentity(env);
   // The stream is on the host that served this page, which is not
   // INSTANCE_PUBLIC_ORIGIN under `pnpm dev` (that defaults to https://example.com).
@@ -175,7 +180,7 @@ export const initialState = async (
     request.url,
     request.headers.get("X-Forwarded-Proto") ?? undefined,
   );
-  const meta: Record<string, unknown> = {
+  const meta: ApiInitialStateMetaJSON = {
     access_token: viewer?.token ?? null,
     activity_api_enabled: true,
     admin: null,
@@ -206,7 +211,7 @@ export const initialState = async (
     reduce_motion: false,
     use_blurhash: true,
   };
-  const state: Record<string, unknown> = {
+  const state: ApiInitialStateJSON = {
     meta,
     compose: {},
     accounts: {},
@@ -224,33 +229,33 @@ export const initialState = async (
     credentialAccountDocument(env, identity.value, viewer.account, viewer.role),
     webSettings(env, me),
   ]);
-  const source = schemaResult(SourceSchema)(account);
-  const defaults = source.isOk() ? source.value.source : undefined;
-  Object.assign(meta, {
-    me,
-    boost_modal: false,
-    quick_boosting: false,
-    delete_modal: true,
-    missing_alt_text_modal: true,
-    expand_spoilers: false,
-    disable_swiping: false,
-    disable_hover_cards: false,
-    advanced_layout: false,
-    use_pending_items: false,
-    show_trends: true,
-    emoji_style: "auto",
-    admin: FediRole.isAdmin(viewer.role) ? me : null,
-  });
+  const moved = account.moved ?? undefined;
   return {
     ...state,
+    meta: {
+      ...meta,
+      me,
+      boost_modal: false,
+      quick_boosting: false,
+      delete_modal: true,
+      missing_alt_text_modal: true,
+      expand_spoilers: false,
+      disable_swiping: false,
+      disable_hover_cards: false,
+      advanced_layout: false,
+      use_pending_items: false,
+      show_trends: true,
+      emoji_style: "auto",
+      ...(moved ? { moved_to_account_id: moved.id } : {}),
+    },
     compose: {
       me,
-      default_privacy: defaults?.privacy ?? "public",
-      default_sensitive: defaults?.sensitive ?? false,
-      default_language: defaults?.language ?? locale,
-      default_quote_policy: defaults?.quote_policy ?? "public",
+      default_privacy: account.source.privacy,
+      default_sensitive: account.source.sensitive,
+      default_language: account.source.language ?? locale,
+      default_quote_policy: account.source.quote_policy,
     },
-    accounts: { [me]: account },
+    accounts: { [me]: account, ...(moved ? { [moved.id]: moved } : {}) },
     settings,
     role: FediRole.toMastodon(viewer.role),
   };
