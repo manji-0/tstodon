@@ -106,3 +106,27 @@ jobs:
           path: .cache/e2e-web/results
           include-hidden-files: true
           retention-days: 7
+
+  # infra/cloudflare (OpenTofu): formatting, and the configuration against the
+  # Cloudflare provider's schema. No state, no credentials, nothing applied.
+  infra:
+    name: infra
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_wrapper: false
+
+      - name: Format
+        run: tofu fmt -check -recursive -diff infra
+
+      - name: Validate
+        working-directory: infra/cloudflare
+        run: |
+          tofu init -backend=false -input=false
+          tofu validate

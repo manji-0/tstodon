@@ -17,7 +17,7 @@ Configured in `packages/worker/wrangler.jsonc`:
 - `METRICS` — Analytics Engine
 - `ASSETS` — static assets
 
-There is no KV namespace and no `send_email` binding: `REMOTE_DNS_CACHE` was read by nothing, and the mailer (`EMAIL`, `EMAIL_FROM`, `EMAIL_TRANSPORT`, `APP_CACHE` for captured mail) lost its last caller when sign-in moved to Cloudflare Access (#82); both were removed (OPS-7). `packages/worker/void.json` keeps Void's KV inference off (`"kv": false`), so `void deploy` does not add a namespace back. A feature that needs mail later (MAIL-1 in [open TODOs](../planning/open-todos.md)) brings its binding with it.
+There is no KV namespace and no `send_email` binding: `REMOTE_DNS_CACHE` was read by nothing, and the mailer (`EMAIL`, `EMAIL_FROM`, `EMAIL_TRANSPORT`, `APP_CACHE` for captured mail) lost its last caller when sign-in moved to Cloudflare Access (#82); both were removed (OPS-7). `packages/worker/void.json` keeps Void's KV inference off (`"kv": false`), so `void deploy` does not add a namespace back. Mail is not planned (MAIL-1 in [open TODOs](../planning/open-todos.md), closed): sign-in is Access, and notifications go through the app and Web Push.
 
 Placeholder resource IDs in `packages/worker/wrangler.jsonc` are local-only. Create real D1 / R2 / Queue resources with [`infra/cloudflare`](../../infra/cloudflare/README.md) before deploying (`tofu output -json wrangler_bindings`).
 
@@ -106,7 +106,7 @@ Sizes are shown in binary units with three significant digits, as Mastodon's `nu
 | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Worker media proxy (`/media/*`, `/attachments/*`, `/avatars/*`, `/headers/*`) | `Access-Control-Allow-Origin: *` (GET/HEAD/OPTIONS; no credentials)                                                                                                                                                 |
 | Worker `/api/*`                                                               | Reflect `Origin` only when it matches `INSTANCE_PUBLIC_ORIGIN` or an entry in `CORS_ALLOWED_ORIGINS` (comma-separated). Allows `Authorization`, `Content-Type`. Also applies to `/oauth/token` and `/oauth/revoke`. |
-| Production R2 custom domain                                                   | Apply a bucket CORS policy (see [`infra/cloudflare/media-cors.json.example`](../../infra/cloudflare/media-cors.json.example) and deploy checklist). Worker CORS does not cover R2 hostnames.                        |
+| Production R2 custom domain                                                   | A bucket CORS policy: `infra/cloudflare` sets it with the custom domain (`media_hostname`; see the [infra README](../../infra/cloudflare/README.md#media-hostname)). Worker CORS does not cover R2 hostnames.       |
 
 `CORS_ALLOWED_ORIGINS` is optional. Empty ⇒ API CORS still allows the instance public origin. Trailing slashes are normalized.
 
@@ -155,7 +155,7 @@ API requests authenticate with `Authorization: Bearer <access token>` (streaming
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `BETTER_AUTH_SECRET`     | **Secret**, required off `localhost` / `127.0.0.1` / a name ending in `.local`: signs the Better Auth user and session rows. It is not the login. Void supplies a dev secret only on those hosts                     |
 | `CF_ACCESS_TEAM_DOMAIN`  | Access team issuer, `https://<team>.cloudflareaccess.com`. Leading and trailing whitespace and a trailing slash are ignored. Required for browser login                                                              |
-| `CF_ACCESS_AUD`          | Access application audience (AUD) tag the JWT must carry                                                                                                                                                             |
+| `CF_ACCESS_AUD`          | Access application audience (AUD) tag the JWT must carry (`tofu output access_aud` when `infra/cloudflare` creates it)                                                                                               |
 | `CF_ACCESS_JWKS_JSON`    | Access public JWKS, as JSON. When empty, `CF_ACCESS_JWKS_URL` is used, and when that is empty the keys are fetched from `<team>/cdn-cgi/access/certs`. Only RSA keys are used                                        |
 | `CF_ACCESS_JWKS_URL`     | Optional URL of the Access public JWKS, used when `CF_ACCESS_JWKS_JSON` is empty                                                                                                                                     |
 | `CF_ACCESS_ADMIN_GROUPS` | Comma-separated Access group names. When non-empty, every Access login sets admin if the JWT groups intersect this list and clears admin if they do not. When empty or unset, login does not change an existing role |

@@ -14,3 +14,19 @@ outbox_dlq_name      = "tstodon-outbox-dlq"
 
 worker_script_name     = "tstodon"
 attach_queue_consumer  = false # set true after the first wrangler deploy
+
+# --- Hostnames ---
+instance_hostname = "social.example.com" # INSTANCE_PUBLIC_ORIGIN without https://
+zone_id           = "00000000000000000000000000000000"
+
+# --- Media hostname (R2 custom domain + CORS); empty = media from the Worker origin ---
+media_hostname = "media.example.com"
+# media_cors_allowed_origins = ["https://social.example.com"]
+
+# --- Cloudflare Access (needs a Zero Trust organization) ---
+create_access = false
+# access_allow_everyone        = false
+# access_allowed_emails        = ["you@example.com"]
+# access_allowed_email_domains = ["example.com"]
+# access_allowed_idps          = [] # identity provider ids; one = no picker
+# access_session_duration      = "24h"
