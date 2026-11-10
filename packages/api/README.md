@@ -52,7 +52,10 @@ Where tstodon renders more than Mastodon, the schema says so in a comment
   JSON client sends to the endpoints the web UI's TypeScript wrappers call,
   under Mastodon's names (`ApiCreateListParamsSchema` /
   `ApiCreateListParams`, `ApiUpdateCredentialsParams`, `ApiSearchParams`,
-  `ApiPaginationParams`, ...). The type is the schema's input
+  `ApiPaginationParams`, ...), and those of the requests the account and
+  interaction actions send (`src/params/account-actions.ts`: account
+  lookup, relationships, mute options and an account's statuses;
+  `domain-blocks.ts`; `reports.ts`). The type is the schema's input
   (`z.input`), which the UI uses; the Worker parses with the schema. The
   schemas are the JSON shape only (booleans, numbers, arrays): the Worker
   folds a form or query string into that shape first
