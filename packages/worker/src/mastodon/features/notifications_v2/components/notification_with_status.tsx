@@ -64,11 +64,11 @@ export const NotificationWithStatus: React.FC<{
   const handlers = useMemo(
     () => ({
       open: () => {
-        dispatch(navigateToStatus(statusId));
+        if (statusId) dispatch(navigateToStatus(statusId));
       },
 
       reply: () => {
-        dispatch(replyComposeById(statusId));
+        if (statusId) dispatch(replyComposeById(statusId));
       },
 
       boost: () => {
@@ -80,7 +80,7 @@ export const NotificationWithStatus: React.FC<{
       },
 
       toggleHidden: () => {
-        dispatch(toggleStatusSpoilers(statusId));
+        if (statusId) dispatch(toggleStatusSpoilers(statusId));
       },
     }),
     [dispatch, statusId],

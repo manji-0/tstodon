@@ -67,7 +67,7 @@ export const apiGetTagSuggestions = () =>
   apiRequestGet<ApiHashtagJSON[]>('v1/featured_tags/suggestions');
 
 export const apiGetEndorsedAccounts = (id: string) =>
-  apiRequestGet<ApiAccountJSON>(`v1/accounts/${id}/endorsements`);
+  apiRequestGet<ApiAccountJSON[]>(`v1/accounts/${id}/endorsements`);
 
 export const apiGetFamiliarFollowers = (id: string) =>
   apiRequestGet<ApiFamiliarFollowersJSON>('v1/accounts/familiar_followers', {

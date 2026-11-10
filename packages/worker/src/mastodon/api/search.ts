@@ -1,5 +1,6 @@
-import type { ApiSearchParams } from '@tstodon/api';
+import type { ApiSearchAccountsParams, ApiSearchParams } from '@tstodon/api';
 import { apiRequestGet } from 'mastodon/api';
+import type { ApiAccountJSON } from 'mastodon/api_types/accounts';
 import type {
   ApiSearchType,
   ApiSearchResultsJSON,
@@ -21,3 +22,10 @@ export const apiGetSearch = (
     },
     options,
   );
+
+export const apiSearchAccounts = (
+  params: ApiSearchAccountsParams & { q: string },
+  options: {
+    signal?: AbortSignal;
+  } = {},
+) => apiRequestGet<ApiAccountJSON[]>('v1/accounts/search', params, options);

@@ -82,11 +82,11 @@ export const NotificationGroupWithStatus: React.FC<{
   const handlers = useMemo(
     () => ({
       open: () => {
-        dispatch(navigateToStatus(statusId));
+        if (statusId) dispatch(navigateToStatus(statusId));
       },
 
       reply: () => {
-        dispatch(replyComposeById(statusId));
+        if (statusId) dispatch(replyComposeById(statusId));
       },
     }),
     [dispatch, statusId],
