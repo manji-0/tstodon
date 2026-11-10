@@ -5,7 +5,8 @@ import { parseMarkerTimelines } from "./marker-store";
 import { PollVoteTargetRowSchema } from "./poll-store";
 import { AccountRowSchema } from "./account-store";
 import { ActivityJsonSchema } from "./activitypub-wire";
-import { CreateStatusBodySchema } from "./status-body-schema";
+import { ApiCreateStatusParamsSchema } from "@tstodon/api";
+import "./status-body-schema";
 import { PollOptionsSchema } from "./poll-store";
 
 describe("worker zod compile smoke", () => {
@@ -13,7 +14,7 @@ describe("worker zod compile smoke", () => {
     // peekCompiledFastPath only reads the WeakMap / bag — it never calls z.compile.
     expect(peekCompiledFastPath(AccountRowSchema)).toBe(true);
     expect(peekCompiledFastPath(ActivityJsonSchema)).toBe(true);
-    expect(peekCompiledFastPath(CreateStatusBodySchema)).toBe(true);
+    expect(peekCompiledFastPath(ApiCreateStatusParamsSchema)).toBe(true);
     expect(peekCompiledFastPath(PollOptionsSchema)).toBe(true);
     expect(peekCompiledFastPath(PollVoteTargetRowSchema)).toBe(true);
     expect(peekCompiledFastPath(Activity.schema)).toBe(true);

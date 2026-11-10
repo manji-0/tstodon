@@ -52,15 +52,20 @@ Where tstodon renders more than Mastodon, the schema says so in a comment
   JSON client sends to the endpoints the web UI's TypeScript wrappers call,
   under Mastodon's names (`ApiCreateListParamsSchema` /
   `ApiCreateListParams`, `ApiUpdateCredentialsParams`, `ApiSearchParams`,
-  `ApiPaginationParams`, ...). The type is the schema's input
+  `ApiPaginationParams`, ...), and of those the converted JavaScript
+  actions send: a status's create and edit (`ApiCreateStatusParams` /
+  `ApiUpdateStatusParams`, with `ApiStatusMediaAttributeParams` and
+  `ApiStatusPollParams`) and delete (`ApiDeleteStatusParams`), a media
+  upload (`ApiUploadMediaParams`) and the account search
+  (`ApiSearchAccountsParams`). The type is the schema's input
   (`z.input`), which the UI uses; the Worker parses with the schema. The
   schemas are the JSON shape only (booleans, numbers, arrays): the Worker
   folds a form or query string into that shape first
   (`packages/worker/server/request-params.ts`). Where the Worker reads an
   enum-like value leniently (a notification policy's `for_*`, the
-  directory's `order`, a search `type`, a boost's `visibility`) the field is
-  a string, so an unknown value keeps the answer it had instead of becoming
-  a parse error.
+  directory's `order`, a search `type`, a boost's or status's `visibility`,
+  a status's `quote_approval_policy`) the field is a string, so an unknown
+  value keeps the answer it had instead of becoming a parse error.
 - `@tstodon/api/values` (`src/values.ts`): the enum-like strings (status
   visibilities, quote policies and states, notification types, filter
   contexts, ...) as constant arrays with their types and guards. It imports
@@ -104,7 +109,8 @@ winning, as Rails' `params`), all in `packages/worker/server/request-params.ts`:
 `key[]` folds into `key`, a body's `a[b]` keys nest, and each field is cast
 to the type its schema declares (`true` / `1` are true, anything else false;
 a number that does not parse is left out; a single value of an array field
-is a one-item list). `server/api-params-contract.test.ts` sends each covered
+is a one-item list, and an object keyed by position, `media_attributes[0][id]`,
+is a list in index order). `server/api-params-contract.test.ts` sends each covered
 endpoint its JSON body and the form or query equivalent.
 
 ## No `kind` here
