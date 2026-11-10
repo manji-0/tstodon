@@ -37,13 +37,17 @@ export const LinkTimeline: React.FC<{
 
   const handleLoadMore = useCallback(
     (maxId: string) => {
-      void dispatch(expandLinkTimeline(decodedUrl, { maxId }));
+      if (decodedUrl) {
+        void dispatch(expandLinkTimeline(decodedUrl, { maxId }));
+      }
     },
     [dispatch, decodedUrl],
   );
 
   useEffect(() => {
-    void dispatch(expandLinkTimeline(decodedUrl));
+    if (decodedUrl) {
+      void dispatch(expandLinkTimeline(decodedUrl));
+    }
   }, [dispatch, decodedUrl]);
 
   return (

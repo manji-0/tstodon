@@ -115,7 +115,7 @@ export const AccountGallery: React.FC<{
   }, [dispatch, accountId, withReplies]);
 
   const handleLoadMore = useCallback(() => {
-    if (maxId) {
+    if (accountId && maxId) {
       void dispatch(
         expandAccountMediaTimeline(accountId, { maxId, withReplies }),
       );

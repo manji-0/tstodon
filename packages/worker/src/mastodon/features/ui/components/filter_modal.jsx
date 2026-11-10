@@ -70,7 +70,7 @@ class FilterModal extends ImmutablePureComponent {
     dispatch(createFilter({
       title,
       context: ['home', 'notifications', 'public', 'thread', 'account'],
-      action: 'warn',
+      filter_action: 'warn',
     }, this.handleNewFilterSuccess, this.handleFail));
   };
 

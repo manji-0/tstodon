@@ -93,7 +93,9 @@ export const Directory: React.FC<{
 
   const handleMove = useCallback(
     (dir: number) => {
-      dispatch(moveColumn(columnId, dir));
+      if (columnId) {
+        dispatch(moveColumn(columnId, dir));
+      }
     },
     [dispatch, columnId],
   );

@@ -1,4 +1,4 @@
-export const decode = (base64: string): Uint8Array => {
+export const decode = (base64: string): Uint8Array<ArrayBuffer> => {
   const rawData = window.atob(base64);
   const outputArray = new Uint8Array(rawData.length);
 
