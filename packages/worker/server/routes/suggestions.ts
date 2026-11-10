@@ -1,8 +1,16 @@
 import type { ApiAccountJSON, ApiSuggestionJSON } from "@tstodon/api";
+import { ApiGetSuggestionsParamsSchema } from "@tstodon/api";
 import type { Context } from "hono";
 import { findAccountById, listDirectoryAccounts } from "../account-store";
-import { jsonAuthError, jsonRepositoryError, queryAccountsLimit, requireUser } from "../http";
+import {
+  jsonAuthError,
+  jsonRepositoryError,
+  jsonValidationError,
+  queryAccountsLimit,
+  requireUser,
+} from "../http";
 import { mastodonAccountDocuments } from "../account-documents";
+import { readQueryParams } from "../request-params";
 import { parseInstanceIdentity } from "../runtime-config";
 import { dismissSuggestion, listSuggestionExclusionIds } from "../suggestion-store";
 
@@ -17,7 +25,11 @@ const suggestedAccounts = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const limit = queryAccountsLimit(c.req.query("limit"));
+  const params = readQueryParams(c, ApiGetSuggestionsParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
+  const limit = queryAccountsLimit(params.value.limit);
   const excluded = await listSuggestionExclusionIds(c.env.DB, user.value.id);
   if (excluded.isErr()) {
     return jsonRepositoryError(c, excluded.error.message);

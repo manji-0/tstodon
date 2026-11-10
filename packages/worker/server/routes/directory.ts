@@ -1,7 +1,9 @@
 import type { Context } from "hono";
+import { ApiGetDirectoryParamsSchema } from "@tstodon/api";
 import { listDirectoryAccounts } from "../account-store";
-import { jsonRepositoryError, queryAccountsLimit } from "../http";
+import { jsonRepositoryError, jsonValidationError, queryAccountsLimit } from "../http";
 import { mastodonAccountDocument } from "../account-documents";
+import { readQueryParams } from "../request-params";
 import { parseInstanceIdentity } from "../runtime-config";
 
 export const getV1Directory = async (c: Context<{ Bindings: Env }, "/api/v1/directory">) => {
@@ -9,10 +11,14 @@ export const getV1Directory = async (c: Context<{ Bindings: Env }, "/api/v1/dire
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const orderRaw = (c.req.query("order") ?? "active").toLowerCase();
-  const order = orderRaw === "new" ? "new" : "active";
-  const limit = queryAccountsLimit(c.req.query("limit"));
-  const offset = Math.max(0, Number.parseInt(c.req.query("offset") ?? "0", 10) || 0);
+  const params = readQueryParams(c, ApiGetDirectoryParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
+  const order = (params.value.order ?? "active").toLowerCase() === "new" ? "new" : "active";
+  const limit = queryAccountsLimit(params.value.limit);
+  const offset = Math.max(0, params.value.offset ?? 0);
+  // Only local accounts are listed, so `local` changes nothing.
   const accounts = await listDirectoryAccounts(c.env.DB, { order, limit, offset });
   if (accounts.isErr()) {
     return jsonRepositoryError(c, accounts.error.message);

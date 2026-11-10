@@ -1,13 +1,7 @@
 import { InstanceLimits, schemaResult } from "@tstodon/core";
 import { UploadMetadata } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import {
-  jsonAuthError,
-  jsonRepositoryError,
-  jsonValidationError,
-  readOptionalBody,
-  requireUser,
-} from "../http";
+import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
 import { mastodonMedia, mediaUrl } from "../media-document";
 import {
   deleteMedia,
@@ -30,15 +24,11 @@ import { mediaDescriptionFits } from "../status-body-schema";
 import { findStatusById } from "../status-store";
 import { canViewStatus } from "../visibility-guard";
 import type { Context } from "hono";
-import { z } from "zod";
+import type { z } from "zod";
+import { ApiUpdateMediaParamsSchema } from "@tstodon/api";
+import { readOptionalParams } from "../request-params";
 
 const CACHE_CONTROL = "public, max-age=31536000, immutable";
-
-/** The alt text and focal point fields, read at upload and by `PUT /api/v1/media/:id`. */
-const MediaMetadataBodySchema = z.object({
-  description: z.string().nullish(),
-  focus: z.string().nullish(),
-});
 
 /**
  * What a request sets: `undefined` keeps the stored value, and a blank
@@ -52,7 +42,7 @@ type MediaMetadataEdit = Readonly<{
 type MediaMetadataError = Readonly<{ kind: "InvalidFocus" } | { kind: "DescriptionTooLong" }>;
 
 const parseMediaMetadata = (
-  body: z.infer<typeof MediaMetadataBodySchema>,
+  body: z.output<typeof ApiUpdateMediaParamsSchema>,
 ): Result<MediaMetadataEdit, MediaMetadataError> => {
   // A blank focus field is no focus at all, as some clients send it empty.
   const focusText = body.focus == null || body.focus.trim() === "" ? undefined : body.focus;
@@ -95,7 +85,8 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
   if (!(file instanceof File)) {
     return c.json({ error: "file is required", kind: "ValidationError" }, 400);
   }
-  const fields = schemaResult(MediaMetadataBodySchema)(body);
+  // An upload's `description` and `focus` are the fields `PUT /api/v1/media/:id` takes.
+  const fields = schemaResult(ApiUpdateMediaParamsSchema)(body);
   if (fields.isErr()) {
     return jsonValidationError(c);
   }
@@ -303,7 +294,7 @@ export const putV1MediaById = async (c: Context<{ Bindings: Env }, "/api/v1/medi
   }
 
   // The web UI sends JSON; other clients send a form.
-  const body = await readOptionalBody(c, MediaMetadataBodySchema);
+  const body = await readOptionalParams(c, ApiUpdateMediaParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }

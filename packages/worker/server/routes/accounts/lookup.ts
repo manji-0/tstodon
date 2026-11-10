@@ -1,4 +1,5 @@
 import type { ApiAccountJSON, ApiFamiliarFollowersJSON } from "@tstodon/api";
+import { ApiGetAccountsParamsSchema, ApiGetFamiliarFollowersParamsSchema } from "@tstodon/api";
 import type { Context } from "hono";
 import {
   AccountPresentation,
@@ -19,6 +20,7 @@ import {
 import {
   jsonAuthError,
   jsonRepositoryError,
+  jsonValidationError,
   queryAccountsLimit,
   queryOffset,
   requireUser,
@@ -43,6 +45,7 @@ import { parseInstanceIdentity } from "../../runtime-config";
 import { familiarFollowerIds, followingAccountIds } from "../../follow-store";
 import { relationshipFlags } from "../../relationship-store";
 import { isTruthy } from "../../form-values";
+import { readQueryParams } from "../../request-params";
 import { findKnownAccountHandle, localRef, remoteRef } from "../../account-ref";
 import { instanceActorFetchSigner } from "../../instance-actor";
 
@@ -249,11 +252,11 @@ export const getV1AccountsFamiliarFollowers = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const url = new URL(c.req.url);
-  const requestedIds = [
-    ...url.searchParams.getAll("id[]"),
-    ...url.searchParams.getAll("id"),
-  ].filter((value) => value.length > 0);
+  const params = readQueryParams(c, ApiGetFamiliarFollowersParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
+  const requestedIds = (params.value.id ?? []).filter((value) => value.length > 0);
 
   const groups: ApiFamiliarFollowersJSON = [];
   for (const requestedId of requestedIds) {
@@ -335,14 +338,14 @@ export const getV1Accounts = async (c: Context<{ Bindings: Env }, "/api/v1/accou
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const url = new URL(c.req.url);
-  const ids = [
-    ...new Set(
-      [...url.searchParams.getAll("id[]"), ...url.searchParams.getAll("id")].filter(
-        (id) => id.length > 0,
-      ),
-    ),
-  ].slice(0, MULTIPLE_ACCOUNTS_LIMIT);
+  const params = readQueryParams(c, ApiGetAccountsParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
+  const ids = [...new Set((params.value.id ?? []).filter((id) => id.length > 0))].slice(
+    0,
+    MULTIPLE_ACCOUNTS_LIMIT,
+  );
   // Each lookup is one query for the whole batch; unknown and hidden accounts
   // are left out rather than failing it.
   const remoteUris = new Map(

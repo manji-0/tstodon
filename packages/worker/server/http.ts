@@ -13,8 +13,8 @@ import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
 
 /** Read a `limit` query parameter, defaulted to `fallback` and clamped to `max`. */
-const queryLimitMax = (raw: string | undefined, fallback: number, max: number): number => {
-  const parsed = Number.parseInt(raw ?? "", 10);
+const queryLimitMax = (raw: string | number | undefined, fallback: number, max: number): number => {
+  const parsed = typeof raw === "number" ? Math.trunc(raw) : Number.parseInt(raw ?? "", 10);
   if (!Number.isFinite(parsed) || parsed < 1) {
     return fallback;
   }
@@ -22,24 +22,24 @@ const queryLimitMax = (raw: string | undefined, fallback: number, max: number): 
 };
 
 /** Status collections: 20 by default, capped at 40. */
-export const queryLimit = (raw: string | undefined, fallback = 20): number =>
+export const queryLimit = (raw: string | number | undefined, fallback = 20): number =>
   queryLimitMax(raw, fallback, 40);
 
 /** Trends: tags and links default to 10 and cap at 20, as Mastodon does. */
 export const queryTrendsLimit = (raw: string | undefined): number => queryLimitMax(raw, 10, 20);
 
 /** Mastodon's `offset` for paged lists, kept to a value SQLite can bind as an integer. */
-export const queryOffset = (raw: string | undefined): number => {
-  const parsed = Number.parseInt(raw ?? "", 10);
+export const queryOffset = (raw: string | number | undefined): number => {
+  const parsed = typeof raw === "number" ? Math.trunc(raw) : Number.parseInt(raw ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, Number.MAX_SAFE_INTEGER) : 0;
 };
 
 /** Account collections (followers, blocks, directory…): 40 by default, capped at 80. */
-export const queryAccountsLimit = (raw: string | undefined, fallback = 40): number =>
+export const queryAccountsLimit = (raw: string | number | undefined, fallback = 40): number =>
   queryLimitMax(raw, fallback, 80);
 
 /** Notifications and notification requests: 40 by default, capped at 80. */
-export const queryNotificationsLimit = (raw: string | undefined, fallback = 40): number =>
+export const queryNotificationsLimit = (raw: string | number | undefined, fallback = 40): number =>
   queryLimitMax(raw, fallback, 80);
 
 /** Admin lists (accounts, reports, domain blocks): 100 by default, capped at 200. */

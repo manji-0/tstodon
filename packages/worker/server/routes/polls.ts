@@ -1,12 +1,6 @@
 import type { Context } from "hono";
 import { warmSchemas } from "@tstodon/core";
-import {
-  jsonAuthError,
-  jsonRepositoryError,
-  jsonValidationError,
-  readBody,
-  requireUser,
-} from "../http";
+import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
 import { pollJson, remotePollJson, statusIdOfRemotePoll } from "../poll-document";
 import { findRemotePollVotes } from "../remote-poll-vote-store";
 import { voteOnRemotePoll } from "../remote-poll-own-vote";
@@ -15,11 +9,8 @@ import { canViewRemoteStatus } from "../visibility-guard";
 import { findPollById, votePoll } from "../poll-store";
 import { schedulePollUpdate } from "../poll-update";
 import { numberList } from "../form-values";
-import { z } from "zod";
-
-export const PollVoteBodySchema = z.object({
-  choices: z.union([z.array(z.union([z.number(), z.string()])), z.number(), z.string()]),
-});
+import { ApiPollVoteParamsSchema } from "@tstodon/api";
+import { readParams } from "../request-params";
 
 const REMOTE_VOTE_REFUSALS = {
   DomainBlocked: "The poll's server is blocked",
@@ -76,7 +67,7 @@ export const postV1PollsByIdVotes = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const body = await readBody(c, PollVoteBodySchema);
+  const body = await readParams(c, ApiPollVoteParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
@@ -112,4 +103,4 @@ export const postV1PollsByIdVotes = async (
 };
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
-warmSchemas([PollVoteBodySchema]);
+warmSchemas([ApiPollVoteParamsSchema]);
