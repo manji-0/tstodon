@@ -32,3 +32,6 @@ export * from "./misc";
 // Server-to-UI documents outside the REST API: the web UI's initial state and streaming events.
 export * from "./initial-state";
 export * from "./streaming";
+
+// Request params (what clients send), beside the entities above.
+export * from "./params";

@@ -1,4 +1,9 @@
 import type { ApiNotificationRequestJSON, NotificationPolicyJSON } from "@tstodon/api";
+import {
+  ApiGetNotificationRequestsParamsSchema,
+  ApiNotificationRequestIdsParamsSchema,
+  ApiUpdateNotificationPolicyParamsSchema,
+} from "@tstodon/api";
 import { type Context } from "hono";
 import { warmSchemas } from "@tstodon/core";
 import {
@@ -10,9 +15,7 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryCursor,
   queryNotificationsLimit,
-  readBody,
   requireUser,
 } from "../http";
 import { err, ok, type Result } from "neverthrow";
@@ -30,30 +33,9 @@ import {
   saveNotificationPolicy,
 } from "../notification-policy-store";
 import { parseInstanceIdentity } from "../runtime-config";
-import { isTruthy, stringList } from "../form-values";
 import { dismissNotification } from "../notification-store";
 import { publishToAccount } from "../stream-publish";
-import { z } from "zod";
-import { booleanish } from "../form-values";
-
-export const NotificationPolicyBodySchema = z.object({
-  for_not_following: z.string().optional(),
-  for_not_followers: z.string().optional(),
-  for_new_accounts: z.string().optional(),
-  for_private_mentions: z.string().optional(),
-  for_limited_accounts: z.string().optional(),
-  for_bots: z.string().optional(),
-  filter_not_following: booleanish,
-  filter_not_followers: booleanish,
-  filter_new_accounts: booleanish,
-  filter_private_mentions: booleanish,
-  filter_limited_accounts: booleanish,
-});
-
-export const NotificationRequestIdsBodySchema = z.object({
-  id: z.union([z.array(z.string()), z.string()]).optional(),
-  "id[]": z.union([z.array(z.string()), z.string()]).optional(),
-});
+import { paramsCursor, readParams, readQueryParams } from "../request-params";
 
 /**
  * Notification policy and requests. Mounted ahead of `notificationRoutes` so
@@ -147,6 +129,7 @@ export const getV2NotificationsPolicy = async (
   return c.json(await policyDocument(c.env, user.value.id, policy.value));
 };
 
+/** `PUT` or `PATCH /api/v2/notifications/policy` (Rails routes both to `update`). */
 export const patchV2NotificationsPolicy = async (
   c: Context<{ Bindings: Env }, "/api/v2/notifications/policy">,
 ) => {
@@ -158,14 +141,14 @@ export const patchV2NotificationsPolicy = async (
   if (existing.isErr()) {
     return jsonRepositoryError(c, existing.error.message);
   }
-  const body = await readBody(c, NotificationPolicyBodySchema);
+  const body = await readParams(c, ApiUpdateNotificationPolicyParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
   // Mastodon accepts either an action or a legacy `filter_*` boolean.
   const action = (
     raw: string | undefined,
-    legacy: boolean | string | number | undefined,
+    legacy: boolean | undefined,
     fallback: NotificationPolicyAction,
   ): NotificationPolicyAction => {
     if (raw !== undefined) {
@@ -173,7 +156,7 @@ export const patchV2NotificationsPolicy = async (
       return parsed.isOk() ? parsed.value : fallback;
     }
     if (legacy !== undefined) {
-      return isTruthy(legacy) ? "filter" : "accept";
+      return legacy ? "filter" : "accept";
     }
     return fallback;
   };
@@ -224,12 +207,16 @@ export const getV1NotificationsRequests = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
+  const params = readQueryParams(c, ApiGetNotificationRequestsParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
   // Mastodon: `limit` defaults to 40 and caps at 80.
   const requests = await listNotificationRequests(
     c.env.DB,
     user.value.id,
-    queryNotificationsLimit(c.req.query("limit")),
-    queryCursor(c),
+    queryNotificationsLimit(params.value.limit),
+    paramsCursor(params.value),
   );
   if (requests.isErr()) {
     return jsonRepositoryError(c, requests.error.message);
@@ -351,11 +338,11 @@ const bulkRequests = async (c: Context<{ Bindings: Env }>, accept: boolean): Pro
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const body = await readBody(c, NotificationRequestIdsBodySchema);
+  const body = await readParams(c, ApiNotificationRequestIdsParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const ids = [...stringList(body.value.id), ...stringList(body.value["id[]"])];
+  const ids = body.value.id ?? [];
   let acceptedAny = false;
   for (const id of [...new Set(ids)]) {
     const request = await findNotificationRequest(c.env.DB, user.value.id, id);
@@ -403,4 +390,8 @@ export const postV1NotificationsRequestsDismiss = (
 ) => bulkRequests(c, false);
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
-warmSchemas([NotificationPolicyBodySchema, NotificationRequestIdsBodySchema]);
+warmSchemas([
+  ApiUpdateNotificationPolicyParamsSchema,
+  ApiGetNotificationRequestsParamsSchema,
+  ApiNotificationRequestIdsParamsSchema,
+]);

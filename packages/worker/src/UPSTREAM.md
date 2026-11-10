@@ -76,6 +76,20 @@ The initial state and the streaming events the Worker sends are typed in `@tstod
 - `mastodon/stream.js`: the `StreamEvent` typedef is `ApiStreamingWireEventJSON` (the event as received, an entity payload still a JSON string; upstream typed the payload `object`), and an SSE frame's event is cast to it.
 - `mastodon/actions/streaming.js`: entity payloads go through a local `decode(event, payload)` (`JSON.parse`, typed with the payload type of that event), which replaces five `@ts-expect-error`s, and a `notification` whose type is not Mastodon's (tstodon's `move`, `isMastodonNotificationType` from `@tstodon/api/values`) is dropped before the notification actions: the UI's REST requests leave that type out, and the stream's reached the legacy alert code with no message for it and the grouped list as an empty group.
 
+### REST request params from `@tstodon/api`
+
+<!-- constrained-by ../../api/README.md -->
+
+The request wrappers in `mastodon/api/*.ts` type what they send with the params schemas' input types from `@tstodon/api` (`packages/api/src/params/`), which the Worker parses with, imported type-only (`import type`, or `satisfies` on an object literal), so the bundle still has no Zod.
+
+- `api/accounts.ts`: `apiGetAccounts` (`ApiGetAccountsParams`), `apiSubmitAccountNote`, `apiFollowAccount` (its `params` are `ApiFollowAccountParams`: `reblogs`, `notify`, `languages`, all optional), `apiPostFeaturedTag`, and `apiGetFamiliarFollowers`, which sends `id` as Mastodon's documented `id[]` array (upstream sent a single `id`; both are accepted).
+- `api/compose.ts` (`apiUpdateMedia`: `ApiUpdateMediaParams`), `api/directory.ts` (`apiGetDirectory`: `ApiGetDirectoryParams` without `limit`), `api/interactions.ts` (`apiReblog`), `api/polls.ts` (`apiPollVote`), `api/search.ts` (`apiGetSearch`: `ApiSearchParams` with `q` required and `type` an `ApiSearchType`), `api/suggestions.ts`, `api/tags.ts` (`apiGetFollowedTags`).
+- `api/lists.ts`: `apiCreate` takes `ApiCreateListParams`; `apiUpdate` takes `ApiUpdateListParams` with the list's `id`, which now goes only in the path (upstream sent the whole list, `id` included, as the body). The member add / remove and member list send `ApiListAccountsParams` / `ApiGetListAccountsParams`. `actions/lists_typed.ts`'s `createList` / `updateList` take the same types instead of `Partial<List>`.
+- `api/notifications.ts`: the list, grouped list and request list take `ApiGetNotificationsParams`, `ApiGetGroupedNotificationsParams` and `ApiGetNotificationRequestsParams`; the bulk accept / dismiss send `ApiNotificationRequestIdsParams`. `apiFetchNotificationGroups` lost upstream's `url` param, which no caller passed and which would have gone out as a `url=` query param.
+- `api/notification_policies.ts`: `apiUpdateNotificationsPolicy` takes `ApiUpdateNotificationPolicyParams` instead of `Partial<NotificationPolicyJSON>` (which allowed sending `summary`).
+- `api_types/profile.ts`: `ApiProfileUpdateParams` is `@tstodon/api`'s `ApiUpdateProfileParams` (re-exported under upstream's name) instead of a local `Pick` of `ApiProfileJSON`.
+- Not changed, because the Worker has no route for them yet: `api/collections.ts`, `apiSubscribeByEmail`, `apiSetQuotePolicy` (`statuses.ts`) and `api/annual_report.ts`. The JavaScript actions (`actions/*.js`) and the few TypeScript callers that use `api()` / `apiRequest` directly (`actions/markers.ts`, `hooks/useSearchAccounts.ts`, ...) are untyped as upstream left them.
+
 ### Branding
 
 The UI is branded tstodon, with a credit to Mastodon. Only user-visible text and images changed: the `mastodon/` directory, import paths, CSS classes, storage and Redux keys and message ids are upstream's, so merges stay mechanical.

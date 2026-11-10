@@ -1,3 +1,9 @@
+import type {
+  ApiGetGroupedNotificationsParams,
+  ApiGetNotificationRequestsParams,
+  ApiGetNotificationsParams,
+  ApiNotificationRequestIdsParams,
+} from '@tstodon/api';
 import api, {
   apiRequest,
   getLinks,
@@ -11,10 +17,7 @@ import type {
 } from 'mastodon/api_types/notifications';
 
 export const apiFetchNotifications = async (
-  params?: {
-    account_id?: string;
-    since_id?: string;
-  },
+  params?: ApiGetNotificationsParams,
   url?: string,
 ) => {
   const response = await api().request<ApiNotificationJSON[]>({
@@ -29,13 +32,9 @@ export const apiFetchNotifications = async (
   };
 };
 
-export const apiFetchNotificationGroups = async (params?: {
-  url?: string;
-  grouped_types?: string[];
-  exclude_types?: string[];
-  max_id?: string;
-  since_id?: string;
-}) => {
+export const apiFetchNotificationGroups = async (
+  params?: ApiGetGroupedNotificationsParams,
+) => {
   const response = await api().request<ApiNotificationGroupsResultJSON>({
     method: 'GET',
     url: '/api/v2/notifications',
@@ -56,9 +55,7 @@ export const apiClearNotifications = () =>
   apiRequest<undefined>('POST', 'v1/notifications/clear');
 
 export const apiFetchNotificationRequests = async (
-  params?: {
-    since_id?: string;
-  },
+  params?: ApiGetNotificationRequestsParams,
   url?: string,
 ) => {
   const response = await api().request<ApiNotificationRequestJSON[]>({
@@ -88,9 +85,13 @@ export const apiDismissNotificationRequest = async (id: string) => {
 };
 
 export const apiAcceptNotificationRequests = async (id: string[]) => {
-  return apiRequestPost('v1/notifications/requests/accept', { id });
+  return apiRequestPost('v1/notifications/requests/accept', {
+    id,
+  } satisfies ApiNotificationRequestIdsParams);
 };
 
 export const apiDismissNotificationRequests = async (id: string[]) => {
-  return apiRequestPost('v1/notifications/requests/dismiss', { id });
+  return apiRequestPost('v1/notifications/requests/dismiss', {
+    id,
+  } satisfies ApiNotificationRequestIdsParams);
 };

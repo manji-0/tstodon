@@ -6,7 +6,6 @@ import {
   jsonValidationError,
   queryCursor,
   queryLimit,
-  readBody,
   requireUser,
 } from "../http";
 import {
@@ -16,7 +15,6 @@ import {
   findListForAccount,
   findUnfollowedMember,
   ListMember,
-  ListRepliesPolicySchema,
   listListMembers,
   listListsContainingMember,
   listListsForAccount,
@@ -28,29 +26,15 @@ import { availableAccountDocumentsByIds, documentsInOrder } from "../account-doc
 import { writeTimelineMetric } from "../metrics";
 import { parseInstanceIdentity } from "../runtime-config";
 import { listTimelineDocuments } from "../timeline-documents";
-import { isTruthy, stringList } from "../form-values";
+import { readMergedParams, readParams } from "../request-params";
 import { warmSchemas } from "@tstodon/core";
-import { z } from "zod";
+import {
+  ApiCreateListParamsSchema,
+  ApiListAccountsParamsSchema,
+  ApiUpdateListParamsSchema,
+} from "@tstodon/api";
 
-const booleanish = z.union([z.boolean(), z.string(), z.number()]).optional();
-
-const CreateListBodySchema = z.object({
-  title: z.string().min(1),
-  replies_policy: ListRepliesPolicySchema.optional(),
-  exclusive: booleanish,
-});
-
-const UpdateListBodySchema = z.object({
-  title: z.string().min(1).optional(),
-  replies_policy: ListRepliesPolicySchema.optional(),
-  exclusive: booleanish,
-});
-
-const ListAccountsBodySchema = z.object({
-  account_ids: z.union([z.array(z.string()), z.string()]),
-});
-
-warmSchemas([CreateListBodySchema, UpdateListBodySchema, ListAccountsBodySchema]);
+warmSchemas([ApiCreateListParamsSchema, ApiUpdateListParamsSchema, ApiListAccountsParamsSchema]);
 
 export const getV1Lists = async (c: Context<{ Bindings: Env }, "/api/v1/lists">) => {
   const user = await requireUser(c);
@@ -69,14 +53,14 @@ export const postV1Lists = async (c: Context<{ Bindings: Env }, "/api/v1/lists">
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const body = await readBody(c, CreateListBodySchema);
+  const body = await readParams(c, ApiCreateListParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
   const created = await createList(c.env.DB, user.value.id, {
     title: body.value.title.trim(),
     ...(body.value.replies_policy ? { repliesPolicy: body.value.replies_policy } : {}),
-    ...(body.value.exclusive !== undefined ? { exclusive: isTruthy(body.value.exclusive) } : {}),
+    ...(body.value.exclusive !== undefined ? { exclusive: body.value.exclusive } : {}),
   });
   if (created.isErr()) {
     return jsonRepositoryError(c, created.error.message);
@@ -104,14 +88,14 @@ export const putV1ListsById = async (c: Context<{ Bindings: Env }, "/api/v1/list
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const body = await readBody(c, UpdateListBodySchema);
+  const body = await readParams(c, ApiUpdateListParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
   const updated = await updateList(c.env.DB, user.value.id, c.req.param("id"), {
     ...(body.value.title ? { title: body.value.title } : {}),
     ...(body.value.replies_policy ? { repliesPolicy: body.value.replies_policy } : {}),
-    ...(body.value.exclusive !== undefined ? { exclusive: isTruthy(body.value.exclusive) } : {}),
+    ...(body.value.exclusive !== undefined ? { exclusive: body.value.exclusive } : {}),
   });
   if (updated.isErr()) {
     return jsonRepositoryError(c, updated.error.message);
@@ -181,11 +165,11 @@ export const postV1ListsByIdAccounts = async (
   if (!list.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const body = await readBody(c, ListAccountsBodySchema);
+  const body = await readParams(c, ApiListAccountsParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const members = stringList(body.value.account_ids).map(ListMember.fromAccountId);
+  const members = body.value.account_ids.map(ListMember.fromAccountId);
   const found = await findAccountsByIds(
     c.env.DB,
     members.flatMap((member) => (member.kind === "LocalAccount" ? [member.accountId] : [])),
@@ -229,14 +213,15 @@ export const deleteV1ListsByIdAccounts = async (
   if (!list.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const body = await readBody(c, ListAccountsBodySchema);
+  // The web UI sends these in the query, as Mastodon allows.
+  const body = await readMergedParams(c, ApiListAccountsParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
   const removed = await removeListMembers(
     c.env.DB,
     list.value.id,
-    stringList(body.value.account_ids).map(ListMember.fromAccountId),
+    body.value.account_ids.map(ListMember.fromAccountId),
   );
   if (removed.isErr()) {
     return jsonRepositoryError(c, removed.error.message);

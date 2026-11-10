@@ -7,7 +7,6 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  readOptionalBody,
   requireFunctionalUser,
   requireUser,
 } from "../../http";
@@ -20,46 +19,29 @@ import { followAccount, type FollowOptions, unfollowAccount } from "../../follow
 import { relationshipFlags } from "../../relationship-store";
 import { notifyNewFollow } from "../../notify";
 import { followRemoteActor, unfollowRemoteActor } from "../../outbound-follow";
-import { isTruthy, stringList } from "../../form-values";
-import { z } from "zod";
-import { booleanish } from "../../form-values";
-
-/** `POST /api/v1/accounts/:id/follow` — Mastodon's per-follow options. */
-export const FollowBodySchema = z.object({
-  reblogs: booleanish,
-  notify: booleanish,
-  languages: z.union([z.array(z.string()), z.string()]).optional(),
-});
+import { readMergedParams } from "../../request-params";
+import { ApiFollowAccountParamsSchema } from "@tstodon/api";
 
 /**
- * Mastodon's follow options: `reblogs`, `notify`, and `languages[]`. They
- * arrive as form data; query parameters are accepted too. `undefined` when
- * the body does not parse.
+ * Mastodon's follow options: `reblogs`, `notify`, and `languages[]`, from the
+ * body (JSON or form) or the query; the body wins where both name one.
+ * `undefined` when they do not parse.
  */
 const requestedFollowOptions = async (
   c: Context<{ Bindings: Env }>,
 ): Promise<FollowOptions | undefined> => {
-  const followBody = await readOptionalBody(c, FollowBodySchema);
-  if (followBody.isErr()) {
+  const params = await readMergedParams(c, ApiFollowAccountParamsSchema);
+  if (params.isErr()) {
     return undefined;
   }
-  const languageValues = [
-    ...(c.req.queries("languages[]") ?? []),
-    ...(c.req.queries("languages") ?? []),
-    ...stringList(followBody.value.languages),
-  ]
+  const { reblogs, notify, languages } = params.value;
+  const languageValues = (languages ?? [])
     .map((language) => language.trim().toLowerCase())
     .filter((language) => /^[a-z]{2,3}(-[a-z0-9]+)?$/.test(language));
-  const reblogsRaw = followBody.value.reblogs ?? c.req.query("reblogs");
-  const notifyRaw = followBody.value.notify ?? c.req.query("notify");
   return {
-    ...(reblogsRaw === undefined ? {} : { reblogs: isTruthy(reblogsRaw) }),
-    ...(notifyRaw === undefined ? {} : { notify: isTruthy(notifyRaw) }),
-    ...(c.req.queries("languages[]") === undefined &&
-    c.req.queries("languages") === undefined &&
-    followBody.value.languages === undefined
-      ? {}
-      : { languages: [...new Set(languageValues)] }),
+    ...(reblogs === undefined ? {} : { reblogs }),
+    ...(notify === undefined ? {} : { notify }),
+    ...(languages === undefined ? {} : { languages: [...new Set(languageValues)] }),
   };
 };
 
@@ -261,4 +243,4 @@ export const postV1AccountsByIdRemoveFromFollowers = async (
 };
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
-warmSchemas([FollowBodySchema]);
+warmSchemas([ApiFollowAccountParamsSchema]);
