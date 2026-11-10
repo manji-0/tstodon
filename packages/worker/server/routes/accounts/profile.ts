@@ -135,7 +135,6 @@ export const getV1AccountsByIdStatuses = async (
     tagged: params.value.tagged,
     cursor: paramsCursor(params.value),
   };
-  const pinned = params.value.pinned ?? false;
   const account = await findAccountByIdOrUsername(c.env.DB, id);
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
