@@ -133,4 +133,45 @@ describe("notification filters", () => {
       (await notifications(viewerEmail, `?min_id=${oldest?.id ?? ""}`)).map((row) => row.id),
     ).toEqual([middle?.id, newest?.id]);
   });
+
+  it("limits cursor pages from the right end and keeps cursor precedence", async () => {
+    const viewerEmail = "notif-cursor-limit-viewer@example.com";
+    const actorEmail = "notif-cursor-limit-actor@example.com";
+    const viewer = await credentials(viewerEmail);
+    await credentials(actorEmail);
+
+    const followed = await json(`/api/v1/accounts/${viewer.id}/follow`, {
+      method: "POST",
+      headers: await auth(actorEmail),
+    });
+    expect(followed.status).toBe(200);
+    for (const suffix of ["one", "two", "three", "four"]) {
+      const response = await json("/api/v1/statuses", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(await auth(actorEmail)) },
+        body: JSON.stringify({ status: `@${viewer.username} limit ${suffix}` }),
+      });
+      expect(response.status).toBe(200);
+    }
+
+    const all = (await notifications(viewerEmail)).map((row) => row.id);
+    expect(all).toHaveLength(5);
+    const [first, second, third, fourth, follow] = all;
+    const ids = async (query: string): Promise<string[]> =>
+      (await notifications(viewerEmail, query)).map((row) => row.id);
+
+    expect(await ids(`?max_id=${second}&limit=2`)).toEqual([third, fourth]);
+    // since_id keeps the newest rows above the cursor; min_id the oldest.
+    expect(await ids(`?since_id=${follow}&limit=2`)).toEqual([first, second]);
+    expect(await ids(`?min_id=${follow}&limit=2`)).toEqual([fourth, third]);
+    // min_id wins over since_id and max_id; since_id wins over max_id.
+    expect(await ids(`?min_id=${third}&since_id=${follow}&max_id=${second}`)).toEqual([
+      second,
+      first,
+    ]);
+    expect(await ids(`?since_id=${third}&max_id=${second}`)).toEqual([first, second]);
+    expect(await ids(`?types[]=mention&max_id=${second}`)).toEqual([third, fourth]);
+    expect(await ids(`?types[]=follow&min_id=${fourth}`)).toEqual([]);
+    expect(await ids(`?exclude_types[]=mention&since_id=0`)).toEqual([follow]);
+  });
 });

@@ -4,48 +4,47 @@
 -- @param {String} $4:typesJson
 -- @param {String} $5:excludeTypesJson
 -- @param {String} $6:fromAccountId
--- @param {String} $7:cursorId
--- @param {Int} $8:cursorGreaterThan
--- @param {Int} $9:ascending
--- @param {Int} $10:includeFiltered
--- @param {String} $11:notificationId
--- @param {String} $12:groupType
--- @param {String} $13:groupTarget
+-- @param {String} $7:sinceId
+-- @param {String} $8:maxId
+-- @param {Int} $9:includeFiltered
+-- @param {String} $10:notificationId
+-- @param {String} $11:groupType
+-- @param {String} $12:groupTarget
 SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at,
   n.id IN (SELECT notification_id FROM notification_requests WHERE account_id = $1) AS held
 FROM notifications n
 WHERE n.account_id = $1
-  AND n.created_at > COALESCE(
+  -- Unary + keeps the planner off the created_at index, so it walks
+  -- (account_id, id) in the page order instead of sorting every notification.
+  AND +n.created_at > COALESCE(
     (SELECT cleared_at FROM notification_clear_markers WHERE account_id = $1), ''
   )
   AND n.id NOT IN (
     SELECT notification_id FROM notification_dismissals WHERE account_id = $1
   )
   AND (
-    $10 = 1
+    $9 = 1
     OR n.id NOT IN (SELECT notification_id FROM notification_requests WHERE account_id = $1)
   )
   AND ($4 = '[]' OR n.kind IN (SELECT value FROM json_each($4)))
   AND ($5 = '[]' OR n.kind NOT IN (SELECT value FROM json_each($5)))
   AND ($6 = '' OR n.from_account_id = $6)
   -- A group key's notifications, as `NotificationGroup.key` builds it.
-  AND ($11 = '' OR n.id = $11)
+  AND ($10 = '' OR n.id = $10)
   AND (
-    $12 = ''
-    OR (n.kind = $12 AND COALESCE(NULLIF(n.status_id, ''), n.from_account_id) = $13)
+    $11 = ''
+    OR (n.kind = $11 AND COALESCE(NULLIF(n.status_id, ''), n.from_account_id) = $12)
   )
-  AND (
-    $7 = ''
-    OR ($8 = 1 AND n.id > $7)
-    OR ($8 = 0 AND n.id < $7)
-  )
+  AND n.id > $7
+  -- X'FF' is a BLOB, which sorts after every TEXT id: no max_id, no upper bound.
+  AND n.id < COALESCE(NULLIF($8, ''), X'FF')
   AND n.from_account_id NOT IN (
     SELECT target_account_id FROM blocks
       WHERE blocker_account_id = $1 AND target_account_id IS NOT NULL
-    UNION
+    UNION ALL
     SELECT blocker_account_id FROM blocks
       WHERE target_account_id = $1 AND blocker_account_id IS NOT NULL
-    UNION
+    UNION ALL
     SELECT target_account_id FROM mutes
       WHERE account_id = $1 AND target_account_id IS NOT NULL AND notifications != 0
         AND (expires_at IS NULL OR expires_at > $2)
@@ -53,12 +52,10 @@ WHERE n.account_id = $1
   -- Remote senders are blocked and muted by actor URI.
   AND COALESCE(n.from_actor_uri, '') NOT IN (
     SELECT target_actor_uri FROM blocks WHERE blocker_account_id = $1
-    UNION
+    UNION ALL
     SELECT target_actor_uri FROM mutes
       WHERE account_id = $1 AND notifications != 0
         AND (expires_at IS NULL OR expires_at > $2)
   )
--- One CASE key is NULL for every row in each mode, so the other decides the
--- direction: `min_id` pages upward, everything else newest first.
-ORDER BY (CASE WHEN $9 = 1 THEN n.id END) ASC, (CASE WHEN $9 = 0 THEN n.id END) DESC
+ORDER BY n.id DESC
 LIMIT $3

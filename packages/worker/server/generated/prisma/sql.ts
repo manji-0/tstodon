@@ -630,6 +630,8 @@ export * from "./sql/listNotersOfActor";
 
 export * from "./sql/listNotifications";
 
+export * from "./sql/listNotificationsAscending";
+
 export * from "./sql/listNotifyingFollowerIds";
 
 export * from "./sql/listOutboundActivities";

@@ -25,6 +25,7 @@ import {
   findNotificationOwned as findNotificationOwnedSql,
   insertNotification as insertNotificationSql,
   listNotifications as listNotificationsSql,
+  listNotificationsAscending as listNotificationsAscendingSql,
   pageNotificationGroupsNewer as pageNotificationGroupsNewerSql,
   pageNotificationGroupsOlder as pageNotificationGroupsOlderSql,
   summarizeNotificationGroups as summarizeNotificationGroupsSql,
@@ -127,24 +128,6 @@ export type NotificationFilters = Readonly<{
 }>;
 
 /**
- * Mastodon's notification cursors: `max_id` pages older, `since_id` newer
- * (newest first), `min_id` newer from the oldest side.
- */
-const notificationCursor = (
-  filters: NotificationFilters,
-): Readonly<{ id: string; greaterThan: number; ascending: number }> => {
-  const minId = filters.minId ?? "";
-  if (minId.length > 0) {
-    return { id: minId, greaterThan: 1, ascending: 1 };
-  }
-  const sinceId = filters.sinceId ?? "";
-  if (sinceId.length > 0) {
-    return { id: sinceId, greaterThan: 1, ascending: 0 };
-  }
-  return { id: filters.maxId ?? "", greaterThan: 0, ascending: 0 };
-};
-
-/**
  * The `notificationId`, `groupType`, `groupTarget` SQL parameters naming a
  * group key's notifications; all empty for no group.
  */
@@ -162,24 +145,41 @@ export const listNotifications = async (
   filters: NotificationFilters = {},
 ): Promise<Result<NotificationRow[], RepositoryError>> =>
   runD1(async () => {
-    const cursor = notificationCursor(filters);
-    const results = await queryTyped(
-      db,
-      listNotificationsSql(
-        accountId,
-        nowIso(),
-        limit,
-        jsonStringArray(filters.types ?? []),
-        jsonStringArray(filters.excludeTypes ?? []),
-        filters.fromAccountId ?? "",
-        cursor.id,
-        cursor.greaterThan,
-        cursor.ascending,
-        filters.includeFiltered ? 1 : 0,
-        ...groupParameters(filters.group),
-      ),
-      NotificationQueryRowSchema,
-    );
+    const now = nowIso();
+    const types = jsonStringArray(filters.types ?? []);
+    const excludeTypes = jsonStringArray(filters.excludeTypes ?? []);
+    const fromAccountId = filters.fromAccountId ?? "";
+    const includeFiltered = filters.includeFiltered ? 1 : 0;
+    const minId = filters.minId ?? "";
+    const sinceId = filters.sinceId ?? "";
+    // Mastodon's cursors: `min_id` pages newer from the oldest side; `since_id`
+    // (which wins over `max_id`) newer and `max_id` older, both newest first.
+    const query =
+      minId.length > 0
+        ? listNotificationsAscendingSql(
+            accountId,
+            now,
+            limit,
+            types,
+            excludeTypes,
+            fromAccountId,
+            minId,
+            includeFiltered,
+            ...groupParameters(filters.group),
+          )
+        : listNotificationsSql(
+            accountId,
+            now,
+            limit,
+            types,
+            excludeTypes,
+            fromAccountId,
+            sinceId,
+            sinceId.length > 0 ? "" : (filters.maxId ?? ""),
+            includeFiltered,
+            ...groupParameters(filters.group),
+          );
+    const results = await queryTyped(db, query, NotificationQueryRowSchema);
     return results.map((row) => ({
       id: row.id ?? "",
       account_id: row.account_id,
