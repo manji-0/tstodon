@@ -8,6 +8,7 @@ import {
   FEED_LANGUAGES_SQL,
   FEED_SUSPENDED_AUTHORS_SQL,
   feedLocalReblogsSql,
+  reblogOfShownAuthorSql,
 } from "./followed-feed";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { hydrateStatusRows, statusSelect } from "./status-store";
@@ -115,7 +116,8 @@ export type AccountStatusFilters = Readonly<{
  * `AccountStatusesFilter`) so a page holds `limit` visible statuses: the
  * author sees all; an account the author blocks sees none; anyone else sees
  * public and unlisted ones, followers-only ones when following, and, unless
- * `excludeDirect`, the ones that mention them.
+ * `excludeDirect`, the ones that mention them; and only the boosts of authors
+ * they see (`filtered_reblogs_scope`).
  */
 export const listAccountStatusesFiltered = async (
   db: D1Database,
@@ -127,6 +129,7 @@ export const listAccountStatusesFiltered = async (
     const tagged = filters.tagged?.replace(/^#/, "") ?? "";
     const viewer = viewerId ?? "";
     const { where, order, binds } = cursorFragment(filters.cursor);
+    const reblogs = reblogOfShownAuthorSql(viewer, nowIso());
     const sql = `SELECT ${statusSelect} FROM statuses
          WHERE account_id = ?
            AND (account_id = ? OR (
@@ -142,6 +145,7 @@ export const listAccountStatusesFiltered = async (
                OR (? = 0 AND id IN (SELECT status_id FROM status_mentions WHERE account_id = ?))
              )
            ))
+           AND (kind <> 'LocalReblog' OR ? = '' OR account_id = ? OR (${reblogs.sql}))
            AND (? = 0 OR in_reply_to_id IS NULL)
            AND (? = 0 OR kind <> 'LocalReblog')
            AND (? = 0 OR visibility <> 'direct')
@@ -160,6 +164,9 @@ export const listAccountStatusesFiltered = async (
         accountId,
         filters.excludeDirect ? 1 : 0,
         viewer,
+        viewer,
+        viewer,
+        ...reblogs.binds,
         filters.excludeReplies ? 1 : 0,
         filters.excludeReblogs ? 1 : 0,
         filters.excludeDirect ? 1 : 0,
