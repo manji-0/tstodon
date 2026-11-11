@@ -1,5 +1,3 @@
-import { List as ImmutableList, Map as ImmutableMap } from 'immutable';
-
 import type { ApiAnnouncementReactionEventJSON } from '@tstodon/api';
 import {
   apiAddAnnouncementReaction,
@@ -12,32 +10,32 @@ import type { AppDispatch, GetState } from 'mastodon/store';
 
 import { normalizeAnnouncement } from './importer/normalizer';
 
-export const ANNOUNCEMENTS_FETCH_REQUEST = 'ANNOUNCEMENTS_FETCH_REQUEST';
-export const ANNOUNCEMENTS_FETCH_SUCCESS = 'ANNOUNCEMENTS_FETCH_SUCCESS';
-export const ANNOUNCEMENTS_FETCH_FAIL    = 'ANNOUNCEMENTS_FETCH_FAIL';
-export const ANNOUNCEMENTS_UPDATE        = 'ANNOUNCEMENTS_UPDATE';
-export const ANNOUNCEMENTS_DELETE        = 'ANNOUNCEMENTS_DELETE';
+export const ANNOUNCEMENTS_FETCH_REQUEST = 'ANNOUNCEMENTS_FETCH_REQUEST' as const;
+export const ANNOUNCEMENTS_FETCH_SUCCESS = 'ANNOUNCEMENTS_FETCH_SUCCESS' as const;
+export const ANNOUNCEMENTS_FETCH_FAIL    = 'ANNOUNCEMENTS_FETCH_FAIL' as const;
+export const ANNOUNCEMENTS_UPDATE        = 'ANNOUNCEMENTS_UPDATE' as const;
+export const ANNOUNCEMENTS_DELETE        = 'ANNOUNCEMENTS_DELETE' as const;
 
-export const ANNOUNCEMENTS_DISMISS_REQUEST = 'ANNOUNCEMENTS_DISMISS_REQUEST';
-export const ANNOUNCEMENTS_DISMISS_SUCCESS = 'ANNOUNCEMENTS_DISMISS_SUCCESS';
-export const ANNOUNCEMENTS_DISMISS_FAIL    = 'ANNOUNCEMENTS_DISMISS_FAIL';
+export const ANNOUNCEMENTS_DISMISS_REQUEST = 'ANNOUNCEMENTS_DISMISS_REQUEST' as const;
+export const ANNOUNCEMENTS_DISMISS_SUCCESS = 'ANNOUNCEMENTS_DISMISS_SUCCESS' as const;
+export const ANNOUNCEMENTS_DISMISS_FAIL    = 'ANNOUNCEMENTS_DISMISS_FAIL' as const;
 
-export const ANNOUNCEMENTS_REACTION_ADD_REQUEST = 'ANNOUNCEMENTS_REACTION_ADD_REQUEST';
-export const ANNOUNCEMENTS_REACTION_ADD_SUCCESS = 'ANNOUNCEMENTS_REACTION_ADD_SUCCESS';
-export const ANNOUNCEMENTS_REACTION_ADD_FAIL    = 'ANNOUNCEMENTS_REACTION_ADD_FAIL';
+export const ANNOUNCEMENTS_REACTION_ADD_REQUEST = 'ANNOUNCEMENTS_REACTION_ADD_REQUEST' as const;
+export const ANNOUNCEMENTS_REACTION_ADD_SUCCESS = 'ANNOUNCEMENTS_REACTION_ADD_SUCCESS' as const;
+export const ANNOUNCEMENTS_REACTION_ADD_FAIL    = 'ANNOUNCEMENTS_REACTION_ADD_FAIL' as const;
 
-export const ANNOUNCEMENTS_REACTION_REMOVE_REQUEST = 'ANNOUNCEMENTS_REACTION_REMOVE_REQUEST';
-export const ANNOUNCEMENTS_REACTION_REMOVE_SUCCESS = 'ANNOUNCEMENTS_REACTION_REMOVE_SUCCESS';
-export const ANNOUNCEMENTS_REACTION_REMOVE_FAIL    = 'ANNOUNCEMENTS_REACTION_REMOVE_FAIL';
+export const ANNOUNCEMENTS_REACTION_REMOVE_REQUEST = 'ANNOUNCEMENTS_REACTION_REMOVE_REQUEST' as const;
+export const ANNOUNCEMENTS_REACTION_REMOVE_SUCCESS = 'ANNOUNCEMENTS_REACTION_REMOVE_SUCCESS' as const;
+export const ANNOUNCEMENTS_REACTION_REMOVE_FAIL    = 'ANNOUNCEMENTS_REACTION_REMOVE_FAIL' as const;
 
-export const ANNOUNCEMENTS_REACTION_UPDATE = 'ANNOUNCEMENTS_REACTION_UPDATE';
+export const ANNOUNCEMENTS_REACTION_UPDATE = 'ANNOUNCEMENTS_REACTION_UPDATE' as const;
 
-export const ANNOUNCEMENTS_TOGGLE_SHOW = 'ANNOUNCEMENTS_TOGGLE_SHOW';
+export const ANNOUNCEMENTS_TOGGLE_SHOW = 'ANNOUNCEMENTS_TOGGLE_SHOW' as const;
 
 const noOp = () => {};
 
 /** An announcement as the reducer takes it: with its content as `contentHtml` too. */
-type NormalizedAnnouncement = ReturnType<typeof normalizeAnnouncement>;
+export type NormalizedAnnouncement = ReturnType<typeof normalizeAnnouncement>;
 
 export const fetchAnnouncements = (done = noOp) => (dispatch: AppDispatch) => {
   dispatch(fetchAnnouncementsRequest());
@@ -100,19 +98,13 @@ export const dismissAnnouncementFail = (announcementId: string, error: unknown) 
   error,
 });
 
-/** The entries of an Immutable list in the (untyped) announcements state that are maps. */
-const immutableMaps = (list: unknown): ImmutableMap<string, unknown>[] =>
-  ImmutableList.isList(list)
-    ? list.toArray().filter((item): item is ImmutableMap<string, unknown> => ImmutableMap.isMap(item))
-    : [];
-
 export const addReaction = (announcementId: string, name: string) => (dispatch: AppDispatch, getState: GetState) => {
-  const announcement = immutableMaps(getState().announcements.get('items')).find(x => x.get('id') === announcementId);
+  const announcement = getState().announcements.get('items').find(x => x.get('id') === announcementId);
 
   let alreadyAdded = false;
 
   if (announcement) {
-    const reaction = immutableMaps(announcement.get('reactions')).find(x => x.get('name') === name);
+    const reaction = announcement.get('reactions').find(x => x.get('name') === name);
     if (reaction && reaction.get('me')) {
       alreadyAdded = true;
     }

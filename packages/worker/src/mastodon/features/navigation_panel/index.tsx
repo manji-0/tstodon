@@ -5,7 +5,6 @@ import { defineMessages, useIntl } from 'react-intl';
 import classNames from 'classnames';
 import { Link, useLocation } from 'react-router-dom';
 
-import type { Map as ImmutableMap } from 'immutable';
 
 import { animated, useSpring } from '@react-spring/web';
 import { useDrag } from '@use-gesture/react';
@@ -149,11 +148,7 @@ const FollowRequestsLink: React.FC = () => {
   const intl = useIntl();
   const count = useAppSelector(
     (state) =>
-      (
-        state.user_lists.getIn(['follow_requests', 'items']) as
-          | ImmutableMap<string, unknown>
-          | undefined
-      )?.size ?? 0,
+      state.user_lists.get('follow_requests').get('items')?.size ?? 0,
   );
   const dispatch = useAppDispatch();
 

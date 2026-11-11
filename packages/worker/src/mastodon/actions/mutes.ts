@@ -8,13 +8,13 @@ import { fetchRelationships } from './accounts';
 import { importFetchedAccounts } from './importer';
 import { openModal } from './modal';
 
-export const MUTES_FETCH_REQUEST = 'MUTES_FETCH_REQUEST';
-export const MUTES_FETCH_SUCCESS = 'MUTES_FETCH_SUCCESS';
-export const MUTES_FETCH_FAIL    = 'MUTES_FETCH_FAIL';
+export const MUTES_FETCH_REQUEST = 'MUTES_FETCH_REQUEST' as const;
+export const MUTES_FETCH_SUCCESS = 'MUTES_FETCH_SUCCESS' as const;
+export const MUTES_FETCH_FAIL    = 'MUTES_FETCH_FAIL' as const;
 
-export const MUTES_EXPAND_REQUEST = 'MUTES_EXPAND_REQUEST';
-export const MUTES_EXPAND_SUCCESS = 'MUTES_EXPAND_SUCCESS';
-export const MUTES_EXPAND_FAIL    = 'MUTES_EXPAND_FAIL';
+export const MUTES_EXPAND_REQUEST = 'MUTES_EXPAND_REQUEST' as const;
+export const MUTES_EXPAND_SUCCESS = 'MUTES_EXPAND_SUCCESS' as const;
+export const MUTES_EXPAND_FAIL    = 'MUTES_EXPAND_FAIL' as const;
 
 export function fetchMutes() {
   return (dispatch: AppDispatch) => {

@@ -1,4 +1,3 @@
-import type { Map as ImmutableMap } from 'immutable';
 import { Record as ImmutableRecord, List as ImmutableList } from 'immutable';
 
 import { me } from '@/mastodon/initial_state';
@@ -96,28 +95,24 @@ export type TagType = Omit<
 > & {
   accountId: string;
   statuses_count: number;
-  last_status_at: string;
+  last_status_at: string | null;
 };
 
 export const selectAccountFeaturedTags = createAppSelector(
   [(state) => state.user_lists, (_, accountId: string) => accountId],
   (user_lists, accountId) => {
-    const list = user_lists.getIn(
-      ['featured_tags', accountId, 'items'],
-      ImmutableList(),
-    ) as ImmutableList<ImmutableMap<string, string | null>>;
+    const list =
+      user_lists.get('featured_tags').get(accountId)?.get('items') ??
+      ImmutableList();
     return list.toArray().map(
       (tag) =>
         ({
-          id: tag.get('id') as string,
-          name: tag.get('name') as string,
-          url: tag.get('url') as string,
-          accountId: tag.get('accountId') as string,
-          statuses_count: Number.parseInt(
-            tag.get('statuses_count') as string,
-            10,
-          ),
-          last_status_at: tag.get('last_status_at') as string,
+          id: tag.get('id'),
+          name: tag.get('name'),
+          url: tag.get('url'),
+          accountId: tag.get('accountId'),
+          statuses_count: Number.parseInt(tag.get('statuses_count'), 10),
+          last_status_at: tag.get('last_status_at'),
         }) satisfies TagType,
     );
   },

@@ -4,10 +4,10 @@ import type { AppDispatch, GetState } from 'mastodon/store';
 
 export const LIST_FETCH_REQUEST = 'LIST_FETCH_REQUEST';
 export const LIST_FETCH_SUCCESS = 'LIST_FETCH_SUCCESS';
-export const LIST_FETCH_FAIL    = 'LIST_FETCH_FAIL';
+export const LIST_FETCH_FAIL    = 'LIST_FETCH_FAIL' as const;
 
 export const LIST_DELETE_REQUEST = 'LIST_DELETE_REQUEST';
-export const LIST_DELETE_SUCCESS = 'LIST_DELETE_SUCCESS';
+export const LIST_DELETE_SUCCESS = 'LIST_DELETE_SUCCESS' as const;
 export const LIST_DELETE_FAIL    = 'LIST_DELETE_FAIL';
 
 export * from './lists_typed';

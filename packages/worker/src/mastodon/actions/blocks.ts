@@ -8,13 +8,13 @@ import { fetchRelationships } from './accounts';
 import { importFetchedAccounts } from './importer';
 import { openModal } from './modal';
 
-export const BLOCKS_FETCH_REQUEST = 'BLOCKS_FETCH_REQUEST';
-export const BLOCKS_FETCH_SUCCESS = 'BLOCKS_FETCH_SUCCESS';
-export const BLOCKS_FETCH_FAIL    = 'BLOCKS_FETCH_FAIL';
+export const BLOCKS_FETCH_REQUEST = 'BLOCKS_FETCH_REQUEST' as const;
+export const BLOCKS_FETCH_SUCCESS = 'BLOCKS_FETCH_SUCCESS' as const;
+export const BLOCKS_FETCH_FAIL    = 'BLOCKS_FETCH_FAIL' as const;
 
-export const BLOCKS_EXPAND_REQUEST = 'BLOCKS_EXPAND_REQUEST';
-export const BLOCKS_EXPAND_SUCCESS = 'BLOCKS_EXPAND_SUCCESS';
-export const BLOCKS_EXPAND_FAIL    = 'BLOCKS_EXPAND_FAIL';
+export const BLOCKS_EXPAND_REQUEST = 'BLOCKS_EXPAND_REQUEST' as const;
+export const BLOCKS_EXPAND_SUCCESS = 'BLOCKS_EXPAND_SUCCESS' as const;
+export const BLOCKS_EXPAND_FAIL    = 'BLOCKS_EXPAND_FAIL' as const;
 
 export function fetchBlocks() {
   return (dispatch: AppDispatch) => {

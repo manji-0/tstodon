@@ -1,5 +1,5 @@
-export const HEIGHT_CACHE_SET = 'HEIGHT_CACHE_SET';
-export const HEIGHT_CACHE_CLEAR = 'HEIGHT_CACHE_CLEAR';
+export const HEIGHT_CACHE_SET = 'HEIGHT_CACHE_SET' as const;
+export const HEIGHT_CACHE_CLEAR = 'HEIGHT_CACHE_CLEAR' as const;
 
 export function setHeight (key: string, id: string, height: number) {
   return {
