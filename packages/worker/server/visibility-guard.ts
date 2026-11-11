@@ -18,6 +18,16 @@ import { queryTyped } from "./typed-sql";
 const AuthorRow = z.object({ author: z.string() });
 const GrantKind = z.enum(["Follow", "OutboundFollow", "Status", "RemoteStatus"]);
 const GrantRow = z.object({ grant_kind: GrantKind, grant_key: z.string() });
+const DirectNoteRow = z.discriminatedUnion("grant_kind", [
+  z.object({ grant_kind: z.literal("DirectGrant"), grant_key: z.string() }),
+  z.object({
+    grant_kind: z.literal("DirectReply"),
+    grant_key: z.string(),
+    parent_id: z.string().nullable(),
+  }),
+]);
+type DirectNoteRow = z.infer<typeof DirectNoteRow>;
+const AccessRow = z.union([GrantRow, DirectNoteRow]);
 
 /** A failed lookup counts as a block, so an error never shows a status. */
 const blockedUnlessCleared = (found: Result<boolean, RepositoryError>): boolean =>
@@ -136,6 +146,47 @@ const listAuthorsBlockingViewer = async (
 };
 
 /**
+ * The direct notes among `starts` the viewer may see through their reply
+ * chains in `chain`: one is granted when it, or a direct note it replies
+ * through, grants. Each note is walked once however many starts share it, and
+ * a reply cycle ends the walk.
+ */
+const grantedThroughChain = (
+  starts: ReadonlyArray<string>,
+  chain: ReadonlyMap<string, DirectNoteRow>,
+): ReadonlyArray<string> => {
+  const granted = new Map<string, boolean>();
+  const resolve = (start: string): boolean => {
+    const path: string[] = [];
+    let found = false;
+    for (let id: string | null = start; id !== null;) {
+      const known = granted.get(id);
+      if (known !== undefined) {
+        found = known;
+        break;
+      }
+      const note = chain.get(id);
+      if (note === undefined) {
+        break;
+      }
+      // Until this walk ends, a cycle back to `id` finds nothing it has not already checked.
+      granted.set(id, false);
+      path.push(id);
+      if (note.grant_kind === "DirectGrant") {
+        found = true;
+        break;
+      }
+      id = note.parent_id;
+    }
+    for (const id of path) {
+      granted.set(id, found);
+    }
+    return found;
+  };
+  return starts.filter(resolve);
+};
+
+/**
  * The relations that grant `viewerId` the restricted statuses among `locals`
  * and `remotes`, as `kind key` entries, in one statement however many there are.
  */
@@ -175,10 +226,27 @@ const listViewerGrants = async (
         ids(direct),
         ids(restrictedRemotes),
       ),
-      GrantRow,
+      AccessRow,
     ),
   );
-  return rows.map((found) => new Set(found.map((row) => `${row.grant_kind} ${row.grant_key}`)));
+  return rows.map((found) => {
+    const chain = new Map<string, DirectNoteRow>();
+    const grants = new Set<string>();
+    for (const row of found) {
+      if (row.grant_kind === "DirectGrant" || row.grant_kind === "DirectReply") {
+        chain.set(row.grant_key, row);
+      } else {
+        grants.add(`${row.grant_kind} ${row.grant_key}`);
+      }
+    }
+    for (const id of grantedThroughChain(
+      direct.map((status) => status.id),
+      chain,
+    )) {
+      grants.add(`Status ${id}`);
+    }
+    return grants;
+  });
 };
 
 /** Log a failed access lookup; the caller then hides what it would have shown. */
