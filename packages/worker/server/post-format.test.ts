@@ -57,7 +57,15 @@ describe("a local post's HTML", () => {
       );
       return expectContract(ApStatusDocument, await response.json());
     };
-    expect((await note()).content).toBe(posted.content);
+    const federated = await note();
+    expect(federated.content).toBe(posted.content);
+    expect(federated.tag).toEqual([
+      { type: "Mention", href: bobUrl, name: `@${bob.username}@example.com` },
+      { type: "Hashtag", href: `${ORIGIN}/tags/cat`, name: "#cat" },
+    ]);
+    expect(federated["@context"]).toContainEqual(
+      expect.objectContaining({ Hashtag: "as:Hashtag" }),
+    );
 
     const edited = await send(email, "PUT", `/api/v1/statuses/${posted.id}`, {
       status: text(carol.username),
