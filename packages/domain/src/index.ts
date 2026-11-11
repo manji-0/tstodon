@@ -369,6 +369,11 @@ export {
   type ListIpBlocks,
 } from "./ip-block";
 export {
+  isBlockedResolvedAddress,
+  RemoteDnsPolicy,
+  type RemoteDnsVerdict,
+} from "./remote-dns-policy";
+export {
   RATE_LIMIT_BUCKETS,
   RateLimit,
   RateLimitPolicy,
