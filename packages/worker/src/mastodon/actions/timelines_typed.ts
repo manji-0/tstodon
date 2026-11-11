@@ -5,6 +5,7 @@ import { usePendingItems as preferPendingItems } from 'mastodon/initial_state';
 
 import type { ApiStatusJSON } from '../api_types/statuses';
 import type { Status } from '../models/status';
+import { getTimelineItems } from '../models/timeline';
 import { createAppThunk } from '../store/typed_functions';
 
 import {
@@ -219,7 +220,7 @@ export const insertStatusIntoAccountTimelines = createAppThunk(
 
     const tags = status.tags.map((tag) => tag.name);
 
-    const timelines = getState().timelines as ImmutableMap<string, unknown>;
+    const timelines = getState().timelines;
     const accountTimelines = timelines.filter((_, key) => {
       if (!key.startsWith(`account:${currentAccountId}:`)) {
         return false;
@@ -254,7 +255,7 @@ export const insertPinnedStatusIntoTimelines = createAppThunk(
         ?.map((tag) => tag.get('name') as string)
         .toArray() ?? [];
 
-    const timelines = getState().timelines as ImmutableMap<string, unknown>;
+    const timelines = getState().timelines;
     const accountTimelines = timelines.filter((_, key) => {
       if (!key.startsWith(`account:${currentAccountId}:`)) {
         return false;
@@ -282,10 +283,7 @@ export const removePinnedStatusFromTimelines = createAppThunk(
     }
 
     const statusId = status.get('id') as string;
-    const timelines = getState().timelines as ImmutableMap<
-      string,
-      ImmutableMap<'items' | 'pendingItems', ImmutableList<string>>
-    >;
+    const timelines = getState().timelines;
 
     timelines.forEach((timeline, key) => {
       if (!isTimelineKeyPinned(key, currentAccountId)) {
@@ -293,8 +291,8 @@ export const removePinnedStatusFromTimelines = createAppThunk(
       }
 
       if (
-        timeline.get('items')?.includes(statusId) ||
-        timeline.get('pendingItems')?.includes(statusId)
+        getTimelineItems(timeline, 'items').includes(statusId) ||
+        getTimelineItems(timeline, 'pendingItems').includes(statusId)
       ) {
         dispatch(timelineDeleteStatus({ statusId, timelineKey: key }));
       }

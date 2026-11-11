@@ -2,12 +2,10 @@ import { useCallback, useEffect, useId } from 'react';
 
 import { defineMessages, FormattedMessage } from 'react-intl';
 
-import type { Map as ImmutableMap } from 'immutable';
-import { List as ImmutableList } from 'immutable';
-
 import { expandAccountFeaturedTimeline } from '@/mastodon/actions/timelines';
 import { Icon } from '@/mastodon/components/icon';
 import { StatusQuoteManager } from '@/mastodon/components/status_quoted';
+import { getTimelineItems } from '@/mastodon/models/timeline';
 import {
   createAppSelector,
   useAppDispatch,
@@ -20,12 +18,17 @@ import { Carousel } from './carousel';
 const pinnedStatusesSelector = createAppSelector(
   [
     (state, accountId: string, tagged?: string) =>
-      (state.timelines as ImmutableMap<string, unknown>).getIn(
-        [`account:${accountId}:pinned${tagged ? `:${tagged}` : ''}`, 'items'],
-        ImmutableList(),
-      ) as ImmutableList<string>,
+      getTimelineItems(
+        state.timelines.get(
+          `account:${accountId}:pinned${tagged ? `:${tagged}` : ''}`,
+        ),
+      ),
   ],
-  (items) => items.toArray().map((id) => ({ id })),
+  (items) =>
+    items
+      .toArray()
+      .filter((id) => id !== null)
+      .map((id) => ({ id })),
 );
 
 const messages = defineMessages({
