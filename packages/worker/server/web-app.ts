@@ -380,7 +380,7 @@ const EMBED_PATH = /^\/@([^/@]+)\/(\d+)\/embed\/?$/;
 /** `/@alice/123`: a local status's page. */
 const STATUS_PATH = /^\/@([^/@]+)\/(\d+)\/?$/;
 
-const statusEmbedPage = async (
+export const statusEmbedPage = async (
   c: Context<{ Bindings: Env }>,
   username: string,
   statusId: string,
