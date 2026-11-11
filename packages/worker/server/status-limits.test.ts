@@ -132,6 +132,22 @@ describe("status limits", () => {
     expectKind(over, "TooLong");
   });
 
+  it.each([
+    ["an emoji with a modifier, a family and a flag", "", "👍🏽 👨‍👩‍👧 🇯🇵", 5],
+    ["a URL twitter-text ends before a quote", "", "https://example.com/'quoted'", 24],
+    ["a host with no known TLD", "", "http://a.b", 10],
+    ["a URL right after the content warning", "CW", "https://example.com", 25],
+  ])("counts %s as the web UI's counter does", async (_, spoilerText, text, length) => {
+    const email = "limits-shared-count@example.com";
+    const padded = (n: number) => ({
+      spoiler_text: spoilerText,
+      status: `${text} ${"a".repeat(n - length - 1)}`,
+    });
+    const max = InstanceLimits.status.maxCharacters;
+    expect((await createStatus(email, padded(max))).status).toBe(200);
+    expectKind(await createStatus(email, padded(max + 1)), "TooLong");
+  });
+
   it("refuses an edit over the limit", async () => {
     const email = "limits-edit@example.com";
     const created = await createStatus(email, { status: "short" });
