@@ -28,6 +28,7 @@ export const dashboardPage = (instanceName: string, stats: AdminDashboard): stri
   adminPage(
     instanceName,
     "Dashboard",
+    "/admin/dashboard",
     `      <h1>Dashboard</h1>
       <ul>
         <li><a href="/admin/reports">Open reports</a>: <strong>${stats.openReports}</strong></li>
@@ -62,6 +63,7 @@ export const accountStatusesPage = (
   adminPage(
     instanceName,
     `Posts of ${view.account.label}`,
+    "/admin/accounts",
     `      <h1>Posts of ${accountLink(view.account)}</h1>
 ${messageLine(message)}${
       view.statuses.length === 0
@@ -126,6 +128,7 @@ export const announcementsPage = (
   adminPage(
     instanceName,
     "Announcements",
+    "/admin/announcements",
     `      <h1>Announcements</h1>
 ${messageLine(message)}${
       view.announcements.length === 0
@@ -150,6 +153,7 @@ export const announcementPage = (
   return adminPage(
     instanceName,
     "Announcement",
+    "/admin/announcements",
     `      <h1>Announcement</h1>
 ${messageLine(message)}
       <p>${view.entry.publishedAt === null ? "This announcement is a draft." : `Published ${escapeHtml(view.entry.publishedAt)}.`}</p>
@@ -158,7 +162,7 @@ ${messageLine(message)}
         <button type="submit">Save changes</button>
       </form>
       ${view.entry.publishedAt === null ? postButton(action, "Publish", { do: "publish" }) : postButton(action, "Unpublish", { do: "unpublish" })}
-      ${postButton(action, "Delete", { do: "delete" })}
+      ${postButton(action, "Delete", { do: "delete" }, "danger")}
       <p><a href="/admin/announcements">Back to announcements</a></p>`,
   );
 };
@@ -180,7 +184,7 @@ const emojiItem = (emoji: EmojiEntry): string => `
           <strong>:${escapeHtml(emoji.shortcode)}:</strong>
           <span class="muted">${emoji.category === null ? "no category" : escapeHtml(emoji.category)} · ${emoji.visibleInPicker ? "shown in the picker" : "hidden from the picker"}</span>
           ${postButton("/admin/custom_emojis", emoji.visibleInPicker ? "Hide from the picker" : "Show in the picker", { do: emoji.visibleInPicker ? "hide" : "show", id: emoji.id })}
-          ${postButton("/admin/custom_emojis", "Delete", { do: "delete", id: emoji.id })}
+          ${postButton("/admin/custom_emojis", "Delete", { do: "delete", id: emoji.id }, "danger")}
         </li>`;
 
 /** Mastodon's `GET /admin/custom_emojis`, with the form that uploads one. */
@@ -192,6 +196,7 @@ export const emojisPage = (
   adminPage(
     instanceName,
     "Custom emojis",
+    "/admin/custom_emojis",
     `      <h1>Custom emojis</h1>
 ${messageLine(message)}${
       view.emojis.length === 0
@@ -254,6 +259,7 @@ export const trendsPage = (
   adminPage(
     instanceName,
     "Trends",
+    "/admin/trends/tags",
     `      <h1>Trends</h1>
       <p>${TREND_FAMILIES.map(([family, label]) => (family === view.family ? `<strong>${label}</strong>` : `<a href="/admin/trends/${family}">${label}</a>`)).join(" · ")}</p>
 ${messageLine(message)}${
@@ -282,6 +288,7 @@ export const emailDomainBlocksPage = (
   adminPage(
     instanceName,
     "Email domain blocks",
+    "/admin/email_domain_blocks",
     `      <h1>Email domain blocks</h1>
       <p class="muted">Nobody can sign up with an email address on a blocked domain.</p>
 ${messageLine(message)}${
@@ -294,7 +301,7 @@ ${messageLine(message)}${
         <li>
           <strong>${escapeHtml(block.domain)}</strong>
           <span class="muted">${escapeHtml(block.createdAt)} · ${count(block.recentAccounts, "account")} created in the last 5 days</span>
-          ${postButton("/admin/email_domain_blocks", "Remove block", { do: "remove", id: block.id })}
+          ${postButton("/admin/email_domain_blocks", "Remove block", { do: "remove", id: block.id }, "danger")}
         </li>`,
             ),
           )

@@ -201,6 +201,62 @@ strong {
   font-weight: 600;
 }
 
+// Navigation: the way back to the web app and, on admin pages, the sections.
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+  margin: 0 0 var(--space-xs) calc(-1 * var(--space-xs));
+  font-size: var(--fs-sm);
+}
+
+nav a {
+  padding: var(--space-2xs) var(--space-xs);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+nav a:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  text-decoration: none;
+}
+
+// The section the page belongs to. The border and weight mark it where the
+// colours do not show (forced colours, greyscale).
+nav a[aria-current] {
+  background: var(--color-bg-brand-softest);
+  border-color: var(--color-border-brand);
+  color: var(--color-text-brand);
+  font-weight: 600;
+}
+
+nav.sections {
+  margin-bottom: var(--space-xl);
+}
+
+// A list of pages, each with a line about what it holds.
+ul.links {
+  padding-left: 0;
+  list-style: none;
+}
+
+ul.links li {
+  margin: var(--space-sm) 0;
+}
+
+ul.links a {
+  font-weight: 500;
+}
+
+ul.links .muted {
+  display: block;
+  font-size: var(--fs-sm);
+}
+
 ul,
 ol {
   margin: var(--space-sm) 0;
@@ -277,6 +333,7 @@ textarea {
   display: block;
   box-sizing: border-box;
   width: 100%;
+  min-height: 2.5rem;
   margin-top: var(--space-2xs);
   padding: var(--space-xs) var(--space-sm);
   background: var(--color-bg-secondary);
@@ -285,6 +342,24 @@ textarea {
   color: var(--color-text-primary);
   font: inherit;
   font-size: var(--fs-md);
+}
+
+input[type='file'] {
+  padding: calc(var(--space-2xs) + 1px) var(--space-2xs);
+}
+
+input[type='file']::file-selector-button {
+  min-height: 1.75rem;
+  margin-right: var(--space-sm);
+  padding: 0 var(--space-sm);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--page-control-border);
+  border-radius: var(--radius-xs);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
 }
 
 input:focus-visible,
@@ -306,14 +381,21 @@ input[type='radio'] {
 .check {
   display: flex;
   gap: var(--space-xs);
-  align-items: baseline;
+  align-items: flex-start;
   margin: var(--space-sm) 0 0;
   font-weight: 400;
+  line-height: 1.5rem;
 }
 
+// Centred on the label's first line, whatever the label wraps to.
 .check input {
   flex: none;
-  align-self: center;
+  margin-top: 0.25rem;
+}
+
+.check label .muted {
+  display: block;
+  font-size: var(--fs-sm);
 }
 
 .check label {
@@ -339,6 +421,7 @@ fieldset .check {
 }
 
 button,
+a.button,
 input[type='submit'] {
   display: inline-flex;
   align-items: center;
@@ -358,21 +441,41 @@ input[type='submit'] {
 }
 
 button:hover,
+a.button:hover,
 input[type='submit']:hover {
   background: var(--color-bg-brand-base-hover);
+  text-decoration: none;
 }
 
-// A secondary action: OAuth's "Deny", and buttons a page marks so.
+// A secondary action: OAuth's "Deny", the action of one row of a list, and
+// buttons a page marks so. The brand colour is the page's main action.
 button.secondary,
-button[value='deny'] {
+button[value='deny'],
+li > form button {
   background: var(--color-bg-secondary);
   border-color: var(--page-control-border);
   color: var(--color-text-primary);
 }
 
 button.secondary:hover,
-button[value='deny']:hover {
+button[value='deny']:hover,
+li > form button:hover {
   background: var(--color-bg-tertiary);
+}
+
+// An action that deletes or revokes.
+button.danger,
+button[value='delete'],
+li > form button.danger {
+  background: transparent;
+  border-color: var(--color-border-error);
+  color: var(--color-text-error);
+}
+
+button.danger:hover,
+button[value='delete']:hover,
+li > form button.danger:hover {
+  background: var(--color-bg-error-softest);
 }
 
 // The admin pages' one-button forms sit side by side.
@@ -403,9 +506,25 @@ p > form button {
   color: var(--color-text-success);
 }
 
-// An empty status line stays in the page (scripts fill it) but takes no room.
+// The result of the last action. It stays in the page when empty (scripts
+// fill it) but takes no room.
+p[role='alert'] {
+  margin: var(--space-md) 0;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--color-border-error-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-error-softest);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+p[role='alert'].notice {
+  border-color: var(--color-border-success-soft);
+  background: var(--color-bg-success-softest);
+}
+
 p[role='alert']:empty {
-  margin: 0;
+  display: none;
 }
 
 // The filter form's keyword rows.
