@@ -3,18 +3,12 @@ import type { Result } from "neverthrow";
 import { SUPPRESSED_ACTOR_URIS_SQL } from "./block-mute-store";
 import { nowIso } from "./clock";
 import { okValues, type RepositoryError, runD1 } from "./d1";
-import { listPublicRemoteStatuses as listPublicRemoteStatusesSql } from "./generated/prisma/sql";
 import type { AccountStatusFilters, StatusCursor } from "./status-timeline-store";
 import type { TagStatusFilters } from "./status-discovery-store";
-import { queryTyped } from "./typed-sql";
-import { idCursorBounds, idCursorFragment, type IdCursor } from "./id-cursor";
+import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { DOMAIN_RESTRICTED_ACTORS_SQL, DOMAIN_SUSPENDED_ACTORS_SQL } from "./domain-hidden-actors";
 import { feedFollowSql, feedRepliesSql, type FollowedFeed } from "./followed-feed";
-import {
-  parseRemoteStatusRow,
-  RemoteStatusRowSchema,
-  remoteStatusFromRow,
-} from "./remote-status-store";
+import { parseRemoteStatusRow, remoteStatusFromRow } from "./remote-status-store";
 
 /**
  * Remote direct notes that address the account, newest first, leaving out
@@ -29,16 +23,19 @@ export const listRemoteDirectStatusesForAccount = async (
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
     const binds: (string | number)[] = [accountId, accountId, accountId, nowIso(), accountId];
-    const before = maxId ? "AND s.id < ?" : "";
+    const before = maxId ? "AND m.status_id < ?" : "";
     if (maxId) {
       binds.push(maxId);
     }
     binds.push(limit);
+    // Driven from the account's mentions in status id order, so a page reads
+    // the notes that address it, not every one of theirs or every direct note.
     const { results } = await db
       .prepare(
-        `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
-         WHERE s.visibility = 'direct'
-           AND s.id IN (SELECT status_id FROM remote_status_mentions WHERE account_id = ?)
+        `SELECT ${REMOTE_STATUS_SELECT} FROM remote_status_mentions m
+         CROSS JOIN remote_statuses s ON s.id = m.status_id
+         WHERE m.account_id = ?
+           AND s.visibility = 'direct'
            AND s.actor_uri NOT IN (SELECT target_actor_uri FROM blocks WHERE blocker_account_id = ?)
            AND s.actor_uri NOT IN (
              SELECT target_actor_uri FROM mutes
@@ -46,7 +43,7 @@ export const listRemoteDirectStatusesForAccount = async (
            )
            AND s.actor_uri NOT IN ${DOMAIN_RESTRICTED_ACTORS_SQL}
            ${before}
-         ORDER BY s.id DESC LIMIT ?`,
+         ORDER BY m.status_id DESC LIMIT ?`,
       )
       .bind(...binds)
       .all();
@@ -176,8 +173,9 @@ export const listActorRemoteStatuses = async (
 /**
  * Public remote statuses, newest id first, paged by the id cursor; `onlyId`
  * asks for one entry and `onlyMedia` keeps the ones with attachments. Actors
- * the viewer blocks or mutes and domains it blocks or the instance limits or
- * suspends stay out before the limit.
+ * the viewer blocks or mutes, domains it blocks or the instance limits or
+ * suspends (matched against both the account domain and the actor URI's
+ * host), and actors an admin moderated stay out before the limit.
  */
 export const listPublicRemoteStatuses = async (
   db: D1Database,
@@ -187,32 +185,49 @@ export const listPublicRemoteStatuses = async (
   onlyMedia: boolean,
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
-    const { onlyId, before, after, ascending } = idCursorBounds(cursor);
-    const results = await queryTyped(
-      db,
-      listPublicRemoteStatusesSql(
-        limit,
-        onlyId,
-        onlyMedia ? 1 : 0,
-        viewerId ?? "",
-        nowIso(),
-        before,
-        after,
-        ascending ? 1 : 0,
+    const viewer = viewerId ?? "";
+    // One statement per cursor shape, so `onlyId` is a primary key lookup and
+    // a page walks the `(visibility, id)` index without sorting every match.
+    const { where, order, binds } = idCursorFragment(cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
+         WHERE visibility = 'public'
+           AND (? = 0 OR media_json NOT IN ('[]', ''))
+           AND actor_uri NOT IN (
+             SELECT target_actor_uri FROM blocks WHERE blocker_account_id = ?
+             UNION
+             SELECT target_actor_uri FROM mutes
+               WHERE account_id = ? AND (expires_at IS NULL OR expires_at > ?)
+           )
+           AND actor_uri NOT IN (
+             SELECT actor_uri FROM remote_actors
+             WHERE host IN (SELECT lower(domain) FROM account_domain_blocks WHERE account_id = ?)
+               OR uri_host IN (SELECT lower(domain) FROM account_domain_blocks WHERE account_id = ?)
+               OR host IN (SELECT lower(domain) FROM domain_blocks WHERE severity IN ('silence', 'suspend'))
+               OR uri_host IN (SELECT lower(domain) FROM domain_blocks WHERE severity IN ('silence', 'suspend'))
+           )
+           AND actor_uri NOT IN (
+             SELECT actor_uri FROM remote_actor_moderation WHERE moderation IS NOT NULL
+           )
+           ${where} ${order} LIMIT ?`,
+      )
+      .bind(onlyMedia ? 1 : 0, viewer, viewer, nowIso(), viewer, viewer, ...binds, limit)
+      .all();
+    return okValues(
+      (results ?? []).map((raw) =>
+        parseRemoteStatusRow(raw).andThen((row) => remoteStatusFromRow(row)),
       ),
-      RemoteStatusRowSchema,
     );
-    return okValues(results.map((row) => remoteStatusFromRow(row)));
   });
 
-/**
- * Remote statuses on a tag timeline. Tags are read from the stored HTML (the
- * same `#tag` extraction the local notes use), over a bounded window of recent
- * public statuses, because the remote rows carry no tag index.
- */
 export const REMOTE_STATUS_SELECT = `s.id, s.actor_uri, s.object_uri, s.url, s.content_html, s.spoiler_text,
        s.visibility, s.sensitive, s.language, s.published_at, s.edited_at, s.media_json, s.card_json, s.poll_json, s.emojis_json, s.quote_policy_json`;
 
+/**
+ * Public remote statuses on a tag timeline, by their indexed tags
+ * (`remote_status_tags`), with the `any`/`all`/`none` constraints.
+ */
 export const listTagRemoteStatuses = async (
   db: D1Database,
   viewerId: string | undefined,
@@ -223,13 +238,13 @@ export const listTagRemoteStatuses = async (
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
     const conditions = [
+      "t0.tag = ?",
       "s.visibility = 'public'",
       `s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}`,
       `s.actor_uri NOT IN ${DOMAIN_RESTRICTED_ACTORS_SQL}`,
-      "EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = ?)",
     ];
     const viewer = viewerId ?? "";
-    const binds: string[] = [viewer, viewer, nowIso(), viewer, tag.replace(/^#/, "").toLowerCase()];
+    const binds: string[] = [tag.replace(/^#/, "").toLowerCase(), viewer, viewer, nowIso(), viewer];
     if (filters.any.length > 0) {
       conditions.push(
         `EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag IN (${filters.any.map(() => "?").join(", ")}))`,
@@ -251,10 +266,13 @@ export const listTagRemoteStatuses = async (
     if (filters.onlyMedia) {
       conditions.push("s.media_json NOT IN ('[]', '')");
     }
-    const { where, order, binds: cursorBinds } = idCursorFragment(cursor);
+    // Driven from the tag's index rows in status id order (CROSS JOIN fixes the
+    // join order), so a page reads the tagged statuses, not every public one.
+    const { where, order, binds: cursorBinds } = idCursorFragment(cursor, "t0.status_id");
     const { results } = await db
       .prepare(
-        `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
+        `SELECT ${REMOTE_STATUS_SELECT} FROM remote_status_tags t0
+         CROSS JOIN remote_statuses s ON s.id = t0.status_id
          WHERE ${conditions.join(" AND ")} ${where} ${order} LIMIT ?`,
       )
       .bind(...binds, ...cursorBinds, limit)

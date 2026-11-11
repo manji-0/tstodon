@@ -153,6 +153,31 @@ describe("remote direct messages", () => {
     );
   });
 
+  it("page the direct timeline by max_id, newest first, without public mentions", async () => {
+    const email = "remote-dm-pager@example.com";
+    const account = await me(email);
+    const actorUrl = `https://example.com/users/${account.username}`;
+    const remote = await remoteActor("dm-pager");
+    for (const slug of ["dm-page-1", "dm-page-2", "dm-page-3"]) {
+      await sendDirect(remote, slug, actorUrl);
+      await sendDirect(remote, `${slug}-public`, actorUrl, {
+        to: ["https://www.w3.org/ns/activitystreams#Public"],
+        cc: [actorUrl],
+      });
+    }
+    const page = async (query: string) =>
+      read(
+        z.array(z.object({ id: z.string(), content: z.string() })),
+        (await json(`/api/v1/timelines/direct?${query}`, { headers: await authHeaders(email) }))
+          .body,
+      );
+
+    const first = await page("limit=2");
+    expect(first.map((status) => status.content)).toEqual(["<p>dm-page-3</p>", "<p>dm-page-2</p>"]);
+    const second = await page(`limit=2&max_id=${first[1]?.id ?? ""}`);
+    expect(second.map((status) => status.content)).toEqual(["<p>dm-page-1</p>"]);
+  });
+
   it("groups a remote reply under the local direct message it answers", async () => {
     const email = "remote-dm-local-root@example.com";
     const account = await me(email);

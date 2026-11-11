@@ -650,8 +650,6 @@ export * from "./sql/listPublicDomainBlocks";
 
 export * from "./sql/listPublicOutboxActivities";
 
-export * from "./sql/listPublicRemoteStatuses";
-
 export * from "./sql/listPublicStreamSubscriptions";
 
 export * from "./sql/listPublishedAnnouncements";

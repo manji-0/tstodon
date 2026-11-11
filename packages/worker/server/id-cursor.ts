@@ -27,23 +27,27 @@ export const idCursorBounds = (
   };
 };
 
-/** The cursor as a SQL `where` / `order` pair over an `id` column, with its binds. */
+/**
+ * The cursor as a SQL `where` / `order` pair over the status id `column`
+ * (`id` unless a join drives from another table's copy of it), with its binds.
+ */
 export const idCursorFragment = (
   cursor: IdCursor = {},
+  column = "id",
 ): Readonly<{ where: string; order: string; binds: string[] }> => {
   const { onlyId, after, before, ascending } = idCursorBounds(cursor);
   if (onlyId.length > 0) {
-    return { where: "AND id = ?", order: "", binds: [onlyId] };
+    return { where: `AND ${column} = ?`, order: "", binds: [onlyId] };
   }
   if (after.length > 0) {
     return {
-      where: "AND id > ?",
-      order: ascending ? "ORDER BY id ASC" : "ORDER BY id DESC",
+      where: `AND ${column} > ?`,
+      order: ascending ? `ORDER BY ${column} ASC` : `ORDER BY ${column} DESC`,
       binds: [after],
     };
   }
   if (before.length > 0) {
-    return { where: "AND id < ?", order: "ORDER BY id DESC", binds: [before] };
+    return { where: `AND ${column} < ?`, order: `ORDER BY ${column} DESC`, binds: [before] };
   }
-  return { where: "", order: "ORDER BY id DESC", binds: [] };
+  return { where: "", order: `ORDER BY ${column} DESC`, binds: [] };
 };
