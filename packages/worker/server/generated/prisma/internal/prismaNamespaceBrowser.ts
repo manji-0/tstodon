@@ -108,6 +108,7 @@ export const ModelName = {
   remote_announces: "remote_announces",
   remote_favourites: "remote_favourites",
   remote_follows: "remote_follows",
+  local_status_tags: "local_status_tags",
   remote_status_tags: "remote_status_tags",
   remote_statuses: "remote_statuses",
   canonical_email_blocks: "canonical_email_blocks",
@@ -859,6 +860,14 @@ export const Remote_followsScalarFieldEnum = {
 
 export type Remote_followsScalarFieldEnum =
   (typeof Remote_followsScalarFieldEnum)[keyof typeof Remote_followsScalarFieldEnum];
+
+export const Local_status_tagsScalarFieldEnum = {
+  status_id: "status_id",
+  tag: "tag",
+} as const;
+
+export type Local_status_tagsScalarFieldEnum =
+  (typeof Local_status_tagsScalarFieldEnum)[keyof typeof Local_status_tagsScalarFieldEnum];
 
 export const Remote_status_tagsScalarFieldEnum = {
   status_id: "status_id",

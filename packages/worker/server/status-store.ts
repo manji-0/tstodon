@@ -27,12 +27,13 @@ import {
 import { removedBoostsFromRows } from "./removed-boost";
 import { deletedMediaObjectKeys } from "./media-store";
 import { visibilitySql } from "./sql-enums";
-import { recordTagNames, searchableTagNames } from "./hashtags";
+import { indexLocalStatusTags, recordTagNames, searchableTagNames } from "./hashtags";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   attachMediaToStatus as attachMediaToStatusSql,
   countStatuses as countStatusesSql,
   deleteLocalBoostsOfOwned as deleteLocalBoostsOfOwnedSql,
+  deleteLocalStatusTags as deleteLocalStatusTagsSql,
   deleteReblogOf as deleteReblogOfSql,
   deleteStatusMedia as deleteStatusMediaSql,
   deleteStatusOwned as deleteStatusOwnedSql,
@@ -246,6 +247,7 @@ export const insertLocalNote = async (
   db: D1Database,
   note: LocalNote,
 ): Promise<Result<void, RepositoryError>> => {
+  const tags = extractHashtags(note.text);
   const statements: D1PreparedStatement[] = [
     d1PrepareTyped(
       db,
@@ -266,7 +268,8 @@ export const insertLocalNote = async (
     ...note.mediaIds.map((mediaId, position) =>
       d1PrepareTyped(db, attachMediaToStatusSql(note.id, mediaId, note.accountId, position)),
     ),
-    ...recordTagNames(db, searchableTagNames(note.visibility, extractHashtags(note.text))),
+    ...recordTagNames(db, searchableTagNames(note.visibility, tags)),
+    ...indexLocalStatusTags(db, note, tags),
   ];
   const batched = await runD1Batch(db, statements);
   if (batched.isErr()) {
@@ -338,14 +341,16 @@ export const replaceStatusMedia = async (
 };
 
 /**
- * Apply an edited note to its status row, and store the tag names it now
- * uses in the same batch. False when the row is not the author's.
+ * Apply an edited note to its status row, and in the same batch store the
+ * tag names it now uses and index it under them alone. False when the row is
+ * not the author's.
  */
 export const updateLocalNote = async (
   db: D1Database,
   note: LocalNote,
   updatedAt: string,
 ): Promise<Result<boolean, RepositoryError>> => {
+  const tags = extractHashtags(note.text);
   const batched = await runD1Batch(db, [
     d1PrepareTyped(
       db,
@@ -361,7 +366,9 @@ export const updateLocalNote = async (
         note.accountId,
       ),
     ),
-    ...recordTagNames(db, searchableTagNames(note.visibility, extractHashtags(note.text))),
+    ...recordTagNames(db, searchableTagNames(note.visibility, tags)),
+    d1PrepareTyped(db, deleteLocalStatusTagsSql(note.id, note.accountId)),
+    ...indexLocalStatusTags(db, note, tags),
   ]);
   return batched.map((results) => (results[0]?.results ?? []).length > 0);
 };

@@ -23,8 +23,8 @@ const RefreshLinkCardsSchema = unitKind("RefreshLinkCards");
 /** Index the tags of remote statuses written before the tag index (cron). */
 const BackfillRemoteTagsSchema = unitKind("BackfillRemoteTags");
 /**
- * Store the tag names of the next page of stored local notes, from the
- * `local_note_tags` cursor (cron, self-chaining, stops once complete).
+ * Index the next page of stored local notes under their tags and store the
+ * tag names, from the `local_status_tags` cursor (cron, self-chaining, stops once complete).
  */
 const BackfillLocalNoteTagsSchema = unitKind("BackfillLocalNoteTags");
 /**

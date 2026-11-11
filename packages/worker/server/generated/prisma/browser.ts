@@ -317,6 +317,11 @@ export type remote_favourites = Prisma.remote_favouritesModel;
  */
 export type remote_follows = Prisma.remote_followsModel;
 /**
+ * Model local_status_tags
+ *
+ */
+export type local_status_tags = Prisma.local_status_tagsModel;
+/**
  * Model remote_status_tags
  *
  */

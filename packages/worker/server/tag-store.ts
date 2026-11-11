@@ -163,11 +163,7 @@ export const accountTagUses = async (
   tag: string,
 ): Promise<Result<{ count: number; lastStatusAt: string | null }, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(
-      db,
-      countAccountTagUsesSql(accountId, `%#${tag}%`),
-      CountLastStatusAtRow,
-    );
+    const rows = await queryTyped(db, countAccountTagUsesSql(accountId, tag), CountLastStatusAtRow);
     const row = rows[0];
     return { count: Number(row?.count ?? 0), lastStatusAt: row?.last_status_at ?? null };
   });

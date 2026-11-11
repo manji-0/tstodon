@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param limit
  */
 export const listLocalNoteTextsAfter = $runtime.makeTypedQueryFactory(
-  "SELECT id, content_text, visibility FROM statuses\nWHERE kind = 'LocalNote' AND id > $1\nORDER BY id\nLIMIT $2",
+  "SELECT id, account_id, content_text, visibility FROM statuses\nWHERE kind = 'LocalNote' AND id > $1\nORDER BY id\nLIMIT $2",
 ) as (
   afterId: string,
   limit: number,
@@ -19,6 +19,7 @@ export namespace listLocalNoteTextsAfter {
   export type Parameters = [afterId: string, limit: number];
   export type Result = {
     id: string | null;
+    account_id: string;
     content_text: string;
     visibility: string;
   };

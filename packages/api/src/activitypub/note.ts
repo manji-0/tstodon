@@ -26,6 +26,14 @@ export const ApMention = z.object({
 });
 export type ApMentionJSON = z.infer<typeof ApMention>;
 
+/** A hashtag a note carries (Mastodon's `HashtagSerializer`): the tag page and `#name`. */
+export const ApHashtag = z.object({
+  type: z.literal("Hashtag"),
+  href: ApUri,
+  name: z.string().startsWith("#"),
+});
+export type ApHashtagJSON = z.infer<typeof ApHashtag>;
+
 /**
  * Who may quote the note (GoToSocial's `interactionPolicy`, FEP-044f): as
  * Mastodon, automatic approval only, naming the public collection, the
@@ -49,7 +57,8 @@ const noteFields = {
   summary: z.string().nullable(),
   inReplyTo: ApUri.nullable(),
   attachment: z.array(ApDocument),
-  tag: z.array(ApMention),
+  /** Mentions first, then hashtags, as Mastodon's `virtual_tags`. */
+  tag: z.array(z.discriminatedUnion("type", [ApMention, ApHashtag])),
   interactionPolicy: ApInteractionPolicy,
   /** The quoted status (FEP-044f), with Misskey's and the older names. */
   quote: ApUri.optional(),

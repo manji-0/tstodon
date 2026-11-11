@@ -14,6 +14,8 @@ export * from "./sql/authorizeFollowRequest";
 
 export * from "./sql/authorizeRemoteFollowRequest";
 
+export * from "./sql/backfillLocalStatusTags";
+
 export * from "./sql/cancelAccountMove";
 
 export * from "./sql/cancelRemoteActorDeliveries";
@@ -143,6 +145,8 @@ export * from "./sql/deleteListMember";
 export * from "./sql/deleteListRemoteMember";
 
 export * from "./sql/deleteLocalBoostsOfOwned";
+
+export * from "./sql/deleteLocalStatusTags";
 
 export * from "./sql/deleteMedia";
 
@@ -441,6 +445,8 @@ export * from "./sql/insertListRemoteMemberOfFollow";
 export * from "./sql/insertLocalNote";
 
 export * from "./sql/insertLocalReblog";
+
+export * from "./sql/insertLocalStatusTags";
 
 export * from "./sql/insertMedia";
 
