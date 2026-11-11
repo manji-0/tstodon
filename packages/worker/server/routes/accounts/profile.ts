@@ -131,6 +131,7 @@ export const getV1AccountsByIdStatuses = async (
     limit: queryLimit(params.value.limit),
     excludeReplies: params.value.exclude_replies === true,
     excludeReblogs: params.value.exclude_reblogs === true,
+    excludeDirect: params.value.exclude_direct === true,
     onlyMedia: params.value.only_media === true,
     tagged: params.value.tagged,
     cursor: paramsCursor(params.value),

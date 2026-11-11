@@ -105,6 +105,7 @@ export type AccountStatusFilters = Readonly<{
   cursor?: StatusCursor;
   excludeReplies: boolean;
   excludeReblogs: boolean;
+  excludeDirect: boolean;
   onlyMedia: boolean;
   tagged?: string | undefined;
 }>;
@@ -121,6 +122,7 @@ export const listAccountStatusesFiltered = async (
          WHERE account_id = ?
            AND (? = 0 OR in_reply_to_id IS NULL)
            AND (? = 0 OR kind <> 'LocalReblog')
+           AND (? = 0 OR visibility <> 'direct')
            AND (? = 0 OR id IN (SELECT status_id FROM media_attachments WHERE status_id IS NOT NULL))
            AND (? = '' OR content_text LIKE ?)
            ${where} ${order} LIMIT ?`;
@@ -130,6 +132,7 @@ export const listAccountStatusesFiltered = async (
         accountId,
         filters.excludeReplies ? 1 : 0,
         filters.excludeReblogs ? 1 : 0,
+        filters.excludeDirect ? 1 : 0,
         filters.onlyMedia ? 1 : 0,
         tagged.length > 0 ? `%#${tagged}%` : "",
         tagged.length > 0 ? `%#${tagged}%` : "",

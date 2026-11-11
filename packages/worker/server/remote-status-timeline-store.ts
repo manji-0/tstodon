@@ -144,6 +144,7 @@ export const listActorRemoteStatuses = async (
                OR s.id IN (SELECT status_id FROM remote_status_mentions WHERE account_id = ?)
              )
              AND (? = 0 OR s.in_reply_to_uri IS NULL)
+             AND (? = 0 OR s.visibility <> 'direct')
              AND (? = 0 OR s.media_json NOT IN ('[]', ''))
              AND (? = '' OR EXISTS (
                SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = ?
@@ -156,6 +157,7 @@ export const listActorRemoteStatuses = async (
         viewer,
         viewer,
         filters.excludeReplies ? 1 : 0,
+        filters.excludeDirect ? 1 : 0,
         filters.onlyMedia ? 1 : 0,
         tagged,
         tagged,
