@@ -15,7 +15,7 @@ import { BundleColumnError } from '@/mastodon/features/ui/components/bundle_colu
 import Column from '@/mastodon/features/ui/components/column';
 import { useAccountId } from '@/mastodon/hooks/useAccountId';
 import { useAccountVisibility } from '@/mastodon/hooks/useAccountVisibility';
-import type { MediaAttachment } from '@/mastodon/models/media_attachment';
+import { immutableMapWith } from '@/mastodon/utils/immutable_map_of';
 import {
   useAppSelector,
   useAppDispatch,
@@ -23,8 +23,9 @@ import {
 } from '@/mastodon/store';
 
 import { MediaItem } from './components/media_item';
+import type { GalleryMediaAttachment } from './components/media_item';
 
-const emptyList = ImmutableList<MediaAttachment>();
+const emptyList = ImmutableList<GalleryMediaAttachment>();
 
 const selectGalleryTimeline = createAppSelector(
   [
@@ -74,9 +75,9 @@ const selectGalleryTimeline = createAppSelector(
       const status = statusId === null ? undefined : statuses.get(statusId);
       if (status) {
         items = items.concat(
-          (
-            status.get('media_attachments') as ImmutableList<MediaAttachment>
-          ).map((media) => media.set('status', status)),
+          status
+            .get('media_attachments')
+            .map((media) => immutableMapWith(media, 'status', status)),
         );
       }
     }
@@ -104,9 +105,7 @@ export const AccountGallery: React.FC<{
 
   const { suspended, blockedBy, hidden } = useAccountVisibility(accountId);
 
-  const maxId = attachments.last()?.getIn(['status', 'id']) as
-    | string
-    | undefined;
+  const maxId = attachments.last()?.get('status').get('id');
 
   useEffect(() => {
     if (accountId) {
@@ -123,9 +122,9 @@ export const AccountGallery: React.FC<{
   }, [maxId, dispatch, accountId, withReplies]);
 
   const handleOpenMedia = useCallback(
-    (attachment: MediaAttachment) => {
-      const statusId = attachment.getIn(['status', 'id']);
-      const lang = attachment.getIn(['status', 'language']);
+    (attachment: GalleryMediaAttachment) => {
+      const statusId = attachment.get('status').get('id');
+      const lang = attachment.get('status').get('language');
 
       if (attachment.get('type') === 'video') {
         dispatch(
@@ -152,10 +151,7 @@ export const AccountGallery: React.FC<{
           }),
         );
       } else {
-        const media = attachment.getIn([
-          'status',
-          'media_attachments',
-        ]) as ImmutableList<MediaAttachment>;
+        const media = attachment.get('status').get('media_attachments');
         const index = media.findIndex(
           (x) => x.get('id') === attachment.get('id'),
         );
@@ -230,7 +226,7 @@ export const AccountGallery: React.FC<{
       >
         {attachments.map((attachment) => (
           <MediaItem
-            key={attachment.get('id') as string}
+            key={attachment.get('id')}
             attachment={attachment}
             onOpenMedia={handleOpenMedia}
           />

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { ApiAccount } from "@tstodon/api";
 import { authHeaders } from "../test/auth-fixture";
+import { answerLinkPreviews } from "../test/link-card-fixture";
 import { schemaResult } from "@tstodon/core";
 import { cacheLinkCard } from "./link-card";
 
@@ -127,11 +128,17 @@ describe("suggestions and trending links", () => {
   });
 
   it("derives trending links from public notes", async () => {
+    // Each status queues a preview of its first link (see `answerLinkPreviews`).
+    const previews = answerLinkPreviews([
+      "https://news.example/story-1",
+      "https://news.example/story-1",
+    ]);
     await postStatus(
       "link-a@example.com",
       "read https://news.example/story-1 and https://news.example/story-2",
     );
     await postStatus("link-b@example.com", "again https://news.example/story-1");
+    await previews.settled();
 
     const response = await json("/api/v1/trends/links");
     expect(response.status).toBe(200);
@@ -189,11 +196,17 @@ describe("tag history", () => {
 
   it("prefers a previewed card for trending links", async () => {
     const email = "trend-links-preview@example.com";
+    // The unfurl of each status finds no page, so no card is stored before the seed below.
+    const previews = answerLinkPreviews([
+      "https://trend-preview.example/story",
+      "https://trend-preview.example/story",
+    ]);
     await postStatus(email, "look at https://trend-preview.example/story");
     await postStatus(
       "trend-links-preview2@example.com",
       "again https://trend-preview.example/story",
     );
+    await previews.settled();
 
     // Before the unfurl, the card falls back to the bare host.
     const before = await json("/api/v1/trends/links");
@@ -227,9 +240,15 @@ describe("tag history", () => {
   });
 
   it("pages trending links with limit and offset", async () => {
+    const previews = answerLinkPreviews([
+      "https://offset.example/first",
+      "https://offset.example/first",
+      "https://offset.example/second",
+    ]);
     await postStatus("trend-offset-a@example.com", "one https://offset.example/first");
     await postStatus("trend-offset-b@example.com", "one https://offset.example/first");
     await postStatus("trend-offset-c@example.com", "two https://offset.example/second");
+    await previews.settled();
 
     const urls = async (query: string): Promise<string[]> => {
       const response = await json(`/api/v1/trends/links${query}`);

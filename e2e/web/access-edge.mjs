@@ -12,6 +12,7 @@
 // like Access's own, goes with all of them.
 import http from "node:http";
 import net from "node:net";
+import { checkoutPrefix } from "./checkout.mjs";
 
 const ACCESS_COOKIE = "CF_Authorization";
 const ASSERTION_HEADER = "cf-access-jwt-assertion";
@@ -45,12 +46,23 @@ const originHeaders = (request) => {
  */
 export const startAccessEdge = ({ host, listenPort, originPort }) => {
   const server = http.createServer((request, response) => {
+    // Playwright's readiness check names this checkout (checkout.mjs): it
+    // reaches the Worker only through this checkout's edge.
+    let target = request.url ?? "/";
+    if (target.startsWith("/__e2e/")) {
+      if (!target.startsWith(`${checkoutPrefix}/`)) {
+        response.writeHead(404, { "Content-Type": "text/plain" });
+        response.end("Another checkout's e2e server.\n");
+        return;
+      }
+      target = target.slice(checkoutPrefix.length);
+    }
     const upstream = http.request(
       {
         host,
         port: originPort,
         method: request.method,
-        path: request.url,
+        path: target,
         headers: originHeaders(request),
       },
       (origin) => {

@@ -3,12 +3,12 @@ import { Map as ImmutableMap, List as ImmutableList, fromJS } from 'immutable';
 
 import type { ApiTranslationJSON } from '@tstodon/api';
 import { timelineDelete } from 'mastodon/actions/timelines_typed';
-import type { Status } from 'mastodon/models/status';
+import type { Status, StatusJSON } from 'mastodon/models/status';
+import { immutableFromJS } from 'mastodon/utils/immutable_map_of';
 
 import { STATUS_IMPORT, STATUSES_IMPORT } from '../actions/importer';
 import type { importStatus, importStatuses } from '../actions/importer';
 import { normalizeStatusTranslation } from '../actions/importer/normalizer';
-import type { NormalizedStatus } from '../actions/importer/normalizer';
 import {
   FAVOURITE_REQUEST,
   FAVOURITE_FAIL,
@@ -59,16 +59,15 @@ import { matchAction } from './match_action';
 /**
  * The statuses by id: each the importer's `NormalizedStatus` through
  * `fromJS`, plus the flags set here (`isLoading` on a stub being fetched,
- * `hidden`, `collapsed`, `translation`, `isSavingQuotePolicy`, ...). A
- * status's fields stay `unknown` (`Status`): Immutable 4's `Map` has one
- * value type for all its keys, and its readers narrow what they `get`.
+ * `hidden`, `collapsed`, `translation`, `isSavingQuotePolicy`, ...), typed
+ * per field (`Status`, an `ImmutableMapOf<StatusFields>`).
  */
 export type StatusesState = ImmutableMap<string, Status>;
 
-const storeStatus = (state: StatusesState, status: NormalizedStatus) =>
-  state.set(status.id, fromJS(status));
+const storeStatus = (state: StatusesState, status: StatusJSON) =>
+  state.set(status.id, immutableFromJS(status));
 
-const storeStatuses = (state: StatusesState, statuses: NormalizedStatus[]) =>
+const storeStatuses = (state: StatusesState, statuses: StatusJSON[]) =>
   state.withMutations((mutable) => {
     statuses.forEach((status) => storeStatus(mutable, status));
   });
@@ -224,7 +223,7 @@ const statusesReducer = createReducer(initialState, (builder) => {
       const { id, quote_approval } = action.payload;
       return state.get(id)
         ? state
-            .setIn([id, 'quote_approval'], quote_approval)
+            .setIn([id, 'quote_approval'], immutableFromJS(quote_approval))
             .deleteIn([id, 'isSavingQuotePolicy'])
         : state;
     })
@@ -264,23 +263,23 @@ const statusesReducer = createReducer(initialState, (builder) => {
       storeStatuses(state, action.statuses),
     )
     .addMatcher(isFavouriteRequest, (state, action) =>
-      setFlag(state, action.status.get('id') as string, 'favourited', true),
+      setFlag(state, action.status.get('id'), 'favourited', true),
     )
     .addMatcher(isFavouriteFail, (state, action) =>
       setFlagIfPresent(
         state,
-        action.status.get('id') as string,
+        action.status.get('id'),
         'favourited',
         false,
       ),
     )
     .addMatcher(isUnfavouriteRequest, (state, action) =>
-      setFlag(state, action.status.get('id') as string, 'favourited', false),
+      setFlag(state, action.status.get('id'), 'favourited', false),
     )
     .addMatcher(isUnfavouriteFail, (state, action) =>
       setFlagIfPresent(
         state,
-        action.status.get('id') as string,
+        action.status.get('id'),
         'favourited',
         true,
       ),
@@ -288,7 +287,7 @@ const statusesReducer = createReducer(initialState, (builder) => {
     .addMatcher(isBookmarkRequest, (state, action) =>
       setFlagIfPresent(
         state,
-        action.status.get('id') as string,
+        action.status.get('id'),
         'bookmarked',
         true,
       ),
@@ -296,7 +295,7 @@ const statusesReducer = createReducer(initialState, (builder) => {
     .addMatcher(isBookmarkFail, (state, action) =>
       setFlagIfPresent(
         state,
-        action.status.get('id') as string,
+        action.status.get('id'),
         'bookmarked',
         false,
       ),
@@ -304,7 +303,7 @@ const statusesReducer = createReducer(initialState, (builder) => {
     .addMatcher(isUnbookmarkRequest, (state, action) =>
       setFlagIfPresent(
         state,
-        action.status.get('id') as string,
+        action.status.get('id'),
         'bookmarked',
         false,
       ),
@@ -312,7 +311,7 @@ const statusesReducer = createReducer(initialState, (builder) => {
     .addMatcher(isUnbookmarkFail, (state, action) =>
       setFlagIfPresent(
         state,
-        action.status.get('id') as string,
+        action.status.get('id'),
         'bookmarked',
         true,
       ),

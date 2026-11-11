@@ -10,7 +10,7 @@ import { Icon } from 'mastodon/components/icon';
 import { NavigationFocusTarget } from 'mastodon/components/navigation_focus_target';
 import PrivacyDropdown from 'mastodon/features/compose/components/privacy_dropdown';
 import { EmbeddedStatus } from 'mastodon/features/notifications_v2/components/embedded_status';
-import type { Status, StatusVisibility } from 'mastodon/models/status';
+import type { AnyStatus, StatusVisibility } from 'mastodon/models/status';
 import { useAppSelector } from 'mastodon/store';
 
 const messages = defineMessages({
@@ -22,9 +22,9 @@ const messages = defineMessages({
 });
 
 export const BoostModal: React.FC<{
-  status: Status;
+  status: AnyStatus;
   onClose: () => void;
-  onReblog: (status: Status, privacy: StatusVisibility) => void;
+  onReblog: (status: AnyStatus, privacy: StatusVisibility) => void;
 }> = ({ status, onReblog, onClose }) => {
   const intl = useIntl();
 
@@ -32,8 +32,8 @@ export const BoostModal: React.FC<{
     state.compose.get('default_privacy'),
   );
 
-  const statusId = status.get('id') as string;
-  const statusVisibility = status.get('visibility') as StatusVisibility;
+  const statusId = status.get('id');
+  const statusVisibility = status.get('visibility');
 
   const [privacy, setPrivacy] = useState<StatusVisibility>(
     statusVisibility === 'private' ? 'private' : defaultPrivacy,

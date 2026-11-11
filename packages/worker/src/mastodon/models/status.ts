@@ -25,12 +25,90 @@ import type {
   StatusVisibility,
 } from '@/mastodon/api_types/statuses';
 
-import type { AccountShapeFull } from './account';
+import type {
+  NormalizedMediaAttachment,
+  NormalizedStatus,
+} from '@/mastodon/actions/importer/normalizer';
+import type {
+  ImmutableMapOf,
+  ImmutableMapReaderOf,
+  ImmutableOf,
+} from '@/mastodon/utils/immutable_map_of';
+
+import type { Account, AccountShapeFull } from './account';
+import type { Poll } from './poll';
 
 export type { StatusVisibility } from '@/mastodon/api_types/statuses';
 
-// Temporary until we type it correctly
-export type Status = Immutable.Map<string, unknown>;
+/**
+ * A status as the statuses reducer stores it, before `fromJS`: the
+ * importer's `NormalizedStatus` (the account, the boosted status, the poll
+ * and a quote's status by id), plus the flags the reducer sets on it.
+ */
+export type StatusJSON = NormalizedStatus & {
+  /**
+   * Set while the status is fetched. For an id not in the store yet the
+   * reducer stores a stub of this field alone (`{ isLoading: true }`), which
+   * this type does not describe: `makeGetStatus` reports it as loading.
+   */
+  isLoading?: boolean;
+  /** Toggled by the "show more" of a long status. */
+  collapsed?: boolean;
+  /** Set while a new quote policy is saved. */
+  isSavingQuotePolicy?: boolean;
+};
+
+/**
+ * The fields of a stored status: `StatusJSON`'s through `fromJS` (the
+ * attachments, mentions, tags, emojis, card, filter results, quote and
+ * quote policy as Immutable values).
+ */
+export type StatusFields = {
+  [K in keyof StatusJSON]: ImmutableOf<StatusJSON[K]>;
+};
+
+/** A status in the store (`state.statuses`), typed per field. */
+export type Status = ImmutableMapOf<StatusFields>;
+
+/**
+ * A stored status with some fields in another form: `StatusWith<{ account:
+ * Account }>` is one whose account is the account itself, as
+ * `immutableMapWith(status, 'account', account)` makes it.
+ */
+export type StatusWith<Fields extends object> = ImmutableMapOf<
+  Omit<StatusFields, keyof Fields> & Fields
+>;
+
+/**
+ * A boosted status as `makeGetStatus` gives it (the `reblog` of an
+ * `ExpandedStatus`): its account is the account itself.
+ */
+export type ExpandedReblog = StatusWith<{ account: Account }>;
+
+/**
+ * A status as `makeGetStatus` (`selectors/index.js`) gives it: the stored
+ * status with its account and boosted status in place of their ids, and the
+ * titles of the filters it matched (`false` for none).
+ */
+export type ExpandedStatus = StatusWith<{
+  account: Account;
+  reblog: ExpandedReblog | null;
+  matched_filters: string[] | false;
+  matched_media_filters: string[] | false;
+}>;
+
+/**
+ * Any form of a status, for a reader of its own fields: a stored `Status`,
+ * an `ExpandedStatus`, or one with its account or poll in place of the id
+ * (the reply and redraft actions carry those).
+ */
+export type AnyStatus = ImmutableMapReaderOf<
+  Omit<StatusFields, 'account' | 'reblog' | 'poll'> & {
+    account: string | Account | undefined;
+    reblog: string | ExpandedReblog | null | undefined;
+    poll: string | Poll | null | undefined;
+  }
+>;
 
 export interface StatusShape {
   id: string;
@@ -99,7 +177,12 @@ export type CardShape = Omit<ApiPreviewCardJSON, 'authors'> & {
 
 export type Card = RecordOf<CardShape>;
 
-export type MediaAttachment = Immutable.Map<string, unknown>;
+/** An attachment of a stored status. */
+export type MediaAttachment = ImmutableOf<NormalizedMediaAttachment>;
+
+/** The fields of a stored status's attachment. */
+export type MediaAttachmentFields =
+  MediaAttachment extends ImmutableMapOf<infer Fields> ? Fields : never;
 
 export type MediaAttachmentShape<
   TAttachmentJSON extends ApiMediaAttachmentJSON = ApiMediaAttachmentJSON,

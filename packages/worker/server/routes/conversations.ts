@@ -14,6 +14,7 @@ import {
   jsonValidationError,
   queryLimit,
   requireUser,
+  setPaginationLinks,
 } from "../http";
 import { markConversationRead } from "../marker-store";
 import { readQueryParams } from "../request-params";
@@ -30,17 +31,17 @@ export const getV1Conversations = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  // The paging cursor is not read yet: the list is always the latest page.
   const params = readQueryParams(c, ApiGetConversationsParamsSchema);
   if (params.isErr()) {
     return jsonValidationError(c);
   }
-  const conversations = await listConversationsForAccount(
-    c.env.DB,
-    identity.value,
-    user.value.id,
-    queryLimit(params.value.limit, 20),
-  );
+  const limit = queryLimit(params.value.limit, 20);
+  const conversations = await listConversationsForAccount(c.env.DB, identity.value, user.value.id, {
+    limit,
+    maxId: params.value.max_id || undefined,
+    sinceId: params.value.since_id || undefined,
+    minId: params.value.min_id || undefined,
+  });
   if (conversations.isErr()) {
     return jsonRepositoryError(c, conversations.error.message);
   }
@@ -50,9 +51,16 @@ export const getV1Conversations = async (
     user.value.id,
     conversations.value,
   );
-  return documents.isErr()
-    ? jsonRepositoryError(c, documents.error.message)
-    : c.json(documents.value);
+  if (documents.isErr()) {
+    return jsonRepositoryError(c, documents.error.message);
+  }
+  // Mastodon pages conversations by their last status id.
+  setPaginationLinks(
+    c,
+    conversations.value.map((conversation) => conversation.lastStatus.status.id),
+    limit,
+  );
+  return c.json(documents.value);
 };
 
 /** How far down the list a conversation just marked read is looked for (as its stream event). */
@@ -88,12 +96,9 @@ export const postV1ConversationsByIdRead = async (
   }
   await publishConversationRead(c.env, identity.value, user.value.id, conversationId);
   // Mastodon answers with the conversation, now read, as the list shows it.
-  const listed = await listConversationsForAccount(
-    c.env.DB,
-    identity.value,
-    user.value.id,
-    READ_CONVERSATION_WINDOW,
-  );
+  const listed = await listConversationsForAccount(c.env.DB, identity.value, user.value.id, {
+    limit: READ_CONVERSATION_WINDOW,
+  });
   if (listed.isErr()) {
     return jsonRepositoryError(c, listed.error.message);
   }

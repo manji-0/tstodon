@@ -4,11 +4,12 @@ import { getAverageFromBlurhash } from 'mastodon/blurhash';
 import type { RGB } from 'mastodon/blurhash';
 import { Audio } from 'mastodon/features/audio';
 import { Footer } from 'mastodon/features/picture_in_picture/components/footer';
-import type { MediaAttachment } from 'mastodon/models/media_attachment';
+import type { MediaAttachmentFields } from 'mastodon/models/status';
 import { useAppSelector } from 'mastodon/store';
+import type { ImmutableMapReaderOf } from 'mastodon/utils/immutable_map_of';
 
 const AudioModal: React.FC<{
-  media: MediaAttachment;
+  media: ImmutableMapReaderOf<MediaAttachmentFields>;
   statusId: string;
   options: {
     autoPlay: boolean;
@@ -17,15 +18,13 @@ const AudioModal: React.FC<{
   onChangeBackgroundColor: (color: RGB | null) => void;
 }> = ({ media, statusId, options, onClose, onChangeBackgroundColor }) => {
   const status = useAppSelector((state) => state.statuses.get(statusId));
-  const accountId = status?.get('account') as string | undefined;
+  const accountId = status?.get('account');
   const accountStaticAvatar = useAppSelector((state) =>
     accountId ? state.accounts.get(accountId)?.avatar_static : undefined,
   );
 
   useEffect(() => {
-    const backgroundColor = getAverageFromBlurhash(
-      media.get('blurhash') as string | null,
-    );
+    const backgroundColor = getAverageFromBlurhash(media.get('blurhash'));
 
     onChangeBackgroundColor(backgroundColor ?? { r: 255, g: 255, b: 255 });
 
@@ -34,21 +33,23 @@ const AudioModal: React.FC<{
     };
   }, [media, onChangeBackgroundColor]);
 
-  const language = (status?.getIn(['translation', 'language']) ??
-    status?.get('language')) as string;
-  const description = (media.getIn(['translation', 'description']) ??
-    media.get('description')) as string;
+  const language =
+    status?.get('translation')?.get('language') ??
+    status?.get('language') ??
+    undefined;
+  const description =
+    media.get('translation')?.get('description') ??
+    media.get('description') ??
+    undefined;
 
   return (
     <div className='modal-root__modal audio-modal'>
       <div className='audio-modal__container'>
         <Audio
-          src={media.get('url') as string}
+          src={media.get('url')}
           alt={description}
           lang={language}
-          poster={
-            (media.get('preview_url') as string | null) ?? accountStaticAvatar
-          }
+          poster={media.get('preview_url') ?? accountStaticAvatar}
           duration={media.getIn(['meta', 'original', 'duration'], 0) as number}
           backgroundColor={
             media.getIn(['meta', 'colors', 'background']) as string
@@ -64,7 +65,7 @@ const AudioModal: React.FC<{
       <div className='media-modal__overlay'>
         {status && (
           <Footer
-            statusId={status.get('id') as string}
+            statusId={status.get('id')}
             withOpenButton
             onClose={onClose}
           />

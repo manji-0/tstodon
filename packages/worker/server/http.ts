@@ -77,20 +77,44 @@ export const setLinkHeader = (
     prev: string | undefined;
     prevCursor?: "min_id" | "since_id" | undefined;
   }>,
+): void =>
+  setLinks(c, ["max_id", "since_id", "min_id"], {
+    next: cursors.next === undefined ? undefined : ["max_id", cursors.next],
+    prev: cursors.prev === undefined ? undefined : [cursors.prevCursor ?? "min_id", cursors.prev],
+  });
+
+/**
+ * Mastodon's `Link` header for a list paged by `offset` (trends): a full page
+ * offers `offset + limit` as `rel="next"`, and a page past the first offers
+ * `offset - limit` (at least 0) as `rel="prev"`, keeping the request's other
+ * query parameters.
+ */
+export const setOffsetPaginationLinks = (
+  c: Context<{ Bindings: Env }>,
+  page: Readonly<{ offset: number; limit: number; count: number }>,
+): void =>
+  setLinks(c, ["offset"], {
+    next: page.count >= page.limit ? ["offset", String(page.offset + page.limit)] : undefined,
+    prev: page.offset > 0 ? ["offset", String(Math.max(page.offset - page.limit, 0))] : undefined,
+  });
+
+/** The `Link` header from the request URL, with `cleared` params replaced by each rel's cursor. */
+const setLinks = (
+  c: Context<{ Bindings: Env }>,
+  cleared: ReadonlyArray<string>,
+  rels: Readonly<Record<"next" | "prev", readonly [string, string] | undefined>>,
 ): void => {
-  const link = (cursor: string, value: string, rel: "next" | "prev"): string => {
+  const link = ([param, value]: readonly [string, string], rel: "next" | "prev"): string => {
     const target = new URL(c.req.url);
-    target.searchParams.delete("max_id");
-    target.searchParams.delete("since_id");
-    target.searchParams.delete("min_id");
-    target.searchParams.set(cursor, value);
+    for (const name of cleared) {
+      target.searchParams.delete(name);
+    }
+    target.searchParams.set(param, value);
     return `<${target.toString()}>; rel="${rel}"`;
   };
   const links = [
-    ...(cursors.next === undefined ? [] : [link("max_id", cursors.next, "next")]),
-    ...(cursors.prev === undefined
-      ? []
-      : [link(cursors.prevCursor ?? "min_id", cursors.prev, "prev")]),
+    ...(rels.next === undefined ? [] : [link(rels.next, "next")]),
+    ...(rels.prev === undefined ? [] : [link(rels.prev, "prev")]),
   ];
   if (links.length > 0) {
     c.header("Link", links.join(", "));

@@ -2,7 +2,7 @@ import type { ComponentType, MouseEventHandler, ReactNode } from 'react';
 
 import StatusContainer from '@/mastodon/containers/status_container';
 import type { Account as TAccount } from '@/mastodon/models/account';
-import type { Status as TStatus } from '@/mastodon/models/status';
+import type { ExpandedStatus as TStatus } from '@/mastodon/models/status';
 
 import Status from '../status';
 

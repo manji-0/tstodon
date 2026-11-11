@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
+import { answerLinkPreviews } from "../test/link-card-fixture";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
 import { nowIso } from "./clock";
 import { generateAccountKeys } from "./keys";
@@ -103,6 +104,8 @@ describe("filtered on timelines", () => {
     if (identity.isErr()) {
       throw new Error("identity");
     }
+    // The note queues a preview of its link (see `answerLinkPreviews`).
+    const previews = answerLinkPreviews(["https://x.example/"]);
     const persisted = await persistRemoteObject(
       env,
       identity.value,
@@ -119,6 +122,7 @@ describe("filtered on timelines", () => {
     );
     expect(persisted.isOk()).toBe(true);
     const remoteId = persisted.isOk() && persisted.value ? persisted.value.id : "";
+    await previews.settled();
 
     await createFilter(viewerEmail, "public", "spoilers");
 

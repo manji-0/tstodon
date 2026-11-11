@@ -8,6 +8,7 @@ import {
   queryLimit,
   queryOffset,
   queryTrendsLimit,
+  setOffsetPaginationLinks,
 } from "../http";
 import { readQueryParams } from "../request-params";
 import { listTrendingLinks } from "../trend-store";
@@ -33,15 +34,18 @@ export const getV1TrendsLinks = async (c: Context<{ Bindings: Env }, "/api/v1/tr
   if (publishers.isErr()) {
     return jsonRepositoryError(c, publishers.error.message);
   }
+  const limit = queryTrendsLimit(params.value.limit);
+  const offset = queryOffset(params.value.offset);
   const links = await listTrendingLinks(c.env.DB, {
-    limit: queryTrendsLimit(params.value.limit),
-    offset: queryOffset(params.value.offset),
+    limit,
+    offset,
     excluded: rejected.value,
     excludedPublishers: publishers.value,
   });
   if (links.isErr()) {
     return jsonRepositoryError(c, links.error.message);
   }
+  setOffsetPaginationLinks(c, { offset, limit, count: links.value.length });
   return c.json(links.value.map((link) => link.document));
 };
 
@@ -83,13 +87,13 @@ const trendingTagsResponse = async (c: Context<{ Bindings: Env }>): Promise<Resp
   if (rejected.isErr()) {
     return jsonRepositoryError(c, rejected.error.message);
   }
-  const tags = await listTrendingTags(c.env.DB, queryTrendsLimit(params.value.limit), {
-    excluded: rejected.value,
-    offset: queryOffset(params.value.offset),
-  });
+  const limit = queryTrendsLimit(params.value.limit);
+  const offset = queryOffset(params.value.offset);
+  const tags = await listTrendingTags(c.env.DB, limit, { excluded: rejected.value, offset });
   if (tags.isErr()) {
     return jsonRepositoryError(c, tags.error.message);
   }
+  setOffsetPaginationLinks(c, { offset, limit, count: tags.value.length });
   return c.json(
     await trendingTagDocuments(
       c,
@@ -113,16 +117,18 @@ export const getV1TrendsStatuses = async (
   if (params.isErr()) {
     return jsonValidationError(c);
   }
-  const statuses = await listTrendingStatuses(c.env.DB, queryLimit(params.value.limit, 20), {
-    offset: queryOffset(params.value.offset),
-  });
+  const limit = queryLimit(params.value.limit, 20);
+  const offset = queryOffset(params.value.offset);
+  const statuses = await listTrendingStatuses(c.env.DB, limit, { offset });
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
   const documents = await mastodonStatuses(c.env, identity.value, statuses.value, undefined);
-  return documents.isErr()
-    ? jsonRepositoryError(c, documents.error.message)
-    : c.json(documents.value);
+  if (documents.isErr()) {
+    return jsonRepositoryError(c, documents.error.message);
+  }
+  setOffsetPaginationLinks(c, { offset, limit, count: statuses.value.length });
+  return c.json(documents.value);
 };
 
 warmSchemas([ApiGetTrendsParamsSchema]);

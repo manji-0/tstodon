@@ -295,14 +295,8 @@ const filterTimelines = (
       .filter((item) => item.get('reblog') === status.get('id'))
       .map((item) => item.get('id'))
       .valueSeq()
-      .filter((id): id is string => typeof id === 'string')
       .toArray();
-    state = deleteStatus(
-      state,
-      status.get('id') as string,
-      references,
-      relationship.id,
-    );
+    state = deleteStatus(state, status.get('id'), references, relationship.id);
   });
 
   return state;

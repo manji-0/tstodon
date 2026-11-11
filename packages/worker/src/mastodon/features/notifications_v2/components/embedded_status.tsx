@@ -4,7 +4,7 @@ import { FormattedMessage } from 'react-intl';
 
 import { useHistory } from 'react-router-dom';
 
-import type { List as ImmutableList, RecordOf } from 'immutable';
+import type { RecordOf } from 'immutable';
 
 import type { ApiMentionJSON } from '@/mastodon/api_types/statuses';
 import { AnimateEmojiProvider } from '@/mastodon/components/emoji/context';
@@ -31,8 +31,9 @@ export const EmbeddedStatus: React.FC<{ statusId: string }> = ({
 
   const status = useAppSelector((state) => state.statuses.get(statusId));
 
+  const accountId = status?.get('account');
   const account = useAppSelector((state) =>
-    state.accounts.get(status?.get('account') as string),
+    accountId ? state.accounts.get(accountId) : undefined,
   );
 
   const handleMouseDown = useCallback<React.MouseEventHandler<HTMLDivElement>>(
@@ -87,13 +88,10 @@ export const EmbeddedStatus: React.FC<{ statusId: string }> = ({
     return null;
   }
 
-  // Assign status attributes to variables with a forced type, as status is not yet properly typed
   const hasContentWarning = !!status.get('spoiler_text');
   const poll = status.get('poll');
   const expanded = !status.get('hidden') || !hasContentWarning;
-  const mediaAttachmentsSize = (
-    status.get('media_attachments') as ImmutableList<unknown>
-  ).size;
+  const mediaAttachmentsSize = status.get('media_attachments').size;
 
   return (
     <AnimateEmojiProvider
@@ -109,7 +107,7 @@ export const EmbeddedStatus: React.FC<{ statusId: string }> = ({
       </div>
 
       <ContentWarning
-        statusId={status.get('id') as string}
+        statusId={status.get('id')}
         onClick={handleContentWarningClick}
         expanded={expanded}
       />

@@ -5,7 +5,7 @@ import { defineMessages, useIntl } from 'react-intl';
 import { quoteCompose } from '@/mastodon/actions/compose_typed';
 import { closeModal } from '@/mastodon/actions/modal';
 import { changeSetting } from '@/mastodon/actions/settings';
-import type { Status } from '@/mastodon/models/status';
+import type { AnyStatus } from '@/mastodon/models/status';
 import { useAppDispatch } from '@/mastodon/store';
 
 import { ConfirmationModal } from './confirmation_modal';
@@ -38,7 +38,7 @@ const messages = defineMessages({
  * This prevents the modal from being dismissed permanently when just confirming.
  */
 
-export const QuietPostQuoteInfoModal: React.FC<{ status: Status }> = ({
+export const QuietPostQuoteInfoModal: React.FC<{ status: AnyStatus }> = ({
   status,
 }) => {
   const intl = useIntl();

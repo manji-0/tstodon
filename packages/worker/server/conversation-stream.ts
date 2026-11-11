@@ -32,7 +32,9 @@ const publishConversation = async (
 ): Promise<void> => {
   for (const accountId of new Set(accountIds)) {
     try {
-      const conversations = await listConversationsForAccount(env.DB, identity, accountId, window);
+      const conversations = await listConversationsForAccount(env.DB, identity, accountId, {
+        limit: window,
+      });
       const conversation = conversations.isOk() ? conversations.value.find(matches) : undefined;
       if (!conversation) {
         continue;

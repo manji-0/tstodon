@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { defineMessage, FormattedMessage, useIntl } from 'react-intl';
 
-import type { Map as ImmutableMap } from 'immutable';
-
 import type { Merge } from 'type-fest';
 
 import CancelFillIcon from '@/material-icons/400-24px/cancel-fill.svg?react';
@@ -12,12 +10,12 @@ import { revealAccount } from 'mastodon/actions/accounts_typed';
 import { fetchStatus } from 'mastodon/actions/statuses';
 import { LearnMoreLink } from 'mastodon/components/learn_more_link';
 import { domain } from 'mastodon/initial_state';
-import type { Account } from 'mastodon/models/account';
-import type { Status } from 'mastodon/models/status';
+import type { ApiQuoteState } from 'mastodon/api_types/quotes';
+import type { ExpandedStatus } from 'mastodon/models/status';
 import { makeGetStatusWithExtraInfo } from 'mastodon/selectors';
 import { getAccountHidden } from 'mastodon/selectors/accounts';
-import type { RootState } from 'mastodon/store';
 import { useAppDispatch, useAppSelector } from 'mastodon/store';
+import type { ImmutableMapReaderOf } from 'mastodon/utils/immutable_map_of';
 
 import { Button } from './button';
 import { IconButton } from './icon_button';
@@ -28,12 +26,8 @@ import type { StatusContainerProps, StatusContextType } from './status/types';
 
 const MAX_QUOTE_POSTS_NESTING_LEVEL = 1;
 
-const NestedQuoteLink: React.FC<{ status: Status }> = ({ status }) => {
-  const accountObjectOrId = status.get('account') as string | Account;
-  const accountId =
-    typeof accountObjectOrId === 'string'
-      ? accountObjectOrId
-      : accountObjectOrId.id;
+const NestedQuoteLink: React.FC<{ status: ExpandedStatus }> = ({ status }) => {
+  const accountId = status.get('account').id;
 
   const account = useAppSelector((state) =>
     accountId ? state.accounts.get(accountId) : undefined,
@@ -56,15 +50,11 @@ const NestedQuoteLink: React.FC<{ status: Status }> = ({ status }) => {
   );
 };
 
-type GetStatusSelector = (
-  state: RootState,
-  props: { id?: string | null; contextType?: string },
-) => {
-  status: Status | null;
-  loadingState: 'not-found' | 'loading' | 'filtered' | 'complete';
-};
-
-type QuoteMap = ImmutableMap<'state' | 'quoted_status', string | null>;
+/** A status's quote, or the one the composer shows (`quoted_post.tsx`). */
+type QuoteMap = ImmutableMapReaderOf<{
+  state: ApiQuoteState;
+  quoted_status?: string | null;
+}>;
 
 const LimitedAccountHint: React.FC<{ accountId: string }> = ({ accountId }) => {
   const dispatch = useAppDispatch();
@@ -175,17 +165,12 @@ export const QuotedStatus: React.FC<QuotedStatusProps> = ({
   );
 
   const quotedStatusId = quote.get('quoted_status');
-  const getStatusSelector = useMemo(
-    () => makeGetStatusWithExtraInfo() as GetStatusSelector,
-    [],
-  );
+  const getStatusSelector = useMemo(() => makeGetStatusWithExtraInfo(), []);
   const { status, loadingState } = useAppSelector((state) =>
     getStatusSelector(state, { id: quotedStatusId, contextType }),
   );
 
-  const accountId: string | null = status?.get('account')
-    ? (status.get('account') as Account).id
-    : null;
+  const accountId: string | null = status?.get('account').id ?? null;
   const hiddenAccount = useAppSelector(
     (state) => accountId && getAccountHidden(state, accountId),
   );
@@ -335,7 +320,7 @@ export const QuotedStatus: React.FC<QuotedStatusProps> = ({
     return <NestedQuoteLink status={status} />;
   }
 
-  const childQuote = status?.get('quote') as QuoteMap | undefined;
+  const childQuote = status?.get('quote');
   const canRenderChildQuote =
     childQuote && nestingLevel <= MAX_QUOTE_POSTS_NESTING_LEVEL;
 
@@ -380,17 +365,17 @@ export type StatusQuoteManagerProps = Merge<
 export const StatusQuoteManager = (props: StatusQuoteManagerProps) => {
   const status = useAppSelector((state) => {
     const status = state.statuses.get(props.id);
-    const reblogId = status?.get('reblog') as string | undefined;
+    const reblogId = status?.get('reblog');
     return reblogId ? state.statuses.get(reblogId) : status;
   });
-  const quote = status?.get('quote') as QuoteMap | undefined;
+  const quote = status?.get('quote');
 
   if (quote) {
     return (
       <TypedStatusContainer {...props}>
         <QuotedStatus
           quote={quote}
-          parentQuotePostId={status?.get('id') as string}
+          parentQuotePostId={status?.get('id')}
           contextType={props.contextType}
         />
       </TypedStatusContainer>

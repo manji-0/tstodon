@@ -69,8 +69,8 @@ const selectStatusPolicy = createAppSelector(
       return 'public';
     }
     const policy =
-      (status.getIn(['quote_approval', 'automatic', 0]) as string) || 'nobody';
-    const visibility = status.get('visibility') as StatusVisibility;
+      status.get('quote_approval')?.get('automatic').get(0) ?? 'nobody';
+    const visibility = status.get('visibility');
 
     // If the status is private or direct, it cannot be quoted by anyone.
     if (visibility === 'private' || visibility === 'direct') {
@@ -114,9 +114,7 @@ export const VisibilityModal: FC<VisibilityModalProps> = forwardRef(
     const intl = useIntl();
     const currentVisibility = useAppSelector((state) =>
       statusId
-        ? ((state.statuses.getIn([statusId, 'visibility'], 'public') as
-            | StatusVisibility
-            | undefined) ?? 'public')
+        ? (state.statuses.get(statusId)?.get('visibility') ?? 'public')
         : (state.compose.get('privacy') ??
           state.compose.get('default_privacy')),
     );

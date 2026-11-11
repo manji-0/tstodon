@@ -1,9 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return,
-                  @typescript-eslint/no-explicit-any,
-                  @typescript-eslint/no-unsafe-assignment,
-                  @typescript-eslint/no-unsafe-member-access,
-                  @typescript-eslint/no-unsafe-call */
-
 import type { ComponentPropsWithoutRef } from 'react';
 import { useCallback } from 'react';
 
@@ -19,7 +13,7 @@ import { useAppSelector } from 'mastodon/store';
 
 import styles from './index.module.scss';
 
-const getStatus = makeGetStatus() as unknown as (arg0: any, arg1: any) => any;
+const getStatus = makeGetStatus();
 
 export const HighlightedPost: React.FC<{
   data: TopStatuses;
@@ -37,9 +31,13 @@ export const HighlightedPost: React.FC<{
     ComponentPropsWithoutRef<typeof InterceptStatusClicks>['onPreventedClick']
   >(
     (clickedArea) => {
-      const link: string =
+      if (!status) {
+        return;
+      }
+
+      const link =
         clickedArea === 'account'
-          ? status.getIn(['account', 'url'])
+          ? status.get('account').url
           : status.get('url');
 
       if (context === 'standalone') {

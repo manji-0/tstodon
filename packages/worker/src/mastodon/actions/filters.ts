@@ -9,7 +9,7 @@ import {
   apiCreateFilterStatus,
   apiGetFilters,
 } from 'mastodon/api/filters';
-import type { Status } from 'mastodon/models/status';
+import type { AnyStatus } from 'mastodon/models/status';
 import type { AppDispatch } from 'mastodon/store';
 
 import { openModal } from './modal';
@@ -33,7 +33,7 @@ export type FiltersFetchSuccessAction = {
   skipLoading: true;
 };
 
-export const initAddFilter = (status: Status | null | undefined, { contextType }: { contextType?: string }) => (dispatch: AppDispatch) =>
+export const initAddFilter = (status: AnyStatus | null | undefined, { contextType }: { contextType?: string }) => (dispatch: AppDispatch) =>
   dispatch(openModal({
     modalType: 'FILTER',
     modalProps: {

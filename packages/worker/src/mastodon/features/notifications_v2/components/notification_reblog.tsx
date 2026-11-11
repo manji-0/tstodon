@@ -38,11 +38,12 @@ export const NotificationReblog: React.FC<{
   unread: boolean;
 }> = ({ notification, unread }) => {
   const { statusId } = notification;
-  const statusAccount = useAppSelector(
-    (state) =>
-      state.accounts.get(state.statuses.getIn([statusId, 'account']) as string)
-        ?.acct,
-  );
+  const statusAccount = useAppSelector((state) => {
+    const accountId = statusId
+      ? state.statuses.get(statusId)?.get('account')
+      : undefined;
+    return accountId ? state.accounts.get(accountId)?.acct : undefined;
+  });
 
   return (
     <NotificationGroupWithStatus
