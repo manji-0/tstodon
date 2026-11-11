@@ -1,28 +1,29 @@
 import { schemaResult } from "@tstodon/core";
 import {
+  AccountId,
+  type AccountIdValue,
   StreamChannel,
   type StreamAccess,
   type StreamChannelValue,
   type StreamRefusal,
   StreamSubscription,
-  type StreamViewer,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { findListForAccount } from "./list-store";
 import { covers } from "./oauth-scope";
 
-/** An anonymous socket holds no token, so no scope. */
-export const NO_STREAM_ACCESS: StreamAccess = { statuses: false, notifications: false };
-
 export const streamAccess = (scopes: ReadonlyArray<string>): StreamAccess => ({
   statuses: covers(scopes, "read:statuses"),
   notifications: covers(scopes, "read:notifications"),
 });
 
-/** A socket's owner, scopes, and subscribed streams, kept on the socket across hibernation. */
+/**
+ * A socket's account, scopes, and subscribed streams, kept on the socket
+ * across hibernation. The account also names the socket's `StreamHub`.
+ */
 const SocketStateSchema = z.object({
-  viewer: StreamSubscription.viewerSchema,
+  accountId: AccountId.schema,
   access: StreamSubscription.accessSchema,
   channels: z.array(StreamChannel.schema),
 });
@@ -31,28 +32,21 @@ export type SocketState = z.infer<typeof SocketStateSchema>;
 
 export const parseSocketState = schemaResult(SocketStateSchema);
 
-/** The hub every anonymous socket shares; account ids never take this name. */
-export const ANONYMOUS_HUB = "anonymous";
-
-/** The `StreamHub` a viewer's sockets live in: one per account, one for anonymous sockets. */
-export const hubName = (viewer: StreamViewer): string =>
-  viewer.kind === "Account" ? viewer.accountId : ANONYMOUS_HUB;
-
 /** A list stream is granted once the account is shown to own the list. */
 const authorizeStreamChannel = async (
   env: Env,
-  viewer: StreamViewer,
+  accountId: AccountIdValue,
   access: StreamAccess,
   channel: StreamChannelValue,
 ): Promise<Result<StreamChannelValue, StreamRefusal>> => {
-  const subscription = StreamSubscription.authorize(viewer, access, channel);
+  const subscription = StreamSubscription.authorize(access, channel);
   if (subscription.isErr()) {
     return err(subscription.error);
   }
   if (subscription.value.kind === "Granted") {
     return ok(subscription.value.channel);
   }
-  const { accountId, channel: listChannel } = subscription.value;
+  const listChannel = subscription.value.channel;
   const list = await findListForAccount(env.DB, accountId, listChannel.listId);
   if (list.isErr()) {
     return err({ kind: "Unavailable" });
@@ -80,8 +74,6 @@ export const streamRefusalError = (
       return { error: "Too many streams on this connection", status: 429 };
     case "HubFull":
       return { error: "Too many distinct streams open for this viewer", status: 429 };
-    case "NeedsAccount":
-      return { error: "Missing access token", status: 401 };
     case "InsufficientScope":
       return { error: "Access token does not have the required scopes", status: 401 };
     case "Unavailable":
@@ -92,7 +84,7 @@ export const streamRefusalError = (
 /** Parse and authorize a stream as a client names it. */
 export const requestStreamChannel = async (
   env: Env,
-  viewer: StreamViewer,
+  accountId: AccountIdValue,
   access: StreamAccess,
   input: Readonly<{ stream: string; tag?: string | undefined; list?: string | undefined }>,
 ): Promise<Result<StreamChannelValue, StreamRefusal>> => {
@@ -100,5 +92,5 @@ export const requestStreamChannel = async (
   if (channel.isErr()) {
     return err(channel.error);
   }
-  return authorizeStreamChannel(env, viewer, access, channel.value);
+  return authorizeStreamChannel(env, accountId, access, channel.value);
 };

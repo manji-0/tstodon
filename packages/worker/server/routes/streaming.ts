@@ -1,11 +1,9 @@
-import { StreamChannel, type StreamViewer } from "@tstodon/domain";
+import { StreamChannel } from "@tstodon/domain";
 import type { Context } from "hono";
 import { bearerToken } from "../auth";
 import { jsonAuthError, requireSession } from "../http";
 import {
-  hubName,
   requestStreamChannel,
-  NO_STREAM_ACCESS,
   type SocketState,
   streamAccess,
   streamRefusalError,
@@ -15,16 +13,17 @@ import { SOCKET_STATE_HEADER } from "../stream-hub";
 /**
  * The streaming API over WebSocket. A socket subscribes to the stream named
  * by `stream` (with `tag` or `list`), and to more with `subscribe` messages,
- * as the web UI does over one shared socket. Without a token a socket may
- * only take public and hashtag streams, which are as open as their
- * timelines. The other streams need the scope Mastodon asks for them (see
- * `streamAccess`), checked here and on each `subscribe`. A browser passes the token as the WebSocket subprotocol
+ * as the web UI does over one shared socket. As in Mastodon 4.2 and later,
+ * every stream needs a user's token: a request without one is refused
+ * before its stream is read. Each stream also needs the scope Mastodon asks
+ * for it (see `streamAccess`), checked here and on each `subscribe`. A
+ * browser passes the token as the WebSocket subprotocol
  * (`Sec-WebSocket-Protocol`), which the handshake must echo back.
  *
  * A request without an upgrade is Mastodon's SSE form: the path names the one
  * stream (`/api/v1/streaming/user`, `/public/local`, `/hashtag?tag=`, ...) and
  * the response is a `text/event-stream` the hub writes to. The same token and
- * scope rules apply; `/api/v1/streaming/health` answers `OK` to anyone.
+ * scope rules apply; only `/api/v1/streaming/health` answers anyone.
  */
 export const getV1Streaming = async (c: Context<{ Bindings: Env }>) => {
   const subPath = c.req.path.replace(/^\/api\/v1\/streaming\/?/, "");
@@ -32,24 +31,23 @@ export const getV1Streaming = async (c: Context<{ Bindings: Env }>) => {
   if (!isUpgrade && subPath.replace(/\/+$/, "") === "health") {
     return c.text("OK");
   }
+  if (!bearerToken(c.req.raw)) {
+    return c.json({ error: "Missing access token", status: 401 }, 401);
+  }
+  const session = await requireSession(c);
+  if (session.isErr()) {
+    return jsonAuthError(c, session.error);
+  }
+  const accountId = session.value.account.id;
+  const access = streamAccess(session.value.token.scopes);
   const pathStream = StreamChannel.streamFromPath(subPath, c.req.query("only_media") === "true");
   if (!isUpgrade && pathStream === undefined) {
     return subPath === "" ? c.text("Expected WebSocket", 426) : c.json({ error: "Not found" }, 404);
   }
-  let viewer: StreamViewer = { kind: "Anonymous" };
-  let access = NO_STREAM_ACCESS;
-  if (bearerToken(c.req.raw)) {
-    const session = await requireSession(c);
-    if (session.isErr()) {
-      return jsonAuthError(c, session.error);
-    }
-    viewer = { kind: "Account", accountId: session.value.account.id };
-    access = streamAccess(session.value.token.scopes);
-  }
   const stream = pathStream ?? c.req.query("stream");
-  const state: SocketState = { viewer, access, channels: [] };
+  const state: SocketState = { accountId, access, channels: [] };
   if (stream) {
-    const channel = await requestStreamChannel(c.env, viewer, access, {
+    const channel = await requestStreamChannel(c.env, accountId, access, {
       stream,
       tag: c.req.query("tag"),
       list: c.req.query("list"),
@@ -63,7 +61,7 @@ export const getV1Streaming = async (c: Context<{ Bindings: Env }>) => {
   // Set here, never taken from the client: the hub trusts it.
   const headers = new Headers(c.req.raw.headers);
   headers.set(SOCKET_STATE_HEADER, JSON.stringify(state));
-  const stub = c.env.STREAM_HUB.get(c.env.STREAM_HUB.idFromName(hubName(viewer)));
+  const stub = c.env.STREAM_HUB.get(c.env.STREAM_HUB.idFromName(accountId));
   const upstream = await stub.fetch(new Request(c.req.raw.url, { headers }));
   if (!isUpgrade) {
     // The hub's response has immutable headers; middleware may add to these.

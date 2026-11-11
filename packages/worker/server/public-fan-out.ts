@@ -10,7 +10,6 @@ import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import { type StreamRenderTally, measureJobPage, streamRenderTally } from "./metrics";
 import { parseInstanceIdentity } from "./runtime-config";
-import { ANONYMOUS_HUB } from "./stream-access";
 import { MAX_HUB_TAGGED_CHANNELS } from "./stream-hub";
 import { publishToHub } from "./stream-publish";
 import { type HubChannels, listPublicStreamSubscriptions } from "./stream-subscription-store";
@@ -55,7 +54,7 @@ export const enqueuePublicFanOut = async (
 const channelDocument = async (
   env: Env,
   identity: InstanceIdentity,
-  viewerId: string | undefined,
+  viewerId: string,
   channel: StreamChannelValue,
   entryId: string,
 ): Promise<Result<ApiStatusJSON | undefined, RepositoryError>> => {
@@ -106,11 +105,10 @@ const hubDelivery = async (
   if (job.event === "delete") {
     return ok({ channels: hub.channels, event: { kind: "delete", statusId: job.entryId } });
   }
-  const viewerId = hub.hub === ANONYMOUS_HUB ? undefined : hub.hub;
   const channels: StreamChannelValue[] = [];
   let payload: ApiStatusJSON | undefined;
   for (const channel of hub.channels) {
-    const document = await channelDocument(env, identity, viewerId, channel, job.entryId);
+    const document = await channelDocument(env, identity, hub.hub, channel, job.entryId);
     if (document.isErr()) {
       return err(document.error);
     }

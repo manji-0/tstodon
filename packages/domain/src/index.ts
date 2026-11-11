@@ -341,7 +341,6 @@ export {
   type StreamAccess,
   type StreamRefusal,
   type StreamSubscription as StreamSubscriptionValue,
-  type StreamViewer,
 } from "./stream-subscription";
 export { Username } from "./username";
 export { Visibility, reblogVisibility, type Visibility as VisibilityValue } from "./visibility";
