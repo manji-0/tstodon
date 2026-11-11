@@ -4,7 +4,7 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { channelOf, openEventStream, requestEventStream } from "../test/sse-fixture";
-import { MAX_ACCOUNT_EVENT_STREAMS, MAX_HUB_TAGGED_CHANNELS, SSE_HEARTBEAT_MS } from "./stream-hub";
+import { MAX_EVENT_STREAMS, MAX_HUB_TAGGED_CHANNELS, SSE_HEARTBEAT_MS } from "./stream-hub";
 
 const ORIGIN = "https://example.com";
 
@@ -118,10 +118,11 @@ describe("streaming over SSE", () => {
 
   it("serve the public paths by origin, and the media variants", async () => {
     const author = "sse-public-author@example.com";
-    const all = await openEventStream("/public");
-    const local = await openEventStream("/public/local");
-    const remote = await openEventStream("/public/remote");
-    const media = await openEventStream("/public/media");
+    const viewer = { email: "sse-public-viewer@example.com" };
+    const all = await openEventStream("/public", viewer);
+    const local = await openEventStream("/public/local", viewer);
+    const remote = await openEventStream("/public/remote", viewer);
+    const media = await openEventStream("/public/media", viewer);
 
     const id = await post(author, "a public local note");
     await updateFor(all, id);
@@ -129,7 +130,7 @@ describe("streaming over SSE", () => {
     expect(await remote.heardNothing(channelOf("public:remote"))).toBe(true);
     expect(await media.heardNothing(channelOf("public:media"))).toBe(true);
     await media.cancel();
-    const mediaQuery = await openEventStream("/public?only_media=true");
+    const mediaQuery = await openEventStream("/public?only_media=true", viewer);
     await post(author, "still no media");
     expect(await mediaQuery.heardNothing(channelOf("public:media"))).toBe(true);
     for (const stream of [all, local, remote, mediaQuery]) {
@@ -141,8 +142,8 @@ describe("streaming over SSE", () => {
     const email = "sse-tags-owner@example.com";
     const member = "sse-tags-member@example.com";
     await follow(email, member);
-    const tag = await openEventStream("/hashtag?tag=ssecats");
-    const localTag = await openEventStream("/hashtag/local?tag=ssecats");
+    const tag = await openEventStream("/hashtag?tag=ssecats", { email });
+    const localTag = await openEventStream("/hashtag/local?tag=ssecats", { email });
     const listId = idOf(
       (
         await json(email, "/api/v1/lists", {
@@ -183,6 +184,24 @@ describe("streaming over SSE", () => {
     }
   });
 
+  it("refuse every stream without a token, public and hashtag ones included", async () => {
+    for (const path of [
+      "/public",
+      "/public/local",
+      "/hashtag?tag=open",
+      "/hashtag/local?tag=open",
+      "/user",
+      "/direct",
+      "/hashtag",
+      "/nonsense",
+      "",
+    ]) {
+      const anonymous = await requestEventStream(path);
+      expect(anonymous.status, path).toBe(401);
+      expect(await anonymous.json(), path).toEqual({ error: "Missing access token", status: 401 });
+    }
+  });
+
   it("refuse streams the token or the path does not allow", async () => {
     const email = "sse-refused@example.com";
     const listId = idOf(
@@ -193,20 +212,30 @@ describe("streaming over SSE", () => {
         })
       ).body,
     );
-    const needsAccount = { error: "Missing access token", status: 401 };
-    for (const path of ["/user", "/user/notification", "/direct", `/list?list=${listId}`]) {
-      const anonymous = await requestEventStream(path);
-      expect(anonymous.status, path).toBe(401);
-      expect(await anonymous.json(), path).toEqual(needsAccount);
-    }
     const scopes = ["write", "push"];
-    for (const path of ["/user", "/user/notification", "/direct", `/list?list=${listId}`]) {
+    for (const path of [
+      "/user",
+      "/user/notification",
+      "/direct",
+      `/list?list=${listId}`,
+      "/public",
+      "/public/local",
+      "/hashtag?tag=open",
+    ]) {
       const refused = await requestEventStream(path, { email, scopes });
       expect(refused.status, path).toBe(401);
       expect(await refused.json(), path).toEqual({
         error: "Access token does not have the required scopes",
         status: 401,
       });
+    }
+    // Public and hashtag streams need read:statuses, as every stream but user:notification does.
+    for (const path of ["/public", "/hashtag?tag=open"]) {
+      const refused = await requestEventStream(path, { email, scopes: ["read:notifications"] });
+      expect(refused.status, path).toBe(401);
+      const open = await requestEventStream(path, { email, scopes: ["read:statuses"] });
+      expect(open.status, path).toBe(200);
+      await open.body?.cancel();
     }
     const other = await requestEventStream(`/list?list=${listId}`, {
       email: "sse-not-the-owner@example.com",
@@ -221,17 +250,13 @@ describe("streaming over SSE", () => {
       headers: { Authorization: "Bearer not-a-token" },
     });
     expect(badToken.status).toBe(401);
-    expect((await requestEventStream("/hashtag")).status).toBe(400);
-    expect((await requestEventStream("/hashtag?tag=%20")).status).toBe(400);
-    expect((await requestEventStream("/nonsense")).status).toBe(404);
-    expect((await SELF.fetch(`${ORIGIN}/api/v1/streaming`)).status).toBe(426);
-
-    // Public and hashtag streams need neither a token nor a scope.
-    for (const path of ["/public", "/hashtag?tag=open"]) {
-      const open = await requestEventStream(path, { email, scopes });
-      expect(open.status, path).toBe(200);
-      await open.body?.cancel();
-    }
+    expect((await requestEventStream("/hashtag", { email })).status).toBe(400);
+    expect((await requestEventStream("/hashtag?tag=%20", { email })).status).toBe(400);
+    expect((await requestEventStream("/nonsense", { email })).status).toBe(404);
+    expect(
+      (await SELF.fetch(`${ORIGIN}/api/v1/streaming`, { headers: await authHeaders(email) }))
+        .status,
+    ).toBe(426);
   });
 
   it("send a read:statuses token updates but no notifications on user", async () => {
@@ -262,7 +287,7 @@ describe("streaming over SSE", () => {
   it("refuse an SSE connection past the per-account limit, and admit one after a disconnect", async () => {
     const email = "sse-connections@example.com";
     const opened = [];
-    for (let index = 0; index < MAX_ACCOUNT_EVENT_STREAMS; index += 1) {
+    for (let index = 0; index < MAX_EVENT_STREAMS; index += 1) {
       opened.push(await openEventStream("/public", { email }));
     }
     const refused = await requestEventStream("/public", { email });
@@ -293,7 +318,9 @@ describe("streaming over SSE", () => {
   });
 
   it("send a :thump comment on every heartbeat", async () => {
-    const stream = await openEventStream("/public/remote");
+    const stream = await openEventStream("/public/remote", {
+      email: "sse-heartbeat@example.com",
+    });
     expect(await stream.frame(SSE_HEARTBEAT_MS + 5_000)).toEqual({
       kind: "Comment",
       text: "thump",

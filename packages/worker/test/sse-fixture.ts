@@ -7,7 +7,6 @@ import {
   type StreamChannelValue,
 } from "@tstodon/domain";
 import { expect } from "vite-plus/test";
-import { ANONYMOUS_HUB } from "../server/stream-access";
 import { publishToHub } from "../server/stream-publish";
 import { expectContract } from "./api-contract";
 import { authHeaders, signedInAccount } from "./auth-fixture";
@@ -45,7 +44,7 @@ const markerId = (): StatusIdValue => {
 
 /**
  * An SSE request for `path` (under `/api/v1/streaming`), signed in as `email`
- * with a token of `scopes` (every scope by default) or anonymous. The token
+ * with a token of `scopes` (every scope by default) or without a token. The token
  * goes in `Authorization`, or in `access_token` with `tokenInQuery`.
  */
 export const requestEventStream = async (
@@ -72,9 +71,9 @@ export const requestEventStream = async (
 /** An open SSE stream, read one frame at a time; the first `:)` comment is consumed. */
 export const openEventStream = async (
   path: string,
-  options: Parameters<typeof requestEventStream>[1] = {},
+  options: Parameters<typeof requestEventStream>[1] & Readonly<{ email: string }>,
 ) => {
-  const account = options.email ? await signedInAccount(options.email) : undefined;
+  const account = await signedInAccount(options.email);
   const response = await requestEventStream(path, options);
   expect(response.status, path).toBe(200);
   expect(response.headers.get("content-type")).toContain("text/event-stream");
@@ -84,7 +83,7 @@ export const openEventStream = async (
   }
   const decoder = new TextDecoder();
   let buffered = "";
-  const hub = account?.id ?? ANONYMOUS_HUB;
+  const hub = account.id;
   const frame = async (timeoutMs = 10_000): Promise<SseFrame> => {
     const timer = setTimeout(() => {
       void reader.cancel();

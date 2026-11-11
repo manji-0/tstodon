@@ -1,4 +1,4 @@
-import { SELF, env } from "cloudflare:test";
+import { SELF, env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
@@ -193,29 +193,76 @@ describe("streaming subscriptions", () => {
     other.close();
   });
 
-  it("keep anonymous sockets to public and hashtag streams", async () => {
-    const anonymous = await openStream({ query: "?stream=public:local" });
-    anonymous.send({ type: "subscribe", stream: "user" });
-    expect(await anonymous.nextError()).toEqual({ error: "Missing access token", status: 401 });
-    anonymous.send({ type: "subscribe", stream: "hashtag" });
-    expect(await anonymous.nextError()).toEqual({
-      error: "Missing tag name parameter",
-      status: 400,
+  it("refuse a socket without a token, whatever stream it names", async () => {
+    for (const query of [
+      "",
+      "?stream=public",
+      "?stream=public:local",
+      "?stream=hashtag&tag=cats",
+    ]) {
+      const refused = await SELF.fetch(`${ORIGIN}/api/v1/streaming${query}`, {
+        headers: { Upgrade: "websocket" },
+      });
+      expect(refused.status, query).toBe(401);
+      expect(refused.webSocket, query).toBeNull();
+      expect(await refused.json(), query).toEqual({ error: "Missing access token", status: 401 });
+    }
+    const badToken = await SELF.fetch(`${ORIGIN}/api/v1/streaming?stream=public`, {
+      headers: { Upgrade: "websocket", Authorization: "Bearer not-a-token" },
     });
-    anonymous.send({ type: "subscribe", stream: "everything" });
-    expect(await anonymous.nextError()).toEqual({ error: "Unknown stream type", status: 400 });
-    await anonymous.subscribe({ stream: "hashtag", tag: "cats" });
-    const refused = await SELF.fetch(`${ORIGIN}/api/v1/streaming?stream=user`, {
-      headers: { Upgrade: "websocket" },
+    expect(badToken.status).toBe(401);
+  });
+
+  it("answer a subscribe that names no stream it knows", async () => {
+    const reader = await openStream({
+      email: "st-bad-subscribe@example.com",
+      query: "?stream=public:local",
+      scopes: ["read:statuses"],
     });
-    expect(refused.status).toBe(401);
-    anonymous.close();
+    reader.send({ type: "subscribe", stream: "hashtag" });
+    expect(await reader.nextError()).toEqual({ error: "Missing tag name parameter", status: 400 });
+    reader.send({ type: "subscribe", stream: "everything" });
+    expect(await reader.nextError()).toEqual({ error: "Unknown stream type", status: 400 });
+    await reader.subscribe({ stream: "hashtag", tag: "cats" });
+    reader.close();
+  });
+
+  it("close a socket a deploy left with a tokenless attachment, and drop its hub's row", async () => {
+    // The shape tokenless sockets kept before streaming needed a token.
+    const legacy = {
+      viewer: { kind: "Anonymous" },
+      access: { statuses: false, notifications: false },
+      channels: [{ kind: "Public", origin: "Local", onlyMedia: false }],
+    };
+    const legacyHub = "anonymous";
+    await env.DB.prepare(
+      "INSERT INTO stream_subscriptions (hub, stream, param) VALUES (?, 'public:local', '')",
+    )
+      .bind(legacyHub)
+      .run();
+    const stub = env.STREAM_HUB.get(env.STREAM_HUB.idFromName(legacyHub));
+    const closed = await runInDurableObject(stub, async (_instance, state) => {
+      const pair = new WebSocketPair();
+      const [client, server] = [pair[0], pair[1]];
+      const closing = new Promise<Readonly<{ code: number; reason: string }>>((resolve) => {
+        client.addEventListener("close", (event) =>
+          resolve({ code: event.code, reason: event.reason }),
+        );
+      });
+      state.acceptWebSocket(server);
+      server.serializeAttachment(legacy);
+      client.accept();
+      await post("st-legacy-author@example.com", "heard by no tokenless socket");
+      return closing;
+    });
+    expect(closed).toEqual({ code: 1008, reason: "Missing access token" });
+    await eventually(legacyHub, 0);
   });
 
   it("refuse hashtag names that are not hashtags, on connect and on subscribe", async () => {
     for (const tag of ["_", "%25", "a".repeat(STREAM_TAG_MAX_LENGTH + 1)]) {
       const upgrade = await SELF.fetch(`${ORIGIN}/api/v1/streaming?stream=hashtag&tag=${tag}`, {
-        headers: { Upgrade: "websocket" },
+        headers: { ...(await authHeaders("st-bad-tag@example.com")), Upgrade: "websocket" },
       });
       expect(upgrade.status).toBe(400);
       expect(await upgrade.json()).toEqual({ error: "Invalid tag name parameter", status: 400 });
@@ -223,7 +270,7 @@ describe("streaming subscriptions", () => {
     const socket = await openStream({ email: "st-bad-tag@example.com" });
     socket.send({ type: "subscribe", stream: "hashtag", tag: "_" });
     expect(await socket.nextError()).toEqual({ error: "Invalid tag name parameter", status: 400 });
-    expect(await rows(socket.account?.id ?? "")).toBe(0);
+    expect(await rows(socket.account.id)).toBe(0);
     socket.close();
   });
 
@@ -233,7 +280,7 @@ describe("streaming subscriptions", () => {
       `${"日".repeat(STREAM_TAG_MAX_LENGTH - 2)}${String(index).padStart(2, "0")}`;
     expect(MAX_SOCKET_CHANNELS).toBe(MAX_HUB_TAGGED_CHANNELS);
     const full = await openStream({ email });
-    const hub = full.account?.id ?? "";
+    const hub = full.account.id;
     for (let index = 0; index < MAX_SOCKET_CHANNELS; index += 1) {
       await full.subscribe({ stream: "hashtag", tag: tagAt(index) });
     }
@@ -267,7 +314,7 @@ describe("streaming subscriptions", () => {
 
   it("leave no row behind for a socket closed while its subscribe is pending", async () => {
     const socket = await openStream({ email: "st-close-pending@example.com" });
-    const hub = socket.account?.id ?? "";
+    const hub = socket.account.id;
     socket.send({ type: "subscribe", stream: "hashtag", tag: "closedearly" });
     socket.send({ type: "subscribe", stream: "public" });
     socket.close();
@@ -284,39 +331,45 @@ describe("streaming scopes", () => {
       headers: { ...(await authHeaders(email, { scopes })), Upgrade: "websocket" },
     });
 
-  it("refuse a token without read scopes on user, user:notification, direct, and list, but not public or hashtag", async () => {
+  it("refuse a token without read:statuses on every stream but user:notification, public and hashtag ones included", async () => {
     const email = "sc-write-only@example.com";
     const listId = await createList(email, "scoped");
-    const scopes = ["write", "push"];
-    for (const query of [
-      "?stream=user",
-      "?stream=user:notification",
-      "?stream=direct",
-      `?stream=list&list=${listId}`,
-    ]) {
-      const refused = await upgradeAs(email, scopes, query);
-      expect(refused.status, query).toBe(401);
-      expect(await refused.json(), query).toEqual(REQUIRED);
+    const streams = [
+      { stream: "user" },
+      { stream: "direct" },
+      { stream: "list", list: listId },
+      { stream: "public" },
+      { stream: "public:local" },
+      { stream: "hashtag", tag: "cats" },
+      { stream: "hashtag:local", tag: "cats" },
+    ];
+    for (const scopes of [["write", "push"], ["read:notifications"]]) {
+      for (const command of streams) {
+        const query = `?${new URLSearchParams(command).toString()}`;
+        const refused = await upgradeAs(email, scopes, query);
+        expect(refused.status, `${query} ${scopes.join(" ")}`).toBe(401);
+        expect(await refused.json(), query).toEqual(REQUIRED);
+      }
     }
+    expect((await upgradeAs(email, ["write"], "?stream=user:notification")).status).toBe(401);
+
+    const socket = await openStream({
+      email,
+      scopes: ["read:notifications"],
+      query: "?stream=user:notification",
+    });
+    for (const command of streams) {
+      socket.send({ type: "subscribe", ...command });
+      expect(await socket.nextError(), command.stream).toEqual(REQUIRED);
+    }
+    socket.close();
+
     for (const query of ["?stream=public", "?stream=hashtag&tag=cats"]) {
-      const accepted = await upgradeAs(email, scopes, query);
+      const accepted = await upgradeAs(email, ["read:statuses"], query);
       expect(accepted.status, query).toBe(101);
       accepted.webSocket?.accept();
       accepted.webSocket?.close();
     }
-
-    const socket = await openStream({ email, scopes, query: "?stream=public:local" });
-    for (const command of [
-      { stream: "user" },
-      { stream: "user:notification" },
-      { stream: "direct" },
-      { stream: "list", list: listId },
-    ]) {
-      socket.send({ type: "subscribe", ...command });
-      expect(await socket.nextError(), command.stream).toEqual(REQUIRED);
-    }
-    await socket.subscribe({ stream: "hashtag", tag: "cats" });
-    socket.close();
   });
 
   it("send a read:statuses token updates on user but no notifications, and refuse user:notification", async () => {

@@ -56,11 +56,14 @@ export {
 export {
   InboxActivity,
   InboxActivitySchema,
+  InboxClaim,
   type InboxActivity as InboxActivityValue,
+  type InboxClaim as InboxClaimValue,
 } from "./inbox-activity";
 export { Hostname, type Hostname as HostnameValue } from "./hostname";
 export { InstanceIdentity } from "./instance-identity";
 export { IsoInstant } from "./iso-instant";
+export { RealtimeWindow } from "./realtime-window";
 export {
   ImportMode,
   type ImportMode as ImportModeValue,
@@ -338,7 +341,6 @@ export {
   type StreamAccess,
   type StreamRefusal,
   type StreamSubscription as StreamSubscriptionValue,
-  type StreamViewer,
 } from "./stream-subscription";
 export { Username } from "./username";
 export { Visibility, reblogVisibility, type Visibility as VisibilityValue } from "./visibility";

@@ -240,7 +240,7 @@ const remoteNote = (author: Remote, slug: string, extra: Record<string, unknown>
   type: "Note",
   attributedTo: author.actorUri,
   content: `<p>${slug}</p>`,
-  published: "2026-10-20T00:00:00.000Z",
+  published: new Date().toISOString(),
   to: [PUBLIC],
   cc: [`${author.actorUri}/followers`],
   ...extra,
@@ -277,7 +277,7 @@ describe("home streams of followers of a remote actor", () => {
         id: announceId,
         type: "Announce",
         object: otherUri,
-        published: "2026-10-21T00:00:00.000Z",
+        published: new Date().toISOString(),
         to: [PUBLIC],
         cc: [`${actor.actorUri}/followers`],
       }),
@@ -297,6 +297,42 @@ describe("home streams of followers of a remote actor", () => {
     for (const stream of [noBoosts, follower]) {
       stream.close();
     }
+  });
+
+  it("do not hear a note published over six hours ago or a redelivered one", async () => {
+    const actor = await remoteActor("hs-remote-late");
+    const follower = await openStream("hs-remote-late-follower@example.com");
+    await followRemote("hs-remote-late-follower@example.com", actor);
+
+    const old = remoteNote(actor, "hs-remote-late-old", {
+      published: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
+    });
+    expect(await actor.send({ id: `${old.id}/activity`, type: "Create", object: old })).toBe(202);
+    expect(await follower.heardNothing()).toBe(true);
+
+    const fresh = remoteNote(actor, "hs-remote-late-fresh");
+    expect(await actor.send({ id: `${fresh.id}/activity`, type: "Create", object: fresh })).toBe(
+      202,
+    );
+    expect(statusOf(await follower.next()).uri).toBe(fresh.id);
+    expect(
+      await actor.send({ id: `${fresh.id}/activity-again`, type: "Create", object: fresh }),
+    ).toBe(202);
+    expect(await follower.heardNothing()).toBe(true);
+
+    const oldBoost = `${actor.actorUri}/statuses/hs-remote-late-boost/activity`;
+    expect(
+      await actor.send({
+        id: oldBoost,
+        type: "Announce",
+        object: fresh.id,
+        published: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
+        to: [PUBLIC],
+        cc: [`${actor.actorUri}/followers`],
+      }),
+    ).toBe(202);
+    expect(await follower.heardNothing()).toBe(true);
+    follower.close();
   });
 
   it("hear its edit and its delete", async () => {

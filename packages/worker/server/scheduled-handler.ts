@@ -1,3 +1,4 @@
+import { releaseStaleInboxClaims } from "./inbox-store";
 import { writeMetric } from "./metrics";
 import { refreshStaleRemoteActors } from "./remote-actor-refresh";
 import { sweepStuckDeliveries } from "./stuck-delivery-sweep";
@@ -8,6 +9,22 @@ import { sweepStuckDeliveries } from "./stuck-delivery-sweep";
  * six-hourly entry fires at the same minute.
  */
 export const HOURLY_CRON = "17 * * * *";
+
+/**
+ * Delete the inbox claims whose apply was cut off. A redelivery takes over a
+ * stale claim itself; this clears the ones no sender retries, which the
+ * activity vacuum leaves alone.
+ */
+const releaseStaleClaims = async (env: Env): Promise<void> => {
+  const released = await releaseStaleInboxClaims(env.DB);
+  if (released.isErr()) {
+    console.error(
+      JSON.stringify({ kind: "InboxStaleClaimsFailed", message: released.error.message }),
+    );
+  } else if (released.value > 0) {
+    console.log(JSON.stringify({ kind: "InboxStaleClaims", released: released.value }));
+  }
+};
 
 export const handleScheduled = (
   controller: ScheduledController,
@@ -69,6 +86,7 @@ export const handleScheduled = (
     // Start or restart the delivery Workflows of targets left `Queued` past
     // their next attempt (a failed create, a step that errored); hourly only.
     controller.cron === HOURLY_CRON ? sweepStuckDeliveries(env) : undefined,
+    controller.cron === HOURLY_CRON ? releaseStaleClaims(env) : undefined,
   ]).then(() => {
     writeMetric(env, "cron", [1], [controller.cron, "scheduled"]);
   });

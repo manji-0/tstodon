@@ -112,7 +112,7 @@ export const noteFromUnknown = (
   if (document.value.attributedTo !== actorUri) {
     return err({ kind: "InvalidObject" });
   }
-  const publishedAt = IsoInstant.parse(document.value.published).orElse(() =>
+  const publishedAt = IsoInstant.parseRemote(document.value.published).orElse(() =>
     IsoInstant.parse(nowIso()),
   );
   if (publishedAt.isErr()) {

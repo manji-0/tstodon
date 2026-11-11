@@ -9,7 +9,6 @@ import {
 } from "@tstodon/domain";
 import { expect } from "vite-plus/test";
 import { z } from "zod";
-import { ANONYMOUS_HUB } from "../server/stream-access";
 import { expectContract } from "./api-contract";
 import { publishToHub } from "../server/stream-publish";
 import { authHeaders, signedInAccount } from "./auth-fixture";
@@ -61,19 +60,17 @@ const channelOf = (command: StreamCommand): StreamChannelValue => {
 };
 
 /**
- * A streaming socket, signed in as `email` (with a token of `scopes`, every
- * scope by default) or anonymous, opened at
- * `/api/v1/streaming` with `query`, and read one message at a time.
+ * A streaming socket, signed in as `email` with a token of `scopes` (every
+ * scope by default), opened at `/api/v1/streaming` with `query`, and read
+ * one message at a time.
  */
 export const openStream = async (
-  options: Readonly<{ email?: string; query?: string; scopes?: ReadonlyArray<string> }>,
+  options: Readonly<{ email: string; query?: string; scopes?: ReadonlyArray<string> }>,
 ) => {
-  const account = options.email ? await signedInAccount(options.email) : undefined;
+  const account = await signedInAccount(options.email);
   const upgrade = await SELF.fetch(`${ORIGIN}/api/v1/streaming${options.query ?? ""}`, {
     headers: {
-      ...(options.email
-        ? await authHeaders(options.email, options.scopes ? { scopes: options.scopes } : {})
-        : {}),
+      ...(await authHeaders(options.email, options.scopes ? { scopes: options.scopes } : {})),
       Upgrade: "websocket",
     },
   });
@@ -83,8 +80,8 @@ export const openStream = async (
     throw new Error("missing websocket");
   }
   socket.accept();
-  const hub = account?.id ?? ANONYMOUS_HUB;
-  const label = options.email ?? "anonymous";
+  const hub = account.id;
+  const label = options.email;
   const probes = new Set<string>();
   let probeHeard = false;
   const heard: Message[] = [];

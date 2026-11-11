@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param limit
  */
 export const pruneInboxActivities = $runtime.makeTypedQueryFactory(
-  "DELETE FROM inbox_activities\nWHERE activity_id IN (\nSELECT activity_id FROM inbox_activities\nWHERE created_at < $1\nORDER BY created_at\nLIMIT $2\n)",
+  "DELETE FROM inbox_activities\nWHERE activity_id IN (\nSELECT activity_id FROM inbox_activities\nWHERE state = 'Processed'\nAND created_at < $1\nORDER BY created_at\nLIMIT $2\n)",
 ) as (
   receivedBefore: string,
   limit: number,

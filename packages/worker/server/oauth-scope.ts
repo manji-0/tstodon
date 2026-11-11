@@ -145,8 +145,8 @@ const SCOPE_RULES: ReadonlyArray<ScopeRule> = [
   rule("/api/v1/statuses/:id/translate", NONE, "read:statuses"),
   rule("/api/v1/statuses(?:/.*)?", "read:statuses", "write:statuses"),
 
-  // The streaming route checks scopes per stream (`streamAccess`): public and
-  // hashtag streams need none, as in Mastodon.
+  // The streaming route checks scopes per stream (`streamAccess`), as
+  // Mastodon's streaming server does.
   rule("/api/v1/streaming(?:/.*)?", NONE, NONE),
   // Mastodon's suggestions take only the top-level scopes.
   rule("/api/v(?:1|2)/suggestions(?:/.*)?", "read", "write"),

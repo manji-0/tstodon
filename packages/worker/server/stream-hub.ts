@@ -1,4 +1,3 @@
-import { ANONYMOUS_HUB } from "./stream-access";
 import { DurableObject } from "cloudflare:workers";
 import {
   StreamChannel,
@@ -18,7 +17,6 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import type { RepositoryError } from "./d1";
 import {
-  hubName,
   parseSocketState,
   requestStreamChannel,
   type SocketState,
@@ -43,7 +41,6 @@ export const MAX_SOCKET_CHANNELS = 32;
  * Distinct hashtag and list streams one hub's sockets may hold together.
  * Each is a `stream_subscriptions` row and, for a hashtag, a timeline pass
  * when a status carries it; public streams (six at most) are not counted.
- * Every anonymous socket shares one hub, so they share this budget.
  */
 export const MAX_HUB_TAGGED_CHANNELS = 32;
 
@@ -101,11 +98,9 @@ const MAX_SSE_BACKLOG = 256;
 
 /**
  * Open SSE connections per hub. Unlike a hibernating WebSocket, an SSE
- * response keeps the Durable Object awake and billed, and every tokenless
- * client shares the anonymous hub, so both are bounded.
+ * response keeps the Durable Object awake and billed, so it is bounded.
  */
-export const MAX_ACCOUNT_EVENT_STREAMS = 32;
-export const MAX_ANONYMOUS_EVENT_STREAMS = 64;
+export const MAX_EVENT_STREAMS = 32;
 
 /** One open `text/event-stream` response: the stream it holds and how to write to it. */
 type EventStreamConnection = Readonly<{
@@ -127,9 +122,9 @@ const parseStreamCommand = schemaResult(StreamCommandSchema);
 const parseJson = (text: string): unknown => parseJsonText(text).unwrapOr(undefined);
 
 /**
- * One viewer's open streaming sockets (an account's, or every anonymous
- * one). Each socket carries the streams it subscribed to in its attachment,
- * so they survive hibernation, and hears only events for those streams.
+ * One account's open streaming sockets. Each socket carries the streams it
+ * subscribed to in its attachment, so they survive hibernation, and hears
+ * only events for those streams.
  *
  * The hub mirrors its sockets' public, hashtag, and list subscriptions into
  * `stream_subscriptions`, one row per distinct channel, where fan-outs look
@@ -162,10 +157,9 @@ export class StreamHub extends DurableObject<Env> {
     }
     const wanted = new Set(delivery.value.channels.map(StreamChannel.key));
     const { event } = delivery.value;
-    for (const socket of this.openSockets()) {
-      const state = this.stateOf(socket);
-      for (const channel of state?.channels ?? []) {
-        if (wanted.has(StreamChannel.key(channel)) && state && mayHear(state.access, event)) {
+    for (const { socket, state } of this.openSockets()) {
+      for (const channel of state.channels) {
+        if (wanted.has(StreamChannel.key(channel)) && mayHear(state.access, event)) {
           socket.send(mastodonStreamMessage(channel, event));
         }
       }
@@ -194,7 +188,7 @@ export class StreamHub extends DurableObject<Env> {
     if (state.isErr()) {
       return new Response("Missing socket state", { status: 400 });
     }
-    const hub = hubName(state.value.viewer);
+    const hub = state.value.accountId;
     if (request.headers.get("Upgrade") !== "websocket") {
       return this.serially(() => this.openEventStream(hub, state.value));
     }
@@ -221,8 +215,7 @@ export class StreamHub extends DurableObject<Env> {
 
   /** An SSE response for `state`'s one stream, which `publish` writes to until the client goes. */
   private async openEventStream(hub: string, state: SocketState): Promise<Response> {
-    const limit = hub === ANONYMOUS_HUB ? MAX_ANONYMOUS_EVENT_STREAMS : MAX_ACCOUNT_EVENT_STREAMS;
-    if (this.eventStreams.size >= limit) {
+    if (this.eventStreams.size >= MAX_EVENT_STREAMS) {
       return Response.json({ error: "Too many streaming connections" }, { status: 429 });
     }
     const refusal = this.admit([], state.channels);
@@ -329,7 +322,7 @@ export class StreamHub extends DurableObject<Env> {
     if (!state) {
       return ok(undefined);
     }
-    const channel = await requestStreamChannel(this.env, state.viewer, state.access, wire);
+    const channel = await requestStreamChannel(this.env, state.accountId, state.access, wire);
     if (channel.isErr()) {
       return err(channel.error);
     }
@@ -344,7 +337,7 @@ export class StreamHub extends DurableObject<Env> {
     if (refusal) {
       return err(refusal);
     }
-    const hub = hubName(state.viewer);
+    const hub = state.accountId;
     const written = await this.addRows(hub, [channel.value]);
     if (written.isErr()) {
       return err({ kind: "Unavailable" });
@@ -382,7 +375,7 @@ export class StreamHub extends DurableObject<Env> {
       ...state,
       channels: state.channels.filter((held) => StreamChannel.key(held) !== target),
     });
-    await this.dropRowIfUnheld(hubName(state.viewer), channel.value);
+    await this.dropRowIfUnheld(state.accountId, channel.value);
     return ok(undefined);
   }
 
@@ -394,7 +387,7 @@ export class StreamHub extends DurableObject<Env> {
     }
     await this.serially(async () => {
       for (const channel of state.channels) {
-        await this.dropRowIfUnheld(hubName(state.viewer), channel);
+        await this.dropRowIfUnheld(state.accountId, channel);
       }
     });
   }
@@ -459,18 +452,36 @@ export class StreamHub extends DurableObject<Env> {
   /** Every channel a WebSocket or an SSE response holds. */
   private heldChannels(): StreamChannelValue[] {
     return [
-      ...this.openSockets().flatMap((socket) => this.stateOf(socket)?.channels ?? []),
+      ...this.openSockets().flatMap(({ state }) => state.channels),
       ...[...this.eventStreams].flatMap((connection) => connection.state.channels),
     ];
   }
 
-  private openSockets(): WebSocket[] {
-    return this.ctx.getWebSockets().filter((socket) => socket.readyState === WebSocket.OPEN);
+  /**
+   * The open sockets with their state. A socket whose attachment no longer
+   * parses (one a deploy left with an older shape, such as a tokenless
+   * socket from before streaming needed a token) is closed, not served.
+   */
+  private openSockets(): Array<Readonly<{ socket: WebSocket; state: SocketState }>> {
+    return this.ctx
+      .getWebSockets()
+      .filter((socket) => socket.readyState === WebSocket.OPEN)
+      .flatMap((socket) => {
+        const state = this.stateOf(socket);
+        return state ? [{ socket, state }] : [];
+      });
   }
 
+  /** The socket's state, or undefined after closing a socket whose attachment does not parse. */
   private stateOf(socket: WebSocket): SocketState | undefined {
     const state = parseSocketState(socket.deserializeAttachment());
-    return state.isOk() ? state.value : undefined;
+    if (state.isOk()) {
+      return state.value;
+    }
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.close(1008, "Missing access token");
+    }
+    return undefined;
   }
 }
 

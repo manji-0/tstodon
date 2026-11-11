@@ -1,4 +1,11 @@
-import { LocalStatus, StatusId, StatusTarget, Visibility, reblogVisibility } from "@tstodon/domain";
+import {
+  LocalStatus,
+  RealtimeWindow,
+  StatusId,
+  StatusTarget,
+  Visibility,
+  reblogVisibility,
+} from "@tstodon/domain";
 import { err, ok } from "neverthrow";
 import { parseLocalStatusId } from "../activitypub";
 import { nowInstant } from "../clock";
@@ -52,7 +59,9 @@ export const receiveRemoteAnnounce: InboxHandler<RemoteDelivery<"Announce">> = a
   if (boosted.isErr()) {
     return err(boosted.error);
   }
-  if (boosted.value) {
+  // As for a `Create`, a boost published more than the real-time window ago
+  // is stored but not streamed.
+  if (boosted.value && RealtimeWindow.contains(boosted.value.publishedAt, nowInstant())) {
     await enqueueHomeFanOut(env, {
       event: "update",
       entryId: boosted.value.id,

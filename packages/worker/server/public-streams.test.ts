@@ -58,7 +58,7 @@ const remoteNote = (author: Remote, slug: string) => ({
   type: "Note",
   attributedTo: author.actorUri,
   content: `<p>${slug}</p>`,
-  published: "2026-10-20T00:00:00.000Z",
+  published: new Date().toISOString(),
   to: [PUBLIC],
   cc: [`${author.actorUri}/followers`],
 });
@@ -136,13 +136,17 @@ describe("public streams", () => {
       email: "ps-local-viewer@example.com",
       query: "?stream=public:local",
     });
-    const anonymous = await openStream({ query: "?stream=public:local" });
+    const reader = await openStream({
+      email: "ps-local-reader@example.com",
+      query: "?stream=public:local",
+      scopes: ["read:statuses"],
+    });
     const user = await openStream({ email: "ps-local-user@example.com", query: "?stream=user" });
 
     await post(author, "unlisted, not public", "unlisted");
     const id = await post(author, "out in public");
 
-    for (const socket of [local, anonymous]) {
+    for (const socket of [local, reader]) {
       const heard = await socket.next();
       expect(heard).toMatchObject({ stream: ["public:local"], event: "update" });
       expect(statusOf(heard).id).toBe(id);
@@ -152,7 +156,7 @@ describe("public streams", () => {
     const deleted = await json(author, `/api/v1/statuses/${id}`, { method: "DELETE" });
     expect(deleted.status).toBe(200);
     expect(await local.next()).toEqual({ stream: ["public:local"], event: "delete", payload: id });
-    for (const socket of [local, anonymous, user]) {
+    for (const socket of [local, reader, user]) {
       socket.close();
     }
   });
@@ -265,7 +269,7 @@ describe("public streams", () => {
       email: "ps-rows-viewer@example.com",
       query: "?stream=public:local",
     });
-    const hub = socket.account?.id ?? "";
+    const hub = socket.account.id;
     expect(await rows(hub)).toBe(1);
     socket.close();
     await eventually(hub, 0);

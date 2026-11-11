@@ -7,15 +7,15 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param activityId
  */
-export const inboxActivityExists = $runtime.makeTypedQueryFactory(
-  "SELECT activity_id\nFROM inbox_activities\nWHERE activity_id = $1",
+export const findInboxActivityState = $runtime.makeTypedQueryFactory(
+  "SELECT state FROM inbox_activities WHERE activity_id = $1",
 ) as (
   activityId: string,
-) => $runtime.TypedSql<inboxActivityExists.Parameters, inboxActivityExists.Result>;
+) => $runtime.TypedSql<findInboxActivityState.Parameters, findInboxActivityState.Result>;
 
-export namespace inboxActivityExists {
+export namespace findInboxActivityState {
   export type Parameters = [activityId: string];
   export type Result = {
-    activity_id: string | null;
+    state: string;
   };
 }
