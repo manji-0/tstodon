@@ -129,7 +129,7 @@ export const importDetailPage = (
   page(
     `${importTypeLabel(imported.type)} import · ${instanceName}`,
     `${nav}
-      <p class="muted"><a href="/settings/import">Back to imports</a></p>
+      <p class="muted"><a href="/settings/import">← Back to imports</a></p>
       <h1>${escapeHtml(importTypeLabel(imported.type))} import</h1>
       <p>${escapeHtml(stateText(imported))} (${escapeHtml(imported.mode.kind.toLowerCase())}): ${escapeHtml(progress(imported))}.</p>${
         imported.state === "Finished" && imported.mode.kind === "Overwrite"

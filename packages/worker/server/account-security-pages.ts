@@ -2,7 +2,7 @@ import type { AuthorizedApp, SessionEntry } from "./account-security-store";
 import { ACCESS_LOGOUT_PATH } from "./access-jwt";
 import { page } from "./auth-pages";
 import { escapeHtml } from "./html";
-import { messageLine, nav, type PageMessage } from "./settings-pages";
+import { messageLine, minute, nav, type PageMessage } from "./settings-pages";
 
 /**
  * Mastodon's `/auth/edit` ("Password and security") for an account that signs
@@ -21,13 +21,12 @@ export type SecurityView = Readonly<{
 }>;
 
 const day = (date: Date): string => date.toISOString().slice(0, 10);
-const minute = (date: Date): string => `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 
 const postForm = (action: string, fields: Readonly<Record<string, string>>, button: string) =>
   `<form method="post" action="${action}">${Object.entries(fields)
     .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}" />`)
     .join("")}
-          <button type="submit">${button}</button>
+          <button type="submit" class="danger">${button}</button>
         </form>`;
 
 const sessionItem = (session: SecurityView["sessions"][number], view: SecurityView): string => `

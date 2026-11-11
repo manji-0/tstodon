@@ -9,7 +9,7 @@ import type { DomainBlockRow } from "./admin-domain-block-store";
 import { page } from "./auth-pages";
 import { escapeHtml } from "./html";
 import { RemoteAccountId } from "./remote-account-id";
-import { checkbox, messageLine, options, type PageMessage } from "./settings-pages";
+import { checkbox, messageLine, nav, options, type PageMessage } from "./settings-pages";
 
 /**
  * Mastodon's admin pages that its web app links to (`/admin/reports`,
@@ -31,11 +31,18 @@ const ADMIN_LINKS = [
   ["/admin/actor_keys", "Signing keys"],
 ] as const;
 
-const adminNav = `      <p class="muted"><a href="/">Back to the web app</a> · <a href="/settings/preferences">Preferences</a></p>
-      <p><strong>Administration</strong> · ${ADMIN_LINKS.map(([href, label]) => `<a href="${href}">${label}</a>`).join(" · ")}</p>`;
+/** A section of the admin navigation, by its link; a page outside them all has none. */
+export type AdminSection = (typeof ADMIN_LINKS)[number][0];
 
-export const adminPage = (instanceName: string, title: string, body: string): string =>
-  page(`${title} · ${instanceName}`, `${adminNav}\n${body}`);
+const adminNav = (section: AdminSection | undefined): string => `${nav}
+      <nav class="sections" aria-label="Administration">${ADMIN_LINKS.map(([href, label]) => `<a href="${href}"${href === section ? ` aria-current="page"` : ""}>${label}</a>`).join("")}</nav>`;
+
+export const adminPage = (
+  instanceName: string,
+  title: string,
+  section: AdminSection | undefined,
+  body: string,
+): string => page(`${title} · ${instanceName}`, `${adminNav(section)}\n${body}`);
 
 /** An account as an admin page names it, linked to its admin page when it has one. */
 export type AccountLabel = Readonly<{ label: string; href: string | undefined }>;
@@ -49,13 +56,16 @@ export const postButton = (
   action: string,
   label: string,
   fields: Readonly<Record<string, string>> = {},
+  tone: "default" | "danger" = "default",
 ): string =>
   `<form method="post" action="${escapeHtml(action)}">${Object.entries(fields)
     .map(
       ([name, value]) =>
         `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}" />`,
     )
-    .join("")}<button type="submit">${escapeHtml(label)}</button></form>`;
+    .join(
+      "",
+    )}<button type="submit"${tone === "danger" ? ` class="danger"` : ""}>${escapeHtml(label)}</button></form>`;
 
 export const excerpt = (text: string, length = 140): string =>
   text.length > length ? `${text.slice(0, length - 1)}…` : text;
@@ -98,6 +108,7 @@ export const reportsPage = (
   adminPage(
     instanceName,
     "Reports",
+    "/admin/reports",
     `      <h1>Reports</h1>
       <p>${
         view.resolved
@@ -181,6 +192,7 @@ export const reportPage = (
   return adminPage(
     instanceName,
     `Report #${report.id}`,
+    "/admin/reports",
     `      <h1>Report #${escapeHtml(report.id)}</h1>
 ${messageLine(message)}
       <ul>
@@ -245,6 +257,7 @@ export const confirmPage = (
   adminPage(
     instanceName,
     view.title,
+    undefined,
     `      <h1>${escapeHtml(view.title)}</h1>
       <p>${escapeHtml(view.text)}</p>
       ${postButton(view.action, view.confirmLabel, { ...view.fields, confirmed: "1" })}
@@ -277,6 +290,7 @@ export const accountsPage = (
   adminPage(
     instanceName,
     "Accounts",
+    "/admin/accounts",
     `      <h1>Accounts</h1>
       <form method="get" action="/admin/accounts">
         <label for="status">Status</label>
@@ -322,6 +336,7 @@ export const accountPage = (
   return adminPage(
     instanceName,
     `@${account.username}`,
+    "/admin/accounts",
     `      <h1>@${escapeHtml(account.username)}</h1>
 ${messageLine(message)}
       <ul>
@@ -365,6 +380,7 @@ export const actorKeysPage = (
   adminPage(
     instanceName,
     "Signing keys",
+    "/admin/actor_keys",
     `      <h1>Signing keys</h1>
 ${messageLine(message)}
       <p>Every local account, and the server's own instance actor, signs what it sends with its own key; other servers check those signatures against the public key they cached. Rotate keys when they may have leaked, for instance when a copy of the database got out. See the runbook's key compromise playbook first: rotating keys does not end sessions or change other secrets.</p>
@@ -403,6 +419,7 @@ export const remoteActorPage = (
   return adminPage(
     instanceName,
     view.acct,
+    "/admin/accounts",
     `      <h1>${escapeHtml(view.acct)}</h1>
 ${messageLine(message)}
       <ul>
@@ -436,6 +453,7 @@ export const adminNotFoundPage = (instanceName: string, what: string): string =>
   adminPage(
     instanceName,
     "Not found",
+    undefined,
     `      <h1>Not found</h1>
       <p>There is no such ${escapeHtml(what)}.</p>`,
   );
@@ -460,13 +478,14 @@ export const instancesPage = (
   adminPage(
     instanceName,
     "Federation",
+    "/admin/instances",
     `      <h1>Federation</h1>
+${messageLine(message)}
       <form method="get" action="/admin/instances">
         <label for="domain">Domain</label>
         <input id="domain" name="domain" required placeholder="example.com" autocomplete="off" />
         <button type="submit">Moderate domain</button>
       </form>
-${messageLine(message)}
       <h2>Blocked domains</h2>${
         blocks.length === 0
           ? `
@@ -519,6 +538,7 @@ export const instancePage = (
   return adminPage(
     instanceName,
     view.domain,
+    "/admin/instances",
     `      <h1>${escapeHtml(view.domain)}</h1>
 ${messageLine(message)}
       <p>${
@@ -550,7 +570,7 @@ ${messageLine(message)}
         view.blocked
           ? `
       <h2>Lift the block</h2>
-      ${postButton(action, "Remove block", { do: "remove" })}`
+      ${postButton(action, "Remove block", { do: "remove" }, "danger")}`
           : ""
       }
       <h2>Delivery</h2>${
