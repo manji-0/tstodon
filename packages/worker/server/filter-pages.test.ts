@@ -195,6 +195,59 @@ describe("filter pages", () => {
     expect((await apiFilters(headers))[0]?.statuses).toEqual([]);
   });
 
+  it("keeps each filter's posts apart in the list and the API", async () => {
+    const { fetcher } = await signUp("filters_many");
+    const headers = await apiHeaders("filters_many");
+    for (const title of ["Alpha", "Beta", "Gamma"]) {
+      await created(fetcher, { ...SAVE, title });
+    }
+    const post = async (text: string): Promise<string> => {
+      const response = await SELF.fetch(`${ORIGIN}/api/v1/statuses`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ status: text }),
+      });
+      return read(z.object({ id: z.string().min(1) }), await response.json()).id;
+    };
+    const attach = async (filterId: string, statusId: string): Promise<void> => {
+      const response = await SELF.fetch(`${ORIGIN}/api/v2/filters/${filterId}/statuses`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ status_id: statusId }),
+      });
+      expect(response.status).toBe(200);
+    };
+    const alpha = await idOf(headers, "Alpha");
+    const beta = await idOf(headers, "Beta");
+    const first = await post("one");
+    const second = await post("two");
+    const third = await post("three");
+    await attach(alpha, second);
+    await attach(beta, third);
+    await attach(alpha, first);
+
+    const statusIds = new Map(
+      (await apiFilters(headers)).map((filter) => [
+        filter.title,
+        filter.statuses.map((entry) => entry.status_id),
+      ]),
+    );
+    expect(statusIds).toEqual(
+      new Map([
+        ["Alpha", [second, first]],
+        ["Beta", [third]],
+        ["Gamma", []],
+      ]),
+    );
+
+    const items = (await page(await fetcher("/filters"))).split("<li>").slice(1);
+    const itemOf = (title: string): string =>
+      items.find((item) => item.includes(`<strong>${title}</strong>`)) ?? "";
+    expect(itemOf("Alpha")).toContain("· 2 posts");
+    expect(itemOf("Beta")).toContain("· 1 post<");
+    expect(itemOf("Gamma")).toContain("keywords</span>");
+  });
+
   it("deletes a filter", async () => {
     const { fetcher } = await signUp("filters_delete");
     const headers = await apiHeaders("filters_delete");
