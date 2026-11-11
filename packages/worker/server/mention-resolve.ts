@@ -1,9 +1,12 @@
 import { InstanceIdentity, RemoteActor, Hostname } from "@tstodon/domain";
-import { findAccountsByIds } from "./account-store";
+import type { LocalAccount } from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
+import { findAccountsByIds, findAccountsByUsernames } from "./account-store";
+import type { RepositoryError } from "./d1";
 import type { NoteMention } from "./activitypub";
 import { listStatusMentions } from "./mention-store";
 import { suspendedDomains } from "./admin-domain-block-store";
-import { remoteMentionHandles } from "./html";
+import { mentionUsernames, remoteMentionHandles, type PostMention } from "./html";
 import { resolveRemoteActorByHandle } from "./remote-actor-fetch";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { allowListAdmits, federationAllowHosts } from "./runtime-config";
@@ -65,6 +68,42 @@ export const resolveRemoteMentions = async (
   }
   return [...actors.values()];
 };
+
+/** The accounts post text mentions that exist: local accounts, and remote actors that resolve. */
+export type ResolvedMentions = Readonly<{
+  locals: ReadonlyArray<LocalAccount>;
+  remotes: ReadonlyArray<RemoteActor>;
+}>;
+
+export const resolveMentions = async (
+  env: Env,
+  identity: InstanceIdentity,
+  text: string,
+): Promise<Result<ResolvedMentions, RepositoryError>> => {
+  const locals = await findAccountsByUsernames(env.DB, [
+    ...mentionUsernames(text, identity.domain),
+  ]);
+  return locals.isErr()
+    ? err(locals.error)
+    : ok({ locals: locals.value, remotes: await resolveRemoteMentions(env, identity, text) });
+};
+
+/** What `formatPostText` links each resolved mention to: the REST `mentions[].url`. */
+export const mentionLinks = (
+  identity: InstanceIdentity,
+  resolved: ResolvedMentions,
+): ReadonlyArray<PostMention> => [
+  ...resolved.locals.map((account) => ({
+    username: account.username,
+    domain: null,
+    url: InstanceIdentity.actorUrl(identity, account.username),
+  })),
+  ...resolved.remotes.map((actor) => ({
+    username: actor.username,
+    domain: actor.domain,
+    url: actor.actorUri,
+  })),
+];
 
 /** The `Mention` tags of a local note, from its stored local and remote mentions. */
 export const loadNoteMentions = async (
