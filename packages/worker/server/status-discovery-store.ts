@@ -14,8 +14,6 @@ import {
   WITH_MEDIA_SQL,
 } from "./status-timeline-store";
 
-const ESCAPE = "ESCAPE '\\'";
-
 /** Additional tag constraints on a tag timeline (`any[]`/`all[]`/`none[]`). */
 export type TagStatusFilters = Readonly<{
   any: ReadonlyArray<string>;
@@ -58,42 +56,28 @@ export const listTagStatuses = async (
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
     const { where, order, binds } = cursorFragment(cursor);
-    // Hashtags are matched case-insensitively, like the primary one, and
-    // literally: a `_` in a tag is not a LIKE wildcard.
-    const like = (value: string): string => `%#${value.replace(/[\\%_]/g, "\\$&")}%`;
-    const patterns = (tags: ReadonlyArray<string>): string[] =>
-      tags.flatMap((value) => [like(value), like(value.toLowerCase())]);
-    const contains = (tags: ReadonlyArray<string>): string =>
-      tags.length === 0
+    const tagged =
+      "EXISTS (SELECT 1 FROM local_status_tags t WHERE t.status_id = statuses.id AND t.tag = ?)";
+    const any =
+      filters.any.length === 0
         ? ""
-        : ` AND (${patterns(tags)
-            .map(() => `content_text LIKE ? ${ESCAPE}`)
-            .join(" OR ")})`;
-    const containsAll = (tags: ReadonlyArray<string>): string =>
-      tags.length === 0
-        ? ""
-        : ` AND (${tags.map(() => `content_text LIKE ? ${ESCAPE} AND content_text LIKE ? ${ESCAPE}`).join(" AND ")})`;
-    const excludes = (tags: ReadonlyArray<string>): string =>
-      tags.length === 0
-        ? ""
-        : ` AND ${patterns(tags)
-            .map(() => `content_text NOT LIKE ? ${ESCAPE}`)
-            .join(" AND ")}`;
+        : ` AND EXISTS (SELECT 1 FROM local_status_tags t WHERE t.status_id = statuses.id AND t.tag IN (${filters.any.map(() => "?").join(", ")}))`;
+    const all = filters.all.map(() => ` AND ${tagged}`).join("");
+    const none = filters.none.map(() => ` AND NOT ${tagged}`).join("");
     const onlyMedia = filters.onlyMedia ? ` ${WITH_MEDIA_SQL}` : "";
     const sql = `SELECT ${statusSelect} FROM statuses
          WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
            AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
-           AND (content_text LIKE ? ${ESCAPE} OR content_text LIKE ? ${ESCAPE})
-           ${contains(filters.any)}${containsAll(filters.all)}${excludes(filters.none)}${onlyMedia}
+           AND ${tagged}${any}${all}${none}${onlyMedia}
          ${where} ${order} LIMIT ?`;
     const { results } = await db
       .prepare(sql)
       .bind(
         ...suppressedBinds(viewerId),
-        ...patterns([tag]),
-        ...patterns(filters.any),
-        ...patterns(filters.all),
-        ...patterns(filters.none),
+        tag,
+        ...filters.any,
+        ...filters.all,
+        ...filters.none,
         ...binds,
         limit,
       )

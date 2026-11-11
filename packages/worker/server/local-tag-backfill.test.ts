@@ -26,6 +26,13 @@ const names = async (query: string): Promise<string[]> => {
   return parsed.isOk() ? parsed.value.hashtags.map((tag) => tag.name) : ["unreadable"];
 };
 
+const timeline = async (tag: string): Promise<string[]> => {
+  const response = await SELF.fetch(`https://example.com/api/v1/timelines/tag/${tag}`);
+  expect(response.status).toBe(200);
+  const parsed = schemaResult(z.array(z.object({ visibility: z.string() })))(await response.json());
+  return parsed.isOk() ? parsed.value.map((status) => status.visibility) : ["unreadable"];
+};
+
 /** The state a deploy leaves: notes whose names were never stored, and a fresh cursor. */
 const forgetTagNames = async (prefix: string): Promise<void> => {
   await env.DB.prepare("DELETE FROM tags WHERE name >= ? AND name < ? || char(1114111)")
@@ -41,7 +48,7 @@ describe("local note tag backfill", () => {
     await post("an old #ltbprivate note", "private");
     await forgetTagNames("ltb");
     await env.DB.prepare(
-      "UPDATE backfill_cursors SET after_id = '', completed_at = NULL WHERE name = 'local_note_tags'",
+      "UPDATE backfill_cursors SET after_id = '', completed_at = NULL WHERE name = 'local_status_tags'",
     ).run();
     expect(await names("ltb")).toEqual([]);
 
@@ -62,5 +69,23 @@ describe("local note tag backfill", () => {
     await forgetTagNames("ltbafter");
     expect(await processOutboxJob(env, { kind: "BackfillLocalNoteTags" })).toBe("ok");
     expect(await names("ltbafter")).toEqual([]);
+  });
+
+  it("indexes a stored note under its tags after one page, whatever its visibility", async () => {
+    await post("an old ＃ＬＴＢＩＮＤＥＸ note", "public");
+    await post("an old #ltbindex followers note", "private");
+    await env.DB.prepare("DELETE FROM local_status_tags WHERE tag = 'ltbindex'").run();
+    await env.DB.prepare(
+      "UPDATE backfill_cursors SET after_id = '', completed_at = NULL WHERE name = 'local_status_tags'",
+    ).run();
+    expect(await timeline("ltbindex")).toEqual([]);
+
+    const page = await backfillLocalNoteTags(env.DB);
+    expect(page.isOk() && page.value.chained).toBe(false);
+    expect(await timeline("ltbindex")).toEqual(["public"]);
+    const indexed = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM local_status_tags WHERE tag = 'ltbindex'",
+    ).first();
+    expect(indexed).toEqual({ count: 2 });
   });
 });

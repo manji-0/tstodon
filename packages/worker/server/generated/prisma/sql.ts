@@ -144,6 +144,8 @@ export * from "./sql/deleteListRemoteMember";
 
 export * from "./sql/deleteLocalBoostsOfOwned";
 
+export * from "./sql/deleteLocalStatusTags";
+
 export * from "./sql/deleteMedia";
 
 export * from "./sql/deleteMute";
@@ -417,6 +419,8 @@ export * from "./sql/insertListRemoteMemberOfFollow";
 export * from "./sql/insertLocalNote";
 
 export * from "./sql/insertLocalReblog";
+
+export * from "./sql/insertLocalStatusTags";
 
 export * from "./sql/insertMedia";
 

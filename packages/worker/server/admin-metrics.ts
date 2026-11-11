@@ -9,7 +9,7 @@ import type {
   AdminMeasureKey,
   AdminRetentionFrequency,
 } from "@tstodon/api/values";
-import { extractHashtags, Languages } from "@tstodon/core";
+import { Languages } from "@tstodon/core";
 import { z } from "zod";
 import { parseRows, runD1, type RepositoryError } from "./d1";
 import { dailyMediaAttachmentBytes as dailyMediaAttachmentBytesSql } from "./generated/prisma/sql";
@@ -215,7 +215,6 @@ type TagUse = Readonly<{ account: string; server: string; day: string; language:
 const LocalTagRow = z.object({
   account_id: z.string(),
   created_at: z.string(),
-  content_text: z.string(),
   language: z.string().nullable(),
 });
 const RemoteTagRow = z.object({
@@ -246,12 +245,13 @@ const tagUses = async (
   const [local, remote] = await Promise.all([
     db
       .prepare(
-        `SELECT account_id, created_at, content_text, language FROM statuses
-         WHERE kind = 'LocalNote' AND visibility IN ('public', 'unlisted')
-           AND created_at >= ? AND created_at < ? AND content_text LIKE ?
-         ORDER BY id DESC LIMIT ?`,
+        `SELECT s.account_id, s.created_at, s.language FROM local_status_tags t
+         JOIN statuses s ON s.id = t.status_id
+         WHERE t.tag = ? AND s.kind = 'LocalNote' AND s.visibility IN ('public', 'unlisted')
+           AND s.created_at >= ? AND s.created_at < ?
+         ORDER BY t.status_id DESC LIMIT ?`,
       )
-      .bind(from, to, `%#${name}%`, TAG_SCAN_LIMIT)
+      .bind(name, from, to, TAG_SCAN_LIMIT)
       .all(),
     db
       .prepare(
@@ -266,14 +266,12 @@ const tagUses = async (
       .all(),
   ]);
   return [
-    ...parseRows(LocalTagRow, local.results)
-      .filter((row) => extractHashtags(row.content_text).includes(name))
-      .map((row) => ({
-        account: row.account_id,
-        server: localDomain,
-        day: row.created_at.slice(0, 10),
-        language: row.language,
-      })),
+    ...parseRows(LocalTagRow, local.results).map((row) => ({
+      account: row.account_id,
+      server: localDomain,
+      day: row.created_at.slice(0, 10),
+      language: row.language,
+    })),
     ...parseRows(RemoteTagRow, remote.results).map((row) => ({
       account: row.actor_uri,
       server: (row.domain ?? new URL(row.actor_uri).host).toLowerCase(),

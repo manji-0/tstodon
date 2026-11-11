@@ -9,11 +9,15 @@ import {
   listLocalNoteTextsAfter as listLocalNoteTextsAfterSql,
   readBackfillCursor as readBackfillCursorSql,
 } from "./generated/prisma/sql";
-import { recordTagNames, searchableTagNames } from "./hashtags";
+import { indexLocalStatusTags, recordTagNames, searchableTagNames } from "./hashtags";
 import { d1PrepareTyped, queryTyped } from "./typed-sql";
 
-/** The `backfill_cursors` row migration 0108 seeds for this job. */
-const CURSOR = "local_note_tags";
+/**
+ * The `backfill_cursors` row migration 0132 seeds for this job. Migration
+ * 0108's `local_note_tags` row is left as it is: it is complete on a running
+ * instance, where the notes still need their `local_status_tags` rows.
+ */
+const CURSOR = "local_status_tags";
 
 /** Notes read per page: their text is short, and a page is two statements. */
 export const LOCAL_TAG_BACKFILL_PAGE = 200;
@@ -21,6 +25,7 @@ export const LOCAL_TAG_BACKFILL_PAGE = 200;
 const CursorRow = z.object({ after_id: z.string(), completed_at: z.string().nullable() });
 const NoteTextRow = z.object({
   id: z.string(),
+  account_id: z.string(),
   content_text: z.string(),
   visibility: z.string(),
 });
@@ -29,11 +34,12 @@ const NoteTextRow = z.object({
 export type LocalTagBackfillPage = Readonly<{ scanned: number; chained: boolean }>;
 
 /**
- * Store the tag names of the next page of local notes written before the
- * `tags` table (or by the old worker during the deploy), public and unlisted
- * ones only, and move the cursor past them. A short page marks the cursor
- * complete, after which every run reads the cursor and stops. Two runs on one
- * page store the same names; only one moves the cursor and chains.
+ * Index the next page of local notes written before `local_status_tags` (or
+ * by the old worker during the deploy) under their tags, store the tag names
+ * of the public and unlisted ones, and move the cursor past them. A short
+ * page marks the cursor complete, after which every run reads the cursor and
+ * stops. Two runs on one page write the same rows; only one moves the cursor
+ * and chains.
  */
 export const backfillLocalNoteTags = async (
   db: D1Database,
@@ -58,18 +64,22 @@ export const backfillLocalNoteTags = async (
     return ok({ scanned: 0, chained: false });
   }
   const { afterId, notes } = read.value;
+  const tagged = notes.map((note) => ({ note, tags: extractHashtags(note.content_text) }));
   const names = new Set(
-    notes.flatMap((note) =>
+    tagged.flatMap(({ note, tags }) =>
       searchableTagNames(
         // An unreadable visibility keeps the names out, as a direct note's.
         Visibility.fromMastodon(note.visibility).unwrapOr(Visibility.Direct),
-        extractHashtags(note.content_text),
+        tags,
       ),
     ),
   );
   const full = notes.length === pageSize;
   const advanced = await runD1Batch(db, [
     ...recordTagNames(db, [...names]),
+    ...tagged.flatMap(({ note, tags }) =>
+      indexLocalStatusTags(db, { id: note.id, accountId: note.account_id }, tags),
+    ),
     d1PrepareTyped(
       db,
       advanceBackfillCursorSql(
