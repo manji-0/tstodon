@@ -532,6 +532,8 @@ export * from "./sql/listAuthSessions";
 
 export * from "./sql/listAuthorizedApplicationTokens";
 
+export * from "./sql/listAuthorsBlockingViewerJson";
+
 export * from "./sql/listBlockersOfActor";
 
 export * from "./sql/listCustomEmojiRows";
