@@ -206,9 +206,11 @@ const hashtagEntities = (text: string): EntityOf<"Hashtag">[] =>
 /**
  * Mastodon's `Account::MENTION_RE`: `$1` the username, `$2` the domain.
  * Case-insensitive as Ruby's, so `[a-z]` takes `ſ` and `K` (Kelvin) too.
+ * Unlike Mastodon, the domain may carry a port (`@bob@127.0.0.1:8792`), as
+ * tstodon keeps an actor's `host:port` authority as its domain.
  */
 const MENTION = new RegExp(
-  `(?<![=/${WORD}])@([a-z0-9_]+(?:[.-]+[a-z0-9_]+)*)(?:@([${WORD}]+(?:[.-]+[${WORD}]+)*))?`,
+  `(?<![=/${WORD}])@([a-z0-9_]+(?:[.-]+[a-z0-9_]+)*)(?:@([${WORD}]+(?:[.-]+[${WORD}]+)*(?::\\d{1,5})?))?`,
   "giu",
 );
 /** What may not follow a mention (twitter-text's `end_mention_match`): `@`, a Latin accented letter, `://`. */
