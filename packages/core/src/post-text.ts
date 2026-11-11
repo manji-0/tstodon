@@ -15,18 +15,7 @@ import { POST_URL_PATTERN } from "./post-text-url-pattern";
  */
 export const postUrlRegex = new RegExp(POST_URL_PATTERN.source, POST_URL_PATTERN.flags);
 
-/** `@user@domain`, which counts as `@user` (the domain is free). */
-const REMOTE_MENTION = /(^|[^/\w])@(([a-z0-9_]+)@[a-z0-9.-]+[a-z0-9]+)/gi;
-
 const URL_PLACEHOLDER = "x".repeat(InstanceLimits.status.charactersReservedPerUrl);
-
-/**
- * The text Mastodon counts: each URL is `charactersReservedPerUrl`
- * characters long, and a remote mention counts without its domain
- * (`StatusLengthValidator#countable_text`).
- */
-export const countableText = (text: string): string =>
-  text.replace(postUrlRegex, `$2${URL_PLACEHOLDER}`).replace(REMOTE_MENTION, "$1@$3");
 
 const graphemes =
   typeof Intl.Segmenter === "function"
@@ -165,22 +154,128 @@ const isLastBranchName = (name: ReadonlyArray<string>): boolean => {
 };
 
 /**
+ * A link Mastodon makes of post text, with UTF-16 indices into it
+ * (`Extractor.extract_entities_with_indices`). A hashtag's `name` and a
+ * mention's `username` and `domain` are as written; `start` is at the `#`
+ * or `@`.
+ */
+export type PostEntity =
+  | { readonly kind: "Url"; readonly start: number; readonly end: number; readonly url: string }
+  | {
+      readonly kind: "Hashtag";
+      readonly start: number;
+      readonly end: number;
+      readonly name: string;
+    }
+  | {
+      readonly kind: "Mention";
+      readonly start: number;
+      readonly end: number;
+      readonly username: string;
+      readonly domain?: string;
+    };
+
+type EntityOf<Kind extends PostEntity["kind"]> = Extract<PostEntity, { kind: Kind }>;
+
+const urlEntities = (text: string): EntityOf<"Url">[] =>
+  [...text.matchAll(postUrlRegex)].map((match) => {
+    const start = match.index + (match[2] ?? "").length;
+    const end = match.index + match[0].length;
+    return { kind: "Url", start, end, url: text.slice(start, end) };
+  });
+
+/**
+ * A tag right before `://` loses a trailing `http` or `https` (`#tagged
+ * https://` typed without a space). A name that normalizes to none a tag
+ * can have is no hashtag.
+ */
+const hashtagEntities = (text: string): EntityOf<"Hashtag">[] =>
+  [...text.matchAll(HASHTAG_START)].flatMap((match) => {
+    const run = Array.from(match[1] ?? "");
+    const length = firstBranchLength(run) || lastBranchLength(run);
+    const matched = run.slice(0, length).join("");
+    const beforeScheme = text.startsWith("://", match.index + 1 + matched.length)
+      ? /^(.+)https?$/u.exec(matched)
+      : null;
+    const name = beforeScheme?.[1] ?? matched;
+    return length > 0 && isHashtagName(normalizeHashtag(name))
+      ? [{ kind: "Hashtag", start: match.index, end: match.index + 1 + name.length, name }]
+      : [];
+  });
+
+/**
+ * Mastodon's `Account::MENTION_RE`: `$1` the username, `$2` the domain.
+ * Case-insensitive as Ruby's, so `[a-z]` takes `ſ` and `K` (Kelvin) too.
+ */
+const MENTION = new RegExp(
+  `(?<![=/${WORD}])@([a-z0-9_]+(?:[.-]+[a-z0-9_]+)*)(?:@([${WORD}]+(?:[.-]+[${WORD}]+)*))?`,
+  "giu",
+);
+/** What may not follow a mention (twitter-text's `end_mention_match`): `@`, a Latin accented letter, `://`. */
+const LATIN_ACCENTS =
+  "\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u00FF\\u0100-\\u024F\\u0253\\u0254\\u0256\\u0257\\u0259\\u025B\\u0263\\u0268\\u026F\\u0272\\u0289\\u028B\\u02BB\\u0300-\\u036F\\u1E00-\\u1EFF";
+const AFTER_MENTION = new RegExp(`^(?:[@＠${LATIN_ACCENTS}]|://)`, "u");
+const MAX_DOMAIN_LENGTH = 253;
+
+const mentionEntities = (text: string): EntityOf<"Mention">[] =>
+  [...text.matchAll(MENTION)].flatMap((match) => {
+    const username = match[1] ?? "";
+    const domain = match[2];
+    const end = match.index + match[0].length;
+    if (
+      AFTER_MENTION.test(text.slice(end, end + 3)) ||
+      (domain !== undefined && domain.length > MAX_DOMAIN_LENGTH)
+    ) {
+      return [];
+    }
+    const mention = { kind: "Mention", start: match.index, end, username } as const;
+    return [domain === undefined ? mention : { ...mention, domain }];
+  });
+
+/** In text order, without an entity that starts inside an earlier one (twitter-text's `remove_overlapping_entities`). */
+const withoutOverlaps = <Entity extends PostEntity>(entities: ReadonlyArray<Entity>): Entity[] => {
+  let end = 0;
+  return [...entities]
+    .sort((a, b) => a.start - b.start)
+    .filter((entity) => {
+      if (entity.start < end) {
+        return false;
+      }
+      end = entity.end;
+      return true;
+    });
+};
+
+/**
+ * The URLs, hashtags and mentions Mastodon links in post text, in text
+ * order (`Extractor.extract_entities_with_indices`). Unlike Mastodon, a URL
+ * needs `http(s)` (no `xmpp:` or `magnet:` link).
+ */
+export const extractEntities = (text: string): PostEntity[] =>
+  withoutOverlaps([...urlEntities(text), ...hashtagEntities(text), ...mentionEntities(text)]);
+
+/**
+ * The text Mastodon counts: each URL is `charactersReservedPerUrl`
+ * characters long, and a mention counts without its domain
+ * (`StatusLengthValidator#countable_text`).
+ */
+export const countableText = (text: string): string => {
+  let counted = "";
+  let index = 0;
+  for (const entity of withoutOverlaps([...urlEntities(text), ...mentionEntities(text)])) {
+    counted += text.slice(index, entity.start);
+    counted += entity.kind === "Url" ? URL_PLACEHOLDER : `@${entity.username}`;
+    index = entity.end;
+  }
+  return counted + text.slice(index);
+};
+
+/**
  * The hashtags in post text, normalized and unique, as Mastodon's
- * `Extractor.extract_hashtags` finds them. A tag right before `://` loses
- * a trailing `http` or `https` (`#tagged https://` typed without a space).
+ * `Extractor.extract_hashtags` finds them.
  */
 export const extractHashtags = (text: string): string[] => [
-  ...new Set(
-    [...text.matchAll(HASHTAG_START)].flatMap((match) => {
-      const run = Array.from(match[1] ?? "");
-      const length = firstBranchLength(run) || lastBranchLength(run);
-      const name = run.slice(0, length).join("");
-      const end = match.index + 1 + name.length;
-      const beforeScheme = text.startsWith("://", end) ? /^(.+)https?$/u.exec(name) : null;
-      const normalized = normalizeHashtag(beforeScheme?.[1] ?? name);
-      return length > 0 && isHashtagName(normalized) ? [normalized] : [];
-    }),
-  ),
+  ...new Set(hashtagEntities(text).map((entity) => normalizeHashtag(entity.name))),
 ];
 
 /** Whether post text has a hashtag, which only a public post lists under. */
