@@ -318,6 +318,8 @@ export * from "./sql/findOauthApplicationById";
 
 export * from "./sql/findOutboundActivity";
 
+export * from "./sql/findOutboundActivityWithSigner";
+
 export * from "./sql/findOutboundFollow";
 
 export * from "./sql/findOutboundFollowsJson";
