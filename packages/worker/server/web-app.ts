@@ -27,6 +27,9 @@ import {
 import { queryTyped, runTypedBatch } from "./typed-sql";
 import { vapidPublicKey } from "./vapid";
 import { parseJsonText } from "./json-column";
+import { findTokenPushSubscription } from "./push-subscription-store";
+import { subscriptionDocument } from "./routes/push";
+import { WEB_APP_ID, webAccessTokenId } from "./web-token";
 import { type WebEntry, type WebManifest, webManifest } from "./web-manifest";
 
 export type { WebManifest } from "./web-manifest";
@@ -89,7 +92,6 @@ const pickLocale = (header: string | undefined, available: ReadonlyArray<string>
   return "en";
 };
 
-const WEB_APP_ID = "tstodon-web";
 const WEB_SCOPES = "read write follow push";
 
 /**
@@ -100,7 +102,7 @@ const webAccessToken = async (
   env: Env,
   session: Readonly<{ id: string; token: string }>,
   accountId: string,
-): Promise<string | undefined> => {
+): Promise<Readonly<{ id: string; token: string }> | undefined> => {
   const digest = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(`tstodon-web-access-token:${session.token}`),
@@ -109,11 +111,12 @@ const webAccessToken = async (
     .replaceAll("+", "-")
     .replaceAll("/", "_")
     .replace(/=+$/, "");
+  const id = webAccessTokenId(session.id);
   const now = new Date().toISOString();
   const stored = await runTypedBatch(env.DB, [
     ensureWebApplication(WEB_APP_ID, WEB_SCOPES, now),
     ensureWebAccessToken(
-      `web:${session.id}`,
+      id,
       await sha256Hex(token),
       WEB_APP_ID,
       accountId,
@@ -122,13 +125,15 @@ const webAccessToken = async (
       now,
     ),
   ]);
-  return stored.isOk() ? token : undefined;
+  return stored.isOk() ? { id, token } : undefined;
 };
 
 type Viewer = Readonly<{
   account: LocalAccount;
   role: FediRoleValue;
   token: string;
+  /** The access token's id, which the session's Web Push subscription is stored under. */
+  tokenId: string;
 }>;
 
 /** The signed-in account behind the request's Better Auth session, if it may use the app. */
@@ -142,7 +147,9 @@ const currentViewer = async (request: Request, env: Env): Promise<Viewer | undef
     { id: viewer.sessionId, token: viewer.sessionToken },
     viewer.account.id,
   );
-  return token ? { account: viewer.account, role: viewer.role, token } : undefined;
+  return token
+    ? { account: viewer.account, role: viewer.role, token: token.token, tokenId: token.id }
+    : undefined;
 };
 
 const SettingsRowSchema = z.object({ data_json: z.string() });
@@ -225,9 +232,10 @@ export const initialState = async (
     return state;
   }
   const me = viewer.account.id;
-  const [account, settings] = await Promise.all([
+  const [account, settings, push] = await Promise.all([
     credentialAccountDocument(env, identity.value, viewer.account, viewer.role),
     webSettings(env, me),
+    findTokenPushSubscription(env.DB, viewer.tokenId),
   ]);
   const moved = account.moved ?? undefined;
   return {
@@ -257,6 +265,8 @@ export const initialState = async (
     },
     accounts: { [me]: account, ...(moved ? { [moved.id]: moved } : {}) },
     settings,
+    // The session's subscription, so the UI keeps it instead of subscribing again.
+    push_subscription: push.isOk() && push.value ? subscriptionDocument(env, push.value) : null,
     role: FediRole.toMastodon(viewer.role),
   };
 };
