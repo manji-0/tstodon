@@ -131,13 +131,13 @@ export const listAccountStatusesFiltered = async (
          WHERE account_id = ?
            AND (account_id = ? OR (
              NOT EXISTS (
-               SELECT 1 FROM blocks WHERE blocker_account_id = statuses.account_id AND target_account_id = ?
+               SELECT 1 FROM blocks WHERE blocker_account_id = ? AND target_account_id = ?
              )
              AND (
                visibility IN ('public', 'unlisted')
                OR (visibility = 'private' AND EXISTS (
                  SELECT 1 FROM follows
-                 WHERE follower_account_id = ? AND target_account_id = statuses.account_id AND kind = 'Accepted'
+                 WHERE follower_account_id = ? AND target_account_id = ? AND kind = 'Accepted'
                ))
                OR id IN (SELECT status_id FROM status_mentions WHERE account_id = ?)
              )
@@ -153,8 +153,11 @@ export const listAccountStatusesFiltered = async (
       .bind(
         accountId,
         viewer,
+        // Bound rather than read off each row, so SQLite checks the block and follow once.
+        accountId,
         viewer,
         viewer,
+        accountId,
         viewer,
         filters.excludeReplies ? 1 : 0,
         filters.excludeReblogs ? 1 : 0,
