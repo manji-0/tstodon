@@ -3,6 +3,8 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { expectContract } from "../test/api-contract";
 import { signedInAccount } from "../test/auth-fixture";
+import { z } from "zod";
+import { countAccounts } from "./account-store";
 import { countActiveAccounts, recordAccountActivity } from "./account-activity";
 
 const fetchJson = async (path: string): Promise<unknown> => {
@@ -66,5 +68,22 @@ describe("nodeinfo", () => {
     const after = expectContract(NodeInfo20, await response.json());
     expect(after.usage.users.total).toBe(3);
     expect(response.headers.get("access-control-allow-origin")).toBe("*");
+  });
+});
+
+describe("v2 instance usage", () => {
+  it("reports accounts active in the last 30 days, not every account", async () => {
+    const stale = await signedInAccount("v2-usage-stale@example.com");
+    await signedInAccount("v2-usage-idle@example.com");
+    const request = new Request("https://example.com/api/v1/accounts/verify_credentials");
+    await recordAccountActivity(env.DB, stale.id, request, new Date(Date.now() - 100 * DAY_MS));
+
+    const document = z
+      .object({ usage: z.object({ users: z.object({ active_month: z.number() }) }) })
+      .parse(await fetchJson("/api/v2/instance"));
+    const active = (await countActiveAccounts(env.DB, 30))._unsafeUnwrap();
+    const total = (await countAccounts(env.DB))._unsafeUnwrap();
+    expect(document.usage.users.active_month).toBe(active);
+    expect(active).toBeLessThan(total);
   });
 });

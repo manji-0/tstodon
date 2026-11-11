@@ -90,6 +90,27 @@ describe("status embeds", () => {
     expect((await oembed("not a url")).status).toBe(404);
   });
 
+  it("serves the embed page at /@user/:id/embed and its /users/:user/statuses/:id/embed alias", async () => {
+    const author = await signedInAccount("embed-alias@example.com");
+    const id = await post("embed-alias@example.com", "public");
+    const privateId = await post("embed-alias@example.com", "private");
+
+    const canonical = await get(`/@${author.username}/${id}/embed`);
+    const alias = await get(`/users/${author.username}/statuses/${id}/embed`);
+    expect(alias.status).toBe(canonical.status);
+    expect(alias.status).toBe(200);
+    expect(await alias.text()).toBe(await canonical.text());
+    expect(alias.headers.get("cache-control")).toBe("public, max-age=180");
+
+    expect((await get(`/users/${author.username}/statuses/${privateId}/embed`)).status).toBe(404);
+    expect((await get(`/users/nobody-here/statuses/${id}/embed`)).status).toBe(404);
+    // The status object itself is still served at its own URL.
+    const note = await get(`/users/${author.username}/statuses/${id}`, {
+      headers: { Accept: "application/activity+json" },
+    });
+    expect(note.status).toBe(200);
+  });
+
   it("gives the web UI's Embed dialog the oEmbed document of a status the viewer may see", async () => {
     const author = await signedInAccount("embed-web@example.com");
     const id = await post("embed-web@example.com", "public");

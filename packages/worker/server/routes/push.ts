@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { ApiWebPushSubscriptionJSON } from "@tstodon/api";
 import type { FediRole } from "@tstodon/domain";
 import type { AuthenticatedSession } from "../auth";
-import { isBlockedFederatedHost } from "../federated-fetch";
+import { checkFederatedHost } from "../federated-fetch";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -135,8 +135,15 @@ export const createPushSubscription = async (
   }
   // Push services are ordinary public hosts; the federation allow list does
   // not apply to them, but private and local addresses are refused.
-  if (url.protocol !== "https:" || isBlockedFederatedHost(url.hostname, identity.value.domain)) {
+  if (url.protocol !== "https:") {
     return unprocessable(c, "Validation failed: Endpoint is invalid");
+  }
+  const reachable = await checkFederatedHost(url.hostname, identity.value.domain);
+  if (reachable === "Refused") {
+    return unprocessable(c, "Validation failed: Endpoint is invalid");
+  }
+  if (reachable === "Unavailable") {
+    return c.json({ error: "The endpoint's host could not be resolved right now" }, 503);
   }
   if (!validKeys(keys.p256dh, keys.auth)) {
     return unprocessable(c, "Validation failed: Keys are invalid");

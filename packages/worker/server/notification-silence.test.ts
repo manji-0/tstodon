@@ -124,12 +124,13 @@ describe("notifications from a silenced sender", () => {
     await relate(reader.email, moderator.id, "unmute");
     expect(await notificationTypesFrom(reader.email, moderator.id)).toEqual(["mention", "mention"]);
 
-    // Only a mention gets through: a reblog from the blocked moderator does not.
+    // Only a mention gets through: the blocked moderator cannot even see the
+    // reader's status to reblog it (`StatusPolicy#show?`).
     const own = await post(reader.email, { status: "boost me" });
     await relate(reader.email, moderator.id, "block");
     expect(
       (await call(moderator.email, `/api/v1/statuses/${own}/reblog`, { method: "POST" })).status,
-    ).toBe(200);
+    ).toBe(404);
     await relate(reader.email, moderator.id, "unblock");
     expect(await notificationTypesFrom(reader.email, moderator.id)).toEqual(["mention", "mention"]);
   });
