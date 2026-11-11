@@ -1,9 +1,11 @@
 import { DeadOutboxJob, type OutboxJob as OutboxJobValue } from "@tstodon/domain";
+import { ok } from "neverthrow";
 import { nowIso } from "./clock";
 import {
   deleteDeadOutboxJobs,
   listDeadOutboxJobs,
   recordDeadOutboxJob,
+  recordDeadOutboxJobs,
 } from "./dead-outbox-job-store";
 import { measureJobPage, writeMetric } from "./metrics";
 import type { OutboxBatch } from "./queue-handler";
@@ -29,9 +31,21 @@ export const handleDeadLetterQueue = async (
   env: Env,
   options: DeadLetterOptions,
 ): Promise<void> => {
-  for (const message of batch.messages) {
-    const entry = DeadOutboxJob.classify(message.body, options.outboxAttempts);
-    const recorded = await recordDeadOutboxJob(env.DB, entry, nowIso());
+  const classified = batch.messages.map((message) => ({
+    message,
+    entry: DeadOutboxJob.classify(message.body, options.outboxAttempts),
+  }));
+  // One batch stores every message; if it fails, each message is stored on
+  // its own, so one that cannot be stored does not send the others back.
+  const stored = await recordDeadOutboxJobs(
+    env.DB,
+    classified.map(({ entry }) => entry),
+    nowIso(),
+  );
+  for (const [index, { message, entry }] of classified.entries()) {
+    const storedId = stored.isOk() ? stored.value[index] : undefined;
+    const recorded =
+      storedId === undefined ? await recordDeadOutboxJob(env.DB, entry, nowIso()) : ok(storedId);
     if (recorded.isErr()) {
       const lost = message.attempts >= options.maxAttempts;
       console.error(

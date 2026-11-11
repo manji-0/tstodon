@@ -11,7 +11,7 @@ import { z } from "zod";
 import { listAccountAliases } from "./account-alias-store";
 import { type AccountRef, findAccountRef, localRef, refAccountId, remoteRef } from "./account-ref";
 import { findAccountMove, listAcceptedFollowsPage } from "./account-move-store";
-import { findAccountById, findAccountByUsername } from "./account-store";
+import { findAccountByUsername, findAccountsByIds } from "./account-store";
 import { parseLocalActorUsername } from "./activitypub";
 import type { RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
@@ -124,15 +124,19 @@ export const moveFollowPage = async (
   if (page.isErr()) {
     return err(page.error);
   }
+  const followers = await findAccountsByIds(
+    env.DB,
+    page.value.map((follow) => follow.followerAccountId),
+  );
+  if (followers.isErr()) {
+    return err(followers.error);
+  }
   for (const follow of page.value) {
-    const follower = await findAccountById(env.DB, follow.followerAccountId);
-    if (follower.isErr()) {
-      return err(follower.error);
-    }
-    if (!follower.value) {
+    const follower = followers.value.get(follow.followerAccountId);
+    if (!follower) {
       continue;
     }
-    const followed = await followAccountRef(env, identity, follower.value, to, follow.options, {
+    const followed = await followAccountRef(env, identity, follower, to, follow.options, {
       kind: "Keep",
     });
     if (followed.isErr()) {
@@ -141,13 +145,13 @@ export const moveFollowPage = async (
     if (!followed.value) {
       continue;
     }
-    const lists = await listListsContainingMember(env.DB, follower.value.id, listMemberOf(from));
+    const lists = await listListsContainingMember(env.DB, follower.id, listMemberOf(from));
     if (lists.isErr()) {
       return err(lists.error);
     }
     const carried = await replaceListMember(
       env.DB,
-      follower.value.id,
+      follower.id,
       lists.value,
       listMemberOf(from),
       listMemberOf(to),
@@ -155,11 +159,11 @@ export const moveFollowPage = async (
     if (carried.isErr()) {
       return err(carried.error);
     }
-    const unfollowed = await unfollowMoved(env, identity, follower.value, from);
+    const unfollowed = await unfollowMoved(env, identity, follower, from);
     if (unfollowed.isErr()) {
       return err(unfollowed.error);
     }
-    await notifyMoved(env, follower.value, from, to);
+    await notifyMoved(env, follower, from, to);
   }
   const last = page.value.at(-1);
   return ok(page.value.length >= pageSize ? last?.id : undefined);

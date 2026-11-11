@@ -132,6 +132,37 @@ describe("the outbox dead-letter queue consumer", () => {
     expect((second?.last_seen_at ?? "") >= (first?.last_seen_at ?? "")).toBe(true);
   });
 
+  it("counts a job twice when one batch carries it twice", async () => {
+    const job = { kind: "RefreshQuote", quoteId: "dlq-same-batch" };
+    const { batch, decisions } = batchOf([job, job]);
+    await handleDeadLetterQueue(batch, env, OPTIONS);
+    expect(decisions).toEqual(["ack", "ack"]);
+    expect(await deadRow(job)).toMatchObject({ dead_count: 2 });
+  });
+
+  it("stores each message on its own when the batch of them fails", async () => {
+    const first = { kind: "RefreshQuote", quoteId: "dlq-alone-1" };
+    const second = { kind: "RefreshQuote", quoteId: "dlq-alone-2" };
+    const batchRefused = new Proxy(env, {
+      get: (target, key) =>
+        key === "DB"
+          ? new Proxy(env.DB, {
+              get: (db, member) =>
+                member === "batch"
+                  ? async () => {
+                      throw new Error("batch refused");
+                    }
+                  : Reflect.get(db, member).bind(db),
+            })
+          : Reflect.get(target, key),
+    });
+    const { batch, decisions } = batchOf([first, second]);
+    await handleDeadLetterQueue(batch, batchRefused, OPTIONS);
+    expect(decisions).toEqual(["ack", "ack"]);
+    expect(await deadRow(first)).toMatchObject({ dead_count: 1 });
+    expect(await deadRow(second)).toMatchObject({ dead_count: 1 });
+  });
+
   it("retries a message it cannot store, and logs the body on the last attempt", async () => {
     const errors = vi.spyOn(console, "error");
     const job = { kind: "RefreshQuote", quoteId: "dlq-lost" };
