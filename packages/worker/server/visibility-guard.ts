@@ -207,8 +207,10 @@ export const viewableStatusIds = async (
 };
 
 /**
- * A remote boost: a followers-only one is shown to the booster's accepted
- * local followers, and the boosted status must be visible to the viewer too.
+ * A remote boost, as `StatusPolicy#show?` sees the boost itself: a public or
+ * unlisted one is hidden from the local accounts its booster blocks, a
+ * followers-only one is shown to the booster's accepted local followers; and
+ * the boosted status must be visible to the viewer too.
  */
 export const canViewRemoteBoost = async (
   db: D1Database,
@@ -220,6 +222,11 @@ export const canViewRemoteBoost = async (
     if (!follow?.isOk() || !OutboundFollow.relationship(follow.value).following) {
       return false;
     }
+  } else if (
+    viewerId &&
+    blockedUnlessCleared(await findRemoteBlock(db, boost.actorUri, viewerId))
+  ) {
+    return false;
   }
   if (boost.target.kind === "LocalStatus") {
     const local = await findStatusById(db, boost.target.statusId);
