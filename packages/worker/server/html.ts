@@ -57,7 +57,7 @@ const mentionLink = (
     );
   }
   const shown =
-    named.length > 1 && account.domain !== null
+    new Set(named.map((mention) => mention.url)).size > 1 && account.domain !== null
       ? `${account.username}@${account.domain}`
       : account.username;
   return `<span class="h-card" translate="no"><a href="${escapeHtml(account.url)}" class="u-url mention">@<span>${escapeHtml(shown)}</span></a></span>`;
@@ -146,8 +146,16 @@ export const decodeHtmlEntities = (value: string): string =>
     .replaceAll("&#39;", "'")
     .replaceAll("&nbsp;", " ");
 
-/** Plain text of an HTML fragment, for keyword matching against remote posts. */
+/**
+ * Plain text of an HTML fragment, for keyword matching and notification
+ * bodies: a block or line break is a space, an inline tag (a link, its
+ * `invisible` spans) is nothing, so `@<span>alice</span>` reads `@alice`.
+ */
 export const htmlToText = (html: string): string =>
-  decodeHtmlEntities(html.replace(/<[^>]*>/g, " "))
+  decodeHtmlEntities(
+    html
+      .replace(/<(?:br|\/?(?:p|div|li|ul|ol|blockquote|pre|h[1-6]))\b[^>]*>/gi, " ")
+      .replace(/<[^>]*>/g, ""),
+  )
     .replace(/\s+/g, " ")
     .trim();

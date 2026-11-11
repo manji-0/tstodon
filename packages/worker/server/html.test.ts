@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { InstanceIdentity } from "@tstodon/domain";
-import { escapeHtml, formatPostText, mentionUsernames, textToHtml } from "./html";
+import { escapeHtml, formatPostText, htmlToText, mentionUsernames, textToHtml } from "./html";
 
 describe("html helpers", () => {
   it("escapes HTML special characters", () => {
@@ -41,6 +41,31 @@ describe("formatPostText", () => {
     formatPostText(text, { identity, mentions });
   const link = (href: string, prefix: string, shown: string, hidden: string) =>
     `<a href="${href}" target="_blank" rel="nofollow noopener" translate="no"><span class="invisible">${prefix}</span><span class="${hidden.length > 0 ? "ellipsis" : ""}">${shown}</span><span class="invisible">${hidden}</span></a>`;
+
+  it("links a mention written with another domain than the actor's canonical one", () => {
+    const url = "https://example.net/users/alice";
+    expect(
+      format("hi @alice@social.example.net", [
+        { username: "alice", domain: "example.net", url },
+        { username: "alice", domain: "social.example.net", url },
+      ]),
+    ).toBe(
+      `<p>hi <span class="h-card" translate="no"><a href="${url}" class="u-url mention">@<span>alice</span></a></span></p>`,
+    );
+  });
+
+  it("reads back as the text it was written from", () => {
+    expect(
+      htmlToText(
+        format(
+          "hey @alice see #tag https://www.example.com/a/very/long/path/that/goes/beyond/thirty\n\nnext",
+          [{ username: "alice", domain: null, url: "https://example.com/users/alice" }],
+        ),
+      ),
+    ).toBe(
+      "hey @alice see #tag https://www.example.com/a/very/long/path/that/goes/beyond/thirty next",
+    );
+  });
 
   it("makes paragraphs and line breaks as Rails' simple_format", () => {
     expect(format("a\nb\n\n\nc\n")).toBe("<p>a<br />b</p><p>c</p>");
