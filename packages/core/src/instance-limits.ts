@@ -7,7 +7,7 @@
 export const InstanceLimits = {
   status: {
     /**
-     * Unicode code points in the content warning and the post body together,
+     * Grapheme clusters in the content warning and the post body together,
      * as `statusLength` (`./post-text`) counts them.
      */
     maxCharacters: 500,

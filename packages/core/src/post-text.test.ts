@@ -72,7 +72,7 @@ describe("post-text module", () => {
   it("imports only relative modules, so the web UI loads no Zod with it", () => {
     const imports = (file: string): string[] => {
       const source = readFileSync(new URL(file, import.meta.url), "utf8");
-      const specifiers = [...source.matchAll(/^import .* from "([^"]+)";$/gm)].map(
+      const specifiers = [...source.matchAll(/(?:\bfrom|\bimport)\s*\(?\s*"([^"]+)"/g)].map(
         (m) => m[1] ?? "",
       );
       return specifiers.flatMap((specifier) =>

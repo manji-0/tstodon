@@ -1,10 +1,11 @@
-import { graphemeLength } from '../util/counter';
+import { length as stringLength } from 'stringz';
 
 export const CharacterCounter: React.FC<{
   text: string;
   max: number;
-}> = ({ text, max }) => {
-  const diff = max - graphemeLength(text);
+  length?: (text: string) => number;
+}> = ({ text, max, length = stringLength }) => {
+  const diff = max - length(text);
 
   if (diff < 0) {
     return (

@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 
-import { countableText } from '../../util/counter';
+import { countableText, graphemeLength } from '../../util/counter';
 import { CharacterCounter } from '../character_counter';
 
 describe('CharacterCounter', () => {
@@ -9,9 +9,15 @@ describe('CharacterCounter', () => {
       <CharacterCounter
         max={500}
         text={countableText(`👍🏽 https://example.com/${'a'.repeat(100)}`)}
+        length={graphemeLength}
       />,
     );
     expect(screen.getByText('475')).toBeDefined();
+  });
+
+  it('counts with stringz unless given a length, as the alt text modal does', () => {
+    render(<CharacterCounter max={1} text='कि' />);
+    expect(screen.getByText('-1')).toBeDefined();
   });
 
   it('goes negative past the limit', () => {
