@@ -21,7 +21,7 @@ Upstream paths copied unmodified into this repository (`imported` in `upstream.j
 | `config/themes.yml` (read by the themes plugin) | `packages/worker/config/themes.yml` |
 | `config/formatjs-formatter.js` (used by `i18n:extract`) | `packages/worker/config/formatjs-formatter.cjs` |
 | `.browserslistrc` (the legacy plugin's modern targets) | `packages/worker/.browserslistrc` |
-| `public/sounds/`, `public/badge.png`, `public/web-push-icon_{expand,favourite,reblog}.png` | `packages/worker/public/` (Vite's public directory, served at `/`) |
+| `public/sounds/`, `public/badge.png`, `public/web-push-icon_{expand,favourite,reblog}.png`, `public/embed.js` (the script of an embedded status's oEmbed HTML) | `packages/worker/public/` (Vite's public directory, served at `/`) |
 | `LICENSE`, `AUTHORS.md` | `packages/worker/src/` |
 
 Upstream files tstodon ported instead of copying (`ported` in `upstream.json`); compare upstream's changes to them by hand:

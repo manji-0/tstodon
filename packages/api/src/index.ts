@@ -29,6 +29,7 @@ export * from "./scheduled-status";
 export * from "./application";
 export * from "./admin";
 export * from "./misc";
+export * from "./oembed";
 // Server-to-UI documents outside the REST API: the web UI's initial state and streaming events.
 export * from "./initial-state";
 export * from "./streaming";
