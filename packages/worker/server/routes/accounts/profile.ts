@@ -2,6 +2,7 @@ import { ApiGetAccountStatusesParamsSchema } from "@tstodon/api";
 import { warmSchemas } from "@tstodon/core";
 import { AccountPresentation } from "@tstodon/domain";
 import type { Context } from "hono";
+import { ok } from "neverthrow";
 import { findAccountByIdOrUsername } from "../../account-store";
 import { findAccountProfile } from "../../account-profile-store";
 import { authenticate } from "../../auth";
@@ -35,6 +36,7 @@ import {
   remoteAccountTimelineDocuments,
 } from "../../timeline-documents";
 import { listPinnedStatuses } from "../../status-pin-store";
+import { viewableStatusIds } from "../../visibility-guard";
 import { paramsCursor, readQueryParams } from "../../request-params";
 import { lookupAccountDocument } from "./lookup";
 
@@ -109,6 +111,20 @@ const remoteAccountStatuses = async (
   return c.json(documents.value);
 };
 
+/** An account's pins the viewer may see; there are few, so each is checked as by id. */
+const listViewablePinnedStatuses = async (
+  db: D1Database,
+  accountId: string,
+  viewerId: string | undefined,
+) => {
+  const pins = await listPinnedStatuses(db, accountId);
+  if (pins.isErr()) {
+    return pins;
+  }
+  const viewable = await viewableStatusIds(db, pins.value, [], viewerId);
+  return ok(pins.value.filter((status) => viewable.has(status.id)));
+};
+
 export const getV1AccountsByIdStatuses = async (
   c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/statuses">,
 ) => {
@@ -151,8 +167,8 @@ export const getV1AccountsByIdStatuses = async (
     return c.json([]);
   }
   const statuses = pinned
-    ? await listPinnedStatuses(c.env.DB, account.value.id)
-    : await listAccountStatusesFiltered(c.env.DB, account.value.id, filters);
+    ? await listViewablePinnedStatuses(c.env.DB, account.value.id, viewerId)
+    : await listAccountStatusesFiltered(c.env.DB, account.value.id, viewerId, filters);
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }

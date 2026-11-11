@@ -110,16 +110,38 @@ export type AccountStatusFilters = Readonly<{
   tagged?: string | undefined;
 }>;
 
+/**
+ * An account's statuses as `viewerId` may see them, kept in SQL (Mastodon's
+ * `AccountStatusesFilter`) so a page holds `limit` visible statuses: the
+ * author sees all; an account the author blocks sees none; anyone else sees
+ * public and unlisted ones, followers-only ones when following, and the ones
+ * that mention them.
+ */
 export const listAccountStatusesFiltered = async (
   db: D1Database,
   accountId: string,
+  viewerId: string | undefined,
   filters: AccountStatusFilters,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
     const tagged = filters.tagged?.replace(/^#/, "") ?? "";
+    const viewer = viewerId ?? "";
     const { where, order, binds } = cursorFragment(filters.cursor);
     const sql = `SELECT ${statusSelect} FROM statuses
          WHERE account_id = ?
+           AND (account_id = ? OR (
+             NOT EXISTS (
+               SELECT 1 FROM blocks WHERE blocker_account_id = statuses.account_id AND target_account_id = ?
+             )
+             AND (
+               visibility IN ('public', 'unlisted')
+               OR (visibility = 'private' AND EXISTS (
+                 SELECT 1 FROM follows
+                 WHERE follower_account_id = ? AND target_account_id = statuses.account_id AND kind = 'Accepted'
+               ))
+               OR id IN (SELECT status_id FROM status_mentions WHERE account_id = ?)
+             )
+           ))
            AND (? = 0 OR in_reply_to_id IS NULL)
            AND (? = 0 OR kind <> 'LocalReblog')
            AND (? = 0 OR visibility <> 'direct')
@@ -130,6 +152,10 @@ export const listAccountStatusesFiltered = async (
       .prepare(sql)
       .bind(
         accountId,
+        viewer,
+        viewer,
+        viewer,
+        viewer,
         filters.excludeReplies ? 1 : 0,
         filters.excludeReblogs ? 1 : 0,
         filters.excludeDirect ? 1 : 0,
