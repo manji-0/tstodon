@@ -1,5 +1,6 @@
 import { createReducer } from '@reduxjs/toolkit';
-import { fromJS, Map as ImmutableMap } from 'immutable';
+import { fromJS } from 'immutable';
+import type { Map as ImmutableMap } from 'immutable';
 
 import type {
   ApiNotificationJSON,
@@ -15,6 +16,9 @@ import type {
   setBrowserSupport,
 } from '../actions/notifications';
 
+import { immutableMapOf } from '../utils/immutable_map_of';
+import type { ImmutableMapOf } from '../utils/immutable_map_of';
+
 import { matchAction } from './match_action';
 
 /** Whether the browser has desktop notifications, and their permission. */
@@ -23,10 +27,7 @@ export interface NotificationsFields {
   browserPermission: NotificationPermission;
 }
 
-export type NotificationsState = ImmutableMap<
-  keyof NotificationsFields,
-  NotificationsFields[keyof NotificationsFields]
->;
+export type NotificationsState = ImmutableMapOf<NotificationsFields>;
 
 /**
  * A notification as `notificationToMap` stores it (the notification
@@ -43,15 +44,9 @@ export interface NotificationMapFields {
   moderation_warning: ImmutableMap<string, unknown> | null;
 }
 
-export type NotificationMap = ImmutableMap<
-  keyof NotificationMapFields,
-  NotificationMapFields[keyof NotificationMapFields]
->;
+export type NotificationMap = ImmutableMapOf<NotificationMapFields>;
 
-const initialState: NotificationsState = ImmutableMap<
-  keyof NotificationsFields,
-  NotificationsFields[keyof NotificationsFields]
->({
+const initialState: NotificationsState = immutableMapOf<NotificationsFields>({
   browserSupport: false,
   browserPermission: 'default',
 });
@@ -59,10 +54,7 @@ const initialState: NotificationsState = ImmutableMap<
 export const notificationToMap = (
   notification: ApiNotificationJSON,
 ): NotificationMap =>
-  ImmutableMap<
-    keyof NotificationMapFields,
-    NotificationMapFields[keyof NotificationMapFields]
-  >({
+  immutableMapOf<NotificationMapFields>({
     id: notification.id,
     type: notification.type,
     account: notification.account.id,

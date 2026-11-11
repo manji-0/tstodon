@@ -23,7 +23,7 @@ import type {
 } from '../actions/conversations';
 import { blockDomainSuccess } from '../actions/domain_blocks';
 
-import conversations, { getConversationItems } from './conversations';
+import conversations from './conversations';
 import type { ConversationsState } from './conversations';
 
 const conversation = (
@@ -38,7 +38,8 @@ const conversation = (
 });
 
 const ids = (state: ConversationsState) =>
-  getConversationItems(state)
+  state
+    .get('items')
     .map((item) => item.get('id'))
     .toArray();
 

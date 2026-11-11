@@ -1,4 +1,4 @@
-import type { Reducer, UnknownAction } from '@reduxjs/toolkit';
+import type { Reducer } from '@reduxjs/toolkit';
 import {
   Map as ImmutableMap,
   List as ImmutableList,
@@ -32,8 +32,8 @@ import type { ApiHashtagJSON } from 'mastodon/api_types/tags';
 import type { MediaAttachment } from 'mastodon/models/media_attachment';
 import type { Poll } from 'mastodon/models/poll';
 import type { Status } from 'mastodon/models/status';
-import { immutableTypedMap } from 'mastodon/utils/immutable_typed_map';
-import type { ImmutableTypedMap } from 'mastodon/utils/immutable_typed_map';
+import { immutableMapOf } from 'mastodon/utils/immutable_map_of';
+import type { ImmutableMapOf } from 'mastodon/utils/immutable_map_of';
 
 import {
   COMPOSE_MOUNT,
@@ -128,6 +128,8 @@ import { me } from '../initial_state';
 import { unescapeHTML } from '../utils/html';
 import { uuid } from '../uuid';
 
+import { matchAction } from './match_action';
+
 type ComposePollFields = {
   options: ImmutableList<string>;
   /** Seconds. */
@@ -136,7 +138,7 @@ type ComposePollFields = {
 };
 
 /** The poll being composed. */
-export type ComposePoll = ImmutableTypedMap<ComposePollFields>;
+export type ComposePoll = ImmutableMapOf<ComposePollFields>;
 
 type ComposeFields = {
   mounted: number;
@@ -186,9 +188,9 @@ type ComposeFields = {
   me?: string;
 };
 
-export type ComposeState = ImmutableTypedMap<ComposeFields>;
+export type ComposeState = ImmutableMapOf<ComposeFields>;
 
-const initialState: ComposeState = immutableTypedMap<ComposeFields>({
+const initialState: ComposeState = immutableMapOf<ComposeFields>({
   mounted: 0,
   sensitive: false,
   spoiler: false,
@@ -228,13 +230,13 @@ const initialState: ComposeState = immutableTypedMap<ComposeFields>({
   fetching_link: null,
 });
 
-const initialPoll: ComposePoll = immutableTypedMap<ComposePollFields>({
+const initialPoll: ComposePoll = immutableMapOf<ComposePollFields>({
   options: ImmutableList(['', '']),
   expires_in: 24 * 3600,
   multiple: false,
 });
 
-/** The plain-object actions this reducer handles (see `isComposeAction`). */
+/** The plain-object actions this reducer handles (`isComposeAction`). */
 type ComposeAction =
   | ReturnType<
       | typeof mountCompose
@@ -280,9 +282,8 @@ type ComposeAction =
   | ComposeSuggestionSelectAction
   | RedraftAction;
 
-const COMPOSE_ACTION_TYPES: ReadonlySet<string> = new Set<
-  ComposeAction['type']
->([
+/** Whether `action` is one of the {@link ComposeAction}s, by its type. */
+const isComposeAction = matchAction<ComposeAction>(
   COMPOSE_MOUNT,
   COMPOSE_UNMOUNT,
   COMPOSE_CHANGE,
@@ -324,11 +325,7 @@ const COMPOSE_ACTION_TYPES: ReadonlySet<string> = new Set<
   COMPOSE_SET_STATUS,
   COMPOSE_FOCUS,
   REDRAFT,
-]);
-
-/** Whether `action` is one of the {@link ComposeAction}s, by its type. */
-const isComposeAction = (action: UnknownAction): action is ComposeAction =>
-  COMPOSE_ACTION_TYPES.has(action.type);
+);
 
 // A status and an attachment are untyped Immutable maps
 // (`models/status.ts`, `models/media_attachment.ts`); these read them.
@@ -681,7 +678,7 @@ const composePollOf = (poll: Poll, maxOptions: number | undefined) => {
     options = options.push('');
   }
 
-  return immutableTypedMap<ComposePollFields>({
+  return immutableMapOf<ComposePollFields>({
     options: options,
     multiple: poll.multiple,
     expires_in: expiresInFromExpiresAt(poll.expires_at),

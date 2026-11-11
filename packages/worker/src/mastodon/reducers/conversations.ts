@@ -1,5 +1,5 @@
 import { createReducer } from '@reduxjs/toolkit';
-import { Map as ImmutableMap, List as ImmutableList } from 'immutable';
+import { List as ImmutableList } from 'immutable';
 
 import type { ApiConversationJSON } from '@tstodon/api';
 import {
@@ -30,6 +30,9 @@ import type {
 } from '../actions/conversations';
 import { compareId } from '../compare_id';
 
+import { immutableMapOf } from '../utils/immutable_map_of';
+import type { ImmutableMapOf } from '../utils/immutable_map_of';
+
 import { matchAction } from './match_action';
 
 /** A conversation, with its accounts and last status by id. */
@@ -41,10 +44,7 @@ export interface ConversationFields {
 }
 
 /** A conversation: an Immutable `Map` of `ConversationFields`. */
-export type Conversation = ImmutableMap<
-  keyof ConversationFields,
-  ConversationFields[keyof ConversationFields]
->;
+export type Conversation = ImmutableMapOf<ConversationFields>;
 
 /** The direct messages column: `mounted` counts its mounted columns. */
 export interface ConversationsFields {
@@ -54,25 +54,9 @@ export interface ConversationsFields {
   mounted: number;
 }
 
-export type ConversationsState = ImmutableMap<
-  keyof ConversationsFields,
-  ConversationsFields[keyof ConversationsFields]
->;
+export type ConversationsState = ImmutableMapOf<ConversationsFields>;
 
-const emptyItems = ImmutableList<Conversation>();
-
-/** The conversations, newest first. */
-export const getConversationItems = (
-  state: ConversationsState,
-): ImmutableList<Conversation> => {
-  const items = state.get('items');
-  return ImmutableList.isList(items) ? items : emptyItems;
-};
-
-const initialState: ConversationsState = ImmutableMap<
-  keyof ConversationsFields,
-  ConversationsFields[keyof ConversationsFields]
->({
+const initialState: ConversationsState = immutableMapOf<ConversationsFields>({
   items: ImmutableList<Conversation>(),
   isLoading: false,
   hasMore: true,
@@ -80,10 +64,7 @@ const initialState: ConversationsState = ImmutableMap<
 });
 
 const conversationToMap = (item: ApiConversationJSON): Conversation =>
-  ImmutableMap<
-    keyof ConversationFields,
-    ConversationFields[keyof ConversationFields]
-  >({
+  immutableMapOf<ConversationFields>({
     id: item.id,
     unread: item.unread,
     accounts: ImmutableList(item.accounts.map((a) => a.id)),
@@ -93,7 +74,7 @@ const conversationToMap = (item: ApiConversationJSON): Conversation =>
 const updateItems = (
   state: ConversationsState,
   updater: (items: ImmutableList<Conversation>) => ImmutableList<Conversation>,
-) => state.set('items', updater(getConversationItems(state)));
+) => state.update('items', updater);
 
 const updateConversation = (
   state: ConversationsState,
@@ -109,11 +90,6 @@ const updateConversation = (
       return list.set(index, newItem);
     }
   });
-
-const lastStatusOf = (conversation: Conversation) => {
-  const lastStatus = conversation.get('last_status');
-  return typeof lastStatus === 'string' ? lastStatus : null;
-};
 
 const expandNormalizedConversations = (
   state: ConversationsState,
@@ -143,13 +119,16 @@ const expandNormalizedConversations = (
 
         list = list.concat(items);
 
-        return list.sortBy(lastStatusOf, (a, b) => {
-          if (a === null || b === null) {
-            return -1;
-          }
+        return list.sortBy(
+          (item) => item.get('last_status'),
+          (a, b) => {
+            if (a === null || b === null) {
+              return -1;
+            }
 
-          return compareId(a, b) * -1;
-        });
+            return compareId(a, b) * -1;
+          },
+        );
       });
     }
 
@@ -166,26 +145,16 @@ const filterConversations = (
   accountIds: string[],
 ) => {
   return updateItems(state, (list) =>
-    list.filterNot((item) => {
-      const accounts = item.get('accounts');
-      return (
-        ImmutableList.isList(accounts) &&
-        accounts.some(
-          (accountId) =>
-            typeof accountId === 'string' && accountIds.includes(accountId),
-        )
-      );
-    }),
+    list.filterNot((item) =>
+      item
+        .get('accounts')
+        .some((accountId) => accountIds.includes(accountId)),
+    ),
   );
 };
 
-const updateMounted = (state: ConversationsState, change: number) => {
-  const mounted = state.get('mounted');
-  return state.set(
-    'mounted',
-    (typeof mounted === 'number' ? mounted : 0) + change,
-  );
-};
+const updateMounted = (state: ConversationsState, change: number) =>
+  state.update('mounted', (mounted) => mounted + change);
 
 const isFetchRequest = matchAction<
   ReturnType<typeof expandConversationsRequest>

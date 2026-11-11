@@ -2,10 +2,12 @@ import { useCallback, useEffect, useId } from 'react';
 
 import { defineMessages, FormattedMessage } from 'react-intl';
 
+import { List as ImmutableList } from 'immutable';
+
 import { expandAccountFeaturedTimeline } from '@/mastodon/actions/timelines';
 import { Icon } from '@/mastodon/components/icon';
 import { StatusQuoteManager } from '@/mastodon/components/status_quoted';
-import { getTimelineItems } from '@/mastodon/models/timeline';
+import type { TimelineItem } from '@/mastodon/models/timeline';
 import {
   createAppSelector,
   useAppDispatch,
@@ -18,11 +20,9 @@ import { Carousel } from './carousel';
 const pinnedStatusesSelector = createAppSelector(
   [
     (state, accountId: string, tagged?: string) =>
-      getTimelineItems(
-        state.timelines.get(
-          `account:${accountId}:pinned${tagged ? `:${tagged}` : ''}`,
-        ),
-      ),
+      state.timelines
+        .get(`account:${accountId}:pinned${tagged ? `:${tagged}` : ''}`)
+        ?.get('items') ?? ImmutableList<TimelineItem>(),
   ],
   (items) =>
     items

@@ -2,15 +2,22 @@ import { Map as ImmutableMap, fromJS } from 'immutable';
 import type { List as ImmutableList } from 'immutable';
 
 /**
- * An Immutable `Map` whose keys are the fields of `T`, each with its own value
- * type: `get('saved')` is a `boolean` where a plain `Map<string, unknown>`
- * gives `unknown`. It only types a Map at compile time: the runtime value is
- * an ordinary `Immutable.Map` (not a `Record`), so JavaScript code keeps
- * reading it with `.get` / `.getIn` / `.toJS` as before.
+ * An Immutable `Map` with a fixed set of fields, each with its own value type
+ * (the fields of `T`): `get('saved')` is a `boolean` where a plain
+ * `Map<string, unknown>` gives `unknown`, and `set` / `update` / `merge` only
+ * take values of the field's type. It only types a Map at compile time: the
+ * runtime value is an ordinary `Immutable.Map` (not a `Record`), so JavaScript
+ * code keeps reading it with `.get` / `.getIn` / `.toJS` as before.
  *
- * Immutable 4 has no such type (Immutable 5's `MapOf` is the same idea).
- * `getIn` and `setIn` stay untyped (`unknown`): read nested fields with
- * chained `get`s.
+ * Immutable 4 has no such type; this mirrors Immutable 5's `MapOf`, so moving
+ * to Immutable 5 is a rename. `getIn` and `setIn` stay untyped (`unknown`):
+ * read nested fields with chained `get`s.
+ *
+ * `get(key, notSetValue)` and `update(key, notSetValue, updater)` exclude
+ * `undefined` from the field's type: the not-set value stands in for an
+ * optional field that is missing. This holds as long as an optional field is
+ * left out rather than set to `undefined` (Immutable returns a stored
+ * `undefined`, not the not-set value), as these states do.
  */
 export interface ImmutableMapOf<T extends object>
   extends ImmutableMap<keyof T & string, T[keyof T]> {
@@ -19,6 +26,7 @@ export interface ImmutableMapOf<T extends object>
     key: K,
     notSetValue: NSV,
   ): Exclude<T[K], undefined> | NSV;
+  has(key: keyof T & string): boolean;
   set<K extends keyof T & string>(key: K, value: T[K]): this;
   update<K extends keyof T & string>(
     key: K,
@@ -43,6 +51,8 @@ export interface ImmutableMapOf<T extends object>
   merge<C>(
     ...collections: { [key: string]: C }[]
   ): ImmutableMap<string, T[keyof T] | C>;
+  /** The mutable copy is the same Map, so it keeps the fields' types. */
+  withMutations(mutator: (mutable: this) => unknown): this;
 }
 
 /**

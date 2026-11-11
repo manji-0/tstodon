@@ -7,12 +7,13 @@ import { Link } from 'react-router-dom';
 import { fetchTrendingHashtags } from 'mastodon/actions/trends';
 import { ImmutableHashtag as Hashtag } from 'mastodon/components/hashtag';
 import { showTrends } from 'mastodon/initial_state';
-import { getTrendItems } from 'mastodon/models/trend';
 import { useAppSelector, useAppDispatch } from 'mastodon/store';
 
 export const Trends: React.FC = () => {
   const dispatch = useAppDispatch();
-  const trends = useAppSelector((state) => getTrendItems(state.trends, 'tags'));
+  const trends = useAppSelector((state) =>
+    state.trends.get('tags').get('items'),
+  );
 
   useEffect(() => {
     dispatch(fetchTrendingHashtags());

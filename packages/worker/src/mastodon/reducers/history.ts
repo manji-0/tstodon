@@ -13,8 +13,10 @@ import type {
   fetchHistorySuccess,
 } from 'mastodon/actions/history';
 import type { MediaAttachment } from 'mastodon/models/media_attachment';
-import { immutableTypedMap } from 'mastodon/utils/immutable_typed_map';
-import type { ImmutableTypedMap } from 'mastodon/utils/immutable_typed_map';
+import { immutableMapOf } from 'mastodon/utils/immutable_map_of';
+import type { ImmutableMapOf } from 'mastodon/utils/immutable_map_of';
+
+import { matchAction } from './match_action';
 
 /**
  * One version of a status (`GET /api/v1/statuses/:id/history`): its account
@@ -33,29 +35,26 @@ export type HistoryItemFields = {
   emojis: ImmutableList<ImmutableMap<string, unknown>>;
   original: boolean;
 };
-export type HistoryItem = ImmutableTypedMap<HistoryItemFields>;
+export type HistoryItem = ImmutableMapOf<HistoryItemFields>;
 
 type HistoryFields = {
   loading: boolean;
   items: ImmutableList<HistoryItem>;
 };
-export type History = ImmutableTypedMap<HistoryFields>;
+export type History = ImmutableMapOf<HistoryFields>;
 
 type HistoryAction =
   | ReturnType<typeof fetchHistoryRequest>
   | ReturnType<typeof fetchHistorySuccess>
   | ReturnType<typeof fetchHistoryFail>;
 
-const HISTORY_ACTION_TYPES: readonly string[] = [
+const isHistoryAction = matchAction<HistoryAction>(
   HISTORY_FETCH_REQUEST,
   HISTORY_FETCH_SUCCESS,
   HISTORY_FETCH_FAIL,
-];
+);
 
-const isHistoryAction = (action: { type: string }): action is HistoryAction =>
-  HISTORY_ACTION_TYPES.includes(action.type);
-
-const initialHistory: History = immutableTypedMap<HistoryFields>({
+const initialHistory: History = immutableMapOf<HistoryFields>({
   loading: false,
   items: ImmutableList(),
 });
@@ -67,7 +66,7 @@ const historyItem = (
   { account, poll, media_attachments, emojis, ...edit }: ApiStatusEditJSON,
   original: boolean,
 ): HistoryItem =>
-  immutableTypedMap<HistoryItemFields>({
+  immutableMapOf<HistoryItemFields>({
     ...edit,
     account: account.id,
     poll: poll && fromJS(poll),

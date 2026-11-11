@@ -2,14 +2,14 @@ import type { Reducer } from '@reduxjs/toolkit';
 import { List as ImmutableList, isList, isMap } from 'immutable';
 
 import { STORE_HYDRATE } from '../actions/store';
-import { immutableTypedMap } from '../utils/immutable_typed_map';
+import { immutableMapOf } from '../utils/immutable_map_of';
 
 type MediaAttachmentsFields = {
   /** The MIME types and extensions the server takes for uploads. */
   accept_content_types: ImmutableList<string>;
 };
 
-const initialState = immutableTypedMap<MediaAttachmentsFields>({
+const initialState = immutableMapOf<MediaAttachmentsFields>({
   accept_content_types: ImmutableList(),
 });
 type State = typeof initialState;

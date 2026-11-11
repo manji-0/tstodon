@@ -11,7 +11,6 @@ import type { ApiTimelineParams } from 'mastodon/api/timelines';
 import type { ApiStatusJSON } from 'mastodon/api_types/statuses';
 import { compareId } from 'mastodon/compare_id';
 import { usePendingItems as preferPendingItems } from 'mastodon/initial_state';
-import { getTimelineFlag, getTimelineItems } from 'mastodon/models/timeline';
 import type { Timeline, TimelineListKey } from 'mastodon/models/timeline';
 import type { AppDispatch, GetState } from 'mastodon/store';
 
@@ -48,7 +47,7 @@ export const TIMELINE_NON_STATUS_MARKERS = [
 
 /** A timeline's `items` or `pendingItems`: status ids, `null` gaps and markers. */
 const timelineIds = (timeline: Timeline | undefined, key: TimelineListKey) =>
-  getTimelineItems(timeline, key).toArray();
+  timeline?.get(key).toArray() ?? [];
 
 const isStatusId = (id: string | null): id is string =>
   id !== null && !isNonStatusId(id);
@@ -166,7 +165,7 @@ export function expandTimeline(
     const isLoadingMore = !!params.max_id;
     const request = { ...params };
 
-    if (getTimelineFlag(timeline, 'isLoading')) {
+    if (timeline?.get('isLoading')) {
       return;
     }
 

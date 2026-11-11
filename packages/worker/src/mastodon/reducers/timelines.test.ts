@@ -31,7 +31,6 @@ import {
   timelineDelete,
   timelineDeleteStatus,
 } from '../actions/timelines_typed';
-import { getTimelineItems } from '../models/timeline';
 import type { TimelineListKey, TimelinesState } from '../models/timeline';
 
 import statuses from './statuses';
@@ -86,7 +85,7 @@ const items = (
   state: TimelinesState,
   timeline: string,
   key: TimelineListKey = 'items',
-) => getTimelineItems(state.get(timeline), key).toArray();
+) => state.get(timeline)?.get(key).toArray() ?? [];
 
 describe('timelines reducer', () => {
   test('starts empty', () => {

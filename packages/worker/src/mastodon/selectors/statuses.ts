@@ -3,7 +3,6 @@ import type {
   ExpandedStatusShape,
   StatusShape,
 } from '@/mastodon/models/status';
-import { getStatusListItems } from '@/mastodon/models/status_list';
 import { createAppSelector } from '@/mastodon/store/typed_functions';
 
 import { selectIsAccountLocal, selectPlainAccount } from './accounts';
@@ -11,7 +10,7 @@ import { selectIsAccountLocal, selectPlainAccount } from './accounts';
 export const getStatusList = createAppSelector(
   [
     (state, type: 'favourites' | 'bookmarks' | 'pins' | 'trending') =>
-      getStatusListItems(state.status_lists.get(type)),
+      state.status_lists.get(type).get('items'),
   ],
   (items) => items.toList(),
 );

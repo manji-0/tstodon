@@ -5,7 +5,6 @@ import { usePendingItems as preferPendingItems } from 'mastodon/initial_state';
 
 import type { ApiStatusJSON } from '../api_types/statuses';
 import type { Status } from '../models/status';
-import { getTimelineItems } from '../models/timeline';
 import { createAppThunk } from '../store/typed_functions';
 
 import {
@@ -291,8 +290,8 @@ export const removePinnedStatusFromTimelines = createAppThunk(
       }
 
       if (
-        getTimelineItems(timeline, 'items').includes(statusId) ||
-        getTimelineItems(timeline, 'pendingItems').includes(statusId)
+        timeline.get('items').includes(statusId) ||
+        timeline.get('pendingItems').includes(statusId)
       ) {
         dispatch(timelineDeleteStatus({ statusId, timelineKey: key }));
       }

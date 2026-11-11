@@ -1,5 +1,5 @@
 import { createReducer } from '@reduxjs/toolkit';
-import { Map as ImmutableMap, List as ImmutableList, fromJS } from 'immutable';
+import { List as ImmutableList, fromJS } from 'immutable';
 
 import {
   TRENDS_TAGS_FETCH_REQUEST,
@@ -24,16 +24,20 @@ import type {
   TrendListFields,
   TrendsState,
 } from '../models/trend';
+import { immutableMapOf } from '../utils/immutable_map_of';
 
 import { matchAction } from './match_action';
 
 const newList = (): TrendList =>
-  ImmutableMap<keyof TrendListFields, TrendListFields[keyof TrendListFields]>({
+  immutableMapOf<TrendListFields>({
     items: ImmutableList<TrendItem>(),
     isLoading: false,
   });
 
-const initialState: TrendsState = ImmutableMap<'tags' | 'links', TrendList>({
+const initialState: TrendsState = immutableMapOf<{
+  tags: TrendList;
+  links: TrendList;
+}>({
   tags: newList(),
   links: newList(),
 });

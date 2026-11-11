@@ -46,11 +46,6 @@ import {
 } from '../actions/timelines_typed';
 import { compareId } from '../compare_id';
 
-import {
-  getTimelineFlag,
-  getTimelineItems,
-  getTimelineUnread,
-} from '../models/timeline';
 import type {
   Timeline,
   TimelineFields,
@@ -58,6 +53,7 @@ import type {
   TimelineListKey,
   TimelinesState,
 } from '../models/timeline';
+import { immutableMapOf } from '../utils/immutable_map_of';
 
 import { matchAction } from './match_action';
 import type { StatusesState } from './statuses';
@@ -67,10 +63,7 @@ const isStatusId = (id: TimelineItem): id is string =>
 
 const initialState: TimelinesState = ImmutableMap();
 
-const initialTimeline: Timeline = ImmutableMap<
-  keyof TimelineFields,
-  TimelineFields[keyof TimelineFields]
->({
+const initialTimeline: Timeline = immutableMapOf<TimelineFields>({
   unread: 0,
   online: false,
   top: true,
@@ -84,7 +77,7 @@ const updateItems = (
   timeline: Timeline,
   key: TimelineListKey,
   updater: (items: ImmutableList<TimelineItem>) => ImmutableList<TimelineItem>,
-) => timeline.set(key, updater(getTimelineItems(timeline, key)));
+) => timeline.set(key, updater(timeline.get(key)));
 
 /** The list of ids with a gap in front, unless it is empty or starts with one. */
 const prependGap = (items: ImmutableList<TimelineItem>) =>
@@ -121,8 +114,7 @@ const expandNormalizedTimeline = (
       } else if (newest !== undefined && oldest !== undefined) {
         usePendingItems =
           isLoadingRecent &&
-          (usePendingItems ||
-            !getTimelineItems(mMap, 'pendingItems').isEmpty());
+          (usePendingItems || !mMap.get('pendingItems').isEmpty());
 
         updateItems(
           mMap,
@@ -197,27 +189,26 @@ const updateTimeline = (
   usePendingItems: boolean | undefined,
 ) => {
   const current = state.get(timeline);
-  const top = getTimelineFlag(current, 'top');
-  const ids = getTimelineItems(current, 'items');
+  const top = current?.get('top');
+  const ids = current?.get('items') ?? ImmutableList<TimelineItem>();
+  const pendingIds =
+    current?.get('pendingItems') ?? ImmutableList<TimelineItem>();
 
-  if (usePendingItems || !getTimelineItems(current, 'pendingItems').isEmpty()) {
-    if (
-      getTimelineItems(current, 'pendingItems').includes(statusId) ||
-      ids.includes(statusId)
-    ) {
+  if (usePendingItems || !pendingIds.isEmpty()) {
+    if (pendingIds.includes(statusId) || ids.includes(statusId)) {
       return state;
     }
 
     return state.update(timeline, initialTimeline, (map) =>
       updateItems(map, 'pendingItems', (list) => list.unshift(statusId)).set(
         'unread',
-        getTimelineUnread(map) + 1,
+        map.get('unread') + 1,
       ),
     );
   }
 
   const includesId = ids.includes(statusId);
-  const unread = getTimelineUnread(current);
+  const unread = current?.get('unread') ?? 0;
 
   if (includesId) {
     return state;
@@ -345,7 +336,7 @@ const filterTimeline = (
 const updateTop = (state: TimelinesState, timeline: string, top: boolean) => {
   return state.update(timeline, initialTimeline, (map) =>
     map.withMutations((mMap) => {
-      if (top) mMap.set('unread', getTimelineItems(mMap, 'pendingItems').size);
+      if (top) mMap.set('unread', mMap.get('pendingItems').size);
       mMap.set('top', top);
     }),
   );
@@ -355,7 +346,7 @@ const reconnectTimeline = (
   timeline: Timeline,
   usePendingItems: boolean | undefined,
 ) => {
-  if (getTimelineFlag(timeline, 'online')) {
+  if (timeline.get('online')) {
     return timeline;
   }
 
@@ -435,7 +426,7 @@ const timelinesReducer = createReducer(initialState, (builder) => {
     .addMatcher(isLoadPending, (state, action) =>
       state.update(action.timeline, initialTimeline, (map) =>
         updateItems(map, 'items', (list) =>
-          getTimelineItems(map, 'pendingItems').concat(list.take(40)),
+          map.get('pendingItems').concat(list.take(40)),
         )
           .set('pendingItems', ImmutableList())
           .set('unread', 0),

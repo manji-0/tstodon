@@ -1,5 +1,6 @@
-import type { Map as ImmutableMap } from 'immutable';
-import { OrderedSet as ImmutableOrderedSet } from 'immutable';
+import type { OrderedSet as ImmutableOrderedSet } from 'immutable';
+
+import type { ImmutableMapOf } from '../utils/immutable_map_of';
 
 /**
  * The fields of a status list (`reducers/status_lists.ts`): its status ids
@@ -9,16 +10,13 @@ import { OrderedSet as ImmutableOrderedSet } from 'immutable';
 export interface StatusListFields {
   next: string | null;
   loaded: boolean;
-  isLoading: boolean;
+  isLoading?: boolean;
   items: ImmutableOrderedSet<string>;
-  statusId: string | null;
+  statusId?: string | null;
 }
 
 /** A status list: an Immutable `Map` of `StatusListFields`. */
-export type StatusList = ImmutableMap<
-  keyof StatusListFields,
-  StatusListFields[keyof StatusListFields]
->;
+export type StatusList = ImmutableMapOf<StatusListFields>;
 
 export type StatusListKey =
   | 'favourites'
@@ -27,14 +25,5 @@ export type StatusListKey =
   | 'trending'
   | 'quotes';
 
-export type StatusListsState = ImmutableMap<StatusListKey, StatusList>;
-
-const emptyItems = ImmutableOrderedSet<string>();
-
-/** A status list's ids, empty for a missing list. */
-export const getStatusListItems = (
-  list: StatusList | undefined,
-): ImmutableOrderedSet<string> => {
-  const items = list?.get('items');
-  return ImmutableOrderedSet.isOrderedSet(items) ? items : emptyItems;
-};
+/** The status lists, each of them always there. */
+export type StatusListsState = ImmutableMapOf<Record<StatusListKey, StatusList>>;

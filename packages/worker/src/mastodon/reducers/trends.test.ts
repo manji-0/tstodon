@@ -8,7 +8,6 @@ import {
   fetchTrendingHashtagsSuccess,
   fetchTrendingLinksRequest,
 } from '../actions/trends';
-import { getTrendItems } from '../models/trend';
 
 import trends from './trends';
 
@@ -33,9 +32,9 @@ describe('trends reducer', () => {
 
     const tags = [hashtag('cats'), hashtag('dogs')];
     state = trends(state, fetchTrendingHashtagsSuccess(tags));
-    expect(getTrendItems(state, 'tags')).toEqual(fromJS(tags));
+    expect(state.get('tags').get('items')).toEqual(fromJS(tags));
     expect(state.getIn(['tags', 'isLoading'])).toBe(false);
-    expect(getTrendItems(state, 'links').isEmpty()).toBe(true);
+    expect(state.get('links').get('items').isEmpty()).toBe(true);
   });
 
   test('stops loading on a failure', () => {

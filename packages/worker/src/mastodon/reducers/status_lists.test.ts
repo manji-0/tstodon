@@ -15,7 +15,6 @@ import { normalizeStatus } from '../actions/importer/normalizer';
 import { favouriteSuccess, unfavouriteSuccess } from '../actions/interactions';
 import { fetchQuotes } from '../actions/interactions_typed';
 import { fetchTrendingStatusesSuccess } from '../actions/trends';
-import { getStatusListItems } from '../models/status_list';
 import type { StatusListKey, StatusListsState } from '../models/status_list';
 
 import statusLists from './status_lists';
@@ -25,7 +24,7 @@ const apiStatuses = (...ids: string[]) =>
   ids.map((id) => statusFactoryAPI({ id }));
 
 const items = (state: StatusListsState, list: StatusListKey) =>
-  getStatusListItems(state.get(list)).toArray();
+  state.get(list).get('items').toArray();
 
 const status = (id: string) => ImmutableMap<string, unknown>({ id });
 

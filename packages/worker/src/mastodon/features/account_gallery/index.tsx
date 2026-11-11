@@ -16,7 +16,6 @@ import Column from '@/mastodon/features/ui/components/column';
 import { useAccountId } from '@/mastodon/hooks/useAccountId';
 import { useAccountVisibility } from '@/mastodon/hooks/useAccountVisibility';
 import type { MediaAttachment } from '@/mastodon/models/media_attachment';
-import { getTimelineItems } from '@/mastodon/models/timeline';
 import {
   useAppSelector,
   useAppDispatch,
@@ -70,7 +69,7 @@ const selectGalleryTimeline = createAppSelector(
       `account:${accountId}:media${withReplies ? ':with_replies' : ''}`,
     );
 
-    for (const statusId of getTimelineItems(timeline)) {
+    for (const statusId of timeline?.get('items') ?? []) {
       // A gap, or a status no longer in the store, has no media.
       const status = statusId === null ? undefined : statuses.get(statusId);
       if (status) {

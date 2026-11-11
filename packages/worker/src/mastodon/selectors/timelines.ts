@@ -1,12 +1,7 @@
-import type { List as ImmutableList } from 'immutable';
+import { List as ImmutableList } from 'immutable';
 
 import type { TimelineParams } from '../actions/timelines_typed';
 import { timelineKey } from '../actions/timelines_typed';
-import {
-  getTimelineFlag,
-  getTimelineItems,
-  getTimelineUnread,
-} from '../models/timeline';
 import type { Timeline, TimelineItem } from '../models/timeline';
 import { createAppSelector } from '../store';
 
@@ -19,6 +14,8 @@ interface TimelineShape {
   pendingItems: ImmutableList<TimelineItem>;
   items: ImmutableList<TimelineItem>;
 }
+
+const emptyItems = ImmutableList<TimelineItem>();
 
 export const selectTimelineByKey = createAppSelector(
   [(_, key: string) => key, (state) => state.timelines],
@@ -44,12 +41,12 @@ export function toTypedTimeline(timeline?: Timeline): TimelineShape | null {
     return null;
   }
   return {
-    unread: getTimelineUnread(timeline),
-    online: getTimelineFlag(timeline, 'online') ?? false,
-    top: getTimelineFlag(timeline, 'top') ?? false,
-    isLoading: getTimelineFlag(timeline, 'isLoading') ?? true,
-    hasMore: getTimelineFlag(timeline, 'hasMore') ?? false,
-    pendingItems: getTimelineItems(timeline, 'pendingItems'),
-    items: getTimelineItems(timeline, 'items'),
+    unread: timeline.get('unread', 0),
+    online: timeline.get('online', false),
+    top: timeline.get('top', false),
+    isLoading: timeline.get('isLoading', true),
+    hasMore: timeline.get('hasMore', false),
+    pendingItems: timeline.get('pendingItems', emptyItems),
+    items: timeline.get('items', emptyItems),
   };
 }

@@ -11,7 +11,6 @@ import type { ColumnRef } from 'mastodon/components/column';
 import { ColumnHeader } from 'mastodon/components/column_header';
 import StatusListContainer from 'mastodon/features/ui/containers/status_list_container';
 import type { Card } from 'mastodon/models/status';
-import { getTimelineItems } from 'mastodon/models/timeline';
 import { useAppDispatch, useAppSelector } from 'mastodon/store';
 
 export const LinkTimeline: React.FC<{
@@ -23,7 +22,7 @@ export const LinkTimeline: React.FC<{
   const columnRef = useRef<ColumnRef>(null);
   const firstStatusId = useAppSelector((state) =>
     decodedUrl
-      ? getTimelineItems(state.timelines.get(`link:${decodedUrl}`)).first()
+      ? state.timelines.get(`link:${decodedUrl}`)?.get('items').first()
       : undefined,
   );
   const story = useAppSelector((state) =>

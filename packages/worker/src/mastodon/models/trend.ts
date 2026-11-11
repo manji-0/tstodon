@@ -1,10 +1,11 @@
-import type { Map as ImmutableMap } from 'immutable';
-import { List as ImmutableList } from 'immutable';
+import type { List as ImmutableList, Map as ImmutableMap } from 'immutable';
+
+import type { ImmutableMapOf } from '../utils/immutable_map_of';
 
 /**
  * A trending hashtag (`ApiHashtagJSON`) or link (`ApiTrendsLinkJSON`)
- * through `fromJS`. Its fields stay `unknown`, as Immutable 4 types a `Map`
- * with one value type, and are narrowed where they are read.
+ * through `fromJS`. Its fields stay `unknown` and are narrowed where they
+ * are read.
  */
 export type TrendItem = ImmutableMap<string, unknown>;
 
@@ -13,21 +14,7 @@ export interface TrendListFields {
   isLoading: boolean;
 }
 
-export type TrendList = ImmutableMap<
-  keyof TrendListFields,
-  TrendListFields[keyof TrendListFields]
->;
+export type TrendList = ImmutableMapOf<TrendListFields>;
 
 /** The trending hashtags (`tags`) and links (`links`), `reducers/trends.ts`. */
-export type TrendsState = ImmutableMap<'tags' | 'links', TrendList>;
-
-const emptyItems = ImmutableList<TrendItem>();
-
-/** The trending hashtags or links. */
-export const getTrendItems = (
-  state: TrendsState,
-  key: 'tags' | 'links',
-): ImmutableList<TrendItem> => {
-  const items = state.get(key)?.get('items');
-  return ImmutableList.isList(items) ? items : emptyItems;
-};
+export type TrendsState = ImmutableMapOf<{ tags: TrendList; links: TrendList }>;

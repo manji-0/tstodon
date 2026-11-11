@@ -1,8 +1,5 @@
 import { createReducer } from '@reduxjs/toolkit';
-import {
-  Map as ImmutableMap,
-  OrderedSet as ImmutableOrderedSet,
-} from 'immutable';
+import { OrderedSet as ImmutableOrderedSet } from 'immutable';
 
 import { getNextLinkUri } from 'mastodon/api';
 import type { Status } from 'mastodon/models/status';
@@ -76,27 +73,26 @@ import type {
   expandTrendingStatusesFail,
 } from '../actions/trends';
 
-import { getStatusListItems } from '../models/status_list';
 import type {
   StatusList,
   StatusListFields,
   StatusListKey,
   StatusListsState,
 } from '../models/status_list';
+import { immutableMapOf } from '../utils/immutable_map_of';
 
 import { matchAction } from './match_action';
 
 const newList = (): StatusList =>
-  ImmutableMap<
-    keyof StatusListFields,
-    StatusListFields[keyof StatusListFields]
-  >({
+  immutableMapOf<StatusListFields>({
     next: null,
     loaded: false,
     items: ImmutableOrderedSet<string>(),
   });
 
-const initialState: StatusListsState = ImmutableMap<StatusListKey, StatusList>({
+const initialState: StatusListsState = immutableMapOf<
+  Record<StatusListKey, StatusList>
+>({
   favourites: newList(),
   bookmarks: newList(),
   pins: newList(),
@@ -138,7 +134,7 @@ const appendToList = (
       map.set('isLoading', false);
       map.set(
         'items',
-        getStatusListItems(map).union(statuses.map((item) => item.id)),
+        map.get('items').union(statuses.map((item) => item.id)),
       );
     }),
   );
@@ -151,7 +147,7 @@ const prependOneToList = (
 ) => {
   const statusId = status.get('id') as string;
   return updateList(state, listType, (list) => {
-    const items = getStatusListItems(list);
+    const items = list.get('items');
     return items.includes(statusId)
       ? list
       : list.set('items', ImmutableOrderedSet([statusId]).union(items));
@@ -164,10 +160,7 @@ const removeOneFromList = (
   status: Status,
 ) => {
   return updateList(state, listType, (list) =>
-    list.set(
-      'items',
-      getStatusListItems(list).delete(status.get('id') as string),
-    ),
+    list.set('items', list.get('items').delete(status.get('id') as string)),
   );
 };
 
@@ -252,7 +245,7 @@ const statusListsReducer = createReducer(initialState, (builder) => {
       updateList(state, 'trending', (list) =>
         list.set(
           'items',
-          getStatusListItems(list).filterNot(
+          list.get('items').filterNot(
             (statusId) =>
               action.payload.statuses.getIn([statusId, 'account']) ===
               action.payload.relationship.id,
@@ -264,7 +257,7 @@ const statusListsReducer = createReducer(initialState, (builder) => {
       updateList(state, 'trending', (list) =>
         list.set(
           'items',
-          getStatusListItems(list).filterNot(
+          list.get('items').filterNot(
             (statusId) =>
               action.payload.statuses.getIn([statusId, 'account']) ===
               action.payload.relationship.id,
