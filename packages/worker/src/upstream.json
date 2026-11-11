@@ -13,6 +13,7 @@
     "public/web-push-icon_expand.png": "packages/worker/public/web-push-icon_expand.png",
     "public/web-push-icon_favourite.png": "packages/worker/public/web-push-icon_favourite.png",
     "public/web-push-icon_reblog.png": "packages/worker/public/web-push-icon_reblog.png",
+    "public/embed.js": "packages/worker/public/embed.js",
     "LICENSE": "packages/worker/src/LICENSE",
     "AUTHORS.md": "packages/worker/src/AUTHORS.md"
   },

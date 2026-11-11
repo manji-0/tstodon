@@ -37,7 +37,7 @@ Below, `OLD` is the tag in `upstream.json` and `NEW` the release to move to.
    d app/javascript | git apply --3way -p3 --directory=packages/worker/src
    d config/vite config/themes.yml .browserslistrc public/sounds public/badge.png \
      public/web-push-icon_expand.png public/web-push-icon_favourite.png public/web-push-icon_reblog.png \
-     | git apply --3way --directory=packages/worker
+     public/embed.js | git apply --3way --directory=packages/worker
    d LICENSE AUTHORS.md | git apply --3way --directory=packages/worker/src
    git diff refs/mastodon/OLD refs/mastodon/NEW -- config/formatjs-formatter.js
    git status packages/worker   # resolve conflicts, then git add
