@@ -9,7 +9,7 @@ import { ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
 import { parseJsonText } from "./json-column";
-import { queryTyped, runTyped } from "./typed-sql";
+import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   deleteDeadOutboxJobs as deleteDeadOutboxJobsSql,
   listDeadOutboxJobs as listDeadOutboxJobsSql,
@@ -34,6 +34,17 @@ const hex = (bytes: ArrayBuffer): string =>
 export const deadOutboxJobId = async (body: unknown): Promise<string> =>
   hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(bodyJsonOf(body))));
 
+const upsertDeadOutboxJob = (id: string, entry: DeadOutboxJobEntry, seenAt: string) =>
+  upsertDeadOutboxJobSql(
+    id,
+    entry.jobKind,
+    entry.reason.kind,
+    bodyJsonOf(entry.body),
+    entry.attempts,
+    DeadOutboxJob.describe(entry),
+    seenAt,
+  );
+
 /** Store a dead job, or count it again on its row. Resolves to the row id. */
 export const recordDeadOutboxJob = async (
   db: D1Database,
@@ -41,21 +52,28 @@ export const recordDeadOutboxJob = async (
   seenAt: string,
 ): Promise<Result<string, RepositoryError>> => {
   const id = await deadOutboxJobId(entry.body);
+  const recorded = await runD1(() => runTyped(db, upsertDeadOutboxJob(id, entry, seenAt)));
+  return recorded.map(() => id);
+};
+
+/**
+ * {@link recordDeadOutboxJob} for several jobs in one batch, which stores all
+ * of them or none. Resolves to their row ids, in order.
+ */
+export const recordDeadOutboxJobs = async (
+  db: D1Database,
+  entries: ReadonlyArray<DeadOutboxJobEntry>,
+  seenAt: string,
+): Promise<Result<string[], RepositoryError>> => {
+  const rows = await Promise.all(
+    entries.map(async (entry) => ({ id: await deadOutboxJobId(entry.body), entry })),
+  );
   const recorded = await runD1(() =>
-    runTyped(
-      db,
-      upsertDeadOutboxJobSql(
-        id,
-        entry.jobKind,
-        entry.reason.kind,
-        bodyJsonOf(entry.body),
-        entry.attempts,
-        DeadOutboxJob.describe(entry),
-        seenAt,
-      ),
+    db.batch(
+      rows.map(({ id, entry }) => d1PrepareTyped(db, upsertDeadOutboxJob(id, entry, seenAt))),
     ),
   );
-  return recorded.map(() => id);
+  return recorded.map(() => rows.map(({ id }) => id));
 };
 
 export const listDeadOutboxJobs = async (

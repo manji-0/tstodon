@@ -6,11 +6,10 @@ import {
   type RecordInboxFollow,
   RemoteActor,
 } from "@tstodon/domain";
-import { err, ok, type Result } from "neverthrow";
+import { err, ok } from "neverthrow";
 import { findAccountByUsername } from "../account-store";
 import { parseLocalActorUsername } from "../activitypub";
 import { findBlock } from "../block-mute-store";
-import type { RepositoryError } from "../d1";
 import { enqueueTargetedActivity } from "../delivery";
 import { isActorDomainBlocked } from "../domain-block-store";
 import { followAccount } from "../follow-store";
@@ -80,22 +79,6 @@ export const recordInboxFollow = async (
   };
 };
 
-/**
- * Mastodon's `ActivityPub::Activity::Follow` rejects a follower that the
- * target blocks, by account or by domain.
- */
-const blocksFollower = async (
-  db: D1Database,
-  target: LocalAccount,
-  follower: RemoteActor,
-): Promise<Result<boolean, RepositoryError>> => {
-  const blocked = await findBlock(db, target.id, follower.actorUri);
-  if (blocked.isErr() || blocked.value) {
-    return blocked;
-  }
-  return isActorDomainBlocked(db, target.id, follower.actorUri);
-};
-
 export const receiveRemoteFollow: InboxHandler<RemoteDelivery<"Follow">> = async ({
   env,
   identity,
@@ -106,7 +89,14 @@ export const receiveRemoteFollow: InboxHandler<RemoteDelivery<"Follow">> = async
   if (!target) {
     return ok(undefined);
   }
-  const refused = await blocksFollower(env.DB, target, signer);
+  const [blocked, domainBlocked, existing] = await Promise.all([
+    findBlock(env.DB, target.id, signer.actorUri),
+    isActorDomainBlocked(env.DB, target.id, signer.actorUri),
+    findRemoteFollow(env.DB, target.id, signer.actorUri),
+  ]);
+  // Mastodon's `ActivityPub::Activity::Follow` rejects a follower that the
+  // target blocks, by account or by domain.
+  const refused = blocked.isErr() || blocked.value ? blocked : domainBlocked;
   if (refused.isErr()) {
     return err(refused.error);
   }
@@ -116,10 +106,7 @@ export const receiveRemoteFollow: InboxHandler<RemoteDelivery<"Follow">> = async
   }
   const outcome = await recordInboxFollow(
     {
-      hasRemoteFollow: async (targetAccountId, actorUri) =>
-        (await findRemoteFollow(env.DB, targetAccountId, actorUri)).map(
-          (follow) => follow !== undefined,
-        ),
+      hasRemoteFollow: async () => existing.map((follow) => follow !== undefined),
       recordInboxFollow: (follow) => upsertRemoteFollow(env.DB, follow),
     },
     target,

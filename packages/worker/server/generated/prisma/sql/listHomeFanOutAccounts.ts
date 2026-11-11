@@ -11,7 +11,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param limit
  */
 export const listHomeFanOutAccounts = $runtime.makeTypedQueryFactory(
-  "SELECT account_id FROM (\nSELECT follower_account_id AS account_id FROM follows\nWHERE target_account_id = $1 AND kind = 'Accepted'\nUNION\nSELECT account_id FROM outbound_follows\nWHERE actor_uri = $2 AND state = 'Accepted'\n) WHERE account_id > $3 ORDER BY account_id LIMIT $4",
+  "SELECT account_id FROM (\nSELECT follower_account_id AS account_id FROM follows\nWHERE target_account_id = $1 AND kind = 'Accepted' AND follower_account_id > $3\nUNION\nSELECT account_id FROM outbound_follows\nWHERE actor_uri = $2 AND state = 'Accepted' AND account_id > $3\n) ORDER BY account_id LIMIT $4",
 ) as (
   accountId: string,
   actorUri: string,

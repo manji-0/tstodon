@@ -4,8 +4,8 @@
 -- @param {Int} $4:limit
 SELECT account_id FROM (
   SELECT follower_account_id AS account_id FROM follows
-  WHERE target_account_id = $1 AND kind = 'Accepted'
+  WHERE target_account_id = $1 AND kind = 'Accepted' AND follower_account_id > $3
   UNION
   SELECT account_id FROM outbound_follows
-  WHERE actor_uri = $2 AND state = 'Accepted'
-) WHERE account_id > $3 ORDER BY account_id LIMIT $4
+  WHERE actor_uri = $2 AND state = 'Accepted' AND account_id > $3
+) ORDER BY account_id LIMIT $4

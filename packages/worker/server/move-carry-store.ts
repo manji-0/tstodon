@@ -78,19 +78,36 @@ export const listMuters = async (
       );
 };
 
-const NoterRowSchema = z.object({ account_id: z.string().min(1), note: z.string() });
+const NoterRowSchema = z.object({
+  account_id: z.string().min(1),
+  note: z.string(),
+  moved_to_note: z.string().nullable(),
+});
 
-export type NoterRow = Readonly<{ accountId: string; note: string }>;
+export type NoterRow = Readonly<{
+  accountId: string;
+  note: string;
+  /** The account's note on the account moved to, if it has one. */
+  movedToNote: string | undefined;
+}>;
 
-/** The local accounts with a note on `targetActorUri`, after `afterId`. */
+/**
+ * The local accounts with a note on `targetActorUri`, after `afterId`, each
+ * with its note on `movedToTarget` (an account id or actor URI).
+ */
 export const listNoters = async (
   db: D1Database,
   targetActorUri: string,
+  movedToTarget: string,
   afterId: string,
   limit: number,
 ): Promise<Result<AccountPage<NoterRow>, RepositoryError>> => {
   const rows = await runD1(async () =>
-    queryTyped(db, listNotersOfActorSql(targetActorUri, afterId, limit), NoterRowSchema),
+    queryTyped(
+      db,
+      listNotersOfActorSql(targetActorUri, afterId, limit, movedToTarget),
+      NoterRowSchema,
+    ),
   );
   return rows.isErr()
     ? err(rows.error)
@@ -99,6 +116,7 @@ export const listNoters = async (
           rows.value.map((row) => ({
             accountId: row.account_id,
             note: row.note,
+            movedToNote: row.moved_to_note ?? undefined,
           })),
           limit,
         ),

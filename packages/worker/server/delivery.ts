@@ -7,26 +7,26 @@ import {
   OutboxJob,
   type OutboxJob as OutboxJobValue,
   Hostname,
+  Username,
 } from "@tstodon/domain";
 import type { SensitiveValue } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
-import { findAccountById } from "./account-store";
 import type { RepositoryError } from "./d1";
 import { signInboxRequest } from "./http-signature";
 import { instanceActorKeyId, instanceActorKeys } from "./instance-actor";
 import { unavailableDeliveryDomains } from "./delivery-domain-health-store";
 import {
   ensureOutboxTargets,
-  findOutboundActivity,
+  findOutboundActivityWithSigner,
   insertSkippedOutboxTargets,
   insertOutboundActivity,
+  type OutboundActivityWithSignerRow,
   type OutboundSigner,
-  outboundSignerOf,
 } from "./outbox-store";
 import { writeMetric } from "./metrics";
 import type { OutboxWorkflowParams } from "./outbox-delivery-workflow";
 import { suspendedDomains } from "./admin-domain-block-store";
-import { federatesWithHost, parseInstanceIdentity } from "./runtime-config";
+import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 
 type DeliverTargetJob = Extract<OutboxJobValue, { kind: "DeliverTarget" }>;
 
@@ -144,14 +144,14 @@ const enqueueSignedActivity = async (
 ): Promise<Result<void, EnqueueLocalActivityError>> => {
   // A suspended domain, or one outside the federation allow list, is never
   // contacted; the activity is dropped quietly.
-  const suspended = await suspendedDomains(env.DB);
-  const admitted: string[] = [];
-  for (const inboxUrl of new Set(inboxUrls)) {
+  const [suspended, allowHosts] = await Promise.all([
+    suspendedDomains(env.DB),
+    federationAllowHosts(env),
+  ]);
+  const admitted = [...new Set(inboxUrls)].filter((inboxUrl) => {
     const inboxHost = Hostname.ofUri(inboxUrl);
-    if (!inboxHost || (!suspended.has(inboxHost) && (await federatesWithHost(env, inboxHost)))) {
-      admitted.push(inboxUrl);
-    }
-  }
+    return !inboxHost || (!suspended.has(inboxHost) && allowListAdmits(allowHosts, inboxHost));
+  });
   if (admitted.length === 0) {
     return ok(undefined);
   }
@@ -295,36 +295,34 @@ type SigningKey =
   | Readonly<{ kind: "Missing" }>
   | Readonly<{ kind: "Unavailable" }>;
 
+/** The key that signs `activity`: its account's, read with it, or the instance actor's. */
 const signingKey = async (
   env: Env,
   identity: InstanceIdentity,
-  signer: OutboundSigner,
+  activity: OutboundActivityWithSignerRow,
 ): Promise<SigningKey> => {
-  switch (signer.kind) {
-    case "Account": {
-      const account = await findAccountById(env.DB, signer.accountId);
-      if (account.isErr()) {
-        return { kind: "Unavailable" };
-      }
-      return account.value
-        ? {
-            kind: "Found",
-            keyId: `${InstanceIdentity.actorUrl(identity, account.value.username)}#main-key`,
-            privateKeyJwk: account.value.privateKeyJwk,
-          }
-        : { kind: "Missing" };
-    }
-    case "InstanceActor": {
-      const keys = await instanceActorKeys(env.DB);
-      return keys.isOk()
-        ? {
-            kind: "Found",
-            keyId: instanceActorKeyId(identity),
-            privateKeyJwk: keys.value.privateKeyJwk,
-          }
-        : { kind: "Unavailable" };
-    }
+  if (activity.account_id === null) {
+    const keys = await instanceActorKeys(env.DB);
+    return keys.isOk()
+      ? {
+          kind: "Found",
+          keyId: instanceActorKeyId(identity),
+          privateKeyJwk: keys.value.privateKeyJwk,
+        }
+      : { kind: "Unavailable" };
   }
+  if (activity.signer_username === null || activity.signer_private_key_jwk === null) {
+    return { kind: "Missing" };
+  }
+  const username = Username.parse(activity.signer_username);
+  if (username.isErr()) {
+    return { kind: "Unavailable" };
+  }
+  return {
+    kind: "Found",
+    keyId: `${InstanceIdentity.actorUrl(identity, username.value)}#main-key`,
+    privateKeyJwk: activity.signer_private_key_jwk,
+  };
 };
 
 /**
@@ -347,7 +345,7 @@ export const attemptInboxDeliveryWithEvidence = async (
   env: Env,
   job: DeliverTargetJob,
 ): Promise<InboxDeliveryAttempt> => {
-  const activity = await findOutboundActivity(env.DB, job.activityId);
+  const activity = await findOutboundActivityWithSigner(env.DB, job.activityId);
   if (activity.isErr()) {
     return local(DeliveryAttemptOutcome.Local);
   }
@@ -358,7 +356,7 @@ export const attemptInboxDeliveryWithEvidence = async (
   if (identity.isErr()) {
     return local(DeliveryAttemptOutcome.Local);
   }
-  const key = await signingKey(env, identity.value, outboundSignerOf(activity.value));
+  const key = await signingKey(env, identity.value, activity.value);
   if (key.kind === "Missing") {
     return local(DeliveryAttemptOutcome.forHttpStatus(404));
   }

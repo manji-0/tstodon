@@ -231,4 +231,31 @@ describe("tag timeline across the fediverse", () => {
     expect(await processOutboxJob(env, { kind: "BackfillRemoteTags" })).toBe("ok");
     expect(await idsAt("/api/v1/timelines/tag/backfilltag?remote=true")).toEqual([id]);
   });
+
+  it("indexes every older remote status of a run whose writes span several batches", async () => {
+    const actor = await remoteAuthor("tom", "tagbackfillmany.example");
+    const ids: string[] = [];
+    for (let index = 0; index < 30; index += 1) {
+      ids.push(
+        await remotePost(
+          actor,
+          `${actor.actorUri}/statuses/${index}`,
+          `<p>${["backfillmanya", "backfillmanyb", "backfillmanyc"].map(hashtagHtml).join(" ")}</p>`,
+        ),
+      );
+    }
+    for (const id of ids) {
+      await env.DB.prepare("DELETE FROM remote_status_tags WHERE status_id = ?").bind(id).run();
+      await env.DB.prepare("UPDATE remote_statuses SET tags_indexed = 0 WHERE id = ?")
+        .bind(id)
+        .run();
+    }
+    expect(await idsAt("/api/v1/timelines/tag/backfillmanyc?remote=true&limit=40")).toEqual([]);
+
+    expect(await processOutboxJob(env, { kind: "BackfillRemoteTags" })).toBe("ok");
+    const newestFirst = [...ids].reverse();
+    for (const tag of ["backfillmanya", "backfillmanyb", "backfillmanyc"]) {
+      expect(await idsAt(`/api/v1/timelines/tag/${tag}?remote=true&limit=40`)).toEqual(newestFirst);
+    }
+  });
 });

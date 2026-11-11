@@ -466,8 +466,10 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     refuse({ reason: "DigestMismatch", status: 401, actor: actorUri });
     return c.json({ kind: "InvalidSignature" }, 401);
   }
-  const suspended = await suspendedDomains(c.env.DB);
-  const allowHosts = await federationAllowHosts(c.env);
+  const [suspended, allowHosts] = await Promise.all([
+    suspendedDomains(c.env.DB),
+    federationAllowHosts(c.env),
+  ]);
   const fetchSigner = instanceActorFetchSigner(c.env.DB, identity.value);
   const actorUsername = parseLocalActorUsername(identity.value, actorUri);
   const deletesSigner =

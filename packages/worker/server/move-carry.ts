@@ -88,27 +88,24 @@ export const moveNotePage = async (
   to: AccountRef,
   page: CarryPage,
 ): Promise<Result<string | undefined, RepositoryError>> => {
-  const notes = await listNoters(env.DB, from.actorUri, page.afterId, page.pageSize);
+  const notes = await listNoters(env.DB, from.actorUri, to.actorUri, page.afterId, page.pageSize);
   if (notes.isErr()) {
     return err(notes.error);
   }
   const lead = carriedText("notes", from);
   for (const note of notes.value.rows) {
-    const existing = await findAccountNoteText(env.DB, note.accountId, to.actorUri);
-    if (existing.isErr()) {
-      return err(existing.error);
-    }
-    if (existing.value?.startsWith(lead)) {
+    const existing = note.movedToNote;
+    if (existing?.startsWith(lead)) {
       continue;
     }
     const merged =
-      existing.value === undefined
+      existing === undefined
         ? [lead, note.note].join("\n")
-        : [lead, note.note, "\n", existing.value].join("\n");
+        : [lead, note.note, "\n", existing].join("\n");
     const text =
       merged.length <= NOTE_SIZE_LIMIT
         ? merged
-        : existing.value === undefined && note.note.length <= NOTE_SIZE_LIMIT
+        : existing === undefined && note.note.length <= NOTE_SIZE_LIMIT
           ? note.note
           : undefined;
     if (text === undefined) {
