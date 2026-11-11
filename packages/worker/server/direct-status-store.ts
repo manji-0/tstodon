@@ -1,14 +1,12 @@
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
+import { z } from "zod";
 import { nowIso } from "./clock";
-import { type RepositoryError, runD1 } from "./d1";
+import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
-import {
-  CONTEXT_ANCESTOR_LIMIT,
-  findStatusById,
-  hydrateStatusRows,
-  statusSelect,
-} from "./status-store";
+import { resolveDirectConversationRoots as resolveDirectConversationRootsSql } from "./generated/prisma/sql";
+import { CONTEXT_ANCESTOR_LIMIT, hydrateStatusRows, statusSelect } from "./status-store";
+import { queryTyped } from "./typed-sql";
 
 export const listDirectStatusesForAccount = async (
   db: D1Database,
@@ -40,30 +38,57 @@ export const listDirectStatusesForAccount = async (
     return hydrateStatusRows(db, results ?? []);
   });
 
-export const resolveDirectConversationRoot = async (
+/** Where a local status's run of direct replies starts. */
+export type DirectConversationRoot = Readonly<{
+  /** Whether the status itself is a direct note; a status that is not is its own root. */
+  direct: boolean;
+  rootId: string;
+  /** The remote status the root answers, by object URI. */
+  rootInReplyToUri: string | undefined;
+}>;
+
+const DirectConversationRootRow = z.object({
+  start_id: z.string(),
+  start_direct: z.number(),
+  root_id: z.string(),
+  root_in_reply_to_uri: z.string().nullable(),
+});
+
+/**
+ * For each stored status in `statusIds`, the first direct note up its local
+ * `in_reply_to_id` chain, at most `CONTEXT_ANCESTOR_LIMIT` steps up, in one
+ * query. Ids with no stored status are left out.
+ */
+export const resolveDirectConversationRoots = async (
   db: D1Database,
-  status: LocalStatusValue,
-): Promise<Result<string, RepositoryError>> => {
-  if (status.kind !== "LocalNote" || status.visibility.kind !== "Direct") {
-    return ok(status.id);
+  statusIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, DirectConversationRoot>, RepositoryError>> => {
+  if (statusIds.length === 0) {
+    return ok(new Map());
   }
-  let current: LocalStatusValue = status;
-  for (let depth = 0; depth < CONTEXT_ANCESTOR_LIMIT; depth += 1) {
-    if (current.kind !== "LocalNote" || !current.inReplyToId) {
-      break;
-    }
-    const parent = await findStatusById(db, current.inReplyToId);
-    if (parent.isErr()) {
-      return err(parent.error);
-    }
-    if (
-      !parent.value ||
-      parent.value.kind !== "LocalNote" ||
-      parent.value.visibility.kind !== "Direct"
-    ) {
-      break;
-    }
-    current = parent.value;
+  const rows = await runD1(async () =>
+    queryTyped(
+      db,
+      resolveDirectConversationRootsSql(
+        jsonStringArray([...new Set(statusIds)]),
+        CONTEXT_ANCESTOR_LIMIT,
+      ),
+      DirectConversationRootRow,
+    ),
+  );
+  if (rows.isErr()) {
+    return err(rows.error);
   }
-  return ok(current.id);
+  return ok(
+    new Map(
+      rows.value.map((row) => [
+        row.start_id,
+        {
+          direct: row.start_direct === 1,
+          rootId: row.root_id,
+          rootInReplyToUri: row.root_in_reply_to_uri ?? undefined,
+        },
+      ]),
+    ),
+  );
 };

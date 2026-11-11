@@ -3,16 +3,19 @@ import { compileSchema, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { runD1, runD1Batch, type RepositoryError } from "./d1";
+import { jsonStringArray, runD1, runD1Batch, type RepositoryError } from "./d1";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
-  getConversationRead as getConversationReadSql,
   getMarkersByTimelines as getMarkersByTimelinesSql,
+  listConversationReads as listConversationReadsSql,
   upsertConversationRead as upsertConversationReadSql,
   upsertMarker as upsertMarkerSql,
 } from "./generated/prisma/sql";
 
-const LastReadStatusIdRow = z.object({ last_read_status_id: z.string() });
+const ConversationReadRow = z.object({
+  conversation_id: z.string(),
+  last_read_status_id: z.string(),
+});
 
 export const MarkerTimelineSchema = z.literal(MARKER_TIMELINES);
 export type MarkerTimeline = z.infer<typeof MarkerTimelineSchema>;
@@ -93,18 +96,26 @@ export const markConversationRead = async (
     );
   });
 
-export const getConversationRead = async (
+/** The last status the account read in each of these conversations, keyed by conversation id. */
+export const listConversationReads = async (
   db: D1Database,
   accountId: string,
-  conversationId: string,
-): Promise<Result<string | undefined, RepositoryError>> => {
-  const queried = await runD1(async () => {
-    return queryTyped(db, getConversationReadSql(accountId, conversationId), LastReadStatusIdRow);
-  });
+  conversationIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, string>, RepositoryError>> => {
+  if (conversationIds.length === 0) {
+    return ok(new Map());
+  }
+  const queried = await runD1(async () =>
+    queryTyped(
+      db,
+      listConversationReadsSql(accountId, jsonStringArray([...new Set(conversationIds)])),
+      ConversationReadRow,
+    ),
+  );
   if (queried.isErr()) {
     return err(queried.error);
   }
-  return ok(queried.value[0]?.last_read_status_id);
+  return ok(new Map(queried.value.map((row) => [row.conversation_id, row.last_read_status_id])));
 };
 
 export const parseMarkerTimelines = (raw: unknown): MarkerTimeline[] => {

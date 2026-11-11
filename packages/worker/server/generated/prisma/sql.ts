@@ -344,6 +344,8 @@ export * from "./sql/findRemoteStatusReplyTargetByObjectUri";
 
 export * from "./sql/findRemoteStatusReplyTargets";
 
+export * from "./sql/findRemoteStatusReplyTargetsByObjectUris";
+
 export * from "./sql/findRemoteStatusThreadRefresh";
 
 export * from "./sql/findRemoteStatusesByIds";
@@ -367,10 +369,6 @@ export * from "./sql/findWebSettings";
 export * from "./sql/finishRemoteStatusThreadBackfill";
 
 export * from "./sql/followTag";
-
-export * from "./sql/getConversationHide";
-
-export * from "./sql/getConversationRead";
 
 export * from "./sql/getMarkersByTimelines";
 
@@ -534,6 +532,10 @@ export * from "./sql/listAuthorizedApplicationTokens";
 
 export * from "./sql/listBlockersOfActor";
 
+export * from "./sql/listConversationHides";
+
+export * from "./sql/listConversationReads";
+
 export * from "./sql/listCustomEmojiRows";
 
 export * from "./sql/listDeadOutboxJobs";
@@ -557,6 +559,8 @@ export * from "./sql/listFeaturedTags";
 export * from "./sql/listFilterStatuses";
 
 export * from "./sql/listFilters";
+
+export * from "./sql/listFollowedAccountIds";
 
 export * from "./sql/listFollowedTags";
 
@@ -587,6 +591,8 @@ export * from "./sql/listLocalBoostsOfRemoteActor";
 export * from "./sql/listLocalBoostsOfRemoteObject";
 
 export * from "./sql/listLocalNoteTextsAfter";
+
+export * from "./sql/listLocalThreadAncestors";
 
 export * from "./sql/listMediaIdsForStatus";
 
@@ -646,6 +652,8 @@ export * from "./sql/listRemoteStatusEditSnapshots";
 
 export * from "./sql/listRemoteStatusMentions";
 
+export * from "./sql/listRemoteThreadAncestors";
+
 export * from "./sql/listRestrictedDomains";
 
 export * from "./sql/listRestrictedTagNames";
@@ -668,7 +676,7 @@ export * from "./sql/listStatusReachInboxes";
 
 export * from "./sql/listStatusRemoteMentions";
 
-export * from "./sql/listStatusReplyLinks";
+export * from "./sql/listStatusReplyAncestorLinks";
 
 export * from "./sql/listStatusReplyUris";
 
@@ -691,6 +699,8 @@ export * from "./sql/listUnstrippedAvatars";
 export * from "./sql/listUnstrippedHeaders";
 
 export * from "./sql/listUnstrippedMedia";
+
+export * from "./sql/listViewableDirectStatusIds";
 
 export * from "./sql/markAvatarMetadataStripped";
 
@@ -783,6 +793,8 @@ export * from "./sql/replaceCustomEmojiImage";
 export * from "./sql/replacePollOptions";
 
 export * from "./sql/reserveStatusIdempotency";
+
+export * from "./sql/resolveDirectConversationRoots";
 
 export * from "./sql/rewriteEditedMediaKey";
 
