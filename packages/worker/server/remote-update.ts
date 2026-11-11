@@ -113,7 +113,7 @@ const applyNoteUpdate = async (
   if (note.isErr()) {
     return ok(undefined);
   }
-  const editedAt = IsoInstant.parse(note.value.updated ?? "").orElse(() =>
+  const editedAt = IsoInstant.parseRemote(note.value.updated ?? "").orElse(() =>
     IsoInstant.parse(nowIso()),
   );
   if (editedAt.isErr()) {

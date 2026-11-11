@@ -39,14 +39,34 @@ export const mediaCors = (): MiddlewareHandler =>
     exposeHeaders: ["Content-Type", "Content-Length", "ETag", "Cache-Control"],
   });
 
+const under = (path: string, prefix: string): boolean =>
+  path === prefix || path.startsWith(`${prefix}/`);
+
+/**
+ * Paths that get the allowlisted-origin CORS policy: the API, the OAuth token
+ * endpoints, and the discovery documents (`/.well-known/*`, `/nodeinfo/*`).
+ */
+export const isApiCorsPath = (path: string): boolean =>
+  under(path, "/api") ||
+  under(path, "/.well-known") ||
+  under(path, "/nodeinfo") ||
+  path === "/oauth/token" ||
+  path === "/oauth/revoke";
+
 /** Mastodon API — reflect allowlisted Origin so Authorization preflight works. */
 export const apiCors = (): MiddlewareHandler =>
   cors({
     origin: (origin: string, c: Context<{ Bindings: Env }>) =>
       resolveApiCorsOrigin(c.env, origin) ?? undefined,
     allowMethods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Authorization", "Content-Type"],
-    exposeHeaders: ["Link", "X-Request-Id"],
+    allowHeaders: ["Authorization", "Content-Type", "Idempotency-Key"],
+    exposeHeaders: [
+      "Link",
+      "X-Request-Id",
+      "X-RateLimit-Limit",
+      "X-RateLimit-Remaining",
+      "X-RateLimit-Reset",
+    ],
     maxAge: 86400,
     credentials: false,
   });

@@ -257,5 +257,7 @@ export const postV1StatusesByIdTranslate = async (
   if (visibility !== "Public" && visibility !== "Unlisted") {
     return c.json({ error: "This action is not allowed", kind: "Forbidden" }, 403);
   }
-  return c.json({ error: "Service Unavailable", kind: "TranslationUnavailable" }, 503);
+  // No translation provider is configured: Mastodon's TranslationsController
+  // maps `NotConfiguredError` to 404.
+  return c.json({ error: "Record not found", kind: "NotFound" }, 404);
 };

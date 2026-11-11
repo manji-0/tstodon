@@ -99,7 +99,7 @@ const actorProfile = (
     published?: string | null | undefined;
   }>,
 ): RemoteActorProfile => {
-  const published = IsoInstant.parse(document.published ?? "");
+  const published = IsoInstant.parseRemote(document.published ?? "");
   return {
     note: summaryText(document.summary ?? ""),
     avatarUrl: linkUrl(document.icon),

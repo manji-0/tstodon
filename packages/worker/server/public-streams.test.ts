@@ -58,7 +58,7 @@ const remoteNote = (author: Remote, slug: string) => ({
   type: "Note",
   attributedTo: author.actorUri,
   content: `<p>${slug}</p>`,
-  published: "2026-10-20T00:00:00.000Z",
+  published: new Date().toISOString(),
   to: [PUBLIC],
   cc: [`${author.actorUri}/followers`],
 });

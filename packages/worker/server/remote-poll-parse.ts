@@ -10,12 +10,12 @@ type NoteDocument = z.infer<typeof NoteDocumentSchema>;
 type PollEnd = Exclude<RemotePollValue, { kind: "NoPoll" }>["ends"];
 
 const endOf = (document: NoteDocument): PollEnd => {
-  const endTime = IsoInstant.parse(document.endTime ?? "");
+  const endTime = IsoInstant.parseRemote(document.endTime ?? "");
   if (endTime.isOk()) {
     return { kind: "At", at: endTime.value };
   }
   // `closed` is the time the poll closed; a bare `true` closed it at an unknown time.
-  const closed = IsoInstant.parse(
+  const closed = IsoInstant.parseRemote(
     typeof document.closed === "string"
       ? document.closed
       : document.closed
