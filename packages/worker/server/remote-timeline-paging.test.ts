@@ -188,6 +188,32 @@ describe("remote statuses on public and tag pages", () => {
     ).toEqual(newestFirst.slice(0, 2));
   });
 
+  it("pages a remote tag timeline by id with max_id, since_id, and min_id", async () => {
+    const tag = "cursortag";
+    const author = await remoteActor("tag-cursor-author", "tag-cursor.example");
+    const posted: string[] = [];
+    for (const slug of ["a", "b", "c", "d", "e"]) {
+      posted.push(await note(author, `tag-cursor-${slug}`, tag));
+      await note(author, `tag-cursor-untagged-${slug}`);
+    }
+    const newestFirst = posted.toReversed();
+    const path = `/api/v1/timelines/tag/${tag}?remote=true`;
+
+    const all = read(StatusesSchema, (await json(`${path}&limit=5`)).body);
+    expect(all.map((status) => status.uri)).toEqual(newestFirst);
+    expect(await uris(`${path}&limit=2`)).toEqual(newestFirst.slice(0, 2));
+    expect(await uris(`${path}&limit=2&max_id=${all[1]?.id ?? ""}`)).toEqual(
+      newestFirst.slice(2, 4),
+    );
+    expect(await uris(`${path}&limit=5&since_id=${all[2]?.id ?? ""}`)).toEqual(
+      newestFirst.slice(0, 2),
+    );
+    expect(await uris(`${path}&limit=2&min_id=${all[4]?.id ?? ""}`)).toEqual([
+      newestFirst[3],
+      newestFirst[2],
+    ]);
+  });
+
   it("pages the merged local and remote public timeline without gaps or repeats", async () => {
     const email = "paging-merged@example.com";
     const author = await remoteActor("merged-author", "merged.example");
