@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { signedInAccount } from "../test/auth-fixture";
 import { vacuumActivities } from "./activity-vacuum";
-import { inboxActivityExists } from "./inbox-store";
+import { inboxActivityState } from "./inbox-store";
 import { processOutboxJob } from "./outbox-job";
 import { handleScheduled } from "./scheduled-handler";
 
@@ -205,24 +205,27 @@ describe("the activity vacuum", () => {
   });
 
   it("keeps received activity ids long enough to dedupe a redelivery", async () => {
-    const insert = (id: string, createdAt: string) =>
+    const insert = (id: string, createdAt: string, state: string = "Processed") =>
       env.DB.prepare(
-        "INSERT INTO inbox_activities (activity_id, kind, payload_json, created_at) VALUES (?, 'Create', '{}', ?)",
-      ).bind(id, createdAt);
+        "INSERT INTO inbox_activities (activity_id, kind, payload_json, created_at, state) VALUES (?, 'Create', '{}', ?, ?)",
+      ).bind(id, createdAt, state);
     const base = "https://remote.example/activities/vacuum";
     await env.DB.batch([
       insert(`${base}/old`, OLD),
       insert(`${base}/12-days`, at(12)),
       insert(`${base}/4-days`, at(4)),
+      insert(`${base}/old-claim`, OLD, "Processing"),
     ]);
     // A day is asked for; the dedupe floor of 7 days applies.
     const pass = await vacuumActivities(withVars({ INBOX_ACTIVITY_RETENTION_DAYS: "1" }), NOW);
     expect(pass._unsafeUnwrap().inbox).toBe(2);
-    const exists = async (id: string) => (await inboxActivityExists(env.DB, id))._unsafeUnwrap();
-    expect(await exists(`${base}/old`)).toBe(false);
-    expect(await exists(`${base}/12-days`)).toBe(false);
+    const state = async (id: string) => (await inboxActivityState(env.DB, id))._unsafeUnwrap();
+    expect(await state(`${base}/old`)).toBeUndefined();
+    expect(await state(`${base}/12-days`)).toBeUndefined();
     // The inbox answers a redelivery of this one as a duplicate.
-    expect(await exists(`${base}/4-days`)).toBe(true);
+    expect(await state(`${base}/4-days`)).toBe("Processed");
+    // A claim is the stale-claim release's to delete, never the vacuum's.
+    expect(await state(`${base}/old-claim`)).toBe("Processing");
   });
 
   it("leaves a table alone when its retention is off", async () => {

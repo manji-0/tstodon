@@ -650,6 +650,7 @@ export const Inbox_activitiesScalarFieldEnum = {
   kind: "kind",
   payload_json: "payload_json",
   created_at: "created_at",
+  state: "state",
 } as const;
 
 export type Inbox_activitiesScalarFieldEnum =

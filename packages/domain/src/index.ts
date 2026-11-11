@@ -56,7 +56,9 @@ export {
 export {
   InboxActivity,
   InboxActivitySchema,
+  InboxClaim,
   type InboxActivity as InboxActivityValue,
+  type InboxClaim as InboxClaimValue,
 } from "./inbox-activity";
 export { Hostname, type Hostname as HostnameValue } from "./hostname";
 export { InstanceIdentity } from "./instance-identity";

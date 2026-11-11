@@ -47,7 +47,10 @@ export type PruneOutboundActivities = (
   limit: number,
 ) => Promise<Result<number, RepositoryError>>;
 
-/** Delete up to `limit` of the `inbox_activities` received before `receivedBefore`. */
+/**
+ * Delete up to `limit` of the handled `inbox_activities` received before
+ * `receivedBefore`; an open claim stays.
+ */
 export type PruneInboxActivities = (
   receivedBefore: string,
   limit: number,

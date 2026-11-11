@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { ActivityId } from "./activity-id";
-import { InboxActivity } from "./inbox-activity";
+import { InboxActivity, InboxClaim } from "./inbox-activity";
 
 describe("InboxActivity.dispatch", () => {
   it("rejects unparsable payloads as UnknownType", () => {
@@ -13,7 +13,7 @@ describe("InboxActivity.dispatch", () => {
       activityId: activityId.value,
       payload: { kind: "NotAnActivity" },
     };
-    const rejected = InboxActivity.dispatch(received, new Set());
+    const rejected = InboxActivity.dispatch(received, { kind: "Acquired" });
     expect(rejected).toEqual({
       kind: "Rejected",
       activityId: received.activityId,
@@ -40,5 +40,32 @@ describe("InboxActivity.dispatch", () => {
       error: { kind: "UnknownType", type: "EmojiReact" },
     });
     expect(unknownType.isOk()).toBe(true);
+  });
+
+  it("answers a claim another delivery holds as a Duplicate, without parsing", () => {
+    const activityId = ActivityId.parse("https://example.com/activities/held");
+    if (activityId.isErr()) {
+      throw new Error("activity id rejected");
+    }
+    const received = {
+      kind: "Received" as const,
+      activityId: activityId.value,
+      payload: { kind: "NotAnActivity" },
+    };
+    for (const claim of [{ kind: "InFlight" }, { kind: "Processed" }] as const) {
+      expect(InboxActivity.dispatch(received, claim)).toEqual({
+        kind: "Duplicate",
+        activityId: received.activityId,
+        claim,
+      });
+    }
+  });
+});
+
+describe("InboxClaim.staleBefore", () => {
+  it("is 15 minutes before now", () => {
+    expect(InboxClaim.staleBefore(Date.parse("2026-11-11T12:00:00.000Z"))).toBe(
+      "2026-11-11T11:45:00.000Z",
+    );
   });
 });

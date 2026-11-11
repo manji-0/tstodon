@@ -33,6 +33,8 @@ export type InboxRefusalReason =
   | "SignatureMismatch"
   /** 503: the key's server did not answer (`Retry-After` sent). */
   | "KeyUnavailable"
+  /** 503: another delivery of the activity is being applied (`Retry-After` sent). */
+  | "ActivityInFlight"
   /** 403: the signer's domain is suspended here. */
   | "DomainSuspended"
   /** 403: limited federation, and the signer's domain is not allowed. */

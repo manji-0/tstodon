@@ -45,9 +45,9 @@ describe("Activity", () => {
       activityId: activityId.value,
       payload,
     };
-    const dispatched = InboxActivity.dispatch(received, new Set());
+    const dispatched = InboxActivity.dispatch(received, { kind: "Acquired" });
     expect(dispatched.kind).toBe("Dispatched");
-    const duplicate = InboxActivity.dispatch(received, new Set([payload.id]));
+    const duplicate = InboxActivity.dispatch(received, { kind: "Processed" });
     expect(duplicate.kind).toBe("Duplicate");
   });
 });

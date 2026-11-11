@@ -36,7 +36,7 @@ import { suspendedDomains } from "../admin-domain-block-store";
 import { getRemoteActorModeration } from "../remote-actor-moderation-store";
 import { signedFetchActor } from "../signed-fetch";
 import { authorizeObjectFetch, restrictedActorDocument } from "../authorized-fetch";
-import { inboxActivityExists, insertInboxActivity } from "../inbox-store";
+import { claimInboxActivity, completeInboxActivity, releaseInboxActivity } from "../inbox-store";
 import { limitInboxDelivery } from "../rate-limit";
 import { dispatchInbox } from "../inbox/dispatch";
 import type { InboxSigner } from "../inbox/handler";
@@ -611,16 +611,29 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     refuse({ reason: "InvalidActivityId", status: 400, actor: actorUri, signer: signerUri });
     return c.json({ kind: "ValidationError" }, 400);
   }
-  const known = await inboxActivityExists(c.env.DB, activityId.value);
-  if (known.isErr()) {
-    return jsonRepositoryError(c, known.error.message);
+  // Claimed before it is applied and marked handled only after: a failed
+  // apply gives the claim back, so the sender's retry is applied, not
+  // answered as a duplicate.
+  const claim = await claimInboxActivity(c.env.DB, {
+    activityId: activityId.value,
+    payload: activityJson.value,
+  });
+  if (claim.isErr()) {
+    return jsonRepositoryError(c, claim.error.message);
   }
   const received = InboxActivity.dispatch(
     { kind: "Received", activityId: activityId.value, payload },
-    known.value ? new Set([activityId.value]) : new Set(),
+    claim.value,
   );
   if (received.kind === "Duplicate") {
-    return c.body(null, 202);
+    if (received.claim.kind === "Processed") {
+      return c.body(null, 202);
+    }
+    // Another delivery is applying it. A 503 makes the sender retry, and the
+    // retry is a duplicate if that apply succeeds, or applies it if not.
+    refuse({ reason: "ActivityInFlight", status: 503, actor: actorUri, signer: signerUri });
+    c.header("Retry-After", "60");
+    return c.json({ error: "This activity is being processed", kind: "ActivityInFlight" }, 503);
   }
   if (received.kind === "Rejected") {
     refuse({
@@ -630,20 +643,8 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       signer: signerUri,
       detail: received.error.kind,
     });
-    await insertInboxActivity(c.env.DB, {
-      activityId: activityId.value,
-      kind: received.error.kind,
-      payload: activityJson.value,
-    });
+    await completeInboxActivity(c.env.DB, activityId.value, received.error.kind);
     return c.json(received.error, 400);
-  }
-  await insertInboxActivity(c.env.DB, {
-    activityId: activityId.value,
-    kind: received.kind === "Dispatched" ? received.activity.kind : "Received",
-    payload: activityJson.value,
-  });
-  if (received.kind !== "Dispatched") {
-    return c.body(null, 202);
   }
   const applied = await dispatchInbox(
     {
@@ -659,8 +660,12 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     signer,
   );
   if (applied.isErr()) {
+    await releaseInboxActivity(c.env.DB, activityId.value);
     return jsonRepositoryError(c, applied.error.message);
   }
+  // Applied: 202 even if marking it handled fails, as a retry would apply it
+  // twice. The claim then goes stale and the hourly cron releases it.
+  await completeInboxActivity(c.env.DB, activityId.value, received.activity.kind);
   return c.body(null, 202);
 };
 

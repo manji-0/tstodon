@@ -18,6 +18,34 @@ export const InboxRejectErrorSchema = z.discriminatedUnion("kind", [
 
 export type InboxRejectError = z.infer<typeof InboxRejectErrorSchema>;
 
+/**
+ * Whether a delivery holds the claim on its activity id. The inbox claims
+ * the id before applying the activity and marks it handled only after, so
+ * an apply that fails gives the id back for the sender's retry.
+ */
+const InboxClaimSchema = z.discriminatedUnion("kind", [
+  /** This delivery applies the activity: a new id, or a claim left stale by an apply cut off. */
+  unitKind("Acquired"),
+  /** Another delivery is applying it now. */
+  unitKind("InFlight"),
+  /** It was applied or rejected before. */
+  unitKind("Processed"),
+]);
+
+export type InboxClaim = z.infer<typeof InboxClaimSchema>;
+
+/**
+ * How long a claim may stay unfinished before another delivery may take it
+ * over: well past how long an apply runs, so a live apply keeps its claim.
+ */
+const CLAIM_STALE_AFTER_MS = 15 * 60 * 1000;
+
+export const InboxClaim = {
+  schema: InboxClaimSchema,
+  /** Claims made before this instant are stale. */
+  staleBefore: (nowMs: number): string => new Date(nowMs - CLAIM_STALE_AFTER_MS).toISOString(),
+} as const;
+
 const ReceivedSchema = z.object({
   kind: z.literal("Received"),
   activityId: ActivityId.schema,
@@ -26,6 +54,7 @@ const ReceivedSchema = z.object({
 const DuplicateSchema = z.object({
   kind: z.literal("Duplicate"),
   activityId: ActivityId.schema,
+  claim: z.discriminatedUnion("kind", [unitKind("InFlight"), unitKind("Processed")]),
 });
 const DispatchedSchema = z.object({
   kind: z.literal("Dispatched"),
@@ -51,10 +80,10 @@ export const InboxActivity = {
   parse: schemaResult(InboxActivitySchema),
   dispatch: (
     received: z.infer<typeof ReceivedSchema>,
-    knownIds: ReadonlySet<string>,
-  ): InboxActivity => {
-    if (knownIds.has(received.activityId)) {
-      return { kind: "Duplicate", activityId: received.activityId };
+    claim: InboxClaim,
+  ): Exclude<InboxActivity, { kind: "Received" }> => {
+    if (claim.kind !== "Acquired") {
+      return { kind: "Duplicate", activityId: received.activityId, claim };
     }
     const parsed = Activity.parse(received.payload);
     if (parsed.isErr()) {

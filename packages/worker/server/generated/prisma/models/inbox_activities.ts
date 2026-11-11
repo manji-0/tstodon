@@ -29,6 +29,7 @@ export type Inbox_activitiesMinAggregateOutputType = {
   kind: string | null;
   payload_json: string | null;
   created_at: string | null;
+  state: string | null;
 };
 
 export type Inbox_activitiesMaxAggregateOutputType = {
@@ -36,6 +37,7 @@ export type Inbox_activitiesMaxAggregateOutputType = {
   kind: string | null;
   payload_json: string | null;
   created_at: string | null;
+  state: string | null;
 };
 
 export type Inbox_activitiesCountAggregateOutputType = {
@@ -43,6 +45,7 @@ export type Inbox_activitiesCountAggregateOutputType = {
   kind: number;
   payload_json: number;
   created_at: number;
+  state: number;
   _all: number;
 };
 
@@ -51,6 +54,7 @@ export type Inbox_activitiesMinAggregateInputType = {
   kind?: true;
   payload_json?: true;
   created_at?: true;
+  state?: true;
 };
 
 export type Inbox_activitiesMaxAggregateInputType = {
@@ -58,6 +62,7 @@ export type Inbox_activitiesMaxAggregateInputType = {
   kind?: true;
   payload_json?: true;
   created_at?: true;
+  state?: true;
 };
 
 export type Inbox_activitiesCountAggregateInputType = {
@@ -65,6 +70,7 @@ export type Inbox_activitiesCountAggregateInputType = {
   kind?: true;
   payload_json?: true;
   created_at?: true;
+  state?: true;
   _all?: true;
 };
 
@@ -150,6 +156,7 @@ export type Inbox_activitiesGroupByOutputType = {
   kind: string;
   payload_json: string;
   created_at: string;
+  state: string;
   _count: Inbox_activitiesCountAggregateOutputType | null;
   _min: Inbox_activitiesMinAggregateOutputType | null;
   _max: Inbox_activitiesMaxAggregateOutputType | null;
@@ -176,6 +183,7 @@ export type inbox_activitiesWhereInput = {
   kind?: Prisma.StringFilter<"inbox_activities"> | string;
   payload_json?: Prisma.StringFilter<"inbox_activities"> | string;
   created_at?: Prisma.StringFilter<"inbox_activities"> | string;
+  state?: Prisma.StringFilter<"inbox_activities"> | string;
 };
 
 export type inbox_activitiesOrderByWithRelationInput = {
@@ -183,6 +191,7 @@ export type inbox_activitiesOrderByWithRelationInput = {
   kind?: Prisma.SortOrder;
   payload_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  state?: Prisma.SortOrder;
 };
 
 export type inbox_activitiesWhereUniqueInput = Prisma.AtLeast<
@@ -194,6 +203,7 @@ export type inbox_activitiesWhereUniqueInput = Prisma.AtLeast<
     kind?: Prisma.StringFilter<"inbox_activities"> | string;
     payload_json?: Prisma.StringFilter<"inbox_activities"> | string;
     created_at?: Prisma.StringFilter<"inbox_activities"> | string;
+    state?: Prisma.StringFilter<"inbox_activities"> | string;
   },
   "activity_id"
 >;
@@ -203,6 +213,7 @@ export type inbox_activitiesOrderByWithAggregationInput = {
   kind?: Prisma.SortOrder;
   payload_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  state?: Prisma.SortOrder;
   _count?: Prisma.inbox_activitiesCountOrderByAggregateInput;
   _max?: Prisma.inbox_activitiesMaxOrderByAggregateInput;
   _min?: Prisma.inbox_activitiesMinOrderByAggregateInput;
@@ -220,6 +231,7 @@ export type inbox_activitiesScalarWhereWithAggregatesInput = {
   kind?: Prisma.StringWithAggregatesFilter<"inbox_activities"> | string;
   payload_json?: Prisma.StringWithAggregatesFilter<"inbox_activities"> | string;
   created_at?: Prisma.StringWithAggregatesFilter<"inbox_activities"> | string;
+  state?: Prisma.StringWithAggregatesFilter<"inbox_activities"> | string;
 };
 
 export type inbox_activitiesCreateInput = {
@@ -227,6 +239,7 @@ export type inbox_activitiesCreateInput = {
   kind: string;
   payload_json: string;
   created_at?: string;
+  state?: string;
 };
 
 export type inbox_activitiesUncheckedCreateInput = {
@@ -234,6 +247,7 @@ export type inbox_activitiesUncheckedCreateInput = {
   kind: string;
   payload_json: string;
   created_at?: string;
+  state?: string;
 };
 
 export type inbox_activitiesUpdateInput = {
@@ -241,6 +255,7 @@ export type inbox_activitiesUpdateInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   payload_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  state?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type inbox_activitiesUncheckedUpdateInput = {
@@ -248,6 +263,7 @@ export type inbox_activitiesUncheckedUpdateInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   payload_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  state?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type inbox_activitiesCreateManyInput = {
@@ -255,6 +271,7 @@ export type inbox_activitiesCreateManyInput = {
   kind: string;
   payload_json: string;
   created_at?: string;
+  state?: string;
 };
 
 export type inbox_activitiesUpdateManyMutationInput = {
@@ -262,6 +279,7 @@ export type inbox_activitiesUpdateManyMutationInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   payload_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  state?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type inbox_activitiesUncheckedUpdateManyInput = {
@@ -269,6 +287,7 @@ export type inbox_activitiesUncheckedUpdateManyInput = {
   kind?: Prisma.StringFieldUpdateOperationsInput | string;
   payload_json?: Prisma.StringFieldUpdateOperationsInput | string;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  state?: Prisma.StringFieldUpdateOperationsInput | string;
 };
 
 export type inbox_activitiesCountOrderByAggregateInput = {
@@ -276,6 +295,7 @@ export type inbox_activitiesCountOrderByAggregateInput = {
   kind?: Prisma.SortOrder;
   payload_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  state?: Prisma.SortOrder;
 };
 
 export type inbox_activitiesMaxOrderByAggregateInput = {
@@ -283,6 +303,7 @@ export type inbox_activitiesMaxOrderByAggregateInput = {
   kind?: Prisma.SortOrder;
   payload_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  state?: Prisma.SortOrder;
 };
 
 export type inbox_activitiesMinOrderByAggregateInput = {
@@ -290,6 +311,7 @@ export type inbox_activitiesMinOrderByAggregateInput = {
   kind?: Prisma.SortOrder;
   payload_json?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  state?: Prisma.SortOrder;
 };
 
 export type inbox_activitiesSelect<
@@ -300,6 +322,7 @@ export type inbox_activitiesSelect<
     kind?: boolean;
     payload_json?: boolean;
     created_at?: boolean;
+    state?: boolean;
   },
   ExtArgs["result"]["inbox_activities"]
 >;
@@ -312,6 +335,7 @@ export type inbox_activitiesSelectCreateManyAndReturn<
     kind?: boolean;
     payload_json?: boolean;
     created_at?: boolean;
+    state?: boolean;
   },
   ExtArgs["result"]["inbox_activities"]
 >;
@@ -324,6 +348,7 @@ export type inbox_activitiesSelectUpdateManyAndReturn<
     kind?: boolean;
     payload_json?: boolean;
     created_at?: boolean;
+    state?: boolean;
   },
   ExtArgs["result"]["inbox_activities"]
 >;
@@ -333,12 +358,13 @@ export type inbox_activitiesSelectScalar = {
   kind?: boolean;
   payload_json?: boolean;
   created_at?: boolean;
+  state?: boolean;
 };
 
 export type inbox_activitiesOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "activity_id" | "kind" | "payload_json" | "created_at",
+  "activity_id" | "kind" | "payload_json" | "created_at" | "state",
   ExtArgs["result"]["inbox_activities"]
 >;
 
@@ -353,6 +379,7 @@ export type $inbox_activitiesPayload<
       kind: string;
       payload_json: string;
       created_at: string;
+      state: string;
     },
     ExtArgs["result"]["inbox_activities"]
   >;
@@ -929,6 +956,7 @@ export interface inbox_activitiesFieldRefs {
   readonly kind: Prisma.FieldRef<"inbox_activities", "String">;
   readonly payload_json: Prisma.FieldRef<"inbox_activities", "String">;
   readonly created_at: Prisma.FieldRef<"inbox_activities", "String">;
+  readonly state: Prisma.FieldRef<"inbox_activities", "String">;
 }
 
 // Custom InputTypes

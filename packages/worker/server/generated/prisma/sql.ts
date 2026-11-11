@@ -20,6 +20,8 @@ export * from "./sql/cancelRemoteActorDeliveries";
 
 export * from "./sql/claimAccountMove";
 
+export * from "./sql/claimInboxActivity";
+
 export * from "./sql/claimLocalPollExpiryNotice";
 
 export * from "./sql/claimPollUpdate";
@@ -39,6 +41,8 @@ export * from "./sql/clearLegacyMediaKey";
 export * from "./sql/clearNotifications";
 
 export * from "./sql/clearRemoteMediaForDomain";
+
+export * from "./sql/completeInboxActivity";
 
 export * from "./sql/completeStatusIdempotency";
 
@@ -266,6 +270,8 @@ export * from "./sql/findFilterStatusById";
 
 export * from "./sql/findFollowKind";
 
+export * from "./sql/findInboxActivityState";
+
 export * from "./sql/findInstanceActorKeyDates";
 
 export * from "./sql/findInstanceActorKeys";
@@ -364,8 +370,6 @@ export * from "./sql/getMarkersByTimelines";
 
 export * from "./sql/hasNotificationAcceptance";
 
-export * from "./sql/inboxActivityExists";
-
 export * from "./sql/insertAccount";
 
 export * from "./sql/insertAccountAliasOrIgnore";
@@ -393,8 +397,6 @@ export * from "./sql/insertFilter";
 export * from "./sql/insertFilterStatus";
 
 export * from "./sql/insertFollowOrIgnore";
-
-export * from "./sql/insertInboxActivity";
 
 export * from "./sql/insertInstanceActorKeys";
 
@@ -756,11 +758,15 @@ export * from "./sql/rejectRemoteFollowRequest";
 
 export * from "./sql/rekeyLegacyMedia";
 
+export * from "./sql/releaseInboxActivity";
+
 export * from "./sql/releasePollUpdate";
 
 export * from "./sql/releaseRemoteOutboxBackfill";
 
 export * from "./sql/releaseRemoteStatusThreadBackfill";
+
+export * from "./sql/releaseStaleInboxClaims";
 
 export * from "./sql/releaseStatusIdempotency";
 

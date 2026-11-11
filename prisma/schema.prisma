@@ -521,8 +521,10 @@ model inbox_activities {
   kind         String
   payload_json String
   created_at   String  @default("CURRENT_TIMESTAMP")
+  state        String  @default("Processed")
 
   @@index([created_at], map: "idx_inbox_activities_created")
+  @@index([created_at], map: "idx_inbox_activities_processing")
 }
 
 model instance_settings {
