@@ -15,7 +15,7 @@ import {
   upsertConversationHide as upsertConversationHideSql,
 } from "./generated/prisma/sql";
 import { parseLocalStatusId } from "./activitypub";
-import { listStatusMentions } from "./mention-store";
+import { listStatusMentions, type StatusMentions } from "./mention-store";
 import { RemoteAccountId } from "./remote-account-id";
 import {
   findRemoteStatusReplyTargetByObjectUri,
@@ -129,16 +129,39 @@ const resolveLocalConversationRoot = async (
     : ok(root.value);
 };
 
-export const listConversationsForAccount = async (
+/**
+ * Which conversations a list asks for. Like Mastodon's `AccountConversation`,
+ * a conversation pages by its last status id: `max_id` keeps the ones whose
+ * last status is older, `since_id` and `min_id` the ones whose last status is
+ * newer, the newest (`since_id`) or the oldest (`min_id`) `limit` of them.
+ */
+export type ConversationPage = Readonly<{
+  limit: number;
+  maxId?: string | undefined;
+  sinceId?: string | undefined;
+  minId?: string | undefined;
+}>;
+
+/**
+ * How many direct statuses one list call groups at most. Conversations are not
+ * stored but grouped from the viewer's direct statuses, newest first, so a
+ * page deep in the list reads every status above it; past this many, the
+ * list ends there.
+ */
+const MAX_SCANNED_DIRECT_STATUSES = 1000;
+
+/** Up to `size` of the viewer's direct statuses older than `before`, local and remote, newest first. */
+const directStatusBatch = async (
   db: D1Database,
-  identity: InstanceIdentity,
   accountId: string,
-  limit: number,
-): Promise<Result<ConversationSummary[], RepositoryError>> => {
-  const window = Math.max(limit * 10, 40);
+  size: number,
+  before: string | undefined,
+): Promise<
+  Result<Readonly<{ statuses: ConversationStatus[]; exhausted: boolean }>, RepositoryError>
+> => {
   const [locals, remotes] = await Promise.all([
-    listDirectStatusesForAccount(db, accountId, window, undefined),
-    listRemoteDirectStatusesForAccount(db, accountId, window, undefined),
+    listDirectStatusesForAccount(db, accountId, size, before),
+    listRemoteDirectStatusesForAccount(db, accountId, size, before),
   ]);
   if (locals.isErr()) {
     return err(locals.error);
@@ -146,63 +169,128 @@ export const listConversationsForAccount = async (
   if (remotes.isErr()) {
     return err(remotes.error);
   }
-  const remoteMentions = await listRemoteStatusMentions(
-    db,
-    remotes.value.map((status) => status.id),
-  );
-  if (remoteMentions.isErr()) {
-    return err(remoteMentions.error);
-  }
-  const localMentions = await listStatusMentions(
-    db,
-    locals.value.map((status) => status.id),
-  );
-  if (localMentions.isErr()) {
-    return err(localMentions.error);
-  }
+  const merged: ConversationStatus[] = [
+    ...locals.value.map((status): ConversationStatus => ({ kind: "Local", status })),
+    ...remotes.value.map((status): ConversationStatus => ({ kind: "Remote", status })),
+  ].toSorted((left, right) => right.status.id.localeCompare(left.status.id));
+  return ok({
+    statuses: merged.slice(0, size),
+    exhausted: locals.value.length < size && remotes.value.length < size && merged.length <= size,
+  });
+};
+
+export const listConversationsForAccount = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  accountId: string,
+  page: ConversationPage,
+): Promise<Result<ConversationSummary[], RepositoryError>> => {
+  const { limit, maxId } = page;
+  // Mastodon's `min_id` wins over `since_id`.
+  const lowerBound = page.minId ?? page.sinceId;
+  const inRange = (lastStatusId: string): boolean =>
+    (maxId === undefined || lastStatusId < maxId) &&
+    (lowerBound === undefined || lastStatusId > lowerBound);
+  const batchSize = Math.max(limit * 10, 40);
+
+  // Statuses are read newest first, so the first status seen of a
+  // conversation is its last one, and conversations turn up in list order.
   const byRoot = new Map<string, ConversationStatus[]>();
-  const place = (root: string, entry: ConversationStatus): void => {
-    const bucket = byRoot.get(root) ?? [];
-    bucket.push(entry);
-    byRoot.set(root, bucket);
-  };
-  for (const status of locals.value) {
-    const root = await resolveLocalConversationRoot(db, identity, status, {
-      steps: CONTEXT_ANCESTOR_LIMIT,
-    });
-    if (root.isErr()) {
-      return err(root.error);
+  const localMentions = new Map<string, StatusMentions>();
+  const remoteMentions = new Map<string, ReadonlyArray<string>>();
+  const listed: string[] = [];
+  let scanned = 0;
+  let before: string | undefined;
+  for (;;) {
+    const batch = await directStatusBatch(db, accountId, batchSize, before);
+    if (batch.isErr()) {
+      return err(batch.error);
     }
-    place(root.value, { kind: "Local", status });
-  }
-  for (const status of remotes.value) {
-    const root = await resolveRemoteConversationRoot(db, identity, status.id, {
-      steps: CONTEXT_ANCESTOR_LIMIT,
-    });
-    if (root.isErr()) {
-      return err(root.error);
+    const { statuses, exhausted } = batch.value;
+    const [locals, remotes] = await Promise.all([
+      listStatusMentions(
+        db,
+        statuses.flatMap((entry) => (entry.kind === "Local" ? [entry.status.id] : [])),
+      ),
+      listRemoteStatusMentions(
+        db,
+        statuses.flatMap((entry) => (entry.kind === "Remote" ? [entry.status.id] : [])),
+      ),
+    ]);
+    if (locals.isErr()) {
+      return err(locals.error);
     }
-    place(root.value, { kind: "Remote", status });
+    if (remotes.isErr()) {
+      return err(remotes.error);
+    }
+    for (const [id, mentions] of locals.value) {
+      localMentions.set(id, mentions);
+    }
+    for (const [id, mentions] of remotes.value) {
+      remoteMentions.set(id, mentions);
+    }
+    for (const entry of statuses) {
+      const root =
+        entry.kind === "Local"
+          ? await resolveLocalConversationRoot(db, identity, entry.status, {
+              steps: CONTEXT_ANCESTOR_LIMIT,
+            })
+          : await resolveRemoteConversationRoot(db, identity, entry.status.id, {
+              steps: CONTEXT_ANCESTOR_LIMIT,
+            });
+      if (root.isErr()) {
+        return err(root.error);
+      }
+      const bucket = byRoot.get(root.value);
+      if (bucket) {
+        bucket.push(entry);
+        continue;
+      }
+      byRoot.set(root.value, [entry]);
+      if (!inRange(entry.status.id)) {
+        continue;
+      }
+      const hidden = await conversationHiddenStatusId(db, accountId, root.value);
+      if (hidden.isErr()) {
+        return err(hidden.error);
+      }
+      // Removed from the list, and not revived by a newer message.
+      if (hidden.value === undefined || entry.status.id > hidden.value) {
+        listed.push(root.value);
+      }
+    }
+    scanned += statuses.length;
+    const oldest = statuses.at(-1)?.status.id;
+    if (
+      exhausted ||
+      oldest === undefined ||
+      scanned >= MAX_SCANNED_DIRECT_STATUSES ||
+      (lowerBound !== undefined && oldest <= lowerBound) ||
+      (page.minId === undefined && listed.length >= limit)
+    ) {
+      break;
+    }
+    before = oldest;
   }
 
+  // `listed` runs newest first; `min_id` takes the oldest `limit` of it.
+  const selected = page.minId === undefined ? listed.slice(0, limit) : listed.slice(-limit);
   const summaries: ConversationSummary[] = [];
-  for (const [conversationId, thread] of byRoot) {
-    const ordered = [...thread].toSorted((left, right) =>
-      right.status.id.localeCompare(left.status.id),
-    );
-    const lastStatus = ordered[0];
+  for (const conversationId of selected) {
+    const thread = byRoot.get(conversationId) ?? [];
+    const lastStatus = thread[0];
     if (!lastStatus) {
       continue;
     }
     const participantIds = new Set(
-      ordered.flatMap((entry) => {
+      thread.flatMap((entry) => {
         if (entry.kind === "Remote") {
           return [
             RemoteAccountId.encode(entry.status.actorUri),
-            ...(remoteMentions.value.get(entry.status.id) ?? []),
+            ...(remoteMentions.get(entry.status.id) ?? []),
           ];
         }
-        const mentions = localMentions.value.get(entry.status.id);
+        const mentions = localMentions.get(entry.status.id);
         return [
           entry.status.accountId,
           ...(mentions?.accountIds ?? []),
@@ -210,35 +298,19 @@ export const listConversationsForAccount = async (
         ];
       }),
     );
-    const hidden = await conversationHiddenStatusId(db, accountId, conversationId);
-    if (hidden.isErr()) {
-      return err(hidden.error);
-    }
-    if (hidden.value !== undefined && lastStatus.status.id <= hidden.value) {
-      // Removed from the list, and not revived by an older message.
-      continue;
-    }
     participantIds.delete(accountId);
     const read = await getConversationRead(db, accountId, conversationId);
     if (read.isErr()) {
       return err(read.error);
     }
-    const unread = !read.value || lastStatus.status.id > read.value;
     summaries.push({
       id: conversationId,
-      unread,
+      unread: !read.value || lastStatus.status.id > read.value,
       accountIds: [...participantIds],
       lastStatus,
     });
   }
-
-  return ok(
-    summaries
-      .toSorted((left, right) =>
-        right.lastStatus.status.id.localeCompare(left.lastStatus.status.id),
-      )
-      .slice(0, limit),
-  );
+  return ok(summaries);
 };
 
 /** Newest status id the viewer saw when they removed this conversation. */
@@ -278,7 +350,7 @@ export const latestStatusIdInConversation = async (
 ): Promise<Result<string | undefined, RepositoryError>> => {
   // A conversation may be rooted at a local or a remote status, so only the
   // viewer's own list decides whether it exists.
-  const conversations = await listConversationsForAccount(db, identity, accountId, 100);
+  const conversations = await listConversationsForAccount(db, identity, accountId, { limit: 100 });
   if (conversations.isErr()) {
     return err(conversations.error);
   }

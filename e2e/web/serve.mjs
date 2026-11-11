@@ -61,4 +61,12 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 server.on("exit", (code) => process.exit(code ?? 0));
 
-await startAccessEdge({ host, listenPort: edgePort, originPort: workerPort });
+try {
+  await startAccessEdge({ host, listenPort: edgePort, originPort: workerPort });
+} catch (error) {
+  // The port is taken (another checkout's e2e run?): stop the dev server too,
+  // and fail, so Playwright never waits on someone else's server.
+  console.error(`The access edge cannot listen on ${host}:${edgePort}:`, error);
+  server.kill("SIGTERM");
+  process.exit(1);
+}

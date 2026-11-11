@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { checkoutId, checkoutPrefix } from "./checkout.mjs";
 
 /**
  * Browser e2e: Mastodon's web UI against the Worker in Void's dev server,
@@ -31,7 +32,9 @@ export default defineConfig({
     {
       command: "node e2e/web/serve.mjs",
       cwd: "../..",
-      url: "http://localhost:8793/healthz",
+      // This checkout's servers only (checkout.mjs): with another checkout's
+      // e2e on these ports, this run fails to start rather than use them.
+      url: `http://localhost:8793${checkoutPrefix}/healthz`,
       // The budget was 180 s while serve.mjs also applied the migrations; they
       // now run before Playwright starts (database.mjs). On a 4-CPU machine the
       // server answered in 17 to 33 s with a warm Vite cache (load average 6 to
@@ -47,7 +50,7 @@ export default defineConfig({
       // The stand-in remote server the remote-account scenario looks up.
       command: "node e2e/web/remote-server.mjs",
       cwd: "../..",
-      url: "http://127.0.0.1:8794/health",
+      url: `http://127.0.0.1:8794/health?checkout=${checkoutId}`,
       reuseExistingServer: false,
     },
   ],

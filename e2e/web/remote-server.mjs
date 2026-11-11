@@ -5,6 +5,7 @@
 // incoming fetches are not checked.
 import { generateKeyPairSync } from "node:crypto";
 import { createServer } from "node:http";
+import { checkoutId } from "./checkout.mjs";
 
 const PORT = 8794;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
@@ -103,7 +104,9 @@ createServer((req, res) => {
     return;
   }
   if (url.pathname === "/health") {
-    res.writeHead(200).end("ok");
+    // Ready only for this checkout's Playwright (checkout.mjs).
+    const ours = url.searchParams.get("checkout") === checkoutId;
+    res.writeHead(ours ? 200 : 404).end(ours ? "ok" : "another checkout's remote server");
     return;
   }
   if (url.pathname === "/avatar.png") {
