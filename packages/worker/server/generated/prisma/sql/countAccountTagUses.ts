@@ -19,6 +19,6 @@ export namespace countAccountTagUses {
   export type Parameters = [accountId: string, pattern: string];
   export type Result = {
     count: bigint;
-    last_status_at: string | null;
+    last_status_at: null | null;
   };
 }

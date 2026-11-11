@@ -3,7 +3,9 @@
 -- None when the viewer blocks the actor's account domain or the instance suspends it or the actor URI's host (a viewer of '' blocks none).
 SELECT s.id, s.actor_uri, s.object_uri, s.url, s.content_html, s.spoiler_text, s.visibility, s.sensitive, s.language, s.published_at, s.edited_at, s.media_json, s.card_json, s.poll_json, s.emojis_json, s.quote_policy_json
 FROM remote_actor_pins p
-JOIN remote_statuses s ON s.id = p.status_id
+-- CROSS JOIN keeps the actor's pins as the outer loop; without table statistics the planner
+-- would otherwise walk idx_remote_statuses_visibility_id over every public status.
+CROSS JOIN remote_statuses s ON s.id = p.status_id
 WHERE p.actor_uri = $1 AND s.visibility IN ('public', 'unlisted')
   AND s.actor_uri NOT IN (
     SELECT actor_uri FROM remote_actors

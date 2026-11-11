@@ -56,6 +56,7 @@ model endorsements {
   @@id([account_id, target_actor_uri])
   @@index([account_id, created_at(sort: Desc)], map: "idx_endorsements_owner_created")
   @@index([target_account_id], map: "idx_endorsements_target_account_id")
+  @@index([target_actor_uri], map: "idx_endorsements_target_actor_uri")
 }
 
 model account_notes {
@@ -165,6 +166,7 @@ model notification_request_acceptances {
   accepted_at     String @default("CURRENT_TIMESTAMP")
 
   @@id([account_id, from_account_id])
+  @@index([from_account_id], map: "idx_notification_request_acceptances_from_account_id")
 }
 
 model account_profiles {
@@ -275,6 +277,7 @@ model conversation_hides {
   accounts        accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([account_id, conversation_id])
+  @@index([conversation_id], map: "idx_conversation_hides_conversation_id")
 }
 
 model conversation_reads {
@@ -285,6 +288,7 @@ model conversation_reads {
   accounts            accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([account_id, conversation_id])
+  @@index([conversation_id], map: "idx_conversation_reads_conversation_id")
 }
 
 model favourites {
@@ -339,6 +343,7 @@ model follows {
 
   @@unique([follower_account_id, target_account_id], map: "sqlite_autoindex_follows_2")
   @@index([target_account_id, kind], map: "idx_follows_target")
+  @@index([follower_account_id, kind], map: "idx_follows_follower_kind")
 }
 
 model blocks {
@@ -381,6 +386,7 @@ model notification_dismissals {
   created_at      String @default("CURRENT_TIMESTAMP")
 
   @@id([account_id, notification_id])
+  @@index([notification_id], map: "idx_notification_dismissals_notification_id")
 }
 
 model notification_clear_markers {
@@ -442,6 +448,7 @@ model status_mutes {
   created_at            String @default("CURRENT_TIMESTAMP")
 
   @@id([account_id, thread_root_status_id])
+  @@index([thread_root_status_id], map: "idx_status_mutes_thread_root_status_id")
 }
 
 model followed_tags {
@@ -623,6 +630,7 @@ model outbox_deliveries {
 
   @@unique([activity_id, inbox_url], map: "idx_outbox_deliveries_target", where: raw("inbox_url IS NOT NULL"))
   @@index([updated_at], map: "idx_outbox_deliveries_finished", where: raw("kind IN ('Delivered', 'Failed', 'Expanded')"))
+  @@index([inbox_url], map: "idx_outbox_deliveries_queued_inbox")
 }
 
 model outbox_dead_jobs {
@@ -701,6 +709,8 @@ model remote_actors {
 
   @@index([domain, username], map: "idx_remote_actors_domain_username")
   status_remote_mentions status_remote_mentions[]
+  @@index([shared_inbox_uri], map: "idx_remote_actors_shared_inbox")
+  @@index([inbox_uri], map: "idx_remote_actors_inbox")
 }
 
 model remote_announces {
@@ -792,6 +802,10 @@ model remote_statuses {
   @@index([visibility, published_at(sort: Desc)], map: "idx_remote_statuses_visibility_published")
   @@index([card_url, id], map: "idx_remote_statuses_card_url")
   @@index([in_reply_to_uri], map: "idx_remote_statuses_in_reply_to_uri")
+  @@index([card_url, visibility, id], map: "idx_remote_statuses_card_url_visibility")
+  @@index([actor_uri, id], map: "idx_remote_statuses_actor_id")
+  @@index([visibility, id], map: "idx_remote_statuses_visibility_id")
+  @@index([id], map: "idx_remote_statuses_tags_pending")
 }
 
 model canonical_email_blocks {
@@ -877,6 +891,8 @@ model link_cards {
   url       String @id
   card_json String
   fetched_at String @default("CURRENT_TIMESTAMP")
+
+  @@index([fetched_at], map: "idx_link_cards_fetched")
 }
 
 model scheduled_statuses {
@@ -900,6 +916,7 @@ model notification_request_groups {
   accounts        accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([account_id, from_account_id])
+  @@index([from_account_id], map: "idx_notification_request_groups_from_account_id")
 }
 
 model delivery_domain_health {
@@ -1001,6 +1018,10 @@ model statuses {
   @@index([visibility, created_at(sort: Desc)], map: "idx_statuses_visibility_created_at")
   @@index([account_id, created_at(sort: Desc)], map: "idx_statuses_account_created_at")
   @@index([in_reply_to_uri], map: "idx_statuses_in_reply_to_uri")
+  @@index([account_id, reblog_of_remote_id], map: "idx_statuses_account_reblog_remote")
+  @@index([account_id, reblog_of_id], map: "idx_statuses_account_reblog")
+  @@index([account_id, id], map: "idx_statuses_account_id")
+  @@index([visibility, id], map: "idx_statuses_visibility_id")
 }
 
 model remote_poll_own_votes {
@@ -1015,6 +1036,7 @@ model remote_poll_own_votes {
   remote_statuses remote_statuses @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([status_id, account_id, choice_index])
+  @@index([account_id], map: "idx_remote_poll_own_votes_account")
 }
 
 model outbound_follows {
@@ -1033,6 +1055,7 @@ model outbound_follows {
 
   @@unique([account_id, actor_uri], map: "sqlite_autoindex_outbound_follows_3")
   @@index([actor_uri, state], map: "idx_outbound_follows_actor")
+  @@index([account_id, state], map: "idx_outbound_follows_account_state")
 }
 
 model remote_boosts {
