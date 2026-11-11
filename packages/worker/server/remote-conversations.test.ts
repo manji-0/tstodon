@@ -221,4 +221,74 @@ describe("remote direct messages", () => {
       (await conversations(email)).map((conversation) => conversation.last_status?.content),
     ).toEqual(["<p>dm-from-kept</p>"]);
   });
+
+  it("follow a thread from a remote note through a local reply to a remote answer", async () => {
+    const email = "remote-dm-mixed@example.com";
+    const account = await me(email);
+    const actorUrl = `https://example.com/users/${account.username}`;
+    const remote = await remoteActor("dm-mixed");
+    await sendDirect(remote, "dm-mixed-1", actorUrl);
+    const rootId = await remoteStatusId(email, "dm-mixed-1");
+    const local = read(
+      z.object({ id: z.string(), uri: z.string() }),
+      (
+        await json("/api/v1/statuses", {
+          method: "POST",
+          headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+          body: JSON.stringify({
+            status: "@dm-mixed@remote.example back to you",
+            visibility: "direct",
+            in_reply_to_id: rootId,
+          }),
+        })
+      ).body,
+    );
+    await sendDirect(remote, "dm-mixed-2", actorUrl, { inReplyTo: local.uri });
+    await sendDirect(remote, "dm-mixed-unknown", actorUrl, {
+      inReplyTo: "https://remote.example/notes/never-fetched",
+    });
+
+    const listed = await conversations(email);
+    const unknownId = await remoteStatusId(email, "dm-mixed-unknown");
+    expect(
+      listed.map((conversation) => [conversation.id, conversation.last_status?.content]),
+    ).toEqual([
+      // A note answering one this server never fetched starts its own conversation.
+      [unknownId, "<p>dm-mixed-unknown</p>"],
+      [rootId, "<p>dm-mixed-2</p>"],
+    ]);
+  });
+
+  it("split a direct chain deeper than 40 replies", { timeout: 60_000 }, async () => {
+    const email = "remote-dm-deep@example.com";
+    const ids: string[] = [];
+    for (let index = 0; index < 43; index += 1) {
+      const posted = read(
+        z.object({ id: z.string() }),
+        (
+          await json("/api/v1/statuses", {
+            method: "POST",
+            headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+            body: JSON.stringify({
+              status: `deep ${index}`,
+              visibility: "direct",
+              ...(ids.length > 0 ? { in_reply_to_id: ids.at(-1) } : {}),
+            }),
+          })
+        ).body,
+      );
+      ids.push(posted.id);
+    }
+    // Each status walks at most 40 replies up to the conversation it opens.
+    expect(
+      (await conversations(email)).map((conversation) => [
+        conversation.id,
+        conversation.last_status?.id,
+      ]),
+    ).toEqual([
+      [ids[2], ids[42]],
+      [ids[1], ids[41]],
+      [ids[0], ids[40]],
+    ]);
+  });
 });

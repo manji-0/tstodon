@@ -8,10 +8,9 @@ import {
 import { authenticate } from "../../auth";
 import { statusDocumentsByIds } from "../../status-documents";
 import {
-  findThreadParent,
   listThreadAncestors,
   listThreadDescendants,
-  visibleThreadStatuses,
+  visibleThreadStatusIds,
 } from "../../thread-context";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../../http";
 import { mastodonRemoteStatuses } from "../../remote-status-documents";
@@ -23,7 +22,12 @@ import { findRemoteStatusById, findRemoteStatusesByIds } from "../../remote-stat
 import { requestRemoteThreadBackfill } from "../../remote-thread-backfill";
 import { requestQuoteRefresh } from "../../quote-retry-queue";
 import { ContextLimits, findStatusById, findStatusesByIds } from "../../status-store";
-import { canViewRemoteBoost, canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
+import {
+  canViewRemoteBoost,
+  canViewRemoteStatus,
+  canViewStatus,
+  viewableStatusIds,
+} from "../../visibility-guard";
 import { findRemoteBoostById } from "../../remote-boost-store";
 import { remoteBoostDocuments } from "../../remote-boost-documents";
 import { documentsById } from "../../documents-by-id";
@@ -114,21 +118,15 @@ export const getV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/statu
   if (remotes.isErr()) {
     return jsonRepositoryError(c, remotes.error.message);
   }
-  // Public and unlisted statuses pass without a query; only restricted ones look further.
-  const visibleLocals = (
-    await Promise.all(
-      [...locals.value.values()].map(async (status) =>
-        (await canViewStatus(c.env.DB, status, viewerId)) ? [status] : [],
-      ),
-    )
-  ).flat();
-  const visibleRemotes = (
-    await Promise.all(
-      [...remotes.value.values()].map(async (status) =>
-        (await canViewRemoteStatus(c.env.DB, status, viewerId)) ? [status] : [],
-      ),
-    )
-  ).flat();
+  // Public and unlisted statuses pass without a query; restricted ones share one read per check.
+  const viewable = await viewableStatusIds(
+    c.env.DB,
+    [...locals.value.values()],
+    [...remotes.value.values()],
+    viewerId,
+  );
+  const visibleLocals = [...locals.value.values()].filter((status) => viewable.has(status.id));
+  const visibleRemotes = [...remotes.value.values()].filter((status) => viewable.has(status.id));
   const [localDocuments, remoteDocuments] = await Promise.all([
     mastodonStatuses(c.env, identity.value, visibleLocals, viewerId),
     mastodonRemoteStatuses(c.env, identity.value, visibleRemotes, viewerId),
@@ -192,11 +190,7 @@ export const getV1StatusesByIdContext = async (
   const refresh =
     start.kind === "Remote" ? await requestRemoteThreadBackfill(c.env, start.status) : undefined;
   const limits = viewerId ? ContextLimits.authenticated : ContextLimits.anonymous;
-  const ancestors = await listThreadAncestors(
-    (status) => findThreadParent(c.env.DB, identity.value, status),
-    start,
-    limits.depth,
-  );
+  const ancestors = await listThreadAncestors(c.env.DB, identity.value, start, limits.depth);
   if (ancestors.isErr()) {
     return jsonRepositoryError(c, ancestors.error.message);
   }
@@ -210,8 +204,13 @@ export const getV1StatusesByIdContext = async (
   if (descendants.isErr()) {
     return jsonRepositoryError(c, descendants.error.message);
   }
-  const visibleAncestors = await visibleThreadStatuses(c.env.DB, ancestors.value, viewerId);
-  const visibleDescendants = await visibleThreadStatuses(c.env.DB, descendants.value, viewerId);
+  const visible = await visibleThreadStatusIds(
+    c.env.DB,
+    [...ancestors.value, ...descendants.value],
+    viewerId,
+  );
+  const visibleAncestors = ancestors.value.filter((node) => visible.has(node.status.id));
+  const visibleDescendants = descendants.value.filter((node) => visible.has(node.status.id));
   const documents = await statusDocumentsByIds(
     c.env,
     identity.value,

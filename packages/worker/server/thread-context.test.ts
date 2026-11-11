@@ -236,4 +236,56 @@ describe("thread context across local and remote statuses", () => {
     expect(thread.ancestors).toEqual([reply.id]);
     expect(thread.descendants).toEqual([reply.id]);
   });
+
+  it("walks runs of local and remote parents alternately", async () => {
+    const email = "thread-context-runs@example.com";
+    const dave = await remoteActor("thread-dave");
+    const root = await post(email, "runs root");
+    const local1 = await post(email, "runs local 1", root.id);
+    const remote1 = await receiveReply(dave, "thread-runs-1", local1.uri);
+    const remote2 = await receiveReply(dave, "thread-runs-2", remote1.uri);
+    const remote3 = await receiveReply(dave, "thread-runs-3", remote2.uri);
+    const local2 = await post(email, "@thread-dave@remote.example runs local 2", remote3.id);
+    const local3 = await post(email, "runs local 3", local2.id);
+    const leaf = await receiveReply(dave, "thread-runs-4", local3.uri);
+
+    expect((await context(leaf.id)).ancestors).toEqual([
+      root.id,
+      local1.id,
+      remote1.id,
+      remote2.id,
+      remote3.id,
+      local2.id,
+      local3.id,
+    ]);
+    // Anonymous readers get the nearest 20 parents at most; this chain fits.
+    expect((await context(leaf.id, email)).ancestors).toHaveLength(7);
+  });
+
+  it("ends the ancestors at the deepest status this server has", async () => {
+    const email = "thread-context-missing@example.com";
+    const frank = await remoteActor("thread-frank");
+    const orphan = await receiveReply(
+      frank,
+      "thread-missing-1",
+      "https://remote.example/notes/never-fetched",
+    );
+    const reply = await post(email, "@thread-frank@remote.example answering", orphan.id);
+    const leaf = await post(email, "and on", reply.id);
+    expect((await context(leaf.id)).ancestors).toEqual([orphan.id, reply.id]);
+  });
+
+  it("ends a forged loop between remote statuses", async () => {
+    const email = "thread-context-remote-loop@example.com";
+    const gina = await remoteActor("thread-gina");
+    const root = await post(email, "remote loop start");
+    const first = await receiveReply(gina, "thread-remote-loop-1", root.uri);
+    const second = await receiveReply(gina, "thread-remote-loop-2", first.uri);
+    const leaf = await post(email, "@thread-gina@remote.example below the loop", second.id);
+    // The first remote note claims to answer the second, which answers it.
+    await env.DB.prepare("UPDATE remote_statuses SET in_reply_to_uri = ? WHERE id = ?")
+      .bind(second.uri, first.id)
+      .run();
+    expect((await context(leaf.id)).ancestors).toEqual([first.id, second.id]);
+  });
 });
