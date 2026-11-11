@@ -6,27 +6,31 @@ import type {
   RemoteStatus,
 } from "@tstodon/domain";
 import type { RepositoryError } from "./d1";
-import { getConversationRead } from "./marker-store";
+import { listConversationReads } from "./marker-store";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError as StoreError } from "./d1";
+import { jsonStringArray, runD1, type RepositoryError as StoreError } from "./d1";
 import { queryTyped, runTyped } from "./typed-sql";
 import {
-  getConversationHide as getConversationHideSql,
+  listConversationHides as listConversationHidesSql,
   upsertConversationHide as upsertConversationHideSql,
 } from "./generated/prisma/sql";
 import { parseLocalStatusId } from "./activitypub";
 import { listStatusMentions, type StatusMentions } from "./mention-store";
 import { RemoteAccountId } from "./remote-account-id";
 import {
-  findRemoteStatusReplyTargetByObjectUri,
   findRemoteStatusReplyTargets,
+  findRemoteStatusReplyTargetsByObjectUris,
+  type RemoteReplyTarget,
 } from "./remote-reply-store";
 import { listRemoteDirectStatusesForAccount } from "./remote-status-timeline-store";
 import { listRemoteStatusMentions } from "./mention-store";
-import { CONTEXT_ANCESTOR_LIMIT, findStatusById, listStatusReplyUris } from "./status-store";
-import { listDirectStatusesForAccount, resolveDirectConversationRoot } from "./direct-status-store";
+import { CONTEXT_ANCESTOR_LIMIT } from "./status-store";
+import {
+  listDirectStatusesForAccount,
+  resolveDirectConversationRoots,
+} from "./direct-status-store";
 
-const HiddenStatusIdRow = z.object({ hidden_status_id: z.string() });
+const HiddenStatusIdRow = z.object({ conversation_id: z.string(), hidden_status_id: z.string() });
 
 /** A direct status in a conversation: a local note or a cached remote one. */
 export type ConversationStatus =
@@ -42,91 +46,119 @@ export type ConversationSummary = Readonly<{
 }>;
 
 /**
- * The conversation a remote direct note belongs to: its `inReplyTo` chain is
- * followed through direct notes, remote or local, to the first one. The two
- * walks hand off to each other and share one step budget, since a remote
- * `inReplyTo` can be made to point back into the thread.
+ * Where one status's walk to its conversation root stands, waiting on a
+ * lookup. `fallback` is the root when the lookup does not continue the walk.
  */
-const resolveRemoteConversationRoot = async (
-  db: D1Database,
+type RootWalk =
+  | Readonly<{ kind: "Done"; rootId: string }>
+  /** Up the local direct replies from `statusId`; without `fallback`, it is a listed status. */
+  | Readonly<{ kind: "Local"; statusId: string; fallback: string | undefined; steps: number }>
+  | Readonly<{ kind: "RemoteStart"; statusId: string; steps: number }>
+  | Readonly<{ kind: "RemoteParent"; uri: string; fallback: string; steps: number }>;
+
+/**
+ * One step up a remote direct note's `inReplyTo`. The step budget is shared
+ * by the local and remote walks, since a remote `inReplyTo` can be made to
+ * point back into the thread.
+ */
+const stepFromRemote = (
   identity: InstanceIdentity,
-  statusId: string,
-  budget: { steps: number },
-): Promise<Result<string, RepositoryError>> => {
-  const targets = await findRemoteStatusReplyTargets(db, [statusId]);
-  if (targets.isErr()) {
-    return err(targets.error);
+  current: RemoteReplyTarget,
+  steps: number,
+): RootWalk => {
+  if (steps <= 0 || !current.inReplyToUri) {
+    return { kind: "Done", rootId: current.id };
   }
-  let current = targets.value.get(statusId);
-  if (!current) {
-    return ok(statusId);
-  }
-  while (budget.steps > 0) {
-    budget.steps -= 1;
-    const parentUri = current.inReplyToUri;
-    if (!parentUri) {
-      break;
-    }
-    const localId = parseLocalStatusId(identity, parentUri);
-    if (localId) {
-      const parent = await findStatusById(db, localId);
-      if (parent.isErr()) {
-        return err(parent.error);
-      }
-      if (
-        parent.value &&
-        parent.value.kind === "LocalNote" &&
-        parent.value.visibility.kind === "Direct"
-      ) {
-        return resolveLocalConversationRoot(db, identity, parent.value, budget);
-      }
-      break;
-    }
-    const parent = await findRemoteStatusReplyTargetByObjectUri(db, parentUri);
-    if (parent.isErr()) {
-      return err(parent.error);
-    }
-    if (!parent.value || !parent.value.direct) {
-      break;
-    }
-    current = parent.value;
-  }
-  return ok(current.id);
+  const localId = parseLocalStatusId(identity, current.inReplyToUri);
+  return localId
+    ? { kind: "Local", statusId: localId, fallback: current.id, steps: steps - 1 }
+    : { kind: "RemoteParent", uri: current.inReplyToUri, fallback: current.id, steps: steps - 1 };
 };
 
 /**
- * The conversation a local direct note belongs to: up its local reply chain,
- * then on into a remote direct note when the first local one answers it.
+ * The conversation each direct status belongs to: its reply chain is followed
+ * through direct notes, local or remote, to the first one. Local runs of the
+ * chain resolve in one query each round, and every walk in `statuses` advances
+ * together, so the round trips depend on how often chains cross between local
+ * and remote statuses, not on how many statuses there are.
  */
-const resolveLocalConversationRoot = async (
+const resolveConversationRoots = async (
   db: D1Database,
   identity: InstanceIdentity,
-  status: LocalStatusValue,
-  budget: { steps: number },
-): Promise<Result<string, RepositoryError>> => {
-  const root = await resolveDirectConversationRoot(db, status);
-  if (root.isErr()) {
-    return err(root.error);
+  statuses: ReadonlyArray<ConversationStatus>,
+): Promise<Result<ReadonlyMap<string, string>, RepositoryError>> => {
+  let walks = new Map<string, RootWalk>(
+    statuses.map((entry): [string, RootWalk] => [
+      entry.status.id,
+      entry.kind === "Local"
+        ? {
+            kind: "Local",
+            statusId: entry.status.id,
+            fallback: undefined,
+            steps: CONTEXT_ANCESTOR_LIMIT,
+          }
+        : { kind: "RemoteStart", statusId: entry.status.id, steps: CONTEXT_ANCESTOR_LIMIT },
+    ]),
+  );
+  for (;;) {
+    const pending = [...walks.values()];
+    const localIds = pending.flatMap((walk) => (walk.kind === "Local" ? [walk.statusId] : []));
+    const remoteIds = pending.flatMap((walk) =>
+      walk.kind === "RemoteStart" ? [walk.statusId] : [],
+    );
+    const parentUris = pending.flatMap((walk) => (walk.kind === "RemoteParent" ? [walk.uri] : []));
+    if (localIds.length === 0 && remoteIds.length === 0 && parentUris.length === 0) {
+      break;
+    }
+    const [locals, remotes, parents] = await Promise.all([
+      resolveDirectConversationRoots(db, localIds),
+      findRemoteStatusReplyTargets(db, remoteIds),
+      findRemoteStatusReplyTargetsByObjectUris(db, parentUris),
+    ]);
+    if (locals.isErr()) {
+      return err(locals.error);
+    }
+    if (remotes.isErr()) {
+      return err(remotes.error);
+    }
+    if (parents.isErr()) {
+      return err(parents.error);
+    }
+    const advance = (walk: RootWalk): RootWalk => {
+      switch (walk.kind) {
+        case "Done":
+          return walk;
+        case "Local": {
+          const local = locals.value.get(walk.statusId);
+          if (walk.fallback !== undefined && !local?.direct) {
+            return { kind: "Done", rootId: walk.fallback };
+          }
+          const rootId = local?.rootId ?? walk.statusId;
+          const uri = local?.rootInReplyToUri;
+          if (walk.steps <= 0 || !uri) {
+            return { kind: "Done", rootId };
+          }
+          return { kind: "RemoteParent", uri, fallback: rootId, steps: walk.steps - 1 };
+        }
+        case "RemoteStart": {
+          const target = remotes.value.get(walk.statusId);
+          return target
+            ? stepFromRemote(identity, target, walk.steps)
+            : { kind: "Done", rootId: walk.statusId };
+        }
+        case "RemoteParent": {
+          const parent = parents.value.get(walk.uri);
+          return parent?.direct
+            ? stepFromRemote(identity, parent, walk.steps)
+            : { kind: "Done", rootId: walk.fallback };
+        }
+      }
+    };
+    walks = new Map([...walks].map(([id, walk]) => [id, advance(walk)]));
   }
-  if (budget.steps <= 0) {
-    return ok(root.value);
-  }
-  budget.steps -= 1;
-  const uris = await listStatusReplyUris(db, [root.value]);
-  if (uris.isErr()) {
-    return err(uris.error);
-  }
-  const parentUri = uris.value.get(root.value);
-  if (!parentUri) {
-    return ok(root.value);
-  }
-  const parent = await findRemoteStatusReplyTargetByObjectUri(db, parentUri);
-  if (parent.isErr()) {
-    return err(parent.error);
-  }
-  return parent.value?.direct
-    ? resolveRemoteConversationRoot(db, identity, parent.value.id, budget)
-    : ok(root.value);
+  return ok(
+    new Map([...walks].flatMap(([id, walk]) => (walk.kind === "Done" ? [[id, walk.rootId]] : []))),
+  );
 };
 
 /**
@@ -229,34 +261,36 @@ export const listConversationsForAccount = async (
     for (const [id, mentions] of remotes.value) {
       remoteMentions.set(id, mentions);
     }
+    const roots = await resolveConversationRoots(db, identity, statuses);
+    if (roots.isErr()) {
+      return err(roots.error);
+    }
+    const started: Array<Readonly<{ rootId: string; lastStatusId: string }>> = [];
     for (const entry of statuses) {
-      const root =
-        entry.kind === "Local"
-          ? await resolveLocalConversationRoot(db, identity, entry.status, {
-              steps: CONTEXT_ANCESTOR_LIMIT,
-            })
-          : await resolveRemoteConversationRoot(db, identity, entry.status.id, {
-              steps: CONTEXT_ANCESTOR_LIMIT,
-            });
-      if (root.isErr()) {
-        return err(root.error);
-      }
-      const bucket = byRoot.get(root.value);
+      const rootId = roots.value.get(entry.status.id) ?? entry.status.id;
+      const bucket = byRoot.get(rootId);
       if (bucket) {
         bucket.push(entry);
         continue;
       }
-      byRoot.set(root.value, [entry]);
-      if (!inRange(entry.status.id)) {
-        continue;
+      byRoot.set(rootId, [entry]);
+      if (inRange(entry.status.id)) {
+        started.push({ rootId, lastStatusId: entry.status.id });
       }
-      const hidden = await conversationHiddenStatusId(db, accountId, root.value);
-      if (hidden.isErr()) {
-        return err(hidden.error);
-      }
+    }
+    const hidden = await conversationHiddenStatusIds(
+      db,
+      accountId,
+      started.map((conversation) => conversation.rootId),
+    );
+    if (hidden.isErr()) {
+      return err(hidden.error);
+    }
+    for (const { rootId, lastStatusId } of started) {
+      const hiddenStatusId = hidden.value.get(rootId);
       // Removed from the list, and not revived by a newer message.
-      if (hidden.value === undefined || entry.status.id > hidden.value) {
-        listed.push(root.value);
+      if (hiddenStatusId === undefined || lastStatusId > hiddenStatusId) {
+        listed.push(rootId);
       }
     }
     scanned += statuses.length;
@@ -275,6 +309,10 @@ export const listConversationsForAccount = async (
 
   // `listed` runs newest first; `min_id` takes the oldest `limit` of it.
   const selected = page.minId === undefined ? listed.slice(0, limit) : listed.slice(-limit);
+  const reads = await listConversationReads(db, accountId, selected);
+  if (reads.isErr()) {
+    return err(reads.error);
+  }
   const summaries: ConversationSummary[] = [];
   for (const conversationId of selected) {
     const thread = byRoot.get(conversationId) ?? [];
@@ -299,13 +337,10 @@ export const listConversationsForAccount = async (
       }),
     );
     participantIds.delete(accountId);
-    const read = await getConversationRead(db, accountId, conversationId);
-    if (read.isErr()) {
-      return err(read.error);
-    }
+    const read = reads.value.get(conversationId);
     summaries.push({
       id: conversationId,
-      unread: !read.value || lastStatus.status.id > read.value,
+      unread: !read || lastStatus.status.id > read,
       accountIds: [...participantIds],
       lastStatus,
     });
@@ -313,19 +348,26 @@ export const listConversationsForAccount = async (
   return ok(summaries);
 };
 
-/** Newest status id the viewer saw when they removed this conversation. */
-export const conversationHiddenStatusId = async (
+/** Newest status id the viewer saw when they removed each of these conversations, keyed by conversation id. */
+const conversationHiddenStatusIds = async (
   db: D1Database,
   accountId: string,
-  conversationId: string,
-): Promise<Result<string | undefined, StoreError>> => {
+  conversationIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, string>, StoreError>> => {
+  if (conversationIds.length === 0) {
+    return ok(new Map());
+  }
   const rows = await runD1(async () =>
-    queryTyped(db, getConversationHideSql(accountId, conversationId), HiddenStatusIdRow),
+    queryTyped(
+      db,
+      listConversationHidesSql(accountId, jsonStringArray([...new Set(conversationIds)])),
+      HiddenStatusIdRow,
+    ),
   );
   if (rows.isErr()) {
     return err(rows.error);
   }
-  return ok(rows.value[0]?.hidden_status_id);
+  return ok(new Map(rows.value.map((row) => [row.conversation_id, row.hidden_status_id])));
 };
 
 /** Remove a conversation until a newer status arrives in it. */

@@ -12,6 +12,7 @@ import {
   findFilterStatusById as findFilterStatusByIdSql,
   insertFilter as insertFilterSql,
   insertFilterStatus as insertFilterStatusSql,
+  listAccountFilterStatuses as listAccountFilterStatusesSql,
   listFilters as listFiltersSql,
   listFilterStatuses as listFilterStatusesSql,
   updateFilter as updateFilterSql,
@@ -183,6 +184,26 @@ export const listFilterStatuses = async (
   runD1(async () => {
     const rows = await queryTyped(db, listFilterStatusesSql(filterId), IdStatusIdRow);
     return rows.flatMap((row) => (row.id ? [{ id: row.id, status_id: row.status_id }] : []));
+  });
+
+const FilterIdStatusRow = IdStatusIdRow.extend({ filter_id: z.string() });
+
+/** Each of the account's filters' statuses, keyed by filter id, each in `listFilterStatuses` order. */
+export const listAccountFilterStatuses = async (
+  db: D1Database,
+  accountId: string,
+): Promise<Result<ReadonlyMap<string, ReadonlyArray<FilterStatus>>, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped(db, listAccountFilterStatusesSql(accountId), FilterIdStatusRow);
+    const statuses = new Map<string, FilterStatus[]>();
+    for (const row of rows) {
+      if (row.id) {
+        const group = statuses.get(row.filter_id) ?? [];
+        group.push({ id: row.id, status_id: row.status_id });
+        statuses.set(row.filter_id, group);
+      }
+    }
+    return statuses;
   });
 
 /** Narrow a filter to a status; adding the same status again answers the existing entry. */

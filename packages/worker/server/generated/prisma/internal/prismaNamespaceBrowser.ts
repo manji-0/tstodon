@@ -123,6 +123,7 @@ export const ModelName = {
   notification_request_groups: "notification_request_groups",
   delivery_domain_health: "delivery_domain_health",
   domain_allows: "domain_allows",
+  domain_policy_revision: "domain_policy_revision",
   suggestion_dismissals: "suggestion_dismissals",
   trend_reviews: "trend_reviews",
   status_quotes: "status_quotes",
@@ -1029,6 +1030,14 @@ export const Domain_allowsScalarFieldEnum = {
 
 export type Domain_allowsScalarFieldEnum =
   (typeof Domain_allowsScalarFieldEnum)[keyof typeof Domain_allowsScalarFieldEnum];
+
+export const Domain_policy_revisionScalarFieldEnum = {
+  id: "id",
+  token: "token",
+} as const;
+
+export type Domain_policy_revisionScalarFieldEnum =
+  (typeof Domain_policy_revisionScalarFieldEnum)[keyof typeof Domain_policy_revisionScalarFieldEnum];
 
 export const Suggestion_dismissalsScalarFieldEnum = {
   account_id: "account_id",

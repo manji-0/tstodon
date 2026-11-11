@@ -153,6 +153,31 @@ describe("remote direct messages", () => {
     );
   });
 
+  it("page the direct timeline by max_id, newest first, without public mentions", async () => {
+    const email = "remote-dm-pager@example.com";
+    const account = await me(email);
+    const actorUrl = `https://example.com/users/${account.username}`;
+    const remote = await remoteActor("dm-pager");
+    for (const slug of ["dm-page-1", "dm-page-2", "dm-page-3"]) {
+      await sendDirect(remote, slug, actorUrl);
+      await sendDirect(remote, `${slug}-public`, actorUrl, {
+        to: ["https://www.w3.org/ns/activitystreams#Public"],
+        cc: [actorUrl],
+      });
+    }
+    const page = async (query: string) =>
+      read(
+        z.array(z.object({ id: z.string(), content: z.string() })),
+        (await json(`/api/v1/timelines/direct?${query}`, { headers: await authHeaders(email) }))
+          .body,
+      );
+
+    const first = await page("limit=2");
+    expect(first.map((status) => status.content)).toEqual(["<p>dm-page-3</p>", "<p>dm-page-2</p>"]);
+    const second = await page(`limit=2&max_id=${first[1]?.id ?? ""}`);
+    expect(second.map((status) => status.content)).toEqual(["<p>dm-page-1</p>"]);
+  });
+
   it("groups a remote reply under the local direct message it answers", async () => {
     const email = "remote-dm-local-root@example.com";
     const account = await me(email);
@@ -220,5 +245,75 @@ describe("remote direct messages", () => {
     expect(
       (await conversations(email)).map((conversation) => conversation.last_status?.content),
     ).toEqual(["<p>dm-from-kept</p>"]);
+  });
+
+  it("follow a thread from a remote note through a local reply to a remote answer", async () => {
+    const email = "remote-dm-mixed@example.com";
+    const account = await me(email);
+    const actorUrl = `https://example.com/users/${account.username}`;
+    const remote = await remoteActor("dm-mixed");
+    await sendDirect(remote, "dm-mixed-1", actorUrl);
+    const rootId = await remoteStatusId(email, "dm-mixed-1");
+    const local = read(
+      z.object({ id: z.string(), uri: z.string() }),
+      (
+        await json("/api/v1/statuses", {
+          method: "POST",
+          headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+          body: JSON.stringify({
+            status: "@dm-mixed@remote.example back to you",
+            visibility: "direct",
+            in_reply_to_id: rootId,
+          }),
+        })
+      ).body,
+    );
+    await sendDirect(remote, "dm-mixed-2", actorUrl, { inReplyTo: local.uri });
+    await sendDirect(remote, "dm-mixed-unknown", actorUrl, {
+      inReplyTo: "https://remote.example/notes/never-fetched",
+    });
+
+    const listed = await conversations(email);
+    const unknownId = await remoteStatusId(email, "dm-mixed-unknown");
+    expect(
+      listed.map((conversation) => [conversation.id, conversation.last_status?.content]),
+    ).toEqual([
+      // A note answering one this server never fetched starts its own conversation.
+      [unknownId, "<p>dm-mixed-unknown</p>"],
+      [rootId, "<p>dm-mixed-2</p>"],
+    ]);
+  });
+
+  it("split a direct chain deeper than 40 replies", { timeout: 60_000 }, async () => {
+    const email = "remote-dm-deep@example.com";
+    const ids: string[] = [];
+    for (let index = 0; index < 43; index += 1) {
+      const posted = read(
+        z.object({ id: z.string() }),
+        (
+          await json("/api/v1/statuses", {
+            method: "POST",
+            headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+            body: JSON.stringify({
+              status: `deep ${index}`,
+              visibility: "direct",
+              ...(ids.length > 0 ? { in_reply_to_id: ids.at(-1) } : {}),
+            }),
+          })
+        ).body,
+      );
+      ids.push(posted.id);
+    }
+    // Each status walks at most 40 replies up to the conversation it opens.
+    expect(
+      (await conversations(email)).map((conversation) => [
+        conversation.id,
+        conversation.last_status?.id,
+      ]),
+    ).toEqual([
+      [ids[2], ids[42]],
+      [ids[1], ids[41]],
+      [ids[0], ids[40]],
+    ]);
   });
 });

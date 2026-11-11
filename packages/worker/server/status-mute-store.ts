@@ -4,7 +4,7 @@ import { nowIso } from "./clock";
 import { jsonStringArray, runD1, type RepositoryError } from "./d1";
 import {
   listStatusMuteRoots as listStatusMuteRootsSql,
-  listStatusReplyLinks as listStatusReplyLinksSql,
+  listStatusReplyAncestorLinks as listStatusReplyAncestorLinksSql,
   muteStatus as muteStatusSql,
   unmuteStatus as unmuteStatusSql,
 } from "./generated/prisma/sql";
@@ -22,21 +22,14 @@ import { queryTyped, runTyped } from "./typed-sql";
 const IdInReplyToIdRow = z.object({ id: z.string(), in_reply_to_id: z.string().nullable() });
 const ThreadRootStatusIdRow = z.object({ thread_root_status_id: z.string() });
 
-/** Reply links (`id -> in_reply_to_id`) for the given status ids. */
-const listStatusReplyLinks = async (
-  db: D1Database,
-  ids: ReadonlyArray<string>,
-): Promise<Result<Map<string, string | null>, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(
-      db,
-      listStatusReplyLinksSql(jsonStringArray(ids)),
-      IdInReplyToIdRow,
-    );
-    return new Map(rows.map((row) => [row.id, row.in_reply_to_id]));
-  });
+/** How many reply parents above the given statuses a thread root is looked for. */
+const THREAD_ROOT_DEPTH = 20;
 
-/** Resolve the thread root for each status by walking reply parents transitively. */
+/**
+ * Resolve the thread root for each status by walking reply parents
+ * transitively. A chain that runs past the depth limit or into a missing
+ * parent ends at the first id not loaded.
+ */
 export const resolveThreadRootStatusIds = async (
   db: D1Database,
   statuses: ReadonlyArray<LocalStatus>,
@@ -44,28 +37,29 @@ export const resolveThreadRootStatusIds = async (
   const parentById = new Map<string, string | null>(
     statuses.map((status) => [status.id, status.kind === "LocalNote" ? status.inReplyToId : null]),
   );
-  for (let pass = 0; pass < 20; pass += 1) {
-    const missing = new Set(
+  const parents = [
+    ...new Set(
       [...parentById.values()].flatMap((parent) =>
         parent !== null && parent.length > 0 && !parentById.has(parent) ? [parent] : [],
       ),
+    ),
+  ];
+  if (parents.length > 0) {
+    // Every status within the depth limit of the given ones, in one query.
+    const loaded = await runD1(async () =>
+      queryTyped(
+        db,
+        listStatusReplyAncestorLinksSql(jsonStringArray(parents), THREAD_ROOT_DEPTH),
+        IdInReplyToIdRow,
+      ),
     );
-    if (missing.size === 0) {
-      break;
-    }
-    const loaded = await listStatusReplyLinks(db, [...missing]);
     if (loaded.isErr()) {
       return err(loaded.error);
     }
-    let added = 0;
-    for (const [id, parent] of loaded.value) {
-      if (!parentById.has(id)) {
-        parentById.set(id, parent);
-        added += 1;
+    for (const row of loaded.value) {
+      if (!parentById.has(row.id)) {
+        parentById.set(row.id, row.in_reply_to_id);
       }
-    }
-    if (added === 0) {
-      break;
     }
   }
 
@@ -179,8 +173,13 @@ export const mutedThreadStatusIds = async (
   identity: InstanceIdentity,
   accountId: string,
   statusIds: ReadonlyArray<string>,
+  /** The viewer's muted thread roots, when the caller already reads them. */
+  mutedRootsRead: Promise<Result<ReadonlySet<string>, RepositoryError>> = listStatusMuteRoots(
+    db,
+    accountId,
+  ),
 ): Promise<Result<ReadonlySet<string>, RepositoryError>> => {
-  const mutedRoots = await listStatusMuteRoots(db, accountId);
+  const mutedRoots = await mutedRootsRead;
   if (mutedRoots.isErr()) {
     return err(mutedRoots.error);
   }
@@ -227,8 +226,13 @@ export const filterMutedThreads = async (
   db: D1Database,
   accountId: string,
   statuses: ReadonlyArray<LocalStatusValue>,
+  /** The viewer's muted thread roots, when the caller already reads them. */
+  mutedRootsRead: Promise<Result<ReadonlySet<string>, RepositoryError>> = listStatusMuteRoots(
+    db,
+    accountId,
+  ),
 ): Promise<Result<LocalStatusValue[], RepositoryError>> => {
-  const mutedRoots = await listStatusMuteRoots(db, accountId);
+  const mutedRoots = await mutedRootsRead;
   if (mutedRoots.isErr()) {
     return err(mutedRoots.error);
   }

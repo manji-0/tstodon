@@ -8,7 +8,7 @@ import { remoteActor } from "../test/remote-actor-fixture";
 import { quotedStatusAccess } from "./quoted-status-access";
 import { findRemoteStatusesByIds } from "./remote-status-store";
 import { findStatusesByIds } from "./status-store";
-import { visibleThreadStatuses } from "./thread-context";
+import { visibleThreadStatusIds } from "./thread-context";
 import { viewableStatusIds } from "./visibility-guard";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -126,7 +126,7 @@ const queriesFor = async (prefix: string, count: number, visibility: Audience, v
   return {
     viewable: await measure((db) => viewableStatusIds(db, locals, remotes, viewer.id)),
     quotes: await measure((db) => quotedStatusAccess(db, locals, remotes, viewer.id)),
-    thread: await measure((db) => visibleThreadStatuses(db, nodes, viewer.id)),
+    thread: await measure((db) => visibleThreadStatusIds(db, nodes, viewer.id)),
     shown: (await viewableStatusIds(env.DB, locals, remotes, viewer.id)).size,
   };
 };

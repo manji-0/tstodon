@@ -10,8 +10,8 @@ import {
   filterKeywords,
   type FilterRow,
   type FilterStatus,
+  listAccountFilterStatuses,
   listFilters,
-  listFilterStatuses,
 } from "./filter-store";
 
 export type FilterWithStatuses = Readonly<{
@@ -46,19 +46,22 @@ export const loadViewerFilters = async (
   db: D1Database,
   accountId: string,
 ): Promise<Result<ReadonlyArray<FilterWithStatuses>, RepositoryError>> => {
-  const rows = await listFilters(db, accountId);
+  const [rows, statuses] = await Promise.all([
+    listFilters(db, accountId),
+    listAccountFilterStatuses(db, accountId),
+  ]);
   if (rows.isErr()) {
     return err(rows.error);
   }
-  const filters: FilterWithStatuses[] = [];
-  for (const row of rows.value) {
-    const statuses = await listFilterStatuses(db, row.id);
-    if (statuses.isErr()) {
-      return err(statuses.error);
-    }
-    filters.push({ row, statuses: statuses.value, filter: contentFilter(row, statuses.value) });
+  if (statuses.isErr()) {
+    return err(statuses.error);
   }
-  return ok(filters);
+  return ok(
+    rows.value.map((row) => {
+      const narrowed = statuses.value.get(row.id) ?? [];
+      return { row, statuses: narrowed, filter: contentFilter(row, narrowed) };
+    }),
+  );
 };
 
 /**
@@ -100,11 +103,13 @@ export const attachFilteredToStatuses = async <T extends FilterableDocument>(
   context: string,
   statuses: ReadonlyArray<LocalStatus>,
   documents: ReadonlyArray<T>,
+  /** The viewer's filters, when the caller already reads them. */
+  filtersRead?: Promise<Result<ReadonlyArray<FilterWithStatuses>, RepositoryError>>,
 ): Promise<ReadonlyArray<T>> => {
   if (!viewerId) {
     return documents;
   }
-  const filters = await loadViewerFilters(db, viewerId);
+  const filters = await (filtersRead ?? loadViewerFilters(db, viewerId));
   if (filters.isErr() || filters.value.length === 0) {
     return documents;
   }
@@ -132,11 +137,13 @@ export const attachFilteredToRemoteStatuses = async <T extends FilterableDocumen
   context: string,
   statuses: ReadonlyArray<Readonly<{ id: string; contentHtml: string }>>,
   documents: ReadonlyArray<T>,
+  /** The viewer's filters, when the caller already reads them. */
+  filtersRead?: Promise<Result<ReadonlyArray<FilterWithStatuses>, RepositoryError>>,
 ): Promise<ReadonlyArray<T>> => {
   if (!viewerId) {
     return documents;
   }
-  const filters = await loadViewerFilters(db, viewerId);
+  const filters = await (filtersRead ?? loadViewerFilters(db, viewerId));
   if (filters.isErr() || filters.value.length === 0) {
     return documents;
   }

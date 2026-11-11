@@ -226,6 +226,8 @@ export * from "./sql/findAccountByEmail";
 
 export * from "./sql/findAccountById";
 
+export * from "./sql/findAccountByIdOrUsername";
+
 export * from "./sql/findAccountByUsername";
 
 export * from "./sql/findAccountDomainBlock";
@@ -236,6 +238,8 @@ export * from "./sql/findAccountMove";
 
 export * from "./sql/findAccountNote";
 
+export * from "./sql/findAccountNotesOfTargetsJson";
+
 export * from "./sql/findAccountProfile";
 
 export * from "./sql/findAccountsByIdsJson";
@@ -244,11 +248,19 @@ export * from "./sql/findAccountsByUsernamesJson";
 
 export * from "./sql/findActiveMute";
 
+export * from "./sql/findActiveMutesOfTargetsJson";
+
 export * from "./sql/findActorDomainBlock";
+
+export * from "./sql/findActorDomainBlocksJson";
 
 export * from "./sql/findAnnouncementById";
 
 export * from "./sql/findBlock";
+
+export * from "./sql/findBlockersOfTargetJson";
+
+export * from "./sql/findBlocksOfTargetsJson";
 
 export * from "./sql/findCanonicalEmailBlockByHash";
 
@@ -264,17 +276,23 @@ export * from "./sql/findDomainBlockByDomain";
 
 export * from "./sql/findDomainBlockById";
 
+export * from "./sql/findDomainPolicyRevision";
+
 export * from "./sql/findEmailDomainBlockByDomain";
 
 export * from "./sql/findEmailDomainBlockById";
 
-export * from "./sql/findEndorsement";
+export * from "./sql/findEndorsementsOfTargetsJson";
 
 export * from "./sql/findFilterById";
 
 export * from "./sql/findFilterStatusById";
 
 export * from "./sql/findFollowKind";
+
+export * from "./sql/findFollowKindsFromFollowersJson";
+
+export * from "./sql/findFollowKindsToTargetsJson";
 
 export * from "./sql/findInboxActivityState";
 
@@ -306,7 +324,11 @@ export * from "./sql/findOauthApplicationById";
 
 export * from "./sql/findOutboundActivity";
 
+export * from "./sql/findOutboundActivityWithSigner";
+
 export * from "./sql/findOutboundFollow";
+
+export * from "./sql/findOutboundFollowsJson";
 
 export * from "./sql/findOutboxFanout";
 
@@ -334,9 +356,13 @@ export * from "./sql/findRemoteActorsByUris";
 
 export * from "./sql/findRemoteBlock";
 
+export * from "./sql/findRemoteBlocksOfAccountJson";
+
 export * from "./sql/findRemoteBoostById";
 
 export * from "./sql/findRemoteFollow";
+
+export * from "./sql/findRemoteFollowsJson";
 
 export * from "./sql/findRemoteStatusById";
 
@@ -347,6 +373,8 @@ export * from "./sql/findRemoteStatusRefsByObjectUris";
 export * from "./sql/findRemoteStatusReplyTargetByObjectUri";
 
 export * from "./sql/findRemoteStatusReplyTargets";
+
+export * from "./sql/findRemoteStatusReplyTargetsByObjectUris";
 
 export * from "./sql/findRemoteStatusThreadRefresh";
 
@@ -371,10 +399,6 @@ export * from "./sql/findWebSettings";
 export * from "./sql/finishRemoteStatusThreadBackfill";
 
 export * from "./sql/followTag";
-
-export * from "./sql/getConversationHide";
-
-export * from "./sql/getConversationRead";
 
 export * from "./sql/getMarkersByTimelines";
 
@@ -508,6 +532,8 @@ export * from "./sql/listAccountAliases";
 
 export * from "./sql/listAccountDomainBlocks";
 
+export * from "./sql/listAccountFilterStatuses";
+
 export * from "./sql/listAccountIpsByAccountIdsJson";
 
 export * from "./sql/listAccountModerations";
@@ -524,6 +550,8 @@ export * from "./sql/listAdminAnnouncements";
 
 export * from "./sql/listAllAccountIps";
 
+export * from "./sql/listAllowedDomains";
+
 export * from "./sql/listAnnouncementDismissals";
 
 export * from "./sql/listAnnouncementReactions";
@@ -537,6 +565,10 @@ export * from "./sql/listAuthorizedApplicationTokens";
 export * from "./sql/listAuthorsBlockingViewerJson";
 
 export * from "./sql/listBlockersOfActor";
+
+export * from "./sql/listConversationHides";
+
+export * from "./sql/listConversationReads";
 
 export * from "./sql/listCustomEmojiRows";
 
@@ -562,11 +594,15 @@ export * from "./sql/listFilterStatuses";
 
 export * from "./sql/listFilters";
 
+export * from "./sql/listFollowedAccountIds";
+
 export * from "./sql/listFollowedTags";
 
 export * from "./sql/listFollowingAccountIds";
 
 export * from "./sql/listHomeFanOutAccounts";
+
+export * from "./sql/listHubStreamSubscriptions";
 
 export * from "./sql/listIpBlocks";
 
@@ -575,8 +611,6 @@ export * from "./sql/listLegacyMedia";
 export * from "./sql/listLinkCards";
 
 export * from "./sql/listListMembers";
-
-export * from "./sql/listListStreamSubscriptions";
 
 export * from "./sql/listListsContainingAccount";
 
@@ -592,6 +626,8 @@ export * from "./sql/listLocalBoostsOfRemoteObject";
 
 export * from "./sql/listLocalNoteTextsAfter";
 
+export * from "./sql/listLocalThreadAncestors";
+
 export * from "./sql/listMediaIdsForStatus";
 
 export * from "./sql/listMediaObjectKeysForAccount";
@@ -603,6 +639,8 @@ export * from "./sql/listMutersOfActor";
 export * from "./sql/listNotersOfActor";
 
 export * from "./sql/listNotifications";
+
+export * from "./sql/listNotificationsAscending";
 
 export * from "./sql/listNotifyingFollowerIds";
 
@@ -623,8 +661,6 @@ export * from "./sql/listPollVotesForAccount";
 export * from "./sql/listPublicDomainBlocks";
 
 export * from "./sql/listPublicOutboxActivities";
-
-export * from "./sql/listPublicRemoteStatuses";
 
 export * from "./sql/listPublicStreamSubscriptions";
 
@@ -650,6 +686,8 @@ export * from "./sql/listRemoteStatusEditSnapshots";
 
 export * from "./sql/listRemoteStatusMentions";
 
+export * from "./sql/listRemoteThreadAncestors";
+
 export * from "./sql/listRestrictedDomains";
 
 export * from "./sql/listRestrictedTagNames";
@@ -672,7 +710,7 @@ export * from "./sql/listStatusReachInboxes";
 
 export * from "./sql/listStatusRemoteMentions";
 
-export * from "./sql/listStatusReplyLinks";
+export * from "./sql/listStatusReplyAncestorLinks";
 
 export * from "./sql/listStatusReplyUris";
 
@@ -789,6 +827,8 @@ export * from "./sql/replaceCustomEmojiImage";
 export * from "./sql/replacePollOptions";
 
 export * from "./sql/reserveStatusIdempotency";
+
+export * from "./sql/resolveDirectConversationRoots";
 
 export * from "./sql/rewriteEditedMediaKey";
 

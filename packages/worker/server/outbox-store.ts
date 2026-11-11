@@ -1,4 +1,4 @@
-import { assertNever, warmSchemas } from "@tstodon/core";
+import { assertNever, Sensitive, warmSchemas } from "@tstodon/core";
 import {
   ActivityId,
   OutboxDelivery,
@@ -8,12 +8,19 @@ import {
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { type RepositoryError, runD1, runD1Batch } from "./d1";
+import { parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
 import { newEntityId } from "./ids";
 import { toRepositoryError } from "./d1";
-import { d1PrepareTyped, queryTyped, runTyped, runTypedBatchChunked } from "./typed-sql";
+import {
+  d1PrepareTyped,
+  queryTyped,
+  runTyped,
+  runTypedBatch,
+  runTypedBatchChunked,
+} from "./typed-sql";
 import {
   findOutboundActivity as findOutboundActivitySql,
+  findOutboundActivityWithSigner as findOutboundActivityWithSignerSql,
   findOutboxFanout as findOutboxFanoutSql,
   findOutboxTarget as findOutboxTargetSql,
   insertOutboundActivity as insertOutboundActivitySql,
@@ -46,6 +53,14 @@ export const OutboxDeliveryRowSchema = z.object({
 });
 
 export type OutboundActivityRow = z.infer<typeof OutboundActivityRowSchema>;
+
+const OutboundActivityWithSignerRowSchema = OutboundActivityRowSchema.extend({
+  /** `null` for the instance actor, or when the signing account is gone. */
+  signer_username: z.string().nullable(),
+  signer_private_key_jwk: Sensitive.schema(z.string().min(1)).nullable(),
+});
+
+export type OutboundActivityWithSignerRow = z.infer<typeof OutboundActivityWithSignerRowSchema>;
 
 const persistColumns = (
   delivery: OutboxDeliveryValue,
@@ -140,11 +155,6 @@ export type OutboundSigner =
   | Readonly<{ kind: "Account"; accountId: string }>
   | Readonly<{ kind: "InstanceActor" }>;
 
-export const outboundSignerOf = (row: Pick<OutboundActivityRow, "account_id">): OutboundSigner =>
-  row.account_id === null
-    ? { kind: "InstanceActor" }
-    : { kind: "Account", accountId: row.account_id };
-
 export const insertOutboundActivity = async (
   db: D1Database,
   input: {
@@ -197,6 +207,17 @@ export const findOutboundActivity = async (
   return queried.map((rows) => rows[0]);
 };
 
+/** An outbound activity with its signing account's username and private key, in one read. */
+export const findOutboundActivityWithSigner = async (
+  db: D1Database,
+  id: string,
+): Promise<Result<OutboundActivityWithSignerRow | undefined, RepositoryError>> => {
+  const queried = await runD1(async () =>
+    queryTyped(db, findOutboundActivityWithSignerSql(id), OutboundActivityWithSignerRowSchema),
+  );
+  return queried.map((rows) => rows[0]);
+};
+
 /** The account's Creates and Announces addressed to Public, newest first (the AP outbox). */
 export const listPublicOutboxActivities = async (
   db: D1Database,
@@ -246,23 +267,40 @@ export const markOutboundExpanded = async (
   });
 };
 
+/** The target's row, inserted `Queued` when missing: the insert and the read are one batch. */
 export const ensureOutboxTarget = async (
   db: D1Database,
   activityId: string,
   inboxUrl: string,
 ): Promise<Result<OutboxDeliveryValue, RepositoryError>> => {
-  const ensured = await ensureOutboxTargets(db, activityId, [inboxUrl]);
-  if (ensured.isErr()) {
-    return err(ensured.error);
+  if (ActivityId.parse(activityId).isErr()) {
+    return err(toRepositoryError("invalid activity id"));
   }
-  const loaded = await findOutboxTarget(db, activityId, inboxUrl);
-  if (loaded.isErr()) {
-    return err(loaded.error);
+  const queued = OutboxDelivery.queued();
+  const createdAt = nowIso();
+  const insert =
+    inboxUrl.length > 0
+      ? [
+          insertOutboxTargetOrIgnoreSql(
+            newEntityId(),
+            activityId,
+            queued.kind,
+            queued.attemptCount,
+            inboxUrl,
+            createdAt,
+            createdAt,
+          ),
+        ]
+      : [];
+  const batched = await runTypedBatch(db, [...insert, findOutboxTargetSql(activityId, inboxUrl)]);
+  if (batched.isErr()) {
+    return err(batched.error);
   }
-  if (!loaded.value) {
+  const row = parseRows(OutboxDeliveryRowSchema, batched.value.at(-1)?.results)[0];
+  if (row === undefined) {
     return err(toRepositoryError("outbox target missing after insert"));
   }
-  return ok(loaded.value);
+  return outboxDeliveryFromRow(row);
 };
 
 /** Insert many outbox delivery targets in chunked D1 batches (INSERT OR IGNORE). */
@@ -439,4 +477,9 @@ export const postponeOutboxTarget = async (
   });
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
-warmSchemas([OutboundActivityRowSchema, OutboxDeliveryRowSchema, StuckTargetRowSchema]);
+warmSchemas([
+  OutboundActivityRowSchema,
+  OutboundActivityWithSignerRowSchema,
+  OutboxDeliveryRowSchema,
+  StuckTargetRowSchema,
+]);

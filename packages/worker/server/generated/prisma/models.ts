@@ -82,6 +82,7 @@ export type * from "./models/scheduled_statuses";
 export type * from "./models/notification_request_groups";
 export type * from "./models/delivery_domain_health";
 export type * from "./models/domain_allows";
+export type * from "./models/domain_policy_revision";
 export type * from "./models/suggestion_dismissals";
 export type * from "./models/trend_reviews";
 export type * from "./models/status_quotes";

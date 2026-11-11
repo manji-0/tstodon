@@ -8,19 +8,27 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param targetActorUri
  * @param afterAccountId
  * @param limit
+ * @param movedToTarget
  */
 export const listNotersOfActor = $runtime.makeTypedQueryFactory(
-  "SELECT account_id, note FROM account_notes\nWHERE target_actor_uri = $1 AND account_id > $2 ORDER BY account_id LIMIT $3",
+  "SELECT n.account_id, n.note,\n(SELECT t.note FROM account_notes t\nWHERE t.account_id = n.account_id\nAND (t.target_account_id = $4 OR t.target_actor_uri = $4)\nLIMIT 1) AS moved_to_note\nFROM account_notes n\nWHERE n.target_actor_uri = $1 AND n.account_id > $2 ORDER BY n.account_id LIMIT $3",
 ) as (
   targetActorUri: string,
   afterAccountId: string,
   limit: number,
+  movedToTarget: string,
 ) => $runtime.TypedSql<listNotersOfActor.Parameters, listNotersOfActor.Result>;
 
 export namespace listNotersOfActor {
-  export type Parameters = [targetActorUri: string, afterAccountId: string, limit: number];
+  export type Parameters = [
+    targetActorUri: string,
+    afterAccountId: string,
+    limit: number,
+    movedToTarget: string,
+  ];
   export type Result = {
     account_id: string;
     note: string;
+    moved_to_note: string;
   };
 }

@@ -126,9 +126,9 @@ const parseJson = (text: string): unknown => parseJsonText(text).unwrapOr(undefi
  * subscribed to in its attachment, so they survive hibernation, and hears
  * only events for those streams.
  *
- * The hub mirrors its sockets' public, hashtag, and list subscriptions into
- * `stream_subscriptions`, one row per distinct channel, where fan-outs look
- * for whom to tell. A row is inserted before the first socket takes its
+ * The hub mirrors its sockets' subscriptions (all but `user:notification`)
+ * into `stream_subscriptions`, one row per distinct channel, where fan-outs
+ * look for whom to tell. A row is inserted before the first socket takes its
  * channel and deleted after the last one lets go, so the rows always cover
  * the live subscriptions; a row left behind (a hub evicted without close
  * events) is deleted the first time a fan-out finds nobody behind it.
@@ -149,8 +149,12 @@ export class StreamHub extends DurableObject<Env> {
    */
   private readonly eventStreams = new Set<EventStreamConnection>();
 
-  /** Deliver to this hub, which `publishToHub` names as `hub`. */
-  async publish(hub: string, raw: unknown): Promise<void> {
+  /**
+   * Deliver to this hub, which `publishToHub` names as `hub`. With
+   * `fromRows`, the caller found the hub by its rows for the delivery's
+   * channels, so a channel no socket holds has a row left behind to drop.
+   */
+  async publish(hub: string, raw: unknown, fromRows = true): Promise<void> {
     const delivery = StreamDelivery.parse(raw);
     if (delivery.isErr()) {
       return;
@@ -172,6 +176,9 @@ export class StreamHub extends DurableObject<Env> {
       ) {
         connection.write(mastodonSseFrame(event));
       }
+    }
+    if (!fromRows) {
+      return;
     }
     await this.serially(async () => {
       const held = this.heldKeys();

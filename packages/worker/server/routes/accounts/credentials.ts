@@ -71,9 +71,10 @@ export const credentialAccountDocument = async (
   account: LocalAccount,
   role: FediRoleValue,
 ): Promise<ApiCredentialAccountJSON> => {
+  const profileRead = findAccountProfile(env.DB, account.id);
   const [document, profile, defaults] = await Promise.all([
-    mastodonAccountDocument(env, identity, account),
-    findAccountProfile(env.DB, account.id),
+    mastodonAccountDocument(env, identity, account, profileRead),
+    profileRead,
     findComposeDefaults(env.DB, account.id),
   ]);
   return {
@@ -409,9 +410,10 @@ const ownAccountDocument = async (
   identity: InstanceIdentity,
   account: LocalAccount,
 ): Promise<ApiCredentialAccountJSON> => {
+  const profileRead = findAccountProfile(env.DB, account.id);
   const [document, profile, defaults] = await Promise.all([
-    mastodonAccountDocument(env, identity, account),
-    findAccountProfile(env.DB, account.id),
+    mastodonAccountDocument(env, identity, account, profileRead),
+    profileRead,
     findComposeDefaults(env.DB, account.id),
   ]);
   return {

@@ -65,16 +65,21 @@ export type SeveredFollow = Readonly<{
  * The actors in a scope, `r` being `remote_actors`. An admin block names a
  * hostname, so it matches the account domain's (`host`) or the actor URI's
  * (`uri_host`), as `RemoteActor.onAnyHost`, and covers every port of it.
+ * Each scope has its own SQL so that SQLite searches `remote_actors` by the
+ * index of the column it names; an empty value matches no actor.
  */
-const ACTOR_MATCH_SQL = `((? <> '' AND (r.host = ? OR r.uri_host = ?)) OR (? <> '' AND r.actor_uri = ?))`;
-
-const matchBinds = (scope: SeveranceScope): [string, string, string, string, string] => {
-  const domain = scope.kind === "Domain" ? scope.domain : "";
-  const actorUri = scope.kind === "Actor" ? scope.actorUri : "";
-  return [domain, domain, domain, actorUri, actorUri];
+const actorMatch = (scope: SeveranceScope): Readonly<{ sql: string; binds: string[] }> => {
+  switch (scope.kind) {
+    case "Domain":
+      return scope.domain === ""
+        ? { sql: "0", binds: [] }
+        : { sql: "(r.host = ? OR r.uri_host = ?)", binds: [scope.domain, scope.domain] };
+    case "Actor":
+      return scope.actorUri === ""
+        ? { sql: "0", binds: [] }
+        : { sql: "r.actor_uri = ?", binds: [scope.actorUri] };
+  }
 };
-
-const MATCHING_ACTORS_SQL = `SELECT r.actor_uri FROM remote_actors r WHERE ${ACTOR_MATCH_SQL}`;
 
 const AccountIdRowSchema = z.object({ local_account_id: z.string() });
 
@@ -94,18 +99,19 @@ export const severRelationships = async (
   db: D1Database,
   input: SeveranceInput,
 ): Promise<Result<ReadonlyArray<AccountSeveranceEvent>, RepositoryError>> => {
-  const binds = matchBinds(input.scope);
+  const { sql: match, binds } = actorMatch(input.scope);
+  const matchingActors = `SELECT r.actor_uri FROM remote_actors r WHERE ${match}`;
   const affected = await runD1(async () => {
     const { results } = await db
       .prepare(
         `SELECT DISTINCT local_account_id FROM (
            SELECT o.account_id AS local_account_id
            FROM outbound_follows o JOIN remote_actors r ON r.actor_uri = o.actor_uri
-           WHERE o.state = 'Accepted' AND ${ACTOR_MATCH_SQL}
+           WHERE o.state = 'Accepted' AND ${match}
            UNION
            SELECT f.target_account_id
            FROM remote_follows f JOIN remote_actors r ON r.actor_uri = f.remote_actor_uri
-           WHERE f.follow_kind = 'Accepted' AND ${ACTOR_MATCH_SQL}
+           WHERE f.follow_kind = 'Accepted' AND ${match}
          )`,
       )
       .bind(...binds, ...binds)
@@ -123,10 +129,10 @@ export const severRelationships = async (
   const accountEvents = affected.value.map((accountId) => ({ id: newEntityId(), accountId }));
   const removals = [
     db
-      .prepare(`DELETE FROM outbound_follows WHERE actor_uri IN (${MATCHING_ACTORS_SQL})`)
+      .prepare(`DELETE FROM outbound_follows WHERE actor_uri IN (${matchingActors})`)
       .bind(...binds),
     db
-      .prepare(`DELETE FROM remote_follows WHERE remote_actor_uri IN (${MATCHING_ACTORS_SQL})`)
+      .prepare(`DELETE FROM remote_follows WHERE remote_actor_uri IN (${matchingActors})`)
       .bind(...binds),
   ];
   if (accountEvents.length === 0) {
@@ -147,7 +153,7 @@ export const severRelationships = async (
          SELECT o.id, ?, o.account_id, r.username || '@' || r.domain, 'active',
                 o.reblogs, o.notify, o.languages_json, ?
          FROM outbound_follows o JOIN remote_actors r ON r.actor_uri = o.actor_uri
-         WHERE o.state = 'Accepted' AND ${ACTOR_MATCH_SQL}`,
+         WHERE o.state = 'Accepted' AND ${match}`,
       )
       .bind(eventId, now, ...binds),
     db
@@ -157,7 +163,7 @@ export const severRelationships = async (
          SELECT f.id, ?, f.target_account_id, r.username || '@' || r.domain, 'passive',
                 NULL, NULL, NULL, ?
          FROM remote_follows f JOIN remote_actors r ON r.actor_uri = f.remote_actor_uri
-         WHERE f.follow_kind = 'Accepted' AND ${ACTOR_MATCH_SQL}`,
+         WHERE f.follow_kind = 'Accepted' AND ${match}`,
       )
       .bind(eventId, now, ...binds),
     ...accountEvents.map(({ id, accountId }) =>

@@ -23,6 +23,7 @@ import {
   type FilterRow,
   findFilterById,
   insertFilter,
+  listAccountFilterStatuses,
   listFilters,
   listFilterStatuses,
   removeFilterStatusById,
@@ -72,15 +73,17 @@ export const getFilters = async (c: Context<{ Bindings: Env }, "/filters">) => {
   if (signedIn.kind === "Answered") {
     return signedIn.response;
   }
-  const rows = await listFilters(c.env.DB, signedIn.account.id);
+  const [rows, statuses] = await Promise.all([
+    listFilters(c.env.DB, signedIn.account.id),
+    listAccountFilterStatuses(c.env.DB, signedIn.account.id),
+  ]);
   if (rows.isErr()) {
     return serverError(c, "The server could not read your filters.");
   }
-  const items: FilterListItem[] = [];
-  for (const row of rows.value) {
-    const statuses = await listFilterStatuses(c.env.DB, row.id);
-    items.push(listItemOf(row, statuses.isOk() ? statuses.value.length : 0));
-  }
+  const statusesByFilter = statuses.isOk() ? statuses.value : undefined;
+  const items = rows.value.map((row): FilterListItem =>
+    listItemOf(row, statusesByFilter?.get(row.id)?.length ?? 0),
+  );
   const notice = c.req.query("notice");
   const message: PageMessage | undefined =
     notice === "created" || notice === "updated" || notice === "deleted"

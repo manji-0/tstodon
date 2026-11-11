@@ -5,6 +5,7 @@ import { jsonStringArray, okValues, type RepositoryError, runD1 } from "./d1";
 import {
   findRemoteStatusReplyTargetByObjectUri as findRemoteStatusReplyTargetByObjectUriSql,
   findRemoteStatusReplyTargets as findRemoteStatusReplyTargetsSql,
+  findRemoteStatusReplyTargetsByObjectUris as findRemoteStatusReplyTargetsByObjectUrisSql,
 } from "./generated/prisma/sql";
 import { queryTyped } from "./typed-sql";
 import { parseRemoteStatusRow, remoteStatusFromRow } from "./remote-status-store";
@@ -78,6 +79,27 @@ export const findRemoteStatusReplyTargets = async (
     return err(rows.error);
   }
   return ok(new Map(rows.value.map((row) => [row.id, replyTargetFromRow(row)])));
+};
+
+/** Reply targets of cached remote statuses, keyed by object URI. */
+export const findRemoteStatusReplyTargetsByObjectUris = async (
+  db: D1Database,
+  objectUris: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, RemoteReplyTarget>, RepositoryError>> => {
+  if (objectUris.length === 0) {
+    return ok(new Map<string, RemoteReplyTarget>());
+  }
+  const rows = await runD1(async () =>
+    queryTyped(
+      db,
+      findRemoteStatusReplyTargetsByObjectUrisSql(jsonStringArray([...new Set(objectUris)])),
+      ReplyTargetRowSchema,
+    ),
+  );
+  if (rows.isErr()) {
+    return err(rows.error);
+  }
+  return ok(new Map(rows.value.map((row) => [row.object_uri, replyTargetFromRow(row)])));
 };
 
 export const findRemoteStatusReplyTargetByObjectUri = async (

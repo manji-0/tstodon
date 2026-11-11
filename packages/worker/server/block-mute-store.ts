@@ -228,10 +228,10 @@ export const silencesAnyOf = async (
 export const SUPPRESSED_ACCOUNT_IDS_SQL = `(
   SELECT target_account_id FROM blocks
     WHERE blocker_account_id = ? AND target_account_id IS NOT NULL
-  UNION
+  UNION ALL
   SELECT blocker_account_id FROM blocks
     WHERE target_account_id = ? AND blocker_account_id IS NOT NULL
-  UNION
+  UNION ALL
   SELECT target_account_id FROM mutes
     WHERE account_id = ? AND target_account_id IS NOT NULL
       AND (expires_at IS NULL OR expires_at > ?)

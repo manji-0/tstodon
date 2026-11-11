@@ -14,7 +14,7 @@ import { findListForAccount } from "./list-store";
 import { type StreamRenderTally, measureJobPage, streamRenderTally } from "./metrics";
 import { parseInstanceIdentity } from "./runtime-config";
 import { publishToAccount, publishToHub } from "./stream-publish";
-import { listListStreamSubscriptions } from "./stream-subscription-store";
+import { listHubStreamSubscriptions } from "./stream-subscription-store";
 import { homeTimelineDocuments, listTimelineDocuments } from "./timeline-documents";
 import { queryTyped } from "./typed-sql";
 
@@ -27,8 +27,9 @@ type FanOutRemovedStatuses = Extract<OutboxJobValue, { kind: "FanOutRemovedStatu
 type HomeEntryEvent = Pick<FanOutHome, "event" | "entryId">;
 
 /**
- * Followers told per pass. Each one costs a home timeline query for the entry,
- * and each list stream a follower has open a list timeline query, so a page
+ * Followers told per pass, of those with a `user` or `list` stream open. An
+ * open `user` stream costs a home timeline query for the entry, and each list
+ * stream a follower has open a list timeline query, so a page
  * stays well inside a queue invocation's subrequest budget; a full page
  * queues a `FanOutHome` job for the next.
  */
@@ -140,7 +141,8 @@ const listEvent = async (
 
 /**
  * Tell each account about the entry, with the document rendered for it, on
- * its home and on each list stream it has open whose list holds the entry.
+ * its `user` stream if open and on each list stream it has open whose list
+ * holds the entry.
  * Redoing it only sends the events again, which clients take as the same
  * status. Writes its own `stream.render` points unless the caller passes the
  * tallies it shares across entries.
@@ -183,24 +185,32 @@ const announceHomeEntryTallied = async (
   accountIds: ReadonlyArray<string>,
   { home, list }: HomeRenderTallies,
 ): Promise<Result<void, RepositoryError>> => {
-  for (const accountId of accountIds) {
+  const subscriptions = await listHubStreamSubscriptions(env.DB, accountIds, ["user", "list"]);
+  if (subscriptions.isErr()) {
+    return err(subscriptions.error);
+  }
+  const listening = new Set(
+    subscriptions.value.filter(({ channel }) => channel.kind === "User").map(({ hub }) => hub),
+  );
+  // A hub drops an event for a stream it does not hold, so only accounts with
+  // a `user` stream open are rendered for.
+  for (const accountId of accountIds.filter((id) => listening.has(id))) {
     const event = await home.measure(() => followerEvent(env, identity, entry, accountId));
     if (event.isErr()) {
       return err(event.error);
     }
     if (event.value) {
       try {
-        await publishToAccount(env, accountId, event.value);
+        await publishToHub(env, accountId, { channels: [{ kind: "User" }], event: event.value });
       } catch {
         console.error(JSON.stringify({ kind: "HomeFanOutNotPublished", accountId }));
       }
     }
   }
-  const lists = await listListStreamSubscriptions(env.DB, accountIds);
-  if (lists.isErr()) {
-    return err(lists.error);
-  }
-  for (const { hub: accountId, listId } of lists.value) {
+  const lists = subscriptions.value.flatMap(({ hub, channel }) =>
+    channel.kind === "List" ? [{ hub, listId: channel.listId }] : [],
+  );
+  for (const { hub: accountId, listId } of lists) {
     const event = await list.measure(() => listEvent(env, identity, entry, accountId, listId));
     if (event.isErr()) {
       return err(event.error);
@@ -220,7 +230,8 @@ const announceHomeEntryTallied = async (
 };
 
 /**
- * Tell one page of the author's local followers about the entry. Resolves to
+ * Tell one page of the author's local followers with a `user` or `list`
+ * stream open about the entry. Resolves to
  * the followers told and the cursor of the next page (`undefined` when this
  * was the last).
  */

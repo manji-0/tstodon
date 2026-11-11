@@ -139,6 +139,45 @@ describe("home streams of local followers", () => {
     follower.close();
   });
 
+  it("render only for followers with a user stream open, as their home timeline shows it", async () => {
+    const author = "hs-open-author@example.com";
+    const listener = await openStream("hs-open-listener@example.com");
+    await follow("hs-open-listener@example.com", author);
+    await follow("hs-open-idle@example.com", author);
+    const id = await post(author, "for open streams only");
+
+    const heard = await listener.next();
+    expect(heard.event).toBe("update");
+    expect(statusOf(heard).id).toBe(id);
+    const home = await json("hs-open-listener@example.com", "/api/v1/timelines/home?limit=1");
+    expect(home.body).toEqual([JSON.parse(heard.payload)]);
+
+    const job = OutboxJob.parse({
+      kind: "FanOutHome",
+      event: "update",
+      entryId: id,
+      author: { kind: "LocalAccount", accountId: (await signedInAccount(author)).id },
+      afterAccountId: "",
+    });
+    if (job.isErr()) {
+      throw new Error("fan-out fixture rejected");
+    }
+    const written = vi.spyOn(env.METRICS, "writeDataPoint");
+    expect(await processOutboxJob(env, job.value)).toBe("ok");
+    const points = written.mock.calls.map(([point]) => point);
+    written.mockRestore();
+    // One follower on the page and one render: the idle follower costs nothing.
+    const renders = points.filter((point) => point?.indexes?.[0] === "stream.render");
+    expect(renders.map((point) => point?.doubles?.slice(0, 3))).toEqual([[1, 1, 0]]);
+    expect(
+      points
+        .filter((point) => point?.indexes?.[0] === "outbox.job.page")
+        .map((point) => point?.doubles?.[0]),
+    ).toEqual([1]);
+    expect(JSON.parse((await listener.next()).payload)).toEqual(JSON.parse(heard.payload));
+    listener.close();
+  });
+
   it("are told one page of followers at a time", async () => {
     const author = "hs-paged-author@example.com";
     const opened = [

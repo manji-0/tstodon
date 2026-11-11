@@ -6,7 +6,7 @@ import { type RepositoryError, runD1 } from "./d1";
 import {
   deleteStreamSubscription,
   insertStreamSubscription,
-  listListStreamSubscriptions as listListStreamSubscriptionsSql,
+  listHubStreamSubscriptions as listHubStreamSubscriptionsSql,
   listPublicStreamSubscriptions as listPublicStreamSubscriptionsSql,
 } from "./generated/prisma/sql";
 import { queryTyped, runTyped } from "./typed-sql";
@@ -15,15 +15,16 @@ import { queryTyped, runTyped } from "./typed-sql";
 export type SubscriptionRow = Readonly<{ stream: string; param: string }>;
 
 /**
- * The row a fan-out finds a channel by. `user*` and `direct` streams have none: they go
- * to the account's own hub, which needs no lookup.
+ * The row a fan-out finds a channel by. `user:notification` has none: it
+ * carries only notifications, which are published to the account's hub
+ * without a lookup.
  */
 export const subscriptionRow = (channel: StreamChannelValue): SubscriptionRow | undefined => {
   switch (channel.kind) {
-    case "User":
     case "UserNotification":
-    case "Direct":
       return undefined;
+    case "User":
+    case "Direct":
     case "Public":
       return { stream: StreamChannel.streamName(channel)[0] ?? "", param: "" };
     case "Hashtag":
@@ -61,26 +62,37 @@ export const deleteSubscriptionRow = async (
     () => undefined,
   );
 
-const ListRowSchema = z.object({ hub: z.string(), param: z.string() });
+const HubRowSchema = z.object({ hub: z.string(), stream: z.string(), param: z.string() });
 
-/** The list subscriptions held by any of `hubs`. */
-export const listListStreamSubscriptions = async (
+/** A stream of an account's own hub, as `stream_subscriptions` names it. */
+export type OwnStream = "user" | "direct" | "list";
+
+/** The subscriptions to `streams` held by any of `hubs`, each with its channel. */
+export const listHubStreamSubscriptions = async (
   db: D1Database,
   hubs: ReadonlyArray<string>,
-): Promise<Result<Readonly<{ hub: string; listId: string }>[], RepositoryError>> => {
+  streams: ReadonlyArray<OwnStream>,
+): Promise<Result<Readonly<{ hub: string; channel: StreamChannelValue }>[], RepositoryError>> => {
   if (hubs.length === 0) {
     return ok([]);
   }
   const rows = await runD1(() =>
-    queryTyped(db, listListStreamSubscriptionsSql(JSON.stringify(hubs)), ListRowSchema),
+    queryTyped(
+      db,
+      listHubStreamSubscriptionsSql(JSON.stringify(streams), JSON.stringify(hubs)),
+      HubRowSchema,
+    ),
   );
   if (rows.isErr()) {
     return err(rows.error);
   }
-  return ok(rows.value.map((row) => ({ hub: row.hub, listId: row.param })));
+  return ok(
+    rows.value.flatMap((row) => {
+      const channel = channelOfRow(row);
+      return channel ? [{ hub: row.hub, channel }] : [];
+    }),
+  );
 };
-
-const HubRowSchema = z.object({ hub: z.string(), stream: z.string(), param: z.string() });
 
 /** One hub's channels that a fan-out should consider for an entry. */
 export type HubChannels = Readonly<{ hub: string; channels: StreamChannelValue[] }>;

@@ -89,9 +89,11 @@ export const presentedAccounts = async (
   identity: InstanceIdentity,
   localAccounts: ReadonlyArray<LocalAccount>,
   remoteActors: ReadonlyArray<RemoteActor>,
+  /** The instance's custom emojis, when the caller already loaded them. */
+  customEmojis?: ReadonlyArray<CustomEmoji>,
 ): Promise<PresentedAccounts> => {
   const [localDocuments, localPresentations, remotePresentations, moved] = await Promise.all([
-    mastodonAccountDocuments(env, identity, localAccounts),
+    mastodonAccountDocuments(env, identity, localAccounts, true, customEmojis),
     localAccountPresentations(
       env.DB,
       localAccounts.map((account) => account.id),
@@ -156,6 +158,8 @@ const documentsWhere = async (
       ),
   );
 
+const notHidden = (presentation: AccountPresentation): boolean => presentation.kind !== "Hidden";
+
 /**
  * Account documents keyed by account id, as Mastodon's `REST::AccountSerializer`
  * renders an account another record names: a suspended account stripped, a
@@ -165,11 +169,7 @@ export const accountDocumentsByIds = (
   env: Env,
   identity: InstanceIdentity,
   ids: ReadonlyArray<string>,
-) =>
-  documentsWhere(
-    presentedAccountsByIds(env, identity, ids),
-    (presentation) => presentation.kind !== "Hidden",
-  );
+) => documentsWhere(presentedAccountsByIds(env, identity, ids), notHidden);
 
 /**
  * Account documents keyed by account id for a list of accounts, as Mastodon's
@@ -378,11 +378,12 @@ export const mastodonAccountDocument = async (
   env: Env,
   identity: InstanceIdentity,
   account: LocalAccount,
+  profileRead: Promise<Result<AccountProfile, RepositoryError>> = findAccountProfile(
+    env.DB,
+    account.id,
+  ),
 ): Promise<ApiAccountJSON> => {
-  const [counts, profile] = await Promise.all([
-    accountCounts(env.DB, account.id),
-    findAccountProfile(env.DB, account.id),
-  ]);
+  const [counts, profile] = await Promise.all([accountCounts(env.DB, account.id), profileRead]);
   const document = mastodonAccount(
     identity,
     account,
@@ -406,6 +407,8 @@ export const mastodonAccountDocuments = async (
   identity: InstanceIdentity,
   accounts: ReadonlyArray<LocalAccount>,
   includeMoved = true,
+  /** The instance's custom emojis, when the caller already loaded them. */
+  customEmojis?: ReadonlyArray<CustomEmoji>,
 ): Promise<ReadonlyMap<string, ApiAccountJSON>> => {
   if (accounts.length === 0) {
     return new Map();
@@ -414,7 +417,7 @@ export const mastodonAccountDocuments = async (
   const [counts, profiles, emojis] = await Promise.all([
     accountCountsByIds(env.DB, accountIds),
     listAccountProfiles(env.DB, accountIds),
-    loadCustomEmojis(env, identity.mediaPublicBaseUrl),
+    customEmojis ?? loadCustomEmojis(env, identity.mediaPublicBaseUrl),
   ]);
   const documents = new Map(
     accounts.map((account) => [
@@ -485,5 +488,9 @@ export const accountRefDocument = async (
   ref: AccountRef,
 ): Promise<Result<ApiAccountJSON | undefined, RepositoryError>> => {
   const id = refAccountId(ref);
-  return (await accountDocumentsByIds(env, identity, [id])).map((documents) => documents.get(id));
+  const presented =
+    ref.kind === "LocalAccount"
+      ? presentedAccounts(env, identity, [ref.account], [])
+      : presentedAccounts(env, identity, [], [ref.actor]);
+  return (await documentsWhere(presented, notHidden)).map((documents) => documents.get(id));
 };

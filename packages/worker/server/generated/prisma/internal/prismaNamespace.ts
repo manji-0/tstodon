@@ -466,6 +466,7 @@ export const ModelName = {
   notification_request_groups: "notification_request_groups",
   delivery_domain_health: "delivery_domain_health",
   domain_allows: "domain_allows",
+  domain_policy_revision: "domain_policy_revision",
   suggestion_dismissals: "suggestion_dismissals",
   trend_reviews: "trend_reviews",
   status_quotes: "status_quotes",
@@ -570,6 +571,7 @@ export type TypeMap<
       | "notification_request_groups"
       | "delivery_domain_health"
       | "domain_allows"
+      | "domain_policy_revision"
       | "suggestion_dismissals"
       | "trend_reviews"
       | "status_quotes"
@@ -6250,6 +6252,82 @@ export type TypeMap<
         };
       };
     };
+    domain_policy_revision: {
+      payload: Prisma.$domain_policy_revisionPayload<ExtArgs>;
+      fields: Prisma.domain_policy_revisionFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.domain_policy_revisionFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_policy_revisionPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.domain_policy_revisionFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_policy_revisionPayload>;
+        };
+        findFirst: {
+          args: Prisma.domain_policy_revisionFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_policy_revisionPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.domain_policy_revisionFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_policy_revisionPayload>;
+        };
+        findMany: {
+          args: Prisma.domain_policy_revisionFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_policy_revisionPayload>[];
+        };
+        create: {
+          args: Prisma.domain_policy_revisionCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_policy_revisionPayload>;
+        };
+        createMany: {
+          args: Prisma.domain_policy_revisionCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.domain_policy_revisionCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_policy_revisionPayload>[];
+        };
+        delete: {
+          args: Prisma.domain_policy_revisionDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_policy_revisionPayload>;
+        };
+        update: {
+          args: Prisma.domain_policy_revisionUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_policy_revisionPayload>;
+        };
+        deleteMany: {
+          args: Prisma.domain_policy_revisionDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.domain_policy_revisionUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.domain_policy_revisionUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_policy_revisionPayload>[];
+        };
+        upsert: {
+          args: Prisma.domain_policy_revisionUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$domain_policy_revisionPayload>;
+        };
+        aggregate: {
+          args: Prisma.Domain_policy_revisionAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateDomain_policy_revision>;
+        };
+        groupBy: {
+          args: Prisma.domain_policy_revisionGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Domain_policy_revisionGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.domain_policy_revisionCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Domain_policy_revisionCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
     suggestion_dismissals: {
       payload: Prisma.$suggestion_dismissalsPayload<ExtArgs>;
       fields: Prisma.suggestion_dismissalsFieldRefs;
@@ -7855,6 +7933,14 @@ export const Domain_allowsScalarFieldEnum = {
 export type Domain_allowsScalarFieldEnum =
   (typeof Domain_allowsScalarFieldEnum)[keyof typeof Domain_allowsScalarFieldEnum];
 
+export const Domain_policy_revisionScalarFieldEnum = {
+  id: "id",
+  token: "token",
+} as const;
+
+export type Domain_policy_revisionScalarFieldEnum =
+  (typeof Domain_policy_revisionScalarFieldEnum)[keyof typeof Domain_policy_revisionScalarFieldEnum];
+
 export const Suggestion_dismissalsScalarFieldEnum = {
   account_id: "account_id",
   target_account_id: "target_account_id",
@@ -8251,6 +8337,7 @@ export type GlobalOmitConfig = {
   notification_request_groups?: Prisma.notification_request_groupsOmit;
   delivery_domain_health?: Prisma.delivery_domain_healthOmit;
   domain_allows?: Prisma.domain_allowsOmit;
+  domain_policy_revision?: Prisma.domain_policy_revisionOmit;
   suggestion_dismissals?: Prisma.suggestion_dismissalsOmit;
   trend_reviews?: Prisma.trend_reviewsOmit;
   status_quotes?: Prisma.status_quotesOmit;

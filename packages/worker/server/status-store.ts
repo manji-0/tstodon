@@ -52,6 +52,8 @@ const NullableIdRow = z.object({ id: z.string().nullable() });
 const IdInReplyToUriRow = z.object({ id: z.string(), in_reply_to_uri: z.string() });
 const IdRow = z.object({ id: z.string() });
 const MediaRow = z.object({ status_id: z.string(), id: z.string() });
+/** The media ids of the statuses in a JSON id array, in attachment order. */
+const STATUS_MEDIA_IDS_SQL = `SELECT status_id, id FROM media_attachments WHERE status_id ${sqlInJsonEach()} ORDER BY position`;
 const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
 
 export const StatusRowSchema = z.object({
@@ -197,16 +199,20 @@ export const findStatusesByIds = async (
   if (unique.length === 0) {
     return ok(new Map<string, LocalStatusValue>());
   }
-  const queried = await runD1(() =>
-    db
-      .prepare(`SELECT ${statusSelect} FROM statuses WHERE id ${sqlInJsonEach()}`)
-      .bind(jsonStringArray(unique))
-      .all(),
-  );
-  if (queried.isErr()) {
-    return err(queried.error);
+  const idsJson = jsonStringArray(unique);
+  // The statuses and their media ids in one round trip.
+  const batched = await runD1Batch(db, [
+    db.prepare(`SELECT ${statusSelect} FROM statuses WHERE id ${sqlInJsonEach()}`).bind(idsJson),
+    db.prepare(STATUS_MEDIA_IDS_SQL).bind(idsJson),
+  ]);
+  if (batched.isErr()) {
+    return err(batched.error);
   }
-  const hydrated = await hydrateStatusRows(db, queried.value.results ?? []);
+  const [statuses, media] = batched.value;
+  const hydrated = statusesWithMedia(
+    parseRows(StatusRowSchema, statuses?.results),
+    media?.results ?? [],
+  );
   return ok(new Map(hydrated.map((status) => [status.id, status])));
 };
 
@@ -458,14 +464,20 @@ export const hydrateStatusRows = async (
     return [];
   }
   const { results } = await db
-    .prepare(
-      `SELECT status_id, id FROM media_attachments WHERE status_id ${sqlInJsonEach()} ORDER BY position`,
-    )
+    .prepare(STATUS_MEDIA_IDS_SQL)
     .bind(jsonStringArray(statusRows.map((row) => row.id)))
     .all();
+  return statusesWithMedia(statusRows, results);
+};
+
+/** Status rows with their `media_attachments` rows (`status_id`, `id`), as statuses. */
+const statusesWithMedia = (
+  statusRows: ReadonlyArray<z.infer<typeof StatusRowSchema>>,
+  mediaRows: unknown[],
+): LocalStatusValue[] => {
   const mediaByStatus = Map.groupBy(
     okValues(
-      parseRows(MediaRow, results).map((media) =>
+      parseRows(MediaRow, mediaRows).map((media) =>
         MediaId.parse(media.id).map((id) => ({ statusId: media.status_id, id })),
       ),
     ),

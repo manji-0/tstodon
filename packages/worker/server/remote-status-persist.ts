@@ -25,7 +25,11 @@ import { mediaRejectedDomains } from "./admin-domain-block-store";
 import { enqueueLinkCard } from "./link-card";
 import { mentionedPost, notifyFromRemote } from "./notify";
 import { findThreadParent } from "./thread-context";
-import { findRemoteStatusByObjectUri, upsertRemoteStatus } from "./remote-status-store";
+import {
+  findRemoteStatusByObjectUri,
+  type KnownRemoteStatus,
+  upsertRemoteStatus,
+} from "./remote-status-store";
 import { publishConversationUpdate } from "./conversation-stream";
 import { recordRemoteStatusMentions, replaceRemoteStatusRemoteMentions } from "./mention-store";
 import { isTruthy, stringList } from "./form-values";
@@ -326,15 +330,25 @@ type PersistOptions = FederatedFetchOptions &
 
 type ObjectReference = string | Readonly<{ id: string } & Record<string, unknown>>;
 
-/** The cached remote status for `objectUri`, or `Local` for one of this instance's own. */
+/**
+ * The cached remote status for `objectUri`, or `Local` for one of this
+ * instance's own; `known` is the caller's read of it, when it made one.
+ */
 const cachedRemoteStatus = async (
   env: Env,
   identity: InstanceIdentity,
   objectUri: string,
-): Promise<Result<Readonly<{ kind: "Local" }> | RemoteStatusValue | undefined, RepositoryError>> =>
-  parseLocalStatusId(identity, objectUri)
-    ? ok({ kind: "Local" })
+  known: KnownRemoteStatus | undefined,
+): Promise<
+  Result<Readonly<{ kind: "Local" }> | RemoteStatusValue | undefined, RepositoryError>
+> => {
+  if (parseLocalStatusId(identity, objectUri)) {
+    return ok({ kind: "Local" });
+  }
+  return known?.objectUri === objectUri
+    ? ok(known.row)
     : findRemoteStatusByObjectUri(env.DB, objectUri);
+};
 
 export const persistRemoteObject = async (
   env: Env,
@@ -342,12 +356,10 @@ export const persistRemoteObject = async (
   actor: RemoteActor,
   object: ObjectReference,
   options: PersistOptions,
+  known?: KnownRemoteStatus,
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
-  const cached = await cachedRemoteStatus(
-    env,
-    identity,
-    typeof object === "string" ? object : object.id,
-  );
+  const objectUri = typeof object === "string" ? object : object.id;
+  const cached = await cachedRemoteStatus(env, identity, objectUri, known);
   if (cached.isErr()) {
     return err(cached.error);
   }
@@ -355,7 +367,7 @@ export const persistRemoteObject = async (
     return ok(cached.value.kind === "Local" ? undefined : cached.value);
   }
   if (typeof object !== "string") {
-    return storeRemoteNote(env, identity, actor, object, options);
+    return storeRemoteNote(env, identity, actor, object, options, { objectUri, row: undefined });
   }
   const raw = await fetchActivityJson(identity, object, options);
   if (raw.isErr() || !fetchedAsItself(raw.value, object)) {
@@ -393,7 +405,7 @@ export const persistAnnouncedObject = async (
   options: PersistOptions,
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
   const objectUri = typeof object === "string" ? object : object.id;
-  const cached = await cachedRemoteStatus(env, identity, objectUri);
+  const cached = await cachedRemoteStatus(env, identity, objectUri, undefined);
   if (cached.isErr()) {
     return err(cached.error);
   }
@@ -403,7 +415,10 @@ export const persistAnnouncedObject = async (
   if (typeof object !== "string") {
     const embedded = parseNoteDocument(object);
     if (embedded.isOk() && embedded.value.attributedTo === announcer.actorUri) {
-      return storeRemoteNote(env, identity, announcer, object, options);
+      return storeRemoteNote(env, identity, announcer, object, options, {
+        objectUri,
+        row: undefined,
+      });
     }
   }
   const raw = await fetchActivityJson(identity, objectUri, options);
@@ -528,13 +543,18 @@ const urlHost = (href: string): string | undefined => {
   }
 };
 
-/** Store a note document `actor` wrote, with its mentions and a queued preview card. */
+/**
+ * Store a note document `actor` wrote, with its mentions and a queued preview
+ * card. `known` is the caller's read of the note's URI, made with no fetch
+ * since, so the upsert need not read it again.
+ */
 const storeRemoteNote = async (
   env: Env,
   identity: InstanceIdentity,
   actor: RemoteActor,
   raw: unknown,
   options: PersistOptions,
+  known?: KnownRemoteStatus,
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
   const parsed = noteFromUnknown(raw, actor, options.idClock);
   if (parsed.isErr()) {
@@ -543,7 +563,7 @@ const storeRemoteNote = async (
   const status = await applyMediaPolicy(env, actor, parsed.value);
   const note = parseNoteDocument(raw);
   const inReplyTo = note.isOk() ? (note.value.inReplyTo ?? undefined) : undefined;
-  const stored = await upsertRemoteStatus(env.DB, status, inReplyTo);
+  const stored = await upsertRemoteStatus(env.DB, status, inReplyTo, known);
   if (stored.isErr() || stored.value === undefined) {
     return stored;
   }

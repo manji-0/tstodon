@@ -211,25 +211,30 @@ export const statusInteractionCountsByIds = async (
       .bind(idsJson),
   ];
   if (viewerId) {
+    // One equality branch per target column, so each reads the viewer's
+    // (account, status) index entries instead of every row the viewer has.
+    const viewerTargets = (table: "favourites" | "bookmarks") =>
+      db
+        .prepare(
+          `SELECT local_status_id AS status_id FROM ${table}
+           WHERE account_id = ? AND local_status_id ${inList}
+           UNION ALL
+           SELECT remote_status_id AS status_id FROM ${table}
+           WHERE account_id = ? AND remote_status_id ${inList}`,
+        )
+        .bind(viewerId, idsJson, viewerId, idsJson);
     statements.push(
+      viewerTargets("favourites"),
       db
         .prepare(
-          `SELECT ${targetOf} AS status_id FROM favourites
-           WHERE account_id = ? AND ${targetIn}`,
+          `SELECT reblog_of_id AS status_id FROM statuses
+           WHERE kind = 'LocalReblog' AND account_id = ? AND reblog_of_id ${inList}
+           UNION ALL
+           SELECT reblog_of_remote_id AS status_id FROM statuses
+           WHERE kind = 'LocalReblog' AND account_id = ? AND reblog_of_remote_id ${inList}`,
         )
-        .bind(viewerId, idsJson, idsJson),
-      db
-        .prepare(
-          `SELECT ${reblogOf} AS status_id FROM statuses
-           WHERE kind = 'LocalReblog' AND account_id = ? AND ${reblogIn}`,
-        )
-        .bind(viewerId, idsJson, idsJson),
-      db
-        .prepare(
-          `SELECT ${targetOf} AS status_id FROM bookmarks
-           WHERE account_id = ? AND ${targetIn}`,
-        )
-        .bind(viewerId, idsJson, idsJson),
+        .bind(viewerId, idsJson, viewerId, idsJson),
+      viewerTargets("bookmarks"),
     );
   }
   const batched = await runD1Batch(db, statements);

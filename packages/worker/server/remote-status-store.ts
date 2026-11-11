@@ -17,6 +17,7 @@ import { z } from "zod";
 import { nowIso } from "./clock";
 import { rerollEntityId } from "./ids";
 import {
+  D1_BATCH_CHUNK_SIZE,
   jsonStringArray,
   okValues,
   parseRows,
@@ -281,8 +282,17 @@ const replaceRemoteStatusTags = async (
   visibility: Visibility,
   contentHtml: string,
 ): Promise<void> => {
+  await runD1Batch(db, remoteStatusTagStatements(db, statusId, visibility, contentHtml));
+};
+
+const remoteStatusTagStatements = (
+  db: D1Database,
+  statusId: string,
+  visibility: Visibility,
+  contentHtml: string,
+): D1PreparedStatement[] => {
   const tags = htmlHashtags(contentHtml);
-  await runD1Batch(db, [
+  return [
     db.prepare("DELETE FROM remote_status_tags WHERE status_id = ?").bind(statusId),
     ...tags.map((tag) =>
       db
@@ -291,7 +301,7 @@ const replaceRemoteStatusTags = async (
     ),
     d1PrepareTyped(db, markRemoteStatusTagsIndexedSql(statusId)),
     ...recordTagNames(db, searchableTagNames(visibility, tags)),
-  ]);
+  ];
 };
 
 /** Insert a remote status row, or update the row its object URI already holds. */
@@ -333,6 +343,12 @@ const ID_COLLISION_RETRIES = 4;
 const isIdCollision = (error: unknown): boolean =>
   error instanceof Error && /UNIQUE constraint failed: remote_statuses\.id/.test(error.message);
 
+/** What the caller just read at an object URI: the cached status, or `undefined` for none. */
+export type KnownRemoteStatus = Readonly<{
+  objectUri: string;
+  row: RemoteStatus | undefined;
+}>;
+
 /**
  * Store a remote status, or update the one cached at its object URI. A URI
  * cached as another actor's note is left alone and gives `undefined`: only
@@ -343,8 +359,13 @@ export const upsertRemoteStatus = async (
   status: RemoteStatus,
   /** The note's `inReplyTo`, kept to group direct conversations. */
   inReplyToUri?: string,
+  /** The caller's read of this URI, which spares reading it again. */
+  known?: KnownRemoteStatus,
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> => {
-  const existing = await findRemoteStatusByObjectUri(db, status.objectUri);
+  const existing =
+    known?.objectUri === status.objectUri
+      ? ok(known.row)
+      : await findRemoteStatusByObjectUri(db, status.objectUri);
   if (existing.isErr()) {
     return err(existing.error);
   }
@@ -429,12 +450,42 @@ export const indexMissingRemoteTags = async (
   if (rows.isErr()) {
     return;
   }
-  for (const row of rows.value) {
-    // An unreadable visibility keeps the names out of search, as a direct note's.
-    const visibility = Visibility.fromMastodon(row.visibility).unwrapOr(Visibility.Direct);
-    await replaceRemoteStatusTags(db, row.id, visibility, row.content_html);
+  const perStatus = rows.value.map((row) =>
+    remoteStatusTagStatements(
+      db,
+      row.id,
+      // An unreadable visibility keeps the names out of search, as a direct note's.
+      Visibility.fromMastodon(row.visibility).unwrapOr(Visibility.Direct),
+      row.content_html,
+    ),
+  );
+  // Several statuses per batch, never splitting one status's statements. A
+  // batch that fails is retried one status per batch, so one status that keeps
+  // failing does not hold back the others, as when each had its own batch.
+  for (const group of packStatementGroups(perStatus, D1_BATCH_CHUNK_SIZE)) {
+    const batched = await runD1Batch(db, group.flat());
+    if (batched.isErr() && group.length > 1) {
+      for (const statements of group) {
+        await runD1Batch(db, statements);
+      }
+    }
   }
 };
+
+/** Consecutive groups packed into runs of at most `size` statements; a larger group runs alone. */
+const packStatementGroups = (
+  groups: ReadonlyArray<D1PreparedStatement[]>,
+  size: number,
+): D1PreparedStatement[][][] =>
+  groups.reduce<D1PreparedStatement[][][]>((packed, group) => {
+    const last = packed.at(-1);
+    if (last !== undefined && last.flat().length + group.length <= size) {
+      last.push(group);
+    } else {
+      packed.push([group]);
+    }
+    return packed;
+  }, []);
 
 /**
  * Delete a cached remote status, only when `actorUri` (the Delete's signer)
