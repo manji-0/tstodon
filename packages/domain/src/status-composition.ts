@@ -1,4 +1,4 @@
-import { InstanceLimits, countableLength } from "@tstodon/core";
+import { InstanceLimits, statusLength } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { AccountId } from "./account-id";
@@ -97,10 +97,7 @@ export const StatusComposition = {
     if (!hasText && parsedMedia.length === 0 && !hasPoll) {
       return err({ kind: "EmptyPayload" });
     }
-    // Mastodon's `StatusLengthValidator`: the content warning and the body
-    // share the limit, a URL counts as `characters_reserved_per_url` and a
-    // remote mention without its domain.
-    if (countableLength(spoilerText + text) > InstanceLimits.status.maxCharacters) {
+    if (statusLength(spoilerText, text) > InstanceLimits.status.maxCharacters) {
       return err({ kind: "TooLong", field: "text", limit: InstanceLimits.status.maxCharacters });
     }
     if (parsedMedia.length > InstanceLimits.status.maxMediaAttachments) {

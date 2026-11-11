@@ -245,6 +245,10 @@ importers:
       zod:
         specifier: ^4.6.5
         version: 4.6.5
+    devDependencies:
+      twitter-text:
+        specifier: 3.1.0
+        version: 3.1.0
 
   packages/domain:
     dependencies:
@@ -518,9 +522,6 @@ importers:
       tiny-queue:
         specifier: 0.2.1
         version: 0.2.1
-      twitter-text:
-        specifier: 3.1.0
-        version: 3.1.0
       use-debounce:
         specifier: 10.1.1
         version: 10.1.1(react@19.2.8)

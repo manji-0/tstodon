@@ -90,6 +90,14 @@ The request wrappers in `mastodon/api/*.ts` type what they send with the params 
 - `api_types/profile.ts`: `ApiProfileUpdateParams` is `@tstodon/api`'s `ApiUpdateProfileParams` (re-exported under upstream's name) instead of a local `Pick` of `ApiProfileJSON`.
 - Not changed, because the Worker has no route for them yet: `api/collections.ts`, `apiSubscribeByEmail`, `apiSetQuotePolicy` (`statuses.ts`) and `api/annual_report.ts`. No action is left in JavaScript (see "JS actions moved to TypeScript" below); the few TypeScript callers that use `api()` / `apiRequest` directly (`actions/markers.ts`, `hooks/useSearchAccounts.ts`, ...) stay untyped as upstream left them.
 
+### Post length counting from `@tstodon/core/post-text`
+
+The compose form counts a post's length with the Worker's own rule, `@tstodon/core/post-text` (Zod-free: it imports only its own files), so the counter and the server's 422 agree.
+
+- `features/compose/util/url_regex.js` re-exports `postUrlRegex` as `urlRegex`: the same twitter-text pattern upstream composed here, now generated once into `packages/core/src/post-text-url-pattern.ts` (`scripts/generate-post-text-url-pattern.mjs`) and checked against twitter-text by `packages/core/src/post-text.test.ts`. `twitter-text` is no longer a dependency of `packages/worker` (it is a dev dependency of `packages/core`).
+- `features/compose/util/counter.js` re-exports `countableText` and `graphemeLength`. `compose_form.jsx` (`canSubmit`) and `features/compose/components/character_counter.tsx` count with `graphemeLength` instead of `stringz`'s `length`: grapheme clusters, as Mastodon's `StatusLengthValidator` counts (code points where a browser lacks `Intl.Segmenter`). `stringz` stays for the other counters.
+- On a merge, an upstream change to `counter.js` or `url_regex.js` goes into `packages/core/src/post-text.ts` (or the generator), not these files.
+
 ### JS actions moved to TypeScript
 
 <!-- constrained-by ../../api/README.md -->
