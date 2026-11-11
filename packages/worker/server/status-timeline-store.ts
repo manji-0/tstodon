@@ -8,6 +8,7 @@ import {
   FEED_LANGUAGES_SQL,
   FEED_SUSPENDED_AUTHORS_SQL,
   feedLocalReblogsSql,
+  reblogOfShownAuthorSql,
 } from "./followed-feed";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { hydrateStatusRows, statusSelect } from "./status-store";
@@ -29,7 +30,10 @@ export const cursorFragment = idCursorFragment;
 /** Media-only timelines keep statuses with an attachment, as `only_media` asks. */
 export const WITH_MEDIA_SQL = `AND id IN (SELECT status_id FROM media_attachments WHERE status_id IS NOT NULL)`;
 
-/** Public local statuses, without the authors `viewerId` must not see. */
+/**
+ * Public local notes, without the authors `viewerId` must not see. Boosts stay
+ * off, as Mastodon's `PublicFeed` is `without_reblogs`.
+ */
 export const listPublicStatuses = async (
   db: D1Database,
   viewerId: string | undefined,
@@ -42,7 +46,7 @@ export const listPublicStatuses = async (
     const media = onlyMedia ? WITH_MEDIA_SQL : "";
     const { results } = await db
       .prepare(
-        `SELECT ${statusSelect} FROM statuses WHERE visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
+        `SELECT ${statusSelect} FROM statuses WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
          AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL} ${media} ${where} ${order} LIMIT ?`,
       )
       .bind(...suppressedBinds(viewerId), ...binds, limit)
@@ -110,16 +114,41 @@ export type AccountStatusFilters = Readonly<{
   tagged?: string | undefined;
 }>;
 
+/**
+ * An account's statuses as `viewerId` may see them, kept in SQL (Mastodon's
+ * `AccountStatusesFilter`) so a page holds `limit` visible statuses: the
+ * author sees all; an account the author blocks sees none; anyone else sees
+ * public and unlisted ones, followers-only ones when following, and, unless
+ * `excludeDirect`, the ones that mention them; and only the boosts of authors
+ * they see (`filtered_reblogs_scope`).
+ */
 export const listAccountStatusesFiltered = async (
   db: D1Database,
   accountId: string,
+  viewerId: string | undefined,
   filters: AccountStatusFilters,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
     const tagged = filters.tagged?.replace(/^#/, "") ?? "";
+    const viewer = viewerId ?? "";
     const { where, order, binds } = cursorFragment(filters.cursor);
+    const reblogs = reblogOfShownAuthorSql(viewer, nowIso());
     const sql = `SELECT ${statusSelect} FROM statuses
          WHERE account_id = ?
+           AND (account_id = ? OR (
+             NOT EXISTS (
+               SELECT 1 FROM blocks WHERE blocker_account_id = ? AND target_account_id = ?
+             )
+             AND (
+               visibility IN ('public', 'unlisted')
+               OR (visibility = 'private' AND EXISTS (
+                 SELECT 1 FROM follows
+                 WHERE follower_account_id = ? AND target_account_id = ? AND kind = 'Accepted'
+               ))
+               OR (? = 0 AND id IN (SELECT status_id FROM status_mentions WHERE account_id = ?))
+             )
+           ))
+           AND (kind <> 'LocalReblog' OR ? = '' OR account_id = ? OR (${reblogs.sql}))
            AND (? = 0 OR in_reply_to_id IS NULL)
            AND (? = 0 OR kind <> 'LocalReblog')
            AND (? = 0 OR visibility <> 'direct')
@@ -130,6 +159,17 @@ export const listAccountStatusesFiltered = async (
       .prepare(sql)
       .bind(
         accountId,
+        viewer,
+        // Bound rather than read off each row, so SQLite checks the block and follow once.
+        accountId,
+        viewer,
+        viewer,
+        accountId,
+        filters.excludeDirect ? 1 : 0,
+        viewer,
+        viewer,
+        viewer,
+        ...reblogs.binds,
         filters.excludeReplies ? 1 : 0,
         filters.excludeReblogs ? 1 : 0,
         filters.excludeDirect ? 1 : 0,

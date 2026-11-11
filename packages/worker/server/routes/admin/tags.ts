@@ -1,3 +1,4 @@
+import { isHashtagName, normalizeHashtag } from "@tstodon/core";
 import type { ApiAdminTagJSON } from "@tstodon/api";
 import type { InstanceIdentity } from "@tstodon/domain";
 import type { Context } from "hono";
@@ -21,7 +22,7 @@ import {
   saveTagModeration,
   type TagModeration,
 } from "../../tag-moderation-store";
-import { normalizeTag, tagDailyHistories, type TagHistoryEntry } from "../../tag-store";
+import { tagDailyHistories, type TagHistoryEntry } from "../../tag-store";
 import { listTrendReviews, type TrendState } from "../../trend-review-store";
 import { parseBool } from "./shared";
 
@@ -128,7 +129,7 @@ export const getV1AdminTagsById = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const tag = await findTagModeration(c.env.DB, normalizeTag(c.req.param("id") ?? ""));
+  const tag = await findTagModeration(c.env.DB, normalizeHashtag(c.req.param("id") ?? ""));
   if (tag.isErr()) {
     return jsonRepositoryError(c, tag.error.message);
   }
@@ -161,7 +162,7 @@ export const putV1AdminTagsById = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const found = await findTagModeration(c.env.DB, normalizeTag(c.req.param("id") ?? ""));
+  const found = await findTagModeration(c.env.DB, normalizeHashtag(c.req.param("id") ?? ""));
   if (found.isErr()) {
     return jsonRepositoryError(c, found.error.message);
   }
@@ -174,7 +175,10 @@ export const putV1AdminTagsById = async (
   }
   const current = found.value;
   const displayName = body.value.display_name?.trim();
-  if (displayName && normalizeTag(displayName) !== current.name) {
+  if (
+    displayName &&
+    (!isHashtagName(displayName) || normalizeHashtag(displayName) !== current.name)
+  ) {
     // Mastodon: the display name may only change the name's case.
     return c.json(
       { error: "Validation failed: Display name must match the hashtag", kind: "ValidationError" },

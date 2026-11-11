@@ -19,12 +19,33 @@ import { escapeHtml } from "./html";
 
 export type PageMessage = Readonly<{ kind: "error" | "notice"; text: string }>;
 
-export const nav = `      <p class="muted"><a href="/">Back to the web app</a> · <a href="/settings/preferences">Preferences</a></p>`;
-
 type Link = Readonly<{ href: string; label: string }>;
 
+/** UTC to the minute, as these pages show a time. */
+export const minute = (date: Date): string =>
+  `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+
+/**
+ * A stored ISO timestamp as {@link minute} shows it. Text that is not a date
+ * is shown as it is, so one bad row cannot fail the page.
+ */
+export const minuteText = (iso: string): string => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : minute(date);
+};
+
+const navLinks = (links: ReadonlyArray<Link>): string =>
+  `      <nav aria-label="Settings">${links.map((link) => `<a href="${link.href}">${link.label}</a>`).join("")}</nav>`;
+
+const WEB_APP_LINK = { href: "/", label: "← Back to the web app" } as const;
+
+export const nav = navLinks([
+  WEB_APP_LINK,
+  { href: "/settings/preferences", label: "Preferences" },
+]);
+
 const linkList = (links: ReadonlyArray<Link & { about?: string }>): string =>
-  `<ul>${links
+  `<ul class="links">${links
     .map(
       (link) => `
         <li><a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>${link.about === undefined ? "" : ` <span class="muted">${escapeHtml(link.about)}</span>`}</li>`,
@@ -163,7 +184,7 @@ export const settingsIndexPage = (
 ): string =>
   page(
     `Preferences · ${instanceName}`,
-    `      <p class="muted"><a href="/">Back to the web app</a></p>
+    `${navLinks([WEB_APP_LINK])}
       <h1>Preferences</h1>
       <p>Settings for <strong>@${escapeHtml(username)}</strong>.</p>
       <h2 id="appearance">Appearance</h2>
@@ -194,7 +215,7 @@ ${messageLine(message)}${appearanceForm(appearance)}`,
   );
 
 export const messageLine = (message: PageMessage | undefined): string =>
-  `      <p id="error" class="${message?.kind === "notice" ? "muted" : "error"}" role="alert">${message === undefined ? "" : escapeHtml(message.text)}</p>`;
+  `      <p id="error" class="${message?.kind === "notice" ? "notice" : "error"}" role="alert">${message === undefined ? "" : escapeHtml(message.text)}</p>`;
 
 export const aliasesPage = (
   instanceName: string,
@@ -207,12 +228,12 @@ export const aliasesPage = (
     `${nav}
       <h1>Moving from a different account</h1>
       <p>To move your followers from another account to <strong>@${escapeHtml(username)}</strong>, add the old account here first. Then start the move from the old account.</p>
+${messageLine(message)}
       <form method="post" action="/settings/aliases">
         <label for="acct">Handle of the old account</label>
         <input id="acct" name="acct" required placeholder="username@domain" autocomplete="off" />
         <button type="submit">Create alias</button>
       </form>
-${messageLine(message)}
       <h2>Aliases</h2>
       ${
         aliases.length === 0
@@ -223,7 +244,7 @@ ${messageLine(message)}
         <li><code>${escapeHtml(alias.acct)}</code>
           <form method="post" action="/settings/aliases/remove">
             <input type="hidden" name="id" value="${escapeHtml(alias.id)}" />
-            <button type="submit">Unlink alias</button>
+            <button type="submit" class="danger">Unlink alias</button>
           </form>
         </li>`,
               )
@@ -255,16 +276,17 @@ export const migrationPage = (
   page(
     `Move to a different account · ${instanceName}`,
     `${nav}
-      <h1>Move to a different account</h1>${
-        state.movedTo === undefined
-          ? ""
-          : `
+      <h1>Move to a different account</h1>
+${messageLine(message)}${
+      state.movedTo === undefined
+        ? ""
+        : `
       <p><strong>@${escapeHtml(username)}</strong> has moved to <strong>${escapeHtml(state.movedTo)}</strong> and can no longer post.</p>
       <form id="cancel-move" method="post" action="/settings/migration/cancel">
         <button type="submit">Cancel redirect</button>
       </form>
       <p class="muted">Cancelling stops the redirect. Followers who already moved stay with the new account, and moving again has to wait out the cooldown.</p>`
-      }
+    }
       <p>Moving sends your followers to the new account. First add <code>@${escapeHtml(username)}</code> as an alias on the new account, under "Moving from a different account". Your posts and the accounts you follow stay here.</p>
       ${
         state.nextMoveAt === undefined
@@ -273,9 +295,8 @@ export const migrationPage = (
         <input id="acct" name="acct" required placeholder="username@domain" autocomplete="off" />
         <button type="submit">Move followers</button>
       </form>${state.reauthRequired ? `\n      <p class="muted">You sign in again through Cloudflare Access before the move starts.</p>` : ""}`
-          : `<p class="muted">You can move to a different account again after ${escapeHtml(state.nextMoveAt.toISOString())}.</p>`
-      }
-${messageLine(message)}`,
+          : `<p class="muted">You can move to a different account again after ${minute(state.nextMoveAt)}.</p>`
+      }`,
   );
 
 export const options = (
@@ -316,6 +337,7 @@ export const postingDefaultsPage = (
     `${nav}
       <h1>Posting defaults</h1>
       <p>New posts start with these settings. You can still change them on each post.</p>
+${messageLine(message)}
       <form method="post" action="/settings/preferences/posting_defaults">
         <label for="privacy">Visibility</label>
         <select id="privacy" name="privacy">${options(
@@ -343,8 +365,7 @@ export const postingDefaultsPage = (
         )}</select>
         ${checkbox("sensitive", defaults.sensitive, "Always mark media as sensitive", "Viewers click to see it.")}
         <button type="submit">Save changes</button>
-      </form>
-${messageLine(message)}`,
+      </form>`,
   );
 
 export type PrivacySettings = Readonly<{
@@ -367,14 +388,14 @@ export const privacyPage = (
     `Privacy and reach · ${instanceName}`,
     `${nav}
       <h1>Privacy and reach</h1>
+${messageLine(message)}
       <form method="post" action="/settings/privacy">
         ${checkbox("account_unlocked", !settings.locked, "Automatically accept new followers", "Turn this off to review follow requests yourself.")}
         ${checkbox("account_discoverable", settings.discoverable, "Feature profile and posts in discovery", "Your profile can appear in suggestions and the directory.")}
         ${checkbox("account_indexable", settings.indexable, "Include public posts in search results", "People can find your public posts by searching.")}
         ${checkbox("account_show_collections", !settings.hideCollections, "Show who you follow and who follows you", "Visible on your profile.")}
         <button type="submit">Save changes</button>
-      </form>
-${messageLine(message)}`,
+      </form>`,
   );
 
 export type UnsupportedNotice = Readonly<{
@@ -412,6 +433,7 @@ export const statusesCleanupPage = (
     `${nav}
       <h1>Automated post deletion</h1>
       <p>Delete your old posts automatically once they reach an age you choose, unless one of the exceptions below applies. Deleted posts also leave other servers that received them.</p>
+${messageLine(message)}
       <form method="post" action="/statuses_cleanup">
         ${checkbox("enabled", policy.kind === "Enabled", "Enable automatic deletion of posts", "Posts are deleted a few at a time, so it can take a while.")}
         <label for="min_status_age">Age threshold</label>
@@ -431,7 +453,6 @@ export const statusesCleanupPage = (
         <label for="min_reblogs">Keep posts boosted at least this many times <span class="muted">(leave empty to ignore boosts)</span></label>
         <input id="min_reblogs" name="min_reblogs" inputmode="numeric" pattern="[0-9]*" value="${escapeHtml(count(rules.keepBoosts))}" />
         <button type="submit">Save changes</button>
-      </form>
-${messageLine(message)}`,
+      </form>`,
   );
 };

@@ -8,7 +8,9 @@ import type {
 } from "@tstodon/api";
 import { type Context } from "hono";
 import { InstanceLimits, Languages } from "@tstodon/core";
+import { countActiveAccounts } from "../account-activity";
 import { countAccounts } from "../account-store";
+import { ACTIVE_MONTH_DAYS } from "../nodeinfo";
 import { listPublicDomainBlocks, publicDomainBlockDocument } from "../admin-domain-block-store";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../http";
 import {
@@ -238,9 +240,12 @@ export const getV2Instance = async (c: Context<{ Bindings: Env }, "/api/v2/insta
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const [users, statuses] = await Promise.all([countAccounts(c.env.DB), countStatuses(c.env.DB)]);
-  if (users.isErr()) {
-    return jsonRepositoryError(c, users.error.message);
+  const [activeMonth, statuses] = await Promise.all([
+    countActiveAccounts(c.env.DB, ACTIVE_MONTH_DAYS),
+    countStatuses(c.env.DB),
+  ]);
+  if (activeMonth.isErr()) {
+    return jsonRepositoryError(c, activeMonth.error.message);
   }
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
@@ -254,7 +259,7 @@ export const getV2Instance = async (c: Context<{ Bindings: Env }, "/api/v2/insta
     source_url: instance.sourceUrl,
     description: instance.description,
     usage: {
-      users: { active_month: users.value },
+      users: { active_month: activeMonth.value },
     },
     thumbnail: {
       url: instance.thumbnailUrl,

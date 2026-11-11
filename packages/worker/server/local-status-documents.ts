@@ -1,3 +1,5 @@
+import { extractHashtags } from "@tstodon/core";
+import { tagUrl } from "./tag-documents";
 import type {
   ApiAccountJSON,
   ApiMediaAttachmentJSON,
@@ -140,7 +142,7 @@ const buildLocalNoteDocument = (
     account: accountDoc,
     media_attachments: attachments,
     mentions: [],
-    tags: [],
+    tags: extractHashtags(status.text).map((name) => ({ name, url: tagUrl(identity, name) })),
     emojis: emojis.map(customEmojiJson),
     card,
     poll: poll ? pollJson(poll) : null,

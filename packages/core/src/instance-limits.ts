@@ -7,8 +7,8 @@
 export const InstanceLimits = {
   status: {
     /**
-     * Unicode code points in the content warning and the post body together,
-     * as {@link countableText} counts them (Mastodon's `StatusLengthValidator`).
+     * Grapheme clusters in the content warning and the post body together,
+     * as `statusLength` (`./post-text`) counts them.
      */
     maxCharacters: 500,
     maxMediaAttachments: 4,
@@ -29,7 +29,7 @@ export const InstanceLimits = {
     maxProfileFields: 4,
     /** Code points in the display name. */
     maxDisplayNameCharacters: 30,
-    /** The bio, counted as {@link countableText} counts it (`NoteLengthValidator`). */
+    /** The bio, as `noteLength` (`./post-text`) counts it. */
     maxNoteCharacters: 500,
     /**
      * Mastodon 4.6's avatar and header alt text. tstodon does not store
@@ -73,32 +73,3 @@ export const InstanceLimits = {
  * (Ruby's `String#length`). Grapheme clusters are intentionally not merged.
  */
 export const characterCount = (text: string): number => Array.from(text).length;
-
-/**
- * A bare `http(s)` URL in post text, as Mastodon's web UI and
- * `StatusLengthValidator` count it: whatever follows the scheme up to
- * whitespace, without trailing punctuation. Not inside a word or after `/`
- * or `@`.
- */
-const COUNTED_URL = /(^|[^\p{L}\p{N}_/@])(https?:\/\/[^\s<>"']*[^\s<>"'.,:;!?)\]}*])/giu;
-
-/** `@user@domain`, which counts as `@user` (the domain is free, as in Mastodon). */
-const COUNTED_REMOTE_MENTION = /(^|[^/\w])@([a-z0-9_]+)@[a-z0-9.-]+[a-z0-9]+/gi;
-
-/**
- * The text Mastodon counts against a length limit: each URL is
- * `charactersReservedPerUrl` characters long, and a remote mention counts
- * without its domain (Mastodon's `countable_text`, and the web UI's
- * `countableText`).
- */
-export const countableText = (text: string): string =>
-  text
-    .replace(
-      COUNTED_URL,
-      (_match, before: string) =>
-        `${before}${"x".repeat(InstanceLimits.status.charactersReservedPerUrl)}`,
-    )
-    .replace(COUNTED_REMOTE_MENTION, "$1@$2");
-
-/** {@link characterCount} of {@link countableText}. */
-export const countableLength = (text: string): number => characterCount(countableText(text));

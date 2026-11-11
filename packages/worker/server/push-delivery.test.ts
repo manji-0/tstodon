@@ -5,6 +5,7 @@ import { importJWK, jwtVerify } from "jose";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount, signupEmail } from "../test/auth-fixture";
 import { createSignupAccount } from "./account-provision";
+import { withHostAddresses } from "../test/host-resolver-fixture";
 import { processPushJob } from "./push-delivery";
 import { RemoteAccountId } from "./remote-account-id";
 import { base64UrlToBytes, bytesToBase64Url } from "./vapid";
@@ -501,6 +502,37 @@ describe("push delivery", () => {
       const signUp = await pushed(await latest("admin.sign_up"), captured);
       expect(signUp.notification_type).toBe("admin.sign_up");
       expect(signUp.title).toBe("pushnew signed up");
+    });
+  });
+  it("does not deliver to an endpoint that now resolves to a private address", async () => {
+    const author = "push-dns-author@example.com";
+    const fan = "push-dns-fan@example.com";
+    const recipientId = await accountId(author);
+    const subscriptionId = await subscribe(
+      author,
+      "https://push-dns.example/endpoint",
+      await newSubscriber(),
+      { alerts: { favourite: true } },
+      true,
+    );
+    const notificationId = await favouriteNotification(author, fan);
+    const job = () =>
+      processPushJob(env, {
+        kind: "DeliverPush",
+        accountId: recipientId,
+        notificationId,
+        subscriptionId,
+      });
+
+    await withPushService("push-dns.example", 201, async (captured) => {
+      await withHostAddresses({ "push-dns.example": ["192.168.1.10"] }, async () => {
+        expect(await job()).toBe("ok");
+      });
+      expect(captured.filter((push) => push.url.includes("push-dns.example"))).toHaveLength(0);
+      const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM push_subscriptions WHERE id = ?")
+        .bind(subscriptionId)
+        .first<{ n: number }>();
+      expect(row?.n).toBe(0);
     });
   });
 });

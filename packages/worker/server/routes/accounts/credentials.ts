@@ -11,7 +11,7 @@ import {
 import {
   InstanceLimits,
   characterCount,
-  countableLength,
+  noteLength,
   schemaResult,
   warmSchemas,
 } from "@tstodon/core";
@@ -277,7 +277,7 @@ const checkProfileLimits = (
       `Display name is too long (maximum is ${limits.maxDisplayNameCharacters} characters)`,
     );
   }
-  if (body.note !== undefined && countableLength(body.note) > limits.maxNoteCharacters) {
+  if (body.note !== undefined && noteLength(body.note) > limits.maxNoteCharacters) {
     problems.push(`Note character limit of ${limits.maxNoteCharacters} exceeded`);
   }
   const fields = profileFields(rawBody, body) ?? [];

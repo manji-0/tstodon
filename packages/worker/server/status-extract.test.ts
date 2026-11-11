@@ -1,17 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
-import { extractHashtags, htmlHashtags } from "./hashtags";
+import { extractHashtags } from "@tstodon/core";
+import { htmlHashtags } from "./hashtags";
 
 describe("status text extractors", () => {
   it("extracts unique lowercase hashtags", () => {
     expect(extractHashtags("Hello #WaveA and #wavea plus #Other")).toEqual(["wavea", "other"]);
   });
 
-  it("leaves out a `#` inside a word, a URL or after `=`, as Mastodon's HASHTAG_RE", () => {
+  it("takes a `#` only at a line start or after a space, as Mastodon's HASHTAG_RE", () => {
     expect(
       extractHashtags(
-        "https://app.example/invite#Kq8sZ2pX word#token a/#path x=#query (#kept) #real",
+        "https://app.example/invite#Kq8sZ2pX word#token a/#path x=#query (#paren) #real\n#line",
       ),
-    ).toEqual(["kept", "real"]);
+    ).toEqual(["real", "line"]);
   });
 
   it("reads a remote note's hashtags from its text, not from link targets", () => {

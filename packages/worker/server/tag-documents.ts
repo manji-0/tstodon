@@ -2,6 +2,10 @@ import type { ApiFeaturedTagJSON, ApiHashtagJSON, ApiHistoryJSON } from "@tstodo
 import { type InstanceIdentity } from "@tstodon/domain";
 import { emptyTagHistory, type TagHistoryEntry } from "./tag-store";
 
+/** A tag's page, as Rails' `tag_url`: the name percent-encoded. */
+export const tagUrl = (identity: InstanceIdentity, name: string): string =>
+  `https://${identity.domain}/tags/${encodeURIComponent(name)}`;
+
 /**
  * Mastodon's Tag. `history` is the last days' uses, newest first; one not
  * read (or empty) renders as days of no uses, as Mastodon always renders the
@@ -18,7 +22,7 @@ export const mastodonTag = (
 ): ApiHashtagJSON => ({
   id: name,
   name,
-  url: `https://${identity.domain}/tags/${name}`,
+  url: tagUrl(identity, name),
   history: nonEmptyHistory(options.history ?? []),
   following: options.following ?? false,
   featuring: options.featuring ?? false,
@@ -43,7 +47,7 @@ export const mastodonFeaturedTag = (
 ): ApiFeaturedTagJSON => ({
   id: name,
   name,
-  url: `${identity.publicOrigin.replace(/\/$/, "")}/@${username}/tagged/${name}`,
+  url: `${identity.publicOrigin.replace(/\/$/, "")}/@${username}/tagged/${encodeURIComponent(name)}`,
   statuses_count: String(statusesCount),
   last_status_at: lastStatusAt,
 });

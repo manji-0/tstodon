@@ -8,8 +8,6 @@ import classNames from 'classnames';
 import ImmutablePropTypes from 'react-immutable-proptypes';
 import ImmutablePureComponent from 'react-immutable-pure-component';
 
-import { length } from 'stringz';
-
 import { missingAltTextModal } from 'mastodon/initial_state';
 
 import AutosuggestInput from 'mastodon/components/autosuggest_input';
@@ -20,7 +18,7 @@ import EmojiPickerDropdown from '../containers/emoji_picker_dropdown_container';
 import PollButtonContainer from '../containers/poll_button_container';
 import SpoilerButtonContainer from '../containers/spoiler_button_container';
 import UploadButtonContainer from '../containers/upload_button_container';
-import { countableText } from '../util/counter';
+import { countableText, graphemeLength } from '../util/counter';
 
 import { CharacterCounter } from './character_counter';
 import { EditIndicator } from './edit_indicator';
@@ -125,7 +123,7 @@ class ComposeForm extends ImmutablePureComponent {
     const { isSubmitting, isChangingUpload, isUploading, maxChars } = this.props;
     const fulltext = this.getFulltextForCharacterCounting();
 
-    return !(isSubmitting || isUploading || isChangingUpload || length(fulltext) > maxChars);
+    return !(isSubmitting || isUploading || isChangingUpload || graphemeLength(fulltext) > maxChars);
   };
 
   handleSubmit = (e) => {
@@ -327,7 +325,7 @@ class ComposeForm extends ImmutablePureComponent {
                 <PollButtonContainer />
                 <SpoilerButtonContainer />
                 <EmojiPickerDropdown onPickEmoji={this.handleEmojiPick} />
-                <CharacterCounter max={maxChars} text={this.getFulltextForCharacterCounting()} />
+                <CharacterCounter max={maxChars} text={this.getFulltextForCharacterCounting()} length={graphemeLength} />
               </div>
 
               <div className='compose-form__submit'>

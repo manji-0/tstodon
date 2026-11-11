@@ -19,6 +19,8 @@ import { useHistory } from 'react-router-dom';
 
 import { isFulfilled } from '@reduxjs/toolkit';
 
+import { isHashtagName } from '@tstodon/core/post-text';
+
 import { getCollectionPath } from '@/mastodon/features/collections/utils';
 import CancelIcon from '@/material-icons/400-24px/cancel-fill.svg?react';
 import CloseIcon from '@/material-icons/400-24px/close.svg?react';
@@ -33,7 +35,6 @@ import { useIdentity } from 'mastodon/identity_context';
 import { domain, searchEnabled } from 'mastodon/initial_state';
 import type { RecentSearch, SearchType } from 'mastodon/models/search';
 import { useAppSelector, useAppDispatch } from 'mastodon/store';
-import { HASHTAG_REGEX } from 'mastodon/utils/hashtags';
 
 const messages = defineMessages({
   placeholder: { id: 'search.placeholder', defaultMessage: 'Search' },
@@ -352,7 +353,7 @@ export const Search: React.FC<{
 
         const couldBeHashtag =
           (trimmedValue.startsWith('#') && trimmedValue.length > 1) ||
-          trimmedValue.match(HASHTAG_REGEX);
+          isHashtagName(trimmedValue);
 
         if (couldBeHashtag) {
           newQuickActions.push({

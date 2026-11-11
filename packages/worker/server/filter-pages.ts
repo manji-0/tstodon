@@ -7,7 +7,14 @@ import {
   type KeywordRow,
 } from "./filter-form";
 import { escapeHtml } from "./html";
-import { checkbox, messageLine, nav, options, type PageMessage } from "./settings-pages";
+import {
+  checkbox,
+  messageLine,
+  minuteText,
+  nav,
+  options,
+  type PageMessage,
+} from "./settings-pages";
 
 /**
  * Mastodon's filter pages (`/filters`, `/filters/new`, `/filters/:id/edit`),
@@ -37,14 +44,14 @@ const listItem = (item: FilterListItem, now: Date): string => {
   const expiry =
     item.expiresAt === null
       ? "never expires"
-      : `${new Date(item.expiresAt) <= now ? "expired" : "expires"} ${escapeHtml(item.expiresAt)}`;
+      : `${new Date(item.expiresAt) <= now ? "expired" : "expires"} ${escapeHtml(minuteText(item.expiresAt))}`;
   return `
         <li>
           <strong>${escapeHtml(item.title)}</strong>
           <span class="muted">${escapeHtml(item.contexts.map(contextLabel).join(", "))} · ${ACTION_LABELS[item.action].toLowerCase()} · ${expiry} · ${count(item.keywordCount, "keyword")}${item.statusCount > 0 ? ` · ${count(item.statusCount, "post")}` : ""}</span>
           <a href="/filters/${id}/edit">Edit</a>
           <form method="post" action="/filters/${id}/delete">
-            <button type="submit">Delete</button>
+            <button type="submit" class="danger">Delete</button>
           </form>
         </li>`;
 };
@@ -132,13 +139,13 @@ export const filterFormPage = (
 ): string => {
   const keepExpiry =
     mode.kind === "edit" && mode.expiresAt !== null
-      ? ([[KEEP_EXPIRY, `Keep (expires ${mode.expiresAt})`]] as const)
+      ? ([[KEEP_EXPIRY, `Keep (expires ${minuteText(mode.expiresAt)})`]] as const)
       : ([] as const);
   const title = mode.kind === "new" ? "New filter" : "Edit filter";
   return page(
     `${title} · ${instanceName}`,
     `${nav}
-      <p class="muted"><a href="/filters">Muted words</a></p>
+      <p class="muted"><a href="/filters">← Muted words</a></p>
       <h1>${title}</h1>
       <form method="post" action="${mode.kind === "new" ? "/filters" : `/filters/${escapeHtml(mode.id)}/edit`}">
         <label for="title">Title</label>

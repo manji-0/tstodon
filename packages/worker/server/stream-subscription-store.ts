@@ -1,3 +1,4 @@
+import { normalizeHashtag } from "@tstodon/core";
 import { StreamChannel, type StreamChannelValue } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -29,7 +30,7 @@ export const subscriptionRow = (channel: StreamChannelValue): SubscriptionRow | 
     case "Hashtag":
       return {
         stream: channel.localOnly ? "hashtag:local" : "hashtag",
-        param: channel.tag.toLowerCase(),
+        param: normalizeHashtag(channel.tag),
       };
     case "List":
       return { stream: "list", param: channel.listId };

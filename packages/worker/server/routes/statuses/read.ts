@@ -118,7 +118,6 @@ export const getV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/statu
   if (remotes.isErr()) {
     return jsonRepositoryError(c, remotes.error.message);
   }
-  // Public and unlisted statuses pass without a query; restricted ones share one read per check.
   const viewable = await viewableStatusIds(
     c.env.DB,
     [...locals.value.values()],

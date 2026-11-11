@@ -90,6 +90,22 @@ The request wrappers in `mastodon/api/*.ts` type what they send with the params 
 - `api_types/profile.ts`: `ApiProfileUpdateParams` is `@tstodon/api`'s `ApiUpdateProfileParams` (re-exported under upstream's name) instead of a local `Pick` of `ApiProfileJSON`.
 - Not changed, because the Worker has no route for them yet: `api/collections.ts`, `apiSubscribeByEmail`, `apiSetQuotePolicy` (`statuses.ts`) and `api/annual_report.ts`. No action is left in JavaScript (see "JS actions moved to TypeScript" below); the few TypeScript callers that use `api()` / `apiRequest` directly (`actions/markers.ts`, `hooks/useSearchAccounts.ts`, ...) stay untyped as upstream left them.
 
+### Post length counting from `@tstodon/core/post-text`
+
+The compose form counts a post's length with the Worker's own rule, `@tstodon/core/post-text` (Zod-free: it imports only its own files), so the counter and the server's 422 agree.
+
+- `features/compose/util/url_regex.js` re-exports `postUrlRegex` as `urlRegex`: the same twitter-text pattern upstream composed here, now generated once into `packages/core/src/post-text-url-pattern.ts` (`scripts/generate-post-text-url-pattern.mjs`) and checked against twitter-text by `packages/core/src/post-text.test.ts`. `twitter-text` is no longer a dependency of `packages/worker` (it is a dev dependency of `packages/core`).
+- `features/compose/util/counter.js` re-exports `countableText` and `graphemeLength`. `compose_form.jsx` counts with `graphemeLength` instead of `stringz`'s `length`, in `canSubmit` and through the `length` prop it passes to `features/compose/components/character_counter.tsx` (new and optional, `stringz`'s `length` by default). That is grapheme clusters, as Mastodon's `StatusLengthValidator` counts (code points where a browser lacks `Intl.Segmenter`). The alt text modal renders the same counter and still counts with `stringz`, as its own check does.
+- On a merge, an upstream change to `counter.js` or `url_regex.js` goes into `packages/core/src/post-text.ts` (or the generator), not these files.
+
+### Hashtags from `@tstodon/core/post-text`
+
+The web UI decides what is a hashtag with the Worker's rule, Mastodon's `Tag::HASHTAG_RE` (`hasHashtag`, `isHashtagName` in `@tstodon/core/post-text`), so the compose form warns about the tags the server stores.
+
+- `features/compose/components/warning.tsx`: the "not listed under any hashtag" warning tests `hasHashtag(text)` instead of upstream's `HASHTAG_PATTERN_REGEX`. Upstream's client pattern differed from its server's (`#` after any non-word character, `\p{N}` for digits, no `・`), so the warning could fire for `(#tag)`, which no hashtag lists.
+- `features/compose/components/search.tsx`: the "go to hashtag" quick action takes `isHashtagName` instead of `HASHTAG_REGEX`.
+- `utils/hashtags.ts`: `HASHTAG_PATTERN_REGEX`, `HASHTAG_REGEX`, their builders, `ALPHA` and `HASHTAG_SEPARATORS` are gone. `WORD` stays for the autosuggest.
+
 ### JS actions moved to TypeScript
 
 <!-- constrained-by ../../api/README.md -->
@@ -171,7 +187,7 @@ tstodon replaces Mastodon's look with a flat, Linear-like design in two colour s
 - `styles/mastodon/basics.scss`: `--font-body` is Inter with a system fallback stack and `--font-heading` follows it (upstream: Roboto and Syne); `html` / `body` background is `--color-bg-app`.
 - `styles/mastodon/components.scss` (each block marked `tstodon theme`): `.button` (14px, 6px radius), neutral `.button.button-secondary` and `.dropdown-button`, compact `.column-link` with a solid selected row and accent icon, a hover background on timeline rows (`.status__wrapper`, `.notification-group`, `.conversation`), `.dropdown-menu` radius and neutral item hover, no glow under an active `.column-header__wrapper` or its icon, tabular numbers in `.animated-number` and `.character-counter`.
 
-- `styles/entrypoints/pages.scss` (new, tstodon only): the stylesheet of the pages the Worker renders itself (settings, sign-in, OAuth, admin, …), built from the same token mixins (`tokens/theme/{base,dark,light}`, `tokens/{shape,type}`) and `fonts/inter.scss`. Upstream's `findEntrypoints` picks it up as an entry like `inert.scss`; `web-build.ts` hands its pack to the Worker as `pages`. It resolves `data-color-scheme="auto"` / `data-contrast="auto"` with media queries, because those pages load no `theme-selection.js`.
+- `styles/entrypoints/pages.scss` (new, tstodon only): the stylesheet of the pages the Worker renders itself (settings, sign-in, OAuth, admin, …), built from the same token mixins (`tokens/theme/{base,dark,light}`, `tokens/{shape,type}`) and `fonts/inter.scss`. Upstream's `findEntrypoints` picks it up as an entry like `inert.scss`; `web-build.ts` hands its pack to the Worker as `pages`. It resolves `data-color-scheme="auto"` / `data-contrast="auto"` with media queries, because those pages load no `theme-selection.js`. Its components, which the page templates in `server/*-pages.ts` use by element and class: `nav` (the way back, and `nav.sections` with `aria-current` for the admin sections), `ul.links` (a page list with a line about each), `.check` (a checkbox or radio with its hint on a second line), `p[role="alert"]` (`.error` or `.notice`, the result of the last action), `a.button`, and `button.secondary` / `button.danger` (a row's action in a list is secondary unless it deletes or revokes).
 
 Outside `src/`, `packages/worker/server/web-app.ts` renders the shell's `data-color-scheme` and `data-contrast` from the viewer's appearance setting (`server/appearance.ts`; upstream's Rails layout does the same from `color_scheme` / `contrast`), `auto` for a signed-out visitor, and the `theme-color` meta values from the app backgrounds (`#08090a` dark, `#f7f8f8` light; one value when the scheme is chosen). `inline/theme-selection.js` is unchanged.
 

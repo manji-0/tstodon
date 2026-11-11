@@ -9,7 +9,7 @@ import {
   postButton,
 } from "./admin-pages";
 import { escapeHtml } from "./html";
-import { checkbox, messageLine, type PageMessage } from "./settings-pages";
+import { checkbox, messageLine, minuteText, type PageMessage } from "./settings-pages";
 
 /**
  * Mastodon's admin pages for what the server says and shows (`/admin/dashboard`,
@@ -28,6 +28,7 @@ export const dashboardPage = (instanceName: string, stats: AdminDashboard): stri
   adminPage(
     instanceName,
     "Dashboard",
+    "/admin/dashboard",
     `      <h1>Dashboard</h1>
       <ul>
         <li><a href="/admin/reports">Open reports</a>: <strong>${stats.openReports}</strong></li>
@@ -50,7 +51,7 @@ const statusItem = (status: AdminStatusEntry): string => `
         <li>
           <label><input type="checkbox" name="status_ids" value="${escapeHtml(status.id)}" />
           ${status.spoilerText.length === 0 ? "" : `<strong>${escapeHtml(excerpt(status.spoilerText, 60))}</strong> `}${escapeHtml(excerpt(status.text))}</label>
-          <br /><span class="muted">${escapeHtml(status.visibility)}${status.sensitive ? " · sensitive" : ""} · ${escapeHtml(status.createdAt)}</span>
+          <br /><span class="muted">${escapeHtml(status.visibility)}${status.sensitive ? " · sensitive" : ""} · ${escapeHtml(minuteText(status.createdAt))}</span>
         </li>`;
 
 /** Mastodon's `GET /admin/accounts/:id/statuses`: pick posts, then mark them sensitive or delete them. */
@@ -62,6 +63,7 @@ export const accountStatusesPage = (
   adminPage(
     instanceName,
     `Posts of ${view.account.label}`,
+    "/admin/accounts",
     `      <h1>Posts of ${accountLink(view.account)}</h1>
 ${messageLine(message)}${
       view.statuses.length === 0
@@ -114,7 +116,7 @@ const announcementFields = (form: AnnouncementForm): string => `
 const announcementItem = (entry: AnnouncementEntry): string => `
         <li>
           <a href="/admin/announcements/${escapeHtml(entry.id)}">${escapeHtml(excerpt(entry.text))}</a>
-          <br /><span class="muted">${entry.publishedAt === null ? "draft" : `published ${escapeHtml(entry.publishedAt)}`}${entry.startsAt === null ? "" : ` · starts ${escapeHtml(entry.startsAt)}`}${entry.endsAt === null ? "" : ` · ends ${escapeHtml(entry.endsAt)}`}</span>
+          <br /><span class="muted">${entry.publishedAt === null ? "draft" : `published ${escapeHtml(minuteText(entry.publishedAt))}`}${entry.startsAt === null ? "" : ` · starts ${escapeHtml(minuteText(entry.startsAt))}`}${entry.endsAt === null ? "" : ` · ends ${escapeHtml(minuteText(entry.endsAt))}`}</span>
         </li>`;
 
 /** Mastodon's `GET /admin/announcements`, with the form that adds one. */
@@ -126,6 +128,7 @@ export const announcementsPage = (
   adminPage(
     instanceName,
     "Announcements",
+    "/admin/announcements",
     `      <h1>Announcements</h1>
 ${messageLine(message)}${
       view.announcements.length === 0
@@ -150,15 +153,16 @@ export const announcementPage = (
   return adminPage(
     instanceName,
     "Announcement",
+    "/admin/announcements",
     `      <h1>Announcement</h1>
 ${messageLine(message)}
-      <p>${view.entry.publishedAt === null ? "This announcement is a draft." : `Published ${escapeHtml(view.entry.publishedAt)}.`}</p>
+      <p>${view.entry.publishedAt === null ? "This announcement is a draft." : `Published ${escapeHtml(minuteText(view.entry.publishedAt))}.`}</p>
       <form method="post" action="${escapeHtml(action)}">
         <input type="hidden" name="do" value="save" />${announcementFields(view.form)}
         <button type="submit">Save changes</button>
       </form>
       ${view.entry.publishedAt === null ? postButton(action, "Publish", { do: "publish" }) : postButton(action, "Unpublish", { do: "unpublish" })}
-      ${postButton(action, "Delete", { do: "delete" })}
+      ${postButton(action, "Delete", { do: "delete" }, "danger")}
       <p><a href="/admin/announcements">Back to announcements</a></p>`,
   );
 };
@@ -180,7 +184,7 @@ const emojiItem = (emoji: EmojiEntry): string => `
           <strong>:${escapeHtml(emoji.shortcode)}:</strong>
           <span class="muted">${emoji.category === null ? "no category" : escapeHtml(emoji.category)} · ${emoji.visibleInPicker ? "shown in the picker" : "hidden from the picker"}</span>
           ${postButton("/admin/custom_emojis", emoji.visibleInPicker ? "Hide from the picker" : "Show in the picker", { do: emoji.visibleInPicker ? "hide" : "show", id: emoji.id })}
-          ${postButton("/admin/custom_emojis", "Delete", { do: "delete", id: emoji.id })}
+          ${postButton("/admin/custom_emojis", "Delete", { do: "delete", id: emoji.id }, "danger")}
         </li>`;
 
 /** Mastodon's `GET /admin/custom_emojis`, with the form that uploads one. */
@@ -192,6 +196,7 @@ export const emojisPage = (
   adminPage(
     instanceName,
     "Custom emojis",
+    "/admin/custom_emojis",
     `      <h1>Custom emojis</h1>
 ${messageLine(message)}${
       view.emojis.length === 0
@@ -254,6 +259,7 @@ export const trendsPage = (
   adminPage(
     instanceName,
     "Trends",
+    "/admin/trends/tags",
     `      <h1>Trends</h1>
       <p>${TREND_FAMILIES.map(([family, label]) => (family === view.family ? `<strong>${label}</strong>` : `<a href="/admin/trends/${family}">${label}</a>`)).join(" · ")}</p>
 ${messageLine(message)}${
@@ -282,6 +288,7 @@ export const emailDomainBlocksPage = (
   adminPage(
     instanceName,
     "Email domain blocks",
+    "/admin/email_domain_blocks",
     `      <h1>Email domain blocks</h1>
       <p class="muted">Nobody can sign up with an email address on a blocked domain.</p>
 ${messageLine(message)}${
@@ -293,8 +300,8 @@ ${messageLine(message)}${
               (block) => `
         <li>
           <strong>${escapeHtml(block.domain)}</strong>
-          <span class="muted">${escapeHtml(block.createdAt)} · ${count(block.recentAccounts, "account")} created in the last 5 days</span>
-          ${postButton("/admin/email_domain_blocks", "Remove block", { do: "remove", id: block.id })}
+          <span class="muted">${escapeHtml(minuteText(block.createdAt))} · ${count(block.recentAccounts, "account")} created in the last 5 days</span>
+          ${postButton("/admin/email_domain_blocks", "Remove block", { do: "remove", id: block.id }, "danger")}
         </li>`,
             ),
           )

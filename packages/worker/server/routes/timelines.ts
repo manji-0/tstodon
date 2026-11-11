@@ -7,7 +7,7 @@ import {
   type ApiGetPublicTimelineParams,
   type ApiGetTagTimelineParams,
 } from "@tstodon/api";
-import { warmSchemas } from "@tstodon/core";
+import { normalizeHashtag, warmSchemas } from "@tstodon/core";
 import { authenticate } from "../auth";
 import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "../filter-match";
 import {
@@ -30,7 +30,6 @@ import { paramsCursor, readQueryParams } from "../request-params";
 import { findTrendingLinkUrl } from "../trend-store";
 import { rejectedTrendTargets } from "../trend-review-store";
 import { isTagUsable } from "../tag-moderation-store";
-import { normalizeTag } from "../tag-store";
 import { filterMutedThreads, mutedThreadStatusIds } from "../status-mute-store";
 import {
   homeTimelineDocuments,
@@ -134,7 +133,7 @@ const TAG_FILTER_LIMIT = 4;
 
 const tagStatusFilters = (params: ApiGetTagTimelineParams): TagStatusFilters => {
   const values = (list: ReadonlyArray<string> | undefined): string[] =>
-    (list ?? []).map((value) => value.trim().replace(/^#/, "")).filter((value) => value.length > 0);
+    (list ?? []).map(normalizeHashtag).filter((value) => value.length > 0);
   const any: string[] = [];
   const all: string[] = [];
   const none: string[] = [];
@@ -172,7 +171,8 @@ export const getV1TimelinesTagByHashtag = async (
     return jsonValidationError(c);
   }
   // An admin made the tag unusable: its timeline lists nothing.
-  const usable = await isTagUsable(c.env.DB, normalizeTag(c.req.param("hashtag") ?? ""));
+  const hashtag = normalizeHashtag(c.req.param("hashtag") ?? "");
+  const usable = await isTagUsable(c.env.DB, hashtag);
   if (usable.isErr()) {
     return jsonRepositoryError(c, usable.error.message);
   }
@@ -183,7 +183,7 @@ export const getV1TimelinesTagByHashtag = async (
     c.env,
     identity.value,
     auth.value.kind === "Account" ? auth.value.account.id : undefined,
-    c.req.param("hashtag"),
+    hashtag,
     { scopes: timelineScopes(params.value), filters: tagStatusFilters(params.value) },
     queryLimit(params.value.limit),
     paramsCursor(params.value),

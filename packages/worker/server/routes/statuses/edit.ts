@@ -10,7 +10,6 @@ import {
   type LocalAccount,
   type LocalNote,
   LocalStatus,
-  type RemoteActor,
   type RemoteStatusValue,
   StatusComposition,
   Visibility,
@@ -18,14 +17,13 @@ import {
 import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
 import type { Context } from "hono";
-import { findAccountsByUsernames } from "../../account-store";
 import { authenticate } from "../../auth";
 import { nowIso } from "../../clock";
 import { deleteLocalStatus } from "../../local-status-delete";
 import { announceNoteUpdate } from "../../local-status-update";
-import { mentionUsernames, textToHtml } from "../../html";
+import { formatPostText } from "../../html";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "../../mention-store";
-import { resolveRemoteMentions } from "../../mention-resolve";
+import { mentionLinks, resolveMentions, type ResolvedMentions } from "../../mention-resolve";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -212,38 +210,28 @@ const snapshotPreviousRevision = async (
     : ok(undefined);
 };
 
-/**
- * Replace the local and remote accounts the revised text mentions; the
- * remote actors come back for the audience of the update.
- */
+/** Replace the local and remote accounts the revised text mentions. */
 const replaceMentions = async (
   env: Env,
-  identity: InstanceIdentity,
   note: LocalNote,
-): Promise<Result<ReadonlyArray<RemoteActor>, ApiRefusal>> => {
-  const mentionedAccounts = await findAccountsByUsernames(env.DB, [
-    ...mentionUsernames(note.text, identity.domain),
-  ]);
-  if (mentionedAccounts.isErr()) {
-    return err(ApiRefusal.repository(mentionedAccounts.error.message));
-  }
+  resolved: ResolvedMentions,
+): Promise<Result<void, ApiRefusal>> => {
   const mentions = await replaceStatusMentions(
     env.DB,
     note.id,
-    mentionedAccounts.value.map((account) => account.id),
+    resolved.locals.map((account) => account.id),
   );
   if (mentions.isErr()) {
     return err(ApiRefusal.repository(mentions.error.message));
   }
-  const remoteMentions = await resolveRemoteMentions(env, identity, note.text);
   const remoteSaved = await replaceStatusRemoteMentions(
     env.DB,
     note.id,
-    remoteMentions.map((actor) => actor.actorUri),
+    resolved.remotes.map((actor) => actor.actorUri),
   );
   return remoteSaved.isErr()
     ? err(ApiRefusal.repository(remoteSaved.error.message))
-    : ok(remoteMentions);
+    : ok(undefined);
 };
 
 /**
@@ -306,7 +294,19 @@ const editNote = async (
   if (media.isErr()) {
     return err(media.error);
   }
-  const revised = LocalStatus.revise(existing, draft.value, textToHtml(draft.value.text));
+  // Resolved before the first write: the revision's HTML links the mentions that resolve.
+  const mentioned = await resolveMentions(env, identity, draft.value.text);
+  if (mentioned.isErr()) {
+    return err(ApiRefusal.repository(mentioned.error.message));
+  }
+  const revised = LocalStatus.revise(
+    existing,
+    draft.value,
+    formatPostText(draft.value.text, {
+      identity,
+      mentions: mentionLinks(identity, mentioned.value),
+    }),
+  );
 
   const snapshotted = await snapshotPreviousRevision(env, identity, existing, author.id);
   if (snapshotted.isErr()) {
@@ -358,9 +358,9 @@ const editNote = async (
   if (attributeError) {
     return err(ApiRefusal.repository(attributeError));
   }
-  const remoteMentions = await replaceMentions(env, identity, revised);
-  if (remoteMentions.isErr()) {
-    return err(remoteMentions.error);
+  const mentionsReplaced = await replaceMentions(env, revised, mentioned.value);
+  if (mentionsReplaced.isErr()) {
+    return err(mentionsReplaced.error);
   }
   // An edit reaches the same audience as the note: a direct one only the
   // remote accounts it mentions.
@@ -370,7 +370,7 @@ const editNote = async (
     author,
     revised,
     updatedAt,
-    !(revised.visibility.kind === "Direct" && remoteMentions.value.length === 0),
+    !(revised.visibility.kind === "Direct" && mentioned.value.remotes.length === 0),
   );
   if (announced.isErr()) {
     return err(

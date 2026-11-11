@@ -1,3 +1,4 @@
+import { isHashtagName, normalizeHashtag } from "@tstodon/core";
 import type { ApiFeaturedTagJSON, ApiHashtagJSON } from "@tstodon/api";
 import { ApiCreateFeaturedTagParamsSchema } from "@tstodon/api";
 import type { Context } from "hono";
@@ -20,10 +21,8 @@ import {
   followTag,
   isTagFeatured,
   isTagFollowed,
-  isValidTag,
   listFeaturedTags,
   listFollowedTags,
-  normalizeTag,
   tagDailyHistories,
   tagDailyHistory,
   unfeatureTag,
@@ -114,8 +113,8 @@ export const getV1TagsByName = async (c: Context<{ Bindings: Env }, "/api/v1/tag
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const name = normalizeTag(c.req.param("name") ?? "");
-  if (!isValidTag(name)) {
+  const name = normalizeHashtag(c.req.param("name") ?? "");
+  if (!isHashtagName(name)) {
     return tagNotFound(c);
   }
   const viewerId = await viewerOf(c);
@@ -141,8 +140,9 @@ const setTagFollowed = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const name = normalizeTag(c.req.param("id") ?? "");
-  if (!isValidTag(name)) {
+  const name = normalizeHashtag(c.req.param("id") ?? "");
+  // Removal takes any stored name, also one an older, looser rule let in.
+  if (follow ? !isHashtagName(name) : name.length === 0) {
     return tagNotFound(c);
   }
   const changed = follow
@@ -176,8 +176,8 @@ const setTagFeatured = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const name = normalizeTag(c.req.param("id") ?? "");
-  if (!isValidTag(name)) {
+  const name = normalizeHashtag(c.req.param("id") ?? "");
+  if (feature ? !isHashtagName(name) : name.length === 0) {
     return tagNotFound(c);
   }
   if (feature) {
@@ -304,8 +304,8 @@ export const postV1FeaturedTags = async (
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const name = normalizeTag(body.value.name);
-  if (!isValidTag(name)) {
+  const name = normalizeHashtag(body.value.name);
+  if (!isHashtagName(name)) {
     return c.json({ error: "Invalid tag name", kind: "ValidationFailed" }, 422);
   }
   const already = await isTagFeatured(c.env.DB, user.value.id, name);
@@ -358,8 +358,8 @@ export const deleteV1FeaturedTagsById = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const name = normalizeTag(c.req.param("id") ?? "");
-  if (!isValidTag(name)) {
+  const name = normalizeHashtag(c.req.param("id") ?? "");
+  if (name.length === 0) {
     return tagNotFound(c);
   }
   const removed = await unfeatureTag(c.env.DB, user.value.id, name);

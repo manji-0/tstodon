@@ -12,15 +12,12 @@ import {
   isActiveRemoteStatusMention as isActiveRemoteStatusMentionSql,
   insertStatusMention as insertStatusMentionSql,
   insertStatusRemoteMention as insertStatusRemoteMentionSql,
-  isAccountMentionedOnRemoteStatus as isAccountMentionedOnRemoteStatusSql,
-  isAccountMentionedOnStatus as isAccountMentionedOnStatusSql,
   listRemoteStatusMentions as listRemoteStatusMentionsSql,
   listStatusMentionsByIds as listStatusMentionsByIdsSql,
   listStatusRemoteMentions as listStatusRemoteMentionsSql,
 } from "./generated/prisma/sql";
 
 const StatusIdAccountIdRow = z.object({ status_id: z.string(), account_id: z.string() });
-const OkRow = z.object({ ok: z.number() });
 const StatusIdActorUriRow = z.object({ status_id: z.string(), actor_uri: z.string() });
 
 /**
@@ -91,17 +88,6 @@ export const isActiveRemoteStatusMention = async (
   return rows.isErr() ? err(rows.error) : ok(rows.value.length > 0);
 };
 
-export const isAccountMentionedOnRemoteStatus = async (
-  db: D1Database,
-  statusId: string,
-  accountId: string,
-): Promise<Result<boolean, RepositoryError>> => {
-  const rows = await runD1(async () =>
-    queryTyped(db, isAccountMentionedOnRemoteStatusSql(statusId, accountId), CountedRow),
-  );
-  return rows.isErr() ? err(rows.error) : ok(rows.value.length > 0);
-};
-
 /** Local account ids each remote status addresses, keyed by status id. */
 export const listRemoteStatusMentions = async (
   db: D1Database,
@@ -146,20 +132,6 @@ export const replaceStatusMentions = async (
     return err(batched.error);
   }
   return ok(undefined);
-};
-
-export const isAccountMentionedOnStatus = async (
-  db: D1Database,
-  statusId: string,
-  accountId: string,
-): Promise<Result<boolean, RepositoryError>> => {
-  const queried = await runD1(async () => {
-    return queryTyped(db, isAccountMentionedOnStatusSql(statusId, accountId), OkRow);
-  });
-  if (queried.isErr()) {
-    return err(queried.error);
-  }
-  return ok(queried.value.length > 0);
 };
 
 /** Replace the remote actors a local note mentions. */

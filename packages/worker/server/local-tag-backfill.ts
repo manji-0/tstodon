@@ -1,3 +1,4 @@
+import { extractHashtags } from "@tstodon/core";
 import { Visibility } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -8,7 +9,7 @@ import {
   listLocalNoteTextsAfter as listLocalNoteTextsAfterSql,
   readBackfillCursor as readBackfillCursorSql,
 } from "./generated/prisma/sql";
-import { extractHashtags, recordTagNames, searchableTagNames } from "./hashtags";
+import { recordTagNames, searchableTagNames } from "./hashtags";
 import { d1PrepareTyped, queryTyped } from "./typed-sql";
 
 /** The `backfill_cursors` row migration 0108 seeds for this job. */

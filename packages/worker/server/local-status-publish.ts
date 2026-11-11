@@ -9,15 +9,14 @@ import type {
 } from "@tstodon/domain";
 import { InstanceIdentity, LocalStatus, StatusId, StatusTarget } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { findAccountsByUsernames } from "./account-store";
 import { nowInstant } from "./clock";
 import type { RepositoryError } from "./d1";
 import { enqueueLocalActivity, enqueueTargetedActivity } from "./delivery";
-import { mentionUsernames, textToHtml } from "./html";
+import { formatPostText } from "./html";
 import { newEntityId } from "./ids";
 import { findMediaById, parseMediaFocus, updateMediaMetadata } from "./media-store";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "./mention-store";
-import { loadNoteMentions, resolveRemoteMentions } from "./mention-resolve";
+import { loadNoteMentions, mentionLinks, resolveMentions } from "./mention-resolve";
 import { loadNoteMedia } from "./note-attachments";
 import { loadNoteReply } from "./reply-target";
 import { noteDocument, quoteRequestActivity } from "./activitypub";
@@ -134,7 +133,17 @@ export const publishLocalNote = async (
   if (id.isErr()) {
     return err({ kind: "RepositoryError", message: "invalid status id" });
   }
-  const html = textToHtml(input.draft.text);
+  // Resolved before the note is written: its HTML links the mentions that resolve.
+  const resolved = await resolveMentions(env, identity, input.draft.text);
+  if (resolved.isErr()) {
+    return err(resolved.error);
+  }
+  const mentionedAccounts = resolved.value.locals;
+  const remoteMentions = resolved.value.remotes;
+  const html = formatPostText(input.draft.text, {
+    identity,
+    mentions: mentionLinks(identity, resolved.value),
+  });
   const note = LocalStatus.publish(
     id.value,
     user.id,
@@ -223,21 +232,15 @@ export const publishLocalNote = async (
   if (attributeError !== undefined) {
     return err({ kind: "RepositoryError", message: attributeError });
   }
-  const mentionNames = mentionUsernames(note.text, identity.domain);
-  const mentionedAccounts = await findAccountsByUsernames(env.DB, [...mentionNames]);
-  if (mentionedAccounts.isErr()) {
-    return err(mentionedAccounts.error);
-  }
   // Persist mention rows before side-effect notifies (D1 write strategy / Create saga).
   const mentionsSaved = await replaceStatusMentions(
     env.DB,
     note.id,
-    mentionedAccounts.value.map((account) => account.id),
+    mentionedAccounts.map((account) => account.id),
   );
   if (mentionsSaved.isErr()) {
     return err(mentionsSaved.error);
   }
-  const remoteMentions = await resolveRemoteMentions(env, identity, note.text);
   const remoteSaved = await replaceStatusRemoteMentions(
     env.DB,
     note.id,
@@ -248,12 +251,12 @@ export const publishLocalNote = async (
   }
   const post = mentionedPost(
     [
-      ...mentionedAccounts.value.map((account) => account.id),
+      ...mentionedAccounts.map((account) => account.id),
       ...remoteMentions.map((actor) => actor.actorUri),
     ],
     input.replyTo ?? undefined,
   );
-  for (const mentioned of mentionedAccounts.value) {
+  for (const mentioned of mentionedAccounts) {
     if (mentioned.id === user.id) {
       continue;
     }
@@ -352,7 +355,7 @@ export const publishLocalNote = async (
     await publishConversationUpdate(
       env,
       identity,
-      [user.id, ...mentionedAccounts.value.map((account) => account.id)],
+      [user.id, ...mentionedAccounts.map((account) => account.id)],
       note.id,
     );
   }
