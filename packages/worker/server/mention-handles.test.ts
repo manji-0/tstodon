@@ -15,4 +15,13 @@ describe("mention handles in post text", () => {
       { username: "eve.k-9", domain: "far.example" },
     ]);
   });
+
+  it("keeps a port in a remote domain, as an actor's host:port authority", () => {
+    expect(
+      remoteMentionHandles("cc @bob@127.0.0.1:8792 and @bob@127.0.0.1:8793", "127.0.0.1:8794"),
+    ).toEqual([
+      { username: "bob", domain: "127.0.0.1:8792" },
+      { username: "bob", domain: "127.0.0.1:8793" },
+    ]);
+  });
 });

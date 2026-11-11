@@ -1,9 +1,12 @@
 import { InstanceIdentity, RemoteActor, Hostname } from "@tstodon/domain";
-import { findAccountsByIds } from "./account-store";
+import type { LocalAccount } from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
+import { findAccountsByIds, findAccountsByUsernames } from "./account-store";
+import type { RepositoryError } from "./d1";
 import type { NoteMention } from "./activitypub";
 import { listStatusMentions } from "./mention-store";
 import { suspendedDomains } from "./admin-domain-block-store";
-import { remoteMentionHandles } from "./html";
+import { mentionUsernames, remoteMentionHandles, type PostMention } from "./html";
 import { resolveRemoteActorByHandle } from "./remote-actor-fetch";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { allowListAdmits, federationAllowHosts } from "./runtime-config";
@@ -23,11 +26,16 @@ const MAX_MENTION_LOOKUPS = 20;
  * uncached handles would otherwise run for minutes. Handles past the cap
  * resolve from the cache only.
  */
-export const resolveRemoteMentions = async (
+type RemoteMention = Readonly<{
+  written: Readonly<{ username: string; domain: string }>;
+  actor: RemoteActor;
+}>;
+
+const resolveRemoteMentions = async (
   env: Env,
   identity: InstanceIdentity,
   text: string,
-): Promise<ReadonlyArray<RemoteActor>> => {
+): Promise<ReadonlyArray<RemoteMention>> => {
   const handles = remoteMentionHandles(text, identity.domain);
   if (handles.length === 0) {
     return [];
@@ -43,7 +51,7 @@ export const resolveRemoteMentions = async (
     lookUpsLeft -= 1;
     return true;
   };
-  const actors = new Map<string, RemoteActor>();
+  const mentions: RemoteMention[] = [];
   for (const handle of handles) {
     if (blockedHosts.has(Hostname.ofAuthority(handle.domain))) {
       continue;
@@ -60,11 +68,56 @@ export const resolveRemoteMentions = async (
         (host) => !blockedHosts.has(host) && allowListAdmits(allowHosts, host),
       );
     if (resolved.isOk() && admitted) {
-      actors.set(resolved.value.actorUri, resolved.value);
+      mentions.push({ written: handle, actor: resolved.value });
     }
   }
-  return [...actors.values()];
+  return mentions;
 };
+
+/**
+ * The accounts post text mentions that exist: local accounts, and remote
+ * actors that resolve. `remoteHandles` keeps the handle each remote was
+ * written as, which may name another domain than the actor's canonical one
+ * (a split-domain server), so the formatter can link it as written.
+ */
+export type ResolvedMentions = Readonly<{
+  locals: ReadonlyArray<LocalAccount>;
+  remotes: ReadonlyArray<RemoteActor>;
+  remoteHandles: ReadonlyArray<RemoteMention>;
+}>;
+
+export const resolveMentions = async (
+  env: Env,
+  identity: InstanceIdentity,
+  text: string,
+): Promise<Result<ResolvedMentions, RepositoryError>> => {
+  const locals = await findAccountsByUsernames(env.DB, [
+    ...mentionUsernames(text, identity.domain),
+  ]);
+  if (locals.isErr()) {
+    return err(locals.error);
+  }
+  const remoteHandles = await resolveRemoteMentions(env, identity, text);
+  const remotes = new Map(remoteHandles.map(({ actor }) => [actor.actorUri, actor]));
+  return ok({ locals: locals.value, remotes: [...remotes.values()], remoteHandles });
+};
+
+/** What `formatPostText` links each resolved mention to: the REST `mentions[].url`. */
+export const mentionLinks = (
+  identity: InstanceIdentity,
+  resolved: ResolvedMentions,
+): ReadonlyArray<PostMention> => [
+  ...resolved.locals.map((account) => ({
+    username: account.username,
+    domain: null,
+    url: InstanceIdentity.actorUrl(identity, account.username),
+  })),
+  ...resolved.remoteHandles.map(({ written, actor }) => ({
+    username: written.username,
+    domain: written.domain,
+    url: actor.actorUri,
+  })),
+];
 
 /** The `Mention` tags of a local note, from its stored local and remote mentions. */
 export const loadNoteMentions = async (

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import {
   countableText,
+  extractEntities,
   extractHashtags,
   isHashtagName,
   normalizeHashtag,
@@ -195,5 +196,63 @@ describe("hashtag matching against Mastodon's regex", () => {
       isHashtagName(text.slice(1));
       expect(performance.now() - started).toBeLessThan(200);
     }
+  });
+});
+
+describe("extractEntities", () => {
+  const url = (start: number, end: number, value: string) =>
+    ({ kind: "Url", start, end, url: value }) as const;
+  const hashtag = (start: number, end: number, name: string) =>
+    ({ kind: "Hashtag", start, end, name }) as const;
+  const mention = (start: number, end: number, username: string, domain?: string) =>
+    domain === undefined
+      ? ({ kind: "Mention", start, end, username } as const)
+      : ({ kind: "Mention", start, end, username, domain } as const);
+
+  it.each([
+    ["plain text", []],
+    [
+      "hi @Bob #Cat https://example.com/a",
+      [mention(3, 7, "Bob"), hashtag(8, 12, "Cat"), url(13, 34, "https://example.com/a")],
+    ],
+    ["(https://example.com).", [url(1, 20, "https://example.com")]],
+    [
+      "@a@b.c, @x.y-z@Ex-ample.org!",
+      [mention(0, 6, "a", "b.c"), mention(8, 27, "x.y-z", "Ex-ample.org")],
+    ],
+    [
+      "@a@localhost @a. @a-",
+      [mention(0, 12, "a", "localhost"), mention(13, 15, "a"), mention(17, 19, "a")],
+    ],
+    ["me@example.com =@a /@a _@a", []],
+    ["@a@ @bé @c://x @d@e@f", []],
+    ["https://x.example/@a@b.c #t", [hashtag(25, 27, "t")]],
+    [
+      "https://example.com/@a@b.c #t",
+      [url(0, 26, "https://example.com/@a@b.c"), hashtag(27, 29, "t")],
+    ],
+    ["https://example.com/(@a) @b", [url(0, 24, "https://example.com/(@a)"), mention(25, 27, "b")]],
+    ["#taggedhttps://x", [hashtag(0, 7, "tagged")]],
+    ["#tagged https://example.com", [hashtag(0, 7, "tagged"), url(8, 27, "https://example.com")]],
+    ["👍🏽 #日本語 @a", [hashtag(5, 9, "日本語"), mention(10, 12, "a")]],
+    ["#123 ＃ＣＡＴ", [hashtag(5, 9, "ＣＡＴ")]],
+  ])("finds the entities in %j", (text, entities) => {
+    expect(extractEntities(text)).toEqual(entities);
+  });
+
+  it("drops a mention whose domain is longer than a domain name", () => {
+    expect(extractEntities(`@a@${"b".repeat(254)}`)).toEqual([]);
+    expect(extractEntities(`@a@${"b".repeat(253)}`)).toHaveLength(1);
+  });
+
+  it("counts a mention inside a URL as the URL", () => {
+    expect(countableText("https://example.com/(@a@b.c) @a@b.c")).toBe(`${"x".repeat(23)} @a`);
+  });
+
+  it("takes linear time on a long run of mention separators", () => {
+    const started = performance.now();
+    extractEntities(`@a${".-".repeat(50_000)}!`);
+    extractEntities("@a".repeat(50_000));
+    expect(performance.now() - started).toBeLessThan(500);
   });
 });
