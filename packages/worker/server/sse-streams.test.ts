@@ -108,6 +108,18 @@ describe("streaming over SSE", () => {
     await notifications.cancel();
   });
 
+  it("send a followed account's post to the follower's user stream", async () => {
+    const follower = "sse-home-follower@example.com";
+    const author = "sse-home-author@example.com";
+    const user = await openEventStream("/user", { email: follower });
+    await follow(follower, author);
+    const id = await post(author, "heard on a follower's user stream");
+    const update = await user.next();
+    expect(update.event).toBe("update");
+    expect(statusOf(update.data).id).toBe(id);
+    await user.cancel();
+  });
+
   it("take the token from access_token as well as Authorization", async () => {
     const email = "sse-query-token@example.com";
     const stream = await openEventStream("/user", { email, tokenInQuery: true });
