@@ -1,4 +1,4 @@
-import { warmSchemas } from "@tstodon/core";
+import { extractHashtags, warmSchemas } from "@tstodon/core";
 import {
   AccountId,
   IsoInstant,
@@ -27,7 +27,7 @@ import {
 import { removedBoostsFromRows } from "./removed-boost";
 import { deletedMediaObjectKeys } from "./media-store";
 import { visibilitySql } from "./sql-enums";
-import { extractHashtags, recordTagNames, searchableTagNames } from "./hashtags";
+import { recordTagNames, searchableTagNames } from "./hashtags";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   attachMediaToStatus as attachMediaToStatusSql,

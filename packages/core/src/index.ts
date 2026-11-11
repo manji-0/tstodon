@@ -2,7 +2,16 @@ export { assertNever } from "./assert-never";
 export { brandedNonEmptyString } from "./branded-id";
 export { InstanceLimits, characterCount } from "./instance-limits";
 export { Languages } from "./languages";
-export { countableText, graphemeLength, noteLength, statusLength } from "./post-text";
+export {
+  countableText,
+  extractHashtags,
+  graphemeLength,
+  hasHashtag,
+  isHashtagName,
+  normalizeHashtag,
+  noteLength,
+  statusLength,
+} from "./post-text";
 export {
   compileSchema,
   hasCompiledFastPath,

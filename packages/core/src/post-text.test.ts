@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
-import { countableText, noteLength, statusLength } from "./post-text";
+import {
+  countableText,
+  extractHashtags,
+  isHashtagName,
+  normalizeHashtag,
+  noteLength,
+  statusLength,
+} from "./post-text";
 import { POST_URL_PATTERN } from "./post-text-url-pattern";
 import { composePostUrlPattern } from "./post-text-url-pattern.compose";
 
@@ -82,5 +89,41 @@ describe("post-text module", () => {
     expect(imports("./post-text.ts").filter((specifier) => !specifier.startsWith("./"))).toEqual(
       [],
     );
+  });
+});
+
+describe("extractHashtags", () => {
+  it.each([
+    ["#日本語 です", ["日本語"]],
+    ["Hello #WaveA and #wavea", ["wavea"]],
+    ["＃ＣＡＴ", ["cat"]],
+    ["#a・b #a·b", ["a・b", "a·b"]],
+    ["#123 #a1 #1a #_x #_", ["a1", "1a", "_x"]],
+    ["word#token (#paren) a/#path", []],
+    ["#tagged https://example.com", ["tagged"]],
+    ["#taggedhttps://example.com", ["tagged"]],
+  ])("finds the tags in %j as Mastodon's Extractor: %j", (text, tags) => {
+    expect(extractHashtags(text)).toEqual(tags);
+  });
+});
+
+describe("normalizeHashtag and isHashtagName", () => {
+  it("normalizes as HashtagNormalizer, without accent folding", () => {
+    expect(normalizeHashtag("#Cat!")).toBe("cat");
+    expect(normalizeHashtag("ＣＡＴ")).toBe("cat");
+    expect(normalizeHashtag("café")).toBe("café");
+  });
+
+  it("leaves every stored ASCII name as it is", () => {
+    for (const name of ["cat", "a_1", "_x", "2024a"]) {
+      expect(normalizeHashtag(name)).toBe(name);
+    }
+  });
+
+  it("takes a name with a letter", () => {
+    expect(isHashtagName("日本語")).toBe(true);
+    expect(isHashtagName("a1")).toBe(true);
+    expect(isHashtagName("2024")).toBe(false);
+    expect(isHashtagName("")).toBe(false);
   });
 });

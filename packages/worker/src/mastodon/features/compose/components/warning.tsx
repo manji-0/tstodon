@@ -4,10 +4,11 @@ import { createSelector } from '@reduxjs/toolkit';
 
 import { animated, useSpring } from '@react-spring/web';
 
+import { hasHashtag } from '@tstodon/core/post-text';
+
 import { me } from 'mastodon/initial_state';
 import { useAppSelector } from 'mastodon/store';
 import type { RootState } from 'mastodon/store';
-import { HASHTAG_PATTERN_REGEX } from 'mastodon/utils/hashtags';
 
 const selector = createSelector(
   (state: RootState) => state.compose.get('privacy'),
@@ -15,7 +16,7 @@ const selector = createSelector(
   (state: RootState) => state.compose.get('text'),
   (privacy, locked, text) => ({
     needsLockWarning: privacy === 'private' && !locked,
-    hashtagWarning: privacy !== 'public' && HASHTAG_PATTERN_REGEX.test(text),
+    hashtagWarning: privacy !== 'public' && hasHashtag(text),
     directMessageWarning: privacy === 'direct',
   }),
 );

@@ -58,3 +58,52 @@ export const statusLength = (spoilerText: string, text: string): number =>
 
 /** A profile note's length against `InstanceLimits.account.maxNoteCharacters`. */
 export const noteLength = (note: string): number => graphemeLength(countableText(note));
+
+/**
+ * Mastodon's `Tag` hashtag classes, from Ruby's POSIX brackets on Unicode
+ * strings: `[[:word:]]`, `[[:alpha:]]`, `[[:space:]]` and `[[:alnum:]]`.
+ */
+const WORD = "\\p{L}\\p{M}\\p{Nd}\\p{Pc}";
+const ALPHA = "\\p{Alphabetic}";
+const SPACE = "\\p{White_Space}";
+const ALNUM = "\\p{Alphabetic}\\p{Nd}";
+const SEPARATORS = "_\\u00B7\\u30FB\\u200C";
+
+/** `Tag::HASHTAG_NAME_PAT`: a name has a letter, and separators only inside it. */
+const HASHTAG_NAME = `[${WORD}_][${WORD}${SEPARATORS}]*[${ALPHA}${SEPARATORS}][${WORD}${SEPARATORS}]*[${WORD}_]|[${WORD}_]*[${ALPHA}][${WORD}_]*`;
+
+/** `Tag::HASHTAG_RE`: `#` or `＃` at the start of a line or after a space. */
+const HASHTAG = new RegExp(`(?<=^|[${SPACE}])[#＃](${HASHTAG_NAME})`, "gmu");
+const HASHTAG_NAME_ONLY = new RegExp(`^(?:${HASHTAG_NAME})$`, "iu");
+const HASHTAG_INVALID_CHARACTERS = new RegExp(`[^${ALNUM}\\u0E47-\\u0E4E${SEPARATORS}]`, "gu");
+
+/**
+ * A tag's stored name, as Mastodon's `HashtagNormalizer`: NFKC (full-width
+ * to half-width), lowercase, and only the characters a tag can hold, so
+ * `#Cat`, `ＣＡＴ` and `cat!` are all `cat`. Mastodon also folds accents to
+ * ASCII (`café` to `cafe`); this does not (SHR-3).
+ */
+export const normalizeHashtag = (raw: string): string =>
+  raw.normalize("NFKC").toLowerCase().replace(HASHTAG_INVALID_CHARACTERS, "");
+
+/** Whether a name is a hashtag's (`Tag::HASHTAG_NAME_RE`): `日本語`, `a1`, not `2024`. */
+export const isHashtagName = (name: string): boolean => HASHTAG_NAME_ONLY.test(name);
+
+/**
+ * The hashtags in post text, normalized and unique, as Mastodon's
+ * `Extractor.extract_hashtags` finds them. A tag right before `://` loses
+ * a trailing `http` or `https` (`#tagged https://` typed without a space).
+ */
+export const extractHashtags = (text: string): string[] => [
+  ...new Set(
+    [...text.matchAll(HASHTAG)].map((match) => {
+      const name = match[1] ?? "";
+      const end = match.index + match[0].length;
+      const beforeScheme = text.startsWith("://", end) ? /^(.+)https?$/u.exec(name) : null;
+      return normalizeHashtag(beforeScheme?.[1] ?? name);
+    }),
+  ),
+];
+
+/** Whether post text has a hashtag, which only a public post lists under. */
+export const hasHashtag = (text: string): boolean => extractHashtags(text).length > 0;

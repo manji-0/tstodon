@@ -7,7 +7,7 @@ import {
   type ApiGetPublicTimelineParams,
   type ApiGetTagTimelineParams,
 } from "@tstodon/api";
-import { warmSchemas } from "@tstodon/core";
+import { normalizeHashtag, warmSchemas } from "@tstodon/core";
 import { authenticate } from "../auth";
 import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "../filter-match";
 import {
@@ -30,7 +30,6 @@ import { paramsCursor, readQueryParams } from "../request-params";
 import { findTrendingLinkUrl } from "../trend-store";
 import { rejectedTrendTargets } from "../trend-review-store";
 import { isTagUsable } from "../tag-moderation-store";
-import { normalizeTag } from "../tag-store";
 import { filterMutedThreads, mutedThreadStatusIds } from "../status-mute-store";
 import {
   homeTimelineDocuments,
@@ -172,7 +171,7 @@ export const getV1TimelinesTagByHashtag = async (
     return jsonValidationError(c);
   }
   // An admin made the tag unusable: its timeline lists nothing.
-  const usable = await isTagUsable(c.env.DB, normalizeTag(c.req.param("hashtag") ?? ""));
+  const usable = await isTagUsable(c.env.DB, normalizeHashtag(c.req.param("hashtag") ?? ""));
   if (usable.isErr()) {
     return jsonRepositoryError(c, usable.error.message);
   }

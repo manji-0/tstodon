@@ -1,22 +1,9 @@
+import { extractHashtags } from "@tstodon/core";
 import { Visibility } from "@tstodon/domain";
 import { jsonStringArray } from "./d1";
 import { decodeHtmlEntities } from "./html";
 import { insertTagNames as insertTagNamesSql } from "./generated/prisma/sql";
 import { d1PrepareTyped } from "./typed-sql";
-
-/**
- * A `#` and the tag name after it. As Mastodon's `HASHTAG_RE`, a `#` right
- * after a letter, a digit, `=`, `/` or `)` starts no tag, so a URL fragment
- * (`/invite#Kq8sZ2pX`) or `word#token` is not one, and a name needs a letter
- * (`#2024` is none). A `#` after `&` starts none either, so an undecoded
- * numeric entity (`&#8217;`, `&#x27;`) in a remote note is no tag.
- */
-const HASHTAG = /(?<![=/)&\p{Alphabetic}\p{Nd}])#([A-Za-z0-9_]*[A-Za-z][A-Za-z0-9_]*)/gu;
-
-/** The unique hashtags in a local note's text, lowercase and without the `#`. */
-export const extractHashtags = (text: string): string[] => [
-  ...new Set([...text.matchAll(HASHTAG)].flatMap(([, tag]) => (tag ? [tag.toLowerCase()] : []))),
-];
 
 /**
  * The hashtags in a remote note's HTML, read from its text as
@@ -31,7 +18,7 @@ export const htmlHashtags = (html: string): string[] =>
       html
         .replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, (_, inner: string) => {
           const text = inner.replace(/<[^>]*>/g, "");
-          return text.startsWith("#") ? ` ${text} ` : " ";
+          return /^[#＃]/u.test(text) ? ` ${text} ` : " ";
         })
         .replace(/<[^>]*>/g, " "),
     ),

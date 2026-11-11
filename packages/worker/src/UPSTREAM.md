@@ -98,6 +98,14 @@ The compose form counts a post's length with the Worker's own rule, `@tstodon/co
 - `features/compose/util/counter.js` re-exports `countableText` and `graphemeLength`. `compose_form.jsx` counts with `graphemeLength` instead of `stringz`'s `length`, in `canSubmit` and through the `length` prop it passes to `features/compose/components/character_counter.tsx` (new and optional, `stringz`'s `length` by default). That is grapheme clusters, as Mastodon's `StatusLengthValidator` counts (code points where a browser lacks `Intl.Segmenter`). The alt text modal renders the same counter and still counts with `stringz`, as its own check does.
 - On a merge, an upstream change to `counter.js` or `url_regex.js` goes into `packages/core/src/post-text.ts` (or the generator), not these files.
 
+### Hashtags from `@tstodon/core/post-text`
+
+The web UI decides what is a hashtag with the Worker's rule, Mastodon's `Tag::HASHTAG_RE` (`hasHashtag`, `isHashtagName` in `@tstodon/core/post-text`), so the compose form warns about the tags the server stores.
+
+- `features/compose/components/warning.tsx`: the "not listed under any hashtag" warning tests `hasHashtag(text)` instead of upstream's `HASHTAG_PATTERN_REGEX`. Upstream's client pattern differed from its server's (`#` after any non-word character, `\p{N}` for digits, no `・`), so the warning could fire for `(#tag)`, which no hashtag lists.
+- `features/compose/components/search.tsx`: the "go to hashtag" quick action takes `isHashtagName` instead of `HASHTAG_REGEX`.
+- `utils/hashtags.ts`: `HASHTAG_PATTERN_REGEX`, `HASHTAG_REGEX`, their builders, `ALPHA` and `HASHTAG_SEPARATORS` are gone. `WORD` stays for the autosuggest.
+
 ### JS actions moved to TypeScript
 
 <!-- constrained-by ../../api/README.md -->
