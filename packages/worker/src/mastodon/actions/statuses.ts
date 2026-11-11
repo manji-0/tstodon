@@ -144,6 +144,15 @@ export function fetchStatusFail(
   };
 }
 
+export type RedraftAction = {
+  type: typeof REDRAFT;
+  status: Status;
+  raw_text: string | null | undefined;
+  quoted_status_id: string | null;
+  /** The server's `configuration.polls.max_options`, when known. */
+  maxOptions: number | undefined;
+};
+
 export function redraft(
   status: Status,
   raw_text: string | null | undefined,
@@ -159,7 +168,7 @@ export function redraft(
       raw_text,
       quoted_status_id,
       maxOptions,
-    });
+    } satisfies RedraftAction);
   };
 }
 

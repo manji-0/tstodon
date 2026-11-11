@@ -149,8 +149,7 @@ export const statusInteraction = createAppThunk(
         }
         return;
       case 'edit': {
-        const composerText = state.compose.get('text');
-        if (typeof composerText === 'string' && composerText.trim()) {
+        if (state.compose.get('text').trim()) {
           dispatch(
             openModal({
               modalType: 'CONFIRM_EDIT_STATUS',

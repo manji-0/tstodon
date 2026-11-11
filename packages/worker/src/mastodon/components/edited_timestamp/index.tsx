@@ -2,33 +2,25 @@ import { useCallback } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
-import type { Map as ImmutableMap, List as ImmutableList } from 'immutable';
-
 import { fetchHistory } from 'mastodon/actions/history';
 import { openModal } from 'mastodon/actions/modal';
 import { Dropdown } from 'mastodon/components/dropdown_menu';
 import { FormattedDateWrapper } from 'mastodon/components/formatted_date';
 import InlineAccount from 'mastodon/components/inline_account';
 import { RelativeTimestamp } from 'mastodon/components/relative_timestamp';
+import type { HistoryItem } from 'mastodon/reducers/history';
 import { useAppDispatch, useAppSelector } from 'mastodon/store';
-
-type HistoryItem = ImmutableMap<string, unknown>;
 
 export const EditedTimestamp: React.FC<{
   statusId: string;
   timestamp: string;
 }> = ({ statusId, timestamp }) => {
   const dispatch = useAppDispatch();
-  const items = useAppSelector(
-    (state) =>
-      (
-        state.history.getIn([statusId, 'items']) as
-          | ImmutableList<unknown>
-          | undefined
-      )?.toArray() as HistoryItem[],
+  const items = useAppSelector((state) =>
+    state.history.get(statusId)?.get('items').toArray(),
   );
-  const loading = useAppSelector(
-    (state) => state.history.getIn([statusId, 'loading']) as boolean,
+  const loading = useAppSelector((state) =>
+    state.history.get(statusId)?.get('loading'),
   );
 
   const handleOpen = useCallback(() => {
@@ -60,11 +52,11 @@ export const EditedTimestamp: React.FC<{
   const renderItem = useCallback(
     (item: HistoryItem, index: number, onClick: React.MouseEventHandler) => {
       const formattedDate = (
-        <RelativeTimestamp timestamp={item.get('created_at') as string} long />
+        <RelativeTimestamp timestamp={item.get('created_at')} long />
       );
       const formattedName = <InlineAccount accountId={item.get('account')} />;
 
-      const label = (item.get('original') as boolean) ? (
+      const label = item.get('original') ? (
         <FormattedMessage
           id='status.history.created'
           defaultMessage='{name} created {date}'
@@ -83,7 +75,7 @@ export const EditedTimestamp: React.FC<{
       return (
         <li
           className='dropdown-menu__item edited-timestamp__history__item'
-          key={item.get('created_at') as string}
+          key={item.get('created_at')}
         >
           <button data-index={index} onClick={onClick} type='button'>
             {label}

@@ -10,8 +10,8 @@ import { useAppDispatch, useAppSelector } from '@/mastodon/store';
 import { QuotePlaceholder } from './quote_placeholder';
 
 export const ComposeQuotedStatus: FC = () => {
-  const quotedStatusId = useAppSelector(
-    (state) => state.compose.get('quoted_status_id') as string | null,
+  const quotedStatusId = useAppSelector((state) =>
+    state.compose.get('quoted_status_id'),
   );
 
   const isFetchingLink = useAppSelector(

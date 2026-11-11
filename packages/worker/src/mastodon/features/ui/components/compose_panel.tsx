@@ -20,13 +20,9 @@ export const ComposePanel: React.FC = () => {
     dispatch(changeComposing(true));
   }, [dispatch]);
   const { signedIn } = useIdentity();
-  const hideComposer = useAppSelector((state) => {
-    const mounted = state.compose.get('mounted');
-    if (typeof mounted === 'number') {
-      return mounted > 1;
-    }
-    return false;
-  });
+  const hideComposer = useAppSelector(
+    (state) => state.compose.get('mounted') > 1,
+  );
 
   useEffect(() => {
     dispatch(mountCompose());
