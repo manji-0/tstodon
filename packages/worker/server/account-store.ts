@@ -20,6 +20,7 @@ import {
   findAccountByAuthUserId as findAccountByAuthUserIdSql,
   findAccountByEmail as findAccountByEmailSql,
   findAccountById as findAccountByIdSql,
+  findAccountByIdOrUsername as findAccountByIdOrUsernameSql,
   findAccountByUsername as findAccountByUsernameSql,
   findAccountsByIdsJson as findAccountsByIdsJsonSql,
   findAccountsByUsernamesJson as findAccountsByUsernamesJsonSql,
@@ -315,14 +316,18 @@ export const findAccountByIdOrUsername = async (
   db: D1Database,
   idOrUsername: string,
 ): Promise<Result<LocalAccount | undefined, RepositoryError>> => {
-  const byId = await findAccountById(db, idOrUsername);
-  if (byId.isErr()) {
-    return byId;
+  const queried = await runD1(async () =>
+    queryTyped(
+      db,
+      findAccountByIdOrUsernameSql(idOrUsername, idOrUsername.toLowerCase()),
+      AccountRowSchema,
+    ),
+  );
+  if (queried.isErr()) {
+    return err(queried.error);
   }
-  if (byId.value) {
-    return byId;
-  }
-  return findAccountByUsername(db, idOrUsername);
+  const row = queried.value[0];
+  return row === undefined ? ok(undefined) : accountFromRow(row);
 };
 
 export const updateAccountProfile = async (
