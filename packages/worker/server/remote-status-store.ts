@@ -333,6 +333,12 @@ const ID_COLLISION_RETRIES = 4;
 const isIdCollision = (error: unknown): boolean =>
   error instanceof Error && /UNIQUE constraint failed: remote_statuses\.id/.test(error.message);
 
+/** What the caller just read at an object URI: the cached status, or `undefined` for none. */
+export type KnownRemoteStatus = Readonly<{
+  objectUri: string;
+  row: RemoteStatus | undefined;
+}>;
+
 /**
  * Store a remote status, or update the one cached at its object URI. A URI
  * cached as another actor's note is left alone and gives `undefined`: only
@@ -343,8 +349,13 @@ export const upsertRemoteStatus = async (
   status: RemoteStatus,
   /** The note's `inReplyTo`, kept to group direct conversations. */
   inReplyToUri?: string,
+  /** The caller's read of this URI, which spares reading it again. */
+  known?: KnownRemoteStatus,
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> => {
-  const existing = await findRemoteStatusByObjectUri(db, status.objectUri);
+  const existing =
+    known?.objectUri === status.objectUri
+      ? ok(known.row)
+      : await findRemoteStatusByObjectUri(db, status.objectUri);
   if (existing.isErr()) {
     return err(existing.error);
   }

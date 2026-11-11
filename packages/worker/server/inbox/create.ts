@@ -27,12 +27,14 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
   if (known.isErr()) {
     return err(known.error);
   }
-  const created = await persistRemoteObject(env, identity, signer, received.object, {
-    allowHosts,
-    blockedHosts,
-    fetchSigner,
-    notifyMentions: true,
-  });
+  const created = await persistRemoteObject(
+    env,
+    identity,
+    signer,
+    received.object,
+    { allowHosts, blockedHosts, fetchSigner, notifyMentions: true },
+    { objectUri, row: known.value },
+  );
   // Streaming is for a note stored now and published recently, as Mastodon's
   // `Status::REAL_TIME_WINDOW`: a redelivered Create, or an old note arriving
   // late, would show up in clients as a new status. Notifications still go out.
