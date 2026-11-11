@@ -70,6 +70,75 @@ export const mergeTimelineDocuments = (
     .slice(0, limit);
 };
 
+/** One source of a merged page: its entries, and how to render some of them. */
+type PageSource = Readonly<{
+  ids: ReadonlyArray<string>;
+  render: (
+    ids: ReadonlySet<string>,
+  ) => Promise<Result<ReadonlyArray<ApiStatusJSON>, RepositoryError>>;
+}>;
+
+const pageSource = <T extends Readonly<{ id: string }>>(
+  entries: ReadonlyArray<T>,
+  render: (
+    entries: ReadonlyArray<T>,
+  ) => Promise<Result<ReadonlyArray<ApiStatusJSON>, RepositoryError>>,
+): PageSource => ({
+  ids: entries.map((entry) => entry.id),
+  render: (ids) => render(entries.filter((entry) => ids.has(entry.id))),
+});
+
+/**
+ * {@link mergeTimelineDocuments} over sources that each fetched up to `limit`
+ * entries, rendering only the entries that can reach the page: the first
+ * `limit` in page order, then, only if rendering left some of those out (an
+ * author it may not show), the rest. An entry renders the same whichever
+ * others render with it, so the page is the one rendering every entry gives.
+ */
+const renderMergedPage = async (
+  sources: ReadonlyArray<PageSource>,
+  cursor: { minId?: string | undefined },
+  limit: number,
+): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
+  const ascending = (cursor.minId ?? "").length > 0;
+  const ordered = sources
+    .flatMap((source, index) => source.ids.map((id) => ({ id, index })))
+    .sort((left, right) =>
+      ascending ? left.id.localeCompare(right.id) : right.id.localeCompare(left.id),
+    );
+  const rendered: ApiStatusJSON[][] = sources.map(() => []);
+  const renderEntries = async (
+    entries: ReadonlyArray<{ id: string; index: number }>,
+  ): Promise<Result<number, RepositoryError>> => {
+    const results = await Promise.all(
+      sources.map((source, index) => {
+        const ids = new Set(entries.flatMap((entry) => (entry.index === index ? [entry.id] : [])));
+        return ids.size === 0 ? Promise.resolve(ok([])) : source.render(ids);
+      }),
+    );
+    let count = 0;
+    for (const [index, result] of results.entries()) {
+      if (result.isErr()) {
+        return err(result.error);
+      }
+      rendered[index]?.push(...result.value);
+      count += result.value.length;
+    }
+    return ok(count);
+  };
+  const first = await renderEntries(ordered.slice(0, limit));
+  if (first.isErr()) {
+    return err(first.error);
+  }
+  if (first.value < limit && ordered.length > limit) {
+    const rest = await renderEntries(ordered.slice(limit));
+    if (rest.isErr()) {
+      return err(rest.error);
+    }
+  }
+  return ok(mergeTimelineDocuments(rendered.flat(), [], cursor, limit));
+};
+
 /**
  * `local`/`remote` on a public or tag timeline: which side of the federation
  * it holds.
@@ -102,31 +171,31 @@ const publicSurfaceDocuments = async (
   if (remoteStatuses.isErr()) {
     return err(remoteStatuses.error);
   }
-  const [rendered, localDocuments] = await Promise.all([
-    remoteTimelineDocuments(env, identity, remoteStatuses.value, viewerId),
-    mastodonStatuses(env, identity, localStatuses.value, viewerId),
-  ]);
-  if (rendered.isErr()) {
-    return err(rendered.error);
-  }
-  if (localDocuments.isErr()) {
-    return err(localDocuments.error);
-  }
-  const filteredLocal = await attachFilteredToStatuses(
-    env.DB,
-    viewerId,
-    "public",
-    localStatuses.value,
-    localDocuments.value,
+  return renderMergedPage(
+    [
+      pageSource(localStatuses.value, async (statuses) =>
+        (await mastodonStatuses(env, identity, statuses, viewerId)).asyncMap((documents) =>
+          attachFilteredToStatuses(env.DB, viewerId, "public", statuses, documents),
+        ),
+      ),
+      pageSource(
+        remoteStatuses.value.filter((status) => !Visibility.isRestricted(status.visibility)),
+        async (statuses) =>
+          (await remoteTimelineDocuments(env, identity, statuses, viewerId, () => true)).asyncMap(
+            (rendered) =>
+              attachFilteredToRemoteStatuses(
+                env.DB,
+                viewerId,
+                "public",
+                rendered.statuses,
+                rendered.documents,
+              ),
+          ),
+      ),
+    ],
+    cursor,
+    limit,
   );
-  const filteredRemote = await attachFilteredToRemoteStatuses(
-    env.DB,
-    viewerId,
-    "public",
-    rendered.value.statuses,
-    rendered.value.documents,
-  );
-  return ok(mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit));
 };
 
 /**
@@ -185,65 +254,9 @@ export const tagTimelineDocuments = (
   );
 
 /**
- * Followed remote actors' notes and boosts on one of the viewer's feeds (home
- * or a list), rendered for the viewer: without the conversations it muted,
- * with `filtered` on the notes its filters match.
- */
-const followedRemoteDocuments = async (
-  env: Env,
-  identity: InstanceIdentity,
-  viewerId: string,
-  feed: FollowedFeed,
-  limit: number,
-  cursor: IdCursor,
-): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
-  const [remote, boosts] = await Promise.all([
-    listFollowedRemoteStatuses(env.DB, viewerId, feed, limit, cursor),
-    listFollowedRemoteBoosts(env.DB, viewerId, feed, limit, cursor),
-  ]);
-  if (remote.isErr()) {
-    return err(remote.error);
-  }
-  if (boosts.isErr()) {
-    return err(boosts.error);
-  }
-  const boostDocuments = await remoteBoostDocuments(env, identity, boosts.value, viewerId);
-  if (boostDocuments.isErr()) {
-    return err(boostDocuments.error);
-  }
-  const mutedRemote = await mutedThreadStatusIds(
-    env.DB,
-    identity,
-    viewerId,
-    remote.value.map((status) => status.id),
-  );
-  if (mutedRemote.isErr()) {
-    return err(mutedRemote.error);
-  }
-  // The query already keeps followed actors' notes the viewer may see.
-  const rendered = await remoteTimelineDocuments(
-    env,
-    identity,
-    remote.value.filter((status) => !mutedRemote.value.has(status.id)),
-    viewerId,
-    () => true,
-  );
-  if (rendered.isErr()) {
-    return err(rendered.error);
-  }
-  const filteredRemote = await attachFilteredToRemoteStatuses(
-    env.DB,
-    viewerId,
-    "home",
-    rendered.value.statuses,
-    rendered.value.documents,
-  );
-  return ok([...filteredRemote, ...boostDocuments.value]);
-};
-
-/**
- * One feed's local statuses and followed remote actors' entries, merged and
- * rendered for the viewer: muted conversations left out, `filtered` attached.
+ * One feed's local statuses and followed remote actors' notes and boosts,
+ * merged and rendered for the viewer: muted conversations left out,
+ * `filtered` attached.
  */
 const feedDocuments = async (
   env: Env,
@@ -254,9 +267,10 @@ const feedDocuments = async (
   limit: number,
   cursor: IdCursor,
 ): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
-  const [statuses, remote] = await Promise.all([
+  const [statuses, remote, boosts] = await Promise.all([
     local,
-    followedRemoteDocuments(env, identity, viewerId, feed, limit, cursor),
+    listFollowedRemoteStatuses(env.DB, viewerId, feed, limit, cursor),
+    listFollowedRemoteBoosts(env.DB, viewerId, feed, limit, cursor),
   ]);
   if (statuses.isErr()) {
     return err(statuses.error);
@@ -264,22 +278,51 @@ const feedDocuments = async (
   if (remote.isErr()) {
     return err(remote.error);
   }
-  const visible = await filterMutedThreads(env.DB, viewerId, statuses.value);
+  if (boosts.isErr()) {
+    return err(boosts.error);
+  }
+  const [visible, mutedRemote] = await Promise.all([
+    filterMutedThreads(env.DB, viewerId, statuses.value),
+    mutedThreadStatusIds(
+      env.DB,
+      identity,
+      viewerId,
+      remote.value.map((status) => status.id),
+    ),
+  ]);
   if (visible.isErr()) {
     return err(visible.error);
   }
-  const localDocuments = await mastodonStatuses(env, identity, visible.value, viewerId);
-  if (localDocuments.isErr()) {
-    return err(localDocuments.error);
+  if (mutedRemote.isErr()) {
+    return err(mutedRemote.error);
   }
-  const filteredLocal = await attachFilteredToStatuses(
-    env.DB,
-    viewerId,
-    "home",
-    visible.value,
-    localDocuments.value,
+  return renderMergedPage(
+    [
+      pageSource(visible.value, async (shown) =>
+        (await mastodonStatuses(env, identity, shown, viewerId)).asyncMap((documents) =>
+          attachFilteredToStatuses(env.DB, viewerId, "home", shown, documents),
+        ),
+      ),
+      // The query already keeps followed actors' notes the viewer may see.
+      pageSource(
+        remote.value.filter((status) => !mutedRemote.value.has(status.id)),
+        async (shown) =>
+          (await remoteTimelineDocuments(env, identity, shown, viewerId, () => true)).asyncMap(
+            (rendered) =>
+              attachFilteredToRemoteStatuses(
+                env.DB,
+                viewerId,
+                "home",
+                rendered.statuses,
+                rendered.documents,
+              ),
+          ),
+      ),
+      pageSource(boosts.value, (shown) => remoteBoostDocuments(env, identity, shown, viewerId)),
+    ],
+    cursor,
+    limit,
   );
-  return ok(mergeTimelineDocuments(filteredLocal, remote.value, cursor, limit));
 };
 
 /**
@@ -365,29 +408,25 @@ export const remoteAccountTimelineDocuments = async (
   if (boosts.isErr()) {
     return err(boosts.error);
   }
-  const boostDocuments = await remoteBoostDocuments(env, identity, boosts.value, viewerId);
-  if (boostDocuments.isErr()) {
-    return err(boostDocuments.error);
-  }
-  // The query already keeps the notes the viewer may see.
-  const rendered = await remoteTimelineDocuments(env, identity, notes.value, viewerId, () => true);
-  if (rendered.isErr()) {
-    return err(rendered.error);
-  }
-  const filteredNotes = await attachFilteredToRemoteStatuses(
-    env.DB,
-    viewerId,
-    "public",
-    rendered.value.statuses,
-    rendered.value.documents,
-  );
-  return ok(
-    mergeTimelineDocuments(
-      filteredNotes,
-      boostDocuments.value,
-      filters.cursor ?? {},
-      filters.limit,
-    ),
+  return renderMergedPage(
+    [
+      // The query already keeps the notes the viewer may see.
+      pageSource(notes.value, async (shown) =>
+        (await remoteTimelineDocuments(env, identity, shown, viewerId, () => true)).asyncMap(
+          (rendered) =>
+            attachFilteredToRemoteStatuses(
+              env.DB,
+              viewerId,
+              "public",
+              rendered.statuses,
+              rendered.documents,
+            ),
+        ),
+      ),
+      pageSource(boosts.value, (shown) => remoteBoostDocuments(env, identity, shown, viewerId)),
+    ],
+    filters.cursor ?? {},
+    filters.limit,
   );
 };
 
