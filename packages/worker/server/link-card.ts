@@ -4,7 +4,7 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { jsonStringArray, runD1, type RepositoryError } from "./d1";
-import { isFederatedHostRefused } from "./federated-fetch";
+import { checkFederatedHost } from "./federated-fetch";
 import { decodeHtmlEntities } from "./html";
 import type { OutboxJob } from "@tstodon/domain";
 import {
@@ -222,8 +222,12 @@ export const resolveLinkCard = async (
   } catch {
     return { kind: "Skipped" };
   }
-  if (isFederatedHostRefused(parsed.hostname, identity.domain, options)) {
+  const admitted = await checkFederatedHost(parsed.hostname, identity.domain, options);
+  if (admitted === "Refused") {
     return { kind: "Skipped" };
+  }
+  if (admitted === "Unavailable") {
+    return { kind: "Transient" };
   }
   let response: Response;
   try {
