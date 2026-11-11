@@ -255,9 +255,7 @@ describe("tag timeline across the fediverse", () => {
     expect(await processOutboxJob(env, { kind: "BackfillRemoteTags" })).toBe("ok");
     const newestFirst = [...ids].reverse();
     for (const tag of ["backfillmanya", "backfillmanyb", "backfillmanyc"]) {
-      expect(await idsAt(`/api/v1/timelines/tag/${tag}?remote=true&limit=40`)).toEqual(
-        newestFirst,
-      );
+      expect(await idsAt(`/api/v1/timelines/tag/${tag}?remote=true&limit=40`)).toEqual(newestFirst);
     }
   });
 });

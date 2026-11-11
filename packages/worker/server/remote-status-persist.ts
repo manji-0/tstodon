@@ -339,7 +339,9 @@ const cachedRemoteStatus = async (
   identity: InstanceIdentity,
   objectUri: string,
   known: KnownRemoteStatus | undefined,
-): Promise<Result<Readonly<{ kind: "Local" }> | RemoteStatusValue | undefined, RepositoryError>> => {
+): Promise<
+  Result<Readonly<{ kind: "Local" }> | RemoteStatusValue | undefined, RepositoryError>
+> => {
   if (parseLocalStatusId(identity, objectUri)) {
     return ok({ kind: "Local" });
   }
