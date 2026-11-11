@@ -272,6 +272,8 @@ export * from "./sql/findDomainBlockByDomain";
 
 export * from "./sql/findDomainBlockById";
 
+export * from "./sql/findDomainPolicyRevision";
+
 export * from "./sql/findEmailDomainBlockByDomain";
 
 export * from "./sql/findEmailDomainBlockById";
@@ -545,6 +547,8 @@ export * from "./sql/listAdminAccountIds";
 export * from "./sql/listAdminAnnouncements";
 
 export * from "./sql/listAllAccountIps";
+
+export * from "./sql/listAllowedDomains";
 
 export * from "./sql/listAnnouncementDismissals";
 

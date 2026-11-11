@@ -2,6 +2,8 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { parseRows, runD1, type RepositoryError } from "./d1";
+import { domainPolicyCopy, readDomainPolicy } from "./domain-policy-revision";
+import { listAllowedDomains as listAllowedDomainsSql } from "./generated/prisma/sql";
 import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { newEntityId } from "./ids";
 
@@ -87,11 +89,15 @@ export const deleteDomainAllow = async (
     return parseRows(IdRow, results).length > 0;
   });
 
+const allowedCopy = domainPolicyCopy<ReadonlySet<string>>();
+
 /** Every allowed host, for the federation allow list. */
 export const domainAllowHosts = async (
   db: D1Database,
 ): Promise<Result<ReadonlySet<string>, RepositoryError>> =>
-  runD1(async () => {
-    const { results } = await db.prepare("SELECT domain FROM domain_allows").all();
-    return new Set(parseRows(DomainRow, results).map((row) => row.domain));
-  });
+  readDomainPolicy(
+    db,
+    allowedCopy,
+    listAllowedDomainsSql(),
+    (rows) => new Set(parseRows(DomainRow, rows).map((row) => row.domain)),
+  );

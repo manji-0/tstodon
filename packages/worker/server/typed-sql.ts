@@ -2,7 +2,7 @@ import { parseRows, runD1Batch, runD1BatchChunked, type RepositoryError } from "
 import type { Result } from "neverthrow";
 import { z } from "zod";
 
-type TypedSqlLike = { readonly sql: string; readonly values: ReadonlyArray<unknown> };
+export type TypedSqlLike = { readonly sql: string; readonly values: ReadonlyArray<unknown> };
 
 /**
  * Convert Prisma TypedSQL ($1-style) into a D1 prepared statement (?-style).

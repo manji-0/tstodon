@@ -936,6 +936,11 @@ model domain_allows {
   created_at String
 }
 
+model domain_policy_revision {
+  id    Int    @id
+  token String
+}
+
 model suggestion_dismissals {
   account_id        String
   target_account_id String
