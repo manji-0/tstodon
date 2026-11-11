@@ -2,7 +2,10 @@ import { extractHashtags } from "@tstodon/core";
 import { Visibility } from "@tstodon/domain";
 import { jsonStringArray } from "./d1";
 import { decodeHtmlEntities } from "./html";
-import { insertTagNames as insertTagNamesSql } from "./generated/prisma/sql";
+import {
+  insertLocalStatusTags as insertLocalStatusTagsSql,
+  insertTagNames as insertTagNamesSql,
+} from "./generated/prisma/sql";
 import { d1PrepareTyped } from "./typed-sql";
 
 /**
@@ -50,3 +53,23 @@ export const recordTagNames = (
   names: ReadonlyArray<string>,
 ): ReadonlyArray<D1PreparedStatement> =>
   names.length === 0 ? [] : [d1PrepareTyped(db, insertTagNamesSql(jsonStringArray(names)))];
+
+/**
+ * The statement that indexes the account's local note under its tags
+ * (`local_status_tags`, what the tag timelines, the `tagged` filter and the
+ * hashtag streams match), for the batch that writes the note; none when it
+ * has no tag. A note of any visibility is indexed: the readers check that.
+ */
+export const indexLocalStatusTags = (
+  db: D1Database,
+  note: Readonly<{ id: string; accountId: string }>,
+  tags: ReadonlyArray<string>,
+): ReadonlyArray<D1PreparedStatement> =>
+  tags.length === 0
+    ? []
+    : [
+        d1PrepareTyped(
+          db,
+          insertLocalStatusTagsSql(note.id, note.accountId, jsonStringArray(tags)),
+        ),
+      ];

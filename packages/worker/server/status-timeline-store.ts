@@ -153,7 +153,7 @@ export const listAccountStatusesFiltered = async (
            AND (? = 0 OR kind <> 'LocalReblog')
            AND (? = 0 OR visibility <> 'direct')
            AND (? = 0 OR id IN (SELECT status_id FROM media_attachments WHERE status_id IS NOT NULL))
-           AND (? = '' OR content_text LIKE ?)
+           AND (? = '' OR id IN (SELECT status_id FROM local_status_tags WHERE tag = ?))
            ${where} ${order} LIMIT ?`;
     const { results } = await db
       .prepare(sql)
@@ -174,8 +174,8 @@ export const listAccountStatusesFiltered = async (
         filters.excludeReblogs ? 1 : 0,
         filters.excludeDirect ? 1 : 0,
         filters.onlyMedia ? 1 : 0,
-        tagged.length > 0 ? `%#${tagged}%` : "",
-        tagged.length > 0 ? `%#${tagged}%` : "",
+        tagged,
+        tagged,
         ...binds,
         filters.limit,
       )

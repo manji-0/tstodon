@@ -27,7 +27,7 @@ D1 gives tstodon a familiar relational model, but several Mastodon shapes amplif
 - Timeline pages need N statuses × accounts × counts × media × polls × reblog chains.
 - Outbox delivery expands one activity into many **remote** inbox targets.
 - Inbox and remote hydrate paths couple HTTP fetch with idempotent inserts.
-- Search/tag still use `LIKE '%…%'` scans.
+- Status text search still uses `LIKE '%…%'` scans; local tag matching reads the `local_status_tags` index.
 - Cron poll expiry walks a batch of rows and publishes stream events.
 - Status Create is a multi-helper saga with partial-failure modes ([Doc A](./d1-write-strategy.md#status-publish-composition-route-level-gap)).
 
@@ -254,7 +254,7 @@ sequenceDiagram
 **Shape:**
 
 - `searchStatuses`: `content_text LIKE ?` with `%query%`, `ORDER BY id DESC LIMIT ?`.
-- `listTagStatuses`: dual `LIKE` for `#tag` / `#tag.lower`.
+- `listTagStatuses`: `EXISTS` on `local_status_tags` (migration 0132), written from `extractHashtags` when a note is published or edited.
 - Account search via TypedSQL `searchAccounts` (separate path).
 - Search route default limit **5** via `queryLimit(..., 5)`; other list endpoints use `queryLimit` default **20** / max **40** (A2).
 

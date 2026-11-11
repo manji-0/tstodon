@@ -6,19 +6,19 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
  * @param accountId
- * @param pattern
+ * @param tag
  */
 export const countAccountTagUses = $runtime.makeTypedQueryFactory(
-  "SELECT COUNT(*) AS count, MAX(created_at) AS last_status_at FROM statuses\nWHERE account_id = $1 AND kind = 'LocalNote' AND visibility = 'public' AND content_text LIKE $2",
+  "SELECT COUNT(*) AS count, MAX(s.created_at) AS last_status_at FROM local_status_tags t\nJOIN statuses s ON s.id = t.status_id\nWHERE t.tag = $2 AND s.account_id = $1 AND s.kind = 'LocalNote' AND s.visibility = 'public'",
 ) as (
   accountId: string,
-  pattern: string,
+  tag: string,
 ) => $runtime.TypedSql<countAccountTagUses.Parameters, countAccountTagUses.Result>;
 
 export namespace countAccountTagUses {
-  export type Parameters = [accountId: string, pattern: string];
+  export type Parameters = [accountId: string, tag: string];
   export type Result = {
     count: bigint;
-    last_status_at: string | null;
+    last_status_at: null | null;
   };
 }

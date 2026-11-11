@@ -67,6 +67,7 @@ export type * from "./models/remote_actors";
 export type * from "./models/remote_announces";
 export type * from "./models/remote_favourites";
 export type * from "./models/remote_follows";
+export type * from "./models/local_status_tags";
 export type * from "./models/remote_status_tags";
 export type * from "./models/remote_statuses";
 export type * from "./models/canonical_email_blocks";

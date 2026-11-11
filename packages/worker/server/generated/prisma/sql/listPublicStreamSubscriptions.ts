@@ -11,7 +11,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param anyTag
  */
 export const listPublicStreamSubscriptions = $runtime.makeTypedQueryFactory(
-  "WITH wanted AS (\nSELECT s.hub, s.stream, s.param FROM stream_subscriptions s\nWHERE s.hub > $2 AND (\ns.stream LIKE 'public%'\nOR (s.stream LIKE 'hashtag%' AND (\n$4 = 1\nOR EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = $1 AND t.tag = s.param)\nOR EXISTS (\nSELECT 1 FROM statuses st\nWHERE st.id = $1 AND instr(lower(st.content_text), '#' || s.param) > 0\n)\n))\n)\n),\nhubs AS (SELECT DISTINCT hub FROM wanted ORDER BY hub LIMIT $3)\nSELECT hub, stream, param FROM wanted WHERE hub IN (SELECT hub FROM hubs) ORDER BY hub",
+  "WITH wanted AS (\nSELECT s.hub, s.stream, s.param FROM stream_subscriptions s\nWHERE s.hub > $2 AND (\ns.stream LIKE 'public%'\nOR (s.stream LIKE 'hashtag%' AND (\n$4 = 1\nOR EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = $1 AND t.tag = s.param)\nOR EXISTS (SELECT 1 FROM local_status_tags t WHERE t.status_id = $1 AND t.tag = s.param)\n))\n)\n),\nhubs AS (SELECT DISTINCT hub FROM wanted ORDER BY hub LIMIT $3)\nSELECT hub, stream, param FROM wanted WHERE hub IN (SELECT hub FROM hubs) ORDER BY hub",
 ) as (
   entryId: string,
   afterHub: string,
