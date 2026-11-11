@@ -36,7 +36,7 @@ const postStatus = async (email: string, payload: Record<string, unknown>): Prom
 };
 
 describe("status translation", () => {
-  it("reports translation unavailable for an eligible public status", async () => {
+  it("answers 404 for an eligible public status while no provider is configured", async () => {
     const email = "translate-author@example.com";
     const statusId = await postStatus(email, { status: "hello world", language: "en" });
 
@@ -48,8 +48,8 @@ describe("status translation", () => {
       },
       body: JSON.stringify({ lang: "de" }),
     });
-    expect(response.status).toBe(503);
-    expect(read(z.object({ error: z.string() }), response.body).error).toBe("Service Unavailable");
+    expect(response.status).toBe(404);
+    expect(read(z.object({ error: z.string() }), response.body).error).toBe("Record not found");
   });
 
   it("refuses statuses Mastodon would not translate", async () => {
