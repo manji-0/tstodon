@@ -122,7 +122,8 @@ export const ApiWebPushSubscription = z.object({
   standard: z.boolean(),
   alerts: z.record(z.string(), z.boolean()),
   policy: z.string(),
-  server_key: z.string(),
+  /** The VAPID public key; `null` on a server with no VAPID key configured. */
+  server_key: z.string().nullable(),
 });
 export type ApiWebPushSubscriptionJSON = z.infer<typeof ApiWebPushSubscription>;
 

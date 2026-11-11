@@ -18,8 +18,8 @@ const WebPushSubscriptionData = z.object({
  * `POST /api/web/push_subscriptions` (Mastodon's
  * `Api::Web::PushSubscriptionsController`): the browser's `PushSubscription`
  * as `toJSON()` gives it, with `standard` (RFC 8291 payload encryption), and
- * the alerts to start with. The Worker has no such route yet; web push
- * subscriptions go through `/api/v1/push/subscription`.
+ * the alerts to start with. The Worker stores it for the session's web app
+ * access token, as `/api/v1/push/subscription` does for other apps' tokens.
  */
 export const ApiCreateWebPushSubscriptionParamsSchema = z.object({
   subscription: z.object({

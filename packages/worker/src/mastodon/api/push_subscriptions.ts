@@ -5,8 +5,8 @@ import type {
 } from '@tstodon/api';
 import { apiRequest } from 'mastodon/api';
 
-// Mastodon's `/api/web/push_subscriptions`, which the Worker does not serve
-// yet (see `packages/worker/src/UPSTREAM.md`).
+// Mastodon's `/api/web/push_subscriptions`: the session's Web Push
+// subscription (`server/routes/web-push-subscriptions.ts`).
 
 export const apiCreateWebPushSubscription = (
   data: ApiCreateWebPushSubscriptionParams,
