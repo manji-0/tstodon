@@ -10,7 +10,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param now
  */
 export const findActiveMute = $runtime.makeTypedQueryFactory(
-  "SELECT notifications, expires_at FROM mutes\nWHERE account_id = $1 AND (target_account_id = $2 OR target_actor_uri = $2)\nAND (expires_at IS NULL OR expires_at > $3)\nLIMIT 1",
+  "SELECT notifications, expires_at FROM mutes\nWHERE account_id = $1 AND target_actor_uri = $2\nAND (expires_at IS NULL OR expires_at > $3)\nUNION ALL\nSELECT notifications, expires_at FROM mutes\nWHERE account_id = $1 AND target_account_id = $2\nAND (expires_at IS NULL OR expires_at > $3)\nLIMIT 1",
 ) as (
   accountId: string,
   target: string,

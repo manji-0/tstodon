@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param target
  */
 export const findBlock = $runtime.makeTypedQueryFactory(
-  "SELECT 1 AS present FROM blocks\nWHERE blocker_account_id = $1 AND (target_account_id = $2 OR target_actor_uri = $2)\nLIMIT 1",
+  "SELECT 1 AS present FROM blocks\nWHERE blocker_account_id = $1 AND target_actor_uri = $2\nUNION ALL\nSELECT 1 AS present FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id = $2\nLIMIT 1",
 ) as (
   actorAccountId: string,
   target: string,
