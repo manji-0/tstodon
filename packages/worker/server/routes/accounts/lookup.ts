@@ -49,7 +49,7 @@ import type { RepositoryError } from "../../d1";
 import { RemoteAccountId } from "../../remote-account-id";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { familiarFollowerIds, followingAccountIds } from "../../follow-store";
-import { relationshipFlags } from "../../relationship-store";
+import { relationshipFlagsOf } from "../../relationship-store";
 import { readQueryParams } from "../../request-params";
 import { findKnownAccountHandle, localRef, remoteRef } from "../../account-ref";
 import { instanceActorFetchSigner } from "../../instance-actor";
@@ -90,14 +90,11 @@ export const getV1AccountsRelationships = async (
   // `with_suspended` changes nothing: every requested id is answered.
   const params = readQueryParams(c, ApiGetRelationshipsParamsSchema);
   const ids = (params.isOk() ? (params.value.id ?? []) : []).filter((id) => id.length > 0);
-  const relationships = [];
-  for (const id of ids) {
-    const flags = await relationshipFlags(c.env.DB, user.value.id, id);
-    if (flags.isOk()) {
-      relationships.push(mastodonRelationship(id, flags.value));
-    }
+  if (ids.length === 0) {
+    return c.json([]);
   }
-  return c.json(relationships);
+  const flagsOf = await relationshipFlagsOf(c.env.DB, user.value.id, ids);
+  return c.json(flagsOf.isOk() ? ids.map((id) => mastodonRelationship(id, flagsOf.value(id))) : []);
 };
 
 /** Mastodon caps familiar followers per requested account. */

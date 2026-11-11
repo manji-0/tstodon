@@ -222,6 +222,8 @@ export * from "./sql/findAccountByEmail";
 
 export * from "./sql/findAccountById";
 
+export * from "./sql/findAccountByIdOrUsername";
+
 export * from "./sql/findAccountByUsername";
 
 export * from "./sql/findAccountDomainBlock";
@@ -232,6 +234,8 @@ export * from "./sql/findAccountMove";
 
 export * from "./sql/findAccountNote";
 
+export * from "./sql/findAccountNotesOfTargetsJson";
+
 export * from "./sql/findAccountProfile";
 
 export * from "./sql/findAccountsByIdsJson";
@@ -240,11 +244,19 @@ export * from "./sql/findAccountsByUsernamesJson";
 
 export * from "./sql/findActiveMute";
 
+export * from "./sql/findActiveMutesOfTargetsJson";
+
 export * from "./sql/findActorDomainBlock";
+
+export * from "./sql/findActorDomainBlocksJson";
 
 export * from "./sql/findAnnouncementById";
 
 export * from "./sql/findBlock";
+
+export * from "./sql/findBlockersOfTargetJson";
+
+export * from "./sql/findBlocksOfTargetsJson";
 
 export * from "./sql/findCanonicalEmailBlockByHash";
 
@@ -264,13 +276,17 @@ export * from "./sql/findEmailDomainBlockByDomain";
 
 export * from "./sql/findEmailDomainBlockById";
 
-export * from "./sql/findEndorsement";
+export * from "./sql/findEndorsementsOfTargetsJson";
 
 export * from "./sql/findFilterById";
 
 export * from "./sql/findFilterStatusById";
 
 export * from "./sql/findFollowKind";
+
+export * from "./sql/findFollowKindsFromFollowersJson";
+
+export * from "./sql/findFollowKindsToTargetsJson";
 
 export * from "./sql/findInboxActivityState";
 
@@ -304,6 +320,8 @@ export * from "./sql/findOutboundActivity";
 
 export * from "./sql/findOutboundFollow";
 
+export * from "./sql/findOutboundFollowsJson";
+
 export * from "./sql/findOutboxFanout";
 
 export * from "./sql/findOutboxTarget";
@@ -330,9 +348,13 @@ export * from "./sql/findRemoteActorsByUris";
 
 export * from "./sql/findRemoteBlock";
 
+export * from "./sql/findRemoteBlocksOfAccountJson";
+
 export * from "./sql/findRemoteBoostById";
 
 export * from "./sql/findRemoteFollow";
+
+export * from "./sql/findRemoteFollowsJson";
 
 export * from "./sql/findRemoteStatusById";
 
@@ -505,6 +527,8 @@ export * from "./sql/listAcceptedRemoteFollowerUris";
 export * from "./sql/listAccountAliases";
 
 export * from "./sql/listAccountDomainBlocks";
+
+export * from "./sql/listAccountFilterStatuses";
 
 export * from "./sql/listAccountIpsByAccountIdsJson";
 

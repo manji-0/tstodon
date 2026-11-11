@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import { ApiGetDirectoryParamsSchema } from "@tstodon/api";
 import { listDirectoryAccounts } from "../account-store";
 import { jsonRepositoryError, jsonValidationError, queryAccountsLimit } from "../http";
-import { mastodonAccountDocument } from "../account-documents";
+import { documentsInOrder, mastodonAccountDocuments } from "../account-documents";
 import { readQueryParams } from "../request-params";
 import { parseInstanceIdentity } from "../runtime-config";
 
@@ -23,9 +23,11 @@ export const getV1Directory = async (c: Context<{ Bindings: Env }, "/api/v1/dire
   if (accounts.isErr()) {
     return jsonRepositoryError(c, accounts.error.message);
   }
-  const documents = [];
-  for (const account of accounts.value) {
-    documents.push(await mastodonAccountDocument(c.env, identity.value, account));
-  }
-  return c.json(documents);
+  const documents = await mastodonAccountDocuments(c.env, identity.value, accounts.value);
+  return c.json(
+    documentsInOrder(
+      accounts.value.map((account) => account.id),
+      documents,
+    ),
+  );
 };

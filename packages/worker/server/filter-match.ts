@@ -10,8 +10,8 @@ import {
   filterKeywords,
   type FilterRow,
   type FilterStatus,
+  listAccountFilterStatuses,
   listFilters,
-  listFilterStatuses,
 } from "./filter-store";
 
 export type FilterWithStatuses = Readonly<{
@@ -46,19 +46,22 @@ export const loadViewerFilters = async (
   db: D1Database,
   accountId: string,
 ): Promise<Result<ReadonlyArray<FilterWithStatuses>, RepositoryError>> => {
-  const rows = await listFilters(db, accountId);
+  const [rows, statuses] = await Promise.all([
+    listFilters(db, accountId),
+    listAccountFilterStatuses(db, accountId),
+  ]);
   if (rows.isErr()) {
     return err(rows.error);
   }
-  const filters: FilterWithStatuses[] = [];
-  for (const row of rows.value) {
-    const statuses = await listFilterStatuses(db, row.id);
-    if (statuses.isErr()) {
-      return err(statuses.error);
-    }
-    filters.push({ row, statuses: statuses.value, filter: contentFilter(row, statuses.value) });
+  if (statuses.isErr()) {
+    return err(statuses.error);
   }
-  return ok(filters);
+  return ok(
+    rows.value.map((row) => {
+      const narrowed = statuses.value.get(row.id) ?? [];
+      return { row, statuses: narrowed, filter: contentFilter(row, narrowed) };
+    }),
+  );
 };
 
 /**

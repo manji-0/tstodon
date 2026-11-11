@@ -120,8 +120,7 @@ export const getV1Instance = async (c: Context<{ Bindings: Env }, "/api/v1/insta
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const users = await countAccounts(c.env.DB);
-  const statuses = await countStatuses(c.env.DB);
+  const [users, statuses] = await Promise.all([countAccounts(c.env.DB), countStatuses(c.env.DB)]);
   if (users.isErr()) {
     return jsonRepositoryError(c, users.error.message);
   }
@@ -239,8 +238,7 @@ export const getV2Instance = async (c: Context<{ Bindings: Env }, "/api/v2/insta
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const users = await countAccounts(c.env.DB);
-  const statuses = await countStatuses(c.env.DB);
+  const [users, statuses] = await Promise.all([countAccounts(c.env.DB), countStatuses(c.env.DB)]);
   if (users.isErr()) {
     return jsonRepositoryError(c, users.error.message);
   }
