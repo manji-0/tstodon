@@ -4,13 +4,14 @@ import {
   type LocalStatus,
   type RemoteBoostValue as RemoteBoost,
   type RemoteStatus,
-  type Visibility as VisibilityValue,
 } from "@tstodon/domain";
+import { findBlock } from "./block-mute-store";
 import { findRemoteStatusById } from "./remote-status-store";
 import { isAccountMentionedOnStatus } from "./mention-store";
 import { isAccountMentionedOnRemoteStatus } from "./mention-store";
 import { findOutboundFollow } from "./outbound-follow-store";
 import { relationshipFlags } from "./relationship-store";
+import { findRemoteBlock } from "./remote-block-store";
 import { findStatusById } from "./status-store";
 
 const canViewDirectStatus = async (
@@ -38,24 +39,33 @@ const canViewDirectStatus = async (
   return canViewDirectStatus(db, parent.value, viewerId);
 };
 
-/** Visible to everyone when public/unlisted, otherwise to the author and followers. */
-const canViewRestricted = async (
+/**
+ * Mastodon's `StatusPolicy#show?` for a status that is not direct: a public or
+ * unlisted one is hidden only from viewers its author blocks; a followers-only
+ * one is shown to the author, followers and the accounts it mentions. Viewers
+ * are local accounts, so the policy's domain-block clause never applies.
+ */
+const canViewNonDirect = async (
   db: D1Database,
-  visibility: VisibilityValue,
-  authorId: string,
+  status: LocalStatus,
   viewerId: string | undefined,
 ): Promise<boolean> => {
-  if (!Visibility.isRestricted(visibility)) {
-    return true;
-  }
-  if (viewerId === authorId) {
+  if (viewerId === status.accountId) {
     return true;
   }
   if (!viewerId) {
-    return false;
+    return !Visibility.isRestricted(status.visibility);
   }
-  const flags = await relationshipFlags(db, viewerId, authorId);
-  return flags.isOk() && flags.value.following;
+  if (!Visibility.isRestricted(status.visibility)) {
+    const blocked = await findBlock(db, status.accountId, viewerId);
+    return blocked.isOk() && !blocked.value;
+  }
+  const flags = await relationshipFlags(db, viewerId, status.accountId);
+  if (flags.isOk() && flags.value.following) {
+    return true;
+  }
+  const mentioned = await isAccountMentionedOnStatus(db, status.id, viewerId);
+  return mentioned.isOk() && mentioned.value;
 };
 
 export const canViewStatus = async (
@@ -63,34 +73,30 @@ export const canViewStatus = async (
   status: LocalStatus,
   viewerId: string | undefined,
 ): Promise<boolean> => {
-  // A boost's own visibility decides who sees it; it is never direct.
-  if (status.kind === "LocalReblog") {
-    return canViewRestricted(db, status.visibility, status.accountId, viewerId);
+  // A boost's own visibility decides who sees it, and it is never direct.
+  if (status.kind === "LocalNote" && status.visibility.kind === "Direct") {
+    return viewerId ? canViewDirectStatus(db, status, viewerId) : false;
   }
-  if (status.visibility.kind === "Direct") {
-    if (!viewerId) {
-      return false;
-    }
-    return canViewDirectStatus(db, status, viewerId);
-  }
-  return canViewRestricted(db, status.visibility, status.accountId, viewerId);
+  return canViewNonDirect(db, status, viewerId);
 };
 
 /**
- * A cached remote status: public and unlisted ones are open, a followers-only
- * one is shown to the author's accepted local followers, and a direct or
- * followers-only one to the local accounts it addresses.
+ * A cached remote status: public and unlisted ones are open to all but the
+ * local accounts the author blocks, a followers-only one is shown to the
+ * author's accepted local followers, and a direct or followers-only one to the
+ * local accounts it addresses.
  */
 export const canViewRemoteStatus = async (
   db: D1Database,
   status: RemoteStatus,
   viewerId: string | undefined,
 ): Promise<boolean> => {
-  if (!Visibility.isRestricted(status.visibility)) {
-    return true;
-  }
   if (!viewerId) {
-    return false;
+    return !Visibility.isRestricted(status.visibility);
+  }
+  if (!Visibility.isRestricted(status.visibility)) {
+    const blocked = await findRemoteBlock(db, status.actorUri, viewerId);
+    return blocked.isOk() && !blocked.value;
   }
   if (status.visibility.kind === "FollowersOnly") {
     const follow = await findOutboundFollow(db, viewerId, status.actorUri);

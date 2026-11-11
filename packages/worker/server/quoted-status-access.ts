@@ -1,10 +1,4 @@
-import {
-  type LocalStatus,
-  type RemoteStatusValue,
-  type StatusTargetValue,
-  Visibility,
-  type Visibility as VisibilityValue,
-} from "@tstodon/domain";
+import { type LocalStatus, type RemoteStatusValue, type StatusTargetValue } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
@@ -15,12 +9,7 @@ import { queryTyped } from "./typed-sql";
 import { viewableStatusIds } from "./visibility-guard";
 
 const RelationRow = z.object({
-  relation: z.union([
-    z.literal("blocking"),
-    z.literal("blocked_by"),
-    z.literal("muting"),
-    z.literal("domain_blocking"),
-  ]),
+  relation: z.union([z.literal("blocking"), z.literal("muting"), z.literal("domain_blocking")]),
   target: z.string(),
 });
 
@@ -29,10 +18,7 @@ type Relation = z.infer<typeof RelationRow>["relation"];
 /** A quoted author: a local account id, or a remote actor URI. */
 type Author = Readonly<{ key: string; local: boolean }>;
 
-/**
- * Which of `authors` the viewer blocks, mutes or domain-blocks, and which
- * local ones block the viewer, in one statement.
- */
+/** Which of `authors` the viewer blocks, mutes or domain-blocks, in one statement. */
 const viewerRelations = async (
   db: D1Database,
   viewerId: string,
@@ -69,47 +55,32 @@ export const quotedStatusAccess = async (
   remotes: ReadonlyArray<RemoteStatusValue>,
   viewerId: string | undefined,
 ): Promise<Result<(quoted: StatusTargetValue) => QuotedStatusAccess, RepositoryError>> => {
-  type Quoted = Readonly<{ author: Author; visibility: VisibilityValue }>;
-  const quoted = new Map<string, Quoted>();
+  const authors = new Map<string, Author>();
   for (const status of locals) {
-    quoted.set(`LocalStatus ${status.id}`, {
-      author: { key: status.accountId, local: true },
-      visibility: status.visibility,
-    });
+    authors.set(`LocalStatus ${status.id}`, { key: status.accountId, local: true });
   }
   for (const status of remotes) {
-    quoted.set(`RemoteStatus ${status.id}`, {
-      author: { key: status.actorUri, local: false },
-      visibility: status.visibility,
-    });
+    authors.set(`RemoteStatus ${status.id}`, { key: status.actorUri, local: false });
   }
   const [viewable, related] = await Promise.all([
     viewableStatusIds(db, locals, remotes, viewerId),
-    viewerId === undefined || quoted.size === 0
+    viewerId === undefined || authors.size === 0
       ? Promise.resolve(ok(() => false))
-      : viewerRelations(
-          db,
-          viewerId,
-          [...quoted.values()].map(({ author }) => author),
-        ),
+      : viewerRelations(db, viewerId, [...authors.values()]),
   ]);
   if (related.isErr()) {
     return err(related.error);
   }
   const has = related.value;
   return ok((target) => {
-    const status = quoted.get(`${target.kind} ${target.statusId}`);
-    if (status === undefined) {
+    const author = authors.get(`${target.kind} ${target.statusId}`);
+    if (author === undefined) {
       return "Gone";
     }
-    const { author, visibility } = status;
     if (author.local && author.key === viewerId) {
       return "Shown";
     }
-    if (
-      !viewable.has(target.statusId) ||
-      (!Visibility.isRestricted(visibility) && has("blocked_by", author))
-    ) {
+    if (!viewable.has(target.statusId)) {
       return "Unauthorized";
     }
     if (has("domain_blocking", author)) {

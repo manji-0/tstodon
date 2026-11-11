@@ -8,14 +8,6 @@ WHERE blocker_account_id = $1
   AND (target_account_id IN (SELECT value FROM json_each($2))
     OR target_actor_uri IN (SELECT value FROM json_each($3)))
 UNION ALL
-SELECT 'blocked_by' AS relation, blocker_account_id AS target FROM blocks
-WHERE target_account_id = $1
-  AND blocker_account_id IN (SELECT value FROM json_each($2))
-UNION ALL
-SELECT 'blocked_by' AS relation, actor_uri AS target FROM remote_blocks
-WHERE account_id = $1
-  AND actor_uri IN (SELECT value FROM json_each($3))
-UNION ALL
 SELECT 'muting' AS relation, COALESCE(target_account_id, target_actor_uri) AS target FROM mutes
 WHERE account_id = $1
   AND (target_account_id IN (SELECT value FROM json_each($2))
