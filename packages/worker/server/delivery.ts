@@ -26,7 +26,7 @@ import {
 import { writeMetric } from "./metrics";
 import type { OutboxWorkflowParams } from "./outbox-delivery-workflow";
 import { suspendedDomains } from "./admin-domain-block-store";
-import { federatesWithHost, parseInstanceIdentity } from "./runtime-config";
+import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 
 type DeliverTargetJob = Extract<OutboxJobValue, { kind: "DeliverTarget" }>;
 
@@ -144,14 +144,14 @@ const enqueueSignedActivity = async (
 ): Promise<Result<void, EnqueueLocalActivityError>> => {
   // A suspended domain, or one outside the federation allow list, is never
   // contacted; the activity is dropped quietly.
-  const suspended = await suspendedDomains(env.DB);
-  const admitted: string[] = [];
-  for (const inboxUrl of new Set(inboxUrls)) {
+  const [suspended, allowHosts] = await Promise.all([
+    suspendedDomains(env.DB),
+    federationAllowHosts(env),
+  ]);
+  const admitted = [...new Set(inboxUrls)].filter((inboxUrl) => {
     const inboxHost = Hostname.ofUri(inboxUrl);
-    if (!inboxHost || (!suspended.has(inboxHost) && (await federatesWithHost(env, inboxHost)))) {
-      admitted.push(inboxUrl);
-    }
-  }
+    return !inboxHost || (!suspended.has(inboxHost) && allowListAdmits(allowHosts, inboxHost));
+  });
   if (admitted.length === 0) {
     return ok(undefined);
   }
