@@ -93,6 +93,14 @@ describe("admin tags", () => {
       (await call("PUT", "/api/v1/admin/tags/admintagone", { body: { display_name: "Other" } }))
         .status,
     ).toBe(422);
+    // ... and must be a hashtag name, whatever it normalizes to (`Tag::HASHTAG_NAME_RE`).
+    expect(
+      (
+        await call("PUT", "/api/v1/admin/tags/admintagone", {
+          body: { display_name: "Admin-TagOne!" },
+        })
+      ).status,
+    ).toBe(422);
     expect((await call("GET", "/api/v1/admin/tags/neverstoredtag")).status).toBe(404);
     expect((await call("PUT", "/api/v1/admin/tags/neverstoredtag", { body: {} })).status).toBe(404);
   });

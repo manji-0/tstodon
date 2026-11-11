@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
-import { countableText, noteLength, statusLength } from "./post-text";
+import {
+  countableText,
+  extractHashtags,
+  isHashtagName,
+  normalizeHashtag,
+  noteLength,
+  statusLength,
+} from "./post-text";
 import { POST_URL_PATTERN } from "./post-text-url-pattern";
 import { composePostUrlPattern } from "./post-text-url-pattern.compose";
 
@@ -82,5 +89,111 @@ describe("post-text module", () => {
     expect(imports("./post-text.ts").filter((specifier) => !specifier.startsWith("./"))).toEqual(
       [],
     );
+  });
+});
+
+describe("extractHashtags", () => {
+  it.each([
+    ["#日本語 です", ["日本語"]],
+    ["Hello #WaveA and #wavea", ["wavea"]],
+    ["＃ＣＡＴ", ["cat"]],
+    ["#a・b #a·b", ["a・b", "a·b"]],
+    ["#123 #a1 #1a #_x #_", ["a1", "1a", "_x"]],
+    ["word#token (#paren) a/#path", []],
+    ["#tagged https://example.com", ["tagged"]],
+    ["#taggedhttps://example.com", ["tagged"]],
+  ])("finds the tags in %j as Mastodon's Extractor: %j", (text, tags) => {
+    expect(extractHashtags(text)).toEqual(tags);
+  });
+});
+
+describe("normalizeHashtag and isHashtagName", () => {
+  it("normalizes as HashtagNormalizer, without accent folding", () => {
+    expect(normalizeHashtag("#Cat!")).toBe("cat");
+    expect(normalizeHashtag("ＣＡＴ")).toBe("cat");
+    expect(normalizeHashtag("café")).toBe("café");
+  });
+
+  it("leaves every stored ASCII name as it is", () => {
+    for (const name of ["cat", "a_1", "_x", "2024a"]) {
+      expect(normalizeHashtag(name)).toBe(name);
+    }
+  });
+
+  it("takes a name with a letter", () => {
+    expect(isHashtagName("日本語")).toBe(true);
+    expect(isHashtagName("a1")).toBe(true);
+    expect(isHashtagName("2024")).toBe(false);
+    expect(isHashtagName("")).toBe(false);
+  });
+});
+
+describe("hashtag matching against Mastodon's regex", () => {
+  const WORD = "\\p{L}\\p{M}\\p{Nd}\\p{Pc}";
+  const ALPHA = "\\p{Alphabetic}";
+  const SEP = "_\\u00B7\\u30FB\\u200C";
+  const NAME = `[${WORD}_][${WORD}${SEP}]*[${ALPHA}${SEP}][${WORD}${SEP}]*[${WORD}_]|[${WORD}_]*[${ALPHA}][${WORD}_]*`;
+  const HASHTAG_RE = new RegExp(`(?<=^|[\\p{White_Space}])[#＃](${NAME})`, "gmu");
+  const NAME_RE = new RegExp(`^(?:${NAME})$`, "iu");
+  const reference = (text: string): string[] => [
+    ...new Set(
+      [...text.matchAll(HASHTAG_RE)].flatMap((match) => {
+        const name = match[1] ?? "";
+        const end = match.index + match[0].length;
+        const cut = text.startsWith("://", end) ? /^(.+)https?$/u.exec(name) : null;
+        const normalized = normalizeHashtag(cut?.[1] ?? name);
+        return NAME_RE.test(normalized) ? [normalized] : [];
+      }),
+    ),
+  ];
+  const alphabet = [
+    "a",
+    "Z",
+    "1",
+    "_",
+    "·",
+    "・",
+    "‌",
+    "Ⅻ",
+    "Ⓐ",
+    "é",
+    "́",
+    " ",
+    "\n",
+    "#",
+    "＃",
+    ":",
+    "/",
+    "h",
+    "t",
+    "p",
+    "s",
+    "-",
+  ];
+  let seed = 1;
+  const random = (n: number): number => {
+    seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31;
+    return seed % n;
+  };
+
+  it("finds what Tag::HASHTAG_RE finds, on 20,000 random texts", () => {
+    for (let i = 0; i < 20_000; i += 1) {
+      const text = Array.from(
+        { length: 1 + random(14) },
+        () => alphabet[random(alphabet.length)],
+      ).join("");
+      expect(extractHashtags(text), JSON.stringify(text)).toEqual(reference(text));
+      expect(isHashtagName(text), JSON.stringify(text)).toBe(NAME_RE.test(text));
+    }
+  });
+
+  it("takes linear time where the regex backtracks", () => {
+    for (const filler of ["·", "‌"]) {
+      const text = `#1${filler.repeat(50_000)}Ⅻ`;
+      const started = performance.now();
+      extractHashtags(text);
+      isHashtagName(text.slice(1));
+      expect(performance.now() - started).toBeLessThan(200);
+    }
   });
 });

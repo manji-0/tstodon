@@ -1,4 +1,4 @@
-import { schemaResult, unitKind } from "@tstodon/core";
+import { isHashtagName, schemaResult, unitKind } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { StreamEvent } from "./stream-event";
@@ -18,16 +18,10 @@ export const STREAM_TAG_MAX_LENGTH = 100;
 /** The longest list id a stream may name; entity ids are far shorter. */
 export const STREAM_LIST_ID_MAX_LENGTH = 64;
 
-/**
- * Mastodon's hashtag name: letters, digits, and underscores, with at least
- * one letter. Nothing else (no `%`, spaces, or punctuation) reaches a query.
- */
-const HASHTAG_NAME = /^[\p{L}\p{M}\p{N}_]*\p{L}[\p{L}\p{M}\p{N}_]*$/u;
-
 const HashtagChannelSchema = z.object({
   kind: z.literal("Hashtag"),
   /** As the client spelled it; Mastodon echoes it back in `stream`. */
-  tag: z.string().max(STREAM_TAG_MAX_LENGTH).regex(HASHTAG_NAME),
+  tag: z.string().max(STREAM_TAG_MAX_LENGTH).refine(isHashtagName),
   localOnly: z.boolean(),
 });
 

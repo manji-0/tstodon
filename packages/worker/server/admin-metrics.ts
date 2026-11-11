@@ -9,11 +9,10 @@ import type {
   AdminMeasureKey,
   AdminRetentionFrequency,
 } from "@tstodon/api/values";
-import { Languages } from "@tstodon/core";
+import { extractHashtags, Languages } from "@tstodon/core";
 import { z } from "zod";
 import { parseRows, runD1, type RepositoryError } from "./d1";
 import { dailyMediaAttachmentBytes as dailyMediaAttachmentBytesSql } from "./generated/prisma/sql";
-import { extractHashtags } from "./hashtags";
 import { humanSize } from "./human-size";
 import { storedMediaBytes, totalStoredMediaBytes } from "./media-sizes";
 import { queryTyped } from "./typed-sql";

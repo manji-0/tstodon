@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { InstanceLimits } from "@tstodon/core";
+import { extractHashtags, InstanceLimits, normalizeHashtag } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { parseRows, runD1, runD1Batch, type RepositoryError } from "./d1";
@@ -16,7 +16,7 @@ import {
   unfeatureTag as unfeatureTagSql,
   unfollowTag as unfollowTagSql,
 } from "./generated/prisma/sql";
-import { extractHashtags, hashtagUses, recordTagNames } from "./hashtags";
+import { hashtagUses, recordTagNames } from "./hashtags";
 import { d1PrepareTyped, queryTyped } from "./typed-sql";
 
 const TagNameRow = z.object({ tag_name: z.string() });
@@ -34,11 +34,6 @@ export const FEATURED_TAG_LIMIT = InstanceLimits.account.maxFeaturedTags;
 const TAG_HISTORY_DAYS = 7;
 const SECONDS_PER_DAY = 86_400;
 
-/** Normalize a tag to its stored form: no leading `#`, lowercase. */
-export const normalizeTag = (raw: string): string => raw.trim().replace(/^#+/, "").toLowerCase();
-
-export const isValidTag = (tag: string): boolean => /^[a-z0-9_]+$/.test(tag);
-
 const ContentTextRow = z.object({ content_text: z.string() });
 const StatusUseRow = z.object({
   content_text: z.string(),
@@ -46,16 +41,6 @@ const StatusUseRow = z.object({
   account_id: z.string(),
 });
 const NameRow = z.object({ name: z.string() });
-
-/**
- * A search term as Mastodon's `HashtagNormalizer` reads it: NFKC, lowercase,
- * and only the characters a hashtag can hold, so `#Cat` and `cat!` are `cat`.
- */
-export const tagSearchPrefix = (term: string): string =>
-  term
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{M}\p{N}_\u00B7\u30FB\u200C]/gu, "");
 
 /**
  * Stored tags whose name starts with the term, as Mastodon's `Tag.search_for`:
@@ -68,7 +53,7 @@ export const searchTags = async (
   limit: number,
   offset: number,
 ): Promise<Result<string[], RepositoryError>> => {
-  const prefix = tagSearchPrefix(term);
+  const prefix = normalizeHashtag(term);
   if (prefix.length === 0) {
     return ok([]);
   }
