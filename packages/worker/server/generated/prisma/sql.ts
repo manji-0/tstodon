@@ -14,6 +14,8 @@ export * from "./sql/authorizeFollowRequest";
 
 export * from "./sql/authorizeRemoteFollowRequest";
 
+export * from "./sql/backfillLocalStatusTags";
+
 export * from "./sql/cancelAccountMove";
 
 export * from "./sql/cancelRemoteActorDeliveries";

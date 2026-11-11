@@ -228,8 +228,8 @@ const RemoteTagRow = z.object({
 const TAG_SCAN_LIMIT = 5000;
 
 /**
- * The uses of `tag` in the range: local public and unlisted notes (which
- * keep no tag index, so their text is read) and indexed remote statuses.
+ * The uses of `tag` in the range: local public and unlisted notes and
+ * remote statuses, each read from its tag index.
  */
 const tagUses = async (
   db: D1Database,

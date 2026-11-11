@@ -6,10 +6,11 @@ import { nowIso } from "./clock";
 import { runD1, runD1Batch, type RepositoryError } from "./d1";
 import {
   advanceBackfillCursor as advanceBackfillCursorSql,
+  backfillLocalStatusTags as backfillLocalStatusTagsSql,
   listLocalNoteTextsAfter as listLocalNoteTextsAfterSql,
   readBackfillCursor as readBackfillCursorSql,
 } from "./generated/prisma/sql";
-import { indexLocalStatusTags, recordTagNames, searchableTagNames } from "./hashtags";
+import { recordTagNames, searchableTagNames } from "./hashtags";
 import { d1PrepareTyped, queryTyped } from "./typed-sql";
 
 /**
@@ -19,7 +20,7 @@ import { d1PrepareTyped, queryTyped } from "./typed-sql";
  */
 const CURSOR = "local_status_tags";
 
-/** Notes read per page: their text is short, and a page is two statements. */
+/** Notes read per page: their text is short, and a page is three statements. */
 export const LOCAL_TAG_BACKFILL_PAGE = 200;
 
 const CursorRow = z.object({ after_id: z.string(), completed_at: z.string().nullable() });
@@ -77,8 +78,15 @@ export const backfillLocalNoteTags = async (
   const full = notes.length === pageSize;
   const advanced = await runD1Batch(db, [
     ...recordTagNames(db, [...names]),
-    ...tagged.flatMap(({ note, tags }) =>
-      indexLocalStatusTags(db, { id: note.id, accountId: note.account_id }, tags),
+    d1PrepareTyped(
+      db,
+      backfillLocalStatusTagsSql(
+        JSON.stringify(
+          tagged.flatMap(({ note, tags }) =>
+            tags.length === 0 ? [] : [[note.id, note.content_text, tags]],
+          ),
+        ),
+      ),
     ),
     d1PrepareTyped(
       db,
