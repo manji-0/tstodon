@@ -16,7 +16,7 @@ import {
   listLocalRepliesToUris,
   listStatusReplyUris,
 } from "./status-store";
-import { canViewRemoteStatus, canViewStatus } from "./visibility-guard";
+import { viewableStatusIds } from "./visibility-guard";
 import { restrictedDomains } from "./admin-domain-block-store";
 import { listBlockedDomains } from "./domain-block-store";
 import { findRemoteActorsByUris } from "./remote-actor-store";
@@ -201,16 +201,16 @@ export const visibleThreadStatuses = async (
       RemoteActor.onAnyHost(actor, restricted)
     );
   };
-  return (
-    await Promise.all(
-      statuses.map(async (node) =>
-        !hidden(node) &&
-        (node.kind === "Local"
-          ? await canViewStatus(db, node.status, viewerId)
-          : await canViewRemoteStatus(db, node.status, viewerId))
-          ? [node]
-          : [],
-      ),
-    )
-  ).flat();
+  const shown = statuses.filter((node) => !hidden(node));
+  // The suppressed authors already hold every author that blocks the viewer.
+  const viewable = await viewableStatusIds(
+    db,
+    shown.flatMap((node) => (node.kind === "Local" ? [node.status] : [])),
+    shown.flatMap((node) => (node.kind === "Remote" ? [node.status] : [])),
+    viewerId,
+    suppressed?.isOk()
+      ? new Set([...suppressed.value.accountIds, ...suppressed.value.actorUris])
+      : undefined,
+  );
+  return shown.filter((node) => viewable.has(node.status.id));
 };

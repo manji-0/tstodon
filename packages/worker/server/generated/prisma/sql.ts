@@ -478,10 +478,6 @@ export * from "./sql/insertStreamSubscription";
 
 export * from "./sql/insertTagNames";
 
-export * from "./sql/isAccountMentionedOnRemoteStatus";
-
-export * from "./sql/isAccountMentionedOnStatus";
-
 export * from "./sql/isActiveRemoteStatusMention";
 
 export * from "./sql/isStatusPinned";
@@ -531,6 +527,8 @@ export * from "./sql/listAuthPasskeys";
 export * from "./sql/listAuthSessions";
 
 export * from "./sql/listAuthorizedApplicationTokens";
+
+export * from "./sql/listAuthorsBlockingViewerJson";
 
 export * from "./sql/listBlockersOfActor";
 
@@ -691,6 +689,8 @@ export * from "./sql/listUnstrippedAvatars";
 export * from "./sql/listUnstrippedHeaders";
 
 export * from "./sql/listUnstrippedMedia";
+
+export * from "./sql/listViewerStatusAccessJson";
 
 export * from "./sql/markAvatarMetadataStripped";
 

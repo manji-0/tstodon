@@ -23,7 +23,12 @@ import { findRemoteStatusById, findRemoteStatusesByIds } from "../../remote-stat
 import { requestRemoteThreadBackfill } from "../../remote-thread-backfill";
 import { requestQuoteRefresh } from "../../quote-retry-queue";
 import { ContextLimits, findStatusById, findStatusesByIds } from "../../status-store";
-import { canViewRemoteBoost, canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
+import {
+  canViewRemoteBoost,
+  canViewRemoteStatus,
+  canViewStatus,
+  viewableStatusIds,
+} from "../../visibility-guard";
 import { findRemoteBoostById } from "../../remote-boost-store";
 import { remoteBoostDocuments } from "../../remote-boost-documents";
 import { documentsById } from "../../documents-by-id";
@@ -114,21 +119,14 @@ export const getV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/statu
   if (remotes.isErr()) {
     return jsonRepositoryError(c, remotes.error.message);
   }
-  // Public and unlisted statuses pass without a query; only restricted ones look further.
-  const visibleLocals = (
-    await Promise.all(
-      [...locals.value.values()].map(async (status) =>
-        (await canViewStatus(c.env.DB, status, viewerId)) ? [status] : [],
-      ),
-    )
-  ).flat();
-  const visibleRemotes = (
-    await Promise.all(
-      [...remotes.value.values()].map(async (status) =>
-        (await canViewRemoteStatus(c.env.DB, status, viewerId)) ? [status] : [],
-      ),
-    )
-  ).flat();
+  const viewable = await viewableStatusIds(
+    c.env.DB,
+    [...locals.value.values()],
+    [...remotes.value.values()],
+    viewerId,
+  );
+  const visibleLocals = [...locals.value.values()].filter((status) => viewable.has(status.id));
+  const visibleRemotes = [...remotes.value.values()].filter((status) => viewable.has(status.id));
   const [localDocuments, remoteDocuments] = await Promise.all([
     mastodonStatuses(c.env, identity.value, visibleLocals, viewerId),
     mastodonRemoteStatuses(c.env, identity.value, visibleRemotes, viewerId),
