@@ -141,7 +141,8 @@ const setTagFollowed = async (
     return jsonAuthError(c, user.error);
   }
   const name = normalizeHashtag(c.req.param("id") ?? "");
-  if (!isHashtagName(name)) {
+  // Removal takes any stored name, also one an older, looser rule let in.
+  if (follow ? !isHashtagName(name) : name.length === 0) {
     return tagNotFound(c);
   }
   const changed = follow
@@ -176,7 +177,7 @@ const setTagFeatured = async (
     return jsonAuthError(c, user.error);
   }
   const name = normalizeHashtag(c.req.param("id") ?? "");
-  if (!isHashtagName(name)) {
+  if (feature ? !isHashtagName(name) : name.length === 0) {
     return tagNotFound(c);
   }
   if (feature) {
@@ -358,7 +359,7 @@ export const deleteV1FeaturedTagsById = async (
     return jsonAuthError(c, user.error);
   }
   const name = normalizeHashtag(c.req.param("id") ?? "");
-  if (!isHashtagName(name)) {
+  if (name.length === 0) {
     return tagNotFound(c);
   }
   const removed = await unfeatureTag(c.env.DB, user.value.id, name);

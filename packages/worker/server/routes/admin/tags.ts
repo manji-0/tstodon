@@ -1,4 +1,4 @@
-import { normalizeHashtag } from "@tstodon/core";
+import { isHashtagName, normalizeHashtag } from "@tstodon/core";
 import type { ApiAdminTagJSON } from "@tstodon/api";
 import type { InstanceIdentity } from "@tstodon/domain";
 import type { Context } from "hono";
@@ -175,7 +175,10 @@ export const putV1AdminTagsById = async (
   }
   const current = found.value;
   const displayName = body.value.display_name?.trim();
-  if (displayName && normalizeHashtag(displayName) !== current.name) {
+  if (
+    displayName &&
+    (!isHashtagName(displayName) || normalizeHashtag(displayName) !== current.name)
+  ) {
     // Mastodon: the display name may only change the name's case.
     return c.json(
       { error: "Validation failed: Display name must match the hashtag", kind: "ValidationError" },

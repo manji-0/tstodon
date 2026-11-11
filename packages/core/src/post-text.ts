@@ -69,13 +69,76 @@ const SPACE = "\\p{White_Space}";
 const ALNUM = "\\p{Alphabetic}\\p{Nd}";
 const SEPARATORS = "_\\u00B7\\u30FB\\u200C";
 
-/** `Tag::HASHTAG_NAME_PAT`: a name has a letter, and separators only inside it. */
-const HASHTAG_NAME = `[${WORD}_][${WORD}${SEPARATORS}]*[${ALPHA}${SEPARATORS}][${WORD}${SEPARATORS}]*[${WORD}_]|[${WORD}_]*[${ALPHA}][${WORD}_]*`;
-
-/** `Tag::HASHTAG_RE`: `#` or `＃` at the start of a line or after a space. */
-const HASHTAG = new RegExp(`(?<=^|[${SPACE}])[#＃](${HASHTAG_NAME})`, "gmu");
-const HASHTAG_NAME_ONLY = new RegExp(`^(?:${HASHTAG_NAME})$`, "iu");
+const WORD_CHARACTER = new RegExp(`^[${WORD}]$`, "u");
+const ALPHA_CHARACTER = new RegExp(`^[${ALPHA}]$`, "u");
+const SEPARATOR_CHARACTER = new RegExp(`^[${SEPARATORS}]$`, "u");
 const HASHTAG_INVALID_CHARACTERS = new RegExp(`[^${ALNUM}\\u0E47-\\u0E4E${SEPARATORS}]`, "gu");
+const isWord = (c: string): boolean => WORD_CHARACTER.test(c);
+const isAlpha = (c: string): boolean => ALPHA_CHARACTER.test(c);
+const isSeparator = (c: string): boolean => SEPARATOR_CHARACTER.test(c);
+
+/** A `#` or `＃` at the start of a line or after a space, and the characters a name may take after it. */
+const HASHTAG_START = new RegExp(`(?<=^|[${SPACE}])[#＃]([${WORD}${ALPHA}${SEPARATORS}]*)`, "gmu");
+
+/**
+ * How many characters of `name` the first branch of `Tag::HASHTAG_NAME_PAT`
+ * matches from its start, `[[:word:]_][[:word:]SEP]*[[:alpha:]SEP][[:word:]SEP]*[[:word:]_]`,
+ * as the regex's backtracking would, but in linear time (the regex is
+ * quadratic on a long run with no word character at its end). 0 if none.
+ * The middle may hold one character that is a letter but no word character
+ * (`Ⅻ`), which must be the `[[:alpha:]SEP]` one.
+ */
+const firstBranchLength = (name: ReadonlyArray<string>): number => {
+  if (name.length < 2 || !isWord(name[0] ?? "")) {
+    return 0;
+  }
+  let other = -1;
+  let lastWord = -1;
+  for (let i = 1; i < name.length; i += 1) {
+    const c = name[i] ?? "";
+    if (isWord(c)) {
+      lastWord = i;
+    } else if (!isSeparator(c)) {
+      if (other !== -1 || !isAlpha(c)) {
+        break;
+      }
+      other = i;
+    }
+  }
+  if (lastWord < 2) {
+    return 0;
+  }
+  if (other !== -1 && other < lastWord) {
+    return lastWord + 1;
+  }
+  for (let i = 1; i < lastWord; i += 1) {
+    const c = name[i] ?? "";
+    if (isAlpha(c) || isSeparator(c)) {
+      return lastWord + 1;
+    }
+  }
+  return 0;
+};
+
+/**
+ * The second branch, `[[:word:]_]*[[:alpha:]][[:word:]_]*`: the run of word
+ * characters, or that run, one letter after it and the word characters after
+ * that, as long as it holds a letter. 0 if none.
+ */
+const lastBranchLength = (name: ReadonlyArray<string>): number => {
+  let run = 0;
+  while (run < name.length && isWord(name[run] ?? "")) {
+    run += 1;
+  }
+  if (run < name.length && isAlpha(name[run] ?? "")) {
+    let end = run + 1;
+    while (end < name.length && isWord(name[end] ?? "")) {
+      end += 1;
+    }
+    return end;
+  }
+  return name.slice(0, run).some(isAlpha) ? run : 0;
+};
 
 /**
  * A tag's stored name, as Mastodon's `HashtagNormalizer`: NFKC (full-width
@@ -87,7 +150,19 @@ export const normalizeHashtag = (raw: string): string =>
   raw.normalize("NFKC").toLowerCase().replace(HASHTAG_INVALID_CHARACTERS, "");
 
 /** Whether a name is a hashtag's (`Tag::HASHTAG_NAME_RE`): `日本語`, `a1`, not `2024`. */
-export const isHashtagName = (name: string): boolean => HASHTAG_NAME_ONLY.test(name);
+export const isHashtagName = (name: string): boolean => {
+  const characters = Array.from(name);
+  return (
+    characters.length > 0 &&
+    (firstBranchLength(characters) === characters.length || isLastBranchName(characters))
+  );
+};
+
+/** Whether all of `name` is the second branch: word characters and at least one letter, at most one of them no word character. */
+const isLastBranchName = (name: ReadonlyArray<string>): boolean => {
+  const others = name.filter((c) => !isWord(c));
+  return others.length <= 1 && others.every(isAlpha) && name.some(isAlpha);
+};
 
 /**
  * The hashtags in post text, normalized and unique, as Mastodon's
@@ -96,11 +171,14 @@ export const isHashtagName = (name: string): boolean => HASHTAG_NAME_ONLY.test(n
  */
 export const extractHashtags = (text: string): string[] => [
   ...new Set(
-    [...text.matchAll(HASHTAG)].map((match) => {
-      const name = match[1] ?? "";
-      const end = match.index + match[0].length;
+    [...text.matchAll(HASHTAG_START)].flatMap((match) => {
+      const run = Array.from(match[1] ?? "");
+      const length = firstBranchLength(run) || lastBranchLength(run);
+      const name = run.slice(0, length).join("");
+      const end = match.index + 1 + name.length;
       const beforeScheme = text.startsWith("://", end) ? /^(.+)https?$/u.exec(name) : null;
-      return normalizeHashtag(beforeScheme?.[1] ?? name);
+      const normalized = normalizeHashtag(beforeScheme?.[1] ?? name);
+      return length > 0 && isHashtagName(normalized) ? [normalized] : [];
     }),
   ),
 ];

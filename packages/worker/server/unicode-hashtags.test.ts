@@ -1,7 +1,7 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { ApiHashtag, ApiSearchResults, ApiStatus } from "@tstodon/api";
+import { ApiAccount, ApiHashtag, ApiSearchResults, ApiStatus } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 
@@ -68,5 +68,42 @@ describe("hashtags outside ASCII, as the compose form shows them", () => {
     });
     expect(found.status).toBe(200);
     expect(read(ApiSearchResults, found.body).hashtags.map((t) => t.name)).toContain("日本語タグ");
+  });
+
+  it("look a tag up by its normalized name, in a timeline as in the tag routes", async () => {
+    const status = await postStatus("unicode-tags-wide@example.com", "a post #tagwide");
+    const timeline = await json(`/api/v1/timelines/tag/${encodeURIComponent("ＴＡＧＷＩＤＥ")}`);
+    expect(timeline.status).toBe(200);
+    expect(read(z.array(ApiStatus), timeline.body).map((s) => s.id)).toContain(status.id);
+  });
+
+  it("let a name an older rule took be unfollowed", async () => {
+    const email = "unicode-tags-legacy@example.com";
+    const me = await json("/api/v1/accounts/verify_credentials", {
+      headers: await authHeaders(email),
+    });
+    const accountId = read(ApiAccount, me.body).id;
+    await env.DB.prepare(
+      "INSERT INTO followed_tags (account_id, tag_name, created_at) VALUES (?, '2024', ?)",
+    )
+      .bind(accountId, new Date().toISOString())
+      .run();
+    const followed = async (): Promise<string[]> =>
+      read(
+        z.array(ApiHashtag),
+        (await json("/api/v1/followed_tags", { headers: await authHeaders(email) })).body,
+      ).map((t) => t.name);
+    expect(await followed()).toContain("2024");
+    const unfollowed = await json("/api/v1/tags/2024/unfollow", {
+      method: "POST",
+      headers: await authHeaders(email),
+    });
+    expect(unfollowed.status).toBe(200);
+    expect(await followed()).not.toContain("2024");
+    const refollowed = await json("/api/v1/tags/2024/follow", {
+      method: "POST",
+      headers: await authHeaders(email),
+    });
+    expect(refollowed.status).toBe(404);
   });
 });

@@ -1,5 +1,5 @@
 import { ApiGetAccountStatusesParamsSchema } from "@tstodon/api";
-import { warmSchemas } from "@tstodon/core";
+import { normalizeHashtag, warmSchemas } from "@tstodon/core";
 import { AccountPresentation } from "@tstodon/domain";
 import type { Context } from "hono";
 import { ok } from "neverthrow";
@@ -149,7 +149,7 @@ export const getV1AccountsByIdStatuses = async (
     excludeReblogs: params.value.exclude_reblogs === true,
     excludeDirect: params.value.exclude_direct === true,
     onlyMedia: params.value.only_media === true,
-    tagged: params.value.tagged,
+    tagged: params.value.tagged === undefined ? undefined : normalizeHashtag(params.value.tagged),
     cursor: paramsCursor(params.value),
   };
   const account = await findAccountByIdOrUsername(c.env.DB, id);

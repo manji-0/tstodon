@@ -127,3 +127,73 @@ describe("normalizeHashtag and isHashtagName", () => {
     expect(isHashtagName("")).toBe(false);
   });
 });
+
+describe("hashtag matching against Mastodon's regex", () => {
+  const WORD = "\\p{L}\\p{M}\\p{Nd}\\p{Pc}";
+  const ALPHA = "\\p{Alphabetic}";
+  const SEP = "_\\u00B7\\u30FB\\u200C";
+  const NAME = `[${WORD}_][${WORD}${SEP}]*[${ALPHA}${SEP}][${WORD}${SEP}]*[${WORD}_]|[${WORD}_]*[${ALPHA}][${WORD}_]*`;
+  const HASHTAG_RE = new RegExp(`(?<=^|[\\p{White_Space}])[#＃](${NAME})`, "gmu");
+  const NAME_RE = new RegExp(`^(?:${NAME})$`, "iu");
+  const reference = (text: string): string[] => [
+    ...new Set(
+      [...text.matchAll(HASHTAG_RE)].flatMap((match) => {
+        const name = match[1] ?? "";
+        const end = match.index + match[0].length;
+        const cut = text.startsWith("://", end) ? /^(.+)https?$/u.exec(name) : null;
+        const normalized = normalizeHashtag(cut?.[1] ?? name);
+        return NAME_RE.test(normalized) ? [normalized] : [];
+      }),
+    ),
+  ];
+  const alphabet = [
+    "a",
+    "Z",
+    "1",
+    "_",
+    "·",
+    "・",
+    "‌",
+    "Ⅻ",
+    "Ⓐ",
+    "é",
+    "́",
+    " ",
+    "\n",
+    "#",
+    "＃",
+    ":",
+    "/",
+    "h",
+    "t",
+    "p",
+    "s",
+    "-",
+  ];
+  let seed = 1;
+  const random = (n: number): number => {
+    seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31;
+    return seed % n;
+  };
+
+  it("finds what Tag::HASHTAG_RE finds, on 20,000 random texts", () => {
+    for (let i = 0; i < 20_000; i += 1) {
+      const text = Array.from(
+        { length: 1 + random(14) },
+        () => alphabet[random(alphabet.length)],
+      ).join("");
+      expect(extractHashtags(text), JSON.stringify(text)).toEqual(reference(text));
+      expect(isHashtagName(text), JSON.stringify(text)).toBe(NAME_RE.test(text));
+    }
+  });
+
+  it("takes linear time where the regex backtracks", () => {
+    for (const filler of ["·", "‌"]) {
+      const text = `#1${filler.repeat(50_000)}Ⅻ`;
+      const started = performance.now();
+      extractHashtags(text);
+      isHashtagName(text.slice(1));
+      expect(performance.now() - started).toBeLessThan(200);
+    }
+  });
+});

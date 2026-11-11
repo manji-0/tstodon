@@ -47,7 +47,7 @@ export const mastodonFeaturedTag = (
 ): ApiFeaturedTagJSON => ({
   id: name,
   name,
-  url: `${identity.publicOrigin.replace(/\/$/, "")}/@${username}/tagged/${name}`,
+  url: `${identity.publicOrigin.replace(/\/$/, "")}/@${username}/tagged/${encodeURIComponent(name)}`,
   statuses_count: String(statusesCount),
   last_status_at: lastStatusAt,
 });
