@@ -89,9 +89,11 @@ export const presentedAccounts = async (
   identity: InstanceIdentity,
   localAccounts: ReadonlyArray<LocalAccount>,
   remoteActors: ReadonlyArray<RemoteActor>,
+  /** The instance's custom emojis, when the caller already loaded them. */
+  customEmojis?: ReadonlyArray<CustomEmoji>,
 ): Promise<PresentedAccounts> => {
   const [localDocuments, localPresentations, remotePresentations, moved] = await Promise.all([
-    mastodonAccountDocuments(env, identity, localAccounts),
+    mastodonAccountDocuments(env, identity, localAccounts, true, customEmojis),
     localAccountPresentations(
       env.DB,
       localAccounts.map((account) => account.id),
@@ -405,6 +407,8 @@ export const mastodonAccountDocuments = async (
   identity: InstanceIdentity,
   accounts: ReadonlyArray<LocalAccount>,
   includeMoved = true,
+  /** The instance's custom emojis, when the caller already loaded them. */
+  customEmojis?: ReadonlyArray<CustomEmoji>,
 ): Promise<ReadonlyMap<string, ApiAccountJSON>> => {
   if (accounts.length === 0) {
     return new Map();
@@ -413,7 +417,7 @@ export const mastodonAccountDocuments = async (
   const [counts, profiles, emojis] = await Promise.all([
     accountCountsByIds(env.DB, accountIds),
     listAccountProfiles(env.DB, accountIds),
-    loadCustomEmojis(env, identity.mediaPublicBaseUrl),
+    customEmojis ?? loadCustomEmojis(env, identity.mediaPublicBaseUrl),
   ]);
   const documents = new Map(
     accounts.map((account) => [

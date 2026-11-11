@@ -398,7 +398,7 @@ const renderLocalStatuses = async (
 
   const [presented, threadRoots, replyParents, mentionedLocals, mentionedActors] =
     await Promise.all([
-      presentedAccounts(env, identity, [...accounts.values()], []),
+      presentedAccounts(env, identity, [...accounts.values()], [], instanceEmojis),
       // Reply parents walk the thread from where `byId` already reaches.
       mutedSet.size > 0 ? resolveThreadRootStatusIds(env.DB, [...byId.values()]) : undefined,
       replyUris.isOk() && replyUris.value.size > 0

@@ -2,7 +2,11 @@ import type { ApiStatusJSON } from "@tstodon/api";
 import { InstanceIdentity, type LocalStatus, type RemoteNote, Visibility } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
-import { attachFilteredToRemoteStatuses, attachFilteredToStatuses } from "./filter-match";
+import {
+  attachFilteredToRemoteStatuses,
+  attachFilteredToStatuses,
+  loadViewerFilters,
+} from "./filter-match";
 import type { FollowedFeed, ListFeed } from "./followed-feed";
 import type { IdCursor } from "./id-cursor";
 import { type AccountList, listListTimelineStatuses } from "./list-store";
@@ -17,7 +21,7 @@ import {
   listPublicRemoteStatuses,
   listTagRemoteStatuses,
 } from "./remote-status-timeline-store";
-import { filterMutedThreads, mutedThreadStatusIds } from "./status-mute-store";
+import { filterMutedThreads, listStatusMuteRoots, mutedThreadStatusIds } from "./status-mute-store";
 import { listTagStatuses, type TagStatusFilters } from "./status-discovery-store";
 import {
   type AccountStatusFilters,
@@ -68,6 +72,12 @@ export const mergeTimelineDocuments = (
       ascending ? left.id.localeCompare(right.id) : right.id.localeCompare(left.id),
     )
     .slice(0, limit);
+};
+
+/** `read`, run on first use; later uses share its result. */
+const sharedRead = <T>(read: () => Promise<T>): (() => Promise<T>) => {
+  let pending: Promise<T> | undefined;
+  return () => (pending ??= read());
 };
 
 /** One source of a merged page: its entries, and how to render some of them. */
@@ -171,11 +181,13 @@ const publicSurfaceDocuments = async (
   if (remoteStatuses.isErr()) {
     return err(remoteStatuses.error);
   }
+  const filters =
+    viewerId === undefined ? undefined : sharedRead(() => loadViewerFilters(env.DB, viewerId));
   return renderMergedPage(
     [
       pageSource(localStatuses.value, async (statuses) =>
         (await mastodonStatuses(env, identity, statuses, viewerId)).asyncMap((documents) =>
-          attachFilteredToStatuses(env.DB, viewerId, "public", statuses, documents),
+          attachFilteredToStatuses(env.DB, viewerId, "public", statuses, documents, filters?.()),
         ),
       ),
       pageSource(
@@ -189,6 +201,7 @@ const publicSurfaceDocuments = async (
                 "public",
                 rendered.statuses,
                 rendered.documents,
+                filters?.(),
               ),
           ),
       ),
@@ -267,6 +280,7 @@ const feedDocuments = async (
   limit: number,
   cursor: IdCursor,
 ): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
+  const mutedRoots = listStatusMuteRoots(env.DB, viewerId);
   const [statuses, remote, boosts] = await Promise.all([
     local,
     listFollowedRemoteStatuses(env.DB, viewerId, feed, limit, cursor),
@@ -282,12 +296,13 @@ const feedDocuments = async (
     return err(boosts.error);
   }
   const [visible, mutedRemote] = await Promise.all([
-    filterMutedThreads(env.DB, viewerId, statuses.value),
+    filterMutedThreads(env.DB, viewerId, statuses.value, mutedRoots),
     mutedThreadStatusIds(
       env.DB,
       identity,
       viewerId,
       remote.value.map((status) => status.id),
+      mutedRoots,
     ),
   ]);
   if (visible.isErr()) {
@@ -296,11 +311,12 @@ const feedDocuments = async (
   if (mutedRemote.isErr()) {
     return err(mutedRemote.error);
   }
+  const filters = sharedRead(() => loadViewerFilters(env.DB, viewerId));
   return renderMergedPage(
     [
       pageSource(visible.value, async (shown) =>
         (await mastodonStatuses(env, identity, shown, viewerId)).asyncMap((documents) =>
-          attachFilteredToStatuses(env.DB, viewerId, "home", shown, documents),
+          attachFilteredToStatuses(env.DB, viewerId, "home", shown, documents, filters()),
         ),
       ),
       // The query already keeps followed actors' notes the viewer may see.
@@ -315,6 +331,7 @@ const feedDocuments = async (
                 "home",
                 rendered.statuses,
                 rendered.documents,
+                filters(),
               ),
           ),
       ),

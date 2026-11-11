@@ -173,8 +173,13 @@ export const mutedThreadStatusIds = async (
   identity: InstanceIdentity,
   accountId: string,
   statusIds: ReadonlyArray<string>,
+  /** The viewer's muted thread roots, when the caller already reads them. */
+  mutedRootsRead: Promise<Result<ReadonlySet<string>, RepositoryError>> = listStatusMuteRoots(
+    db,
+    accountId,
+  ),
 ): Promise<Result<ReadonlySet<string>, RepositoryError>> => {
-  const mutedRoots = await listStatusMuteRoots(db, accountId);
+  const mutedRoots = await mutedRootsRead;
   if (mutedRoots.isErr()) {
     return err(mutedRoots.error);
   }
@@ -221,8 +226,13 @@ export const filterMutedThreads = async (
   db: D1Database,
   accountId: string,
   statuses: ReadonlyArray<LocalStatusValue>,
+  /** The viewer's muted thread roots, when the caller already reads them. */
+  mutedRootsRead: Promise<Result<ReadonlySet<string>, RepositoryError>> = listStatusMuteRoots(
+    db,
+    accountId,
+  ),
 ): Promise<Result<LocalStatusValue[], RepositoryError>> => {
-  const mutedRoots = await listStatusMuteRoots(db, accountId);
+  const mutedRoots = await mutedRootsRead;
   if (mutedRoots.isErr()) {
     return err(mutedRoots.error);
   }
