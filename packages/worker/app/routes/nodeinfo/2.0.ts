@@ -1,1 +1,4 @@
-export { getNodeinfo20 as GET } from "#server/routes/discovery";
+import type { Context } from "hono";
+import { serveNodeinfo } from "#server/nodeinfo";
+
+export const GET = (c: Context<{ Bindings: Env }, "/nodeinfo/2.0">) => serveNodeinfo(c, "2.0");

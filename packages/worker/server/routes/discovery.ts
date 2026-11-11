@@ -1,13 +1,9 @@
-import type {
-  NodeInfo20JSON,
-  NodeInfoDiscoveryJSON,
-  WebFingerJrdJSON,
-} from "@tstodon/api/activitypub";
+import type { NodeInfoDiscoveryJSON, WebFingerJrdJSON } from "@tstodon/api/activitypub";
 import type { Context } from "hono";
 import { InstanceIdentity } from "@tstodon/domain";
-import { countAccounts, findAccountByUsername } from "../account-store";
+import { findAccountByUsername } from "../account-store";
 import { jsonRepositoryError } from "../http";
-import { parseInstanceIdentity, registrationsOpen } from "../runtime-config";
+import { parseInstanceIdentity } from "../runtime-config";
 
 /** The JRD for an account: its actor as the alias and the `self` link Mastodon resolves. */
 const jrd = (subject: string, actorUrl: string): WebFingerJrdJSON => ({
@@ -102,23 +98,11 @@ export const getWellKnownNodeinfo = (c: Context<{ Bindings: Env }>) => {
         rel: "http://nodeinfo.diaspora.software/ns/schema/2.0",
         href: `${identity.value.publicOrigin.replace(/\/$/, "")}/nodeinfo/2.0`,
       },
+      {
+        rel: "http://nodeinfo.diaspora.software/ns/schema/2.1",
+        href: `${identity.value.publicOrigin.replace(/\/$/, "")}/nodeinfo/2.1`,
+      },
     ],
   };
   return c.json(discovery);
-};
-
-export const getNodeinfo20 = async (c: Context<{ Bindings: Env }, "/nodeinfo/2.0">) => {
-  const users = await countAccounts(c.env.DB);
-  const nodeinfo: NodeInfo20JSON = {
-    version: "2.0",
-    software: { name: "tstodon", version: "0.1.0" },
-    protocols: ["activitypub"],
-    services: { inbound: [], outbound: [] },
-    // As the REST instance's `registrations.enabled` (Mastodon's
-    // `registrations_mode != 'none'`).
-    openRegistrations: registrationsOpen(c.env),
-    usage: { users: { total: users.isOk() ? users.value : 0 } },
-    metadata: {},
-  };
-  return c.json(nodeinfo);
 };

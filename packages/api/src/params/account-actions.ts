@@ -43,6 +43,8 @@ export const ApiGetAccountStatusesParamsSchema = ApiPaginationParamsSchema.exten
   only_media: z.boolean().optional(),
   exclude_replies: z.boolean().optional(),
   exclude_reblogs: z.boolean().optional(),
+  /** Mastodon API version 8: leave out direct posts. */
+  exclude_direct: z.boolean().optional(),
   tagged: z.string().optional(),
 });
 export type ApiGetAccountStatusesParams = z.input<typeof ApiGetAccountStatusesParamsSchema>;

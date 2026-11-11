@@ -27,10 +27,12 @@ export const NodeInfoDiscovery = z.object({
 });
 export type NodeInfoDiscoveryJSON = z.infer<typeof NodeInfoDiscovery>;
 
+const NodeInfoSoftware = z.object({ name: z.string().regex(/^[a-z0-9-]+$/), version: z.string() });
+
 /** NodeInfo 2.0 (`/nodeinfo/2.0`). */
 export const NodeInfo20 = z.object({
   version: z.literal("2.0"),
-  software: z.object({ name: z.string().regex(/^[a-z0-9-]+$/), version: z.string() }),
+  software: NodeInfoSoftware,
   protocols: z.array(z.literal("activitypub")),
   services: z.object({ inbound: z.array(z.string()), outbound: z.array(z.string()) }),
   openRegistrations: z.boolean(),
@@ -45,3 +47,13 @@ export const NodeInfo20 = z.object({
   metadata: z.record(z.string(), z.unknown()),
 });
 export type NodeInfo20JSON = z.infer<typeof NodeInfo20>;
+
+/** NodeInfo 2.1 (`/nodeinfo/2.1`): 2.0 plus the software's `repository` and `homepage`. */
+export const NodeInfo21 = NodeInfo20.extend({
+  version: z.literal("2.1"),
+  software: NodeInfoSoftware.extend({
+    repository: z.string().optional(),
+    homepage: z.string().optional(),
+  }),
+});
+export type NodeInfo21JSON = z.infer<typeof NodeInfo21>;

@@ -54,6 +54,8 @@ export * from "./sql/countAccountTagUses";
 
 export * from "./sql/countAccounts";
 
+export * from "./sql/countActiveAccountsSince";
+
 export * from "./sql/countFeaturedTags";
 
 export * from "./sql/countFollowersByAccountIdsJson";
