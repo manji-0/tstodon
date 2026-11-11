@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { Hono } from "hono";
-import { apiCors, isApiCorsPath, resolveApiCorsOrigin } from "./cors";
+import { apiCors, isApiCorsPath } from "./cors";
 import { envWith } from "../test/env-fixture";
 
 const env = envWith({
@@ -13,22 +13,6 @@ const env = envWith({
   CONTACT_EMAIL: "admin@example.com",
   INSTANCE_THUMBNAIL_URL: "https://example.com/site/thumbnail.png",
   MEDIA_PUBLIC_BASE_URL: "https://example.com",
-  CORS_ALLOWED_ORIGINS: "https://web.example.com, https://admin.example.com/",
-});
-
-describe("cors allowlist", () => {
-  it("allows the instance public origin and configured extras", () => {
-    expect(resolveApiCorsOrigin(env, "https://example.com")).toBe("https://example.com");
-    expect(resolveApiCorsOrigin(env, "https://web.example.com")).toBe("https://web.example.com");
-    expect(resolveApiCorsOrigin(env, "https://admin.example.com")).toBe(
-      "https://admin.example.com",
-    );
-    expect(resolveApiCorsOrigin(env, "https://admin.example.com/")).toBe(
-      "https://admin.example.com",
-    );
-    expect(resolveApiCorsOrigin(env, "https://evil.example")).toBeUndefined();
-    expect(resolveApiCorsOrigin(env, "")).toBeUndefined();
-  });
 });
 
 describe("api cors headers", () => {
@@ -52,6 +36,14 @@ describe("api cors headers", () => {
     expect(response.headers.get("access-control-allow-headers") ?? "").toMatch(/idempotency-key/i);
   });
 
+  it("allows any origin without credentials", async () => {
+    for (const origin of ["https://example.com", "https://evil.example"]) {
+      const response = await app.request("/api/v1/statuses", { headers: { Origin: origin } }, env);
+      expect(response.headers.get("access-control-allow-origin")).toBe("*");
+      expect(response.headers.get("access-control-allow-credentials")).toBeNull();
+    }
+  });
+
   it("exposes Link and the rate-limit headers", async () => {
     const response = await app.request(
       "/api/v1/statuses",
@@ -64,6 +56,7 @@ describe("api cors headers", () => {
       "x-ratelimit-limit",
       "x-ratelimit-remaining",
       "x-ratelimit-reset",
+      "mastodon-async-refresh",
     ]) {
       expect(exposed).toContain(name);
     }
