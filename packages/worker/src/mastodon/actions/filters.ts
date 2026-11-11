@@ -14,17 +14,24 @@ import type { AppDispatch } from 'mastodon/store';
 
 import { openModal } from './modal';
 
-export const FILTERS_FETCH_REQUEST = 'FILTERS_FETCH_REQUEST';
-export const FILTERS_FETCH_SUCCESS = 'FILTERS_FETCH_SUCCESS';
-export const FILTERS_FETCH_FAIL    = 'FILTERS_FETCH_FAIL';
+export const FILTERS_FETCH_REQUEST = 'FILTERS_FETCH_REQUEST' as const;
+export const FILTERS_FETCH_SUCCESS = 'FILTERS_FETCH_SUCCESS' as const;
+export const FILTERS_FETCH_FAIL    = 'FILTERS_FETCH_FAIL' as const;
 
-export const FILTERS_STATUS_CREATE_REQUEST = 'FILTERS_STATUS_CREATE_REQUEST';
-export const FILTERS_STATUS_CREATE_SUCCESS = 'FILTERS_STATUS_CREATE_SUCCESS';
-export const FILTERS_STATUS_CREATE_FAIL    = 'FILTERS_STATUS_CREATE_FAIL';
+export const FILTERS_STATUS_CREATE_REQUEST = 'FILTERS_STATUS_CREATE_REQUEST' as const;
+export const FILTERS_STATUS_CREATE_SUCCESS = 'FILTERS_STATUS_CREATE_SUCCESS' as const;
+export const FILTERS_STATUS_CREATE_FAIL    = 'FILTERS_STATUS_CREATE_FAIL' as const;
 
-export const FILTERS_CREATE_REQUEST = 'FILTERS_CREATE_REQUEST';
-export const FILTERS_CREATE_SUCCESS = 'FILTERS_CREATE_SUCCESS';
-export const FILTERS_CREATE_FAIL    = 'FILTERS_CREATE_FAIL';
+export const FILTERS_CREATE_REQUEST = 'FILTERS_CREATE_REQUEST' as const;
+export const FILTERS_CREATE_SUCCESS = 'FILTERS_CREATE_SUCCESS' as const;
+export const FILTERS_CREATE_FAIL    = 'FILTERS_CREATE_FAIL' as const;
+
+/** `FILTERS_FETCH_SUCCESS`: the viewer's filters, replacing those in the store. */
+export type FiltersFetchSuccessAction = {
+  type: typeof FILTERS_FETCH_SUCCESS;
+  filters: ApiFilterJSON[];
+  skipLoading: true;
+};
 
 export const initAddFilter = (status: Status | null | undefined, { contextType }: { contextType?: string }) => (dispatch: AppDispatch) =>
   dispatch(openModal({
@@ -46,7 +53,7 @@ export const fetchFilters = () => (dispatch: AppDispatch) => {
       type: FILTERS_FETCH_SUCCESS,
       filters: data,
       skipLoading: true,
-    }))
+    } satisfies FiltersFetchSuccessAction))
     .catch((err: unknown) => dispatch({
       type: FILTERS_FETCH_FAIL,
       err,

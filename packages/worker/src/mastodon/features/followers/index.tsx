@@ -27,7 +27,7 @@ const Followers: FC = () => {
   const accountId = useAccountId();
   const account = useAccount(accountId);
   const currentAccountId = useAppSelector(
-    (state) => (state.meta.get('me') as string | null) ?? null,
+    (state) => state.meta.get('me') ?? null,
   );
   const followerList = useAppSelector((state) =>
     selectUserListWithoutMe(state, 'followers', accountId),

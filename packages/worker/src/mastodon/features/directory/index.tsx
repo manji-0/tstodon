@@ -74,17 +74,13 @@ export const Directory: React.FC<{
   const domain = useAppSelector((s) => s.meta.get('domain') as string);
   const accountIds = useAppSelector(
     (state) =>
-      state.user_lists.getIn(
-        ['directory', 'items'],
-        ImmutableList(),
-      ) as ImmutableList<string>,
+      state.user_lists.get('directory')?.get('items') ?? ImmutableList<string>(),
   );
   const isLoading = useAppSelector(
-    (state) =>
-      state.user_lists.getIn(['directory', 'isLoading'], true) as boolean,
+    (state) => state.user_lists.get('directory')?.get('isLoading') ?? true,
   );
   const hasMore = useAppSelector(
-    (state) => !!state.user_lists.getIn(['directory', 'next']),
+    (state) => !!state.user_lists.get('directory')?.get('next'),
   );
 
   useEffect(() => {

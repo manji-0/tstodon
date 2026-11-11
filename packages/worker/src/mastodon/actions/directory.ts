@@ -1,5 +1,3 @@
-import type { List as ImmutableList } from 'immutable';
-
 import { apiGetDirectory } from 'mastodon/api/directory';
 import { createDataLoadingThunk } from 'mastodon/store/typed_functions';
 
@@ -23,13 +21,10 @@ export const fetchDirectory = createDataLoadingThunk(
 export const expandDirectory = createDataLoadingThunk(
   'directory/expand',
   async (params: Parameters<typeof apiGetDirectory>[0], { getState }) => {
-    const loadedItems = getState().user_lists.getIn([
-      'directory',
-      'items',
-    ]) as ImmutableList<unknown>;
+    const loadedItems = getState().user_lists.get('directory')?.get('items');
 
     return apiGetDirectory(
-      { ...params, offset: loadedItems.size },
+      { ...params, offset: loadedItems?.size ?? 0 },
       DIRECTORY_FETCH_LIMIT,
     );
   },

@@ -1,22 +1,21 @@
 import { useCallback } from 'react';
 import type { FC } from 'react';
 
-import type { Map, List } from 'immutable';
-
 import type { RenderSlideFn } from '@/mastodon/components/carousel';
 import { Carousel } from '@/mastodon/components/carousel';
 import { CustomEmojiProvider } from '@/mastodon/components/emoji/context';
 import { useCustomEmojis } from '@/mastodon/hooks/useCustomEmojis';
 import { mascot } from '@/mastodon/initial_state';
 import { createAppSelector, useAppSelector } from '@/mastodon/store';
+import { immutableToJS } from '@/mastodon/utils/immutable_map_of';
 
 import type { IAnnouncement } from './announcement';
 import { Announcement } from './announcement';
 
 const announcementSelector = createAppSelector(
-  [(state) => state.announcements as Map<string, List<Map<string, unknown>>>],
-  (announcements) =>
-    ((announcements.get('items')?.toJS() as IAnnouncement[] | undefined) ?? [])
+  [(state) => state.announcements.get('items')],
+  (items) =>
+    immutableToJS(items)
       .map((announcement) => ({ announcement, id: announcement.id }))
       .toReversed(),
 );

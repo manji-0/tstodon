@@ -28,7 +28,7 @@ const Embed: React.FC<{ id: string }> = ({ id }) => {
   const pictureInPicture = useAppSelector((state) =>
     getPictureInPicture(state, { id }),
   );
-  const domain = useAppSelector((state) => state.meta.get('domain'));
+  const domain = useAppSelector((state) => state.meta.get('domain') ?? '');
   const dispatch = useAppDispatch();
   const dispatchRenderSignal = useRenderSignal();
 

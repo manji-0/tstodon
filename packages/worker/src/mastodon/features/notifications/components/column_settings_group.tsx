@@ -17,11 +17,7 @@ import SettingToggle from './setting_toggle';
 
 const selectNotificationSettings = createAppSelector(
   [
-    (state) =>
-      state.settings.get('notifications') as Immutable.Map<
-        string,
-        Immutable.Map<string, unknown> | boolean
-      >,
+    (state) => state.settings.get('notifications'),
     (state) => state.notifications.get('browserPermission') as string,
     (state) => state.push_notifications,
   ],
@@ -30,7 +26,7 @@ const selectNotificationSettings = createAppSelector(
     browserPermission: browserPermission !== 'denied',
     pushSettings,
     showPushSettings:
-      pushSettings.get('supported') && pushSettings.get('enabled'),
+      pushSettings.get('browserSupport') && pushSettings.get('isSubscribed'),
   }),
 );
 

@@ -1,13 +1,13 @@
-import { fromJS, isIndexed } from 'immutable';
-
 import type { ApiAccountJSON, ApiInitialStateJSON } from '@tstodon/api';
 import type { AppDispatch } from 'mastodon/store';
+import { immutableFromJS } from 'mastodon/utils/immutable_map_of';
+import type { ImmutableOf } from 'mastodon/utils/immutable_map_of';
 
 import { hydrateCompose } from './compose';
 import { importFetchedAccounts } from './importer';
 import { hydrateSearch } from './search';
 
-export const STORE_HYDRATE = 'STORE_HYDRATE';
+export const STORE_HYDRATE = 'STORE_HYDRATE' as const;
 export const STORE_HYDRATE_LAZY = 'STORE_HYDRATE_LAZY';
 
 /**
@@ -19,9 +19,15 @@ export type HydrateState = Partial<Omit<ApiInitialStateJSON, 'meta' | 'accounts'
   accounts?: Record<string, ApiAccountJSON> | ApiAccountJSON[];
 };
 
-const convertState = (rawState: HydrateState) =>
-  fromJS(rawState, (k, v) =>
-    isIndexed(v) ? v.toList() : v.toMap());
+/** `STORE_HYDRATE`: the hydrated state as Immutable values (as `fromJS` makes them). */
+export type StoreHydrateAction = {
+  type: typeof STORE_HYDRATE;
+  state: ImmutableOf<HydrateState>;
+};
+
+// Upstream passed a reviver making a `List` of every array and a `Map` of
+// every object, which is what `fromJS` does by default for JSON values.
+const convertState = (rawState: HydrateState) => immutableFromJS(rawState);
 
 export function hydrateStore(rawState: HydrateState) {
   return (dispatch: AppDispatch) => {
@@ -30,7 +36,7 @@ export function hydrateStore(rawState: HydrateState) {
     dispatch({
       type: STORE_HYDRATE,
       state,
-    });
+    } satisfies StoreHydrateAction);
 
     dispatch(hydrateCompose());
     dispatch(hydrateSearch());

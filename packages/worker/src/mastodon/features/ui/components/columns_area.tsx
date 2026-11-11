@@ -10,8 +10,9 @@ import {
 
 import classNames from 'classnames';
 
-import type { List, Record } from 'immutable';
+import { List as ImmutableList } from 'immutable';
 
+import type { Column } from '@/mastodon/reducers/settings';
 import { useAppSelector } from '@/mastodon/store';
 import { Footer } from 'mastodon/features/custom_homepage/components/footer';
 import { Header } from 'mastodon/features/custom_homepage/components/header';
@@ -72,11 +73,15 @@ const TabsBarPortal = () => {
 export const ColumnIndexContext = createContext(1);
 export const useColumnIndexContext = () => useContext(ColumnIndexContext);
 
-interface Column {
-  uuid: string;
-  id: keyof typeof componentMap;
-  params?: null | Record<{ other?: unknown }>;
-}
+/** A column type this layout renders (a saved column may name another). */
+const isColumnType = (id: string): id is keyof typeof componentMap =>
+  Object.hasOwn(componentMap, id);
+
+/** The props a column's `params.other` spreads onto it (`onlyMedia`, ...). */
+const otherProps = (params: Record<string, unknown> | null) => {
+  const other = params?.other;
+  return typeof other === 'object' && other !== null ? other : {};
+};
 
 type FetchedComponent = React.FC<{
   columnId?: string;
@@ -94,7 +99,7 @@ export const ColumnsArea = forwardRef<
 >(({ children, minimalShell, singleColumn }, ref) => {
   const renderComposePanel = !useBreakpoint('full');
   const columns = useAppSelector(
-    (state) => state.settings.get('columns') as List<Record<Column>>,
+    (state) => state.settings.get('columns') ?? ImmutableList<Column>(),
   );
   const isModalOpen = useAppSelector(
     (state) => !state.modal.get('stack').isEmpty(),
@@ -149,9 +154,9 @@ export const ColumnsArea = forwardRef<
     >
       {columns.map((column, index) => {
         const params = column.get('params')
-          ? column.get('params')?.toJS()
+          ? column.get('params').toJS()
           : null;
-        const other = params?.other ?? {};
+        const other = otherProps(params);
         const uuid = column.get('uuid');
         const id = column.get('id');
 
@@ -159,7 +164,7 @@ export const ColumnsArea = forwardRef<
           <ColumnIndexContext.Provider value={index} key={uuid}>
             <Bundle
               key={uuid}
-              fetchComponent={componentMap[id]}
+              fetchComponent={isColumnType(id) ? componentMap[id] : undefined}
               loading={renderLoading(id)}
               error={ErrorComponent}
             >
