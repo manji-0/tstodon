@@ -13,11 +13,13 @@ import {
   type LocalNote,
   LocalStatus,
   QuoteInteractionPolicy,
+  type QuoteValue,
   StatusTarget,
   type StatusTargetValue,
   Visibility,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
+import { z } from "zod";
 import { type PresentedAccount, presentedAccounts } from "./account-documents";
 import { boostedStatusAuthors, StatusAuthors } from "./account-presentation";
 import { findAccountsByIds } from "./account-store";
@@ -42,7 +44,6 @@ import { quotedStatusAccess } from "./quoted-status-access";
 import { findRemoteStatusesByIds, findRemoteStatusRefsByObjectUris } from "./remote-status-store";
 import { findStatusesByIds, listStatusReplyUris } from "./status-store";
 import { listStatusCards } from "./status-card-store";
-import { followingAccountIds } from "./follow-store";
 import {
   type StatusInteractionCounts,
   statusInteractionCountsByIds,
@@ -57,7 +58,31 @@ import { mastodonMedia } from "./media-document";
 import { pollJson } from "./poll-document";
 import { noteQuotePolicy, quoteInteractionPolicy } from "./quote-policy-name";
 import { documentsById } from "./documents-by-id";
-import type { RepositoryError } from "./d1";
+import { jsonStringArray, runD1, type RepositoryError } from "./d1";
+import { listFollowedAccountIds as listFollowedAccountIdsSql } from "./generated/prisma/sql";
+import { queryTyped } from "./typed-sql";
+
+const TargetAccountIdRow = z.object({ target_account_id: z.string() });
+
+/** Which of `accountIds` the viewer follows. */
+const followedAccountIds = async (
+  db: D1Database,
+  viewerId: string,
+  accountIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlySet<string>, RepositoryError>> => {
+  const unique = [...new Set(accountIds)];
+  if (unique.length === 0) {
+    return ok(new Set());
+  }
+  return runD1(async () => {
+    const rows = await queryTyped(
+      db,
+      listFollowedAccountIdsSql(viewerId, jsonStringArray(unique)),
+      TargetAccountIdRow,
+    );
+    return new Set(rows.map((row) => row.target_account_id));
+  });
+};
 
 const mediaAttachmentsJson = (
   identity: InstanceIdentity,
@@ -235,8 +260,26 @@ const renderLocalStatuses = async (
     }
   }
 
+  // What renders: the statuses given, what they boost, and what they quote. A
+  // loaded reply parent only names its author on the reply, and stays in
+  // `byId` for that and for finding thread roots.
+  const shown = new Map<string, LocalStatus>();
+  const show = (status: LocalStatus): void => {
+    if (shown.has(status.id)) {
+      return;
+    }
+    shown.set(status.id, status);
+    if (status.kind === "LocalReblog" && status.target.kind === "LocalStatus") {
+      const target = byId.get(status.target.statusId);
+      if (target) {
+        show(target);
+      }
+    }
+  };
+  statuses.forEach(show);
+
   // Quotes point at another note; load the quoted statuses so the quote can be
-  // rendered, then read every quote of the loaded notes.
+  // rendered, then read every quote of the shown notes.
   const noteIdsOf = (statuses: Iterable<LocalStatus>): string[] =>
     [...statuses].filter(LocalStatus.isNote).map((status) => status.id);
   const noteTargetsOf = (statuses: Iterable<LocalStatus>) =>
@@ -245,41 +288,43 @@ const renderLocalStatuses = async (
     const result = await findQuotesByQuoting(env.DB, noteTargetsOf(statuses));
     return result.isOk() ? result.value : new Map<string, never>();
   };
-  let quotes = await loadQuotes(byId.values());
-  const quotedMissing = [
+  const localQuotedIds = (quotes: ReadonlyMap<string, QuoteValue>): string[] => [
     ...new Set(
       [...quotes.values()].flatMap(({ quoted }) =>
         quoted.kind === "LocalStatus" ? [quoted.statusId] : [],
       ),
     ),
-  ].filter((id) => !byId.has(id));
-  if (quotedMissing.length > 0) {
-    const loaded = await findStatusesByIds(env.DB, quotedMissing);
+  ];
+  const loadMissing = async (ids: ReadonlyArray<string>): Promise<void> => {
+    const missing = ids.filter((id) => !byId.has(id));
+    if (missing.length === 0) {
+      return;
+    }
+    const loaded = await findStatusesByIds(env.DB, missing);
     for (const [id, status] of loaded.isOk() ? loaded.value : []) {
       byId.set(id, status);
     }
+  };
+  let quotes = await loadQuotes(shown.values());
+  const quotedIds = localQuotedIds(quotes);
+  await loadMissing(quotedIds);
+  const quotedShown = quotedIds.flatMap((id) => {
+    const status = byId.get(id);
+    return status && !shown.has(id) ? [status] : [];
+  });
+  if (quotedShown.length > 0) {
+    for (const status of quotedShown) {
+      shown.set(status.id, status);
+    }
+    quotes = await loadQuotes(shown.values());
   }
-  quotes = await loadQuotes(byId.values());
   // A quoted status shows its own quote by id, under the state the viewer
   // sees it in: load the local statuses those quotes name too.
-  const nestedMissing = [
-    ...new Set(
-      [...quotes.values()].flatMap(({ quoted }) =>
-        quoted.kind === "LocalStatus" && !byId.has(quoted.statusId) ? [quoted.statusId] : [],
-      ),
-    ),
-  ];
-  if (nestedMissing.length > 0) {
-    const loaded = await findStatusesByIds(env.DB, nestedMissing);
-    for (const [id, status] of loaded.isOk() ? loaded.value : []) {
-      byId.set(id, status);
-    }
-    quotes = await loadQuotes(byId.values());
-  }
+  await loadMissing(localQuotedIds(quotes));
 
-  const allStatuses = [...byId.values()];
+  const allStatuses = [...shown.values()];
   const accountIds = [...new Set(allStatuses.map((status) => status.accountId))];
-  const noteIds = allStatuses.filter(LocalStatus.isNote).map((status) => status.id);
+  const noteIds = noteIdsOf(allStatuses);
   const mediaIds = [
     ...new Set(
       allStatuses.flatMap((status) => (status.kind === "LocalNote" ? [...status.mediaIds] : [])),
@@ -293,6 +338,12 @@ const renderLocalStatuses = async (
     mediaResult,
     sensitizedResult,
     cardsResult,
+    quoteCountsResult,
+    policiesResult,
+    viewerFollowing,
+    mutedRoots,
+    replyUris,
+    mentionsResult,
   ] = await Promise.all([
     findAccountsByIds(env.DB, accountIds),
     statusInteractionCountsByIds(env.DB, noteIds, viewerId),
@@ -300,6 +351,18 @@ const renderLocalStatuses = async (
     findMediaByIds(env.DB, mediaIds),
     sensitizedAccountIds(env.DB, accountIds),
     listStatusCards(env.DB, noteIds),
+    quoteCountsByQuoted(env.DB, noteTargetsOf(allStatuses)),
+    findStatusQuotePolicies(env.DB, noteIds),
+    viewerId
+      ? followedAccountIds(
+          env.DB,
+          viewerId,
+          allStatuses.filter(LocalStatus.isNote).map((status) => status.accountId),
+        )
+      : undefined,
+    viewerId ? listStatusMuteRoots(env.DB, viewerId) : undefined,
+    listStatusReplyUris(env.DB, noteIds),
+    listStatusMentions(env.DB, noteIds),
   ]);
 
   if (accountsResult.isErr()) {
@@ -320,31 +383,43 @@ const renderLocalStatuses = async (
       },
     ),
   );
-
-  const [presented, quoteCountsResult, policiesResult] = await Promise.all([
-    presentedAccounts(env, identity, [...accounts.values()], []),
-    quoteCountsByQuoted(env.DB, noteTargetsOf(allStatuses)),
-    findStatusQuotePolicies(env.DB, noteIdsOf(allStatuses)),
-  ]);
-  if (presented.isErr()) {
-    return err(presented.error);
-  }
-  const authorOf = (status: LocalStatus): PresentedAccount | undefined =>
-    presented.value.get(status.accountId);
   const quoteCounts = quoteCountsResult.isOk()
     ? quoteCountsResult.value
     : new Map<string, number>();
   const quotePolicies = policiesResult.isOk()
     ? policiesResult.value
     : new Map<string, QuotePolicy>();
-  const viewerFollowing = viewerId ? await followingAccountIds(env.DB, viewerId) : undefined;
   const followedByIds = viewerFollowing?.isOk() ? viewerFollowing.value : new Set<string>();
+  const mutedSet = mutedRoots?.isOk() ? mutedRoots.value : new Set<string>();
+  const mentions = mentionsResult.isOk()
+    ? mentionsResult.value
+    : new Map<string, { accountIds: ReadonlyArray<string>; actorUris: ReadonlyArray<string> }>();
+  const mentionedLocalIds = [...mentions.values()].flatMap((entry) => entry.accountIds);
+
+  const [presented, threadRoots, replyParents, mentionedLocals, mentionedActors] =
+    await Promise.all([
+      presentedAccounts(env, identity, [...accounts.values()], []),
+      // Reply parents walk the thread from where `byId` already reaches.
+      mutedSet.size > 0 ? resolveThreadRootStatusIds(env.DB, [...byId.values()]) : undefined,
+      replyUris.isOk() && replyUris.value.size > 0
+        ? findRemoteStatusRefsByObjectUris(env.DB, [...replyUris.value.values()])
+        : undefined,
+      findAccountsByIds(
+        env.DB,
+        mentionedLocalIds.filter((id) => !accounts.has(id)),
+      ),
+      findRemoteActorsByUris(
+        env.DB,
+        [...mentions.values()].flatMap((entry) => entry.actorUris),
+      ),
+    ]);
+  if (presented.isErr()) {
+    return err(presented.error);
+  }
+  const authorOf = (status: LocalStatus): PresentedAccount | undefined =>
+    presented.value.get(status.accountId);
 
   const noteDocs = new Map<string, ApiOriginalStatusJSON>();
-  const mutedRoots = viewerId ? await listStatusMuteRoots(env.DB, viewerId) : undefined;
-  const mutedSet = mutedRoots?.isOk() ? mutedRoots.value : new Set<string>();
-  const threadRoots =
-    mutedSet.size > 0 ? await resolveThreadRootStatusIds(env.DB, allStatuses) : undefined;
   const rootById = threadRoots?.isOk() ? threadRoots.value : undefined;
   for (const status of allStatuses) {
     if (status.kind !== "LocalNote") {
@@ -383,11 +458,9 @@ const renderLocalStatuses = async (
   }
 
   // A reply to a cached remote status names it by URI; render its id and author.
-  const replyUris = await listStatusReplyUris(env.DB, [...noteDocs.keys()]);
-  if (replyUris.isOk() && replyUris.value.size > 0) {
-    const parents = await findRemoteStatusRefsByObjectUris(env.DB, [...replyUris.value.values()]);
+  if (replyUris.isOk()) {
     for (const [statusId, uri] of replyUris.value) {
-      const parent = parents.isOk() ? parents.value.get(uri) : undefined;
+      const parent = replyParents?.isOk() ? replyParents.value.get(uri) : undefined;
       const document = noteDocs.get(statusId);
       if (parent && document) {
         document.in_reply_to_id = parent.id;
@@ -397,21 +470,6 @@ const renderLocalStatuses = async (
   }
 
   // Mentions render as Mastodon's Mention entities, local and remote alike.
-  const mentionsResult = await listStatusMentions(env.DB, [...noteDocs.keys()]);
-  const mentions = mentionsResult.isOk()
-    ? mentionsResult.value
-    : new Map<string, { accountIds: ReadonlyArray<string>; actorUris: ReadonlyArray<string> }>();
-  const mentionedLocalIds = [...mentions.values()].flatMap((entry) => entry.accountIds);
-  const [mentionedLocals, mentionedActors] = await Promise.all([
-    findAccountsByIds(
-      env.DB,
-      mentionedLocalIds.filter((id) => !accounts.has(id)),
-    ),
-    findRemoteActorsByUris(
-      env.DB,
-      [...mentions.values()].flatMap((entry) => entry.actorUris),
-    ),
-  ]);
   const mentionedAccount = (id: string): LocalAccount | undefined =>
     accounts.get(id) ?? (mentionedLocals.isOk() ? mentionedLocals.value.get(id) : undefined);
   for (const [statusId, entry] of mentions) {
