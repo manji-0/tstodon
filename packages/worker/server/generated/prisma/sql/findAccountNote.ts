@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param target
  */
 export const findAccountNote = $runtime.makeTypedQueryFactory(
-  "SELECT note FROM account_notes\nWHERE account_id = $1 AND (target_account_id = $2 OR target_actor_uri = $2)\nLIMIT 1",
+  "SELECT note FROM account_notes\nWHERE account_id = $1 AND target_actor_uri = $2\nUNION ALL\nSELECT note FROM account_notes\nWHERE account_id = $1 AND target_account_id = $2\nLIMIT 1",
 ) as (
   accountId: string,
   target: string,

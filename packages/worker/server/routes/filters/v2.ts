@@ -12,6 +12,7 @@ import {
   type FilterRow,
   findFilterById,
   insertFilter,
+  listAccountFilterStatuses,
   listFilters,
   listFilterStatuses,
   updateFilter,
@@ -59,15 +60,19 @@ export const getV2Filters = async (c: Context<{ Bindings: Env }, "/api/v2/filter
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const rows = await listFilters(c.env.DB, user.value.id);
+  const [rows, statuses] = await Promise.all([
+    listFilters(c.env.DB, user.value.id),
+    listAccountFilterStatuses(c.env.DB, user.value.id),
+  ]);
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
-  const documents: ApiFilterJSON[] = [];
-  for (const row of rows.value) {
-    documents.push(await filterDocumentV2(c, row));
-  }
-  return c.json(documents);
+  const statusesByFilter = statuses.isOk() ? statuses.value : undefined;
+  return c.json(
+    rows.value.map((row): ApiFilterJSON =>
+      mastodonFilterV2(row, statusesByFilter?.get(row.id) ?? []),
+    ),
+  );
 };
 
 /** Keywords from either `keywords_attributes[]` or `keywords[]`, in order. */
