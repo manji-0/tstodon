@@ -2,7 +2,7 @@ import { createReducer } from '@reduxjs/toolkit';
 import { OrderedSet as ImmutableOrderedSet } from 'immutable';
 
 import { getNextLinkUri } from 'mastodon/api';
-import type { Status } from 'mastodon/models/status';
+import type { AnyStatus } from 'mastodon/models/status';
 
 import { blockAccountSuccess, muteAccountSuccess } from '../actions/accounts';
 import {
@@ -143,9 +143,9 @@ const appendToList = (
 const prependOneToList = (
   state: StatusListsState,
   listType: StatusListKey,
-  status: Status,
+  status: AnyStatus,
 ) => {
-  const statusId = status.get('id') as string;
+  const statusId = status.get('id');
   return updateList(state, listType, (list) => {
     const items = list.get('items');
     return items.includes(statusId)
@@ -157,10 +157,10 @@ const prependOneToList = (
 const removeOneFromList = (
   state: StatusListsState,
   listType: StatusListKey,
-  status: Status,
+  status: AnyStatus,
 ) => {
   return updateList(state, listType, (list) =>
-    list.set('items', list.get('items').delete(status.get('id') as string)),
+    list.set('items', list.get('items').delete(status.get('id'))),
   );
 };
 

@@ -4,7 +4,7 @@ import { defineMessages, useIntl } from 'react-intl';
 
 import { replyCompose } from 'mastodon/actions/compose';
 import { editStatus } from 'mastodon/actions/statuses';
-import type { Status } from 'mastodon/models/status';
+import type { AnyStatus } from 'mastodon/models/status';
 import { useAppDispatch, useAppSelector } from 'mastodon/store';
 
 import type { BaseConfirmationModalProps } from './confirmation_modal';
@@ -73,7 +73,7 @@ const DiscardDraftConfirmationModal: React.FC<
 
 export const ConfirmReplyModal: React.FC<
   {
-    status: Status;
+    status: AnyStatus;
   } & BaseConfirmationModalProps
 > = ({ status, onClose }) => {
   const dispatch = useAppDispatch();

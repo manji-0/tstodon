@@ -32,8 +32,7 @@ const selectRepliedToAccountIds = createAppSelector(
   ],
   (statusesMap: Map<string, Status>, statusIds: string[]) =>
     statusIds.map(
-      (statusId) =>
-        statusesMap.getIn([statusId, 'in_reply_to_account_id']) as string,
+      (statusId) => statusesMap.get(statusId)?.get('in_reply_to_account_id'),
     ),
   {
     memoizeOptions: {
@@ -137,7 +136,8 @@ const Comment: React.FC<Props> = ({
     // Then, fetch missing replied-to accounts
     const unknownAccounts = OrderedSet(
       accountIds.filter(
-        (accountId) => accountId && !accountsMap.has(accountId),
+        (accountId): accountId is string =>
+          !!accountId && !accountsMap.has(accountId),
       ),
     );
     unknownAccounts.forEach((accountId) => {

@@ -15,10 +15,7 @@ import { openModal } from 'mastodon/actions/modal';
 import { IconButton } from 'mastodon/components/icon_button';
 import { BoostButton } from 'mastodon/components/status/boost_button';
 import { useIdentity } from 'mastodon/identity_context';
-import type { Account } from 'mastodon/models/account';
-import type { Status } from 'mastodon/models/status';
 import { makeGetStatus } from 'mastodon/selectors';
-import type { RootState } from 'mastodon/store';
 import { useAppSelector, useAppDispatch } from 'mastodon/store';
 
 const messages = defineMessages({
@@ -45,11 +42,6 @@ const messages = defineMessages({
   open: { id: 'status.open', defaultMessage: 'Expand this status' },
 });
 
-type GetStatusSelector = (
-  state: RootState,
-  props: { id?: string | null; contextType?: string },
-) => Status | null;
-
 export const Footer: React.FC<{
   statusId: string;
   withOpenButton?: boolean;
@@ -59,9 +51,9 @@ export const Footer: React.FC<{
   const intl = useIntl();
   const history = useHistory();
   const dispatch = useAppDispatch();
-  const getStatus = useMemo(() => makeGetStatus(), []) as GetStatusSelector;
+  const getStatus = useMemo(() => makeGetStatus(), []);
   const status = useAppSelector((state) => getStatus(state, { id: statusId }));
-  const account = status?.get('account') as Account | undefined;
+  const account = status?.get('account');
   const askReplyConfirmation = useAppSelector(
     (state) => state.compose.get('text').trim().length !== 0,
   );
@@ -87,7 +79,7 @@ export const Footer: React.FC<{
           modalType: 'INTERACTION',
           modalProps: {
             intent: 'reply',
-            accountId: status.getIn(['account', 'id']),
+            accountId: status.get('account').id,
             url: status.get('uri'),
           },
         }),
@@ -101,14 +93,14 @@ export const Footer: React.FC<{
     }
 
     if (signedIn) {
-      dispatch(toggleFavourite(status.get('id') as string));
+      dispatch(toggleFavourite(status.get('id')));
     } else {
       dispatch(
         openModal({
           modalType: 'INTERACTION',
           modalProps: {
             intent: 'favourite',
-            accountId: status.getIn(['account', 'id']),
+            accountId: status.get('account').id,
             url: status.get('uri'),
           },
         }),
@@ -124,7 +116,7 @@ export const Footer: React.FC<{
 
       onClose();
 
-      history.push(`/@${account?.acct}/${status.get('id') as string}`);
+      history.push(`/@${account?.acct}/${status.get('id')}`);
     },
     [history, status, account, onClose],
   );
@@ -156,18 +148,18 @@ export const Footer: React.FC<{
         title={replyTitle}
         icon={
           status.get('in_reply_to_account_id') ===
-          status.getIn(['account', 'id'])
+          status.get('account').id
             ? 'reply'
             : replyIcon
         }
         iconComponent={
           status.get('in_reply_to_account_id') ===
-          status.getIn(['account', 'id'])
+          status.get('account').id
             ? ReplyIcon
             : replyIconComponent
         }
         onClick={handleReplyClick}
-        counter={status.get('replies_count') as number}
+        counter={status.get('replies_count')}
       />
 
       <BoostButton counters statusId={statusId} />
@@ -175,12 +167,12 @@ export const Footer: React.FC<{
       <IconButton
         className='status__action-bar-button star-icon'
         animate
-        active={status.get('favourited') as boolean}
+        active={status.get('favourited')}
         title={favouriteTitle}
         icon='star'
         iconComponent={status.get('favourited') ? StarIcon : StarBorderIcon}
         onClick={handleFavouriteClick}
-        counter={status.get('favourites_count') as number}
+        counter={status.get('favourites_count')}
       />
 
       {withOpenButton && (
@@ -190,7 +182,7 @@ export const Footer: React.FC<{
           icon='external-link'
           iconComponent={OpenInNewIcon}
           onClick={handleOpenClick}
-          href={`/@${account?.acct}/${status.get('id') as string}`}
+          href={`/@${account?.acct}/${status.get('id')}`}
         />
       )}
     </div>

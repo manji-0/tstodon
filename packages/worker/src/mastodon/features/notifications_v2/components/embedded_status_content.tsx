@@ -1,22 +1,19 @@
 import { useCallback, useMemo } from 'react';
 
-import type { List, Map } from 'immutable';
-
 import { EmojiHTML } from '@/mastodon/components/emoji/html';
 import { useElementHandledLink } from '@/mastodon/components/status/handled_link';
-import type { CustomEmoji } from '@/mastodon/models/custom_emoji';
 import type { Status } from '@/mastodon/models/status';
-
-import type { Mention } from './embedded_status';
+import { immutableToJS } from '@/mastodon/utils/immutable_map_of';
 
 export const EmbeddedStatusContent: React.FC<{
   status: Status;
   className?: string;
 }> = ({ status, className }) => {
   const mentions = useMemo(
-    () => (status.get('mentions') as List<Mention>).toJS(),
+    () => immutableToJS(status.get('mentions')),
     [status],
   );
+  const emojis = useMemo(() => immutableToJS(status.get('emojis')), [status]);
   const hrefToMention = useCallback(
     (href: string) => {
       return mentions.find((item) => item.url === href);
@@ -25,16 +22,15 @@ export const EmbeddedStatusContent: React.FC<{
   );
   const hrefToCollection = useCallback(
     (href: string) => {
-      const collections = status.get('tagged_collections') as List<
-        Map<'url' | 'id', string>
-      >;
-      const collection = collections.find((item) => item.get('url') === href);
+      const collection = status
+        .get('tagged_collections')
+        .find((item) => item.get('url') === href);
       return collection?.get('id');
     },
     [status],
   );
   const htmlHandlers = useElementHandledLink({
-    hashtagAccountId: status.get('account') as string | undefined,
+    hashtagAccountId: status.get('account'),
     hrefToCollectionId: hrefToCollection,
     hrefToMention,
   });
@@ -43,9 +39,9 @@ export const EmbeddedStatusContent: React.FC<{
     <EmojiHTML
       {...htmlHandlers}
       className={className}
-      lang={status.get('language') as string}
-      htmlString={status.get('contentHtml') as string}
-      extraEmojis={status.get('emojis') as List<CustomEmoji>}
+      lang={status.get('language') ?? undefined}
+      htmlString={status.get('contentHtml', '')}
+      extraEmojis={emojis}
     />
   );
 };

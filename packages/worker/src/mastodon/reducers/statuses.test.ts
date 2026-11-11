@@ -25,6 +25,7 @@ import { setStatusQuotePolicy } from '../actions/statuses_typed';
 import { timelineDelete } from '../actions/timelines_typed';
 import type { ApiQuotePolicyJSON } from '../api_types/quotes';
 import type { Status } from '../models/status';
+import { immutableFromJS } from '../utils/immutable_map_of';
 
 import statuses from './statuses';
 import type { StatusesState } from './statuses';
@@ -56,6 +57,34 @@ describe('statuses reducer', () => {
     expect(state.getIn(['1', 'account'])).toBe(status.account);
   });
 
+  test('links only http(s) URLs, also when a status is imported again', () => {
+    const fetched = statusFactoryAPI({
+      id: '1',
+      uri: 'https://example.com/statuses/1',
+      url: 'javascript:alert(1)',
+      media_attachments: [
+        imageAttachmentFactoryAPI({ id: 'm1', remote_url: 'javascript:x' }),
+      ],
+    });
+    const first = statuses(
+      undefined,
+      importStatus(normalizeStatus(fetched, undefined, {})),
+    );
+    // Imported again with the same content (a favourite's response, ...),
+    // the stored HTML is kept: the URLs were not sanitized then.
+    const again = statuses(
+      first,
+      importStatus(normalizeStatus(fetched, first.get('1'), {})),
+    );
+
+    for (const state of [first, again]) {
+      expect(state.getIn(['1', 'url'])).toBe('https://example.com/statuses/1');
+      expect(
+        state.getIn(['1', 'media_attachments', 0, 'remote_url']),
+      ).toBeNull();
+    }
+  });
+
   test('imports several statuses', () => {
     expect(withStatuses('1', '2').keySeq().toArray()).toEqual(['1', '2']);
   });
@@ -80,7 +109,7 @@ describe('statuses reducer', () => {
 
   test('does not bookmark a status that is not in the store', () => {
     const state = withStatuses('1');
-    const other = ImmutableMap<string, unknown>({ id: '2' });
+    const other = immutableFromJS(normalized('2'));
     expect(statuses(state, bookmarkRequest(other))).toBe(state);
   });
 
@@ -225,7 +254,23 @@ describe('statuses reducer', () => {
         { statusId: '1', policy: 'nobody' },
       ),
     );
-    expect(saved.getIn(['1', 'quote_approval'])).toEqual(quoteApproval);
+    expect(saved.getIn(['1', 'quote_approval'])).toEqual(
+      fromJS(quoteApproval),
+    );
     expect(saved.getIn(['1', 'isSavingQuotePolicy'])).toBeUndefined();
+
+    // A streamed update carries no policy of the viewer's: the saved one is
+    // kept (it was lost while the reducer stored it as a plain object).
+    const updated = statuses(
+      saved,
+      importStatus(
+        normalizeStatus(statusFactoryAPI({ id: '1' }), saved.get('1'), {
+          bogusQuotePolicy: true,
+        }),
+      ),
+    );
+    expect(updated.getIn(['1', 'quote_approval'])).toEqual(
+      fromJS(quoteApproval),
+    );
   });
 });

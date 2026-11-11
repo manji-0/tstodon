@@ -60,10 +60,8 @@ export const getDescendantsIds = createAppSelector(
         return false;
       }
 
-      const inReplyToAccountId = status.get('in_reply_to_account_id') as
-        | string
-        | null;
-      const accountId = status.get('account') as string;
+      const inReplyToAccountId = status.get('in_reply_to_account_id');
+      const accountId = status.get('account');
 
       return inReplyToAccountId !== accountId;
     });
@@ -76,10 +74,8 @@ export const getDescendantsIds = createAppSelector(
           return;
         }
 
-        const inReplyToAccountId = status.get('in_reply_to_account_id') as
-          | string
-          | null;
-        const accountId = status.get('account') as string;
+        const inReplyToAccountId = status.get('in_reply_to_account_id');
+        const accountId = status.get('account');
 
         if (idx > insertAt && inReplyToAccountId === accountId) {
           descendantsIds.splice(idx, 1);

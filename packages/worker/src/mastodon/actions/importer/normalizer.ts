@@ -1,5 +1,4 @@
 import escapeTextContentForBrowser from 'escape-html';
-import type { Map as ImmutableMap } from 'immutable';
 import { isList, isMap } from 'immutable';
 
 import type {
@@ -16,7 +15,12 @@ import type {
   ApiPreviewCardJSON,
   ApiStatusJSON,
 } from 'mastodon/api_types/statuses';
-import type { FilterResult, Status } from 'mastodon/models/status';
+import type {
+  FilterResult,
+  Status,
+  StatusTranslation,
+} from 'mastodon/models/status';
+import type { ImmutableOf } from 'mastodon/utils/immutable_map_of';
 
 import { expandSpoilers } from '../../initial_state';
 
@@ -37,7 +41,7 @@ export type NormalizedQuote =
 
 export type NormalizedMediaAttachment = ApiMediaAttachmentJSON & {
   /** Carried over from the stored attachment while its description is the same. */
-  translation?: unknown;
+  translation?: ImmutableOf<{ description: string }>;
 };
 
 export type NormalizedCard = Omit<ApiPreviewCardJSON, 'authors'> & {
@@ -63,8 +67,11 @@ export type NormalizedStatus = Omit<
   | 'filtered'
   | 'media_attachments'
   | 'quote_approval'
+  | 'url'
 > & {
   account: string;
+  /** An http(s) URL: the status's own, else its `uri`. */
+  url: string;
   reblog?: string | null;
   quote?: NormalizedQuote | null;
   poll: string | null;
@@ -73,13 +80,13 @@ export type NormalizedStatus = Omit<
   media_attachments: NormalizedMediaAttachment[];
   quote_approval:
     | FetchedStatusJSON['quote_approval']
-    | ImmutableMap<unknown, unknown>
+    | ImmutableOf<FetchedStatusJSON['quote_approval']>
     | null;
   search_index?: string | null;
   contentHtml?: string;
   spoilerHtml?: string;
   hidden?: boolean;
-  translation?: unknown;
+  translation?: ImmutableOf<StatusTranslation>;
 };
 
 export interface NormalizeStatusOptions {
@@ -156,6 +163,7 @@ export function normalizeStatus(
     filtered,
     media_attachments,
     quote_approval,
+    url,
     ...fields
   } = status;
 
@@ -176,7 +184,13 @@ export function normalizeStatus(
         }
       : null,
     ...(filtered ? { filtered: filtered.map(normalizeFilterResult) } : {}),
-    media_attachments,
+    // Only http(s) URLs are linked to, also when the status is imported again.
+    url: (url && isHttpUrl(url) ? url : null) || fields.uri,
+    media_attachments: media_attachments.map((item) =>
+      item.remote_url && !isHttpUrl(item.remote_url)
+        ? { ...item, remote_url: null }
+        : item,
+    ),
     quote_approval: bogusQuotePolicy ? null : quote_approval,
   };
 
@@ -230,21 +244,10 @@ export function normalizeStatus(
     if (normalStatus.quote) {
       normalStatus.contentHtml = stripQuoteFallback(normalStatus.contentHtml);
     }
-
-    if (normalStatus.url && !isHttpUrl(normalStatus.url)) {
-      normalStatus.url = null;
-    }
-
-    normalStatus.url ||= normalStatus.uri;
-
-    normalStatus.media_attachments = normalStatus.media_attachments.map(
-      (item) =>
-        item.remote_url && !isHttpUrl(item.remote_url)
-          ? { ...item, remote_url: null }
-          : item,
-    );
   }
 
+  // The stored status may be the stub of a status being fetched (`isLoading`
+  // alone, which `Status` does not describe), so these are checked.
   if (normalOldStatus) {
     if (!normalStatus.quote_approval) {
       const oldQuoteApproval = normalOldStatus.get('quote_approval');

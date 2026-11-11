@@ -11,8 +11,6 @@ import {
 import classNames from 'classnames';
 import { Link } from 'react-router-dom';
 
-import type { Map as ImmutableMap } from 'immutable';
-
 import { fetchRelationships } from 'mastodon/actions/accounts';
 import {
   openDropdownMenu,
@@ -28,6 +26,7 @@ import {
   isExternalLinkItem,
 } from 'mastodon/models/dropdown_menu';
 import type { MenuItem } from 'mastodon/models/dropdown_menu';
+import type { AnyStatus } from 'mastodon/models/status';
 import { useAppDispatch, useAppSelector } from 'mastodon/store';
 
 import { Icon } from './icon';
@@ -304,7 +303,7 @@ interface DropdownProps<Item extends object | null = MenuItem> {
    * from being scrolled while the dropdown is open
    */
   scrollKey?: string;
-  status?: ImmutableMap<string, unknown>;
+  status?: AnyStatus;
   needsStatusRefresh?: boolean;
   forceDropdown?: boolean;
   className?: string;
@@ -352,7 +351,7 @@ export const Dropdown = <Item extends object | null = MenuItem>({
   const prefetchAccountId = status
     ? status.getIn(['account', 'id'])
     : undefined;
-  const statusId = status?.get('id') as string | undefined;
+  const statusId = status?.get('id');
 
   const handleClose = useCallback(() => {
     if (buttonElement) {

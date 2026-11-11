@@ -10,19 +10,28 @@ import { Blurhash } from 'mastodon/components/blurhash';
 import { Icon } from 'mastodon/components/icon';
 import { formatTime } from 'mastodon/features/video';
 import { autoPlayGif, displayMedia, useBlurhash } from 'mastodon/initial_state';
-import type { Status, MediaAttachment } from 'mastodon/models/status';
+import type { MediaAttachmentFields, Status } from 'mastodon/models/status';
 import { useAppSelector } from 'mastodon/store';
+import type { ImmutableMapOf } from 'mastodon/utils/immutable_map_of';
+
+/**
+ * An attachment in the gallery, with the status it belongs to
+ * (`selectGalleryTimeline`).
+ */
+export type GalleryMediaAttachment = ImmutableMapOf<
+  Omit<MediaAttachmentFields, 'status'> & { status: Status }
+>;
 
 export const MediaItem: React.FC<{
-  attachment: MediaAttachment;
-  onOpenMedia: (arg0: MediaAttachment) => void;
+  attachment: GalleryMediaAttachment;
+  onOpenMedia: (arg0: GalleryMediaAttachment) => void;
 }> = ({ attachment, onOpenMedia }) => {
   const account = useAppSelector((state) =>
-    state.accounts.get(attachment.getIn(['status', 'account']) as string),
+    state.accounts.get(attachment.get('status').get('account')),
   );
   const [visible, setVisible] = useState(
     (displayMedia !== 'hide_all' &&
-      !attachment.getIn(['status', 'sensitive'])) ||
+      !attachment.get('status').get('sensitive')) ||
       displayMedia === 'show_all',
   );
   const [loaded, setLoaded] = useState(false);
@@ -70,16 +79,17 @@ export const MediaItem: React.FC<{
     [attachment, visible, onOpenMedia, setVisible],
   );
 
-  const status = attachment.get('status') as Status;
-  const description = (attachment.getIn(['translation', 'description']) ||
-    attachment.get('description')) as string | undefined;
-  const previewUrl = attachment.get('preview_url') as string;
-  const fullUrl = attachment.get('url') as string;
+  const status = attachment.get('status');
+  const description =
+    attachment.get('translation')?.get('description') ||
+    (attachment.get('description') ?? undefined);
+  const previewUrl = attachment.get('preview_url') ?? undefined;
+  const fullUrl = attachment.get('url');
   const avatarUrl = account?.avatar_static;
-  const lang = status.get('language') as string;
-  const blurhash = attachment.get('blurhash') as string;
-  const statusId = status.get('id') as string;
-  const type = attachment.get('type') as string;
+  const lang = status.get('language') ?? undefined;
+  const blurhash = attachment.get('blurhash');
+  const statusId = status.get('id');
+  const type = attachment.get('type');
 
   let thumbnail;
 

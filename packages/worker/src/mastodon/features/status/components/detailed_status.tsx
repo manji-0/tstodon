@@ -19,7 +19,6 @@ import { DisplayName } from 'mastodon/components/display_name';
 import { EditedTimestamp } from 'mastodon/components/edited_timestamp';
 import { FilterWarning } from 'mastodon/components/filter_warning';
 import { FormattedDateWrapper } from 'mastodon/components/formatted_date';
-import type { StatusLike } from 'mastodon/components/hashtag_bar';
 import { getHashtagBarForStatus } from 'mastodon/components/hashtag_bar';
 import { Icon } from 'mastodon/components/icon';
 import { IconLogo } from 'mastodon/components/logo';
@@ -406,9 +405,7 @@ export const DetailedStatus: React.FC<{
     </Link>
   );
 
-  const { statusContentProps, hashtagBar } = getHashtagBarForStatus(
-    status as StatusLike,
-  );
+  const { statusContentProps, hashtagBar } = getHashtagBarForStatus(status);
 
   const matchedFilters = status.get('matched_filters');
 

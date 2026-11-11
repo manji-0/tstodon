@@ -74,16 +74,17 @@ export const selectStatusConditions = createAppSelector(
   [
     selectPlainStatus,
     (state) => state.meta.get('me', null) as string | null,
+    (state, statusId: string) => {
+      const quotedStatusId = state.statuses
+        .get(statusId)
+        ?.get('quote')
+        ?.get('quoted_status');
+      return quotedStatusId
+        ? state.statuses.get(quotedStatusId)?.get('account')
+        : undefined;
+    },
     (state, statusId: string) =>
-      state.statuses.getIn([
-        state.statuses.getIn([statusId, 'quote', 'quoted_status']),
-        'account',
-      ]) as string | undefined | null,
-    (state, statusId: string) =>
-      selectIsAccountLocal(
-        state,
-        state.statuses.getIn([statusId, 'account']) as string,
-      ),
+      selectIsAccountLocal(state, state.statuses.get(statusId)?.get('account')),
   ],
   (status, userId, quotedAccountId, isLocal) => {
     const isPublic =

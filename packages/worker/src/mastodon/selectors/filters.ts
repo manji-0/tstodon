@@ -15,9 +15,6 @@ export interface FilterShape {
   filter_action: 'hide' | 'blur' | 'warn';
 }
 
-// TODO: move to `app/javascript/mastodon/models` and use more globally
-type FilterResult = Immutable.Map<string, unknown>;
-
 export const getFilters = createAppSelector(
   [
     (state) => state.filters,
@@ -124,9 +121,7 @@ export const getStatusHidden = createAppSelector(
     (state, { contextType }: { contextType: StatusContextType }) =>
       getFilters(state, { contextType }),
     (state, { id }: { id: string }) =>
-      state.statuses.getIn([id, 'filtered']) as
-        | Immutable.List<FilterResult>
-        | undefined,
+      state.statuses.get(id)?.get('filtered'),
   ],
   (filters, filtered) => {
     if (!filters) {
