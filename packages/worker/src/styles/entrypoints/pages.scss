@@ -344,8 +344,15 @@ textarea {
   font-size: var(--fs-md);
 }
 
+// One height for every single-line control; the browsers' own heights differ
+// by up to 6px (text 42, select 40, date 44, file 46).
+input:not([type='checkbox'], [type='radio'], [type='hidden'], [type='submit']),
+select {
+  height: 2.75rem;
+}
+
 input[type='file'] {
-  padding: calc(var(--space-2xs) + 1px) var(--space-2xs);
+  padding: var(--space-2xs);
 }
 
 input[type='file']::file-selector-button {

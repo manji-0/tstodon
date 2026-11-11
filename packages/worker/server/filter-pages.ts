@@ -7,7 +7,14 @@ import {
   type KeywordRow,
 } from "./filter-form";
 import { escapeHtml } from "./html";
-import { checkbox, messageLine, nav, options, type PageMessage } from "./settings-pages";
+import {
+  checkbox,
+  messageLine,
+  minuteText,
+  nav,
+  options,
+  type PageMessage,
+} from "./settings-pages";
 
 /**
  * Mastodon's filter pages (`/filters`, `/filters/new`, `/filters/:id/edit`),
@@ -37,7 +44,7 @@ const listItem = (item: FilterListItem, now: Date): string => {
   const expiry =
     item.expiresAt === null
       ? "never expires"
-      : `${new Date(item.expiresAt) <= now ? "expired" : "expires"} ${escapeHtml(item.expiresAt)}`;
+      : `${new Date(item.expiresAt) <= now ? "expired" : "expires"} ${escapeHtml(minuteText(item.expiresAt))}`;
   return `
         <li>
           <strong>${escapeHtml(item.title)}</strong>
@@ -132,7 +139,7 @@ export const filterFormPage = (
 ): string => {
   const keepExpiry =
     mode.kind === "edit" && mode.expiresAt !== null
-      ? ([[KEEP_EXPIRY, `Keep (expires ${mode.expiresAt})`]] as const)
+      ? ([[KEEP_EXPIRY, `Keep (expires ${minuteText(mode.expiresAt)})`]] as const)
       : ([] as const);
   const title = mode.kind === "new" ? "New filter" : "Edit filter";
   return page(
