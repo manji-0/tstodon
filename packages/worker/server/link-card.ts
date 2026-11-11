@@ -181,6 +181,57 @@ const cachedCard = async (
     return { card, fresh: Number.isFinite(fetched) && Date.now() - fetched < CARD_TTL_MS };
   });
 
+/** Redirects a preview fetch follows before giving up. */
+const MAX_REDIRECTS = 5;
+
+type GuardedFetch =
+  | Readonly<{ kind: "Response"; response: Response }>
+  | Readonly<{ kind: "Refused" }>
+  | Readonly<{ kind: "Unavailable" }>;
+
+/**
+ * GETs the page, following redirects by hand so every hop's host passes the
+ * federation rules and the DNS check, not only the first. A redirect past the
+ * hop limit, or to a non-http(s) or malformed target, is refused.
+ */
+const fetchGuarded = async (
+  first: URL,
+  identity: InstanceIdentity,
+  options: Readonly<{
+    allowHosts?: ReadonlySet<string>;
+    blockedHosts?: ReadonlySet<Hostname>;
+  }>,
+): Promise<GuardedFetch> => {
+  const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  let url = first;
+  for (let hops = 0; hops <= MAX_REDIRECTS; hops += 1) {
+    const admitted = await checkFederatedHost(url.hostname, identity.domain, options);
+    if (admitted !== "Admitted") {
+      return { kind: admitted };
+    }
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": `tstodon (${identity.publicOrigin})`,
+      },
+      redirect: "manual",
+      signal,
+    });
+    const location = response.headers.get("location");
+    if (response.status < 300 || response.status >= 400 || location === null) {
+      return { kind: "Response", response };
+    }
+    await response.body?.cancel();
+    const next = absolute(location, url.href);
+    if (next === null || !/^https?:/.test(next)) {
+      return { kind: "Refused" };
+    }
+    url = new URL(next);
+  }
+  return { kind: "Refused" };
+};
+
 /**
  * Unfurl outcome: `Transient` is worth retrying, everything else is settled.
  */
@@ -222,24 +273,13 @@ export const resolveLinkCard = async (
   } catch {
     return { kind: "Skipped" };
   }
-  const admitted = await checkFederatedHost(parsed.hostname, identity.domain, options);
-  if (admitted === "Refused") {
-    return { kind: "Skipped" };
-  }
-  if (admitted === "Unavailable") {
-    return { kind: "Transient" };
-  }
   let response: Response;
   try {
-    response = await fetch(parsed, {
-      method: "GET",
-      headers: {
-        Accept: "text/html,application/xhtml+xml",
-        "User-Agent": `tstodon (${identity.publicOrigin})`,
-      },
-      redirect: "follow",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
+    const followed = await fetchGuarded(parsed, identity, options);
+    if (followed.kind !== "Response") {
+      return followed.kind === "Refused" ? { kind: "Skipped" } : { kind: "Transient" };
+    }
+    response = followed.response;
   } catch {
     // Timeouts and network errors are worth another attempt.
     return stale ? { kind: "Stale", card: stale } : { kind: "Transient" };

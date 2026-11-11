@@ -11,6 +11,7 @@ import {
   type PushAlertKey,
   type PushSubscription,
 } from "./push-subscription-store";
+import { checkFederatedHost } from "./federated-fetch";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteFollow } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
@@ -192,6 +193,20 @@ export const processPushJob = async (
     JSON.stringify(pushPayload(job.notificationId, type, document.value)),
     PUSH_TTL_SECONDS,
   );
+  // The endpoint was checked when it was stored, but a name can come to
+  // resolve to a private address later.
+  const reachable = await checkFederatedHost(
+    URL.canParse(subscription.endpoint) ? new URL(subscription.endpoint).hostname : "",
+    identity.value.domain,
+  );
+  if (reachable === "Unavailable") {
+    return "retry";
+  }
+  if (reachable === "Refused") {
+    writeMetric(env, "push.deliver", [0], ["refused"]);
+    await deletePushSubscription(env.DB, subscription.id);
+    return "ok";
+  }
   let response: Response;
   try {
     response = await fetch(subscription.endpoint, {

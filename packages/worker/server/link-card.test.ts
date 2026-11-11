@@ -12,6 +12,7 @@ import { authHeaders } from "../test/auth-fixture";
 import { cacheLinkCard, processLinkCardJob } from "./link-card";
 import { processOutboxJob } from "./outbox-job";
 import { unsignedFetch } from "./federated-fetch";
+import { withHostAddresses } from "../test/host-resolver-fixture";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -456,5 +457,87 @@ describe("link cards", () => {
         url: "http://127.0.0.1:9/private",
       }),
     ).toBe("ok");
+  });
+
+  it("checks every redirect hop, not only the first host", async () => {
+    const status = await postStatus("card-redirect@example.com", "see https://hop.example/start");
+    const redirect = (location: string) =>
+      new Response(null, { status: 302, headers: { location } });
+    const html = () => new Response(OG_HTML, { headers: { "content-type": "text/html" } });
+    const job = (url: string) =>
+      processLinkCardJob(env, { kind: "ProcessLinkCard", target: "Status", id: status.id, url });
+
+    // A redirect to a public host is followed.
+    await withFetchStub(
+      (url) =>
+        url.hostname === "hop.example"
+          ? redirect("https://dest.example/story")
+          : url.hostname === "dest.example"
+            ? html()
+            : undefined,
+      async () => {
+        expect(await job("https://hop.example/start")).toBe("ok");
+        expect((await statusCard(status.id))?.title).toBe("A Fine Article");
+      },
+    );
+
+    // A redirect to an IP literal in a private range is not followed.
+    const privateCalls = await withFetchStub(
+      (url) =>
+        url.hostname === "hop2.example"
+          ? redirect("http://169.254.169.254/latest/meta-data")
+          : url.hostname === "169.254.169.254"
+            ? html()
+            : undefined,
+      async () => {
+        expect(await job("https://hop2.example/start")).toBe("ok");
+      },
+    );
+    expect(privateCalls).toBe(1);
+
+    // So is a redirect to a public name that resolves to a private address.
+    await withHostAddresses({ "sneaky.example": ["10.0.0.7"] }, async () => {
+      const calls = await withFetchStub(
+        (url) =>
+          url.hostname === "hop3.example"
+            ? redirect("https://sneaky.example/internal")
+            : url.hostname === "sneaky.example"
+              ? html()
+              : undefined,
+        async () => {
+          expect(await job("https://hop3.example/start")).toBe("ok");
+        },
+      );
+      expect(calls).toBe(1);
+    });
+  });
+
+  it("stops after too many redirects", async () => {
+    const status = await postStatus("card-loop@example.com", "loop https://loop.example/0");
+    let hops = 0;
+    await withFetchStub(
+      (url) => {
+        if (url.hostname !== "loop.example") {
+          return undefined;
+        }
+        hops += 1;
+        return new Response(null, {
+          status: 301,
+          headers: { location: `https://loop.example/${hops}` },
+        });
+      },
+      async () => {
+        expect(
+          await processLinkCardJob(env, {
+            kind: "ProcessLinkCard",
+            target: "Status",
+            id: status.id,
+            url: "https://loop.example/0",
+          }),
+        ).toBe("ok");
+      },
+    );
+    expect(hops).toBe(6);
+    expect(await statusCard(status.id)).toBeNull();
   });
 });

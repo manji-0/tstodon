@@ -4,6 +4,7 @@ import { ApiInitialState, ApiWebPushSubscription } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
 import { type Browser, ORIGIN, signUp } from "../test/passkey-browser";
+import { withHostAddresses } from "../test/host-resolver-fixture";
 import { bytesToBase64Url, vapidPublicKey } from "./vapid";
 
 /** The page's initial state, parsed with the contract the web UI reads it by. */
@@ -137,6 +138,16 @@ describe("web UI push subscriptions", () => {
       await registration("https://127.0.0.1/push"),
     );
     expect(local.status).toBe(422);
+    // A public name that resolves to a private address is refused too.
+    await withHostAddresses({ "push-private.example": ["10.1.2.3"] }, async () => {
+      const resolved = await send(
+        "POST",
+        "/api/web/push_subscriptions",
+        web,
+        await registration("https://push-private.example/push"),
+      );
+      expect(resolved.status).toBe(422);
+    });
     const badKeys = await send("POST", "/api/web/push_subscriptions", web, {
       subscription: {
         endpoint: "https://push.example/web/keys",
