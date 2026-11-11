@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
+import { answerLinkPreviews } from "../test/link-card-fixture";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
 import { nowIso } from "./clock";
 import { generateAccountKeys } from "./keys";
@@ -171,6 +172,12 @@ describe("tag timeline across the fediverse", () => {
   it("does not let hashtag search find the tags or link fragments of a remote direct or followers-only note", async () => {
     const actor = await remoteAuthor("dana", "tagsearchprivate.example");
     const link = (url: string): string => `<a href="${url}">${url}</a>`;
+    // Each note queues a preview of its first link (see `answerLinkPreviews`).
+    const previews = answerLinkPreviews([
+      "https://app.example/invite#RemoteDmFrag",
+      "https://app.example/join#RemotePrivFrag",
+      "https://app.example/page#RemotePubFrag",
+    ]);
     await remotePost(
       actor,
       `${actor.actorUri}/statuses/1`,
@@ -189,6 +196,7 @@ describe("tag timeline across the fediverse", () => {
       `${actor.actorUri}/statuses/3`,
       `<p>${link("https://app.example/page#RemotePubFrag")}</p>`,
     );
+    await previews.settled();
 
     for (const query of ["remotedm", "remotepriv", "remotepubfrag"]) {
       const anonymous = await json(`/api/v2/search?q=${query}&type=hashtags`);

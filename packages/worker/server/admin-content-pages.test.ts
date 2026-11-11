@@ -11,6 +11,7 @@ import {
   redirectsTo,
 } from "../test/admin-browser";
 import { authHeaders } from "../test/auth-fixture";
+import { answerLinkPreviews } from "../test/link-card-fixture";
 import { ORIGIN, postForm, read, signUp } from "../test/passkey-browser";
 import { type Remote, remoteActor } from "../test/remote-actor-fixture";
 import { LocalAccountModeration } from "@tstodon/domain";
@@ -599,7 +600,10 @@ describe("admin content pages", () => {
   it("rejects a trending link and a trending post out of the public trends, and approves them back", async () => {
     const admin = await adminBrowser("content_trend_more_admin");
     const url = "https://pages-trend.example/article";
+    // The status queues a preview of its link (see `answerLinkPreviews`).
+    const previews = answerLinkPreviews([url]);
     const post = await postStatus("content-trend-link@example.com", `worth a read ${url}`);
+    await previews.settled();
 
     const links = await page(await admin.fetcher("/admin/trends/links"));
     expect(links).toContain(url);

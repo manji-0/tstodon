@@ -31,6 +31,7 @@ import { listExpiredUnnotifiedPolls } from "./poll-store";
 import { publishToAccount } from "./stream-publish";
 import { signInboxRequest, verifyInboxRequest } from "./http-signature";
 import { authHeaders } from "../test/auth-fixture";
+import { answerLinkPreviews } from "../test/link-card-fixture";
 
 const auth = (
   email: string,
@@ -1186,6 +1187,8 @@ describe("worker http", () => {
     expect(trendStatuses.status).toBe(200);
     expect(read(z.array(ApiStatus), trendStatuses.body).length).toBeGreaterThan(0);
 
+    // The status queues a preview of its first link (see `answerLinkPreviews`).
+    const previews = answerLinkPreviews(["https://news.example/story"]);
     const linked = await json("/api/v1/statuses", {
       method: "POST",
       headers: { "content-type": "application/json", ...(await auth("link-trend@example.com")) },
@@ -1194,6 +1197,7 @@ describe("worker http", () => {
       }),
     });
     expect(linked.status).toBe(200);
+    await previews.settled();
 
     const trendLinks = await json("/api/v1/trends/links");
     expect(trendLinks.status).toBe(200);

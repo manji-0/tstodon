@@ -23,6 +23,7 @@ import {
 } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
+import { answerLinkPreviews } from "../test/link-card-fixture";
 
 /**
  * The admin API (`/api/v1/admin/*`) checked against its `@tstodon/api`
@@ -205,10 +206,13 @@ describe("admin API contract (@tstodon/api)", () => {
     });
     await ok(z.object({}), "DELETE", `/api/v1/admin/ip_blocks/${block.id}`);
 
+    // The status queues a preview of its link (see `answerLinkPreviews`).
+    const previews = answerLinkPreviews(["https://contract-publisher.example/a"]);
     await ok(ApiStatus, "POST", "/api/v1/statuses", {
       email: MEMBER,
       body: { status: "contract #contractadmintag https://contract-publisher.example/a" },
     });
+    await previews.settled();
     await ok(z.array(ApiAdminTag), "GET", "/api/v1/admin/tags");
     await ok(ApiAdminTag, "GET", "/api/v1/admin/tags/contractadmintag");
     await ok(ApiAdminTag, "PUT", "/api/v1/admin/tags/contractadmintag", {
