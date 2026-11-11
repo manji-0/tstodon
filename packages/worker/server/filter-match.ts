@@ -103,11 +103,13 @@ export const attachFilteredToStatuses = async <T extends FilterableDocument>(
   context: string,
   statuses: ReadonlyArray<LocalStatus>,
   documents: ReadonlyArray<T>,
+  /** The viewer's filters, when the caller already reads them. */
+  filtersRead?: Promise<Result<ReadonlyArray<FilterWithStatuses>, RepositoryError>>,
 ): Promise<ReadonlyArray<T>> => {
   if (!viewerId) {
     return documents;
   }
-  const filters = await loadViewerFilters(db, viewerId);
+  const filters = await (filtersRead ?? loadViewerFilters(db, viewerId));
   if (filters.isErr() || filters.value.length === 0) {
     return documents;
   }
@@ -135,11 +137,13 @@ export const attachFilteredToRemoteStatuses = async <T extends FilterableDocumen
   context: string,
   statuses: ReadonlyArray<Readonly<{ id: string; contentHtml: string }>>,
   documents: ReadonlyArray<T>,
+  /** The viewer's filters, when the caller already reads them. */
+  filtersRead?: Promise<Result<ReadonlyArray<FilterWithStatuses>, RepositoryError>>,
 ): Promise<ReadonlyArray<T>> => {
   if (!viewerId) {
     return documents;
   }
-  const filters = await loadViewerFilters(db, viewerId);
+  const filters = await (filtersRead ?? loadViewerFilters(db, viewerId));
   if (filters.isErr() || filters.value.length === 0) {
     return documents;
   }

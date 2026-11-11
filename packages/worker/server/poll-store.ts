@@ -222,7 +222,9 @@ export const findPollsByStatusIds = async (
   if (unique.length === 0) {
     return ok(new Map<string, PollRecord>());
   }
-  const queried = await runD1(() =>
+  const idsJson = jsonStringArray(unique);
+  // The polls and the viewer's own votes on them in one round trip.
+  const batched = await runD1Batch(db, [
     db
       .prepare(
         `SELECT id, status_id, multiple, expires_at, options_json, hide_totals,
@@ -233,34 +235,30 @@ export const findPollsByStatusIds = async (
            )) AS voters_count
          FROM polls WHERE status_id ${sqlInJsonEach()}`,
       )
-      .bind(jsonStringArray(unique))
-      .all(),
-  );
-  if (queried.isErr()) {
-    return err(queried.error);
-  }
-  const rows = parseRows(PollRowSchema, queried.value.results);
-  if (rows.length === 0) {
-    return ok(new Map<string, PollRecord>());
-  }
-  const viewerVotes = viewerId
-    ? (
-        await runD1(() =>
+      .bind(idsJson),
+    ...(viewerId
+      ? [
           db
             .prepare(
               `SELECT poll_id, option_index FROM poll_votes
-             WHERE account_id = ? AND poll_id ${sqlInJsonEach()}`,
+               WHERE account_id = ?
+                 AND poll_id IN (SELECT id FROM polls WHERE status_id ${sqlInJsonEach()})`,
             )
-            .bind(viewerId, jsonStringArray(rows.map((row) => row.id)))
-            .all(),
-        )
-      ).map(({ results }) => parseRows(ViewerVoteRow, results))
-    : ok([]);
-  if (viewerVotes.isErr()) {
-    return err(viewerVotes.error);
+            .bind(viewerId, idsJson),
+        ]
+      : []),
+  ]);
+  if (batched.isErr()) {
+    return err(batched.error);
   }
+  const [polls, viewerVoteRows] = batched.value;
+  const rows = parseRows(PollRowSchema, polls?.results);
+  if (rows.length === 0) {
+    return ok(new Map<string, PollRecord>());
+  }
+  const viewerVotes = parseRows(ViewerVoteRow, viewerVoteRows?.results);
   const votesByPoll = new Map(
-    [...Map.groupBy(viewerVotes.value, (vote) => vote.poll_id)].map(([pollId, votes]) => [
+    [...Map.groupBy(viewerVotes, (vote) => vote.poll_id)].map(([pollId, votes]) => [
       pollId,
       votes.map((vote) => vote.option_index),
     ]),
