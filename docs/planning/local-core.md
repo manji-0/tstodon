@@ -214,6 +214,7 @@ Labels:
 | GET    | `/api/v1/search`                                    |
 | GET    | `/api/v2/search`                                    |
 | GET    | `/api/v1/statuses/:id/context`                      |
+| GET    | `/api/v1_alpha/async_refreshes/:id`                 |
 | GET    | `/api/v1/statuses/:id/favourited_by`                |
 | GET    | `/api/v1/statuses/:id/reblogged_by`                 |
 | GET    | `/api/v1/directory`                                 |

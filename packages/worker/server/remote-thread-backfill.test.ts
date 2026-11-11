@@ -1,8 +1,10 @@
 import { SELF, env } from "cloudflare:test";
+import { ApiAsyncRefresh } from "@tstodon/api";
 import { OutboxJob } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { authHeaders } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { processOutboxJob } from "./outbox-job";
 import { findRemoteStatusById } from "./remote-status-store";
@@ -10,6 +12,8 @@ import {
   requestRemoteThreadBackfill,
   THREAD_BACKFILL_ANCESTOR_LIMIT,
   THREAD_BACKFILL_REPLY_LIMIT,
+  THREAD_REFRESH_RUNNING_LIMIT_MS,
+  threadRefreshOf,
 } from "./remote-thread-backfill";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -253,5 +257,126 @@ describe("opening a remote status", () => {
     await requested(await statusIdOf(opened.id), recording.env);
 
     expect(recording.sent).toEqual([]);
+  });
+});
+
+const READER = "async-refresh-reader@example.com";
+
+const contextResponse = async (statusId: string, headers: Record<string, string> = {}) =>
+  SELF.fetch(`https://example.com/api/v1/statuses/${statusId}/context`, { headers });
+
+const asyncRefresh = async (id: string, headers: Record<string, string>) =>
+  SELF.fetch(`https://example.com/api/v1_alpha/async_refreshes/${encodeURIComponent(id)}`, {
+    headers,
+  });
+
+describe("Mastodon async refresh of a remote thread", () => {
+  it("tells a signed-in reader to poll the fetch the view queued", async () => {
+    const author = await remoteActor("refresh-header", "thread.example");
+    const opened = noteDocument(author, "refresh-header-opened");
+    await deliver(author, opened);
+    const openedId = await statusIdOf(opened.id);
+
+    const response = await contextResponse(openedId, await authHeaders(READER));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Mastodon-Async-Refresh")).toBe(
+      `id="context:${openedId}:refresh", retry=3, result_count=0`,
+    );
+  });
+
+  it("sends no header to an anonymous reader", async () => {
+    const author = await remoteActor("refresh-anonymous", "thread.example");
+    const opened = noteDocument(author, "refresh-anonymous-opened");
+    await deliver(author, opened);
+
+    const anonymous = await contextResponse(await statusIdOf(opened.id));
+
+    expect(anonymous.status).toBe(200);
+    expect(anonymous.headers.get("Mastodon-Async-Refresh")).toBeNull();
+  });
+
+  it("reports the fetch running, then finished with the statuses it stored", async () => {
+    const author = await remoteActor("refresh-lifecycle", "thread.example");
+    const opened = noteDocument(author, "refresh-opened", {
+      inReplyTo: noteUri(author, "refresh-parent"),
+      replies: {
+        type: "Collection",
+        first: { type: "CollectionPage", items: [noteUri(author, "refresh-reply")] },
+      },
+    });
+    await deliver(author, opened);
+    const openedId = await statusIdOf(opened.id);
+    const documents = new Map<string, unknown>([
+      [opened.id, opened],
+      [noteUri(author, "refresh-parent"), noteDocument(author, "refresh-parent")],
+      [
+        noteUri(author, "refresh-reply"),
+        noteDocument(author, "refresh-reply", { inReplyTo: opened.id }),
+      ],
+    ]);
+    const recording = recordingEnv();
+    const headers = await authHeaders(READER);
+    const id = `context:${openedId}:refresh`;
+
+    await requested(openedId, recording.env);
+
+    const pending = await contextResponse(openedId, headers);
+    expect(pending.headers.get("Mastodon-Async-Refresh")).toBe(
+      `id="${id}", retry=3, result_count=0`,
+    );
+    const running = await asyncRefresh(id, headers);
+    expect(running.status).toBe(200);
+    expect(read(ApiAsyncRefresh, await running.json())).toEqual({
+      async_refresh: { id, status: "running", result_count: 0 },
+    });
+
+    await serving(documents, () => runQueued(recording));
+
+    const finished = await asyncRefresh(id, headers);
+    expect(read(ApiAsyncRefresh, await finished.json())).toEqual({
+      async_refresh: { id, status: "finished", result_count: 2 },
+    });
+    const settled = await contextResponse(openedId, headers);
+    expect(settled.headers.get("Mastodon-Async-Refresh")).toBeNull();
+    expect(read(ContextSchema, await settled.json()).descendants.map((entry) => entry.uri)).toEqual(
+      [noteUri(author, "refresh-reply")],
+    );
+  });
+
+  it("answers 404 for an id that names no fetch", async () => {
+    const author = await remoteActor("refresh-unknown", "thread.example");
+    const unopened = noteDocument(author, "refresh-unopened");
+    await deliver(author, unopened);
+    const headers = await authHeaders(READER);
+
+    for (const id of [
+      `context:${await statusIdOf(unopened.id)}:refresh`,
+      "context:999999999999999999:refresh",
+      "context::refresh",
+      "forged",
+    ]) {
+      expect((await asyncRefresh(id, headers)).status, id).toBe(404);
+    }
+  });
+
+  it("requires a signed-in user", async () => {
+    expect((await asyncRefresh("context:1:refresh", {})).status).toBe(401);
+  });
+
+  it("reads a claim its job never closed as finished once the limit passes", () => {
+    const now = Date.parse("2024-03-03T00:10:00.000Z");
+    const claimedAt = new Date(now - THREAD_REFRESH_RUNNING_LIMIT_MS - 1).toISOString();
+
+    expect(threadRefreshOf({ claimedAt, finishedClaim: null, resultCount: null }, now)).toEqual({
+      kind: "Finished",
+      resultCount: 0,
+    });
+    expect(
+      threadRefreshOf(
+        { claimedAt: new Date(now).toISOString(), finishedClaim: null, resultCount: null },
+        now,
+      ),
+    ).toEqual({ kind: "Running" });
   });
 });
