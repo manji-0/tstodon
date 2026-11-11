@@ -227,6 +227,40 @@ describe("streaming subscriptions", () => {
     reader.close();
   });
 
+  it("keep a hub's user and direct rows while any socket holds the stream", async () => {
+    const email = "st-own-rows@example.com";
+    const first = await openStream({ email, query: "?stream=user" });
+    const hub = first.account.id;
+    expect(await rows(hub)).toBe(1);
+    const second = await openStream({ email, query: "?stream=user" });
+    await second.subscribe({ stream: "direct" });
+    expect(await rows(hub)).toBe(2);
+
+    first.close();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(await rows(hub)).toBe(2);
+    second.close();
+    await eventually(hub, 0);
+  });
+
+  it("drop a user row a hub left behind once a fan-out finds no socket behind it", async () => {
+    const follower = "st-stale-user@example.com";
+    const author = "st-stale-author@example.com";
+    await follow(follower, author);
+    const hub = (await signedInAccount(follower)).id;
+    await env.DB.prepare(
+      "INSERT INTO stream_subscriptions (hub, stream, param) VALUES (?, 'user', '')",
+    )
+      .bind(hub)
+      .run();
+    // Published to the account's own hub without a lookup, it leaves the row.
+    await post(follower, "own post");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(await rows(hub)).toBe(1);
+    await post(author, "found by the row");
+    await eventually(hub, 0);
+  });
+
   it("close a socket a deploy left with a tokenless attachment, and drop its hub's row", async () => {
     // The shape tokenless sockets kept before streaming needed a token.
     const legacy = {

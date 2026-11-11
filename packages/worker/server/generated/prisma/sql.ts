@@ -598,6 +598,8 @@ export * from "./sql/listFollowingAccountIds";
 
 export * from "./sql/listHomeFanOutAccounts";
 
+export * from "./sql/listHubStreamSubscriptions";
+
 export * from "./sql/listIpBlocks";
 
 export * from "./sql/listLegacyMedia";
@@ -605,8 +607,6 @@ export * from "./sql/listLegacyMedia";
 export * from "./sql/listLinkCards";
 
 export * from "./sql/listListMembers";
-
-export * from "./sql/listListStreamSubscriptions";
 
 export * from "./sql/listListsContainingAccount";
 

@@ -2,6 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { OutboxJob } from "@tstodon/domain";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { openStream } from "../test/stream-fixture";
 import { newEntityId } from "./ids";
 import {
   ANALYTICS_ENGINE_POINTS_PER_INVOCATION,
@@ -250,11 +251,17 @@ describe("stream render metrics", () => {
 
   it("writes one point per FanOutRemovedStatuses job, not one per entry", async () => {
     const recorded = recordingEnv();
+    // Only accounts with a `user` stream open are told.
+    const streams = [
+      await openStream({ email: "jm-removed-one@example.com", query: "?stream=user" }),
+      await openStream({ email: "jm-removed-two@example.com", query: "?stream=user" }),
+    ];
+    const accountIds = streams.map((stream) => stream.account.id);
     const outcome = await processOutboxJob(
       recorded.env,
       job({
         kind: "FanOutRemovedStatuses",
-        accountIds: [newEntityId(), newEntityId()],
+        accountIds,
         statusIds: [newEntityId(), newEntityId(), newEntityId()],
       }),
     );
@@ -266,6 +273,9 @@ describe("stream render metrics", () => {
         [6, 6, 0],
       ],
     ]);
+    for (const stream of streams) {
+      stream.close();
+    }
   });
 
   it("starts over after a flush", async () => {

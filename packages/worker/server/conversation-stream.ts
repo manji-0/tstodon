@@ -2,6 +2,7 @@ import type { InstanceIdentity } from "@tstodon/domain";
 import { conversationDocuments } from "./conversation-documents";
 import { listConversationsForAccount, type ConversationSummary } from "./conversation-store";
 import { publishToHub } from "./stream-publish";
+import { listHubStreamSubscriptions } from "./stream-subscription-store";
 
 /**
  * Conversations checked per account for the one a new status ends up in. The
@@ -30,7 +31,19 @@ const publishConversation = async (
   window: number,
   matches: (conversation: ConversationSummary) => boolean,
 ): Promise<void> => {
-  for (const accountId of new Set(accountIds)) {
+  // A hub drops an event for a stream it does not hold, so only accounts with
+  // a `direct` stream open are rendered for.
+  const subscriptions = await listHubStreamSubscriptions(
+    env.DB,
+    [...new Set(accountIds)],
+    ["direct"],
+  );
+  if (subscriptions.isErr()) {
+    console.error(JSON.stringify({ kind: "ConversationNotPublished" }));
+    return;
+  }
+  const listening = new Set(subscriptions.value.map(({ hub }) => hub));
+  for (const accountId of new Set(accountIds.filter((id) => listening.has(id)))) {
     try {
       const conversations = await listConversationsForAccount(env.DB, identity, accountId, {
         limit: window,
