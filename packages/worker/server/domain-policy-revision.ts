@@ -22,7 +22,7 @@ const revisionToken = (results: ReadonlyArray<unknown> | undefined): string | un
  *
  * Every write to `domain_blocks` or `domain_allows` gives
  * `domain_policy_revision` a fresh random token in the same statement
- * (migration 0133's triggers), so a copy is current exactly when the stored
+ * (migration 0134's triggers), so a copy is current exactly when the stored
  * token still equals the one it was read with; a rolled-back write restores
  * the old token together with the old rows. A request then reads one row
  * instead of the list. The token and the list are read in one batch, so they
