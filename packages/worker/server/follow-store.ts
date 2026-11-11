@@ -219,17 +219,18 @@ export const listFollowers = async (
 ): Promise<Result<FollowEdge[], RepositoryError>> =>
   runD1(async () => {
     const { where, order, binds } = idCursorFragment(cursor);
+    // The cursor sits in each branch so the page merges two index searches in
+    // id order instead of sorting every follower.
     const { results } = await db
       .prepare(
-        `SELECT id, account_id, actor_uri FROM (
-           SELECT id, follower_account_id AS account_id, NULL AS actor_uri FROM follows
-           WHERE target_account_id = ? AND kind = 'Accepted'
-           UNION ALL
-           SELECT id, NULL, remote_actor_uri FROM remote_follows
-           WHERE target_account_id = ? AND follow_kind = 'Accepted'
-         ) WHERE 1 = 1 ${where} ${order} LIMIT ?`,
+        `SELECT id, follower_account_id AS account_id, NULL AS actor_uri FROM follows
+         WHERE target_account_id = ? AND kind = 'Accepted' ${where}
+         UNION ALL
+         SELECT id, NULL, remote_actor_uri FROM remote_follows
+         WHERE target_account_id = ? AND follow_kind = 'Accepted' ${where}
+         ${order} LIMIT ?`,
       )
-      .bind(accountId, accountId, ...binds, limit)
+      .bind(accountId, ...binds, accountId, ...binds, limit)
       .all();
     return followEdges(results);
   });
@@ -266,17 +267,17 @@ export const listFollowing = async (
 ): Promise<Result<FollowEdge[], RepositoryError>> =>
   runD1(async () => {
     const { where, order, binds } = idCursorFragment(cursor);
+    // As in `listFollowers`: a merge of two index searches, not a sort.
     const { results } = await db
       .prepare(
-        `SELECT id, account_id, actor_uri FROM (
-           SELECT id, target_account_id AS account_id, NULL AS actor_uri FROM follows
-           WHERE follower_account_id = ? AND kind = 'Accepted'
-           UNION ALL
-           SELECT id, NULL, actor_uri FROM outbound_follows
-           WHERE account_id = ? AND state = 'Accepted'
-         ) WHERE 1 = 1 ${where} ${order} LIMIT ?`,
+        `SELECT id, target_account_id AS account_id, NULL AS actor_uri FROM follows
+         WHERE follower_account_id = ? AND kind = 'Accepted' ${where}
+         UNION ALL
+         SELECT id, NULL, actor_uri FROM outbound_follows
+         WHERE account_id = ? AND state = 'Accepted' ${where}
+         ${order} LIMIT ?`,
       )
-      .bind(accountId, accountId, ...binds, limit)
+      .bind(accountId, ...binds, accountId, ...binds, limit)
       .all();
     return followEdges(results);
   });

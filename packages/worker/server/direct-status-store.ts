@@ -15,26 +15,40 @@ export const listDirectStatusesForAccount = async (
   maxId: string | undefined,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
-    const suppressed = `AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}`;
-    const sql = maxId
-      ? `SELECT ${statusSelect} FROM statuses
-         WHERE kind = 'LocalNote' AND visibility = 'direct'
-           AND (account_id = ? OR id IN (SELECT status_id FROM status_mentions WHERE account_id = ?))
-           ${suppressed}
-           AND id < ?
-         ORDER BY id DESC LIMIT ?`
-      : `SELECT ${statusSelect} FROM statuses
-         WHERE kind = 'LocalNote' AND visibility = 'direct'
-           AND (account_id = ? OR id IN (SELECT status_id FROM status_mentions WHERE account_id = ?))
-           ${suppressed}
-         ORDER BY id DESC LIMIT ?`;
     const now = nowIso();
-    const stmt = maxId
-      ? db
-          .prepare(sql)
-          .bind(accountId, accountId, accountId, accountId, accountId, now, maxId, limit)
-      : db.prepare(sql).bind(accountId, accountId, accountId, accountId, accountId, now, limit);
-    const { results } = await stmt.all();
+    const suppressedBinds = [accountId, accountId, accountId, now];
+    const ownBefore = maxId ? "AND id < ?" : "";
+    const mentionBefore = maxId ? "AND m.status_id < ?" : "";
+    const beforeBinds = maxId ? [maxId] : [];
+    // The page's ids merge the account's own direct notes and the notes that
+    // mention it, each read in id order, so a page stops after `limit` ids
+    // instead of walking every direct note on the instance.
+    const { results } = await db
+      .prepare(
+        `SELECT ${statusSelect} FROM statuses WHERE id IN (
+           SELECT id FROM statuses
+           WHERE kind = 'LocalNote' AND visibility = 'direct' AND account_id = ?
+             AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
+             ${ownBefore}
+           UNION
+           SELECT m.status_id FROM status_mentions m CROSS JOIN statuses s ON s.id = m.status_id
+           WHERE m.account_id = ? AND s.kind = 'LocalNote' AND s.visibility = 'direct'
+             AND s.account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
+             ${mentionBefore}
+           ORDER BY 1 DESC LIMIT ?
+         )
+         ORDER BY id DESC`,
+      )
+      .bind(
+        accountId,
+        ...suppressedBinds,
+        ...beforeBinds,
+        accountId,
+        ...suppressedBinds,
+        ...beforeBinds,
+        limit,
+      )
+      .all();
     return hydrateStatusRows(db, results ?? []);
   });
 

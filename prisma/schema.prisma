@@ -344,6 +344,7 @@ model follows {
   @@unique([follower_account_id, target_account_id], map: "sqlite_autoindex_follows_2")
   @@index([target_account_id, kind], map: "idx_follows_target")
   @@index([follower_account_id, kind], map: "idx_follows_follower_kind")
+  @@index([follower_account_id, id], map: "idx_follows_follower_id")
 }
 
 model blocks {
@@ -752,6 +753,7 @@ model remote_follows {
   @@unique([remote_actor_uri, target_account_id], map: "sqlite_autoindex_remote_follows_2")
   @@index([target_account_id, follow_kind], map: "idx_remote_follows_target")
   @@index([target_account_id, remote_request_kind], map: "idx_remote_follows_pending")
+  @@index([target_account_id, id], map: "idx_remote_follows_target_id")
 }
 
 model remote_status_tags {
@@ -934,6 +936,11 @@ model domain_allows {
   created_at String
 }
 
+model domain_policy_revision {
+  id    Int    @id
+  token String
+}
+
 model suggestion_dismissals {
   account_id        String
   target_account_id String
@@ -1022,6 +1029,7 @@ model statuses {
   @@index([account_id, reblog_of_id], map: "idx_statuses_account_reblog")
   @@index([account_id, id], map: "idx_statuses_account_id")
   @@index([visibility, id], map: "idx_statuses_visibility_id")
+  @@index([account_id, id], map: "idx_statuses_direct_account_id")
 }
 
 model remote_poll_own_votes {
@@ -1056,6 +1064,7 @@ model outbound_follows {
   @@unique([account_id, actor_uri], map: "sqlite_autoindex_outbound_follows_3")
   @@index([actor_uri, state], map: "idx_outbound_follows_actor")
   @@index([account_id, state], map: "idx_outbound_follows_account_state")
+  @@index([account_id, id], map: "idx_outbound_follows_account_id")
 }
 
 model remote_boosts {

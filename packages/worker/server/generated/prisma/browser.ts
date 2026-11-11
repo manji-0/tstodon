@@ -387,6 +387,11 @@ export type delivery_domain_health = Prisma.delivery_domain_healthModel;
  */
 export type domain_allows = Prisma.domain_allowsModel;
 /**
+ * Model domain_policy_revision
+ *
+ */
+export type domain_policy_revision = Prisma.domain_policy_revisionModel;
+/**
  * Model suggestion_dismissals
  *
  */
