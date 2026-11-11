@@ -28,6 +28,7 @@ import { findRemoteBoostById } from "../../remote-boost-store";
 import { remoteBoostDocuments } from "../../remote-boost-documents";
 import { documentsById } from "../../documents-by-id";
 import { findShownStatusAnywhere } from "../../found-status";
+import { contextAsyncRefreshHeader } from "../async-refreshes";
 
 /** A remote actor's boost, fetched by its id as Mastodon allows for reblogs. */
 const visibleRemoteBoostDocument = async (
@@ -188,9 +189,8 @@ export const getV1StatusesByIdContext = async (
     found.value.kind === "LocalStatus"
       ? { kind: "Local", status: found.value.status }
       : { kind: "Remote", status: found.value.status };
-  if (start.kind === "Remote") {
-    await requestRemoteThreadBackfill(c.env, start.status);
-  }
+  const refresh =
+    start.kind === "Remote" ? await requestRemoteThreadBackfill(c.env, start.status) : undefined;
   const limits = viewerId ? ContextLimits.authenticated : ContextLimits.anonymous;
   const ancestors = await listThreadAncestors(
     (status) => findThreadParent(c.env.DB, identity.value, status),
@@ -223,6 +223,11 @@ export const getV1StatusesByIdContext = async (
   }
   const render = (nodes: ReadonlyArray<ThreadStatus>) =>
     nodes.flatMap((node) => documents.value.get(node.status.id) ?? []);
+  // As Mastodon, only a signed-in reader is told to poll: the refresh endpoint needs a user.
+  const asyncRefresh = viewerId ? contextAsyncRefreshHeader(start.status.id, refresh) : undefined;
+  if (asyncRefresh) {
+    c.header("Mastodon-Async-Refresh", asyncRefresh);
+  }
   return c.json({
     ancestors: render(visibleAncestors),
     descendants: render(visibleDescendants),

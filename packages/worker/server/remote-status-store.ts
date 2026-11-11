@@ -32,6 +32,8 @@ import { htmlHashtags, recordTagNames, searchableTagNames } from "./hashtags";
 import {
   claimRemoteStatusThreadBackfill as claimRemoteStatusThreadBackfillSql,
   releaseRemoteStatusThreadBackfill as releaseRemoteStatusThreadBackfillSql,
+  findRemoteStatusThreadRefresh as findRemoteStatusThreadRefreshSql,
+  finishRemoteStatusThreadBackfill as finishRemoteStatusThreadBackfillSql,
   deleteRemoteStatusByObjectUri as deleteRemoteStatusByObjectUriSql,
   findRemoteStatusById as findRemoteStatusByIdSql,
   findRemoteStatusByObjectUri as findRemoteStatusByObjectUriSql,
@@ -186,6 +188,46 @@ export const releaseRemoteThreadBackfill = async (
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await runTyped(db, releaseRemoteStatusThreadBackfillSql(statusId, claimedAt));
+  });
+
+const ThreadRefreshRow = z.object({
+  context_fetched_at: z.string().nullable(),
+  context_refreshed_at: z.string().nullable(),
+  context_refresh_count: z.number().nullable(),
+});
+
+/** The status's latest thread fetch: its claim, and the claim and count it finished with. */
+export type ThreadRefreshRecord = Readonly<{
+  claimedAt: string | null;
+  finishedClaim: string | null;
+  resultCount: number | null;
+}>;
+
+/** The thread fetch record of a stored remote status, or undefined when there is none. */
+export const findRemoteThreadRefresh = async (
+  db: D1Database,
+  statusId: string,
+): Promise<Result<ThreadRefreshRecord | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped(db, findRemoteStatusThreadRefreshSql(statusId), ThreadRefreshRow);
+    const row = rows[0];
+    return row
+      ? {
+          claimedAt: row.context_fetched_at,
+          finishedClaim: row.context_refreshed_at,
+          resultCount: row.context_refresh_count,
+        }
+      : undefined;
+  });
+
+/** Close the status's current thread fetch claim, with the statuses it stored. */
+export const finishRemoteThreadBackfill = async (
+  db: D1Database,
+  statusId: string,
+  resultCount: number,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, finishRemoteStatusThreadBackfillSql(statusId, resultCount));
   });
 
 /** Stored remote statuses keyed by id; unknown or unreadable rows are left out. */
