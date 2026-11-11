@@ -104,7 +104,7 @@ describe("remote polls", () => {
     const { poll } = await status(id);
     expect(poll).toMatchObject({
       id: `remote-${id}`,
-      expires_at: "2099-01-01T00:00:00Z",
+      expires_at: "2099-01-01T00:00:00.000Z",
       expired: false,
       multiple: false,
       votes_count: 4,
@@ -152,7 +152,7 @@ describe("remote polls", () => {
 
     const { poll } = await status(id);
     expect(poll?.expired).toBe(true);
-    expect(poll?.expires_at).toBe("2026-10-21T00:00:00Z");
+    expect(poll?.expires_at).toBe("2026-10-21T00:00:00.000Z");
     expect(poll?.voters_count).toBeNull();
   });
 
@@ -510,7 +510,7 @@ describe("remote polls", () => {
     );
 
     const current = await status(id);
-    expect(current.edited_at).toBe("2026-10-22T00:00:00Z");
+    expect(current.edited_at).toBe("2026-10-22T00:00:00.000Z");
     expect(current.poll?.options.map((option) => option.votes_count)).toEqual([4, 4]);
   });
 
@@ -529,7 +529,7 @@ describe("remote polls", () => {
 
     const edited = await status(id);
     expect(edited.poll?.options).toHaveLength(3);
-    expect(edited.edited_at).toBe("2026-10-22T00:00:00Z");
+    expect(edited.edited_at).toBe("2026-10-22T00:00:00.000Z");
   });
 
   it("ignores an Update to a poll from another actor", async () => {

@@ -79,7 +79,7 @@ export const recordRemoteBoost = async (
     return target.map(() => undefined);
   }
   const envelope = parseAnnounceEnvelope(rawAnnounce).unwrapOr(NO_ENVELOPE);
-  const publishedAt = IsoInstant.parse(envelope.published ?? "").orElse(() =>
+  const publishedAt = IsoInstant.parseRemote(envelope.published ?? "").orElse(() =>
     IsoInstant.parse(nowIso()),
   );
   if (publishedAt.isErr()) {
