@@ -3,12 +3,6 @@ import { useState, useCallback, useMemo } from 'react';
 import { useIntl, defineMessages } from 'react-intl';
 
 import type {
-  List,
-  Map as ImmutableMap,
-  List as ImmutableList,
-} from 'immutable';
-
-import type {
   DragStartEvent,
   DragEndEvent,
   UniqueIdentifier,
@@ -31,7 +25,6 @@ import {
 } from '@dnd-kit/sortable';
 
 import { changeMediaOrder } from 'mastodon/actions/compose';
-import type { MediaAttachment } from 'mastodon/models/media_attachment';
 import { useAppSelector, useAppDispatch } from 'mastodon/store';
 
 import { Upload } from './upload';
@@ -65,22 +58,15 @@ const messages = defineMessages({
 export const UploadForm: React.FC = () => {
   const dispatch = useAppDispatch();
   const intl = useIntl();
-  const mediaIds = useAppSelector(
-    (state) =>
-      (
-        (state.compose as ImmutableMap<string, unknown>).get(
-          'media_attachments',
-        ) as ImmutableList<MediaAttachment>
-      ).map((item: MediaAttachment) => item.get('id')) as List<string>,
+  const mediaIds = useAppSelector((state) =>
+    state.compose
+      .get('media_attachments')
+      .map((item) => String(item.get('id'))),
   );
-  const active = useAppSelector(
-    (state) => state.compose.get('is_uploading') as boolean,
-  );
-  const progress = useAppSelector(
-    (state) => state.compose.get('progress') as number,
-  );
+  const active = useAppSelector((state) => state.compose.get('is_uploading'));
+  const progress = useAppSelector((state) => state.compose.get('progress'));
   const isProcessing = useAppSelector(
-    (state) => state.compose.get('is_processing') as boolean,
+    (state) => !!state.compose.get('is_processing'),
   );
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const sensors = useSensors(

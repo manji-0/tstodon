@@ -1,7 +1,6 @@
 import { defineMessages } from 'react-intl';
 
 import { createAction } from '@reduxjs/toolkit';
-import type { List as ImmutableList, Map as ImmutableMap } from 'immutable';
 
 import { apiUpdateMedia } from '@/mastodon/api/compose';
 import { apiGetSearch } from '@/mastodon/api/search';
@@ -89,9 +88,7 @@ export const changeComposeVisibility = createAppThunk(
     }
 
     const state = getState();
-    const quotedStatusId = state.compose.get('quoted_status_id') as
-      | string
-      | null;
+    const quotedStatusId = state.compose.get('quoted_status_id');
     if (!quotedStatusId) {
       return visibility;
     }
@@ -105,7 +102,7 @@ export const changeComposeVisibility = createAppThunk(
 
     // Append the quoted status URL to the compose text
     const url = quotedStatus.get('url') as string;
-    const text = state.compose.get('text') as string;
+    const text = state.compose.get('text');
     if (!text.includes(url)) {
       const newText = text.trim() ? `${text}\n\n${url}` : url;
       dispatch(changeCompose(newText));
@@ -127,11 +124,9 @@ export const changeUploadCompose = createDataLoadingThunk(
     },
     { getState },
   ) => {
-    const media = (
-      (getState().compose as ImmutableMap<string, unknown>).get(
-        'media_attachments',
-      ) as ImmutableList<MediaAttachment>
-    ).find((item) => item.get('id') === id);
+    const media = getState()
+      .compose.get('media_attachments')
+      .find((item) => item.get('id') === id);
 
     // Editing already-attached media is deferred to editing the post itself.
     // For simplicity's sake, fake an API reply.
@@ -181,11 +176,7 @@ export const quoteComposeByStatus = createAppThunk(
       dispatch(showAlert({ message: messages.quoteErrorPoll }));
     } else if (
       composeState.get('is_uploading') ||
-      (mediaAttachments &&
-        typeof mediaAttachments !== 'string' &&
-        typeof mediaAttachments !== 'number' &&
-        typeof mediaAttachments !== 'boolean' &&
-        mediaAttachments.size !== 0)
+      mediaAttachments.size !== 0
     ) {
       dispatch(showAlert({ message: messages.quoteErrorUpload }));
     } else if (composeState.get('quoted_status_id')) {
@@ -293,26 +284,22 @@ export const submitCompose = createAppThunk(
     }: { textareaValue?: string; redirectOnSuccess?: boolean },
     { getState, dispatch },
   ) => {
-    if (
-      textareaValue &&
-      (getState().compose.get('text') as string) !== textareaValue
-    ) {
+    if (textareaValue && getState().compose.get('text') !== textareaValue) {
       dispatch(changeCompose(textareaValue));
     }
 
     const { compose, meta, statuses, settings } = getState();
-    const privacy = compose.get('privacy') as StatusVisibility;
-    const missingAltText = (
-      compose.get('media_attachments') as unknown as Immutable.List<
-        Immutable.Map<string, string>
-      >
-    ).some(
-      (media) =>
-        ['image', 'gifv'].includes(media.get('type') ?? '') &&
-        (media.get('description') ?? '').length === 0,
-    );
+    const privacy = compose.get('privacy');
+    const missingAltText = compose.get('media_attachments').some((media) => {
+      const type = media.get('type');
+      const description = media.get('description');
+      return (
+        (type === 'image' || type === 'gifv') &&
+        (typeof description === 'string' ? description : '').length === 0
+      );
+    });
     const me = meta.get('me') as string | null;
-    const quotedStatusId = compose.get('quoted_status_id') as string | null;
+    const quotedStatusId = compose.get('quoted_status_id');
     const quoteToPrivate =
       !!quotedStatusId &&
       privacy === 'private' &&

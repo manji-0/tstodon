@@ -58,7 +58,7 @@ export const apiRemoveAccountFromFollowers = (id: string) =>
   );
 
 export const apiGetFeaturedTags = (id: string) =>
-  apiRequestGet<ApiHashtagJSON[]>(`v1/accounts/${id}/featured_tags`);
+  apiRequestGet<ApiFeaturedTagJSON[]>(`v1/accounts/${id}/featured_tags`);
 
 export const apiGetCurrentFeaturedTags = () =>
   apiRequestGet<ApiFeaturedTagJSON[]>(`v1/featured_tags`);

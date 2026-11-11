@@ -4,7 +4,7 @@ import { useIntl, defineMessages } from 'react-intl';
 
 import { Link } from 'react-router-dom';
 
-import type { Map as ImmutableMap, List as ImmutableList } from 'immutable';
+import { List as ImmutableList } from 'immutable';
 
 import { Helmet } from '@unhead/react/helmet';
 
@@ -26,6 +26,7 @@ import { Column } from 'mastodon/components/column';
 import { ColumnHeader } from 'mastodon/components/column_header';
 import { Icon } from 'mastodon/components/icon';
 import { mascot, reduceMotion } from 'mastodon/initial_state';
+import type { Column as SettingsColumn } from 'mastodon/reducers/settings';
 import { useAppDispatch, useAppSelector } from 'mastodon/store';
 
 import { messages as navbarMessages } from '../ui/components/navigation_bar';
@@ -49,13 +50,11 @@ const messages = defineMessages({
   logout: { id: 'navigation_bar.logout', defaultMessage: 'Logout' },
 });
 
-type ColumnMap = ImmutableMap<'id' | 'uuid' | 'params', string>;
-
 const Compose: React.FC<{ multiColumn: boolean }> = ({ multiColumn }) => {
   const intl = useIntl();
   const dispatch = useAppDispatch();
   const columns = useAppSelector(
-    (state) => state.settings.get('columns') as ImmutableList<ColumnMap>,
+    (state) => state.settings.get('columns') ?? ImmutableList<SettingsColumn>(),
   );
 
   useEffect(() => {

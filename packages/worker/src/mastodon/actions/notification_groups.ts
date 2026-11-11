@@ -26,17 +26,14 @@ import {
   createAppAsyncThunk,
   createDataLoadingThunk,
 } from 'mastodon/store/typed_functions';
+import { notificationSettingKey } from 'mastodon/utils/notifications';
 
 import { fetchAccountsForCollectionPreview } from '../reducers/slices/collections';
 
 import { importFetchedAccounts, importFetchedStatuses } from './importer';
 import { NOTIFICATIONS_FILTER_SET } from './notifications';
 import { saveSettings } from './settings';
-
-function notificationTypeForFilter(type: NotificationType) {
-  if (type === 'quoted_update') return 'update';
-  else return type;
-}
+import type { SettingChangeAction } from './settings';
 
 function notificationTypeForQuickFilter(type: NotificationType) {
   switch (type) {
@@ -186,10 +183,12 @@ export const processNewNotificationForGroups = createAppAsyncThunk(
     const activeFilter = selectSettingsNotificationsQuickFilterActive(state);
     const notificationShows = selectSettingsNotificationsShows(state);
 
+    // The collection types are both under `collections` (upstream looked
+    // them up by type, so hiding them did not hide the streamed ones).
+    const settingKey = notificationSettingKey(notification.type);
     const showInColumn =
       activeFilter === 'all'
-        ? notificationShows[notificationTypeForFilter(notification.type)] !==
-          false
+        ? settingKey === undefined || notificationShows[settingKey] !== false
         : activeFilter === notificationTypeForQuickFilter(notification.type);
 
     if (!showInColumn) return;
@@ -242,7 +241,7 @@ export const setNotificationsFilter = createAppAsyncThunk(
       type: NOTIFICATIONS_FILTER_SET,
       path: ['notifications', 'quickFilter', 'active'],
       value: filterType,
-    });
+    } satisfies SettingChangeAction<typeof NOTIFICATIONS_FILTER_SET>);
     void dispatch(fetchNotifications());
     dispatch(saveSettings());
   },

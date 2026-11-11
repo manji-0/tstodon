@@ -1,3 +1,4 @@
+import type { Filter } from 'mastodon/reducers/filters';
 import { createAppSelector } from 'mastodon/store';
 import { toServerSideType } from 'mastodon/utils/filters';
 
@@ -5,23 +6,21 @@ import type { StatusContextType } from '../components/status/types';
 
 import { selectExpandedStatus } from './statuses';
 
+/** A filter of the store as a plain object (`expires_at` in milliseconds). */
 export interface FilterShape {
   id: string;
   title: string;
   context: string[];
-  expires_at: string | null;
+  expires_at: number | null;
   filter_action: 'hide' | 'blur' | 'warn';
 }
-
-// TODO: move to `app/javascript/mastodon/models` and use more globally
-type Filter = Immutable.Map<string, unknown>;
 
 // TODO: move to `app/javascript/mastodon/models` and use more globally
 type FilterResult = Immutable.Map<string, unknown>;
 
 export const getFilters = createAppSelector(
   [
-    (state) => state.filters as Immutable.Map<string, Filter>,
+    (state) => state.filters,
     (_, { contextType }: { contextType?: string }) => contextType,
   ],
   (filters, contextType) => {
@@ -29,25 +28,32 @@ export const getFilters = createAppSelector(
       return null;
     }
 
-    const now = new Date();
+    const now = Date.now();
     const serverSideType = toServerSideType(contextType);
 
     return filters.filter((filter) => {
-      const context = filter.get('context') as Immutable.List<string>;
-      const expiration = filter.get('expires_at') as Date | null;
+      const expiration = filter.get('expires_at');
       return (
-        context.includes(serverSideType) &&
+        filter.get('context').includes(serverSideType) &&
         (expiration === null || expiration > now)
       );
     });
   },
 );
 
+const toPlainFilter = (filter: Filter): FilterShape => ({
+  id: filter.get('id'),
+  title: filter.get('title'),
+  context: filter.get('context').toArray(),
+  expires_at: filter.get('expires_at'),
+  filter_action: filter.get('filter_action'),
+});
+
 export const selectPlainFilters = createAppSelector([getFilters], (filters) => {
   if (!filters) {
     return null;
   }
-  return filters.toJS() as unknown as Record<string, FilterShape>;
+  return filters.map(toPlainFilter).toObject();
 });
 
 export const selectStatusFilters = createAppSelector(

@@ -57,5 +57,5 @@ export function useAccountId() {
 }
 
 export function useCurrentAccountId() {
-  return useAppSelector((state) => state.meta.get('me', null) as string | null);
+  return useAppSelector((state) => state.meta.get('me', null));
 }

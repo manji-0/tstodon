@@ -10,8 +10,6 @@ import {
   setComposeQuotePolicy,
 } from '@/mastodon/actions/compose_typed';
 import { openModal } from '@/mastodon/actions/modal';
-import type { ApiQuotePolicy } from '@/mastodon/api_types/quotes';
-import type { StatusVisibility } from '@/mastodon/api_types/statuses';
 import { Icon } from '@/mastodon/components/icon';
 import { useAppSelector, useAppDispatch } from '@/mastodon/store';
 import AlternateEmailIcon from '@/material-icons/400-24px/alternate_email.svg?react';
@@ -76,11 +74,12 @@ const visibilityOptions = {
 const PrivacyModalButton: FC<PrivacyDropdownProps> = ({ disabled = false }) => {
   const intl = useIntl();
 
-  const quotePolicy = useAppSelector(
-    (state) => state.compose.get('quote_policy') as ApiQuotePolicy,
+  const quotePolicy = useAppSelector((state) =>
+    state.compose.get('quote_policy'),
   );
   const visibility = useAppSelector(
-    (state) => state.compose.get('privacy') as StatusVisibility,
+    (state) =>
+      state.compose.get('privacy') ?? state.compose.get('default_privacy'),
   );
 
   const { icon, iconComponent } = useMemo(() => {

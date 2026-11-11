@@ -14,10 +14,10 @@ import conversations from './conversations';
 import { dropdownMenuReducer } from './dropdown_menu';
 import filters from './filters';
 import height_cache from './height_cache';
-import history from './history';
+import { historyReducer } from './history';
 import { listsReducer } from './lists';
 import { markersReducer } from './markers';
-import media_attachments from './media_attachments';
+import { mediaAttachmentsReducer } from './media_attachments';
 import meta from './meta';
 import { modalReducer } from './modal';
 import { navigationReducer } from './navigation';
@@ -62,7 +62,7 @@ const reducers = {
   contexts: contextsReducer,
   compose: composeReducer,
   search: searchReducer,
-  media_attachments,
+  media_attachments: mediaAttachmentsReducer,
   notifications,
   notificationGroups: notificationGroupsReducer,
   height_cache,
@@ -75,7 +75,7 @@ const reducers = {
   trends,
   markers: markersReducer,
   picture_in_picture: pictureInPictureReducer,
-  history,
+  history: historyReducer,
   notificationPolicy: notificationPolicyReducer,
   notificationRequests: notificationRequestsReducer,
   navigation: navigationReducer,
@@ -90,9 +90,8 @@ const reducers = {
 const initialRootState = Object.fromEntries(
   Object.entries(reducers).map(([name, reducer]) => [
     name,
-    reducer(undefined, {
-      // empty action
-    }),
+    // An action no reducer handles, so each returns its initial state.
+    reducer(undefined, { type: '@@tstodon/INITIAL_ROOT_STATE' }),
   ]),
 );
 

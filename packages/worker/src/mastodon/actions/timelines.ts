@@ -1,5 +1,3 @@
-import { Map as ImmutableMap, List as ImmutableList } from 'immutable';
-
 import type {
   ApiGetAccountStatusesParams,
   ApiGetHomeTimelineParams,
@@ -13,6 +11,7 @@ import type { ApiTimelineParams } from 'mastodon/api/timelines';
 import type { ApiStatusJSON } from 'mastodon/api_types/statuses';
 import { compareId } from 'mastodon/compare_id';
 import { usePendingItems as preferPendingItems } from 'mastodon/initial_state';
+import type { Timeline, TimelineListKey } from 'mastodon/models/timeline';
 import type { AppDispatch, GetState } from 'mastodon/store';
 
 import { importFetchedStatus, importFetchedStatuses } from './importer';
@@ -21,19 +20,19 @@ import { isNonStatusId, timelineDelete } from './timelines_typed';
 
 export { disconnectTimeline } from './timelines_typed';
 
-export const TIMELINE_UPDATE  = 'TIMELINE_UPDATE';
-export const TIMELINE_CLEAR   = 'TIMELINE_CLEAR';
+export const TIMELINE_UPDATE  = 'TIMELINE_UPDATE' as const;
+export const TIMELINE_CLEAR   = 'TIMELINE_CLEAR' as const;
 
-export const TIMELINE_EXPAND_REQUEST = 'TIMELINE_EXPAND_REQUEST';
-export const TIMELINE_EXPAND_SUCCESS = 'TIMELINE_EXPAND_SUCCESS';
-export const TIMELINE_EXPAND_FAIL    = 'TIMELINE_EXPAND_FAIL';
+export const TIMELINE_EXPAND_REQUEST = 'TIMELINE_EXPAND_REQUEST' as const;
+export const TIMELINE_EXPAND_SUCCESS = 'TIMELINE_EXPAND_SUCCESS' as const;
+export const TIMELINE_EXPAND_FAIL    = 'TIMELINE_EXPAND_FAIL' as const;
 
-export const TIMELINE_SCROLL_TOP   = 'TIMELINE_SCROLL_TOP';
-export const TIMELINE_LOAD_PENDING = 'TIMELINE_LOAD_PENDING';
-export const TIMELINE_CONNECT      = 'TIMELINE_CONNECT';
+export const TIMELINE_SCROLL_TOP   = 'TIMELINE_SCROLL_TOP' as const;
+export const TIMELINE_LOAD_PENDING = 'TIMELINE_LOAD_PENDING' as const;
+export const TIMELINE_CONNECT      = 'TIMELINE_CONNECT' as const;
 
-export const TIMELINE_MARK_AS_PARTIAL = 'TIMELINE_MARK_AS_PARTIAL';
-export const TIMELINE_INSERT          = 'TIMELINE_INSERT';
+export const TIMELINE_MARK_AS_PARTIAL = 'TIMELINE_MARK_AS_PARTIAL' as const;
+export const TIMELINE_INSERT          = 'TIMELINE_INSERT' as const;
 
 // When adding new special markers here, make sure to update TIMELINE_NON_STATUS_MARKERS in actions/timelines_typed.js
 export const TIMELINE_SUGGESTIONS = 'inline-follow-suggestions';
@@ -47,18 +46,25 @@ export const TIMELINE_NON_STATUS_MARKERS = [
 ];
 
 /** A timeline's `items` or `pendingItems`: status ids, `null` gaps and markers. */
-const timelineIds = (
-  timeline: ImmutableMap<string, unknown>,
-  key: 'items' | 'pendingItems',
-): (string | null)[] => {
-  const ids = timeline.get(key);
-  return ImmutableList.isList(ids)
-    ? ids.toArray().map((id) => (typeof id === 'string' ? id : null))
-    : [];
-};
+const timelineIds = (timeline: Timeline | undefined, key: TimelineListKey) =>
+  timeline?.get(key).toArray() ?? [];
 
 const isStatusId = (id: string | null): id is string =>
   id !== null && !isNonStatusId(id);
+
+/** Dispatched by `updateTimeline` (a streamed or posted status). */
+export interface TimelineUpdateAction {
+  type: typeof TIMELINE_UPDATE;
+  timeline: string;
+  status: ApiStatusJSON;
+  usePendingItems: boolean | undefined;
+}
+
+/** Dispatched by `clearTimeline`. */
+export interface TimelineClearAction {
+  type: typeof TIMELINE_CLEAR;
+  timeline: string;
+}
 
 export const loadPending = (timeline: string) => ({
   type: TIMELINE_LOAD_PENDING,
@@ -94,7 +100,7 @@ export function updateTimeline(
       timeline,
       status,
       usePendingItems: preferPendingItems,
-    });
+    } satisfies TimelineUpdateAction);
 
     if (timeline === 'home') {
       void dispatch(submitMarkers({}));
@@ -129,7 +135,7 @@ export function deleteFromTimelines(id: string) {
 
 export function clearTimeline(timeline: string) {
   return (dispatch: AppDispatch) => {
-    dispatch({ type: TIMELINE_CLEAR, timeline });
+    dispatch({ type: TIMELINE_CLEAR, timeline } satisfies TimelineClearAction);
   };
 }
 
@@ -155,11 +161,11 @@ export function expandTimeline(
   params: ApiTimelineParams = {},
 ) {
   return async (dispatch: AppDispatch, getState: GetState) => {
-    const timeline = getState().timelines.get(timelineId, ImmutableMap<string, unknown>());
+    const timeline = getState().timelines.get(timelineId);
     const isLoadingMore = !!params.max_id;
     const request = { ...params };
 
-    if (timeline.get('isLoading')) {
+    if (timeline?.get('isLoading')) {
       return;
     }
 
@@ -212,7 +218,7 @@ export function fillTimelineGaps(
   params: ApiTimelineParams = {},
 ) {
   return async (dispatch: AppDispatch, getState: GetState) => {
-    const timeline = getState().timelines.get(timelineId, ImmutableMap<string, unknown>());
+    const timeline = getState().timelines.get(timelineId);
     const items = timelineIds(timeline, 'items');
 
     // A gap (a `null` item) is loaded from the status above it, a gap at the

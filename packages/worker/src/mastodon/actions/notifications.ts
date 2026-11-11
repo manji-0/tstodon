@@ -5,7 +5,7 @@ import type { ApiNotificationJSON } from 'mastodon/api_types/notifications';
 import type { AppDispatch, GetState } from 'mastodon/store';
 
 import { unescapeHTML } from '../utils/html';
-import { requestNotificationPermission } from '../utils/notifications';
+import { notificationSettingKey, requestNotificationPermission } from '../utils/notifications';
 
 import { fetchFollowRequests } from './accounts';
 import {
@@ -19,8 +19,8 @@ export * from "./notifications_typed";
 
 export const NOTIFICATIONS_FILTER_SET = 'NOTIFICATIONS_FILTER_SET';
 
-export const NOTIFICATIONS_SET_BROWSER_SUPPORT    = 'NOTIFICATIONS_SET_BROWSER_SUPPORT';
-export const NOTIFICATIONS_SET_BROWSER_PERMISSION = 'NOTIFICATIONS_SET_BROWSER_PERMISSION';
+export const NOTIFICATIONS_SET_BROWSER_SUPPORT    = 'NOTIFICATIONS_SET_BROWSER_SUPPORT' as const;
+export const NOTIFICATIONS_SET_BROWSER_PERMISSION = 'NOTIFICATIONS_SET_BROWSER_PERMISSION' as const;
 
 defineMessages({
   mention: { id: 'notification.mention', defaultMessage: '{name} mentioned you' },
@@ -33,10 +33,13 @@ export function updateNotifications(
   intlLocale: string | undefined,
 ) {
   return (dispatch: AppDispatch, getState: GetState) => {
-    const filterType = notification.type === 'quoted_update' ? 'update' : notification.type;
-
-    const showAlert    = getState().settings.getIn(['notifications', 'alerts', filterType], true);
-    const playSound    = getState().settings.getIn(['notifications', 'sounds', filterType], true);
+    // The types no setting turns off alert and sound. Upstream looked the
+    // setting up by type, so the collection types (both under
+    // `collections`) ignored theirs.
+    const settingKey   = notificationSettingKey(notification.type);
+    const settings     = getState().settings.get('notifications');
+    const showAlert    = settingKey === undefined || settings.get('alerts').get(settingKey, true);
+    const playSound    = settingKey === undefined || settings.get('sounds').get(settingKey, true);
     const status       = 'status' in notification ? notification.status : null;
 
     let filtered = false;

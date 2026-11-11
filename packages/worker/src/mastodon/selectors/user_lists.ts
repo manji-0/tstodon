@@ -1,33 +1,29 @@
-import type { Map as ImmutableMap } from 'immutable';
-import { List as ImmutableList } from 'immutable';
-
 import { createAppSelector } from '../store';
+
+/** The user lists kept by account. */
+type ListByAccount = 'followers' | 'following';
 
 export const selectUserListWithoutMe = createAppSelector(
   [
     (state) => state.user_lists,
-    (state) => (state.meta.get('me') as string | null) ?? null,
-    (_state, listName: string) => listName,
+    (state) => state.meta.get('me') ?? null,
+    (_state, listName: ListByAccount) => listName,
     (_state, _listName, accountId?: string | null) => accountId ?? null,
   ],
   (lists, currentAccountId, listName, accountId) => {
     if (!accountId || !listName) {
       return null;
     }
-    const list = lists.getIn([listName, accountId]) as
-      | ImmutableMap<string, unknown>
-      | undefined;
+    const list = lists.get(listName).get(accountId);
     if (!list) {
       return null;
     }
 
     // Returns the list except the current account.
     return {
-      items: (
-        list.get('items', ImmutableList<string>()) as ImmutableList<string>
-      )
-        .filter((id) => id !== currentAccountId)
-        .toArray(),
+      items: (list.get('items')?.toArray() ?? []).filter(
+        (id) => id !== currentAccountId,
+      ),
       isLoading: !!list.get('isLoading', true),
       hasMore: !!list.get('next'),
     };

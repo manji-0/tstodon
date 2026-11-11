@@ -1,7 +1,5 @@
 import { useCallback, useEffect } from 'react';
 
-import type { Map as ImmutableMap } from 'immutable';
-
 import { changeSetting } from '@/mastodon/actions/settings';
 import { bannerSettings } from '@/mastodon/settings';
 import { useAppSelector, useAppDispatch } from '@/mastodon/store';
@@ -10,13 +8,7 @@ export function useDismissible(id: string) {
   // We use "dismissed_banners" as that was what this was previously called,
   // but we can use this to track any dismissible state.
   const dismissed = useAppSelector(
-    (state) =>
-      !!(
-        state.settings as ImmutableMap<
-          'dismissed_banners',
-          ImmutableMap<string, boolean>
-        >
-      ).getIn(['dismissed_banners', id], false),
+    (state) => !!state.settings.get('dismissed_banners').get(id, false),
   );
 
   const wasDismissed = !!bannerSettings.get(id) || dismissed;

@@ -1,5 +1,3 @@
-import { Map as ImmutableMap } from 'immutable';
-
 import type {
   ApiCreateWebPushSubscriptionParams,
   ApiUpdateWebPushSubscriptionParams,
@@ -94,7 +92,7 @@ export function register () {
             // We have a subscription, check if it is still valid
             const currentServerKey = (new Uint8Array(subscription.options.applicationServerKey ?? new ArrayBuffer(0))).toString();
             const subscriptionServerKey = urlBase64ToUint8Array(applicationServerKey).toString();
-            const serverEndpoint = getState().push_notifications.getIn(['subscription', 'endpoint']);
+            const serverEndpoint = getState().push_notifications.get('subscription')?.get('endpoint');
 
             // If the VAPID public key did not change and the endpoint corresponds
             // to the endpoint saved in the backend, the subscription is valid
@@ -148,18 +146,17 @@ export function register () {
 export function saveSettings() {
   return (_: AppDispatch, getState: GetState) => {
     const state = getState().push_notifications;
-    const subscriptionId = state.getIn(['subscription', 'id']);
+    const subscriptionId = state.get('subscription')?.get('id');
     const alerts = state.get('alerts');
 
     // Nothing to save before the browser is subscribed.
-    if (typeof subscriptionId !== 'number' && typeof subscriptionId !== 'string') {
+    if (subscriptionId === undefined) {
       return;
     }
 
+    // `SET_ALERTS` sets any value at its path: only booleans are sent.
     const data = {
-      alerts: ImmutableMap.isMap(alerts)
-        ? Object.fromEntries(alerts.toArray().flatMap(([type, alert]) => typeof type === 'string' && typeof alert === 'boolean' ? [[type, alert]] : []))
-        : {},
+      alerts: Object.fromEntries(alerts.toArray().filter(([, alert]) => typeof alert === 'boolean')),
     } satisfies ApiUpdateWebPushSubscriptionParams['data'];
 
     apiUpdateWebPushSubscription(subscriptionId, {

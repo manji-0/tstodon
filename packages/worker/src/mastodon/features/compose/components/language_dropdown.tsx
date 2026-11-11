@@ -38,10 +38,8 @@ type Language = [string, string, string];
 const getFrequentlyUsedLanguages = createSelector(
   [
     (state: RootState) =>
-      state.settings.get(
-        'frequentlyUsedLanguages',
-        ImmutableMap(),
-      ) as ImmutableMap<string, number>,
+      state.settings.get('frequentlyUsedLanguages') ??
+      ImmutableMap<string, number>(),
   ],
   (languageCounters) =>
     languageCounters
@@ -59,7 +57,8 @@ const isTextLongEnoughForGuess = (text: string) => text.length > 20;
 const emptyArray: Language[] = [];
 
 export const LanguageDropdownMenu: React.FC<{
-  value: string;
+  /** The compose language: `null` for a redrafted status without one. */
+  value: string | null | undefined;
   guess: string;
   onClose: () => void;
   onChange: (arg0: string) => void;
@@ -313,10 +312,8 @@ export const LanguageDropdown: React.FC = () => {
   const intl = useIntl();
 
   const dispatch = useAppDispatch();
-  const value = useAppSelector(
-    (state) => state.compose.get('language') as string,
-  );
-  const text = useAppSelector((state) => state.compose.get('text') as string);
+  const value = useAppSelector((state) => state.compose.get('language'));
+  const text = useAppSelector((state) => state.compose.get('text'));
 
   const current =
     (preloadedLanguages ?? []).find((lang) => lang[0] === value) ?? [];

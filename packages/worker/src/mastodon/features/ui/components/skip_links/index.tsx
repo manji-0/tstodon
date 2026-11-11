@@ -15,10 +15,9 @@ export const SkipLinks: React.FC<{
   onFocusGettingStartedColumn: () => void;
 }> = ({ multiColumn, onFocusGettingStartedColumn }) => {
   const intl = useIntl();
-  const columnCount = useAppSelector((state) => {
-    const settings = state.settings;
-    return (settings.get('columns') as Immutable.Map<number, unknown>).size;
-  });
+  const columnCount = useAppSelector(
+    (state) => state.settings.get('columns')?.size,
+  );
 
   const focusMultiColumnNavbar = useCallback(
     (e: React.MouseEvent) => {

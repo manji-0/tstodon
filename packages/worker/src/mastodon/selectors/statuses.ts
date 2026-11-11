@@ -1,5 +1,3 @@
-import type { OrderedSet as ImmutableOrderedSet } from 'immutable';
-
 import type { StatusInteractionIntent } from '@/mastodon/actions/interactions_typed';
 import type {
   ExpandedStatusShape,
@@ -12,7 +10,7 @@ import { selectIsAccountLocal, selectPlainAccount } from './accounts';
 export const getStatusList = createAppSelector(
   [
     (state, type: 'favourites' | 'bookmarks' | 'pins' | 'trending') =>
-      state.status_lists.getIn([type, 'items']) as ImmutableOrderedSet<string>,
+      state.status_lists.get(type).get('items'),
   ],
   (items) => items.toList(),
 );

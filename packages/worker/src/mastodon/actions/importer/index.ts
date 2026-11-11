@@ -16,8 +16,8 @@ import type {
 import { importPolls } from './polls';
 import { fetchAccountsForCollectionPreview } from '@/mastodon/reducers/slices/collections';
 
-export const STATUS_IMPORT = 'STATUS_IMPORT';
-export const STATUSES_IMPORT = 'STATUSES_IMPORT';
+export const STATUS_IMPORT = 'STATUS_IMPORT' as const;
+export const STATUSES_IMPORT = 'STATUSES_IMPORT' as const;
 export const FILTERS_IMPORT = 'FILTERS_IMPORT';
 
 export type ImportFetchedStatusesOptions = NormalizeStatusOptions;

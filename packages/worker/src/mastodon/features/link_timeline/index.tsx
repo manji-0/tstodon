@@ -22,7 +22,7 @@ export const LinkTimeline: React.FC<{
   const columnRef = useRef<ColumnRef>(null);
   const firstStatusId = useAppSelector((state) =>
     decodedUrl
-      ? (state.timelines.getIn([`link:${decodedUrl}`, 'items', 0]) as string)
+      ? state.timelines.get(`link:${decodedUrl}`)?.get('items').first()
       : undefined,
   );
   const story = useAppSelector((state) =>

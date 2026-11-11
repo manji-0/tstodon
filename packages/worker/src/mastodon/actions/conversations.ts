@@ -15,19 +15,31 @@ import {
   importFetchedStatus,
 } from './importer';
 
-export const CONVERSATIONS_MOUNT   = 'CONVERSATIONS_MOUNT';
-export const CONVERSATIONS_UNMOUNT = 'CONVERSATIONS_UNMOUNT';
+export const CONVERSATIONS_MOUNT   = 'CONVERSATIONS_MOUNT' as const;
+export const CONVERSATIONS_UNMOUNT = 'CONVERSATIONS_UNMOUNT' as const;
 
-export const CONVERSATIONS_FETCH_REQUEST = 'CONVERSATIONS_FETCH_REQUEST';
-export const CONVERSATIONS_FETCH_SUCCESS = 'CONVERSATIONS_FETCH_SUCCESS';
-export const CONVERSATIONS_FETCH_FAIL    = 'CONVERSATIONS_FETCH_FAIL';
-export const CONVERSATIONS_UPDATE        = 'CONVERSATIONS_UPDATE';
+export const CONVERSATIONS_FETCH_REQUEST = 'CONVERSATIONS_FETCH_REQUEST' as const;
+export const CONVERSATIONS_FETCH_SUCCESS = 'CONVERSATIONS_FETCH_SUCCESS' as const;
+export const CONVERSATIONS_FETCH_FAIL    = 'CONVERSATIONS_FETCH_FAIL' as const;
+export const CONVERSATIONS_UPDATE        = 'CONVERSATIONS_UPDATE' as const;
 
-export const CONVERSATIONS_READ = 'CONVERSATIONS_READ';
+export const CONVERSATIONS_READ = 'CONVERSATIONS_READ' as const;
 
 export const CONVERSATIONS_DELETE_REQUEST = 'CONVERSATIONS_DELETE_REQUEST';
-export const CONVERSATIONS_DELETE_SUCCESS = 'CONVERSATIONS_DELETE_SUCCESS';
+export const CONVERSATIONS_DELETE_SUCCESS = 'CONVERSATIONS_DELETE_SUCCESS' as const;
 export const CONVERSATIONS_DELETE_FAIL    = 'CONVERSATIONS_DELETE_FAIL';
+
+/** Dispatched by `markConversationRead`. */
+export interface ConversationsReadAction {
+  type: typeof CONVERSATIONS_READ;
+  id: string;
+}
+
+/** Dispatched by `updateConversations` (a streamed conversation). */
+export interface ConversationsUpdateAction {
+  type: typeof CONVERSATIONS_UPDATE;
+  conversation: ApiConversationJSON;
+}
 
 export const mountConversations = () => ({
   type: CONVERSATIONS_MOUNT,
@@ -41,7 +53,7 @@ export const markConversationRead = (conversationId: string) => (dispatch: AppDi
   dispatch({
     type: CONVERSATIONS_READ,
     id: conversationId,
-  });
+  } satisfies ConversationsReadAction);
 
   void apiMarkConversationRead(conversationId);
 };
@@ -93,7 +105,7 @@ export const updateConversations = (conversation: ApiConversationJSON) => (dispa
   dispatch({
     type: CONVERSATIONS_UPDATE,
     conversation,
-  });
+  } satisfies ConversationsUpdateAction);
 };
 
 export const deleteConversation = (conversationId: string) => (dispatch: AppDispatch) => {

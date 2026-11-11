@@ -60,10 +60,9 @@ const AccountFeatured: React.FC<{ multiColumn: boolean }> = ({
 
   const featuredAccountIds = useAppSelector(
     (state) =>
-      state.user_lists.getIn(
-        ['featured_accounts', accountId, 'items'],
-        ImmutableList(),
-      ) as ImmutableList<string>,
+      (accountId
+        ? state.user_lists.get('featured_accounts')?.get(accountId)?.get('items')
+        : undefined) ?? ImmutableList<string>(),
   );
   const { collections, status: collectionsLoadStatus } =
     useCollectionsCreatedBy(accountId);

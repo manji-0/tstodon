@@ -4,8 +4,6 @@ import { FormattedMessage } from 'react-intl';
 
 import { Link } from 'react-router-dom';
 
-import type { List as ImmutableList, Map as ImmutableMap } from 'immutable';
-
 import { fetchTrendingHashtags } from 'mastodon/actions/trends';
 import { ImmutableHashtag as Hashtag } from 'mastodon/components/hashtag';
 import { showTrends } from 'mastodon/initial_state';
@@ -13,11 +11,8 @@ import { useAppSelector, useAppDispatch } from 'mastodon/store';
 
 export const Trends: React.FC = () => {
   const dispatch = useAppDispatch();
-  const trends = useAppSelector(
-    (state) =>
-      state.trends.getIn(['tags', 'items']) as ImmutableList<
-        ImmutableMap<string, unknown>
-      >,
+  const trends = useAppSelector((state) =>
+    state.trends.get('tags').get('items'),
   );
 
   useEffect(() => {

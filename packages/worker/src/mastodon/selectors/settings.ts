@@ -1,72 +1,56 @@
 import { createSelector } from '@reduxjs/toolkit';
 
 import type { RootState } from 'mastodon/store';
+import { immutableToJS } from 'mastodon/utils/immutable_map_of';
 
-/* eslint-disable @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
-// state.settings is not yet typed, so we disable some ESLint checks for those selectors
+const selectNotificationSettings = (state: RootState) =>
+  state.settings.get('notifications');
+
 export const selectSettingsNotificationsShows = createSelector(
-  [
-    (state) =>
-      state.settings.getIn(['notifications', 'shows']) as Immutable.Map<
-        string,
-        boolean
-      >,
-  ],
-  (shows) => shows.toJS() as Record<string, boolean>,
+  [(state: RootState) => selectNotificationSettings(state).get('shows')],
+  (shows) => immutableToJS(shows),
 );
 
 export const selectSettingsNotificationsExcludedTypes = createSelector(
-  [selectSettingsNotificationsShows],
+  [(state: RootState) => selectNotificationSettings(state).get('shows')],
   (shows) => {
     const excludedTypes: string[] = [];
-    for (const key in shows) {
-      if (!shows[key]) {
+    shows.forEach((show, key) => {
+      if (!show) {
         if (key === 'collections') {
           excludedTypes.push('collection_update', 'added_to_collection');
         } else {
           excludedTypes.push(key);
         }
       }
-    }
+    });
     return excludedTypes;
   },
 );
 
 export const selectSettingsNotificationsQuickFilterShow = (state: RootState) =>
-  state.settings.getIn(['notifications', 'quickFilter', 'show']) as boolean;
+  selectNotificationSettings(state).get('quickFilter').get('show');
 
 export const selectSettingsNotificationsQuickFilterActive = (
   state: RootState,
-) => state.settings.getIn(['notifications', 'quickFilter', 'active']) as string;
+) => selectNotificationSettings(state).get('quickFilter').get('active');
 
 export const selectSettingsNotificationsQuickFilterAdvanced = (
   state: RootState,
-) =>
-  state.settings.getIn(['notifications', 'quickFilter', 'advanced']) as boolean;
+) => selectNotificationSettings(state).get('quickFilter').get('advanced');
 
 export const selectSettingsNotificationsShowUnread = (state: RootState) =>
-  state.settings.getIn(['notifications', 'showUnread']) as boolean;
+  selectNotificationSettings(state).get('showUnread');
 
 export const selectNeedsNotificationPermission = (state: RootState) =>
-  ((
-    state.settings.getIn(['notifications', 'alerts']) as Immutable.Map<
-      string,
-      boolean
-    >
-  ).includes(true) &&
+  (selectNotificationSettings(state).get('alerts').includes(true) &&
     state.notifications.get('browserSupport') &&
     state.notifications.get('browserPermission') === 'default' &&
-    !state.settings.getIn([
-      'notifications',
-      'dismissPermissionBanner',
-    ])) as boolean;
+    !selectNotificationSettings(state).get('dismissPermissionBanner')) as boolean;
 
 export const selectSettingsNotificationsMinimizeFilteredBanner = (
   state: RootState,
-) =>
-  state.settings.getIn(['notifications', 'minimizeFilteredBanner']) as boolean;
+) => selectNotificationSettings(state).get('minimizeFilteredBanner');
 
 export const selectSettingsNotificationsGroupFollows = (state: RootState) =>
-  state.settings.getIn(['notifications', 'group', 'follow']) as boolean;
-
-/* eslint-enable @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
+  selectNotificationSettings(state).get('group').get('follow');

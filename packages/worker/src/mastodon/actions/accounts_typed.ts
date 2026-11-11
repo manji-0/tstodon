@@ -6,6 +6,7 @@ import {
   apiGetAccounts,
 } from 'mastodon/api/accounts';
 import type { ApiRelationshipJSON } from 'mastodon/api_types/relationships';
+import type { StatusesState } from 'mastodon/reducers/statuses';
 import { createDataLoadingThunk } from 'mastodon/store/typed_functions';
 
 import { importFetchedAccounts } from './importer';
@@ -35,7 +36,7 @@ export const unfollowAccountSuccess = createAction(
   'accounts/unfollowAccount/SUCCESS',
   actionWithSkipLoadingTrue<{
     relationship: ApiRelationshipJSON;
-    statuses: unknown;
+    statuses: StatusesState;
     alreadyFollowing?: boolean;
   }>,
 );
@@ -70,7 +71,7 @@ export const unfollowAccountFail = createAction(
 
 export const blockAccountSuccess = createAction<{
   relationship: ApiRelationshipJSON;
-  statuses: unknown;
+  statuses: StatusesState;
 }>('accounts/block/SUCCESS');
 
 export const unblockAccountSuccess = createAction<{
@@ -79,7 +80,7 @@ export const unblockAccountSuccess = createAction<{
 
 export const muteAccountSuccess = createAction<{
   relationship: ApiRelationshipJSON;
-  statuses: unknown;
+  statuses: StatusesState;
 }>('accounts/mute/SUCCESS');
 
 export const unmuteAccountSuccess = createAction<{

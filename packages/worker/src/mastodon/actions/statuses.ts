@@ -25,25 +25,25 @@ import { deleteFromTimelines } from './timelines';
 
 export * from './statuses_typed';
 
-export const STATUS_FETCH_REQUEST = 'STATUS_FETCH_REQUEST';
+export const STATUS_FETCH_REQUEST = 'STATUS_FETCH_REQUEST' as const;
 export const STATUS_FETCH_SUCCESS = 'STATUS_FETCH_SUCCESS';
-export const STATUS_FETCH_FAIL = 'STATUS_FETCH_FAIL';
+export const STATUS_FETCH_FAIL = 'STATUS_FETCH_FAIL' as const;
 
 export const STATUS_DELETE_REQUEST = 'STATUS_DELETE_REQUEST';
 export const STATUS_DELETE_SUCCESS = 'STATUS_DELETE_SUCCESS';
 export const STATUS_DELETE_FAIL = 'STATUS_DELETE_FAIL';
 
 export const STATUS_MUTE_REQUEST = 'STATUS_MUTE_REQUEST';
-export const STATUS_MUTE_SUCCESS = 'STATUS_MUTE_SUCCESS';
+export const STATUS_MUTE_SUCCESS = 'STATUS_MUTE_SUCCESS' as const;
 export const STATUS_MUTE_FAIL = 'STATUS_MUTE_FAIL';
 
 export const STATUS_UNMUTE_REQUEST = 'STATUS_UNMUTE_REQUEST';
-export const STATUS_UNMUTE_SUCCESS = 'STATUS_UNMUTE_SUCCESS';
+export const STATUS_UNMUTE_SUCCESS = 'STATUS_UNMUTE_SUCCESS' as const;
 export const STATUS_UNMUTE_FAIL = 'STATUS_UNMUTE_FAIL';
 
-export const STATUS_REVEAL = 'STATUS_REVEAL';
-export const STATUS_HIDE = 'STATUS_HIDE';
-export const STATUS_COLLAPSE = 'STATUS_COLLAPSE';
+export const STATUS_REVEAL = 'STATUS_REVEAL' as const;
+export const STATUS_HIDE = 'STATUS_HIDE' as const;
+export const STATUS_COLLAPSE = 'STATUS_COLLAPSE' as const;
 
 export const REDRAFT = 'REDRAFT';
 
@@ -52,9 +52,9 @@ export const STATUS_FETCH_SOURCE_SUCCESS = 'STATUS_FETCH_SOURCE_SUCCESS';
 export const STATUS_FETCH_SOURCE_FAIL = 'STATUS_FETCH_SOURCE_FAIL';
 
 export const STATUS_TRANSLATE_REQUEST = 'STATUS_TRANSLATE_REQUEST';
-export const STATUS_TRANSLATE_SUCCESS = 'STATUS_TRANSLATE_SUCCESS';
+export const STATUS_TRANSLATE_SUCCESS = 'STATUS_TRANSLATE_SUCCESS' as const;
 export const STATUS_TRANSLATE_FAIL = 'STATUS_TRANSLATE_FAIL';
-export const STATUS_TRANSLATE_UNDO = 'STATUS_TRANSLATE_UNDO';
+export const STATUS_TRANSLATE_UNDO = 'STATUS_TRANSLATE_UNDO' as const;
 
 const messages = defineMessages({
   deleteSuccess: {
@@ -144,6 +144,15 @@ export function fetchStatusFail(
   };
 }
 
+export type RedraftAction = {
+  type: typeof REDRAFT;
+  status: Status;
+  raw_text: string | null | undefined;
+  quoted_status_id: string | null;
+  /** The server's `configuration.polls.max_options`, when known. */
+  maxOptions: number | undefined;
+};
+
 export function redraft(
   status: Status,
   raw_text: string | null | undefined,
@@ -159,7 +168,7 @@ export function redraft(
       raw_text,
       quoted_status_id,
       maxOptions,
-    });
+    } satisfies RedraftAction);
   };
 }
 

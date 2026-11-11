@@ -4,13 +4,13 @@ import type { AppDispatch, GetState } from 'mastodon/store';
 
 import { importFetchedAccounts } from './importer';
 
-export const HISTORY_FETCH_REQUEST = 'HISTORY_FETCH_REQUEST';
-export const HISTORY_FETCH_SUCCESS = 'HISTORY_FETCH_SUCCESS';
-export const HISTORY_FETCH_FAIL = 'HISTORY_FETCH_FAIL';
+export const HISTORY_FETCH_REQUEST = 'HISTORY_FETCH_REQUEST' as const;
+export const HISTORY_FETCH_SUCCESS = 'HISTORY_FETCH_SUCCESS' as const;
+export const HISTORY_FETCH_FAIL = 'HISTORY_FETCH_FAIL' as const;
 
 export const fetchHistory =
   (statusId: string) => (dispatch: AppDispatch, getState: GetState) => {
-    const loading: unknown = getState().history.getIn([statusId, 'loading']);
+    const loading = getState().history.get(statusId)?.get('loading');
 
     if (loading) {
       return;
@@ -23,7 +23,7 @@ export const fetchHistory =
         dispatch(importFetchedAccounts(data.map((x) => x.account)));
         dispatch(fetchHistorySuccess(statusId, data));
       })
-      .catch((error: unknown) => dispatch(fetchHistoryFail(error)));
+      .catch((error: unknown) => dispatch(fetchHistoryFail(statusId, error)));
   };
 
 export const fetchHistoryRequest = (statusId: string) => ({
@@ -40,7 +40,8 @@ export const fetchHistorySuccess = (
   history,
 });
 
-export const fetchHistoryFail = (error: unknown) => ({
+export const fetchHistoryFail = (statusId: string, error: unknown) => ({
   type: HISTORY_FETCH_FAIL,
+  statusId,
   error,
 });
