@@ -150,3 +150,55 @@ describe("a followers-only status", () => {
     expect(await statusOf(`/api/v1/statuses/${statusId}`)).toBe(404);
   });
 });
+
+/** A direct note is also shown to whoever may see the direct note it replies to, through direct notes only. */
+describe("a direct reply chain", () => {
+  it("shows each reply to an account mentioned only at its root, and stops at a non-direct note", async () => {
+    const alice = "drc-alice@example.com";
+    const bob = "drc-bob@example.com";
+    const carol = "drc-carol@example.com";
+    const viewer = "drc-viewer@example.com";
+    const stranger = "drc-stranger@example.com";
+    const names = new Map<string, string>();
+    for (const email of [alice, bob, carol, viewer, stranger]) {
+      names.set(email, (await signedInAccount(email)).username);
+    }
+    const at = (email: string) => `@${names.get(email) ?? ""}`;
+    const root = await posted(alice, {
+      status: `${at(bob)} ${at(carol)} ${at(viewer)} root`,
+      visibility: "direct",
+    });
+    const reply = await posted(bob, {
+      status: `${at(alice)} reply`,
+      visibility: "direct",
+      in_reply_to_id: root,
+    });
+    const deeper = await posted(carol, {
+      status: `${at(bob)} deeper`,
+      visibility: "direct",
+      in_reply_to_id: reply,
+    });
+    const privateRoot = await posted(alice, {
+      status: `${at(bob)} ${at(viewer)} followers only`,
+      visibility: "private",
+    });
+    const offPrivate = await posted(bob, {
+      status: `${at(alice)} off a private note`,
+      visibility: "direct",
+      in_reply_to_id: privateRoot,
+    });
+
+    for (const id of [root, reply, deeper]) {
+      expect(await statusOf(`/api/v1/statuses/${id}`, viewer), id).toBe(200);
+      expect(await statusOf(`/api/v1/statuses/${id}`, stranger), id).toBe(404);
+    }
+    expect(await statusOf(`/api/v1/statuses/${privateRoot}`, viewer)).toBe(200);
+    expect(await statusOf(`/api/v1/statuses/${offPrivate}`, viewer)).toBe(404);
+    const context = await json(`/api/v1/statuses/${root}/context`, {
+      headers: await authHeaders(viewer),
+    });
+    expect(read(z.object({ descendants: Ids }), context.body).descendants.map((s) => s.id)).toEqual(
+      [reply, deeper],
+    );
+  });
+});
