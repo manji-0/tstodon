@@ -25,6 +25,15 @@ type Link = Readonly<{ href: string; label: string }>;
 export const minute = (date: Date): string =>
   `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 
+/**
+ * A stored ISO timestamp as {@link minute} shows it. Text that is not a date
+ * is shown as it is, so one bad row cannot fail the page.
+ */
+export const minuteText = (iso: string): string => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : minute(date);
+};
+
 const navLinks = (links: ReadonlyArray<Link>): string =>
   `      <nav aria-label="Settings">${links.map((link) => `<a href="${link.href}">${link.label}</a>`).join("")}</nav>`;
 

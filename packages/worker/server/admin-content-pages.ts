@@ -9,7 +9,7 @@ import {
   postButton,
 } from "./admin-pages";
 import { escapeHtml } from "./html";
-import { checkbox, messageLine, type PageMessage } from "./settings-pages";
+import { checkbox, messageLine, minuteText, type PageMessage } from "./settings-pages";
 
 /**
  * Mastodon's admin pages for what the server says and shows (`/admin/dashboard`,
@@ -51,7 +51,7 @@ const statusItem = (status: AdminStatusEntry): string => `
         <li>
           <label><input type="checkbox" name="status_ids" value="${escapeHtml(status.id)}" />
           ${status.spoilerText.length === 0 ? "" : `<strong>${escapeHtml(excerpt(status.spoilerText, 60))}</strong> `}${escapeHtml(excerpt(status.text))}</label>
-          <br /><span class="muted">${escapeHtml(status.visibility)}${status.sensitive ? " · sensitive" : ""} · ${escapeHtml(status.createdAt)}</span>
+          <br /><span class="muted">${escapeHtml(status.visibility)}${status.sensitive ? " · sensitive" : ""} · ${escapeHtml(minuteText(status.createdAt))}</span>
         </li>`;
 
 /** Mastodon's `GET /admin/accounts/:id/statuses`: pick posts, then mark them sensitive or delete them. */
@@ -116,7 +116,7 @@ const announcementFields = (form: AnnouncementForm): string => `
 const announcementItem = (entry: AnnouncementEntry): string => `
         <li>
           <a href="/admin/announcements/${escapeHtml(entry.id)}">${escapeHtml(excerpt(entry.text))}</a>
-          <br /><span class="muted">${entry.publishedAt === null ? "draft" : `published ${escapeHtml(entry.publishedAt)}`}${entry.startsAt === null ? "" : ` · starts ${escapeHtml(entry.startsAt)}`}${entry.endsAt === null ? "" : ` · ends ${escapeHtml(entry.endsAt)}`}</span>
+          <br /><span class="muted">${entry.publishedAt === null ? "draft" : `published ${escapeHtml(minuteText(entry.publishedAt))}`}${entry.startsAt === null ? "" : ` · starts ${escapeHtml(minuteText(entry.startsAt))}`}${entry.endsAt === null ? "" : ` · ends ${escapeHtml(minuteText(entry.endsAt))}`}</span>
         </li>`;
 
 /** Mastodon's `GET /admin/announcements`, with the form that adds one. */
@@ -156,7 +156,7 @@ export const announcementPage = (
     "/admin/announcements",
     `      <h1>Announcement</h1>
 ${messageLine(message)}
-      <p>${view.entry.publishedAt === null ? "This announcement is a draft." : `Published ${escapeHtml(view.entry.publishedAt)}.`}</p>
+      <p>${view.entry.publishedAt === null ? "This announcement is a draft." : `Published ${escapeHtml(minuteText(view.entry.publishedAt))}.`}</p>
       <form method="post" action="${escapeHtml(action)}">
         <input type="hidden" name="do" value="save" />${announcementFields(view.form)}
         <button type="submit">Save changes</button>
@@ -300,7 +300,7 @@ ${messageLine(message)}${
               (block) => `
         <li>
           <strong>${escapeHtml(block.domain)}</strong>
-          <span class="muted">${escapeHtml(block.createdAt)} · ${count(block.recentAccounts, "account")} created in the last 5 days</span>
+          <span class="muted">${escapeHtml(minuteText(block.createdAt))} · ${count(block.recentAccounts, "account")} created in the last 5 days</span>
           ${postButton("/admin/email_domain_blocks", "Remove block", { do: "remove", id: block.id }, "danger")}
         </li>`,
             ),
