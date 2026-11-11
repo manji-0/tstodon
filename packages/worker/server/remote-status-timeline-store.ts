@@ -18,8 +18,8 @@ import {
 
 /**
  * Remote direct notes that address the account, newest first, leaving out
- * actors the account blocks or mutes and domains it blocks or the instance
- * limits or suspends — the same ones remote timelines drop.
+ * actors the account blocks or mutes or that block it, and domains it blocks
+ * or the instance limits or suspends — the same ones remote timelines drop.
  */
 export const listRemoteDirectStatusesForAccount = async (
   db: D1Database,
@@ -28,7 +28,14 @@ export const listRemoteDirectStatusesForAccount = async (
   maxId: string | undefined,
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
-    const binds: (string | number)[] = [accountId, accountId, accountId, nowIso(), accountId];
+    const binds: (string | number)[] = [
+      accountId,
+      accountId,
+      accountId,
+      accountId,
+      nowIso(),
+      accountId,
+    ];
     const before = maxId ? "AND s.id < ?" : "";
     if (maxId) {
       binds.push(maxId);
@@ -39,11 +46,7 @@ export const listRemoteDirectStatusesForAccount = async (
         `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
          WHERE s.visibility = 'direct'
            AND s.id IN (SELECT status_id FROM remote_status_mentions WHERE account_id = ?)
-           AND s.actor_uri NOT IN (SELECT target_actor_uri FROM blocks WHERE blocker_account_id = ?)
-           AND s.actor_uri NOT IN (
-             SELECT target_actor_uri FROM mutes
-             WHERE account_id = ? AND (expires_at IS NULL OR expires_at > ?)
-           )
+           AND s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
            AND s.actor_uri NOT IN ${DOMAIN_RESTRICTED_ACTORS_SQL}
            ${before}
          ORDER BY s.id DESC LIMIT ?`,
@@ -98,6 +101,7 @@ export const listFollowedRemoteStatuses = async (
         accountId,
         ...follows.binds,
         ...replies.binds,
+        accountId,
         accountId,
         accountId,
         nowIso(),
@@ -228,7 +232,14 @@ export const listTagRemoteStatuses = async (
       "EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = ?)",
     ];
     const viewer = viewerId ?? "";
-    const binds: string[] = [viewer, viewer, nowIso(), viewer, tag.replace(/^#/, "").toLowerCase()];
+    const binds: string[] = [
+      viewer,
+      viewer,
+      viewer,
+      nowIso(),
+      viewer,
+      tag.replace(/^#/, "").toLowerCase(),
+    ];
     if (filters.any.length > 0) {
       conditions.push(
         `EXISTS (SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag IN (${filters.any.map(() => "?").join(", ")}))`,
@@ -296,6 +307,7 @@ export const listLinkRemoteStatuses = async (
       )
       .bind(
         url,
+        viewer,
         viewer,
         viewer,
         nowIso(),

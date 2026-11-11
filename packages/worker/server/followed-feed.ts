@@ -71,6 +71,7 @@ export const feedLocalReblogsSql = (viewerId: string, now: string): SqlFragment 
       now,
       viewerId,
       viewerId,
+      viewerId,
       now,
       viewerId,
     ],

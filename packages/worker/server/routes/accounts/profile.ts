@@ -85,7 +85,7 @@ const remoteAccountStatuses = async (
     return jsonRepositoryError(c, flags.error.message);
   }
   const blocks = flags?.unwrapOr(undefined);
-  if (blocks?.blocking === true || blocks?.domainBlocking === true) {
+  if (blocks?.blocking === true || blocks?.blockedBy === true || blocks?.domainBlocking === true) {
     return c.json([]);
   }
   const presentation = await accountRefPresentation(c.env, remoteRef(actor.value));
