@@ -1,7 +1,9 @@
 import type { Context } from "hono";
 import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
+import type { ApiWebPushSubscriptionJSON } from "@tstodon/api";
 import type { FediRole } from "@tstodon/domain";
+import type { AuthenticatedSession } from "../auth";
 import { isBlockedFederatedHost } from "../federated-fetch";
 import {
   jsonAuthError,
@@ -35,12 +37,12 @@ import { base64UrlToBytes, vapidPublicKey } from "../vapid";
 
 const booleanish = z.union([z.boolean(), z.string(), z.number()]);
 
-const PushDataSchema = z.object({
+export const PushDataSchema = z.object({
   alerts: z.record(z.string(), booleanish).optional(),
   policy: z.string().optional(),
 });
 
-const PushCreateBodySchema = z.object({
+export const PushCreateBodySchema = z.object({
   subscription: z.object({
     endpoint: z.string().trim().min(1),
     keys: z.object({ p256dh: z.string().trim().min(1), auth: z.string().trim().min(1) }),
@@ -55,7 +57,7 @@ const PushUpdateBodySchema = z.object({
   policy: z.string().optional(),
 });
 
-const notFound = (c: Context<{ Bindings: Env }>) =>
+export const notFound = (c: Context<{ Bindings: Env }>) =>
   c.json({ error: "Record not found", kind: "NotFound" }, 404);
 
 const unprocessable = (c: Context<{ Bindings: Env }>, error: string) =>
@@ -98,7 +100,11 @@ const validKeys = (p256dh: string, auth: string): boolean => {
   return base64UrlToBytes(p256dh)[0] === 0x04;
 };
 
-const subscriptionDocument = (env: Env, subscription: PushSubscription) => ({
+/** `REST::PushSubscriptionSerializer`, the same shape as `REST::WebPushSubscriptionSerializer`. */
+export const subscriptionDocument = (
+  env: Env,
+  subscription: PushSubscription,
+): ApiWebPushSubscriptionJSON => ({
   id: subscription.id,
   endpoint: subscription.endpoint,
   standard: subscription.standard,
@@ -107,22 +113,20 @@ const subscriptionDocument = (env: Env, subscription: PushSubscription) => ({
   server_key: vapidPublicKey(env),
 });
 
-export const postV1PushSubscription = async (
-  c: Context<{ Bindings: Env }, "/api/v1/push/subscription">,
+/**
+ * Subscribe the session's access token (replacing the subscription it holds):
+ * shared by `POST /api/v1/push/subscription` and `POST /api/web/push_subscriptions`.
+ */
+export const createPushSubscription = async (
+  c: Context<{ Bindings: Env }>,
+  session: AuthenticatedSession,
+  body: z.infer<typeof PushCreateBodySchema>,
 ) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const session = await requireSession(c);
-  if (session.isErr()) {
-    return jsonAuthError(c, session.error);
-  }
-  const body = await readNestedBody(c, PushCreateBodySchema);
-  if (body.isErr()) {
-    return jsonValidationError(c);
-  }
-  const { endpoint, keys, standard } = body.value.subscription;
+  const { endpoint, keys, standard } = body.subscription;
   let url: URL;
   try {
     url = new URL(endpoint);
@@ -137,24 +141,66 @@ export const postV1PushSubscription = async (
   if (!validKeys(keys.p256dh, keys.auth)) {
     return unprocessable(c, "Validation failed: Keys are invalid");
   }
-  const policy = policyFrom(body.value.data?.policy);
+  const policy = policyFrom(body.data?.policy);
   if (!policy) {
     return unprocessable(c, "Validation failed: Policy is not included in the list");
   }
   const stored = await upsertPushSubscription(c.env.DB, {
-    accessTokenId: session.value.token.id,
-    accountId: session.value.account.id,
+    accessTokenId: session.token.id,
+    accountId: session.account.id,
     endpoint: url.toString(),
     p256dh: keys.p256dh,
     auth: keys.auth,
     standard: isTruthy(standard),
-    alerts: alertsFrom(body.value.data?.alerts, session.value.role),
+    alerts: alertsFrom(body.data?.alerts, session.role),
     policy,
   });
   if (stored.isErr()) {
     return jsonRepositoryError(c, stored.error.message);
   }
   return stored.value ? c.json(subscriptionDocument(c.env, stored.value)) : notFound(c);
+};
+
+/**
+ * Replace the alerts and policy of the token's subscription; as in Mastodon,
+ * alerts left out turn off. Shared with `PUT /api/web/push_subscriptions/:id`.
+ */
+export const updatePushSubscription = async (
+  c: Context<{ Bindings: Env }>,
+  session: AuthenticatedSession,
+  data:
+    | Readonly<{ alerts?: Readonly<Record<string, boolean | string | number>> | undefined }>
+    | undefined,
+  rawPolicy: string | undefined,
+) => {
+  const policy = policyFrom(rawPolicy);
+  if (!policy) {
+    return unprocessable(c, "Validation failed: Policy is not included in the list");
+  }
+  const updated = await updatePushSubscriptionData(
+    c.env.DB,
+    session.token.id,
+    alertsFrom(data?.alerts, session.role),
+    policy,
+  );
+  if (updated.isErr()) {
+    return jsonRepositoryError(c, updated.error.message);
+  }
+  return updated.value ? c.json(subscriptionDocument(c.env, updated.value)) : notFound(c);
+};
+
+export const postV1PushSubscription = async (
+  c: Context<{ Bindings: Env }, "/api/v1/push/subscription">,
+) => {
+  const session = await requireSession(c);
+  if (session.isErr()) {
+    return jsonAuthError(c, session.error);
+  }
+  const body = await readNestedBody(c, PushCreateBodySchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  return createPushSubscription(c, session.value, body.value);
 };
 
 export const getV1PushSubscription = async (
@@ -183,20 +229,12 @@ export const putV1PushSubscription = async (
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const policy = policyFrom(body.value.data?.policy ?? body.value.policy);
-  if (!policy) {
-    return unprocessable(c, "Validation failed: Policy is not included in the list");
-  }
-  const updated = await updatePushSubscriptionData(
-    c.env.DB,
-    session.value.token.id,
-    alertsFrom(body.value.data?.alerts, session.value.role),
-    policy,
+  return updatePushSubscription(
+    c,
+    session.value,
+    body.value.data,
+    body.value.data?.policy ?? body.value.policy,
   );
-  if (updated.isErr()) {
-    return jsonRepositoryError(c, updated.error.message);
-  }
-  return updated.value ? c.json(subscriptionDocument(c.env, updated.value)) : notFound(c);
 };
 
 /** Removes the token's subscription; succeeds when there is none. */
