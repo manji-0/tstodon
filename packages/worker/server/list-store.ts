@@ -333,7 +333,6 @@ export const listListTimelineStatuses = async (
     const reblogs = feedLocalReblogsSql(input.ownerAccountId, now);
     const { where, order, binds: cursorBinds } = idCursorFragment(input.cursor);
     const binds = [
-      input.feed.listId,
       input.ownerAccountId,
       input.ownerAccountId,
       input.ownerAccountId,
@@ -345,23 +344,35 @@ export const listListTimelineStatuses = async (
       ...replies.binds,
       ...cursorBinds,
       input.limit,
+      input.feed.listId,
+      input.limit,
     ];
+    // Each member's statuses are searched on their own, newest first, and stop
+    // at `limit`: the page is the first `limit` of those, so a page reads at
+    // most `limit` statuses per member instead of every status they wrote.
     const { results } = await db
       .prepare(
-        `SELECT ${STATUS_SELECT} FROM statuses
-         WHERE visibility != 'direct'
-           AND account_id IN (SELECT member_account_id FROM account_list_members WHERE list_id = ?)
-           -- Mastodon feeds a list only from members the owner follows (accepted) and the owner.
-           AND (account_id = ? OR account_id IN (
-             SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
-           ))
-           AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
-           ${FEED_SUSPENDED_AUTHORS_SQL}
-           ${reblogs.sql}
-           ${FEED_LANGUAGES_SQL}
-           ${replies.sql}
-           ${where} ${order}
-         LIMIT ?`,
+        `SELECT ${STATUS_SELECT} FROM statuses WHERE id IN (
+           SELECT page.id FROM account_list_members member
+           JOIN statuses page ON page.id IN (
+             SELECT id FROM statuses
+             WHERE account_id = member.member_account_id
+               AND visibility != 'direct'
+               -- Mastodon feeds a list only from members the owner follows (accepted) and the owner.
+               AND (account_id = ? OR account_id IN (
+                 SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
+               ))
+               AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
+               ${FEED_SUSPENDED_AUTHORS_SQL}
+               ${reblogs.sql}
+               ${FEED_LANGUAGES_SQL}
+               ${replies.sql}
+               ${where} ${order}
+             LIMIT ?
+           )
+           WHERE member.list_id = ?
+         )
+         ${order} LIMIT ?`,
       )
       .bind(...binds)
       .all();
