@@ -288,17 +288,19 @@ describe("worker http", () => {
       },
     });
     expect(apiOptions.status).toBe(204);
-    expect(apiOptions.headers.get("access-control-allow-origin")).toBe("https://example.com");
+    expect(apiOptions.headers.get("access-control-allow-origin")).toBe("*");
+    expect(apiOptions.headers.get("access-control-allow-credentials")).toBeNull();
     expect(apiOptions.headers.get("access-control-allow-headers") ?? "").toMatch(/authorization/i);
 
-    const apiDenied = await SELF.fetch("https://example.com/api/v1/instance", {
+    const apiForeign = await SELF.fetch("https://example.com/api/v1/instance", {
       method: "OPTIONS",
       headers: {
         Origin: "https://evil.example",
         "Access-Control-Request-Method": "GET",
       },
     });
-    expect(apiDenied.headers.get("access-control-allow-origin")).toBeNull();
+    expect(apiForeign.headers.get("access-control-allow-origin")).toBe("*");
+    expect(apiForeign.headers.get("access-control-allow-credentials")).toBeNull();
 
     const avatarForm = new FormData();
     avatarForm.set("display_name", "Alice Avatar");
