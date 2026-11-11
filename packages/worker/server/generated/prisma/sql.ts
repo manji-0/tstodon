@@ -54,6 +54,8 @@ export * from "./sql/countAccountTagUses";
 
 export * from "./sql/countAccounts";
 
+export * from "./sql/countActiveAccountsSince";
+
 export * from "./sql/countFeaturedTags";
 
 export * from "./sql/countFollowersByAccountIdsJson";
@@ -342,6 +344,8 @@ export * from "./sql/findRemoteStatusReplyTargetByObjectUri";
 
 export * from "./sql/findRemoteStatusReplyTargets";
 
+export * from "./sql/findRemoteStatusThreadRefresh";
+
 export * from "./sql/findRemoteStatusesByIds";
 
 export * from "./sql/findSignupIntent";
@@ -359,6 +363,8 @@ export * from "./sql/findTagModeration";
 export * from "./sql/findTokenPushSubscription";
 
 export * from "./sql/findWebSettings";
+
+export * from "./sql/finishRemoteStatusThreadBackfill";
 
 export * from "./sql/followTag";
 

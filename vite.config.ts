@@ -129,6 +129,8 @@ export default defineConfig({
       // `pnpm typecheck:web` checks their types).
       "packages/worker/src/**",
       "packages/worker/config/**",
+      // Upstream's `public/embed.js`, kept as Mastodon ships it.
+      "packages/worker/public/embed.js",
     ],
     rules: {
       "typescript/consistent-type-definitions": ["error", "type"],

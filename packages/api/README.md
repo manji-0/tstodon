@@ -91,7 +91,7 @@ Where tstodon renders more than Mastodon, the schema says so in a comment
   `ApAccept`, `ApReject`, `ApUndo`, `ApBlock`, `ApMove`, `ApFlag`,
   `ApQuoteRequest`) and `ApActivityDocument` (any of them with its
   `@context`, what the delivery queue takes), `ApActorCollection` and
-  `ApOutbox`, `WebFingerJrd`, `NodeInfoDiscovery` and `NodeInfo20`, plus the
+  `ApOutbox`, `WebFingerJrd`, `NodeInfoDiscovery`, `NodeInfo20` and `NodeInfo21`, plus the
   constants `ACTIVITY_STREAMS`, `PUBLIC_COLLECTION` and `SECURITY_V1`. These
   describe tstodon's output only: what other servers send is read leniently
   in the Worker (`server/activitypub-wire.ts`). A schema with `@context` is

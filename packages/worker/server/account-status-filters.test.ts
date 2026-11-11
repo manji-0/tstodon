@@ -108,4 +108,21 @@ describe("account status filters", () => {
     expect(paged).not.toContain(newest);
     expect(paged.length).toBe(all.length - 1);
   });
+
+  it("leaves direct posts out with exclude_direct", async () => {
+    const email = "acct-exclude-direct@example.com";
+    const accountId = await accountIdFor(email);
+    const publicId = await postStatus(email, { status: "for everyone", visibility: "public" });
+    const directId = await postStatus(email, { status: "just me", visibility: "direct" });
+    const path = `/api/v1/accounts/${accountId}/statuses`;
+    const asOwner = async (query: string): Promise<string[]> => {
+      const response = await json(`${path}${query}`, { headers: await auth(email) });
+      expect(response.status).toBe(200);
+      return read(z.array(StatusIdSchema), response.body).map((status) => status.id);
+    };
+
+    expect(await asOwner("")).toEqual(expect.arrayContaining([publicId, directId]));
+    expect(await asOwner("?exclude_direct=true")).toEqual([publicId]);
+    expect(await asOwner("?exclude_direct=false")).toContain(directId);
+  });
 });

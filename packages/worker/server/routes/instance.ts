@@ -326,9 +326,9 @@ export const getV2Instance = async (c: Context<{ Bindings: Env }, "/api/v2/insta
     },
     contact: { email: instance.contactEmail, account: null },
     rules: ruleDocuments(c.env),
-    // Mastodon gates features by API version; 2 covers the 4.3 set this server
-    // implements (grouped notifications plus the notification policy/requests).
-    api_versions: { mastodon: 7 },
+    // Mastodon gates features by API version. 8 adds `exclude_direct` on
+    // `GET /api/v1/accounts/:id/statuses`.
+    api_versions: { mastodon: 8 },
   };
   return c.json(document);
 };

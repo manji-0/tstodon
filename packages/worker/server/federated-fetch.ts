@@ -3,6 +3,7 @@ import { schemaResult, type SensitiveValue } from "@tstodon/core";
 import { Hostname, type InstanceIdentity } from "@tstodon/domain";
 import { RemoteWebfingerSchema } from "./activitypub-wire";
 import { signFetchRequest } from "./http-signature";
+import { judgeHostDns, type HostDnsVerdict, type HostResolver } from "./remote-dns";
 
 export type FederatedFetchError =
   | Readonly<{ kind: "InvalidSignature" }>
@@ -54,8 +55,8 @@ const namedIn = (hosts: ReadonlySet<string>, host: string): boolean =>
  * True when a fetch must not reach the host: this instance itself, an IPv4
  * address in a loopback, private, shared, link-local or reserved block, any
  * IPv6 literal, or a `localhost`, `.internal` or `.local` name, unless
- * `allowHosts` names it. Workers cannot see what a name resolves to, so a
- * public name that resolves to a private address is not caught here.
+ * `allowHosts` names it. This check is static: a public name that resolves to
+ * a private address is caught by `checkFederatedHost`, before a fetch.
  */
 export const isBlockedFederatedHost = (
   hostname: string,
@@ -84,6 +85,8 @@ export type FederatedHostOptions = Readonly<{
   allowHosts?: ReadonlySet<string>;
   /** Hostnames this instance refuses to talk to (admin-suspended domains). */
   blockedHosts?: ReadonlySet<Hostname>;
+  /** Resolves a hostname's addresses for the SSRF check; Cloudflare DoH when omitted. */
+  resolveHost?: HostResolver;
 }>;
 
 /** The key an ActivityPub GET is signed with (draft-cavage HTTP Signatures). */
@@ -126,6 +129,32 @@ export const isFederatedHostRefused = (
     isBlockedFederatedHost(hostname, instanceDomain, allowHosts) ||
     (options.blockedHosts?.has(Hostname.ofAuthority(hostname)) ?? false)
   );
+};
+
+/**
+ * Whether a fetch may reach the host: `isFederatedHostRefused`, then, for a
+ * name (not an IP literal, not one `allowHosts` names), its DNS answers. A
+ * host resolving to a private or reserved address, or to nothing, is
+ * `Refused`; a lookup that failed is `Unavailable`, so the caller can retry.
+ */
+export const checkFederatedHost = async (
+  hostname: string,
+  instanceDomain: string,
+  options: FederatedHostOptions = {},
+): Promise<HostDnsVerdict> => {
+  if (isFederatedHostRefused(hostname, instanceDomain, options)) {
+    return "Refused";
+  }
+  const host = urlHostname(hostname);
+  if (
+    host === undefined ||
+    host.startsWith("[") ||
+    /^\d+\.\d+\.\d+\.\d+$/.test(host) ||
+    namedIn(options.allowHosts ?? new Set(), host)
+  ) {
+    return "Admitted";
+  }
+  return judgeHostDns(host, options.resolveHost);
 };
 
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
@@ -193,7 +222,8 @@ const activityGetHeaders = async (
 /**
  * GET an ActivityPub document, signed by `options.fetchSigner`. Up to three
  * redirects are followed when they stay on the same origin (scheme, host and
- * port), each hop signed again for its own request target; a redirect to
+ * port), each hop signed again for its own request target and checked
+ * against the host guard and DNS first; a redirect to
  * another origin is refused, as the document's authority would change. One
  * 5 s deadline covers the chain, and a URL already fetched is not fetched again.
  */
@@ -206,15 +236,18 @@ export const fetchActivityJson = async (
   if (first.isErr()) {
     return err(first.error);
   }
-  if (isFederatedHostRefused(first.value.hostname, identity.domain, options)) {
-    return err({ kind: "InvalidSignature" });
-  }
   try {
     const key = await options.fetchSigner();
     const signal = AbortSignal.timeout(5000);
     const fetched = new Set<string>();
     let url = first.value;
     for (let redirects = 0; ; redirects += 1) {
+      const admitted = await checkFederatedHost(url.hostname, identity.domain, options);
+      if (admitted !== "Admitted") {
+        return err({
+          kind: admitted === "Refused" ? "InvalidSignature" : "VerificationUnavailable",
+        });
+      }
       fetched.add(url.href);
       const response = await fetch(url, {
         method: "GET",
@@ -279,10 +312,13 @@ const followWebfingerRedirects = async (
   for (let redirects = 0; ; redirects += 1) {
     if (
       fetched.has(url.href) ||
-      url.protocol !== `${webfingerScheme(url.hostname, options.allowHosts)}:` ||
-      isFederatedHostRefused(url.hostname, identity.domain, options)
+      url.protocol !== `${webfingerScheme(url.hostname, options.allowHosts)}:`
     ) {
       return err({ kind: "InvalidSignature" });
+    }
+    const admitted = await checkFederatedHost(url.hostname, identity.domain, options);
+    if (admitted !== "Admitted") {
+      return err({ kind: admitted === "Refused" ? "InvalidSignature" : "VerificationUnavailable" });
     }
     fetched.add(url.href);
     const response = await fetch(url, {

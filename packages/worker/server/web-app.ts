@@ -30,6 +30,7 @@ import { parseJsonText } from "./json-column";
 import { findTokenPushSubscription } from "./push-subscription-store";
 import { subscriptionDocument } from "./routes/push";
 import { WEB_APP_ID, webAccessTokenId } from "./web-token";
+import { findEmbeddableStatusOf, oembedDiscoveryUrl } from "./status-embed";
 import { type WebEntry, type WebManifest, webManifest } from "./web-manifest";
 
 export type { WebManifest } from "./web-manifest";
@@ -317,6 +318,8 @@ export const webAppPage = (
     state: unknown;
     /** The viewer's colour scheme and contrast; `auto` for a signed-out visitor. */
     appearance: Appearance;
+    /** A status page's oEmbed endpoint (`<link rel="alternate" type="application/json+oembed">`). */
+    oembedUrl?: string | undefined;
   }>,
 ): string => `<!doctype html>
 <html lang="${attribute(options.locale)}" data-contrast="${options.appearance.contrast}" data-color-scheme="${options.appearance.colorScheme}"${options.appearance.colorScheme === "auto" ? ' data-system-theme="true"' : ""}>
@@ -328,6 +331,7 @@ export const webAppPage = (
     ${themeColorMetas(options.appearance.colorScheme)}
     <meta name="mobile-web-app-capable" content="yes">
     <title>${attribute(options.title)}</title>
+    ${options.oembedUrl ? `<link rel="alternate" type="application/json+oembed" href="${attribute(options.oembedUrl)}">` : ""}
     <link rel="icon" type="image/png" sizes="32x32" href="${attribute(manifest.favicon)}">
     <link rel="stylesheet" href="${attribute(manifest.theme)}" media="all" crossorigin="anonymous">
     ${manifest.polyfills ? `<script type="module" src="${attribute(manifest.polyfills)}" crossorigin="anonymous"></script>` : ""}
@@ -344,6 +348,75 @@ export const webAppPage = (
     </div>
   </body>
 </html>`;
+
+/**
+ * The page an embedded status frames: Mastodon's `statuses/embed` in its
+ * `embedded` layout, booting the `embed` pack with a signed-out initial state
+ * (any site may frame it, so it carries no viewer's token).
+ */
+const embedPage = (
+  manifest: WebManifest,
+  options: Readonly<{ locale: string; statusId: string; state: unknown }>,
+): string => `<!doctype html>
+<html lang="${attribute(options.locale)}" data-contrast="auto" data-color-scheme="light">
+  <head>
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex">
+    ${manifest.dev ? devTags(manifest) : ""}
+    <script${manifest.dev ? ' type="module"' : ""} src="${attribute(manifest.themeSelection)}"></script>
+    ${manifest.polyfills ? `<script type="module" src="${attribute(manifest.polyfills)}" crossorigin="anonymous"></script>` : ""}
+    <link rel="stylesheet" href="${attribute(manifest.theme)}" media="all" crossorigin="anonymous">
+    <script id="initial-state" type="application/json">${scriptJson(options.state)}</script>
+    ${entryTags(manifest.embed)}
+  </head>
+  <body class="embed">
+    <div id="mastodon-status" data-props="${attribute(JSON.stringify({ locale: options.locale, id: options.statusId }))}"></div>
+  </body>
+</html>`;
+
+/** `/@alice/123/embed`: a status's embed page. */
+const EMBED_PATH = /^\/@([^/@]+)\/(\d+)\/embed\/?$/;
+
+/** `/@alice/123`: a local status's page. */
+const STATUS_PATH = /^\/@([^/@]+)\/(\d+)\/?$/;
+
+const statusEmbedPage = async (
+  c: Context<{ Bindings: Env }>,
+  username: string,
+  statusId: string,
+): Promise<Response> => {
+  const embeddable = await findEmbeddableStatusOf(c.env, username, statusId);
+  if (embeddable.isErr()) {
+    return c.text("Internal Server Error", 500);
+  }
+  if (!embeddable.value) {
+    return c.text("Not Found", 404);
+  }
+  const locale = pickLocale(c.req.header("Accept-Language"), webManifest.locales);
+  // Mastodon's `StatusesController#embed`: cacheable, and framed by any site.
+  c.header("Cache-Control", "public, max-age=180");
+  c.header("Vary", "Accept-Language");
+  return c.html(
+    embedPage(webManifest, {
+      locale,
+      statusId: embeddable.value.status.id,
+      state: await initialState(c.env, c.req.raw, locale, undefined),
+    }),
+  );
+};
+
+/** The oEmbed endpoint a status page advertises, when the path is an embeddable status's. */
+const statusPageOEmbedUrl = async (env: Env, path: string): Promise<string | undefined> => {
+  const match = STATUS_PATH.exec(path);
+  const identity = parseInstanceIdentity(env);
+  if (!match?.[1] || !match[2] || identity.isErr()) {
+    return undefined;
+  }
+  const embeddable = await findEmbeddableStatusOf(env, match[1], match[2]);
+  return embeddable.isOk() && embeddable.value
+    ? oembedDiscoveryUrl(identity.value, embeddable.value)
+    : undefined;
+};
 
 /**
  * Request-wide middleware: the web app's paths get the shell, `/web/*` redirects as in Mastodon, `/@user` asked for as
@@ -364,6 +437,10 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
   if (!isWebAppPath(path) || (webManifest.dev && VITE_DEV_PATH.test(path))) {
     return next();
   }
+  const embed = EMBED_PATH.exec(path);
+  if (embed?.[1] && embed[2]) {
+    return statusEmbedPage(c, embed[1], embed[2]);
+  }
   if (path.startsWith("/@") && wantsActivityJson(c.req.header("Accept"))) {
     const target = activityPubTarget(path);
     return target ? c.redirect(target, 301) : next();
@@ -372,13 +449,14 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
   const locale = pickLocale(c.req.header("Accept-Language"), manifest.locales);
   const viewer = await currentViewer(c.req.raw, c.env);
   const identity = parseInstanceIdentity(c.env);
-  const [state, appearance] = await Promise.all([
+  const [state, appearance, oembedUrl] = await Promise.all([
     initialState(c.env, c.req.raw, locale, viewer),
     viewer === undefined
       ? DEFAULT_APPEARANCE
       : findAppearance(c.env.DB, viewer.account.id).then((found) =>
           found.unwrapOr(DEFAULT_APPEARANCE),
         ),
+    statusPageOEmbedUrl(c.env, path),
   ]);
   c.header("Cache-Control", "private, no-store");
   c.header("Vary", "Cookie, Accept-Language, Cf-Access-Jwt-Assertion");
@@ -391,6 +469,7 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
       vapidKey: vapidPublicKey(c.env),
       state,
       appearance,
+      oembedUrl,
     }),
   );
 };

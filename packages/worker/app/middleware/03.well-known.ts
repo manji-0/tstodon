@@ -1,11 +1,18 @@
 import type { Context, Next } from "hono";
-import { getWellKnownNodeinfo, getWellKnownWebfinger } from "#server/routes/discovery";
+import {
+  getWellKnownHostMeta,
+  getWellKnownHostMetaJson,
+  getWellKnownNodeinfo,
+  getWellKnownWebfinger,
+} from "#server/routes/discovery";
 import { getOauthAuthorizationServerMetadata } from "#server/routes/oauth";
 
 // Void's route scanner skips dot directories, so `routes/.well-known/` would
 // never be registered. Serve the discovery documents here instead.
 const WELL_KNOWN = {
   "/.well-known/webfinger": getWellKnownWebfinger,
+  "/.well-known/host-meta": getWellKnownHostMeta,
+  "/.well-known/host-meta.json": getWellKnownHostMetaJson,
   "/.well-known/nodeinfo": getWellKnownNodeinfo,
   "/.well-known/oauth-authorization-server": getOauthAuthorizationServerMetadata,
 } as const;

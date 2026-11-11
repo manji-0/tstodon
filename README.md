@@ -17,7 +17,7 @@ The project is early software. The [local core](docs/planning/local-core.md) cla
 - Mastodon's own web UI (vendored from Mastodon v4.7.5 in `packages/worker/src`, the client of the Void app, built with the Worker by `pnpm build`), served from Workers Assets with the Worker rendering its shell and initial state
 - Cloudflare Access login (passkeys or an IdP such as WorkOS; this server does not register passkeys) and a Mastodon-compatible OAuth 2 server (`/api/v1/apps`, `/oauth/authorize`, `/oauth/token`, PKCE, scopes). Better Auth stores the linked user, session, and admin role
 - Media (avatars, headers, attachments) stored in R2; public URLs via `MEDIA_PUBLIC_BASE_URL` (R2 custom domain in production, Worker object-key proxy locally)
-- CORS: media proxy allows `*`; `/api/*` reflects `INSTANCE_PUBLIC_ORIGIN` and optional `CORS_ALLOWED_ORIGINS` (R2 custom domains need a separate bucket CORS policy)
+- CORS: media proxy allows `*`; API and discovery routes allow any origin (`*`, no credentials) like Mastodon (R2 custom domains need a separate bucket CORS policy)
 
 ## Requirements
 

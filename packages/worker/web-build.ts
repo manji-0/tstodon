@@ -462,6 +462,8 @@ const builtManifest = async (clientOutDir: string): Promise<unknown> => {
     application: entry("src/entrypoints/application.ts"),
     // The iframe page of the signed-out interaction modal (/remote_interaction_helper).
     remoteInteractionHelper: entry("src/entrypoints/remote_interaction_helper.ts"),
+    // The page an embedded status frames (/@user/:id/embed).
+    embed: entry("src/entrypoints/embed.tsx"),
     locales: locales(),
   };
 };
@@ -482,6 +484,7 @@ const devManifest = async (): Promise<unknown> => {
     common: entry("entrypoints/common.ts"),
     application: entry("entrypoints/application.ts"),
     remoteInteractionHelper: entry("entrypoints/remote_interaction_helper.ts"),
+    embed: entry("entrypoints/embed.tsx"),
     locales: locales(),
   };
 };

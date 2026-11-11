@@ -34,6 +34,7 @@ export const WebManifestSchema = z.object({
   common: EntrySchema,
   application: EntrySchema,
   remoteInteractionHelper: EntrySchema,
+  embed: EntrySchema,
   locales: z.array(z.string()),
 });
 

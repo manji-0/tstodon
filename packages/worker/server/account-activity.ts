@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Result } from "neverthrow";
 import { jsonStringArray, runD1, type RepositoryError } from "./d1";
 import {
+  countActiveAccountsSince,
   listAccountIpsByAccountIdsJson,
   listAllAccountIps,
   recordAccountActivityDay,
@@ -103,3 +104,23 @@ export const allAccountIps = async (
       ip: row.ip,
     })),
   );
+
+const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Local accounts that made an authenticated request on any of the last `days`
+ * UTC days, today included. Days before migration 0124 was deployed count no
+ * one.
+ */
+export const countActiveAccounts = async (
+  db: D1Database,
+  days: number,
+  now: Date = new Date(),
+): Promise<Result<number, RepositoryError>> =>
+  runD1(async () => {
+    const sinceDay = utcDay(new Date(now.getTime() - (days - 1) * DAY_MS));
+    const rows = await queryTyped(db, countActiveAccountsSince(sinceDay), CountRow);
+    return Number(rows[0]?.count ?? 0);
+  });
